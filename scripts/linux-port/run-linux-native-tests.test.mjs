@@ -54,3 +54,35 @@ printf 'Executed 1 test\n'
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }
 });
+
+test('Linux native Swift tests isolate SwiftPM scratch state by default and honor an override', {
+  skip: process.platform !== 'linux'
+}, () => {
+  const result = spawnSync('bash', [
+    '-c',
+    'source scripts/linux-port/run-linux-native-tests.sh; linux_native_swift_scratch_root'
+  ], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      TMPDIR: '/tmp/openburnbar-native-tests-contract'
+    }
+  });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout.trim(), /^\/tmp\/openburnbar-native-tests-contract\/openburnbar-linux-native-tests-\d+$/u);
+
+  const override = '/tmp/openburnbar-native-tests-contract/explicit-scratch';
+  const overridden = spawnSync('bash', [
+    '-c',
+    'source scripts/linux-port/run-linux-native-tests.sh; linux_native_swift_scratch_root'
+  ], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: { ...process.env, OPENBURNBAR_LINUX_SWIFT_SCRATCH_ROOT: override }
+  });
+  assert.equal(overridden.status, 0, `${overridden.stdout}\n${overridden.stderr}`);
+  assert.equal(overridden.stdout.trim(), override);
+  assert.equal(fs.statSync(override).isDirectory(), true);
+  fs.rmSync('/tmp/openburnbar-native-tests-contract', { recursive: true, force: true });
+});

@@ -20,6 +20,7 @@ class HermesServiceMessageLaunchTest {
         val failure = "Could not verify iroh pairing record: pairing record expired"
         val relayTransport = mockk<HermesRelayTransporting>()
         coEvery { relayTransport.sendStreaming(any(), any(), any()) } throws HermesRelayException(failure)
+        coEvery { relayTransport.destroy() } returns Unit
         val relayClient = mockk<HermesRelayClient> {
             every { isUsable() } returns true
         }
@@ -43,7 +44,7 @@ class HermesServiceMessageLaunchTest {
             assertEquals(failure, service.runtimeErrorText.value)
             assertFalse(service.isStreaming.value)
         } finally {
-            service.destroy()
+            service.destroyAndWait()
         }
     }
 

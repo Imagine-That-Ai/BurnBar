@@ -24,6 +24,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     case config
     /// Usage + proxy-route observability reads/writes.
     case observability
+    /// Canonical local chat history reads and exact-thread message appends.
+    case chat
     /// Local membership cache reads plus Stripe checkout/restore handoff.
     case membership
     /// Connector-plane + browser tooling actions.
@@ -60,26 +62,44 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     /// RPC method that is not classified here will fail to compile this switch.
     public static func capability(for method: BurnBarRPCMethod) -> BurnBarRPCCapability {
         switch method {
-        case .health, .catalog, .authBootstrap, .linuxOnboardingSnapshot:
+        case .health, .catalog, .authBootstrap, .linuxOnboardingSnapshot,
+             .linuxAuthStatus, .linuxTrustedDeviceList, .linuxCloudSyncStatus:
             return .lifecycle
-        case .configGet, .configUpdate, .linuxOnboardingAction, .linuxOnboardingReset,
+        case .linuxAuthBegin, .linuxAuthCancel, .linuxAuthRotateIdentity, .linuxAuthSignOut,
+             .linuxAccountCloudDataExport,
+             .linuxAccountCloudDataDelete,
+             .linuxTrustedDeviceApprove, .linuxTrustedDeviceRevoke,
+             .linuxCloudSyncPolicyUpdate, .linuxCloudSyncRun,
+             .configGet, .configUpdate, .linuxOnboardingAction, .linuxOnboardingReset,
+             .textExpansionGet, .textExpansionUpsert, .textExpansionDelete, .textExpansionConsentUpdate,
+             .textExpansionEngineStatus, .textExpansionEngineStart, .textExpansionEngineStop,
+             .textExpansionEngineExpand,
+             .linuxPrivacyInventory, .linuxPrivacyDeletionPreview, .linuxPrivacyDeletionExecute,
+             .linuxPrivacyExport, .linuxPrivacyRetentionStatus, .linuxPrivacyRetentionApply,
              .providerCredentialSlotUpsert, .providerCredentialSlotRemove,
              .providerModelVariantUpsert, .providerModelVariantRemove,
              .providerModelAliasUpsert, .providerModelAliasRemove,
              .providerCustomModelUpsert, .providerCustomModelRemove,
              .providerModelDisplayNameSet, .providerModelDisplayNameClear,
-             .quotaSignalsClear:
+             .quotaSignalsClear,
+             .databaseRecoveryStatus,
+             .databaseRecoveryBundleExport, .databaseRecoveryBundleImport:
             return .config
-        case .usageRecord, .usageRecent,
+        case .usageRecord, .usageRecent, .usageProjection, .usageRecount,
+             .usageHistory, .usageInsights,
              .proxyRouteLogRecent, .proxyRouteLogClear,
              .quotaSignalsRecent, .perfMeasure:
             return .observability
-        case .membershipStatus, .membershipCheckoutURL, .membershipRestore:
+        case .chatThreadList, .chatThreadGet, .chatMessageAppend:
+            return .chat
+        case .membershipStatus, .membershipCheckoutURL, .membershipPortalURL, .membershipRestore:
             return .membership
         case .connectorPlaneGet, .connectorConfigUpdate, .connectorAction,
              .browserToolingGet, .browserToolingUpdate, .browserAction:
             return .tooling
         case .computerUseCapabilityStateUpdate,
+             .computerUseSessionGrantReadiness, .computerUseSessionGrantAcquire,
+             .computerUseSessionGrantStatus,
              .computerUseSessionStart, .computerUseInvoke,
              .computerUseApprovalPending, .computerUseApprovalRespond,
              .computerUsePanicHalt, .computerUseAuditExport:
@@ -96,10 +116,11 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             return .media
         case .controllerSummary, .controllerRuntimeSnapshot,
              .controllerProjectsList, .controllerProjectGet,
-             .controllerProjectUpsert, .reviewRunRecord,
+             .controllerProjectUpsert, .controllerProjectDelete,
+             .controllerProjectReassign, .reviewRunRecord,
              .questionCreate, .questionGet, .questionsList, .questionAnswer,
              .followupCreate, .followupsList, .followupDone, .followupSnooze, .followupCalendar,
-             .missionCreate, .missionsList, .missionGet, .missionApprove, .missionCancel,
+             .missionCreate, .missionsList, .missionGet, .missionHealth, .missionApprove, .missionCancel,
              .missionDispatchPacket, .missionRecordResult, .missionAuthorizeRemote,
              .notificationConfigGet, .notificationConfigUpdate, .notificationHealth, .notificationCommand,
              .simulatorRun, .simulatorList, .simulatorReplay, .projectionRebuild:
@@ -112,7 +133,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             return .run
         case .searchQuery:
             return .search
-        case .memoryRemember, .memoryForget:
+        case .memoryRemember, .memoryReviewStatus, .memoryForget:
             return .memoryWrite
         case .memoryRecall, .memoryAuditTrail, .memoryAnalytics:
             return .memoryRead
@@ -121,7 +142,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
         case .codeSearch, .codeContextPack, .codeGetSymbol, .codeFindReferences,
              .codeCallGraph, .codeDiagnostics, .codeIndexStatus, .codeExplore:
             return .codeRead
-        case .codeOpsDiagnostics:
+        case .codeOpsDiagnostics, .codeDatabaseSnapshot, .codeDatabaseRestore:
             return .codeOperator
         }
     }
@@ -174,18 +195,23 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
     /// A controller that drives runs but is denied the computer-use/HID surface
     /// and config-credential writes — the minimum a chat/run client needs.
     public static let runClient = BurnBarPeerCapabilityProfile(
-        capabilities: [.lifecycle, .client, .run, .tooling, .observability, .membership, .search, .missionControl, .memoryRead, .codeRead]
+        capabilities: [.lifecycle, .client, .run, .tooling, .observability, .chat, .membership, .search, .missionControl, .memoryRead, .codeRead]
     )
 
     /// Signed CLI support posture. Keep this as an exact method allowlist, not
-    /// coarse capability groups: the CLI needs `run.resume`, for example, but
-    /// must not inherit the rest of the workspace tool/run-dispatch surface.
+    /// coarse capability groups: the CLI needs the run lifecycle and approval
+    /// methods it actually exposes, but must not inherit the rest of the
+    /// workspace tool/run-dispatch surface. Keep this list in lockstep with
+    /// `BurnBarCLISocketClient`; a missing method makes the corresponding
+    /// command fail at the daemon capability gate even though its parser and
+    /// transport implementation are present.
     public static let cliSupport = methodScoped([
         .health,
         .controllerSummary,
         .questionsList,
         .followupsList,
         .missionsList,
+        .missionHealth,
         .missionApprove,
         .simulatorList,
         .simulatorReplay,
@@ -194,8 +220,27 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
         .codeWatchProject,
         .codeSearch,
         .codeIndexStatus,
+        .clientAttach,
+        .clientClaimControl,
         .runCreate,
-        .runResume
+        .runList,
+        .runGet,
+        .runPoll,
+        .runCancel,
+        .runRetry,
+        .approvalRespond,
+        .subscriptionStart,
+        .subscriptionResume,
+        .runResume,
+        // The panic path is a safety kill switch, not general computer-use
+        // agency. The CLI intentionally exposes only this computer-use RPC.
+        .computerUsePanicHalt,
+        .linuxPrivacyInventory,
+        .linuxPrivacyDeletionPreview,
+        .linuxPrivacyDeletionExecute,
+        .linuxPrivacyExport,
+        .linuxPrivacyRetentionStatus,
+        .linuxPrivacyRetentionApply
     ])
 
     /// Intersect with `other` so a peer can only ever be FURTHER attenuated,

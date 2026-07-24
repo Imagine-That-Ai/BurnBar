@@ -1,0 +1,20 @@
+{
+  "schema": "openburnbar.parity.linux-release-candidate-receipt.v1",
+  "capturedAt": "2026-07-14T15:21:52Z",
+  "runId": "29342758329",
+  "runUrl": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29342758329",
+  "headCommit": "2cebac9e840892ff4fd51583cd8dc108268b4a14",
+  "version": "0.1.1",
+  "result": "failure",
+  "failedJobs": [
+    "Build Linux aarch64 shard",
+    "Build Linux x86_64 shard"
+  ],
+  "failureStage": "Prepare unsigned native architecture artifacts",
+  "failureClass": "rpm2cpio rejected the Tauri-generated RPM after emitting a cpio payload",
+  "correctiveCommit": "b325c76eb8",
+  "limitations": [
+    "This historical candidate did not produce signed artifacts and cannot certify any product or environment row.",
+    "The corrective commit derives RPM from the validated DEB filesystem with rpmbuild; a fresh exact-head candidate is required."
+  ]
+}

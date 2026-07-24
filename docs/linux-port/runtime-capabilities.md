@@ -72,6 +72,76 @@ Daemon-backed evaluators establish the shared runtime prerequisite. Individual
 surfaces must continue to probe their feature RPC and display typed errors;
 daemon health alone must not be treated as proof of end-to-end feature parity.
 
+## Browser Computer Use package boundary
+
+Linux packages own the canonical bridge at
+`/usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js`. The daemon
+launcher exports that exact package path for deb/rpm and the equivalent
+`$APPDIR` path for AppImage. The installed signed manifest measures the deb/rpm
+bridge bytes; AppImage embedding verifies the same resource before rebuilding
+the image.
+
+The package does not claim to bundle Playwright or Chromium. Native deb/rpm/AUR
+metadata requires Node 18 or newer and npm; AppImage treats both as external.
+All formats require an exactly pinned, root-provisioned `playwright@1.49.1` at
+`/usr/lib/node_modules/playwright`, its `playwright-core` dependency at
+`/usr/lib/node_modules/playwright-core`, plus Chromium under
+`/usr/lib/openburnbar/playwright-browsers`. Packaged launches discard ambient
+`NODE_OPTIONS` and `NODE_PATH`; the bridge recursively requires uid-0 ownership
+and rejects every group/world-writable entry or escaping symlink before loading
+Playwright or launching Chromium. No Computer Use action installs or upgrades
+these dependencies. The read-only package probe verifies that trust boundary,
+the exact Playwright version, Chromium executable access, and a real headless
+Chromium launch:
+
+```bash
+/usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe
+```
+
+For an extracted AppImage, run the same command below `$APPDIR/usr/lib/...`
+with `APPDIR` set. A nonzero exit or JSON `ready: false` blocks Browser Computer
+Use. A green probe proves prerequisites only; it does not prove signed phone
+authority, approvals, desktop integration, restart recovery, accessibility, or
+the seven-environment installed parity matrix.
+
+The packaged daemon launcher uses an absolute shell, a fixed executable search
+path, an exact package-owned Swift library path, and no user-writable generic
+environment file. Both systemd and the launcher remove shell startup hooks,
+dynamic-loader injection variables, and Node injection variables before daemon
+startup; the daemon then gives the Playwright child a separate allowlisted
+environment. Administrator overrides belong in a reviewed systemd drop-in, not
+`~/.config/openburnbar/daemon.env`.
+
+## Browser Computer Use owner authorization
+
+Browser session start requires two independent authorities: the exact signed
+grant from the pinned paired phone and a fresh Linux desktop-owner decision.
+The daemon binds the latter to the authenticated Tauri socket peer PID, UID,
+process start time, executable device, and inode; it repeats that identity check
+after the prompt before consuming the phone grant. The Computer Use path accepts
+only the dedicated polkit action and deliberately has no PAM fallback.
+
+Deb, RPM, and the package-managed AUR recipe install
+`com.openburnbar.computer-use.policy` at
+`/usr/share/polkit-1/actions/` with mode `0644` and require polkit. The policy
+uses fresh `auth_self`, not cached `auth_self_keep`. Standalone AppImage and
+Flatpak payloads cannot install a host policy and must report authority
+unavailable unless a trusted system package already installed the exact policy.
+No package or runtime flow may self-install or modify that privileged asset.
+
+A green owner prompt proves only local authorization. It cannot replace the
+phone signature, elevate trust, broaden capabilities, or authorize later
+actions. The shipping Linux iroh backend, paired-controller registry, trusted
+QUIC-transport-to-signing-authority mapping, publisher, and pairing metadata
+resolver remain prerequisites. Android challenge reception and installed
+real-phone evidence are still required.
+
+The desktop's idle state also calls
+`daemon.computer_use.session_grant.readiness`. It enables session start only
+after the daemon confirms an operational publisher/validator broker, metadata
+resolver, readiness provider, and trusted paired-controller path. A missing or
+malformed readiness response is unavailable, never optimistic.
+
 ## Change procedure
 
 1. Add or change the catalog entry, including an actionable reason and

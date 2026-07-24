@@ -18,6 +18,8 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 body.reduced-motion * { animation: none !important; transition: none !important; }
 
 :root {
+  /* Keep WebKitGTK native form controls aligned with the dark shell palette. */
+  color-scheme: dark;
   --radius-sm: 8px;
   --radius-md: 14px;
   --radius-lg: 20px;
@@ -117,9 +119,10 @@ body.reduced-motion * { animation: none !important; transition: none !important;
 @keyframes mesh-drift-c { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(4vw, 6vh, 0); } }
 
 /* Kernel canvas sits above page void, below shell chrome (z-index: 1). */
-.kernel-backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: var(--color-ink-void); }
+.kernel-backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: var(--wallpaper-base, var(--color-ink-void)); }
 .kernel-backdrop canvas { position: absolute !important; inset: 0 !important; display: block !important; width: 100% !important; height: 100% !important; max-width: none !important; max-height: none !important; }
-.kernel-backdrop--css { background: radial-gradient(ellipse 90% 70% at 15% 10%, color-mix(in srgb, var(--color-brass-core) 55%, transparent), transparent 55%), radial-gradient(ellipse 80% 60% at 90% 80%, color-mix(in srgb, var(--color-tier-end-to-end) 35%, transparent), transparent 55%), var(--color-ink-base); }
+.kernel-backdrop--css { background: var(--wallpaper-base, var(--color-ink-base)); }
+
 
 /* -------------------------------------------------------- sidebar card */
 .sidebar-glass-card { display: grid; gap: var(--space-1); margin-top: var(--space-3); padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-glass-line); background: color-mix(in srgb, var(--color-glass-bg-elevated) 30%, transparent); backdrop-filter: blur(12px) saturate(140%); -webkit-backdrop-filter: blur(12px) saturate(140%); box-shadow: inset 0 1px 0 var(--color-frost-line); }
@@ -369,6 +372,8 @@ button.ghost:hover { border-color: var(--color-glass-line-bright); background: v
 .p12-absent-state h3, .p12-absent-state p { margin: 0; }
 .p12-absent-state h3 { color: var(--color-text-bright); font-size: 1rem; }
 .p12-absent-state p { max-width: 68ch; color: var(--color-text-base); }
+.p12-viewer-install-hint { padding: var(--space-2) var(--space-3); border-left: 2px solid var(--color-brass-core); color: var(--color-text-bright) !important; background: color-mix(in srgb, var(--color-brass-core) 8%, transparent); }
+.p12-viewer-absent small { color: var(--color-text-mute); }
 .p12-call-hud { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; margin-bottom: var(--space-4); padding: var(--space-4); border: 1px solid var(--color-glass-line-bright); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-ink-elevated) 78%, transparent); }
 .p12-call-hud.is-ringing { border-color: color-mix(in srgb, var(--color-brass-core) 56%, var(--color-glass-line)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-brass-core) 16%, transparent); }
 .p12-call-hud.is-streaming { border-color: color-mix(in srgb, var(--color-tier-end-to-end) 54%, var(--color-glass-line)); }
@@ -410,6 +415,8 @@ button.ghost:hover { border-color: var(--color-glass-line-bright); background: v
 .p12-file-error { margin: 0; }
 .p12-file-offer { grid-template-columns: minmax(0, 1fr) auto; padding: var(--space-3); border: 1px solid color-mix(in srgb, var(--color-brass-core) 42%, var(--color-glass-line)); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-brass-core) 9%, transparent); }
 .p12-file-send { grid-template-columns: minmax(220px, 1fr) auto auto; }
+.p12-file-selection { display: grid; min-width: 0; gap: var(--space-1); color: var(--color-text-mute); font-size: 0.82rem; }
+.p12-file-selection code { min-width: 0; overflow-wrap: anywhere; color: var(--color-text-base); }
 .p12-file-send label { display: grid; gap: var(--space-1); color: var(--color-text-mute); font-size: 0.82rem; }
 .p12-file-send input { min-width: 0; width: 100%; padding: var(--space-2); border: 1px solid var(--color-glass-line); border-radius: var(--radius-sm); color: var(--color-text-base); background: var(--color-ink-elevated); }
 .p12-file-send input:focus-visible { border-color: color-mix(in srgb, var(--color-brass-core) 58%, transparent); outline: none; }
@@ -440,4 +447,250 @@ button.ghost:hover { border-color: var(--color-glass-line-bright); background: v
   .p12-call-actions button { width: 100%; }
   .p12-stage-rail { grid-template-columns: 1fr 1fr; }
   .p12-file-panel-head, .p12-file-offer, .p12-file-send, .p12-file-row { grid-template-columns: 1fr; }
+}
+
+/* ------------------------------------------------------------ accessibility */
+
+/*
+ * System preference contracts. These rules intentionally live at the shell
+ * level so every route inherits the same behavior, including daemon failure
+ * and capability-unavailable states. They do not claim a desktop-level AT
+ * integration; the installed-session matrix verifies that boundary separately.
+ */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * Reduce Transparency is a separate preference from reduced motion. Keep the
+ * glass vocabulary and its live preference class in the shell stylesheet so
+ * every lazy-loaded route gets an opaque fallback, not just onboarding.
+ */
+body.reduced-transparency {
+  --a11y-opaque-surface: var(--macos-surface);
+  --a11y-opaque-surface-elevated: var(--macos-surface-elevated);
+  --glass-toolbar: var(--a11y-opaque-surface);
+  --glass-card: var(--a11y-opaque-surface-elevated);
+  --glass-panel: var(--a11y-opaque-surface);
+  --glass-pill: var(--a11y-opaque-surface-elevated);
+  --glass-input: var(--macos-bg);
+  --glass-tint-base: var(--a11y-opaque-surface);
+  --glass-tint-elevated: var(--a11y-opaque-surface-elevated);
+  --glass-tint-clear: var(--a11y-opaque-surface-elevated);
+  --glass-tint-interactive: var(--a11y-opaque-surface-elevated);
+  --glass-specular: none;
+  --glass-inner-light: none;
+  --glass-inner-glow: none;
+}
+
+body.reduced-transparency *,
+body.reduced-transparency *::before,
+body.reduced-transparency *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.reduced-transparency .glass-toolbar,
+body.reduced-transparency .glass-card,
+body.reduced-transparency .glass-panel,
+body.reduced-transparency .glass-surface,
+body.reduced-transparency .glass-list-row,
+body.reduced-transparency .glass-input,
+body.reduced-transparency .glass-pill,
+body.reduced-transparency .glass-segmented,
+body.reduced-transparency .glass-interactive,
+body.reduced-transparency [class*='glass'],
+body.reduced-transparency [class*='panel'],
+body.reduced-transparency [class*='card'],
+body.reduced-transparency [class*='toolbar'],
+body.reduced-transparency [class*='popover'],
+body.reduced-transparency [class*='modal'],
+body.reduced-transparency [class*='dialog'],
+body.reduced-transparency [class*='segmented'],
+body.reduced-transparency [class*='pill'],
+body.reduced-transparency [class*='input'],
+body.reduced-transparency .shell-nav,
+body.reduced-transparency .command-deck,
+body.reduced-transparency .settings-split,
+body.reduced-transparency .command-palette-backdrop,
+body.reduced-transparency .command-palette,
+body.reduced-transparency .onboarding-wizard {
+  background: var(--a11y-opaque-surface-elevated) !important;
+}
+
+body.reduced-transparency .shell-nav,
+body.reduced-transparency .command-deck,
+body.reduced-transparency .settings-split,
+body.reduced-transparency .command-palette-backdrop {
+  background: var(--a11y-opaque-surface) !important;
+}
+
+body.reduced-transparency .card::before,
+body.reduced-transparency .glass-card::before {
+  background: none !important;
+  box-shadow: none !important;
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --a11y-border-strong: var(--color-text-bright);
+    --a11y-focus-color: var(--color-text-bright);
+    --a11y-status-ok: var(--color-tier-end-to-end);
+    --a11y-status-warn: var(--color-tier-server-readable);
+    --a11y-status-error: var(--color-seal-crimson);
+    --focus-ring: 0 0 0 2px var(--color-ink-void), 0 0 0 4px var(--a11y-focus-color);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--a11y-focus-color);
+    outline-offset: 2px;
+    box-shadow: var(--focus-ring);
+  }
+
+  button,
+  input,
+  textarea,
+  select,
+  [role='tab'],
+  .nav-link,
+  .glass-interactive {
+    border-style: solid;
+    border-width: 1px;
+    border-color: var(--a11y-border-strong);
+  }
+
+  [role='status'],
+  [role='alert'] {
+    outline: 1px solid var(--a11y-border-strong);
+    outline-offset: -1px;
+  }
+
+  .status-pill {
+    box-shadow: none;
+  }
+  .status-pill.ok { border-color: var(--a11y-status-ok); }
+  .status-pill.warn { border-color: var(--a11y-status-warn); }
+  .status-pill.err { border-color: var(--a11y-status-error); }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --a11y-surface: Canvas;
+    --a11y-surface-text: CanvasText;
+    --a11y-control: ButtonFace;
+    --a11y-control-text: ButtonText;
+    --a11y-border-strong: CanvasText;
+    --a11y-focus-color: Highlight;
+    --a11y-focus-text: HighlightText;
+    --focus-ring: 0 0 0 2px Canvas, 0 0 0 4px Highlight;
+  }
+
+  body,
+  .shell,
+  .shell-nav,
+  .shell-main,
+  .command-deck {
+    background: var(--a11y-surface);
+    color: var(--a11y-surface-text);
+  }
+
+  /* Decorative mesh/blur cannot be relied on in forced-colors mode. */
+  .mesh-backdrop,
+  .kernel-backdrop {
+    display: none;
+  }
+
+  .card,
+  .fact,
+  .sidebar-glass-card,
+  .command-deck,
+  .glass-card,
+  .glass-panel,
+  .glass-surface,
+  .glass-pill,
+  .glass-list-row,
+  .glass-input,
+  .status-pill,
+  .offline-notice,
+  .banner,
+  [role='status'],
+  [role='alert'] {
+    background: var(--a11y-surface);
+    color: var(--a11y-surface-text);
+    border-color: var(--a11y-border-strong);
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .card::before,
+  .glass-card::before {
+    display: none;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    background: var(--a11y-control);
+    color: var(--a11y-control-text);
+    border-style: solid;
+    border-width: 1px;
+    border-color: var(--a11y-control-text);
+    box-shadow: none;
+  }
+
+  button.primary,
+  button.ghost,
+  .nav-link,
+  .glass-interactive {
+    background: var(--a11y-control);
+    color: var(--a11y-control-text);
+    border-color: var(--a11y-control-text);
+    box-shadow: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--a11y-focus-color);
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+
+  a {
+    color: LinkText;
+  }
+
+  /*
+   * Gradient text is decorative in the normal shell, but transparent text is
+   * not a usable fallback when a high-contrast theme suppresses gradients.
+   * Keep every metric/brand value readable with system colors. `!important`
+   * is intentional: component styles for these classes are loaded after the
+   * shell stylesheet in the packaged WebView.
+   */
+  .deck-wordmark-accent,
+  .brand span,
+  .burn-hero-cost,
+  .stat-card-value--gradient,
+  .concept-stat-tile-value {
+    color: CanvasText !important;
+    background: none !important;
+    -webkit-text-fill-color: CanvasText !important;
+  }
+
+  [aria-current='page'],
+  [aria-selected='true'],
+  [aria-pressed='true'] {
+    background: var(--a11y-focus-color);
+    color: var(--a11y-focus-text);
+    border-color: var(--a11y-focus-color);
+  }
+
+  progress {
+    accent-color: var(--a11y-focus-color);
+  }
 }

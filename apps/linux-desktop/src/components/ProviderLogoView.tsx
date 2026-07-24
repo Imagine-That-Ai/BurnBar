@@ -40,35 +40,55 @@ const NEEDS_BACKDROP = new Set([
   'antigravity',
 ]);
 
-// Fallback text glyphs for providers without logo assets
-// (mapped from macOS SF Symbol iconName → closest text equivalent)
+// Fallback text glyphs for providers without logo assets. Keep these
+// monochrome and font-stable: emoji presentation varies by distro and can
+// change the visual weight of dense provider lists.
 const FALLBACK_GLYPH: Record<string, string> = {
   openai: '✦',
   anthropic: '✦',
-  'claude-code': '💬',
+  'claude-code': '◌',
   cursor: '◎',
-  codex: '🔨',
+  codex: '⌘',
   copilot: '✦',
   google: '◆',
   gemini: '◆',
   ollama: '▦',
   hermes: '≋',
   opencode: '</>',
-  deepseek: '🧠',
-  grok: '⚡',
-  factory: '🏭',
+  deepseek: '◈',
+  grok: 'ϟ',
+  factory: '▣',
   minimax: '★',
-  kimi: '🌙',
-  cline: '🧠',
+  kimi: '☾',
+  cline: '◈',
   kilocode: 'K',
-  roocode: '🐇',
+  roocode: '◌',
   openclaw: '✦',
-  openburnbar: '🔥',
-  windsurf: '⛵',
-  goose: '🪿',
+  openburnbar: '✦',
+  windsurf: '≈',
+  goose: '✣',
   antigravity: '✦',
   piagent: '⬡',
 };
+
+/** Return a stable, readable fallback for catalog providers without an asset. */
+export function providerFallbackGlyph(id: string): string {
+  const normalized = id.trim().toLowerCase();
+  const explicit = FALLBACK_GLYPH[normalized];
+  if (explicit) return explicit;
+
+  const words = normalized.split(/[\s._-]+/u).filter(Boolean);
+  // A variant of a known provider ("cursor-agent") monograms from its base
+  // name ("CU") so it stays visually tied to that provider's family, while
+  // unknown compounds ("unknown-provider") monogram by initials ("UP").
+  if (words.length > 1 && FALLBACK_GLYPH[words[0]]) {
+    return words[0].slice(0, 2).toUpperCase();
+  }
+  const monogram = words.length > 1
+    ? words.slice(0, 2).map((word) => word[0]).join('')
+    : (words[0] ?? '?').slice(0, 2);
+  return monogram.toUpperCase();
+}
 
 export type ProviderLogoProps = {
   /** Provider ID — matches PROVIDER_GLYPHS ids and /provider-logos/{id}.png filenames */
@@ -101,7 +121,7 @@ export function ProviderLogoView({
   const url = useMemo(() => logoUrl(id), [id]);
   const needsBackdrop = NEEDS_BACKDROP.has(id);
   const radius = size * 0.2237;
-  const glyph = FALLBACK_GLYPH[id] ?? '✦';
+  const glyph = providerFallbackGlyph(id);
 
   const containerStyle: React.CSSProperties = {
     width: size,
@@ -133,6 +153,7 @@ export function ProviderLogoView({
   const glyphStyle: React.CSSProperties = {
     fontSize: size * 0.55,
     fontWeight: 600,
+    fontFamily: 'var(--font-mono)',
     color: useFallbackColor ? accent : 'currentColor',
     lineHeight: 1,
   };

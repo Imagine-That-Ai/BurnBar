@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "role": "physical-ipad-focused-parity-evidence",
+  "capturedAt": "2026-07-22T06:54:09Z",
+  "sourceHead": "bbcea9c2f79f64e1b34418bb94a57c6ed6023a2d",
+  "device": {
+    "name": "Alberto's iPad",
+    "coreDeviceIdentifier": "<IOS_DEVICE_ID>",
+    "destination": "platform=iOS,id=<IOS_DEVICE_ID>"
+  },
+  "suite": {
+    "selector": "OpenBurnBarMobileTests/iPadNavigationUITests/testiPadSettingsTabs_countAndNoDaemon",
+    "passed": 1,
+    "failed": 0,
+    "attempts": 1,
+    "xcodebuildExit": 0,
+    "durationSeconds": 534,
+    "telemetry": ".tmp/ipad-live/focused-current-head/artifacts/test-openburnbar-mobile-attempts.jsonl",
+    "resultBundleRetained": false
+  },
+  "command": "OPENBURNBAR_IOS_DESTINATION='platform=iOS,id=<IOS_DEVICE_ID>' OPENBURNBAR_MOBILE_TEST_FILTER='OpenBurnBarMobileTests/iPadNavigationUITests/testiPadSettingsTabs_countAndNoDaemon' OPENBURNBAR_MOBILE_TEST_ATTEMPTS=1 OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT=.tmp/ipad-live/focused-current-head ./scripts/test-openburnbar-mobile.sh",
+  "scope": "focused Settings/navigation smoke only; it does not exercise the signed P16 Linux/iPad trust-cycle, Firebase/App Check, or Computer Use/Mercury transport",
+  "certification": {
+    "strictParity": false,
+    "reason": "This is a current-head physical-device receipt for one selector, not the complete signed cross-device contract."
+  }
+}

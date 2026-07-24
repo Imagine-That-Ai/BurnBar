@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-19T14:20:00Z",
+  "sourceCommit": "5b70a3d320495463fc7fd5022388c4b5e277f8ee",
+  "environment": {
+    "guest": "OpenBurnBar Linux",
+    "distribution": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME",
+    "displayServer": "X11",
+    "display": ":0"
+  },
+  "graphics": {
+    "glxRenderer": "virgl (ANGLE (Apple, Apple M5 Max, OpenGL 4.1 Metal - 91.7))",
+    "glxOpenGLVersion": "2.1 Mesa 25.2.8",
+    "virglOpenGLESVersion": "3.0 Mesa 25.2.8",
+    "llvmpipeOpenGLESVersion": "3.2 Mesa 25.2.8",
+    "webkitLog": "Failed to create a graphics context for WebGL using GBM, falling back to textures"
+  },
+  "animationProbe": {
+    "captureIntervalSeconds": 2,
+    "captureASha256": "9dfb1b4dfc7dd84122f3b62941ef127746aa09df3a103868a5e49eb52d4a482a",
+    "captureBSha256": "4c6a88f922f6d4a562623e826ac3c7bb253453ec5826c207c46da11d54800adc",
+    "changedPixelCount": 406879,
+    "changedRegion": [66, 69, 1346, 851],
+    "pass": true
+  },
+  "interpretation": {
+    "canvasFallbackIsLive": true,
+    "webgl2SpecificKernelsCertified": false,
+    "note": "The installed shell visibly animates its Canvas2D fallback. WebGL2-only kernels may resolve to the default 2D kernel in this VM because WebKit reports a GBM context fallback; this is an environment limitation, not a blank or frozen background."
+  }
+}

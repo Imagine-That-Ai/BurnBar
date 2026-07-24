@@ -25,6 +25,7 @@ const TOUCHED = [
   "FUNCTIONS_EMULATOR",
   "FIRESTORE_EMULATOR_HOST",
   "FIREBASE_CONFIG",
+  "LINUX_APP_CHECK_APP_ID",
   "MAX_CREDENTIAL_LENGTH",
   "REFRESH_RATE_LIMIT_SECONDS",
   "ROLLUP_BATCH_SIZE",
@@ -44,6 +45,7 @@ const TOUCHED = [
   "APP_STORE_APPLE_APP_ID",
   "APP_STORE_BUNDLE_ID",
 ] as const;
+const VALID_LINUX_APP_CHECK_APP_ID = "1:246956661961:web:ab19bc3a6f6d4580480118";
 
 describe("buildConfig characterization (via getConfig)", () => {
   const saved: Record<string, string | undefined> = {};
@@ -54,6 +56,7 @@ describe("buildConfig characterization (via getConfig)", () => {
       saved[k] = process.env[k];
       delete process.env[k];
     }
+    process.env.LINUX_APP_CHECK_APP_ID = VALID_LINUX_APP_CHECK_APP_ID;
   });
   afterEach(() => {
     for (const k of TOUCHED) {

@@ -46,6 +46,8 @@ extension BurnBarRunService {
             approvalResolvedForAttempt: false,
             activeToolCallID: nil,
             pendingApprovalToolInvocation: nil,
+            pendingComputerUseInvocation: nil,
+            computerUseGeneration: 0,
             lastToolCall: nil,
             workflowStep: 0,
             workflowReadContent: nil,
@@ -96,6 +98,8 @@ extension BurnBarRunService {
     }
 
     func restorePersistedRunsIfNeeded() async throws {
+        try await finalizePendingInterruptedComputerUseNormalizations()
+
         guard !restoredPersistedRuns else {
             return
         }
@@ -135,7 +139,7 @@ extension BurnBarRunService {
             )
             let plan = BurnBarRunExecutionPlan(request: retryRequest)
             let approvalID = checkpoint.activeApprovalID ?? checkpoint.approvalRequest?.approvalID
-            let restoredRun = BurnBarManagedRun(
+            var restoredRun = BurnBarManagedRun(
                 runID: checkpoint.runID,
                 originalPrompt: checkpoint.originalPrompt,
                 modelID: checkpoint.modelID,
@@ -157,8 +161,10 @@ extension BurnBarRunService {
                 ),
                 approvalRequest: checkpoint.approvalRequest,
                 approvalResolvedForAttempt: checkpoint.approvalResolvedForAttempt,
-                activeToolCallID: checkpoint.lastToolCallID,
+                activeToolCallID: legacyWorkspaceToolCall(from: checkpoint)?.callID,
                 pendingApprovalToolInvocation: checkpoint.pendingApprovalToolInvocation,
+                pendingComputerUseInvocation: checkpoint.pendingComputerUseInvocation,
+                computerUseGeneration: checkpoint.computerUseGeneration ?? 0,
                 lastToolCall: checkpoint.lastToolCall,
                 workflowStep: checkpoint.workflowStep,
                 workflowReadContent: checkpoint.workflowReadContent,
@@ -168,12 +174,20 @@ extension BurnBarRunService {
                 lastRecoveryDecision: checkpoint.lastRecoveryDecision,
                 loopState: checkpoint.loopState
             )
+            let interruptedGeneration = try normalizeInterruptedBrowserComputerUse(&restoredRun)
             runs[checkpoint.runID] = restoredRun
+            if let interruptedGeneration {
+                pendingInterruptedComputerUseNormalizations[checkpoint.runID] =
+                    BurnBarInterruptedComputerUseNormalization(
+                        interruptedGeneration: interruptedGeneration
+                    )
+            }
             runOrder.append(checkpoint.runID)
 
-            if let lastToolCall = checkpoint.lastToolCall {
+            if let lastToolCall = legacyWorkspaceToolCall(from: checkpoint) {
                 await workspaceBridgeBroker.restoreActiveCall(lastToolCall)
             }
+            try await finalizeInterruptedComputerUseNormalizationIfNeeded(for: checkpoint.runID)
         }
 
         var dedupedOrder: [BurnBarRunID] = []
@@ -185,6 +199,76 @@ extension BurnBarRunService {
         runOrder = dedupedOrder
         restoredPersistedRuns = true
         evictIfNeeded()
+    }
+
+    func finalizePendingInterruptedComputerUseNormalizations() async throws {
+        for runID in Array(pendingInterruptedComputerUseNormalizations.keys) {
+            try await finalizeInterruptedComputerUseNormalizationIfNeeded(for: runID)
+        }
+    }
+
+    func finalizeInterruptedComputerUseNormalizationIfNeeded(
+        for runID: BurnBarRunID
+    ) async throws {
+        guard var pending = pendingInterruptedComputerUseNormalizations[runID] else {
+            return
+        }
+        guard interruptedComputerUseNormalizationClaims.insert(runID).inserted else {
+            throw BurnBarRunRestoreError.interruptedComputerUseNormalizationInProgress(runID)
+        }
+        defer { interruptedComputerUseNormalizationClaims.remove(runID) }
+
+        guard let run = runs[runID] else {
+            throw BurnBarRunRestoreError.interruptedComputerUseNormalizedRunMissing(runID)
+        }
+
+        if pending.revocationCompleted == false {
+            if let computerUseRunRevoker {
+                await computerUseRunRevoker(runID, pending.interruptedGeneration)
+            }
+            pending.revocationCompleted = true
+            pendingInterruptedComputerUseNormalizations[runID] = pending
+        }
+
+        if pending.journalEventPersisted == false {
+            let eventID = interruptedComputerUseNormalizationEventID(
+                runID: runID,
+                generation: pending.interruptedGeneration
+            )
+            let existingEvents = try await runJournal.events(for: runID)
+            if let existing = existingEvents.first(where: { $0.eventID == eventID }) {
+                guard existing.kind == .runFailed,
+                      existing.phase == .failed,
+                      existing.payload == .object([
+                          "reason": .string(Self.interruptedComputerUseMessage)
+                      ]) else {
+                    throw BurnBarRunRestoreError.interruptedComputerUseNormalizationEventConflict(runID)
+                }
+            } else {
+                try await appendJournalEvent(
+                    BurnBarRunJournalEvent(
+                        eventID: eventID,
+                        runID: runID,
+                        kind: .runFailed,
+                        phase: .failed,
+                        payload: .object(["reason": .string(Self.interruptedComputerUseMessage)]),
+                        emittedAt: Date()
+                    )
+                )
+            }
+            pending.journalEventPersisted = true
+            pendingInterruptedComputerUseNormalizations[runID] = pending
+        }
+
+        try await writeCheckpoint(for: run)
+        pendingInterruptedComputerUseNormalizations.removeValue(forKey: runID)
+    }
+
+    func interruptedComputerUseNormalizationEventID(
+        runID: BurnBarRunID,
+        generation: UInt64
+    ) -> String {
+        "computer-use-interrupted-\(runID.rawValue)-\(generation)"
     }
 
     func writeCheckpoint(for run: BurnBarManagedRun) async throws {
@@ -205,6 +289,8 @@ extension BurnBarRunService {
                 approvalResolvedForAttempt: run.approvalResolvedForAttempt,
                 activeApprovalID: run.snapshot.activeApprovalID,
                 pendingApprovalToolInvocation: run.pendingApprovalToolInvocation,
+                pendingComputerUseInvocation: run.pendingComputerUseInvocation,
+                computerUseGeneration: run.computerUseGeneration,
                 lastToolCall: run.lastToolCall,
                 lastToolCallID: run.lastToolCall?.callID,
                 workflowStep: run.workflowStep,

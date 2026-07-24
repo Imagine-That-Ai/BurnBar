@@ -1,7 +1,7 @@
 {
   "agentLensStringAny": 759,
-  "mobileStringAny": 464,
-  "total": 1223,
-  "generatedAt": "2026-07-10T23:15:12Z",
-  "note": "Baseline for scripts/debt/check-string-any-boundary-budget.sh. Caps growth of the untyped Swift<->Firestore boundary: String-to-Any dictionary occurrences (`[String: Any]`, whitespace variants, and `Dictionary<String, Any>`) on code lines (comment lines and .build/.derived-data/.swiftpm/Preview Content/build excluded) under AgentLens/ and OpenBurnBarMobile/. The Computer Use Firestore gateway and Mac entitlement document wrapper migration lowered AgentLens from 763 to 759 while mobile remains 464, for a total of 1223. Shrink-only: the gate fails if any counter exceeds its baseline. As each site moves to a typed Codable model / typed accessor, run scripts/debt/check-string-any-boundary-budget.sh --print-live and lower these numbers to lock the win in."
+  "mobileStringAny": 461,
+  "total": 1220,
+  "generatedAt": "2026-07-12T09:05:00Z",
+  "note": "Baseline for scripts/debt/check-string-any-boundary-budget.sh. Caps growth of the untyped Swift<->Firestore boundary: String-to-Any dictionary occurrences (`[String: Any]`, whitespace variants, and `Dictionary<String, Any>`) on code lines (comment lines and .build/.derived-data/.swiftpm/Preview Content/build excluded) under AgentLens/ and OpenBurnBarMobile/. The Computer Use Firestore gateway and Mac entitlement document wrapper migration lowered AgentLens from 763 to 759, and the Linux/mobile controller credential lane lowered mobile from 464 to 461, for a total of 1220. Shrink-only: the gate fails if any counter exceeds its baseline. As each site moves to a typed Codable model / typed accessor, run scripts/debt/check-string-any-boundary-budget.sh --print-live and lower these numbers to lock the win in."
 }

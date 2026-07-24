@@ -111,6 +111,31 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  approveLinuxAppCheckDevice: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/approverDeviceId/bob-approverDeviceId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   beginEncryptedSessionBlobUpload: [
     {
       path: "users/__BOB_UID__/escrow_devices/bob-device",
@@ -2064,6 +2089,32 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  revokeIrohControllerRoute: [
+    {
+      path: "users/__BOB_UID__/iroh_pairing/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/sourceDeviceId/bob-sourceDeviceId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   revokeIrohPairingRecord: [
     {
       path: "users/__BOB_UID__/escrow_devices/bob-device",
@@ -2098,6 +2149,31 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
     },
     {
       path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  revokeLinuxAppCheckDevice: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/approverDeviceId/bob-approverDeviceId",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",

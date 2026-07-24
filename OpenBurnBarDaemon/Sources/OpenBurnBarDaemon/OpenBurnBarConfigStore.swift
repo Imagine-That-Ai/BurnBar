@@ -905,6 +905,23 @@ public actor BurnBarConfigStore {
         return configuration
     }
 
+    /// Returns the providers that can actually participate in daemon routing
+    /// right now.  Onboarding uses this read-only projection instead of
+    /// treating a catalog row or a saved-but-disabled credential as a usable
+    /// route.
+    public func onboardingRoutingProviderIDs() async throws -> [String] {
+        try await resolvedConfigurations().compactMap { configuration in
+            guard catalogSupport.supportsRouting(providerID: configuration.provider.id),
+                  configuration.settings.isEnabled else {
+                return nil
+            }
+            guard configuration.provider.local || configuration.hasCredential else {
+                return nil
+            }
+            return configuration.provider.id
+        }
+    }
+
     /// Returns the secret-store keys for all enabled credential slots belonging
     /// to OAuth-capable providers (currently Anthropic). Used by the daemon's
     /// proactive OAuth refresh timer to refresh tokens before they expire.

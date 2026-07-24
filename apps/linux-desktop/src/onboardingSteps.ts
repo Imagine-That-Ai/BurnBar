@@ -1,4 +1,4 @@
-import { providerDisplayPaths } from './providerPathRegistry.js';
+import { providerCoverageSummary, providerDisplayPaths } from './providerPathRegistry.js';
 import { displayLinuxConfigDir, displayLinuxSocketPath } from './shellPaths.js';
 import type { LinuxOnboardingRequirement, LinuxOnboardingStepId } from './onboardingStore.js';
 
@@ -41,7 +41,7 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
     title: 'Local data & provider paths',
     glyph: '☰',
     kicker: 'XDG paths',
-    body: `OpenBurnBar first verifies that its XDG support directory can persist local data. Provider scanners then look in ${providerDisplayPaths().slice(0, 5).join(', ')}, with the full list under Settings → Providers. Provider connection is confirmed separately.`
+    body: `OpenBurnBar first verifies that its XDG support directory can persist local data. Provider scanners then look in ${providerDisplayPaths().slice(0, 5).join(', ')}, with the full list under Settings → Providers. ${providerCoverageSummary()}. API-backed and unavailable providers are labeled separately; provider connection is confirmed separately.`
   },
   {
     id: 'cloud_identity',

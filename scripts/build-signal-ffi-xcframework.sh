@@ -6,6 +6,10 @@
 #   SIGNAL_FFI_SKIP_BUILD=1 ./scripts/build-signal-ffi-xcframework.sh
 #   SIGNAL_FFI_BUILD_TARGETS="aarch64-apple-darwin x86_64-apple-darwin" ./scripts/build-signal-ffi-xcframework.sh
 #   SIGNAL_FFI_RUST_TOOLCHAIN=1.94.0 ./scripts/build-signal-ffi-xcframework.sh
+#   SIGNAL_FFI_BUILD_ROOT=/absolute/scratch/ffi-build ./scripts/build-signal-ffi-xcframework.sh
+#   SIGNAL_FFI_CARGO_TARGET_ROOT=/absolute/scratch/ffi-target ./scripts/build-signal-ffi-xcframework.sh
+#   SIGNAL_FFI_PRUNE_CARGO_TARGETS=1 SIGNAL_FFI_CARGO_TARGET_ROOT=/absolute/scratch/ffi-target ./scripts/build-signal-ffi-xcframework.sh
+#   OPENBURNBAR_MOBILE_PRUNE_SIGNAL_FFI_CARGO_TARGETS=1 ...
 #
 # Output:
 #   Vendor/OpenBurnBarSignalFfiIOS.xcframework/
@@ -25,6 +29,97 @@ LEGACY_XCFRAMEWORK="${VENDOR_DIR}/OpenBurnBarSignalFfi.xcframework"
 IOS_XCFRAMEWORK="${VENDOR_DIR}/OpenBurnBarSignalFfiIOS.xcframework"
 MACOS_XCFRAMEWORK="${VENDOR_DIR}/OpenBurnBarSignalFfiMac.xcframework"
 BUILD_DIR="${ROOT_DIR}/build/signal-ffi-xcframework"
+
+log() { printf '[signal-ffi-xcframework] %s\n' "$*"; }
+
+abort() {
+  echo "[signal-ffi-xcframework] FATAL: $*" >&2
+  exit 1
+}
+
+# The build and cargo target roots are intentionally independent: the former
+# contains small XCFramework staging helpers, while the latter can contain
+# several gigabytes of Rust intermediates.  Keeping both configurable lets a
+# physical-device XCTest run put all transient state under its caller-owned
+# scratch directory without changing the historical defaults.
+if [[ "${SIGNAL_FFI_BUILD_ROOT+x}" == "x" ]]; then
+  [[ -n "${SIGNAL_FFI_BUILD_ROOT}" ]] || {
+    echo "[signal-ffi-xcframework] FATAL: SIGNAL_FFI_BUILD_ROOT cannot be empty" >&2
+    exit 64
+  }
+  BUILD_DIR="${SIGNAL_FFI_BUILD_ROOT}"
+elif [[ "${OPENBURNBAR_SIGNAL_FFI_BUILD_ROOT+x}" == "x" ]]; then
+  [[ -n "${OPENBURNBAR_SIGNAL_FFI_BUILD_ROOT}" ]] || {
+    echo "[signal-ffi-xcframework] FATAL: OPENBURNBAR_SIGNAL_FFI_BUILD_ROOT cannot be empty" >&2
+    exit 64
+  }
+  BUILD_DIR="${OPENBURNBAR_SIGNAL_FFI_BUILD_ROOT}"
+fi
+if [[ "${SIGNAL_FFI_CARGO_TARGET_ROOT+x}" == "x" ]]; then
+  [[ -n "${SIGNAL_FFI_CARGO_TARGET_ROOT}" ]] || {
+    echo "[signal-ffi-xcframework] FATAL: SIGNAL_FFI_CARGO_TARGET_ROOT cannot be empty" >&2
+    exit 64
+  }
+  CARGO_TARGET_DIR="${SIGNAL_FFI_CARGO_TARGET_ROOT}"
+elif [[ "${OPENBURNBAR_SIGNAL_FFI_CARGO_TARGET_ROOT+x}" == "x" ]]; then
+  [[ -n "${OPENBURNBAR_SIGNAL_FFI_CARGO_TARGET_ROOT}" ]] || {
+    echo "[signal-ffi-xcframework] FATAL: OPENBURNBAR_SIGNAL_FFI_CARGO_TARGET_ROOT cannot be empty" >&2
+    exit 64
+  }
+  CARGO_TARGET_DIR="${OPENBURNBAR_SIGNAL_FFI_CARGO_TARGET_ROOT}"
+else
+  CARGO_TARGET_DIR="${LIBSIGNAL_DIR}/target"
+fi
+
+validate_absolute_root() {
+  local label="$1"
+  local path="$2"
+  [[ "${path}" == /* ]] || abort "${label} must be an absolute path: ${path}"
+  # Resolve existing symlink components before any child is created. This
+  # prevents a caller-provided scratch path from silently redirecting build
+  # intermediates outside the path they asked us to own.
+  local canonical
+  # These snippets use only the standard library.  Skip user/site hooks so a
+  # concurrent Rust build cannot be interrupted by an unrelated editable
+  # Python package on the developer machine.
+  canonical="$(python3 -S - "${path}" <<'PY'
+import os
+import sys
+
+print(os.path.realpath(sys.argv[1]))
+PY
+)"
+  [[ "${canonical}" == /* ]] || abort "${label} resolved to a non-absolute path"
+  printf '%s\n' "${canonical}"
+}
+
+BUILD_DIR="$(validate_absolute_root SIGNAL_FFI_BUILD_ROOT "${BUILD_DIR}")"
+CARGO_TARGET_DIR="$(validate_absolute_root SIGNAL_FFI_CARGO_TARGET_ROOT "${CARGO_TARGET_DIR}")"
+
+if [[ "${SIGNAL_FFI_PRUNE_CARGO_TARGETS+x}" != "x" &&
+      "${OPENBURNBAR_MOBILE_PRUNE_SIGNAL_FFI_CARGO_TARGETS+x}" == "x" ]]; then
+  SIGNAL_FFI_PRUNE_CARGO_TARGETS="${OPENBURNBAR_MOBILE_PRUNE_SIGNAL_FFI_CARGO_TARGETS}"
+else
+  SIGNAL_FFI_PRUNE_CARGO_TARGETS="${SIGNAL_FFI_PRUNE_CARGO_TARGETS:-0}"
+fi
+case "${SIGNAL_FFI_PRUNE_CARGO_TARGETS}" in
+  0 | 1) ;;
+  *)
+    echo "[signal-ffi-xcframework] FATAL: invalid SIGNAL_FFI_PRUNE_CARGO_TARGETS=${SIGNAL_FFI_PRUNE_CARGO_TARGETS}; expected 0 or 1" >&2
+    exit 64
+    ;;
+esac
+if [[ "${SIGNAL_FFI_PRUNE_CARGO_TARGETS}" == "1" &&
+      "${SIGNAL_FFI_CARGO_TARGET_ROOT+x}" != "x" &&
+      "${OPENBURNBAR_SIGNAL_FFI_CARGO_TARGET_ROOT+x}" != "x" ]]; then
+  echo "[signal-ffi-xcframework] FATAL: SIGNAL_FFI_PRUNE_CARGO_TARGETS=1 requires an explicit Cargo target root" >&2
+  exit 64
+fi
+
+# The pruning mode is intentionally opt-in and only accepts an explicit target
+# root. Physical-device callers can therefore prove that generated Cargo
+# intermediates stay in their owned scratch directory before enabling removal.
+source "${ROOT_DIR}/scripts/lib/signal-ffi-cargo-cleanup.sh"
 ARCHS_DIR="${BUILD_DIR}/archs"
 HEADERS_DIR="${BUILD_DIR}/Headers"
 EXPORTS_FILE="${BUILD_DIR}/signal_ffi.exports"
@@ -70,12 +165,25 @@ if [[ -n "${SIGNAL_FFI_BUILD_TARGETS:-}" ]]; then
 else
   TARGETS=("${DEFAULT_TARGETS[@]}")
 fi
+if [[ "${SIGNAL_FFI_PRUNE_CARGO_TARGETS}" == "1" ]]; then
+  for target in "${TARGETS[@]}"; do
+    case "${target}" in
+      aarch64-apple-darwin | x86_64-apple-darwin | aarch64-apple-ios | aarch64-apple-ios-sim | x86_64-apple-ios) ;;
+      *)
+        echo "[signal-ffi-xcframework] FATAL: pruning mode does not support unknown target ${target}" >&2
+        exit 64
+        ;;
+    esac
+  done
+fi
 
-log() { printf '[signal-ffi-xcframework] %s\n' "$*"; }
-
-abort() {
-  echo "[signal-ffi-xcframework] FATAL: $*" >&2
-  exit 1
+write_build_metadata() {
+  local xcframework="$1"
+  [[ -d "${xcframework}" ]] || return 0
+  {
+    printf 'profile=%s\n' "${PROFILE}"
+    printf 'targets=%s\n' "${TARGETS[*]}"
+  } > "${xcframework}/${METADATA_FILE_NAME}"
 }
 
 write_build_metadata() {
@@ -236,7 +344,7 @@ fi
 safe_crate_name="${crate_name//-/_}"
 shopt -s nullglob
 for dylib in "${out_dir}/lib${safe_crate_name}"*.dylib; do
-  python3 "${repair_tool}" "${dylib}"
+  python3 -S "${repair_tool}" "${dylib}"
 done
 EOF
   chmod +x "${RUSTC_WRAPPER_SCRIPT}"
@@ -278,6 +386,7 @@ build_target() {
   (
     cd "${LIBSIGNAL_DIR}"
     CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" \
+    CARGO_TARGET_DIR="${CARGO_TARGET_DIR}" \
     MACOSX_DEPLOYMENT_TARGET=14.0 \
     IPHONEOS_DEPLOYMENT_TARGET=17.0 \
     IPHONE_SIMULATOR_DEPLOYMENT_TARGET=17.0 \
@@ -342,7 +451,7 @@ stage_exports() {
 
 repair_macho_linkedit_alignment() {
   local dylib="$1"
-  python3 - "${dylib}" <<'PY'
+  python3 -S - "${dylib}" <<'PY'
 import struct
 import sys
 
@@ -427,33 +536,118 @@ stage_dynamic_target() {
   cp "${HEADERS_DIR}/"* "${out_dir}/Headers/"
 }
 
+# Pruned builds stage each slice before deleting its Cargo target directory.
+# The final packaging pass must reuse those staged files instead of asking
+# Cargo for outputs that have intentionally been removed.
+stage_dynamic_target_if_needed() {
+  [[ "${pruned_staging_ready:-0}" == "1" ]] || stage_dynamic_target "$@"
+}
+
+stage_static_target_if_needed() {
+  [[ "${pruned_staging_ready:-0}" == "1" ]] || stage_static_target "$@"
+}
+
+stage_built_target_for_pruned_build() {
+  local target="$1"
+  case "${target}" in
+    aarch64-apple-darwin) stage_dynamic_target "${target}" macos-arm64 ;;
+    x86_64-apple-darwin) stage_dynamic_target "${target}" macos-x86_64 ;;
+    aarch64-apple-ios) stage_static_target "${target}" ios-arm64 ;;
+    aarch64-apple-ios-sim) stage_static_target "${target}" ios-arm64-simulator ;;
+    x86_64-apple-ios) stage_static_target "${target}" ios-x86_64-simulator ;;
+    *)
+      echo "[signal-ffi-xcframework] FATAL: cannot stage unknown target ${target} in pruning mode" >&2
+      return 64
+      ;;
+  esac
+}
+
+validate_staged_target_for_pruned_build() {
+  local target="$1"
+  local platform_id
+  local library_name
+  case "${target}" in
+    aarch64-apple-darwin) platform_id=macos-arm64; library_name=libsignal_ffi.dylib ;;
+    x86_64-apple-darwin) platform_id=macos-x86_64; library_name=libsignal_ffi.dylib ;;
+    aarch64-apple-ios) platform_id=ios-arm64; library_name=libsignal_ffi.a ;;
+    aarch64-apple-ios-sim) platform_id=ios-arm64-simulator; library_name=libsignal_ffi.a ;;
+    x86_64-apple-ios) platform_id=ios-x86_64-simulator; library_name=libsignal_ffi.a ;;
+    *)
+      echo "[signal-ffi-xcframework] FATAL: cannot validate unknown target ${target} in pruning mode" >&2
+      return 64
+      ;;
+  esac
+  local staged_dir="${ARCHS_DIR}/${platform_id}"
+  [[ -s "${staged_dir}/${library_name}" ]] || {
+    echo "[signal-ffi-xcframework] FATAL: staged Signal FFI slice is missing ${library_name} for ${target}" >&2
+    return 64
+  }
+  [[ -f "${staged_dir}/Headers/OpenBurnBarSignalFfi.h" ]] || {
+    echo "[signal-ffi-xcframework] FATAL: staged Signal FFI headers are missing for ${target}" >&2
+    return 64
+  }
+}
+
+prepare_pruned_staging_dirs() {
+  mkdir -p "${VENDOR_DIR}"
+  rm -rf "${ARCHS_DIR}" "${LEGACY_XCFRAMEWORK}" "${IOS_XCFRAMEWORK}" "${MACOS_XCFRAMEWORK}"
+  mkdir -p "${ARCHS_DIR}"
+  stage_headers
+}
+
 stage_exports
 
 write_rustc_wrapper
 
+pruned_staging_ready=0
 if [[ "${SIGNAL_FFI_SKIP_BUILD:-0}" != "1" ]]; then
-  for target in "${TARGETS[@]}"; do
-    build_target "${target}"
-  done
+  if [[ "${SIGNAL_FFI_PRUNE_CARGO_TARGETS}" == "1" ]]; then
+    # Stage each slice before deleting its target-specific Cargo directory.
+    # This keeps the final packaging path identical while bounding peak disk
+    # usage for physical-device builds that compile several architectures.
+    prepare_pruned_staging_dirs
+    pruned_staging_ready=1
+    for target in "${TARGETS[@]}"; do
+      build_target "${target}"
+      stage_built_target_for_pruned_build "${target}"
+      validate_staged_target_for_pruned_build "${target}"
+      if ! signal_ffi_prune_cargo_target_dir "${CARGO_TARGET_DIR}" "${target}"; then
+        echo "[signal-ffi-xcframework] FATAL: failed to prune Cargo output for ${target}" >&2
+        exit 64
+      fi
+    done
+    # Host proc-macro output is shared at target/{debug,release}. It is no
+    # longer needed once every requested slice has been staged.
+    if ! signal_ffi_prune_cargo_target_dir "${CARGO_TARGET_DIR}" "${PROFILE_DIR}"; then
+      echo "[signal-ffi-xcframework] FATAL: failed to prune shared Cargo output ${PROFILE_DIR}" >&2
+      exit 64
+    fi
+  else
+    for target in "${TARGETS[@]}"; do
+      build_target "${target}"
+    done
+  fi
 else
   log "skipping cargo builds; packaging existing target outputs"
 fi
 
-mkdir -p "${VENDOR_DIR}"
-rm -rf "${ARCHS_DIR}" "${LEGACY_XCFRAMEWORK}" "${IOS_XCFRAMEWORK}" "${MACOS_XCFRAMEWORK}"
-mkdir -p "${ARCHS_DIR}"
-stage_headers
+if [[ "${pruned_staging_ready}" != "1" ]]; then
+  mkdir -p "${VENDOR_DIR}"
+  rm -rf "${ARCHS_DIR}" "${LEGACY_XCFRAMEWORK}" "${IOS_XCFRAMEWORK}" "${MACOS_XCFRAMEWORK}"
+  mkdir -p "${ARCHS_DIR}"
+  stage_headers
+fi
 
 ios_xcframework_args=()
 macos_xcframework_args=()
 
 macos_library_args=()
 if [[ " ${TARGETS[*]} " == *" aarch64-apple-darwin "* ]]; then
-  stage_dynamic_target aarch64-apple-darwin macos-arm64
+  stage_dynamic_target_if_needed aarch64-apple-darwin macos-arm64
   macos_library_args+=("${ARCHS_DIR}/macos-arm64/libsignal_ffi.dylib")
 fi
 if [[ " ${TARGETS[*]} " == *" x86_64-apple-darwin "* ]]; then
-  stage_dynamic_target x86_64-apple-darwin macos-x86_64
+  stage_dynamic_target_if_needed x86_64-apple-darwin macos-x86_64
   macos_library_args+=("${ARCHS_DIR}/macos-x86_64/libsignal_ffi.dylib")
 fi
 if [[ "${#macos_library_args[@]}" -eq 2 ]]; then
@@ -474,13 +668,13 @@ elif [[ "${#macos_library_args[@]}" -eq 1 ]]; then
 fi
 
 if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios "* ]]; then
-  stage_static_target aarch64-apple-ios ios-arm64
+  stage_static_target_if_needed aarch64-apple-ios ios-arm64
   ios_xcframework_args+=(-library "${ARCHS_DIR}/ios-arm64/libsignal_ffi.a" -headers "${ARCHS_DIR}/ios-arm64/Headers")
 fi
 
 if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios-sim "* && " ${TARGETS[*]} " == *" x86_64-apple-ios "* ]]; then
-  stage_static_target aarch64-apple-ios-sim ios-arm64-simulator
-  stage_static_target x86_64-apple-ios ios-x86_64-simulator
+  stage_static_target_if_needed aarch64-apple-ios-sim ios-arm64-simulator
+  stage_static_target_if_needed x86_64-apple-ios ios-x86_64-simulator
   local_sim_dir="${ARCHS_DIR}/ios-simulator"
   mkdir -p "${local_sim_dir}/Headers"
   /usr/bin/lipo -create \
@@ -491,11 +685,11 @@ if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios-sim "* && " ${TARGETS[*]} " == *
   ios_xcframework_args+=(-library "${local_sim_dir}/libsignal_ffi.a" -headers "${local_sim_dir}/Headers")
 else
   if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios-sim "* ]]; then
-    stage_static_target aarch64-apple-ios-sim ios-arm64-simulator
+    stage_static_target_if_needed aarch64-apple-ios-sim ios-arm64-simulator
     ios_xcframework_args+=(-library "${ARCHS_DIR}/ios-arm64-simulator/libsignal_ffi.a" -headers "${ARCHS_DIR}/ios-arm64-simulator/Headers")
   fi
   if [[ " ${TARGETS[*]} " == *" x86_64-apple-ios "* ]]; then
-    stage_static_target x86_64-apple-ios ios-x86_64-simulator
+    stage_static_target_if_needed x86_64-apple-ios ios-x86_64-simulator
     ios_xcframework_args+=(-library "${ARCHS_DIR}/ios-x86_64-simulator/libsignal_ffi.a" -headers "${ARCHS_DIR}/ios-x86_64-simulator/Headers")
   fi
 fi

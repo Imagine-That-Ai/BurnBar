@@ -1,0 +1,39 @@
+{
+  "schema": "openburnbar.parity.mobile-focused-test-receipt.v1",
+  "capturedAt": "2026-07-14T17:07:06Z",
+  "certificationScope": "non-certifying focused physical-iPad test receipt",
+  "sourceCommit": "7bc5620daa",
+  "sourceWorktree": "/private/tmp/burnbar-linux-parity-continuation",
+  "device": {
+    "xcodebuildIdentifier": "00008132-001158191E9A401C",
+    "platform": "iPadOS"
+  },
+  "focusedSuite": "OpenBurnBarMobileTests",
+  "result": {
+    "passed": 47,
+    "failed": 0,
+    "infrastructureCrashes": 0,
+    "appFailures": 0,
+    "total": 47
+  },
+  "selection": {
+    "AgentLiveStagePresenterTests": 22,
+    "AgentLiveStageWiringTests": 6,
+    "DevicesStoreTests": 13,
+    "HermesGatewayApprovalDetailIndexTests": 3,
+    "OpenBurnBarMobileTests": 3
+  },
+  "verifiedSelectors": [
+    "AgentLiveStagePresenterTests",
+    "AgentLiveStageWiringTests",
+    "DevicesStoreTests",
+    "HermesGatewayApprovalDetailIndexTests",
+    "OpenBurnBarMobileTests.testAgentWatchOverlayCoordinatorClassifiesApprovalStreamAndResponds",
+    "OpenBurnBarMobileTests.testGatewaySealedApprovalDetailDecodesActionIdAndKind",
+    "OpenBurnBarMobileTests.testSealedApprovalDecisionCarriesKindAndActionAtRootOfSealedPayload"
+  ],
+  "limitations": [
+    "This receipt covers the selected focused XCTest set on the physical iPad; it is not a full mobile-suite or release certification.",
+    "Trusted-device enrollment, installed Linux candidate pairing, and end-to-end cross-device action certification remain unverified."
+  ]
+}

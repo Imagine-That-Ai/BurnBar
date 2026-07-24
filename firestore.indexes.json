@@ -1,6 +1,24 @@
 {
   "indexes": [
     {
+      "collectionGroup": "linux_app_check_devices",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "trustState",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAtMillis",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "account_erasure_tombstones",
       "queryScope": "COLLECTION",
       "fields": [

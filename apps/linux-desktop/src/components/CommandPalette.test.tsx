@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 import { CommandPalette } from './CommandPalette.js';
 import { COMMAND_PALETTE_RECENTS_KEY } from '../commandPaletteRecents.js';
 import { useShellStore } from '../state/shellStore.js';
@@ -72,5 +73,47 @@ describe('CommandPalette', () => {
     fireEvent.click(screen.getByRole('button', { name: /Providers/i }));
     const stored = JSON.parse(localStorage.getItem(COMMAND_PALETTE_RECENTS_KEY) ?? '[]') as string[];
     expect(stored[0]).toBe('providers');
+  });
+
+  it('exposes combobox and actionable active command semantics while moving with arrows', () => {
+    render(<CommandPalette open onClose={() => {}} />);
+    const input = screen.getByRole('combobox', { name: 'Search routes and recent queries' });
+    const options = screen.getAllByRole('button', { name: /.+/i });
+    expect(options.every((option) => option.tagName === 'BUTTON')).toBe(true);
+
+    expect(input.getAttribute('aria-controls')).toBe(screen.getByRole('listbox', { name: 'Command results' }).id);
+    expect(input.getAttribute('aria-activedescendant')).toBe(options[0].id);
+    expect(options[0].getAttribute('aria-current')).toBe('true');
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(input.getAttribute('aria-activedescendant')).toBe(options[1].id);
+    expect(options[1].getAttribute('aria-current')).toBe('true');
+    expect(options[0].getAttribute('aria-current')).toBeNull();
+  });
+
+  it('traps tab focus and returns focus to the opener after dismissal', async () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>Open palette</button>
+          <CommandPalette open={open} onClose={() => setOpen(false)} />
+        </>
+      );
+    }
+
+    render(<Harness />);
+    const opener = screen.getByRole('button', { name: 'Open palette' });
+    opener.focus();
+    fireEvent.click(opener);
+    const input = await screen.findByRole('combobox', { name: 'Search routes and recent queries' });
+    await waitFor(() => expect(document.activeElement).toBe(input));
+
+    fireEvent.keyDown(input, { key: 'Tab', shiftKey: true });
+    const commandButtons = screen.getAllByRole('button', { name: /.+/i });
+    expect(document.activeElement).toBe(commandButtons[commandButtons.length - 1]);
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    await waitFor(() => expect(document.activeElement).toBe(opener));
   });
 });

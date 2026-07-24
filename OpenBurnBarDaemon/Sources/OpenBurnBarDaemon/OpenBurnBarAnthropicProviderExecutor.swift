@@ -791,6 +791,8 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             return ["type": "text", "text": text]
         case "image_url", "input_image":
             return anthropicImageBlock(from: part)
+        case "file", "input_file":
+            return anthropicDocumentBlock(from: part)
         default:
             if part["image_url"] != nil || part["url"] != nil {
                 return anthropicImageBlock(from: part)
@@ -809,8 +811,11 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             ?? (part["url"] as? String)
         guard let dataURL = imageURL,
               let parsed = parseDataURL(dataURL),
-              parsed.mediaType.hasPrefix("image/") else {
+              parsed.mediaType.hasPrefix("image/") || parsed.mediaType == "application/pdf" else {
             return nil
+        }
+        if parsed.mediaType == "application/pdf" {
+            return anthropicDocumentBlock(mediaType: parsed.mediaType, data: parsed.base64Data)
         }
         return [
             "type": "image",
@@ -818,6 +823,31 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
                 "type": "base64",
                 "media_type": parsed.mediaType,
                 "data": parsed.base64Data
+            ]
+        ]
+    }
+
+    private static func anthropicDocumentBlock(from part: [String: Any]) -> [String: Any]? {
+        let file = part["file"] as? [String: Any]
+        let dataURL = (file?["file_data"] as? String)
+            ?? (file?["data"] as? String)
+            ?? (part["file_data"] as? String)
+            ?? (part["url"] as? String)
+        guard let dataURL,
+              let parsed = parseDataURL(dataURL),
+              parsed.mediaType == "application/pdf" else {
+            return nil
+        }
+        return anthropicDocumentBlock(mediaType: parsed.mediaType, data: parsed.base64Data)
+    }
+
+    private static func anthropicDocumentBlock(mediaType: String, data: String) -> [String: Any] {
+        [
+            "type": "document",
+            "source": [
+                "type": "base64",
+                "media_type": mediaType,
+                "data": data
             ]
         ]
     }

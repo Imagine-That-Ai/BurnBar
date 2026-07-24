@@ -1,11 +1,15 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { writeTextExpansionConsent } from '../../textExpansionConsent.js';
-import { upsertSnippet } from '../../textExpansionStore.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { configureTextExpansionConsentStorage, writeTextExpansionConsent } from '../../textExpansionConsent.js';
+import { configureTextExpansionStorage, upsertSnippet } from '../../textExpansionStore.js';
+import { useShellStore } from '../../state/shellStore.js';
 import { TextExpansionSurface } from '../TextExpansionSurface.js';
 
 beforeEach(() => {
   localStorage.clear();
+  configureTextExpansionStorage(null);
+  configureTextExpansionConsentStorage(null, true);
+  useShellStore.setState({ bridge: null, bridgeReady: true, fixtureMode: true });
   writeTextExpansionConsent({ inAppOnly: true, declinedGlobalCapture: true });
 });
 
@@ -75,5 +79,148 @@ describe('TextExpansionSurface P14', () => {
   it('renders parity ledger substitution when present', () => {
     render(<TextExpansionSurface />);
     expect(screen.getByText(/Live buffer probe/)).toBeTruthy();
+  });
+
+  it('keeps live snippet controls fail-closed when native storage hydration fails', async () => {
+    useShellStore.setState({
+      fixtureMode: false,
+      bridgeReady: true,
+      bridge: {
+        textExpansionList: vi.fn().mockRejectedValue(new Error('native store unavailable')),
+        textExpansionUpsert: vi.fn(),
+        textExpansionDelete: vi.fn(),
+        textExpansionConsentUpdate: vi.fn()
+      } as never
+    });
+    render(<TextExpansionSurface />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/could not be opened: native store unavailable/i)).toBeTruthy();
+    });
+    expect(screen.getByRole('checkbox', { name: /in-app expansion only/i })).toHaveProperty('disabled', true);
+    expect(screen.queryByRole('button', { name: 'Add snippet' })).toBeNull();
+  });
+
+  it('shows input-method recovery state and retries a failed status probe', async () => {
+    let failProbe = true;
+    const status = {
+      state: 'not_running',
+      registration: 'registered',
+      supportsExternalExpansion: true,
+      detail: 'ready',
+      checkedAt: new Date(0).toISOString()
+    };
+    useShellStore.setState({
+      fixtureMode: false,
+      bridgeReady: true,
+      bridge: {
+        textExpansionList: vi.fn().mockResolvedValue({
+          schemaVersion: 1,
+          exportedAt: new Date(0).toISOString(),
+          snippets: [],
+          consent: { inAppOnly: true, declinedGlobalCapture: true, acknowledgedAt: new Date(0).toISOString() }
+        }),
+        textExpansionUpsert: vi.fn(),
+        textExpansionDelete: vi.fn(),
+        textExpansionConsentUpdate: vi.fn().mockResolvedValue({
+          inAppOnly: true,
+          declinedGlobalCapture: true,
+          acknowledgedAt: new Date(0).toISOString()
+        }),
+        textExpansionEngineStatus: vi.fn().mockImplementation(async () => {
+          if (failProbe) throw new Error('IBus control socket unavailable');
+          return status;
+        }),
+        textExpansionEngineStart: vi.fn().mockResolvedValue({ ...status, state: 'running' }),
+        textExpansionEngineStop: vi.fn().mockResolvedValue(status)
+      } as never
+    });
+    render(<TextExpansionSurface />);
+    await waitFor(() => expect(screen.getByText(/status unavailable: IBus control socket unavailable/i)).toBeTruthy());
+    failProbe = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Retry status' }));
+    await waitFor(() => expect(screen.getByText(/Engine not_running — ready/i)).toBeTruthy());
+  });
+
+  it('treats the daemon ready state as an active engine', async () => {
+    const start = vi.fn();
+    const stop = vi.fn().mockResolvedValue({
+      state: 'stopped',
+      registration: 'registered',
+      supportsExternalExpansion: true,
+      detail: 'stopped',
+      checkedAt: new Date(0).toISOString()
+    });
+    const ready = {
+      state: 'ready',
+      registration: 'registered',
+      supportsExternalExpansion: true,
+      detail: 'handshake complete',
+      checkedAt: new Date(0).toISOString()
+    };
+    useShellStore.setState({
+      fixtureMode: false,
+      bridgeReady: true,
+      bridge: {
+        textExpansionList: vi.fn().mockResolvedValue({
+          schemaVersion: 1,
+          exportedAt: new Date(0).toISOString(),
+          snippets: [],
+          consent: { inAppOnly: true, declinedGlobalCapture: true, acknowledgedAt: new Date(0).toISOString() }
+        }),
+        textExpansionUpsert: vi.fn(),
+        textExpansionDelete: vi.fn(),
+        textExpansionConsentUpdate: vi.fn(),
+        textExpansionEngineStatus: vi.fn().mockResolvedValue(ready),
+        textExpansionEngineStart: start,
+        textExpansionEngineStop: stop
+      } as never
+    });
+    render(<TextExpansionSurface />);
+
+    await waitFor(() => expect(screen.getByText(/Engine ready — handshake complete/i)).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Stop input-method engine' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Stop input-method engine' }));
+    await waitFor(() => expect(stop).toHaveBeenCalledWith({ timeoutMillis: 500 }));
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('keeps in-app controls available when an optional engine transition fails', async () => {
+    useShellStore.setState({
+      fixtureMode: false,
+      bridgeReady: true,
+      bridge: {
+        textExpansionList: vi.fn().mockResolvedValue({
+          schemaVersion: 1,
+          exportedAt: new Date(0).toISOString(),
+          snippets: [],
+          consent: { inAppOnly: true, declinedGlobalCapture: true, acknowledgedAt: new Date(0).toISOString() }
+        }),
+        textExpansionUpsert: vi.fn(),
+        textExpansionDelete: vi.fn(),
+        textExpansionConsentUpdate: vi.fn(),
+        textExpansionEngineStatus: vi.fn().mockResolvedValue({
+          state: 'not_running',
+          registration: 'registered',
+          supportsExternalExpansion: true,
+          detail: 'ready',
+          checkedAt: new Date(0).toISOString()
+        }),
+        textExpansionEngineStart: vi.fn().mockRejectedValue(new Error('engine binary exited')),
+        textExpansionEngineStop: vi.fn().mockResolvedValue({
+          state: 'not_running',
+          registration: 'registered',
+          supportsExternalExpansion: true,
+          detail: 'stopped',
+          checkedAt: new Date(0).toISOString()
+        })
+      } as never
+    });
+    render(<TextExpansionSurface />);
+    await waitFor(() => expect(screen.getByText(/Engine not_running — ready/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Start input-method engine' }));
+    await waitFor(() => expect(screen.getByText(/engine binary exited/i)).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Add snippet' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start input-method engine' })).toBeTruthy();
   });
 });

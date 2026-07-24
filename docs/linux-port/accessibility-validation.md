@@ -49,6 +49,42 @@ increments request an approximate 200 percent scale, but the packaged WebKitGTK
 surface does not expose an authoritative zoom percentage to this harness. Do
 not describe this artifact as exact 200 percent reflow certification.
 
+## P-31 matrix evidence
+
+The product parity gate keeps the installed-session harness separate from the
+renderer axe checks. P-31 is closed only by a current-candidate live-session
+transcript for the exact GNOME/X11, GNOME/Wayland, KDE/Wayland, or Sway/Wayland
+matrix row. The capture command is:
+
+```bash
+node scripts/linux-port/capture-p31-accessibility.mjs \
+  --input-root "$INPUT_ROOT" \
+  --session-report "$INPUT_ROOT/p31-live-session.json" \
+  --environment "$ENVIRONMENT_ID" \
+  --target-head "$GITHUB_SHA" \
+  --candidate-run-id "$CANDIDATE_RUN_ID" \
+  --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
+```
+
+The session report must be produced by the signed installed candidate in the
+declared desktop session. It must contain independent observations for:
+
+- exact observed 200 percent scale, reflow, preserved focus, and zero clipping,
+  overflow, or horizontal scrollbars;
+- forced-colors, high-contrast, and no-color modes with semantic labels and
+  controls still usable;
+- `prefers-reduced-motion: reduce` with zero nonessential animations and
+  transitions in the running app; and
+- keyboard-only focus traversal plus a live Orca, KDE Screen Reader, or Speech
+  Dispatcher observation covering every route and live-region announcement.
+
+The producer rejects symlinked or external reports, stale candidate bindings,
+Xvfb/synthetic/fixture evidence, missing claims, and approximate zoom. The
+validator independently reopens every materialized claim and fails closed on
+any mutation. The existing `zoom-accessibility-evidence.json` with
+`exactScaleObservable: false` is therefore useful diagnostic evidence only; it
+cannot satisfy P-31.
+
 ## Commands
 
 Run the structural contract and axe matrix locally:
