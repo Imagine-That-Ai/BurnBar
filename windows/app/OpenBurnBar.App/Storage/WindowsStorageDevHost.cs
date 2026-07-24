@@ -1,11 +1,8 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Security.Cryptography;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Presentation.Budget;
-using OpenBurnBar.App.Presentation.Calendar;
 using OpenBurnBar.App.Presentation.ElderWand;
 using OpenBurnBar.App.Presentation.Switcher;
 using OpenBurnBar.Storage;
@@ -151,31 +148,6 @@ internal static class WindowsStorageDevHost
             totals.HasData,
             totals.HasData ? DashboardUsageOrigin.Local : DashboardUsageOrigin.Empty,
             window);
-    }
-
-    /// <summary>
-    /// Reads raw <c>token_usage</c> rows for the Calendar surface's grid window
-    /// (<paramref name="startUtc"/> inclusive … <paramref name="endUtcExclusive"/>)
-    /// from the provisioned SQLCipher store. An empty range read is an honest
-    /// no-data result; provisioning/corruption failures stay typed (they throw
-    /// from <see cref="ResolveCredentials"/> or <see cref="CalendarUsageRow.FromStorageRecord"/>).
-    /// </summary>
-    public static CalendarUsageData LoadCalendarUsageRows(
-        DateTimeOffset startUtc,
-        DateTimeOffset endUtcExclusive)
-    {
-        var (path, passphrase) = ResolveCredentials();
-        using var store = OpenBurnBarStorage.OpenReadOnly(path!, passphrase!);
-        IReadOnlyList<TokenUsageRecord> records = TokenUsageReadSeam.ListInRange(
-            store.Connection,
-            startUtc,
-            endUtcExclusive);
-        CalendarUsageRow[] rows = records
-            .Select(CalendarUsageRow.FromStorageRecord)
-            .ToArray();
-        return new CalendarUsageData(
-            rows,
-            rows.Length > 0 ? DashboardUsageOrigin.Local : DashboardUsageOrigin.Empty);
     }
 
     private static (string Path, string Passphrase, string Provenance) ResolveOrProvisionCredentialsUnlocked()
