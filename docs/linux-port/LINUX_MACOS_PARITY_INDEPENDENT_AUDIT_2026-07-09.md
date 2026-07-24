@@ -41,11 +41,11 @@ open.
 
 ## Current integration branch checkpoint — 2026-07-23
 
-The parity integration branch is now at `b09c763257`. It includes the earlier
-CI-only SwiftLint correction in `BurnBarLinuxOnboardingServiceTests.swift` and
-the latest native PDF attachment parity fix (`63f39a80f0`), with the audit
-receipt for that fix recorded below. Both commits are pushed to GitHub and
-GitLab in PR #1930. Fresh hosted checks for the new head are expected to run;
+The parity integration branch is now at `54d346024c`. It includes the earlier
+CI-only SwiftLint correction, native PDF/audio attachment parity, OMP and
+OpenClaude local usage ingestion, and the refreshed provider-count audit text.
+The commits are pushed to GitHub and GitLab in PR #1930. Fresh hosted checks
+for the new head are running;
 the existing SQLCipher, UTM, device, and environment limitations remain
 unchanged.
 

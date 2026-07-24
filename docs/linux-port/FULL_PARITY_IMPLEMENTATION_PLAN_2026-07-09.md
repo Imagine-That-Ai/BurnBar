@@ -71,6 +71,15 @@ known platform divergences.
 > artifact. These are source-level parity advances, not signed release or
 > two-device certification.
 
+> **Continuation update (2026-07-24):** `b66a1c55c8` reuses the bounded
+> Claude-compatible project-transcript parser for OpenClaude, preserving the
+> OpenClaude provider identity and a separate parser-cache namespace. The
+> generated 33-provider catalog now has 29 local parsers and four
+> API/native-ledger sources, with parser, daemon-registry, Linux Settings, and
+> exact-token/cache/transcript regression coverage. This closes the source
+> parser gap; installed OpenClaude scans, account credentials, and signed
+> cross-environment receipts remain release gates.
+
 > **Continuation update (2026-07-21, integration closeout):** `2df8b03a5a`
 > hardens the Linux Iroh directory client so bearer/App Check credentials are
 > sent only to an explicitly allowlisted HTTPS host, with rejection tests for
