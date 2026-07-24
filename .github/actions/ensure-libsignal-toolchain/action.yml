@@ -83,3 +83,26 @@ runs:
 
         echo "protoc: $(command -v protoc) -> $(protoc --version)"
         echo "cmake:  $(command -v cmake)  -> $(cmake --version | head -1)"
+
+    # Separate failure mode, same fleet: cargo/SwiftPM fetch libsignal's git
+    # dependencies over https, and on a self-hosted Mac with no unlocked login
+    # keychain git's osxkeychain helper answers
+    #
+    #   error: Failed to find credentials for 'https://github.com' in keychain: status -25308
+    #
+    # (-25308 = errSecInteractionNotAllowed) and the build dies. The deps are
+    # public, so the helper has nothing useful to contribute -- it just needs to
+    # stop being consulted. Scope that through GIT_CONFIG_* in the job env rather
+    # than `git config --global`, so a long-lived runner's own config is untouched.
+    - name: Keep git off the locked login keychain (self-hosted macOS)
+      if: runner.os == 'macOS' && runner.environment == 'self-hosted'
+      shell: bash
+      run: |
+        set -euo pipefail
+        {
+          echo "GIT_CONFIG_COUNT=1"
+          echo "GIT_CONFIG_KEY_0=credential.helper"
+          echo "GIT_CONFIG_VALUE_0="
+          echo "GIT_TERMINAL_PROMPT=0"
+        } >> "$GITHUB_ENV"
+        echo "Cleared git credential helpers for this job; public deps fetch anonymously."
