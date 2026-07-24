@@ -119,7 +119,11 @@ const mainLive = scanTarget(mainTarget);
 // Kernel IS a decomposition destination (P-02/P-03/P-04a/P-04b/P-11 move ~35
 // files + several thousand LOC into it); its marker-era measured ceiling
 // (133 files / 35955 LOC) has ZERO headroom for those moves, so it is seeded
-// from the ~37k end-state (1.25x = 46250 LOC) with file headroom.
+// from the ~37k end-state with file headroom. Operation 10 adds the generalized
+// execution-source usage contract to Kernel and the evidence-backed Codex
+// history/cache attribution to LogParsers. Those are the owning modules, so the
+// planned ceilings include the measured 272/302-LOC feature growth plus less
+// than 160 lines of bounded headroom instead of creating artificial leaf targets.
 const PLANNED_CEILINGS = {
   // Shared-Rust rollout authority stays a narrow Foundation-only leaf. The
   // ceiling covers profiles, candidate identity, evidence comparison, and the

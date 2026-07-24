@@ -74,36 +74,36 @@ struct ModelCard: View {
                             UnifiedMiniStat(label: "Cache Hit", value: summary.cacheEfficiency.formattedHitRate)
                         }
 
-                        if !rankedProviderBreakdown.isEmpty {
+                        if !rankedExecutionSources.isEmpty {
                             VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-                                Text("Used By")
+                                Text("Ran In")
                                     .font(UnifiedDesignSystem.Typography.tiny)
                                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                                     .textCase(.uppercase)
 
-                                ForEach(Array(rankedProviderBreakdown.prefix(3).enumerated()), id: \.element.id) { _, pu in
+                                ForEach(Array(rankedExecutionSources.prefix(3).enumerated()), id: \.element.id) { _, source in
                                     HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                                         Capsule()
-                                            .fill(UnifiedDesignSystem.Colors.primary(for: pu.provider))
+                                            .fill(executionSourceColor(source.kind))
                                             .frame(width: 14, height: 5)
 
-                                        Text(pu.provider.displayName)
+                                        Text(source.name)
                                             .font(UnifiedDesignSystem.Typography.caption)
                                             .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                                             .lineLimit(1)
 
                                         Spacer()
 
-                                        Text("\(providerSharePercentage(pu), specifier: "%.0f")%")
+                                        Text("\(executionSourceSharePercentage(source), specifier: "%.0f")%")
                                             .font(UnifiedDesignSystem.Typography.monoTiny)
                                             .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
 
-                                        Text(pu.cacheEfficiency.formattedHitRate)
+                                        Text(source.cacheEfficiency.formattedHitRate)
                                             .font(UnifiedDesignSystem.Typography.monoTiny)
-                                            .foregroundStyle(CacheHitRateTier(pu.cacheEfficiency).color)
-                                            .help("Cache hit rate when \(pu.provider.displayName) uses this model")
+                                            .foregroundStyle(CacheHitRateTier(source.cacheEfficiency).color)
+                                            .help("Cache hit rate when this model runs in \(source.name)")
 
-                                        Text("\(pu.sessionCount) sess.")
+                                        Text("\(source.sessionCount) sess.")
                                             .font(UnifiedDesignSystem.Typography.monoTiny)
                                             .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                                     }
@@ -117,19 +117,30 @@ struct ModelCard: View {
         .onTapGesture(perform: onTap)
     }
 
-    private var rankedProviderBreakdown: [ProviderUsage] {
-        DashboardUsageRanking.sortedProviderUsages(
-            summary.providerBreakdown,
-            displayMode: settingsManager.usageDisplayMode
-        )
+    private var rankedExecutionSources: [ExecutionSourceUsage] {
+        summary.executionSourceBreakdown.sorted {
+            settingsManager.usageDisplayMode == .currency
+                ? $0.cost > $1.cost
+                : $0.totalTokens > $1.totalTokens
+        }
     }
 
-    private func providerSharePercentage(_ provider: ProviderUsage) -> Double {
-        DashboardUsageRanking.providerUsagePercentage(
-            provider,
-            in: summary,
-            displayMode: settingsManager.usageDisplayMode
-        )
+    private func executionSourceSharePercentage(_ source: ExecutionSourceUsage) -> Double {
+        if settingsManager.usageDisplayMode == .currency {
+            return summary.totalCost > 0 ? source.cost / summary.totalCost * 100 : 0
+        }
+        return summary.totalTokens > 0 ? Double(source.totalTokens) / Double(summary.totalTokens) * 100 : 0
+    }
+
+    private func executionSourceColor(_ kind: UsageExecutionSourceKind) -> Color {
+        switch kind {
+        case .ide: return .blue
+        case .cli: return theme.primaryColor
+        case .desktopApp: return .pink
+        case .service: return .green
+        case .automation: return .orange
+        case .unknown: return UnifiedDesignSystem.Colors.textMuted
+        }
     }
 
     private func formatTokens(_ tokens: Int) -> String {
@@ -239,7 +250,7 @@ struct ModelDashboardView: View {
                                 label: settingsManager.usageDisplayMode == .currency ? "Avg session" : "Avg tokens",
                                 value: averageSessionMetric
                             )
-                            modelMetric(label: "Top Agent", value: topAgentName)
+                            modelMetric(label: "Top Source", value: topExecutionSourceName)
                             modelMetric(
                                 label: "Cache Hit",
                                 value: modelCacheEfficiency.formattedHitRate
@@ -271,57 +282,57 @@ struct ModelDashboardView: View {
             }
             .frame(maxWidth: .infinity)
 
-            agentStackPanel
+            executionSourcePanel
                 .frame(width: 280, alignment: .topLeading)
         }
     }
 
-    private var agentStackPanel: some View {
+    private var executionSourcePanel: some View {
         UnifiedGlassCard {
             VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
-                Text("Agent Stack")
+                Text("Execution Sources")
                     .font(UnifiedDesignSystem.Typography.headline)
                     .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
 
-                Text("Which agents use this model in the selected window.")
+                Text("Where this model ran in the selected window.")
                     .font(UnifiedDesignSystem.Typography.caption)
                     .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
 
-                if topAgents.isEmpty {
-                    Text("No agent data")
+                if topExecutionSources.isEmpty {
+                    Text("No source data")
                         .font(UnifiedDesignSystem.Typography.caption)
                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 } else {
                     VStack(spacing: UnifiedDesignSystem.Spacing.md) {
-                        ForEach(Array(topAgents.enumerated()), id: \.element.id) { _, pu in
+                        ForEach(Array(topExecutionSources.enumerated()), id: \.element.id) { _, source in
                             VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
                                 HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                                     Capsule()
-                                        .fill(UnifiedDesignSystem.Colors.primary(for: pu.provider))
+                                        .fill(executionSourceColor(source.kind))
                                         .frame(width: 16, height: 6)
 
-                                    Text(pu.provider.displayName)
+                                    Text(source.name)
                                         .font(UnifiedDesignSystem.Typography.body)
                                         .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                                         .lineLimit(1)
 
                                     Spacer()
 
-                                    Text(settingsManager.formatUsageMetric(cost: pu.cost, tokens: pu.totalTokens))
+                                    Text(settingsManager.formatUsageMetric(cost: source.cost, tokens: source.totalTokens))
                                         .font(UnifiedDesignSystem.Typography.monoSmall)
                                         .foregroundStyle(theme.primaryColor)
                                 }
 
                                 HStack {
-                                    Text("\(agentSharePercentage(pu), specifier: "%.0f")% of model usage")
+                                    Text("\(executionSourceSharePercentage(source), specifier: "%.0f")% of model usage")
                                         .font(UnifiedDesignSystem.Typography.tiny)
                                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
 
                                     Spacer()
 
-                                    UnifiedCacheHitRateBadge(efficiency: pu.cacheEfficiency)
+                                    UnifiedCacheHitRateBadge(efficiency: source.cacheEfficiency)
 
-                                    Text("\(pu.sessionCount) sessions")
+                                    Text("\(source.sessionCount) sessions")
                                         .font(UnifiedDesignSystem.Typography.monoTiny)
                                         .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                                 }
@@ -435,27 +446,35 @@ struct ModelDashboardView: View {
         return ((modelSummary?.totalTokens ?? usages.reduce(0) { $0 + $1.totalTokens }) / count).formatAsTokenVolume()
     }
 
-    private var topAgents: [ProviderUsage] {
-        return Array(
-            DashboardUsageRanking.sortedProviderUsages(
-                modelSummary?.providerBreakdown ?? [],
-                displayMode: settingsManager.usageDisplayMode
-            )
-            .prefix(5)
-        )
+    private var topExecutionSources: [ExecutionSourceUsage] {
+        Array((modelSummary?.executionSourceBreakdown ?? []).sorted {
+            settingsManager.usageDisplayMode == .currency
+                ? $0.cost > $1.cost
+                : $0.totalTokens > $1.totalTokens
+        }.prefix(5))
     }
 
-    private var topAgentName: String {
-        topAgents.first?.provider.displayName ?? "None"
+    private var topExecutionSourceName: String {
+        topExecutionSources.first?.name ?? "None"
     }
 
-    private func agentSharePercentage(_ provider: ProviderUsage) -> Double {
+    private func executionSourceSharePercentage(_ source: ExecutionSourceUsage) -> Double {
         guard let summary = modelSummary else { return 0 }
-        return DashboardUsageRanking.providerUsagePercentage(
-            provider,
-            in: summary,
-            displayMode: settingsManager.usageDisplayMode
-        )
+        if settingsManager.usageDisplayMode == .currency {
+            return summary.totalCost > 0 ? source.cost / summary.totalCost * 100 : 0
+        }
+        return summary.totalTokens > 0 ? Double(source.totalTokens) / Double(summary.totalTokens) * 100 : 0
+    }
+
+    private func executionSourceColor(_ kind: UsageExecutionSourceKind) -> Color {
+        switch kind {
+        case .ide: return .blue
+        case .cli: return theme.primaryColor
+        case .desktopApp: return .pink
+        case .service: return .green
+        case .automation: return .orange
+        case .unknown: return UnifiedDesignSystem.Colors.textMuted
+        }
     }
 
     /// Aggregate cache reuse for this model in the active window.

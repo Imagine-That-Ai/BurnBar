@@ -555,6 +555,16 @@ another domain cluster. The canonical baseline refresh also records the
 measured 1.25x ceilings for the non-destination targets that received the same
 Linux source wave; it does not raise any main-target or file-count budget.
 
+**Operation 10 execution-source ceiling adjustment (2026-07-21):** generalized
+execution-source attribution adds the cross-platform usage/wire contract to
+`OpenBurnBarKernel` and evidence-backed Codex history/cache attribution to
+`OpenBurnBarLogParsers`. These responsibilities belong in the existing owning modules;
+splitting them into dependency-only leaf targets would obscure the usage contract and
+parser state boundaries. No source files were added to either target. Their planned LOC
+ceilings move from 46,250 to 46,600 and from 11,800 to 12,200 respectively, covering the
+measured 272/302-LOC growth with less than 160 LOC of bounded headroom per target. File
+ceilings remain unchanged.
+
 ### Whole-program composition proof (verbatim results)
 
 Run on macOS (Apple Swift 6.4, Xcode 27.0 beta, arch arm64) from the isolated

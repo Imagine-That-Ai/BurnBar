@@ -415,6 +415,7 @@ final class ParserIntegrationTestHarness {
                     updated_at INTEGER,
                     cwd TEXT,
                     rollout_path TEXT,
+                    thread_source TEXT,
                     archived INTEGER DEFAULT 0
                 )
             """)
@@ -444,6 +445,18 @@ final class ParserIntegrationTestHarness {
 
         try dbQueue.close()
         return dbURL
+    }
+
+    func setCodexThreadSource(threadID: String, source: String) throws {
+        let dbURL = rootURL.appendingPathComponent(".codex/state_5.sqlite")
+        let dbQueue = try DatabaseQueue(path: dbURL.path)
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE threads SET thread_source = ? WHERE id = ?",
+                arguments: [source, threadID]
+            )
+        }
+        try dbQueue.close()
     }
 
     @discardableResult

@@ -435,6 +435,12 @@ enum RefreshBackgroundWork {
                 ? .empty
                 : .healthy(sessionCount: parseResult.usages.count)
 
+            if !parseResult.usageSessionIDsToDelete.isEmpty {
+                try await dataStore.deleteUsage(
+                    provider: provider,
+                    sessionIDs: parseResult.usageSessionIDsToDelete
+                )
+            }
             try await dataStore.insertChunked(parseResult.usages, chunkSize: 500)
         } catch {
             result.health = .failed(error: error.localizedDescription)
