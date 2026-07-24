@@ -574,10 +574,7 @@ public final class PiAgentParser: LogParser, Sendable {
 
 // MARK: Oh My Pi (OMP)
 
-/// OMP session files use the Pi-compatible JSONL envelope: a session header
-/// followed by nested `message` entries with role/content/usage fields. Keep
-/// the parser implementation shared with Pi so token and transcript handling
-/// cannot drift between the two local providers.
+/// OMP uses the Pi-compatible nested JSONL envelope; share its parser logic.
 public final class OMPParser: LogParser, Sendable {
     public let provider: AgentProvider = .omp
     private let sessionsOverride: URL?
