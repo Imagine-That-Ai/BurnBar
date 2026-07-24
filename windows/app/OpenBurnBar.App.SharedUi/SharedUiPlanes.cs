@@ -50,7 +50,12 @@ public interface ISharedUiDataPlane
     /// <summary>{ sqlcipherOk, migrationVersion, sizeBytes, walMode }.</summary>
     Task<JsonObject> GetDatabaseStatusAsync(CancellationToken ct);
 
-    /// <summary>{ cloud: { signedIn, identityLabel?, syncState?, lastSyncAt? }, cloudSyncEnabled }.</summary>
+    /// <summary>
+    /// { state, signedIn, identityLabel?, syncState?, cloudSyncEnabled } — the
+    /// fields live at the TOP LEVEL because the renderer's mapAccountStatus
+    /// (tauriBridgeSystemDecoders.ts) reads them there (or under a top-level
+    /// `status` object); nesting them under `cloud` decodes as signed out.
+    /// </summary>
     Task<JsonObject> GetAccountStatusAsync(CancellationToken ct);
 
     /// <summary>

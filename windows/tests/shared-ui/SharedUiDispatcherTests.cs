@@ -240,7 +240,7 @@ public sealed class SharedUiDispatcherTests
             Task.FromResult(new JsonObject { ["sqlcipherOk"] = true });
 
         public Task<JsonObject> GetAccountStatusAsync(CancellationToken ct) =>
-            Task.FromResult(new JsonObject { ["cloud"] = new JsonObject { ["signedIn"] = false } });
+            Task.FromResult(new JsonObject { ["state"] = "signed_out", ["signedIn"] = false });
 
         public Task<JsonObject> GetUpdateStatusAsync(CancellationToken ct) =>
             Task.FromResult(new JsonObject { ["state"] = "current" });

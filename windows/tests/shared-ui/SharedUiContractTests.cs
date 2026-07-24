@@ -234,7 +234,10 @@ public sealed class SharedUiContractTests
             new SharedUiCapabilityStatus { StorageReady = true, SessionLogsReady = true, GatewayRunning = true });
         Assert.Equal("available", StateOf(healthy, "usage.read"));
         Assert.Equal("available", StateOf(healthy, "sessions.read"));
-        Assert.Equal("available", StateOf(healthy, "chat.gateway"));
+        // chat.gateway stays degraded even with the gateway up: the dispatcher
+        // streams chat but does not implement the thread persistence RPCs
+        // (chat_thread_list / chat_thread_get / chat_message_append).
+        Assert.Equal("degraded", StateOf(healthy, "chat.gateway"));
 
         var degraded = SharedUiRuntimeCapabilities.BuildManifest(
             "1.0.0",

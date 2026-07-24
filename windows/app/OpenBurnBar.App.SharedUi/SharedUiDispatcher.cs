@@ -164,6 +164,14 @@ public sealed class SharedUiDispatcher
                 ["xdg_session_type"] = null,
                 ["xdg_current_desktop"] = null,
             }),
+            // Boot probes awaited by loadShellBridge()/main.tsx right after
+            // onboarding_snapshot. Windows has no deep-link or notification-action
+            // source for this shell yet, so the honest answers are null / empty —
+            // NOT a not-implemented error, which the boot catch would read as
+            // "onboarding authority unavailable" and ignore a completed snapshot.
+            ["initial_deep_link_route"] = (args, emit, ct) => Task.FromResult<JsonNode?>(null),
+            ["forwarded_deep_link_route"] = (args, emit, ct) => Task.FromResult<JsonNode?>(null),
+            ["initial_notification_actions"] = (args, emit, ct) => Task.FromResult<JsonNode?>(new JsonArray()),
 
             // ── P1: data reads, backed by the in-process stores ──────────
             ["usage_summary"] = async (args, emit, ct) => await Data.GetRecentUsageAsync(50, ct).ConfigureAwait(false),

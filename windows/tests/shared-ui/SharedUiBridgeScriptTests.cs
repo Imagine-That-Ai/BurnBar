@@ -45,7 +45,7 @@ public sealed class SharedUiBridgeScriptTests
         var script = SharedUiBridgeScript.BuildDispatchScript(
             SharedUiBridgeMessage.InvokeResult(1, null));
         Assert.Equal(
-            """window.__obbShimDispatch && window.__obbShimDispatch("{\"kind\":\"invoke-result\",\"id\":1,\"ok\":true,\"value\":null}");""",
+            """window.__obbShimDispatch && window.__obbShimDispatch(JSON.parse("{\"kind\":\"invoke-result\",\"id\":1,\"ok\":true,\"value\":null}"));""",
             script);
     }
 
@@ -58,7 +58,7 @@ public sealed class SharedUiBridgeScriptTests
         var message = new JsonObject { ["error"] = "say \"no\"" };
         var script = SharedUiBridgeScript.BuildDispatchScript(message);
         Assert.Equal(
-            """window.__obbShimDispatch && window.__obbShimDispatch("{\"error\":\"say \\u0022no\\u0022\"}");""",
+            """window.__obbShimDispatch && window.__obbShimDispatch(JSON.parse("{\"error\":\"say \\u0022no\\u0022\"}"));""",
             script);
     }
 }

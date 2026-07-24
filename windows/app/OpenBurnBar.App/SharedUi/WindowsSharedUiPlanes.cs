@@ -228,7 +228,7 @@ internal sealed class WindowsSharedUiDataPlane : ISharedUiDataPlane
             ["providerLogPaths"] = providerLogPaths,
             ["secretServiceStatus"] = "dpapi-protected-store",
             ["telemetryEnabled"] = telemetry,
-            ["privacyOptIn"] = telemetry,
+            ["privacyOptIn"] = LoadPrivacyOptIn(),
             ["cloudSyncEnabled"] = cloudSync,
             ["providers"] = providers,
             ["routerMode"] = "providerFamilyFailover",
@@ -246,10 +246,15 @@ internal sealed class WindowsSharedUiDataPlane : ISharedUiDataPlane
         bool ReadBoolOr(JsonObject obj, string key, bool fallback) =>
             obj[key] is JsonValue v && v.TryGetValue(out bool b) ? b : fallback;
 
+        // telemetryEnabled and privacyOptIn are DISTINCT booleans on the wire;
+        // privacy opt-in lives in its own settings slot so a telemetry-only
+        // edit never clobbers it (and vice versa) and the snapshot readback
+        // always matches what was saved.
         telemetry = ReadBoolOr(snapshot, "telemetryEnabled", telemetry);
-        var privacyOptIn = ReadBoolOr(snapshot, "privacyOptIn", telemetry);
+        var privacyOptIn = ReadBoolOr(snapshot, "privacyOptIn", LoadPrivacyOptIn());
         cloudSync = ReadBoolOr(snapshot, "cloudSyncEnabled", cloudSync);
-        onboarding.Save(privacyOptIn, cloudSync, revision + 1);
+        onboarding.Save(telemetry, cloudSync, revision + 1);
+        SavePrivacyOptIn(privacyOptIn);
         return GetConfigSnapshotAsync(ct);
     }
 
@@ -285,16 +290,17 @@ internal sealed class WindowsSharedUiDataPlane : ISharedUiDataPlane
 
     public Task<JsonObject> GetAccountStatusAsync(CancellationToken ct)
     {
+        // mapAccountStatus (tauriBridgeSystemDecoders.ts) reads signedIn /
+        // identityLabel / syncState from the TOP-LEVEL object (or a top-level
+        // `status` object) — nesting them would decode as signed out.
         var oauth = WinAppCloudSyncHost.Root?.Credentials as DesktopOAuthCredentialsProvider;
         var signedIn = oauth?.IsSignedIn == true;
         return Task.FromResult(new JsonObject
         {
-            ["cloud"] = new JsonObject
-            {
-                ["signedIn"] = signedIn,
-                ["identityLabel"] = signedIn ? oauth!.SignedInUid : null,
-                ["syncState"] = signedIn ? "active" : "local-only",
-            },
+            ["state"] = signedIn ? "active" : "signed_out",
+            ["signedIn"] = signedIn,
+            ["identityLabel"] = signedIn ? oauth!.SignedInUid : null,
+            ["syncState"] = signedIn ? "active" : "local-only",
             ["cloudSyncEnabled"] = signedIn,
         });
     }
@@ -403,6 +409,21 @@ internal sealed class WindowsSharedUiDataPlane : ISharedUiDataPlane
     }
 
     // ── helpers ──────────────────────────────────────────────────────────
+
+    private const string PrivacyOptInKey = "sharedUiPrivacyOptIn";
+
+    private sealed record PersistedPrivacyOptIn(bool Value)
+    {
+        public static PersistedPrivacyOptIn Default { get; } = new(false);
+    }
+
+    private static bool LoadPrivacyOptIn() =>
+        WindowsSettingsComposition.SharedPersistence
+            .Read(PrivacyOptInKey, PersistedPrivacyOptIn.Default).Value;
+
+    private static void SavePrivacyOptIn(bool value) =>
+        WindowsSettingsComposition.SharedPersistence
+            .Write(PrivacyOptInKey, new PersistedPrivacyOptIn(value));
 
     private static void WithStorage(Action<Microsoft.Data.Sqlite.SqliteConnection> work)
     {
