@@ -32,6 +32,12 @@ test("uses Softnet with no host directory mount", () => {
   assert.doesNotMatch(script, /tart run[^\n]*--dir/);
 });
 
+test("checks the complete macOS mode for Softnet setuid", () => {
+  assert.match(script, /stat -f '%p' "\$softnet_path"/);
+  assert.match(script, /softnet_mode & 04000/);
+  assert.doesNotMatch(script, /stat -f '%OLp' "\$softnet_path"/);
+});
+
 test("archives diagnostics before deleting the exact disposable VM", () => {
   const workerIndex = script.indexOf("run_worker() {");
   const archiveIndex = script.indexOf("\n  archive_diagnostics\n", workerIndex);

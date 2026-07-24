@@ -1,0 +1,23 @@
+{
+  "id": "inversion-lattice",
+  "label": "Inversion Lattice",
+  "metalFileBase": "K_InversionLattice",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_inversion_lattice_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

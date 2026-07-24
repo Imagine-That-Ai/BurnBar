@@ -1418,6 +1418,12 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
     public let sessionID: String?
     /// Optional client-supplied project name. Defaults to "OpenBurnBar Daemon" on import when nil.
     public let projectName: String?
+    /// Product surface that originated the request (for example Cursor or
+    /// Grok Build). Optional for backward-compatible daemon ledger decoding.
+    public let executionSourceID: String?
+    public let executionSourceName: String?
+    public let executionSourceKind: UsageExecutionSourceKind?
+    public let executionSourceConfidence: BurnBarUsageConfidence?
     /// Confidence level for the recorded counts. Defaults to `.exact` for backwards compat
     /// (existing daemon-recorded rows are exact provider responses).
     public let confidence: BurnBarUsageConfidence
@@ -1443,6 +1449,10 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         case recordedAt
         case sessionID
         case projectName
+        case executionSourceID
+        case executionSourceName
+        case executionSourceKind
+        case executionSourceConfidence
         case confidence
         case parentRequestID
     }
@@ -1460,6 +1470,10 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         recordedAt: Date,
         sessionID: String? = nil,
         projectName: String? = nil,
+        executionSourceID: String? = nil,
+        executionSourceName: String? = nil,
+        executionSourceKind: UsageExecutionSourceKind? = nil,
+        executionSourceConfidence: BurnBarUsageConfidence? = nil,
         confidence: BurnBarUsageConfidence = .exact,
         parentRequestID: String? = nil
     ) {
@@ -1475,6 +1489,10 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         self.recordedAt = recordedAt
         self.sessionID = sessionID
         self.projectName = projectName
+        self.executionSourceID = executionSourceID
+        self.executionSourceName = executionSourceName
+        self.executionSourceKind = executionSourceKind
+        self.executionSourceConfidence = executionSourceConfidence
         self.confidence = confidence
         self.parentRequestID = parentRequestID
     }
@@ -1493,6 +1511,10 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         recordedAt = try container.decode(Date.self, forKey: .recordedAt)
         sessionID = try container.decodeIfPresent(String.self, forKey: .sessionID)
         projectName = try container.decodeIfPresent(String.self, forKey: .projectName)
+        executionSourceID = try container.decodeIfPresent(String.self, forKey: .executionSourceID)
+        executionSourceName = try container.decodeIfPresent(String.self, forKey: .executionSourceName)
+        executionSourceKind = try container.decodeIfPresent(UsageExecutionSourceKind.self, forKey: .executionSourceKind)
+        executionSourceConfidence = try container.decodeIfPresent(BurnBarUsageConfidence.self, forKey: .executionSourceConfidence)
         confidence = try container.decodeIfPresent(BurnBarUsageConfidence.self, forKey: .confidence) ?? .exact
         parentRequestID = try container.decodeIfPresent(String.self, forKey: .parentRequestID)
     }
@@ -1511,6 +1533,10 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         try container.encode(recordedAt, forKey: .recordedAt)
         try container.encodeIfPresent(sessionID, forKey: .sessionID)
         try container.encodeIfPresent(projectName, forKey: .projectName)
+        try container.encodeIfPresent(executionSourceID, forKey: .executionSourceID)
+        try container.encodeIfPresent(executionSourceName, forKey: .executionSourceName)
+        try container.encodeIfPresent(executionSourceKind, forKey: .executionSourceKind)
+        try container.encodeIfPresent(executionSourceConfidence, forKey: .executionSourceConfidence)
         try container.encode(confidence, forKey: .confidence)
         try container.encodeIfPresent(parentRequestID, forKey: .parentRequestID)
     }

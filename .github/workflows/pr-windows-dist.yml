@@ -41,7 +41,7 @@ jobs:
   detect-dist-changes:
     name: Detect Windows dist changes
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 10
     outputs:
       dist: ${{ steps.filter.outputs.dist }}
     steps:

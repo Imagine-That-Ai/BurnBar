@@ -82,14 +82,18 @@ public static class TokenUsageWriteSeam
                 id, provider, sessionId, projectName, model,
                 inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
                 reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
-                usageSource, sourceDeviceId, sourceDeviceName, isRemote,
+                usageSource, executionSourceID, executionSourceName,
+                executionSourceKind, executionSourceConfidence,
+                sourceDeviceId, sourceDeviceName, isRemote,
                 providerID, providerAccountID, providerAccountLabel, providerAccountSource,
                 provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID
             ) VALUES (
                 $id, $provider, $sessionId, $projectName, $model,
                 $inputTokens, $outputTokens, $cacheCreationTokens, $cacheReadTokens,
                 $reasoningTokens, $totalTokens, $cost, $startTime, $endTime, $createdAt,
-                $usageSource, $sourceDeviceId, $sourceDeviceName, $isRemote,
+                $usageSource, $executionSourceID, $executionSourceName,
+                $executionSourceKind, $executionSourceConfidence,
+                $sourceDeviceId, $sourceDeviceName, $isRemote,
                 $providerID, $providerAccountID, $providerAccountLabel, $providerAccountSource,
                 $provenanceMethod, $provenanceConfidence, $estimatorVersion, $parentRequestID
             )
@@ -104,7 +108,55 @@ public static class TokenUsageWriteSeam
                 cost = excluded.cost,
                 startTime = excluded.startTime,
                 endTime = excluded.endTime,
-                createdAt = excluded.createdAt
+                createdAt = excluded.createdAt,
+                executionSourceID = CASE
+                    WHEN excluded.executionSourceID != 'unknown' AND
+                        CASE excluded.executionSourceConfidence
+                            WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                            WHEN 'high_confidence_estimate' THEN 2
+                            WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                        >=
+                        CASE token_usage.executionSourceConfidence
+                            WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                            WHEN 'high_confidence_estimate' THEN 2
+                            WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                    THEN excluded.executionSourceID ELSE token_usage.executionSourceID END,
+                executionSourceName = CASE
+                    WHEN excluded.executionSourceID != 'unknown' AND
+                        CASE excluded.executionSourceConfidence
+                            WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                            WHEN 'high_confidence_estimate' THEN 2
+                            WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                        >=
+                        CASE token_usage.executionSourceConfidence
+                            WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                            WHEN 'high_confidence_estimate' THEN 2
+                            WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                    THEN excluded.executionSourceName ELSE token_usage.executionSourceName END,
+                executionSourceKind = CASE
+                    WHEN excluded.executionSourceID != 'unknown' AND
+                        CASE excluded.executionSourceConfidence
+                            WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                            WHEN 'high_confidence_estimate' THEN 2
+                            WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                        >=
+                        CASE token_usage.executionSourceConfidence
+                            WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                            WHEN 'high_confidence_estimate' THEN 2
+                            WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                    THEN excluded.executionSourceKind ELSE token_usage.executionSourceKind END,
+                executionSourceConfidence = CASE
+                    WHEN excluded.executionSourceID != 'unknown' AND
+                        CASE excluded.executionSourceConfidence
+                            WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                            WHEN 'high_confidence_estimate' THEN 2
+                            WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                        >=
+                        CASE token_usage.executionSourceConfidence
+                            WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                            WHEN 'high_confidence_estimate' THEN 2
+                            WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                    THEN excluded.executionSourceConfidence ELSE token_usage.executionSourceConfidence END
             """;
 
         Bind(command, "$id", record.Id);
@@ -123,6 +175,10 @@ public static class TokenUsageWriteSeam
         Bind(command, "$endTime", record.EndTime);
         Bind(command, "$createdAt", record.CreatedAt);
         Bind(command, "$usageSource", record.UsageSource);
+        Bind(command, "$executionSourceID", record.ExecutionSourceID);
+        Bind(command, "$executionSourceName", record.ExecutionSourceName);
+        Bind(command, "$executionSourceKind", record.ExecutionSourceKind);
+        Bind(command, "$executionSourceConfidence", record.ExecutionSourceConfidence);
         Bind(command, "$sourceDeviceId", (object?)record.SourceDeviceId ?? DBNull.Value);
         Bind(command, "$sourceDeviceName", (object?)record.SourceDeviceName ?? DBNull.Value);
         Bind(command, "$isRemote", record.IsRemote ? 1 : 0);
@@ -150,7 +206,9 @@ public static class TokenUsageWriteSeam
             SELECT id, provider, sessionId, projectName, model,
                    inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
                    reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
-                   usageSource, sourceDeviceId, sourceDeviceName, isRemote,
+                   usageSource, executionSourceID, executionSourceName,
+                   executionSourceKind, executionSourceConfidence,
+                   sourceDeviceId, sourceDeviceName, isRemote,
                    providerID, providerAccountID, providerAccountLabel, providerAccountSource,
                    provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID
             FROM token_usage WHERE id = $id
@@ -181,17 +239,21 @@ public static class TokenUsageWriteSeam
             EndTime = reader.GetString(13),
             CreatedAt = reader.GetString(14),
             UsageSource = reader.GetString(15),
-            SourceDeviceId = reader.IsDBNull(16) ? null : reader.GetString(16),
-            SourceDeviceName = reader.IsDBNull(17) ? null : reader.GetString(17),
-            IsRemote = reader.GetInt64(18) != 0,
-            ProviderID = reader.IsDBNull(19) ? null : reader.GetString(19),
-            ProviderAccountID = reader.IsDBNull(20) ? null : reader.GetString(20),
-            ProviderAccountLabel = reader.IsDBNull(21) ? null : reader.GetString(21),
-            ProviderAccountSource = reader.IsDBNull(22) ? null : reader.GetString(22),
-            ProvenanceMethod = reader.GetString(23),
-            ProvenanceConfidence = reader.GetString(24),
-            EstimatorVersion = reader.GetString(25),
-            ParentRequestID = reader.IsDBNull(26) ? null : reader.GetString(26),
+            ExecutionSourceID = reader.GetString(16),
+            ExecutionSourceName = reader.GetString(17),
+            ExecutionSourceKind = reader.GetString(18),
+            ExecutionSourceConfidence = reader.GetString(19),
+            SourceDeviceId = reader.IsDBNull(20) ? null : reader.GetString(20),
+            SourceDeviceName = reader.IsDBNull(21) ? null : reader.GetString(21),
+            IsRemote = reader.GetInt64(22) != 0,
+            ProviderID = reader.IsDBNull(23) ? null : reader.GetString(23),
+            ProviderAccountID = reader.IsDBNull(24) ? null : reader.GetString(24),
+            ProviderAccountLabel = reader.IsDBNull(25) ? null : reader.GetString(25),
+            ProviderAccountSource = reader.IsDBNull(26) ? null : reader.GetString(26),
+            ProvenanceMethod = reader.GetString(27),
+            ProvenanceConfidence = reader.GetString(28),
+            EstimatorVersion = reader.GetString(29),
+            ParentRequestID = reader.IsDBNull(30) ? null : reader.GetString(30),
         };
     }
 

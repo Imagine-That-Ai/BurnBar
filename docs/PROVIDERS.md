@@ -53,6 +53,25 @@
 
 ---
 
+## Execution-Source Attribution
+
+Token usage stores three independent identities:
+
+- `provider` / `providerID`: who served or owns the model.
+- `usageSource`: how OpenBurnBar learned about the usage (`provider_log`,
+  `daemon`, `billing_api`, and so on).
+- `executionSourceID` / `executionSourceName` / `executionSourceKind`: the
+  product surface that initiated the request, such as `cursor`, `grok-build`,
+  `codex-cli`, or `codex-desktop`.
+
+Gateway clients should send `X-OpenBurnBar-Client` with a stable product marker.
+Known user-agent markers are accepted as a fallback, but raw header values are
+never stored. Dedicated local parsers provide derived-exact historical source
+identity. Codex history is attributed from each rollout's `session_meta`; rows
+without durable source evidence stay `unknown`.
+
+---
+
 ## Auth Requirements (per provider)
 
 | Provider | Auth Type | Credential Format | Header | Scope / Notes |
