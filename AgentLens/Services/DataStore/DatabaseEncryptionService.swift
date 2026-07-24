@@ -248,26 +248,47 @@ enum DatabaseEncryptionService {
 
     // MARK: - Key Management
 
-    /// UI-test builds derive the SQLCipher key from the environment so test runs
-    /// never touch the login Keychain. Ad-hoc re-signed builds are treated as a
-    /// new code identity by the Keychain, which prompts for the login password on
-    /// every launch and makes unattended UI automation impossible. In UI-test
-    /// mode we use a deterministic ephemeral key instead — the store still opens
-    /// encrypted, but no Keychain access (and no prompt) occurs.
+    #if DEBUG
+    /// UI-test builds derive the SQLCipher key from an explicitly injected
+    /// environment value so test runs never touch the login Keychain. Ad-hoc
+    /// re-signed builds are treated as a new code identity by the Keychain, which
+    /// prompts for the login password on every launch and makes unattended UI
+    /// automation impossible. The UI-test harness injects a random, per-run key
+    /// via `OPENBURNBAR_UITEST_DB_KEY`; the store still opens encrypted, but no
+    /// Keychain access (and no prompt) occurs.
+    ///
+    /// This path is compiled out of release builds entirely (`#if DEBUG`), so no
+    /// UI-test key material can ship in a signed production binary — the runtime
+    /// `OPENBURNBAR_UITEST` env var can never reach it there. There is deliberately
+    /// no hardcoded fallback key: when the flag is set without a non-empty injected
+    /// key we fail closed by returning `nil`, so `getKey()` falls through to the
+    /// real Keychain-backed 256-bit random key rather than a predictable constant.
     static func uiTestDatabaseKey() -> String? {
-        let environment = ProcessInfo.processInfo.environment
-        guard environment["OPENBURNBAR_UITEST"] == "1" else { return nil }
-        if let provided = environment["OPENBURNBAR_UITEST_DB_KEY"], !provided.isEmpty {
-            return provided
-        }
-        return Data("openburnbar-uitest-db-key-v1".utf8).base64EncodedString()
+        uiTestDatabaseKey(environment: ProcessInfo.processInfo.environment)
     }
+
+    static func uiTestDatabaseKey(environment: [String: String]) -> String? {
+        guard environment["OPENBURNBAR_UITEST"] == "1" else { return nil }
+        guard let provided = environment["OPENBURNBAR_UITEST_DB_KEY"], !provided.isEmpty else {
+            AppLogger.dataStore.error(
+                "uitest_db_key_missing",
+                metadata: [
+                    "reason": "OPENBURNBAR_UITEST=1 without a non-empty OPENBURNBAR_UITEST_DB_KEY; refusing predictable key, falling back to Keychain"
+                ]
+            )
+            return nil
+        }
+        return provided
+    }
+    #endif
 
     /// Returns the stored encryption key if one exists, nil otherwise.
     static func getKey() -> String? {
+        #if DEBUG
         if let testKey = uiTestDatabaseKey() {
             return testKey
         }
+        #endif
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

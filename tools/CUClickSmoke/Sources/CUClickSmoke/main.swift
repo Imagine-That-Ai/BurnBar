@@ -612,6 +612,13 @@ func launchOpenBurnBar(appURL: URL) throws -> NSRunningApplication {
     process.arguments = ["-n", appURL.path, "--args", "--uitest"]
     var childEnv = ProcessInfo.processInfo.environment
     childEnv["OPENBURNBAR_UITEST"] = "1"
+    // Inject a random per-run SQLCipher key so the encrypted store opens without
+    // a Keychain prompt, without relying on any predictable constant. Preserve a
+    // caller-supplied key if one is already set.
+    if (childEnv["OPENBURNBAR_UITEST_DB_KEY"] ?? "").isEmpty {
+        childEnv["OPENBURNBAR_UITEST_DB_KEY"] = Data((0..<32).map { _ in UInt8.random(in: .min ... .max) })
+            .base64EncodedString()
+    }
     process.environment = childEnv
     try process.run()
     process.waitUntilExit()
