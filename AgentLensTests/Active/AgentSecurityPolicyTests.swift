@@ -308,10 +308,12 @@ final class AgentSecurityPolicyTests: XCTestCase {
         }
 
         guard let bridgeError = receivedError as? CLIBridgeError else {
-            return XCTFail("expected Junie grant error, got \(String(describing: receivedError))")
+            XCTFail("expected Junie grant error, got \(String(describing: receivedError))")
+            return
         }
         guard case .junieRequiresFullGrant = bridgeError else {
-            return XCTFail("expected Junie full-grant refusal, got \(bridgeError)")
+            XCTFail("expected Junie full-grant refusal, got \(bridgeError)")
+            return
         }
         XCTAssertTrue(
             bridgeError.localizedDescription.contains("read-only mode"),
