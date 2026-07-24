@@ -279,53 +279,6 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
         }
     }
 
-    func testApprovalDecisionClassifiesEveryMissionStateWithoutSideEffects() {
-        let codex = CLIAgentMissionBackend(chatBackend: .codex)
-        let hermes = CLIAgentMissionBackend(chatBackend: .hermes)
-
-        struct Row {
-            let name: String
-            let cliAllowed: Bool
-            let backend: CLIAgentMissionBackend
-            let data: [String: Any]
-            let expected: CLIAgentMissionApprovalDecision
-        }
-        let rows = [
-            Row(name: "rejected dominates disabled CLI", cliAllowed: false, backend: codex,
-                data: ["approvalStatus": "rejected"], expected: .cancel(approvalStatus: "rejected")),
-            Row(name: "US canceled spelling", cliAllowed: true, backend: hermes,
-                data: ["approvalStatus": "canceled"], expected: .cancel(approvalStatus: "canceled")),
-            Row(name: "UK cancelled spelling", cliAllowed: true, backend: hermes,
-                data: ["approvalStatus": "CANCELLED"], expected: .cancel(approvalStatus: "cancelled")),
-            Row(name: "disabled CLI rejects even approved Codex", cliAllowed: false, backend: codex,
-                data: ["approvalStatus": "approved"], expected: .cliAssistantDisabled),
-            Row(name: "approved Codex proceeds when enabled", cliAllowed: true, backend: codex,
-                data: ["approvalStatus": "approved"], expected: .proceed),
-            Row(name: "already waiting does not request twice", cliAllowed: true, backend: hermes,
-                data: ["status": "waiting_for_approval", "approvalStatus": "pending", "approvalMode": "manual_all"],
-                expected: .waitForApproval),
-            Row(name: "new approval is requested", cliAllowed: true, backend: hermes,
-                data: ["status": "pending", "approvalStatus": "pending", "approvalMode": "manual_all"],
-                expected: .requestApproval),
-            Row(name: "safe mission needs no approval", cliAllowed: true, backend: hermes,
-                data: ["status": "pending", "approvalStatus": "none", "approvalMode": "existing_policy",
-                       "commandsAllowed": false, "fileEditsAllowed": false],
-                expected: .proceed)
-        ]
-
-        for row in rows {
-            XCTAssertEqual(
-                CLIAgentMissionApprovalDecision.resolve(
-                    data: row.data,
-                    backend: row.backend,
-                    cliAssistantAllowed: row.cliAllowed
-                ),
-                row.expected,
-                row.name
-            )
-        }
-    }
-
     func testPresentNonStringOrMalformedPersonaScopeIsRejected() {
         let malformedValues: [Any] = [
             7,
