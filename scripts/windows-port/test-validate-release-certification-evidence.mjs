@@ -12,6 +12,7 @@ import {
   RECEIPT_SCHEMA,
   REQUIRED_GATE_IDS,
   certificationProtocolForGate,
+  parseArgs,
   validateCertificationProtocolCatalog,
   validateReceipt,
   validateReleaseCertificationBundle,
@@ -31,6 +32,31 @@ import {
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
 const HARNESS_COMMIT = "89abcdef0123456789abcdef0123456789abcdef";
+
+assert.deepEqual(
+  parseArgs([
+    "--expected-commit",
+    COMMIT.toUpperCase(),
+    "--expected-harness-commit",
+    HARNESS_COMMIT.toUpperCase(),
+    "evidence",
+  ]),
+  {
+    bundleDir: "evidence",
+    writeSums: false,
+    expectedCommit: COMMIT,
+    expectedHarnessCommit: HARNESS_COMMIT,
+  },
+);
+assert.throws(
+  () => parseArgs(["--expected-harness-commit", "evidence"]),
+  /requires a full 40-character Git SHA/,
+);
+assert.throws(
+  () => parseArgs(["--expected-commit", "--write-sums", "evidence"]),
+  /requires a full 40-character Git SHA/,
+);
+assert.throws(() => parseArgs(["--unknown", "evidence"]), /unknown argument/);
 
 function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
