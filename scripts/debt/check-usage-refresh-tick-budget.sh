@@ -41,7 +41,10 @@ agentlens_root = repo_root / "AgentLens"
 
 # Files allowed to issue raw token_usage write statements. Each of these
 # either bumps UsageTableWriteMarker itself or runs before the marker is
-# consulted (startup migrations).
+# consulted (startup migrations). The migration match is deliberately the
+# singular "+Migration" prefix: the schema files use both batched
+# (+MigrationsV1toV20) and per-version (+MigrationV57) naming, and a
+# plural-only match silently stopped exempting every per-version file.
 raw_writer_allowlist = {
     "AgentLens/Services/DataStore/ParserCheckpointStore.swift",
 }
@@ -81,7 +84,7 @@ for path in sorted(agentlens_root.rglob("*.swift")):
     is_allowed_writer = (
         rel in raw_writer_allowlist
         or rel.startswith("AgentLens/Services/DataStore/UsageStore")
-        or "OpenBurnBarDatabase+Migrations" in rel
+        or "OpenBurnBarDatabase+Migration" in rel
     )
     if raw_count and not is_allowed_writer:
         raw_writer_by_file[rel] = raw_count
