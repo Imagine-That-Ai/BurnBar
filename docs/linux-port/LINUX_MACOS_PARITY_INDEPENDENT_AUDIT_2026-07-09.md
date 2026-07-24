@@ -4049,3 +4049,19 @@ This audit intentionally treats source existence and generated evidence as
 necessary but insufficient. A parity row becomes ready only when its real user
 outcome is reproducible from an installed release artifact on a declared,
 supported Linux environment.
+
+## Linux quota refresh transport — 2026-07-23
+
+The daemon now owns the missing source-level quota transport. The existing
+`daemon.quota.signals.recent` boundary refreshes the shared
+`ProviderQuotaAdapterRegistry` through a credential-scoped Linux context,
+validates every adapter result, persists only redacted snapshots, and merges
+fresh adapter buckets with traffic-header signals without allowing an empty or
+failed adapter response to erase a known-good signal. Refreshes are bounded to
+one request per five minutes and concurrent callers receive the last durable
+cache. A Linux-only regression covers shared-adapter dispatch and cache reload.
+
+This closes the source-level transport gap in P-11/P-12. It does not claim live
+provider API success, populated account switching, production cloud credentials,
+or signed installed-candidate certification; those still require the declared
+Linux environment and release receipts.

@@ -145,11 +145,19 @@ final class BurnBarLinuxQuotaSnapshotCache: @unchecked Sendable, ProviderQuotaSn
         do {
             let directory = fileURL.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o700],
+                ofItemAtPath: directory.path
+            )
             let payload = DiskPayload(schemaVersion: 1, snapshots: snapshotsByProvider.values.sorted {
                 $0.providerID.rawValue < $1.providerID.rawValue
             })
             let data = try JSONEncoder().encode(payload)
             try data.write(to: fileURL, options: [.atomic])
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: fileURL.path
+            )
         } catch {
             // Quota cache loss must never make provider routing or the daemon
             // unavailable; the next refresh can rebuild it from the adapters.
