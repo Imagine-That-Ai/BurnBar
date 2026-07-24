@@ -12,7 +12,8 @@ import type {
   MercuryMediaStatus,
   MercuryMediaSessionState,
   MissionCreateInput,
-  MissionListResult
+  MissionListResult,
+  UsageCalendarEvent
 } from '../tauriBridge.js';
 import type {
   DaemonSubscriptionResponse,
@@ -61,6 +62,8 @@ export const emptyMediaFileAction = (
 
 export const emptyIntegrationsStatus = (): Promise<IntegrationsStatus> =>
   Promise.resolve({ integrations: [] });
+
+export const emptyUsageCalendar = (): Promise<UsageCalendarEvent[]> => Promise.resolve([]);
 
 export const emptyMissionCreate = (
   _input: MissionCreateInput
@@ -231,6 +234,7 @@ export const bridgeStubDefaults = {
   mediaFileDecline: emptyMediaFileAction,
   mediaFileSend: emptyMediaFileAction,
   integrationsStatus: emptyIntegrationsStatus,
+  usageCalendar: emptyUsageCalendar,
   missionCreate: emptyMissionCreate,
   memoryReviewInbox: emptyMemoryReviewInbox,
   memoryReviewDecision: emptyMemoryReviewDecision,

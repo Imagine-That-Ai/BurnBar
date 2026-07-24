@@ -159,7 +159,10 @@ extension RoutingClientWiring {
         case .codex:
             let expected = gatewayServedModelIDs(advertisedModels, target: .codex)
             let installed = installedCodexOpenBurnBarModelIDs()
-            guard isWired(target: target), !installed.isEmpty else { return .notWired }
+            guard isWired(target: target) else { return .notWired }
+            if installed.isEmpty {
+                return expected.isEmpty ? .current(modelIDs: []) : .notWired
+            }
             guard Set(installed) == Set(expected) else {
                 return .stale(installedModelIDs: installed, expectedModelIDs: expected)
             }

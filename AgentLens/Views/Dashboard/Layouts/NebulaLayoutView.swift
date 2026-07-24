@@ -98,7 +98,7 @@ extension DashboardView {
 
     private var nebulaBurnCard: some View {
         ConceptStatTile(
-            label: "Burn · Today",
+            label: selectedTimeRange.burnTileLabel,
             value: totalCostForTimeRange.formatAsCost(),
             caption: heroSubheadline,
             accent: DesignSystem.Colors.whimsy,

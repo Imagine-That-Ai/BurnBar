@@ -19,6 +19,8 @@ enum OBBAccessibilityID {
     static let chatPanelMinimized = "chat.panel.minimized"
     static let chartsPage = "charts.page"
     static let chartsAIToggle = "charts.aiToggle"
+    static let calendarPage = "calendar.page"
+    static let calendarMonthGrid = "calendar.monthGrid"
     static let dashboardDeckChartButton = "dashboard.deckChartButton"
 
     static func settingsRow(_ section: String) -> String {

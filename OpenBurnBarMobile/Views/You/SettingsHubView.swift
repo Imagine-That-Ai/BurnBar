@@ -161,8 +161,8 @@ struct SettingsHubView: View {
                     .settingsAnchor(SettingsAnchor.theme)
 
                     Picker(selection: $appSkin) {
-                        Text("Aurora").tag(AppSkin.aurora)
-                        Text("Editorial").tag(AppSkin.editorial)
+                        Text("Moon Lit").tag(AppSkin.aurora)
+                        Text("Sun Lit").tag(AppSkin.editorial)
                     } label: {
                         SettingsLabel(icon: "doc.richtext", color: MobileTheme.ember, title: "App Skin")
                     }

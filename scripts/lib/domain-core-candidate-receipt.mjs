@@ -6,6 +6,10 @@ const FULL_GIT_SHA1_PATTERN = /^[0-9a-f]{40}$/;
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*)|(?:\d*[A-Za-z-][0-9A-Za-z-]*))(?:\.(?:(?:0|[1-9]\d*)|(?:\d*[A-Za-z-][0-9A-Za-z-]*)))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const STABLE_RELEASE_VERSION_PATTERN =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const RELEASE_TAG_PATTERN = /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const RELEASE_COORDINATE_KEYS = ["commit", "tag", "version"];
 const CANDIDATE_IDENTITY_KEYS = [
   "abiVersion",
   "candidateCommit",
@@ -20,6 +24,8 @@ export function parseDomainCoreBuildProfileResolverArgs(argv) {
     "--output",
     "--expected-candidate-commit",
     "--expected-release-commit",
+    "--expected-release-version",
+    "--expected-release-tag",
   ]);
   const args = new Map();
   for (let index = 0; index < argv.length; index += 2) {
@@ -79,6 +85,40 @@ export function validateDomainCoreCandidateIdentity(identity) {
     throw new Error("sourceSha256 must be a lowercase SHA-256 digest");
   }
   return structuredClone(identity);
+}
+export function validateDomainCoreReleaseCoordinates(release) {
+  if (!release || typeof release !== "object" || Array.isArray(release)) {
+    throw new Error("release coordinates must be an object");
+  }
+  const keys = Object.keys(release).sort();
+  if (
+    keys.length !== RELEASE_COORDINATE_KEYS.length ||
+    keys.some((key, index) => key !== RELEASE_COORDINATE_KEYS[index])
+  ) {
+    throw new Error(
+      "release coordinates must contain exactly commit, tag, and version",
+    );
+  }
+  if (
+    typeof release.commit !== "string" ||
+    !FULL_GIT_SHA1_PATTERN.test(release.commit)
+  ) {
+    throw new Error("release commit must be a full lowercase Git SHA-1");
+  }
+  if (
+    typeof release.version !== "string" ||
+    !STABLE_RELEASE_VERSION_PATTERN.test(release.version)
+  ) {
+    throw new Error("release version must be a stable semver string");
+  }
+  if (
+    typeof release.tag !== "string" ||
+    !RELEASE_TAG_PATTERN.test(release.tag) ||
+    release.tag !== `v${release.version}`
+  ) {
+    throw new Error("release tag must be v plus the release version");
+  }
+  return structuredClone(release);
 }
 
 export function loadDomainCoreArtifactIdentity(repoRoot) {

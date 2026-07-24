@@ -191,7 +191,7 @@ extension BurnBarHTTPGatewayServer {
                 httpStatus: response.statusCode,
                 streamed: false
             )
-            await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey)
+            await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey, startedAt: attemptStartedAt)
             routeLogAttempts.append(routeAttempt(
                 sequence: routeLogAttempts.nextSequence,
                 startedAt: attemptStartedAt,

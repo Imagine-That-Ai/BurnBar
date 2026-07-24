@@ -212,6 +212,63 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         }
     }
 
+    func testHermesPayloadKeyWrapCombinedOpsBuildValidateAndSpool() throws {
+        // Defends the Hermes payload-keywrap seal_combined/open_combined shadow
+        // evidence contract: the Apple spool must accept, validate, and
+        // persist comparisons for both combined AEAD operations exactly as
+        // HermesDomainCoreAdapter.sealCombined/openCombined emit them. Before
+        // the allowlist fix these operations were absent from
+        // DomainCoreShadowSampleV3.allowedOperations["hermes"]["payload-keywrap"],
+        // so the comparison initializer returned nil and the spool dropped the
+        // round-trip — the key-wrap AEAD path silently bypassed shadow
+        // evidence. This test reddens if either combined operation is removed
+        // from the allowlist or from the spool's isValidStored re-validation.
+        let operations = ["seal_combined", "open_combined"]
+        let candidate = try XCTUnwrap(signedCandidate())
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+
+        for operation in operations {
+            let sample = try XCTUnwrap(DomainCoreShadowSampleV3(
+                comparison: .init(
+                    domain: "hermes",
+                    slice: "payload-keywrap",
+                    operation: operation,
+                    coreVersion: "0.3.0",
+                    outcome: "match",
+                    mismatchCategory: nil,
+                    legacyMicros: 14,
+                    rustMicros: 12
+                ),
+                channel: "internal",
+                candidate: candidate,
+                loadedIdentity: loadedIdentity
+            ), "hermes payload-keywrap \(operation) must be accepted by the allowlist")
+            XCTAssertEqual(sample.schemaVersion, 3)
+            XCTAssertEqual(sample.domain, "hermes")
+            XCTAssertEqual(sample.slice, "payload-keywrap")
+            XCTAssertEqual(sample.operation, operation)
+            XCTAssertEqual(sample.consumer, "apple")
+            XCTAssertTrue(sample.isValidStored(
+                matchingChannel: "internal",
+                matchingCandidate: candidate,
+                now: Date()
+            ), "hermes payload-keywrap \(operation) must survive isValidStored re-validation")
+            try spool.append(sample)
+        }
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            matchingChannel: "internal",
+            matchingCandidate: candidate
+        ))
+        XCTAssertEqual(batch.samples.map(\.domain), ["hermes", "hermes"])
+        XCTAssertEqual(batch.samples.map(\.slice), ["payload-keywrap", "payload-keywrap"])
+        XCTAssertEqual(batch.samples.map(\.operation), operations)
+        XCTAssertEqual(batch.samples.map(\.consumer), ["apple", "apple"])
+        XCTAssertEqual(try spool.pendingSampleCount(), 0)
+    }
+
     func testPensieveVectorOperationsBuildAndSpoolValidatedV3Samples() throws {
         let operations = [
             "pensieve_l2_normalize",

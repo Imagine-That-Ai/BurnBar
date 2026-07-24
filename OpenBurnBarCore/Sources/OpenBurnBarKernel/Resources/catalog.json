@@ -613,6 +613,100 @@
       "formatFamily": "openai_compat",
       "models": [
         {
+          "id": "gpt-5.6-terra",
+          "displayName": "GPT-5.6 Terra",
+          "visibility": "public",
+          "aliases": [
+            "gpt-5.6-terra"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "gpt-5.6",
+                "terra"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 15,
+            "cacheReadPerMToken": 0.25
+          },
+          "capabilityClassID": "openai:gpt-5.6-terra",
+          "capabilityClassRank": 100
+        },
+        {
+          "id": "gpt-5.6-luna",
+          "displayName": "GPT-5.6 Luna",
+          "visibility": "public",
+          "aliases": [
+            "gpt-5.6-luna"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "gpt-5.6",
+                "luna"
+              ],
+              "any": [],
+              "none": []
+            },
+            {
+              "all": [
+                "gpt",
+                "5.6",
+                "luna"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 1,
+            "outputPerMToken": 6,
+            "cacheReadPerMToken": 0.1
+          },
+          "capabilityClassID": "openai:gpt-5.6-luna",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "gpt-5.6-sol",
+          "displayName": "GPT-5.6 Sol",
+          "visibility": "public",
+          "aliases": [
+            "gpt-5.6",
+            "gpt-5.6-sol"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "gpt-5.6",
+                "sol"
+              ],
+              "any": [],
+              "none": []
+            },
+            {
+              "all": [
+                "gpt",
+                "5.6",
+                "sol"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 5,
+            "outputPerMToken": 30,
+            "cacheReadPerMToken": 0.5
+          },
+          "capabilityClassID": "openai:gpt-5.6-sol",
+          "capabilityClassRank": 120
+        },
+        {
           "id": "gpt-5.5",
           "displayName": "GPT-5.5",
           "visibility": "public",
@@ -2003,6 +2097,73 @@
       "formatFamily": "openai_compat",
       "local": true,
       "models": [
+        {
+          "id": "codex-gpt-5.6-luna-family",
+          "displayName": "GPT-5.6 Luna",
+          "visibility": "public",
+          "aliases": [
+            "gpt-5.6-luna"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "gpt",
+                "5.6",
+                "luna"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "canonicalModelID": "gpt-5.6-luna",
+          "capabilityClassID": "openai:codex",
+          "capabilityClassRank": 90
+        },
+        {
+          "id": "codex-gpt-5.6-sol-family",
+          "displayName": "GPT-5.6 Sol",
+          "visibility": "public",
+          "aliases": [
+            "gpt-5.6-sol",
+            "gpt-5.6"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "gpt",
+                "5.6",
+                "sol"
+              ],
+              "any": [],
+              "none": []
+            },
+            {
+              "all": [
+                "gpt-5.6"
+              ],
+              "any": [
+                "sol"
+              ],
+              "none": [
+                "luna",
+                "terra"
+              ]
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "canonicalModelID": "gpt-5.6-sol",
+          "capabilityClassID": "openai:codex",
+          "capabilityClassRank": 130
+        },
         {
           "id": "codex-gpt-5.5-family",
           "displayName": "GPT-5.5",

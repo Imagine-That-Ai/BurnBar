@@ -3,6 +3,7 @@ import type { RuntimeCapabilityID } from './runtimeCapabilities.js';
 export type ShellRoute =
   | 'overview'
   | 'insights'
+  | 'calendar'
   | 'database'
   | 'providers'
   | 'projects'
@@ -32,6 +33,7 @@ export type RouteMeta = {
 export const ROUTES: RouteMeta[] = [
   { id: 'overview', label: 'Overview', group: 'dashboard', description: 'Local peer health and recent activity.', requiredCapability: 'usage.read' },
   { id: 'insights', label: 'Insights', group: 'dashboard', description: 'Usage and investigation surfaces backed by the daemon when available.', requiredCapability: 'usage.read' },
+  { id: 'calendar', label: 'Calendar', group: 'dashboard', description: 'Month-grid burn calendar with selection-driven usage analytics.', requiredCapability: 'usage.read' },
   { id: 'database', label: 'Database', group: 'dashboard', description: 'Encrypted local store status and migration health.', requiredCapability: 'database.read' },
   { id: 'providers', label: 'Providers & models', group: 'dashboard', description: 'Provider credentials, routing, and model catalog.', requiredCapability: 'providers.configure' },
   { id: 'projects', label: 'Projects', group: 'dashboard', description: 'Workspace projects and code memory scope.', requiredCapability: 'projects.read' },

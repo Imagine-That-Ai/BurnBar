@@ -343,7 +343,8 @@ public actor BurnBarHTTPGatewayServer {
                                     route: route,
                                     accountingRequestID: accountingRequestID,
                                     streamCommit: streamCommit,
-                                    fileDescriptor: fileDescriptor
+                                    fileDescriptor: fileDescriptor,
+                                    startedAt: attemptStartedAt
                                 )
                                 await recordQuotaSignalIfAvailable(
                                     headers: proxyStream.headers,
@@ -397,7 +398,8 @@ public actor BurnBarHTTPGatewayServer {
                         await recordUsageIfAvailable(
                             response.usage,
                             route: route,
-                            idempotencyKey: usageIdempotencyKey(accountingRequestID: accountingRequestID, route: route)
+                            idempotencyKey: usageIdempotencyKey(accountingRequestID: accountingRequestID, route: route),
+                            startedAt: attemptStartedAt
                         )
                         attempts.append(routeAttempt(
                             sequence: attempts.count + 1,
@@ -694,7 +696,8 @@ public actor BurnBarHTTPGatewayServer {
         route: BurnBarProviderRoute,
         accountingRequestID: String,
         streamCommit: LinuxGatewayStreamCommit,
-        fileDescriptor: Int32
+        fileDescriptor: Int32,
+        startedAt: Date? = nil
     ) async throws -> BurnBarProviderProxyUsage? {
         let headers = [
             "Content-Type": proxyStream.contentType,
@@ -713,7 +716,8 @@ public actor BurnBarHTTPGatewayServer {
         await recordUsageIfAvailable(
             usage,
             route: route,
-            idempotencyKey: usageIdempotencyKey(accountingRequestID: accountingRequestID, route: route)
+            idempotencyKey: usageIdempotencyKey(accountingRequestID: accountingRequestID, route: route),
+            startedAt: startedAt
         )
         return usage
     }
@@ -771,7 +775,8 @@ public actor BurnBarHTTPGatewayServer {
     private func recordUsageIfAvailable(
         _ usage: BurnBarProviderProxyUsage?,
         route: BurnBarProviderRoute,
-        idempotencyKey: String
+        idempotencyKey: String,
+        startedAt: Date? = nil
     ) async {
         guard let usage, let usageRecorder else { return }
         let event = BurnBarUsageEvent(
@@ -790,7 +795,8 @@ public actor BurnBarHTTPGatewayServer {
             ),
             recordedAt: Date(),
             projectName: "OpenBurnBar Gateway",
-            confidence: usage.confidence
+            confidence: usage.confidence,
+            startTime: startedAt
         )
         do {
             _ = try await usageRecorder.record(event, idempotencyKey: idempotencyKey)

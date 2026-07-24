@@ -3,14 +3,16 @@ import UniformTypeIdentifiers
 
 // MARK: - Charts Reorderable Grid
 //
-// Two-column flow of chart cards. Full-width cards (span 2) occupy a row;
-// half-width cards pair up. Reordering uses native drag & drop — drag any
-// card onto another and it takes that card's position (the same semantic as
-// the insights canvas move, without the pixel math).
+// N-column flow of chart cards (2 or 3 columns, from `ChartsAppearance`).
+// Cards occupy `span` columns; rows flush when full. Reordering uses native
+// drag & drop — drag any card onto another and it takes that card's
+// position. Cards enter with a staggered rise on first appearance (gated by
+// `accessibilityReduceMotion`).
 
 struct ChartsReorderableGrid: View {
     let layout: ChartsPageLayout
     let snapshot: ChartsSnapshot
+    let appearance: ChartsAppearance
     let onMove: (ChartKind, ChartKind) -> Void
     let onHide: (ChartKind) -> Void
     let onToggleSpan: (ChartKind) -> Void
@@ -18,19 +20,20 @@ struct ChartsReorderableGrid: View {
     @State private var dropTargetKind: ChartKind?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private var columns: Int { appearance.columns }
+
     var body: some View {
-        let rows = Self.rows(for: layout.visibleConfigs)
-        VStack(spacing: DesignSystem.Spacing.md) {
-            ForEach(rows, id: \.id) { row in
-                HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
-                    ForEach(row.configs) { config in
+        let rows = Self.rows(for: layout.visibleConfigs, columns: columns)
+        Grid(alignment: .top, horizontalSpacing: DesignSystem.Spacing.md, verticalSpacing: DesignSystem.Spacing.md) {
+            ForEach(Array(rows.enumerated()), id: \.element.id) { rowIndex, row in
+                GridRow {
+                    ForEach(Array(row.configs.enumerated()), id: \.element.id) { cardIndex, config in
                         card(config)
-                    }
-                    if row.configs.count == 1 && row.configs[0].span == 1 {
-                        // Odd half-width card — hold the column so widths stay stable.
-                        Color.clear
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 1)
+                            .gridCellColumns(min(config.span, columns))
+                            .staggeredAppearance(
+                                index: rowIndex * columns + cardIndex,
+                                reduceMotion: reduceMotion
+                            )
                     }
                 }
             }
@@ -44,6 +47,7 @@ struct ChartsReorderableGrid: View {
         ChartCardView(
             config: config,
             snapshot: snapshot,
+            appearance: appearance,
             onHide: { onHide(config.kind) },
             onToggleSpan: { onToggleSpan(config.kind) }
         )
@@ -84,28 +88,56 @@ struct ChartsReorderableGrid: View {
         let configs: [ChartCardConfig]
     }
 
-    /// Packs configs into rows: span-2 cards get their own row; span-1 cards
-    /// pair with the next span-1 card in order.
-    static func rows(for configs: [ChartCardConfig]) -> [Row] {
+    /// Packs configs into rows of `columns` slots: each card occupies
+    /// `min(span, columns)` slots; a row flushes when the next card would
+    /// overflow it. With the default 2 columns this reproduces the original
+    /// pairing behavior exactly.
+    static func rows(for configs: [ChartCardConfig], columns: Int = 2) -> [Row] {
+        let columns = max(1, columns)
         var rows: [Row] = []
-        var pending: ChartCardConfig?
+        var current: [ChartCardConfig] = []
+        var used = 0
         for config in configs {
-            if config.span >= 2 {
-                if let held = pending {
-                    rows.append(Row(id: held.id, configs: [held]))
-                    pending = nil
-                }
-                rows.append(Row(id: config.id, configs: [config]))
-            } else if let held = pending {
-                rows.append(Row(id: held.id + "+" + config.id, configs: [held, config]))
-                pending = nil
-            } else {
-                pending = config
+            let span = min(max(1, config.span), columns)
+            if used + span > columns, !current.isEmpty {
+                rows.append(Row(id: current.map(\.id).joined(separator: "+"), configs: current))
+                current = []
+                used = 0
             }
+            current.append(config)
+            used += span
         }
-        if let held = pending {
-            rows.append(Row(id: held.id, configs: [held]))
+        if !current.isEmpty {
+            rows.append(Row(id: current.map(\.id).joined(separator: "+"), configs: current))
         }
         return rows
+    }
+}
+
+// MARK: - Staggered entrance
+
+/// Rises a card into place with a small per-index delay on first appear.
+/// No-ops under Reduce Motion.
+private struct StaggeredAppearance: ViewModifier {
+    let index: Int
+    let reduceMotion: Bool
+    @State private var appeared = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(appeared || reduceMotion ? 1 : 0)
+            .offset(y: appeared || reduceMotion ? 0 : 14)
+            .onAppear {
+                guard !appeared, !reduceMotion else { return }
+                withAnimation(DesignSystem.Animation.gentle.delay(Double(index) * 0.045)) {
+                    appeared = true
+                }
+            }
+    }
+}
+
+extension View {
+    func staggeredAppearance(index: Int, reduceMotion: Bool) -> some View {
+        modifier(StaggeredAppearance(index: index, reduceMotion: reduceMotion))
     }
 }

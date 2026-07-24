@@ -127,12 +127,12 @@
   "schema" : "openburnbar-core-model-parity-v2",
   "skins" : [
     {
-      "displayName" : "Aurora",
+      "displayName" : "Moon Lit",
       "rawValue" : "aurora",
       "storageKey" : "appSkin"
     },
     {
-      "displayName" : "Editorial",
+      "displayName" : "Sun Lit",
       "rawValue" : "editorial",
       "storageKey" : "appSkin"
     }

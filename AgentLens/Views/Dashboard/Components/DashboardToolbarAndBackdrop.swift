@@ -78,6 +78,7 @@ struct DashboardBackdrop: View {
     let moodBand: MoodBand
     @Environment(SettingsManager.self) private var settingsManager
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage(LiquidGlassTransparency.storageKey) private var rawGlassTransparency: Double = 0
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
     @StateObject private var substrateBox = SwarmSubstrateBox()
@@ -94,7 +95,7 @@ struct DashboardBackdrop: View {
 
     private var dynamicBackdropEnabled: Bool {
         DashboardLiveBackdropVisibility.exposesContentBackdrop(
-            appearanceSkin: settingsManager.appearanceSkin,
+            appearanceSkin: settingsManager.appearanceSkin.resolved(for: colorScheme),
             useWebsiteBackground: settingsManager.useWebsiteBackground,
             useKernelBackdrop: useKernelBackdrop
         )
@@ -111,11 +112,7 @@ struct DashboardBackdrop: View {
                 LiquidGlassWindowBlend()
                     .ignoresSafeArea()
             }
-            if settingsManager.appearanceSkin == .editorial {
-                // Editorial / Paper skin: the light dot-crest (provider logos
-                // drifting from coloured dots on paper), like app.burnbar.ai.
-                WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
-            } else if dynamicBackdropEnabled {
+            if dynamicBackdropEnabled {
                 Group {
                     if useKernelBackdrop {
                         // Full-window WebGL2 kernel field (the bottom-most
@@ -134,6 +131,10 @@ struct DashboardBackdrop: View {
                             enabledProviderGlyphs: settingsManager.desktopWallpaperProviderGlyphs
                         )
                     } else {
+                        // Default live backdrop: the energetic swarm on dark
+                        // skins, the light dot-crest (provider logos drifting
+                        // from coloured dots on paper) on the paper skin —
+                        // WebsiteBackgroundView adapts itself per skin.
                         WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
                     }
                 }
@@ -212,6 +213,7 @@ struct DashboardBackdrop: View {
 struct WebsiteBackgroundView: View {
     let accent: Color
     @Environment(SettingsManager.self) private var settingsManager
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var substrateBox = SwarmSubstrateBox()
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
     @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
@@ -225,7 +227,7 @@ struct WebsiteBackgroundView: View {
 
     var body: some View {
         // cov:ignore-start -- decorative background composition is smoke-tested but not line-attributed by ViewInspector
-        if settingsManager.appearanceSkin == .editorial {
+        if settingsManager.appearanceSkin.resolved(for: colorScheme) == .editorial {
             // Light dot-crest: paper field with a transparent, slow, sparkle-free
             // swarm on top. Provider logos render in their real brand colours, so
             // they read crisply on paper (no glyph filter → the full roster).

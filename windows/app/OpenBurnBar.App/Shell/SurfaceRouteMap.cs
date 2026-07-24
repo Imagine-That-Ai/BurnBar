@@ -35,6 +35,7 @@ public static class SurfaceRouteMap
             ["budget"] = "BudgetPage",
             ["quota"] = "QuotaWorkspacePage",
             ["insights"] = "InsightsPage",
+            ["calendar"] = "CalendarPage",
             ["sessionLogs"] = "SessionLogsHostPage",
             ["dashboard"] = "DashboardPage",
             ["missionControl"] = "MissionControlPage",

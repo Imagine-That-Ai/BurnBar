@@ -362,6 +362,9 @@ extension BurnBarRunService {
         for (index, route) in candidateRoutes.enumerated() {
             run.route = route
             do {
+                // Captured before the provider call so the usage row carries the
+                // real start instant, not a restatement of its completion time.
+                let attemptStartedAt = Date()
                 let providerResult = try await providerExecutor.complete(
                     prompt: run.originalPrompt,
                     route: route
@@ -381,7 +384,8 @@ extension BurnBarRunService {
                         cacheCreationTokens: providerResult.cacheCreationTokens,
                         cacheReadTokens: providerResult.cacheReadTokens
                     ),
-                    recordedAt: Date()
+                    recordedAt: Date(),
+                    startTime: attemptStartedAt
                 )
                 try transition(&run, to: .completed, activeApprovalID: nil)
                 _ = try await usageRecorder.record(

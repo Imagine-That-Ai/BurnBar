@@ -10,11 +10,18 @@ export const DOMAIN_CORE_ARTIFACT_SELECTORS = [
   "--apple-app",
 ];
 
+export const DOMAIN_CORE_RELEASE_COORDINATE_FLAGS = [
+  "--expected-release-commit",
+  "--expected-release-version",
+  "--expected-release-tag",
+];
+
 export function parseDomainCoreArtifactVerifierArgs(argv) {
   const allowed = new Set([
     "--profile",
     "--expected-candidate-commit",
     ...DOMAIN_CORE_ARTIFACT_SELECTORS,
+    ...DOMAIN_CORE_RELEASE_COORDINATE_FLAGS,
   ]);
   const args = new Map();
   for (let index = 0; index < argv.length; index += 2) {
@@ -33,6 +40,14 @@ export function parseDomainCoreArtifactVerifierArgs(argv) {
   );
   if (selectors.length !== 1)
     throw new Error("exactly one artifact selector is required");
+  const releaseFlags = DOMAIN_CORE_RELEASE_COORDINATE_FLAGS.filter((flag) =>
+    args.has(flag),
+  );
+  if (releaseFlags.length !== 0 && releaseFlags.length !== 3) {
+    throw new Error(
+      "release coordinates must be all-or-none: --expected-release-commit, --expected-release-version, --expected-release-tag",
+    );
+  }
   return args;
 }
 

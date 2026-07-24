@@ -718,6 +718,93 @@ fun YouGlyph(size: Dp, isSelected: Boolean, photoUrl: String? = null, initials: 
     }
 }
 
+// ── Calendar (bound page + day-grid dots) ──────────────────────────────────
+
+private val calendarDayDotXs = listOf(0.32f, 0.50f, 0.68f)
+private val calendarDayDotYs = listOf(0.52f, 0.70f)
+private val calendarRingXs = listOf(0.34f, 0.66f)
+
+@Composable
+fun CalendarGlyph(size: Dp, isSelected: Boolean, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val pagePath = calendarPagePath(w, h)
+        val ink = if (isSelected) AuroraColors.teal else AuroraColors.hermesMercury.copy(alpha = 0.78f)
+
+        if (isSelected) {
+            drawCalendarGlyphSelected(w, h, pagePath)
+        } else {
+            drawCalendarGlyphIdle(w, h, pagePath, ink)
+        }
+        drawCalendarRings(w, h, ink, selected = isSelected)
+    }
+}
+
+private fun calendarPagePath(w: Float, h: Float): Path {
+    val pageRect = Rect(offset = Offset(w * 0.12f, h * 0.16f), size = Size(w * 0.76f, h * 0.74f))
+    return Path().apply {
+        addRoundRect(RoundRect(pageRect, cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.12f)))
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCalendarGlyphSelected(w: Float, h: Float, pagePath: Path) {
+    drawPath(
+        path = pagePath,
+        brush =
+        Brush.verticalGradient(
+            colors = listOf(AuroraColors.teal.copy(alpha = 0.85f), AuroraColors.whimsy.copy(alpha = 0.65f)),
+        ),
+    )
+    drawPath(path = pagePath, color = Color.White.copy(alpha = 0.35f), style = Stroke(width = max(1f, w * 0.03f)))
+    drawCalendarHeaderSeparator(w, h, Color.White.copy(alpha = 0.55f))
+    // Day dots — 3×2 grid, one highlighted "today" cell.
+    for ((row, fy) in calendarDayDotYs.withIndex()) {
+        for ((col, fx) in calendarDayDotXs.withIndex()) {
+            val isToday = row == 0 && col == 1
+            drawCircle(
+                color = if (isToday) Color.White else Color.White.copy(alpha = 0.75f),
+                radius = w * 0.045f * if (isToday) 1.35f else 1f,
+                center = Offset(w * fx, h * fy),
+            )
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCalendarGlyphIdle(w: Float, h: Float, pagePath: Path, ink: Color) {
+    drawPath(path = pagePath, color = AuroraColors.hermesMercury.copy(alpha = 0.45f))
+    drawPath(path = pagePath, color = ink, style = Stroke(width = max(1.2f, w * 0.045f), join = StrokeJoin.Round))
+    drawCalendarHeaderSeparator(w, h, ink)
+    for (fy in calendarDayDotYs) {
+        for (fx in calendarDayDotXs) {
+            drawCircle(color = ink, radius = w * 0.04f, center = Offset(w * fx, h * fy))
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCalendarHeaderSeparator(w: Float, h: Float, color: Color) {
+    drawLine(
+        color = color,
+        start = Offset(w * 0.18f, h * 0.36f),
+        end = Offset(w * 0.82f, h * 0.36f),
+        strokeWidth = max(1f, w * 0.03f),
+        cap = StrokeCap.Round,
+    )
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCalendarRings(w: Float, h: Float, ink: Color, selected: Boolean) {
+    val strokeWidth = if (selected) max(1.5f, w * 0.06f) else max(1.2f, w * 0.05f)
+    for (fx in calendarRingXs) {
+        drawLine(
+            color = ink,
+            start = Offset(w * fx, h * 0.06f),
+            end = Offset(w * fx, h * 0.22f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round,
+        )
+    }
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 private fun lerpColor(from: Color, to: Color, t: Float): Color {

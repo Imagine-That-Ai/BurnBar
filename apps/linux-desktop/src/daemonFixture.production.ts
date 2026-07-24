@@ -17,6 +17,7 @@ import type {
   ProviderCatalog,
   ProxyRouteLogEntry,
   SessionListResult,
+  UsageCalendarEvent,
   UsageInsights,
   UsageSummary
 } from './tauriBridge.js';
@@ -56,6 +57,7 @@ export function fixtureMercuryMediaStatus(_options?: { rich?: boolean }): Mercur
 export function routeFixture(_route: string, _label: string): DaemonRouteFixture { return unavailable(); }
 export function buildDaemonRouteTranscript(_routes: string[], _health: DaemonHealth): DaemonRouteOracle[] { return unavailable(); }
 export function fixtureUsageSummary(): UsageSummary { return unavailable(); }
+export function fixtureUsageCalendarEvents(): UsageCalendarEvent[] { return unavailable(); }
 export function fixtureProviderCatalog(): ProviderCatalog { return unavailable(); }
 export function fixtureMemoryReviewInbox(): MemoryReviewInbox { return unavailable(); }
 export function fixtureDatabaseWorkspaceStatus(): DatabaseWorkspaceStatus { return unavailable(); }

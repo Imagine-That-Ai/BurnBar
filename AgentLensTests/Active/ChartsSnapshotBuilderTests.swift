@@ -139,8 +139,11 @@ final class ChartsSnapshotBuilderTests: XCTestCase {
     }
 
     func test_build_todayRange_usesHourlyBuckets() {
-        let now = Date()
+        // Pin "now" to 8am: before 1am wall-clock the today window spans a
+        // single hour and the granularity assertion below can't hold. The
+        // sibling boundary test uses the same anchor.
         let calendar = Calendar.current
+        let now = calendar.date(bySettingHour: 8, minute: 0, second: 0, of: Date()) ?? Date()
         // Start of day is always in the past no matter when the test runs.
         let morning = calendar.startOfDay(for: now)
         let row = TokenUsage(
@@ -192,5 +195,46 @@ final class ChartsSnapshotBuilderTests: XCTestCase {
             rows: ChartsSnapshotFixtures.sampleRows(), recentRows: [], timeRange: .last7Days, usagesVersion: 0
         )
         XCTAssertNil(snapshot.forecast)
+        XCTAssertNil(snapshot.tokenForecast)
+    }
+
+    // MARK: Token twins (metric toggle)
+
+    func test_build_tokenSeries_sumsMatchTotalTokens() {
+        let snapshot = makeSnapshot()
+        let expectedTokens = Double(snapshot.totalTokens)
+        XCTAssertGreaterThan(expectedTokens, 0)
+        XCTAssertEqual(
+            snapshot.burnTokenSeries.reduce(0) { $0 + $1.value }, expectedTokens, accuracy: 1e-6
+        )
+        // Same bucketing shape as the cost series.
+        XCTAssertEqual(snapshot.burnTokenSeries.map(\.start), snapshot.burnSeries.map(\.start))
+    }
+
+    func test_build_tokenWeekPair_alignsWithCostPair() {
+        let snapshot = makeSnapshot()
+        XCTAssertEqual(snapshot.thisWeekTokenDaily.count, snapshot.thisWeekDaily.count)
+        XCTAssertEqual(snapshot.lastWeekTokenDaily.count, snapshot.lastWeekDaily.count)
+        // Buckets with spend must have tokens and vice versa (fixture rows all
+        // carry both), so the zero-pattern matches.
+        let costNonZero = snapshot.thisWeekDaily.map { $0 > 0 }
+        let tokenNonZero = snapshot.thisWeekTokenDaily.map { $0 > 0 }
+        XCTAssertEqual(costNonZero, tokenNonZero)
+    }
+
+    func test_build_tokenForecast_mirrorsCostForecast() throws {
+        let snapshot = makeSnapshot()
+        let costForecast = try XCTUnwrap(snapshot.forecast)
+        let tokenForecast = try XCTUnwrap(snapshot.tokenForecast)
+        XCTAssertEqual(tokenForecast.dailyCosts.count, costForecast.dailyCosts.count)
+        XCTAssertEqual(tokenForecast.projectedDaily.count, costForecast.projectedDaily.count)
+        XCTAssertGreaterThan(tokenForecast.projectedMonthEndSpend, 0)
+    }
+
+    func test_build_emptyRows_tokenTwinsAreSilent() {
+        let snapshot = makeSnapshot(rows: [])
+        XCTAssertFalse(snapshot.burnTokenSeries.contains { $0.value > 0 })
+        XCTAssertNil(snapshot.weekOverWeekTokenPercent)
+        XCTAssertNil(snapshot.tokenForecast)
     }
 }

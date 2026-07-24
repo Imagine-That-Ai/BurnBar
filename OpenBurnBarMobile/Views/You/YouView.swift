@@ -476,7 +476,7 @@ struct YouRowIcon: View {
 
 // MARK: - You Route
 
-enum YouRoute: Hashable, CaseIterable {
+enum YouRoute: String, Hashable, Codable, CaseIterable {
     case sync
     case settings
     case devices

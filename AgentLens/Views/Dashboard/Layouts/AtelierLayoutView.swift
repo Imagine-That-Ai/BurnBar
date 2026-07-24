@@ -7,7 +7,11 @@ import SwiftUI
 // kernel + provider-swarm backdrop (`DashboardBackdrop`, rendered behind the
 // whole window) is the canvas; this layer floats a provider rail, an editorial
 // headline, and three glass stat cards over it — no opaque plate, so the live
-// substrate shows through.
+// substrate shows through. The column always fills the window vertically: the
+// hero row absorbs the leftover viewport height (chips up top, headline /
+// curve / stat cards anchored low, provider rail full-height) and the
+// more-drawer pins to the bottom edge, so tall windows show substrate between
+// the chrome instead of a dead band under the stat cards.
 //
 // "Curated + complete": a collapsed `ConceptMoreDrawer` keeps the information-
 // dense lanes (narrative, provider / model / activity) one click away so no
@@ -27,7 +31,19 @@ extension DashboardView {
                             atelierHero
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .frame(minHeight: max(geo.size.height * 0.6, 360), alignment: .topLeading)
+                        // Absorbs the leftover viewport height, which anchors
+                        // the stat cards low and lands the more-drawer on the
+                        // bottom padding. This only stretches because of the
+                        // `minHeight: geo.size.height` below: a ScrollView
+                        // proposes an unspecified height, so a flexible child
+                        // has nothing to expand into on its own. Distributing
+                        // the remainder — rather than subtracting a
+                        // hand-counted chrome constant — is what keeps the
+                        // drawer on the padding whether or not the update
+                        // banner is showing. Once the drawer expands the
+                        // content outgrows the viewport and the ScrollView
+                        // takes over.
+                        .frame(minHeight: 360, maxHeight: .infinity, alignment: .topLeading)
                     } else {
                         atelierHero
                         atelierProviderRail
@@ -38,6 +54,7 @@ extension DashboardView {
                 .padding(DesignSystem.Spacing.xl)
                 .frame(maxWidth: DashboardLayoutMetrics.contentMaxWidth, alignment: .topLeading)
                 .frame(maxWidth: .infinity, alignment: .top)
+                .frame(minHeight: geo.size.height, alignment: .top)
             }
             .scrollContentBackground(.hidden)
         }
@@ -91,7 +108,7 @@ extension DashboardView {
 
             HStack(spacing: DesignSystem.Spacing.lg) {
                 ConceptStatTile(
-                    label: "Burn · Today",
+                    label: selectedTimeRange.burnTileLabel,
                     value: totalCostForTimeRange.formatAsCost(),
                     accent: DesignSystem.Colors.whimsy,
                     prominence: .hero

@@ -320,6 +320,7 @@ enum class AppDestination(val id: String, val label: String) {
     Pulse("pulse", "Pulse"),
     Burn("burn", "Burn"),
     Insights("insights", "Insights"),
+    Calendar("calendar", "Calendar"),
     Streams("streams", "Streams"),
     Agents("agents", "Agents"),
     You("you", "You"),

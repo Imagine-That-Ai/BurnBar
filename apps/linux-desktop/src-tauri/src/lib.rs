@@ -1286,6 +1286,20 @@ fn usage_insights() -> Result<serde_json::Value, String> {
     )
 }
 
+// ───────────────── Calendar: per-event usage window ─────────────────
+// Wire: daemon.usage.recent (BurnBarRPCMethod.usageRecent)
+// BurnBarRecentUsageRequest has ONLY `limit` — no date-range fields exist, so
+// the calendar lane fetches a large window and buckets client-side by local
+// day. A daemon.usage.range RPC is the documented protocol gap for full-month
+// history on high-volume accounts.
+#[tauri::command]
+fn usage_calendar() -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.usage.recent",
+        Some(serde_json::json!({"limit": 2000})),
+    )
+}
+
 // ───────────────── P06: mission list ─────────────────
 // Wire: daemon.mission.list (BurnBarRPCMethod.missionsList)
 #[tauri::command]
@@ -1343,7 +1357,10 @@ fn mission_create(
 // matches the Swift property name verbatim, no CodingKeys remap) and a
 // non-optional `actor: String`. Missing either → Swift Codable decode throws.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-enum MissionApprovalDecision { Approve, Deny }
+enum MissionApprovalDecision {
+    Approve,
+    Deny,
+}
 
 impl MissionApprovalDecision {
     fn parse(decision: &str) -> Result<Self, String> {
@@ -1355,7 +1372,10 @@ impl MissionApprovalDecision {
     }
 }
 
-fn mission_decision_wire(id: &str, decision: MissionApprovalDecision) -> (&'static str, serde_json::Value) {
+fn mission_decision_wire(
+    id: &str,
+    decision: MissionApprovalDecision,
+) -> (&'static str, serde_json::Value) {
     let method = match decision {
         MissionApprovalDecision::Approve => "daemon.mission.approve",
         MissionApprovalDecision::Deny => "daemon.mission.cancel",
@@ -1374,23 +1394,42 @@ fn mission_decision_wire(id: &str, decision: MissionApprovalDecision) -> (&'stat
 // `approval: BurnBarMissionApprovalSnapshot { approved, approvedAt, approvedBy,
 // note }`. The daemon's JSONEncoder uses default keys, so property names arrive
 // verbatim camelCase.
-fn mission_pending_approval<'a>(mission_list: &'a serde_json::Value, mission_id: &str) -> Option<&'a serde_json::Value> {
-    let pending_mission = mission_list.get("missions").and_then(|value| value.as_array())
-        .and_then(|missions| missions.iter().find(|mission| {
-            mission.get("id").and_then(|value| value.as_str()) == Some(mission_id)
-                && mission.get("status").and_then(|value| value.as_str()) == Some("awaiting_approval")
-                && mission.get("approval").and_then(|approval| approval.get("approved"))
-                    .and_then(|value| value.as_bool()) != Some(true)
-        }));
+fn mission_pending_approval<'a>(
+    mission_list: &'a serde_json::Value,
+    mission_id: &str,
+) -> Option<&'a serde_json::Value> {
+    let pending_mission = mission_list
+        .get("missions")
+        .and_then(|value| value.as_array())
+        .and_then(|missions| {
+            missions.iter().find(|mission| {
+                mission.get("id").and_then(|value| value.as_str()) == Some(mission_id)
+                    && mission.get("status").and_then(|value| value.as_str())
+                        == Some("awaiting_approval")
+                    && mission
+                        .get("approval")
+                        .and_then(|approval| approval.get("approved"))
+                        .and_then(|value| value.as_bool())
+                        != Some(true)
+            })
+        });
     // Fallback for flat approval feeds (shell fixtures / future daemon payloads):
     // top-level pendingApprovals/approvals/questions entries keyed by missionId.
     pending_mission.or_else(|| {
-        mission_list.get("pendingApprovals").or_else(|| mission_list.get("approvals"))
-            .or_else(|| mission_list.get("questions")).and_then(|value| value.as_array())
-            .and_then(|approvals| approvals.iter().find(|approval| {
-                approval.get("missionId").or_else(|| approval.get("mission_id"))
-                    .and_then(|value| value.as_str()) == Some(mission_id)
-            }))
+        mission_list
+            .get("pendingApprovals")
+            .or_else(|| mission_list.get("approvals"))
+            .or_else(|| mission_list.get("questions"))
+            .and_then(|value| value.as_array())
+            .and_then(|approvals| {
+                approvals.iter().find(|approval| {
+                    approval
+                        .get("missionId")
+                        .or_else(|| approval.get("mission_id"))
+                        .and_then(|value| value.as_str())
+                        == Some(mission_id)
+                })
+            })
     })
 }
 
@@ -1416,11 +1455,14 @@ fn mission_approval_is_high_risk(approval: &serde_json::Value) -> bool {
 #[tauri::command]
 fn mission_approval_decision(id: String, decision: String) -> Result<serde_json::Value, String> {
     let id = id.trim();
-    if id.is_empty() { return Err("Mission id is required for approval decisions.".to_string()); }
+    if id.is_empty() {
+        return Err("Mission id is required for approval decisions.".to_string());
+    }
     let decision = MissionApprovalDecision::parse(&decision)?;
     let mission_list = mission_list()?;
-    let approval = mission_pending_approval(&mission_list, id).ok_or_else(||
-        "Mission approval decision rejected: no matching pending approval.".to_string())?;
+    let approval = mission_pending_approval(&mission_list, id).ok_or_else(|| {
+        "Mission approval decision rejected: no matching pending approval.".to_string()
+    })?;
     if decision == MissionApprovalDecision::Approve && mission_approval_is_high_risk(approval) {
         return Err("High-risk mission approval requires trusted-device step-up and cannot be approved from the Linux shell.".to_string());
     }
@@ -2608,6 +2650,7 @@ pub fn run() {
             session_list,
             session_search,
             usage_insights,
+            usage_calendar,
             mission_list,
             mission_create,
             mission_approval_decision,
@@ -2806,6 +2849,7 @@ mod tests {
         assert!(!source.contains("Command::new(\"openburnbar-cli\")"));
     }
 
+
     #[test]
     fn computer_use_panic_shortcuts_parse() {
         assert!(tauri_plugin_global_shortcut::Builder::<tauri::Wry>::new()
@@ -2952,8 +2996,14 @@ mod tests {
 
     #[test]
     fn mission_decision_rejects_unknown_values() {
-        assert_eq!(MissionApprovalDecision::parse("approve"), Ok(MissionApprovalDecision::Approve));
-        assert_eq!(MissionApprovalDecision::parse("deny"), Ok(MissionApprovalDecision::Deny));
+        assert_eq!(
+            MissionApprovalDecision::parse("approve"),
+            Ok(MissionApprovalDecision::Approve)
+        );
+        assert_eq!(
+            MissionApprovalDecision::parse("deny"),
+            Ok(MissionApprovalDecision::Deny)
+        );
         assert!(MissionApprovalDecision::parse("not-deny-means-approve").is_err());
         assert!(MissionApprovalDecision::parse("APPROVE").is_err());
     }
@@ -3000,9 +3050,15 @@ mod tests {
 
     #[test]
     fn mission_high_risk_detection_matches_daemon_aliases() {
-        assert!(mission_approval_is_high_risk(&serde_json::json!({"risk": "high"})));
-        assert!(mission_approval_is_high_risk(&serde_json::json!({"severity": "HIGH_RISK"})));
-        assert!(!mission_approval_is_high_risk(&serde_json::json!({"risk": "standard"})));
+        assert!(mission_approval_is_high_risk(
+            &serde_json::json!({"risk": "high"})
+        ));
+        assert!(mission_approval_is_high_risk(
+            &serde_json::json!({"severity": "HIGH_RISK"})
+        ));
+        assert!(!mission_approval_is_high_risk(
+            &serde_json::json!({"risk": "standard"})
+        ));
         // Mission snapshots carry risk in metadata: the daemon's enterprise policy
         // key (BurnBarEnterprisePolicyMetadataKey.defaultPacketRiskLevel) or plain
         // risk/severity entries.

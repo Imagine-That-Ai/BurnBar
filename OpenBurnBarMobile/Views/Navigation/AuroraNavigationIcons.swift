@@ -22,21 +22,23 @@ import SwiftUI
 
 // MARK: - Destinations
 
-enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
+enum AuroraNavDestination: String, Hashable, Identifiable, Codable, CaseIterable {
     case pulse
     case burn
     case insights
+    case calendar
     case streams
     case hermes
     case you
 
-    var id: String { String(describing: self) }
+    var id: String { rawValue }
 
     var label: String {
         switch self {
         case .pulse:    return "Pulse"
         case .burn:     return "Burn"
         case .insights: return "Insights"
+        case .calendar: return "Calendar"
         case .streams:  return "Streams"
         // Plan 2: tab label flips to "Agents" but the enum case stays
         // `.hermes` so existing route strings, deep links, and persisted
@@ -51,6 +53,7 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
         case .pulse:    return "Pulse"
         case .burn:     return "Burn"
         case .insights: return "Insights"
+        case .calendar: return "Calendar"
         case .streams:  return "Streams"
         case .hermes:   return "Agents"
         case .you:      return "Store"
@@ -62,6 +65,7 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
         case .pulse:    return MobileTheme.ember
         case .burn:     return MobileTheme.amber
         case .insights: return MobileTheme.whimsy
+        case .calendar: return MobileTheme.ember
         case .streams:  return MobileTheme.whimsy
         case .hermes:   return MobileTheme.hermesAureate
         case .you:      return MobileTheme.blaze
@@ -87,6 +91,12 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
                 colors: [MobileTheme.whimsy, MobileTheme.ember],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
+            )
+        case .calendar:
+            return LinearGradient(
+                colors: [MobileTheme.ember, MobileTheme.amber],
+                startPoint: .top,
+                endPoint: .bottom
             )
         case .streams:
             return LinearGradient(
@@ -174,6 +184,9 @@ struct AuroraNavIcon: View {
         case .insights:
             Circle()
                 .fill(destination.accent.opacity(0.45))
+        case .calendar:
+            RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
+                .fill(destination.accent.opacity(0.45))
         case .streams:
             StreamsGlyphShape()
                 .fill(destination.accent.opacity(0.45))
@@ -194,6 +207,7 @@ struct AuroraNavIcon: View {
         case .pulse:    pulseIcon
         case .burn:     burnIcon
         case .insights: insightsIcon
+        case .calendar: calendarIcon
         case .streams:  streamsIcon
         case .hermes:   hermesIcon
         case .you:      youIcon
@@ -210,6 +224,29 @@ struct AuroraNavIcon: View {
                     endPoint: .bottom
                 )
             )
+    }
+
+    // MARK: 2b. Calendar — month grid glyph with an ember "today" dot
+
+    private var calendarIcon: some View {
+        ZStack(alignment: .topTrailing) {
+            Image(systemName: "calendar")
+                .font(.system(size: size * 0.55, weight: .semibold))
+                .foregroundStyle(
+                    isSelected ? destination.gradient : LinearGradient(
+                        colors: [Color.secondary, Color.secondary.opacity(0.7)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+            if isSelected {
+                Circle()
+                    .fill(MobileTheme.amber)
+                    .frame(width: size * 0.16, height: size * 0.16)
+                    .offset(x: size * 0.04, y: -size * 0.04)
+                    .transition(.scale(scale: 0.3).combined(with: .opacity))
+            }
+        }
     }
 
     // MARK: 1. Pulse — heartbeat curve with a premium brand-gradient fill

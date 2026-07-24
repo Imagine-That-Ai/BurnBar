@@ -62,6 +62,34 @@ export type UsageInsights = {
   cacheHitRatePct: number;
 };
 
+// ─────────────────── Calendar: per-event usage for day bucketing ───────────
+//
+// Wire payload of daemon.usage.recent (BurnBarUsageEvent). The daemon has no
+// date-range usage RPC, so the calendar lane fetches a large recent window and
+// buckets client-side into local-tz days (see surfaces/calendar/calendarMath).
+
+export type UsageCalendarEvent = {
+  id: string;
+  providerId: string;
+  modelId: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  reasoningTokens: number;
+  costUsd: number;
+  /** Stamped when the completed call is logged — effectively an end time. */
+  recordedAt: string;
+  /**
+   * When the call began, when the daemon knows it. Absent on rows written
+   * before `BurnBarUsageEvent.startTime` existed, and on paths with no honest
+   * start instant — read it as `startTime ?? recordedAt`.
+   */
+  startTime?: string;
+  sessionId?: string;
+  projectName?: string;
+};
+
 // ─────────────────────────── P06: missions ────────────────────────────────
 
 export type PendingApproval = {
@@ -575,6 +603,7 @@ export interface LinuxShellBridge {
   sessionList(): Promise<SessionListResult>;
   sessionSearch(query: string): Promise<SessionListResult>;
   usageInsights(): Promise<UsageInsights>;
+  usageCalendar(): Promise<UsageCalendarEvent[]>;
   missionList(): Promise<MissionListResult>;
   missionApprovalDecision(id: string, decision: ApprovalDecision): Promise<void>;
   missionCreate(input: MissionCreateInput): Promise<MissionListResult['missions'][number] | null>;
@@ -912,6 +941,31 @@ function mapUsageInsights(raw: RawJsonValue): UsageInsights {
   const providerMix = buildMix(events, (e) => str(pick(e, 'providerId', 'provider'), 'unknown'));
   const modelMix = buildMix(events, (e) => str(pick(e, 'modelId', 'model'), 'unknown'));
   return { weekly, providerMix, modelMix, cacheHitRatePct: computeCacheHitRatePct(events) };
+}
+
+// BurnBarUsageEvent rows from daemon.usage.recent, kept per-event so the
+// calendar lane can bucket by local day / hour and slice provider / model /
+// project / cache / reasoning dimensions without a daemon-side aggregation.
+function mapUsageCalendar(raw: RawJsonValue): UsageCalendarEvent[] {
+  const events = arr(pick(raw, 'usage', 'events', 'recent'));
+  return events.map((e, i): UsageCalendarEvent => ({
+    id: str(pick(e, 'id', 'eventId', 'idempotencyKey'), `usage-${i}`),
+    providerId: str(pick(e, 'providerID', 'providerId', 'provider', 'provider_id'), 'unknown'),
+    modelId: str(pick(e, 'modelID', 'modelId', 'model', 'model_id'), 'unknown'),
+    inputTokens: num(pick(e, 'inputTokens', 'input_tokens')),
+    outputTokens: num(pick(e, 'outputTokens', 'output_tokens')),
+    cacheCreationTokens: num(pick(e, 'cacheCreationTokens', 'cache_creation_tokens')),
+    cacheReadTokens: num(pick(e, 'cacheReadTokens', 'cache_read_tokens')),
+    reasoningTokens: num(pick(e, 'reasoningTokens', 'reasoning_tokens')),
+    costUsd: num(pick(e, 'cost', 'costUsd', 'estimatedCostUsd')),
+    recordedAt: str(
+      pick(e, 'recordedAt', 'recorded_at', 'at', 'timestamp', 'createdAt'),
+      new Date().toISOString()
+    ),
+    startTime: str(pick(e, 'startTime', 'start_time', 'startedAt', 'started_at')) || undefined,
+    sessionId: str(pick(e, 'sessionID', 'sessionId', 'session_id')) || undefined,
+    projectName: str(pick(e, 'projectName', 'project_name', 'project')) || undefined
+  }));
 }
 
 // Mirrors macOS CacheEfficiency.hitRate (UnifiedCacheHitRateBadge.swift):
@@ -1911,6 +1965,11 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     usageInsights: async () => {
       const raw = await invoke<RawJsonValue>('usage_insights');
       return mapUsageInsights(raw);
+    },
+    // Calendar — daemon.usage.recent → per-event rows for client-side day bucketing
+    usageCalendar: async () => {
+      const raw = await invoke<RawJsonValue>('usage_calendar');
+      return mapUsageCalendar(raw);
     },
     // P06 — daemon.mission.list + pending approvals
     missionList: async () => {

@@ -270,7 +270,7 @@ export function validateCandidateBundle(bundle) {
   };
 }
 
-export function validateRollbackArtifact(value, candidate) {
+export function validateRollbackArtifact(value, candidate, expectedRelease) {
   const identity = validateDomainCoreCandidateIdentity(
     value?.candidateIdentity ?? value?.candidate,
   );
@@ -290,6 +290,48 @@ export function validateRollbackArtifact(value, candidate) {
     throw new Error(
       "rollback artifact must restore every declared domain to legacy",
     );
+  }
+  if (expectedRelease !== undefined) {
+    const release = value?.release;
+    if (
+      !release ||
+      typeof release !== "object" ||
+      Array.isArray(release)
+    ) {
+      throw new Error("rollback artifact release coordinates are missing");
+    }
+    const releaseKeys = Object.keys(release).sort();
+    const expectedReleaseKeys = ["commit", "tag", "version"];
+    if (
+      releaseKeys.length !== expectedReleaseKeys.length ||
+      releaseKeys.some((key, index) => key !== expectedReleaseKeys[index])
+    ) {
+      throw new Error("rollback artifact release coordinates are missing");
+    }
+    if (
+      typeof release.commit !== "string" ||
+      !FULL_SHA.test(release.commit) ||
+      release.commit !== expectedRelease.commit
+    ) {
+      throw new Error(
+        "rollback artifact release commit does not match the expected release P",
+      );
+    }
+    if (release.version !== expectedRelease.version) {
+      throw new Error(
+        "rollback artifact release version does not match the expected release version",
+      );
+    }
+    if (release.tag !== expectedRelease.tag) {
+      throw new Error(
+        "rollback artifact release tag does not match the expected release tag",
+      );
+    }
+    if (release.commit === identity.candidateCommit) {
+      throw new Error(
+        "rollback artifact release commit must be distinct from the candidate commit",
+      );
+    }
   }
   return identity;
 }
@@ -478,21 +520,22 @@ export function verifyProtectedPromotionAttestation({
       result.stdout ||
       "verification failed"
     ).trim();
-    throw new Error(
-      `protected promotion attestation verification failed: ${detail}`,
-    );
-  }
-  let verified;
-  try {
-    verified = JSON.parse(result.stdout);
-  } catch (error) {
-    throw new Error(
-      `protected promotion verifier returned invalid JSON: ${error.message}`,
-    );
-  }
-  if (!Array.isArray(verified) || verified.length === 0) {
-    throw new Error(
-      "protected promotion verifier returned no verification result",
+export function verifyDomainCoreReleaseGate({
+  candidateBundlePath,
+  promotionAttestationPath,
+  rollbackArtifactPath,
+  expectedCandidate,
+  expectedSourceRunId,
+  expectedSourceRunAttempt,
+  protectedSignerRunId,
+  protectedSignerRunAttempt,
+  expectedRollbackSha256,
+  expectedReleaseCommit,
+  expectedReleaseVersion,
+  expectedReleaseTag,
+  promotionVerifier = verifyProtectedPromotionAttestation,
+  activationVerifier = validateDomainCoreActivation,
+}) {
     );
   }
   const expectedSubject = {

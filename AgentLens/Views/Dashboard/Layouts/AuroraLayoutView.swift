@@ -73,7 +73,7 @@ extension DashboardView {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: DesignSystem.Spacing.lg) {
                 ConceptStatTile(
-                    label: "Burn · Today",
+                    label: selectedTimeRange.burnTileLabel,
                     value: totalCostForTimeRange.formatAsCost(),
                     caption: heroSubheadline,
                     accent: DesignSystem.Colors.whimsy,
@@ -88,7 +88,7 @@ extension DashboardView {
             VStack(spacing: DesignSystem.Spacing.lg) {
                 HStack(spacing: DesignSystem.Spacing.lg) {
                     ConceptStatTile(
-                        label: "Burn · Today",
+                        label: selectedTimeRange.burnTileLabel,
                         value: totalCostForTimeRange.formatAsCost(),
                         accent: DesignSystem.Colors.whimsy,
                         prominence: .hero

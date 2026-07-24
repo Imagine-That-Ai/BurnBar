@@ -624,8 +624,9 @@ public enum TokenExtractionUtility {
     /// which already contains the `cacheRead` (cached input) portion. The parser is
     /// responsible for subtracting cacheRead before storing on `TokenUsage`.
     public static func codexCumulativeTotalsFromTokenCountInfo(_ info: [String: Any]) -> (input: Int, output: Int, cacheRead: Int)? {
-        // VAL-TOKEN-010: Current Codex rollout logs use `total_token_usage` for cumulative
-        // counts. Check this first so authoritative totals win over ambiguous delta events.
+        // Current Codex rollout logs use `total_token_usage` for account/window
+        // cumulative counts. CodexSessionLogScanner uses this only as a
+        // fallback when the same event does not expose per-turn deltas.
         if let totalUsage = info["total_token_usage"] as? [String: Any],
            let input = totalUsage["input_tokens"] as? Int,
            let output = totalUsage["output_tokens"] as? Int {

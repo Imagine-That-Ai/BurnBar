@@ -36,9 +36,8 @@
             <StackPanel Orientation="Vertical" Spacing="2" Margin="0,2,0,2">
                 <TextBlock Text="{x:Bind Label}"
                            Visibility="{x:Bind HasLabel, Converter={StaticResource BoolToVisibility}}"
-                           FontSize="11"
-                           FontWeight="SemiBold"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Style="{StaticResource AuroraMonoTinyTextStyle}"
+                           FontWeight="SemiBold" />
                 <local:StreamingBubble Runs="{x:Bind Runs}" />
             </StackPanel>
         </DataTemplate>
@@ -52,40 +51,50 @@
                                         Prose="{StaticResource ProseRowTemplate}"
                                         Tool="{StaticResource ToolRowTemplate}" />
 
-        <!-- User bubble: right-aligned brass-tinted card. -->
+        <!-- User bubble: right-aligned ember→amber gradient plate (macOS primaryGradient)
+             with the violet chatUserStroke hairline and near-white text. -->
         <DataTemplate x:Key="UserMessageTemplate" x:DataType="local:ChatMessageViewModel">
             <Grid Margin="0,6,0,6" HorizontalAlignment="Right" MaxWidth="560">
                 <Border Padding="14,10"
                         CornerRadius="14,14,4,14"
-                        Background="{StaticResource PensieveColorBrassDeepBrush}">
+                        BorderThickness="1"
+                        BorderBrush="{StaticResource PensieveColorMacosChatUserStrokeBrush}">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="{StaticResource PensieveColorMacosEmber}" Offset="0" />
+                            <GradientStop Color="{StaticResource PensieveColorMacosAmber}" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
                     <StackPanel Spacing="6">
                         <TextBlock Text="{x:Bind UserText}"
                                    TextWrapping="Wrap"
-                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                   Style="{StaticResource AuroraBodyTextStyle}"
+                                   Foreground="White" />
                         <TextBlock Text="{x:Bind AttachmentSummary}"
                                    Visibility="{x:Bind HasAttachments, Converter={StaticResource BoolToVisibility}}"
                                    TextWrapping="Wrap"
-                                   FontSize="11"
-                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                   Style="{StaticResource AuroraTinyTextStyle}"
+                                   Foreground="#D9FFFFFF" />
                     </StackPanel>
                 </Border>
             </Grid>
         </DataTemplate>
 
-        <!-- Assistant bubble: thinking droplets + fanned-out rows. -->
+        <!-- Assistant bubble: glass plate (elevated tint + frost hairline) holding
+             the thinking droplets + fanned-out rows. -->
         <DataTemplate x:Key="AssistantMessageTemplate" x:DataType="local:ChatMessageViewModel">
             <Grid Margin="0,6,0,6" HorizontalAlignment="Left" MaxWidth="620">
                 <Border Padding="14,10"
                         CornerRadius="14,14,14,4"
-                        Background="{StaticResource PensieveColorGlassBgBrush}"
+                        Background="{ThemeResource AuroraGlassTintElevatedBrush}"
                         BorderThickness="1"
-                        BorderBrush="{StaticResource PensieveColorGlassLineBrush}">
+                        BorderBrush="{ThemeResource AuroraGlassStrokeFrostBrush}">
                     <StackPanel Orientation="Vertical" Spacing="4">
                         <TextBlock Text="{x:Bind CliUsed}"
                                    Visibility="{x:Bind HasBadge, Converter={StaticResource BoolToVisibility}}"
-                                   FontSize="10"
+                                   Style="{StaticResource AuroraMonoTinyTextStyle}"
                                    FontWeight="SemiBold"
-                                   Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
+                                   Foreground="{ThemeResource AuroraAmberBrush}" />
                         <local:HermesThinkingView
                             Visibility="{x:Bind ShowThinking, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
                         <ItemsRepeater ItemsSource="{x:Bind Rows}"
@@ -110,9 +119,10 @@
         <!-- Header -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
             <FontIcon Glyph="&#xE8BD;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                      FontSize="18" Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
-            <TextBlock Text="Chat" FontSize="22" FontWeight="SemiBold"
-                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                      FontSize="18" Foreground="{ThemeResource AuroraAccentBrush}" />
+            <TextBlock Text="Chat" FontFamily="{StaticResource AuroraDisplayFont}"
+                       FontSize="22" FontWeight="SemiBold"
+                       Foreground="{ThemeResource AuroraTextBrush}" />
         </StackPanel>
 
         <!-- Messages (the atom-router) -->
@@ -124,17 +134,16 @@
                         AutomationProperties.AutomationId="chat.emptyState"
                         Visibility="{x:Bind ViewModel.ShowEmptyState, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <FontIcon Glyph="&#xE8BD;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                          FontSize="32" Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
+                          FontSize="32" Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 <TextBlock Text="Chat is ready for a configured backend"
-                           FontSize="16"
-                           FontWeight="SemiBold"
-                           HorizontalAlignment="Center"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           Style="{StaticResource AuroraHeadlineTextStyle}"
+                           HorizontalAlignment="Center" />
                 <TextBlock Text="Connect the Hermes/CLI bridge in Settings → Data Sources, or enable OPENBURNBAR_SAMPLE_MODE=1 for a labeled scripted demo."
                            TextWrapping="Wrap"
                            MaxWidth="520"
                            TextAlignment="Center"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Style="{StaticResource AuroraBodyTextStyle}"
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
             </StackPanel>
 
             <StackPanel HorizontalAlignment="Center"
@@ -144,28 +153,29 @@
                         MaxWidth="620"
                         Visibility="{x:Bind ViewModel.HasHistoryDegradedState, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <FontIcon Glyph="&#xE783;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                          FontSize="32" Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
+                          FontSize="32" Foreground="{ThemeResource AuroraWarningBrush}" />
                 <TextBlock Text="{x:Bind ViewModel.HistoryStateTitle, Mode=OneWay}"
-                           FontSize="16"
-                           FontWeight="SemiBold"
+                           Style="{StaticResource AuroraHeadlineTextStyle}"
                            HorizontalAlignment="Center"
-                           AutomationProperties.AutomationId="chat.history.degraded"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           AutomationProperties.AutomationId="chat.history.degraded" />
                 <TextBlock Text="{x:Bind ViewModel.HistoryStateMessage, Mode=OneWay}"
                            TextWrapping="Wrap"
                            TextAlignment="Center"
                            AutomationProperties.AutomationId="chat.history.message"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Style="{StaticResource AuroraBodyTextStyle}"
+                           Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                 <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
                     <Button Content="Retry"
                             Command="{x:Bind ViewModel.RetryHistoryCommand}"
                             AutomationProperties.AutomationId="chat.history.retry"
                             AutomationProperties.Name="Retry chat history"
+                            Style="{StaticResource AuroraGlassButtonProminentStyle}"
                             Visibility="{x:Bind ViewModel.CanRetryHistory, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
                     <Button Content="Restart recovery"
                             Command="{x:Bind ViewModel.RestartRecoveryCommand}"
                             AutomationProperties.AutomationId="chat.history.restartRecovery"
                             AutomationProperties.Name="Restart chat history recovery"
+                            Style="{StaticResource AuroraGlassButtonRegularStyle}"
                             Visibility="{x:Bind ViewModel.CanRestartHistory, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
                 </StackPanel>
             </StackPanel>
@@ -185,27 +195,24 @@
         <!-- Composer -->
         <StackPanel Grid.Row="2" Spacing="8">
             <Border Padding="10,8"
-                    CornerRadius="8"
-                    BorderThickness="1"
-                    BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
-                    Background="{StaticResource PensieveColorGlassBgBrush}"
+                    Style="{StaticResource AuroraGlassCardStyle}"
                     Visibility="{x:Bind ViewModel.ShowExecutableControls, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="{x:Bind ViewModel.ExecutableSetupTitle, Mode=OneWay}"
                                FontWeight="SemiBold"
                                TextWrapping="Wrap"
                                AutomationProperties.AutomationId="chat.executable.setup"
-                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                               Style="{StaticResource AuroraBodyTextStyle}" />
                     <TextBlock Text="{x:Bind ViewModel.ExecutableSetupMessage, Mode=OneWay}"
                                TextWrapping="Wrap"
                                AutomationProperties.AutomationId="chat.executable.setupMessage"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Style="{StaticResource AuroraBodyTextStyle}"
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     <TextBlock Text="{x:Bind ViewModel.ApprovedExecutableSummary, Mode=OneWay}"
                                Visibility="{x:Bind ViewModel.HasApprovedExecutable, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
                                TextWrapping="Wrap"
-                               FontSize="11"
                                AutomationProperties.AutomationId="chat.executable.summary"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Style="{StaticResource AuroraTinyTextStyle}" />
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -217,48 +224,46 @@
                                  Grid.Column="0"
                                  AutomationProperties.AutomationId="chat.executable.path"
                                  AutomationProperties.Name="Chat executable path"
+                                 Style="{StaticResource AuroraGlassInputStyle}"
                                  PlaceholderText="C:\Program Files\Claude\claude.exe" />
                         <Button Grid.Column="1"
                                 Content="Approve"
                                 AutomationProperties.AutomationId="chat.executable.approve"
                                 AutomationProperties.Name="Approve chat executable"
+                                Style="{StaticResource AuroraGlassButtonProminentStyle}"
                                 Click="OnApproveChatExecutable" />
                         <Button Grid.Column="2"
                                 Content="Rotate"
                                 AutomationProperties.AutomationId="chat.executable.rotate"
                                 AutomationProperties.Name="Rotate chat executable"
                                 Click="OnRotateChatExecutable"
+                                Style="{StaticResource AuroraGlassButtonRegularStyle}"
                                 Visibility="{x:Bind ViewModel.HasApprovedExecutable, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
                         <Button Grid.Column="3"
                                 Content="Remove"
                                 AutomationProperties.AutomationId="chat.executable.remove"
                                 AutomationProperties.Name="Remove chat executable"
                                 Command="{x:Bind ViewModel.RemoveApprovedExecutableCommand}"
+                                Style="{StaticResource AuroraGlassButtonRegularStyle}"
                                 Visibility="{x:Bind ViewModel.HasApprovedExecutable, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
                     </Grid>
                 </StackPanel>
             </Border>
             <Border Padding="10,8"
-                    CornerRadius="8"
-                    BorderThickness="1"
-                    BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
-                    Background="{StaticResource PensieveColorGlassBgBrush}"
+                    Style="{StaticResource AuroraGlassAlertErrorStyle}"
                     AutomationProperties.AutomationId="chat.failure"
                     Visibility="{x:Bind ViewModel.HasFailure, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <TextBlock Text="{x:Bind ViewModel.FailureText, Mode=OneWay}"
                            TextWrapping="Wrap"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           Style="{StaticResource AuroraBodyTextStyle}" />
             </Border>
             <Border Padding="10,8"
-                    CornerRadius="8"
-                    BorderThickness="1"
-                    BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
-                    Background="{StaticResource PensieveColorGlassBgBrush}"
+                    Style="{StaticResource AuroraGlassAlertWarningStyle}"
                     AutomationProperties.AutomationId="chat.persistence.warning"
                     Visibility="{x:Bind ViewModel.HasPersistenceWarning, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <TextBlock Text="{x:Bind ViewModel.PersistenceWarning, Mode=OneWay}"
                            TextWrapping="Wrap"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           Style="{StaticResource AuroraBodyTextStyle}" />
             </Border>
 
             <Grid ColumnSpacing="8">
@@ -276,15 +281,15 @@
                            Text="{x:Bind ViewModel.PendingAttachmentSummary, Mode=OneWay}"
                            Visibility="{x:Bind ViewModel.HasPendingAttachments, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
                            TextWrapping="Wrap"
-                           FontSize="11"
                            AutomationProperties.AutomationId="chat.attachments.pending"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Style="{StaticResource AuroraTinyTextStyle}" />
 
                 <TextBox x:Name="InputBox" Grid.Row="1" Grid.Column="0"
                          PlaceholderText="Message OpenBurnBar…"
                          AutomationProperties.AutomationId="chat.input"
                          AutomationProperties.Name="Message OpenBurnBar"
                          Text="{x:Bind ViewModel.InputText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource AuroraGlassInputStyle}"
                          AcceptsReturn="False"
                          AllowDrop="True"
                          DragOver="OnInputDragOver"
@@ -296,6 +301,7 @@
                         Command="{x:Bind ViewModel.RegenerateCommand}"
                         AutomationProperties.AutomationId="chat.regenerate"
                         AutomationProperties.Name="Regenerate last response"
+                        Style="{StaticResource AuroraGlassButtonRegularStyle}"
                         ToolTipService.ToolTip="Regenerate last response">
                     <FontIcon Glyph="&#xE72C;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" />
                 </Button>
@@ -305,7 +311,7 @@
                         AutomationProperties.AutomationId="chat.send"
                         AutomationProperties.Name="Send message"
                         Visibility="{x:Bind ViewModel.IsStreaming, Converter={StaticResource NegatedBoolToVisibility}, Mode=OneWay}"
-                        Style="{StaticResource AccentButtonStyle}">
+                        Style="{StaticResource AuroraGlassButtonProminentStyle}">
                     <FontIcon Glyph="&#xE724;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" />
                 </Button>
 
@@ -314,6 +320,7 @@
                         AutomationProperties.AutomationId="chat.stop"
                         AutomationProperties.Name="Stop generating"
                         Visibility="{x:Bind ViewModel.IsStreaming, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
+                        Style="{StaticResource AuroraGlassButtonRegularStyle}"
                         ToolTipService.ToolTip="Stop generating">
                     <FontIcon Glyph="&#xE71A;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" />
                 </Button>

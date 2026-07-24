@@ -190,6 +190,39 @@
             android:label="Wallpaper Settings"
             android:theme="@style/Theme.BurnBar" />
 
+        <!-- Living Themes — the 42-theme animated shader catalog as a live wallpaper.
+             Renders committed offline GLES3 kernels from assets/living-themes/kernels. -->
+        <service
+            android:name=".wallpaper.livingthemes.LivingThemeWallpaperService"
+            android:exported="true"
+            android:label="@string/living_themes_wallpaper_label"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/living_themes_wallpaper" />
+        </service>
+
+        <!-- Theme picker, reachable from Settings and as the wallpaper chooser's
+             settingsActivity. The deep-link filter is HOST-SCOPED: MainActivity
+             claims a host-less burnbar:// filter, so only an explicit host match
+             wins these URLs. Hosts mirror LivingThemeIntent.supportedHosts. -->
+        <activity
+            android:name=".wallpaper.livingthemes.LivingThemesActivity"
+            android:exported="true"
+            android:label="@string/living_themes_wallpaper_label"
+            android:theme="@style/Theme.BurnBar">
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="burnbar" android:host="living-theme" />
+                <data android:scheme="burnbar" android:host="live-wallpaper" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".menubar.QuickGlanceActivity"
             android:exported="true"

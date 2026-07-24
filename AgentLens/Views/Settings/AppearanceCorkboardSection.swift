@@ -95,14 +95,14 @@ struct AppearanceCorkboardSection: View {
                         Text("App Skin")
                             .font(DesignSystem.Typography.body)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        Text("Aurora is the signature ember look. Editorial is the light, paper-bright app.burnbar.ai console skin — one coral accent, ink text, hairlines. Applies fully after Apply & Restart (below).")
+                        Text("Moon Lit is the signature ember look. Sun Lit is the light, paper-bright app.burnbar.ai console skin — one coral accent, ink text, hairlines. Sun Lit is light-only: under a dark appearance the app renders Moon Lit until light returns. Applies fully after Apply & Restart (below).")
                             .font(DesignSystem.Typography.tiny)
                             .foregroundStyle(DesignSystem.Colors.textMuted)
                     }
                     Spacer()
                     Picker("", selection: $settingsManager.appearanceSkin) {
-                        Text("Aurora").tag(AppSkin.aurora)
-                        Text("Editorial").tag(AppSkin.editorial)
+                        Text("Moon Lit").tag(AppSkin.aurora)
+                        Text("Sun Lit").tag(AppSkin.editorial)
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 220)

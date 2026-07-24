@@ -247,7 +247,11 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
         variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyResponse {
         let request = try Self.chatCompletionPrompt(from: body)
-        let output = try await execute(prompt: request.prompt, route: route)
+        let output = try await execute(
+            prompt: request.prompt,
+            route: route,
+            effort: variant?.thinkingLevel.openAIEffort
+        )
         let responseBody = try Self.chatCompletionResponseBody(
             modelID: route.resolvedModelID,
             output: output,
@@ -267,7 +271,11 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
         variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyResponse {
         let request = try Self.responsesPrompt(from: body)
-        let output = try await execute(prompt: request.prompt, route: route)
+        let output = try await execute(
+            prompt: request.prompt,
+            route: route,
+            effort: variant?.thinkingLevel.openAIEffort
+        )
         let responseBody = try Self.responsesBody(
             modelID: route.resolvedModelID,
             output: output,
@@ -283,7 +291,11 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
 
     // MARK: - Execution
 
-    private func execute(prompt: String, route: BurnBarProviderRoute) async throws -> String {
+    private func execute(
+        prompt: String,
+        route: BurnBarProviderRoute,
+        effort: String? = nil
+    ) async throws -> String {
         guard route.providerID.caseInsensitiveCompare("codex") == .orderedSame else {
             throw BurnBarProviderExecutorError.upstreamError(400, "Codex executor received a non-Codex route.")
         }
@@ -298,7 +310,11 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
         )
         defer { try? fileManager.removeItem(at: tempRoot) }
 
-        let arguments = Self.codexArguments(model: route.resolvedModelID, prompt: prompt)
+        let arguments = Self.codexArguments(
+            model: route.resolvedModelID,
+            prompt: prompt,
+            effort: effort
+        )
         let environment = Self.sanitizedEnvironment(apiKey: route.apiKey)
 
         let result = try await runner.runCodex(
@@ -325,17 +341,30 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
     }
 
     /// Mirrors `CLIArgumentBuilder.codexArguments` for the consent-gated,
-    /// read-only path: JSONL output, ephemeral session, high reasoning effort,
-    /// no workspace write, and no inherited user config/rules. The prompt is the
-    /// final positional argument.
-    static func codexArguments(model: String, prompt: String) -> [String] {
+    /// read-only path: JSONL output, ephemeral session, configurable reasoning
+    /// effort (defaults to high), no workspace write, and no inherited user
+    /// config/rules. The prompt is the final positional argument.
+    static func codexArguments(
+        model: String,
+        prompt: String,
+        effort: String? = nil
+    ) -> [String] {
+        let resolvedEffort: String = {
+            let trimmed = effort?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+            switch trimmed {
+            case "low", "medium", "high", "xhigh", "max":
+                return trimmed
+            default:
+                return "high"
+            }
+        }()
         var arguments = [
             "exec",
             "--json",
             "--ephemeral",
             "--skip-git-repo-check",
             "-c",
-            #"model_reasoning_effort="high""#
+            "model_reasoning_effort=\"\(resolvedEffort)\""
         ]
         let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedModel.isEmpty {

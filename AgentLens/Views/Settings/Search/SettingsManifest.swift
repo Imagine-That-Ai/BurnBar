@@ -142,9 +142,9 @@ enum SettingsManifest {
             pageRoute: .appearance,
             anchorID: SettingsAnchor.appearanceSkin,
             title: "App Skin",
-            subtitle: "Aurora ember look, or the Editorial paper console skin",
-            keywords: ["skin", "editorial", "paper", "aurora", "light", "ink", "coral", "console", "burnbar", "theme"],
-            helpText: "Editorial re-skins OpenBurnBar in the light, paper-bright app.burnbar.ai console palette: one coral accent, ink text, hairlines."
+            subtitle: "Moon Lit ember look, or the Sun Lit paper console skin",
+            keywords: ["skin", "editorial", "paper", "aurora", "light", "ink", "coral", "console", "burnbar", "theme", "sun lit", "moon lit"],
+            helpText: "Sun Lit re-skins OpenBurnBar in the light, paper-bright app.burnbar.ai console palette: one coral accent, ink text, hairlines."
         ),
         SettingsItem(
             id: "general.appearance.glassTransparency",

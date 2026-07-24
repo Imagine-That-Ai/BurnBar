@@ -1089,6 +1089,7 @@ struct BurnRailAppearanceQuickMenu: View {
     @Bindable var settingsManager: SettingsManager
     var onOpenAppearanceSettings: () -> Void
     var scale: CGFloat = 1
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop = false
     @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel = KernelCatalog.defaultID
 
@@ -1248,7 +1249,7 @@ struct BurnRailAppearanceQuickMenu: View {
         switch currentBackgroundState {
         case .swarm: return "Swarm"
         case .constellation: return "Constellation"
-        case .off: return settingsManager.appearanceSkin == .aurora ? "Aurora" : "Editorial"
+        case .off: return settingsManager.appearanceSkin.resolved(for: colorScheme) == .aurora ? "Moon Lit" : "Sun Lit"
         }
     }
 }
@@ -1266,8 +1267,8 @@ extension AppearanceMode {
 extension AppSkin {
     var quickMenuLabel: String {
         switch self {
-        case .aurora: return "Aurora (dark ember)"
-        case .editorial: return "Editorial (paper)"
+        case .aurora: return "Moon Lit (dark ember)"
+        case .editorial: return "Sun Lit (paper)"
         }
     }
 }

@@ -199,12 +199,17 @@ actor CLIAgentRelayChunkSequencer {
 struct CLIRuntimeModelCatalogDiscovery: Sendable {
     private let resolver: CLIExecutableResolver
     private let gatewayProvider: @MainActor @Sendable () -> RoutingClientGateway
+    private let openBurnBarModelCatalogDataProvider: @Sendable () -> Data?
 
     init(
         resolver: CLIExecutableResolver = CLIExecutableResolver(),
-        settingsManager: SettingsManager
+        settingsManager: SettingsManager,
+        openBurnBarModelCatalogDataProvider: @escaping @Sendable () -> Data? = {
+            try? Data(contentsOf: Self.openBurnBarModelCatalogURL())
+        }
     ) {
         self.resolver = resolver
+        self.openBurnBarModelCatalogDataProvider = openBurnBarModelCatalogDataProvider
         self.gatewayProvider = {
             RoutingClientGateway(
                 host: settingsManager.gatewayHost.isEmpty ? "127.0.0.1" : settingsManager.gatewayHost,
@@ -216,10 +221,14 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
 
     init(
         resolver: CLIExecutableResolver = CLIExecutableResolver(),
-        gatewayProvider: @escaping @MainActor @Sendable () -> RoutingClientGateway
+        gatewayProvider: @escaping @MainActor @Sendable () -> RoutingClientGateway,
+        openBurnBarModelCatalogDataProvider: @escaping @Sendable () -> Data? = {
+            try? Data(contentsOf: Self.openBurnBarModelCatalogURL())
+        }
     ) {
         self.resolver = resolver
         self.gatewayProvider = gatewayProvider
+        self.openBurnBarModelCatalogDataProvider = openBurnBarModelCatalogDataProvider
     }
 
     func modelCatalog(for request: CLIRuntimeModelCatalogRequest) async throws -> CLIRuntimeModelCatalogResponse {
@@ -230,14 +239,17 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         switch runtime {
         case .codex:
             let executable = try await executable(named: "codex")
+            var discovered: [CLIRuntimeModelOption] = []
             // try?-ok(fire-and-forget probe, default fallback)
             if let output = try? await run(executable: executable, arguments: ["debug", "models"], timeoutSeconds: 12),
                let data = output.data(using: .utf8) {
-                let discovered = CLIRuntimeModelCatalog.parseCodexDebugModels(data)
-                options = discovered.isEmpty ? try Self.defaultProfileRows(for: runtime) : discovered
-            } else {
-                options = try Self.defaultProfileRows(for: runtime)
+                discovered.append(contentsOf: CLIRuntimeModelCatalog.parseCodexDebugModels(data))
             }
+            if let data = openBurnBarModelCatalogDataProvider() {
+                discovered.append(contentsOf: CLIRuntimeModelCatalog.parseOpenBurnBarCodexModelCatalog(data))
+            }
+            let deduplicated = Self.deduplicated(discovered)
+            options = deduplicated.isEmpty ? try Self.defaultProfileRows(for: runtime) : deduplicated
         case .claude:
             _ = try await executable(named: "claude")
             let catalogRows = CLIRuntimeModelCatalog.claudeCodeModelCatalogOptions()
@@ -336,13 +348,23 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         let gateway = await gatewayProvider()
         let wiring = RoutingClientWiring()
         let target: RoutingClientWiringTarget = runtime == .codex ? .codex : .claudeCode
-        let advertisedModels = await wiring.advertisedModels(gateway: gateway)
-        let proxyRows = advertisedModels
-            .filter { $0.isGatewayServedModelCandidate(for: target) }
-            .map { model in
-                Self.openBurnBarProxyOption(model: model, runtime: runtime)
-            }
-        return Self.deduplicated(nativeOptions + proxyRows)
+        switch await wiring.advertisedModelsWithAvailability(gateway: gateway) {
+        case .available(let advertisedModels):
+            // The successful gateway response is authoritative, including an
+            // empty list. Drop the local fallback proxy rows before applying
+            // the live rows so removed models disappear from the picker.
+            let nativeRows = nativeOptions.filter { $0.source != .openBurnBarProxy }
+            let proxyRows = advertisedModels
+                .filter { $0.isGatewayServedModelCandidate(for: target) }
+                .map { model in
+                    Self.openBurnBarProxyOption(model: model, runtime: runtime)
+                }
+            return Self.deduplicated(nativeRows + proxyRows)
+        case .unavailable:
+            // Preserve the static sidecar catalog only when the live gateway
+            // could not be queried.
+            return Self.deduplicated(nativeOptions)
+        }
     }
 
     private static func openBurnBarProxyOption(
@@ -397,11 +419,21 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
             .appendingPathComponent(".grok/models_cache.json")
     }
 
+    private static func openBurnBarModelCatalogURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex/openburnbar-model-catalog.json")
+    }
+
     private static func deduplicated(_ options: [CLIRuntimeModelOption]) -> [CLIRuntimeModelOption] {
         var rows: [CLIRuntimeModelOption] = []
         var seen = Set<String>()
         for option in options {
-            let key = "\(option.source.rawValue)|\(option.providerID.lowercased())|\(option.modelID.lowercased())"
+            let key: String
+            if option.source == .openBurnBarProxy {
+                key = "openburnbar|\(option.modelID.lowercased())"
+            } else {
+                key = "\(option.source.rawValue)|\(option.providerID.lowercased())|\(option.modelID.lowercased())"
+            }
             guard seen.insert(key).inserted else { continue }
             rows.append(option)
         }

@@ -1,0 +1,1 @@
+﻿{"at":"2026-07-10T02:46:59.7218814+00:00","eventName":"recovery-FullDisk","databasePath":"C:\\WINDOWS\\SystemTemp\\obb-storage-47677deb8ab5459eb160d63ce17f05e6\\openburnbar.sqlite","keyProvenance":"redacted","schemaEndpoint":null,"migrationCount":null,"pathOwner":null,"errorType":"IOException","errorMessage":"Injected disk full fault."}

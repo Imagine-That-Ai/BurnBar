@@ -98,14 +98,21 @@ enum RefreshBackgroundWork {
         // incident: an ungoverned pass reached 25.4GB and swap-killed the
         // machine).
         let discovery = pipeline.discover()
-        let governor = ParserResourcePolicy.makeRefreshGovernor()
+        let providerCount = max(discovery.parserEntries.count, 1)
+        let perProviderByteBudget = max(
+            ParserResourcePolicy.refreshFileByteBudget / Int64(providerCount),
+            1
+        )
+        let governors = Dictionary(uniqueKeysWithValues: discovery.parserEntries.map { provider, _ in
+            (provider, ParserResourcePolicy.makeRefreshGovernor(fileByteBudget: perProviderByteBudget))
+        })
         let parsed = try await pipeline.parse(
             from: discovery,
             includeConversationBodies: false,
-            resourceGovernor: governor
+            resourceGovernorForProvider: { governors[$0] }
         )
-        result.parseConsumedByteCount = governor.consumedBytes
-        result.parseDeferredFileCount = governor.deferredFileCount
+        result.parseConsumedByteCount = governors.values.reduce(0) { $0 + $1.consumedBytes }
+        result.parseDeferredFileCount = governors.values.reduce(0) { $0 + $1.deferredFileCount }
         let reconciled = await pipeline.reconcile(parsed: parsed)
         let persisted = await pipeline.persist(parsed: parsed)
 
@@ -397,6 +404,12 @@ enum RefreshBackgroundWork {
                 ? .empty
                 : .healthy(sessionCount: parseResult.usages.count)
 
+            if !parseResult.usageSessionIDsToDelete.isEmpty {
+                try await dataStore.deleteUsage(
+                    provider: provider,
+                    sessionIDs: parseResult.usageSessionIDsToDelete
+                )
+            }
             try await dataStore.insertChunked(parseResult.usages, chunkSize: 500)
         } catch {
             result.health = .failed(error: error.localizedDescription)

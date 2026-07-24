@@ -66,7 +66,7 @@ final class RoutedClientWiringSentry {
     private let advertisedModelsProvider: @MainActor @Sendable (
         _ gateway: RoutingClientGateway,
         _ target: RoutingClientWiringTarget
-    ) async -> [RoutingClientAdvertisedModel]
+    ) async -> RoutingClientWiring.AdvertisedModelsResult
     private let logger: AppLogger
     private let queue: DispatchQueue
 
@@ -96,8 +96,8 @@ final class RoutedClientWiringSentry {
         advertisedModelsProvider: @escaping @MainActor @Sendable (
             _ gateway: RoutingClientGateway,
             _ target: RoutingClientWiringTarget
-        ) async -> [RoutingClientAdvertisedModel] = { gateway, _ in
-            await RoutingClientWiring().advertisedModels(gateway: gateway)
+        ) async -> RoutingClientWiring.AdvertisedModelsResult = { gateway, _ in
+            await RoutingClientWiring().advertisedModelsWithAvailability(gateway: gateway)
         },
         logger: AppLogger = AppLogger(category: "RoutedClientWiringSentry"),
         queue: DispatchQueue = DispatchQueue(
@@ -272,6 +272,21 @@ final class RoutedClientWiringSentry {
             queue: queue
         )
         let watcher = Watcher(descriptor: descriptor, source: source)
+        installSourceHandlers(on: source, watcher: watcher, target: target, descriptor: descriptor)
+        return watcher
+    }
+
+    /// Handler installation lives in a `nonisolated` context so the closures
+    /// do not inherit the sentry's `@MainActor` isolation: `DispatchSource`
+    /// invokes them on `queue`, and a MainActor-isolated closure traps there at
+    /// runtime (`swift_task_checkIsolated` → `dispatch_assert_queue` fail)
+    /// before it can even hop. The actual work hops back explicitly via `Task`.
+    private nonisolated func installSourceHandlers(
+        on source: DispatchSourceFileSystemObject,
+        watcher: Watcher,
+        target: RoutingClientWiringTarget,
+        descriptor: Int32
+    ) {
         source.setEventHandler { [weak self, weak watcher] in
             let data = watcher?.source.data ?? []
             Task { @MainActor [weak self] in
@@ -281,7 +296,6 @@ final class RoutedClientWiringSentry {
         source.setCancelHandler {
             close(descriptor)
         }
-        return watcher
     }
 
     private func scheduleReopen(for target: RoutingClientWiringTarget) {
@@ -363,9 +377,17 @@ final class RoutedClientWiringSentry {
         let wiring = wiringFactory()
         let advertisedModels: [RoutingClientAdvertisedModel]
         if Self.targetRequiresAdvertisedModels(target) {
-            advertisedModels = await advertisedModelsProvider(gateway, target)
-            guard !advertisedModels.isEmpty else {
-                logger.debug("repair_skipped_empty_model_catalog", metadata: ["target": target.rawValue])
+            switch await advertisedModelsProvider(gateway, target) {
+            case .available(let models):
+                advertisedModels = models
+                // Codex can safely publish native-only choices when the
+                // authoritative OpenBurnBar catalog is currently empty.
+                guard !models.isEmpty || target == .codex else {
+                    logger.debug("repair_skipped_empty_model_catalog", metadata: ["target": target.rawValue])
+                    return
+                }
+            case .unavailable:
+                logger.debug("repair_skipped_unavailable_model_catalog", metadata: ["target": target.rawValue])
                 return
             }
         } else {

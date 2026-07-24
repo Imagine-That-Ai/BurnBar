@@ -100,7 +100,8 @@ enum ChartKind: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Grid span in columns (the grid is 2 columns wide; 2 = full width).
+    /// Grid span in columns (the grid runs 2–3 columns; span equal to the
+    /// column count = full width).
     var defaultSpan: Int {
         switch self {
         case .burnOverTime, .hourOfDayHeatmap, .burnForecast, .projectFocus:
@@ -122,6 +123,9 @@ enum ChartKind: String, Codable, CaseIterable, Identifiable, Sendable {
 
 /// One card's persisted state: which chart, whether shown, and how wide.
 struct ChartCardConfig: Codable, Equatable, Identifiable, Sendable {
+    /// Widest span the grid can express (a full row in 3-column mode).
+    static let maxSpan = 3
+
     var kind: ChartKind
     var isVisible: Bool
     var span: Int
@@ -131,7 +135,7 @@ struct ChartCardConfig: Codable, Equatable, Identifiable, Sendable {
     init(kind: ChartKind, isVisible: Bool? = nil, span: Int? = nil) {
         self.kind = kind
         self.isVisible = isVisible ?? kind.defaultVisible
-        self.span = min(2, max(1, span ?? kind.defaultSpan))
+        self.span = min(Self.maxSpan, max(1, span ?? kind.defaultSpan))
     }
 }
 
@@ -182,7 +186,7 @@ struct ChartsPageLayout: Equatable, Sendable {
 
     mutating func setSpan(_ kind: ChartKind, _ span: Int) {
         guard let index = configs.firstIndex(where: { $0.kind == kind }) else { return }
-        configs[index].span = min(2, max(1, span))
+        configs[index].span = min(ChartCardConfig.maxSpan, max(1, span))
     }
 
     mutating func reset() {

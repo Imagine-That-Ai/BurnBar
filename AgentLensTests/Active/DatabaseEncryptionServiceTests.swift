@@ -585,6 +585,43 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         )
     }
 
+    /// The sweep's size-lookup (`attributesOfItem`) can fail for an orphan whose
+    /// prefix still matches (here: a dangling symlink left by a crashed migration,
+    /// whose target is gone). Cleanup must fail OPEN: a size-lookup failure must
+    /// not abort removal of the orphan — the strand is reclaimed exactly as it
+    /// would be when the size is known. Exercises the `do { attributes… } catch`
+    /// branch in `removeOrphanedMigrationArtifacts`.
+    func testOrphanSweep_removesOrphanEvenWhenSizeLookupFails() throws {
+        let directory = try makeOrphanSweepDirectory()
+        defer { try? FileManager.default.removeItem(atPath: directory) }
+        let dbPath = (directory as NSString).appendingPathComponent("openburnbar.sqlite")
+
+        // A crashed migration can leave a symlinked temp DB whose target later
+        // vanishes. `FileManager.attributesOfItem` follows the link and throws
+        // NSFileNoSuchFileError for the missing target, while the symlink entry
+        // itself still matches the orphan prefix and must be reclaimed.
+        let orphanPath = dbPath + ".sqlcipher-migrating-" + UUID().uuidString
+        try FileManager.default.createSymbolicLink(
+            atPath: orphanPath,
+            withDestinationPath: "/openburnbar-test-nonexistent-target-\(UUID().uuidString)"
+        )
+
+        // Sanity: the symlink entry exists but its size cannot be resolved,
+        // which is exactly the branch under test.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: orphanPath), "Precondition: orphan symlink must exist")
+        XCTAssertThrowsError(
+            try FileManager.default.attributesOfItem(atPath: orphanPath),
+            "A dangling symlink must make attributesOfItem throw to exercise the size-lookup catch branch"
+        )
+
+        DatabaseEncryptionService.removeOrphanedMigrationArtifacts(forDatabaseAt: dbPath)
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: orphanPath),
+            "Sweep must delete the orphaned symlink even when its size lookup fails"
+        )
+    }
+
     private func makeOrphanSweepDirectory() throws -> String {
         let directory = (NSTemporaryDirectory() as NSString)
             .appendingPathComponent("obb-orphan-sweep-\(UUID().uuidString)")

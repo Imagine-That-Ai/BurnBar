@@ -204,6 +204,7 @@ struct DashboardView: View {
         case .overview: return "Overview"
         case .insights: return "Insights"
         case .charts: return "Charts"
+        case .calendar: return "Calendar"
         case .database: return "Database"
         case .projects: return "Projects"
         case .missions: return "Missions"
@@ -270,6 +271,10 @@ struct DashboardView: View {
                 style: FillStyle(antialiased: true)
             )
         }
+        // Full-bleed header: the command deck slides up under the transparent
+        // title bar (traffic lights overlay its reserved leading inset), and
+        // the split view below gains the reclaimed vertical space.
+        .ignoresSafeArea(.container, edges: .top)
         .background {
             DashboardBackdrop(moodBand: dataStore.moodBand)
             DashboardSidebarToolbarItemRemover()
@@ -588,6 +593,9 @@ struct DashboardView: View {
                         selectedTimeRange: $selectedTimeRange
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .calendar:
+                    CalendarView(dataStore: dataStore)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .database:
                     DatabaseWorkspaceView(
                         dataStore: dataStore,
@@ -1058,7 +1066,7 @@ struct DashboardView: View {
 
     var dashboardLiveBackdropActive: Bool {
         DashboardLiveBackdropVisibility.exposesContentBackdrop(
-            appearanceSkin: settingsManager.appearanceSkin,
+            appearanceSkin: settingsManager.appearanceSkin.resolved(for: colorScheme),
             useWebsiteBackground: settingsManager.useWebsiteBackground,
             useKernelBackdrop: useKernelBackdrop
         )

@@ -427,3 +427,158 @@ test("protected Functions inventory covers every pricing execution entry and bot
     /verify-domain-core-functions-target-inventory\.mjs/u,
   );
 });
+
+// Extract a top-level trigger block under `on:` (e.g. `pull_request:`) from the
+// workflow source. Mirrors workflowJob: find the two-space-indented key, then cut
+// at the next sibling trigger key or the next top-level key (`concurrency:` etc.).
+function workflowTrigger(source, name) {
+  const start = source.indexOf(`  ${name}:\n`);
+  assert.notEqual(start, -1, `missing workflow trigger ${name}`);
+  const remainder = source.slice(start + 2);
+  const next = remainder.search(/^  [A-Za-z0-9_-]+:\n/mu);
+  return next === -1
+    ? source.slice(start)
+    : source.slice(start, start + 2 + next);
+}
+
+test("pull_request trigger covers tools/hermes-platform-burnbar so PRs touching the platform adapter run the gate", () => {
+  // Regression: the pull_request path filter omitted tools/hermes-platform-burnbar/**,
+  // so edits to the Hermes platform-burnbar adapter never surfaced in domain-core CI.
+  const trigger = workflowTrigger(core, "pull_request");
+  assert.match(
+    trigger,
+    /^      - "tools\/hermes-platform-burnbar\/\*\*"/mu,
+    "pull_request.paths must include tools/hermes-platform-burnbar/** so platform-burnbar changes trigger the gate",
+  );
+});
+
+test("domain-core-pr-gate needs both python contract jobs before the aggregate count", () => {
+  // Regression: the pr-gate aggregate omitted python-mcp-cloudvault-contracts and
+  // python-hermes-contracts, so their failures could not block the gate.
+  const gate = workflowJob(core, "domain-core-pr-gate");
+  assert.match(
+    gate,
+    /^      - python-mcp-cloudvault-contracts$/mu,
+    "domain-core-pr-gate.needs must include python-mcp-cloudvault-contracts",
+  );
+  assert.match(
+    gate,
+    /^      - python-hermes-contracts$/mu,
+    "domain-core-pr-gate.needs must include python-hermes-contracts",
+  );
+});
+
+test("domain-core-pr-gate aggregate count is 15 after adding both python contract needs", () => {
+  // Regression: the jq assertion counted 13 jobs, but the gate now aggregates 15
+  // (added python-mcp-cloudvault-contracts and python-hermes-contracts). A stale
+  // count would let the gate pass even when the two python jobs are missing.
+  const gate = workflowJob(core, "domain-core-pr-gate");
+  assert.match(
+    gate,
+    /to_entries \| length == 15 and all\(\.value\.result == "success"\)/u,
+    'domain-core-pr-gate must assert to_entries | length == 15 (was 13 before the two python contract jobs were added)',
+  );
+});
+
+// Regression (PR #1820 exact-head review): the rust-and-csharp job checked out
+// the synthetic PR merge SHA on pull_request events (the default checkout with
+// no `ref:`) and bound OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT straight to
+// `${{ github.sha }}`. On a pull_request, GITHUB_SHA is the ephemeral merge
+// commit GitHub fabricates by merging the PR head into the base — not the PR
+// head itself. An artifact built from that checkout carries the merge SHA as
+// its identity, so the native-load identity chain binds to a commit no branch
+// points at. The fix mirrors the Android/apple-native-smoke contract: pin the
+// checkout to `github.event.pull_request.head.sha || github.sha` (PR head on
+// pull_request, exact pushed commit on push/dispatch) and resolve the
+// canonical candidate commit before any identity-binding step.
+test("rust-and-csharp checks out the exact PR head on pull_request and the pushed SHA on push, matching Android", () => {
+  const rust = workflowJob(core, "rust-and-csharp");
+  // Exactly one Check out repository step, and it must pin the ref to the PR
+// head on pull_request, falling back to github.sha on push/dispatch.
+  const checkoutMatches = [...rust.matchAll(/^      - name: Check out repository$/gmu)];
+  assert.equal(
+    checkoutMatches.length,
+    1,
+    "rust-and-csharp must have exactly one Check out repository step (the pre-fix had a malformed duplicate)",
+  );
+  assert.match(
+    rust,
+    /^      - name: Check out repository\n        uses: actions\/checkout@[0-9a-f]+\s*# v[0-9.]+\n        with:\n          persist-credentials: false\n          ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}\n/mu,
+    "rust-and-csharp checkout must ref github.event.pull_request.head.sha || github.sha so PR builds bind identity to the real PR head, not the synthetic merge SHA",
+  );
+});
+
+test("rust-and-csharp resolves the canonical candidate commit before any identity-binding step, matching Android", () => {
+  const rust = workflowJob(core, "rust-and-csharp");
+  assert.match(
+    rust,
+    /^      - name: Resolve canonical candidate commit\n        id: candidate\n        run: node scripts\/ci\/canonical-candidate-commit\.mjs\n/mu,
+    "rust-and-csharp must run canonical-candidate-commit.mjs (id: candidate) like the Android job, so the candidate commit is the PR head on pull_request and GITHUB_SHA on push",
+  );
+  // The resolver must precede the first identity-binding step. On pull_request,
+  // canonical-candidate-commit.mjs throws rather than fall back to the merge
+  // SHA, so any binding that runs before it would embed the merge SHA.
+  const resolver = rust.indexOf("Resolve canonical candidate commit");
+  const firstBinding = rust.indexOf("OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT");
+  assert.ok(resolver >= 0, "missing canonical candidate resolver step");
+  assert.ok(firstBinding >= 0, "missing OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT binding");
+  assert.ok(
+    resolver < firstBinding,
+    "Resolve canonical candidate commit must run before the first OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT binding",
+  );
+});
+
+test("rust-and-csharp preserves the Rust toolchain step after the PR-head checkout fix", () => {
+  const rust = workflowJob(core, "rust-and-csharp");
+  assert.match(
+    rust,
+    /^      - name: Install Rust toolchain\n        uses: dtolnay\/rust-toolchain@[0-9a-f]+\s*# v1\n        with:\n          toolchain: "1\.96\.0"\n          components: rustfmt,clippy\n/mu,
+    "rust-and-csharp must keep the Install Rust toolchain step (dtolnay/rust-toolchain) — the pre-fix edit accidentally dropped it",
+  );
+});
+
+test("rust-and-csharp binds every candidate identity to the resolved canonical commit, never to the synthetic merge SHA", () => {
+  const rust = workflowJob(core, "rust-and-csharp");
+  // Pre-fix: every OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT / DOMAIN_CORE_CANDIDATE_COMMIT
+  // env and every --expected-candidate-commit flag bound to github.sha / $GITHUB_SHA.
+  // On pull_request that is the ephemeral merge commit, so the attested identity
+  // would point at no real commit. Post-fix they must all read the resolved
+  // steps.candidate.outputs.candidate_commit (PR head on pull_request, GITHUB_SHA
+  // on push), matching the apple-native-smoke contract on steps.candidate.outputs.commit.
+  const shaBindings = [...rust.matchAll(/OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ github\.sha \}\}|DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ github\.sha \}\}/gu)];
+  assert.equal(
+    shaBindings.length,
+  0,
+    "rust-and-csharp must not bind OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT or DOMAIN_CORE_CANDIDATE_COMMIT to github.sha (synthetic merge SHA on pull_request)",
+  );
+  const cliShaBindings = [...rust.matchAll(/--expected-candidate-commit "\$GITHUB_SHA"/gu)];
+  assert.equal(
+    cliShaBindings.length,
+    0,
+    'rust-and-csharp must not pass --expected-candidate-commit "$GITHUB_SHA" (synthetic merge SHA on pull_request) to resolve/verify/proof-fragment',
+  );
+  // At least one candidate binding exists and reads the resolved commit.
+  assert.match(
+    rust,
+    /OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ steps\.candidate\.outputs\.candidate_commit \}\}/u,
+    "rust-and-csharp OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT must read steps.candidate.outputs.candidate_commit (resolved PR head / push SHA)",
+  );
+});
+
+test("rust-and-csharp has no duplicate or dangling Check out repository step from the PR-head fix", () => {
+  const rust = workflowJob(core, "rust-and-csharp");
+  // The malformed intermediate edit left a dangling "Install Rust toolchain"
+  // name with no body, immediately followed by a second "Check out repository".
+  // The canonical fix has exactly one checkout (asserted in the head test) and
+  // no name-only step stubs.
+  assert.doesNotMatch(
+    rust,
+    /^      - name: Install Rust toolchain\n      - name: Check out repository/mu,
+    "rust-and-csharp must not carry the dangling Install Rust toolchain stub that the malformed fix introduced",
+  );
+  assert.doesNotMatch(
+    rust,
+    /^      - name: Check out repository[\s\S]*      - name: Check out repository/mu,
+    "rust-and-csharp must not contain two Check out repository steps",
+  );
+});

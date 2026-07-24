@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { validateDomainCoreCandidateIdentity } from "./domain-core-candidate-receipt.mjs";
-
+import { DOMAIN_CORE_PROTECTED_SIGNER_WORKFLOW } from "./domain-core-release-evidence.mjs"
 const FULL_SHA = /^[0-9a-f]{40}$/u;
 const ALLOWED_EXACT = new Set([
   "config/domain-core-build-profiles.json",

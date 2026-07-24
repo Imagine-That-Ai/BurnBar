@@ -63,7 +63,7 @@ extension DashboardView {
     private var cockpitKPIRow: some View {
         HStack(spacing: DesignSystem.Spacing.md) {
             ConceptStatTile(
-                label: "Burn · Today",
+                label: selectedTimeRange.burnTileLabel,
                 value: totalCostForTimeRange.formatAsCost(),
                 accent: DesignSystem.Colors.whimsy
             )

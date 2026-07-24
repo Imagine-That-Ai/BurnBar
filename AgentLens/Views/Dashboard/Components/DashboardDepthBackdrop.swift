@@ -1,4 +1,5 @@
 import AppKit
+import OpenBurnBarCore
 import SwiftUI
 
 // MARK: - Dashboard Depth Backdrop (macOS)
@@ -17,6 +18,7 @@ struct DashboardDepthBackdrop: View {
     var density: Density = .full
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(SettingsManager.self) private var settingsManager
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
 
@@ -24,7 +26,7 @@ struct DashboardDepthBackdrop: View {
 
     private var exposesDashboardBackdrop: Bool {
         DashboardLiveBackdropVisibility.exposesContentBackdrop(
-            appearanceSkin: settingsManager.appearanceSkin,
+            appearanceSkin: settingsManager.appearanceSkin.resolved(for: colorScheme),
             useWebsiteBackground: settingsManager.useWebsiteBackground,
             useKernelBackdrop: useKernelBackdrop
         )

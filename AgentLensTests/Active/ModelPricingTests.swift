@@ -110,4 +110,16 @@ final class ModelPricingStandaloneTests: XCTestCase {
         let cost = try pricing.cost(inputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 1_000_000)
         XCTAssertEqual(cost, 0.0, accuracy: 0.0001)
     }
+
+    func test_lookup_currentCodexGPT56Models_usesBundledPricing() {
+        let sol = ModelPricing.lookup(model: "gpt-5.6-sol")
+        XCTAssertEqual(sol.inputPerMToken, 5, accuracy: 0.001)
+        XCTAssertEqual(sol.outputPerMToken, 30, accuracy: 0.001)
+        XCTAssertEqual(sol.cacheReadPerMToken, 0.5, accuracy: 0.001)
+
+        let luna = ModelPricing.lookup(model: "gpt-5.6-luna")
+        XCTAssertEqual(luna.inputPerMToken, 1, accuracy: 0.001)
+        XCTAssertEqual(luna.outputPerMToken, 6, accuracy: 0.001)
+        XCTAssertEqual(luna.cacheReadPerMToken, 0.1, accuracy: 0.001)
+    }
 }

@@ -111,6 +111,7 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   route_names=(
     overview
     insights
+    calendar
     database
     providers
     projects
@@ -134,6 +135,7 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   route_labels=(
     "Overview"
     "Insights"
+    "Calendar"
     "Database"
     "Providers & models"
     "Projects"
@@ -154,7 +156,7 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   )
 
   # ── Route navigation via AT-SPI command-palette actions ──────────────
-  # The shell's command palette reaches all 19 routes and drives the same
+  # The shell's command palette reaches all 20 routes and drives the same
   # shellStore.setRoute() path — emitting the
   # route.navigation perf sample with source
   # packaged-ui-route-after-paint:<route>.

@@ -120,6 +120,7 @@ export function routeSnapshotCases(): RouteSnapshotCase[] {
       [
         'overview',
         'insights',
+        'calendar',
         'database',
         'providers',
         'projects',

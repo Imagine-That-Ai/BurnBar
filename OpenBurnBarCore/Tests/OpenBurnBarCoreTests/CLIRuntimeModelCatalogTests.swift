@@ -110,6 +110,49 @@ final class CLIRuntimeModelCatalogTests: XCTestCase {
         XCTAssertEqual(rows[0].displayName, "GPT-5.5 · OpenAI · via OpenBurnBar · Reasoning: medium")
         XCTAssertEqual(rows[1].displayName, "GPT-5.3-Codex-Spark · OpenAI · via OpenBurnBar · Reasoning: high")
     }
+    func test_openBurnBarCodexCatalogParserPreservesProxyPickerAndRouteIDs() throws {
+        let json = """
+        {
+          "models": [
+            {
+              "slug": "openburnbar/claude-opus-4-8",
+              "display_name": "Claude Opus 4.8 · Anthropic · via OpenBurnBar · Reasoning: default",
+              "description": "Anthropic via OpenBurnBar",
+              "visibility": "list"
+            },
+            {
+              "slug": "openburnbar/qwen3.5:cloud",
+              "display_name": "qwen3.5 · Ollama Cloud · via OpenBurnBar · Reasoning: default",
+              "description": "Ollama Cloud via OpenBurnBar",
+              "visibility": "list"
+            },
+            {
+              "slug": "openburnbar/hidden-model",
+              "display_name": "Hidden",
+              "visibility": "hide"
+            },
+            {
+              "slug": "gpt-5.5",
+              "display_name": "GPT-5.5",
+              "visibility": "list"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let rows = CLIRuntimeModelCatalog.parseOpenBurnBarCodexModelCatalog(json)
+
+        XCTAssertEqual(rows.map(\.modelID), [
+            "openburnbar/claude-opus-4-8",
+            "openburnbar/qwen3.5:cloud"
+        ])
+        XCTAssertEqual(rows.map(\.routeModelID), ["claude-opus-4-8", "qwen3.5:cloud"])
+        XCTAssertEqual(rows.map(\.source), [.openBurnBarProxy, .openBurnBarProxy])
+        XCTAssertEqual(rows[0].providerID, "anthropic")
+        XCTAssertEqual(rows[0].providerName, "Anthropic via OpenBurnBar API/OAuth")
+        XCTAssertEqual(rows[1].providerID, "ollama")
+        XCTAssertEqual(rows[1].providerName, "Ollama Cloud via OpenBurnBar API/OAuth")
+    }
 
     func test_codexNativeRowsCanSitBesideOpenBurnBarProxyRows() {
         let native = CLIRuntimeModelCatalog.parseCodexDebugModels(

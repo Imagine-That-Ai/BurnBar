@@ -15,6 +15,7 @@ describe('routeFromHash', () => {
     expect(ROUTES.map((r) => r.id)).toEqual([
       'overview',
       'insights',
+      'calendar',
       'database',
       'providers',
       'projects',

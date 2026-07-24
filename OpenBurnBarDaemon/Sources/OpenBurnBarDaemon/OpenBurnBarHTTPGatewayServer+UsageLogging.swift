@@ -13,7 +13,8 @@ extension BurnBarHTTPGatewayServer {
         _ usage: BurnBarProviderProxyUsage?,
         route: BurnBarProviderRoute,
         idempotencyKey: String,
-        parentRequestID: String? = nil
+        parentRequestID: String? = nil,
+        startedAt: Date? = nil
     ) async {
         guard let usage, let usageRecorder else { return }
         let event = BurnBarUsageEvent(
@@ -33,7 +34,8 @@ extension BurnBarHTTPGatewayServer {
             recordedAt: Date(),
             projectName: "OpenBurnBar Gateway",
             confidence: usage.confidence,
-            parentRequestID: parentRequestID
+            parentRequestID: parentRequestID,
+            startTime: startedAt
         )
         do {
             // A stable, content-derived key means a client that retries the

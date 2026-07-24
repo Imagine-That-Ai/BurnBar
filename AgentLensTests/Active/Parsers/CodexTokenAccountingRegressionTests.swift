@@ -132,6 +132,50 @@ final class CodexTokenAccountingRegressionTests: XCTestCase {
         XCTAssertEqual(usage.totalTokens, 176)
     }
 
+    func test_codexParser_invalidatesSubagentsOutsideActiveScanLimit() async throws {
+        let rolloutDirectory = harness.rootURL.appendingPathComponent(".codex/sessions/2026/07/19", isDirectory: true)
+        try harness.fileManager.createDirectory(at: rolloutDirectory, withIntermediateDirectories: true)
+        let subagentURL = rolloutDirectory.appendingPathComponent("old-subagent.jsonl")
+        try ParserTestFixtures.codexRolloutSessionWithLastUsageOnly()
+            .write(to: subagentURL, atomically: true, encoding: .utf8)
+
+        var threads: [(id: String, model: String, tokensUsed: Int, rolloutPath: String, createdAt: Int64, updatedAt: Int64, cwd: String)] = [(
+            id: "old-subagent",
+            model: "gpt-5.6-sol",
+            tokensUsed: 176,
+            rolloutPath: subagentURL.path,
+            createdAt: 1,
+            updatedAt: 1,
+            cwd: "/tmp/OpenBurnBar"
+        )]
+        for index in 0..<500 {
+            threads.append((
+                id: "parent-\(index)",
+                model: "gpt-5.6-sol",
+                tokensUsed: 0,
+                rolloutPath: rolloutDirectory.appendingPathComponent("missing-\(index).jsonl").path,
+                createdAt: Int64(index + 2),
+                updatedAt: Int64(index + 2),
+                cwd: "/tmp/OpenBurnBar"
+            ))
+        }
+        _ = try harness.createCodexThreadDatabase(threads: threads)
+        try harness.setCodexThreadSource(threadID: "old-subagent", source: "subagent")
+
+        let parser = TestableCodexParser(
+            fileManager: harness.fileManager,
+            codexRoot: harness.rootURL.appendingPathComponent(".codex", isDirectory: true),
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(
+                applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true)
+            )
+        )
+
+        let result = try await parser.parse()
+
+        XCTAssertFalse(result.usages.contains { $0.sessionId == "old-subagent" })
+        XCTAssertEqual(result.usageSessionIDsToDelete, ["old-subagent"])
+    }
+
     // MARK: - Unit Tests for TokenExtractionUtility
 
     /// VAL-TOKEN-010: codexCumulativeTotalsFromTokenCountInfo must return nil for partial

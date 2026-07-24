@@ -115,6 +115,13 @@ public final class ParserResourceGovernor: Sendable {
         }
     }
 
+    /// Records a deferral imposed by a parser-specific guardrail. Parsers use
+    /// this when a file is inside the shared byte budget but outside a tighter
+    /// format-specific scan bound.
+    public func recordDeferredFile() {
+        state.withLock { $0.deferredFileCount += 1 }
+    }
+
     /// Memory-ceiling check. Call between files and every few thousand lines
     /// inside per-line loops. Throws when the hard ceiling is crossed.
     public func checkpoint() throws {

@@ -17,6 +17,7 @@ import { SupportSurface } from './SupportSurface.js';
 import { TextExpansionSurface } from './TextExpansionSurface.js';
 import { UpdatesSurface } from './UpdatesSurface.js';
 import { ActivitySurface } from './activity/ActivitySurface.js';
+import { CalendarSurface } from './calendar/CalendarSurface.js';
 import { DatabaseSurface } from './database/DatabaseSurface.js';
 import { InsightsSurface } from './insights/InsightsSurface.js';
 import { MemorySurface } from './memory/MemorySurface.js';
@@ -43,6 +44,7 @@ function makeDaemonSurface(route: ShellRoute, label: string): ComponentType {
 const SURFACES: Record<ShellRoute, ComponentType> = {
   overview: OverviewSurface,
   insights: InsightsSurface,
+  calendar: CalendarSurface,
   database: DatabaseSurface,
   providers: ProvidersSurface,
   projects: ProjectsSurface,

@@ -15,6 +15,9 @@ on:
       archive_artifact_name:
         required: true
         type: string
+      domain_core_profile:
+        required: true
+        type: string
 
 permissions:
   attestations: write

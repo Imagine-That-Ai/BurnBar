@@ -45,8 +45,8 @@ final class SettingsActionRegistry: ObservableObject {
         "setAppearanceDark": "Switch appearance to Dark mode",
         "setAppearanceLight": "Switch appearance to Light mode",
         "setAppearanceSystem": "Switch appearance to follow System",
-        "setSkinAurora": "Switch to the Aurora skin",
-        "setSkinEditorial": "Switch to the Editorial skin",
+        "setSkinAurora": "Switch to the Moon Lit skin",
+        "setSkinEditorial": "Switch to the Sun Lit skin",
         "enableIndexing": "Turn on conversation indexing and search",
         "disableIndexing": "Turn off conversation indexing",
         "enableModelProxy": "Turn on the local model proxy gateway",
@@ -110,9 +110,9 @@ final class SettingsActionRegistry: ObservableObject {
         case "setAppearanceSystem":
             return Action(id: id, title: "System Mode", detail: "Follow macOS appearance setting", anchor: SettingsAnchor.appearanceTheme, tab: .general)
         case "setSkinAurora":
-            return Action(id: id, title: "Aurora Skin", detail: "Switch to the signature ember Aurora look", anchor: SettingsAnchor.appearanceSkin, tab: .general)
+            return Action(id: id, title: "Moon Lit Skin", detail: "Switch to the signature ember Moon Lit look", anchor: SettingsAnchor.appearanceSkin, tab: .general)
         case "setSkinEditorial":
-            return Action(id: id, title: "Editorial Skin", detail: "Switch to the light, paper-bright Editorial palette", anchor: SettingsAnchor.appearanceSkin, tab: .general)
+            return Action(id: id, title: "Sun Lit Skin", detail: "Switch to the light, paper-bright Sun Lit palette", anchor: SettingsAnchor.appearanceSkin, tab: .general)
 
         // Indexing
         case "enableIndexing":

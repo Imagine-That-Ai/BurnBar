@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import OpenBurnBarMobile
 
 /// Focused unit tests for the Aurora swipe-through navigation system.
@@ -315,5 +316,50 @@ final class AuroraNavigationTrayTests: XCTestCase {
         // should be shorter (opacity/position only, no spring bounce).
         let reducedAnim = AuroraNavGestureModel.viewfinderAnimation(reduceMotion: true)
         XCTAssertNotNil(reducedAnim)
+    }
+
+    // MARK: - Background / relaunch restoration
+
+    func test_navigationSelections_roundTripAcrossRelaunch() throws {
+        let suiteName = "AuroraNavigationTrayTests.selection.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        MobileNavigationRestoration.savePhoneSelection(.hermes, defaults: defaults)
+        MobileNavigationRestoration.savePadSelection(.providers, defaults: defaults)
+
+        XCTAssertEqual(MobileNavigationRestoration.phoneSelection(defaults: defaults), .hermes)
+        XCTAssertEqual(MobileNavigationRestoration.padSelection(defaults: defaults), .providers)
+    }
+
+    func test_navigationPath_roundTripsAcrossRelaunch() throws {
+        let suiteName = "AuroraNavigationTrayTests.path.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        var original = NavigationPath()
+        original.append(YouRoute.settings)
+        original.append(SettingsPageRoute.account)
+        MobileNavigationRestoration.save(original, for: .phoneYou, defaults: defaults)
+
+        let restored = MobileNavigationRestoration.path(for: .phoneYou, defaults: defaults)
+        XCTAssertEqual(restored.count, 2)
+
+        // A restored representation must remain encodable so the next
+        // background transition can persist it again without losing depth.
+        MobileNavigationRestoration.save(restored, for: .phoneYou, defaults: defaults)
+        XCTAssertNotNil(defaults.data(forKey: MobileNavigationRestoration.PathKey.phoneYou.rawValue))
+    }
+
+    func test_corruptNavigationState_fallsBackSafely() throws {
+        let suiteName = "AuroraNavigationTrayTests.corrupt.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set("removed-tab", forKey: "mobile.navigation.phone.selection.v1")
+        defaults.set(Data("not-json".utf8), forKey: MobileNavigationRestoration.PathKey.phonePulse.rawValue)
+
+        XCTAssertEqual(MobileNavigationRestoration.phoneSelection(defaults: defaults), .pulse)
+        XCTAssertTrue(MobileNavigationRestoration.path(for: .phonePulse, defaults: defaults).isEmpty)
     }
 }

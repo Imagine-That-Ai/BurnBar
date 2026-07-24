@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import OpenBurnBarCore
 
@@ -48,6 +49,22 @@ final class AppSkinEditorialPaletteTests: XCTestCase {
         XCTAssertEqual(AppSkin.aurora.rawValue, "aurora")
         XCTAssertEqual(AppSkin.editorial.rawValue, "editorial")
         XCTAssertEqual(Set(AppSkin.allCases), [.aurora, .editorial])
+    }
+
+    // MARK: - Scheme-aware resolution (light-only editorial)
+
+    func test_resolved_editorialFallsBackToAurora_underDarkAppearance() {
+        XCTAssertEqual(AppSkin.editorial.resolved(for: .dark), .aurora,
+                       "The paper palette must never sit on dark chrome — render Moon Lit instead.")
+    }
+
+    func test_resolved_editorialStaysEditorial_underLightAppearance() {
+        XCTAssertEqual(AppSkin.editorial.resolved(for: .light), .editorial)
+    }
+
+    func test_resolved_auroraIsStable_underAnyAppearance() {
+        XCTAssertEqual(AppSkin.aurora.resolved(for: .light), .aurora)
+        XCTAssertEqual(AppSkin.aurora.resolved(for: .dark), .aurora)
     }
 
     // MARK: - Canonical editorial palette (mirrors apps/console/styles/globals.css)

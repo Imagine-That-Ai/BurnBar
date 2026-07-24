@@ -278,10 +278,17 @@ private struct DashboardSidebarMaterial: View {
     }
 }
 
-/// SwiftUI's sidebar-removal placement is occasionally reapplied after this
-/// manually hosted dashboard window mounts. Keep the window chrome clean by
-/// removing only the system toggle item; the in-sidebar button remains the
-/// single visible control for this action.
+/// SwiftUI's sidebar-toggle placement is reapplied after this manually hosted
+/// dashboard window mounts, and the split view also projects
+/// `NSTitlebarBackgroundView` chrome strips across the top of the window. Keep
+/// the chrome minimal and predictable: drop any toolbar the split view
+/// creates, remove titlebar accessories, and hide the split view's duplicate
+/// titlebar strips — which also reseats the standard macOS sidebar toggle in
+/// its normal titlebar position next to the traffic lights, where it stays as
+/// the platform-conventional sidebar control. Once a toolbar holds no items it
+/// is dropped entirely so the command deck renders full-bleed under the
+/// traffic lights. Passes repeat on a timer because SwiftUI re-inserts chrome
+/// whenever its toolbar state invalidates.
 struct DashboardSidebarToolbarItemRemover: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         DashboardSidebarToolbarScrubberView(frame: .zero)
@@ -294,6 +301,9 @@ struct DashboardSidebarToolbarItemRemover: NSViewRepresentable {
 
 @MainActor
 private final class DashboardSidebarToolbarScrubberView: NSView {
+    private var windowUpdateObserver: NSObjectProtocol?
+    private var scrubTimer: Timer?
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         removeSystemSidebarToggle()
@@ -301,13 +311,96 @@ private final class DashboardSidebarToolbarScrubberView: NSView {
             await Task.yield()
             self?.removeSystemSidebarToggle()
         }
+        // SwiftUI re-adds the sidebar toggle asynchronously after mount; a
+        // later pass catches stragglers the immediate passes miss.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            self?.removeSystemSidebarToggle()
+        }
+        installWindowUpdateObserver()
+        startScrubTimer()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil {
+            if let observer = windowUpdateObserver {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            windowUpdateObserver = nil
+            scrubTimer?.invalidate()
+            scrubTimer = nil
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    /// SwiftUI has been observed to recreate the toolbar well after the
+    /// immediate passes run (split-view state settling, tab/visibility
+    /// churn). Window updates are the practical signal that a toolbar came
+    /// back — scrub again whenever one actually exists.
+    private func installWindowUpdateObserver() {
+        guard windowUpdateObserver == nil else { return }
+        windowUpdateObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didUpdateNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.window?.toolbar != nil else { return }
+                self.removeSystemSidebarToggle()
+            }
+        }
+    }
+
+    /// The dashboard's live status rail invalidates SwiftUI toolbar state on a
+    /// similar cadence, which can re-insert the system toggle after one-shot
+    /// passes. A repeating scrub bounds any reappearance to a flicker. The
+    /// pass is a no-op while no toolbar exists.
+    private func startScrubTimer() {
+        guard scrubTimer == nil else { return }
+        scrubTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.removeSystemSidebarToggle()
+            }
+        }
     }
 
     func removeSystemSidebarToggle() {
-        guard let toolbar = window?.toolbar else { return }
-        for index in toolbar.items.indices.reversed()
-            where toolbar.items[index].itemIdentifier == .toggleSidebar {
-            toolbar.removeItem(at: index)
+        if let toolbar = window?.toolbar {
+            for index in toolbar.items.indices.reversed()
+                where toolbar.items[index].itemIdentifier == .toggleSidebar {
+                toolbar.removeItem(at: index)
+            }
+            if toolbar.items.isEmpty {
+                window?.toolbar = nil
+            }
+        }
+        // With no toolbar to host it, AppKit/SwiftUI falls back to rendering
+        // the system sidebar toggle as a titlebar accessory (a clipped
+        // capsule overlapping the traffic lights). The dashboard installs no
+        // legitimate accessories, so drop them all.
+        while window?.titlebarAccessoryViewControllers.isEmpty == false {
+            window?.removeTitlebarAccessoryViewController(at: 0)
+        }
+        // Last channel: SwiftUI's split view projects NSTitlebarBackgroundView
+        // chrome strips across the top of the window (one per column); in that
+        // configuration the system sidebar toggle renders as a clipped capsule
+        // overlapping the traffic lights. The command deck owns the top band
+        // now, so those strips are pure noise — hiding them also reseats the
+        // toggle in its standard titlebar position.
+        hideSplitViewTitlebarChrome()
+    }
+
+    private func hideSplitViewTitlebarChrome() {
+        guard let window, let frameView = window.contentView?.superview else { return }
+        hideSplitViewTitlebarChrome(under: frameView)
+    }
+
+    private func hideSplitViewTitlebarChrome(under view: NSView) {
+        for subview in view.subviews {
+            if String(describing: type(of: subview)) == "NSTitlebarBackgroundView", !subview.isHidden {
+                subview.isHidden = true
+            }
+            hideSplitViewTitlebarChrome(under: subview)
         }
     }
 }

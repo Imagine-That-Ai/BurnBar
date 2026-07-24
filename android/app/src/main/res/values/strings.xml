@@ -3,6 +3,8 @@
     <string name="app_name">BurnBar</string>
     <string name="burnbar_wallpaper_label">BurnBar Live</string>
     <string name="burnbar_wallpaper_description">A data-driven ambient swarm background indicating provider activity.</string>
+    <string name="living_themes_wallpaper_label">BurnBar Living Themes</string>
+    <string name="living_themes_wallpaper_description">A catalog of 42 animated shader themes rendered as a live wallpaper.</string>
 
     <string-array name="pace_entries">
         <item>Energetic (Fast)</item>

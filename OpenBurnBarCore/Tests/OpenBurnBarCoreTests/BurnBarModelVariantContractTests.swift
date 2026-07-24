@@ -14,7 +14,7 @@ final class BurnBarModelVariantContractTests: XCTestCase {
         XCTAssertEqual(BurnBarThinkingLevel.medium.openAIEffort, "medium")
         XCTAssertEqual(BurnBarThinkingLevel.high.openAIEffort, "high")
         XCTAssertEqual(BurnBarThinkingLevel.xhigh.openAIEffort, "xhigh")
-        XCTAssertEqual(BurnBarThinkingLevel.max.openAIEffort, "xhigh")
+        XCTAssertEqual(BurnBarThinkingLevel.max.openAIEffort, "max")
     }
 
     func testDefaultVariantIDFormat() {

@@ -119,7 +119,7 @@ extension BurnBarHTTPGatewayServer {
                 variant: nil
             )
             await router.markRouteSuccess(route)
-            await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey)
+            await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey, startedAt: attemptStartedAt)
             attempts.append(routeAttempt(
                 sequence: priorAttempts.count + attempts.count + 1,
                 startedAt: attemptStartedAt,

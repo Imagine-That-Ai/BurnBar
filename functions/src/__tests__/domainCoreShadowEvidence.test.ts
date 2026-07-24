@@ -554,4 +554,214 @@ describe("domain-core shadow evidence contract", () => {
       "conflicts with immutable stored evidence",
     );
   });
+  it.each([
+    ["apple", "project_memory_doc_id"],
+    ["apple", "pensieve_dedup_hash"],
+    ["apple", "pensieve_slug_hmac"],
+    ["apple", "subscription_doc_id"],
+    ["android", "subscription_doc_id"],
+    ["remote-mcp", "pensieve_dedup_hash"],
+    ["remote-mcp", "pensieve_provenance_hash"],
+    ["remote-mcp", "pensieve_slug_hmac"],
+    ["local-mcp", "project_memory_doc_id"],
+  ])(
+    "opaque-identifier producer tuple %s/%s passes server-side V3 parsing",
+    (consumer, operation) => {
+      expect(() =>
+        parseDomainCoreShadowSampleRequest(
+          {
+            samples: [
+              v3Sample({
+                domain: "cloudvault",
+                slice: "opaque-identifiers",
+                consumer: consumer as "apple",
+                operation,
+              }),
+            ],
+          },
+          NOW,
+        ),
+      ).not.toThrow();
+    },
+  );
+
+  it.each([
+    ["android", "project_memory_doc_id"],
+    ["android", "pensieve_dedup_hash"],
+    ["android", "pensieve_provenance_hash"],
+    ["windows", "subscription_doc_id"],
+    ["console", "project_memory_doc_id"],
+    ["remote-mcp", "project_memory_doc_id"],
+    ["remote-mcp", "subscription_doc_id"],
+    ["local-mcp", "subscription_doc_id"],
+    ["local-mcp", "pensieve_dedup_hash"],
+  ])(
+    "opaque-identifier wrong consumer %s for %s is rejected by server-side V3 parsing",
+    (consumer, operation) => {
+      expect(() =>
+        parseDomainCoreShadowSampleRequest(
+          {
+            samples: [
+              v3Sample({
+                domain: "cloudvault",
+                slice: "opaque-identifiers",
+                consumer: consumer as "apple",
+                operation,
+              }),
+            ],
+          },
+          NOW,
+        ),
+      ).toThrow();
+    },
+  );
+
+  it("opaque-identifier wrong slice is rejected by server-side V3 parsing", () => {
+    expect(() =>
+      parseDomainCoreShadowSampleRequest(
+        {
+          samples: [
+            v3Sample({
+              domain: "cloudvault",
+              slice: "foundation",
+              consumer: "apple",
+              operation: "subscription_doc_id",
+            }),
+          ],
+        },
+        NOW,
+      ),
+    ).toThrow();
+  });
+
+  it("shadow operation consumers map mirrors the canonical v3 schema oneOf branches exactly", () => {
+    const branches = v3OperationContractBranches();
+    const schemaConsumers = new Set<string>();
+    for (const branch of branches) {
+      const operations = branch.properties.operation.enum ?? [branch.properties.operation.const!];
+      const consumers = branch.properties.consumer.enum ?? [branch.properties.consumer.const!];
+      for (const operation of operations) {
+        for (const consumer of consumers) {
+          schemaConsumers.add(
+            `${branch.properties.domain.const}/${branch.properties.slice.const}/${operation}/${consumer}`,
+          );
+        }
+      }
+    }
+    const serverConsumers = new Set<string>();
+    for (const [domain, slices] of Object.entries(DOMAIN_CORE_SHADOW_OPERATION_SLICES)) {
+      for (const [operation, slice] of Object.entries(slices)) {
+        for (const consumer of domainCoreShadowOperationConsumers(domain, slice, operation)) {
+          serverConsumers.add(`${domain}/${slice}/${operation}/${consumer}`);
+        }
+      }
+    }
+    expect(serverConsumers).toEqual(schemaConsumers);
+  });
+  });
+
+  it.each([
+    ["apple", "project_memory_doc_id"],
+    ["apple", "pensieve_dedup_hash"],
+    ["apple", "pensieve_slug_hmac"],
+    ["apple", "subscription_doc_id"],
+    ["android", "subscription_doc_id"],
+    ["remote-mcp", "pensieve_dedup_hash"],
+    ["remote-mcp", "pensieve_provenance_hash"],
+    ["remote-mcp", "pensieve_slug_hmac"],
+    ["local-mcp", "project_memory_doc_id"],
+  ])(
+    "opaque-identifier producer tuple %s/%s passes server-side V3 parsing",
+    (consumer, operation) => {
+      expect(() =>
+        parseDomainCoreShadowSampleRequest(
+          {
+            samples: [
+              v3Sample({
+                domain: "cloudvault",
+                slice: "opaque-identifiers",
+                consumer: consumer as "apple",
+                operation,
+              }),
+            ],
+          },
+          NOW,
+        ),
+      ).not.toThrow();
+    },
+  );
+
+  it.each([
+    ["android", "project_memory_doc_id", "android is not an allowed consumer for project_memory_doc_id"],
+    ["android", "pensieve_dedup_hash", "android is not an allowed consumer for pensieve_dedup_hash"],
+    ["android", "pensieve_provenance_hash", "android is not an allowed consumer for pensieve_provenance_hash"],
+    ["windows", "subscription_doc_id", "windows is not in the opaque-identifiers slice coverage"],
+    ["console", "project_memory_doc_id", "console is not in the opaque-identifiers slice coverage"],
+    ["remote-mcp", "project_memory_doc_id", "remote-mcp is not an allowed consumer for project_memory_doc_id"],
+    ["remote-mcp", "subscription_doc_id", "remote-mcp is not an allowed consumer for subscription_doc_id"],
+    ["local-mcp", "subscription_doc_id", "local-mcp is not an allowed consumer for subscription_doc_id"],
+    ["local-mcp", "pensieve_dedup_hash", "local-mcp is not an allowed consumer for pensieve_dedup_hash"],
+  ])(
+    "opaque-identifier wrong consumer %s for %s is rejected by server-side V3 parsing",
+    (consumer, operation) => {
+      expect(() =>
+        parseDomainCoreShadowSampleRequest(
+          {
+            samples: [
+              v3Sample({
+                domain: "cloudvault",
+                slice: "opaque-identifiers",
+                consumer: consumer as "apple",
+                operation,
+              }),
+            ],
+          },
+          NOW,
+        ),
+      ).toThrow();
+    },
+  );
+
+  it("opaque-identifier wrong slice is rejected by server-side V3 parsing", () => {
+    expect(() =>
+      parseDomainCoreShadowSampleRequest(
+        {
+          samples: [
+            v3Sample({
+              domain: "cloudvault",
+              slice: "foundation",
+              consumer: "apple",
+              operation: "subscription_doc_id",
+            }),
+          ],
+        },
+        NOW,
+      ),
+    ).toThrow();
+  });
+
+  it("shadow operation consumers map mirrors the canonical v3 schema oneOf branches exactly", () => {
+    const branches = v3OperationContractBranches();
+    const schemaConsumers = new Set<string>();
+    for (const branch of branches) {
+      const operations = branch.properties.operation.enum ?? [branch.properties.operation.const!];
+      const consumers = branch.properties.consumer.enum ?? [branch.properties.consumer.const!];
+      for (const operation of operations) {
+        for (const consumer of consumers) {
+          schemaConsumers.add(
+            `${branch.properties.domain.const}/${branch.properties.slice.const}/${operation}/${consumer}`,
+          );
+        }
+      }
+    }
+    const serverConsumers = new Set<string>();
+    for (const [domain, slices] of Object.entries(DOMAIN_CORE_SHADOW_OPERATION_SLICES)) {
+      for (const [operation, slice] of Object.entries(slices)) {
+        for (const consumer of domainCoreShadowOperationConsumers(domain, slice, operation)) {
+          serverConsumers.add(`${domain}/${slice}/${operation}/${consumer}`);
+        }
+      }
+    }
+    expect(serverConsumers).toEqual(schemaConsumers);
+  });
 });

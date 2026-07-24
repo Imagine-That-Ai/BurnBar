@@ -22,7 +22,7 @@ struct RootNavigationView: View {
     let devicesStore: DevicesStore
     let transferStore: CredentialTransferStore
 
-    @State private var selection: AppDestination = .pulse
+    @State private var selection = MobileNavigationRestoration.padSelection()
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     @StateObject private var customization = AppCustomization.shared
     @State private var didApplyScreenshotRoute = false
@@ -46,11 +46,14 @@ struct RootNavigationView: View {
     @State private var burnQuotaStore = QuotaStore()
     @State private var burnDashboardStore = DashboardStore()
     @State private var burnActivityStore = ActivityStore()
+    /// Calendar destination store, hoisted like the Pulse/Burn stores so
+    /// sidebar hops keep the warm month (same remount fix).
+    @State private var calendarStore = CalendarStore()
     @State private var missionActivityCenter = MobileMissionActivityCenter()
     @State private var missionConsoleHost = MobileMissionConsoleHost()
     @State private var showHermesSheet = false
     @State private var subscriptionStore = HostedQuotaSubscriptionStore()
-    @State private var detailPath = NavigationPath()
+    @State private var detailPath = MobileNavigationRestoration.path(for: .padDetail)
     @State private var isCloudStoreChromeHidden = false
     /// App-scope Agent Watch overlay singleton. The iPad split shell needs the
     /// same always-on control stream as iPhone so Mac-initiated screen sharing
@@ -118,6 +121,7 @@ struct RootNavigationView: View {
             updateColumnVisibility(for: selection, animated: false)
         }
         .onChange(of: selection) { _, destination in
+            MobileNavigationRestoration.savePadSelection(destination)
             updateColumnVisibility(for: destination)
         }
         .onChange(of: router.pendingDestination) { _, destination in
@@ -129,11 +133,18 @@ struct RootNavigationView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowSettings"))) { _ in
             openSettingsRoute()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowCalendarTab"))) { _ in
+            selection = .calendar
+            updateColumnVisibility(for: .calendar, animated: false)
+        }
         .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName)) { notification in
             openHermesGatewayPairingRoute(notification)
         }
         .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
             isCloudStoreChromeHidden = notification.object as? Bool ?? false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            saveNavigationState()
         }
     }
 
@@ -364,7 +375,7 @@ struct RootNavigationView: View {
                 missionHost: missionConsoleHost
             )
         } else {
-            NavigationStack(path: $detailPath) {
+            NavigationStack(path: persistedDetailPath) {
                 Group {
                     switch selection {
                     case .pulse:    PulseView(
@@ -380,6 +391,7 @@ struct RootNavigationView: View {
                         activityStore: burnActivityStore
                     )
                     case .insights: AgentInsightsTabScreen(dashboardStore: insightsDashboardStore, hermesService: hermesService)
+                    case .calendar: CalendarView(store: calendarStore)
                     case .streams:  StreamsView()
                     case .agents:   EmptyView()
                     case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
@@ -416,6 +428,21 @@ struct RootNavigationView: View {
     }
 
     // MARK: - Router
+
+    private var persistedDetailPath: Binding<NavigationPath> {
+        Binding(
+            get: { detailPath },
+            set: { newValue in
+                detailPath = newValue
+                MobileNavigationRestoration.save(newValue, for: .padDetail)
+            }
+        )
+    }
+
+    private func saveNavigationState() {
+        MobileNavigationRestoration.savePadSelection(selection)
+        MobileNavigationRestoration.save(detailPath, for: .padDetail)
+    }
 
     private func handleRouter(_ destination: PulseRouter.Destination?) {
         guard let destination else { return }

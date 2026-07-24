@@ -193,6 +193,10 @@ def create_bundle(
         for key in ("candidateCommit", "coreVersion", "abiVersion", "sourceSha256")
     ):
         raise ValueError("rollback profile candidate and activation closure disagree")
+    if version != candidate.get("coreVersion"):
+        raise ValueError("rollback release version does not match the candidate core version")
+    if version != candidate.get("coreVersion"):
+        raise ValueError("rollback release version does not match the candidate core version")
     payload_manifest, payload_entries = rollback_payloads(
         candidate=candidate,
         activation=activation,
@@ -206,9 +210,13 @@ def create_bundle(
     source_bytes = source_archive.read_bytes()
     if len(source_bytes) < 128:
         raise ValueError("rollback source archive is empty or implausibly small")
-    environment = rollback_environment(profile)
-    manifest = {
-        "schemaVersion": 1,
+    if hashlib.sha256(source_bytes).hexdigest() != candidate.get("sourceSha256"):
+        raise ValueError("rollback source archive digest does not match the candidate source SHA-256")
+    source_bytes = source_archive.read_bytes()
+    if len(source_bytes) < 128:
+        raise ValueError("rollback source archive is empty or implausibly small")
+    if hashlib.sha256(source_bytes).hexdigest() != candidate.get("sourceSha256"):
+        raise ValueError("rollback source archive digest does not match the candidate source SHA-256")
         "artifactKind": "legacy-rollback-bundle",
         "target": "all-supported-consumers",
         "candidate": candidate,

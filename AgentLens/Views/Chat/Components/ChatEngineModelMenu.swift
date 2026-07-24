@@ -167,14 +167,14 @@ struct ChatEngineModelMenu: View {
         .animation(DesignSystem.Animation.snappy, value: controller.chatModelSelection(for: controller.chatBackend))
         .animation(DesignSystem.Animation.snappy, value: controller.hermesModelName)
         .task(id: controller.chatBackend) {
-            await refreshCLIRowsIfNeeded()
+            await refreshCLIRowsContinuously()
         }
     }
 
     @MainActor
-    private func refreshCLIRowsIfNeeded() async {
+    private func refreshCLIRowsIfNeeded(force: Bool = false) async {
         guard let runtime = cliRuntime(for: controller.chatBackend),
-              cliRows[runtime] == nil else {
+              force || cliRows[runtime] == nil else {
             return
         }
         do {
@@ -185,6 +185,19 @@ struct ChatEngineModelMenu: View {
         } catch {
             cliRows[runtime] = nil
             cliErrors[runtime] = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func refreshCLIRowsContinuously() async {
+        guard cliRuntime(for: controller.chatBackend) != nil else { return }
+        while !Task.isCancelled {
+            await refreshCLIRowsIfNeeded(force: true)
+            do {
+                try await Task.sleep(nanoseconds: 15_000_000_000)
+            } catch {
+                return
+            }
         }
     }
 

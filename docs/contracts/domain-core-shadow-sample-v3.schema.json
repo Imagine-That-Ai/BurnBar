@@ -338,7 +338,7 @@
           "properties": {
             "domain": { "const": "cloudvault" },
             "slice": { "const": "opaque-identifiers" },
-            "consumer": { "const": "local-mcp" },
+            "consumer": { "enum": ["apple", "local-mcp"] },
             "operation": { "const": "project_memory_doc_id" }
           }
         },
@@ -346,10 +346,26 @@
           "properties": {
             "domain": { "const": "cloudvault" },
             "slice": { "const": "opaque-identifiers" },
-            "consumer": { "const": "remote-mcp" },
+            "consumer": { "enum": ["apple", "remote-mcp"] },
             "operation": {
-              "enum": ["pensieve_dedup_hash", "pensieve_provenance_hash", "pensieve_slug_hmac"]
+              "enum": ["pensieve_dedup_hash", "pensieve_slug_hmac"]
             }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "const": "opaque-identifiers" },
+            "consumer": { "const": "remote-mcp" },
+            "operation": { "const": "pensieve_provenance_hash" }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "const": "opaque-identifiers" },
+            "consumer": { "enum": ["apple", "android"] },
+            "operation": { "const": "subscription_doc_id" }
           }
         },
         {

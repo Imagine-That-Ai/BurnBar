@@ -54,7 +54,7 @@ const CONSOLE_OPERATION_SLICES = new Map<
     escrow:
       "escrow_wrapping_key escrow_assemble_wire escrow_split_wire escrow_seal escrow_open cloudvault_escrow_split_wire cloudvault_escrow_seal cloudvault_escrow_open",
   }).flatMap(([slice, operations]) =>
-    operations
+      "pensieve_vector_cloak pensieve_l2_normalize pensieve_deterministic_embed pensieve_deterministic_embed_and_cloak",
       .split(" ")
       .map((operation) => [
         operation,

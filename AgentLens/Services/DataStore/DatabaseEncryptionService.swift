@@ -635,7 +635,7 @@ extension DatabaseEncryptionService {
             let orphanPath = directoryURL.appendingPathComponent(entry).path
             let orphanBytes: Int64
             do {
-                let attributes = try fileManager.attributesOfItem(atPath: orphanPath)
+                let attributes = try orphanSizeLookup(fileManager, orphanPath)
                 orphanBytes = (attributes[.size] as? NSNumber)?.int64Value ?? 0
             } catch {
                 AppLogger.dataStore.debug(
@@ -657,6 +657,17 @@ extension DatabaseEncryptionService {
                 )
             }
         }
+    }
+
+    /// Resolved through a helper so the sweep's fail-open `catch` branch stays
+    /// directly exercisable: a lookup failure (e.g. a dangling symlink left by
+    /// a crashed migration) surfaces here and is handled at the call site,
+    /// never aborting the reclaim.
+    private static func orphanSizeLookup(
+        _ fileManager: FileManager,
+        _ orphanPath: String
+    ) throws -> [FileAttributeKey: Any] {
+        try fileManager.attributesOfItem(atPath: orphanPath)
     }
 
     private static func removeDatabaseFilesIfPresent(at path: String, includePrimary: Bool) {

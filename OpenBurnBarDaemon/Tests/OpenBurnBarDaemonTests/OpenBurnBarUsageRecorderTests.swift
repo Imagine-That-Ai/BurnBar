@@ -126,6 +126,52 @@ final class BurnBarUsageRecorderTests: XCTestCase {
         XCTAssertEqual(recent.first?.providerID, "hermes")
     }
 
+    func testUsageRecorderReadsLedgerLinesWrittenBeforeStartTimeExisted() async throws {
+        // The ledger is append-only JSONL with no migrator, and `records()` is
+        // a strict `try lines.map { try decode }` — one undecodable line would
+        // take down both reads AND appends for every existing install. So a row
+        // written before `startTime` existed must still load, with the field
+        // simply absent.
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-usage-recorder-no-starttime-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        let ledgerURL = rootURL.appendingPathComponent("usage-events.jsonl", isDirectory: false)
+
+        let referenceSeconds: Double = 770_472_000
+        let preStartTimeLine = #"""
+        {"idempotencyKey":"legacy-no-starttime","event":{"providerID":"anthropic","modelID":"claude-opus-4-8","inputTokens":10,\#
+        "outputTokens":5,"cacheCreationTokens":0,"cacheReadTokens":0,"reasoningTokens":0,"cost":0.02,"recordedAt":770472000,"confidence":"exact"}}
+        """#
+        try (preStartTimeLine + "\n").write(to: ledgerURL, atomically: true, encoding: .utf8)
+
+        let recorder = BurnBarUsageRecorder(
+            fileURL: ledgerURL,
+            logger: BurnBarDaemonLogger(category: "usage-recorder-tests")
+        )
+
+        let records = try await recorder.records()
+        XCTAssertEqual(records.count, 1)
+        let event = try XCTUnwrap(records.first?.event)
+        XCTAssertNil(event.startTime, "A pre-startTime row must decode with the field absent, not fail")
+        XCTAssertEqual(event.recordedAt.timeIntervalSinceReferenceDate, referenceSeconds, accuracy: 0.5)
+
+        // Appending must still work against a ledger holding legacy lines.
+        let appended = BurnBarUsageEvent(
+            providerID: "anthropic",
+            modelID: "claude-opus-4-8",
+            inputTokens: 1,
+            outputTokens: 1,
+            cacheReadTokens: 0,
+            cost: 0.001,
+            recordedAt: Date(),
+            startTime: Date().addingTimeInterval(-4)
+        )
+        _ = try await recorder.record(appended, idempotencyKey: "with-starttime")
+        let after = try await recorder.records()
+        XCTAssertEqual(after.count, 2)
+        XCTAssertNotNil(after.last?.event.startTime, "A freshly written row keeps its startTime")
+    }
+
     func testUsageRecorderReadsLegacyEventsWithoutCacheCreationTokens() async throws {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-usage-recorder-legacy-\(UUID().uuidString)", isDirectory: true)

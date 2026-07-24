@@ -51,6 +51,8 @@
         { "slice": "search", "consumer": "apple" },
         { "slice": "search", "consumer": "android" },
         { "slice": "search", "consumer": "remote-mcp" },
+        { "slice": "opaque-identifiers", "consumer": "apple" },
+        { "slice": "opaque-identifiers", "consumer": "android" },
         { "slice": "opaque-identifiers", "consumer": "remote-mcp" },
         { "slice": "search", "consumer": "local-mcp" },
         { "slice": "opaque-identifiers", "consumer": "local-mcp" },

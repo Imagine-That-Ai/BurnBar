@@ -198,7 +198,7 @@ struct AppearancePreviewCard: View {
 
     @ViewBuilder
     private var previewBackdrop: some View {
-        let skin = settingsManager.appearanceSkin
+        let skin = settingsManager.appearanceSkin.resolved(for: colorScheme)
         if skin == .editorial {
             // Paper field, light cream tint
             DesignSystem.Colors.background

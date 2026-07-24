@@ -107,6 +107,7 @@ internal fun BurnBarContent(
         burnBarPulseRoute(navigateToBurn, navigateToHermes, navigateToStreams)
         burnBarBurnRoute()
         burnBarInsightsRoutes(navController, isCloudMember)
+        burnBarCalendarRoute()
         burnBarStreamsRoute(navController, isCloudMember)
         burnBarHermesRoutes(navController, currentTier)
         burnBarYouRoute()
@@ -181,6 +182,13 @@ private fun androidx.navigation.NavGraphBuilder.burnBarInsightsRoutes(navControl
             }
         }
     }
+}
+
+private fun androidx.navigation.NavGraphBuilder.burnBarCalendarRoute() {
+    composable(
+        BurnBarTab.CALENDAR.route,
+        deepLinks = listOf(navDeepLink { uriPattern = "burnbar://calendar" }),
+    ) { com.openburnbar.ui.calendar.CalendarView() }
 }
 
 private fun androidx.navigation.NavGraphBuilder.burnBarStreamsRoute(navController: NavHostController, isCloudMember: Boolean) {

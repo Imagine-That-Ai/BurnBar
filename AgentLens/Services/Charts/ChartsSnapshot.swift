@@ -73,6 +73,12 @@ struct ChartsSnapshot: Equatable, Sendable {
     /// when the first half is silent.
     let burnTrendPercent: Double?
 
+    // MARK: burnOverTime — token twin (drives the Cost/Tokens metric toggle)
+
+    /// Same bucketing as `burnSeries`, valued in total tokens.
+    let burnTokenSeries: [ChartBucketing.DateBucket]
+    let tokenTrendPercent: Double?
+
     // MARK: providerMix / modelMix
 
     let providerShares: [ProviderShare]
@@ -105,6 +111,11 @@ struct ChartsSnapshot: Equatable, Sendable {
     let lastWeekDaily: [Double]
     let weekOverWeekPercent: Double?
 
+    /// Token-valued twins for the metric toggle.
+    let thisWeekTokenDaily: [Double]
+    let lastWeekTokenDaily: [Double]
+    let weekOverWeekTokenPercent: Double?
+
     // MARK: costPerSessionDistribution / sessionOutliers
 
     let sessionCostBins: [ChartBucketing.HistogramBin]
@@ -121,6 +132,8 @@ struct ChartsSnapshot: Equatable, Sendable {
     // MARK: burnForecast (fixed window, independent of TimeRange)
 
     let forecast: Forecast?
+    /// Token-valued twin for the metric toggle (projected month end in tokens).
+    let tokenForecast: Forecast?
 
     // MARK: provenanceQuality
 
@@ -159,6 +172,12 @@ extension ChartsSnapshot {
         }
         let burnSeries = ChartBucketing.dateBuckets(
             events: costEvents, range: range, component: bucketComponent, calendar: calendar
+        )
+        let tokenEvents = rows.map {
+            (date: attributionDate(for: $0, in: range), value: Double($0.totalTokens))
+        }
+        let burnTokenSeries = ChartBucketing.dateBuckets(
+            events: tokenEvents, range: range, component: bucketComponent, calendar: calendar
         )
 
         let totalCost = rows.reduce(0) { $0 + $1.cost }
@@ -206,11 +225,19 @@ extension ChartsSnapshot {
         let peak = peakCell(in: matrix)
 
         // Week vs week (trailing fixed windows anchored at start of today)
-        let (thisWeek, lastWeek) = weekPair(rows: recentRows, now: now, calendar: calendar)
+        let (thisWeek, lastWeek) = weekPair(rows: recentRows, now: now, calendar: calendar, value: \.cost)
         let lastWeekTotal = lastWeek.reduce(0, +)
         let thisWeekTotal = thisWeek.reduce(0, +)
         let wowPercent: Double? = lastWeekTotal > 0
             ? ((thisWeekTotal - lastWeekTotal) / lastWeekTotal) * 100
+            : nil
+        let (thisWeekTokens, lastWeekTokens) = weekPair(
+            rows: recentRows, now: now, calendar: calendar, value: { Double($0.totalTokens) }
+        )
+        let lastWeekTokenTotal = lastWeekTokens.reduce(0, +)
+        let thisWeekTokenTotal = thisWeekTokens.reduce(0, +)
+        let wowTokenPercent: Double? = lastWeekTokenTotal > 0
+            ? ((thisWeekTokenTotal - lastWeekTokenTotal) / lastWeekTokenTotal) * 100
             : nil
 
         // Sessions
@@ -257,7 +284,10 @@ extension ChartsSnapshot {
         let projectEntropy = ChartBucketing.entropyIndex(Array(projectCosts.values))
 
         // Forecast (trailing 30 days observation, project to month end)
-        let forecast = buildForecast(rows: recentRows, now: now, calendar: calendar)
+        let forecast = buildForecast(rows: recentRows, now: now, calendar: calendar, value: \.cost)
+        let tokenForecast = buildForecast(
+            rows: recentRows, now: now, calendar: calendar, value: { Double($0.totalTokens) }
+        )
 
         // Provenance
         var provenanceCosts: [String: Double] = [:]
@@ -290,6 +320,8 @@ extension ChartsSnapshot {
             sessionCount: sessionIDs.count,
             burnSeries: burnSeries,
             burnTrendPercent: halfOverHalfPercent(burnSeries.map(\.value)),
+            burnTokenSeries: burnTokenSeries,
+            tokenTrendPercent: halfOverHalfPercent(burnTokenSeries.map(\.value)),
             providerShares: providerShares,
             modelCosts: Array(rankedModels),
             cacheHitRateSeries: cacheSeries,
@@ -304,6 +336,9 @@ extension ChartsSnapshot {
             thisWeekDaily: thisWeek,
             lastWeekDaily: lastWeek,
             weekOverWeekPercent: wowPercent,
+            thisWeekTokenDaily: thisWeekTokens,
+            lastWeekTokenDaily: lastWeekTokens,
+            weekOverWeekTokenPercent: wowTokenPercent,
             sessionCostBins: ChartBucketing.histogramLogBuckets(values: costsPerSession),
             medianSessionCost: ChartBucketing.median(costsPerSession.filter { $0 > 0 }),
             outlierSessions: outliers,
@@ -311,6 +346,7 @@ extension ChartsSnapshot {
             projectSeries: projectSeries,
             projectEntropy: projectEntropy,
             forecast: forecast,
+            tokenForecast: tokenForecast,
             provenanceShares: provenanceShares,
             exactShare: exactShare,
             modelConcentrationIndex: hhi,
@@ -393,7 +429,8 @@ extension ChartsSnapshot {
     private static func weekPair(
         rows: [TokenUsage],
         now: Date,
-        calendar: Calendar
+        calendar: Calendar,
+        value: (TokenUsage) -> Double
     ) -> (thisWeek: [Double], lastWeek: [Double]) {
         let todayStart = calendar.startOfDay(for: now)
         guard let thisWeekStart = calendar.date(byAdding: .day, value: -6, to: todayStart),
@@ -401,7 +438,7 @@ extension ChartsSnapshot {
               let thisWeekEnd = calendar.date(byAdding: .day, value: 1, to: todayStart) else {
             return ([], [])
         }
-        let events = rows.map { (date: $0.startTime, value: $0.cost) }
+        let events = rows.map { (date: $0.startTime, value: value($0)) }
         let thisWeek = ChartBucketing.dateBuckets(
             events: events, range: thisWeekStart...thisWeekEnd, component: .day, calendar: calendar
         ).map(\.value)
@@ -414,12 +451,13 @@ extension ChartsSnapshot {
     private static func buildForecast(
         rows: [TokenUsage],
         now: Date,
-        calendar: Calendar
+        calendar: Calendar,
+        value: (TokenUsage) -> Double
     ) -> Forecast? {
         let todayStart = calendar.startOfDay(for: now)
         guard let observationStart = calendar.date(byAdding: .day, value: -13, to: todayStart),
               let todayEnd = calendar.date(byAdding: .day, value: 1, to: todayStart) else { return nil }
-        let events = rows.map { (date: $0.startTime, value: $0.cost) }
+        let events = rows.map { (date: $0.startTime, value: value($0)) }
         let daily = ChartBucketing.dateBuckets(
             events: events, range: observationStart...todayEnd, component: .day, calendar: calendar
         )
@@ -443,7 +481,7 @@ extension ChartsSnapshot {
 
         let monthToDate = rows
             .filter { $0.startTime >= monthInterval.start && $0.startTime <= now }
-            .reduce(0) { $0 + $1.cost }
+            .reduce(0) { $0 + value($1) }
         let projectedMonthEnd = monthToDate + projectedDaily.reduce(0, +)
 
         return Forecast(

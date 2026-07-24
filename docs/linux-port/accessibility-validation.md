@@ -13,7 +13,7 @@ completed manual certification.
 ### Axe route and capability matrix
 
 `apps/linux-desktop/src/accessibility/axeRouteAudit.test.tsx` mounts every one
-of the 19 routes, plus representative unavailable and degraded capability
+of the 20 routes, plus representative unavailable and degraded capability
 states. Axe must report zero violations in all 21 states. The test disables
 only `color-contrast`, because jsdom has no layout or paint engine; packaged
 and manual visual QA own that rule.
@@ -31,7 +31,7 @@ DBus/X11/XFCE session with AT-SPI enabled. The session:
    application observation and debug logging;
 2. proves Orca remains active and lists OpenBurnBar;
 3. captures a bounded AT-SPI tree with names, roles, states, and actions;
-4. navigates all 19 routes through the keyboard command palette and requires
+4. navigates all 20 routes through the keyboard command palette and requires
    the expected route name in each live AT-SPI tree;
 5. sends a bounded 14-key Tab traversal, records Orca's live AT-SPI
    focused-state events, and requires ten ordered events spanning at least

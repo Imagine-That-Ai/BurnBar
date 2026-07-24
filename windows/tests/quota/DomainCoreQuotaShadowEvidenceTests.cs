@@ -344,6 +344,66 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
         Assert.Equal(0, spool.PendingSampleCount());
     }
 
+    // The pensieve-vectors slice must admit all four canonical pensieve operation IDs,
+    // including pensieve_l2_normalize. The pre-fix bug: the Windows OperationSlices map
+    // omitted pensieve_l2_normalize, so Apple's canonical l2-normalize comparison records
+    // (and any Windows-side normalization shadow record) were silently dropped.
+    [Theory]
+    [InlineData("pensieve_l2_normalize", "pensieve-vectors")]
+    [InlineData("pensieve_vector_cloak", "pensieve-vectors")]
+    [InlineData("pensieve_deterministic_embed", "pensieve-vectors")]
+    [InlineData("pensieve_deterministic_embed_and_cloak", "pensieve-vectors")]
+    public void PensieveVectorsAdmitsAllCanonicalOperationIds(string operation, string slice)
+    {
+        Assert.Equal(slice, DomainCoreQuotaShadowEvidence.SliceForOperation(operation));
+    }
+
+    // The legacy short aliases (cloak, l2_normalize, embed, embed_and_cloak) are not
+    // canonical and must never resolve to a slice — Windows has no compat shim. A null
+    // slice means the shadow record is dropped before persistence, the correct behavior.
+    [Theory]
+    [InlineData("cloak")]
+    [InlineData("l2_normalize")]
+    [InlineData("embed")]
+    [InlineData("embed_and_cloak")]
+    public void ShortAliasOperationsAreNotAdmittedToAnySlice(string operation)
+    {
+        Assert.Null(DomainCoreQuotaShadowEvidence.SliceForOperation(operation));
+    }
+
+    // A stored V3 sample carrying pensieve_l2_normalize must validate as a durable
+    // pensieve-vectors record. The pre-fix map omission would have rejected this sample
+    // at ValidStoredSample (operation not in OperationSlices), dropping legitimate evidence.
+    [Fact]
+    public void ValidStoredSampleAcceptsCanonicalPensieveL2NormalizeRecord()
+    {
+        DomainCoreShadowEvidenceIdentity identity = Identity();
+        var sample = Sample(1) with
+        {
+            Slice = "pensieve-vectors",
+            Operation = "pensieve_l2_normalize",
+        };
+        Assert.True(DomainCoreQuotaShadowEvidence.ValidStoredSample(identity, sample, DateTimeOffset.UtcNow));
+    }
+
+    // A short-alias operation has no slice binding, so a stored sample carrying it must
+    // be rejected by ValidStoredSample even when the slice field claims pensieve-vectors.
+    [Theory]
+    [InlineData("cloak")]
+    [InlineData("l2_normalize")]
+    [InlineData("embed")]
+    [InlineData("embed_and_cloak")]
+    public void ValidStoredSampleRejectsShortAliasPensieveRecords(string operation)
+    {
+        DomainCoreShadowEvidenceIdentity identity = Identity();
+        var sample = Sample(1) with
+        {
+            Slice = "pensieve-vectors",
+            Operation = operation,
+        };
+        Assert.False(DomainCoreQuotaShadowEvidence.ValidStoredSample(identity, sample, DateTimeOffset.UtcNow));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);

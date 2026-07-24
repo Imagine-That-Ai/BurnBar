@@ -523,6 +523,8 @@ public partial class App
         }
         await StopLocalRuntimeAsync();
         _flyout?.Close();
+        _sharedUiWindow?.Close();
+        _sharedUiWindow = null;
         _mainWindow?.Close();
         Exit();
     }

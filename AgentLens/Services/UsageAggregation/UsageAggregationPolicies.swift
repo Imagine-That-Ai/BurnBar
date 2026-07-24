@@ -28,6 +28,10 @@ enum ParserResourcePolicy {
         makeGovernor(fileByteBudget: refreshFileByteBudget, label: "usage_refresh")
     }
 
+    static func makeRefreshGovernor(fileByteBudget: Int64) -> ParserResourceGovernor {
+        makeGovernor(fileByteBudget: fileByteBudget, label: "usage_refresh")
+    }
+
     static func makeIndexingGovernor() -> ParserResourceGovernor {
         makeGovernor(fileByteBudget: indexingFileByteBudget, label: "conversation_indexing")
     }

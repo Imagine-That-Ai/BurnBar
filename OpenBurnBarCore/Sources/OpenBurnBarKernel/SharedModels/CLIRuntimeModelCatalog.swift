@@ -507,6 +507,64 @@ public enum CLIRuntimeModelCatalog {
         return rows
     }
 
+    /// Parses the OpenBurnBar-owned Codex catalog emitted by routed-client
+    /// wiring. The Codex CLI profile uses `openburnbar/<model>` picker IDs,
+    /// while the gateway still needs the underlying model ID for routing.
+    public static func parseOpenBurnBarCodexModelCatalog(_ data: Data) -> [CLIRuntimeModelOption] {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = object["models"] as? [[String: Any]] else {
+            return []
+        }
+
+        var rows: [CLIRuntimeModelOption] = []
+        var seen = Set<String>()
+        for model in models {
+            let visibility = (model["visibility"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            guard visibility != "hide" else { continue }
+
+            let rawSlug = ((model["slug"] as? String)
+                ?? (model["id"] as? String)
+                ?? (model["model"] as? String)
+                ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard rawSlug.lowercased().hasPrefix("openburnbar/") else { continue }
+            let routeModelID = String(rawSlug.dropFirst("openburnbar/".count))
+            guard !routeModelID.isEmpty, seen.insert(routeModelID.lowercased()).inserted else { continue }
+
+            let display = ((model["display_name"] as? String)
+                ?? (model["name"] as? String)
+                ?? routeModelID)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let description = (model["description"] as? String) ?? ""
+            let providerID = inferredProviderID(
+                modelID: routeModelID,
+                displayName: "\(display) \(description)"
+            )
+            let providerName = OpenBurnBarModelDisplayName.providerLabel(
+                providerID: providerID,
+                providerName: nil
+            ) ?? providerID
+
+            rows.append(CLIRuntimeModelOption(
+                modelID: rawSlug,
+                routeModelID: routeModelID,
+                rowID: "openburnbar|\(routeModelID.lowercased())|codex",
+                displayName: OpenBurnBarModelDisplayName.compose(
+                    modelName: display.isEmpty ? routeModelID : display,
+                    providerName: providerName,
+                    providerID: providerID
+                ),
+                providerID: providerID,
+                providerName: "\(providerName) via OpenBurnBar API/OAuth",
+                tier: inferredTier(modelID: routeModelID, displayName: display),
+                source: .openBurnBarProxy
+            ))
+        }
+        return rows
+    }
+
     public static func parseGrokModels(_ text: String) -> [CLIRuntimeModelOption] {
         var rows: [CLIRuntimeModelOption] = []
         var seen = Set<String>()

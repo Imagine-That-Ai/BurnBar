@@ -23,7 +23,7 @@ struct RootTabView: View {
     let devicesStore: DevicesStore
     let transferStore: CredentialTransferStore
 
-    @State private var selection: AuroraNavDestination = .pulse
+    @State private var selection = MobileNavigationRestoration.phoneSelection()
     /// Live preview destination during a nav-tray scrub. When non-nil, the
     /// content area shows this tab so the user sees what they're about to
     /// commit. Cleared on commit (selection binding updates) or cancel.
@@ -67,11 +67,12 @@ struct RootTabView: View {
     @StateObject private var skillRunPiPController = SkillRunTextPiPController()
 
     // Per-tab navigation paths
-    @State private var pulsePath = NavigationPath()
-    @State private var burnPath = NavigationPath()
-    @State private var streamsPath = NavigationPath()
-    @State private var hermesPath = NavigationPath()
-    @State private var youPath = NavigationPath()
+    @State private var pulsePath = MobileNavigationRestoration.path(for: .phonePulse)
+    @State private var burnPath = MobileNavigationRestoration.path(for: .phoneBurn)
+    @State private var calendarPath = MobileNavigationRestoration.path(for: .phoneCalendar)
+    @State private var streamsPath = MobileNavigationRestoration.path(for: .phoneStreams)
+    @State private var hermesPath = MobileNavigationRestoration.path(for: .phoneHermes)
+    @State private var youPath = MobileNavigationRestoration.path(for: .phoneYou)
 
     private let destinations = AuroraNavDestination.allCases
 
@@ -204,6 +205,7 @@ struct RootTabView: View {
             ])
         }
         .onChange(of: selection) { oldValue, newValue in
+            MobileNavigationRestoration.savePhoneSelection(newValue)
             // A deliberate tab switch: the primary navigation action on iPhone.
             MobileAnalytics.shared.track(.mobileTabSelected, ["tab": Self.routeLabel(newValue)])
             MobileAnalytics.shared.track(.navRouteChanged, [
@@ -230,6 +232,9 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowSettings"))) { _ in
             openSettingsRoute()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowCalendarTab"))) { _ in
+            selection = .calendar
+        }
         .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName)) { notification in
             openHermesGatewayPairingRoute(notification)
         }
@@ -238,6 +243,9 @@ struct RootTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
             isCloudStoreChromeHidden = notification.object as? Bool ?? false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            saveNavigationState()
         }
     }
 
@@ -248,6 +256,7 @@ struct RootTabView: View {
         case .pulse:    pulseStack
         case .burn:     burnStack
         case .insights: insightsStack
+        case .calendar: calendarStack
         case .streams:  streamsStack
         case .hermes:   hermesStack
         case .you:      youStack
@@ -338,6 +347,9 @@ struct RootTabView: View {
     @State private var burnQuotaStore = QuotaStore()
     @State private var burnDashboardStore = DashboardStore()
     @State private var burnActivityStore = ActivityStore()
+    /// Calendar tab store, hoisted with the other tab stores so a tab return
+    /// keeps the warm month instead of re-fetching (same precedent).
+    @State private var calendarStore = CalendarStore()
 
     private var insightsStack: some View {
         AgentInsightsTabScreen(
@@ -349,7 +361,7 @@ struct RootTabView: View {
     // MARK: - Stacks
 
     private var pulseStack: some View {
-        NavigationStack(path: $pulsePath) {
+        NavigationStack(path: persistedPath($pulsePath, key: .phonePulse)) {
             PulseView(
                 router: router,
                 dashboard: pulseDashboardStore,
@@ -363,7 +375,7 @@ struct RootTabView: View {
     }
 
     private var burnStack: some View {
-        NavigationStack(path: $burnPath) {
+        NavigationStack(path: persistedPath($burnPath, key: .phoneBurn)) {
             BurnView(
                 quotaStore: burnQuotaStore,
                 dashboard: burnDashboardStore,
@@ -373,15 +385,21 @@ struct RootTabView: View {
         }
     }
 
+    private var calendarStack: some View {
+        NavigationStack(path: persistedPath($calendarPath, key: .phoneCalendar)) {
+            CalendarView(store: calendarStore)
+        }
+    }
+
     private var streamsStack: some View {
-        NavigationStack(path: $streamsPath) {
+        NavigationStack(path: persistedPath($streamsPath, key: .phoneStreams)) {
             StreamsView()
                 .navigationDestination(for: TokenUsage.self) { SessionDetailView(usage: $0) }
         }
     }
 
     private var hermesStack: some View {
-        NavigationStack(path: $hermesPath) {
+        NavigationStack(path: persistedPath($hermesPath, key: .phoneHermes)) {
             // Hermes Square is the only Assistants surface. The split-
             // view automatically falls back to the single-column root on
             // compact widths (< 720pt) — same code path, no flag.
@@ -393,7 +411,7 @@ struct RootTabView: View {
     }
 
     private var youStack: some View {
-        NavigationStack(path: $youPath) {
+        NavigationStack(path: persistedPath($youPath, key: .phoneYou)) {
             YouView(
                 authStore: authStore,
                 syncStore: syncHealthStore,
@@ -422,6 +440,29 @@ struct RootTabView: View {
     }
 
     // MARK: - Router Bridge
+
+    private func persistedPath(
+        _ path: Binding<NavigationPath>,
+        key: MobileNavigationRestoration.PathKey
+    ) -> Binding<NavigationPath> {
+        Binding(
+            get: { path.wrappedValue },
+            set: { newValue in
+                path.wrappedValue = newValue
+                MobileNavigationRestoration.save(newValue, for: key)
+            }
+        )
+    }
+
+    private func saveNavigationState() {
+        MobileNavigationRestoration.savePhoneSelection(selection)
+        MobileNavigationRestoration.save(pulsePath, for: .phonePulse)
+        MobileNavigationRestoration.save(burnPath, for: .phoneBurn)
+        MobileNavigationRestoration.save(calendarPath, for: .phoneCalendar)
+        MobileNavigationRestoration.save(streamsPath, for: .phoneStreams)
+        MobileNavigationRestoration.save(hermesPath, for: .phoneHermes)
+        MobileNavigationRestoration.save(youPath, for: .phoneYou)
+    }
 
     private func handleRouter(_ destination: PulseRouter.Destination?) {
         guard let destination else { return }
@@ -576,6 +617,7 @@ struct RootTabView: View {
         case .pulse:    return "pulse"
         case .burn:     return "burn"
         case .insights: return "insights"
+        case .calendar: return "calendar"
         case .streams:  return "streams"
         case .hermes:   return "hermes"
         case .you:      return "you"
@@ -588,6 +630,7 @@ struct RootTabView: View {
         case .pulse:    return "dashboard"
         case .burn:     return "dashboard"
         case .insights: return "insights"
+        case .calendar: return "insights"
         case .streams:  return "dashboard_activity"
         case .hermes:   return "chat"
         case .you:      return "account"
@@ -597,16 +640,17 @@ struct RootTabView: View {
     // MARK: - Destination Mapping (for external router compatibility)
 
     enum TabSelection: Hashable, Equatable, Identifiable {
-        case pulse, burn, streams, hermes, you
+        case pulse, burn, calendar, streams, hermes, you
 
         var id: String { String(describing: self) }
         var label: String {
             switch self {
-            case .pulse:   return "Pulse"
-            case .burn:    return "Burn"
-            case .streams: return "Streams"
-            case .hermes:  return "Hermes"
-            case .you:     return "You"
+            case .pulse:    return "Pulse"
+            case .burn:     return "Burn"
+            case .calendar: return "Calendar"
+            case .streams:  return "Streams"
+            case .hermes:   return "Hermes"
+            case .you:      return "You"
             }
         }
     }

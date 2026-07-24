@@ -308,7 +308,10 @@ final class OpenBurnBarDaemonUsageSyncService {
             cacheReadTokens: event.cacheReadTokens,
             reasoningTokens: event.reasoningTokens,
             costUSD: event.cost,
-            startTime: event.recordedAt,
+            // `recordedAt` is stamped at completion, so it is the end of the
+            // call. Prefer the real start when the daemon supplied one — that
+            // makes day attribution and duration correct instead of zero.
+            startTime: event.startTime ?? event.recordedAt,
             endTime: event.recordedAt,
             usageSource: .daemon,
             provenanceMethod: provenanceMethod(for: provider, confidence: event.confidence),
@@ -341,7 +344,7 @@ final class OpenBurnBarDaemonUsageSyncService {
             cacheReadTokens: record.event.cacheReadTokens,
             reasoningTokens: record.event.reasoningTokens,
             costUSD: record.event.cost,
-            startTime: record.event.recordedAt,
+            startTime: record.event.startTime ?? record.event.recordedAt,
             endTime: record.event.recordedAt,
             usageSource: .daemon,
             provenanceMethod: provenanceMethod(for: provider, confidence: record.event.confidence),

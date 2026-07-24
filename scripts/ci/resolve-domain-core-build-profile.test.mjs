@@ -14,6 +14,7 @@ import {
   resolveDomainCoreBuildProfile,
   validateDomainCoreBuildProfiles,
 } from "../lib/domain-core-build-profile.mjs";
+import { validateDomainCoreReleaseCoordinates } from "../lib/domain-core-candidate-receipt.mjs";
 
 const catalog = JSON.parse(
   readFileSync(resolve("config/domain-core-build-profiles.json"), "utf8"),
@@ -361,6 +362,199 @@ test("artifact verifier accepts MSBuild UTF-8 BOM receipts and still rejects mal
     );
     assert.notEqual(malformed.status, 0, "malformed BOM-prefixed receipts must still fail closed");
     assert.match(malformed.stderr, /SyntaxError/);
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+const releaseCoords = {
+  commit: "c".repeat(40),
+  version: "1.2.3",
+  tag: "v1.2.3",
+};
+const releaseCoordsBuild = {
+  commit: "c".repeat(40),
+  version: "1.2.3+build.7",
+  tag: "v1.2.3+build.7",
+};
+
+test("main artifacts carry no release object when release coordinates are omitted", () => {
+  const profile = resolveDomainCoreBuildProfile(
+    catalog,
+    "public-production",
+    candidateIdentity,
+  );
+  assert.equal("release" in profile, false);
+  assert.deepEqual(profile.candidateIdentity, candidateIdentity);
+});
+
+test("stable all-legacy release accepts candidateCommit equal to release commit", () => {
+  const sameCommitRelease = {
+    ...releaseCoords,
+    commit: candidateIdentity.candidateCommit,
+  };
+  const profile = resolveDomainCoreBuildProfile(
+    catalog,
+    "public-production",
+    candidateIdentity,
+    sameCommitRelease,
+  );
+  assert.deepEqual(profile.release, sameCommitRelease);
+  assert.equal(profile.release.commit, profile.candidateIdentity.candidateCommit);
+});
+
+test("activated rollback release with distinct C and P commits is accepted", () => {
+  const profile = resolveDomainCoreBuildProfile(
+    catalog,
+    "public-production-rollback",
+    candidateIdentity,
+    releaseCoords,
+  );
+  assert.deepEqual(profile.release, releaseCoords);
+  assert.notEqual(
+    profile.release.commit,
+    profile.candidateIdentity.candidateCommit,
+  );
+});
+
+test("Functions artifact round-trips release coordinates without losing them", () => {
+  const profile = resolveDomainCoreBuildProfile(
+    catalog,
+    "public-production",
+    candidateIdentity,
+    releaseCoords,
+  );
+  const source = profileFunctionsJavaScript(profile);
+  assert.match(source, new RegExp(releaseCoords.tag));
+  assert.deepEqual(parseDomainCoreFunctionsJavaScript(source), profile);
+});
+
+test("malformed or partial release coordinates are rejected at validation", () => {
+  for (const invalid of [
+    null,
+    {},
+    { commit: releaseCoords.commit, version: releaseCoords.version },
+    {
+      commit: releaseCoords.commit,
+      version: releaseCoords.version,
+      tag: releaseCoords.tag,
+      extra: true,
+    },
+    { commit: "abc", version: releaseCoords.version, tag: releaseCoords.tag },
+    { commit: releaseCoords.commit, version: "1.2", tag: releaseCoords.tag },
+    { commit: releaseCoords.commit, version: releaseCoords.version, tag: "1.2.3" },
+    {
+      commit: releaseCoords.commit,
+      version: releaseCoords.version,
+      tag: "v1.2.4",
+    },
+  ]) {
+    assert.throws(() => validateDomainCoreReleaseCoordinates(invalid));
+  }
+});
+
+test("Rust-activated profile with candidateCommit equal to release commit is rejected", () => {
+  const rustCatalog = structuredClone(catalog);
+  rustCatalog.profiles["public-production"].modes.quota = "rust";
+  const sameCommitRelease = {
+    ...releaseCoords,
+    commit: candidateIdentity.candidateCommit,
+  };
+  assert.throws(
+    () =>
+      resolveDomainCoreBuildProfile(
+        rustCatalog,
+        "public-production",
+        candidateIdentity,
+        sameCommitRelease,
+      ),
+    /Rust activation requires distinct candidate C and release P commits/,
+  );
+});
+
+test("artifact verifier rejects partial release coordinate flags", () => {
+  const verifier = resolve(
+    "scripts/ci/verify-domain-core-build-profile-artifact.mjs",
+  );
+  const candidateCommit = spawnSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).stdout.trim();
+  const temporaryRoot = mkdtempSync(
+    join(tmpdir(), "openburnbar-domain-core-release-flags-"),
+  );
+  const windowsDirectory = join(temporaryRoot, "publish");
+  const artifactPath = join(windowsDirectory, "domain-core-build-profile.json");
+  const manifest = JSON.parse(
+    readFileSync(
+      resolve("crates/openburnbar-domain-core/union-abi-manifest.json"),
+      "utf8",
+    ),
+  );
+  const expected = resolveDomainCoreBuildProfile(catalog, "public-production", {
+    candidateCommit,
+    coreVersion: manifest.coreVersion,
+    abiVersion: manifest.abiVersion,
+    sourceSha256: manifest.sourceSha256,
+  });
+  mkdirSync(windowsDirectory, { recursive: true });
+  writeFileSync(
+    join(windowsDirectory, "OpenBurnBar.App.Configuration.dll"),
+    [
+      "OpenBurnBar.DomainCore.BuildProfile",
+      "OpenBurnBar.DomainCore.BuildAuthority",
+      "OpenBurnBar.DomainCore.CandidateCommit",
+      "OpenBurnBar.DomainCore.ExpectedVersion",
+      "OpenBurnBar.DomainCore.ExpectedAbiVersion",
+      "OpenBurnBar.DomainCore.ExpectedSourceSha256",
+      expected.name,
+      expected.artifactAuthority,
+      expected.distribution,
+      expected.candidateIdentity.candidateCommit,
+      expected.candidateIdentity.coreVersion,
+      String(expected.candidateIdentity.abiVersion),
+      expected.candidateIdentity.sourceSha256,
+      ...Object.values(expected.modes),
+    ].join("\0"),
+    "utf8",
+  );
+  try {
+    writeFileSync(artifactPath, `${JSON.stringify(expected)}\n`, "utf8");
+    const partial = spawnSync(
+      process.execPath,
+      [
+        verifier,
+        "--profile",
+        "public-production",
+        "--expected-candidate-commit",
+        candidateCommit,
+        "--expected-release-commit",
+        candidateCommit,
+        "--windows-dir",
+        windowsDirectory,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.notEqual(
+      partial.status,
+      0,
+      "partial release coordinates must fail closed",
+    );
+    assert.match(partial.stderr, /all-or-none/);
+
+    const valid = spawnSync(
+      process.execPath,
+      [
+        verifier,
+        "--profile",
+        "public-production",
+        "--expected-candidate-commit",
+        candidateCommit,
+        "--windows-dir",
+        windowsDirectory,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(valid.status, 0, valid.stderr || valid.stdout);
   } finally {
     rmSync(temporaryRoot, { recursive: true, force: true });
   }

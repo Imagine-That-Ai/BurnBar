@@ -703,14 +703,14 @@ let computerUseCoreTestExcludes = [
 ]
 let legacyLinuxTestSources: [String]? = ["LinuxEmptyTests.swift"]
 #if os(Linux)
-let openBurnBarCoreOffAppleTestSources: [String]? = ["LLMSafeWrapVectorTests.swift"]
+let openBurnBarCoreOffAppleTestSources: [String]? = ["LLMSafeWrapVectorTests.swift", "ParserAutoReleasePoolTests.swift"]
 let openBurnBarCorePlaceholderExcludes = ["LinuxEmptyTests.swift"]
 let computerUseCoreOffAppleTestSources: [String]? = [
     "LinuxSecretStorageTests.swift",
     "LinuxRemoteUnlockCapabilitySigningKeyStoreTests.swift"
 ]
 #else
-let openBurnBarCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift", "LLMSafeWrapVectorTests.swift"]
+let openBurnBarCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift", "LLMSafeWrapVectorTests.swift", "ParserAutoReleasePoolTests.swift"]
 let openBurnBarCorePlaceholderExcludes: [String] = []
 let computerUseCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift"]
 #endif
@@ -731,6 +731,7 @@ func legacyLinuxTestExcludes(targetPath: String) -> [String] {
         return [
             "LinuxEmptyTests.swift",
             "LLMSafeWrapVectorTests.swift",
+            "ParserAutoReleasePoolTests.swift",
             "LinuxSecretStorageTests.swift",
             "LinuxRemoteUnlockCapabilitySigningKeyStoreTests.swift"
         ].contains(relativePath)

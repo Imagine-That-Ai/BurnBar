@@ -78,11 +78,12 @@ struct OpenBurnBarMobileApp: App {
     // Bound to ThemeSettingsView's "Appearance Mode" picker. Values match
     // the picker tags: "system" (no override), "light", "dark".
     @AppStorage("preferredAppearance") private var preferredAppearance: String = "system"
+    @Environment(\.colorScheme) private var systemColorScheme
 
-    // The Editorial / Paper skin (see `AppSkin`). When active it is light-locked
-    // and accented with coral, overriding the appearance picker. Toggling it
-    // changes `preferredColorScheme`, which forces a trait change so the
-    // skin-aware design tokens re-resolve immediately.
+    // The Editorial / Paper skin (see `AppSkin`). It is light-only: under a
+    // dark appearance the design tokens fall back to the aurora dark palette
+    // (see `AppSkin.resolved(for:)`), so the appearance picker is always
+    // honored and the paper palette never sits on dark chrome.
     @AppStorage(AppSkin.storageKey) private var appSkin: AppSkin = .aurora
 
     /// Screenshot-only deep link: when launched with
@@ -93,7 +94,8 @@ struct OpenBurnBarMobileApp: App {
     @State private var showThemeScreenshotPage = false
 
     private var appearanceOverride: ColorScheme? {
-        if appSkin == .editorial { return .light }
+        // The user's appearance pick is the ground truth — the editorial skin
+        // no longer pins the app to light (tokens render aurora under dark).
         switch preferredAppearance {
         case "light": return .light
         case "dark":  return .dark
@@ -101,8 +103,24 @@ struct OpenBurnBarMobileApp: App {
         }
     }
 
+    /// Whether the app is effectively rendering dark, accounting for the
+    /// appearance override (the `\.colorScheme` environment at this level
+    /// still carries the device setting, so the override must win).
+    private var effectiveSchemeIsDark: Bool {
+        switch appearanceOverride {
+        case .dark: return true
+        case .light: return false
+        case nil: return systemColorScheme == .dark
+        // A ColorScheme case added by a future SDK is not an override we can
+        // interpret, so fall back to the device setting like `nil` does.
+        @unknown default: return systemColorScheme == .dark
+        }
+    }
+
     private var resolvedTint: Color? {
-        appSkin == .editorial ? MobileTheme.ember : customization.themePalette.tintColor
+        appSkin == .editorial && !effectiveSchemeIsDark
+            ? MobileTheme.ember
+            : customization.themePalette.tintColor
     }
 
     init() {
@@ -194,6 +212,9 @@ struct OpenBurnBarMobileApp: App {
             NotificationCenter.default.post(name: .init("NavigateToDashboard"), object: nil)
         case "settings":
             NotificationCenter.default.post(name: .init("ShowSettings"), object: nil)
+        case "calendar":
+            // burnbar://calendar — open the Calendar analytics destination.
+            NotificationCenter.default.post(name: .init("ShowCalendarTab"), object: nil)
         case "agent-watch", "agent-live", "computer-use":
             NotificationCenter.default.post(name: .init("ShowAgentWatch"), object: nil)
         case "chat", "hermes":

@@ -140,15 +140,7 @@ final class ClaudeStatuslineWatcher {
             eventMask: configuration.monitoredEvents,
             queue: queue
         )
-        src.setEventHandler { [weak self] in
-            let data = src.data
-            Task { @MainActor [weak self] in
-                self?.handleEvent(events: data)
-            }
-        }
-        src.setCancelHandler {
-            close(fd)
-        }
+        installSourceHandlers(on: src, fd: fd)
 
         isArmed = true
         source = src
@@ -158,6 +150,26 @@ final class ClaudeStatuslineWatcher {
         hasLoggedMissingFile = false
         src.resume()
         Self.log.debug("statusline watcher armed path=\(self.url.path, privacy: .public)")
+    }
+
+    /// Handler installation lives in a `nonisolated` context so the closures
+    /// do not inherit the watcher's `@MainActor` isolation: `DispatchSource`
+    /// invokes them on `queue`, and a MainActor-isolated closure traps there at
+    /// runtime (`swift_task_checkIsolated` → `dispatch_assert_queue` fail)
+    /// before it can even hop. The actual work hops back explicitly via `Task`.
+    private nonisolated func installSourceHandlers(
+        on source: DispatchSourceFileSystemObject,
+        fd: Int32
+    ) {
+        source.setEventHandler { [weak self, weak source] in
+            let data = source?.data ?? []
+            Task { @MainActor [weak self] in
+                self?.handleEvent(events: data)
+            }
+        }
+        source.setCancelHandler {
+            close(fd)
+        }
     }
 
     private func handleEvent(events: DispatchSource.FileSystemEvent) {

@@ -45,6 +45,8 @@ sealed class BurnBarTab(
 
     object INSIGHTS : BurnBarTab("insights", "Budget & Insights", AuroraNavDestination.INSIGHTS)
 
+    object CALENDAR : BurnBarTab("calendar", "Calendar", AuroraNavDestination.CALENDAR)
+
     object STREAMS : BurnBarTab("streams", "Streams", AuroraNavDestination.STREAMS)
 
     // Plan 2: tab renamed to "Assistants" — the route stays `hermes` so deep
@@ -55,7 +57,7 @@ sealed class BurnBarTab(
     object YOU : BurnBarTab("you", "Store", AuroraNavDestination.YOU)
 
     companion object {
-        val allCandidates: List<BurnBarTab> = listOf(PULSE, BURN, INSIGHTS, STREAMS, HERMES, YOU)
+        val allCandidates: List<BurnBarTab> = listOf(PULSE, BURN, INSIGHTS, CALENDAR, STREAMS, HERMES, YOU)
         val all: List<BurnBarTab> get() {
             try {
                 val primary = com.openburnbar.ui.settings.GlobalVisualSettings.primaryTabs.value

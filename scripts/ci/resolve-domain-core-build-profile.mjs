@@ -24,6 +24,8 @@ const format = args.get("--format") ?? "json";
 const output = args.get("--output");
 const expectedCandidateCommit = args.get("--expected-candidate-commit");
 const expectedReleaseCommit = args.get("--expected-release-commit");
+const expectedReleaseVersion = args.get("--expected-release-version");
+const expectedReleaseTag = args.get("--expected-release-tag");
 
 const catalog = loadDomainCoreBuildProfiles(
   resolve(repoRoot, "config/domain-core-build-profiles.json"),
@@ -67,6 +69,19 @@ if (catalogProfile.artifactAuthority === "signed") {
     });
   }
 }
+const releaseFlags = [
+  expectedReleaseCommit,
+  expectedReleaseVersion,
+  expectedReleaseTag,
+];
+const presentReleaseFlags = releaseFlags.filter(
+  (value) => value !== undefined,
+).length;
+if (presentReleaseFlags !== 0 && presentReleaseFlags !== 3) {
+  throw new Error(
+    "release coordinates must be all-or-none: --expected-release-commit, --expected-release-version, --expected-release-tag",
+  );
+}
 if (
   catalogProfile.artifactAuthority === "development" &&
   expectedCandidateCommit !== undefined
@@ -77,16 +92,25 @@ if (
 }
 if (
   catalogProfile.artifactAuthority === "development" &&
-  expectedReleaseCommit !== undefined
+  presentReleaseFlags > 0
 ) {
   throw new Error(
-    "--expected-release-commit is only valid for signed profiles",
+    "release coordinates are only valid for signed profiles",
   );
 }
+const release =
+  presentReleaseFlags === 3
+    ? {
+        commit: expectedReleaseCommit,
+        version: expectedReleaseVersion,
+        tag: expectedReleaseTag,
+      }
+    : undefined;
 const profile = resolveDomainCoreBuildProfile(
   catalog,
   profileName,
   candidateIdentity,
+  release,
 );
 let rendered;
 if (format === "json") {

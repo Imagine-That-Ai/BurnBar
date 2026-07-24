@@ -5,6 +5,223 @@ import XCTest
 
 @MainActor
 final class UsageRefreshPipelineTests: XCTestCase {
+    func test_persistNewerCodexStateTotalReplacesStaleExactSnapshot() async throws {
+        let store = try makeInMemoryDataStore()
+        let now = Date()
+        let exact = TokenUsage(
+            provider: .codex,
+            sessionId: "parent-session",
+            projectName: "BurnBar",
+            model: "gpt-5.6-sol",
+            inputTokens: 100,
+            outputTokens: 10,
+            cacheReadTokens: 890,
+            costUSD: 0.001,
+            startTime: now,
+            endTime: now,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact
+        )
+        try await store.insert(exact)
+
+        let estimate = TokenUsage(
+            provider: .codex,
+            sessionId: "parent-session",
+            projectName: "BurnBar",
+            model: "gpt-5.6-sol",
+            inputTokens: 4_500,
+            outputTokens: 500,
+            cacheReadTokens: 95_000,
+            costUSD: 0.1,
+            startTime: now,
+            endTime: now,
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .lowConfidenceEstimate,
+            estimatorVersion: "tokens-used-cache-split-v2"
+        )
+        let pipeline = UsageRefreshPipeline(
+            parsers: [:],
+            dataStore: store,
+            orchestrator: RefreshOrchestrator(
+                dataStore: store,
+                settingsManager: SettingsManager.shared,
+                quotaService: ProviderQuotaService(
+                    appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                    homeDirectoryURL: FileManager.default.temporaryDirectory,
+                    refreshProviders: []
+                )
+            ),
+            existingUsages: [exact],
+            settings: RefreshSettingsSnapshot(conversationIndexingEnabled: false, snapshotAPIs: [])
+        )
+        var parsed = UsageRefreshPipeline.ParsedBatch()
+        parsed.allUsages = [estimate]
+
+        let persisted = await pipeline.persist(parsed: parsed)
+        let storedUsages = try await store.fetchAllUsage()
+        let stored = try XCTUnwrap(storedUsages.first)
+
+        XCTAssertNil(persisted.typedPersistenceError)
+        XCTAssertEqual(stored.totalTokens, estimate.totalTokens)
+        XCTAssertEqual(stored.cacheReadTokens, estimate.cacheReadTokens)
+        XCTAssertEqual(stored.provenanceMethod, .heuristicEstimate)
+        XCTAssertEqual(stored.provenanceConfidence, .lowConfidenceEstimate)
+    }
+
+    func test_persistOlderCodexEstimateDoesNotReplaceExactUsage() async throws {
+        let store = try makeInMemoryDataStore()
+        let now = Date()
+        let exact = TokenUsage(
+            provider: .codex,
+            sessionId: "parent-session",
+            projectName: "BurnBar",
+            model: "gpt-5.6-sol",
+            inputTokens: 100,
+            outputTokens: 10,
+            cacheReadTokens: 890,
+            costUSD: 0.001,
+            startTime: now,
+            endTime: now,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact
+        )
+        try await store.insert(exact)
+        let olderEstimate = TokenUsage(
+            provider: .codex,
+            sessionId: "parent-session",
+            projectName: "BurnBar",
+            model: "gpt-5.6-sol",
+            inputTokens: 18,
+            outputTokens: 2,
+            cacheReadTokens: 380,
+            costUSD: 0.0004,
+            startTime: now,
+            endTime: now,
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .lowConfidenceEstimate,
+            estimatorVersion: "tokens-used-cache-split-v2"
+        )
+        let pipeline = UsageRefreshPipeline(
+            parsers: [:],
+            dataStore: store,
+            orchestrator: RefreshOrchestrator(
+                dataStore: store,
+                settingsManager: SettingsManager.shared,
+                quotaService: ProviderQuotaService(
+                    appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                    homeDirectoryURL: FileManager.default.temporaryDirectory,
+                    refreshProviders: []
+                )
+            ),
+            existingUsages: [exact],
+            settings: RefreshSettingsSnapshot(conversationIndexingEnabled: false, snapshotAPIs: [])
+        )
+        var parsed = UsageRefreshPipeline.ParsedBatch()
+        parsed.allUsages = [olderEstimate]
+
+        let persisted = await pipeline.persist(parsed: parsed)
+        let storedUsages = try await store.fetchAllUsage()
+        let stored = try XCTUnwrap(storedUsages.first)
+
+        XCTAssertNil(persisted.typedPersistenceError)
+        XCTAssertEqual(stored.totalTokens, exact.totalTokens)
+        XCTAssertEqual(stored.cacheReadTokens, exact.cacheReadTokens)
+        XCTAssertEqual(stored.provenanceMethod, .providerLog)
+        XCTAssertEqual(stored.provenanceConfidence, .exact)
+    }
+
+    func test_persistDeletesParserInvalidationsBeforeInsertingFreshUsage() async throws {
+        let store = try makeInMemoryDataStore()
+        let now = Date()
+        let stale = TokenUsage(
+            provider: .codex,
+            sessionId: "subagent-session",
+            projectName: "BurnBar",
+            model: "gpt-5.6-sol",
+            inputTokens: 1_000_000,
+            outputTokens: 100_000,
+            costUSD: 12,
+            startTime: now,
+            endTime: now
+        )
+        try await store.insert(stale)
+
+        let fresh = TokenUsage(
+            provider: .codex,
+            sessionId: "parent-session",
+            projectName: "BurnBar",
+            model: "gpt-5.6-sol",
+            inputTokens: 100,
+            outputTokens: 10,
+            costUSD: 0.01,
+            startTime: now,
+            endTime: now
+        )
+        let pipeline = UsageRefreshPipeline(
+            parsers: [.codex: InvalidatingParser(freshUsage: fresh)],
+            dataStore: store,
+            orchestrator: RefreshOrchestrator(
+                dataStore: store,
+                settingsManager: SettingsManager.shared,
+                quotaService: ProviderQuotaService(
+                    appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                    homeDirectoryURL: FileManager.default.temporaryDirectory,
+                    refreshProviders: []
+                )
+            ),
+            existingUsages: [stale],
+            settings: RefreshSettingsSnapshot(conversationIndexingEnabled: false, snapshotAPIs: [])
+        )
+
+        let parsed = try await pipeline.parse(from: pipeline.discover())
+        let persisted = await pipeline.persist(parsed: parsed)
+        let stored = try await store.fetchAllUsage()
+
+        XCTAssertNil(persisted.typedPersistenceError)
+        XCTAssertEqual(stored.map(\.sessionId), ["parent-session"])
+    }
+
+    func test_parseUsesDedicatedResourceGovernorPerProvider() async throws {
+        let store = try makeInMemoryDataStore()
+        let pipeline = UsageRefreshPipeline(
+            parsers: [
+                .claudeCode: EmptyParser(provider: .claudeCode),
+                .codex: EmptyParser(provider: .codex)
+            ],
+            dataStore: store,
+            orchestrator: RefreshOrchestrator(
+                dataStore: store,
+                settingsManager: SettingsManager.shared,
+                quotaService: ProviderQuotaService(
+                    appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                    homeDirectoryURL: FileManager.default.temporaryDirectory,
+                    refreshProviders: []
+                )
+            ),
+            existingUsages: [],
+            settings: RefreshSettingsSnapshot(conversationIndexingEnabled: false, snapshotAPIs: [])
+        )
+        let governors: [AgentProvider: ParserResourceGovernor] = [
+            .claudeCode: ParserResourceGovernor(limits: ParserResourceLimits(fileByteBudget: 1)),
+            .codex: ParserResourceGovernor(limits: ParserResourceLimits(fileByteBudget: 1))
+        ]
+        var requestedProviders: [AgentProvider] = []
+
+        _ = try await pipeline.parse(
+            from: pipeline.discover(),
+            resourceGovernorForProvider: { provider in
+                requestedProviders.append(provider)
+                return governors[provider]
+            }
+        )
+
+        XCTAssertEqual(requestedProviders, [.claudeCode, .codex])
+        XCTAssertNotEqual(
+            ObjectIdentifier(try XCTUnwrap(governors[.claudeCode])),
+            ObjectIdentifier(try XCTUnwrap(governors[.codex]))
+        )
+    }
+
     func test_discoverSortsProvidersDeterministically() throws {
         let store = try makeInMemoryDataStore()
         let pipeline = UsageRefreshPipeline(
@@ -297,6 +514,45 @@ final class UsageRefreshPipelineTests: XCTestCase {
         XCTAssertEqual(recordedOptions, [false])
     }
 
+    func test_singleProviderRefreshDeletesParserInvalidations() async throws {
+        let store = try makeInMemoryDataStore()
+        let now = Date()
+        let stale = TokenUsage(
+            provider: .codex,
+            sessionId: "subagent-session",
+            projectName: "BurnBar",
+            model: "gpt-5.6-sol",
+            inputTokens: 1_000_000,
+            outputTokens: 100_000,
+            costUSD: 12,
+            startTime: now,
+            endTime: now
+        )
+        let fresh = TokenUsage(
+            provider: .codex,
+            sessionId: "parent-session",
+            projectName: "BurnBar",
+            model: "gpt-5.6-sol",
+            inputTokens: 100,
+            outputTokens: 10,
+            costUSD: 0.01,
+            startTime: now,
+            endTime: now
+        )
+        try await store.insert(stale)
+
+        let result = await RefreshBackgroundWork.runSingleProviderRefresh(
+            provider: .codex,
+            parser: InvalidatingParser(freshUsage: fresh),
+            dataStore: store,
+            settings: RefreshSettingsSnapshot(conversationIndexingEnabled: false, snapshotAPIs: [])
+        )
+        let stored = try await store.fetchAllUsage()
+
+        XCTAssertNil(result.error)
+        XCTAssertEqual(stored.map(\.sessionId), ["parent-session"])
+    }
+
     private func makeInMemoryDataStore() throws -> DataStore {
         let queue = try DatabaseQueue()
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -356,5 +612,18 @@ private struct RecordingParser: LogParser {
     func parse(options: LogParseOptions) async throws -> ParseResult {
         await recorder.record(options)
         return ParseResult(usages: [], conversations: [])
+    }
+}
+
+private struct InvalidatingParser: LogParser {
+    let provider: AgentProvider = .codex
+    let freshUsage: TokenUsage
+
+    func parse() async throws -> ParseResult {
+        ParseResult(
+            usages: [freshUsage],
+            conversations: [],
+            usageSessionIDsToDelete: ["subagent-session"]
+        )
     }
 }

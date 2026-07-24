@@ -63,9 +63,26 @@ struct AuroraNavigationTray: View {
     private let pillSidePadding: CGFloat = 6
     private let pillBottomInset: CGFloat = 14
 
+    /// Width offered by the parent (measured via the GeometryReader in
+    /// `body`). Drives `effectiveTabWidth` so a 7-destination tray still
+    /// fits compact phones instead of overflowing the screen edges.
+    @State private var availableWidth: CGFloat = 0
+
+    private static let pillHorizontalPadding: CGFloat = 32
+
+    /// Tab width clamped to what the screen can actually hold: the full 56pt
+    /// while it fits, shrinking (to a 40pt floor) as the destination count
+    /// grows or the device narrows.
+    private var effectiveTabWidth: CGFloat {
+        let count = max(destinations.count, 1)
+        guard availableWidth > 0 else { return tabWidth }
+        let fitting = (availableWidth - Self.pillHorizontalPadding * 2 - pillSidePadding * 2) / CGFloat(count)
+        return max(40, min(tabWidth, fitting))
+    }
+
     /// Effective pill content width (sum of all tab widths + side padding).
     private var trayContentWidth: CGFloat {
-        CGFloat(destinations.count) * tabWidth + pillSidePadding * 2
+        CGFloat(destinations.count) * effectiveTabWidth + pillSidePadding * 2
     }
 
     /// The destination that should appear selected right now: the preview
@@ -79,10 +96,18 @@ struct AuroraNavigationTray: View {
         // (`pillHeight + bottomInset`); the parent decides where it sits.
         // Avoids an inner Spacer that would expand the tray to fill the
         // screen and visually swallow the underlying content.
-        pill
-            .padding(.bottom, pillBottomInset)
-            .padding(.horizontal, 32)
-            .accessibilityElement(children: .contain)
+        GeometryReader { proxy in
+            pill
+                .padding(.bottom, pillBottomInset)
+                .padding(.horizontal, Self.pillHorizontalPadding)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .center)
+                .accessibilityElement(children: .contain)
+                .onAppear { availableWidth = proxy.size.width }
+                .onChange(of: proxy.size.width) { _, newWidth in
+                    availableWidth = newWidth
+                }
+        }
+        .frame(height: pillHeight + pillBottomInset)
     }
 
     /// The floating pill. On iOS 26 the body is true Liquid Glass: the warm
@@ -145,7 +170,7 @@ struct AuroraNavigationTray: View {
                     userDisplayName: dest == .you ? userDisplayName : nil,
                     cloudIndicator: dest == .you ? (isCloudMember ? .member : .free) : .none
                 )
-                .frame(width: tabWidth, height: pillHeight - 6)
+                .frame(width: effectiveTabWidth, height: pillHeight - 6)
                 .contentShape(Capsule())
             }
         }
@@ -161,7 +186,7 @@ struct AuroraNavigationTray: View {
     @ViewBuilder
     private var viewfinderOverlay: some View {
         if isScrubbing, let preview = previewDestination {
-            let capsuleWidth = tabWidth + 4
+            let capsuleWidth = effectiveTabWidth + 4
             let x = viewfinderX - capsuleWidth / 2
             Capsule(style: .continuous)
                 .fill(preview.accent.opacity(colorScheme == .dark ? 0.12 : 0.08))
@@ -193,7 +218,7 @@ struct AuroraNavigationTray: View {
                     viewfinderX = AuroraNavGestureModel.viewfinderCenterX(
                         index: currentIdx,
                         count: destinations.count,
-                        trayWidth: trayContentWidth
+                        trayWidth: CGFloat(destinations.count) * effectiveTabWidth
                     ) + pillSidePadding
                 }
                 fingerX = value.location.x
@@ -201,7 +226,7 @@ struct AuroraNavigationTray: View {
                 let localX = fingerX - pillSidePadding
                 guard let preview = AuroraNavGestureModel.destination(
                     x: localX,
-                    trayWidth: CGFloat(destinations.count) * tabWidth,
+                    trayWidth: CGFloat(destinations.count) * effectiveTabWidth,
                     destinations: destinations
                 ) else { return }
                 if previewDestination != preview {
@@ -211,7 +236,7 @@ struct AuroraNavigationTray: View {
                     viewfinderX = AuroraNavGestureModel.viewfinderCenterX(
                         index: idx,
                         count: destinations.count,
-                        trayWidth: CGFloat(destinations.count) * tabWidth
+                        trayWidth: CGFloat(destinations.count) * effectiveTabWidth
                     ) + pillSidePadding
                     onScrubPreview?(preview)
                     // Boundary haptic — only when crossing into a new tab.

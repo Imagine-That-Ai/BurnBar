@@ -22,6 +22,7 @@ struct UsageRefreshPipeline: Sendable {
     struct ParsedBatch: Sendable {
         var parserHealth: [AgentProvider: ParserHealth] = [:]
         var errors: [AgentProvider: String] = [:]
+        var usageSessionIDsToDeleteByProvider: [AgentProvider: Set<String>] = [:]
         var allUsages: [TokenUsage] = []
         var allConversations: [OpenBurnBarCore.ConversationRecord] = []
         var duration: TimeInterval = 0
@@ -52,7 +53,8 @@ struct UsageRefreshPipeline: Sendable {
         from discovery: DiscoverResult,
         includeConversationBodies: Bool? = nil,
         minimumFileModificationDate: Date? = nil,
-        resourceGovernor: OpenBurnBarCore.ParserResourceGovernor? = nil
+        resourceGovernor: OpenBurnBarCore.ParserResourceGovernor? = nil,
+        resourceGovernorForProvider: ((AgentProvider) -> OpenBurnBarCore.ParserResourceGovernor?)? = nil
     ) async throws -> ParsedBatch {
         var result = ParsedBatch()
         let startedAt = Date()
@@ -64,7 +66,7 @@ struct UsageRefreshPipeline: Sendable {
                     options: OpenBurnBarCore.LogParseOptions(
                         includeConversationBodies: includeConversationBodies,
                         minimumFileModificationDate: minimumFileModificationDate,
-                        resourceGovernor: resourceGovernor
+                        resourceGovernor: resourceGovernorForProvider?(provider) ?? resourceGovernor
                     )
                 )
                 let usages = parseResult.usages
@@ -72,6 +74,10 @@ struct UsageRefreshPipeline: Sendable {
                     ? .empty
                     : .healthy(sessionCount: usages.count)
                 result.allUsages.append(contentsOf: usages)
+                if !parseResult.usageSessionIDsToDelete.isEmpty {
+                    result.usageSessionIDsToDeleteByProvider[provider, default: []]
+                        .formUnion(parseResult.usageSessionIDsToDelete)
+                }
                 if includeConversationBodies {
                     result.allConversations.append(contentsOf: parseResult.conversations)
                 }
@@ -108,6 +114,21 @@ struct UsageRefreshPipeline: Sendable {
         let startedAt = Date()
 
         do {
+            var sessionIDsToDeleteByProvider = parsed.usageSessionIDsToDeleteByProvider
+            let staleExactCodexSessionIDs = codexSessionIDsWithNewerStateTotals(in: parsed.allUsages)
+            if !staleExactCodexSessionIDs.isEmpty {
+                sessionIDsToDeleteByProvider[.codex, default: []]
+                    .formUnion(staleExactCodexSessionIDs)
+            }
+
+            for provider in sessionIDsToDeleteByProvider.keys.sorted(by: {
+                $0.rawValue < $1.rawValue
+            }) {
+                try await dataStore.deleteUsage(
+                    provider: provider,
+                    sessionIDs: Array(sessionIDsToDeleteByProvider[provider] ?? [])
+                )
+            }
             if !parsed.allUsages.isEmpty {
                 try await dataStore.insertChunked(parsed.allUsages, chunkSize: 500)
             }
@@ -123,6 +144,44 @@ struct UsageRefreshPipeline: Sendable {
 
         result.duration = Date().timeIntervalSince(startedAt)
         return result
+    }
+
+    /// A provider-log row can be exact for an older file offset while Codex's
+    /// state DB already exposes a larger, current thread total. Replace that
+    /// stale snapshot with the monotonic state-total estimate; a later JSONL
+    /// scan upgrades it back to exact buckets. Lower estimates never displace
+    /// an exact row.
+    private func codexSessionIDsWithNewerStateTotals(in incomingUsages: [TokenUsage]) -> Set<String> {
+        let exactTotalsByIdentity = Dictionary(
+            existingUsages.compactMap { usage -> (String, Int)? in
+                guard usage.provider == .codex,
+                      usage.provenanceConfidence == .exact || usage.provenanceConfidence == .derivedExact else {
+                    return nil
+                }
+                return (Self.usageIdentity(usage), usage.totalTokens)
+            },
+            uniquingKeysWith: max
+        )
+
+        return Set(incomingUsages.compactMap { usage -> String? in
+            guard usage.provider == .codex,
+                  usage.estimatorVersion == "tokens-used-cache-split-v2",
+                  let exactTotal = exactTotalsByIdentity[Self.usageIdentity(usage)],
+                  usage.totalTokens > exactTotal else {
+                return nil
+            }
+            return usage.sessionId
+        })
+    }
+
+    private static func usageIdentity(_ usage: TokenUsage) -> String {
+        TokenUsage.deterministicIdentityKey(
+            provider: usage.provider,
+            sessionId: usage.sessionId,
+            model: usage.model,
+            sourceDeviceId: usage.sourceDeviceId,
+            providerAccountID: usage.providerAccountID
+        )
     }
 
     func writeParserHealth(

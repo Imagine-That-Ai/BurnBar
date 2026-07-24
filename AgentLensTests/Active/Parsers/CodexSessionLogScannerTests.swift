@@ -4,10 +4,10 @@ import XCTest
 // MARK: - CodexSessionLogScannerTests
 
 /// Coverage for the shared Codex rollout scanning engine introduced by the
-/// 2026-07-16 resource-exhaustion fix: token semantics parity with the legacy
-/// full-file loop (VAL-TOKEN-002 / VAL-TOKEN-010), incremental append-only
-/// resume, rewrite/truncation detection, and governed thread-row processing
-/// (budget deferral, boundary deferral, heuristic fallback).
+/// 2026-07-16 resource-exhaustion fix: token semantics for legacy cumulative
+/// events and current per-turn delta events, incremental append-only resume,
+/// rewrite/truncation detection, and governed thread-row processing (budget
+/// deferral, boundary deferral, heuristic fallback).
 final class CodexSessionLogScannerTests: XCTestCase {
 
     private var tempDirectory: URL!
@@ -36,6 +36,18 @@ final class CodexSessionLogScannerTests: XCTestCase {
     /// Current-envelope cumulative token event (`total_token_usage`).
     private func totalUsageEvent(input: Int, output: Int, cachedInput: Int = 0) -> String {
         #"{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":\#(input),"cached_input_tokens":\#(cachedInput),"output_tokens":\#(output)},"model":"openai/gpt-5.2-codex"}}}"#
+    }
+
+    private func totalAndDeltaUsageEvent(
+        totalInput: Int,
+        totalOutput: Int,
+        totalCachedInput: Int = 0,
+        deltaInput: Int,
+        deltaOutput: Int,
+        deltaCachedInput: Int = 0,
+        model: String = "gpt-5.6-sol"
+    ) -> String {
+        #"{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":\#(totalInput),"cached_input_tokens":\#(totalCachedInput),"output_tokens":\#(totalOutput)},"last_token_usage":{"input_tokens":\#(deltaInput),"cached_input_tokens":\#(deltaCachedInput),"output_tokens":\#(deltaOutput)},"model_context_window":258400},"model":"\#(model)"}}"#
     }
 
     private func deltaEvent(input: Int, output: Int, cachedInput: Int = 0) -> String {
@@ -113,7 +125,7 @@ final class CodexSessionLogScannerTests: XCTestCase {
         XCTAssertFalse(result.state.foundCumulative)
     }
 
-    func test_scanTokens_cumulativeAfterDelta_cumulativeWins() throws {
+    func test_scanTokens_deltaBeforeCumulative_keepsDeltaTotals() throws {
         let content = [
             deltaEvent(input: 100, output: 50),
             cumulativeEvent(input: 1000, output: 500)
@@ -121,10 +133,10 @@ final class CodexSessionLogScannerTests: XCTestCase {
         let url = try write(content, to: "cumulative_after_delta.jsonl")
 
         let result = try XCTUnwrap(try scan(url))
-        assertUsage(result.usage, equals: (input: 1000, output: 500, cacheRead: 0))
+        assertUsage(result.usage, equals: (input: 100, output: 50, cacheRead: 0))
     }
 
-    func test_scanTokens_deltaAfterCumulative_isIgnored() throws {
+    func test_scanTokens_deltaAfterCumulative_switchesToDeltaTotals() throws {
         let content = [
             cumulativeEvent(input: 1000, output: 500, cachedInput: 200),
             deltaEvent(input: 999, output: 999, cachedInput: 999)
@@ -132,7 +144,49 @@ final class CodexSessionLogScannerTests: XCTestCase {
         let url = try write(content, to: "delta_after_cumulative.jsonl")
 
         let result = try XCTUnwrap(try scan(url))
-        assertUsage(result.usage, equals: (input: 800, output: 500, cacheRead: 200))
+        assertUsage(result.usage, equals: (input: 0, output: 999, cacheRead: 999))
+    }
+
+    func test_scanTokens_currentTotalAndDeltaEnvelope_usesPerTurnDeltas() throws {
+        let content = [
+            totalAndDeltaUsageEvent(
+                totalInput: 5_003_825_525,
+                totalOutput: 7_960_354,
+                totalCachedInput: 4_913_935_104,
+                deltaInput: 101_630,
+                deltaOutput: 285,
+                deltaCachedInput: 100_096
+            ),
+            totalAndDeltaUsageEvent(
+                totalInput: 5_003_927_562,
+                totalOutput: 7_960_626,
+                totalCachedInput: 4_914_035_200,
+                deltaInput: 102_037,
+                deltaOutput: 272,
+                deltaCachedInput: 100_096
+            )
+        ].joined(separator: "\n") + "\n"
+        let url = try write(content, to: "current_codex.jsonl")
+
+        let result = try XCTUnwrap(try scan(url))
+        assertUsage(result.usage, equals: (input: 3_475, output: 557, cacheRead: 200_192))
+        XCTAssertTrue(result.state.foundCumulative)
+        XCTAssertTrue(result.state.foundDelta)
+    }
+
+    func test_scanTokens_duplicateTotalAndDeltaEnvelope_isNotDoubleCounted() throws {
+        let event = totalAndDeltaUsageEvent(
+            totalInput: 5_004_455_498,
+            totalOutput: 7_965_804,
+            totalCachedInput: 4_914_548_992,
+            deltaInput: 109_188,
+            deltaOutput: 1_672,
+            deltaCachedInput: 106_240
+        )
+        let url = try write([event, event].joined(separator: "\n") + "\n", to: "duplicate_current_codex.jsonl")
+
+        let result = try XCTUnwrap(try scan(url))
+        assertUsage(result.usage, equals: (input: 2_948, output: 1_672, cacheRead: 106_240))
     }
 
     func test_scanTokens_noTokenEvents_returnsNilUsage() throws {
@@ -177,6 +231,7 @@ final class CodexSessionLogScannerTests: XCTestCase {
         XCTAssertEqual(state.cacheReadTokens, other.cacheReadTokens, file: file, line: line)
         XCTAssertEqual(state.foundCumulative, other.foundCumulative, file: file, line: line)
         XCTAssertEqual(state.foundDelta, other.foundDelta, file: file, line: line)
+        XCTAssertEqual(state.lastTokenEventSignature, other.lastTokenEventSignature, file: file, line: line)
     }
 
     func test_scanTokens_incrementalResume_equalsFreshScan_deltaMix() throws {
@@ -201,9 +256,9 @@ final class CodexSessionLogScannerTests: XCTestCase {
     }
 
     func test_scanTokens_incrementalResume_equalsFreshScan_cumulativeMix() throws {
-        // Segment A is delta-only; segment B introduces a cumulative total
-        // (which must overwrite) followed by a post-cumulative delta (which
-        // must be suppressed) — exercised across the resume boundary.
+        // Segment A is delta-only; segment B introduces a cumulative window
+        // counter followed by another delta. Deltas stay authoritative across
+        // the resume boundary.
         let url = try write(deltaEvent(input: 100, output: 10, cachedInput: 20) + "\n", to: "incremental_cumulative.jsonl")
         let first = try XCTUnwrap(try scan(url))
         assertUsage(first.usage, equals: (input: 80, output: 10, cacheRead: 20))
@@ -219,8 +274,8 @@ final class CodexSessionLogScannerTests: XCTestCase {
         let resumed = try XCTUnwrap(try scan(url, previousState: first.state))
         let fresh = try XCTUnwrap(try scan(url))
 
-        assertUsage(resumed.usage, equals: (input: 800, output: 500, cacheRead: 200), "(resumed)")
-        assertUsage(fresh.usage, equals: (input: 800, output: 500, cacheRead: 200), "(fresh)")
+        assertUsage(resumed.usage, equals: (input: 130, output: 15, cacheRead: 20), "(resumed)")
+        assertUsage(fresh.usage, equals: (input: 130, output: 15, cacheRead: 20), "(fresh)")
         assertAccumulatorState(resumed.state, matches: fresh.state)
     }
 
@@ -332,19 +387,20 @@ final class CodexSessionLogScannerTests: XCTestCase {
         ParserDiskCacheStore<CodexCacheEntry>(
             cacheURL: tempDirectory.appendingPathComponent(name),
             fileManager: fileManager,
-            schemaVersion: 2,
+            schemaVersion: 3,
             logLabel: "CodexSessionLogScannerTests"
         )
     }
 
     private func makeRow(
         threadId: String,
+        model: String = "openai/gpt-5.2-codex",
         tokensUsed: Int = 999,
         rolloutPath: String?
     ) -> CodexThreadRow {
         CodexThreadRow(
             threadId: threadId,
-            model: "openai/gpt-5.2-codex",
+            model: model,
             rawTitle: "title-\(threadId)",
             projectName: "OpenBurnBar",
             tokensUsed: tokensUsed,
@@ -354,7 +410,7 @@ final class CodexSessionLogScannerTests: XCTestCase {
         )
     }
 
-    func test_processThreadRows_budgetDeferral_uncachedRowEmitsNothing_thenCatchesUp() throws {
+    func test_processThreadRows_budgetDeferral_uncachedRowUsesStateTotal_thenCatchesUp() throws {
         let file1 = try write(cumulativeEvent(input: 1000, output: 100) + "\n", to: "rollout-1.jsonl")
         let file2 = try write(cumulativeEvent(input: 2000, output: 200) + "\n", to: "rollout-2.jsonl")
         let rows = [
@@ -364,9 +420,8 @@ final class CodexSessionLogScannerTests: XCTestCase {
         let cacheStore = makeCacheStore()
 
         // Pass 1: a 1-byte budget admits only the first file (the admission
-        // that crosses the budget is allowed); the second row is uncached and
-        // must emit NOTHING — not a heuristic row that could overwrite
-        // previously persisted exact values downstream.
+        // that crosses the budget is allowed). The deferred row must still
+        // surface Codex's exact state-DB total using a cache-aware split.
         let governor = ParserResourceGovernor(limits: ParserResourceLimits(fileByteBudget: 1))
         let firstPass = try CodexSessionLogScanner.processThreadRows(
             rows,
@@ -375,9 +430,14 @@ final class CodexSessionLogScannerTests: XCTestCase {
             cacheStore: cacheStore
         )
 
-        XCTAssertEqual(firstPass.usages.map(\.sessionId), ["thread-1"])
+        XCTAssertEqual(firstPass.usages.map(\.sessionId), ["thread-1", "thread-2"])
         XCTAssertEqual(firstPass.usages.first?.inputTokens, 1000)
         XCTAssertEqual(firstPass.usages.first?.provenanceMethod, .providerLog)
+        let estimated = try XCTUnwrap(firstPass.usages.last)
+        XCTAssertEqual(estimated.totalTokens, 999)
+        XCTAssertEqual(estimated.provenanceMethod, .heuristicEstimate)
+        XCTAssertEqual(estimated.provenanceConfidence, .lowConfidenceEstimate)
+        XCTAssertEqual(estimated.estimatorVersion, "tokens-used-cache-split-v2")
         XCTAssertEqual(governor.deferredFileCount, 1)
         XCTAssertTrue(firstPass.conversations.isEmpty)
 
@@ -442,7 +502,119 @@ final class CodexSessionLogScannerTests: XCTestCase {
         XCTAssertEqual(recovered.usages.first?.inputTokens, 5000)
     }
 
-    func test_processThreadRows_boundaryDefer_uncachedFileEmitsNothingAndIsNeverRead() throws {
+    func test_processThreadRows_oversizedColdFileUsesStateTotalWithoutReading() throws {
+        let file = try write(cumulativeEvent(input: 1000, output: 100) + "\n", to: "oversized-rollout.jsonl")
+        let handle = try FileHandle(forWritingTo: file)
+        try handle.truncate(atOffset: UInt64((16 * 1024 * 1024) + 1))
+        try handle.close()
+        let row = makeRow(threadId: "thread-oversized", tokensUsed: 10_000, rolloutPath: file.path)
+        let governor = ParserResourceGovernor(limits: .unlimited)
+        let cacheStore = makeCacheStore()
+
+        let result = try CodexSessionLogScanner.processThreadRows(
+            [row],
+            options: LogParseOptions(includeConversationBodies: false, resourceGovernor: governor),
+            fileManager: fileManager,
+            cacheStore: cacheStore
+        )
+
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.totalTokens, 10_000)
+        XCTAssertEqual(usage.cacheReadTokens, 9_500)
+        XCTAssertEqual(usage.provenanceMethod, .heuristicEstimate)
+        XCTAssertEqual(governor.consumedBytes, 0)
+        XCTAssertEqual(governor.deferredFileCount, 1)
+        XCTAssertTrue(cacheStore.load().fileEntries.isEmpty)
+    }
+
+    func test_processThreadRows_exactRefinementIsBoundedAcrossFiles() throws {
+        let first = try write(cumulativeEvent(input: 900, output: 100) + "\n", to: "bounded-first.jsonl")
+        let second = try write(cumulativeEvent(input: 1_800, output: 200) + "\n", to: "bounded-second.jsonl")
+        for file in [first, second] {
+            let handle = try FileHandle(forWritingTo: file)
+            try handle.truncate(atOffset: UInt64(9 * 1024 * 1024))
+            try handle.close()
+        }
+        let rows = [
+            makeRow(threadId: "thread-bounded-first", tokensUsed: 1_000, rolloutPath: first.path),
+            makeRow(threadId: "thread-bounded-second", tokensUsed: 2_000, rolloutPath: second.path)
+        ]
+        let governor = ParserResourceGovernor(limits: .unlimited)
+        let cacheStore = makeCacheStore()
+
+        let result = try CodexSessionLogScanner.processThreadRows(
+            rows,
+            options: LogParseOptions(includeConversationBodies: false, resourceGovernor: governor),
+            fileManager: fileManager,
+            cacheStore: cacheStore
+        )
+
+        XCTAssertEqual(result.usages.map(\.totalTokens), [1_000, 2_000])
+        XCTAssertEqual(result.usages.map(\.provenanceMethod), [.providerLog, .heuristicEstimate])
+        XCTAssertEqual(governor.consumedBytes, 9 * 1024 * 1024)
+        XCTAssertEqual(governor.deferredFileCount, 1)
+        XCTAssertEqual(cacheStore.load().fileEntries.count, 1)
+    }
+
+    func test_processThreadRows_stateTotalAheadOfExactFileAddsEstimatedDelta() throws {
+        let file = try write(cumulativeEvent(input: 1000, output: 100) + "\n", to: "state-ahead.jsonl")
+        let row = makeRow(threadId: "thread-state-ahead", tokensUsed: 2_200, rolloutPath: file.path)
+
+        let result = try CodexSessionLogScanner.processThreadRows(
+            [row],
+            options: LogParseOptions(includeConversationBodies: false),
+            fileManager: fileManager,
+            cacheStore: makeCacheStore()
+        )
+
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.totalTokens, 2_200)
+        XCTAssertEqual(usage.inputTokens, 1_050)
+        XCTAssertEqual(usage.outputTokens, 105)
+        XCTAssertEqual(usage.cacheReadTokens, 1_045)
+        XCTAssertEqual(usage.provenanceMethod, .heuristicEstimate)
+        XCTAssertEqual(usage.estimatorVersion, "tokens-used-cache-split-v2")
+    }
+
+    func test_processThreadRows_currentCodexGPT56Logs_areDeltaCountedAndPriced() throws {
+        let file = try write(
+            [
+                totalAndDeltaUsageEvent(
+                    totalInput: 5_003_825_525,
+                    totalOutput: 7_960_354,
+                    totalCachedInput: 4_913_935_104,
+                    deltaInput: 101_630,
+                    deltaOutput: 285,
+                    deltaCachedInput: 100_096
+                ),
+                totalAndDeltaUsageEvent(
+                    totalInput: 5_003_927_562,
+                    totalOutput: 7_960_626,
+                    totalCachedInput: 4_914_035_200,
+                    deltaInput: 102_037,
+                    deltaOutput: 272,
+                    deltaCachedInput: 100_096
+                )
+            ].joined(separator: "\n") + "\n",
+            to: "gpt56-sol-rollout.jsonl"
+        )
+        let rows = [makeRow(threadId: "thread-gpt56-sol", model: "gpt-5.6-sol", rolloutPath: file.path)]
+
+        let result = try CodexSessionLogScanner.processThreadRows(
+            rows,
+            options: LogParseOptions(includeConversationBodies: false),
+            fileManager: fileManager,
+            cacheStore: makeCacheStore()
+        )
+
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.inputTokens, 3_475)
+        XCTAssertEqual(usage.outputTokens, 557)
+        XCTAssertEqual(usage.cacheReadTokens, 200_192)
+        XCTAssertEqual(usage.costUSD, 0.134181, accuracy: 0.000_001)
+    }
+
+    func test_processThreadRows_boundaryDefer_uncachedFileUsesStateTotalWithoutReading() throws {
         let file = try write(cumulativeEvent(input: 1000, output: 100) + "\n", to: "rollout-boundary.jsonl")
         let rows = [makeRow(threadId: "thread-boundary", rolloutPath: file.path)]
         let cacheStore = makeCacheStore()
@@ -459,7 +631,9 @@ final class CodexSessionLogScannerTests: XCTestCase {
             cacheStore: cacheStore
         )
 
-        XCTAssertTrue(result.usages.isEmpty, "uncached row below the boundary emits nothing (no heuristic row)")
+        XCTAssertEqual(result.usages.map(\.sessionId), ["thread-boundary"])
+        XCTAssertEqual(result.usages.first?.totalTokens, 999)
+        XCTAssertEqual(result.usages.first?.provenanceMethod, .heuristicEstimate)
         XCTAssertTrue(result.conversations.isEmpty)
         XCTAssertTrue(cacheStore.load().fileEntries.isEmpty, "boundary-deferred file must not gain a cache entry")
         XCTAssertEqual(governor.consumedBytes, 0, "boundary-deferred file content is never admitted for reading")
@@ -508,10 +682,11 @@ final class CodexSessionLogScannerTests: XCTestCase {
 
         XCTAssertEqual(result.usages.count, 1)
         let usage = try XCTUnwrap(result.usages.first)
-        XCTAssertEqual(usage.inputTokens, 950, "Codex sessions are heavily input-weighted (~95/5)")
-        XCTAssertEqual(usage.outputTokens, 50)
+        XCTAssertEqual(usage.inputTokens, 45)
+        XCTAssertEqual(usage.outputTokens, 5)
+        XCTAssertEqual(usage.cacheReadTokens, 950)
         XCTAssertEqual(usage.provenanceMethod, .heuristicEstimate)
         XCTAssertEqual(usage.provenanceConfidence, .lowConfidenceEstimate)
-        XCTAssertEqual(usage.estimatorVersion, "tokens-used-split-v1")
+        XCTAssertEqual(usage.estimatorVersion, "tokens-used-cache-split-v2")
     }
 }

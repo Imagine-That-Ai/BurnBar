@@ -473,14 +473,16 @@ public enum BurnBarThinkingLevel: String, Codable, CaseIterable, Hashable, Senda
         }
     }
 
-    /// OpenAI `reasoning_effort` / `reasoning.effort` value. `.max` collapses
-    /// to `xhigh` since OpenAI does not expose a higher tier.
+    /// OpenAI `reasoning_effort` / `reasoning.effort` value.
+    /// GPT‑5.6 exposes `max` as a real tier above `xhigh`; older GPT‑5.x
+    /// models that reject `max` should be treated by the provider, not collapsed here.
     public var openAIEffort: String {
         switch self {
         case .low: return "low"
         case .medium: return "medium"
         case .high: return "high"
-        case .xhigh, .max: return "xhigh"
+        case .xhigh: return "xhigh"
+        case .max: return "max"
         }
     }
 
@@ -1430,6 +1432,20 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
     /// decode-optional so existing rows and call sites are unaffected.
     public let parentRequestID: String?
 
+    /// When the call that produced this usage *started*, as opposed to
+    /// `recordedAt`, which is stamped when the completed call is logged and so
+    /// behaves as an end time. Day-attribution surfaces (the Calendar heatmap)
+    /// bucket by start time, so a call running 23:50→00:20 belongs to the day
+    /// it began.
+    ///
+    /// Optional and decode-optional on purpose: the daemon ledger is an
+    /// append-only JSONL file with no migrator, so every row written before
+    /// this field existed must still decode. It is populated only where a real
+    /// start instant is known — never back-filled from `Date()` at record
+    /// time, which would look precise while being a restatement of
+    /// `recordedAt`. Read it as `startTime ?? recordedAt`.
+    public let startTime: Date?
+
     private enum CodingKeys: String, CodingKey {
         case runID
         case providerID
@@ -1445,6 +1461,7 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         case projectName
         case confidence
         case parentRequestID
+        case startTime
     }
 
     public init(
@@ -1461,7 +1478,8 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         sessionID: String? = nil,
         projectName: String? = nil,
         confidence: BurnBarUsageConfidence = .exact,
-        parentRequestID: String? = nil
+        parentRequestID: String? = nil,
+        startTime: Date? = nil
     ) {
         self.runID = runID
         self.providerID = providerID
@@ -1477,6 +1495,7 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         self.projectName = projectName
         self.confidence = confidence
         self.parentRequestID = parentRequestID
+        self.startTime = startTime
     }
 
     public init(from decoder: Decoder) throws {
@@ -1495,6 +1514,7 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         projectName = try container.decodeIfPresent(String.self, forKey: .projectName)
         confidence = try container.decodeIfPresent(BurnBarUsageConfidence.self, forKey: .confidence) ?? .exact
         parentRequestID = try container.decodeIfPresent(String.self, forKey: .parentRequestID)
+        startTime = try container.decodeIfPresent(Date.self, forKey: .startTime)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -1513,6 +1533,7 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         try container.encodeIfPresent(projectName, forKey: .projectName)
         try container.encode(confidence, forKey: .confidence)
         try container.encodeIfPresent(parentRequestID, forKey: .parentRequestID)
+        try container.encodeIfPresent(startTime, forKey: .startTime)
     }
 }
 

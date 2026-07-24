@@ -9,6 +9,7 @@ import {
   parseDomainCoreBuildProfileResolverArgs,
   resolveDomainCoreCandidateIdentity,
   validateDomainCoreCandidateIdentity,
+  validateDomainCoreReleaseCoordinates,
 } from "./domain-core-candidate-receipt.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -148,5 +149,33 @@ test("candidate identity is exact and canonical", () => {
     { ...valid, candidateCommit: "A".repeat(40) },
   ]) {
     assert.throws(() => validateDomainCoreCandidateIdentity(invalid));
+  }
+});
+
+test("release coordinates are exact, all-or-none, and tag-bound to version", () => {
+  const valid = {
+    commit: "a".repeat(40),
+    version: "1.2.3",
+    tag: "v1.2.3",
+  };
+  assert.deepEqual(validateDomainCoreReleaseCoordinates(valid), valid);
+  const buildValid = {
+    commit: "a".repeat(40),
+    version: "1.2.3+build.7",
+    tag: "v1.2.3+build.7",
+  };
+  assert.deepEqual(validateDomainCoreReleaseCoordinates(buildValid), buildValid);
+  for (const invalid of [
+    null,
+    {},
+    { commit: valid.commit, version: valid.version },
+    { commit: valid.commit, version: valid.version, tag: valid.tag, extra: true },
+    { commit: "abc", version: valid.version, tag: valid.tag },
+    { commit: valid.commit, version: "1.2", tag: valid.tag },
+    { commit: valid.commit, version: "1.2.3-rc.1", tag: "v1.2.3-rc.1" },
+    { commit: valid.commit, version: valid.version, tag: "1.2.3" },
+    { commit: valid.commit, version: valid.version, tag: "v1.2.4" },
+  ]) {
+    assert.throws(() => validateDomainCoreReleaseCoordinates(invalid));
   }
 });

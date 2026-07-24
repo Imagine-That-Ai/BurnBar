@@ -29,6 +29,30 @@ extension UsageStore {
         }
     }
 
+    /// Removes parser-invalidated rows by exact provider/session identity.
+    /// The day-bucket namespace is included for compatibility with prior Codex imports.
+    func deleteUsage(provider: AgentProvider, sessionIDs: [String]) async throws {
+        let uniqueSessionIDs = Set(sessionIDs)
+        guard !uniqueSessionIDs.isEmpty else { return }
+
+        try await dbQueue.write { db in
+            for sessionID in uniqueSessionIDs {
+                try db.execute(
+                    sql: """
+                        DELETE FROM token_usage
+                        WHERE provider = ?
+                          AND (
+                              sessionId = ?
+                              OR substr(sessionId, 1, length(?) + 5) = ? || '#day-'
+                          )
+                        """,
+                    arguments: [provider.rawValue, sessionID, sessionID, sessionID]
+                )
+            }
+        }
+        SearchQueryCache.shared.clear()
+    }
+
     // MARK: - Sync
 
     func fetchUnsynced() async throws -> [TokenUsage] {

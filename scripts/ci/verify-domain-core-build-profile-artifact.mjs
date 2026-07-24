@@ -36,10 +36,21 @@ const candidateIdentity =
         requireClean: false,
       })
     : undefined;
+const release =
+  args.has("--expected-release-commit") &&
+  args.has("--expected-release-version") &&
+  args.has("--expected-release-tag")
+    ? {
+        commit: args.get("--expected-release-commit"),
+        version: args.get("--expected-release-version"),
+        tag: args.get("--expected-release-tag"),
+      }
+    : undefined;
 const expected = resolveDomainCoreBuildProfile(
   catalog,
   profileName,
   candidateIdentity,
+  release,
 );
 
 const parseJsonArtifact = (content) =>

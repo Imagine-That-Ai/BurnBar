@@ -208,11 +208,15 @@ final class BurnBarCatalogTests: XCTestCase {
         let catalog = BurnBarCatalogLoader.bundledCatalog
         XCTAssertEqual(
             Array(catalog.suggestedModels(forProviderID: "codex").prefix(2)).map(\.id),
-            ["codex-gpt-5.5-family", "codex-gpt-5.4-family"]
+            ["codex-gpt-5.6-luna-family", "codex-gpt-5.6-sol-family"]
         )
+        XCTAssertTrue(catalog.supportsModel(named: "gpt-5.6-luna", providerID: "codex"))
+        XCTAssertTrue(catalog.supportsModel(named: "gpt-5.6-sol", providerID: "codex"))
         XCTAssertTrue(catalog.supportsModel(named: "gpt-5.5", providerID: "codex"))
         XCTAssertTrue(catalog.supportsModel(named: "gpt-5.5-codex", providerID: "codex"))
         XCTAssertTrue(catalog.supportsModel(named: "gpt-5.4", providerID: "codex"))
+        XCTAssertEqual(catalog.canonicalModelID(forModelName: "gpt-5.6-luna", providerID: "codex"), "gpt-5.6-luna")
+        XCTAssertEqual(catalog.canonicalModelID(forModelName: "gpt-5.6-sol", providerID: "codex"), "gpt-5.6-sol")
         XCTAssertEqual(catalog.canonicalModelID(forModelName: "gpt-5.5", providerID: "codex"), "gpt-5.5")
         XCTAssertEqual(catalog.canonicalModelID(forModelName: "gpt-5.4", providerID: "codex"), "gpt-5.4")
         XCTAssertEqual(catalog.capabilityClassID(forModelName: "gpt-5.5", providerID: "codex"), "openai:codex")

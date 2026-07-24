@@ -1,9 +1,14 @@
-# The Editorial / Paper skin
+# The Sun Lit / Paper skin (formerly "Editorial")
 
-The **Editorial** skin folds the light, paper-bright **app.burnbar.ai console
+> Naming: the user-facing skin labels are **Sun Lit** (this skin, raw value
+> `editorial`) and **Moon Lit** (the dark ember default, raw value `aurora`).
+> This document predates the rename; code symbols and storage keys keep the
+> `editorial`/`aurora` names throughout.
+
+The **Sun Lit** skin folds the light, paper-bright **app.burnbar.ai console
 look** ("Quiet Editorial") into the native apps as a *selectable* appearance —
 **iOS, iPad, macOS, and Android**. It is **additive**: the signature dark
-**Aurora** ember look stays the default and is untouched. Users opt in from
+**Moon Lit** ember look stays the default and is untouched. Users opt in from
 Settings; nothing changes for anyone who doesn't.
 
 > Paper surfaces · ink text · one coral accent · hairlines · a light provider-logo dot-crest.
@@ -16,9 +21,16 @@ Appearance and skin are **orthogonal axes**:
 - **Skin** (`Aurora / Editorial`) → which *palette identity* the design tokens
   resolve to. New.
 
-`Editorial` is **light-locked**: it always renders its paper palette regardless
-of the OS light/dark setting (exactly like the web console, whose dark `:root`
-is the default and whose light overrides re-point the CSS variables).
+`Editorial` is **light-only**: it renders its paper palette whenever the
+resolving appearance is light (exactly like the web console, whose dark `:root`
+is the default and whose light overrides re-point the CSS variables). Under a
+**dark** appearance — an explicit `Dark` pick, or `System` on a dark OS — the
+paper palette would be unreadable on dark chrome, so the tokens fall back to
+the **aurora (Moon Lit) dark palette** instead of pinning the whole app to
+light. The appearance mode the user picked is always honored; see
+`AppSkin.resolved(for:)`, which view-level skin branches use for the same
+decision. The skin choice itself is preserved and Sun Lit returns as soon as
+the appearance is light again.
 
 ## How it flips everything at once
 

@@ -54,10 +54,7 @@ public enum DomainCoreReleaseIdentityReporter {
         reportURL: URL,
         executableURL: URL
     ) throws -> DomainCoreReleaseIdentity {
-        guard candidateCommit.range(
-            of: #"^[0-9a-f]{40}$"#,
-            options: .regularExpression
-        ) != nil else {
+        guard Self.isLowercaseHex(candidateCommit, length: 40) else {
             throw DomainCoreReleaseIdentityError.invalidCandidateCommit
         }
 
@@ -80,11 +77,8 @@ public enum DomainCoreReleaseIdentityReporter {
 
         #if canImport(OpenBurnBarDomainCoreFFI)
         let loadedCandidateCommit = OpenBurnBarDomainCoreFFI.domainCoreCandidateCommit()
-        guard loadedCandidateCommit.range(
-            of: #"^[0-9a-f]{40}$"#,
-            options: .regularExpression
-        ) != nil,
-        loadedCandidateCommit != String(repeating: "0", count: 40) else {
+        guard Self.isLowercaseHex(loadedCandidateCommit, length: 40),
+              loadedCandidateCommit != String(repeating: "0", count: 40) else {
             throw DomainCoreReleaseIdentityError.invalidCandidateCommit
         }
         guard loadedCandidateCommit == candidateCommit else {
@@ -114,5 +108,20 @@ public enum DomainCoreReleaseIdentityReporter {
         #else
         throw DomainCoreReleaseIdentityError.unavailableNativeCore
         #endif
+    }
+    /// Returns true only when `value` is exactly `length` lowercase hex
+    /// characters spanning the entire string — no leading/trailing whitespace,
+    /// newline, or extra byte. Uses exact UTF-8 byte semantics: an ASCII byte
+    /// count of `length` plus a per-byte range scan of `0`-`9` (48...57) or
+    /// `a`-`f` (97...102). No allocation, no end-of-line anchoring.
+    private static func isLowercaseHex(_ value: String, length: Int) -> Bool {
+        let bytes = value.utf8
+        guard bytes.count == length else { return false }
+        for byte in bytes {
+            guard (48...57).contains(byte) || (97...102).contains(byte) else {
+                return false
+            }
+        }
+        return true
     }
 }

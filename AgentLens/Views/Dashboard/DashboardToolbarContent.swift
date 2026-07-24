@@ -153,6 +153,10 @@ extension DashboardView {
             .padding(.vertical, 10)
             .frame(minHeight: 116)
             .background(dashboardDeckSurface(cornerRadius: 34, opacity: 0.94))
+            // The deck renders under the title bar now, so its empty areas
+            // double as the window's drag region (controls stay clickable
+            // because they sit above this background).
+            .background(WindowDragRegion())
             .overlay {
                 RoundedRectangle(cornerRadius: 34, style: .continuous)
                     .stroke(DesignSystem.Colors.border.opacity(0.5), lineWidth: 0.75)
@@ -165,13 +169,19 @@ extension DashboardView {
             dashboardDeckStatusRail
         }
         .padding(.horizontal, 14)
-        .padding(.top, 8)
+        .padding(.top, 4)
         .padding(.bottom, 10)
         .background(Color.clear)
     }
 
     private var dashboardDeckLeading: some View {
         HStack(spacing: 10) {
+            // Clearance for the traffic-light cluster, which overlays the
+            // deck now that it renders full-bleed under the title bar.
+            Color.clear
+                .frame(width: 40, height: 1)
+                .accessibilityHidden(true)
+
             AppLogoView(size: 36)
                 .frame(width: 44, height: 44)
                 .help("OpenBurnBar")
@@ -194,6 +204,7 @@ extension DashboardView {
             HStack(spacing: 0) {
                 dashboardDeckRouteButton(.overview)
                 dashboardDeckRouteButton(.charts)
+                dashboardDeckRouteButton(.calendar)
                 dashboardDeckRouteButton(.insights)
                 dashboardDeckRouteButton(.projects)
                 dashboardDeckRouteButton(.sessionLogs)
@@ -631,35 +642,15 @@ extension DashboardView {
 
     private var commandDeckOverflow: some View {
         Menu {
-            Section("Appearance") {
-                ForEach(AppearanceMode.allCases, id: \.self) { mode in
-                    Button {
-                        settingsManager.appearanceMode = mode
-                    } label: {
-                        if settingsManager.appearanceMode == mode {
-                            Label(mode.quickMenuLabel, systemImage: "checkmark")
-                        } else {
-                            Text(mode.quickMenuLabel)
-                        }
-                    }
-                }
-            }
-
-            Section("App Skin") {
-                ForEach(AppSkin.allCases, id: \.self) { skin in
-                    Button {
-                        settingsManager.appearanceSkin = skin
-                    } label: {
-                        if settingsManager.appearanceSkin == skin {
-                            Label(skin.quickMenuLabel, systemImage: "checkmark")
-                        } else {
-                            Text(skin.quickMenuLabel)
-                        }
-                    }
-                }
-            }
-
             Section {
+                Button {
+                    SettingsDeepLinkRouting.route(to: "general.appearance.theme")
+                    showingSettings = true
+                } label: {
+                    Label("Appearance & Skin…", systemImage: "paintpalette")
+                }
+                .help("Open Appearance settings (also in the status-rail quick menu)")
+
                 Button {
                     toggleDashboardSidebar()
                 } label: {
@@ -852,6 +843,23 @@ private struct DashboardAgentRobotGlyph: View {
     }
 }
 
+// MARK: - Window drag region
+
+/// Fills the deck card behind its content so empty areas act as the window's
+/// drag region now that the command deck extends into the title-bar area.
+/// Interactive controls sit above this background and keep their hits.
+private struct WindowDragRegion: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        WindowDragRegionView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+private final class WindowDragRegionView: NSView {
+    override var mouseDownCanMoveWindow: Bool { true }
+}
+
 // MARK: - Enum bridges (UsageDisplayMode ↔ BurnRailUnit)
 
 private extension BurnRailUnit {
@@ -871,8 +879,8 @@ private extension BurnRailUnit {
 
 // MARK: - Dashboard quick access rail
 
-/// A user-owned row of persistent shortcuts that lives below the compact
-/// macOS titlebar toolbar. The defaults make the high-frequency destinations
+/// A user-owned row of persistent shortcuts that lives inside the command
+/// deck's status rail, directly under the macOS title bar. The defaults make the high-frequency destinations
 /// discoverable, while the editor lets users add, remove, and reorder their
 /// own links without learning the Settings navigation tree.
 struct DashboardQuickAccessRail: View {

@@ -56,6 +56,12 @@ struct DashboardDetailView: View {
                         selectedTimeRange: selectedTimeRange
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .calendar:
+                    CalendarPageDetailHost(
+                        context: context,
+                        selectedTimeRange: selectedTimeRange
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .database:
                     DatabaseWorkspaceView(
                         dataStore: dataStore,

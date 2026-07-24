@@ -62,6 +62,175 @@ test("artifact verifier arguments are exact and unambiguous", () => {
   }
 });
 
+test("release coordinates must be supplied as a complete commit/version/tag triplet", () => {
+  const complete = parseDomainCoreArtifactVerifierArgs([
+    "--profile",
+    "public-production",
+    "--expected-candidate-commit",
+    "a".repeat(40),
+    "--expected-release-commit",
+    "b".repeat(40),
+    "--expected-release-version",
+    "1.0.0",
+    "--expected-release-tag",
+    "v1.0.0",
+    "--receipt",
+    "receipt.json",
+  ]);
+  assert.equal(complete.get("--expected-release-commit"), "b".repeat(40));
+  assert.equal(complete.get("--expected-release-version"), "1.0.0");
+  assert.equal(complete.get("--expected-release-tag"), "v1.0.0");
+
+  for (const argv of [
+    [
+      "--profile",
+      "public-production",
+      "--expected-release-commit",
+      "b".repeat(40),
+      "--receipt",
+      "receipt.json",
+    ],
+    [
+      "--profile",
+      "public-production",
+      "--expected-release-version",
+      "1.0.0",
+      "--receipt",
+      "receipt.json",
+    ],
+    [
+      "--profile",
+      "public-production",
+      "--expected-release-tag",
+      "v1.0.0",
+      "--receipt",
+      "receipt.json",
+    ],
+    [
+      "--profile",
+      "public-production",
+      "--expected-release-commit",
+      "b".repeat(40),
+      "--expected-release-version",
+      "1.0.0",
+      "--receipt",
+      "receipt.json",
+    ],
+    [
+      "--profile",
+      "public-production",
+      "--expected-release-commit",
+      "b".repeat(40),
+      "--expected-release-tag",
+      "v1.0.0",
+      "--receipt",
+      "receipt.json",
+    ],
+    [
+      "--profile",
+      "public-production",
+      "--expected-release-version",
+      "1.0.0",
+      "--expected-release-tag",
+      "v1.0.0",
+      "--receipt",
+      "receipt.json",
+    ],
+  ]) {
+    assert.throws(
+      () => parseDomainCoreArtifactVerifierArgs(argv),
+      /must be supplied together/,
+    );
+  }
+});
+test("release coordinates must be supplied as a complete commit/version/tag triplet", () => {
+  const complete = parseDomainCoreArtifactVerifierArgs([
+    "--profile",
+    "public-production",
+    "--expected-candidate-commit",
+    "a".repeat(40),
+    "--expected-release-commit",
+    "b".repeat(40),
+    "--expected-release-version",
+    "1.0.0",
+    "--expected-release-tag",
+    "v1.0.0",
+    "--receipt",
+    "receipt.json",
+  ]);
+  assert.equal(complete.get("--expected-release-commit"), "b".repeat(40));
+  assert.equal(complete.get("--expected-release-version"), "1.0.0");
+  assert.equal(complete.get("--expected-release-tag"), "v1.0.0");
+
+  for (const argv of [
+    // commit only — missing version and tag
+    [
+      "--profile",
+      "public-production",
+      "--expected-release-commit",
+      "b".repeat(40),
+      "--receipt",
+      "receipt.json",
+    ],
+    // version only — missing commit and tag
+    [
+      "--profile",
+      "public-production",
+      "--expected-release-version",
+      "1.0.0",
+      "--receipt",
+      "receipt.json",
+    ],
+    // tag only — missing commit and version
+    [
+      "--profile",
+      "public-production",
+      "--expected-release-tag",
+      "v1.0.0",
+      "--receipt",
+      "receipt.json",
+    ],
+    // commit + version — missing tag
+    [
+      "--profile",
+      "public-production",
+      "--expected-release-commit",
+      "b".repeat(40),
+      "--expected-release-version",
+      "1.0.0",
+      "--receipt",
+      "receipt.json",
+    ],
+    // commit + tag — missing version
+    [
+      "--profile",
+      "public-production",
+      "--expected-release-commit",
+      "b".repeat(40),
+      "--expected-release-tag",
+      "v1.0.0",
+      "--receipt",
+      "receipt.json",
+    ],
+    // version + tag — missing commit
+    [
+      "--profile",
+      "public-production",
+      "--expected-release-version",
+      "1.0.0",
+      "--expected-release-tag",
+      "v1.0.0",
+      "--receipt",
+      "receipt.json",
+    ],
+  ]) {
+    assert.throws(
+      () => parseDomainCoreArtifactVerifierArgs(argv),
+      /must be supplied together/,
+    );
+  }
+});
+
 test("Apple plist mapping pins exact case-sensitive receipt keys", () => {
   const requested = [];
   const values = new Map([

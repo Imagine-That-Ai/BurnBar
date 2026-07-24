@@ -6,6 +6,7 @@ enum DashboardMainRoute: Hashable {
     case overview
     case insights
     case charts
+    case calendar
     case database
     case projects
     case missions
@@ -33,6 +34,7 @@ enum DashboardMainRoute: Hashable {
         case .overview: return "Overview"
         case .insights: return "Insights"
         case .charts: return "Charts"
+        case .calendar: return "Calendar"
         case .database: return "Database"
         case .projects: return "Projects"
         case .missions: return "Missions"
@@ -50,6 +52,7 @@ enum DashboardMainRoute: Hashable {
         case .overview: return "chart.bar.xaxis"
         case .insights: return "cpu"
         case .charts: return "chart.xyaxis.line"
+        case .calendar: return "calendar"
         case .database: return "archivebox"
         case .projects: return "folder"
         case .missions: return "flag"
@@ -73,6 +76,8 @@ enum DashboardMainRoute: Hashable {
             return DesignSystem.Colors.amber
         case .charts:
             return DesignSystem.Colors.ember
+        case .calendar:
+            return DesignSystem.Colors.amber
         case .database, .projects, .missions, .sessionLogs, .memoryReview:
             return DesignSystem.Colors.whimsy
         default:
@@ -93,6 +98,7 @@ enum DashboardMainRoute: Hashable {
         case .overview: return "All providers + models"
         case .insights: return "Editorial brief & anomalies"
         case .charts: return "Your usage, drawn honestly"
+        case .calendar: return "Your burn, day by day"
         case .provider: return "Provider deep dive"
         case .model: return "Model deep dive"
         }

@@ -50,7 +50,7 @@ final class ChartsPageLayoutTests: XCTestCase {
     func test_setSpan_clampsToGridBounds() {
         var layout = ChartsPageLayout.default
         layout.setSpan(.providerMix, 99)
-        XCTAssertEqual(layout.configs.first { $0.kind == .providerMix }?.span, 2)
+        XCTAssertEqual(layout.configs.first { $0.kind == .providerMix }?.span, ChartCardConfig.maxSpan)
         layout.setSpan(.providerMix, 0)
         XCTAssertEqual(layout.configs.first { $0.kind == .providerMix }?.span, 1)
     }
@@ -123,5 +123,27 @@ final class ChartsPageLayoutTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         XCTAssertEqual(rows[0].configs.map(\.kind), [.providerMix])
         XCTAssertEqual(rows[1].configs.map(\.kind), [.burnOverTime])
+    }
+
+    func test_rowPacking_threeColumns_packsBySlots() {
+        let configs = [
+            ChartCardConfig(kind: .burnOverTime, span: 2),
+            ChartCardConfig(kind: .providerMix, span: 1),
+            ChartCardConfig(kind: .modelMix, span: 1),
+            ChartCardConfig(kind: .cacheROI, span: 1),
+            ChartCardConfig(kind: .reasoningShare, span: 1)
+        ]
+        let rows = ChartsReorderableGrid.rows(for: configs, columns: 3)
+        // 2+1 fills row one; 1+1+1 fills row two.
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows[0].configs.map(\.kind), [.burnOverTime, .providerMix])
+        XCTAssertEqual(rows[1].configs.map(\.kind), [.modelMix, .cacheROI, .reasoningShare])
+    }
+
+    func test_rowPacking_spanClampedToColumnCount() {
+        let configs = [ChartCardConfig(kind: .burnOverTime, span: 3)]
+        let rows = ChartsReorderableGrid.rows(for: configs, columns: 2)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].configs.map(\.kind), [.burnOverTime])
     }
 }

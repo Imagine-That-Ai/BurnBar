@@ -98,12 +98,24 @@ final class WindowManager: ObservableObject {
         // in the title bar now that the in-toolbar brand mark carries the product name.
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
+        // The command deck renders full-bleed under the traffic lights, so the
+        // window carries no toolbar chrome of its own. SwiftUI may lazily
+        // create a toolbar for the split view's sidebar toggle — the scrubber
+        // in DashboardView removes it again — but if one ever survives, keep
+        // it at minimum height instead of full unified height.
+        window.toolbar = nil
+        window.toolbarStyle = .unifiedCompact
         window.backgroundColor = NSColor(DesignSystem.Colors.background)
         window.contentMinSize = NSSize(
             width: DashboardWindowMetrics.minimumContentWidth,
             height: DashboardWindowMetrics.minimumContentHeight
         )
-        window.contentView = NSHostingView(rootView: contentView)
+        // Let the hosting view extend under the window chrome: without this,
+        // AppKit reports the title-bar height as a safe-area inset and the
+        // command deck stays parked below the (nearly empty) top band.
+        let dashboardHostingView = NSHostingView(rootView: contentView)
+        dashboardHostingView.safeAreaRegions = []
+        window.contentView = dashboardHostingView
         window.center()
         // Restore the user's last frame; center() above is only the
         // first-launch fallback before a saved frame exists.

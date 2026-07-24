@@ -34,9 +34,21 @@ public enum AppSkin: String, CaseIterable, Codable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .aurora:    return "Aurora"
-        case .editorial: return "Editorial"
+        case .aurora:    return "Moon Lit"
+        case .editorial: return "Sun Lit"
         }
+    }
+
+    /// The skin that actually renders under `scheme`.
+    ///
+    /// Editorial is a light-only paper skin: under a dark appearance it falls
+    /// back to `aurora` (Moon Lit), whose palette carries a real dark tier.
+    /// This keeps the invariant "the paper palette never sits on dark chrome"
+    /// without overriding the user's appearance mode — an explicit Dark (or a
+    /// dark system appearance under System) now wins, and the app simply
+    /// renders Moon Lit there until a light appearance returns.
+    public func resolved(for scheme: ColorScheme) -> AppSkin {
+        self == .editorial && scheme == .dark ? .aurora : self
     }
 }
 
@@ -147,12 +159,15 @@ public extension Color {
     }
 
     /// Skin- and appearance-aware token color. When the editorial skin is
-    /// active the `editorial` hex wins regardless of light/dark trait (the skin
-    /// is light-locked); otherwise resolves `light`/`dark` off the trait.
+    /// active the `editorial` hex wins while the resolving trait is light (the
+    /// skin is light-only); under a dark trait it falls back to the aurora
+    /// `dark` hex so the paper palette never sits on dark chrome. Otherwise
+    /// resolves `light`/`dark` off the trait.
     init(editorial: String, light: String, dark: String) {
         self.init(uiColor: UIColor(
             dynamicProvider: { traitCollection in
-                if AppSkin.current == .editorial {
+                if AppSkin.current == .editorial,
+                   traitCollection.userInterfaceStyle != .dark {
                     return UIColor(Color(hex: editorial))
                 }
                 let hex = traitCollection.userInterfaceStyle == .dark ? dark : light
@@ -166,16 +181,18 @@ public extension Color {
     }
 
     /// Skin- and appearance-aware token color. When the editorial skin is
-    /// active the `editorial` hex wins regardless of aqua/dark appearance (the
-    /// skin is light-locked); otherwise resolves `light`/`dark` off appearance.
+    /// active the `editorial` hex wins while the resolving appearance is light
+    /// (the skin is light-only); under a dark appearance it falls back to the
+    /// aurora `dark` hex so the paper palette never sits on dark chrome.
+    /// Otherwise resolves `light`/`dark` off appearance.
     init(editorial: String, light: String, dark: String) {
         self.init(
             NSColor(name: nil) { appearance in
-                if AppSkin.current == .editorial {
+                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                if AppSkin.current == .editorial, !isDark {
                     return NSColor(Color(hex: editorial))
                 }
-                let hex = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
-                return NSColor(Color(hex: hex))
+                return NSColor(Color(hex: isDark ? dark : light))
             }
         )
     }

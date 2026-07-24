@@ -44,6 +44,33 @@ fun MobileKernelBackdrop(kernel: MobileBackdropKernel, accentColor: Color, modif
     MobileKernelBackdropCanvas(kernel = kernel, accentColor = accentColor, phase = animatedPhase, modifier = modifier)
 }
 
+/**
+ * Static catalog thumbnail for a kernel — a single frozen frame, never animated.
+ *
+ * Per `docs/LIVING_THEMES_MOBILE.md` catalog thumbnails are static and only the
+ * selected hero preview animates, so this deliberately skips the infinite
+ * transition used by [MobileKernelBackdrop] and renders one fixed frame.
+ *
+ * Phase units differ between platforms. iOS poses its catalog cells at an
+ * absolute `time: 2.4` seconds, whereas this canvas takes a phase NORMALIZED to
+ * 0..1 across the 18-second loop that [MobileKernelBackdrop] drives. The value
+ * that matches iOS is therefore 2.4 / 18 ≈ 0.133 — passing 2.4f would wrap the
+ * loop 2.4 times and land on an entirely different, unmatched frame.
+ */
+@Composable
+fun MobileKernelBackdropThumbnail(kernel: MobileBackdropKernel, accentColor: Color, modifier: Modifier = Modifier) {
+    MobileKernelBackdropCanvas(kernel = kernel, accentColor = accentColor, phase = THUMBNAIL_PHASE, modifier = modifier)
+}
+
+/** Seconds into the loop that iOS freezes its catalog thumbnails at. */
+private const val THUMBNAIL_POSE_SECONDS = 2.4f
+
+/** Length of one full kernel loop, matching the 18_000 ms tween in [MobileKernelBackdrop]. */
+private const val KERNEL_LOOP_SECONDS = 18f
+
+/** iOS's absolute-seconds pose expressed in this canvas's normalized 0..1 phase. */
+private const val THUMBNAIL_PHASE = THUMBNAIL_POSE_SECONDS / KERNEL_LOOP_SECONDS
+
 @Composable
 private fun MobileKernelBackdropCanvas(kernel: MobileBackdropKernel, accentColor: Color, phase: Float, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier.fillMaxSize()) {

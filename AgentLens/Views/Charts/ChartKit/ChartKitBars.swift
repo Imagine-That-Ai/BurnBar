@@ -3,12 +3,21 @@ import SwiftUI
 // MARK: - ChartKit · Bars
 //
 // Vertical bars, paired comparison bars, stacked series bars, and ranked
-// horizontal bars. Static Shape drawing only — see ChartKitLine.swift.
+// horizontal bars. Static Shape drawing at rest — see ChartKitLine.swift —
+// with hover-only highlighting and grow-in on first appearance (gated by
+// `accessibilityReduceMotion`).
 
 /// Simple vertical bars (histograms, single series).
 struct ChartKitBars: View {
     let values: [Double]
     var accent: Color = DesignSystem.Colors.ember
+    /// Optional per-bar captions (bucket ranges) shown in the tooltip.
+    var barLabels: [String]?
+    var valueFormatter: (Double) -> String = { "\(Int($0.rounded()))" }
+
+    @State private var hoverIndex: Int?
+    @State private var drawn = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { proxy in
@@ -17,19 +26,54 @@ struct ChartKitBars: View {
             let count = max(values.count, 1)
             let gap: CGFloat = count > 16 ? 2 : 4
             let barWidth = max(1, (size.width - CGFloat(count - 1) * gap) / CGFloat(count))
-            HStack(alignment: .bottom, spacing: gap) {
-                ForEach(Array(values.enumerated()), id: \.offset) { _, value in
-                    RoundedRectangle(cornerRadius: min(3, barWidth / 3), style: .continuous)
-                        .fill(accent.opacity(value > 0 ? 0.85 : 0.15))
-                        .frame(
-                            width: barWidth,
-                            height: max(2, CGFloat(value / peak) * size.height)
-                        )
+            ZStack(alignment: .topLeading) {
+                HStack(alignment: .bottom, spacing: gap) {
+                    ForEach(Array(values.enumerated()), id: \.offset) { index, value in
+                        let hovered = hoverIndex == index
+                        RoundedRectangle(cornerRadius: min(3, barWidth / 3), style: .continuous)
+                            .fill(accent.opacity(value > 0 ? (hovered ? 1 : 0.85) : 0.15))
+                            .frame(
+                                width: barWidth,
+                                height: max(2, CGFloat(value / peak) * size.height)
+                            )
+                            .scaleEffect(y: drawn ? 1 : 0.001, anchor: .bottom)
+                    }
+                }
+                .frame(width: size.width, height: size.height, alignment: .bottomLeading)
+
+                if let hoverIndex, hoverIndex < values.count {
+                    ChartKitTooltip(
+                        value: valueFormatter(values[hoverIndex]),
+                        title: barLabels.flatMap { hoverIndex < $0.count ? $0[hoverIndex] : nil },
+                        accent: accent
+                    )
+                    .position(
+                        x: min(max(CGFloat(hoverIndex) * (barWidth + gap) + barWidth / 2, 56), size.width - 56),
+                        y: 14
+                    )
                 }
             }
-            .frame(width: size.width, height: size.height, alignment: .bottomLeading)
+            .onAppear { drawIn() }
+            .onContinuousHover(coordinateSpace: .local) { phase in
+                switch phase {
+                case .active(let location):
+                    hoverIndex = ChartKitHover.cellIndex(
+                        atX: location.x, count: values.count, width: size.width
+                    )
+                case .ended:
+                    hoverIndex = nil
+                }
+            }
         }
-        .allowsHitTesting(false)
+    }
+
+    private func drawIn() {
+        guard !drawn else { return }
+        if reduceMotion {
+            drawn = true
+        } else {
+            withAnimation(.easeOut(duration: 0.7)) { drawn = true }
+        }
     }
 }
 
@@ -39,6 +83,13 @@ struct ChartKitPairedBars: View {
     let secondary: [Double]
     var primaryAccent: Color = DesignSystem.Colors.ember
     var secondaryAccent: Color = DesignSystem.Colors.textMuted
+    /// Labels for each pair (e.g. weekday names) shown in the tooltip.
+    var groupLabels: [String]?
+    var valueFormatter: (Double) -> String = { $0.formatAsCost() }
+
+    @State private var hoverIndex: Int?
+    @State private var drawn = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { proxy in
@@ -49,27 +100,62 @@ struct ChartKitPairedBars: View {
             let pairGap: CGFloat = 2
             let groupWidth = max(2, (size.width - CGFloat(count - 1) * groupGap) / CGFloat(count))
             let barWidth = max(1, (groupWidth - pairGap) / 2)
-            HStack(alignment: .bottom, spacing: groupGap) {
-                ForEach(0..<count, id: \.self) { index in
-                    HStack(alignment: .bottom, spacing: pairGap) {
-                        bar(value: index < secondary.count ? secondary[index] : 0,
-                            peak: peak, width: barWidth, height: size.height,
-                            color: secondaryAccent.opacity(0.45))
-                        bar(value: index < primary.count ? primary[index] : 0,
-                            peak: peak, width: barWidth, height: size.height,
-                            color: primaryAccent.opacity(0.9))
+            ZStack(alignment: .topLeading) {
+                HStack(alignment: .bottom, spacing: groupGap) {
+                    ForEach(0..<count, id: \.self) { index in
+                        let hovered = hoverIndex == index
+                        HStack(alignment: .bottom, spacing: pairGap) {
+                            bar(value: index < secondary.count ? secondary[index] : 0,
+                                peak: peak, width: barWidth, height: size.height,
+                                color: secondaryAccent.opacity(hovered ? 0.65 : 0.45))
+                            bar(value: index < primary.count ? primary[index] : 0,
+                                peak: peak, width: barWidth, height: size.height,
+                                color: primaryAccent.opacity(hovered ? 1 : 0.9))
+                        }
                     }
                 }
+                .frame(width: size.width, height: size.height, alignment: .bottomLeading)
+
+                if let hoverIndex, hoverIndex < count {
+                    let thisValue = hoverIndex < primary.count ? primary[hoverIndex] : 0
+                    let lastValue = hoverIndex < secondary.count ? secondary[hoverIndex] : 0
+                    ChartKitTooltip(
+                        value: "\(valueFormatter(thisValue)) vs \(valueFormatter(lastValue))",
+                        title: groupLabels.flatMap { hoverIndex < $0.count ? $0[hoverIndex] : nil },
+                        accent: primaryAccent
+                    )
+                    .position(
+                        x: min(max(CGFloat(hoverIndex) * (groupWidth + groupGap) + groupWidth / 2, 76), size.width - 76),
+                        y: 14
+                    )
+                }
             }
-            .frame(width: size.width, height: size.height, alignment: .bottomLeading)
+            .onAppear { drawIn() }
+            .onContinuousHover(coordinateSpace: .local) { phase in
+                switch phase {
+                case .active(let location):
+                    hoverIndex = ChartKitHover.cellIndex(atX: location.x, count: count, width: size.width)
+                case .ended:
+                    hoverIndex = nil
+                }
+            }
         }
-        .allowsHitTesting(false)
     }
 
     private func bar(value: Double, peak: Double, width: CGFloat, height: CGFloat, color: Color) -> some View {
         RoundedRectangle(cornerRadius: min(2.5, width / 3), style: .continuous)
             .fill(color)
             .frame(width: width, height: max(2, CGFloat(value / peak) * height))
+            .scaleEffect(y: drawn ? 1 : 0.001, anchor: .bottom)
+    }
+
+    private func drawIn() {
+        guard !drawn else { return }
+        if reduceMotion {
+            drawn = true
+        } else {
+            withAnimation(.easeOut(duration: 0.7)) { drawn = true }
+        }
     }
 }
 
@@ -82,6 +168,9 @@ struct ChartKitStackedBars: View {
     }
 
     let series: [Series]
+
+    @State private var drawn = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { proxy in
@@ -111,17 +200,28 @@ struct ChartKitStackedBars: View {
                         }
                         .frame(width: barWidth, alignment: .bottom)
                         .clipShape(RoundedRectangle(cornerRadius: min(3, barWidth / 3), style: .continuous))
+                        .scaleEffect(y: drawn ? 1 : 0.001, anchor: .bottom)
                     }
                 }
                 .frame(width: size.width, height: size.height, alignment: .bottomLeading)
+                .onAppear { drawIn() }
             }
         }
         .allowsHitTesting(false)
     }
+
+    private func drawIn() {
+        guard !drawn else { return }
+        if reduceMotion {
+            drawn = true
+        } else {
+            withAnimation(.easeOut(duration: 0.7)) { drawn = true }
+        }
+    }
 }
 
 /// Ranked horizontal bars with labels and formatted values (model mix,
-/// heavyweight sessions).
+/// heavyweight sessions). Rows light up under the pointer.
 struct ChartKitRankedBars: View {
     struct Row: Identifiable {
         let id: String
@@ -134,10 +234,15 @@ struct ChartKitRankedBars: View {
     let rows: [Row]
     var valueFormatter: (Double) -> String = { $0.formatAsCost() }
 
+    @State private var hoveredID: String?
+    @State private var drawn = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         let peak = max(rows.map(\.value).max() ?? 0, 0.0001)
         VStack(alignment: .leading, spacing: 8) {
             ForEach(rows) { row in
+                let hovered = hoveredID == row.id
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(row.label)
@@ -154,21 +259,45 @@ struct ChartKitRankedBars: View {
                         Text(valueFormatter(row.value))
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                             .monospacedDigit()
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .foregroundStyle(
+                                hovered ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary
+                            )
                     }
                     GeometryReader { proxy in
                         ZStack(alignment: .leading) {
                             Capsule()
                                 .fill(DesignSystem.Colors.surface.opacity(0.6))
                             Capsule()
-                                .fill(row.color.opacity(0.85))
+                                .fill(row.color.opacity(hovered ? 1 : 0.85))
                                 .frame(width: max(3, CGFloat(row.value / peak) * proxy.size.width))
+                                .scaleEffect(x: drawn ? 1 : 0.001, anchor: .leading)
                         }
                     }
                     .frame(height: 5)
                 }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background {
+                    if hovered {
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .fill(row.color.opacity(0.08))
+                    }
+                }
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    hoveredID = hovering ? row.id : nil
+                }
             }
         }
-        .allowsHitTesting(false)
+        .onAppear { drawIn() }
+    }
+
+    private func drawIn() {
+        guard !drawn else { return }
+        if reduceMotion {
+            drawn = true
+        } else {
+            withAnimation(.easeOut(duration: 0.6)) { drawn = true }
+        }
     }
 }

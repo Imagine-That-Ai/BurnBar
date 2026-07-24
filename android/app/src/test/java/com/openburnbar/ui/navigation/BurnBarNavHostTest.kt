@@ -18,10 +18,10 @@ import org.junit.Test
  */
 class BurnBarNavHostTest {
     @Test
-    fun `the tab catalog exposes six unique deep-link routes`() {
+    fun `the tab catalog exposes seven unique deep-link routes`() {
         val routes = BurnBarTab.allCandidates.map { it.route }
 
-        assertEquals(listOf("pulse", "burn", "insights", "streams", "hermes", "you"), routes)
+        assertEquals(listOf("pulse", "burn", "insights", "calendar", "streams", "hermes", "you"), routes)
         assertEquals(routes.size, routes.toSet().size)
     }
 

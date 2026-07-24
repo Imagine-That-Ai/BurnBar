@@ -48,7 +48,7 @@ public final class CodexParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 2,
+            schemaVersion: 3,
             logLabel: "CodexParser"
         )
         _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths) // try?-ok(best-effort dir prep)
@@ -73,10 +73,17 @@ public final class CodexParser: LogParser, Sendable {
         }
 
         let parsed = try parseCodexDatabase(dbPath: dbPath, options: options)
-        return ParseResult(usages: parsed.usages, conversations: parsed.conversations)
+        return ParseResult(
+            usages: parsed.usages,
+            conversations: parsed.conversations,
+            usageSessionIDsToDelete: parsed.usageSessionIDsToDelete
+        )
     }
 
-    private func fetchThreadRows(dbPath: String) throws -> [CodexThreadRow] {
+    private func fetchThreadRows(dbPath: String) throws -> (
+        rows: [CodexThreadRow],
+        usageSessionIDsToDelete: [String]
+    ) {
         // Read-only, plain SQLite (matches GRDB `Configuration.readonly = true`).
         let reader = try SQLiteConnection.openReadOnly(path: dbPath)
         defer { reader.close() }
@@ -84,17 +91,39 @@ public final class CodexParser: LogParser, Sendable {
         // Check if rollout_path column exists
         let columnNames = Set(try reader.columnNames(ofTable: "threads"))
         let hasRolloutPath = columnNames.contains("rollout_path")
+        let hasThreadSource = columnNames.contains("thread_source")
+
+        let subagentSessionIDs: Set<String>
+        if hasThreadSource {
+            subagentSessionIDs = Set(try reader.query(
+                "SELECT id FROM threads WHERE thread_source = 'subagent'"
+            ).compactMap { $0.string("id") })
+        } else if hasRolloutPath {
+            subagentSessionIDs = Set(try reader.query(
+                "SELECT id, rollout_path FROM threads"
+            ).compactMap { row -> String? in
+                guard let threadID = row.string("id"),
+                      let rolloutPath = row.string("rollout_path") else { return nil }
+                let expandedPath = (rolloutPath as NSString).expandingTildeInPath
+                return isCodexSubagentRollout(expandedPath) ? threadID : nil
+            })
+        } else {
+            subagentSessionIDs = []
+        }
 
         let sql: String
         if hasRolloutPath {
+            let sourceFilter = hasThreadSource
+                ? "AND (thread_source IS NULL OR thread_source != 'subagent')"
+                : ""
             sql = """
                 SELECT
                     id, title, model, model_provider, tokens_used,
                     created_at, updated_at, cwd, rollout_path
                 FROM threads
                 WHERE archived = 0
+                \(sourceFilter)
                 ORDER BY created_at DESC
-                LIMIT 500
             """
         } else {
             sql = """
@@ -104,7 +133,6 @@ public final class CodexParser: LogParser, Sendable {
                 FROM threads
                 WHERE archived = 0
                 ORDER BY created_at DESC
-                LIMIT 500
             """
         }
 
@@ -120,6 +148,7 @@ public final class CodexParser: LogParser, Sendable {
             }
             let cwd: String = row.string("cwd") ?? "~"
             let rolloutPath: String? = hasRolloutPath ? row.string("rollout_path") : nil
+            guard !subagentSessionIDs.contains(threadId) else { continue }
             threadRows.append(
                 CodexThreadRow(
                     threadId: threadId,
@@ -133,22 +162,46 @@ public final class CodexParser: LogParser, Sendable {
                 )
             )
         }
-        return threadRows
+        return (threadRows, subagentSessionIDs.sorted())
     }
 
     private func parseCodexDatabase(
         dbPath: String,
         options: LogParseOptions
-    ) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
+    ) throws -> (
+        usages: [TokenUsage],
+        conversations: [ConversationRecord],
+        usageSessionIDsToDelete: [String]
+    ) {
         // Rows first, reader closed, then file scanning — never hold a read
         // connection on Codex's live database across multi-second file work.
-        let threadRows = try fetchThreadRows(dbPath: dbPath)
-        return try CodexSessionLogScanner.processThreadRows(
-            threadRows,
+        let fetched = try fetchThreadRows(dbPath: dbPath)
+        let parsed = try CodexSessionLogScanner.processThreadRows(
+            fetched.rows,
             options: options,
             fileManager: fileManager,
             cacheStore: cacheStore
         )
+        return (parsed.usages, parsed.conversations, fetched.usageSessionIDsToDelete)
+    }
+
+    private func isCodexSubagentRollout(_ path: String) -> Bool {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
+        defer { try? handle.close() } // try?-ok(read-only teardown)
+
+        guard let prefix = try? handle.read(upToCount: 256 * 1024),
+              !prefix.isEmpty else { return false }
+
+        let text = String(decoding: prefix, as: UTF8.self)
+        for line in text.split(separator: "\n", maxSplits: 15, omittingEmptySubsequences: true) {
+            guard let data = String(line).data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  json["type"] as? String == "session_meta",
+                  let payload = json["payload"] as? [String: Any],
+                  let source = payload["source"] as? [String: Any] else { continue }
+            return source["subagent"] != nil
+        }
+        return false
     }
 
 }
@@ -199,6 +252,8 @@ public struct CodexConversationCacheEntry: Codable, Equatable, Sendable {
     }
 }
 
+/// v3 (schemaVersion 3): `scanState` totals prefer per-turn Codex
+/// `last_token_usage` deltas over account/window `total_token_usage` counters.
 /// v2 (schemaVersion 2): carries the incremental `scanState` and, by
 /// construction, can no longer hold conversation bodies — parser caches are
 /// privacy-transient for conversation text (PR #1808).

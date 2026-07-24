@@ -100,6 +100,7 @@ test("native observer source and immutable signer pins cannot fall out of the se
     "AgentLens/App/AgentLensApp.swift",
     "OpenBurnBarCore/Sources/OpenBurnBarKernel/DomainCoreReleaseIdentityReporter.swift",
     "android/openburnbar-domain-core/src/androidTest/java/com/openburnbar/domaincore/DomainCoreNativeLoadTest.kt",
+    "android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi/openburnbar_domain_ffi.kt",
     "config/android-upload-certificate.sha256",
     "config/apple-release-signing-policy.json",
     "scripts/ci/create-apple-android-release-publication.mjs",
@@ -112,4 +113,31 @@ test("native observer source and immutable signer pins cannot fall out of the se
   ]) {
     assert.equal(seeds.has(required), true, required);
   }
+});
+
+test("generated Kotlin FFI binding is an explicit native release control-plane seed", () => {
+  // Regression (PR #1820 exact-head review): the uniffi-generated Kotlin FFI
+  // binding (openburnbar_domain_ffi.kt) is the Android consumer surface that
+  // binds the native domain-core library into the app. It is a release
+  // control-plane closure dependency — the Android native-load attestation and
+  // the C# drift check both depend on its provenance pin (kotlin.sha256). If it
+  // falls out of the frozen seed set, a tampered or drifted binding can ship
+  // without the control-plane verifier catching it, because the recursive
+  // discovery closure only walks statically-referenced local files and the
+  // generated Kotlin source is reached through the build, not through a `run:`
+  // reference in the workflow. Assert it is an explicit seed entry so the
+  // sorted/unique/closure invariants in the tests above keep defending it.
+  const kotlinBinding =
+    "android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi/openburnbar_domain_ffi.kt";
+  assert.equal(
+    NATIVE_RELEASE_CONTROL_PLANE_SEEDS.includes(kotlinBinding),
+    true,
+    `generated Kotlin FFI binding must be an explicit native release control-plane seed: ${kotlinBinding}`,
+  );
+  // The seed must point at a real regular file in the repo (not a missing or
+  // symlinked path), so a rename of the generated binding fails the seed
+  // invariant rather than silently dropping it from the control plane.
+  const stat = lstatSync(resolve(ROOT, kotlinBinding));
+  assert.equal(stat.isFile(), true, `${kotlinBinding} must be a regular file`);
+  assert.equal(stat.isSymbolicLink(), false, `${kotlinBinding} must not be a symlink`);
 });

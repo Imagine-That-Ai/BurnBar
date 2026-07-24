@@ -4,6 +4,11 @@ extension RoutingClientWiring {
 
     // MARK: - Snippet-mode wiring
 
+    enum AdvertisedModelsResult: Sendable {
+        case unavailable
+        case available([RoutingClientAdvertisedModel])
+    }
+
     /// A copy/pasteable shell block that achieves the same wiring without
     /// touching any config file. Users on managed dotfiles or non-standard
     /// shells prefer this path. The snippet is always self-contained and can
@@ -99,8 +104,29 @@ extension RoutingClientWiring {
         session: URLSession = .shared,
         timeoutSeconds: TimeInterval = 8
     ) async -> [RoutingClientAdvertisedModel] {
-        guard let url = URL(string: gateway.baseURL)?.appending(path: "v1/models") else {
+        switch await advertisedModelsWithAvailability(
+            gateway: gateway,
+            session: session,
+            timeoutSeconds: timeoutSeconds
+        ) {
+        case .unavailable:
             return []
+        case .available(let models):
+            return models
+        }
+    }
+
+    /// Returns whether the gateway answered successfully separately from the
+    /// catalog contents. A successful empty catalog is authoritative and must
+    /// remove stale proxy choices; an unavailable gateway should use fallback
+    /// data when one exists.
+    func advertisedModelsWithAvailability(
+        gateway: RoutingClientGateway,
+        session: URLSession = .shared,
+        timeoutSeconds: TimeInterval = 8
+    ) async -> AdvertisedModelsResult {
+        guard let url = URL(string: gateway.baseURL)?.appending(path: "v1/models") else {
+            return .unavailable
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = timeoutSeconds
@@ -113,7 +139,7 @@ extension RoutingClientWiring {
                   (200..<300).contains(http.statusCode),
                   let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let rows = object["data"] as? [[String: Any]] else {
-                return []
+                return .unavailable
             }
             let models: [RoutingClientAdvertisedModel] = rows.compactMap { row -> RoutingClientAdvertisedModel? in
                 guard let id = (row["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -136,10 +162,10 @@ extension RoutingClientWiring {
                     routeEligible: (row["route_eligible"] as? Bool) ?? true
                 )
             }
-            return Self.logicalProviderModelCatalog(models)
+            return .available(Self.logicalProviderModelCatalog(models))
         } catch {
             AppLogger.network.error("routing_client_probe_models_failed", metadata: ["error": error.localizedDescription])
-            return []
+            return .unavailable
         }
     }
 

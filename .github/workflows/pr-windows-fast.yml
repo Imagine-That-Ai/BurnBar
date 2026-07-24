@@ -226,6 +226,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: XAML token discipline (Aurora/macOS parity — no raw colors or fonts outside Theme/)
+        run: bash scripts/windows-port/check-xaml-token-discipline.sh
+
       - name: Validate physical certification harness contract
         run: |
           node scripts/windows-port/test-validate-release-certification-evidence.mjs

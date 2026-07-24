@@ -49,6 +49,8 @@ public partial class App : Application
     private ThemeService? _theme;
     private TrayIcon? _tray;
     private MainWindow? _mainWindow;
+    private SharedUi.SharedUiHostWindow? _sharedUiWindow;
+    private SharedUi.SharedUiDispatcher? _sharedUiDispatcher;
     private FlyoutWindow? _flyout;
     private DispatcherQueue? _dispatcherQueue;
     private IUsageRuntime? _usageRuntime;
@@ -77,9 +79,25 @@ public partial class App : Application
             ? Array.Empty<ElderWandProviderGroup>()
             : ElderWandGatewayCatalogProjection.Groups(_gatewayComposition.Router.Routes);
 
-    internal nint MainWindowHandle => _mainWindow is null
-        ? nint.Zero
-        : WindowChrome.GetHandle(_mainWindow);
+    internal nint MainWindowHandle => _sharedUiWindow is not null
+        ? WindowChrome.GetHandle(_sharedUiWindow)
+        : _mainWindow is null
+            ? nint.Zero
+            : WindowChrome.GetHandle(_mainWindow);
+
+    // ── SharedUi host seams (windows/app/OpenBurnBar.App/SharedUi) ──────────
+
+    /// <summary>Loopback model-proxy base address when the local gateway is running.</summary>
+    internal Uri? LocalGatewayBaseAddress => _gateway?.BaseAddress;
+
+    /// <summary>The local gateway bearer (DPAPI-protected store resolved; never exposed to the renderer).</summary>
+    internal string? LocalGatewayAccessToken => _localAccessToken;
+
+    /// <summary>The loopback gateway port when running (daemon_health display only).</summary>
+    internal int? LocalGatewayPort => _gateway is null ? null : _gateway.Port;
+
+    /// <summary>True when the Shell_NotifyIcon tray is installed.</summary>
+    internal bool TrayReady => _tray is not null;
 
     internal ProjectCodeMemoryService? ProjectCodeMemory =>
         Volatile.Read(ref _projectCodeMemory);
@@ -224,7 +242,7 @@ public partial class App : Application
         if (automation?.MainWindow == true)
         {
             StartCompanionCli();
-            ShowMainWindow();
+            ShowLegacyMainWindow();
             return;
         }
 
@@ -298,7 +316,8 @@ public partial class App : Application
 
         if (route.OpensMainWindow)
         {
-            ShowMainWindow();
+            // XAML-shell route keys navigate the legacy shell, not the SharedUi window.
+            ShowLegacyMainWindow();
             _mainWindow?.Shell.Navigate(route.RouteKey);
         }
     }
@@ -320,6 +339,40 @@ public partial class App : Application
 
     private void ShowMainWindow()
     {
+        // The shared Linux/macOS shell is the face of the app; the legacy XAML
+        // window remains the honest fallback when WebView2 or the bundle is
+        // unavailable, plus the host for XAML-only automation surfaces.
+        if (SharedUi.SharedUiHostWindow.IsAvailable(out string unavailableReason))
+        {
+            ShowSharedUiWindow();
+            return;
+        }
+
+        AppDiagnostics.LogEvent("shared-ui.unavailable", unavailableReason);
+        ShowLegacyMainWindow();
+    }
+
+    /// <summary>
+    /// Create/focus the SharedUi host window (the Linux-parity React shell in
+    /// WebView2). Called from the tray, the flyout, and the in-shell
+    /// open_dashboard command.
+    /// </summary>
+    internal void ShowSharedUiWindow()
+    {
+        if (_sharedUiWindow is null)
+        {
+            _sharedUiDispatcher ??= SharedUi.SharedUiComposition.CreateDispatcher();
+            _sharedUiWindow = new SharedUi.SharedUiHostWindow(_theme!, _sharedUiDispatcher);
+            _sharedUiWindow.Closed += (_, _) => _sharedUiWindow = null;
+            _ = _sharedUiWindow.StartAsync();
+        }
+
+        _sharedUiWindow.Activate();
+    }
+
+    /// <summary>The legacy native window (automation routes, palette, fallback).</summary>
+    internal void ShowLegacyMainWindow()
+    {
         if (_mainWindow is null)
         {
             _mainWindow = new MainWindow(_theme!, _usageRuntime);
@@ -336,8 +389,9 @@ public partial class App : Application
     {
         try
         {
-            // The palette is a ContentDialog and needs a live XamlRoot, so ensure the main window is up.
-            ShowMainWindow();
+            // The palette is a ContentDialog over the XAML shell (the SharedUi
+            // shell carries its own in-page palette), so ensure the legacy window is up.
+            ShowLegacyMainWindow();
             if (_mainWindow?.Content is not FrameworkElement root)
             {
                 return;

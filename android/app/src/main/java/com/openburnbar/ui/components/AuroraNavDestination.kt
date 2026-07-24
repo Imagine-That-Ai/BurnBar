@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.openburnbar.ui.components.aurora.BurnGlyph
+import com.openburnbar.ui.components.aurora.CalendarGlyph
 import com.openburnbar.ui.components.aurora.HermesGlyph
 import com.openburnbar.ui.components.aurora.InsightsGlyph
 import com.openburnbar.ui.components.aurora.PulseGlyph
@@ -21,16 +22,17 @@ import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
 
 /**
- * Five tab icons for the OpenBurnBar bottom navigation tray. Each branch
+ * Tab icons for the OpenBurnBar bottom navigation tray. Each branch
  * delegates to a custom Compose Canvas glyph in `components/aurora/` that
  * mirrors the iOS `AuroraNavigationIcons` Path/Canvas drawings (heartbeat,
  * living-fire flame, vintage CRT TV with SMPTE bars, robot face with antenna
- * heart, avatar + rotating halo).
+ * heart, avatar + rotating halo, calendar page with day-grid dots).
  */
 enum class AuroraNavDestination(val label: String) {
     PULSE("Pulse"),
     BURN("Burn"),
     INSIGHTS("Insights"),
+    CALENDAR("Calendar"),
     STREAMS("Streams"),
 
     // Plan 2: enum case stays HERMES so routing/asset bindings are stable,
@@ -46,6 +48,7 @@ enum class AuroraNavDestination(val label: String) {
                 PULSE -> AuroraColors.ember
                 BURN -> AuroraColors.amber
                 INSIGHTS -> AuroraColors.purple
+                CALENDAR -> AuroraColors.teal
                 STREAMS -> AuroraColors.whimsy
                 HERMES -> AuroraColors.hermesAureate
                 YOU -> AuroraColors.blaze
@@ -57,6 +60,7 @@ enum class AuroraNavDestination(val label: String) {
                 PULSE -> "Pulse"
                 BURN -> "Burn"
                 INSIGHTS -> "Insights"
+                CALENDAR -> "Calendar"
                 STREAMS -> "Streams"
                 HERMES -> "Agents"
                 YOU -> "Store"
@@ -68,6 +72,7 @@ enum class AuroraNavDestination(val label: String) {
                 PULSE -> listOf(AuroraColors.ember, AuroraColors.amber)
                 BURN -> listOf(AuroraColors.amber, AuroraColors.blaze)
                 INSIGHTS -> listOf(AuroraColors.purple, AuroraColors.whimsy)
+                CALENDAR -> listOf(AuroraColors.teal, AuroraColors.whimsy)
                 STREAMS -> listOf(AuroraColors.whimsy, AuroraColors.whimsy.copy(alpha = 0.55f))
                 HERMES -> AuroraGradients.mercuryGradient
                 YOU -> listOf(AuroraColors.blaze, AuroraColors.ember)
@@ -110,6 +115,7 @@ fun AuroraNavIcon(
             AuroraNavDestination.PULSE -> PulseGlyph(size = size.dp, isSelected = isSelected)
             AuroraNavDestination.BURN -> BurnGlyph(size = size.dp, isSelected = isSelected)
             AuroraNavDestination.INSIGHTS -> InsightsGlyph(size = size.dp, isSelected = isSelected)
+            AuroraNavDestination.CALENDAR -> CalendarGlyph(size = size.dp, isSelected = isSelected)
             AuroraNavDestination.STREAMS -> StreamsGlyph(size = size.dp, isSelected = isSelected)
             AuroraNavDestination.HERMES -> HermesGlyph(size = size.dp, isSelected = isSelected)
             AuroraNavDestination.YOU -> {

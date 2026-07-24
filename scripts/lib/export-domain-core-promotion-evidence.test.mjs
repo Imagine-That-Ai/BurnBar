@@ -539,3 +539,231 @@ test("exporter rejects unexpected stored fields and duplicate IDs", () => {
     /duplicate sampleId/u,
   );
 });
+
+// ---------------------------------------------------------------------------
+// Opaque-identifier operations: actual producer tuples from Apple, Android,
+// remote-mCP, and local-mCP callsites.  These mirror the v3 schema oneOf
+// branches for cloudvault/opaque-identifiers and the
+// DOMAIN_CORE_SHADOW_OPERATION_CONSUMERS table in the server contract.
+// ---------------------------------------------------------------------------
+const OPAQUE_ID_PRODUCER_TUPLES = [
+  // Apple (CloudVaultDomainCoreAdapter.swift) — all four key operations.
+  { consumer: "apple", operation: "project_memory_doc_id" },
+  { consumer: "apple", operation: "pensieve_dedup_hash" },
+  { consumer: "apple", operation: "pensieve_slug_hmac" },
+  { consumer: "apple", operation: "subscription_doc_id" },
+  // Android (CloudVaultDomainCore.kt) — subscription document IDs.
+  { consumer: "android", operation: "subscription_doc_id" },
+  // remote-mCP (domainCoreOpaqueIdentifiers.ts) — three operations.
+  { consumer: "remote-mcp", operation: "pensieve_dedup_hash" },
+  { consumer: "remote-mcp", operation: "pensieve_provenance_hash" },
+  { consumer: "remote-mcp", operation: "pensieve_slug_hmac" },
+  // local-mCP — project-memory document IDs.
+  { consumer: "local-mcp", operation: "project_memory_doc_id" },
+];
+
+test("opaque-identifier producer tuples pass V3 parsing and export for every allowed consumer", () => {
+  let suffix = 20_000;
+  for (const { consumer, operation: operationName } of OPAQUE_ID_PRODUCER_TUPLES) {
+    const parsed = parseStoredDomainCoreShadowSample(
+      record("cloudvault", "opaque-identifiers", consumer, suffix++, {
+        operation: operationName,
+      }),
+    );
+    assert.equal(parsed.domain, "cloudvault");
+    assert.equal(parsed.slice, "opaque-identifiers");
+    assert.equal(parsed.consumer, consumer);
+    assert.equal(parsed.operation, operationName);
+  }
+});
+
+test("opaque-identifier operations reject a wrong slice that is not opaque-identifiers", () => {
+  let suffix = 21_000;
+  for (const { consumer, operation: operationName } of OPAQUE_ID_PRODUCER_TUPLES) {
+    assert.throws(
+      () =>
+        parseStoredDomainCoreShadowSample(
+          record("cloudvault", "foundation", consumer, suffix++, {
+            operation: operationName,
+          }),
+        ),
+      /inconsistent operation, domain, or slice/u,
+      `${consumer}/${operationName} in foundation slice`,
+    );
+  }
+});
+
+test("opaque-identifier operations reject a consumer outside the slice coverage allowlist", () => {
+  // windows and console are valid cloudvault consumers but not in the
+  // opaque-identifiers slice coverage, so every opaque-ID operation
+  // must fail for them even when the operation→slice pair is correct.
+  let suffix = 22_000;
+  for (const wrongConsumer of ["windows", "console"]) {
+    for (const { operation: operationName } of OPAQUE_ID_PRODUCER_TUPLES) {
+      assert.throws(
+        () =>
+          parseStoredDomainCoreShadowSample(
+            record("cloudvault", "opaque-identifiers", wrongConsumer, suffix++, {
+              operation: operationName,
+            }),
+          ),
+        /not promotion-eligible V3 evidence/u,
+        `${wrongConsumer}/${operationName}`,
+      );
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Mirrored allowlist equality: the export script's OPERATION_IDENTITY map and
+// the v3 schema's oneOf branches must carry the exact same operation→slice
+// assignments, not merely overlapping strings.  A drift in one file without the
+// other would silently accept or reject operations the other contract forbids.
+// ---------------------------------------------------------------------------
+test("export OPERATION_IDENTITY mirrors the canonical v3 schema oneOf branches exactly", () => {
+  const schema = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../docs/contracts/domain-core-shadow-sample-v3.schema.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const operationUnion = schema.allOf.find((entry) =>
+    entry.oneOf?.every((variant) => variant.properties?.operation),
+  );
+  assert.ok(operationUnion);
+
+  // Build the authoritative operation→slice map from the schema branches.
+  const schemaIdentity = new Map();
+  for (const variant of operationUnion.oneOf) {
+    const properties = variant.properties;
+    const domain = properties.domain.const;
+    const slice = properties.slice.const;
+    const operations = properties.operation.enum ?? [properties.operation.const];
+    for (const op of operations) {
+      assert.ok(
+        !schemaIdentity.has(op),
+        `schema declares ${op} in two slices`,
+      );
+      schemaIdentity.set(op, `${domain}/${slice}`);
+    }
+  }
+
+  // The export script's map is a module-private const, so we verify it
+  // indirectly: every schema operation must parse without error under the
+  // correct slice, and must throw under every other slice.
+  const allSlices = new Set(
+    [...schemaIdentity.values()].map((value) => value.split("/").slice(1).join("/")),
+  );
+  let suffix = 30_000;
+  for (const [op, canonicalSlice] of schemaIdentity) {
+    const [domain, slice] = canonicalSlice.split("/");
+    const consumer =
+      variantConsumer(schema, domain, slice, op);
+    assert.doesNotThrow(
+      () =>
+        parseStoredDomainCoreShadowSample(
+          record(domain, slice, consumer, suffix++, { operation: op }),
+        ),
+      `${canonicalSlice}/${op} should parse`,
+    );
+    for (const wrongSlice of allSlices) {
+      if (wrongSlice === slice) continue;
+      const wrongDomain = [...schemaIdentity.values()]
+        .map((value) => value.split("/")[0])
+        .find((domainValue) =>
+          DOMAIN_CORE_REQUIRED_COVERAGE_LOOKUP[domainValue]?.[wrongSlice],
+        );
+      if (!wrongDomain) continue;
+      const wrongConsumer = firstConsumer(wrongDomain, wrongSlice);
+      assert.throws(
+        () =>
+          parseStoredDomainCoreShadowSample(
+            record(wrongDomain, wrongSlice, wrongConsumer, suffix++, {
+              operation: op,
+            }),
+          ),
+        /inconsistent operation, domain, or slice/u,
+        `${op} should reject ${wrongDomain}/${wrongSlice}`,
+      );
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Mirrored allowlist equality: the diagnostic policy config's requiredCoverage
+// must exactly equal DOMAIN_CORE_REQUIRED_COVERAGE from the canonical evidence
+// contract, not merely contain a subset of its strings.  A missing or extra
+// coverage cell is a contract violation.
+// ---------------------------------------------------------------------------
+test("diagnostic policy requiredCoverage mirrors the canonical evidence contract exactly", () => {
+  const policy = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../config/domain-core-shadow-diagnostic-policy.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  for (const domain of Object.keys(DOMAIN_CORE_REQUIRED_COVERAGE_LOOKUP)) {
+    const canonical = DOMAIN_CORE_REQUIRED_COVERAGE_LOOKUP[domain];
+    const policyCoverage = policy.domains[domain]?.requiredCoverage ?? [];
+    const canonicalKeys = new Set(
+      Object.entries(canonical).flatMap(([slice, consumers]) =>
+        consumers.map((consumer) => `${slice}:${consumer}`),
+      ),
+    );
+    const policyKeys = new Set(
+      policyCoverage.map((cell) => `${cell.slice}:${cell.consumer}`),
+    );
+    assert.deepEqual(
+      [...policyKeys].sort(),
+      [...canonicalKeys].sort(),
+      `${domain} diagnostic policy requiredCoverage must exactly match the canonical evidence contract`,
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Helper: look up the first valid consumer for a domain/slice from the
+// evidence contract so tests stay aligned with the canonical coverage map.
+// ---------------------------------------------------------------------------
+const DOMAIN_CORE_REQUIRED_COVERAGE_LOOKUP = (() => {
+  const contract = readFileSync(
+    new URL("./domain-core-evidence-contract.mjs", import.meta.url),
+    "utf8",
+  );
+  // DOMAIN_CORE_REQUIRED_COVERAGE is a frozen object literal; extract the
+  // raw entries by evaluating the module in a sandbox.
+  const ns = await import("./domain-core-evidence-contract.mjs");
+  return ns.DOMAIN_CORE_REQUIRED_COVERAGE;
+})();
+
+function firstConsumer(domain, slice) {
+  const consumers = DOMAIN_CORE_REQUIRED_COVERAGE_LOOKUP[domain]?.[slice];
+  assert.ok(consumers && consumers.length > 0, `no consumers for ${domain}/${slice}`);
+  return consumers[0];
+}
+
+function variantConsumer(schema, domain, slice, operation) {
+  const operationUnion = schema.allOf.find((entry) =>
+    entry.oneOf?.every((variant) => variant.properties?.operation),
+  );
+  for (const variant of operationUnion.oneOf) {
+    const props = variant.properties;
+    if (
+      props.domain.const !== domain ||
+      props.slice.const !== slice
+    ) {
+      continue;
+    }
+    const ops = props.operation.enum ?? [props.operation.const];
+    if (!ops.includes(operation)) continue;
+    const consumers = props.consumer.enum ?? [props.consumer.const];
+    return consumers[0];
+  }
+  throw new Error(`no schema branch for ${domain}/${slice}/${operation}`);
+}

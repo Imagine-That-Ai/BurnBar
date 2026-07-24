@@ -55,6 +55,7 @@ public static class NavCatalog
     {
         new("dashboard",         "Dashboard",          "All providers + models",          "\uE80F"),
         new("chat",              "Chat",               "Full-canvas chat",                "\uE8BD"),
+        new("calendar",          "Calendar",           "Month heatmap & selection analytics", "\uE787"),
         new("insights",          "Insights",           "Editorial brief & anomalies",     "\uE9D2"),
         new("quota",             "Quota",              "Subscriptions & limits",          "\uE9D9"),
         // macOS primary sections: IA-2 System browse + IA-4 list-level projects.

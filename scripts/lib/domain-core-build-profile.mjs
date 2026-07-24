@@ -1,5 +1,8 @@
 import { readFileSync } from "node:fs";
-import { validateDomainCoreCandidateIdentity } from "./domain-core-candidate-receipt.mjs";
+import {
+  validateDomainCoreCandidateIdentity,
+  validateDomainCoreReleaseCoordinates,
+} from "./domain-core-candidate-receipt.mjs";
 
 export const DOMAIN_CORE_PROFILE_SCHEMA_VERSION = 1;
 export const DOMAIN_CORE_MODES = new Set(["legacy", "shadow", "rust"]);
@@ -169,6 +172,7 @@ export function resolveDomainCoreBuildProfile(
   catalog,
   name,
   candidateIdentity,
+  release,
 ) {
   validateDomainCoreBuildProfiles(catalog);
   const profile = catalog.profiles[name];
@@ -190,6 +194,20 @@ export function resolveDomainCoreBuildProfile(
   if (candidateIdentity !== undefined) {
     resolved.candidateIdentity =
       validateDomainCoreCandidateIdentity(candidateIdentity);
+  }
+  if (release !== undefined) {
+    const validatedRelease = validateDomainCoreReleaseCoordinates(release);
+    if (
+      resolved.candidateIdentity !== null &&
+      validatedRelease.commit === resolved.candidateIdentity.candidateCommit
+    ) {
+      if (Object.values(profile.modes).includes("rust")) {
+        throw new Error(
+          `${name}: Rust activation requires distinct candidate C and release P commits`,
+        );
+      }
+    }
+    resolved.release = validatedRelease;
   }
   return resolved;
 }

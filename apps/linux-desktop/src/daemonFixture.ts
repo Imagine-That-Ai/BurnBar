@@ -4,6 +4,7 @@ import type {
   ProviderCatalog,
   SessionListResult,
   UsageInsights,
+  UsageCalendarEvent,
   MissionListResult,
   ConfigSnapshot,
   DbStatus,
@@ -52,6 +53,7 @@ const FIXTURE_ROWS: Record<string, DaemonRouteFixture['rows']> = {
   activity: [{ id: 'log-9', title: 'Parser tail', detail: 'No live socket — showing transcript-backed fixture rows.' }],
   chat: [{ id: 'thread-7', title: 'Hermes', detail: 'Thread list requires live daemon; fixture shows placeholder thread.' }],
   insights: [{ id: 'ins-1', title: 'Weekly tokens', detail: 'Fixture aggregate until W04 ingest is wired.' }],
+  calendar: [{ id: 'cal-1', title: 'Month burn grid', detail: 'Fixture usage events bucketed into local days for the calendar demo.' }],
   database: [{ id: 'db-1', title: 'SQLCipher', detail: 'Fixture: sealed local store path from linuxPaths.' }],
   providers: [{ id: 'p-1', title: 'Anthropic', detail: 'Fixture catalog row — connect live peer for credentials.' }],
   projects: [{ id: 'pr-1', title: 'BurnBar', detail: 'Fixture workspace scope.' }],
@@ -528,6 +530,108 @@ export function fixtureUsageInsights(): UsageInsights {
     ],
     cacheHitRatePct: 34
   };
+}
+
+// ─────────────────── Calendar: per-event usage fixture ─────────────────────
+//
+// Deterministic 75-day window of BurnBarUsageEvent-shaped rows so the month
+// grid, heatmap, and every analytics card render without a daemon. Seeded
+// PRNG keeps screenshots and tests stable; dates stay relative to "now" so
+// the current month is always populated.
+
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const CALENDAR_FIXTURE_PROVIDERS: {
+  providerId: string;
+  modelId: string;
+  weight: number;
+  /** USD per 1k blended tokens — fixture-only rate. */
+  ratePer1k: number;
+}[] = [
+  { providerId: 'claude-code', modelId: 'claude-4.5-sonnet', weight: 0.3, ratePer1k: 0.006 },
+  { providerId: 'anthropic', modelId: 'claude-opus-4-8', weight: 0.18, ratePer1k: 0.015 },
+  { providerId: 'codex', modelId: 'gpt-5-codex', weight: 0.2, ratePer1k: 0.008 },
+  { providerId: 'cursor', modelId: 'cursor-small', weight: 0.12, ratePer1k: 0.004 },
+  { providerId: 'openai', modelId: 'gpt-5', weight: 0.12, ratePer1k: 0.01 },
+  { providerId: 'google', modelId: 'gemini-3-pro', weight: 0.08, ratePer1k: 0.005 }
+];
+
+const CALENDAR_FIXTURE_PROJECTS = ['BurnBar', 'OpenBurnBar Daemon', 'Linux Desktop Shell'];
+
+export function fixtureUsageCalendarEvents(): UsageCalendarEvent[] {
+  const rand = mulberry32(0xcafe);
+  const pickProvider = () => {
+    let roll = rand();
+    for (const p of CALENDAR_FIXTURE_PROVIDERS) {
+      roll -= p.weight;
+      if (roll <= 0) return p;
+    }
+    return CALENDAR_FIXTURE_PROVIDERS[0]!;
+  };
+  const events: UsageCalendarEvent[] = [];
+  const today = new Date();
+  for (let daysAgo = 74; daysAgo >= 0; daysAgo--) {
+    const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysAgo);
+    const weekday = day.getDay();
+    const weekend = weekday === 0 || weekday === 6;
+    // ~1 in 7 days fully silent so the burn-bars card shows real gaps.
+    if (rand() < 1 / 7) continue;
+    const base = weekend ? 1 : 3;
+    const eventCount = base + Math.floor(rand() * (weekend ? 2 : 4));
+    // Two monster days prove the sqrt heatmap scaling keeps mid days visible.
+    const monster = daysAgo === 5 || daysAgo === 33;
+    for (let slot = 0; slot < eventCount; slot++) {
+      const p = pickProvider();
+      // Working-rhythm hours: mid-morning / mid-afternoon peaks, rare late night.
+      const hourRoll = rand();
+      const hour =
+        hourRoll < 0.45
+          ? 9 + Math.floor(rand() * 3)
+          : hourRoll < 0.85
+            ? 13 + Math.floor(rand() * 4)
+            : 21 + Math.floor(rand() * 3);
+      const minute = Math.floor(rand() * 60);
+      const at = new Date(
+        day.getFullYear(),
+        day.getMonth(),
+        day.getDate(),
+        hour,
+        minute,
+        Math.floor(rand() * 60)
+      );
+      const volume = (monster ? 3.2 : 1) * (0.5 + rand());
+      const inputTokens = Math.round((2_000 + rand() * 38_000) * volume);
+      const outputTokens = Math.round((400 + rand() * 7_600) * volume);
+      const cacheReadTokens = rand() < 0.55 ? Math.round(rand() * 60_000 * volume) : 0;
+      const cacheCreationTokens = cacheReadTokens > 0 ? Math.round(cacheReadTokens * 0.25) : 0;
+      const reasoningTokens = rand() < 0.4 ? Math.round(rand() * 12_000 * volume) : 0;
+      const totalK = (inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens + reasoningTokens) / 1000;
+      events.push({
+        id: `fx-cal-${daysAgo}-${slot}`,
+        providerId: p.providerId,
+        modelId: p.modelId,
+        inputTokens,
+        outputTokens,
+        cacheCreationTokens,
+        cacheReadTokens,
+        reasoningTokens,
+        costUsd: +(totalK * p.ratePer1k).toFixed(4),
+        recordedAt: at.toISOString(),
+        sessionId: `fx-sess-${daysAgo}-${Math.floor(slot / 2)}`,
+        projectName: CALENDAR_FIXTURE_PROJECTS[Math.floor(rand() * CALENDAR_FIXTURE_PROJECTS.length)]
+      });
+    }
+  }
+  return events;
 }
 
 // ─────────────────────────── P06: mission list fixture ────────────────────────────

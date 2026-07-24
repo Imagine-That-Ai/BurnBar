@@ -542,7 +542,7 @@ final class RoutedClientWiringSentryTests: XCTestCase {
         let beforeData = try Data(contentsOf: catalogURL)
 
         settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.codex.rawValue)
-        sentry = makeSentry(advertisedModels: [])
+        sentry = makeSentry(advertisedModels: [], liveCatalogAvailable: false)
         sentry.start(settingsManager: settings)
         await sentry.sweepNow().value
 
@@ -557,11 +557,50 @@ final class RoutedClientWiringSentryTests: XCTestCase {
         XCTAssertNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "codex"))
     }
 
+    @MainActor
+    func test_sweepRemovesCodexProxyModelsWhenLiveCatalogIsAuthoritativelyEmpty() async throws {
+        let gateway = RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: "")
+        let staleModels = [
+            RoutingClientAdvertisedModel(
+                id: "glm-5.1",
+                displayName: "GLM 5.1",
+                providerID: "zai",
+                providerName: "Z.ai",
+                servedEndpoints: ["/v1/responses"],
+                routeEligible: true
+            )
+        ]
+        _ = try makeWiring().wire(
+            target: .codex,
+            gateway: gateway,
+            advertisedModels: staleModels
+        )
+
+        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.codex.rawValue)
+        sentry = makeSentry(advertisedModels: [])
+        sentry.start(settingsManager: settings)
+        await sentry.sweepNow().value
+
+        let catalogURL = tempHome
+            .appendingPathComponent(".codex")
+            .appendingPathComponent("openburnbar-model-catalog.json")
+        let data = try Data(contentsOf: catalogURL)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let models = try XCTUnwrap(root["models"] as? [[String: Any]])
+        XCTAssertFalse(
+            models.contains { $0["slug"] as? String == "openburnbar/glm-5.1" },
+            "A successful empty live catalog must remove stale OpenBurnBar proxy choices."
+        )
+        XCTAssertTrue(models.contains { $0["slug"] as? String == "gpt-5.5" })
+        XCTAssertNotNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "codex"))
+    }
+
     // MARK: - Helpers
 
     @MainActor
     private func makeSentry(
-        advertisedModels: [RoutingClientAdvertisedModel]? = nil
+        advertisedModels: [RoutingClientAdvertisedModel]? = nil,
+        liveCatalogAvailable: Bool = true
     ) -> RoutedClientWiringSentry {
         let home = tempHome!
         return RoutedClientWiringSentry(
@@ -582,9 +621,11 @@ final class RoutedClientWiringSentryTests: XCTestCase {
             },
             advertisedModelsProvider: { _, _ in
                 if let advertisedModels {
-                    return advertisedModels
+                    return liveCatalogAvailable
+                        ? .available(advertisedModels)
+                        : .unavailable
                 }
-                return Self.defaultAdvertisedModels
+                return .available(Self.defaultAdvertisedModels)
             }
         )
     }

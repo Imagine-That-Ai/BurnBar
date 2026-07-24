@@ -40,6 +40,7 @@ enum class AnalyticsSurface(val wire: String) {
                 "pulse" -> DASHBOARD_OVERVIEW
                 "burn" -> DASHBOARD_ACTIVITY
                 "insights", "insights_workspace", "agent_insights" -> INSIGHTS
+                "calendar" -> INSIGHTS
                 "streams" -> DASHBOARD
                 "hermes", "assistants", "agent", "mercury_call" -> CHAT
                 "you" -> ACCOUNT

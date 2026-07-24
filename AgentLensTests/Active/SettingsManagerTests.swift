@@ -497,6 +497,25 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(settings.preferredSwiftUIColorScheme, .dark)
     }
 
+    func test_appearanceMode_editorialSkinDoesNotOverrideUserScheme() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        settings.appearanceSkin = .editorial
+
+        // The Sun Lit skin is light-only, but it must not pin the whole app to
+        // light: the token layer falls back to the aurora dark palette under a
+        // dark appearance (see `AppSkin.resolved(for:)`), so the user's
+        // appearance mode always wins.
+        settings.appearanceMode = .system
+        XCTAssertNil(settings.preferredSwiftUIColorScheme)
+
+        settings.appearanceMode = .light
+        XCTAssertEqual(settings.preferredSwiftUIColorScheme, .light)
+
+        settings.appearanceMode = .dark
+        XCTAssertEqual(settings.preferredSwiftUIColorScheme, .dark)
+    }
+
     func test_appearanceMode_systemRemovesForcedSchemeWithoutNavigationLayoutCrash() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)

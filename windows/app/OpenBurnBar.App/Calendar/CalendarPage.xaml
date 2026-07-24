@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Calendar nav destination — Windows peer of macOS AgentLens/Views/Calendar/CalendarView.swift.
+  A heat-mapped month grid on the left and a selection-driven gallery of analytics cards on
+  the right. Click selects a day, Shift-click extends a contiguous range, Ctrl-click toggles
+  days (the Windows peer of macOS ⌘-click), and dragging paints a range — the selection
+  drives every card. Cards are hideable/reorderable/resizable (S/M/L spans) with the layout
+  persisted through the app's settings persistence (CalendarLayoutStore).
+  All aggregation lives in the portable OpenBurnBar.App.Presentation.Calendar layer; this
+  page renders prepared snapshots only.
+-->
+<Page
+    x:Class="OpenBurnBar.App.Calendar.CalendarPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    AutomationProperties.AutomationId="RouteRoot.calendar">
+
+    <Grid Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Padding="20,16,20,8" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock x:Name="HeaderTitle"
+                           Text="Calendar"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           Foreground="{ThemeResource AuroraTextBrush}" />
+                <TextBlock x:Name="HeaderSubtitle"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
+            </StackPanel>
+            <Border x:Name="OriginChip"
+                    Grid.Column="1"
+                    Visibility="Collapsed"
+                    VerticalAlignment="Center"
+                    CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                    Background="{ThemeResource AuroraGlassStrokeFrostBrush}"
+                    Padding="8,3">
+                <TextBlock x:Name="OriginChipText"
+                           FontSize="10"
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
+            </Border>
+            <Button x:Name="EditCardsButton"
+                    Grid.Column="2"
+                    VerticalAlignment="Center"
+                    ToolTipService.ToolTip="Show hidden cards or reset the layout"
+                    AutomationProperties.Name="Edit cards"
+                    Style="{StaticResource LiquidGlassInteractiveStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE713;" FontSize="12" />
+                    <TextBlock Text="Cards" />
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <!-- Body: month card left, analytics panel right -->
+        <Grid Grid.Row="1" Padding="20,8,20,20" ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="380" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    VerticalAlignment="Top"
+                    Style="{StaticResource AuroraGlassCardStyle}">
+                <StackPanel Spacing="12">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock x:Name="MonthLabel"
+                                       FontSize="15"
+                                       FontWeight="Bold"
+                                       Foreground="{ThemeResource AuroraTextBrush}" />
+                            <TextBlock x:Name="MonthTotalLabel"
+                                       FontSize="10"
+                                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
+                        </StackPanel>
+                        <Button x:Name="PrevMonthButton"
+                                Grid.Column="1"
+                                Click="OnPrevMonth"
+                                AutomationProperties.Name="Previous month"
+                                Style="{StaticResource LiquidGlassCircleButtonStyle}">
+                            <FontIcon Glyph="&#xE72B;" FontSize="10" />
+                        </Button>
+                        <Button x:Name="TodayButton"
+                                Grid.Column="2"
+                                Click="OnToday"
+                                Content="Today"
+                                FontSize="10"
+                                Style="{StaticResource LiquidGlassInteractiveStyle}" />
+                        <Button x:Name="NextMonthButton"
+                                Grid.Column="3"
+                                Click="OnNextMonth"
+                                AutomationProperties.Name="Next month"
+                                Style="{StaticResource LiquidGlassCircleButtonStyle}">
+                            <FontIcon Glyph="&#xE72A;" FontSize="10" />
+                        </Button>
+                    </Grid>
+
+                    <Grid x:Name="WeekdayHeaderGrid" />
+                    <Grid x:Name="CellsHostGrid"
+                          Background="Transparent"
+                          PointerPressed="OnCellsPointerPressed"
+                          PointerMoved="OnCellsPointerMoved"
+                          PointerReleased="OnCellsPointerReleased"
+                          PointerCaptureLost="OnCellsPointerCaptureLost" />
+                </StackPanel>
+            </Border>
+
+            <Grid Grid.Column="1">
+                <ScrollViewer x:Name="CardsScroller"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollMode="Disabled"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="CardsHost" Spacing="12" />
+                </ScrollViewer>
+                <StackPanel x:Name="StateHost"
+                            Visibility="Collapsed"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            Spacing="10"
+                            Padding="40,100">
+                    <FontIcon x:Name="StateGlyph"
+                              FontSize="30"
+                              HorizontalAlignment="Center"
+                              Foreground="{ThemeResource AuroraAccentBrush}" />
+                    <TextBlock x:Name="StateTitle"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               TextAlignment="Center"
+                               Foreground="{ThemeResource AuroraTextBrush}" />
+                    <TextBlock x:Name="StateDetail"
+                               FontSize="11.5"
+                               MaxWidth="340"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </Grid>
+</Page>

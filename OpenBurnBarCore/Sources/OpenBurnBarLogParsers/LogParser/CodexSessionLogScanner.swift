@@ -40,6 +40,10 @@ public struct CodexTokenScanState: Codable, Equatable, Sendable {
     public var cacheReadTokens: Int
     public var foundCumulative: Bool
     public var foundDelta: Bool
+    /// Signature of the last processed Codex token event. Current Codex logs
+    /// can repeat the same token payload under multiple rate-limit envelopes;
+    /// persisting this prevents double counting across incremental resumes.
+    public var lastTokenEventSignature: String?
 
     public init(
         byteOffset: Int64,
@@ -49,7 +53,8 @@ public struct CodexTokenScanState: Codable, Equatable, Sendable {
         outputTokens: Int = 0,
         cacheReadTokens: Int = 0,
         foundCumulative: Bool = false,
-        foundDelta: Bool = false
+        foundDelta: Bool = false,
+        lastTokenEventSignature: String? = nil
     ) {
         self.byteOffset = byteOffset
         self.headDigest = headDigest
@@ -59,6 +64,7 @@ public struct CodexTokenScanState: Codable, Equatable, Sendable {
         self.cacheReadTokens = cacheReadTokens
         self.foundCumulative = foundCumulative
         self.foundDelta = foundDelta
+        self.lastTokenEventSignature = lastTokenEventSignature
     }
 }
 
@@ -102,6 +108,13 @@ public enum CodexSessionLogScanner {
     static let headDigestSpan = 4096
     /// Governor memory checkpoints happen every this many scanned lines.
     static let checkpointLineInterval = 4096
+    /// Cold scans larger than this use Codex's state-DB total immediately.
+    /// Incremental tails below the cap still converge to exact billing buckets.
+    static let maximumTokenScanBytesPerFile: Int64 = 16 * 1024 * 1024
+    /// Exact bucket refinement is optional because `threads.tokens_used`
+    /// already supplies the authoritative total. Keep the entire foreground
+    /// Codex pass bounded, even when many medium-sized rollouts are present.
+    static let maximumTokenScanBytesPerPass: Int64 = 16 * 1024 * 1024
 
     public struct TokenScanResult {
         /// Exact token breakdown, or `nil` when the file contained no token
@@ -119,10 +132,11 @@ public enum CodexSessionLogScanner {
     /// Returns `nil` when the file does not exist or cannot be opened.
     /// Throws only `ParserResourceExceeded` (from the governor).
     ///
-    /// Token semantics are byte-for-byte those of the original full-file
-    /// loop (VAL-TOKEN-002 / VAL-TOKEN-010): cumulative totals overwrite and
-    /// then suppress delta accumulation; delta events accumulate only until
-    /// the first cumulative event.
+    /// Token semantics prefer per-turn Codex `last_token_usage` deltas when
+    /// present. Current Codex rollout logs also carry `total_token_usage`, but
+    /// that value is an account/window counter and can dwarf one session by
+    /// orders of magnitude. Cumulative totals remain the fallback for legacy
+    /// files that do not emit deltas.
     public static func scanTokens(
         path: String,
         fileManager: FileManager = .default,
@@ -150,7 +164,8 @@ public enum CodexSessionLogScanner {
                 output: previous.outputTokens,
                 cacheRead: previous.cacheReadTokens,
                 foundCumulative: previous.foundCumulative,
-                foundDelta: previous.foundDelta
+                foundDelta: previous.foundDelta,
+                lastTokenEventSignature: previous.lastTokenEventSignature
             )
             resumeOffset = previous.byteOffset
             headDigest = previous.headDigest
@@ -209,7 +224,8 @@ public enum CodexSessionLogScanner {
             outputTokens: accumulator.output,
             cacheReadTokens: accumulator.cacheRead,
             foundCumulative: accumulator.foundCumulative,
-            foundDelta: accumulator.foundDelta
+            foundDelta: accumulator.foundDelta,
+            lastTokenEventSignature: accumulator.lastTokenEventSignature
         )
         let usage: (input: Int, output: Int, cacheRead: Int)? =
             (effective.foundCumulative || effective.foundDelta)
@@ -224,10 +240,10 @@ public enum CodexSessionLogScanner {
         var cacheRead = 0
         var foundCumulative = false
         var foundDelta = false
+        var lastTokenEventSignature: String?
     }
 
-    /// One line of the VAL-TOKEN-002 / VAL-TOKEN-010 state machine, verbatim
-    /// from the original parsers.
+    /// One line of the Codex token state machine.
     static func reduceTokenLine(_ text: String, into accumulator: inout TokenAccumulator) {
         guard let data = text.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
@@ -237,24 +253,20 @@ public enum CodexSessionLogScanner {
             return
         }
 
-        // VAL-TOKEN-010: cumulative totals take precedence over delta events.
-        if let extracted = TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(info) {
-            // Codex reports `input_tokens` inclusive of `cached_input_tokens`.
-            // Subtract the cached portion so the non-cached input and cached
-            // buckets stay disjoint (VAL-TOKEN-002).
-            let nonCachedInput = max(extracted.input - extracted.cacheRead, 0)
-            accumulator.input = nonCachedInput
-            accumulator.output = extracted.output
-            accumulator.cacheRead = extracted.cacheRead
-            accumulator.foundDelta = false
-            accumulator.foundCumulative = true
-            return
-        }
+        let cumulative = TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(info)
 
-        // VAL-TOKEN-002: only accumulate delta events until cumulative totals
-        // appear; this prevents additive double-counting.
-        if !accumulator.foundCumulative,
-           let lastUsage = info["last_token_usage"] as? [String: Any] {
+        if let lastUsage = info["last_token_usage"] as? [String: Any] {
+            let signature = duplicateGuardSignature(cumulative: cumulative, delta: lastUsage)
+            if let signature, signature == accumulator.lastTokenEventSignature {
+                return
+            }
+
+            if accumulator.foundCumulative && !accumulator.foundDelta {
+                accumulator.input = 0
+                accumulator.output = 0
+                accumulator.cacheRead = 0
+            }
+
             let deltaInput = lastUsage["input_tokens"] as? Int ?? 0
             let deltaCacheRead = lastUsage["cached_input_tokens"] as? Int
                 ?? lastUsage["cache_read_input_tokens"] as? Int
@@ -262,8 +274,46 @@ public enum CodexSessionLogScanner {
             accumulator.input += max(deltaInput - deltaCacheRead, 0)
             accumulator.output += lastUsage["output_tokens"] as? Int ?? 0
             accumulator.cacheRead += deltaCacheRead
+            accumulator.foundCumulative = accumulator.foundCumulative || cumulative != nil
             accumulator.foundDelta = true
+            accumulator.lastTokenEventSignature = signature
+            return
         }
+
+        guard !accumulator.foundDelta, let extracted = cumulative else {
+            return
+        }
+
+        // Codex reports `input_tokens` inclusive of `cached_input_tokens`.
+        // Subtract the cached portion so the non-cached input and cached
+        // buckets stay disjoint (VAL-TOKEN-002).
+        let nonCachedInput = max(extracted.input - extracted.cacheRead, 0)
+        accumulator.input = nonCachedInput
+        accumulator.output = extracted.output
+        accumulator.cacheRead = extracted.cacheRead
+        accumulator.foundCumulative = true
+        accumulator.lastTokenEventSignature = duplicateGuardSignature(cumulative: extracted, delta: nil)
+    }
+
+    private static func duplicateGuardSignature(
+        cumulative: (input: Int, output: Int, cacheRead: Int)?,
+        delta: [String: Any]?
+    ) -> String? {
+        guard let cumulative else { return nil }
+        let deltaInput = delta?["input_tokens"] as? Int ?? -1
+        let deltaOutput = delta?["output_tokens"] as? Int ?? -1
+        let deltaCacheRead = delta?["cached_input_tokens"] as? Int
+            ?? delta?["cache_read_input_tokens"] as? Int
+            ?? -1
+        return [
+            "codex-token-v1",
+            "\(cumulative.input)",
+            "\(cumulative.output)",
+            "\(cumulative.cacheRead)",
+            "\(deltaInput)",
+            "\(deltaOutput)",
+            "\(deltaCacheRead)"
+        ].joined(separator: ":")
     }
 
     // MARK: - Conversation Scanning
@@ -421,6 +471,7 @@ public enum CodexSessionLogScanner {
         var sessionCache = cacheStore.load()
         var activePaths = Set<String>()
         var cacheMutated = false
+        var tokenScanConsumedBytes: Int64 = 0
         let governor = options.resourceGovernor
 
         defer {
@@ -437,11 +488,6 @@ public enum CodexSessionLogScanner {
             var outputTokens: Int = 0
             var cacheReadTokens: Int = 0
             var foundExact = false
-            // A deferred row (budget/boundary, no cached tokens) emits
-            // nothing: absent rows leave previously persisted exact values
-            // untouched, while a heuristic emission could overwrite them.
-            var deferredWithoutCache = false
-
             var parsedConversation: CodexConversationCacheEntry?
             var shouldEmitConversation = options.includeConversationBodies && row.expandedRolloutPath == nil
 
@@ -480,14 +526,23 @@ public enum CodexSessionLogScanner {
                         cacheReadTokens = tokenUsage.cacheRead
                         foundExact = true
                     } else {
-                        deferredWithoutCache = true
+                        // The state database still carries Codex's exact total
+                        // for this thread. Fall through to the cache-aware
+                        // split below so a cold cache remains complete; the
+                        // confidence-aware usage upsert preserves any exact
+                        // row already stored for this identity.
                     }
                 } else {
                     let fileSize = signature?.sizeBytes ?? 0
                     let resumeOffset = cached?.scanState?.byteOffset ?? 0
                     let newBytes = max(fileSize - min(resumeOffset, fileSize), 0)
 
-                    if governor?.admitFile(estimatedBytes: newBytes) ?? true {
+                    let isWithinPerFileScanLimit = newBytes <= maximumTokenScanBytesPerFile
+                    let remainingTokenScanBytes = max(maximumTokenScanBytesPerPass - tokenScanConsumedBytes, 0)
+                    let isWithinPassScanLimit = newBytes <= remainingTokenScanBytes
+                    if isWithinPerFileScanLimit, isWithinPassScanLimit,
+                       governor?.admitFile(estimatedBytes: newBytes) ?? true {
+                        tokenScanConsumedBytes += newBytes
                         let scan = try scanTokens(
                             path: expandedPath,
                             fileManager: fileManager,
@@ -515,6 +570,9 @@ public enum CodexSessionLogScanner {
                             cacheMutated = true
                         }
                     } else if let tokenUsage = cached?.tokenUsage {
+                        if !isWithinPerFileScanLimit || !isWithinPassScanLimit {
+                            governor?.recordDeferredFile()
+                        }
                         // Byte budget exhausted: keep last known exact values
                         // this tick; the unchanged cache entry retries next.
                         inputTokens = tokenUsage.input
@@ -522,7 +580,10 @@ public enum CodexSessionLogScanner {
                         cacheReadTokens = tokenUsage.cacheRead
                         foundExact = true
                     } else {
-                        deferredWithoutCache = true
+                        if !isWithinPerFileScanLimit || !isWithinPassScanLimit {
+                            governor?.recordDeferredFile()
+                        }
+                        // Fall through to the state-database estimate below.
                     }
                 }
 
@@ -545,14 +606,24 @@ public enum CodexSessionLogScanner {
                 }
             }
 
-            if deferredWithoutCache {
-                continue
+            // Codex updates `threads.tokens_used` independently from parser
+            // cache persistence. Preserve exact buckets already scanned, then
+            // estimate only the newer monotonic delta so an active or
+            // oversized thread never reports a stale total.
+            let materializedTotal = inputTokens + outputTokens + cacheReadTokens
+            if foundExact, row.tokensUsed > materializedTotal {
+                let delta = estimatedTokenBreakdown(totalTokens: row.tokensUsed - materializedTotal)
+                inputTokens += delta.input
+                outputTokens += delta.output
+                cacheReadTokens += delta.cacheRead
+                foundExact = false
             }
 
-            if !foundExact {
-                // Better than 50/50: Codex sessions are heavily input-weighted (~95/5)
-                inputTokens = Int(Double(row.tokensUsed) * 0.95)
-                outputTokens = max(row.tokensUsed - inputTokens, 0)
+            if !foundExact, inputTokens == 0, outputTokens == 0, cacheReadTokens == 0 {
+                let estimated = estimatedTokenBreakdown(totalTokens: row.tokensUsed)
+                inputTokens = estimated.input
+                outputTokens = estimated.output
+                cacheReadTokens = estimated.cacheRead
             }
 
             if inputTokens > 0 || outputTokens > 0 {
@@ -577,7 +648,7 @@ public enum CodexSessionLogScanner {
                     endTime: row.endTime,
                     provenanceMethod: foundExact ? .providerLog : .heuristicEstimate,
                     provenanceConfidence: foundExact ? .exact : .lowConfidenceEstimate,
-                    estimatorVersion: foundExact ? "" : "tokens-used-split-v1"
+                    estimatorVersion: foundExact ? "" : "tokens-used-cache-split-v2"
                 )
                 usages.append(usage)
             }
@@ -621,6 +692,19 @@ public enum CodexSessionLogScanner {
         }
 
         return (usages, conversations)
+    }
+
+    /// Codex's state database exposes an exact per-thread total but not its
+    /// billing buckets. Modern Codex sessions are overwhelmingly cache reads;
+    /// this conservative split keeps cold-cache totals complete without
+    /// pricing every cached token as fresh input. Provider-log scans replace
+    /// the estimate with exact buckets as the resource-governed cache warms.
+    static func estimatedTokenBreakdown(totalTokens: Int) -> (input: Int, output: Int, cacheRead: Int) {
+        let total = max(totalTokens, 0)
+        let cacheRead = Int(Double(total) * 0.95)
+        let output = Int(Double(total) * 0.005)
+        let input = max(total - cacheRead - output, 0)
+        return (input, output, cacheRead)
     }
 
     /// `LogParseOptions.minimumFileModificationDate` contract: files whose

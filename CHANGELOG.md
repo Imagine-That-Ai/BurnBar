@@ -7,6 +7,155 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Windows renders the Linux shell (SharedUi host)
+
+- **The Windows app now presents the same UI as the Linux app.** The
+  `apps/linux-desktop` React bundle (built with the Vite `windows` mode into
+  `apps/linux-desktop/dist-windows`) is hosted in a new WinUI
+  `SharedUiHostWindow` WebView2 window, which replaces the XAML shell as the
+  primary window (tray Open / flyout "Open full window"); the legacy XAML
+  window remains the automatic fallback when the bundle or WebView2 is
+  unavailable, plus the host for XAML automation routes.
+- **A C# peer of the Linux Tauri backend** serves the entire
+  `LinuxShellBridge` command surface: new portable `OpenBurnBar.App.SharedUi`
+  library (wire codec, dispatcher, runtime-capability manifest, onboarding +
+  subscription contracts, Stripe/update URL allowlists, gateway chat
+  validation) with data planes over the in-process Windows stores — usage,
+  sessions with real per-session token/cost rollups (new
+  `TokenUsageReadSeam.LoadSessionTotals`), provider catalog + quota buckets,
+  config/db/account/update status, proxy route log, and loopback gateway chat
+  streaming. Unbacked commands fail closed with the frontend's
+  capability-absent contract (`not implemented on Windows`) — never mocked
+  data. Contract: `docs/windows-port/SHARED_UI_HOST.md`; 85-test suite under
+  `windows/tests/shared-ui` (green on macOS).
+
+### Added — Calendar analytics view on macOS, iOS, Android, Windows, and Linux
+
+- **The month grid is the chart.** Every day cell paints a heat wash scaled to
+  that month's busiest day (sqrt ramp, so one monster day cannot wash the rest
+  out) and carries a strip of provider dots for the top three providers by cost
+  that day.
+- **Select days, drive the panel.** Click a day, ⇧-click for an inclusive
+  range, ⌘/Ctrl-click to toggle individual days, or drag to paint a range —
+  Finder/Photos semantics. The selection feeds eight analytics cards: KPI
+  tiles, burn over the selection, provider mix, model mix, a 7×24 hour
+  heatmap, project focus, cache ROI, and reasoning share.
+- **The panel is yours.** Cards hide, reorder by drag, and resize across a
+  3-column grid; the layout persists as forward-compatible JSON (unknown card
+  kinds are dropped, newly added ones appended).
+- **The numbers agree across platforms.** Usage is attributed to a day by
+  local-timezone start-of-day of the row's start time — never the UTC date
+  path, never split across midnight — so a session that runs 23:50→00:20
+  belongs entirely to the day it started. Silent days inside a selection
+  gap-fill to zero, sessions count distinct, and spend with no project name
+  stays visible as "Unattributed" instead of silently vanishing.
+- **Model rows no longer split on a prefix.** Cursor logs some models as
+  `custom:` / `vibeproxy:`; those variants now collapse into a single Model Mix
+  row on every platform, matching `TokenExtractionUtility.normalizeModelKey`.
+- Docs: [`docs/CALENDAR_VIEW.md`](docs/CALENDAR_VIEW.md), including the shared
+  semantics contract that ports are checked against.
+
+### Added — `BurnBarUsageEvent.startTime`
+
+- Daemon usage events now carry an optional `startTime` alongside `recordedAt`,
+  which is stamped at completion and therefore behaves as an end time. The
+  gateway (macOS and Linux) and the run service populate it from the instant
+  the attempt actually began.
+- The field is optional and decoded with `decodeIfPresent`: the daemon ledger
+  is append-only JSONL with no migrator and a strict loader, so every row
+  written before this field existed must keep decoding. It is populated only
+  where a real start instant is known — paths without one leave it `nil` rather
+  than restating the completion time.
+- **Fixes** the Linux Calendar attributing calls that span local midnight to the
+  wrong day, and **fixes** daemon-imported rows on macOS having a zero duration
+  (`OpenBurnBarDaemonUsageSyncService` mapped both `startTime` and `endTime` to
+  `recordedAt`).
+- No wire-breaking change: the Tauri bridge passes daemon JSON through opaquely,
+  and the app-side `token_usage` table already had `startTime`/`endTime`.
+
+### Changed — Charts page rebuilt as "The Burn Gallery"
+
+- **A hero band now opens the Charts page**: an oversized metric counter in
+  the active palette mood (animated numeric transitions), an editorial
+  one-liner drawn from the data ("Your furnace hour: Tuesdays around 2pm"),
+  a trend badge, and stat chips for tokens, sessions, cache savings, and the
+  top provider — over a static bloom backdrop tuned to the palette.
+- **The gallery is fully customizable**: a new Customize sheet offers five
+  palette moods (Ember, Ocean, Orchid, Meadow, Monochrome — all adaptive
+  across the Moon Lit / Sun Lit skins and light/dark), Comfortable/Compact
+  density, 2- or 3-column grids, a Cost/Tokens primary-metric toggle that
+  re-voices the hero, Burn Over Time, Burn Forecast, and Week vs Week, plus
+  per-chart visibility, width, and accent-voice controls. Everything
+  persists across launches (`chartsPageAppearance.v1`).
+- **Charts respond to the pointer**: line charts scrub with a crosshair and
+  value tooltip, donut segments swell and swap the center readout, bars and
+  ranked rows highlight, and the heatmap reads out the hovered cell. Every
+  chart draws in on first appearance (all motion honors Reduce Motion).
+- **Cards are easier to read**: larger titles and headline stats, accent
+  chip icons, hover lift, and staggered entrances; the empty state gains an
+  illustrated backdrop and a one-tap "widen the range" escape.
+
+### Fixed — appearance mode is always honored; Atelier fills the window
+
+- **Sun Lit no longer pins the app to light**: the paper skin used to force a
+  light appearance even when Appearance was set to Dark (or System on a dark
+  OS), silently ignoring the setting. Sun Lit is now light-*only* rather than
+  light-*locked*: under a dark appearance the design tokens fall back to the
+  Moon Lit dark palette (`AppSkin.resolved(for:)`), the WebGL kernel backdrop
+  receives the dark theme, and the skin returns as soon as the appearance is
+  light again. Same behavior on iOS.
+- **The Atelier dashboard now fills the window vertically**: the hero row
+  stretches to absorb extra height (chips up top, headline / spend curve /
+  stat cards anchored low, provider rail full-height) and the more-drawer pins
+  to the bottom edge — tall windows show live substrate between the chrome
+  instead of a dead band under the stat cards.
+
+### Changed — macOS dashboard reclaims the dead title-bar band
+
+- **The dashboard command deck now renders full-bleed under the traffic
+  lights**: the ~50pt of empty toolbar chrome above the deck is gone. The
+  dashboard window no longer hosts an `NSToolbar` (recreated ones are
+  scrubbed), the split view's duplicate `NSTitlebarBackgroundView` strips are
+  hidden, and the standard macOS sidebar toggle sits in its normal titlebar
+  position next to the traffic lights. The deck slides up with reserved
+  clearance for the traffic-light cluster, and its empty areas double as the
+  window drag region.
+
+### Changed — app skins renamed and backdrops made skin-independent
+
+- **Skins are now "Moon Lit" (was Aurora) and "Sun Lit" (was Editorial)**: the
+  abstract names are replaced by what each skin actually looks like — the dark
+  ember glass look and the light paper look. Updated across the dashboard
+  quick menu, Settings pickers, Settings search/copilot copy, iOS theme
+  pickers, and the cross-platform parity fixture. Storage keys and raw values
+  are unchanged, so existing selections carry over.
+- **Kernel and constellation backdrops now render under every skin**: the
+  dashboard backdrop picker was previously ignored under the paper skin, which
+  always fell back to a nearly-invisible paper variant. The selection is now
+  skin-independent — the WebGL kernel field receives the light theme under
+  Sun Lit automatically — and the default backdrop keeps its per-skin
+  presentation (energetic swarm on dark, dot-crest on paper).
+- **Appearance controls no longer appear twice in the dashboard**: the ⋯
+  overflow menu drops its duplicate Appearance/App Skin sections in favor of a
+  single "Appearance & Skin…" deep link; the status-rail quick menu remains
+  the one in-dashboard appearance control.
+
+### Changed — Windows shell now renders the macOS Aurora liquid-glass design
+
+- **Full visual parity pass on the WinUI 3 app** (`windows/app/`): the shell now renders the
+  same Aurora "liquid glass" look as the macOS and Linux apps instead of the Pensieve
+  ink/brass recolor. The design-token pipeline gains an additive Aurora group
+  (`packages/design-tokens/tokens/aurora.tokens.json` — macOS dark/light ramps, liquid-glass
+  tint/stroke/sheen/shadow recipes, macOS type scale) emitted to CSS/Swift/Compose/WinUI from
+  the same DTCG source; the Windows theme is rebuilt on `ThemeDictionaries` (Light mode no
+  longer paints dark plates), the glass vocabulary carries the macOS card radius/hover
+  physics, and brand fonts (Outfit/Geist/JetBrains Mono/Fraunces, OFL) are bundled so type no
+  longer falls back to Segoe/Consolas. Tray flyout, command deck, chat bubbles, Settings,
+  onboarding, command palette, and dashboard all consume the new tokens; a CI gate
+  (`scripts/windows-port/check-xaml-token-discipline.sh`) blocks raw colors/fonts outside
+  `Theme/`. See `docs/windows-port/MAC_GLASS_PARITY_PASS.md` for the review map, validation
+  matrix, and Windows-host evidence checklist.
+
 ### Added — Shared Rust Console release evidence
 
 - Stable and Rust-authoritative Hosting deploys now consume the exact protected

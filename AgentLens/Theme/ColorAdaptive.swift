@@ -9,15 +9,17 @@ extension Color {
     }
 
     /// Skin- and appearance-aware token color. When the Editorial skin is active
-    /// the `editorial` hex wins regardless of aqua/dark appearance (the skin is
-    /// light-locked, mirroring the app.burnbar.ai console); otherwise resolves
-    /// `light`/`dark` off the system appearance. Supports 8-digit `AARRGGBB`
-    /// hexes so editorial ink hairlines can carry alpha.
+    /// the `editorial` hex wins while the resolving appearance is light (the
+    /// skin is light-only, mirroring the app.burnbar.ai console); under a dark
+    /// appearance it falls back to the aurora `dark` hex so the paper palette
+    /// never sits on dark chrome. Supports 8-digit `AARRGGBB` hexes so
+    /// editorial ink hairlines can carry alpha.
     static func adaptive(editorial: String, light: String, dark: String) -> Color {
         Color(NSColor(name: nil) { appearance in
-            let hex: String = AppSkin.current == .editorial
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let hex: String = (AppSkin.current == .editorial && !isDark)
                 ? editorial
-                : (appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light)
+                : (isDark ? dark : light)
             return NSColor(nsColorHex: hex)
         })
     }

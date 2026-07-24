@@ -13,6 +13,10 @@ enum TimeRange: String, CaseIterable, Identifiable {
 
     var displayName: String { rawValue }
 
+    var burnTileLabel: String {
+        "Burn · \(displayName)"
+    }
+
     /// Ultra-short label for compact UI surfaces (Command Deck hero, chips).
     var compactLabel: String {
         switch self {

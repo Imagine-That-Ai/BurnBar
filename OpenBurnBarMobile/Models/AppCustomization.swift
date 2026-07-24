@@ -4,7 +4,7 @@ import OpenBurnBarCore
 
 /// Defines cross-platform layout destinations for the primary tabs and sidebar.
 enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
-    case pulse, burn, insights, streams, agents, you, settings, devices, providers
+    case pulse, burn, insights, calendar, streams, agents, you, settings, devices, providers
 
     var id: String { rawValue }
 
@@ -13,6 +13,7 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
         case .pulse:    return "Pulse"
         case .burn:     return "Burn"
         case .insights: return "Insights"
+        case .calendar: return "Calendar"
         case .streams:  return "Streams"
         case .agents:   return "Agents"
         case .you:      return "You"
@@ -25,6 +26,7 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
     var fallbackIcon: String {
         switch self {
         case .insights:  return "sparkles.tv.fill"
+        case .calendar:  return "calendar"
         case .settings:  return "gearshape.fill"
         case .devices:   return "macbook.and.iphone"
         case .providers: return "externaldrive.connected.to.line.below"
@@ -38,7 +40,7 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
 
     var isPrimary: Bool {
         switch self {
-        case .pulse, .burn, .insights, .streams, .agents: return true
+        case .pulse, .burn, .insights, .calendar, .streams, .agents: return true
         default: return false
         }
     }
@@ -48,6 +50,7 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
         case .pulse:    return MobileTheme.ember
         case .burn:     return MobileTheme.amber
         case .insights: return MobileTheme.whimsy
+        case .calendar: return MobileTheme.ember
         case .streams:  return MobileTheme.whimsy
         case .agents:   return MobileTheme.hermesAureate
         case .you:      return MobileTheme.blaze
@@ -62,6 +65,7 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
         case .pulse:    return .pulse
         case .burn:     return .burn
         case .insights: return .insights
+        case .calendar: return .calendar
         case .streams:  return .streams
         case .agents:   return .hermes
         case .you:      return .you
@@ -151,10 +155,10 @@ final class AppCustomization: ObservableObject {
 
     var primaryDestinations: [AppDestination] {
         get {
-            if primaryTabsRaw.isEmpty { return [.pulse, .burn, .insights, .streams, .agents] }
+            if primaryTabsRaw.isEmpty { return [.pulse, .burn, .insights, .calendar, .streams, .agents] }
             guard let data = primaryTabsRaw.data(using: .utf8),
                   let decoded = try? JSONDecoder().decode([AppDestination].self, from: data) else {
-                return [.pulse, .burn, .insights, .streams, .agents]
+                return [.pulse, .burn, .insights, .calendar, .streams, .agents]
             }
             return decoded
         }
@@ -183,5 +187,81 @@ final class AppCustomization: ObservableObject {
                 objectWillChange.send()
             }
         }
+    }
+}
+
+/// Durable restoration for the two mobile navigation shells.
+///
+/// SwiftUI preserves `@State` only while the process remains alive. iOS is
+/// free to terminate a backgrounded app at any time, so navigation state must
+/// be written outside the view tree if a relaunch is expected to resume where
+/// the user left off.
+enum MobileNavigationRestoration {
+    enum PathKey: String, CaseIterable {
+        case phonePulse = "mobile.navigation.phone.pulse.v1"
+        case phoneBurn = "mobile.navigation.phone.burn.v1"
+        case phoneCalendar = "mobile.navigation.phone.calendar.v1"
+        case phoneStreams = "mobile.navigation.phone.streams.v1"
+        case phoneHermes = "mobile.navigation.phone.hermes.v1"
+        case phoneYou = "mobile.navigation.phone.you.v1"
+        case padDetail = "mobile.navigation.pad.detail.v1"
+    }
+
+    private static let phoneSelectionKey = "mobile.navigation.phone.selection.v1"
+    private static let padSelectionKey = "mobile.navigation.pad.selection.v1"
+
+    static func phoneSelection(defaults: UserDefaults = .standard) -> AuroraNavDestination {
+        defaults.string(forKey: phoneSelectionKey)
+            .flatMap(AuroraNavDestination.init(rawValue:))
+            ?? .pulse
+    }
+
+    static func savePhoneSelection(
+        _ selection: AuroraNavDestination,
+        defaults: UserDefaults = .standard
+    ) {
+        defaults.set(selection.rawValue, forKey: phoneSelectionKey)
+    }
+
+    static func padSelection(defaults: UserDefaults = .standard) -> AppDestination {
+        defaults.string(forKey: padSelectionKey)
+            .flatMap(AppDestination.init(rawValue:))
+            ?? .pulse
+    }
+
+    static func savePadSelection(
+        _ selection: AppDestination,
+        defaults: UserDefaults = .standard
+    ) {
+        defaults.set(selection.rawValue, forKey: padSelectionKey)
+    }
+
+    static func path(
+        for key: PathKey,
+        defaults: UserDefaults = .standard
+    ) -> NavigationPath {
+        guard let data = defaults.data(forKey: key.rawValue),
+              let representation = try? JSONDecoder().decode(
+                  NavigationPath.CodableRepresentation.self,
+                  from: data
+              ) else {
+            return NavigationPath()
+        }
+        return NavigationPath(representation)
+    }
+
+    static func save(
+        _ path: NavigationPath,
+        for key: PathKey,
+        defaults: UserDefaults = .standard
+    ) {
+        guard let representation = path.codable,
+              let data = try? JSONEncoder().encode(representation) else {
+            // Never revive a stale route if a future destination is not
+            // Codable. The selected root screen remains restorable.
+            defaults.removeObject(forKey: key.rawValue)
+            return
+        }
+        defaults.set(data, forKey: key.rawValue)
     }
 }
