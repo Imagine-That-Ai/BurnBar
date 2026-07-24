@@ -48,6 +48,7 @@ export function MembershipSection() {
   const loading = phase === 'loading';
   const checkoutInFlight = phase === 'checkout-in-flight';
   const portalInFlight = phase === 'portal-in-flight';
+  const externalOpened = phase === 'external-opened';
   const restoreInFlight = phase === 'restore-in-flight';
   const pro = hasActivePaidMembership(data);
   const entitlementSet = useMemo(() => new Set(data?.entitlements ?? []), [data]);
@@ -81,11 +82,15 @@ export function MembershipSection() {
           </Banner>
         ) : null}
 
-        {checkoutInFlight || portalInFlight ? (
+        {checkoutInFlight || portalInFlight || externalOpened ? (
           <Banner tone="ok" role="status">
-            {externalDestination === 'portal'
-              ? 'Stripe billing management opened in your browser.'
-              : 'Stripe checkout opened in your browser. Return here and use Check again after completing checkout.'}
+            {externalOpened
+              ? externalDestination === 'portal'
+                ? 'Stripe billing management is open in your browser. Return here and re-check membership when finished.'
+                : 'Stripe checkout is open in your browser. Return here and re-check membership when finished.'
+              : externalDestination === 'portal'
+                ? 'Opening Stripe billing management in your browser…'
+                : 'Opening Stripe checkout in your browser…'}
             {checkoutUrl ? ` Secure host: ${new URL(checkoutUrl).hostname}.` : ''}
           </Banner>
         ) : null}

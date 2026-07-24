@@ -177,7 +177,7 @@ describe('MembershipSection', () => {
     expect(await screen.findByText(/Offline · Renewal date unavailable/i)).toBeTruthy();
   });
 
-  it('opens checkout externally and keeps waiting state with manual re-check', async () => {
+  it('opens checkout externally and returns to a recoverable opened state', async () => {
     const openExternalUrl = vi.fn(async () => {});
     useShellStore.setState({
       bridge: bridge({
@@ -192,8 +192,9 @@ describe('MembershipSection', () => {
     await waitFor(() =>
       expect(openExternalUrl).toHaveBeenCalledWith('https://checkout.stripe.test/session/cs_test_packet')
     );
-    expect(screen.getByText(/Stripe checkout opened in your browser/i)).toBeTruthy();
+    expect(screen.getByText(/Stripe checkout is open in your browser/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /Re-check membership/i })).toBeTruthy();
+    expect((screen.getByRole('button', { name: /Open checkout/i }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('opens billing portal for an active member and never starts another checkout', async () => {
@@ -216,7 +217,7 @@ describe('MembershipSection', () => {
     );
     expect(membershipPortalUrl).toHaveBeenCalledTimes(1);
     expect(membershipCheckoutUrl).not.toHaveBeenCalled();
-    expect(screen.getByText(/Stripe billing management opened in your browser/i)).toBeTruthy();
+    expect(screen.getByText(/Stripe billing management is open in your browser/i)).toBeTruthy();
   });
 
   it('opens billing portal for an active future paid entitlement even when tier maps to free', async () => {
@@ -273,7 +274,7 @@ describe('MembershipSection', () => {
     render(<MembershipSection />);
     await screen.findByText(/Free local member/i);
     fireEvent.click(screen.getByRole('button', { name: /Open checkout/i }));
-    await screen.findByText(/Stripe checkout opened in your browser/i);
+    await screen.findByText(/Stripe checkout is open in your browser/i);
     fireEvent.click(screen.getByRole('button', { name: /Re-check membership/i }));
     await waitFor(() => expect(membershipStatus).toHaveBeenCalledTimes(2));
   });

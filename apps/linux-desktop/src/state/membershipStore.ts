@@ -13,6 +13,7 @@ export type MembershipPhase =
   | 'loading'
   | 'checkout-in-flight'
   | 'portal-in-flight'
+  | 'external-opened'
   | 'restore-in-flight'
   | 'error'
   | 'offline'
@@ -121,7 +122,7 @@ export const useMembershipStore = create<MembershipState>()((set, get) => ({
       set({
         checkoutUrl: url,
         externalDestination: destination,
-        phase: destination === 'portal' ? 'portal-in-flight' : 'checkout-in-flight',
+        phase: 'external-opened',
         error: null
       });
     } catch (e) {
