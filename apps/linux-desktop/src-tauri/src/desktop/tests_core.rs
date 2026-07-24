@@ -1072,6 +1072,48 @@
     }
 
     #[test]
+    fn chat_attachment_gateway_encodes_pdf_as_native_file_with_explicit_capability() {
+        let root = std::env::temp_dir().join(format!("openburnbar-chat-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        let path = root.join("attachment.bin");
+        let bytes = b"%PDF-1.7";
+        fs::write(&path, bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let id = format!("attachment-{}", uuid::Uuid::new_v4().simple());
+        chat_attachments().lock().unwrap().insert(
+            id.clone(),
+            StoredChatAttachment {
+                path: path.clone(),
+                file_name: "brief.pdf".into(),
+                mime_type: "application/pdf".into(),
+                byte_size: bytes.len(),
+                sha256: format!("{:x}", Sha256::digest(bytes)),
+            },
+        );
+        let request = GatewayProxyRequest {
+            request_id: "request-pdf-supported".into(),
+            model: "document-model".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "user".into(),
+                content: "Read this".into(),
+                attachments: vec![GatewayAttachmentReference { attachment_id: id }],
+            }],
+        };
+        let native = HashMap::from([("application/pdf".to_string(), None)]);
+        let payload = gateway_messages_payload_with_native_mime_types(&request, &native).unwrap();
+        let parts = payload[0]["content"].as_array().unwrap();
+        assert_eq!(parts[1]["type"], "file");
+        assert_eq!(parts[1]["file"]["filename"], "brief.pdf");
+        assert_eq!(
+            parts[1]["file"]["file_data"],
+            format!("data:application/pdf;base64,{}", BASE64_STANDARD.encode(bytes))
+        );
+        assert!(!path.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn chat_attachment_gateway_enforces_native_model_size_limit() {
         let root = std::env::temp_dir().join(format!("openburnbar-chat-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();

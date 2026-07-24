@@ -1879,7 +1879,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         addTeardownBlock { await harness.stop() }
 
         let requestBody = Data(
-            #"{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"Read this PDF"},{"type":"image_url","image_url":{"url":"data:application/pdf;base64,JVBERi0xLjc=","detail":"auto"}}]}],"max_tokens":12}"#.utf8
+            #"{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"Read this PDF"},{"type":"file","file":{"filename":"brief.pdf","file_data":"data:application/pdf;base64,JVBERi0xLjc="}}]}],"max_tokens":12}"#.utf8
         )
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,

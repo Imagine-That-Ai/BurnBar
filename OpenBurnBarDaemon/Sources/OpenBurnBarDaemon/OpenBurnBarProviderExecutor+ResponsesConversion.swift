@@ -274,6 +274,14 @@ extension BurnBarOpenAICompatibleProviderExecutor {
             guard let dataURL = responsesInputFileDataURL(from: part) else {
                 return nil
             }
+            let mediaType = dataURLMediaType(dataURL)
+            if mediaType == "application/pdf" {
+                var file: [String: Any] = ["file_data": dataURL]
+                if let filename = responsesInputFileName(from: part) {
+                    file["filename"] = filename
+                }
+                return ["type": "file", "file": file]
+            }
             return [
                 "type": "image_url",
                 "image_url": [
@@ -291,6 +299,14 @@ extension BurnBarOpenAICompatibleProviderExecutor {
                 var normalized = part
                 normalized["type"] = "input_audio"
                 return normalized
+            }
+            if part["file"] != nil || part["file_data"] != nil {
+                guard let dataURL = responsesInputFileDataURL(from: part) else { return nil }
+                var file: [String: Any] = ["file_data": dataURL]
+                if let filename = responsesInputFileName(from: part) {
+                    file["filename"] = filename
+                }
+                return ["type": "file", "file": file]
             }
             if let text = part["text"] as? String {
                 return ["type": "text", "text": text]
@@ -321,6 +337,33 @@ extension BurnBarOpenAICompatibleProviderExecutor {
             return nil
         }
         return candidate
+    }
+
+    private static func responsesInputFileName(from part: [String: Any]) -> String? {
+        let nestedFile = part["file"] as? [String: Any]
+        let candidate = (part["filename"] as? String)
+            ?? (nestedFile?["filename"] as? String)
+        let trimmed = candidate?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty,
+              trimmed.count <= 256,
+              !trimmed.contains("/"),
+              !trimmed.contains("\\"),
+              !trimmed.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7f }) else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private static func dataURLMediaType(_ value: String) -> String {
+        guard value.lowercased().hasPrefix("data:"),
+              let comma = value.firstIndex(of: ",") else {
+            return ""
+        }
+        return value[value.index(value.startIndex, offsetBy: 5)..<comma]
+            .split(separator: ";", maxSplits: 1, omittingEmptySubsequences: true)
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
     }
 
     static func chatCompletionsContentIsEmpty(_ value: Any) -> Bool {

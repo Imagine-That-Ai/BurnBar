@@ -23,9 +23,10 @@ final class OpenBurnBarResponsesConversionTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: converted) as? [String: Any])
         let messages = try XCTUnwrap(object["messages"] as? [[String: Any]])
         let content = try XCTUnwrap(messages.first?["content"] as? [[String: Any]])
-        let filePart = try XCTUnwrap(content.first(where: { $0["type"] as? String == "image_url" }))
-        let imageURL = try XCTUnwrap(filePart["image_url"] as? [String: Any])
-        XCTAssertEqual(imageURL["url"] as? String, "data:application/pdf;base64,JVBERi0xLjc=")
+        let filePart = try XCTUnwrap(content.first(where: { $0["type"] as? String == "file" }))
+        let file = try XCTUnwrap(filePart["file"] as? [String: Any])
+        XCTAssertEqual(file["filename"] as? String, "brief.pdf")
+        XCTAssertEqual(file["file_data"] as? String, "data:application/pdf;base64,JVBERi0xLjc=")
     }
 
     func testResponsesFallbackDropsUnresolvableFileID() throws {
