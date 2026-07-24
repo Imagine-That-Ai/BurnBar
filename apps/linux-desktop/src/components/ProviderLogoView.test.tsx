@@ -9,7 +9,7 @@ describe('ProviderLogoView fallback glyphs', () => {
     const fallback = screen.getByText('✦');
 
     expect((fallback as HTMLElement).style.fontFamily).toBe('var(--font-mono)');
-    expect(fallback).toHaveAttribute('aria-hidden', 'true');
+    expect(fallback.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('does not use emoji-only fallback glyphs for known providers', () => {
