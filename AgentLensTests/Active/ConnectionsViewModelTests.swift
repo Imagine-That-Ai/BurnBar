@@ -1071,6 +1071,49 @@ final class ConnectionsViewModelTests: XCTestCase {
         XCTAssertTrue(RoutingClientWiringTarget.antigravity.endpointDescription.contains("Profile-scoped"))
     }
 
+    // The VibeProxy migration path converts cached `proxyModels` rows with
+    // `RoutingClientAdvertisedModel.init(proxyModel:)` instead of re-probing
+    // /v1/models, so capability metadata must survive that conversion or
+    // migrated Codex catalogs fall back to 65,536 tokens / text-only.
+    func test_routingClientAdvertisedModel_fromProxyModel_carriesCapabilityMetadata() {
+        let proxyModel = ProxyAdvertisedModel(
+            modelID: "claude-opus-4-8",
+            displayName: "Claude Opus 4.8",
+            providerID: "anthropic",
+            providerName: "Anthropic",
+            accountID: "default",
+            accountLabel: "Default",
+            sourceID: "anthropic#default",
+            sourceKind: "provider_account",
+            servedEndpoints: ["/v1/responses"],
+            contextWindowTokens: 1_000_000,
+            inputModalities: ["text", "image"],
+            quotaState: "healthy",
+            routeEligible: true,
+            capabilities: [],
+            lastError: nil
+        )
+
+        let converted = RoutingClientAdvertisedModel(proxyModel: proxyModel)
+
+        XCTAssertEqual(converted.contextWindowTokens, 1_000_000)
+        XCTAssertEqual(converted.inputModalities, ["text", "image"])
+    }
+
+    func test_routingClientAdvertisedModel_fromLegacyProxyModel_defaultsCapabilityMetadata() {
+        let legacyProxyModel = makeProxyAdvertisedModel(
+            modelID: "glm-5",
+            displayName: "GLM-5",
+            providerID: "zai",
+            providerName: "Z.AI"
+        )
+
+        let converted = RoutingClientAdvertisedModel(proxyModel: legacyProxyModel)
+
+        XCTAssertNil(converted.contextWindowTokens)
+        XCTAssertEqual(converted.inputModalities, ["text"])
+    }
+
     func test_gatewayServes_respectsEndpointShape() {
         let chatOnlyModel = ProxyAdvertisedModel(
             modelID: "chat-model",
