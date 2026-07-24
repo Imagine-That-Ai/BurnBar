@@ -1127,6 +1127,8 @@ function valid() {
       "Assert native runner architecture",
       "Resolve signed Domain Core profile for Linux artifact",
       "Download signed text-expansion trust",
+      "path: .linux-shard/text-expansion-trust",
+      "OPENBURNBAR_LINUX_TEXT_EXPANSION_SIGNED_MANIFEST=/workspace/.linux-shard/text-expansion-trust/text-expansion-engine.json",
       "Prepare unsigned native architecture artifacts",
       "Prepare unsigned Arch installed-manifest request",
       "Materialize exact-commit isolated signer",

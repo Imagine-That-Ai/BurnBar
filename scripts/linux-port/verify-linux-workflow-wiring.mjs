@@ -1599,6 +1599,16 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.fixturePolicy, 'DAEMON_FIXTURE_AVAILABLE', 'production fixture policy');
   requireText(input.fixturePolicy, "enabled && DAEMON_FIXTURE_AVAILABLE", 'fixture state guard');
   requireText(input.desktopPackage, 'verify-linux-production-bundle.mjs', 'production bundle gate');
+  requireText(
+    input.release,
+    'path: .linux-shard/text-expansion-trust',
+    'generated text-expansion trust output path'
+  );
+  requireText(
+    input.release,
+    'OPENBURNBAR_LINUX_TEXT_EXPANSION_SIGNED_MANIFEST=/workspace/.linux-shard/text-expansion-trust/text-expansion-engine.json',
+    'container text-expansion trust path'
+  );
 
   requireOrder(input.release, [
     'Resolve and validate Linux release version',

@@ -208,7 +208,9 @@ jobs:
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v5.0.0
         with:
           name: linux-text-expansion-trust
-          path: .linux-trust
+          # Keep generated trust input inside the canonical shard output so
+          # release checkout cleanliness remains fail-closed.
+          path: .linux-shard/text-expansion-trust
 
       - name: Build mission Linux toolchain image
         run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
@@ -227,6 +229,7 @@ jobs:
           -e OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID
           -e OPENBURNBAR_FIREBASE_API_KEY
           -e OPENBURNBAR_LINUX_APP_CHECK_APP_ID
+          -e OPENBURNBAR_LINUX_TEXT_EXPANSION_SIGNED_MANIFEST=/workspace/.linux-shard/text-expansion-trust/text-expansion-engine.json
           -v "$PWD:/workspace"
           -w /workspace
           openburnbar-linux-toolchain:mission-001
@@ -347,6 +350,7 @@ jobs:
           -e OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID
           -e OPENBURNBAR_FIREBASE_API_KEY
           -e OPENBURNBAR_LINUX_APP_CHECK_APP_ID
+          -e OPENBURNBAR_LINUX_TEXT_EXPANSION_SIGNED_MANIFEST=/workspace/.linux-shard/text-expansion-trust/text-expansion-engine.json
           -v "$PWD:/workspace"
           -w /workspace
           openburnbar-linux-toolchain:mission-001
