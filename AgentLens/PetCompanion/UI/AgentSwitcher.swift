@@ -84,6 +84,7 @@ struct PetAgentSwitcher: View {
             case .ready: return DesignSystem.Colors.success
             case .needsLogin: return DesignSystem.Colors.warning
             case .error: return DesignSystem.Colors.error
+            case .unavailable: return DesignSystem.Colors.textMuted
             case .unknown: return DesignSystem.Colors.textMuted
             }
         }()

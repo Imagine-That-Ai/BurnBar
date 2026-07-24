@@ -321,6 +321,40 @@ final class AgentSecurityPolicyTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func test_junieChatStream_refusesWhenLiveStoreGrantWasRevoked() async {
+        let bridge = CLIBridge()
+        let threadID = "junie-live-revoke-\(UUID().uuidString)"
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .junie,
+            threadID: threadID,
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .trusted,
+            now: Date(),
+            duration: 600
+        )
+        AgentCapabilityGrantStore.shared.activate(grant)
+        // A phone-side revoke updates the live store while the caller's
+        // captured grant value still looks active.
+        AgentCapabilityGrantStore.shared.revoke(runtimeID: .junie, threadID: threadID)
+
+        var receivedError: Error?
+        do {
+            for try await _ in bridge.chatJunieStream(
+                systemPrompt: "system",
+                userMessage: "user",
+                capabilityGrant: grant
+            ) {}
+        } catch {
+            receivedError = error
+        }
+
+        guard case .junieRequiresFullGrant? = receivedError as? CLIBridgeError else {
+            XCTFail("a store-revoked grant must refuse the Junie launch, got \(String(describing: receivedError))")
+            return
+        }
+    }
+
     // MARK: - T-TOOL-10: restricted shell home-data deny
 
     func test_restrictedShellProfile_deniesHomeDataByDefaultWithExplicitWorkspaceAndToolchainReads() {
