@@ -298,10 +298,10 @@ description = "Swift P-256 key-agreement typealias name is a type declaration, n
 condition = "AND"
 regexTarget = "match"
 regexes = [
-  '''PlatformP256KeyAgreementPrivateKey''',
+  '''PlatformP256KeyAgreementPrivateKey\s*=\s*P256\.KeyAgreement\.PrivateKey''',
 ]
 paths = [
-  '''OpenBurnBarCore/Sources/OpenBurnBarKernelPlatform/Platform/PlatformSupport\.swift''',
+  '''OpenBurnBarCore/Sources/OpenBurnBarPlatformSupport/PlatformSupport\.swift''',
 ]
 
 [[allowlists]]
