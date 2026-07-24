@@ -24,6 +24,7 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.OAuthProvider
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
+import com.openburnbar.BurnBarApplication
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -347,8 +348,10 @@ class UserStore : ViewModel() {
     }
 
     fun signOut() {
-        auth.signOut()
-        _user.value = AppUser()
+        viewModelScope.launch {
+            BurnBarApplication.signOutSafely(auth)
+            _user.value = AppUser()
+        }
     }
 
     fun clearError() {

@@ -5,6 +5,7 @@
 // from `private` to module-internal only so this extension can hold them.
 
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 import CryptoKit
 import Foundation
 import Network
@@ -134,6 +135,7 @@ extension BurnBarHTTPGatewayServer {
     struct GatewayDegradeRequest {
         let bodyData: Data
         let accountingRequestID: String
+        let executionSource: UsageExecutionSource
         let modelID: String
         let startedAt: Date
         let requestPath: String
@@ -177,6 +179,7 @@ extension BurnBarHTTPGatewayServer {
         let wantsStream: Bool
         let resolvedVariant: BurnBarModelVariant?
         let accountingRequestID: String
+        let executionSource: UsageExecutionSource
         let requestedModel: GatewayRequestedModel
         let logContext: GatewayRequestContext
     }

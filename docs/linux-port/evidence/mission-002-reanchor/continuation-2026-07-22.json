@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "role": "linux-parity-continuation-verification",
+  "capturedAt": "2026-07-22T05:03:58Z",
+  "sourceHead": "4fb5bffe6f558797f5a029dab6ad061624ee7165",
+  "branch": "codex/linux-parity-integration-final",
+  "hostedLinuxGate": {
+    "runId": 29891244513,
+    "jobId": 88832447998,
+    "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29891244513",
+    "conclusion": "success",
+    "successfulSteps": 29,
+    "scope": "Linux parity contracts, desktop tests, package metadata, Swift/Rust behavior, performance comparison, and IPC drift"
+  },
+  "physicalIPadFocusedTest": {
+    "device": "Alberto's iPad",
+    "coreDeviceIdentifier": "407C0B12-010B-5970-8E85-D0E43DA8F457",
+    "sourceHead": "08156bd368ddc33f99a57c3a8eadb6fe2a15c8da",
+    "suite": "OpenBurnBarMobileTests/iPadNavigationUITests/testiPadSettingsTabs_countAndNoDaemon",
+    "passed": 1,
+    "failed": 0,
+    "scope": "focused navigation smoke only; not the signed P16 trust-cycle certification"
+  },
+  "utmLinuxSourceBuild": {
+    "guest": "Ubuntu 24.04 ARM64 UTM",
+    "sourceHead": "08156bd368ddc33f99a57c3a8eadb6fe2a15c8da",
+    "architecture": "aarch64",
+    "daemonSha256": "478cbdb620aa990a89120472d3f6df7667b702f7ac12dba7ca20b04d1824b9a5",
+    "cliSha256": "c3f07cf8e636cfa05a8b56f77d8271b4110a105a0fcb2effa67c332c92bef07f",
+    "daemonHelp": "pass",
+    "cliHelp": "pass",
+    "installedHealth": "Daemon 1.0.30 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true",
+    "scope": "current-source daemon/CLI build and live health; unsigned and not a full package certification"
+  },
+  "remainingCertificationBlockers": [
+    "signed current candidate binding for the full P16 iPad trust cycle",
+    "Firebase/App Check configuration for the mobile trust workflow",
+    "installed x86_64 session and GNOME Wayland/KDE/wlroots matrix",
+    "valid public signed feed plus update/rollback/data-preservation proof"
+  ]
+}

@@ -128,8 +128,7 @@ export function routeSnapshotCases(): RouteSnapshotCase[] {
         'chat',
         'memory',
         'computer-use',
-        'mercury',
-        'smarthub'
+        'mercury'
       ].includes(route.id)
     ) {
       expectedState = 'daemon-backed';
@@ -371,8 +370,8 @@ export function petTierMatrix(): Record<string, string>[] {
   return [
     {
       desktop: 'KDE Wayland',
-      tier: 'overlay-pass-through',
-      evidence: 'Always-on-top pass-through tier allowed when compositor/window manager supports it.'
+      tier: 'draggable-contained',
+      evidence: 'Wayland environment variables do not prove a safe overlay contract; contained fallback is active.'
     },
     {
       desktop: 'GNOME Wayland',
@@ -381,8 +380,8 @@ export function petTierMatrix(): Record<string, string>[] {
     },
     {
       desktop: 'X11 session',
-      tier: 'overlay-pass-through',
-      evidence: 'Legacy X11 window managers may support pass-through; user can fall back to contained route.'
+      tier: 'draggable-contained',
+      evidence: 'X11 may provide compositor capability, but no native Linux companion-window contract is wired.'
     }
   ];
 }
@@ -390,7 +389,7 @@ export function petTierMatrix(): Record<string, string>[] {
 export function textExpansionSafetyProof(): Record<string, unknown> {
   return {
     declaredBehavior: 'in-app-only',
-    storage: 'localStorage openburnbar.linux.textExpansion.v1 in this Tauri shell; daemon DB integration is a later sync boundary.',
+    storage: 'daemon-owned AES-GCM sealed snapshot; encryption key is held by Linux Secret Service/KWallet; fixture mode is memory-only.',
     consentRequired: true,
     globalCapture: false,
     unsafePathsRejected: ['evdev', 'uinput', 'global keyboard hook', 'Wayland compositor snooping'],

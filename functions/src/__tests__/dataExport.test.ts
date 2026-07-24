@@ -57,6 +57,13 @@ describe("DATA_DOMAIN_PATHS ⇄ data-domain registry (no drift)", () => {
       expect(actual, `${domain.id} storage prefixes`).toEqual(expected);
     }
   });
+
+  it("deletes Linux challenge records with the domain but excludes them from export", () => {
+    const paths = DATA_DOMAIN_PATHS.device_trust_keys;
+    expect(paths.firestoreCollections).toContain("linux_app_check_devices");
+    expect(paths.firestoreCollections).toContain("linux_app_check_challenges");
+    expect(paths.exportExcludedCollections).toContain("linux_app_check_challenges");
+  });
 });
 
 describe("deleteDomainData deletability gate", () => {

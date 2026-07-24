@@ -45,6 +45,7 @@ headroom.
 | `OpenBurnBarSQLiteReader` | **no** | 325 | `Services/SQLite/` + the SQLite backend conditional. The K3 fix. | SQLite backend |
 | `OpenBurnBarLogParsers` | yes | ~9.3k | `Services/LogParser/` + `Services/LogPath/` + 2 log-discovery SharedModels | Kernel, SQLiteReader, ParserSupport |
 | `OpenBurnBarParserSupport` | **no** | ~400 | parser resource governor, file-discovery checkpoint identities, and path-free pass telemetry | Kernel |
+| `OpenBurnBarAssistantModels` | yes | ~2.1k | assistant identity, manifest, persona, runtime selection, prompt/navigation state, approval policy, and model I/O capability contracts | PlatformSupport |
 | `OpenBurnBarQuota` | yes | ~10.4k | `ProviderQuota/` + root `XAISuperGrokPacingLog.swift` | Kernel, SQLiteReader, crypto |
 | `OpenBurnBarVectorKit` | yes | ~3.6k | HNSW/Persistent/Signpost vector indexes, VectorIndexDelta, SearchPlanner, **`OpenBurnBarSearchContracts.swift`** (references `BurnBarEmbeddingDistanceMetric` + `BurnBarSearchPlan` — VectorKit symbols, so it cannot precede them into Kernel), Pensieve chunker/cloak | Kernel |
 | `OpenBurnBarInsights` | yes (Apple-only) | ~16k | `Services/Insights/` (minus ShareCardRenderer) + `SharedModels/Insights/` + AgentInsights models + Demo fixture | Kernel |
@@ -537,6 +538,46 @@ package-internal `OpenBurnBarParserSupport` leaf (2 files / 397 LOC), which depe
 on Kernel; LogParsers retains source-compatible public aliases and depends on the leaf.
 ParserSupport has an explicit 5-file / 1,000-LOC planned ceiling. This keeps the existing
 LogParsers ceiling intact instead of resetting it to fit the implementation.
+
+**Assistant-model follow-up (2026-07-20):** post-close-out feature growth pushed
+`OpenBurnBarKernel` beyond its 46,250-LOC ceiling. The Foundation-only assistant
+identity and interaction cluster moved byte-for-byte into
+`OpenBurnBarAssistantModels` (12 files / 2,274 LOC, including its one-line platform
+support re-export). Kernel re-exports the new leaf and now contains 46,108 LOC, so
+existing `import OpenBurnBarKernel` consumers keep the same API while the target is
+back under its original ceiling. The new leaf is capped at 15 files / 2,700 LOC.
+
+**Linux parity ceiling follow-up (2026-07-21):** the completed Linux source
+wave added daemon-owned cloud-sync, privacy, trusted-device, and Mercury media
+authority contracts to `OpenBurnBarKernel`, and added the remaining bounded
+local-parser implementations to `OpenBurnBarLogParsers`. Those are legitimate
+target responsibilities rather than a new generic service layer: the current
+sizes are 46,447 and 12,592 LOC respectively, with file counts still at 153
+and 32. The planned ceilings are therefore raised narrowly to 47,000 and
+13,000 LOC (still below the next-monolith threshold), while the existing
+file-count and main-target shrink gates remain unchanged. Future decomposition
+work should move stable shared primitives out of these targets before adding
+another domain cluster. The canonical baseline refresh also records the
+measured 1.25x ceilings for the non-destination targets that received the same
+Linux source wave; it does not raise any main-target or file-count budget.
+
+**Linux-parity integration ceiling adjustment (2026-07-24):** merging the
+parity integration atop the ParserSupport module-move (#1928) and the
+execution-source additions measures `OpenBurnBarParserSupport` at 1,123 LOC
+(the read-gate cluster moved INTO it from `OpenBurnBarLogParsers`, net-zero
+across the pair) and `OpenBurnBarLogParsers` at 13,064 LOC. Ceilings move to
+1,200 and 13,200 respectively (77/136 LOC of bounded headroom); file ceilings
+unchanged. The shrink-only ratchet reclaims surplus automatically.
+
+**Operation 10 execution-source ceiling adjustment (2026-07-21):** generalized
+execution-source attribution adds the cross-platform usage/wire contract to
+`OpenBurnBarKernel` and evidence-backed Codex history/cache attribution to
+`OpenBurnBarLogParsers`. These responsibilities belong in the existing owning modules;
+splitting them into dependency-only leaf targets would obscure the usage contract and
+parser state boundaries. No source files were added to either target. Their planned LOC
+ceilings move from 46,250 to 46,600 and from 11,800 to 12,200 respectively, covering the
+measured 272/302-LOC growth with less than 160 LOC of bounded headroom per target. File
+ceilings remain unchanged.
 
 ### Whole-program composition proof (verbatim results)
 

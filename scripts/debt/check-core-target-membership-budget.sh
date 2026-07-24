@@ -46,6 +46,7 @@ const mainTarget = "OpenBurnBarCore";
 // dirs are not Swift-source targets and are skipped.
 const siblingTargets = [
   "OpenBurnBarDomainCoreRuntime",
+  "OpenBurnBarAssistantModels",
   "OpenBurnBarKernel",
   "OpenBurnBarParserSupport",
   "OpenBurnBarSQLiteReader",
@@ -117,20 +118,30 @@ const mainLive = scanTarget(mainTarget);
 //
 // Kernel IS a decomposition destination (P-02/P-03/P-04a/P-04b/P-11 move ~35
 // files + several thousand LOC into it); its marker-era measured ceiling
-// (133 files / 35955 LOC) has ZERO headroom for those moves. The shipped
-// Kernel currently measures 46301 LOC after the Elder/Pareto hardening wave,
-// so the temporary migration ceiling is 46500 LOC. The integrator must ratchet
-// this back down after the next decomposition moves; it is not new headroom
-// for unrelated features.
+// (133 files / 35955 LOC) has ZERO headroom for those moves, so it is seeded
+// from the ~37k end-state with file headroom. Operation 10 adds the generalized
+// execution-source usage contract to Kernel and the evidence-backed Codex
+// history/cache attribution to LogParsers. Those are the owning modules, so the
+// planned ceilings include the measured 272/302-LOC feature growth plus less
+// than 160 lines of bounded headroom instead of creating artificial leaf targets.
 const PLANNED_CEILINGS = {
   // Shared-Rust rollout authority stays a narrow Foundation-only leaf. The
   // ceiling covers profiles, candidate identity, evidence comparison, and the
   // generic shadow selector without allowing domain business logic to move in.
   OpenBurnBarDomainCoreRuntime: { maxFiles: 8, maxLines: 1000 },
-  OpenBurnBarKernel: { maxFiles: 185, maxLines: 46500 },
-  OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1000 },
+  // Assistant identity and interaction contracts stay in a Foundation-only
+  // leaf below Kernel. The ceiling leaves modest file/LOC headroom without
+  // allowing the extracted slice to become another monolith.
+  OpenBurnBarAssistantModels: { maxFiles: 15, maxLines: 2700 },
+  // Linux parity adds daemon-owned cloud/privacy/trusted-device/media contracts
+  // after the assistant-model extraction. Keep the ceiling below the next
+  // monolith while accounting for those cross-platform authority surfaces.
+  OpenBurnBarKernel: { maxFiles: 185, maxLines: 47000 },
+  OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1200 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
-  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 11800 },
+  // The final local-parser catalog adds bounded corpus parsers for the Linux
+  // provider matrix; the ceiling remains below a general-purpose god target.
+  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 13200 },
   OpenBurnBarQuota: { maxFiles: 55, maxLines: 13000 },
   // VectorKit gains OpenBurnBarSearchContracts.swift (P-03 re-slice / FIX 4) on
   // top of the vector indexes + SearchPlanner + Pensieve, so its ceiling covers

@@ -1,0 +1,652 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "sessionPathKey": "agent-provider-raw-value|resolved-absolute-path",
+    "usageDedupKey": "provider-raw-value\\u001Fsession-id\\u001Fmodel\\u001Fsource-device-id\\u001Faccount-partition",
+    "timestamp": "RFC3339 UTC instants decoded as Foundation Date",
+    "cost": "USD Double preserved without display-string reparse",
+    "quota": "declared per canonical AgentProvider.quotaSignalProviders"
+  },
+  "providers": [
+    {
+      "providerId": "droid",
+      "agentProviderCase": "factory",
+      "displayLabel": "Droid / Factory",
+      "aliases": [
+        "factory",
+        "factory-droid"
+      ],
+      "paths": {
+        "linux": "~/.factory/sessions",
+        "macos": "~/.factory/sessions"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "claude",
+      "agentProviderCase": "claudeCode",
+      "displayLabel": "Claude Code",
+      "aliases": [
+        "anthropic",
+        "claude-code"
+      ],
+      "paths": {
+        "linux": "~/.claude/projects",
+        "macos": "~/.claude/projects"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "copilot",
+      "agentProviderCase": "copilot",
+      "displayLabel": "Copilot",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.copilot/session-state",
+        "macos": "~/.copilot/session-state"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "aider",
+      "agentProviderCase": "aider",
+      "displayLabel": "Aider",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.aider",
+        "macos": "~/.aider"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    },
+    {
+      "providerId": "cursor",
+      "agentProviderCase": "cursor",
+      "displayLabel": "Cursor",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.cursor/ai-tracking",
+        "macos": "~/.cursor/ai-tracking"
+      },
+      "filePattern": "*.db",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "openai",
+      "agentProviderCase": "openAI",
+      "displayLabel": "OpenAI",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.codex",
+        "macos": "~/.codex"
+      },
+      "filePattern": "openai-no-local-logs",
+      "ingestion": "api-backed",
+      "coverageNote": "No local parser; usage is supplied by the official API path.",
+      "xdgBehavior": "no-local-logs",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "openburnbar",
+      "agentProviderCase": "openBurnBar",
+      "displayLabel": "OpenBurnBar",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.codex",
+        "macos": "~/.codex"
+      },
+      "filePattern": "openburnbar-no-local-logs",
+      "ingestion": "api-backed",
+      "coverageNote": "No local parser; usage is recorded by the native app/ledger path.",
+      "xdgBehavior": "no-local-logs",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "deepseek",
+      "agentProviderCase": "deepSeek",
+      "displayLabel": "DeepSeek",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.codex",
+        "macos": "~/.codex"
+      },
+      "filePattern": "deepseek-no-local-logs",
+      "ingestion": "api-backed",
+      "coverageNote": "No local parser; quota and usage require the provider API path.",
+      "xdgBehavior": "no-local-logs",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "codex",
+      "agentProviderCase": "codex",
+      "displayLabel": "Codex",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.codex/sessions",
+        "macos": "~/.codex/sessions"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "opencode",
+      "agentProviderCase": "openCode",
+      "displayLabel": "OpenCode",
+      "aliases": [
+        "opencode-go"
+      ],
+      "paths": {
+        "linux": "~/.local/share/opencode",
+        "macos": "~/.local/share/opencode"
+      },
+      "filePattern": "opencode.db",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "xdg-data",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "zai",
+      "agentProviderCase": "zai",
+      "displayLabel": "Z.ai",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.factory/sessions",
+        "macos": "~/.factory/sessions"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local model-filter parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "minimax",
+      "agentProviderCase": "minimax",
+      "displayLabel": "MiniMax",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.factory/sessions",
+        "macos": "~/.factory/sessions"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local model-filter parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "kimi",
+      "agentProviderCase": "kimi",
+      "displayLabel": "Kimi",
+      "aliases": [
+        "moonshot"
+      ],
+      "paths": {
+        "linux": "~/.kimi/sessions",
+        "macos": "~/.kimi/sessions"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "cline",
+      "agentProviderCase": "cline",
+      "displayLabel": "Cline",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
+        "macos": "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks"
+      },
+      "filePattern": "*.json",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "xdg-config-code",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    },
+    {
+      "providerId": "kilocode",
+      "agentProviderCase": "kiloCode",
+      "displayLabel": "Kilo Code",
+      "aliases": [
+        "kilo-code"
+      ],
+      "paths": {
+        "linux": "~/.config/Code/User/globalStorage/kilocode.kilo-code/tasks",
+        "macos": "~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/tasks"
+      },
+      "filePattern": "*.json",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "xdg-config-code",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    },
+    {
+      "providerId": "roocode",
+      "agentProviderCase": "rooCode",
+      "displayLabel": "Roo Code",
+      "aliases": [
+        "roo-code"
+      ],
+      "paths": {
+        "linux": "~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks",
+        "macos": "~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks"
+      },
+      "filePattern": "*.json",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "xdg-config-code",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    },
+    {
+      "providerId": "forge",
+      "agentProviderCase": "forgeDev",
+      "displayLabel": "Forge",
+      "aliases": [
+        "forge-dev"
+      ],
+      "paths": {
+        "linux": "~/.forge/sessions",
+        "macos": "~/.forge/sessions"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    },
+    {
+      "providerId": "augment",
+      "agentProviderCase": "augment",
+      "displayLabel": "Augment",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.config/Code/User/globalStorage/augment.vscode-augment",
+        "macos": "~/Library/Application Support/Code/User/globalStorage/augment.vscode-augment"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Parser is registered, but macOS marks this source unsupported.",
+      "xdgBehavior": "xdg-config-code",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    },
+    {
+      "providerId": "hermes",
+      "agentProviderCase": "hermes",
+      "displayLabel": "Hermes",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.hermes/sessions",
+        "macos": "~/.hermes/sessions"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    },
+    {
+      "providerId": "pi",
+      "agentProviderCase": "piAgent",
+      "displayLabel": "Pi Agent",
+      "aliases": [
+        "pi-agent"
+      ],
+      "paths": {
+        "linux": "~/.pi/sessions",
+        "macos": "~/.pi/sessions"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    },
+    {
+      "providerId": "gemini",
+      "agentProviderCase": "geminiCLI",
+      "displayLabel": "Gemini CLI",
+      "aliases": [
+        "google",
+        "gemini-cli"
+      ],
+      "paths": {
+        "linux": "~/.gemini/tmp",
+        "macos": "~/.gemini/tmp"
+      },
+      "filePattern": "*.json",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    },
+    {
+      "providerId": "antigravity",
+      "agentProviderCase": "antigravity",
+      "displayLabel": "Antigravity",
+      "aliases": [
+        "antigravity-cli"
+      ],
+      "paths": {
+        "linux": "~/.gemini/antigravity-cli",
+        "macos": "~/.gemini/antigravity-cli"
+      },
+      "filePattern": "history.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "goose",
+      "agentProviderCase": "goose",
+      "displayLabel": "Goose",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.local/share/goose/sessions",
+        "macos": "~/.local/share/goose/sessions"
+      },
+      "filePattern": "sessions.db",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "xdg-data",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    },
+    {
+      "providerId": "openclaw",
+      "agentProviderCase": "openClaw",
+      "displayLabel": "OpenClaw",
+      "aliases": [
+        "open-claw"
+      ],
+      "paths": {
+        "linux": "~/.openclaw/sessions",
+        "macos": "~/.openclaw/sessions"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    },
+    {
+      "providerId": "openclaude",
+      "agentProviderCase": "openClaude",
+      "displayLabel": "OpenClaude",
+      "aliases": [
+        "open-claude"
+      ],
+      "paths": {
+        "linux": "~/.openclaude/projects",
+        "macos": "~/.openclaude/projects"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Claude-compatible local transcript parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    },
+    {
+      "providerId": "omp",
+      "agentProviderCase": "omp",
+      "displayLabel": "OMP",
+      "aliases": [
+        "oh-my-pi"
+      ],
+      "paths": {
+        "linux": "~/.omp/agent/sessions",
+        "macos": "~/.omp/agent/sessions"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Pi-compatible local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "ollama",
+      "agentProviderCase": "ollama",
+      "displayLabel": "Ollama",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.ollama/logs",
+        "macos": "~/.ollama/logs"
+      },
+      "filePattern": "server*.log",
+      "ingestion": "local-parser",
+      "coverageNote": "Local model-filter parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "windsurf",
+      "agentProviderCase": "windsurf",
+      "displayLabel": "Windsurf",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.config/Windsurf - Next/User/globalStorage",
+        "macos": "~/Library/Application Support/Windsurf - Next/User/globalStorage"
+      },
+      "filePattern": "state.vscdb",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "xdg-config-code",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    },
+    {
+      "providerId": "warp",
+      "agentProviderCase": "warp",
+      "displayLabel": "Warp",
+      "aliases": [],
+      "paths": {
+        "linux": "~/.config/Warp",
+        "macos": "~/Library/Application Support/dev.warp.Warp-Stable"
+      },
+      "filePattern": "warp_network*.log",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "xdg-config-code",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "grok",
+      "agentProviderCase": "xAI",
+      "displayLabel": "Grok / xAI",
+      "aliases": [
+        "xai",
+        "x.ai"
+      ],
+      "paths": {
+        "linux": "~/.grok/sessions",
+        "macos": "~/.grok/sessions"
+      },
+      "filePattern": "summary.json",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "mimo",
+      "agentProviderCase": "mimo",
+      "displayLabel": "MiMo",
+      "aliases": [
+        "xiaomi-mimo"
+      ],
+      "paths": {
+        "linux": "~/.codex",
+        "macos": "~/.codex"
+      },
+      "filePattern": "mimo-no-local-logs",
+      "ingestion": "api-backed",
+      "coverageNote": "No local parser; usage requires the MiMo API/token-plan path.",
+      "xdgBehavior": "no-local-logs",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "cursor-agent",
+      "agentProviderCase": "cursorAgent",
+      "displayLabel": "Cursor Agent",
+      "aliases": [
+        "cursoragent"
+      ],
+      "paths": {
+        "linux": "~/.cursor-agent/sessions",
+        "macos": "~/.cursor-agent/sessions"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
+    },
+    {
+      "providerId": "junie",
+      "agentProviderCase": "junie",
+      "displayLabel": "Junie",
+      "aliases": [
+        "jetbrains-junie"
+      ],
+      "paths": {
+        "linux": "~/.junie/sessions",
+        "macos": "~/.junie/sessions"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    }
+  ],
+  "goldenUsageVectors": [
+    {
+      "id": "codex-local-exact",
+      "providerCase": "codex",
+      "providerRawValue": "Codex",
+      "sessionId": "session-001",
+      "model": "gpt-5.6",
+      "sourceDeviceId": "linux-arm64",
+      "providerAccountId": "work@example.com",
+      "startTime": "2026-07-20T12:34:56.000Z",
+      "endTime": "2026-07-20T12:35:26.000Z",
+      "inputTokens": 1200,
+      "outputTokens": 300,
+      "cacheCreationTokens": 50,
+      "cacheReadTokens": 200,
+      "reasoningTokens": 25,
+      "costUSD": 0.0425,
+      "expected": {
+        "identityKey": "Codex\u001fsession-001\u001fgpt-5.6\u001flinux-arm64\u001facct_sha256_13f590a5a812c20101362b09",
+        "deterministicId": "4fc5aae3-6b96-5092-842a-ed6012ce9c1d",
+        "billedTotalTokens": 1775,
+        "costUSD": 0.0425,
+        "quotaSignal": true
+      }
+    },
+    {
+      "id": "claude-account-partition",
+      "providerCase": "claudeCode",
+      "providerRawValue": "Claude Code",
+      "sessionId": "claude/session-2",
+      "model": "claude-opus-4-8",
+      "sourceDeviceId": null,
+      "providerAccountId": " acct_sha256_abcdef0123456789abcdef01 ",
+      "startTime": "2026-07-20T08:00:00.000Z",
+      "endTime": "2026-07-20T08:00:01.500Z",
+      "inputTokens": 10,
+      "outputTokens": 20,
+      "cacheCreationTokens": -5,
+      "cacheReadTokens": 40,
+      "reasoningTokens": 0,
+      "costUSD": 0.125,
+      "expected": {
+        "identityKey": "Claude Code\u001fclaude/session-2\u001fclaude-opus-4-8\u001f\u001facct_sha256_abcdef0123456789abcdef01",
+        "deterministicId": "724e7157-6a79-510b-afea-4b3669da5bf2",
+        "billedTotalTokens": 70,
+        "costUSD": 0.125,
+        "quotaSignal": true
+      }
+    },
+    {
+      "id": "openclaude-unavailable-quota",
+      "providerCase": "openClaude",
+      "providerRawValue": "OpenClaude",
+      "sessionId": "offline-3",
+      "model": "unknown",
+      "sourceDeviceId": "macos-arm64",
+      "providerAccountId": null,
+      "startTime": "2026-07-20T23:59:59.000Z",
+      "endTime": "2026-07-21T00:00:00.000Z",
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 0,
+      "reasoningTokens": 0,
+      "costUSD": 0,
+      "expected": {
+        "identityKey": "OpenClaude\u001foffline-3\u001funknown\u001fmacos-arm64\u001f",
+        "deterministicId": "19d49e8f-7931-5cdc-b2f7-061694555696",
+        "billedTotalTokens": 0,
+        "costUSD": 0,
+        "quotaSignal": false
+      }
+    }
+  ]
+}

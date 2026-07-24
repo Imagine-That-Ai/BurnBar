@@ -374,6 +374,10 @@ final class CLIRuntimeModelCatalogTests: XCTestCase {
     }
 
     func test_codexNormalizerAcceptsBundledCatalogSlugs() {
+        XCTAssertEqual(CLIRuntimeModelCatalog.normalizedCodexModel("gpt-5-6"), "gpt-5.6-sol")
+        XCTAssertEqual(CLIRuntimeModelCatalog.normalizedCodexModel("gpt-5-6-sol"), "gpt-5.6-sol")
+        XCTAssertEqual(CLIRuntimeModelCatalog.normalizedCodexModel("gpt-5-6-terra"), "gpt-5.6-terra")
+        XCTAssertEqual(CLIRuntimeModelCatalog.normalizedCodexModel("gpt-5-6-luna"), "gpt-5.6-luna")
         XCTAssertEqual(CLIRuntimeModelCatalog.normalizedCodexModel("gpt-5-5"), "gpt-5.5")
         XCTAssertEqual(CLIRuntimeModelCatalog.normalizedCodexModel("gpt-5-3-codex"), "gpt-5.3-codex")
         XCTAssertEqual(CLIRuntimeModelCatalog.normalizedCodexModel("unknown-frontier-model"), "unknown-frontier-model")

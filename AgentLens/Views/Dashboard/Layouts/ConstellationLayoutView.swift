@@ -80,7 +80,7 @@ extension DashboardView {
     private var constellationStatPills: some View {
         HStack(spacing: DesignSystem.Spacing.lg) {
             ConceptStatTile(
-                label: "Burn",
+                label: "Burn · \(selectedTimeRange.displayName)",
                 value: totalCostForTimeRange.formatAsCost(),
                 accent: DesignSystem.Colors.whimsy
             )

@@ -1,0 +1,45 @@
+WID=35651585
+
+xwininfo: Window id: 0x2200001 "openburnbar-linux-desktop"
+
+  Absolute upper-left X:  10
+  Absolute upper-left Y:  10
+  Relative upper-left X:  10
+  Relative upper-left Y:  10
+  Width: 10
+  Height: 10
+  Depth: 0
+  Visual: 0x131
+  Visual Class: TrueColor
+  Border width: 0
+  Class: InputOnly
+  Colormap: 0x0 (not installed)
+  Bit Gravity State: ForgetGravity
+  Window Gravity State: NorthWestGravity
+  Backing Store State: NotUseful
+  Save Under State: no
+  Map State: IsUnMapped
+  Override Redirect State: no
+  Corners:  +10+10  -1772+10  -1772-831  +10-831
+  -geometry 10x10+10+10
+
+/usr/bin/python3
+desktop_children 16
+0: role='application' name='gnome-shell'
+1: role='application' name='gsd-color'
+2: role='application' name='gsd-keyboard'
+3: role='application' name='spice-vdagent'
+4: role='application' name='gsd-power'
+5: role='application' name='gsd-media-keys'
+6: role='application' name='gsd-wacom'
+7: role='application' name='ibus-x11'
+8: role='application' name='ibus-extension-gtk3'
+9: role='application' name='gsd-xsettings'
+10: role='application' name='evolution-alarm-notify'
+11: role='application' name='openburnbar-linux-desktop'
+  0: role='frame' name='OpenBurnBar'
+12: role='application' name='xdg-desktop-portal-gtk'
+13: role='application' name='mutter-x11-frames'
+14: role='application' name='gjs'
+15: role='application' name='update-notifier'
+DONE

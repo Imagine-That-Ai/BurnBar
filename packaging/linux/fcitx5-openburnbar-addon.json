@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "backend": "fcitx5",
+  "engineID": "org.openburnbar.TextExpansion",
+  "status": "source-only-not-packaged",
+  "nativeAddonPath": null,
+  "sourceContract": "packaging/linux/FCITX5_ADDON_CONTRACT.md",
+  "requiredHeaders": ["Fcitx5Core >= 5.1.6"],
+  "requiredBuildTools": ["cmake >= 3.20", "pkg-config", "C++17 compiler"],
+  "supportsWayland": true,
+  "supportsX11": true,
+  "noGlobalCapture": true,
+  "readsClipboard": false,
+  "readsSurroundingText": false,
+  "secureFieldPolicy": "deny-unless-inspectable-and-explicitly-nonsecure",
+  "promotionBlocker": "fcitx5-native-headers-and-signed-addon-build-unavailable",
+  "runtimeSupport": false,
+  "packageSupport": false,
+  "note": "This manifest is a capability contract only. The release does not ship an Fcitx5 executable or claim system-wide Fcitx5 expansion."
+}

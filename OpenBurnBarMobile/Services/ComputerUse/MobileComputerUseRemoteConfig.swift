@@ -1,3 +1,4 @@
+import FirebaseCore
 import FirebaseRemoteConfig
 import Foundation
 import OpenBurnBarComputerUseCore
@@ -5,6 +6,7 @@ import OpenBurnBarMedia
 
 enum MobileComputerUseRemoteConfig {
     static func phoneControlAttestationRequired() -> Bool {
+        guard FirebaseApp.app() != nil else { return false }
         let remoteConfig = RemoteConfig.remoteConfig()
         return remoteConfig.configValue(forKey: PhoneControlAttestationPolicy.remoteConfigKey).boolValue
     }
@@ -14,6 +16,7 @@ enum MobileComputerUseRemoteConfig {
     /// default registered yet ⇒ ON; a fetched remote value — the operator's
     /// kill switch — always wins, in either direction.
     private static func protectionFlag(forKey key: String) -> Bool {
+        guard FirebaseApp.app() != nil else { return true }
         let value = RemoteConfig.remoteConfig().configValue(forKey: key)
         return value.source == .static ? true : value.boolValue
     }

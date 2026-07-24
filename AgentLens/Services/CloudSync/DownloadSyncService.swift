@@ -491,6 +491,10 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                 let reasoning = data["reasoningTokens"] as? Int ?? 0
                 let srcRaw = data["usageSource"] as? String
                 let usageSource = srcRaw.flatMap { UsageSource(rawValue: $0) } ?? .unknown
+                let executionSourceKind = (data["executionSourceKind"] as? String)
+                    .flatMap { UsageExecutionSourceKind(rawValue: $0) }
+                let executionSourceConfidence = (data["executionSourceConfidence"] as? String)
+                    .flatMap { UsageProvenanceConfidence(rawValue: $0) }
                 let providerID = (data["providerID"] as? String).map { ProviderID(rawValue: $0) } ?? provider.providerID
                 let providerAccountSource = (data["providerAccountSource"] as? String)
                     .flatMap { ProviderAccountStorageScope(rawValue: $0) }
@@ -521,6 +525,10 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                     startTime: startTime,
                     endTime: (data["endTime"] as? Timestamp)?.dateValue() ?? startTime,
                     usageSource: usageSource,
+                    executionSourceID: data["executionSourceID"] as? String,
+                    executionSourceName: data["executionSourceName"] as? String,
+                    executionSourceKind: executionSourceKind,
+                    executionSourceConfidence: executionSourceConfidence,
                     sourceDeviceId: remoteDeviceId,
                     sourceDeviceName: nameMap[remoteDeviceId] ?? remoteDeviceId,
                     isRemote: true,

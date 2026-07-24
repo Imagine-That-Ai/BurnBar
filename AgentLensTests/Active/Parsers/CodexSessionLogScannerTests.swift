@@ -479,6 +479,34 @@ final class CodexSessionLogScannerTests: XCTestCase {
         XCTAssertEqual(secondGovernor.deferredFileCount, 0)
     }
 
+    func test_processThreadRows_attributesCodexHistoryFromSessionMetadata() throws {
+        let cases: [(source: String, originator: String, expectedID: String, expectedKind: UsageExecutionSourceKind)] = [
+            ("cli", "codex-tui", "codex-cli", .cli),
+            ("vscode", "Codex Desktop", "codex-desktop", .desktopApp),
+            ("exec", "unknown", "codex-cli", .cli),
+            ("vscode", "unknown", "codex-vscode", .ide),
+            ("cloud", "unknown", "codex-cloud", .service)
+        ]
+
+        for (index, testCase) in cases.enumerated() {
+            let metadata = #"{"timestamp":"2026-07-20T12:00:00Z","type":"session_meta","payload":{"id":"session","source":"\#(testCase.source)","originator":"\#(testCase.originator)"}}"#
+            let file = try write(
+                metadata + "\n" + cumulativeEvent(input: 1000, output: 100) + "\n",
+                to: "attribution-\(index).jsonl"
+            )
+            let result = try CodexSessionLogScanner.processThreadRows(
+                [makeRow(threadId: "attribution-\(index)", rolloutPath: file.path)],
+                options: LogParseOptions(includeConversationBodies: false),
+                fileManager: fileManager,
+                cacheStore: makeCacheStore(name: "attribution-cache-\(index).json")
+            )
+            let usage = try XCTUnwrap(result.usages.first)
+            XCTAssertEqual(usage.executionSourceID, testCase.expectedID)
+            XCTAssertEqual(usage.executionSourceKind, testCase.expectedKind)
+            XCTAssertEqual(usage.executionSourceConfidence, .exact)
+        }
+    }
+
     func test_processThreadRows_budgetDeferralWithCachedTokens_keepsCachedValues() throws {
         let file1 = try write(cumulativeEvent(input: 1000, output: 100) + "\n", to: "rollout-cached.jsonl")
         let rows = [makeRow(threadId: "thread-cached", rolloutPath: file1.path)]
@@ -564,6 +592,7 @@ final class CodexSessionLogScannerTests: XCTestCase {
         let rows = [makeRow(threadId: "thread-boundary", rolloutPath: file.path)]
         let cacheStore = makeCacheStore()
         let governor = ParserResourceGovernor(limits: .unlimited)
+        let opener = RecordingFileOpener()
 
         let result = try CodexSessionLogScanner.processThreadRows(
             rows,
@@ -573,13 +602,15 @@ final class CodexSessionLogScannerTests: XCTestCase {
                 resourceGovernor: governor
             ),
             fileManager: fileManager,
-            cacheStore: cacheStore
+            cacheStore: cacheStore,
+            openFileForReading: opener.open(path:)
         )
 
         XCTAssertTrue(result.usages.isEmpty, "uncached row below the boundary emits nothing (no heuristic row)")
         XCTAssertTrue(result.conversations.isEmpty)
         XCTAssertTrue(cacheStore.load().fileEntries.isEmpty, "boundary-deferred file must not gain a cache entry")
         XCTAssertEqual(governor.consumedBytes, 0, "boundary-deferred file content is never admitted for reading")
+        XCTAssertTrue(opener.openedPaths.isEmpty, "boundary-deferred attribution must not probe rollout content")
     }
 
     func test_processThreadRows_boundaryDeferWithCachedTokens_reusesCacheWithoutContentRead() throws {
@@ -598,6 +629,7 @@ final class CodexSessionLogScannerTests: XCTestCase {
         // the cached exact tokens must surface without a content read.
         try append(cumulativeEvent(input: 9999, output: 999) + "\n", to: file)
         let governor = ParserResourceGovernor(limits: .unlimited)
+        let opener = RecordingFileOpener()
         let result = try CodexSessionLogScanner.processThreadRows(
             rows,
             options: LogParseOptions(
@@ -606,12 +638,14 @@ final class CodexSessionLogScannerTests: XCTestCase {
                 resourceGovernor: governor
             ),
             fileManager: fileManager,
-            cacheStore: cacheStore
+            cacheStore: cacheStore,
+            openFileForReading: opener.open(path:)
         )
 
         XCTAssertEqual(result.usages.map(\.sessionId), ["thread-boundary-cached"])
         XCTAssertEqual(result.usages.first?.inputTokens, 1000, "boundary defer surfaces cached values, not the new content")
         XCTAssertEqual(governor.consumedBytes, 0)
+        XCTAssertTrue(opener.openedPaths.isEmpty, "cached attribution must survive without reopening deferred content")
     }
 
     func test_processThreadRows_scanFailureWithoutCacheRemainsDeferredAndUncheckpointable() throws {

@@ -1,4 +1,5 @@
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 import CryptoKit
 import Foundation
 import Network
@@ -126,6 +127,7 @@ extension BurnBarHTTPGatewayServer {
                         usageFormat: streamPlan.usageFormat,
                         route: route,
                         idempotencyKey: idempotencyKey,
+                        executionSource: pipeline.executionSource,
                         openStream: streamPlan.openStream
                     )
                     await router.markRouteSuccess(route)
@@ -191,7 +193,12 @@ extension BurnBarHTTPGatewayServer {
                 httpStatus: response.statusCode,
                 streamed: false
             )
-            await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey)
+            await recordUsageIfAvailable(
+                response.usage,
+                route: route,
+                idempotencyKey: idempotencyKey,
+                executionSource: pipeline.executionSource
+            )
             routeLogAttempts.append(routeAttempt(
                 sequence: routeLogAttempts.nextSequence,
                 startedAt: attemptStartedAt,
@@ -266,6 +273,7 @@ extension BurnBarHTTPGatewayServer {
         body: String?,
         connection: NWConnection?,
         corsHeaders: [String: String],
+        executionSource: UsageExecutionSource,
         descriptor: GatewayEndpointDescriptor
     ) async -> GatewayRouteOutcome {
         // remediation(gateway split): body validation + model-override resolution
@@ -300,6 +308,7 @@ extension BurnBarHTTPGatewayServer {
             GatewayDegradeRequest(
                 bodyData: bodyData,
                 accountingRequestID: accountingRequestID,
+                executionSource: executionSource,
                 modelID: modelID,
                 startedAt: routeLogStartedAt,
                 requestPath: descriptor.requestPath,
@@ -477,6 +486,7 @@ extension BurnBarHTTPGatewayServer {
                             wantsStream: wantsStream,
                             resolvedVariant: resolvedVariant,
                             accountingRequestID: accountingRequestID,
+                            executionSource: executionSource,
                             requestedModel: requestedModel,
                             logContext: logContext
                         ),

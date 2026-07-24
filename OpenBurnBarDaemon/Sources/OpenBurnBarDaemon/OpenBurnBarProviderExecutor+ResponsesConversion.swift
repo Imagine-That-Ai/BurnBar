@@ -263,8 +263,32 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         case "input_audio":
             guard part["input_audio"] != nil else { return nil }
             return part
-        case "file":
-            return part
+        case "file", "input_file":
+            // Responses clients use `input_file` for PDFs and other
+            // document inputs. A provider that lacks `/responses` falls
+            // back to Chat Completions, whose compatible native wire shape
+            // is the same data URL used by the macOS attachment encoder.
+            // File IDs and remote URLs cannot be dereferenced by this
+            // bounded bridge, so leave those out rather than silently
+            // forwarding an unsupported part.
+            guard let dataURL = responsesInputFileDataURL(from: part) else {
+                return nil
+            }
+            let mediaType = dataURLMediaType(dataURL)
+            if mediaType == "application/pdf" {
+                var file: [String: Any] = ["file_data": dataURL]
+                if let filename = responsesInputFileName(from: part) {
+                    file["filename"] = filename
+                }
+                return ["type": "file", "file": file]
+            }
+            return [
+                "type": "image_url",
+                "image_url": [
+                    "url": dataURL,
+                    "detail": "auto"
+                ]
+            ]
         default:
             if part["image_url"] != nil {
                 var normalized = part
@@ -276,11 +300,70 @@ extension BurnBarOpenAICompatibleProviderExecutor {
                 normalized["type"] = "input_audio"
                 return normalized
             }
+            if part["file"] != nil || part["file_data"] != nil {
+                guard let dataURL = responsesInputFileDataURL(from: part) else { return nil }
+                var file: [String: Any] = ["file_data": dataURL]
+                if let filename = responsesInputFileName(from: part) {
+                    file["filename"] = filename
+                }
+                return ["type": "file", "file": file]
+            }
             if let text = part["text"] as? String {
                 return ["type": "text", "text": text]
             }
             return nil
         }
+    }
+
+    private static func responsesInputFileDataURL(from part: [String: Any]) -> String? {
+        let nestedFile = part["file"] as? [String: Any]
+        let candidate = (part["file_data"] as? String)
+            ?? (part["data"] as? String)
+            ?? (nestedFile?["file_data"] as? String)
+            ?? (nestedFile?["data"] as? String)
+        guard let candidate,
+              candidate.lowercased().hasPrefix("data:"),
+              let comma = candidate.firstIndex(of: ",") else {
+            return nil
+        }
+        let metadata = candidate[candidate.index(candidate.startIndex, offsetBy: 5)..<comma]
+        let payload = candidate[candidate.index(after: comma)...]
+        let components = metadata.split(separator: ";").map(String.init)
+        guard components.contains(where: { $0.caseInsensitiveCompare("base64") == .orderedSame }),
+              !payload.isEmpty,
+              let mediaType = components.first?.trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased(),
+              mediaType == "application/pdf" || mediaType.hasPrefix("image/") else {
+            return nil
+        }
+        return candidate
+    }
+
+    private static func responsesInputFileName(from part: [String: Any]) -> String? {
+        let nestedFile = part["file"] as? [String: Any]
+        let candidate = (part["filename"] as? String)
+            ?? (nestedFile?["filename"] as? String)
+        let trimmed = candidate?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty,
+              trimmed.count <= 256,
+              !trimmed.contains("/"),
+              !trimmed.contains("\\"),
+              !trimmed.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7f }) else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private static func dataURLMediaType(_ value: String) -> String {
+        guard value.lowercased().hasPrefix("data:"),
+              let comma = value.firstIndex(of: ",") else {
+            return ""
+        }
+        return value[value.index(value.startIndex, offsetBy: 5)..<comma]
+            .split(separator: ";", maxSplits: 1, omittingEmptySubsequences: true)
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
     }
 
     static func chatCompletionsContentIsEmpty(_ value: Any) -> Bool {

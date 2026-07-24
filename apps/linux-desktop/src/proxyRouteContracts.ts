@@ -38,20 +38,3 @@ export const PROXY_ROUTE_FINAL_STATUS_COPY: Record<ProxyRouteFinalStatus, string
   unknown: 'Unknown status'
 };
 
-export type ProxyRouteLogEntry = {
-  id: string;
-  occurredAt: string;
-  endpoint: string;
-  clientModelSlug: string;
-  routingModelSlug?: string;
-  upstreamModelSlug?: string;
-  providerName?: string;
-  accountLabel?: string;
-  finalStatus: ProxyRouteFinalStatus;
-  rewriteKind: string;
-  exactModelInvariant: string;
-  streamed: boolean;
-  streamInterrupted: boolean;
-  httpStatus?: number;
-  failureMessage?: string;
-};

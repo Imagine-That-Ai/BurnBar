@@ -117,6 +117,9 @@ public struct ComputerUseSessionManifest: Codable, Hashable, Sendable {
     public let trustMode: ComputerUseTrustMode
     public let startedAt: Date
     public let userId: String
+    /// Daemon agent run bound to this session. When present, it becomes part
+    /// of the manifest hash and therefore the root of every action audit entry.
+    public let runId: String?
     public let macHostNodeId: String?
     public let phoneViewerNodeId: String?
     public let scopeRuleIds: [String]
@@ -134,6 +137,7 @@ public struct ComputerUseSessionManifest: Codable, Hashable, Sendable {
         trustMode: ComputerUseTrustMode,
         startedAt: Date,
         userId: String,
+        runId: String? = nil,
         macHostNodeId: String? = nil,
         phoneViewerNodeId: String? = nil,
         scopeRuleIds: [String] = [],
@@ -147,6 +151,7 @@ public struct ComputerUseSessionManifest: Codable, Hashable, Sendable {
         self.trustMode = trustMode
         self.startedAt = startedAt
         self.userId = userId
+        self.runId = runId
         self.macHostNodeId = macHostNodeId
         self.phoneViewerNodeId = phoneViewerNodeId
         self.scopeRuleIds = scopeRuleIds

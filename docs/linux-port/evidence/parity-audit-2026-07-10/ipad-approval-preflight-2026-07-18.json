@@ -1,0 +1,24 @@
+{
+  "schema": "openburnbar.parity.ipad-approval-preflight.v1",
+  "generatedAt": "2026-07-18T08:12:00Z",
+  "sourceCommit": "3a9010e229ccad6263b45de622aa97f4e706b6f5",
+  "device": {
+    "name": "Alberto's iPad",
+    "xcodeIdentifier": "00008132-001158191E9A401C",
+    "coreDeviceIdentifier": "407C0B12-010B-5970-8E85-D0E43DA8F457",
+    "connection": "physical-paired"
+  },
+  "preflight": {
+    "exitCode": 0,
+    "passed": true
+  },
+  "focusedApprovalBuild": {
+    "selectors": 7,
+    "xctestMethodsExecuted": false,
+    "runnerExitCode": 143,
+    "guardStopped": true,
+    "peakWorktreeKiB": 10428780,
+    "reason": "arm64 dependency compilation reached the worktree hygiene ceiling before XCTest discovery"
+  },
+  "certifying": false
+}

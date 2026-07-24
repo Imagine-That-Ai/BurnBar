@@ -103,7 +103,10 @@ describe("Linux lower-trust App Check mint", () => {
         createToken,
         nowMillis: NOW,
       }),
-    ).rejects.toThrow(/not allowlisted/i);
+    ).rejects.toMatchObject({
+      code: "permission-denied",
+      details: { reason: "linux_app_not_allowlisted" },
+    });
 
     const replayStore = new Set<string>();
     const claim = validClaim({ nonce: "linux-replay-0000000000" });

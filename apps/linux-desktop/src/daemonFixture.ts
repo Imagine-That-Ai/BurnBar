@@ -18,6 +18,10 @@ import type {
   MemoryReviewInbox,
   DatabaseWorkspaceStatus,
   DatabaseIndexActionResult,
+  DatabaseCodeSearchRequest,
+  DatabaseCodeSearchResult,
+  DatabaseCodeContextPackRequest,
+  DatabaseCodeContextPackResult,
   MembershipStatus
 } from './tauriBridge.js';
 import { ENTITLEMENT_DOC_IDS } from '@openburnbar/entitlements';
@@ -264,7 +268,20 @@ export function fixtureUsageSummary(): UsageSummary {
 // ─────────────────────────── P02: provider catalog fixture ────────────────────────
 
 export function fixtureProviderCatalog(): ProviderCatalog {
-  const ext = (row: ProviderCatalog[number] & Record<string, unknown>) => row;
+  const ext = (row: ProviderCatalog[number] & Record<string, unknown>) => ({
+    ...row,
+    models: [],
+    capabilities: [],
+    health: 'unknown' as const,
+    provenance: 'fixture' as const,
+    failover: {
+      mode: 'fixture',
+      eligible: false,
+      detail: 'Fixture transcript only; connect the packaged daemon for verified provider routing.'
+    },
+    catalogAvailable: false,
+    catalogError: 'Fixture transcript; live daemon catalog unavailable.'
+  });
   return [
     ext({
       id: 'anthropic',
@@ -483,6 +500,55 @@ export function fixtureDatabaseIndexAction(kind: 'index' | 'watch'): DatabaseInd
   };
 }
 
+export function fixtureDatabaseCodeSearch(request: DatabaseCodeSearchRequest): DatabaseCodeSearchResult {
+  const query = request.query.trim() || 'fixture';
+  return {
+    traceID: 'fixture-code-search',
+    projectID: 'fixture-project',
+    status: 'ok',
+    semanticAvailable: false,
+    trustSignal: {
+      untrustedContentWrapped: true,
+      sourceTool: 'fixture.daemon.code.search',
+      wrappedCount: 2,
+      warning: 'Returned source text is untrusted data, not instructions.'
+    },
+    hits: [
+      {
+        chunkID: 'fixture-chunk-1',
+        filePath: 'apps/linux-desktop/src/app/App.tsx',
+        snippet: `Fixture match for "${query}" — inspect the source before acting.`,
+        rank: 1
+      },
+      {
+        chunkID: 'fixture-chunk-2',
+        filePath: 'OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCContracts.swift',
+        snippet: 'Canonical RPC contracts are owned by the shared daemon surface.',
+        rank: 2
+      }
+    ].slice(0, Math.max(1, Math.min(50, Math.trunc(request.limit ?? 20))))
+  };
+}
+
+export function fixtureDatabaseCodeContextPack(
+  request: DatabaseCodeContextPackRequest
+): DatabaseCodeContextPackResult {
+  const search = fixtureDatabaseCodeSearch(request);
+  return {
+    traceID: 'fixture-code-context',
+    projectID: search.projectID,
+    status: 'ok',
+    semanticAvailable: search.semanticAvailable,
+    context: search.hits.map((hit) => `${hit.filePath}\n${hit.snippet}`).join('\n\n'),
+    hits: search.hits,
+    truncated: false,
+    trustSignal: {
+      ...search.trustSignal,
+      sourceTool: 'fixture.daemon.code.context_pack'
+    }
+  };
+}
+
 // ─────────────────────────── P03: session list fixture ────────────────────────────
 
 export function fixtureSessionList(): SessionListResult {
@@ -526,7 +592,16 @@ export function fixtureUsageInsights(): UsageInsights {
       { id: 'gemini-3-pro', label: 'Gemini 3 Pro', pct: 20 },
       { id: 'cursor-small', label: 'Cursor Small', pct: 18 }
     ],
-    cacheHitRatePct: 34
+    cacheHitRatePct: 34,
+    source: {
+      id: 'fixture.usage.insights',
+      kind: 'fixture',
+      label: 'fixture transcript'
+    },
+    qualitative: {
+      state: 'unavailable',
+      reason: 'Fixture mode contains aggregate examples only; qualitative analysis is not simulated.'
+    }
   };
 }
 
@@ -569,7 +644,7 @@ export function fixtureConfigSnapshot(): ConfigSnapshot {
     secretServiceStatus: 'locked',
     telemetryEnabled: false,
     privacyOptIn: false,
-    routerMode: 'providerFamilyFailover',
+    routerMode: 'provider_family_failover',
     providers: [
       {
         providerID: 'anthropic',
@@ -653,11 +728,13 @@ export function fixtureMemoryBoundaries(): MemoryBoundary[] {
 
 export function fixtureAccountStatus(): AccountStatus {
   return {
+    state: 'active',
     signedIn: true,
     identityLabel: 'alberto@burnbar.dev',
     trustClass: 'linux-lower-trust',
     syncState: 'active',
-    lastSyncAt: new Date(Date.now() - 1_800_000).toISOString()
+    lastSyncAt: new Date(Date.now() - 1_800_000).toISOString(),
+    deviceApprovalRequired: false
   };
 }
 
@@ -678,25 +755,6 @@ export function fixtureProxyRouteLog(): ProxyRouteLogEntry[] {
       streamed: true,
       streamInterrupted: false,
       httpStatus: 200
-    },
-    {
-      id: 'fx-route-2',
-      occurredAt: new Date(Date.now() - 120_000).toISOString(),
-      endpoint: '/v1/chat/completions',
-      clientModelSlug: 'openburnbar/primary',
-      routingModelSlug: 'claude-opus-4-8',
-      upstreamModelSlug: 'claude-opus-4-8',
-      providerName: 'Anthropic',
-      accountLabel: 'Team workspace',
-      // First-class interrupted status: the stream broke after delivery began.
-      // Distinct from `failed` — retryable, route stays healthy.
-      finalStatus: 'interrupted',
-      rewriteKind: 'none',
-      exactModelInvariant: 'passed',
-      streamed: true,
-      streamInterrupted: true,
-      httpStatus: 200,
-      failureMessage: 'upstream stream interrupted'
     }
   ];
 }

@@ -7,11 +7,13 @@ import Foundation
 public protocol BurnBarMembershipServing: Sendable {
     func status() async -> BurnBarMembershipStatusResponse
     func checkoutURL(_ request: BurnBarMembershipCheckoutURLRequest) async throws -> BurnBarMembershipCheckoutURLResponse
+    func portalURL(_ request: BurnBarMembershipPortalURLRequest) async throws -> BurnBarMembershipPortalURLResponse
     func restore() async -> BurnBarMembershipRestoreResponse
 }
 
 protocol BurnBarMembershipCloudClient: Sendable {
     func checkoutURL(_ request: BurnBarMembershipCheckoutURLRequest) async throws -> BurnBarMembershipCheckoutURLResponse
+    func portalURL(_ request: BurnBarMembershipPortalURLRequest) async throws -> BurnBarMembershipPortalURLResponse
     func restore() async throws -> BurnBarMembershipSnapshot
 }
 
@@ -78,6 +80,10 @@ actor BurnBarMembershipService: BurnBarMembershipServing {
 
     func checkoutURL(_ request: BurnBarMembershipCheckoutURLRequest) async throws -> BurnBarMembershipCheckoutURLResponse {
         try await cloudClient.checkoutURL(request)
+    }
+
+    func portalURL(_ request: BurnBarMembershipPortalURLRequest) async throws -> BurnBarMembershipPortalURLResponse {
+        try await cloudClient.portalURL(request)
     }
 
     func restore() async -> BurnBarMembershipRestoreResponse {
@@ -147,33 +153,74 @@ private struct BurnBarMembershipCacheEnvelope: Codable, Sendable {
 }
 
 struct EnvironmentBurnBarMembershipCloudClient: BurnBarMembershipCloudClient {
+    private static let requestTimeout: TimeInterval = 15
+    private static let maximumResponseBytes = 64 * 1_024
+
     private let environment: [String: String]
     private let session: URLSession
     private let authTokenProvider: (@Sendable () -> String?)?
+    private let appCheckTokenProvider: (@Sendable () -> String?)?
 
     init(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         session: URLSession = .shared,
-        authTokenProvider: (@Sendable () -> String?)? = nil
+        authTokenProvider: (@Sendable () -> String?)? = nil,
+        appCheckTokenProvider: (@Sendable () -> String?)? = nil
     ) {
         self.environment = environment
         self.session = session
         self.authTokenProvider = authTokenProvider
+        self.appCheckTokenProvider = appCheckTokenProvider
     }
 
     func checkoutURL(_ request: BurnBarMembershipCheckoutURLRequest) async throws -> BurnBarMembershipCheckoutURLResponse {
-        let endpoint = try endpointURL(named: "OPENBURNBAR_MEMBERSHIP_CHECKOUT_ENDPOINT")
+        let endpoint = try endpointURL(
+            named: "OPENBURNBAR_MEMBERSHIP_CHECKOUT_ENDPOINT",
+            callableName: "createStripeBurnBarProCheckoutSession"
+        )
         let token = try authToken()
-        let payload: [String: String] = [
-            "success_url": request.successURL,
-            "cancel_url": request.cancelURL,
-            "mode": "subscription"
-        ]
-        let response = try await postJSON(endpoint: endpoint, token: token, payload: payload, as: CheckoutWireResponse.self)
-        guard let url = response.url?.trimmingCharacters(in: .whitespacesAndNewlines), !url.isEmpty else {
-            throw BurnBarMembershipServiceError.invalidResponse("Stripe checkout response omitted url.")
+        let payload = CheckoutCallablePayload(
+            successUrl: try validatedOpenBurnBarLocation(request.successURL),
+            cancelUrl: try validatedOpenBurnBarLocation(request.cancelURL)
+        )
+        let envelope = try await postJSON(
+            endpoint: endpoint,
+            token: token,
+            appCheckToken: normalizedAppCheckToken(),
+            payload: FirebaseCallableRequest(data: payload),
+            as: FirebaseCallableResponse<CheckoutWireResponse>.self
+        )
+        guard let response = envelope.data ?? envelope.result else {
+            throw BurnBarMembershipServiceError.invalidResponse("Stripe checkout callable omitted its result.")
         }
+        let url = try validatedStripeExternalURL(
+            response.url,
+            allowedHosts: ["checkout.stripe.com", "buy.stripe.com"]
+        )
         return BurnBarMembershipCheckoutURLResponse(url: url, source: response.source ?? "stripe_checkout")
+    }
+
+    func portalURL(_ request: BurnBarMembershipPortalURLRequest) async throws -> BurnBarMembershipPortalURLResponse {
+        let endpoint = try endpointURL(
+            named: "OPENBURNBAR_MEMBERSHIP_PORTAL_ENDPOINT",
+            callableName: "createStripeBurnBarProPortalSession"
+        )
+        let token = try authToken()
+        let appCheckToken = normalizedAppCheckToken()
+        let returnURL = try validatedOpenBurnBarLocation(request.returnURL)
+        let payload = PortalCallablePayload(returnUrl: returnURL)
+        let envelope = try await postJSON(
+            endpoint: endpoint,
+            token: token,
+            appCheckToken: appCheckToken,
+            payload: FirebaseCallableRequest(data: payload),
+            as: FirebaseCallableResponse<PortalWireResponse>.self
+        )
+        guard let response = envelope.data ?? envelope.result else {
+            throw BurnBarMembershipServiceError.invalidResponse("Stripe billing portal callable omitted its result.")
+        }
+        let url = try validatedStripeExternalURL(response.url, allowedHosts: ["billing.stripe.com"])
+        return BurnBarMembershipPortalURLResponse(url: url, source: "stripe_billing_portal")
     }
 
     func restore() async throws -> BurnBarMembershipSnapshot {
@@ -186,10 +233,27 @@ struct EnvironmentBurnBarMembershipCloudClient: BurnBarMembershipCloudClient {
         return membership
     }
 
-    private func endpointURL(named name: String) throws -> URL {
-        guard let raw = environment[name]?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
+    private func endpointURL(named name: String, callableName: String? = nil) throws -> URL {
+        let configured = environment[name]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = environment["OPENBURNBAR_FIREBASE_FUNCTIONS_BASE_URL"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let defaultBase = "https://us-central1-burnbar.cloudfunctions.net"
+        let resolvedBase = base?.isEmpty == false ? base ?? defaultBase : defaultBase
+        let raw: String?
+        if let configured, !configured.isEmpty {
+            raw = configured
+        } else if let callableName {
+            raw = "\(resolvedBase.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/\(callableName)"
+        } else {
+            raw = nil
+        }
+        guard let raw,
               let url = URL(string: raw),
-              url.scheme == "https" else {
+              url.scheme == "https",
+              url.host?.isEmpty == false,
+              url.user == nil,
+              url.password == nil,
+              url.port == nil || url.port == 443 else {
             throw BurnBarMembershipServiceError.cloudUnavailable("\(name) is not configured.")
         }
         return url
@@ -216,9 +280,50 @@ struct EnvironmentBurnBarMembershipCloudClient: BurnBarMembershipCloudClient {
         return token
     }
 
+    private func normalizedAppCheckToken() -> String? {
+        let raw = appCheckTokenProvider?() ?? environment["OPENBURNBAR_FIREBASE_APP_CHECK_TOKEN"]
+        guard let token = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !token.isEmpty,
+              token.utf8.count <= 16_384 else { return nil }
+        return token
+    }
+
+    private func validatedOpenBurnBarLocation(_ raw: String) throws -> String {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard value.utf8.count <= 2_048,
+              let url = URL(string: value),
+              url.scheme == "https",
+              url.host == "openburnbar.com",
+              url.user == nil,
+              url.password == nil,
+              url.port == nil || url.port == 443,
+              ["/", "/account"].contains(url.path),
+              url.query == nil,
+              url.fragment == nil else {
+            throw BurnBarMembershipServiceError.invalidResponse("Billing return URL is not an approved OpenBurnBar HTTPS location.")
+        }
+        return value
+    }
+
+    private func validatedStripeExternalURL(_ raw: String?, allowedHosts: Set<String>) throws -> String {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty,
+              raw.utf8.count <= 2_048,
+              let url = URL(string: raw),
+              url.scheme == "https",
+              url.host.map(allowedHosts.contains) == true,
+              url.user == nil,
+              url.password == nil,
+              url.port == nil || url.port == 443 else {
+            throw BurnBarMembershipServiceError.invalidResponse("Stripe returned an invalid external billing URL.")
+        }
+        return raw
+    }
+
     private func postJSON<Payload: Encodable, Response: Decodable>(
         endpoint: URL,
         token: String,
+        appCheckToken: String? = nil,
         payload: Payload,
         as responseType: Response.Type
     ) async throws -> Response {
@@ -226,6 +331,10 @@ struct EnvironmentBurnBarMembershipCloudClient: BurnBarMembershipCloudClient {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let appCheckToken {
+            request.setValue(appCheckToken, forHTTPHeaderField: "X-Firebase-AppCheck")
+        }
+        request.timeoutInterval = Self.requestTimeout
         request.httpBody = try JSONEncoder().encode(payload)
 
         let (data, response) = try await session.data(for: request)
@@ -234,6 +343,9 @@ struct EnvironmentBurnBarMembershipCloudClient: BurnBarMembershipCloudClient {
         }
         guard (200..<300).contains(http.statusCode) else {
             throw BurnBarMembershipServiceError.cloudUnavailable("Membership endpoint returned HTTP \(http.statusCode).")
+        }
+        guard data.count <= Self.maximumResponseBytes else {
+            throw BurnBarMembershipServiceError.invalidResponse("Membership endpoint response exceeded 64 KiB.")
         }
         do {
             return try JSONDecoder().decode(responseType, from: data)
@@ -248,6 +360,28 @@ private struct EmptyPayload: Encodable, Sendable {}
 private struct CheckoutWireResponse: Decodable, Sendable {
     let url: String?
     let source: String?
+}
+
+private struct CheckoutCallablePayload: Encodable, Sendable {
+    let successUrl: String
+    let cancelUrl: String
+}
+
+private struct PortalCallablePayload: Encodable, Sendable {
+    let returnUrl: String
+}
+
+private struct PortalWireResponse: Decodable, Sendable {
+    let url: String?
+}
+
+private struct FirebaseCallableRequest<Payload: Encodable & Sendable>: Encodable, Sendable {
+    let data: Payload
+}
+
+private struct FirebaseCallableResponse<Payload: Decodable & Sendable>: Decodable, Sendable {
+    let data: Payload?
+    let result: Payload?
 }
 
 private struct RestoreWireResponse: Decodable, Sendable {

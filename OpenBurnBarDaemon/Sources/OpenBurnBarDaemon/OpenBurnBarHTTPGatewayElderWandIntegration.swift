@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 
 // MARK: - The Elder Wand — model-fusion integration
 
@@ -30,10 +31,14 @@ extension BurnBarHTTPGatewayServer {
         wantsStream: Bool,
         connection: NWConnection,
         corsHeaders: [String: String],
-        hostedSearch: ElderWandHostedSearchConfig?
+        hostedSearch: ElderWandHostedSearchConfig?,
+        executionSource: UsageExecutionSource
     ) async -> GatewayRouteOutcome {
         let startedAt = Date()
-        let orchestrator = makeElderWandOrchestrator(hostedSearch: hostedSearch)
+        let orchestrator = makeElderWandOrchestrator(
+            hostedSearch: hostedSearch,
+            executionSource: executionSource
+        )
         let result = await orchestrator.run(
             bodyData: bodyData,
             plugin: plugin,
@@ -68,6 +73,7 @@ extension BurnBarHTTPGatewayServer {
                     route: streaming.route.route,
                     idempotencyKey: idempotencyKey,
                     parentRequestID: streaming.parentRequestID,
+                    executionSource: executionSource,
                     openStream: {
                         try await self.providerExecutor.openChatCompletionsStream(
                             body: streaming.requestBody,
@@ -114,7 +120,8 @@ extension BurnBarHTTPGatewayServer {
                 return await runElderWandBufferedSynthesisFallback(
                     streaming: streaming,
                     startedAt: startedAt,
-                    corsHeaders: corsHeaders
+                    corsHeaders: corsHeaders,
+                    executionSource: executionSource
                 )
             } catch {
                 await recordElderWandRouteFailure(streaming.route, error: error)
@@ -140,7 +147,8 @@ extension BurnBarHTTPGatewayServer {
     private func runElderWandBufferedSynthesisFallback(
         streaming: ElderWandFusionResult.Streaming,
         startedAt: Date,
-        corsHeaders: [String: String]
+        corsHeaders: [String: String],
+        executionSource: UsageExecutionSource
     ) async -> GatewayRouteOutcome {
         // Re-encode the synthesis body with stream:false.
         var bufferedBody = streaming.requestBody
@@ -163,7 +171,8 @@ extension BurnBarHTTPGatewayServer {
                 response.usage,
                 route: streaming.route.route,
                 idempotencyKey: idempotencyKey,
-                parentRequestID: streaming.parentRequestID
+                parentRequestID: streaming.parentRequestID,
+                executionSource: executionSource
             )
             await recordElderWandRouteLog(
                 stageLabel: "synthesis",
@@ -188,7 +197,10 @@ extension BurnBarHTTPGatewayServer {
     }
 
     /// Construct an orchestrator over the server's stored deps.
-    private func makeElderWandOrchestrator(hostedSearch: ElderWandHostedSearchConfig?) -> ElderWandFusionOrchestrator {
+    private func makeElderWandOrchestrator(
+        hostedSearch: ElderWandHostedSearchConfig?,
+        executionSource: UsageExecutionSource
+    ) -> ElderWandFusionOrchestrator {
         let tools = ElderWandWebTools(hostedSearch: hostedSearch).makeTools()
         return ElderWandFusionOrchestrator(
             resolveRoute: { [self] modelSlug in
@@ -198,7 +210,7 @@ extension BurnBarHTTPGatewayServer {
                 try await self.executeElderWandBufferedCompletion(body: body, resolved: resolved)
             },
             recordSubCall: { [self] record in
-                await self.recordElderWandSubCall(record)
+                await self.recordElderWandSubCall(record, executionSource: executionSource)
             },
             tools: tools,
             recursionMarkerKey: Self.fusionRecursionMarkerKey,
@@ -380,7 +392,10 @@ extension BurnBarHTTPGatewayServer {
 
     /// Record one usage event + one route-log row for a panel/judge sub-call,
     /// stamping the shared `parentRequestID` and a distinct idempotency key.
-    private func recordElderWandSubCall(_ record: ElderWandSubCallRecord) async {
+    private func recordElderWandSubCall(
+        _ record: ElderWandSubCallRecord,
+        executionSource: UsageExecutionSource
+    ) async {
         let startedAt = Date()
         guard let route = record.route else {
             // No-route failure: still record a rejected route-log row so the
@@ -404,7 +419,8 @@ extension BurnBarHTTPGatewayServer {
                 record.usage,
                 route: route,
                 idempotencyKey: idempotencyKey,
-                parentRequestID: record.parentRequestID
+                parentRequestID: record.parentRequestID,
+                executionSource: executionSource
             )
         }
 

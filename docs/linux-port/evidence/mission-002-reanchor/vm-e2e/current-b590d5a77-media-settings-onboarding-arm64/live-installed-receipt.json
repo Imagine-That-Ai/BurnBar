@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-19T13:34:38Z",
+  "environment": {
+    "vm": "OpenBurnBar Linux",
+    "ip": "192.168.64.5",
+    "os": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME/X11",
+    "pythonAtspi": "python3-pyatspi 2.46.1-1"
+  },
+  "source": {
+    "commit": "b590d5a77d",
+    "codeSlices": [
+      "2e609b4061 media decoder teardown outside viewer lock",
+      "d581da37b7 live Media & Sharing capability settings",
+      "47cbf2e2f0 fail-closed onboarding Secret Service cleanup",
+      "5e0fc0e82 Insights Compare and Launch at login unavailable-source guard"
+    ],
+    "scope": "Exact candidate source copied into the VM checkout before the DEB build."
+  },
+  "candidate": {
+    "package": "open-burn-bar",
+    "packageVersion": "0.1.1",
+    "packageArchitecture": "arm64",
+    "packagePath": "/home/burnbar/BurnBar/apps/linux-desktop/src-tauri/target/release/bundle/deb/OpenBurnBar_0.1.1_arm64.deb",
+    "packageSha256": "d96f09b2c71212af6cccb44a6797b6f2c23471e69800206382724d2cd6deb3d0",
+    "packageBytes": 151411108,
+    "packageStatus": "install ok installed"
+  },
+  "installed": {
+    "/usr/bin/openburnbar-linux-desktop": {
+      "sha256": "d3a4c3a4bf7def883c91bd79e80f461ce95da8e7079dd58b918555c86cf22a9c",
+      "mode": "0755",
+      "uid": 0
+    },
+    "/usr/bin/openburnbar-daemon": {
+      "sha256": "fb0f87ccc0638f84c2ba9f2a34ca97f8cec707534a5473f19bf6f317291c480c",
+      "mode": "0755",
+      "uid": 0
+    },
+    "/usr/bin/openburnbar-cli": {
+      "sha256": "db0d6931ca8644a91f78ee3dccac27364bab5a373e63917a53915cf836e180e5",
+      "mode": "0755",
+      "uid": 0
+    }
+  },
+  "service": {
+    "unit": "openburnbar-daemon.service",
+    "enabled": true,
+    "active": true,
+    "desktopPid": 102418,
+    "desktopProcessCount": 1,
+    "daemonHealth": "Daemon 1.0.29 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true",
+    "cliHealth": "pass",
+    "desktopLog": "/tmp/openburnbar-linux-desktop-current.log",
+    "desktopLogFatalOrStub": false,
+    "desktopLogNote": "The only launch warning was the non-fatal WebGL GBM fallback."
+  },
+  "verification": {
+    "frontendSuite": "83 files / 787 tests passed",
+    "typescript": "pass",
+    "productionBundleVerifier": "pass",
+    "tauriRustLibrarySuite": "125/125 passed",
+    "tauriFormatCheck": "pass",
+    "focusedInsightsTests": "28/28 passed",
+    "focusedAutostartRustTests": "4/4 passed",
+    "focusedSettingsBridgeTests": "39/39 passed",
+    "focusedSettingsSurfaceTests": "31/31 passed",
+    "focusedSettingsAccessibilityTests": "32/32 passed",
+    "linuxOnboardingTests": "8/8 passed on Ubuntu",
+    "mediaDecoderLifecycleTests": {
+      "mediaGst": "6/6 passed",
+      "featureOff": "5/5 passed",
+      "change": "Decoder detaches under the viewer lock and GStreamer teardown runs outside the lock."
+    },
+    "gstreamerLibraries": [
+      "libgstreamer-1.0.so.0",
+      "libgstbase-1.0.so.0",
+      "libgstapp-1.0.so.0",
+      "libgstvideo-1.0.so.0"
+    ],
+    "gstreamerProbes": {
+      "vp9dec": "available",
+      "ximagesink": "available"
+    },
+    "secretServiceRoundTrip": "pass",
+    "secretSentinelCleanup": "pass",
+    "gnomeKeyringDaemon": "active",
+    "ibusDaemon": "active",
+    "autostartTemplate": {
+      "path": "/etc/xdg/autostart/openburnbar.desktop",
+      "sha256": "e438b15af948bc448594e206f7291c44fa4ecb3f977db7f704cee28a6b963c50",
+      "mode": "0644",
+      "owner": "root:root",
+      "enabled": true
+    },
+    "atspiCapture": {
+      "summary": "pass",
+      "nodeCount": 34,
+      "namedNodeCount": 23,
+      "actionableNodeCount": 15,
+      "focusableNodeCount": 18,
+      "readinessAttempts": 1
+    },
+    "atspiSettingsActivation": {
+      "activation": "pass",
+      "routeSummary": "pass",
+      "expectedName": "Settings",
+      "nodeCount": 34,
+      "namedNodeCount": 23,
+      "actionableNodeCount": 15,
+      "routeState": "The Settings heading is exposed, but the bounded capture still reports Loading Settings; Launch at login and Media capability controls were not directly activated through AT-SPI."
+    },
+    "windowDiscovery": "xwininfo found one OpenBurnBar window (1280x782) and one tray window",
+    "visualCapture": "not certifying: headless UTM framebuffer screenshot was black"
+  },
+  "certifying": false,
+  "nonCertifyingReasons": [
+    "The DEB is an unsigned local candidate, not a signed release artifact with immutable provenance.",
+    "The strict parity ledger remains 0/40 product rows and 0/7 environment receipts.",
+    "The Settings route is accessible but remained in a Loading state during the bounded AT-SPI capture, so Launch at login and Media capability controls were not directly toggled live.",
+    "No physical iPad/Linux enrollment, approval execution, two-device Mercury, or Browser Computer Use flow was executed in this receipt.",
+    "KDE/Wayland/wlroots, locked-keyring recovery, IME behavior, performance, update/rollback, and production receipts remain open."
+  ]
+}

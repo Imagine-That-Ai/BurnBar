@@ -82,6 +82,8 @@ export const INPUT_VALIDATOR_TOKENS = [
   "requireTrustedDeviceActionProof",
   "enforceHighRiskOwnerAction",
   "parseProvider",
+  // Linux cloud replica wire-contract parser (nested object/array validation).
+  "parseLinuxCloudPushRequest",
 ];
 
 const CALLABLE_RE = /export const (\w+)\s*=\s*(onCall|onCallProduction)\b/g;

@@ -3,6 +3,9 @@ package com.openburnbar.data.computeruse
 
 import com.google.firebase.functions.FirebaseFunctions
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -48,5 +51,32 @@ class ComputerUseSecurityCallableClientTest {
                 error.cause?.message,
             )
         }
+    }
+
+    @Test
+    fun routeCallable_rejectsAccountReplacementBeforeReturningResponse() = runTest {
+        var currentUid = "uid-a"
+        val callableStarted = CompletableDeferred<Unit>()
+        val releaseCallable = CompletableDeferred<Unit>()
+
+        val pending = async {
+            runCatching {
+                callBoundToExpectedUid(expectedUid = "uid-a", currentUidProvider = { currentUid }) {
+                    callableStarted.complete(Unit)
+                    releaseCallable.await()
+                    "server-response"
+                }
+            }
+        }
+        callableStarted.await()
+        currentUid = "uid-b"
+        releaseCallable.complete(Unit)
+        val outcome = pending.await()
+
+        assertTrue(outcome.exceptionOrNull() is IllegalStateException)
+        assertEquals(
+            "The signed-in account changed during this Computer Use security action.",
+            outcome.exceptionOrNull()?.message,
+        )
     }
 }

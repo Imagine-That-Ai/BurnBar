@@ -207,7 +207,12 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
     }
 }
 
-/// POSIX Process-based CLI runner (no Darwin `script(1)` dependency).
+/// Linux PTY-backed CLI runner.
+///
+/// A plain `Pipe` makes interactive CLIs switch to batch mode because their
+/// standard streams are not terminals.  `LinuxPTYCLIProcess` below gives each
+/// child a controlling PTY and a dedicated process group while keeping output
+/// bounded and cancellation owned by the async caller.
 public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
     private let profileStore: any BurnBarSwitcherProfileStoreProviding
     private let environmentProvider: @Sendable () -> [String: String]
@@ -219,6 +224,7 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
         "BURNBAR_GATEWAY_AUTH_TOKEN"
     ]
     private static let deniedPrefixes = ["OPENBURNBAR_DAEMON_", "BURNBAR_DAEMON_", "OPENBURNBAR_GATEWAY_", "BURNBAR_GATEWAY_"]
+    private static let terminalDetailByteCap = 2_000
 
     public init(
         profileStore: any BurnBarSwitcherProfileStoreProviding,
@@ -242,6 +248,12 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
                 .compactMap({ BurnBarSwitcherSQLiteProfileStore.resolveExecutable($0, pathDirs: pathDirectories) })
                 .first {
                 let result = try await runProcess(executable: binary, arguments: request.forwardedArguments, workingDirectory: nil)
+                if result.status != 0 {
+                    throw BurnBarSwitcherShellError.terminalExited(
+                        result.status,
+                        detail: Self.boundedTerminalDetail(result.output)
+                    )
+                }
                 return BurnBarCLIShellExecutionResult(
                     exitCode: result.status,
                     launchedProfileID: "linux-path-\(request.cliType.rawValue)",
@@ -269,6 +281,7 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
         var attempted: [String] = []
         var lastStatus: Int32 = EXIT_FAILURE
         var lastDetail: String?
+        var didRunProcess = false
 
         for profile in candidates {
             attempted.append(profile.id)
@@ -279,6 +292,7 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
             else { continue }
             let cwd = profile.cliMetadata?.workingDirectory
             let extraArgs = profile.cliMetadata?.additionalArgs ?? []
+            didRunProcess = true
             let result = try await runProcess(
                 executable: binary,
                 arguments: extraArgs + request.forwardedArguments,
@@ -297,8 +311,11 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
             }
         }
 
-        if let lastDetail, !lastDetail.isEmpty {
-            throw BurnBarSwitcherShellError.terminalExited(lastStatus, detail: String(lastDetail.prefix(2_000)))
+        if didRunProcess, lastStatus != 0 {
+            throw BurnBarSwitcherShellError.terminalExited(
+                lastStatus,
+                detail: Self.boundedTerminalDetail(lastDetail ?? "")
+            )
         }
         return BurnBarCLIShellExecutionResult(
             exitCode: lastStatus,
@@ -313,32 +330,23 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
         arguments: [String],
         workingDirectory: String?
     ) async throws -> (status: Int32, output: String) {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    let process = Process()
-                    process.executableURL = executable
-                    process.arguments = arguments
-                    var env = self.sanitizedEnvironment(self.environmentProvider())
-                    env["TERM"] = env["TERM"] ?? "xterm-256color"
-                    process.environment = env
-                    if let workingDirectory {
-                        process.currentDirectoryURL = URL(fileURLWithPath: workingDirectory)
-                    }
-                    let pipe = Pipe()
-                    process.standardOutput = pipe
-                    process.standardError = pipe
-                    try process.run()
-                    process.waitUntilExit()
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    let text = String(data: data, encoding: .utf8) ?? ""
-                    continuation.resume(returning: (process.terminationStatus, text))
-                } catch {
-                    continuation.resume(
-                        throwing: BurnBarSwitcherShellError.terminalSpawnFailed(error.localizedDescription)
-                    )
-                }
-            }
+        var environment = sanitizedEnvironment(environmentProvider())
+        environment["TERM"] = environment["TERM"] ?? "xterm-256color"
+        let session = LinuxPTYCLIProcess(
+            executable: executable,
+            arguments: arguments,
+            environment: environment,
+            workingDirectory: workingDirectory.map { URL(fileURLWithPath: $0) }
+        )
+
+        do {
+            return try await session.run()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as BurnBarSwitcherShellError {
+            throw error
+        } catch {
+            throw BurnBarSwitcherShellError.terminalSpawnFailed(error.localizedDescription)
         }
     }
 
@@ -350,6 +358,332 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
             }
             return true
         }
+    }
+
+    /// Keep terminal diagnostics bounded in bytes, not characters.  A
+    /// character-count prefix can exceed the contract for non-ASCII output.
+    private static func boundedTerminalDetail(_ output: String) -> String? {
+        guard !output.isEmpty else { return nil }
+
+        var end = output.startIndex
+        var byteCount = 0
+        while end < output.endIndex {
+            let next = output.index(after: end)
+            let characterByteCount = output[end..<next].utf8.count
+            guard byteCount + characterByteCount <= terminalDetailByteCap else { break }
+            byteCount += characterByteCount
+            end = next
+        }
+
+        guard end > output.startIndex else { return nil }
+        return String(output[..<end])
+    }
+}
+
+// AUDIT(@unchecked Sendable): mutable process state is guarded by `state`'s lock;
+// launch configuration is immutable. sendable-allowlist: process-handle
+/// One non-interactive invocation attached to a Linux pseudo-terminal.
+///
+/// `forkpty` creates the PTY pair, makes the child a session leader with the
+/// slave as its controlling terminal, and gives the child a process group whose
+/// negative PID can be used to terminate descendants.  The parent drains the
+/// master from a nonblocking polling loop so a chatty CLI cannot deadlock or
+/// grow memory without bound.
+private final class LinuxPTYCLIProcess: @unchecked Sendable {
+    /// C argument storage is prepared before `forkpty`.  The child then only
+    /// performs `chdir`/`execve` using inherited pointers, avoiding Swift/heap
+    /// allocation while another daemon thread may still be running.
+    private final class PreparedLaunch {
+        let executablePath: String
+        let workingDirectoryPath: String?
+        var argv: [UnsafeMutablePointer<CChar>?]
+        var envp: [UnsafeMutablePointer<CChar>?]
+
+        init(executablePath: String, arguments: [String], environment: [String: String], workingDirectoryPath: String?) {
+            self.executablePath = executablePath
+            self.workingDirectoryPath = workingDirectoryPath
+            argv = ([executablePath] + arguments).map { argument in
+                argument.withCString { strdup($0) }
+            }
+            argv.append(nil)
+
+            let environmentEntries: [String] = environment
+                .map { "\($0.key)=\($0.value)" }
+                .sorted()
+            envp = environmentEntries.map { entry in
+                entry.withCString { strdup($0) }
+            }
+            envp.append(nil)
+        }
+
+        deinit {
+            for pointer in argv {
+                if let pointer { free(pointer) }
+            }
+            for pointer in envp {
+                if let pointer { free(pointer) }
+            }
+        }
+
+        /// Runs only in the forkpty child and never returns.
+        func exec() -> Never {
+            if let workingDirectoryPath {
+                let result = workingDirectoryPath.withCString { chdir($0) }
+                guard result == 0 else { _exit(126) }
+            }
+
+            executablePath.withCString { executablePath in
+                argv.withUnsafeMutableBufferPointer { argvBuffer in
+                    envp.withUnsafeMutableBufferPointer { envpBuffer in
+                        guard let argvAddress = argvBuffer.baseAddress,
+                              let envpAddress = envpBuffer.baseAddress else {
+                            _exit(126)
+                        }
+                        _ = execve(executablePath, argvAddress, envpAddress)
+                    }
+                }
+            }
+
+            // Keep the child-side failure path allocation-free and bounded.
+            let message = "openburnbar: exec failed\n"
+            message.withCString { pointer in
+                _ = write(STDERR_FILENO, pointer, strlen(pointer))
+            }
+            _exit(127)
+        }
+    }
+
+    private struct State: Sendable {
+        var ptyFD: Int32 = -1
+        var childPID: pid_t = -1
+        var cancelled = false
+        var started = false
+    }
+
+    private let executable: URL
+    private let arguments: [String]
+    private let environment: [String: String]
+    private let workingDirectory: URL?
+    private let state = Locked(State())
+
+    private static let outputByteCap = 256 * 1024
+    private static let pollMilliseconds: Int32 = 100
+    private static let terminationGraceNanoseconds: UInt64 = 250_000_000
+
+    init(
+        executable: URL,
+        arguments: [String],
+        environment: [String: String],
+        workingDirectory: URL?
+    ) {
+        self.executable = executable
+        self.arguments = arguments
+        self.environment = environment
+        self.workingDirectory = workingDirectory
+    }
+
+    func run() async throws -> (status: Int32, output: String) {
+        try Task.checkCancellation()
+
+        return try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(status: Int32, output: String), Error>) in
+                start { result in
+                    continuation.resume(with: result)
+                }
+            }
+        }, onCancel: {
+            cancel()
+        })
+    }
+
+    private func start(completion: @escaping @Sendable (Result<(status: Int32, output: String), Error>) -> Void) {
+        let canStart = state.withLock { state -> Bool in
+            guard !state.started, !state.cancelled else { return false }
+            state.started = true
+            return true
+        }
+        guard canStart else {
+            completion(.failure(CancellationError()))
+            return
+        }
+
+        let launch = PreparedLaunch(
+            executablePath: executable.path,
+            arguments: arguments,
+            environment: environment,
+            workingDirectoryPath: workingDirectory?.path
+        )
+        var ptyFD: Int32 = -1
+        var window = winsize(
+            ws_row: 40,
+            ws_col: 120,
+            ws_xpixel: 0,
+            ws_ypixel: 0
+        )
+        let childPID = forkpty(&ptyFD, nil, nil, &window)
+        guard childPID >= 0 else {
+            let spawnErrno = errno
+            state.withLock { state in
+                state.started = false
+            }
+            completion(.failure(BurnBarSwitcherShellError.terminalSpawnFailed(
+                "Failed to allocate a Linux pseudo-terminal: \(String(cString: strerror(spawnErrno)))."
+            )))
+            return
+        }
+
+        if childPID == 0 {
+            launch.exec()
+        }
+
+        let shouldCancel = state.withLock { state -> Bool in
+            state.ptyFD = ptyFD
+            state.childPID = childPID
+            return state.cancelled
+        }
+        if shouldCancel {
+            terminateProcessGroup(childPID)
+        }
+
+        let flags = fcntl(ptyFD, F_GETFL, 0)
+        if flags >= 0 {
+            _ = fcntl(ptyFD, F_SETFL, flags | O_NONBLOCK)
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            runLoop(completion: completion)
+        }
+    }
+
+    /// Runs in a background queue until the child and any descendants have
+    /// released the PTY.  The fixed-size read buffer plus capped state keeps
+    /// output bounded even when a provider prints an unbounded diagnostic.
+    private func runLoop(
+        completion: @escaping @Sendable (Result<(status: Int32, output: String), Error>) -> Void
+    ) {
+        let (ptyFD, childPID) = state.withLock { ($0.ptyFD, $0.childPID) }
+        guard ptyFD >= 0, childPID > 0 else {
+            completion(.failure(BurnBarSwitcherShellError.terminalSpawnFailed("PTY session state was not initialized.")))
+            return
+        }
+
+        var output = Data()
+        var waitStatus: Int32 = 0
+        var childReaped = false
+
+        while !childReaped {
+            var descriptor = pollfd(
+                fd: ptyFD,
+                events: Int16(truncatingIfNeeded: POLLIN | POLLHUP | POLLERR),
+                revents: 0
+            )
+            let pollResult = poll(&descriptor, 1, Self.pollMilliseconds)
+            if pollResult < 0, errno != EINTR {
+                break
+            }
+            if pollResult > 0 {
+                drain(ptyFD: ptyFD, into: &output)
+            }
+
+            let result = waitpid(childPID, &waitStatus, WNOHANG)
+            if result == childPID {
+                childReaped = true
+            } else if result < 0, errno != EINTR {
+                // ECHILD means another cleanup path already reaped the child;
+                // the PTY drain below still preserves whatever output arrived.
+                childReaped = errno == ECHILD
+            }
+        }
+
+        // A CLI can leave grandchildren behind after its shell exits.  The
+        // process group created by forkpty is ours, so clean it before closing
+        // the master and returning to the caller.
+        terminateProcessGroup(childPID)
+        drain(ptyFD: ptyFD, into: &output)
+        close(ptyFD)
+        state.withLock { state in
+            state.ptyFD = -1
+            state.childPID = -1
+        }
+
+        let cancelled = state.read().cancelled
+        if cancelled {
+            completion(.failure(CancellationError()))
+            return
+        }
+
+        let status = Self.exitCode(from: waitStatus)
+        // Linux's default terminal output mode maps LF to CRLF.  Normalize it
+        // at the shell boundary so existing quota classifiers and callers see
+        // the same text they saw with pipe-backed execution.
+        let text = String(decoding: output, as: UTF8.self)
+            .replacingOccurrences(of: "\r\n", with: "\n")
+        completion(.success((status: status, output: text)))
+    }
+
+    private func drain(ptyFD: Int32, into output: inout Data) {
+        var buffer = [UInt8](repeating: 0, count: 8 * 1024)
+        while true {
+            let bytesRead = buffer.withUnsafeMutableBytes { bytes in
+                read(ptyFD, bytes.baseAddress, bytes.count)
+            }
+            if bytesRead > 0 {
+                let room = max(0, Self.outputByteCap - output.count)
+                if room > 0 {
+                    output.append(contentsOf: buffer.prefix(min(room, bytesRead)))
+                }
+                continue
+            }
+            if bytesRead < 0, errno == EINTR {
+                continue
+            }
+            // PTY masters commonly report EIO instead of EOF when the slave
+            // closes.  Both indicate that there is no more output to drain.
+            return
+        }
+    }
+
+    private func cancel() {
+        let childPID = state.withLock { state -> pid_t in
+            state.cancelled = true
+            return state.childPID
+        }
+        guard childPID > 0 else { return }
+        _ = kill(-childPID, SIGTERM)
+        // The polling loop performs the final SIGKILL and wait.  This delayed
+        // escalation covers a child that ignores SIGTERM without closing the
+        // PTY from the cancellation handler itself.
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .nanoseconds(Int(Self.terminationGraceNanoseconds))) { [weak self] in
+            guard let self, self.state.read().childPID == childPID else { return }
+            _ = kill(-childPID, SIGKILL)
+        }
+    }
+
+    private func terminateProcessGroup(_ childPID: pid_t) {
+        guard childPID > 0 else { return }
+        _ = kill(-childPID, SIGTERM)
+        let deadline = DispatchTime.now().uptimeNanoseconds + Self.terminationGraceNanoseconds
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            var status: Int32 = 0
+            let result = waitpid(childPID, &status, WNOHANG)
+            if result == childPID || (result < 0 && errno == ECHILD) {
+                break
+            }
+            if result < 0, errno != EINTR {
+                break
+            }
+            usleep(25_000)
+        }
+        _ = kill(-childPID, SIGKILL)
+        var status: Int32 = 0
+        while waitpid(childPID, &status, 0) < 0, errno == EINTR {}
+    }
+
+    private static func exitCode(from waitStatus: Int32) -> Int32 {
+        guard waitStatus & 0x7f == 0 else {
+            return 128 + (waitStatus & 0x7f)
+        }
+        return (waitStatus >> 8) & 0xff
     }
 }
 

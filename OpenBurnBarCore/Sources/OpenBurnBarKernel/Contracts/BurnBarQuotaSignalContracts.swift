@@ -85,11 +85,52 @@ public struct BurnBarQuotaSignalsRecentRequest: Codable, Hashable, Sendable {
     }
 }
 
+/// Coverage for a provider-level quota adapter exposed by a daemon.
+///
+/// This is deliberately separate from a signal snapshot: a provider can have
+/// a live adapter without having emitted a signal in the requested window, and
+/// an unavailable provider must remain explicit instead of looking like a
+/// local-parser omission.
+public enum BurnBarQuotaAdapterCoverageState: String, Codable, Hashable, Sendable {
+    case liveAdapter
+    case unavailable
+}
+
+public struct BurnBarQuotaAdapterCoverage: Codable, Hashable, Identifiable, Sendable {
+    public let provider: AgentProvider
+    public let state: BurnBarQuotaAdapterCoverageState
+    public let reason: String?
+
+    public var id: String { provider.rawValue }
+
+    public init(
+        provider: AgentProvider,
+        state: BurnBarQuotaAdapterCoverageState,
+        reason: String? = nil
+    ) {
+        self.provider = provider
+        self.state = state
+        self.reason = reason
+    }
+}
+
 public struct BurnBarQuotaSignalsRecentResponse: Codable, Hashable, Sendable {
     public let signals: [BurnBarQuotaSignalRecord]
+    /// Provider quota snapshots derived from the same persisted traffic-header
+    /// records. Optional for wire compatibility with pre-quota-catalog peers.
+    public let snapshots: [ProviderQuotaSnapshot]?
+    /// Canonical adapter coverage. Optional for wire compatibility with older
+    /// daemon peers that only return signals and snapshots.
+    public let adapterCoverage: [BurnBarQuotaAdapterCoverage]?
 
-    public init(signals: [BurnBarQuotaSignalRecord]) {
+    public init(
+        signals: [BurnBarQuotaSignalRecord],
+        snapshots: [ProviderQuotaSnapshot]? = nil,
+        adapterCoverage: [BurnBarQuotaAdapterCoverage]? = nil
+    ) {
         self.signals = signals
+        self.snapshots = snapshots
+        self.adapterCoverage = adapterCoverage
     }
 }
 

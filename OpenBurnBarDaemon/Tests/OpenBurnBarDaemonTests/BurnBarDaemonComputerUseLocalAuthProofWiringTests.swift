@@ -21,7 +21,9 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeSocketPath(name: String) -> String {
-        "/tmp/openburnbar-daemon-tests-cu-proof-\(name)-\(UUID().uuidString).sock"
+        let boundedName = String(name.prefix(24))
+        let nonce = String(UUID().uuidString.prefix(8))
+        return "/tmp/obb-cu-\(boundedName)-\(nonce).sock"
     }
 
     private func makeProof(
@@ -45,22 +47,33 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
     private func makeGrantBinding(
         requestId: String = "grant-request-abc",
         sourceDeviceId: String? = nil,
-        localAuthenticationSatisfied: Bool = true
-    ) -> ComputerUseLocalAuthGrantBinding {
-        ComputerUseLocalAuthGrantBinding(
+        localAuthenticationSatisfied: Bool = true,
+        clientIntentId: String? = nil
+    ) throws -> ComputerUseLocalAuthGrantBinding {
+        let now = Date()
+        return ComputerUseLocalAuthGrantBinding(
             requestId: requestId,
             runtime: "codex",
             threadId: "thread-abc",
             preset: "desktop",
-            capabilities: ["desktop_browser", "desktop_screenshot"],
+            capabilities: ["desktop_system_input", "desktop_screenshot"],
             trustMode: "manual",
             deliveryMode: "live_then_queued",
-            requestedAt: Date(timeIntervalSinceReferenceDate: 789_000_000),
-            expiresAt: Date(timeIntervalSinceReferenceDate: 789_000_300),
+            requestedAt: now.addingTimeInterval(-1),
+            expiresAt: now.addingTimeInterval(299),
             grantDurationSeconds: 1_800,
             sourceDeviceId: sourceDeviceId ?? deviceId,
-            clientIntentId: "client-intent-abc",
+            clientIntentId: try clientIntentId ?? ComputerUsePhoneControlSigner()
+                .canonicalComputerUseSessionIntentID(request: baseSessionStartRequest()),
             localAuthenticationSatisfied: localAuthenticationSatisfied
+        )
+    }
+
+    private func baseSessionStartRequest() -> ComputerUseSessionStartRequest {
+        ComputerUseSessionStartRequest(
+            mode: ComputerUseMode.system.rawValue,
+            trustMode: ComputerUseTrustMode.manual.rawValue,
+            clientID: BurnBarClientID(rawValue: "test-client")
         )
     }
 
@@ -71,7 +84,8 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
     private func makeServer(
         socketPath: String,
         verifier: DaemonLocalAuthProofVerifier?,
-        pinStore: DaemonPhoneKeyPinStore? = nil
+        pinStore: DaemonPhoneKeyPinStore? = nil,
+        authorizationRegistry: ComputerUseAuthorizationRegistry? = nil
     ) -> BurnBarDaemonServer {
         BurnBarDaemonServer(
             configuration: BurnBarDaemonConfiguration(
@@ -80,6 +94,7 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
                 startsMissionControlBackgroundLoops: false
             ),
             logger: BurnBarDaemonLogger(category: "cu-proof-wiring-tests"),
+            computerUseAuthorizationRegistry: authorizationRegistry,
             localAuthProofVerifier: verifier,
             phoneControlPinStore: pinStore
         )
@@ -97,8 +112,8 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
             method: .computerUseSessionStart,
             authToken: "test-token",
             params: ComputerUseSessionStartRequest(
-                mode: "browser",
-                trustMode: "untrusted",
+                mode: ComputerUseMode.system.rawValue,
+                trustMode: ComputerUseTrustMode.manual.rawValue,
                 clientID: BurnBarClientID(rawValue: "test-client"),
                 localAuthProof: proof,
                 sourceDeviceId: sourceDeviceId,
@@ -132,6 +147,7 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
 
     private func pinProvisionRequest(
         deviceId: String,
+        peerNodeId: String? = nil,
         publicKeyBase64: String,
         keyKind: PhoneControlSigningKeyKind = .ed25519,
         id: String
@@ -142,6 +158,7 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
             authToken: "test-token",
             params: DaemonPhoneControlPinProvisionRequest(
                 deviceId: deviceId,
+                peerNodeId: peerNodeId,
                 publicKeyBase64: publicKeyBase64,
                 keyKind: keyKind
             )
@@ -182,6 +199,105 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         func delete(deviceId: String) {}
     }
 
+    private final class NonAtomicFailingAliasPinBacking: DaemonPhoneKeyPinBacking, @unchecked Sendable {
+        private let lock = NSLock()
+        private var records: [String: DaemonPhoneKeyPinRecord] = [:]
+        private var saves = 0
+        private var deletes = 0
+
+        func load(deviceId: String) -> DaemonPhoneKeyPinLoad {
+            lock.lock()
+            defer { lock.unlock() }
+            return records[deviceId].map(DaemonPhoneKeyPinLoad.found) ?? .absent
+        }
+
+        @discardableResult
+        func save(_ record: DaemonPhoneKeyPinRecord) -> Int32 {
+            lock.lock()
+            defer { lock.unlock() }
+            saves += 1
+            guard saves != 2 else { return -34_018 }
+            records[record.deviceId] = record
+            return 0
+        }
+
+        func delete(deviceId: String) {
+            lock.lock()
+            defer { lock.unlock() }
+            deletes += 1
+            // Adversarial backing: rollback deletes would fail to remove trust.
+        }
+
+        func operationCounts() -> (saves: Int, deletes: Int) {
+            lock.lock()
+            defer { lock.unlock() }
+            return (saves, deletes)
+        }
+    }
+
+#if canImport(Security)
+    private final class FakePhoneKeyKeychainDataStore: DaemonPhoneKeyKeychainDataStore, @unchecked Sendable {
+        private let lock = NSLock()
+        private var items: [String: Data] = [:]
+        private var adds = 0
+        private var updates = 0
+        private var deletes = 0
+        var forcedAddError: Int32?
+        var forcedUpdateError: Int32?
+        var forcedDeleteError: Int32?
+
+        func load(service: String, account: String) -> (status: Int32, data: Data?) {
+            lock.lock()
+            defer { lock.unlock() }
+            guard let data = items[key(service: service, account: account)] else {
+                return (-25_300, nil)
+            }
+            return (0, data)
+        }
+
+        func add(service: String, account: String, data: Data) -> Int32 {
+            lock.lock()
+            defer { lock.unlock() }
+            adds += 1
+            if let forcedAddError { return forcedAddError }
+            let itemKey = key(service: service, account: account)
+            guard items[itemKey] == nil else { return -25_299 }
+            items[itemKey] = data
+            return 0
+        }
+
+        func update(service: String, account: String, data: Data) -> Int32 {
+            lock.lock()
+            defer { lock.unlock() }
+            updates += 1
+            if let forcedUpdateError { return forcedUpdateError }
+            let itemKey = key(service: service, account: account)
+            guard items[itemKey] != nil else { return -25_300 }
+            items[itemKey] = data
+            return 0
+        }
+
+        func delete(service: String, account: String) -> Int32 {
+            lock.lock()
+            defer { lock.unlock() }
+            deletes += 1
+            if let forcedDeleteError { return forcedDeleteError }
+            items.removeValue(forKey: key(service: service, account: account))
+            return 0
+        }
+
+        func operationCounts() -> (adds: Int, updates: Int, deletes: Int, items: Int) {
+            lock.lock()
+            defer { lock.unlock() }
+            return (adds, updates, deletes, items.count)
+        }
+
+        private func key(service: String, account: String) -> String {
+            "\(service)\u{0}\(account)"
+        }
+    }
+#endif
+
     // MARK: - Tests
 
     func test_enforcedDaemon_refusesSessionStartWithNoProof() async throws {
@@ -203,6 +319,44 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         XCTAssertTrue(isProofRefusal(response.error), "missing proof must fail closed with unauthorized")
     }
 
+    func test_macEnforcedDaemonAcceptsLegacyRandomClientIntentID() async throws {
+        let socketPath = makeSocketPath(name: "mac-random")
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let verifier = DaemonLocalAuthProofVerifier(
+            resolvePinnedKey: { [deviceId] in $0 == deviceId ? .ed25519(privateKey.publicKey) : nil },
+            consumeProof: { _, _ in true }
+        )
+        let server = makeServer(socketPath: socketPath, verifier: verifier)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+        let binding = try makeGrantBinding(clientIntentId: UUID().uuidString)
+        let hash = try intentHash(for: binding)
+        let now = Date()
+        let proof = try makeProof(
+            privateKey: privateKey,
+            deviceId: deviceId,
+            intentHash: hash,
+            authenticatedAt: now,
+            expiresAt: now.addingTimeInterval(120)
+        )
+
+        let response: BurnBarRPCResponseEnvelope<ComputerUseSessionStartResponse> = try sendEnvelope(
+            sessionStartRequest(
+                proof: proof,
+                sourceDeviceId: deviceId,
+                intentHashHex: hash,
+                grantBinding: binding,
+                id: "mac-random-client-intent"
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertFalse(
+            isProofRefusal(response.error),
+            "macOS must preserve legacy random clientIntentId grants until mobile acquisition signs exact session intents"
+        )
+    }
+
     func test_enforcedDaemon_refusesForgedProof_appCompromise() async throws {
         // App compromise: a proof signed by an attacker key, but the daemon pins
         // the REAL phone key. Must fail closed even though the app forwarded it.
@@ -218,7 +372,7 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         addTeardownBlock { await server.stop() }
 
         let now = Date()
-        let binding = makeGrantBinding()
+        let binding = try makeGrantBinding()
         let hash = try intentHash(for: binding)
         let forged = try makeProof(
             privateKey: attackerKey,
@@ -253,7 +407,7 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         addTeardownBlock { await server.stop() }
 
         let now = Date()
-        let binding = makeGrantBinding()
+        let binding = try makeGrantBinding()
         let hash = try intentHash(for: binding)
         // Proof minted for a DIFFERENT op hash than the one the request declares.
         let proof = try makeProof(
@@ -289,8 +443,8 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         addTeardownBlock { await server.stop() }
 
         let now = Date()
-        let signedBinding = makeGrantBinding(requestId: "signed-grant")
-        let requestedBinding = makeGrantBinding(requestId: "requested-grant")
+        let signedBinding = try makeGrantBinding(requestId: "signed-grant")
+        let requestedBinding = try makeGrantBinding(requestId: "requested-grant")
         let signedHash = try intentHash(for: signedBinding)
         let proof = try makeProof(
             privateKey: key,
@@ -330,7 +484,7 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         addTeardownBlock { await server.stop() }
 
         let now = Date()
-        let binding = makeGrantBinding()
+        let binding = try makeGrantBinding()
         let hash = try intentHash(for: binding)
         let proof = try makeProof(
             privateKey: key,
@@ -365,7 +519,7 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         addTeardownBlock { await server.stop() }
 
         let now = Date()
-        let binding = makeGrantBinding()
+        let binding = try makeGrantBinding()
         let hash = try intentHash(for: binding)
         let proof = try makeProof(
             privateKey: key,
@@ -405,7 +559,7 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         addTeardownBlock { await server.stop() }
 
         let now = Date()
-        let binding = makeGrantBinding()
+        let binding = try makeGrantBinding()
         let hash = try intentHash(for: binding)
         let proof = try makeProof(
             privateKey: key,
@@ -459,7 +613,23 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
             resolvePinnedKey: { [deviceId] in $0 == deviceId ? .ed25519(key.publicKey) : nil },
             consumeProof: { _, _ in true }
         )
-        let server = makeServer(socketPath: socketPath, verifier: verifier)
+        let authorizationRegistry = ComputerUseAuthorizationRegistry(enforcementEnabled: true)
+        let runID = BurnBarRunID(rawValue: "run-invoke-verified-session")
+        let sessionID = ComputerUseSessionID("verified-session")
+        let clientID = BurnBarClientID(rawValue: "test-client")
+        let reserved = await authorizationRegistry.reserve(runID: runID)
+        XCTAssertTrue(reserved)
+        let bound = await authorizationRegistry.bind(
+            sessionID: sessionID,
+            runID: runID,
+            clientID: clientID
+        )
+        XCTAssertTrue(bound)
+        let server = makeServer(
+            socketPath: socketPath,
+            verifier: verifier,
+            authorizationRegistry: authorizationRegistry
+        )
         try await server.start()
         addTeardownBlock { await server.stop() }
         await server.rememberLocalAuthVerifiedSession(
@@ -500,6 +670,137 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
             return
         }
         XCTAssertEqual(resolved.publicKeyRepresentation, privateKey.publicKey.rawRepresentation)
+    }
+
+    func test_phoneControlPinProvision_persistsDistinctPeerNodeAlias() async throws {
+        let socketPath = makeSocketPath(name: "pin-peer-alias")
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let pinStore = DaemonPhoneKeyPinStore(backing: DaemonPhoneKeyInMemoryPinBacking())
+        let server = makeServer(socketPath: socketPath, verifier: nil, pinStore: pinStore)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+        let peerNodeId = "iroh-peer-node-distinct-from-device"
+
+        let response: BurnBarRPCResponseEnvelope<DaemonPhoneControlPinProvisionResponse> = try sendEnvelope(
+            pinProvisionRequest(
+                deviceId: deviceId,
+                peerNodeId: peerNodeId,
+                publicKeyBase64: privateKey.publicKey.rawRepresentation.base64EncodedString(),
+                id: "pin-peer-alias"
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertEqual(response.result?.pinned, true)
+        for identifier in [deviceId, peerNodeId] {
+            guard case .pinned(let resolved) = pinStore.pinnedKey(deviceId: identifier) else {
+                XCTFail("expected key alias to be pinned for \(identifier)")
+                continue
+            }
+            XCTAssertEqual(resolved.publicKeyRepresentation, privateKey.publicKey.rawRepresentation)
+        }
+    }
+
+    func test_phoneControlPinProvision_deviceConflictDoesNotPersistPeerAlias() async throws {
+        let socketPath = makeSocketPath(name: "pin-device-conflict-atomic")
+        let originalKey = Curve25519.Signing.PrivateKey()
+        let replacementKey = Curve25519.Signing.PrivateKey()
+        let pinStore = DaemonPhoneKeyPinStore(backing: DaemonPhoneKeyInMemoryPinBacking())
+        let originalVerifier = try PhoneControlVerifyingKey(
+            kind: .ed25519,
+            publicKeyRepresentation: originalKey.publicKey.rawRepresentation
+        )
+        guard case .pinned = pinStore.pin(deviceId: deviceId, key: originalVerifier) else {
+            XCTFail("expected original device pin")
+            return
+        }
+        let server = makeServer(socketPath: socketPath, verifier: nil, pinStore: pinStore)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+        let peerNodeId = "atomic-peer-alias"
+
+        let response: BurnBarRPCResponseEnvelope<DaemonPhoneControlPinProvisionResponse> = try sendEnvelope(
+            pinProvisionRequest(
+                deviceId: deviceId,
+                peerNodeId: peerNodeId,
+                publicKeyBase64: replacementKey.publicKey.rawRepresentation.base64EncodedString(),
+                id: "pin-device-conflict-atomic"
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertEqual(response.error?.code, BurnBarRPCErrorCode.unauthorized)
+        guard case .absent = pinStore.pinnedKey(deviceId: peerNodeId) else {
+            XCTFail("rejected device conflict must not persist the peer alias")
+            return
+        }
+    }
+
+    func test_phoneControlPinProvision_peerConflictDoesNotPersistDeviceAlias() async throws {
+        let socketPath = makeSocketPath(name: "pin-peer-conflict-atomic")
+        let originalKey = Curve25519.Signing.PrivateKey()
+        let replacementKey = Curve25519.Signing.PrivateKey()
+        let pinStore = DaemonPhoneKeyPinStore(backing: DaemonPhoneKeyInMemoryPinBacking())
+        let peerNodeId = "existing-peer-alias"
+        let originalVerifier = try PhoneControlVerifyingKey(
+            kind: .ed25519,
+            publicKeyRepresentation: originalKey.publicKey.rawRepresentation
+        )
+        guard case .pinned = pinStore.pin(deviceId: peerNodeId, key: originalVerifier) else {
+            XCTFail("expected original peer pin")
+            return
+        }
+        let server = makeServer(socketPath: socketPath, verifier: nil, pinStore: pinStore)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let response: BurnBarRPCResponseEnvelope<DaemonPhoneControlPinProvisionResponse> = try sendEnvelope(
+            pinProvisionRequest(
+                deviceId: deviceId,
+                peerNodeId: peerNodeId,
+                publicKeyBase64: replacementKey.publicKey.rawRepresentation.base64EncodedString(),
+                id: "pin-peer-conflict-atomic"
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertEqual(response.error?.code, BurnBarRPCErrorCode.unauthorized)
+        guard case .absent = pinStore.pinnedKey(deviceId: deviceId) else {
+            XCTFail("rejected peer conflict must not persist the device alias")
+            return
+        }
+    }
+
+    func test_phoneControlPinProvision_nonAtomicBackingFailsBeforeWriteEvenIfRollbackDeleteWouldFail() async throws {
+        let socketPath = makeSocketPath(name: "pin-alias-store-error-atomic")
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let backing = NonAtomicFailingAliasPinBacking()
+        let pinStore = DaemonPhoneKeyPinStore(backing: backing)
+        let server = makeServer(socketPath: socketPath, verifier: nil, pinStore: pinStore)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+        let peerNodeId = "store-error-peer-alias"
+
+        let response: BurnBarRPCResponseEnvelope<DaemonPhoneControlPinProvisionResponse> = try sendEnvelope(
+            pinProvisionRequest(
+                deviceId: deviceId,
+                peerNodeId: peerNodeId,
+                publicKeyBase64: privateKey.publicKey.rawRepresentation.base64EncodedString(),
+                id: "pin-alias-store-error-atomic"
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertEqual(response.error?.code, BurnBarRPCErrorCode.internalError)
+        for identifier in [deviceId, peerNodeId] {
+            guard case .absent = pinStore.pinnedKey(deviceId: identifier) else {
+                XCTFail("failed alias transaction must leave \(identifier) absent")
+                continue
+            }
+        }
+        let operations = backing.operationCounts()
+        XCTAssertEqual(operations.saves, 0)
+        XCTAssertEqual(operations.deletes, 0)
     }
 
     func test_phoneControlPinProvision_isIdempotentForSameExistingKey() async throws {
@@ -643,6 +944,109 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         XCTAssertEqual(resolved.publicKeyRepresentation, replacementKey.publicKey.rawRepresentation)
     }
 
+    func test_phoneControlPinStore_atomicAliasWriteFailurePersistsNoAlias() throws {
+        let backing = DaemonPhoneKeyInMemoryPinBacking()
+        backing.failWrites(with: -34_018)
+        let pinStore = DaemonPhoneKeyPinStore(backing: backing)
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let verifier = try PhoneControlVerifyingKey(
+            kind: .ed25519,
+            publicKeyRepresentation: privateKey.publicKey.rawRepresentation
+        )
+
+        guard case .storeError(-34_018) = pinStore.pinAliases(
+            deviceIds: [deviceId, "atomic-peer"],
+            key: verifier
+        ) else {
+            XCTFail("expected atomic alias write failure")
+            return
+        }
+        for identifier in [deviceId, "atomic-peer"] {
+            guard case .absent = pinStore.pinnedKey(deviceId: identifier) else {
+                XCTFail("atomic write failure must leave \(identifier) absent")
+                continue
+            }
+        }
+    }
+
+#if canImport(Security)
+    func test_phoneControlKeychainBackingCommitsEveryAliasInOneVersionedItemWrite() throws {
+        let dataStore = FakePhoneKeyKeychainDataStore()
+        let backing = DaemonPhoneKeyKeychainPinBacking(
+            serviceName: "com.openburnbar.tests.phone-pin.\(UUID().uuidString)",
+            dataStore: dataStore
+        )
+        let pinStore = DaemonPhoneKeyPinStore(backing: backing)
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let verifier = try PhoneControlVerifyingKey(
+            kind: .ed25519,
+            publicKeyRepresentation: privateKey.publicKey.rawRepresentation
+        )
+        let identifiers = [deviceId, "atomic-keychain-peer"]
+
+        guard case .pinned = pinStore.pinAliases(deviceIds: identifiers, key: verifier) else {
+            XCTFail("expected one-item Keychain alias commit")
+            return
+        }
+
+        let operations = dataStore.operationCounts()
+        XCTAssertEqual(operations.adds, 1)
+        XCTAssertEqual(operations.updates, 0)
+        XCTAssertEqual(operations.items, 1)
+        for identifier in identifiers {
+            guard case .pinned(let resolved) = pinStore.pinnedKey(deviceId: identifier) else {
+                XCTFail("expected Keychain alias \(identifier)")
+                continue
+            }
+            XCTAssertEqual(resolved.publicKeyRepresentation, privateKey.publicKey.rawRepresentation)
+        }
+    }
+
+    func test_phoneControlKeychainBackingUpdateFailurePreservesPriorTrustAndAddsNoAlias() throws {
+        let dataStore = FakePhoneKeyKeychainDataStore()
+        let backing = DaemonPhoneKeyKeychainPinBacking(
+            serviceName: "com.openburnbar.tests.phone-pin.\(UUID().uuidString)",
+            dataStore: dataStore
+        )
+        let pinStore = DaemonPhoneKeyPinStore(backing: backing)
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let verifier = try PhoneControlVerifyingKey(
+            kind: .ed25519,
+            publicKeyRepresentation: privateKey.publicKey.rawRepresentation
+        )
+        guard case .pinned = pinStore.pin(deviceId: "existing-keychain-alias", key: verifier) else {
+            XCTFail("expected initial Keychain pin")
+            return
+        }
+        dataStore.forcedUpdateError = -34_018
+        dataStore.forcedDeleteError = -34_019
+
+        guard case .storeError(-34_018) = pinStore.pinAliases(
+            deviceIds: [deviceId, "rejected-keychain-peer"],
+            key: verifier
+        ) else {
+            XCTFail("expected atomic Keychain update failure")
+            return
+        }
+
+        guard case .pinned = pinStore.pinnedKey(deviceId: "existing-keychain-alias") else {
+            XCTFail("failed update must preserve prior trust")
+            return
+        }
+        for identifier in [deviceId, "rejected-keychain-peer"] {
+            guard case .absent = pinStore.pinnedKey(deviceId: identifier) else {
+                XCTFail("failed atomic update must not add \(identifier)")
+                continue
+            }
+        }
+        let operations = dataStore.operationCounts()
+        XCTAssertEqual(operations.adds, 1)
+        XCTAssertEqual(operations.updates, 1)
+        XCTAssertEqual(operations.deletes, 0, "atomic failure must never depend on rollback delete")
+        XCTAssertEqual(operations.items, 1)
+    }
+#endif
+
     func test_phoneControlPinProvision_rejectsDifferentKeyForExistingDevice() async throws {
         let socketPath = makeSocketPath(name: "pin-conflict")
         let originalKey = Curve25519.Signing.PrivateKey()
@@ -700,6 +1104,31 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         XCTAssertEqual(response.error?.code, BurnBarRPCErrorCode.invalidParams)
     }
 
+    func test_phoneControlPinProvision_rejectsEmptyDeviceEvenWithPeerAlias() async throws {
+        let socketPath = makeSocketPath(name: "pin-empty-device")
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let pinStore = DaemonPhoneKeyPinStore(backing: DaemonPhoneKeyInMemoryPinBacking())
+        let server = makeServer(socketPath: socketPath, verifier: nil, pinStore: pinStore)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let response: BurnBarRPCResponseEnvelope<DaemonPhoneControlPinProvisionResponse> = try sendEnvelope(
+            pinProvisionRequest(
+                deviceId: "   ",
+                peerNodeId: "otherwise-valid-peer",
+                publicKeyBase64: privateKey.publicKey.rawRepresentation.base64EncodedString(),
+                id: "pin-empty-device"
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertEqual(response.error?.code, BurnBarRPCErrorCode.invalidParams)
+        guard case .absent = pinStore.pinnedKey(deviceId: "otherwise-valid-peer") else {
+            XCTFail("malformed device identity must not persist the peer alias")
+            return
+        }
+    }
+
     func test_provisionedPin_enablesEndToEndProofVerification() async throws {
         // T-DMN-04 full loop: provision the daemon's pinned phone key via RPC,
         // then send a session-start request carrying a proof signed by that key.
@@ -733,7 +1162,7 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
 
         // 2. Send a proof-bound session-start request.
         let now = Date()
-        let binding = makeGrantBinding()
+        let binding = try makeGrantBinding()
         let hash = try intentHash(for: binding)
         let proof = try makeProof(
             privateKey: privateKey,

@@ -186,6 +186,15 @@ describe('projectRuns', () => {
     expect(result[0].note).toBe('Awaiting approval');
   });
 
+  it('describes the Computer Use session wait without treating it as unknown', () => {
+    const runs = [createMockRun({ runID: 'run-1', phase: 'awaiting_computer_use_session' })];
+    const state = createMockState({ daemonRuns: runs });
+    const result = projectRuns(state);
+
+    expect(result[0].phase).toBe('awaiting_computer_use_session');
+    expect(result[0].note).toBe('Waiting for a verified Browser Computer Use session.');
+  });
+
   it('should handle untrusted workspace with awaiting_approval', () => {
     const runs = [createMockRun({ runID: 'run-1', phase: 'awaiting_approval' })];
     const workspace: BurnBarWorkspaceCapabilities = {

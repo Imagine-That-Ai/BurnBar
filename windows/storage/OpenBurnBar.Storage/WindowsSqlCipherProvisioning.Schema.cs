@@ -50,6 +50,10 @@ public sealed partial class WindowsSqlCipherProvisioner
             endTime TEXT NOT NULL DEFAULT '',
             createdAt TEXT NOT NULL DEFAULT '',
             usageSource TEXT NOT NULL DEFAULT 'measured',
+            executionSourceID TEXT NOT NULL DEFAULT 'unknown',
+            executionSourceName TEXT NOT NULL DEFAULT 'Unknown',
+            executionSourceKind TEXT NOT NULL DEFAULT 'unknown',
+            executionSourceConfidence TEXT NOT NULL DEFAULT 'unknown',
             sourceDeviceId TEXT,
             sourceDeviceName TEXT,
             isRemote INTEGER NOT NULL DEFAULT 0,
@@ -66,6 +70,7 @@ public sealed partial class WindowsSqlCipherProvisioner
         "CREATE UNIQUE INDEX IF NOT EXISTS token_usage_unique_session_model_idx ON token_usage(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, ''))",
         "CREATE INDEX IF NOT EXISTS token_usage_created_at_idx ON token_usage(createdAt DESC)",
         "CREATE INDEX IF NOT EXISTS token_usage_session_idx ON token_usage(sessionId)",
+        "CREATE INDEX IF NOT EXISTS token_usage_execution_source_time_idx ON token_usage(executionSourceID, startTime)",
         """
         CREATE TABLE IF NOT EXISTS conversations (
             id TEXT NOT NULL PRIMARY KEY,

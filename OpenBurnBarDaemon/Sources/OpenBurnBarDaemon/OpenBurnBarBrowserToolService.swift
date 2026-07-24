@@ -542,20 +542,7 @@ public actor BurnBarBrowserToolService {
     }
 
     private static func defaultBridgeScriptURL() -> URL {
-        if let override = ProcessInfo.processInfo.environment["OPENBURNBAR_PLAYWRIGHT_BRIDGE"],
-           !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return URL(fileURLWithPath: override, isDirectory: false)
-        }
-        let fm = FileManager.default
-        let cwd = URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true)
-        let candidates = [
-            Bundle.main.resourceURL?
-                .appendingPathComponent("PlaywrightBridge", isDirectory: true)
-                .appendingPathComponent("openburnbar-playwright-bridge.js", isDirectory: false),
-            cwd.appendingPathComponent("OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js"),
-            cwd.appendingPathComponent("Resources/PlaywrightBridge/openburnbar-playwright-bridge.js")
-        ].compactMap { $0 }
-        return candidates.first(where: { fm.fileExists(atPath: $0.path) }) ?? candidates[0]
+        OpenBurnBarPlaywrightBridgeResource.resolve()
     }
 
     private func status(for kind: BurnBarBrowserEngineKind, executablePath: String?) -> BurnBarBrowserToolStatus {
@@ -630,7 +617,7 @@ public actor BurnBarBrowserToolService {
 
     private static func stripHTML(_ html: String) -> String? {
         let stripped = html
-            .replacingOccurrences(of: "(?is)<script[^>]*>.*?</script>", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "(?is)<script[^>]*>.*?</script[^>]*>", with: " ", options: .regularExpression)
             .replacingOccurrences(of: "(?is)<style[^>]*>.*?</style>", with: " ", options: .regularExpression)
             .replacingOccurrences(of: "(?is)<[^>]+>", with: " ", options: .regularExpression)
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
