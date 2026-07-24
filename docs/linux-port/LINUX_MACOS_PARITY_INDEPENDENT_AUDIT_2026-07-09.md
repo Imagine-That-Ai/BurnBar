@@ -92,6 +92,21 @@ the source-level PDF semantics gap, not provider-specific production support or
 installed-candidate certification. The strict **0/40 + 0/7** ledger remains
 unchanged.
 
+### Latest native audio attachment parity — 2026-07-23
+
+The Linux chat transport now accepts the macOS-supported audio attachment
+families (`mp3`, `wav`, `m4a`, `aac`, `flac`, and `aiff`) under the same bounded
+single-use attachment reference model. The typed frontend/daemon MIME policies
+canonicalize extensions, require the selected model to advertise `audio` input,
+apply the model's `audioMaxBytes` limit, and serialize approved bytes as native
+`input_audio` parts with an explicit format. Rust coverage proves capability
+matching, size enforcement, one-shot cleanup, and the native audio payload;
+Swift and frontend policy tests cover canonicalization and bridge decoding.
+Video remains intentionally workspace-only because the shared chat gateway has
+no portable direct video wire shape. This closes the source-level Linux audio
+transport gap; live provider capability, installed-candidate, and strict
+certification evidence remain open.
+
 ## Latest verification checkpoint — 2026-07-22
 
 The integration branch's hosted Linux gate is green at commit
@@ -2851,6 +2866,9 @@ IDs or implicit approvals are allowed.
   proof remain incomplete. Model-authorized PDF inputs now use a typed native
   `file` part through the Tauri gateway, Responses fallback, and Anthropic
   compatibility bridge; unresolved file IDs and remote URLs still fail closed.
+  Model-authorized audio inputs now use the native `input_audio` path with
+  explicit format and model byte limits; video remains a workspace-only
+  attachment until a portable direct wire contract exists.
 - **Why it matters:** chat is a primary workflow; presenting a file or model
   control without a real transport still creates false confidence and data-loss
   risk. `44a5864b0d` requires a daemon catalog routing capability before a

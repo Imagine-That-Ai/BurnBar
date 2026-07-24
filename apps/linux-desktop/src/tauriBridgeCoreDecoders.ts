@@ -1068,7 +1068,13 @@ export function decodeChatAttachmentUpload(raw: RawJsonValue): ChatAttachmentUpl
     'application/pdf',
     'image/png',
     'image/jpeg',
-    'image/webp'
+    'image/webp',
+    'audio/mpeg',
+    'audio/wav',
+    'audio/mp4',
+    'audio/aac',
+    'audio/flac',
+    'audio/aiff'
   ].includes(mimeType)) {
     throw new Error('chat attachment upload.mimeType is unsupported.');
   }

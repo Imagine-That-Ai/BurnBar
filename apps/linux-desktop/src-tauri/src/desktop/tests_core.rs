@@ -1114,6 +1114,48 @@
     }
 
     #[test]
+    fn chat_attachment_gateway_encodes_audio_as_native_input_audio_with_explicit_capability() {
+        let root = std::env::temp_dir().join(format!("openburnbar-chat-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        let path = root.join("attachment.bin");
+        let bytes = b"audio-bytes";
+        fs::write(&path, bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let id = format!("attachment-{}", uuid::Uuid::new_v4().simple());
+        chat_attachments().lock().unwrap().insert(
+            id.clone(),
+            StoredChatAttachment {
+                path: path.clone(),
+                file_name: "voice.m4a".into(),
+                mime_type: "audio/mp4".into(),
+                byte_size: bytes.len(),
+                sha256: format!("{:x}", Sha256::digest(bytes)),
+            },
+        );
+        let request = GatewayProxyRequest {
+            request_id: "request-audio-supported".into(),
+            model: "audio-model".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "user".into(),
+                content: "Transcribe this".into(),
+                attachments: vec![GatewayAttachmentReference { attachment_id: id }],
+            }],
+        };
+        let native = HashMap::from([("audio/mp4".to_string(), Some(1024usize))]);
+        let payload = gateway_messages_payload_with_native_mime_types(&request, &native).unwrap();
+        let parts = payload[0]["content"].as_array().unwrap();
+        assert_eq!(parts[1]["type"], "input_audio");
+        assert_eq!(parts[1]["input_audio"]["format"], "m4a");
+        assert_eq!(
+            parts[1]["input_audio"]["data"],
+            BASE64_STANDARD.encode(bytes)
+        );
+        assert!(!path.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn chat_attachment_gateway_enforces_native_model_size_limit() {
         let root = std::env::temp_dir().join(format!("openburnbar-chat-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
@@ -1157,6 +1199,7 @@
             input_modalities: vec!["text".into(), "image".into()],
             accepted_input_mime_types: vec!["image/*".into()],
             image_max_bytes: Some(4 * 1024 * 1024),
+            audio_max_bytes: None,
         };
         assert_eq!(
             gateway_model_accepts_attachment("image/png", &capabilities),
@@ -1170,10 +1213,25 @@
             input_modalities: vec!["text".into(), "pdf".into()],
             accepted_input_mime_types: Vec::new(),
             image_max_bytes: None,
+            audio_max_bytes: None,
         };
         assert_eq!(
             gateway_model_accepts_attachment("application/pdf", &pdf_capabilities),
             (true, None)
+        );
+        let audio_capabilities = GatewayModelIOCapabilities {
+            input_modalities: vec!["text".into(), "audio".into()],
+            accepted_input_mime_types: Vec::new(),
+            image_max_bytes: None,
+            audio_max_bytes: Some(2 * 1024 * 1024),
+        };
+        assert_eq!(
+            gateway_model_accepts_attachment("audio/mp4", &audio_capabilities),
+            (true, Some(2 * 1024 * 1024))
+        );
+        assert_eq!(
+            gateway_model_accepts_attachment("image/png", &audio_capabilities),
+            (false, None)
         );
     }
 

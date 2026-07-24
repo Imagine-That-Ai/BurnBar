@@ -80,6 +80,8 @@ struct GatewayModelIOCapabilities {
     accepted_input_mime_types: Vec<String>,
     #[serde(default, alias = "imageMaxBytes", alias = "image_max_bytes")]
     image_max_bytes: Option<usize>,
+    #[serde(default, alias = "audioMaxBytes", alias = "audio_max_bytes")]
+    audio_max_bytes: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -112,6 +114,12 @@ fn is_allowed_chat_attachment_mime(mime_type: &str) -> bool {
             | "image/png"
             | "image/jpeg"
             | "image/webp"
+            | "audio/mpeg"
+            | "audio/wav"
+            | "audio/mp4"
+            | "audio/aac"
+            | "audio/flac"
+            | "audio/aiff"
     )
 }
 
@@ -125,7 +133,16 @@ fn is_gateway_text_attachment_mime(mime_type: &str) -> bool {
 fn is_gateway_native_attachment_mime(mime_type: &str) -> bool {
     matches!(
         mime_type,
-        "application/pdf" | "image/png" | "image/jpeg" | "image/webp"
+        "application/pdf"
+            | "image/png"
+            | "image/jpeg"
+            | "image/webp"
+            | "audio/mpeg"
+            | "audio/wav"
+            | "audio/mp4"
+            | "audio/aac"
+            | "audio/flac"
+            | "audio/aiff"
     )
 }
 
@@ -145,6 +162,12 @@ fn inferred_chat_attachment_mime(file_name: &str) -> Option<&'static str> {
         "png" => Some("image/png"),
         "jpg" | "jpeg" => Some("image/jpeg"),
         "webp" => Some("image/webp"),
+        "mp3" => Some("audio/mpeg"),
+        "wav" => Some("audio/wav"),
+        "m4a" => Some("audio/mp4"),
+        "aac" => Some("audio/aac"),
+        "flac" => Some("audio/flac"),
+        "aif" | "aiff" => Some("audio/aiff"),
         _ => None,
     }
 }
@@ -459,6 +482,24 @@ fn gateway_messages_payload_with_native_mime_types(
                             "file_data": format!("data:{};base64,{}", attachment.mime_type, encoded),
                         },
                     }));
+                } else if attachment.mime_type.starts_with("audio/") {
+                    let encoded = BASE64_STANDARD.encode(&attachment.bytes);
+                    let format = match attachment.mime_type.as_str() {
+                        "audio/mpeg" => "mp3",
+                        "audio/wav" => "wav",
+                        "audio/mp4" => "m4a",
+                        "audio/aac" => "aac",
+                        "audio/flac" => "flac",
+                        "audio/aiff" => "aiff",
+                        _ => return Err("gateway_attachment_unsupported_audio_format".into()),
+                    };
+                    parts.push(serde_json::json!({
+                        "type": "input_audio",
+                        "input_audio": {
+                            "data": encoded,
+                            "format": format,
+                        },
+                    }));
                 } else {
                     let encoded = BASE64_STANDARD.encode(&attachment.bytes);
                     parts.push(serde_json::json!({
@@ -624,6 +665,8 @@ fn gateway_model_accepts_attachment(
         .any(|accepted| gateway_catalog_mime_matches(accepted, mime_type));
     let modality = if mime_type == "application/pdf" {
         "pdf"
+    } else if mime_type.starts_with("audio/") {
+        "audio"
     } else {
         "image"
     };
@@ -636,9 +679,13 @@ fn gateway_model_accepts_attachment(
     } else {
         accepted_explicitly
     };
-    let max_bytes = (mime_type != "application/pdf")
-        .then_some(capabilities.image_max_bytes)
-        .flatten();
+    let max_bytes = if mime_type == "application/pdf" {
+        None
+    } else if mime_type.starts_with("audio/") {
+        capabilities.audio_max_bytes
+    } else {
+        capabilities.image_max_bytes
+    };
     (accepted, max_bytes)
 }
 

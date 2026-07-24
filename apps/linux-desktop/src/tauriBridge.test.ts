@@ -268,6 +268,20 @@ describe('gateway attachment capability decoding', () => {
     });
   });
 
+  it('accepts audio capability metadata without widening the response shape', () => {
+    expect(decodeGatewayAttachmentCapability({
+      mimeType: 'audio/mp4',
+      state: 'supported',
+      reason: 'catalog',
+      maxBytes: 2 * 1024 * 1024
+    })).toEqual({
+      mimeType: 'audio/mp4',
+      state: 'supported',
+      reason: 'catalog',
+      maxBytes: 2 * 1024 * 1024
+    });
+  });
+
   it('rejects malformed capability state and unsafe limits', () => {
     expect(() => decodeGatewayAttachmentCapability({
       mimeType: 'image/png',

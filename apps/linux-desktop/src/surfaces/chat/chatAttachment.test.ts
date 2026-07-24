@@ -25,6 +25,8 @@ describe('Linux chat attachment capability boundary', () => {
     expect(isGatewayReadableAttachment('text/plain')).toBe(true);
     expect(requiresGatewayAttachmentCapability('application/pdf')).toBe(true);
     expect(requiresGatewayAttachmentCapability('image/png')).toBe(true);
+    expect(canonicalAttachmentMimeType('voice.m4a', 'application/octet-stream')).toBe('audio/mp4');
+    expect(requiresGatewayAttachmentCapability('audio/mp4')).toBe(true);
     expect(gatewayAttachmentUnsupportedMessage('application/pdf')).toMatch(/cannot read PDF content/i);
   });
 });

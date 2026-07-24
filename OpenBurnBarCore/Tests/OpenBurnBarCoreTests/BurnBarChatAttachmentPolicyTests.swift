@@ -72,6 +72,23 @@ final class BurnBarChatAttachmentPolicyTests: XCTestCase {
         )
     }
 
+    func testCanonicalMimeTypeAcceptsModelAuthorizedAudioInputs() {
+        XCTAssertEqual(
+            BurnBarChatAttachmentPolicy.canonicalMimeType(
+                fileName: "voice.m4a",
+                mimeType: "application/octet-stream"
+            ),
+            "audio/mp4"
+        )
+        XCTAssertEqual(
+            BurnBarChatAttachmentPolicy.canonicalMimeType(
+                fileName: "voice.mp3",
+                mimeType: "audio/mpeg"
+            ),
+            "audio/mpeg"
+        )
+    }
+
     func testLinuxTransportBudgetIsTenMiBAndListsOnlySupportedChatTypes() {
         XCTAssertEqual(BurnBarChatAttachmentPolicy.maxBytes, 10 * 1024 * 1024)
         XCTAssertEqual(
@@ -84,9 +101,15 @@ final class BurnBarChatAttachmentPolicyTests: XCTestCase {
                 "application/pdf",
                 "image/png",
                 "image/jpeg",
-                "image/webp"
+                "image/webp",
+                "audio/mpeg",
+                "audio/wav",
+                "audio/mp4",
+                "audio/aac",
+                "audio/flac",
+                "audio/aiff"
             ]
         )
-        XCTAssertFalse(BurnBarChatAttachmentPolicy.allowedMimeTypes.contains("audio/mpeg"))
+        XCTAssertTrue(BurnBarChatAttachmentPolicy.allowedMimeTypes.contains("audio/mpeg"))
     }
 }
