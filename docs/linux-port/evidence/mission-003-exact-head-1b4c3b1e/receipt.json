@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "workflow": "Linux Release",
+  "runId": 29652889294,
+  "runUrl": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29652889294",
+  "artifactId": 8432407756,
+  "artifactName": "linux-release-evidence",
+  "artifactDigest": "sha256:d3d26e5a2d57148babfca11646aeecdb89280b95e16446c7cd186b388cb64bf0",
+  "artifactSizeBytes": 3681156161,
+  "targetHead": "1b4c3b1e269b3d58d38226af1084f88bc7c6f742",
+  "version": "0.1.1",
+  "extractedFromArtifact": {
+    ".linux-release/release-verification.json": "release-verification.json",
+    ".linux-release/product-proof-closure.json": "product-proof-closure.json",
+    ".linux-release/sidecars/OpenBurnBar-0.1.1-linux-checksums.txt": "OpenBurnBar-0.1.1-linux-checksums.txt",
+    ".linux-shards/linux-release-shard-aarch64/session/linux-desktop-session-report.json": "sessions/aarch64/linux-desktop-session-report.json",
+    ".linux-shards/linux-release-shard-x86_64/session/linux-desktop-session-report.json": "sessions/x86_64/linux-desktop-session-report.json",
+    ".linux-release/installed-manifests/OpenBurnBar_0.1.1_arm64.deb.installed-manifest.json": "installed-manifests/OpenBurnBar_0.1.1_arm64.deb.installed-manifest.json",
+    ".linux-release/installed-manifests/OpenBurnBar_0.1.1_amd64.deb.installed-manifest.json": "installed-manifests/OpenBurnBar_0.1.1_amd64.deb.installed-manifest.json",
+    ".linux-release/installed-manifests/OpenBurnBar-0.1.1-1.aarch64.rpm.installed-manifest.json": "installed-manifests/OpenBurnBar-0.1.1-1.aarch64.rpm.installed-manifest.json",
+    ".linux-release/installed-manifests/OpenBurnBar-0.1.1-1.x86_64.rpm.installed-manifest.json": "installed-manifests/OpenBurnBar-0.1.1-1.x86_64.rpm.installed-manifest.json",
+    ".linux-release/installed-manifests/openburnbar-0.1.1-1-aarch64.pkg.tar.zst.installed-manifest.json": "installed-manifests/openburnbar-0.1.1-1-aarch64.pkg.tar.zst.installed-manifest.json",
+    ".linux-release/installed-manifests/openburnbar-0.1.1-1-x86_64.pkg.tar.zst.installed-manifest.json": "installed-manifests/openburnbar-0.1.1-1-x86_64.pkg.tar.zst.installed-manifest.json"
+  },
+  "note": "Evidence files are ranged extracts; package binaries remain in the immutable GitHub artifact and were not copied into this worktree."
+}

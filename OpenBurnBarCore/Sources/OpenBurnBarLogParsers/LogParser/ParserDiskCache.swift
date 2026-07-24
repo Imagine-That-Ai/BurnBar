@@ -5,7 +5,7 @@ import OpenBurnBarKernel
 // access/mutation, and this module additionally funnels high-volume settings writes
 // through `SettingsPersistenceCoordinator`.
 // The `FileManager: @retroactive @unchecked Sendable` shim was moved DOWN to the
-// `OpenBurnBarPlatformSupport/PlatformSupport.swift` by the P-12 follow-up so Core's
+// `OpenBurnBarKernelPlatform/PlatformSupport.swift` by the P-12 follow-up so Core's
 // `ProviderQuotaAdapterContext` and the future `OpenBurnBarQuota` target can see it
 // without depending on this leaf; this file inherits it via `import OpenBurnBarKernel`.
 extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim

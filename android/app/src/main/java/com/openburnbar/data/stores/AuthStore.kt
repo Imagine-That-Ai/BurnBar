@@ -1,9 +1,12 @@
 package com.openburnbar.data.stores
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
+import com.openburnbar.BurnBarApplication
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 class AuthStore(
     private val authProvider: () -> FirebaseAuth? = { FirebaseAuth.getInstance() },
@@ -20,10 +23,12 @@ class AuthStore(
     val userEmail: StateFlow<String?> = _userEmail
 
     fun signOut() {
-        auth?.signOut()
-        _isSignedIn.value = false
-        _userDisplayName.value = null
-        _userEmail.value = null
+        viewModelScope.launch {
+            auth?.let { BurnBarApplication.signOutSafely(it) }
+            _isSignedIn.value = false
+            _userDisplayName.value = null
+            _userEmail.value = null
+        }
     }
 
     fun refreshUser() {

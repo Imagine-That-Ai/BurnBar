@@ -1,0 +1,25 @@
+{
+  "id": "iridescence",
+  "label": "Iridescence",
+  "metalFileBase": "K_Iridescence",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_iridescence_display"
+  },
+  "controls": [
+    "scroll"
+  ],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

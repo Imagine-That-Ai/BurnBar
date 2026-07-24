@@ -1,0 +1,10 @@
+addbbf576c73f4f805266dc02a3fac1bb5ecef98148efb3a01dcd7200d28f2e2  .linux-release/artifacts/OpenBurnBar_0.1.1_aarch64.AppImage
+50deef58da92df21440dee21ca95d35c20b40ed528cb6867f29c2d29e4afc1e2  .linux-release/artifacts/openburnbar-0.1.1-1-aarch64.pkg.tar.zst
+5f5576fc1302bdb58499bd96cb22c9e6091615a42986bf8d79ea12b8f7272f0d  .linux-release/artifacts/OpenBurnBar_0.1.1_arm64.deb
+263c0f93309535421e71fcc2741d50528f6def06fc31199c6728de9224f38112  .linux-release/artifacts/OpenBurnBar-0.1.1-1.aarch64.rpm
+9e539c1c1990e5f0b44c5ac913ec9dd48d5512df77b736ef5181406284a19eb5  .linux-release/artifacts/openburnbar-daemon-0.1.1-linux-aarch64
+2a38fb6a61f60562d5718ddd1552181daa70811b5ace3c1f38344b8b872adf3b  .linux-release/artifacts/OpenBurnBar_0.1.1_amd64.AppImage
+296150102e6b7afb11f97ba90e0b6a4cfbdcb878ac53f4d3002c3493ffb64a8b  .linux-release/artifacts/openburnbar-0.1.1-1-x86_64.pkg.tar.zst
+57c29c1103841fecb1fe1071d5deb1456f387b534592e1e2cfb548ac874d6bfe  .linux-release/artifacts/OpenBurnBar_0.1.1_amd64.deb
+393b78493f933b79e5a1f3556ad8cb56317a0e1fe96fcfe1d7ce5c1e0e64af0e  .linux-release/artifacts/OpenBurnBar-0.1.1-1.x86_64.rpm
+75a48cf1dd552d445de7b2e82991104c3eaaecc5f6a79fe9f9a3cf0fd50ac9a5  .linux-release/artifacts/openburnbar-daemon-0.1.1-linux-x86_64

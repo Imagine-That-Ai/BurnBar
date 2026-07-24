@@ -1,0 +1,23 @@
+{
+  "id": "neural-bloom",
+  "label": "Neural Bloom",
+  "metalFileBase": "K_NeuralBloom",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_neural_bloom_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

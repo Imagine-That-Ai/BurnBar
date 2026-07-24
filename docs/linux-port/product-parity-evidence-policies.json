@@ -1,0 +1,1487 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-linux-product-parity-evidence-policies-v1",
+  "requirementsManifest": "docs/linux-port/product-parity-requirements.json",
+  "policies": [
+    {
+      "requirementId": "P-01",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-01.release-integrity"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-01"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-01 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-01/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-01/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-01.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-02",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-02.parity-certification"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-02"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-02 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-02/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-02/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-02.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-03",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-03.installed-runtime"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-03"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-03 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-03/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-03/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-03.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-04",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-04.architecture-reach"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-04"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-04 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-04/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-04/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-04.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-05",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-05.credential-custody"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-05"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-05 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-05/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-05/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-05.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-06",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-06.gateway-credential-boundary"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-06"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-06 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-06/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-06/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-06.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-07",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-07.computer-use"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-07"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-07 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-07/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-07/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-07.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-08",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-08.mercury-media"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-08"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-08 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-08/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-08/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-08.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-09",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-09.navigation-and-shell"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-09"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-09 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-09/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-09/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-09.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-10",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-10.dashboard-layouts"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-10"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-10 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-10/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-10/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-10.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-11",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-11.usage-ingestion"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-11"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-11 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-11/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-11/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-11.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-12",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-12.quota"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-12"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-12 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-12/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-12/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-12.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-13",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-13.onboarding"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-13"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-13 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-13/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-13/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-13.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-14",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-14.chat"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-14"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-14 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-14/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-14/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-14.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-15",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-15.account-and-billing"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-15"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-15 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-15/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-15/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-15.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-16",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-16.cloud-and-devices"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-16"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-16 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-16/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-16/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-16.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-17",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-17.activity-and-session-logs"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-17"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-17 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-17/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-17/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-17.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-18",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-18.memory-review"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-18"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-18 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-18/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-18/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-18.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-19",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-19.projects"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-19"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-19 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-19/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-19/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-19.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-20",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-20.missions"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-20"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-20 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-20/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-20/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-20.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-21",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-21.insights"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-21"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-21 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-21/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-21/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-21.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-22",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-22.database"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-22"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-22 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-22/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-22/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-22.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-23",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-23.provider-and-model-workspace"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-23"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-23 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-23/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-23/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-23.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-24",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-24.settings"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-24"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-24 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-24/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-24/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-24.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-25",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-25.updates"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-25"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-25 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-25/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-25/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-25.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-26",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-26.tray-and-native-shell"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-26"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-26 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-26/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-26/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-26.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-27",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-27.notifications-and-deep-links"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-27"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-27 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-27/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-27/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-27.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-28",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-28.smarthub"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-28"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-28 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-28/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-28/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-28.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-29",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-29.text-expansion"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-29"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-29 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-29/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-29/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-29.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-30",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-30.pet-companion"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-30"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-30 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-30/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-30/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-30.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-31",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-31.accessibility"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-31"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-31 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-31/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-31/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-31.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-32",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-32.performance"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-32"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-32 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-32/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-32/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-32.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-33",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-33.reliability"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-33"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-33 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-33/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-33/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-33.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-34",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-34.security-hardening"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-34"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-34 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-34/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-34/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-34.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-35",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-35.diagnostics-and-support"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-35"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-35 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-35/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-35/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-35.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-36",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-36.visual-and-interaction-polish"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-36"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-36 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-36/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-36/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-36.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-37",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-37.linux-matrix"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-37"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-37 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-37/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-37/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-37.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-38",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-38.ci-and-release-automation"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-38"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-38 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-38/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-38/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-38.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-39",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-39.cross-platform-differential-proof"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-39"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-39 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-39/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-39/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-39.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    },
+    {
+      "requirementId": "P-40",
+      "policyVersion": 1,
+      "requiredCheckIds": [
+        "p-40.data-and-privacy"
+      ],
+      "requiredEnvironmentIds": [
+        "ubuntu-24.04-gnome-x11-x86_64",
+        "ubuntu-24.04-gnome-x11-aarch64",
+        "ubuntu-24.04-gnome-wayland-x86_64",
+        "ubuntu-24.04-gnome-wayland-aarch64",
+        "fedora-kde-wayland-x86_64",
+        "fedora-kde-wayland-aarch64",
+        "arch-sway-wayland-x86_64"
+      ],
+      "allowedArtifactRoots": [
+        "docs/linux-port/evidence/product-parity-inputs/P-40"
+      ],
+      "minArtifactCount": 1,
+      "registeredProducer": {
+        "id": "openburnbar-linux-product-validator",
+        "version": 1,
+        "commandTemplate": "node scripts/linux-port/run-product-requirement-validator.mjs --requirement P-40 --environment {environment} --release-closure docs/linux-port/evidence/product-parity-inputs/P-40/{environment}/release-closure.json --output docs/linux-port/evidence/validator-receipts/P-40/{checkId}/{environment}.json",
+        "sourcePaths": [
+          "scripts/linux-port/run-product-requirement-validator.mjs",
+          "scripts/linux-port/product-validators/P-40.mjs"
+        ],
+        "repository": "Imagine-That-Ai/BurnBar",
+        "signerWorkflow": "github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml"
+      },
+      "requiredSubjectFields": [
+        "releaseClosureSha256",
+        "packageManifestSha256",
+        "installedEnvironmentSha256",
+        "runtimeManifestSha256"
+      ]
+    }
+  ]
+}

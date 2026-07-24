@@ -5,10 +5,15 @@ import android.util.Base64
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
+import com.openburnbar.data.computeruse.ComputerUseSessionGrantChallengeDelivery
+import com.openburnbar.data.computeruse.ComputerUseSessionGrantRoute
+import com.openburnbar.data.computeruse.IrohControllerRouteRegistering
+import com.openburnbar.data.hermes.HermesAuthLifecycleRegistry
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRelayChunkKind as RelayChunkKind
 import com.openburnbar.irohrelay.IrohDialTarget
+import com.openburnbar.irohrelay.IrohEndpointIdentity
 import com.openburnbar.irohrelay.IrohJniTransport
 import com.openburnbar.irohrelay.IrohPairingDirectory
 import com.openburnbar.irohrelay.IrohPairingDirectoryException
@@ -27,6 +32,9 @@ import com.openburnbar.irohrelay.LoopbackIrohRelayRendezvous
 import com.openburnbar.irohrelay.LoopbackIrohRelayTransport
 import com.openburnbar.irohrelay.NoopIrohTransportAuditLogging
 import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -60,6 +68,10 @@ interface HermesRelayTransporting {
     suspend fun sendUnary(payload: HermesRelayPayload, timeoutMillis: Long): String
 
     suspend fun sendStreaming(payload: HermesRelayPayload, timeoutMillis: Long, onSseEvent: suspend (String) -> Unit)
+
+    suspend fun closeForAuthTransition() = Unit
+
+    suspend fun destroy() = closeForAuthTransition()
 }
 
 /** Encrypted relay payload — wire shape mirrors iOS `HermesRelayPayload`. */
@@ -87,9 +99,17 @@ class HermesIrohRelayTransport(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
     private val connectTimeoutMillis: Long = DEFAULT_CONNECT_TIMEOUT_MILLIS,
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
+    private val sessionGrantChallengeHandler: (ComputerUseSessionGrantChallengeDelivery) -> Unit = {},
+    private val controllerRouteRegistrar: IrohControllerRouteRegistering? = null,
 ) : HermesRelayTransporting {
     private val stateLock = Mutex()
+    private val closed = AtomicBoolean(false)
+    private val activeStreams = ConcurrentHashMap.newKeySet<IrohRelayStream>()
+    private val lifecycleRegistration = HermesAuthLifecycleRegistry.register(priority = 50) {
+        closeForAuthTransition()
+    }
     private var endpoint: IrohRelayTransport? = null
+    private var endpointIdentity: IrohEndpointIdentity? = null
     private var startedOnce: Boolean = false
     private var endpointRelayURL: String? = null
 
@@ -191,7 +211,7 @@ class HermesIrohRelayTransport(
     }
 
     private suspend fun connectVerifiedStream(verifiedTarget: IrohDialTarget, uid: String, connectionId: String, dialTimeout: Long): IrohRelayStream {
-        val transport = transport(verifiedTarget.relayURL)
+        val transport = transport(verifiedTarget.relayURL, uid, connectionId)
         return try {
             withTimeoutOrNull(dialTimeout) {
                 transport.connect(verifiedTarget, timeoutMillis = dialTimeout)
@@ -210,24 +230,33 @@ class HermesIrohRelayTransport(
     }
 
     private suspend fun send(payload: HermesRelayPayload, timeoutMillis: Long, onChunk: suspend (StreamingChunk) -> Unit) {
+        requireLifecycleActive()
         val uid = relayAuthenticatedUid(payload)
 
         val publicKey = pairingPublicKeyProvider.fetchPublicKey(uid)
+        requireLifecycleActive(uid)
 
         val verifiedTarget = verifiedDialTarget(uid, payload, publicKey)
+        requireLifecycleActive(uid)
 
         val dialTimeout = minOf(connectTimeoutMillis, timeoutMillis)
         val stream = connectVerifiedStream(verifiedTarget, uid, payload.connectionID, dialTimeout)
-        auditLogger.record(
-            event = IrohTransportAuditEvent.STREAM_OPENED,
-            uid = uid,
-            connectionId = payload.connectionID,
-            transport = IrohTransportSelection.IROH_DIRECT,
-            rttMillis = null,
-            detail = mapOf("side" to "android"),
-        )
-
+        activeStreams += stream
+        val routeLive = AtomicBoolean(true)
         try {
+            requireLifecycleActive(uid)
+            val authenticatedRemoteNodeId = stream.authenticatedRemoteNodeId()?.trim()
+            if (authenticatedRemoteNodeId.isNullOrEmpty() || authenticatedRemoteNodeId != verifiedTarget.nodeId) {
+                throw IrohRelayTransportError.StreamRejected("The request stream remote identity did not match its verified pairing target.")
+            }
+            auditLogger.record(
+                event = IrohTransportAuditEvent.STREAM_OPENED,
+                uid = uid,
+                connectionId = payload.connectionID,
+                transport = IrohTransportSelection.IROH_DIRECT,
+                rttMillis = null,
+                detail = mapOf("side" to "android"),
+            )
             val relayPubBytes = decodeRelayPublicKeyBytes(payload.relayPublicKey)
             val frames = buildIrohRelaySendFrames(payload, uid, relayPubBytes)
             stream.send(frames.startFrame)
@@ -241,9 +270,14 @@ class HermesIrohRelayTransport(
                     symmetricKey = frames.symmetricKey,
                     requestId = frames.requestId,
                     onChunk = onChunk,
+                    authenticatedRemoteNodeId = authenticatedRemoteNodeId,
+                    routeToken = UUID.randomUUID().toString(),
+                    routeLive = routeLive,
                 ),
             )
         } finally {
+            routeLive.set(false)
+            activeStreams -= stream
             try {
                 stream.close()
             } catch (_: Throwable) {
@@ -259,18 +293,28 @@ class HermesIrohRelayTransport(
         val symmetricKey: ByteArray,
         val requestId: String,
         val onChunk: suspend (StreamingChunk) -> Unit,
+        val authenticatedRemoteNodeId: String,
+        val routeToken: String,
+        val routeLive: AtomicBoolean,
     )
 
     private suspend fun exchangeRelayRequest(request: RelayExchangeRequest) {
         val deadline = nowMillis() + request.timeoutMillis
         while (nowMillis() < deadline) {
+            requireLifecycleActive(request.uid)
             val remaining = deadline - nowMillis()
             val frame =
                 withTimeoutOrNull(remaining) { request.stream.receive() }
                     ?: relayExchangeTimeout()
+            requireLifecycleActive(request.uid)
+            val isBoundToConnection =
+                frame.uid == request.uid && frame.connectionId == request.payload.connectionID
+            if (isBoundToConnection && frame.type == HermesRealtimeRelayFrameType.CONTROL_SESSION_GRANT_CHALLENGE) {
+                handleSessionGrantChallenge(frame, request)
+                continue
+            }
             val isMatchingFrame =
-                frame.uid == request.uid &&
-                    frame.connectionId == request.payload.connectionID &&
+                isBoundToConnection &&
                     frame.requestId == request.requestId
             if (isMatchingFrame) {
                 when (
@@ -306,6 +350,25 @@ class HermesIrohRelayTransport(
             }
         }
         relayExchangeTimeout()
+    }
+
+    private fun handleSessionGrantChallenge(frame: HermesRealtimeRelayFrame, request: RelayExchangeRequest) {
+        val challenge = frame.control?.sessionGrantChallenge ?: return
+        sessionGrantChallengeHandler(
+            ComputerUseSessionGrantChallengeDelivery(
+                challenge = challenge,
+                route =
+                ComputerUseSessionGrantRoute(
+                    uid = request.uid,
+                    connectionId = request.payload.connectionID,
+                    authenticatedRemoteNodeId = request.authenticatedRemoteNodeId,
+                    streamToken = request.routeToken,
+                    nowMillis = nowMillis,
+                    live = { request.routeLive.get() },
+                    frameSink = { outbound -> request.stream.send(outbound) },
+                ),
+            ),
+        )
     }
 
     private fun relayExchangeTimeout(): Nothing = throw HermesRelayException("Iroh relay timed out before response.complete.")
@@ -382,20 +445,74 @@ class HermesIrohRelayTransport(
         else -> RelayFrameAction.Continue
     }
 
-    private suspend fun transport(relayURL: String?): IrohRelayTransport = stateLock.withLock {
-        val existing = endpoint
-        val normalizedRelayURL = relayURL?.trim()?.takeIf { it.isNotEmpty() }
-        if (existing != null && startedOnce && endpointRelayURL == normalizedRelayURL) return@withLock existing
-        if (existing != null && startedOnce) {
-            runCatching { existing.shutdown() }
+    private suspend fun transport(relayURL: String?, uid: String, connectionId: String): IrohRelayTransport {
+        val started = stateLock.withLock {
+            requireLifecycleActive(uid)
+            val existing = endpoint
+            val existingIdentity = endpointIdentity
+            val normalizedRelayURL = relayURL?.trim()?.takeIf { it.isNotEmpty() }
+            if (
+                existing != null &&
+                existingIdentity != null &&
+                startedOnce &&
+                endpointRelayURL == normalizedRelayURL
+            ) {
+                return@withLock StartedEndpoint(existing, existingIdentity)
+            }
+            if (existing != null && startedOnce) {
+                runCatching { existing.shutdown() }
+            }
+            val fresh = transportFactory(normalizedRelayURL)
+            val identity = fresh.start()
+            requireLifecycleActive(uid)
+            endpoint = fresh
+            endpointIdentity = identity
+            startedOnce = true
+            endpointRelayURL = normalizedRelayURL
+            StartedEndpoint(fresh, identity)
         }
-        val fresh = transportFactory(normalizedRelayURL)
-        endpoint = fresh
-        fresh.start()
-        startedOnce = true
-        endpointRelayURL = normalizedRelayURL
-        fresh
+        controllerRouteRegistrar?.ensureRegistered(
+            uid = uid,
+            connectionId = connectionId,
+            endpointIdentity = started.identity,
+        )
+        requireLifecycleActive(uid)
+        return started.transport
     }
+
+    private fun requireLifecycleActive(expectedUid: String? = null) {
+        val failure = runCatching { HermesAuthLifecycleRegistry.requireCurrent(lifecycleRegistration) }.exceptionOrNull()
+        val currentUid = auth.currentUser?.uid
+        if (closed.get() || failure != null || (expectedUid != null && currentUid != expectedUid)) {
+            throw HermesRelayException("Hermes relay stopped because the signed-in account changed.", failure)
+        }
+    }
+
+    override suspend fun closeForAuthTransition() {
+        closed.set(true)
+        val streams = activeStreams.toList()
+        activeStreams.clear()
+        streams.forEach { stream -> runCatching { stream.close() } }
+        val staleEndpoint = stateLock.withLock {
+            val current = endpoint
+            endpoint = null
+            endpointIdentity = null
+            endpointRelayURL = null
+            startedOnce = false
+            current
+        }
+        runCatching { staleEndpoint?.shutdown() }
+    }
+
+    override suspend fun destroy() {
+        HermesAuthLifecycleRegistry.unregister(lifecycleRegistration)
+        closeForAuthTransition()
+    }
+
+    private data class StartedEndpoint(
+        val transport: IrohRelayTransport,
+        val identity: IrohEndpointIdentity,
+    )
 
     private fun chunkRecord(frame: HermesRealtimeRelayFrame, keyData: ByteArray, requestId: String, uid: String, connectionId: String): StreamingChunk? {
         val payload = frame.payload

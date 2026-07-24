@@ -59,8 +59,8 @@ const LOW_RISK_CLOUD_SYNC_TRUST_CLASSES = new Set<AppCheckTrustClass>([
   "linux_lower_trust",
 ]);
 
-export function readAppIdFromCallableRequest(request: CallableRequest): string | undefined {
-  const appCheck = "app" in request ? request.app : undefined;
+export function readAppIdFromCallableRequest(request: { app?: unknown }): string | undefined {
+  const appCheck = request.app;
   return isRecord(appCheck) && typeof appCheck.appId === "string" ? appCheck.appId : undefined;
 }
 

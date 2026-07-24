@@ -154,10 +154,6 @@ fun BurnBarNavHost(
     userStore: UserStore = viewModel(),
     chatState: FloatingChatState = rememberFloatingChatState(),
     subscriptionStore: HostedQuotaSubscriptionStore = viewModel(),
-    // Hidden delight: a hit-test-disabled overlay that idles at zero cost and plays a
-    // theme-appropriate celebration when the user rapidly scrolls up-and-down (or a
-    // cute token bounce at the top/bottom boundary). Its nested-scroll connection,
-    // installed on the root below, receives reports from every scrollable child.
     easterEggController: EasterEggController = rememberEasterEggController(),
 ) {
     val currentUser by userStore.user.collectAsState()
@@ -185,16 +181,7 @@ fun BurnBarNavHost(
 
     val isWideScreen = LocalConfiguration.current.screenWidthDp > 600
 
-    val navigateTo: (BurnBarTab) -> Unit = { tab ->
-        // Canonical bottom-nav navigation: pop-with-save to the start
-        // destination + restore, so each tab keeps exactly one (state-saved)
-        // back-stack entry and tab returns restore warm ViewModels instead of
-        // reloading. See burnBarTabNavOptions for the full contract.
-        navController.navigate(
-            tab.route,
-            burnBarTabNavOptions(navController.graph.findStartDestination().id),
-        )
-    }
+    val navigateTo: (BurnBarTab) -> Unit = { tab -> navigateToTab(navController, tab) }
 
     Box(modifier = modifier.fillMaxSize().nestedScroll(easterEggController.nestedScrollConnection)) {
         AuroraBackdrop()
@@ -208,6 +195,7 @@ fun BurnBarNavHost(
                     isCloudMember = isCloudMember,
                     currentTier = currentTier,
                     priceForTier = { tier -> monthlyPriceForTier(proPrice, tier) },
+                    userUid = currentUser.uid,
                     userDisplayName = currentUser.displayName,
                     userPhotoUrl = currentUser.photoUrl,
                     chatState = chatState,
@@ -229,6 +217,13 @@ fun BurnBarNavHost(
         // TOP layer, over all content. No pointer modifier, so touches pass through.
         EasterEggOverlay(controller = easterEggController)
     }
+}
+
+private fun navigateToTab(navController: NavHostController, tab: BurnBarTab) {
+    navController.navigate(
+        tab.route,
+        burnBarTabNavOptions(navController.graph.findStartDestination().id),
+    )
 }
 
 /**

@@ -1,0 +1,23 @@
+{
+  "id": "mycelium-mesh",
+  "label": "Mycelium Mesh",
+  "metalFileBase": "K_MyceliumMesh",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_mycelium_mesh_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

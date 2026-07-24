@@ -5,6 +5,44 @@ import Foundation
 import XCTest
 
 final class BurnBarCLITests: XCTestCase {
+    func testSocketAuthTokenUsesExplicitEnvironmentPrecedence() throws {
+        let token = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
+            "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "  direct-token  ",
+            "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE": "/does/not/exist"
+        ])
+        XCTAssertEqual(token, "direct-token")
+    }
+
+    func testSocketAuthTokenReadsExplicitTokenFile() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cli-token-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("token")
+        try "file-token\n".write(to: file, atomically: true, encoding: .utf8)
+
+        let token = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
+            "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE": file.path
+        ])
+        XCTAssertEqual(token, "file-token")
+    }
+
+    #if os(Linux)
+    func testSocketAuthTokenReadsCanonicalLinuxSupportFile() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cli-linux-token-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("daemon-socket-auth-token")
+        try "canonical-token\n".write(to: file, atomically: true, encoding: .utf8)
+
+        let token = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
+            "OPENBURNBAR_DAEMON_SUPPORT_DIR": directory.path
+        ])
+        XCTAssertEqual(token, "canonical-token")
+    }
+    #endif
+
     func testStartupPreflightReturnsUsageBeforeRunnerConstruction() {
         for arguments in [[], ["help"], ["--help"], ["-h"], ["--", "help"]] {
             let result = BurnBarCLIRunner.startupPreflightResult(
@@ -263,6 +301,72 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertEqual(result.output?.contains("computer_use_panic_halt=accepted"), true)
         XCTAssertEqual(result.output?.contains("session_id=session-123"), true)
         XCTAssertEqual(result.output?.contains("source=hotkey"), true)
+    }
+
+    func testPrivacyRPCReadsJSONAndReturnsOnlyTypedResult() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let output = try runner.runPrivacyRPC(input: Data(#"{"method":"daemon.privacy.inventory","params":{}}"#.utf8))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+        XCTAssertEqual((object["stores"] as? [[String: Any]])?.count, 2)
+        XCTAssertNil(object["token"])
+    }
+
+    func testPrivacyRPCRejectsNonPrivacyMethods() {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        XCTAssertThrowsError(try runner.runPrivacyRPC(input: Data(#"{"method":"daemon.health","params":{}}"#.utf8)))
+    }
+
+    func testChatQueryCommandsEmitStableJSON() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let threads = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(try runner.run(arguments: ["chat", "threads", "--query", "release", "--limit", "7"]).utf8)) as? [String: Any])
+        XCTAssertEqual((threads["threads"] as? [[String: Any]])?.first?["id"] as? String, "thread-fixture")
+
+        let page = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(try runner.run(arguments: ["chat", "thread", "thread-fixture", "--max-messages", "1"]).utf8)) as? [String: Any])
+        XCTAssertEqual((page["messages"] as? [[String: Any]])?.first?["threadID"] as? String, "thread-fixture")
+        XCTAssertEqual(page["hasMoreBefore"] as? Bool, true)
+
+        XCTAssertThrowsError(try runner.run(arguments: ["chat", "threads", "--limit", "zero"]))
+        XCTAssertThrowsError(try runner.run(arguments: ["chat", "thread", "thread-fixture", "--before-message-id", "message-fixture"]))
+    }
+
+    func testActivityQueryCommandsEmitStableJSONAndRejectInvalidBounds() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+
+        let history = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(try runner.run(arguments: ["activity", "history", "--limit", "7"]).utf8)
+        ) as? [String: Any])
+        XCTAssertEqual(history["historyComplete"] as? Bool, true)
+        XCTAssertEqual((history["sessions"] as? [[String: Any]])?.first?["sourceID"] as? String, "Codex:activity-fixture")
+
+        let search = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(try runner.run(arguments: ["activity", "search", "needle", "--limit", "3"]).utf8)
+        ) as? [String: Any])
+        XCTAssertEqual((search["hits"] as? [[String: Any]])?.first?["sourceID"] as? String, "Codex:activity-fixture")
+
+        let replay = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(try runner.run(arguments: ["activity", "replay", "Codex:activity-fixture"]).utf8)
+        ) as? [String: Any])
+        XCTAssertEqual(replay["kind"] as? String, "native")
+
+        XCTAssertThrowsError(try runner.run(arguments: ["activity", "history", "--limit", "0"]))
+        XCTAssertThrowsError(try runner.run(arguments: ["activity", "search", "--limit", "1"]))
+        XCTAssertThrowsError(try runner.run(arguments: ["activity", "replay", "source", "extra"]))
+    }
+
+    func testActivityReplayInvocationUsesExitStatusForLookupFailure() async throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let success = try await runner.invoke(
+            arguments: ["activity", "replay", "Codex:activity-fixture"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        )
+        let missing = try await runner.invoke(
+            arguments: ["activity", "replay", "missing"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        )
+
+        XCTAssertEqual(success.exitCode, EXIT_SUCCESS)
+        XCTAssertEqual(missing.exitCode, EXIT_FAILURE)
+        XCTAssertEqual(missing.output?.contains("session_not_found"), true)
     }
 }
 
@@ -617,6 +721,76 @@ struct FakeCLIClient: BurnBarCLIClient {
         )
     }
 
+    func chatThreadList(_ request: BurnBarChatThreadListRequest) throws -> BurnBarChatThreadListResponse {
+        BurnBarChatThreadListResponse(threads: [
+            BurnBarChatThreadSummary(
+                id: "thread-fixture", title: request.query ?? "Fixture", preview: "Durable chat", messageCount: 2,
+                createdAt: "2026-07-20T00:00:00Z", updatedAt: "2026-07-20T00:01:00Z", backendID: "openai"
+            )
+        ])
+    }
+
+    func chatThreadGet(_ request: BurnBarChatThreadGetRequest) throws -> BurnBarChatThreadGetResponse {
+        BurnBarChatThreadGetResponse(
+            thread: BurnBarChatThreadSummary(
+                id: request.threadID, title: "Fixture", preview: "Durable chat", messageCount: 2,
+                createdAt: "2026-07-20T00:00:00Z", updatedAt: "2026-07-20T00:01:00Z", backendID: "openai"
+            ),
+            messages: [BurnBarChatMessage(
+                id: "message-fixture", threadID: request.threadID, role: .user, content: "Hello",
+                timestamp: "2026-07-20T00:00:00Z", backendID: "openai"
+            )],
+            hasMoreBefore: true
+        )
+    }
+
+    func activityHistory(limit: Int) throws -> BurnBarActivityHistoryResponse {
+        BurnBarActivityHistoryResponse(
+            sessions: [BurnBarActivityHistorySession(
+                id: "Codex:activity-fixture",
+                provider: "Codex",
+                model: "gpt-5.5",
+                startedAt: "2026-07-20T00:00:00Z",
+                tokens: 42,
+                costUsd: 0.01,
+                title: "Activity fixture",
+                sourceID: "Codex:activity-fixture",
+                providerSessionID: "activity-fixture",
+                projectName: "OpenBurnBar",
+                bodyMD: "# Activity fixture"
+            )],
+            nextCursor: nil,
+            historyComplete: true,
+            historyLimit: limit,
+            totalCount: 1
+        )
+    }
+
+    func activitySearch(query: String, limit: Int) throws -> BurnBarSearchQueryResult {
+        BurnBarSearchQueryResult(
+            plan: BurnBarSearchPlan(
+                mode: .retrieve,
+                lexicalFTSQuery: query,
+                semanticText: query,
+                aggregatePatterns: [],
+                note: nil
+            ),
+            aggregateOccurrenceCount: nil,
+            hits: [BurnBarIndexedSearchHit(
+                chunkID: "activity-chunk-fixture",
+                sourceKind: "conversation",
+                sourceID: "Codex:activity-fixture",
+                title: "Activity fixture",
+                snippet: "needle",
+                provider: "Codex",
+                projectName: "OpenBurnBar"
+            )],
+            degradedMessage: nil,
+            semanticSearchPerformed: false,
+            semanticHitCount: nil
+        )
+    }
+
     func runResume(
         sessionID: String,
         targetHarness: String?,
@@ -645,6 +819,63 @@ struct FakeCLIClient: BurnBarCLIClient {
             argv: ["codex", "resume", sessionID],
             targetHarness: targetHarness,
             workingDirectory: "/tmp/fixture"
+        )
+    }
+
+    func linuxPrivacyInventory() throws -> BurnBarLinuxPrivacyInventoryResponse {
+        BurnBarLinuxPrivacyInventoryResponse(
+            stores: BurnBarLinuxPrivacyStoreID.allCases.map {
+                BurnBarLinuxPrivacyStoreInventory(store: $0, state: .ready, bytes: 1, reason: "ready")
+            },
+            generatedAt: Date(timeIntervalSince1970: 1_780_000_000)
+        )
+    }
+
+    func linuxPrivacyDeletionPreview(_ request: BurnBarLinuxPrivacyDeletionPreviewRequest) throws -> BurnBarLinuxPrivacyDeletionPreviewResponse {
+        BurnBarLinuxPrivacyDeletionPreviewResponse(
+            token: "preview-token",
+            stores: request.stores,
+            entries: request.stores.map {
+                BurnBarLinuxPrivacyStoreInventory(store: $0, state: .ready, bytes: 1, reason: "ready")
+            },
+            expiresAt: Date(timeIntervalSince1970: 1_780_000_300),
+            confirmationPhrase: "DELETE LOCAL DATA"
+        )
+    }
+
+    func linuxPrivacyDeletionExecute(_ request: BurnBarLinuxPrivacyDeletionExecuteRequest) throws -> BurnBarLinuxPrivacyDeletionExecuteResponse {
+        BurnBarLinuxPrivacyDeletionExecuteResponse(
+            stores: request.stores,
+            deleted: request.stores,
+            alreadyAbsent: [],
+            bytesRemoved: 1,
+            idempotent: false
+        )
+    }
+
+    func linuxPrivacyExport(_ request: BurnBarLinuxPrivacyExportRequest) throws -> BurnBarLinuxPrivacyExportResponse {
+        BurnBarLinuxPrivacyExportResponse(
+            stores: request.stores,
+            destinationPath: request.destinationPath,
+            byteCount: 8,
+            formatVersion: 1
+        )
+    }
+
+    func linuxPrivacyRetentionStatus() throws -> BurnBarLinuxPrivacyRetentionStatusResponse {
+        BurnBarLinuxPrivacyRetentionStatusResponse(
+            policyState: .defaults,
+            rules: [],
+            stores: [],
+            evaluatedAt: Date(timeIntervalSince1970: 1_780_000_000)
+        )
+    }
+
+    func linuxPrivacyRetentionApply(_ request: BurnBarLinuxPrivacyRetentionApplyRequest) throws -> BurnBarLinuxPrivacyRetentionApplyResponse {
+        BurnBarLinuxPrivacyRetentionApplyResponse(
+            status: try linuxPrivacyRetentionStatus(),
+            removedBytes: 0,
+            removedEntries: 0
         )
     }
 }

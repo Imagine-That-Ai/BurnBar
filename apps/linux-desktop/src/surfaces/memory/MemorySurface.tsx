@@ -5,17 +5,22 @@ import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useMemoryStore } from '../../state/memoryStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
-import type { MemoryBoundary, MemoryReviewItem } from '../../tauriBridge.js';
+import type {
+  MemoryBoundary,
+  MemoryReviewInbox,
+  MemoryReviewItem
+} from '../../tauriBridge.js';
 import '../system/system.css';
 import './memory.css';
 
-type InboxFilter = 'all' | 'pending' | 'approved' | 'rejected';
+type InboxFilter = 'all' | 'pending' | 'approved' | 'rejected' | 'forgotten';
 
 const INBOX_FILTERS: { key: InboxFilter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'pending', label: 'Pending' },
   { key: 'approved', label: 'Approved' },
-  { key: 'rejected', label: 'Rejected' }
+  { key: 'rejected', label: 'Rejected' },
+  { key: 'forgotten', label: 'Forgotten' }
 ];
 
 function countForFilter(items: MemoryReviewItem[], filter: InboxFilter): number {
@@ -45,12 +50,46 @@ function emptyInboxCopy(filter: InboxFilter): { title: string; body: string } {
         title: 'No rejected memories',
         body: 'Rejected items stay out of recall. They will not be injected into future chats.'
       };
+    case 'forgotten':
+      return {
+        title: 'No forgotten memories',
+        body: 'Forgotten memories keep an audit tombstone but their sealed body is removed from local recall.'
+      };
     default:
       return {
         title: 'No memory items yet',
-        body: 'Durable memories recalled from the daemon appear here. "Save as memory" uses daemon.memory.remember (requires body text). Reject/forget permanently deletes via daemon.memory.forget — it does not return items to pending.'
+        body: 'Candidates stay quarantined until approval. Reject keeps a durable out-of-recall decision; forget removes the sealed body and leaves only an audit tombstone.'
       };
   }
+}
+
+function auditActionLabel(action: string): string {
+  switch (action.trim().toLowerCase()) {
+    case 'remember':
+    case 'approve':
+    case 'approved':
+      return 'Approved';
+    case 'reject':
+    case 'rejected':
+      return 'Rejected';
+    case 'forget':
+    case 'forgotten':
+      return 'Forgotten';
+    default:
+      return action.trim() || 'Review event';
+  }
+}
+
+function boundedAuditText(value: string, fallback: string): string {
+  const text = value.trim();
+  if (!text) return fallback;
+  return text.length > 120 ? `${text.slice(0, 117)}…` : text;
+}
+
+function auditTimestamp(at: string): { label: string; dateTime?: string } {
+  const date = new Date(at);
+  if (!at.trim() || !Number.isFinite(date.getTime())) return { label: 'Time unavailable' };
+  return { label: date.toLocaleString(), dateTime: date.toISOString() };
 }
 
 function MemorySkeleton() {
@@ -65,14 +104,14 @@ function MemoryReviewRow({
   item,
   onApprove,
   onReject,
-  onRevoke,
+  onForget,
   pendingDecision,
   decisionError
 }: {
   item: MemoryReviewItem;
   onApprove: () => void;
   onReject: () => void;
-  onRevoke: () => void;
+  onForget: () => void;
   pendingDecision?: boolean;
   decisionError?: string | null;
 }) {
@@ -88,7 +127,7 @@ function MemoryReviewRow({
     const ok = window.confirm(
       'Permanently forget this memory? It will be deleted from local recall (not returned to pending).'
     );
-    if (ok) onRevoke();
+    if (ok) onForget();
   };
 
   const confidencePct = Math.round(item.confidence * 100);
@@ -141,8 +180,10 @@ function MemoryReviewRow({
               {pendingDecision ? 'Saving…' : 'Save as memory'}
             </button>
           </>
-        ) : (
+        ) : item.status === 'rejected' ? (
           <span className="muted">Rejected</span>
+        ) : (
+          <span className="muted">Forgotten</span>
         )}
       </div>
       {decisionError ? (
@@ -205,6 +246,49 @@ function RecallBoundariesSection({
   );
 }
 
+function MemoryAuditSection({ events }: { events: MemoryReviewInbox['auditEvents'] }) {
+  return (
+    <section className="memory-audit-section" aria-labelledby="memory-audit-heading">
+      <div className="memory-audit-header">
+        <div>
+          <h3 id="memory-audit-heading" className="memory-audit-heading">Audit trail</h3>
+          <p className="muted memory-audit-lede">
+            Daemon-reported review events. An empty or unavailable timestamp is shown as unavailable; this surface never invents event time.
+          </p>
+        </div>
+        <span className="memory-audit-count" role="status">{events.length} event{events.length === 1 ? '' : 's'}</span>
+      </div>
+      {events.length === 0 ? (
+        <p className="muted memory-audit-empty">No review events have been recorded yet.</p>
+      ) : (
+        <ol className="memory-audit-list" aria-label="Memory audit events">
+          {events.map((event, index) => {
+            const timestamp = auditTimestamp(event.at);
+            const eventID = boundedAuditText(event.id, `event-${index + 1}`);
+            const actor = boundedAuditText(event.actor, 'daemon');
+            return (
+              <li key={`${event.id}-${index}`} className="memory-audit-row">
+                <span className="memory-audit-index" aria-hidden="true">{index + 1}</span>
+                <div className="memory-audit-event">
+                  <p className="memory-audit-summary">
+                    <strong>{auditActionLabel(event.action)}</strong>
+                    <span> by {actor}</span>
+                  </p>
+                  <p className="memory-audit-detail">
+                    <time dateTime={timestamp.dateTime}>{timestamp.label}</time>
+                    {event.subjectId ? <span> · Subject {boundedAuditText(event.subjectId, 'unavailable')}</span> : null}
+                  </p>
+                  <code className="memory-audit-id" title={eventID}>Event {eventID}</code>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </section>
+  );
+}
+
 export function MemorySurface() {
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const bridge = useShellStore((s) => s.bridge);
@@ -219,6 +303,7 @@ export function MemorySurface() {
   const decisionById = useMemoryStore((s) => s.decisionById);
   const loadInbox = useMemoryStore((s) => s.loadInbox);
   const decideMemory = useMemoryStore((s) => s.decide);
+  const forgetMemory = useMemoryStore((s) => s.forget);
 
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>('pending');
 
@@ -295,6 +380,7 @@ export function MemorySurface() {
           <p className="memory-inbox-empty-body">{inboxEmptyCopy.body}</p>
         </div>
         <RecallBoundariesSection boundaries={boundaries} sourceLabel={sourceLabel} />
+        <MemoryAuditSection events={inbox?.auditEvents ?? []} />
       </div>
     );
   }
@@ -365,13 +451,14 @@ export function MemorySurface() {
               decisionError={decisionById[item.id]?.error}
               onApprove={() => void decideMemory(item.id, 'approved')}
               onReject={() => void decideMemory(item.id, 'rejected')}
-              onRevoke={() => void decideMemory(item.id, 'rejected')}
+              onForget={() => void forgetMemory(item.id)}
             />
           ))}
         </div>
       )}
 
       <RecallBoundariesSection boundaries={boundaries} sourceLabel={sourceLabel} />
+      <MemoryAuditSection events={inbox?.auditEvents ?? []} />
     </div>
   );
 }

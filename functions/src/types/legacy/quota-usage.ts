@@ -518,6 +518,18 @@ export interface UsageEventDoc {
   /** Source device identifier used by synced records from another device. */
   sourceDeviceId?: string;
 
+  /** Stable identity of the product surface that executed the request. */
+  executionSourceID?: string;
+
+  /** User-facing execution source label. */
+  executionSourceName?: string;
+
+  /** Execution surface class (IDE, CLI, desktop app, service, or automation). */
+  executionSourceKind?: string;
+
+  /** Confidence of the execution-source attribution. */
+  executionSourceConfidence?: string;
+
   /** Number of input tokens. */
   inputTokens?: number;
 

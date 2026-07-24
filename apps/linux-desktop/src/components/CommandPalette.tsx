@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { routeMatchRank, routeMatchesQuery } from '../commandPaletteMatch.js';
 import { pushCommandPaletteRecent, readCommandPaletteRecents } from '../commandPaletteRecents.js';
 import { ROUTES, type RouteMeta, type ShellRoute } from '../routes.js';
@@ -36,6 +36,10 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const [recents, setRecents] = useState<string[]>(() => readCommandPaletteRecents());
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const titleId = useId();
+  const resultsId = useId();
 
   const navigateRoutes = useMemo(
     () =>
@@ -61,6 +65,11 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     return rows;
   }, [navigateRoutes, searchRows]);
 
+  // Query changes render before the effect that resets selectedIndex. Clamp the
+  // active row during that render so assistive tech never receives a dangling
+  // aria-activedescendant or a list with no selected option.
+  const activeIndex = flatRows.length > 0 ? Math.min(selectedIndex, flatRows.length - 1) : -1;
+
   const resetState = useCallback(() => {
     setQuery('');
     setSelectedIndex(0);
@@ -69,9 +78,16 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
   useEffect(() => {
     if (!open) return;
+    const activeElement = document.activeElement;
+    previousFocusRef.current = activeElement instanceof HTMLElement ? activeElement : null;
     resetState();
     const id = window.requestAnimationFrame(() => inputRef.current?.focus());
-    return () => window.cancelAnimationFrame(id);
+    return () => {
+      window.cancelAnimationFrame(id);
+      const previousFocus = previousFocusRef.current;
+      previousFocusRef.current = null;
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
   }, [open, resetState]);
 
   useEffect(() => {
@@ -103,11 +119,37 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   );
 
   const activateSelected = useCallback(() => {
-    const row = flatRows[selectedIndex];
+    const row = activeIndex >= 0 ? flatRows[activeIndex] : undefined;
     if (row) activateRow(row);
-  }, [activateRow, flatRows, selectedIndex]);
+  }, [activateRow, activeIndex, flatRows]);
 
   const handleDialogKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Tab') {
+      // Keep keyboard users inside the modal until they explicitly dismiss it.
+      // Result rows are still pointer-activatable, but tab order remains bounded
+      // to controls that are actually inside the command palette.
+      const focusable = dialogRef.current
+        ? Array.from(
+            dialogRef.current.querySelectorAll<HTMLElement>(
+              'input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+            )
+          )
+        : [];
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+      return;
+    }
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       if (flatRows.length === 0) return;
@@ -136,6 +178,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const trimmed = query.trim();
   const showEmpty = flatRows.length === 0 && trimmed.length > 0;
   const navigateCount = navigateRoutes.length;
+  const selectedRowId = activeIndex >= 0 ? `command-palette-option-${activeIndex}` : undefined;
 
   return (
     <div
@@ -146,12 +189,16 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       }}
     >
       <div
+        ref={dialogRef}
         className="command-palette"
         role="dialog"
         aria-modal="true"
-        aria-label="Command palette"
+        aria-labelledby={titleId}
         onKeyDown={handleDialogKeyDown}
       >
+        <h2 id={titleId} className="sr-only">
+          Command palette
+        </h2>
         <div
           className={`command-palette-search${inputFocused ? ' command-palette-search--focused' : ''}`}
         >
@@ -162,9 +209,14 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             ref={inputRef}
             className="command-palette-input"
             type="search"
+            role="combobox"
             value={query}
             placeholder="Jump to section or search…"
             aria-label="Search routes and recent queries"
+            aria-autocomplete="list"
+            aria-controls={resultsId}
+            aria-expanded="true"
+            aria-activedescendant={selectedRowId}
             autoComplete="off"
             onFocus={() => setInputFocused(true)}
             onBlur={() => setInputFocused(false)}
@@ -173,10 +225,12 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
               if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 e.preventDefault();
                 handleDialogKeyDown(e);
+                e.stopPropagation();
               }
               if (e.key === 'Enter') {
                 e.preventDefault();
                 activateSelected();
+                e.stopPropagation();
               }
             }}
           />
@@ -195,7 +249,13 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           ) : null}
         </div>
 
-        <div className="command-palette-results" ref={listRef}>
+        <div
+          className="command-palette-results"
+          ref={listRef}
+          id={resultsId}
+          role="listbox"
+          aria-label="Command results"
+        >
           {flatRows.map((row, index) => (
             <div key={row.kind === 'route' ? row.route.id : `recent-${row.query}`}>
               {row.kind === 'route' && index === 0 ? (
@@ -206,9 +266,18 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
               ) : null}
               <button
                 type="button"
+                id={`command-palette-option-${index}`}
+                aria-current={activeIndex === index ? 'true' : undefined}
                 className="command-palette-row"
-                data-selected={selectedIndex === index}
+                data-selected={activeIndex === index}
                 onMouseEnter={() => setSelectedIndex(index)}
+                onFocus={() => setSelectedIndex(index)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    activateRow(row);
+                  }
+                }}
                 onClick={() => activateRow(row)}
               >
                 <span className="command-palette-row-icon" aria-hidden="true">
@@ -230,9 +299,14 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           ))}
 
           {showEmpty ? (
-            <div className="command-palette-empty">No results for &ldquo;{trimmed}&rdquo;</div>
+            <div className="command-palette-empty" role="status">
+              No results for &ldquo;{trimmed}&rdquo;
+            </div>
           ) : null}
         </div>
+        <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {showEmpty ? `No results for ${trimmed}` : `${flatRows.length} command palette results`}
+        </p>
       </div>
     </div>
   );

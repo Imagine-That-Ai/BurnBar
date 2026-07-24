@@ -1,4 +1,4 @@
-import type { AccountStatus } from '../../tauriBridge.js';
+import type { AccountStatus, LinuxCloudSyncStatus } from '../../tauriBridge.js';
 
 const CANONICAL_INVARIANT = 'Local SQLite remains canonical';
 
@@ -15,9 +15,21 @@ function formatRelativeSync(iso: string): string {
   return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
-function syncHeadline(status: AccountStatus): string {
+function syncHeadline(status: AccountStatus, cloudSync?: LinuxCloudSyncStatus | null): string {
   if (!status.signedIn) {
     return 'Local-only';
+  }
+  switch (cloudSync?.phase) {
+    case 'disabled':
+      return 'Cloud sync off';
+    case 'locked':
+      return 'Sync keyring locked';
+    case 'backoff':
+      return 'Sync retry pending';
+    case 'syncing':
+      return 'Encrypted sync in progress';
+    default:
+      break;
   }
   switch (status.syncState) {
     case 'active':
@@ -29,9 +41,15 @@ function syncHeadline(status: AccountStatus): string {
   }
 }
 
-function syncDetail(status: AccountStatus): string {
+function syncDetail(status: AccountStatus, cloudSync?: LinuxCloudSyncStatus | null): string {
   if (!status.signedIn) {
     return 'Cloud identity is optional. Your workspace stays on this machine until you sign in elsewhere.';
+  }
+  if (cloudSync?.phase === 'disabled') {
+    return 'Cloud consent is off. Local rows remain canonical and no new encrypted sync is attempted.';
+  }
+  if (cloudSync?.phase === 'locked') {
+    return 'Unlock the Linux keyring before encrypted sync can run. Local rows remain canonical while it is locked.';
   }
   switch (status.syncState) {
     case 'active':
@@ -43,16 +61,39 @@ function syncDetail(status: AccountStatus): string {
   }
 }
 
-export function SyncStateCard({ status }: { status: AccountStatus }) {
+export function SyncStateCard({
+  status,
+  cloudSync,
+  syncBusy = false,
+  syncError,
+  onSync
+}: {
+  status: AccountStatus;
+  cloudSync?: LinuxCloudSyncStatus | null;
+  syncBusy?: boolean;
+  syncError?: string | null;
+  onSync?: () => void;
+}) {
   const stateClass = status.signedIn ? status.syncState : 'local-only';
+  const cloudSyncLabel = cloudSync?.phase === 'syncing'
+    ? 'Syncing…'
+    : cloudSync?.phase === 'locked'
+      ? 'Keyring locked'
+      : cloudSync?.phase === 'backoff'
+        ? 'Retry pending'
+        : cloudSync?.phase === 'disabled'
+          ? 'Cloud sync off'
+          : cloudSync?.phase === 'ready'
+            ? 'Ready'
+            : 'Unavailable';
 
   return (
     <section
       className={`sync-state-card sync-state-card--${stateClass}`}
       aria-labelledby="sync-state-title"
     >
-      <h3 id="sync-state-title">{syncHeadline(status)}</h3>
-      <p className="sync-state-detail muted">{syncDetail(status)}</p>
+      <h3 id="sync-state-title">{syncHeadline(status, cloudSync)}</h3>
+      <p className="sync-state-detail muted">{syncDetail(status, cloudSync)}</p>
       <p className="sync-canonical-invariant" data-testid="canonical-invariant">
         {CANONICAL_INVARIANT}
       </p>
@@ -60,6 +101,33 @@ export function SyncStateCard({ status }: { status: AccountStatus }) {
         <p className="sync-last muted" role="status">
           Last sync {formatRelativeSync(status.lastSyncAt)}
         </p>
+      ) : null}
+      {status.signedIn && cloudSync ? (
+        <div className="sync-daemon-posture" data-testid="cloud-sync-posture">
+          <p className="sync-last muted" role="status">
+            Daemon sync: <strong>{cloudSyncLabel}</strong>
+            {cloudSync.pendingMutationCount > 0
+              ? ` · ${cloudSync.pendingMutationCount} pending change${cloudSync.pendingMutationCount === 1 ? '' : 's'}`
+              : ' · no pending changes'}
+          </p>
+          {cloudSync.consecutiveFailures > 0 ? (
+            <p className="sync-last muted" role="status">
+              {cloudSync.consecutiveFailures} consecutive sync failure{cloudSync.consecutiveFailures === 1 ? '' : 's'}.
+            </p>
+          ) : null}
+          {onSync ? (
+            <button
+              type="button"
+              className="ghost"
+              onClick={onSync}
+              disabled={syncBusy || !cloudSync.vaultKeyAvailable || cloudSync.phase === 'disabled'}
+              aria-busy={syncBusy}
+            >
+              {syncBusy ? 'Syncing…' : 'Sync now'}
+            </button>
+          ) : null}
+          {syncError ? <p className="sync-last" role="alert">{syncError}</p> : null}
+        </div>
       ) : null}
     </section>
   );

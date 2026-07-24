@@ -28,6 +28,10 @@ const domains = {
   sessionId?: string;
   deviceId?: string;
   sourceDeviceId?: string;
+  executionSourceID?: string;
+  executionSourceName?: string;
+  executionSourceKind?: string;
+  executionSourceConfidence?: string;
   inputTokens?: number;
   outputTokens?: number;
   cacheReadTokens?: number;
@@ -50,6 +54,10 @@ public struct FirestoreUsageEventDoc: Codable, Sendable, Equatable {
     public var sessionId: String?
     public var deviceId: String?
     public var sourceDeviceId: String?
+    public var executionSourceID: String?
+    public var executionSourceName: String?
+    public var executionSourceKind: String?
+    public var executionSourceConfidence: String?
     public var inputTokens: Int?
     public var outputTokens: Int?
     public var cacheReadTokens: Int?
@@ -75,6 +83,11 @@ data class FirestoreUsageEventDoc(
     val sessionId: String? = null,
     val deviceId: String? = null,
     val sourceDeviceId: String? = null,
+    @get:PropertyName("executionSourceID") @set:PropertyName("executionSourceID")
+    var executionSourceId: String? = null,
+    val executionSourceName: String? = null,
+    val executionSourceKind: String? = null,
+    val executionSourceConfidence: String? = null,
     val inputTokens: Long? = null,
     val outputTokens: Long? = null,
     val cacheReadTokens: Long? = null,
@@ -1062,6 +1075,113 @@ data class FirestoreIrohPairingDoc(
     val createdAt: String = "",
     val expiresAt: String = "",
     val platform: String? = null,
+)`,
+      },
+      IrohControllerRouteDoc: {
+        ts: `export interface IrohControllerRouteDoc {
+  connectionId: string;
+  sourceDeviceId: string;
+  transportNodeId: string;
+  authorityPeerNodeId: string;
+  authorityPublicKeySHA256: string;
+  status: string;
+  generation: number;
+  registeredAtMillis: number;
+  expiresAtMillis: number;
+  revokedAtMillis?: number;
+  schemaVersion: number;
+  updatedAt: string;
+}`,
+        swift: `public struct FirestoreIrohControllerRouteDoc: Codable, Sendable, Equatable {
+    public var connectionId: String
+    public var sourceDeviceId: String
+    public var transportNodeId: String
+    public var authorityPeerNodeId: String
+    public var authorityPublicKeySHA256: String
+    public var status: String
+    public var generation: Int64
+    public var registeredAtMillis: Int64
+    public var expiresAtMillis: Int64
+    public var revokedAtMillis: Int64?
+    public var schemaVersion: Int64
+    public var updatedAt: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreIrohControllerRouteDoc(
+    val connectionId: String = "",
+    val sourceDeviceId: String = "",
+    val transportNodeId: String = "",
+    val authorityPeerNodeId: String = "",
+    val authorityPublicKeySHA256: String = "",
+    val status: String = "",
+    val generation: Long = 0,
+    val registeredAtMillis: Long = 0,
+    val expiresAtMillis: Long = 0,
+    val revokedAtMillis: Long? = null,
+    val schemaVersion: Long = 0,
+    val updatedAt: String = "",
+)`,
+      },
+      IrohControllerRouteChallengeDoc: {
+        ts: `export interface IrohControllerRouteChallengeDoc {
+  challengeId: string;
+  challengeNonce: string;
+  connectionId: string;
+  sourceDeviceId: string;
+  transportNodeId: string;
+  authorityPeerNodeId: string;
+  proofKind: string;
+  expectedPriorGeneration: number;
+  expectedRegisteredAtMillis?: number;
+  registrationGeneration: number;
+  canonicalPayloadBase64: string;
+  issuedAtMillis: number;
+  expiresAtMillis: number;
+  status: string;
+  consumedAtMillis?: number;
+  schemaVersion: number;
+  expireAt: string;
+}`,
+        swift: `public struct FirestoreIrohControllerRouteChallengeDoc: Codable, Sendable, Equatable {
+    public var challengeId: String
+    public var challengeNonce: String
+    public var connectionId: String
+    public var sourceDeviceId: String
+    public var transportNodeId: String
+    public var authorityPeerNodeId: String
+    public var proofKind: String
+    public var expectedPriorGeneration: Int64
+    public var expectedRegisteredAtMillis: Int64?
+    public var registrationGeneration: Int64
+    public var canonicalPayloadBase64: String
+    public var issuedAtMillis: Int64
+    public var expiresAtMillis: Int64
+    public var status: String
+    public var consumedAtMillis: Int64?
+    public var schemaVersion: Int64
+    public var expireAt: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreIrohControllerRouteChallengeDoc(
+    val challengeId: String = "",
+    val challengeNonce: String = "",
+    val connectionId: String = "",
+    val sourceDeviceId: String = "",
+    val transportNodeId: String = "",
+    val authorityPeerNodeId: String = "",
+    val proofKind: String = "",
+    val expectedPriorGeneration: Long = 0,
+    val expectedRegisteredAtMillis: Long? = null,
+    val registrationGeneration: Long = 0,
+    val canonicalPayloadBase64: String = "",
+    val issuedAtMillis: Long = 0,
+    val expiresAtMillis: Long = 0,
+    val status: String = "",
+    val consumedAtMillis: Long? = null,
+    val schemaVersion: Long = 0,
+    val expireAt: String = "",
 )`,
       },
     },

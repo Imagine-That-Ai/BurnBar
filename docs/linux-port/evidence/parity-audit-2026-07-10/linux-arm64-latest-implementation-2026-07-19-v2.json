@@ -1,0 +1,85 @@
+{
+  "schema": "openburnbar.parity.linux-installed-runtime-receipt.v1",
+  "capturedAt": "2026-07-19T19:48:26Z",
+  "certificationScope": "non-certifying exact implementation ARM64 package and live VM smoke receipt",
+  "sourceCommit": "872074af3a",
+  "sourceDescription": "Exact integration head synced into the Ubuntu guest; native ARM64 DEB build and install completed, daemon health verified, and packaged desktop window observed. Initial black captures were produced while GNOME session 1 was locked; after loginctl unlock-session 1, the same installed package rendered the Overview surface and Fluid Aurora Canvas2D fallback.",
+  "environment": {
+    "guest": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME/X11",
+    "display": ":0",
+    "vmAddress": "192.168.64.5",
+    "session": "GNOME session 1; unlocked before final captures",
+    "webgl2": false,
+    "webgl1": true,
+    "webkitNote": "WebKitGTK reports the GBM WebGL2 path unavailable; the packaged shell must use the Canvas2D fallback."
+  },
+  "package": {
+    "name": "open-burn-bar",
+    "version": "0.1.1",
+    "architecture": "arm64",
+    "archiveBytes": 151389702,
+    "archiveSha256": "10190c7ae905c48f0ab272ef0d98c871f7d54a84ab9a6e49414e1febe0748274",
+    "desktopSha256": "a8507d188489fd47143496cedabf6b82223250f596c2aaacd84d87787e1e5cb5",
+    "daemonSha256": "fb0f87ccc0638f84c2ba9f2a34ca97f8cec707534a5473f19bf6f317291c480c",
+    "cliSha256": "db0d6931ca8644a91f78ee3dccac27364bab5a373e63917a53915cf836e180e5",
+    "signed": false,
+    "publicFeed": false
+  },
+  "runtime": {
+    "daemonService": "active",
+    "daemonHealth": {
+      "ok": true,
+      "protocolVersion": 1,
+      "daemonVersion": "1.0.29",
+      "socketPath": "/run/user/1000/openburnbar/daemon.sock"
+    },
+    "installedDesktopPid": 210335,
+    "desktopWindow": {
+      "exists": true,
+      "title": "OpenBurnBar",
+      "renderedSurface": "overview-visible-after-unlock"
+    }
+  },
+  "backdrop": {
+    "requestedKernel": "fluid-aurora",
+    "resolvedSubstrate": "2d",
+    "resolutionLabel": "Fluid Aurora - 2D fallback (WebGL2 unavailable)",
+    "captureIntervalSeconds": 2,
+    "captureASha256": "b3791c9d891dcd51e3a081d6851d3f8556f598d8b13407e33ce2e3567cdb25eb",
+    "captureBSha256": "9cd14cc2f94465e40a243fb2e022c55ac03f99a1928dbbd20068640883dfff74",
+    "capturePaths": [
+      ".tmp/black-investigation-post-unlock-t1.png",
+      ".tmp/black-investigation-post-unlock-t3.png"
+    ],
+    "captureDimensions": "1792x851",
+    "pixelsChangedBetweenCaptures": 382024,
+    "visible": true,
+    "animated": true,
+    "blackFrame": false,
+    "captureNote": "The final captures were taken after GNOME session 1 was unlocked. The prior identical black captures were a locked-session artifact, not evidence of a renderer failure.",
+    "backgroundRecovery": {
+      "verified": false,
+      "reason": "Minimize/restore was not part of this unlocked-session capture; the two-second animated fallback capture is verified."
+    }
+  },
+  "onboarding": {
+    "daemonVerifyAction": "not-captured-current-run",
+    "advancedToStep": null,
+    "visibleRoute": "Overview",
+    "historicalBlackCaptureCause": "GNOME session locked",
+    "historicalVisibleReceipt": "linux-arm64-latest-implementation-2026-07-19.json"
+  },
+  "limitations": [
+    "The package is locally built and unsigned; it is not release provenance evidence.",
+    "The black captures from the first attempt were taken while the GNOME session was locked; the final unlocked captures are visible and animated, but they do not certify every route, onboarding interaction, accessibility matrix, or full visual parity.",
+    "This guest does not certify WebGL2-only kernels, KDE/Wayland/wlroots, x86_64, or cross-device workflows.",
+    "The strict ledger remains 0/40 product requirements and 0/7 environment receipts."
+  ],
+  "strictLedger": {
+    "productRequirementsReady": "0/40",
+    "environmentReceiptsComplete": "0/7",
+    "productParityClaim": false
+  }
+}

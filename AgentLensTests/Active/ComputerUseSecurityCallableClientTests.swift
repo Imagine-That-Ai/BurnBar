@@ -1,4 +1,5 @@
 import CryptoKit
+import FirebaseFunctions
 import XCTest
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
@@ -6,6 +7,245 @@ import OpenBurnBarSignalCore
 @testable import OpenBurnBar
 
 final class ComputerUseSecurityCallableClientTests: XCTestCase {
+    func testResolveActiveIrohControllerRoutesForwardsConnectionAndParsesResponse() async throws {
+        let now = Int64(Date().timeIntervalSince1970 * 1_000)
+        var authenticationChecks = 0
+        var capturedConnectionID: String?
+
+        let routes = try await ComputerUseSecurityCallableClient.resolveActiveIrohControllerRoutes(
+            uid: "user-1",
+            connectionId: "connection-1",
+            authenticatedUID: {
+                authenticationChecks += 1
+                return "user-1"
+            },
+            invokeCallable: { connectionID in
+                capturedConnectionID = connectionID
+                return [
+                    "uid": "user-1",
+                    "connectionId": "connection-1",
+                    "resolvedAtMillis": now,
+                    "routes": []
+                ]
+            }
+        )
+
+        XCTAssertTrue(routes.isEmpty)
+        XCTAssertEqual(capturedConnectionID, "connection-1")
+        XCTAssertEqual(authenticationChecks, 2)
+    }
+
+    func testResolveActiveIrohControllerRoutesRejectsAccountDriftBeforeAndDuringCall() async {
+        var callCount = 0
+        do {
+            _ = try await ComputerUseSecurityCallableClient.resolveActiveIrohControllerRoutes(
+                uid: "user-1",
+                connectionId: "connection-1",
+                authenticatedUID: { "user-2" },
+                invokeCallable: { _ in
+                    callCount += 1
+                    return [:]
+                }
+            )
+            XCTFail("Expected pre-call account drift to fail closed")
+        } catch {
+            XCTAssertEqual(callCount, 0)
+            XCTAssertEqual(
+                (error as? ComputerUseSecurityCallableClient.ClientError)?.errorDescription,
+                "The active account changed before controller-route resolution."
+            )
+        }
+
+        var authenticationChecks = 0
+        do {
+            _ = try await ComputerUseSecurityCallableClient.resolveActiveIrohControllerRoutes(
+                uid: "user-1",
+                connectionId: "connection-1",
+                authenticatedUID: {
+                    authenticationChecks += 1
+                    return authenticationChecks == 1 ? "user-1" : "user-2"
+                },
+                invokeCallable: { _ in
+                    callCount += 1
+                    return [:]
+                }
+            )
+            XCTFail("Expected post-call account drift to fail closed")
+        } catch {
+            XCTAssertEqual(callCount, 1)
+            XCTAssertEqual(
+                (error as? ComputerUseSecurityCallableClient.ClientError)?.errorDescription,
+                "The active account changed during controller-route resolution."
+            )
+        }
+    }
+
+    func testControllerRouteDirectoryMapsAuthoritativeAndFailureResults() async throws {
+        let now = Int64(Date().timeIntervalSince1970 * 1_000)
+        let binding = try XCTUnwrap(IrohControllerRouteBinding(
+            sourceDeviceId: "ios-device-1",
+            transportNodeId: String(repeating: "a", count: 64),
+            authorityPeerNodeId: "ios-authority-1",
+            generation: 1,
+            registeredAtMillis: now - 1_000,
+            expiresAtMillis: now + 60_000
+        ))
+        var capturedArguments: [(String, String)] = []
+
+        let authoritative = await CallableIrohControllerRouteDirectory.load(
+            uid: "user-1",
+            connectionId: "connection-1",
+            resolve: { uid, connectionID in
+                capturedArguments.append((uid, connectionID))
+                return [binding]
+            }
+        )
+        XCTAssertEqual(capturedArguments.count, 1)
+        XCTAssertEqual(capturedArguments.first?.0, "user-1")
+        XCTAssertEqual(capturedArguments.first?.1, "connection-1")
+        XCTAssertEqual(authoritative, .authoritative(IrohInboundPeerPolicy(routeBindings: [binding])))
+
+        let transient = await CallableIrohControllerRouteDirectory.load(
+            uid: "user-1",
+            connectionId: "connection-1",
+            resolve: { _, _ in throw URLError(.notConnectedToInternet) }
+        )
+        XCTAssertEqual(transient, .transientFailure)
+
+        let rejected = await CallableIrohControllerRouteDirectory.load(
+            uid: "user-1",
+            connectionId: "connection-1",
+            resolve: { _, _ in
+                throw ComputerUseSecurityCallableClient.ClientError.invalidResponse("invalid route")
+            }
+        )
+        XCTAssertEqual(rejected, .authoritative(IrohInboundPeerPolicy(routeBindings: [])))
+    }
+
+    func testControllerRouteDirectoryDefaultResolverFailsClosedWithoutAuthenticatedUser() async {
+        let result = await CallableIrohControllerRouteDirectory.load(
+            uid: "user-1",
+            connectionId: "connection-1"
+        )
+
+        XCTAssertEqual(result, .authoritative(IrohInboundPeerPolicy(routeBindings: [])))
+    }
+
+    func testControllerRouteDirectoryRetainsPolicyOnlyForTransportFailures() {
+        XCTAssertTrue(CallableIrohControllerRouteDirectory.isTransientTransportFailure(
+            URLError(.notConnectedToInternet)
+        ))
+        XCTAssertTrue(CallableIrohControllerRouteDirectory.isTransientTransportFailure(
+            NSError(domain: FunctionsErrorDomain, code: FunctionsErrorCode.unavailable.rawValue)
+        ))
+        XCTAssertFalse(CallableIrohControllerRouteDirectory.isTransientTransportFailure(
+            NSError(domain: FunctionsErrorDomain, code: FunctionsErrorCode.permissionDenied.rawValue)
+        ))
+        XCTAssertFalse(CallableIrohControllerRouteDirectory.isTransientTransportFailure(
+            NSError(domain: "OpenBurnBar.InvalidResponse", code: 1)
+        ))
+    }
+
+    func testParsesFreshAuthoritativeEmptyIrohControllerRouteResponse() throws {
+        let now: Int64 = 1_700_000_000_000
+        let routes = try ComputerUseSecurityCallableClient.parseActiveIrohControllerRoutes(
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": NSNumber(value: now),
+                "routes": []
+            ],
+            expectedUID: "user-1",
+            expectedConnectionId: "connection-1",
+            nowMillis: now
+        )
+
+        XCTAssertTrue(routes.isEmpty)
+    }
+
+    func testParsesOneFreshActiveIrohControllerRoute() throws {
+        let now: Int64 = 1_700_000_000_000
+        let hexNodeId = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+        let routes = try ComputerUseSecurityCallableClient.parseActiveIrohControllerRoutes(
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": NSNumber(value: now),
+                "routes": [[
+                    "connectionId": "connection-1",
+                    "sourceDeviceId": "ios-device-1",
+                    "transportNodeId": hexNodeId,
+                    "authorityPeerNodeId": "ios-phone-authority-1",
+                    "generation": NSNumber(value: 4),
+                    "registeredAtMillis": NSNumber(value: now - 1_000),
+                    "expiresAtMillis": NSNumber(value: now + 60_000)
+                ]]
+            ],
+            expectedUID: "user-1",
+            expectedConnectionId: "connection-1",
+            nowMillis: now
+        )
+
+        XCTAssertEqual(routes.count, 1)
+        XCTAssertEqual(routes[0].transportNodeId, hexNodeId)
+        XCTAssertEqual(routes[0].authorityPeerNodeId, "ios-phone-authority-1")
+        XCTAssertEqual(routes[0].generation, 4)
+    }
+
+    func testRejectsAmbiguousStaleOrMismatchedIrohControllerRouteResponse() {
+        let now: Int64 = 1_700_000_000_000
+        let route: [String: Any] = [
+            "connectionId": "connection-1",
+            "sourceDeviceId": "ios-device-1",
+            "transportNodeId": String(repeating: "a", count: 64),
+            "authorityPeerNodeId": "ios-phone-authority-1",
+            "generation": 1,
+            "registeredAtMillis": now - 1_000,
+            "expiresAtMillis": now + 60_000
+        ]
+        let invalidResponses: [[String: Any]] = [
+            ["uid": "user-other", "connectionId": "connection-1", "resolvedAtMillis": now, "routes": [route]],
+            ["uid": "user-1", "connectionId": "connection-1", "resolvedAtMillis": now, "routes": [route, route]],
+            ["uid": "user-1", "connectionId": "connection-1", "resolvedAtMillis": now - 60_001, "routes": [route]],
+            ["uid": "user-1", "connectionId": "connection-other", "resolvedAtMillis": now, "routes": [route]],
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": now,
+                "routes": [route.merging(["generation": NSNumber(value: 1.5)]) { _, replacement in replacement }]
+            ],
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": now,
+                "routes": [route.merging(["generation": true]) { _, replacement in replacement }]
+            ],
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": now,
+                "routes": [[
+                    "connectionId": "connection-1",
+                    "sourceDeviceId": "ios-device-1",
+                    "transportNodeId": String(repeating: "a", count: 64),
+                    "authorityPeerNodeId": "ios-phone-authority-1",
+                    "generation": 1,
+                    "registeredAtMillis": now - 1_000,
+                    "expiresAtMillis": now
+                ]]
+            ]
+        ]
+
+        for response in invalidResponses {
+            XCTAssertThrowsError(try ComputerUseSecurityCallableClient.parseActiveIrohControllerRoutes(
+                response,
+                expectedUID: "user-1",
+                expectedConnectionId: "connection-1",
+                nowMillis: now
+            ))
+        }
+    }
+
     func testProviderAccountSubjectIdSanitizesOwnerActionSubject() {
         XCTAssertEqual(
             ComputerUseSecurityCallableClient.providerAccountSubjectId(

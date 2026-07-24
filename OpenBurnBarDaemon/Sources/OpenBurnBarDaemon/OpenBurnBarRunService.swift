@@ -1,4 +1,5 @@
 import OpenBurnBarEngine
+import OpenBurnBarComputerUseCore
 import Foundation
 
 // MARK: - Internal supporting types shared across extension files
@@ -42,6 +43,8 @@ struct BurnBarManagedRun: Sendable {
     var approvalResolvedForAttempt: Bool
     var activeToolCallID: String?
     var pendingApprovalToolInvocation: BurnBarToolInvocation?
+    var pendingComputerUseInvocation: BurnBarToolInvocation?
+    var computerUseGeneration: UInt64
     var lastToolCall: BurnBarToolCallSnapshot?
     var workflowStep: Int
     var workflowReadContent: String?
@@ -50,6 +53,18 @@ struct BurnBarManagedRun: Sendable {
     var companionToolCompleted: Bool
     var lastRecoveryDecision: BurnBarRecoveryDecision?
     var loopState: BurnBarAgentLoopState
+}
+
+struct BurnBarInterruptedComputerUseNormalization: Sendable {
+    let interruptedGeneration: UInt64
+    var revocationCompleted = false
+    var journalEventPersisted = false
+}
+
+enum BurnBarRunRestoreError: Error {
+    case interruptedComputerUseNormalizationInProgress(BurnBarRunID)
+    case interruptedComputerUseNormalizationEventConflict(BurnBarRunID)
+    case interruptedComputerUseNormalizedRunMissing(BurnBarRunID)
 }
 
 extension BurnBarJSONValue {
@@ -77,6 +92,36 @@ extension BurnBarJSONValue {
 
 // MARK: - BurnBarRunService actor (public API facade)
 
+public struct BurnBarComputerUseBrowserDispatchResult: Sendable {
+    public let expectedSessionID: ComputerUseSessionID
+    public let response: ComputerUseInvokeResponse
+
+    public init(expectedSessionID: ComputerUseSessionID, response: ComputerUseInvokeResponse) {
+        self.expectedSessionID = expectedSessionID
+        self.response = response
+    }
+}
+
+public struct BurnBarComputerUseRunRequirement: Sendable, Equatable {
+    public let runID: BurnBarRunID
+    public let clientID: BurnBarClientID
+    public let sessionID: BurnBarSessionID
+    public let invocation: BurnBarToolInvocation
+    public let generation: UInt64
+}
+
+public typealias BurnBarComputerUseBrowserDispatcher = @Sendable (
+    _ invocation: BurnBarToolInvocation
+) async throws -> BurnBarComputerUseBrowserDispatchResult
+public typealias BurnBarComputerUseRunBindingChecker = @Sendable (
+    _ runID: BurnBarRunID,
+    _ expectedGeneration: UInt64
+) async -> Bool
+public typealias BurnBarComputerUseRunRevoker = @Sendable (
+    _ runID: BurnBarRunID,
+    _ expectedGeneration: UInt64
+) async -> Void
+
 public actor BurnBarRunService {
     public static let controllerRuntimeClientID = BurnBarClientID(rawValue: "openburnbar-controller-runtime")
     public static let controllerRuntimeSessionID = BurnBarSessionID(rawValue: "openburnbar-controller-runtime")
@@ -94,10 +139,17 @@ public actor BurnBarRunService {
     let runJournal: BurnBarRunJournal
     let connectorPlaneService: BurnBarConnectorPlaneService
     let browserToolService: BurnBarBrowserToolService
+    let computerUseBrowserDispatcher: BurnBarComputerUseBrowserDispatcher?
+    let computerUseRunBindingChecker: BurnBarComputerUseRunBindingChecker?
+    let computerUseRunRevoker: BurnBarComputerUseRunRevoker?
     let logger: BurnBarDaemonLogger
 
     var runs: [BurnBarRunID: BurnBarManagedRun] = [:]
     var runOrder: [BurnBarRunID] = []
+    var computerUseResumeClaims: [BurnBarRunID: UUID] = [:]
+    var pendingInterruptedComputerUseNormalizations:
+        [BurnBarRunID: BurnBarInterruptedComputerUseNormalization] = [:]
+    var interruptedComputerUseNormalizationClaims = Set<BurnBarRunID>()
     var restoredPersistedRuns = false
     let maxInMemoryRuns: Int
     let evictionPolicy: BurnBarRunRegistryEvictionPolicy
@@ -116,6 +168,9 @@ public actor BurnBarRunService {
         runJournal: BurnBarRunJournal = BurnBarRunJournal(),
         connectorPlaneService: BurnBarConnectorPlaneService = BurnBarConnectorPlaneService(),
         browserToolService: BurnBarBrowserToolService = BurnBarBrowserToolService(),
+        computerUseBrowserDispatcher: BurnBarComputerUseBrowserDispatcher? = nil,
+        computerUseRunBindingChecker: BurnBarComputerUseRunBindingChecker? = nil,
+        computerUseRunRevoker: BurnBarComputerUseRunRevoker? = nil,
         maxInMemoryRuns: Int = 200,
         evictionPolicy: BurnBarRunRegistryEvictionPolicy = .maxCount(200),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "run-service")
@@ -133,6 +188,9 @@ public actor BurnBarRunService {
         self.runJournal = runJournal
         self.connectorPlaneService = connectorPlaneService
         self.browserToolService = browserToolService
+        self.computerUseBrowserDispatcher = computerUseBrowserDispatcher
+        self.computerUseRunBindingChecker = computerUseRunBindingChecker
+        self.computerUseRunRevoker = computerUseRunRevoker
         self.maxInMemoryRuns = max(maxInMemoryRuns, 1)
         self.evictionPolicy = evictionPolicy
         self.logger = logger
@@ -184,6 +242,170 @@ public actor BurnBarRunService {
             )
         }
         return runs[runID]?.snapshot
+    }
+
+    public func computerUseRequirement(
+        for runID: BurnBarRunID
+    ) async -> BurnBarComputerUseRunRequirement? {
+        try? await restorePersistedRunsIfNeeded()
+        try? await restoreSingleRunIfNeeded(runID: runID)
+        guard let run = runs[runID],
+              run.snapshot.phase == .awaitingComputerUseSession,
+              let invocation = run.pendingComputerUseInvocation,
+              invocation.runID == runID,
+              invocation.tool.isBrowserComputerUse else {
+            return nil
+        }
+        return BurnBarComputerUseRunRequirement(
+            runID: runID,
+            clientID: run.snapshot.clientID,
+            sessionID: run.snapshot.sessionID,
+            invocation: invocation,
+            generation: run.computerUseGeneration
+        )
+    }
+
+    public func listComputerUseRequirements() async -> [ComputerUseRunRequirementSummary] {
+        try? await restorePersistedRunsIfNeeded()
+        return runOrder.compactMap { runID in
+            guard let run = runs[runID],
+                  run.snapshot.phase == .awaitingComputerUseSession,
+                  let invocation = run.pendingComputerUseInvocation,
+                  invocation.runID == runID,
+                  invocation.tool.isBrowserComputerUse else {
+                return nil
+            }
+            return ComputerUseRunRequirementSummary(
+                runID: runID,
+                callID: invocation.callID,
+                clientID: run.snapshot.clientID,
+                toolKind: invocation.tool,
+                generation: run.computerUseGeneration,
+                requestedAt: invocation.requestedAt
+            )
+        }
+        .sorted { $0.requestedAt < $1.requestedAt }
+    }
+
+    /// Resumes the exact browser invocation that placed a run into the
+    /// Computer Use binding wait. No planning step is repeated and no new call
+    /// identifier is allocated.
+    @discardableResult
+    public func resumeComputerUseRun(
+        _ runID: BurnBarRunID,
+        expectedCallID: String,
+        expectedGeneration: UInt64
+    ) async throws -> Bool {
+        try await restorePersistedRunsIfNeeded()
+        try await restoreSingleRunIfNeeded(runID: runID)
+        guard var run = runs[runID],
+              run.snapshot.phase == .awaitingComputerUseSession,
+              let invocation = run.pendingComputerUseInvocation,
+              invocation.runID == runID,
+              invocation.callID == expectedCallID,
+              run.computerUseGeneration == expectedGeneration,
+              invocation.tool.isBrowserComputerUse else {
+            return false
+        }
+        guard computerUseResumeClaims[runID] == nil else { return false }
+        let claimID = UUID()
+        computerUseResumeClaims[runID] = claimID
+        defer {
+            if computerUseResumeClaims[runID] == claimID {
+                computerUseResumeClaims.removeValue(forKey: runID)
+            }
+        }
+        if let computerUseRunBindingChecker,
+           await computerUseRunBindingChecker(runID, expectedGeneration) == false {
+            return false
+        }
+
+        guard let current = runs[runID],
+              current.snapshot.phase == .awaitingComputerUseSession,
+              current.pendingComputerUseInvocation?.callID == expectedCallID,
+              current.computerUseGeneration == expectedGeneration,
+              computerUseResumeClaims[runID] == claimID else {
+            return false
+        }
+        run = current
+        let pendingSnapshot = try claimBrowserToolInvocation(invocation, for: &run)
+        // Publish the exact execution claim before journaling or dispatching.
+        // Actor reentrancy can no longer admit a duplicate resume.
+        runs[runID] = run
+        do {
+            try await appendJournalEvent(
+                BurnBarRunJournalEvent(
+                    runID: run.runID,
+                    kind: .toolDispatched,
+                    phase: run.snapshot.phase,
+                    payload: try BurnBarJSONValue.fromEncodable(pendingSnapshot),
+                    emittedAt: Date()
+                )
+            )
+            try await writeCheckpoint(for: run)
+
+            guard let claimed = runs[runID],
+                  claimed.snapshot.phase == .executingTool,
+                  claimed.activeToolCallID == expectedCallID,
+                  claimed.computerUseGeneration == expectedGeneration,
+                  computerUseResumeClaims[runID] == claimID else {
+                return false
+            }
+            run = claimed
+            try await executeBrowserToolInvocation(invocation, for: &run, alreadyClaimed: true)
+            guard let stillClaimed = runs[runID],
+                  stillClaimed.snapshot.phase == .executingTool,
+                  stillClaimed.activeToolCallID == expectedCallID,
+                  stillClaimed.computerUseGeneration == expectedGeneration,
+                  computerUseResumeClaims[runID] == claimID else {
+                return false
+            }
+            try await writeCheckpoint(for: run)
+        } catch {
+            if var failed = runs[runID],
+               failed.snapshot.phase == .executingTool,
+               failed.activeToolCallID == expectedCallID,
+               failed.computerUseGeneration == expectedGeneration,
+               computerUseResumeClaims[runID] == claimID {
+                failed.activeToolCallID = nil
+                failed.pendingComputerUseInvocation = nil
+                try? transition(
+                    &failed,
+                    to: .failed,
+                    errorMessage: "Computer Use execution could not be durably finalized.",
+                    activeApprovalID: nil
+                )
+                runs[runID] = failed
+                try? await appendJournalEvent(
+                    BurnBarRunJournalEvent(
+                        runID: runID,
+                        kind: .runFailed,
+                        phase: failed.snapshot.phase,
+                        payload: .object(["message": .string("computer_use_durability_failure")]),
+                        emittedAt: Date()
+                    )
+                )
+                try? await writeCheckpoint(for: failed)
+                computerUseResumeClaims.removeValue(forKey: runID)
+                await computerUseRunRevoker?(runID, expectedGeneration)
+            }
+            throw error
+        }
+        guard runs[runID]?.computerUseGeneration == expectedGeneration,
+              computerUseResumeClaims[runID] == claimID else {
+            return false
+        }
+        runs[runID] = run
+        if [.completed, .failed, .cancelled].contains(run.snapshot.phase) {
+            // The terminal state is authoritative before cleanup. Release this
+            // generation's claim so a retry can bind and resume independently;
+            // the exact-generation revoker cannot touch that replacement.
+            if computerUseResumeClaims[runID] == claimID {
+                computerUseResumeClaims.removeValue(forKey: runID)
+            }
+            await computerUseRunRevoker?(runID, expectedGeneration)
+        }
+        return true
     }
 
     public func listRuns(_ request: BurnBarRunListRequest) async throws -> BurnBarRunListResponse {
@@ -307,6 +529,9 @@ public actor BurnBarRunService {
 
         try await writeCheckpoint(for: run)
         runs[request.runID] = run
+        if [.completed, .failed, .cancelled].contains(run.snapshot.phase) {
+            await computerUseRunRevoker?(run.runID, run.computerUseGeneration)
+        }
 
         return BurnBarRunDetailResponse(
             run: run.snapshot,
@@ -329,6 +554,14 @@ public actor BurnBarRunService {
         try transition(&run, to: .cancelled, errorMessage: message, activeApprovalID: nil)
         run.approvalRequest = nil
         run.activeToolCallID = nil
+        run.pendingComputerUseInvocation = nil
+        let revokedComputerUseGeneration = run.computerUseGeneration
+        run.computerUseGeneration &+= 1
+        let cancellationGeneration = run.computerUseGeneration
+        // Publish revocation state before the first await. A concurrent resume
+        // must observe cancellation even while external session cleanup blocks.
+        runs[request.runID] = run
+        await computerUseRunRevoker?(request.runID, revokedComputerUseGeneration)
         _ = await workspaceBridgeBroker.cancelActiveCall(for: request.runID)
         try await appendJournalEvent(
             BurnBarRunJournalEvent(
@@ -339,8 +572,11 @@ public actor BurnBarRunService {
                 emittedAt: Date()
             )
         )
-        try await writeCheckpoint(for: run)
-        runs[request.runID] = run
+        if let current = runs[request.runID],
+           current.snapshot.phase == .cancelled,
+           current.computerUseGeneration == cancellationGeneration {
+            try await writeCheckpoint(for: current)
+        }
 
         logger.notice(
             "run_cancelled",
@@ -390,6 +626,8 @@ public actor BurnBarRunService {
         run.approvalResolvedForAttempt = false
         run.activeToolCallID = nil
         run.pendingApprovalToolInvocation = nil
+        run.pendingComputerUseInvocation = nil
+        run.computerUseGeneration &+= 1
         run.lastToolCall = nil
         run.workflowStep = 0
         run.workflowReadContent = nil
@@ -414,6 +652,9 @@ public actor BurnBarRunService {
         try await continueExecution(for: &run)
         try await writeCheckpoint(for: run)
         runs[request.runID] = run
+        if [.completed, .failed, .cancelled].contains(run.snapshot.phase) {
+            await computerUseRunRevoker?(run.runID, run.computerUseGeneration)
+        }
 
         logger.notice(
             "run_retried",
@@ -486,6 +727,9 @@ public actor BurnBarRunService {
 
         try await writeCheckpoint(for: run)
         runs[runID] = run
+        if [.completed, .failed, .cancelled].contains(run.snapshot.phase) {
+            await computerUseRunRevoker?(run.runID, run.computerUseGeneration)
+        }
 
         logger.notice(
             "approval_responded",
@@ -546,7 +790,10 @@ public actor BurnBarRunService {
     }
 
     private func restoreSingleRunIfNeeded(runID: BurnBarRunID) async throws {
-        guard runs[runID] == nil else { return }
+        if runs[runID] != nil {
+            try await finalizeInterruptedComputerUseNormalizationIfNeeded(for: runID)
+            return
+        }
 
         guard let checkpoint = try await runJournal.checkpoint(for: runID) else {
             return
@@ -576,7 +823,7 @@ public actor BurnBarRunService {
         )
         let plan = BurnBarRunExecutionPlan(request: retryRequest)
         let approvalID = checkpoint.activeApprovalID ?? checkpoint.approvalRequest?.approvalID
-        let restoredRun = BurnBarManagedRun(
+        var restoredRun = BurnBarManagedRun(
             runID: checkpoint.runID,
             originalPrompt: checkpoint.originalPrompt,
             modelID: checkpoint.modelID,
@@ -598,8 +845,10 @@ public actor BurnBarRunService {
             ),
             approvalRequest: checkpoint.approvalRequest,
             approvalResolvedForAttempt: checkpoint.approvalResolvedForAttempt,
-            activeToolCallID: checkpoint.lastToolCallID,
+            activeToolCallID: legacyWorkspaceToolCall(from: checkpoint)?.callID,
             pendingApprovalToolInvocation: checkpoint.pendingApprovalToolInvocation,
+            pendingComputerUseInvocation: checkpoint.pendingComputerUseInvocation,
+            computerUseGeneration: checkpoint.computerUseGeneration ?? 0,
             lastToolCall: checkpoint.lastToolCall,
             workflowStep: checkpoint.workflowStep,
             workflowReadContent: checkpoint.workflowReadContent,
@@ -609,14 +858,23 @@ public actor BurnBarRunService {
             lastRecoveryDecision: checkpoint.lastRecoveryDecision,
             loopState: checkpoint.loopState
         )
+        let interruptedGeneration = try normalizeInterruptedBrowserComputerUse(&restoredRun)
         runs[checkpoint.runID] = restoredRun
+        if let interruptedGeneration {
+            restoredPersistedRuns = false
+            pendingInterruptedComputerUseNormalizations[checkpoint.runID] =
+                BurnBarInterruptedComputerUseNormalization(
+                    interruptedGeneration: interruptedGeneration
+                )
+        }
         if !runOrder.contains(checkpoint.runID) {
             runOrder.append(checkpoint.runID)
         }
 
-        if let lastToolCall = checkpoint.lastToolCall {
+        if let lastToolCall = legacyWorkspaceToolCall(from: checkpoint) {
             await workspaceBridgeBroker.restoreActiveCall(lastToolCall)
         }
+        try await finalizeInterruptedComputerUseNormalizationIfNeeded(for: checkpoint.runID)
 
         logger.debug(
             "run_restored_lazily",
@@ -625,6 +883,61 @@ public actor BurnBarRunService {
                 "phase": checkpoint.phase.rawValue
             ]
         )
+    }
+
+    /// Only legacy companion-owned calls belong in the workspace broker after
+    /// restart. Browser Computer Use calls are resumed exclusively through the
+    /// exact run/call/generation handshake and must never be claimable by the
+    /// extension bridge.
+    func legacyWorkspaceToolCall(
+        from checkpoint: BurnBarRunJournalCheckpoint
+    ) -> BurnBarToolCallSnapshot? {
+        guard checkpoint.pendingComputerUseInvocation == nil,
+              checkpoint.phase == .waitingOnCompanion || checkpoint.phase == .executingTool,
+              let lastToolCall = checkpoint.lastToolCall,
+              lastToolCall.tool.isBrowserComputerUse == false else {
+            return nil
+        }
+        return lastToolCall
+    }
+
+    static let interruptedComputerUseMessage =
+        "Computer Use was interrupted while an action was in progress; the outcome is unknown. Retry explicitly to continue."
+
+    /// A browser action checkpointed as executing cannot be replayed after a
+    /// daemon restart because the external action may already have occurred.
+    /// Convert it to a durable terminal failure and advance the generation so
+    /// no stale session or resume token can reattach.
+    func normalizeInterruptedBrowserComputerUse(
+        _ run: inout BurnBarManagedRun
+    ) throws -> UInt64? {
+        guard run.snapshot.phase == .executingTool,
+              run.pendingComputerUseInvocation == nil,
+              let lastToolCall = run.lastToolCall,
+              lastToolCall.tool.isBrowserComputerUse else {
+            return nil
+        }
+        let interruptedGeneration = run.computerUseGeneration
+        run.computerUseGeneration &+= 1
+        run.activeToolCallID = nil
+        run.lastToolCall = BurnBarToolCallSnapshot(
+            callID: lastToolCall.callID,
+            runID: lastToolCall.runID,
+            tool: lastToolCall.tool,
+            arguments: lastToolCall.arguments,
+            status: .failed,
+            requestedBy: lastToolCall.requestedBy,
+            requestedAt: lastToolCall.requestedAt,
+            claimedBy: lastToolCall.claimedBy,
+            claimedAt: lastToolCall.claimedAt,
+            completedAt: Date(),
+            error: BurnBarToolExecutionError(
+                code: .unknown,
+                message: Self.interruptedComputerUseMessage
+            )
+        )
+        try transition(&run, to: .failed, errorMessage: Self.interruptedComputerUseMessage)
+        return interruptedGeneration
     }
 
     private func findRunIDByApprovalID(_ approvalID: BurnBarApprovalID) async throws -> BurnBarRunID? {

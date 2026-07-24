@@ -70,6 +70,8 @@ public enum HermesRealtimeRelayFrameType: String, Codable, Sendable, Equatable {
     case controlApprovalRequest = "control.approval.request"
     /// Human approval response for a control action.
     case controlApprovalResponse = "control.approval.response"
+    /// Request a phone-authenticated grant bound to one exact Computer Use session intent.
+    case controlSessionGrantChallenge = "control.session.grant.challenge"
     /// Request an agent capability grant.
     case controlAgentGrantRequest = "control.agent.grant.request"
     /// Receipt for an agent capability grant.

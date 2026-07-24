@@ -45,6 +45,11 @@ describe('MemorySurface', () => {
     expect(screen.queryByText(/until the review inbox ships/i)).toBeNull();
     expect(container.querySelectorAll('.system-scope-chip').length).toBeGreaterThan(0);
     expect(screen.getByText(/live daemon memory boundaries|fixture transcript/i)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Audit trail' })).toBeTruthy();
+    const auditList = screen.getByRole('list', { name: 'Memory audit events' });
+    expect(auditList).toBeTruthy();
+    expect(within(auditList).getByText('Approved')).toBeTruthy();
+    expect(within(auditList).getByText(/by fixture/)).toBeTruthy();
   });
 
   it('shows empty inbox copy when fixture boundaries are empty', () => {
@@ -92,7 +97,7 @@ describe('MemorySurface', () => {
     expect(screen.getAllByText('Approved').length).toBeGreaterThan(0);
   });
 
-  it('renders live recalled memories as approved and forgets through memorySetStatus', async () => {
+  it('renders daemon-owned statuses and forgets through memorySetStatus', async () => {
     vi.spyOn(useSystemStore.getState(), 'loadMemory').mockImplementation(async () => {});
     const memorySetStatus = vi.fn().mockResolvedValue({});
     const memoryReviewInbox = vi.fn().mockResolvedValue({
@@ -121,7 +126,41 @@ describe('MemorySurface', () => {
     await waitFor(() => expect(screen.getByText(/Use daemon RPCs/i)).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: /forget permanently/i }));
     await waitFor(() =>
-      expect(memorySetStatus).toHaveBeenCalledWith('reject', { memoryID: 'mem-live-1' })
+      expect(memorySetStatus).toHaveBeenCalledWith('forget', { memoryID: 'mem-live-1' })
+    );
+  });
+
+  it('shows pending quarantine rows with approve and reject actions', async () => {
+    vi.spyOn(useSystemStore.getState(), 'loadMemory').mockImplementation(async () => {});
+    const memoryReviewInbox = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 'mem-pending',
+          body: 'User prefers compact review cards.',
+          kind: 'preference',
+          confidence: 0.8,
+          sourceLabel: 'Daemon memory quarantine',
+          status: 'pending',
+          canApprove: true
+        }
+      ],
+      auditEvents: []
+    });
+    const memorySetStatus = vi.fn().mockResolvedValue({});
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    useShellStore.setState({
+      bridge: { memoryReviewInbox, memorySetStatus } as unknown as LinuxShellBridge,
+      fixtureMode: false
+    });
+    useSystemStore.setState({ memory: [], loading: false, error: null });
+    render(<MemorySurface />);
+    await waitFor(() => expect(screen.getByText(/compact review cards/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /save as memory/i }));
+    await waitFor(() =>
+      expect(memorySetStatus).toHaveBeenCalledWith(
+        'approve',
+        expect.objectContaining({ memoryID: 'mem-pending' })
+      )
     );
   });
 
@@ -140,5 +179,32 @@ describe('MemorySurface', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('Project memory is not available');
     });
+  });
+
+  it('renders daemon audit events with honest unknown timestamps and bounded identifiers', async () => {
+    vi.spyOn(useSystemStore.getState(), 'loadMemory').mockImplementation(async () => {});
+    const longAuditID = `audit-${'event-'.repeat(24)}`;
+    const memoryReviewInbox = vi.fn().mockResolvedValue({
+      items: [],
+      auditEvents: [{
+        id: longAuditID,
+        action: 'unexpected-action',
+        actor: 'daemon-worker',
+        at: 'not-a-timestamp',
+        subjectId: 'mem-unknown'
+      }]
+    });
+    useShellStore.setState({
+      bridge: { memoryReviewInbox } as unknown as LinuxShellBridge,
+      fixtureMode: false
+    });
+    useSystemStore.setState({ memory: [], loading: false, error: null });
+    render(<MemorySurface />);
+
+    await waitFor(() => expect(screen.getByRole('list', { name: 'Memory audit events' })).toBeTruthy());
+    expect(screen.getByText('unexpected-action')).toBeTruthy();
+    expect(screen.getByText('Time unavailable')).toBeTruthy();
+    expect(screen.getByText(/Subject mem-unknown/)).toBeTruthy();
+    expect(screen.getByText(`Event ${longAuditID.slice(0, 117)}…`)).toBeTruthy();
   });
 });

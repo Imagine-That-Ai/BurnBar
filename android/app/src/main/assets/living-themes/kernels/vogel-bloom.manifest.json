@@ -1,0 +1,23 @@
+{
+  "id": "vogel-bloom",
+  "label": "Vogel Bloom",
+  "metalFileBase": "K_VogelBloom",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_vogel_bloom_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

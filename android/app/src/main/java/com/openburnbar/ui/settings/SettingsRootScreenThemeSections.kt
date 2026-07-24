@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -65,6 +66,7 @@ import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 import com.openburnbar.ui.theme.UIMode
+import com.openburnbar.wallpaper.livingthemes.LivingThemesActivity
 
 internal object SettingsRootScreenThemeSections
 
@@ -385,9 +387,48 @@ internal fun ThemePrefsWallpaperRow(router: SettingsRouter, useWebsiteBackground
                 }
             }
             Column(modifier = Modifier.weight(1f)) {
-                Text("Generate Wallpaper", fontWeight = FontWeight.Bold, color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface)
+                Text(
+                    "Usage Swarm Wallpaper",
+                    fontWeight = FontWeight.Bold,
+                    color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
+                )
                 Text(
                     "Create a swarm wallpaper colored by your AI usage",
+                    fontSize = 13.sp,
+                    color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.NavigateNext,
+                contentDescription = "Open",
+                tint = if (useWebsiteBackground) Color.White.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            )
+        }
+    }
+}
+
+@Composable
+internal fun ThemePrefsLivingThemesRow(useWebsiteBackground: Boolean) {
+    val context = LocalContext.current
+    Surface(
+        onClick = { context.startActivity(android.content.Intent(context, LivingThemesActivity::class.java)) },
+        shape = RoundedCornerShape(AuroraRadius.MD.dp),
+        color = Color.Transparent,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Surface(shape = RoundedCornerShape(12.dp), color = AuroraColors.blaze.copy(alpha = 0.15f)) {
+                Box(modifier = Modifier.size(42.dp), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Wallpaper, contentDescription = null, modifier = Modifier.size(24.dp), tint = AuroraColors.blaze)
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Living Themes", fontWeight = FontWeight.Bold, color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface)
+                Text(
+                    "Choose and install any of 42 procedural live wallpapers",
                     fontSize = 13.sp,
                     color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -777,6 +818,7 @@ internal fun ThemePrefsScreenBody(router: SettingsRouter, onBack: () -> Unit, st
                     state.enableSwarmSparkles,
                     state.excludeBrandShapes,
                 )
+                ThemePrefsLivingThemesRow(useWebsiteBackground)
                 ThemePrefsWallpaperRow(router, useWebsiteBackground)
                 ThemePrefsAppearanceSelector(useWebsiteBackground, state.haptic)
                 ThemePrefsUIModeSelector(useWebsiteBackground, state.haptic)

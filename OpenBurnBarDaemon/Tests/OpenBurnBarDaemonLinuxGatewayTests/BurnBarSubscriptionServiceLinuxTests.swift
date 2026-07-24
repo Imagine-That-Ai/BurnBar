@@ -15,6 +15,7 @@ final class BurnBarSubscriptionServiceLinuxTests: XCTestCase {
                 clientID: "linux-desktop"
             )
         )
+        XCTAssertNil(started.events.first?.snapshot["run_id"])
         let restartedService = BurnBarSubscriptionService(
             daemonVersion: "linux-test",
             daemonSessionID: "linux-daemon-b"
@@ -34,6 +35,21 @@ final class BurnBarSubscriptionServiceLinuxTests: XCTestCase {
         XCTAssertTrue(recovered.recoveredAfterRestart)
         XCTAssertFalse(recovered.terminalStateDelivered)
         XCTAssertEqual(recovered.events.first?.snapshot["daemon_session_id"], "linux-daemon-b")
+    }
+
+    func testLinuxRunSubscriptionIncludesItsValidatedRunIdentifier() async throws {
+        let service = BurnBarSubscriptionService(daemonVersion: "linux-test")
+
+        let started = try await service.start(
+            BurnBarSubscriptionStartRequest(
+                topic: "run",
+                runID: "run-123",
+                requestedSubscriptionID: "linux-desktop-run",
+                clientID: "linux-desktop"
+            )
+        )
+
+        XCTAssertEqual(started.events.first?.snapshot["run_id"], "run-123")
     }
 
     func testLinuxSubscriptionStopRejectsLateResume() async throws {

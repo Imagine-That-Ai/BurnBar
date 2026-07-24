@@ -27,8 +27,8 @@ let buildOnWindows = true
 #else
 let buildOnWindows = false
 #endif
-// Core-decomposition S0: Apple-only presentation/insights targets (OpenBurnBarUI,
-// OpenBurnBarInsights, OpenBurnBarTextExpansion, OpenBurnBarLaunchServices) and
+// Core-decomposition S0: Apple-only presentation targets (OpenBurnBarUI,
+// OpenBurnBarTextExpansion, OpenBurnBarLaunchServices) and
 // their products are pruned from the non-Apple build graph exactly as
 // `OpenBurnBarData` is pruned from the Linux-boundary build: host-evaluated, so on
 // a Linux/Windows host the target/product is absent and Core does not depend on
@@ -103,6 +103,31 @@ let hasBurnBarRemoteXCFramework = !disableBurnBarRemoteXCFramework && FileManage
 )
 #endif
 
+#if os(Linux)
+let linuxIrohNativeLibraryDirectory: String? = {
+    guard let configured = ProcessInfo.processInfo.environment["OPENBURNBAR_LINUX_IROH_LIBRARY_DIR"]?
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+        configured.isEmpty == false
+    else {
+        return nil
+    }
+    let directory = URL(fileURLWithPath: configured).standardizedFileURL
+    let dynamicLibrary = directory.appendingPathComponent("libopenburnbar_iroh.so")
+    let staticLibrary = directory.appendingPathComponent("libopenburnbar_iroh.a")
+    guard FileManager.default.fileExists(atPath: dynamicLibrary.path),
+          FileManager.default.fileExists(atPath: staticLibrary.path) else {
+        fatalError(
+            "OPENBURNBAR_LINUX_IROH_LIBRARY_DIR must contain libopenburnbar_iroh.so and libopenburnbar_iroh.a: \(directory.path)"
+        )
+    }
+    return directory.path
+}()
+#else
+let linuxIrohNativeLibraryDirectory: String? = nil
+#endif
+let hasLinuxIrohNativeLibrary = linuxIrohNativeLibraryDirectory != nil
+let hasIrohFFIBindings = hasIrohXCFramework || hasLinuxIrohNativeLibrary
+
 // Assembled incrementally (seed literal + `append(contentsOf:)` per host-gated
 // block) rather than as one `[…] + (cond ? […] : []) + …` concatenation
 // expression: the Core-decomposition products (LogParsers/Quota/VectorKit/Hermes/
@@ -155,6 +180,10 @@ var packageProductsBase: [Product] = [
     .library(
         name: "OpenBurnBarKernelContracts",
         targets: ["OpenBurnBarKernelContracts"]
+    ),
+    .library(
+        name: "OpenBurnBarAssistantModels",
+        targets: ["OpenBurnBarAssistantModels"]
     ),
     .library(
         name: "OpenBurnBarDomainCoreRuntime",
@@ -269,14 +298,17 @@ if !buildForLinuxBoundary {
         )
     )
 }
+// Usage-insights models and deterministic analysis are Foundation-only and are
+// consumed by the Linux daemon RPC as well as Apple presentation surfaces.
+packageProductsBase.append(
+    .library(
+        name: "OpenBurnBarInsights",
+        targets: ["OpenBurnBarInsights"]
+    )
+)
 if buildApplePrunedDecompositionTargets {
-    // Core-decomposition S0: Apple-only presentation/insights products, pruned off
-    // the non-Apple graph like OpenBurnBarData. Populated by S11/S12/S13/S14.
+    // Apple-only presentation products remain pruned off the non-Apple graph.
     packageProductsBase.append(contentsOf: [
-        .library(
-            name: "OpenBurnBarInsights",
-            targets: ["OpenBurnBarInsights"]
-        ),
         .library(
             name: "OpenBurnBarTextExpansion",
             targets: ["OpenBurnBarTextExpansion"]
@@ -291,7 +323,7 @@ if buildApplePrunedDecompositionTargets {
         )
     ])
 }
-if hasIrohXCFramework {
+if hasIrohFFIBindings {
     packageProductsBase.append(
         .library(
             name: "OpenBurnBarIrohFFI",
@@ -329,30 +361,61 @@ let packageProducts: [Product] = buildLinuxSecurityOnly ? [
 // the UI-free OpenBurnBarKernel, NOT the SwiftUI/AppKit-carrying OpenBurnBarCore
 // target. This is where audit finding #4's link-surface win lands: the most
 // security-sensitive binaries stop transitively linking the UI monolith.
-let irohRelayDependencies: [Target.Dependency] = hasIrohXCFramework
+let irohRelayDependencies: [Target.Dependency] = hasIrohFFIBindings
     ? ["OpenBurnBarKernel", "OpenBurnBarIrohFFI"]
     : ["OpenBurnBarKernel"]
 
-let irohBinaryTargets: [Target] = hasIrohXCFramework ? [
-    .binaryTarget(
-        name: "OpenBurnBarIroh",
-        path: "../Vendor/OpenBurnBarIroh.xcframework"
-    ),
-    .target(
-        name: "OpenBurnBarIrohFFI",
-        dependencies: ["OpenBurnBarIroh"],
-        path: "Sources/OpenBurnBarIroh/Generated",
-        exclude: [
-            "openburnbar_iroh.modulemap",
-            "openburnbar_irohFFI.h"
-        ],
-        // Generated UniFFI bindings (never hand-edited; AAR parity) target Swift 5.
-        swiftSettings: [.swiftLanguageMode(.v5)],
-        linkerSettings: [
-            .linkedFramework("SystemConfiguration", .when(platforms: [.macOS, .iOS]))
+let irohFFITargets: [Target] = {
+    if hasIrohXCFramework {
+        return [
+            .binaryTarget(
+                name: "OpenBurnBarIroh",
+                path: "../Vendor/OpenBurnBarIroh.xcframework"
+            ),
+            .target(
+                name: "OpenBurnBarIrohFFI",
+                dependencies: ["OpenBurnBarIroh"],
+                path: "Sources/OpenBurnBarIroh/Generated",
+                exclude: [
+                    "openburnbar_iroh.modulemap",
+                    "openburnbar_irohFFI.h"
+                ],
+                // Generated UniFFI bindings (never hand-edited; AAR parity) target Swift 5.
+                swiftSettings: [.swiftLanguageMode(.v5)],
+                linkerSettings: [
+                    .linkedFramework("SystemConfiguration", .when(platforms: [.macOS, .iOS]))
+                ]
+            )
         ]
-    )
-] : []
+    }
+    guard let libraryDirectory = linuxIrohNativeLibraryDirectory else {
+        return []
+    }
+    return [
+        .target(
+            name: "openburnbar_irohFFI",
+            path: "Sources/openburnbar_irohFFI",
+            publicHeadersPath: "include",
+            linkerSettings: [
+                // Link the Rust transport archive into standalone daemon
+                // artifacts. Native packages also stage the .so for their
+                // existing runtime payload contract, but a downloaded daemon
+                // executable must not depend on an unshipped sibling library.
+                .unsafeFlags([libraryDirectory + "/libopenburnbar_iroh.a"])
+            ]
+        ),
+        .target(
+            name: "OpenBurnBarIrohFFI",
+            dependencies: ["openburnbar_irohFFI"],
+            path: "Sources/OpenBurnBarIroh/Generated",
+            exclude: [
+                "openburnbar_iroh.modulemap",
+                "openburnbar_irohFFI.h"
+            ],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        )
+    ]
+}()
 
 let domainCoreBinaryTargets: [Target] = hasDomainCoreXCFramework ? [
     .binaryTarget(
@@ -537,7 +600,12 @@ let swiftTestingAppleDependency: Target.Dependency = .product(
 )
 #if os(Linux)
 let swiftTestingAppleDependencies: [Target.Dependency] = []
-let swiftTestingPackageDependencies: [Package.Dependency] = []
+// Linux contract tests use swift-testing as well as XCTest. Keep the package
+// in the graph on every platform so native release builds do not depend on a
+// test-only manifest rewrite.
+let swiftTestingPackageDependencies: [Package.Dependency] = [
+    .package(url: "https://github.com/swiftlang/swift-testing", from: "0.11.0")
+]
 #else
 let swiftTestingAppleDependencies: [Target.Dependency] = [swiftTestingAppleDependency]
 let swiftTestingPackageDependencies: [Package.Dependency] = [
@@ -761,7 +829,20 @@ let computerUseCoreTestExcludes = [
     "RemoteUnlockPolicyTests.swift"
 ]
 let legacyLinuxTestSources: [String]? = ["LinuxEmptyTests.swift"]
+// Analytics now has a real Linux behavior suite. Keep its source list
+// explicit so the target is part of the isolated Linux test inventory rather
+// than being mistaken for one of the legacy compile-only targets below.
+let analyticsLinuxTestSources: [String]? = ["LinuxAnalyticsBehaviorTests.swift"]
+// Mercury's platform-neutral Linux contract tests are a real suite, rather
+// than one of the legacy compile-only placeholders. Keep their source list
+// separate so the Linux graph can execute them without widening the other
+// compatibility targets.
+let openBurnBarMediaTestSources: [String]? = ["LinuxMediaContractTests.swift"]
 #if os(Linux)
+// The remote-engine seam has a real Linux behavior suite. Keep it separate
+// from the legacy placeholder source list so the Linux graph executes these
+// transport-contract tests rather than reporting a compile-only target.
+let remoteEngineLinuxTestSources: [String]? = ["LinuxRemoteEngineBehaviorTests.swift"]
 let openBurnBarCoreOffAppleTestSources: [String]? = [
     "LiftedParserBoundaryTests.swift",
     "LLMSafeWrapVectorTests.swift",
@@ -771,6 +852,7 @@ let openBurnBarCoreOffAppleTestSources: [String]? = [
 ]
 let openBurnBarCorePlaceholderExcludes = ["LinuxEmptyTests.swift"]
 let computerUseCoreOffAppleTestSources: [String]? = [
+    "LinuxComputerUseCoreBehaviorTests.swift",
     "LinuxSecretStorageTests.swift",
     "LinuxRemoteUnlockCapabilitySigningKeyStoreTests.swift"
 ]
@@ -784,7 +866,8 @@ let openBurnBarCoreOffAppleTestSources: [String]? = [
     "ParserResourceGovernorTests.swift"
 ]
 let openBurnBarCorePlaceholderExcludes: [String] = []
-let computerUseCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift"]
+let computerUseCoreOffAppleTestSources: [String]? = ["LinuxComputerUseCoreBehaviorTests.swift"]
+let remoteEngineLinuxTestSources: [String]? = nil
 #endif
 func legacyLinuxTestExcludes(targetPath: String) -> [String] {
     let targetURL = packageRoot.appendingPathComponent(targetPath, isDirectory: true)
@@ -802,6 +885,10 @@ func legacyLinuxTestExcludes(targetPath: String) -> [String] {
         let relativePath = String(url.path.dropFirst(targetURL.path.count + 1))
         return [
             "LinuxEmptyTests.swift",
+            "LinuxComputerUseCoreBehaviorTests.swift",
+            "LinuxAnalyticsBehaviorTests.swift",
+            "LinuxRemoteEngineBehaviorTests.swift",
+            "LinuxMediaContractTests.swift",
             "LiftedParserBoundaryTests.swift",
             "LLMSafeWrapVectorTests.swift",
             "ParserAutoReleasePoolTests.swift",
@@ -868,6 +955,9 @@ let computerUseCoreExcludes: [String] = []
 let openBurnBarCoreTestExcludes: [String] = []
 let computerUseCoreTestExcludes: [String] = []
 let legacyLinuxTestSources: [String]? = nil
+let analyticsLinuxTestSources: [String]? = nil
+let openBurnBarMediaTestSources: [String]? = nil
+let remoteEngineLinuxTestSources: [String]? = nil
 let openBurnBarCoreOffAppleTestSources: [String]? = nil
 let openBurnBarCorePlaceholderExcludes: [String] = []
 let computerUseCoreOffAppleTestSources: [String]? = nil
@@ -888,9 +978,8 @@ let coreSQLiteDependencies: [Target.Dependency] = []
 // Core's current wiring.
 let sqliteReaderSQLiteDependencies: [Target.Dependency] = coreSQLiteDependencies
 
-// Core-decomposition S0: the Apple-only presentation/insights targets
-// (OpenBurnBarUI, OpenBurnBarInsights, OpenBurnBarTextExpansion,
-// OpenBurnBarLaunchServices) and their products are pruned from the non-Apple
+// Core-decomposition S0: the Apple-only presentation targets
+// (OpenBurnBarUI, OpenBurnBarTextExpansion, OpenBurnBarLaunchServices) and their products are pruned from the non-Apple
 // build graph exactly as `OpenBurnBarData` is pruned from the Linux-boundary
 // build: host-evaluated, so on a Linux/Windows host the target/product is absent
 // and Core does not depend on it. On Apple hosts they are present and Core links
@@ -925,14 +1014,10 @@ let coreDecompositionDependencies: [Target.Dependency] = [
     "OpenBurnBarUI"
 ] : [])
 
-// Core-decomposition S0: the Apple-only decomposition targets, added to the
+// Insights remains cross-platform for daemon usage-insights RPCs. The remaining
+// Apple-only decomposition targets are added to the
 // package target list only on Apple hosts (pruned off-Apple like OpenBurnBarData).
 let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTargets ? [
-    .target(
-        name: "OpenBurnBarInsights",
-        dependencies: ["OpenBurnBarKernel"],
-        exclude: openBurnBarInsightsExcludes
-    ),
     .target(
         name: "OpenBurnBarTextExpansion",
         dependencies: ["OpenBurnBarKernel"],
@@ -1004,6 +1089,13 @@ let firstPartyTargetsBase: [Target] = [
         .target(
             name: "OpenBurnBarDomainCoreRuntime"
         ),
+        // Assistant identity, manifest, persona, selection, prompt, and policy
+        // models form a Foundation-only leaf. Kernel re-exports this target so
+        // existing consumers retain the same public import surface.
+        .target(
+            name: "OpenBurnBarAssistantModels",
+            dependencies: ["OpenBurnBarKernelPlatform"]
+        ),
         // Phase-1 K1 kernel (see the OpenBurnBarKernel product comment above).
         // remediation(typespec-strangler): the generated Firestore canon stays
         // linked into the production graph — the `import OpenBurnBarFirestoreModels`
@@ -1014,6 +1106,7 @@ let firstPartyTargetsBase: [Target] = [
         .target(
             name: "OpenBurnBarKernel",
             dependencies: [
+                "OpenBurnBarAssistantModels",
                 "OpenBurnBarDomainCoreRuntime",
                 "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency,
@@ -1144,6 +1237,11 @@ let firstPartyTargetsBase: [Target] = [
             dependencies: ["OpenBurnBarKernel"],
             exclude: openBurnBarPretextExcludes,
             resources: [.process("Resources")]
+        ),
+        .target(
+            name: "OpenBurnBarInsights",
+            dependencies: ["OpenBurnBarKernel"],
+            exclude: openBurnBarInsightsExcludes
         ),
         // OpenBurnBarEngine (S16) — UI-free umbrella the daemon/CLI/parity
         // executables link. Its single source file `@_exported import`s the leaf
@@ -1390,7 +1488,7 @@ let firstPartyTargetsBase: [Target] = [
                 swiftTestingDependency
             ],
             exclude: legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarAnalyticsTests"),
-            sources: legacyLinuxTestSources,
+            sources: analyticsLinuxTestSources,
             // Test target stays Swift 5: harness-only code; the Swift 6
             // region-isolation checker has known gaps (Task hand-off) that would
             // contort correct tests. Matches the other Core test targets.
@@ -1417,7 +1515,7 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarMediaTests",
             dependencies: ["OpenBurnBarMedia", "OpenBurnBarCore", "OpenBurnBarIrohRelay", swiftTestingDependency],
             exclude: legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarMediaTests"),
-            sources: legacyLinuxTestSources,
+            sources: openBurnBarMediaTestSources,
             resources: [
                 .process("Fixtures")
             ],
@@ -1429,7 +1527,7 @@ let firstPartyTargetsBase: [Target] = [
             name: "BurnBarRemoteEngineTests",
             dependencies: ["BurnBarRemoteEngine", swiftTestingDependency],
             exclude: legacyLinuxTestExcludes(targetPath: "Tests/BurnBarRemoteEngineTests"),
-            sources: legacyLinuxTestSources
+            sources: remoteEngineLinuxTestSources
         ),
         .testTarget(
             name: "OpenBurnBarComputerUseCoreTests",
@@ -1485,13 +1583,11 @@ let firstPartyTargetsBase: [Target] = [
     ]
 
 #if os(Linux)
-// Placeholder-only targets are not tests. Keeping them in the Linux SwiftPM
-// graph lets `swift test` report success while exercising no supported code.
+// Remaining placeholder-only targets are not tests. Keeping them out of the
+// Linux SwiftPM graph avoids reporting a green suite that exercises no
+// supported code; media has a real platform-neutral contract suite below.
 let linuxPlaceholderTestTargetNames: Set<String> = [
-    "OpenBurnBarAnalyticsTests",
     "OpenBurnBarIrohRelayTests",
-    "OpenBurnBarMediaTests",
-    "BurnBarRemoteEngineTests",
     "OpenBurnBarSignalCoreTests",
     "OpenBurnBarSignalSessionTransportTests"
 ]
@@ -1546,7 +1642,7 @@ let linuxSecurityOnlyTargets: [Target] = [
 
 let allTargets: [Target] = buildLinuxSecurityOnly
     ? linuxSecurityOnlyTargets
-    : irohBinaryTargets + domainCoreBinaryTargets + domainCoreSmokeTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + linuxSecretServiceTargets + firstPartyTargets + vendoredSQLiteTargets
+    : irohFFITargets + domainCoreBinaryTargets + domainCoreSmokeTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + linuxSecretServiceTargets + firstPartyTargets + vendoredSQLiteTargets
 
 let package = Package(
     name: "OpenBurnBarCore",

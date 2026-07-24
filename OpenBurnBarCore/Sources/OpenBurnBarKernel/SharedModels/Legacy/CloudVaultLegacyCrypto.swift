@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelPlatform
 
 enum CloudVaultLegacyCrypto {
     static func aadV1(uid: String, collection: String, docID: String, field: String) -> String {
@@ -68,7 +69,7 @@ enum CloudVaultLegacyCrypto {
         nonce: Data
     ) throws -> CloudVaultDomainCoreAdapter.RecoveryWrappedVaultKey {
         let wrappingKey = try recoveryWrappingKey(from: recoveryKey)
-        let combined = try PlatformCrypto.sealAESGCMDetached(
+        let combined = try OpenBurnBarKernelPlatform.PlatformCrypto.sealAESGCMDetachedUsingNonce(
             plaintext: vaultKey,
             keyData: PlatformCrypto.symmetricKeyData(wrappingKey),
             nonce: nonce,
@@ -123,7 +124,7 @@ enum CloudVaultLegacyCrypto {
         nonce: Data,
         authenticating aad: Data
     ) throws -> CloudVaultDomainCoreAdapter.AESGCMDetachedBox {
-        let sealed = try PlatformCrypto.sealAESGCMDetached(
+        let sealed = try OpenBurnBarKernelPlatform.PlatformCrypto.sealAESGCMDetachedUsingNonce(
             plaintext: plaintext,
             keyData: keyData,
             nonce: nonce,
@@ -138,7 +139,7 @@ enum CloudVaultLegacyCrypto {
         nonce: Data,
         authenticating aad: Data
     ) throws -> Data {
-        try PlatformCrypto.sealAESGCMDetached(
+        try OpenBurnBarKernelPlatform.PlatformCrypto.sealAESGCMDetachedUsingNonce(
             plaintext: plaintext,
             keyData: keyData,
             nonce: nonce,

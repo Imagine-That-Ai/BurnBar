@@ -1,5 +1,5 @@
 {
-  "note": "OpenBurnBarCore main-target membership snapshot (per-file line counts) + per-sibling {files, LOC} ceilings (docs/CORE_DECOMPOSITION_PROGRAM.md). Deny-gate: no NEW .swift file may be added to OpenBurnBarCore/Sources/OpenBurnBarCore/ (new code lands in a sibling target); main-target totals may only shrink AND no individual baselined main-target file may grow (per-file check — a removed big file cannot mask regrowth in another file); no sibling may exceed its ceiling (decomposition-destination siblings use a PLANNED end-state ceiling that --update never ratchets down, others use 1.25x measured). Shrink is non-fatal (run --update to ratchet down). Regenerate via scripts/debt/check-core-target-membership-budget.sh --update.",
+  "note": "OpenBurnBarCore main-target membership snapshot (per-file line counts) + per-sibling {files, LOC} ceilings (docs/CORE_DECOMPOSITION_PROGRAM.md). Deny-gate: no NEW .swift file may be added to OpenBurnBarCore/Sources/OpenBurnBarCore/ (new code lands in a sibling target); main-target totals may only shrink AND no individual baselined main-target file may grow (per-file check \u2014 a removed big file cannot mask regrowth in another file); no sibling may exceed its ceiling (decomposition-destination siblings use a PLANNED end-state ceiling that --update never ratchets down, others use 1.25x measured). Shrink is non-fatal (run --update to ratchet down). Regenerate via scripts/debt/check-core-target-membership-budget.sh --update.",
   "main": {
     "target": "OpenBurnBarCore",
     "totalLines": 127,
@@ -37,34 +37,19 @@
       "maxLines": 1000,
       "planned": true
     },
+    "OpenBurnBarAssistantModels": {
+      "maxFiles": 15,
+      "maxLines": 2700,
+      "planned": true
+    },
     "OpenBurnBarKernel": {
       "maxFiles": 185,
-      "maxLines": 46280,
-      "planned": true
-    },
-    "OpenBurnBarKernelPlatform": {
-      "maxFiles": 14,
-      "maxLines": 2900,
-      "planned": true
-    },
-    "OpenBurnBarKernelModels": {
-      "maxFiles": 95,
-      "maxLines": 24600,
-      "planned": true
-    },
-    "OpenBurnBarKernelCrypto": {
-      "maxFiles": 14,
-      "maxLines": 5900,
-      "planned": true
-    },
-    "OpenBurnBarKernelContracts": {
-      "maxFiles": 34,
-      "maxLines": 13100,
+      "maxLines": 47000,
       "planned": true
     },
     "OpenBurnBarParserSupport": {
       "maxFiles": 5,
-      "maxLines": 1000,
+      "maxLines": 1200,
       "planned": true
     },
     "OpenBurnBarSQLiteReader": {
@@ -74,7 +59,7 @@
     },
     "OpenBurnBarLogParsers": {
       "maxFiles": 35,
-      "maxLines": 11800,
+      "maxLines": 13200,
       "planned": true
     },
     "OpenBurnBarQuota": {
@@ -124,15 +109,15 @@
     },
     "OpenBurnBarComputerUseCore": {
       "maxFiles": 74,
-      "maxLines": 15050
+      "maxLines": 15324
     },
     "OpenBurnBarMedia": {
       "maxFiles": 25,
-      "maxLines": 4349
+      "maxLines": 4359
     },
     "OpenBurnBarIrohRelay": {
       "maxFiles": 19,
-      "maxLines": 2547
+      "maxLines": 2688
     },
     "OpenBurnBarSignalCore": {
       "maxFiles": 9,
@@ -144,7 +129,7 @@
     },
     "OpenBurnBarFirestoreModels": {
       "maxFiles": 18,
-      "maxLines": 659
+      "maxLines": 703
     },
     "OpenBurnBarAnalytics": {
       "maxFiles": 12,
@@ -152,11 +137,11 @@
     },
     "OpenBurnBarLinuxSecurity": {
       "maxFiles": 4,
-      "maxLines": 2934
+      "maxLines": 3227
     },
     "OpenBurnBarData": {
-      "maxFiles": 19,
-      "maxLines": 4875
+      "maxFiles": 20,
+      "maxLines": 4920
     },
     "BurnBarRemoteEngine": {
       "maxFiles": 2,

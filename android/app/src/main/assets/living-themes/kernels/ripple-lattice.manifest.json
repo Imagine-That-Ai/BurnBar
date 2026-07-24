@@ -1,0 +1,23 @@
+{
+  "id": "ripple-lattice",
+  "label": "Ripple Lattice",
+  "metalFileBase": "K_RippleLattice",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_ripple_lattice_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

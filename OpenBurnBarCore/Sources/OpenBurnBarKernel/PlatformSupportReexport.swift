@@ -1,1 +1,2 @@
 @_exported import OpenBurnBarKernelPlatform
+@_exported import OpenBurnBarAssistantModels

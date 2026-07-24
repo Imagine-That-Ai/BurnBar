@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-19T08:27:31Z",
+  "environment": {
+    "vm": "OpenBurnBar Linux",
+    "ip": "192.168.64.5",
+    "os": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME/X11"
+  },
+  "candidate": {
+    "sourceCommit": "c94e7b6113",
+    "daemonVersion": "c94e7b6113",
+    "package": "open-burn-bar",
+    "packageVersion": "0.1.1",
+    "packageArchitecture": "arm64",
+    "packageSha256": "ee9aabeffc6698e1cb95daf07b2c59ce47de1b55899592e3b92a45dda6586110",
+    "packageStatus": "install ok installed",
+    "manifest": "unsigned-empty-payload-manifest"
+  },
+  "installedPeers": {
+    "/usr/bin/openburnbar-daemon": {
+      "sha256": "db665c389657fa12e8ea660da16a54f7b39d3db308e5a246b63403eea613739f",
+      "mode": "0755",
+      "uid": 0
+    },
+    "/usr/bin/openburnbar-linux-desktop": {
+      "sha256": "bb593f1e95043db0546adbaf05e2c6349aacf57509504e1785f291b7e6124e8d",
+      "mode": "0755",
+      "uid": 0
+    },
+    "/usr/bin/openburnbar-cli": {
+      "sha256": "e1e96b2ea884d97e2c195a3169ab2b1d8dce2818b8225ca991b481184e2475fc",
+      "mode": "0755",
+      "uid": 0
+    }
+  },
+  "checks": {
+    "daemonLauncher": "pass",
+    "desktopAuthenticatedHealth": "pass",
+    "absoluteCliAuthenticatedHealth": "pass",
+    "bareCliAuthenticatedHealth": "pass",
+    "packagedCliMigration": "pass",
+    "packagedCliMigrationBackupPreserved": "pass",
+    "socket": "/run/user/1000/openburnbar/daemon.sock",
+    "tokenFileMode": "0600",
+    "pathResolution": "/usr/bin/openburnbar-cli",
+    "daemonProcess": "39303"
+  },
+  "certifying": false,
+  "nonCertifyingReasons": [
+    "The installed attestation manifest is the unsigned build-payload placeholder.",
+    "This receipt covers daemon/desktop/CLI health and stale-CLI package migration only, not the 40 product rows or seven-environment matrix.",
+    "Production cloud deployment, iPad enrollment, cross-device Computer Use, media, accessibility, keyring/IME, and lifecycle receipts remain open."
+  ],
+  "transcriptSha256": {
+    "health": "0f6d8617840eb94a618587f5dc3ce0e87f7845f77f30732066150aa9a9a3b9dc",
+    "install": "040bee307de614e97f345d25ca7b9d6ee15999171966297317ee162776e9695c",
+    "migration": "9a04ddeb01b3429da7bb7a702fa6bf75bd727f565903d1658716fe1302e32d36",
+    "packageStatus": "f7c17f393eb2983ee806730bdc170139e9df8701518a893bfcfebb1a346c3692",
+    "packaging": "e24a688d5e5407f1ad9a242a05e93ca7fb48fc5587e6ddeb78b1f9317f12dc5b"
+  }
+}

@@ -8,6 +8,7 @@ import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
 import com.openburnbar.data.computeruse.PhoneControlAuthorityDocumentFactory
 import com.openburnbar.data.computeruse.PhoneControlAuthorityPublisher
+import com.openburnbar.data.computeruse.PhoneControlSendSequencer
 import com.openburnbar.data.computeruse.PhoneControlSignerSign
 import com.openburnbar.data.computeruse.PhoneControlSigningIdentity
 import com.openburnbar.data.computeruse.PhoneControlSigningKeyStore
@@ -349,11 +350,7 @@ internal suspend fun ensureRemoteUnlockTrustedDevice(
     return device
 }
 
-internal suspend fun buildRemoteUnlockSession(
-    context: Context,
-    targetCoordinator: MediaControlStreamCoordinator,
-    requesterDisplayName: String,
-): HermesRealtimeRelayRemoteUnlockSession {
+internal suspend fun sendRemoteUnlockMirrorRequest(context: Context, targetCoordinator: MediaControlStreamCoordinator, requesterDisplayName: String): String {
     val activity =
         context as? FragmentActivity
             ?: error("Remote Unlock requires an activity-backed Android session.")
@@ -366,20 +363,26 @@ internal suspend fun buildRemoteUnlockSession(
     val identity = keyStore.signingIdentity()
     val peerNodeId = keyStore.peerNodeId(identity)
     val device = ensureRemoteUnlockTrustedDevice(uid = pair.uid, activity = activity)
-    val authority =
-        PhoneControlAuthorityDocumentFactory.document(
-            connectionId = pair.connectionID,
-            deviceId = device.deviceId,
-            identity = identity,
-            publishedAtMillis = System.currentTimeMillis(),
+    return PhoneControlSendSequencer.withPeer(peerNodeId) {
+        val authority =
+            PhoneControlAuthorityDocumentFactory.document(
+                connectionId = pair.connectionID,
+                deviceId = device.deviceId,
+                identity = identity,
+                publishedAtMillis = System.currentTimeMillis(),
+            )
+        PhoneControlAuthorityPublisher().publish(uid = pair.uid, authority = authority)
+        targetCoordinator.requestMirror(
+            requesterDisplayName = requesterDisplayName,
+            remoteUnlockSession =
+            signRemoteUnlockSession(
+                context = context,
+                requesterDisplayName = requesterDisplayName,
+                peerNodeId = peerNodeId,
+                identity = identity,
+            ),
         )
-    PhoneControlAuthorityPublisher().publish(uid = pair.uid, authority = authority)
-    return signRemoteUnlockSession(
-        context = context,
-        requesterDisplayName = requesterDisplayName,
-        peerNodeId = peerNodeId,
-        identity = identity,
-    )
+    }
 }
 
 private suspend fun signRemoteUnlockSession(

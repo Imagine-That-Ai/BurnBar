@@ -92,7 +92,7 @@ struct YouView: View {
         .confirmationDialog("Sign out?", isPresented: $showSignOutConfirm, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) {
                 HapticBus.destructive()
-                authStore.signOut()
+                Task { await authStore.signOut() }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
