@@ -56,6 +56,23 @@ intentionally stopped; no new installed Linux or desktop-environment evidence
 was collected, and the strict **0/40 product + 0/7 environment** ledger is
 unchanged.
 
+### Latest Account cloud-sync surface — 2026-07-23
+
+`056e6cdd13` makes the Account surface consume the daemon's dedicated encrypted
+cloud-sync status instead of relying only on the coarse account snapshot. A
+signed-in user now sees pending-change counts, keyring-locked/backoff/disabled
+posture, consecutive failures, and a bounded **Sync now** action. The action is
+disabled when the vault key is unavailable or global sync is disabled, and late
+bridge responses are fenced to the active shell context. Locked or disabled
+daemon state overrides optimistic account copy so the UI cannot claim active
+sync while the native runtime is unavailable. Focused Account tests cover live
+status hydration, manual sync completion, and locked-keyring readback. The
+worktree has no local frontend dependencies, so the TypeScript/Vitest check is
+delegated to hosted CI; `git diff --check` passes and the commit is pushed to
+GitHub and GitLab. This is a source/UI improvement only: production cloud
+credentials, signed-candidate execution, trusted-device receipts, and the
+strict **0/40 + 0/7** certification ledger remain open.
+
 ## Latest verification checkpoint — 2026-07-22
 
 The integration branch's hosted Linux gate is green at commit
