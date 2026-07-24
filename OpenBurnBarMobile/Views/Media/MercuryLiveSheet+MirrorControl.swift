@@ -354,6 +354,7 @@ extension MercuryLiveSheet {
         let viewerID = UUID().uuidString
         let remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession?
         let controlAuthorityPeerNodeId: String?
+        let remoteUnlockSigningIdentity: PhoneControlAuthoritySigningKey?
         if forceRemoteUnlockSession {
             guard peer.capabilities.contains(.remoteUnlockHost)
                     || remoteUnlockState?.capabilities.enabled == true
@@ -365,6 +366,7 @@ extension MercuryLiveSheet {
                 let prepared = try await makeRemoteUnlockSession(uid: uid, requestID: requestID)
                 remoteUnlockSession = prepared.session
                 controlAuthorityPeerNodeId = prepared.peerNodeId
+                remoteUnlockSigningIdentity = prepared.signingIdentity
             } catch {
                 lastError = "Remote Unlock needs Face ID, Touch ID, or passcode confirmation."
                 awaitingRequestID = nil
@@ -373,6 +375,7 @@ extension MercuryLiveSheet {
             remoteUnlockMirrorRequestIDs.insert(requestID)
         } else {
             remoteUnlockSession = nil
+            remoteUnlockSigningIdentity = nil
             if let signingIdentity = try? PhoneControlSigningKeyStore.shared.signingIdentity() {
                 controlAuthorityPeerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingIdentity)
             } else {
@@ -425,35 +428,61 @@ extension MercuryLiveSheet {
             return
         }
         controlStreamCoordinator.mediaFrameSealKey = mediaSealSession?.key
-        let request = HermesRealtimeRelayMirrorRequest(
-            requestId: requestID,
-            requestedAt: Date(),
-            requesterDisplayName: deviceDisplayName(),
-            streamClass: MediaStreamClass.screenVideo.rawValue,
-            streamingCapabilities: MercuryVideoToolboxCapabilityProbe.snapshot(
-                mediaFrameVersions: .v1AndV2
-            ).wireValue,
-            focusFollowMode: AgentFocusFollowMode.off.rawValue,
-            viewerId: viewerID,
-            viewerDeviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
-            controlAuthorityPeerNodeId: controlAuthorityPeerNodeId,
-            remoteUnlockSession: remoteUnlockSession,
-            agentTerminal: terminalRuntime.map {
-                HermesRealtimeRelayAgentTerminalRequest(runtimeId: $0, interactive: true)
-            },
-            mediaSealKey: mediaSealSession?.envelope
-        )
-        let frame = HermesRealtimeRelayFrame(
-            type: .mediaMirrorRequest,
-            uid: uid,
-            connectionId: connectionID,
-            requestId: requestID,
-            media: HermesRealtimeRelayMediaPayload(mirrorRequest: request)
-        )
+        let requesterDisplayName = deviceDisplayName()
+        let viewerDeviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let streamingCapabilities = MercuryVideoToolboxCapabilityProbe.snapshot(
+            mediaFrameVersions: .v1AndV2
+        ).wireValue
+        let requestedTerminalRuntime = terminalRuntime
+        let mediaSealKeyEnvelope = mediaSealSession?.envelope
+        let frameBuilder: @Sendable (HermesRealtimeRelayRemoteUnlockSession?) -> HermesRealtimeRelayFrame = { signedRemoteUnlockSession in
+            let request = HermesRealtimeRelayMirrorRequest(
+                requestId: requestID,
+                requestedAt: Date(),
+                requesterDisplayName: requesterDisplayName,
+                streamClass: MediaStreamClass.screenVideo.rawValue,
+                streamingCapabilities: streamingCapabilities,
+                focusFollowMode: AgentFocusFollowMode.off.rawValue,
+                viewerId: viewerID,
+                viewerDeviceId: viewerDeviceId,
+                controlAuthorityPeerNodeId: controlAuthorityPeerNodeId,
+                remoteUnlockSession: signedRemoteUnlockSession,
+                agentTerminal: requestedTerminalRuntime.map {
+                    HermesRealtimeRelayAgentTerminalRequest(runtimeId: $0, interactive: true)
+                },
+                mediaSealKey: mediaSealKeyEnvelope
+            )
+            return HermesRealtimeRelayFrame(
+                type: .mediaMirrorRequest,
+                uid: uid,
+                connectionId: connectionID,
+                requestId: requestID,
+                media: HermesRealtimeRelayMediaPayload(mirrorRequest: request)
+            )
+        }
         do {
             Self.log.info("mirror_request_send requestID=\(requestID, privacy: .public) connectionID=\(connectionID, privacy: .public)")
             Self.debugTrace("mirror_request_send requestID=\(requestID) connectionID=\(connectionID)")
-            try await controlStreamCoordinator.send(frame: frame)
+            if let remoteUnlockSession,
+               let controlAuthorityPeerNodeId,
+               let remoteUnlockSigningIdentity {
+                let sessionSender = PhoneControlSender(
+                    peerNodeId: controlAuthorityPeerNodeId,
+                    uid: uid,
+                    connectionId: connectionID,
+                    signingIdentityProvider: { remoteUnlockSigningIdentity },
+                    frameSink: { _ in }
+                )
+                _ = try await sessionSender.send(
+                    remoteUnlockSession: remoteUnlockSession,
+                    frameBuilder: { frameBuilder($0) },
+                    frameSink: { frame in
+                        try await controlStreamCoordinator.send(frame: frame)
+                    }
+                )
+            } else {
+                try await controlStreamCoordinator.send(frame: frameBuilder(nil))
+            }
             Self.log.info("mirror_request_sent requestID=\(requestID, privacy: .public) connectionID=\(connectionID, privacy: .public)")
             Self.debugTrace("mirror_request_sent requestID=\(requestID) connectionID=\(connectionID)")
             startMirrorAckTimeout(

@@ -1,0 +1,13 @@
+--- health ---
+Daemon c94e7b6113 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true
+--- process ---
+PID=39303
+  39303 /usr/bin/openburnbar-daemon --socket-path /run/user/1000/openburnbar/daemon.sock --socket-auth-token-file /home/burnbar/.local/share/openburnbar/daemon-socket-auth-token --index-database-path /home/burnbar/.local/share/openburnbar/openburnbar.sqlite
+--- paths ---
+/usr/bin/openburnbar-cli
+600 burnbar:burnbar /run/user/1000/openburnbar/daemon.sock
+600 burnbar:burnbar /home/burnbar/.local/share/openburnbar/daemon-socket-auth-token
+--- hashes ---
+db665c389657fa12e8ea660da16a54f7b39d3db308e5a246b63403eea613739f  /usr/bin/openburnbar-daemon
+bb593f1e95043db0546adbaf05e2c6349aacf57509504e1785f291b7e6124e8d  /usr/bin/openburnbar-linux-desktop
+e1e96b2ea884d97e2c195a3169ab2b1d8dce2818b8225ca991b481184e2475fc  /usr/bin/openburnbar-cli

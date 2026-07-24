@@ -1,0 +1,138 @@
+[0/1] Planning build
+Building for production...
+[0/4] Write sources
+[1/4] Write swift-version--38415F98E9932DEB.txt
+[3/5] Compiling OpenBurnBarDaemon BurnBarChatThreadService.swift
+/home/burnbar/BurnBar/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarCodexProviderExecutor.swift:150:21: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+148 |         let stdoutURL = captureDirectory.appendingPathComponent("stdout.log", isDirectory: false)
+149 |         let stderrURL = captureDirectory.appendingPathComponent("stderr.log", isDirectory: false)
+150 |         fileManager.createFile(atPath: stdoutURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
+    |                     `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+151 |         fileManager.createFile(atPath: stderrURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
+152 |         let stdoutHandle = try FileHandle(forWritingTo: stdoutURL)
+
+/home/burnbar/BurnBar/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarCodexProviderExecutor.swift:151:21: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+149 |         let stderrURL = captureDirectory.appendingPathComponent("stderr.log", isDirectory: false)
+150 |         fileManager.createFile(atPath: stdoutURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
+151 |         fileManager.createFile(atPath: stderrURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
+    |                     `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+152 |         let stdoutHandle = try FileHandle(forWritingTo: stdoutURL)
+153 |         let stderrHandle = try FileHandle(forWritingTo: stderrURL)
+
+/home/burnbar/BurnBar/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRunService+Execution.swift:389:27: warning: no calls to throwing functions occur within 'try' expression
+387 |                     cacheCreationTokens: providerResult.cacheCreationTokens,
+388 |                     cacheReadTokens: providerResult.cacheReadTokens,
+389 |                     cost: try route.pricing.cost(
+    |                           `- warning: no calls to throwing functions occur within 'try' expression
+390 |                         inputTokens: providerResult.inputTokens,
+391 |                         outputTokens: providerResult.outputTokens,
+
+/home/burnbar/BurnBar/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRunService+Lifecycle.swift:339:19: warning: no calls to throwing functions occur within 'try' expression
+337 |             cacheCreationTokens: plan.cacheCreationTokens,
+338 |             cacheReadTokens: plan.cacheReadTokens,
+339 |             cost: try run.route.pricing.cost(
+    |                   `- warning: no calls to throwing functions occur within 'try' expression
+340 |                 inputTokens: plan.inputTokens,
+341 |                 outputTokens: plan.outputTokens,
+
+/home/burnbar/BurnBar/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxComputerUseOwnerAuthorizationCoordinator.swift:181:29: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+179 |             userID: UInt32(processStatus.st_uid),
+180 |             processStartTime: processStartTime,
+181 |             executablePath: String(cString: buffer),
+    |                             `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+182 |             executableDevice: UInt64(executableStatus.st_dev),
+183 |             executableInode: UInt64(executableStatus.st_ino)
+
+/home/burnbar/BurnBar/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/FactoryDroidProviderExecutor.swift:90:21: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+ 88 |         let stdoutURL = captureDirectory.appendingPathComponent("stdout.log", isDirectory: false)
+ 89 |         let stderrURL = captureDirectory.appendingPathComponent("stderr.log", isDirectory: false)
+ 90 |         fileManager.createFile(atPath: stdoutURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
+    |                     `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+ 91 |         fileManager.createFile(atPath: stderrURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
+ 92 |         let stdoutHandle = try FileHandle(forWritingTo: stdoutURL)
+
+/home/burnbar/BurnBar/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/FactoryDroidProviderExecutor.swift:91:21: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+ 89 |         let stderrURL = captureDirectory.appendingPathComponent("stderr.log", isDirectory: false)
+ 90 |         fileManager.createFile(atPath: stdoutURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
+ 91 |         fileManager.createFile(atPath: stderrURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
+    |                     `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+ 92 |         let stdoutHandle = try FileHandle(forWritingTo: stdoutURL)
+ 93 |         let stderrHandle = try FileHandle(forWritingTo: stderrURL)
+
+/home/burnbar/BurnBar/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/LinuxComputerUseInputSessionManager.swift:46:17: warning: result of 'try?' is unused
+44 |             } catch {
+45 |                 waylandSessions.removeValue(forKey: sessionID)
+46 |                 try? await adapter.stopWaylandRemoteDesktopSession(session)
+   |                 `- warning: result of 'try?' is unused
+47 |                 throw error
+48 |             }
+
+/home/burnbar/BurnBar/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/OpenBurnBarHTTPGatewayServerLinux.swift:1204:19: warning: no calls to throwing functions occur within 'try' expression
+1202 |             cacheReadTokens: usage.cacheReadTokens,
+1203 |             reasoningTokens: usage.reasoningTokens,
+1204 |             cost: try route.pricing.cost(
+     |                   `- warning: no calls to throwing functions occur within 'try' expression
+1205 |                 inputTokens: usage.inputTokens,
+1206 |                 outputTokens: usage.outputTokens,
+
+/home/burnbar/BurnBar/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/OpenBurnBarHTTPGatewayServerLinux.swift:1338:19: warning: no calls to throwing functions occur within 'try' expression
+1336 |             cacheReadTokens: usage.cacheReadTokens,
+1337 |             reasoningTokens: usage.reasoningTokens,
+1338 |             cost: try route.pricing.cost(
+     |                   `- warning: no calls to throwing functions occur within 'try' expression
+1339 |                 inputTokens: usage.inputTokens,
+1340 |                 outputTokens: usage.outputTokens,
+
+/home/burnbar/BurnBar/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarBrowserTargetPolicy.swift:138:35: warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+136 |                 )
+137 |                 if nameStatus == 0 {
+138 |                     let address = String(cString: buffer)
+    |                                   `- warning: 'init(cString:)' is deprecated: Use String(decoding: array, as: UTF8.self) instead, after truncating the null termination.
+139 |                     if address.isEmpty == false {
+140 |                         addresses.append(address)
+
+/home/burnbar/BurnBar/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarConfigStore.swift:1339:13: warning: initialization of immutable value 'normalizedAliasID' was never used; consider replacing with assignment to '_' or removing it
+1337 |         snapshot: BurnBarProviderConfigurationSnapshot
+1338 |     ) throws {
+1339 |         let normalizedAliasID = alias.aliasID.lowercased()
+     |             `- warning: initialization of immutable value 'normalizedAliasID' was never used; consider replacing with assignment to '_' or removing it
+1340 |         for provider in snapshot.providers {
+1341 |             if provider.modelVariants.contains(where: {
+
+/home/burnbar/BurnBar/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift:139:23: warning: 'httpShouldUsePipelining' is deprecated: HTTP/1 pipelining has known compatibility issues, please adopt HTTP/2 and HTTP/3 instead
+ 137 |         configuration.waitsForConnectivity = true
+ 138 |         #endif
+ 139 |         configuration.httpShouldUsePipelining = false
+     |                       `- warning: 'httpShouldUsePipelining' is deprecated: HTTP/1 pipelining has known compatibility issues, please adopt HTTP/2 and HTTP/3 instead
+ 140 |         return URLSession(configuration: configuration)
+ 141 |     }()
+
+/home/burnbar/BurnBar/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift:160:23: warning: 'httpShouldUsePipelining' is deprecated: HTTP/1 pipelining has known compatibility issues, please adopt HTTP/2 and HTTP/3 instead
+ 158 |         configuration.timeoutIntervalForRequest = 300
+ 159 |         configuration.timeoutIntervalForResource = 86_400
+ 160 |         configuration.httpShouldUsePipelining = false
+     |                       `- warning: 'httpShouldUsePipelining' is deprecated: HTTP/1 pipelining has known compatibility issues, please adopt HTTP/2 and HTTP/3 instead
+ 161 |         let streamingSession = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+ 162 |         let task = streamingSession.dataTask(with: request)
+[4/6] Compiling OpenBurnBarDaemonExecutable OpenBurnBarDaemonMain.swift
+[4/6] Write Objects.LinkFileList
+[5/6] Linking OpenBurnBarDaemon
+Build of product 'OpenBurnBarDaemon' complete! (88.09s)
+swift_build_exit=0
+-rwxrwxr-x 1 burnbar burnbar 134073944 Jul 21 18:03 .build/aarch64-unknown-linux-gnu/release/OpenBurnBarDaemon
+23fa7b723efa2df56244fcb4204ef6c9caf4142ea73da1af44082459d973cc2e  /tmp/obb-exact-head/openburnbar-daemon
+Usage: OpenBurnBarDaemon [OPTIONS]
+
+Options:
+  --socket-path PATH          Unix socket path for RPC
+  --index-database-path PATH  SQLite database path for search
+  --version VERSION            Daemon version string
+  --gateway-enable             Enable the HTTP gateway
+  --gateway-host HOST          Gateway bind host (default 127.0.0.1)
+  --gateway-port PORT          Gateway port (default 8317)
+  --gateway-auth-token TOKEN   Bearer token for gateway auth
+  --gateway-auth-token-file PATH
+                               Read gateway auth token from file (avoids ps exposure)
+
+  --socket-auth-token TOKEN    (Required) Auth token for daemon socket RPC
+  --socket-auth-token-file PATH

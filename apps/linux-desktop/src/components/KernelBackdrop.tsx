@@ -1,13 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
 import { BackdropEngine } from '@openburnbar/gl-engine/engine/BackdropEngine';
-import type { KernelId } from '@openburnbar/gl-engine/engine/types';
+import type { KernelId, KernelResolution } from '@openburnbar/gl-engine/engine/types';
 import type { BackdropReadabilityProfile } from '@openburnbar/gl-engine/engine/readability';
 import { resolveSkinPalette } from '../lib/resolveSkinPalette.js';
 import { fallbackProfileForSkin } from '../lib/adaptiveForeground.js';
 import {
   DASHBOARD_MOTION_SPEED_MULTIPLIER
 } from '../state/kernelPrefs.js';
+import {
+  readSwarmPreferences,
+  SWARM_PREFS_CHANGED_EVENT,
+  type SwarmPreferences
+} from '../state/swarmPrefs.js';
 import type { ShellSkin } from '../state/shellStore.js';
+
+/** Window event used by the picker to mirror the backdrop's live capability receipt. */
+export const KERNEL_RESOLUTION_EVENT = 'openburnbar:kernel-resolution';
+
+function publishKernelResolution(container: HTMLElement, status: KernelResolution): void {
+  container.dataset.kernelRequested = status.requestedId;
+  container.dataset.kernelResolved = status.resolvedId;
+  container.dataset.kernelResolution = status.reason;
+  container.dataset.kernelFallback = status.fallback ? '1' : '0';
+  container.dataset.kernelSubstrate = status.resolvedSubstrate;
+  window.dispatchEvent(new CustomEvent<KernelResolution>(KERNEL_RESOLUTION_EVENT, { detail: status }));
+}
 
 /**
  * Real gl-engine backdrop with a Canvas2D fallback for WebKitGTK hosts that
@@ -21,20 +38,30 @@ export function KernelBackdrop({
 }: {
   skin: ShellSkin;
   kernelId: KernelId;
-  onReadability: (profile: BackdropReadabilityProfile) => void;
+  onReadability?: (profile: BackdropReadabilityProfile) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<BackdropEngine | null>(null);
   const requestedKernelRef = useRef(kernelId);
   const onReadabilityRef = useRef(onReadability);
   const [mode, setMode] = useState<'canvas' | 'css'>('canvas');
+  const [swarmPreferences, setSwarmPreferences] = useState<SwarmPreferences>(() => readSwarmPreferences());
   requestedKernelRef.current = kernelId;
   onReadabilityRef.current = onReadability;
 
   useEffect(() => {
+    const onChange = (event: Event) => {
+      const next = (event as CustomEvent<SwarmPreferences>).detail;
+      setSwarmPreferences(next ?? readSwarmPreferences());
+    };
+    window.addEventListener(SWARM_PREFS_CHANGED_EVENT, onChange);
+    return () => window.removeEventListener(SWARM_PREFS_CHANGED_EVENT, onChange);
+  }, []);
+
+  useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    onReadabilityRef.current(fallbackProfileForSkin(skin));
+    onReadabilityRef.current?.(fallbackProfileForSkin(skin));
     if (typeof process !== 'undefined' && process.env.VITEST) {
       setMode('css');
       container.dataset.backdropMode = 'css';
@@ -70,13 +97,20 @@ export function KernelBackdrop({
         initialKernel: requestedKernelRef.current,
         palette: resolveSkinPalette(skin),
         swarmEmberOptions: {
-          enableSwarmSparkles: false,
-          motionSpeedMultiplier: DASHBOARD_MOTION_SPEED_MULTIPLIER
+          enableSwarmSparkles: swarmPreferences.constellationMode || swarmPreferences.sparkles,
+          motionSpeedMultiplier: swarmPreferences.constellationMode
+            ? 0.55
+            : swarmPreferences.speed || DASHBOARD_MOTION_SPEED_MULTIPLIER,
+          providerGlyphs: swarmPreferences.providerGlyphs,
+          excludeBrandShapes: swarmPreferences.constellationMode || swarmPreferences.excludeBrandShapes,
+          autoCycleShapes: swarmPreferences.constellationMode || swarmPreferences.autoCycleShapes,
+          allowsClickCycle: swarmPreferences.constellationMode ? false : swarmPreferences.allowsClickCycle
         },
+        onStatus: (status) => publishKernelResolution(container, status),
         onResolve: (resolvedId) => {
           container.dataset.kernelResolved = resolvedId;
         },
-        onReadability: (profile) => onReadabilityRef.current(profile),
+        onReadability: (profile) => onReadabilityRef.current?.(profile),
         readabilityRegions: () =>
           Array.from(document.querySelectorAll<HTMLElement>('[data-readability-region]'))
             .filter((element) => element.offsetParent !== null)
@@ -86,13 +120,14 @@ export function KernelBackdrop({
       console.error('[KernelBackdrop] engine initialization failed', error);
       setMode('css');
       container.dataset.backdropMode = 'css';
-      onReadabilityRef.current(fallbackProfileForSkin(skin));
+      onReadabilityRef.current?.(fallbackProfileForSkin(skin));
       return;
     }
 
     engineRef.current = engine;
     container.dataset.backdropMode = 'canvas';
     container.dataset.kernel = requestedKernelRef.current;
+    container.dataset.kernelRequested = requestedKernelRef.current;
     container.dataset.glSupported = engine.glSupported ? '1' : '0';
 
     const resize = () => {
@@ -112,7 +147,7 @@ export function KernelBackdrop({
       engine.destroy();
       engineRef.current = null;
     };
-  }, []);
+  }, [swarmPreferences]);
 
   useEffect(() => {
     if (containerRef.current) {
@@ -124,7 +159,7 @@ export function KernelBackdrop({
 
   useEffect(() => {
     if (mode === 'css') {
-      onReadabilityRef.current(fallbackProfileForSkin(skin));
+      onReadabilityRef.current?.(fallbackProfileForSkin(skin));
       return;
     }
     const engine = engineRef.current;

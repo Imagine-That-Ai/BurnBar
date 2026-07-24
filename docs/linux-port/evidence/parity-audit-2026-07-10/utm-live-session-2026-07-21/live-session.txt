@@ -1,0 +1,153 @@
+=== TIME ===
+Tue Jul 21 17:57:16 UTC 2026
+=== HEAD marker from rsynced tree ===
+coverage_file_present
+=== DAEMON HEALTH JSON ===
+Daemon 1.0.30 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true
+=== SECRET SERVICE ===
+smoke-valueSECRET_SERVICE_OK
+=== DISPLAY/SESSION ===
+Display=
+Remote=no
+Type=x11
+Active=yes
+State=active
+session 10 type=tty
+session 3 type=tty
+session 4 type=x11
+=== INSTALLED PACKAGE ===
+Package: open-burn-bar
+Status: install ok installed
+Architecture: arm64
+Version: 0.1.1
+566d324df1d9e4b4791a2222db86774901fab25c90a72503b07caa2734b8f8c6  /usr/bin/openburnbar-daemon
+b78c9db0716bf0cb6b7fb46a9b960947f12e44fa07905fd90283faac29460a67  /usr/bin/openburnbar-cli
+9c866c7750ee354e035fd6d7c7bddabc9823f16297b534ef29818aebacc44257  /usr/bin/openburnbar-linux-desktop
+=== DAEMON RPC PROBES ===
+-- health --
+Daemon 1.0.30 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true
+-- config.get --
+Unsupported OpenBurnBar CLI command 'config.get'.
+
+openburnbar-cli <command> [args]
+
+Commands:
+  health
+  service <status|foreground|restart>
+  capabilities [--json]
+  diagnostics --output <directory>
+  subscribe <health|run> [runID]
+  subscription-resume <subscriptionID> --topic <topic> --after-seq <seq>
+  controller [projectSlug]
+  questions [projectSlug]
+  followups [projectSlug]
+  missions [projectSlug]
+  mission-approve <missionID> [note]
+  simulator-runs [projectSlug]
+  simulator-replay <runID>
+  search <query> [--cwd path] [--limit N]
+  recall <query> [--cwd path] [--limit N]
+  index [path] [--max-files N] [--max-file-bytes N] [--storage-budget-bytes N] [--watch] [--poll-seconds N]
+  config [--cwd path]
+  healthcheck [--cwd path]
+  run <create|list|get|poll|approval|cancel|retry> [args]
+  resume <sessionId> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn]
+  remote-unlock-certification <status|record-hardware-proof|reset>
+  audit-verify <session-directory> [--max-entry-index N] [--skip-opentimestamps]
+  computer-use panic-halt --session-id ID|* [--source hotkey|phone_gesture|mac_lock|remote_config|accessibility_revoked|stalled|revoked] [--json]
+  computer-use live-surface-proof --panic-url URL --media-url URL [--audit-head HASH] [--json]
+  local-peer <browse|advertise-metadata|disabled-state|parse-fixture> [--json] [--timeout SECONDS] [fixture-path]
+  devices <discover|parity|pixel-clock|iot> [args...] [--json]
+  exec <codex|claude|opencode|droid|forge|agy> [--profile-id <id>] [args...]
+  claude-handoff <dispatch|reconcile|list> [args]
+  provider-bootstrap-claude
+  privacy-rpc (stdin JSON; installed Linux privacy peer)
+  install-shell-shims
+openburnbar-cli <command> [args]
+
+Commands:
+  health
+  service <status|foreground|restart>
+  capabilities [--json]
+  diagnostics --output <directory>
+  subscribe <health|run> [runID]
+  subscription-resume <subscriptionID> --topic <topic> --after-seq <seq>
+  controller [projectSlug]
+  questions [projectSlug]
+  followups [projectSlug]
+  missions [projectSlug]
+  mission-approve <missionID> [note]
+  simulator-runs [projectSlug]
+  simulator-replay <runID>
+  search <query> [--cwd path] [--limit N]
+  recall <query> [--cwd path] [--limit N]
+  index [path] [--max-files N] [--max-file-bytes N] [--storage-budget-bytes N] [--watch] [--poll-seconds N]
+  config [--cwd path]
+  healthcheck [--cwd path]
+  run <create|list|get|poll|approval|cancel|retry> [args]
+  resume <sessionId> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn]
+  remote-unlock-certification <status|record-hardware-proof|reset>
+  audit-verify <session-directory> [--max-entry-index N] [--skip-opentimestamps]
+  computer-use panic-halt --session-id ID|* [--source hotkey|phone_gesture|mac_lock|remote_config|accessibility_revoked|stalled|revoked] [--json]
+  computer-use live-surface-proof --panic-url URL --media-url URL [--audit-head HASH] [--json]
+  local-peer <browse|advertise-metadata|disabled-state|parse-fixture> [--json] [--timeout SECONDS] [fixture-path]
+  devices <discover|parity|pixel-clock|iot> [args...] [--json]
+  exec <codex|claude|opencode|droid|forge|agy> [--profile-id <id>] [args...]
+  claude-handoff <dispatch|reconcile|list> [args]
+  provider-bootstrap-claude
+  privacy-rpc (stdin JSON; installed Linux privacy peer)
+  install-shell-shims
+=== PROCESS / SOCKET ===
+total 0
+drwx------  2 burnbar burnbar 120 Jul 21 17:51 .
+drwx------ 18 burnbar burnbar 580 Jul 21 17:52 ..
+srw-------  1 burnbar burnbar   0 Jul 21 17:51 daemon.sock
+-rw-------  1 burnbar burnbar   0 Jul 21 17:51 daemon.sock.lock
+-rw-------  1 burnbar burnbar   0 Jul 21 17:51 openburnbar-linux-desktop.lock
+srw-------  1 burnbar burnbar   0 Jul 21 17:51 openburnbar-linux-desktop.sock
+941 avahi-daemon: running [openburnbar-linux.local]
+1339 /usr/bin/openburnbar-daemon --socket-path /run/user/1000/openburnbar/daemon.sock --socket-auth-token-file /home/burnbar/.local/share/openburnbar/daemon-socket-auth-token --index-database-path /home/burnbar/.local/share/openburnbar/openburnbar.sqlite
+2182 /usr/local/bin/openburnbar-linux-desktop --background
+=== PIPEWIRE/GSTREAMER ===
+/usr/bin/pw-cli
+	id: 0
+	permissions: r-xm-
+	type: PipeWire:Interface:Core/4
+	cookie: 2331371007
+	user-name: "burnbar"
+	host-name: "openburnbar-linux"
+	version: "1.0.5"
+	name: "pipewire-0"
+*	properties:
+*		config.name = "pipewire.conf"
+*		link.max-buffers = "16"
+*		core.daemon = "true"
+*		core.name = "pipewire-0"
+*		default.clock.min-quantum = "1024"
+*		module.x11.bell = "true"
+*		module.access = "true"
+*		module.jackdbus-detect = "true"
+*		cpu.max-align = "16"
+*		default.clock.rate = "48000"
+*		default.clock.quantum = "1024"
+Factory Details:
+  Rank                     primary (256)
+  Long-name                Opus audio decoder
+  Klass                    Codec/Decoder/Audio/Converter
+  Description              decode opus streams to audio
+no_opusdec
+Factory Details:
+  Rank                     none (0)
+  Long-name                Auto audio sink
+  Klass                    Sink/Audio
+  Description              Wrapper audio sink for automatically detected audio sink
+no_autoaudiosink
+=== KEYRING BACKEND ===
+:1.10                                        1401 gnome-keyring-d burnbar :1.10         user@1000.service -       -
+:1.11                                        1400 gnome-keyring-d burnbar :1.11         user@1000.service -       -
+org.freedesktop.impl.portal.Secret              - -               -       (activatable) -                 -       -
+org.freedesktop.secrets                      1401 gnome-keyring-d burnbar :1.10         user@1000.service -       -
+org.gnome.keyring                            1401 gnome-keyring-d burnbar :1.10         user@1000.service -       -
+org.gnome.keyring.PrivatePrompter               - -               -       (activatable) -                 -       -
+org.gnome.keyring.SystemPrompter             1843 gnome-shell     burnbar :1.43         user@1000.service -       -
+DONE_LIVE

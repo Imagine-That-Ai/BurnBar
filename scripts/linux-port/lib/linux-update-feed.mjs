@@ -3,9 +3,12 @@
 const SHA256 = /^[a-f0-9]{64}$/;
 const COMMIT = /^[a-f0-9]{40}$/;
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-const TYPES = new Set(['appimage', 'deb', 'rpm', 'daemon']);
+// Every published native package and its runtime companion is represented in
+// the signed feed. Arch is a first-class package format alongside DEB/RPM.
+const TYPES = new Set(['appimage', 'deb', 'rpm', 'arch', 'daemon']);
 const ARCHITECTURES = new Set(['aarch64', 'x86_64']);
 const CHANNELS = new Set(['stable', 'prerelease', 'nightly']);
+const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u;
 const ALLOWED_HOSTS = new Set([
   'burnbar.ai',
   'www.burnbar.ai',
@@ -31,6 +34,10 @@ function validHttpsUrl(value) {
   }
 }
 
+export function isStrictUtcTimestamp(value) {
+  return typeof value === 'string' && UTC_TIMESTAMP.test(value) && !Number.isNaN(Date.parse(value));
+}
+
 export function validateFeedDocument(document, options = {}) {
   const failures = [];
   if (document?.schemaVersion !== 1) failures.push('feed schemaVersion must be 1.');
@@ -38,7 +45,7 @@ export function validateFeedDocument(document, options = {}) {
   if (!SEMVER.test(document?.version ?? '')) failures.push('feed version must be strict X.Y.Z semver.');
   if (!COMMIT.test(document?.gitCommit ?? '')) failures.push('feed gitCommit must be a 40-character lowercase SHA.');
   if (!CHANNELS.has(document?.channel)) failures.push('feed channel is invalid.');
-  if (!document?.publishedAt || Number.isNaN(Date.parse(document.publishedAt))) failures.push('feed publishedAt must be an ISO date.');
+  if (!isStrictUtcTimestamp(document?.publishedAt)) failures.push('feed publishedAt must be a strict UTC RFC3339 timestamp.');
   if (options.previousVersion && compareSemver(document?.version, options.previousVersion) <= 0) {
     failures.push('feed version is not monotonic relative to the previous release.');
   }

@@ -24,6 +24,7 @@ const TOUCHED = [
   "APP_STORE_APPLE_APP_ID",
   "APP_STORE_ENV",
 ] as const;
+const VALID_LINUX_APP_CHECK_APP_ID = "1:246956661961:web:ab19bc3a6f6d4580480118";
 
 describe("VAL-P0-AC-011B config.ts App Check allowlist surface", () => {
   const saved: Record<string, string | undefined> = {};
@@ -139,6 +140,7 @@ describe("VAL-P0-AC-011 mock-attestation prod fence (config gate)", () => {
 
   it("FORCES the mock verifier OFF in production (fail-closed, no env can turn it on)", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
+    process.env.LINUX_APP_CHECK_APP_ID = VALID_LINUX_APP_CHECK_APP_ID;
     process.env.ALLOW_MOCK_APP_CHECK_ATTESTATION = "true"; // operator attempt to enable in prod
     const { getConfig } = await import("../config.js");
     expect(getConfig().allowMockAppCheckAttestation).toBe(false);

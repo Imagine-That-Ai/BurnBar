@@ -328,6 +328,81 @@ public struct HermesRealtimeRelayAgentGrantLocalAuthProof: Codable, Sendable, Eq
     }
 }
 
+/// Versioned Linux-host challenge asking a paired phone to issue an
+/// existing agent grant bound to one exact Computer Use session intent.
+/// The phone must validate every field before authenticating or signing.
+public struct HermesRealtimeRelaySessionGrantChallenge: Codable, Sendable, Equatable {
+    public var version: Int
+    public var challengeId: String
+    public var nonce: String
+    public var issuedAt: Date
+    public var expiresAt: Date
+    public var sessionIntentId: String
+    public var runtime: String
+    public var threadId: String
+    public var preset: String
+    public var capabilities: [String]
+    public var mode: String
+    public var trustMode: String
+    public var scopeRuleIds: [String]
+    public var phoneViewerNodeId: String?
+    public var macHostNodeId: String?
+    public var actionCap: Int
+    public var sessionTimeoutSeconds: Int
+    public var clientId: String
+    public var runId: String?
+    public var runCallId: String?
+    public var runGeneration: UInt64?
+    public var desktopOwnerAuthorizationMethod: String?
+    public init(
+        version: Int,
+        challengeId: String,
+        nonce: String,
+        issuedAt: Date,
+        expiresAt: Date,
+        sessionIntentId: String,
+        runtime: String,
+        threadId: String,
+        preset: String,
+        capabilities: [String],
+        mode: String,
+        trustMode: String,
+        scopeRuleIds: [String],
+        phoneViewerNodeId: String? = nil,
+        macHostNodeId: String? = nil,
+        actionCap: Int,
+        sessionTimeoutSeconds: Int,
+        clientId: String,
+        runId: String? = nil,
+        runCallId: String? = nil,
+        runGeneration: UInt64? = nil,
+        desktopOwnerAuthorizationMethod: String? = nil
+    ) {
+        self.version = version
+        self.challengeId = challengeId
+        self.nonce = nonce
+        self.issuedAt = issuedAt
+        self.expiresAt = expiresAt
+        self.sessionIntentId = sessionIntentId
+        self.runtime = runtime
+        self.threadId = threadId
+        self.preset = preset
+        self.capabilities = capabilities
+        self.mode = mode
+        self.trustMode = trustMode
+        self.scopeRuleIds = scopeRuleIds
+        self.phoneViewerNodeId = phoneViewerNodeId
+        self.macHostNodeId = macHostNodeId
+        self.actionCap = actionCap
+        self.sessionTimeoutSeconds = sessionTimeoutSeconds
+        self.clientId = clientId
+        self.runId = runId
+        self.runCallId = runCallId
+        self.runGeneration = runGeneration
+        self.desktopOwnerAuthorizationMethod = desktopOwnerAuthorizationMethod
+    }
+}
+
 public struct HermesRealtimeRelayAgentGrantRequest: Codable, Sendable, Equatable {
     public var requestId: String
     public var runtime: String

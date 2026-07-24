@@ -1,7 +1,7 @@
 /**
  * @fileoverview iroh-pairing + phone-control publish/revoke callables — pairing
  * key/record publication, pairing revocation, phone-control authority + relay
- * sender-key publication, and agent-grant authority publication.
+ * sender-key publication.
  *
  * Extracted verbatim from `computerUseSecurity.ts` (U6 split).
  */
@@ -17,6 +17,7 @@ import {
   enforceHighRiskComputerUseCallableWithNonce,
   isAppCheckAttestationClaimFresh,
   readAppCheckAttestationClaim,
+  readAppIdFromCallableRequest,
 } from "../appCheckAttestation.js";
 import { db } from "../adminRuntime.js";
 import { logInfo, onCallProduction } from "../logging.js";
@@ -24,7 +25,7 @@ import { assertActiveBurnBarCloudProEntitlement, boundedTrimmedString } from "./
 import { recordOrUndefined } from "../guards.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import {
-  MAC_ESCROW_PLATFORMS,
+  IROH_HOST_ESCROW_PLATFORMS,
   PHONE_CONTROL_ESCROW_PLATFORMS,
   RELAY_AUTH_ENCRYPTION,
   RELAY_AUTH_KEY_VERSION,
@@ -39,15 +40,39 @@ import {
   requirePhoneControlAuthorityPublicKey,
 } from "./computerUseSecurityCodecs.js";
 import { requireTrustedDeviceActionProof, requireTrustedEscrowDevice } from "./computerUseSecurityFirestore.js";
+import { revokeIrohPairingAndControllerRoutes } from "./irohControllerRouteFirestore.js";
+import { requireApprovedLinuxAppCheckIrohHost } from "./linuxAppCheckDevices.js";
 
 const RELAY_SENDER_KEY_PUBLISH_ACTION_KIND = "relay_sender_key_publish";
 const RELAY_SENDER_PROOF_PROTOCOL_VERSION = "3";
 const TRUSTED_DEVICE_PEER_NODE_ID_LIMIT = 16;
 
-function boundAppCheckAttestationDigest(request: CallableRequest): string | undefined {
+async function requireApprovedIrohHostMutationDevice(
+  request: CallableRequest,
+  uid: string,
+  deviceId: string,
+): Promise<void> {
+  if (readAppIdFromCallableRequest(request) === getConfig().linuxAppCheckAppID) {
+    await requireApprovedLinuxAppCheckIrohHost(request, uid, deviceId);
+    return;
+  }
+  await requireTrustedEscrowDevice(uid, deviceId, IROH_HOST_ESCROW_PLATFORMS);
+}
+
+export function boundAppCheckAttestationDigest(request: CallableRequest): string | undefined {
   const claim = readAppCheckAttestationClaim(recordOrUndefined(request.auth?.token));
   if (!claim || !isAppCheckAttestationClaimFresh(claim)) return undefined;
   return appCheckAttestationDigestHex(claim.appId, claim.boundAtMillis);
+}
+
+function rejectMismatchedExpectedUID(expectedUID: unknown, authenticatedUID: string): void {
+  if (expectedUID == null) return;
+  if (typeof expectedUID !== "string" || expectedUID.length === 0 || expectedUID.length > 128) {
+    throw new HttpsError("invalid-argument", "expectedUid must be a valid authenticated account identifier.");
+  }
+  if (expectedUID !== authenticatedUID) {
+    throw new HttpsError("permission-denied", "Authenticated account changed during authority publication.");
+  }
 }
 
 function normalizedTrustedDevicePeerNodeIds(rawPeerNodeId: unknown, rawPeerNodeIds: unknown): string[] {
@@ -122,7 +147,7 @@ async function stageTrustedEscrowDevicePeerNodeBinding(args: {
   );
 }
 
-async function bindTrustedEscrowDevicePeerNodeId(args: {
+export async function bindTrustedEscrowDevicePeerNodeId(args: {
   uid: string;
   deviceId: string;
   peerNodeId: string;
@@ -189,7 +214,9 @@ export const publishIrohPairingPublicKey = onCallProduction(
   ) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing an iroh pairing key.");
-    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce, {
+      allowLowerTrustDesktop: true,
+    });
     await assertActiveBurnBarCloudProEntitlement(uid);
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
@@ -197,7 +224,7 @@ export const publishIrohPairingPublicKey = onCallProduction(
     if (roleId !== "host") {
       throw new HttpsError("invalid-argument", "Only the host iroh pairing key role is client-publishable.");
     }
-    await requireTrustedEscrowDevice(uid, deviceId, MAC_ESCROW_PLATFORMS);
+    await requireApprovedIrohHostMutationDevice(request, uid, deviceId);
     const publicKeyBase64 = requireBase64Like(request.data.publicKeyBase64, "publicKeyBase64", 32, 128);
 
     await db.doc(`users/${uid}/iroh_pairing_keys/${roleId}`).set(
@@ -245,11 +272,13 @@ export const publishIrohPairingRecord = onCallProduction(
   ) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing an iroh pairing record.");
-    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce, {
+      allowLowerTrustDesktop: true,
+    });
     await assertActiveBurnBarCloudProEntitlement(uid);
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
-    await requireTrustedEscrowDevice(uid, deviceId, MAC_ESCROW_PLATFORMS);
+    await requireApprovedIrohHostMutationDevice(request, uid, deviceId);
     const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);
     const nodeId = boundedTrimmedString(request.data.nodeId, "nodeId", 128, true);
     const relayURLRaw =
@@ -310,12 +339,14 @@ export const revokeIrohPairingRecord = onCallProduction(
   async (request: CallableRequest<{ deviceId?: unknown; connectionId?: unknown; nonce?: unknown }>) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking an iroh pairing record.");
-    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce, {
+      allowLowerTrustDesktop: true,
+    });
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
     const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);
-    await requireTrustedEscrowDevice(uid, deviceId, MAC_ESCROW_PLATFORMS);
-    await db.doc(`users/${uid}/iroh_pairing/${connectionId}`).delete();
+    await requireApprovedIrohHostMutationDevice(request, uid, deviceId);
+    await revokeIrohPairingAndControllerRoutes(uid, connectionId);
 
     logInfo({
       event: "callable_info",
@@ -343,11 +374,13 @@ export const publishPhoneControlAuthority = onCallProduction(
       keyKind?: unknown;
       publishedAtMillis?: unknown;
       protocolVersion?: unknown;
+      expectedUid?: unknown;
       nonce?: unknown;
     }>,
   ) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing phone-control authority.");
+    rejectMismatchedExpectedUID(request.data.expectedUid, uid);
     await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
     await assertActiveBurnBarCloudProEntitlement(uid);
 
@@ -565,67 +598,5 @@ export const publishRelaySenderKey = onCallProduction(
       key_id: keyId,
     });
     return { ok: true, deviceId, peerNodeId, keyId };
-  },
-);
-
-export const publishAgentGrantAuthority = onCallProduction(
-  "publishAgentGrantAuthority",
-  {
-    region: FUNCTIONS_REGION,
-    enforceAppCheck: getConfig().enforceAppCheck,
-    maxInstances: 100,
-  },
-  async (
-    request: CallableRequest<{
-      deviceId?: unknown;
-      peerNodeId?: unknown;
-      publicKeyBase64?: unknown;
-      keyKind?: unknown;
-      nonce?: unknown;
-    }>,
-  ) => {
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing an agent grant authority.");
-    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
-    await assertActiveBurnBarCloudProEntitlement(uid);
-
-    const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
-    await requireTrustedEscrowDevice(uid, deviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
-    const peerNodeId = boundedTrimmedString(request.data.peerNodeId, "peerNodeId", 160, true);
-    const keyKind = parsePhoneControlSigningKeyKind(request.data.keyKind);
-    const { bytes: publicKeyBytes, base64: publicKeyBase64 } = requirePhoneControlAuthorityPublicKey(
-      request.data.publicKeyBase64,
-      keyKind,
-    );
-    requireDerivedPhoneControlPeerNodeId(peerNodeId, publicKeyBytes, keyKind);
-    await bindTrustedEscrowDevicePeerNodeId({
-      uid,
-      deviceId,
-      peerNodeId,
-      permittedPriorPeerRefs: [db.doc(`users/${uid}/agent_grant_authorities/${deviceId}`)],
-    });
-    const appCheckAttestationHashBlake3 = boundAppCheckAttestationDigest(request);
-
-    await db.doc(`users/${uid}/agent_grant_authorities/${deviceId}`).set(
-      {
-        sourceDeviceId: deviceId,
-        peerNodeId,
-        publicKeyBase64,
-        signingKeyKind: keyKind,
-        publishedAtMillis: Date.now(),
-        ...(appCheckAttestationHashBlake3 ? { appCheckAttestationHashBlake3 } : {}),
-        schemaVersion: keyKind === "se-p256" ? 3 : 2,
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
-
-    logInfo({
-      event: "callable_info",
-      message: "agent_grant_authority_published",
-      device_id: deviceId,
-      peer_node_id: peerNodeId,
-    });
-    return { ok: true, deviceId, peerNodeId };
   },
 );

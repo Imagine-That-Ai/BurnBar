@@ -1,0 +1,426 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { SessionEntry } from '../../tauriBridge.js';
+import {
+  ACTIVITY_HISTORY_EXPORT_MAX_BYTES,
+  ACTIVITY_HISTORY_EXPORT_LIMIT,
+  buildDaemonActivityHistoryExport,
+  buildActivityExportDocument,
+  downloadActivityExport,
+  parseActivityHistoryExport,
+  resumeActivityHistoryExportSession,
+  sanitizeActivityExportFilename,
+  serializeActivityExport,
+  type ActivityExportDocument
+} from './activityExport.js';
+
+const sessions: SessionEntry[] = [
+  {
+    id: 'session-1',
+    provider: 'openai',
+    model: 'gpt-5',
+    startedAt: '2026-07-13T12:00:00Z',
+    tokens: 1200,
+    costUsd: 0.42,
+    title: 'Parity review'
+  },
+  {
+    id: 'session-2',
+    provider: 'anthropic',
+    model: 'claude-sonnet',
+    startedAt: '2026-07-13T13:00:00Z',
+    tokens: 800,
+    costUsd: 0.18,
+    title: 'Release check'
+  }
+];
+
+describe('activity export', () => {
+  it('exports only the allowlisted fields from currently loaded rows', () => {
+    const document = buildActivityExportDocument(
+      sessions.map((session) => ({
+        ...session,
+        apiKey: 'must-not-export',
+        internalReasoning: 'must-not-export'
+      }) as SessionEntry),
+      'live daemon session index',
+      '2026-07-13T14:00:00Z'
+    );
+
+    expect(document).toEqual({
+      version: 1,
+      scope: 'loaded-session-index',
+      source: 'live daemon session index',
+      generatedAt: '2026-07-13T14:00:00Z',
+      loadedCount: 2,
+      sessions
+    });
+
+    const serialized = serializeActivityExport(document, 'json');
+    expect(JSON.parse(serialized)).toEqual(document);
+    expect(serialized).not.toMatch(/apiKey|internalReasoning|must-not-export/i);
+  });
+
+  it('serializes a readable loaded-only Markdown report', () => {
+    const document = buildActivityExportDocument(sessions, 'fixture transcript', '2026-07-13T14:00:00Z');
+    const markdown = serializeActivityExport(document, 'markdown');
+
+    expect(markdown).toContain('# OpenBurnBar Activity Export');
+    expect(markdown).toContain('Scope: `loaded-session-index`');
+    expect(markdown).toContain('Loaded rows: 2');
+    expect(markdown).toContain('older history or session bodies');
+    expect(markdown).toContain('## Parity review');
+    expect(markdown).toContain('Session ID: `session-1`');
+    expect(markdown.endsWith('\n')).toBe(true);
+  });
+
+  it('sanitizes export filenames and chooses the correct extension', () => {
+    expect(sanitizeActivityExportFilename('Activity / logs: July', 'markdown')).toBe(
+      'openburnbar-Activity-logs-July.md'
+    );
+    expect(sanitizeActivityExportFilename('   ', 'json')).toBe('openburnbar-activity-export.json');
+    expect(sanitizeActivityExportFilename('../..', 'json')).toBe('openburnbar-activity-export.json');
+  });
+
+  it('fails closed when the shell cannot provide a document download surface', () => {
+    expect(() => downloadActivityExport({
+      filename: 'activity.json',
+      content: '{}\n',
+      mimeType: 'application/json'
+    }, undefined)).toThrow(/unavailable/i);
+  });
+
+  it('exports a complete daemon snapshot only after resolving every source and body', async () => {
+    const replay = vi.fn(async (sourceID: string) => ({
+      kind: 'native',
+      briefingMD: `# ${sourceID}\n\nUntrusted persisted body`,
+      briefingTruncated: false
+    }));
+    const result = await buildDaemonActivityHistoryExport({
+      sessionList: async () => ({
+        sessions: [
+          {
+            ...sessions[0]!,
+            sourceID: 'Codex:session-1',
+            providerSessionID: 'session-1',
+            runID: 'run-1',
+            projectName: 'BurnBar'
+          }
+        ],
+        nextCursor: null,
+        complete: true,
+        historyComplete: true
+      }),
+      sessionReplay: replay
+    }, '2026-07-13T14:00:00Z');
+
+    expect(result.kind).toBe('available');
+    if (result.kind !== 'available') return;
+    expect(result.document).toMatchObject({
+      scope: 'daemon-session-history',
+      source: 'live daemon session index',
+      historyComplete: true,
+      historyLimit: ACTIVITY_HISTORY_EXPORT_LIMIT,
+      loadedCount: 1
+    });
+    expect(result.document.sessions[0]).toMatchObject({
+      sourceID: 'Codex:session-1',
+      providerSessionID: 'session-1',
+      runID: 'run-1',
+      bodyMD: '# Codex:session-1\n\nUntrusted persisted body'
+    });
+    expect(replay).toHaveBeenCalledWith('Codex:session-1');
+
+    const markdown = serializeActivityExport(result.document, 'markdown');
+    expect(markdown).toContain('bounded export was read from the daemon');
+    expect(markdown).toContain('Persisted body (untrusted)');
+    expect(markdown).toContain('Untrusted persisted body');
+  });
+
+  it('uses the explicit daemon history snapshot without replaying each session again', async () => {
+    const sessionReplay = vi.fn();
+    const result = await buildDaemonActivityHistoryExport({
+      sessionList: vi.fn(),
+      sessionHistory: async () => ({
+        sessions: [{
+          ...sessions[0]!,
+          sourceID: 'Codex:history-session',
+          providerSessionID: 'history-session',
+          bodyMD: '# Persisted body\n\nComplete history snapshot'
+        }],
+        nextCursor: null,
+        complete: true,
+        historyComplete: true,
+        historyLimit: ACTIVITY_HISTORY_EXPORT_LIMIT,
+        totalCount: 1
+      }),
+      sessionReplay
+    });
+
+    expect(result.kind).toBe('available');
+    if (result.kind !== 'available') return;
+    expect(result.document.sessions[0]?.bodyMD).toContain('Complete history snapshot');
+    expect(result.document.historyLimit).toBe(ACTIVITY_HISTORY_EXPORT_LIMIT);
+    expect(sessionReplay).not.toHaveBeenCalled();
+  });
+
+  it('round-trips a complete JSON history export with resume identities', async () => {
+    const sourceID = 'Codex:session-round-trip';
+    const built = await buildDaemonActivityHistoryExport({
+      sessionList: async () => ({
+        sessions: [{ ...sessions[0]!, sourceID, providerSessionID: 'session-round-trip', runID: 'run-round-trip' }],
+        nextCursor: null,
+        complete: true,
+        historyComplete: true
+      }),
+      sessionReplay: async () => ({
+        kind: 'native',
+        briefingMD: '# Stored body\n\nA second paragraph.',
+        briefingTruncated: false
+      })
+    }, '2026-07-13T14:00:00Z');
+    expect(built.kind).toBe('available');
+    if (built.kind !== 'available') return;
+
+    const parsed = parseActivityHistoryExport(serializeActivityExport(built.document, 'json'));
+    expect(parsed.kind).toBe('valid');
+    if (parsed.kind !== 'valid') return;
+    expect(parsed.document.sessions[0]).toMatchObject({ sourceID, providerSessionID: 'session-round-trip', runID: 'run-round-trip' });
+    expect(parsed.document.sessions[0]?.bodyMD).toContain('\n\nA second paragraph.');
+
+    const resume = vi.fn(async (sessionID: string) => ({ kind: 'spawned', pid: 7, briefingTruncated: false, note: sessionID }));
+    const sourceIndex = vi.fn(async () => ({
+      sessions: [{ ...sessions[0]!, sourceID, providerSessionID: 'session-round-trip', runID: 'run-round-trip' }],
+      nextCursor: null,
+      complete: true,
+      historyComplete: true
+    }));
+    const result = await resumeActivityHistoryExportSession(parsed.document, sourceID, {
+      sessionList: sourceIndex,
+      sessionResume: resume
+    });
+    expect(result.kind).toBe('requested');
+    expect(sourceIndex).toHaveBeenCalledOnce();
+    expect(resume).toHaveBeenCalledWith(sourceID);
+  });
+
+  it('re-resolves the exported source and refuses stale identity before resume', async () => {
+    const sourceID = 'Codex:stale-source';
+    const document: ActivityExportDocument = {
+      version: 1,
+      scope: 'daemon-session-history',
+      source: 'live daemon session index',
+      generatedAt: '2026-07-13T14:00:00Z',
+      loadedCount: 1,
+      historyComplete: true,
+      historyLimit: ACTIVITY_HISTORY_EXPORT_LIMIT,
+      sessions: [{
+        ...sessions[0]!,
+        sourceID,
+        providerSessionID: 'old-provider-session',
+        runID: 'old-run',
+        projectName: 'BurnBar',
+        bodyMD: 'persisted body'
+      }]
+    };
+    const resume = vi.fn();
+    const result = await resumeActivityHistoryExportSession(document, sourceID, {
+      sessionList: async () => ({
+        sessions: [{
+          ...sessions[0]!,
+          sourceID,
+          providerSessionID: 'new-provider-session',
+          runID: 'new-run',
+          projectName: 'BurnBar'
+        }],
+        nextCursor: null,
+        complete: true,
+        historyComplete: true
+      }),
+      sessionResume: resume
+    });
+
+    expect(result).toMatchObject({
+      kind: 'unavailable',
+      code: 'source_identity_unavailable',
+      message: expect.stringMatching(/provider\/session\/project binding/i)
+    });
+    expect(resume).not.toHaveBeenCalled();
+  });
+
+  it('does not resume when the daemon source index is incomplete or unavailable', async () => {
+    const sourceID = 'Codex:indexed-source';
+    const document: ActivityExportDocument = {
+      version: 1,
+      scope: 'daemon-session-history',
+      source: 'live daemon session index',
+      generatedAt: '2026-07-13T14:00:00Z',
+      loadedCount: 1,
+      historyComplete: true,
+      historyLimit: ACTIVITY_HISTORY_EXPORT_LIMIT,
+      sessions: [{ ...sessions[0]!, sourceID, bodyMD: 'persisted body' }]
+    };
+    const resume = vi.fn();
+    const paged = await resumeActivityHistoryExportSession(document, sourceID, {
+      sessionList: async () => ({
+        sessions: [{ ...sessions[0]!, sourceID }],
+        nextCursor: 'older-page',
+        complete: false
+      }),
+      sessionResume: resume
+    });
+    expect(paged).toMatchObject({ kind: 'unavailable', code: 'source_resolution_unavailable' });
+    expect(resume).not.toHaveBeenCalled();
+
+    const failed = await resumeActivityHistoryExportSession(document, sourceID, {
+      sessionList: async () => {
+        throw new Error('daemon down');
+      },
+      sessionResume: resume
+    });
+    expect(failed).toMatchObject({ kind: 'unavailable', code: 'source_resolution_unavailable' });
+    expect(resume).not.toHaveBeenCalled();
+
+    const boundedRecent = await resumeActivityHistoryExportSession(document, sourceID, {
+      // A current daemon.usage.recent response can look complete after the
+      // shell mapper adds `complete: true`, but it still has no full-history
+      // proof and must not reach run.resume.
+      sessionList: async () => ({
+        sessions: [{ ...sessions[0]!, sourceID }],
+        nextCursor: null,
+        complete: true
+      }),
+      sessionResume: resume
+    });
+    expect(boundedRecent).toMatchObject({
+      kind: 'unavailable',
+      code: 'source_resolution_unavailable',
+      message: expect.stringMatching(/explicit complete-history proof/i)
+    });
+    expect(resume).not.toHaveBeenCalled();
+  });
+
+  it('rejects edited, duplicate, or presentation-only exports before daemon resume', async () => {
+    const complete = {
+      version: 1,
+      scope: 'daemon-session-history',
+      source: 'live daemon session index',
+      generatedAt: '2026-07-13T14:00:00Z',
+      loadedCount: 2,
+      historyComplete: true,
+      historyLimit: ACTIVITY_HISTORY_EXPORT_LIMIT,
+      sessions: [
+        { ...sessions[0]!, sourceID: 'Codex:same', bodyMD: 'body' },
+        { ...sessions[1]!, sourceID: 'Codex:same', bodyMD: 'body' }
+      ]
+    };
+    const duplicate = parseActivityHistoryExport(JSON.stringify(complete));
+    expect(duplicate).toMatchObject({ kind: 'invalid', message: expect.stringMatching(/duplicate source/i) });
+
+    const loadedOnly = parseActivityHistoryExport(JSON.stringify({
+      ...complete,
+      loadedCount: 1,
+      scope: 'loaded-session-index',
+      historyComplete: undefined,
+      sessions: [{ ...sessions[0]!, sourceID: 'Codex:one', bodyMD: 'body' }]
+    }));
+    expect(loadedOnly).toMatchObject({ kind: 'invalid', message: expect.stringMatching(/complete daemon-session-history/i) });
+
+    const resume = vi.fn();
+    const missing = await resumeActivityHistoryExportSession(
+      {
+        version: 1,
+        scope: 'daemon-session-history',
+        source: 'live daemon session index',
+        generatedAt: '2026-07-13T14:00:00Z',
+        loadedCount: 0,
+        sessions: [],
+        historyComplete: true,
+        historyLimit: ACTIVITY_HISTORY_EXPORT_LIMIT
+      },
+      'Codex:missing',
+      {
+        sessionList: async () => ({ sessions: [], nextCursor: null, complete: true, historyComplete: true }),
+        sessionResume: resume
+      }
+    );
+    expect(missing).toMatchObject({ kind: 'unavailable', code: 'session_not_found' });
+    expect(resume).not.toHaveBeenCalled();
+  });
+
+  it('returns a typed unavailable result for paged history instead of exporting a partial page', async () => {
+    const replay = vi.fn();
+    const result = await buildDaemonActivityHistoryExport({
+      sessionList: async () => ({
+        sessions,
+        nextCursor: 'older-page',
+        complete: false
+      }),
+      sessionReplay: replay
+    });
+
+    expect(result).toEqual({
+      kind: 'unavailable',
+      code: 'history_not_complete',
+      message: expect.stringMatching(/paged or incomplete/i)
+    });
+    expect(replay).not.toHaveBeenCalled();
+  });
+
+  it('does not let the bounded recent-usage bridge claim complete history', async () => {
+    const replay = vi.fn();
+    const result = await buildDaemonActivityHistoryExport({
+      // The current Linux bridge maps daemon.usage.recent to `complete: true`
+      // when fewer than 500 rows are returned, but that RPC has no cursor or
+      // completeness field. Without the explicit marker, export must fail
+      // closed instead of manufacturing a full-history claim.
+      sessionList: async () => ({ sessions, nextCursor: null, complete: true }),
+      sessionReplay: replay
+    });
+
+    expect(result).toMatchObject({
+      kind: 'unavailable',
+      code: 'history_not_complete',
+      message: expect.stringMatching(/explicit complete-history proof|recent-usage bridge/i)
+    });
+    expect(replay).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when any listed row lacks a verified source identity', async () => {
+    const replay = vi.fn();
+    const result = await buildDaemonActivityHistoryExport({
+      sessionList: async () => ({ sessions, nextCursor: null, complete: true, historyComplete: true }),
+      sessionReplay: replay
+    });
+
+    expect(result).toMatchObject({ kind: 'unavailable', code: 'source_identity_unavailable' });
+    expect(replay).not.toHaveBeenCalled();
+  });
+
+  it('rejects truncated bodies and total history over the byte bound', async () => {
+    const truncated = await buildDaemonActivityHistoryExport({
+      sessionList: async () => ({
+        sessions: [{ ...sessions[0]!, sourceID: 'Codex:session-1' }],
+        nextCursor: null,
+        complete: true,
+        historyComplete: true
+      }),
+      sessionReplay: async () => ({ kind: 'native', briefingMD: 'body', briefingTruncated: true })
+    });
+    expect(truncated).toMatchObject({ kind: 'unavailable', code: 'session_body_truncated' });
+
+    const oversized = await buildDaemonActivityHistoryExport({
+      sessionList: async () => ({
+        sessions: [{ ...sessions[0]!, sourceID: 'Codex:session-1' }],
+        nextCursor: null,
+        complete: true,
+        historyComplete: true
+      }),
+      sessionReplay: async () => ({
+        kind: 'native',
+        briefingMD: 'x'.repeat(ACTIVITY_HISTORY_EXPORT_MAX_BYTES + 1),
+        briefingTruncated: false
+      })
+    });
+    expect(oversized).toMatchObject({ kind: 'unavailable', code: 'history_size_exceeded' });
+  });
+});

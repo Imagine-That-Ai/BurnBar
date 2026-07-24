@@ -65,6 +65,28 @@ extension BurnBarDaemonServer {
                 result: try await missionControlService.controllerProjectUpsert(typedRequest.params)
             )
             return encode(response)
+        case .controllerProjectDelete:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarControllerProjectDeleteRequest>.self,
+                from: requestData
+            )
+            let response = BurnBarRPCResponseEnvelope<BurnBarControllerProjectDeleteResponse>(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: try await missionControlService.controllerProjectDelete(typedRequest.params)
+            )
+            return encode(response)
+        case .controllerProjectReassign:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarControllerProjectReassignRequest>.self,
+                from: requestData
+            )
+            let response = BurnBarRPCResponseEnvelope<BurnBarControllerProjectReassignResponse>(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: try await missionControlService.controllerProjectReassign(typedRequest.params)
+            )
+            return encode(response)
         case .reviewRunRecord:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarControllerReviewRunRecordRequest>.self,
@@ -221,6 +243,17 @@ extension BurnBarDaemonServer {
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
                 result: try await missionControlService.missionGet(typedRequest.params)
+            )
+            return encode(response)
+        case .missionHealth:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarMissionHealthRequest>.self,
+                from: requestData
+            )
+            let response = BurnBarRPCResponseEnvelope<BurnBarMissionHealthResponse>(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: try await missionControlService.missionHealth(typedRequest.params)
             )
             return encode(response)
         case .missionApprove:

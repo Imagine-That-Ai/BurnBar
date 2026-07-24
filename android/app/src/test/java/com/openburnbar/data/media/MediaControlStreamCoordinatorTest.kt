@@ -1,6 +1,7 @@
 
 package com.openburnbar.data.media
 
+import com.openburnbar.data.computeruse.ComputerUseSessionGrantChallengeDelivery
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentTerminalRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardAction
@@ -14,6 +15,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayMediaFrameChunk
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayPresenceHeartbeat
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import com.openburnbar.irohrelay.IrohRelayStream
 import java.util.Base64
 import kotlinx.coroutines.CompletableDeferred
@@ -866,6 +868,52 @@ class MediaControlStreamCoordinatorTest {
     }
 
     @Test
+    fun readLoop_routesBoundSessionGrantChallengeOnPersistentStream() = runTest {
+        val stream = RecordingStream()
+        val received = mutableListOf<ComputerUseSessionGrantChallengeDelivery>()
+        val coordinator =
+            MediaControlStreamCoordinator(
+                dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> stream },
+                scope = backgroundScope,
+                sessionGrantChallengeHandler = { received += it },
+            )
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+        val challenge = sessionGrantChallenge()
+
+        stream.incoming.send(
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.CONTROL_SESSION_GRANT_CHALLENGE,
+                uid = "wrong-user",
+                connectionId = "conn-1",
+                control = HermesRealtimeRelayControlPayload(sessionGrantChallenge = challenge),
+            ),
+        )
+        stream.incoming.send(
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.CONTROL_SESSION_GRANT_CHALLENGE,
+                uid = "uid-1",
+                connectionId = "conn-1",
+                control = HermesRealtimeRelayControlPayload(sessionGrantChallenge = challenge),
+            ),
+        )
+
+        kotlinx.coroutines.withTimeout(1_000) {
+            while (received.isEmpty()) kotlinx.coroutines.yield()
+        }
+        assertEquals(listOf(challenge.challengeId), received.map { it.challenge.challengeId })
+        assertEquals("linux-host-1", received.single().route.authenticatedRemoteNodeId)
+        received.single().route.send(
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.CONTROL_AGENT_GRANT_REQUEST,
+                uid = "uid-1",
+                connectionId = "conn-1",
+            ),
+            expiresAtMillis = Long.MAX_VALUE,
+        )
+        assertTrue(stream.sent.any { it.type == HermesRealtimeRelayFrameType.CONTROL_AGENT_GRANT_REQUEST })
+    }
+
+    @Test
     fun sendLongTermReferenceAcknowledgement_usesActiveControlStreamAndRequestId() = runTest {
         val stream = RecordingStream()
         val coordinator =
@@ -894,6 +942,8 @@ class MediaControlStreamCoordinatorTest {
         val incoming = Channel<HermesRealtimeRelayFrame?>(Channel.UNLIMITED)
         var closed = false
 
+        override suspend fun authenticatedRemoteNodeId(): String = "linux-host-1"
+
         override suspend fun send(frame: HermesRealtimeRelayFrame) {
             sent.add(frame)
         }
@@ -905,4 +955,29 @@ class MediaControlStreamCoordinatorTest {
             incoming.close()
         }
     }
+
+    private fun sessionGrantChallenge() = HermesRealtimeRelaySessionGrantChallenge(
+        version = 1,
+        challengeId = "challenge-00000001",
+        nonce = "0123456789abcdef0123456789abcdef",
+        issuedAt = 800_000_000.0,
+        expiresAt = 800_000_300.0,
+        sessionIntentId = "session-intent-1",
+        runtime = "codex",
+        threadId = "thread-linux-1",
+        preset = "desktop",
+        capabilities = listOf("desktop_browser"),
+        mode = "browser",
+        trustMode = "manual",
+        scopeRuleIds = listOf("workspace-only"),
+        phoneViewerNodeId = "phone-viewer-1",
+        macHostNodeId = "linux-host-1",
+        actionCap = 50,
+        sessionTimeoutSeconds = 1_800,
+        clientId = "linux-desktop",
+        runId = "run-42",
+        runCallId = "call-7",
+        runGeneration = 4,
+        desktopOwnerAuthorizationMethod = "linux_desktop_owner",
+    )
 }

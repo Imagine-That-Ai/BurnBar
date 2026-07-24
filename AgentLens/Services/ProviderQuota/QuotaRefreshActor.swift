@@ -75,25 +75,14 @@ actor QuotaRefreshActor {
         self.claudeCredentialsReader = claudeCredentialsReader
         self.refreshProviders = refreshProviders
 
-        self.adapters = [
-            .codex: CodexQuotaAdapter(),
-            .openCode: OpenCodeQuotaAdapter(),
-            .omp: OMPQuotaAdapter(),
-            .openAI: OpenAIQuotaAdapter(),
-            .deepSeek: DeepSeekQuotaAdapter(),
-            .claudeCode: ClaudeQuotaAdapter(),
-            .copilot: CopilotQuotaAdapter(),
-            .minimax: MiniMaxQuotaAdapter(),
-            .zai: ZAIQuotaAdapter(),
-            .factory: FactoryQuotaAdapter(),
-            .cursor: CursorQuotaAdapter(),
-            .warp: WarpQuotaAdapter(),
-            .ollama: OllamaQuotaAdapter(),
-            .kimi: KimiQuotaAdapter(),
-            .antigravity: AntigravityQuotaAdapter(),
-            .xAI: XAIQuotaAdapter(),
-            .mimo: MimoQuotaAdapter()
-        ]
+        self.adapters = Dictionary(
+            uniqueKeysWithValues: ProviderQuotaAdapterRegistry.standard.providers.compactMap { provider in
+                guard let adapter = ProviderQuotaAdapterRegistry.standard.adapter(for: provider) else {
+                    return nil
+                }
+                return (provider, adapter)
+            }
+        )
 
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
         var initialCache: CodexRolloutScanCache = .empty

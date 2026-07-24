@@ -36,7 +36,7 @@ internal object MainActivityE2EComputerUseActions {
         val streamSession = MainActivityE2EComputerUseStreamSetup.openVerifiedStream(activity, uid, connectionId)
         try {
             val keyStore = PhoneControlSigningKeyStore(activity.applicationContext)
-            MainActivityE2EComputerUseStreamSetup.publishPhoneControlAuthority(activity, uid, connectionId, keyStore)
+            MainActivityE2EComputerUseStreamSetup.publishPhoneControlAuthority(uid, connectionId, keyStore)
             val approvalJob =
                 MainActivityE2EComputerUseApprovalActions.launchIfNeeded(
                     intent,

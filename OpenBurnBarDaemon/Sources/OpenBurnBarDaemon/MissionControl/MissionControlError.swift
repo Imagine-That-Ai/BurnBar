@@ -3,6 +3,10 @@ import Foundation
 
 public enum BurnBarMissionControlError: Error, LocalizedError {
     case projectNotFound(String)
+    case invalidProjectIdentifier(String)
+    case ambiguousProjectIdentifier(String)
+    case projectIdentityConflict(String)
+    case projectDeleted(String)
     case questionNotFound(BurnBarQuestionID)
     case followupNotFound(BurnBarFollowupID)
     case missionNotFound(BurnBarMissionID)
@@ -19,6 +23,14 @@ public enum BurnBarMissionControlError: Error, LocalizedError {
         switch self {
         case .projectNotFound(let slug):
             return "OpenBurnBar controller project '\(slug)' was not found."
+        case .invalidProjectIdentifier(let identifier):
+            return "OpenBurnBar controller project identifier '\(identifier)' is invalid."
+        case .ambiguousProjectIdentifier(let identifier):
+            return "OpenBurnBar controller project identifier '\(identifier)' matches more than one project."
+        case .projectIdentityConflict(let identifier):
+            return "OpenBurnBar controller project identifier '\(identifier)' is already owned by another project."
+        case .projectDeleted(let slug):
+            return "OpenBurnBar controller project '\(slug)' was deleted and cannot be recreated without an explicit restore."
         case .questionNotFound(let id):
             return "OpenBurnBar pending question '\(id.rawValue)' was not found."
         case .followupNotFound(let id):

@@ -1,0 +1,102 @@
+{
+  "schema": "openburnbar.parity.linux-installed-runtime-receipt.v1",
+  "capturedAt": "2026-07-19T23:56:23Z",
+  "certificationScope": "non-certifying exact current-source ARM64 package and live VM smoke receipt with fresh daemon and CLI payload",
+  "sourceCommit": "7c5b68d7508f51d3aa8ccf12b36486c30a522f15",
+  "sourceDescription": "Current Linux parity integration head after matching macOS loopback CORS behavior in the Linux HTTP gateway; the daemon and CLI were freshly rebuilt from this source before packaging.",
+  "environment": {
+    "guest": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME/X11",
+    "display": ":0",
+    "vmAddress": "192.168.64.5",
+    "session": "Unlocked GNOME session 1; active-window capture used the session X authority and D-Bus bus",
+    "renderNode": "/dev/dri/renderD128",
+    "webgl2": false,
+    "webgl1": true,
+    "webkitNote": "WebKitGTK WebGL2 is unavailable in this UTM guest; the shell visibly selects its Canvas2D fallback and labels the limitation."
+  },
+  "sourceBuild": {
+    "daemonBuild": "swift build -c release --product OpenBurnBarDaemon -Xlinker --allow-shlib-undefined",
+    "cliBuild": "swift build -c release --product OpenBurnBarCLI -Xlinker --allow-shlib-undefined",
+    "stagedPayloadReuse": false,
+    "freshDaemonAndCLI": true,
+    "frontendAsset": "/assets/index-BQTOp6Xc.js"
+  },
+  "package": {
+    "name": "open-burn-bar",
+    "version": "0.1.1",
+    "architecture": "arm64",
+    "archiveBytes": 132681216,
+    "archiveSha256": "c9fac14c175ba54fa414e3d97078eb0889ba1b20f28b13718d62f0a7ee69148d",
+    "desktopSha256": "02c477e380f74325345a12d56a7a5cfcaf728c7230ed888e4ea37cae92257217",
+    "daemonSha256": "81925065c0c6d4192239c4c2a16fb0c5eea076c88076bb6fa662ca967538c3d9",
+    "cliSha256": "9f083000880348c457093521074c70ae8957712f06b04d572cdd379423d2401b",
+    "embeddedFrontendAsset": "/assets/index-BQTOp6Xc.js",
+    "stalePreviousFrontendAssetAbsent": true,
+    "signed": false,
+    "publicFeed": false
+  },
+  "runtime": {
+    "daemonService": "active",
+    "daemonHealth": {
+      "ok": true,
+      "protocolVersion": 1,
+      "daemonVersion": "1.0.29",
+      "socketPath": "/run/user/1000/openburnbar/daemon.sock"
+    },
+    "installedDesktopPid": 62093,
+    "desktopWindow": {
+      "exists": true,
+      "title": "OpenBurnBar",
+      "renderedSurface": "first-run-setup-secret-service-visible-after-unlocked-active-window-capture"
+    },
+    "launchEnvironment": {
+      "display": ":0",
+      "xauthority": "/run/user/1000/gdm/Xauthority",
+      "dbusSessionBus": "unix:path=/run/user/1000/bus",
+      "webkitSafeMode": "auto"
+    }
+  },
+  "backdrop": {
+    "requestedKernel": "fluid-aurora",
+    "resolvedSubstrate": "2d",
+    "resolutionLabel": "Fluid Aurora - 2D fallback (WebGL2 unavailable)",
+    "captureIntervalSeconds": 2,
+    "captureASha256": "5235dc1eb17bdfc1f075794061a5f7120000da722ded65921ce9a95d12d44e45",
+    "captureBSha256": "97f8c6600aa478eda9e9758151d91c5707a2acd0de510caa8b59ff800b93edf2",
+    "capturePaths": [
+      ".tmp/arm64-build-20260720-fresh-cors/window-a.png",
+      ".tmp/arm64-build-20260720-fresh-cors/window-b.png"
+    ],
+    "captureDimensions": "1280x782",
+    "pixelsChangedBetweenCaptures": 607953,
+    "visible": true,
+    "animated": true,
+    "blackFrame": false,
+    "captureNote": "The VM session was unlocked before launch verification. scrot -u captured the active OpenBurnBar window and the exact freshly compiled daemon/CLI payload was verified after dpkg installation.",
+    "backgroundRecovery": {
+      "verified": false,
+      "reason": "Minimize/restore was not part of this bounded capture."
+    }
+  },
+  "onboarding": {
+    "daemonVerifyAction": "not-captured-current-run",
+    "advancedToStep": null,
+    "visibleRoute": "Overview",
+    "visibleCard": "Secret Service / SQLCipher",
+    "visibleStep": "2 of 8"
+  },
+  "limitations": [
+    "The package is locally built and unsigned; it is not release provenance evidence.",
+    "The clean unlocked launch proves the exact ARM64 package renders on Ubuntu GNOME/X11, but does not certify every route, onboarding interaction, accessibility matrix, or full visual parity.",
+    "This guest does not certify WebGL2-only kernels, KDE/Wayland/wlroots, x86_64, or cross-device workflows.",
+    "The focused Linux gateway test target compiled on the guest but its executable link was blocked by the VM Swift 6.1 toolchain's missing swift::threading::fatal symbol; host execution remains blocked by the existing SQLCipher.framework rpath issue.",
+    "The strict ledger remains 0/40 product requirements and 0/7 environment receipts."
+  ],
+  "strictLedger": {
+    "productRequirementsReady": "0/40",
+    "environmentReceiptsComplete": "0/7",
+    "productParityClaim": false
+  }
+}

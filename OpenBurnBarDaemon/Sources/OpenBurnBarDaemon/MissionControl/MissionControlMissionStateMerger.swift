@@ -141,7 +141,7 @@ extension BurnBarMissionControlService {
         switch phase {
         case .idle, .planning:
             return .dispatched
-        case .awaitingApproval, .executingTool, .waitingOnCompanion, .modelStreaming:
+        case .awaitingApproval, .awaitingComputerUseSession, .executingTool, .waitingOnCompanion, .modelStreaming:
             return .running
         case .completed:
             return .completed
@@ -156,7 +156,7 @@ extension BurnBarMissionControlService {
         switch phase {
         case .completed, .failed, .cancelled:
             return true
-        case .idle, .planning, .awaitingApproval, .executingTool, .waitingOnCompanion, .modelStreaming:
+        case .idle, .planning, .awaitingApproval, .awaitingComputerUseSession, .executingTool, .waitingOnCompanion, .modelStreaming:
             return false
         }
     }
@@ -200,7 +200,7 @@ extension BurnBarMissionControlService {
             return .succeeded
         case .failed, .cancelled:
             return .failed
-        case .idle, .planning, .awaitingApproval, .executingTool, .waitingOnCompanion, .modelStreaming:
+        case .idle, .planning, .awaitingApproval, .awaitingComputerUseSession, .executingTool, .waitingOnCompanion, .modelStreaming:
             return .partial
         }
     }
@@ -216,7 +216,7 @@ extension BurnBarMissionControlService {
             return "\(packet.workerName) failed its mission packet."
         case .cancelled:
             return "\(packet.workerName) was cancelled before finishing."
-        case .idle, .planning, .awaitingApproval, .executingTool, .waitingOnCompanion, .modelStreaming:
+        case .idle, .planning, .awaitingApproval, .awaitingComputerUseSession, .executingTool, .waitingOnCompanion, .modelStreaming:
             return "\(packet.workerName) reported a partial mission result."
         }
     }
@@ -229,7 +229,7 @@ extension BurnBarMissionControlService {
             return snapshot.errorMessage?.nonEmpty ?? "Run \(snapshot.runID.rawValue) failed."
         case .cancelled:
             return snapshot.errorMessage?.nonEmpty ?? "Run \(snapshot.runID.rawValue) was cancelled."
-        case .idle, .planning, .awaitingApproval, .executingTool, .waitingOnCompanion, .modelStreaming:
+        case .idle, .planning, .awaitingApproval, .awaitingComputerUseSession, .executingTool, .waitingOnCompanion, .modelStreaming:
             return snapshot.errorMessage?.nonEmpty
         }
     }
@@ -240,7 +240,7 @@ extension BurnBarMissionControlService {
             return .completed
         case .failed, .cancelled:
             return .failed
-        case .idle, .planning, .awaitingApproval, .executingTool, .waitingOnCompanion, .modelStreaming:
+        case .idle, .planning, .awaitingApproval, .awaitingComputerUseSession, .executingTool, .waitingOnCompanion, .modelStreaming:
             return .launched
         }
     }
@@ -252,7 +252,7 @@ extension BurnBarMissionControlService {
         switch snapshot.phase {
         case .failed, .cancelled:
             return true
-        case .awaitingApproval, .completed:
+        case .awaitingApproval, .awaitingComputerUseSession, .completed:
             return false
         case .idle, .planning, .executingTool, .waitingOnCompanion, .modelStreaming:
             return now.timeIntervalSince(snapshot.updatedAt) >= autoTakeoverStallThreshold(for: snapshot.phase)
@@ -297,6 +297,8 @@ extension BurnBarMissionControlService {
             return "Source run stalled in \(snapshot.phase.rawValue) for \(minutes)m."
         case .awaitingApproval:
             return "Source run is waiting on operator approval."
+        case .awaitingComputerUseSession:
+            return "Source run is waiting on an operator-authorized Computer Use session."
         case .completed:
             return "Source run already completed."
         }
@@ -507,7 +509,7 @@ extension BurnBarMissionControlService {
             return 5 * 60
         case .executingTool, .waitingOnCompanion, .modelStreaming:
             return 15 * 60
-        case .awaitingApproval, .completed, .failed, .cancelled:
+        case .awaitingApproval, .awaitingComputerUseSession, .completed, .failed, .cancelled:
             return .infinity
         }
     }

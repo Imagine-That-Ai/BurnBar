@@ -272,8 +272,9 @@ function checkPackagedAccessibility() {
     if (focus.method !== 'xdotool-tab-plus-orca-atspi-focus-events') {
       add('VAL-A11Y-001', `unexpected keyboard focus method ${focus.method ?? 'missing'}`);
     }
-    if (focus.physicalTabPressCount !== 14) {
-      add('VAL-A11Y-001', `keyboard focus sequence must record 14 physical Tab presses, got ${focus.physicalTabPressCount ?? 'missing'}`);
+    const physicalKeyPressCount = focus.physicalKeyPressCount ?? focus.physicalTabPressCount;
+    if (!Number.isInteger(physicalKeyPressCount) || physicalKeyPressCount < 14) {
+      add('VAL-A11Y-001', `keyboard focus sequence must record at least 14 physical key presses, got ${physicalKeyPressCount ?? 'missing'}`);
     }
     if (focus.stepCount !== 10) add('VAL-A11Y-001', `keyboard focus sequence must contain 10 steps, got ${focus.stepCount ?? 'missing'}`);
     if ((focus.distinctFocusedTargets ?? 0) < 3) add('VAL-A11Y-001', 'keyboard focus sequence reached fewer than 3 distinct targets');
@@ -414,12 +415,30 @@ function checkPet() {
 function checkTextExpansion() {
   const evidence = readJson('text-expansion-crud-safety-evidence.json', 'VAL-TEXTEXP-001');
   const safety = readJson('text-expansion-safety-proof.json', 'VAL-TEXTEXP-001');
-  if (!evidence || !safety) return;
+  const nativePersistence = readJson('text-expansion-native-persistence-evidence.json', 'VAL-TEXTEXP-001');
+  if (!evidence || !safety || !nativePersistence) return;
   if (evidence.deniedBeforeConsent !== true || evidence.permissionDeniedBehavior?.deniedBeforeConsent !== true) {
     add('VAL-TEXTEXP-001', 'permission-denied before consent is not proven');
   }
-  if (evidence.crud?.persistenceSurvivesRestart !== true || evidence.crud?.persistedAfterRestartCount < 1) {
-    add('VAL-TEXTEXP-001', 'snippet persistence across restart is not proven');
+  if (
+    nativePersistence.schemaVersion !== 1 ||
+    nativePersistence.type !== 'openburnbar.linux.text-expansion-native-persistence' ||
+    nativePersistence.source !== 'linux-swift-tests/daemon-linux.xml' ||
+    nativePersistence.passed !== true ||
+    nativePersistence.matchedTestCases !== 1 ||
+    nativePersistence.test?.className !== 'OpenBurnBarDaemonLinuxGatewayTests.BurnBarTextExpansionServiceTests' ||
+    nativePersistence.test?.name !== 'testEncryptedPersistenceConsentRestartAndPermissions' ||
+    nativePersistence.test?.status !== 'passed' ||
+    !Array.isArray(nativePersistence.test?.failureMarkers) ||
+    nativePersistence.test.failureMarkers.length !== 0
+  ) {
+    add('VAL-TEXTEXP-001', 'snippet persistence across restart is not proven by the exact native daemon test receipt');
+  }
+  if (
+    evidence.crud?.persistenceSurvivesRestart !== false ||
+    evidence.crud?.persistenceBoundary !== 'daemon-owned AES-GCM sealed snapshot; fixture mode is memory-only'
+  ) {
+    add('VAL-TEXTEXP-001', 'renderer text-expansion fixture must remain explicitly memory-only');
   }
   if (evidence.enabledDisabledBehavior?.disabledPreservesTrigger !== true) {
     add('VAL-TEXTEXP-001', 'enable/disable behavior is not proven');

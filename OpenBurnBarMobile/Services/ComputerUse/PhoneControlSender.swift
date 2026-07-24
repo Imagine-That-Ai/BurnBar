@@ -25,6 +25,7 @@ public final class PhoneControlSender: Sendable {
     }
 
     public typealias FrameSink = @Sendable (HermesRealtimeRelayFrame) async throws -> Void
+    public typealias MainActorFrameSink = @MainActor @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     public typealias AttestationDigestProvider = @Sendable () async -> String?
     public typealias AttestationBinder = @Sendable () async throws -> Void
 
@@ -46,7 +47,7 @@ public final class PhoneControlSender: Sendable {
     private let bindAppCheckAttestation: AttestationBinder
     private let uid: String
     private let connectionId: String
-    private let sendSequencer = PhoneControlSendSequencer()
+    private let sendSequencer = PhoneControlSendSequencer.shared
     private static let counterLock = NSLock()
 
     private struct State {
@@ -116,7 +117,7 @@ public final class PhoneControlSender: Sendable {
     /// in the local timeline.
     @discardableResult
     public func send(intent rawIntent: HermesRealtimeRelayInputIntent) async throws -> HermesRealtimeRelayAuthorityEnvelope {
-        try await sendSequencer.enqueue { [self] in
+        try await sendSequencer.enqueue(peerNodeId: peerNodeId) { [self] in
             try await sendInputIntent(rawIntent)
         }
     }
@@ -179,7 +180,7 @@ public final class PhoneControlSender: Sendable {
     /// input intents so the Mac can reject replay across both channels.
     @discardableResult
     public func send(agentGrant request: AgentCapabilityGrantRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
-        try await sendSequencer.enqueue { [self] in
+        try await sendSequencer.enqueue(peerNodeId: peerNodeId) { [self] in
             try await sendAgentGrant(request)
         }
     }
@@ -254,7 +255,7 @@ public final class PhoneControlSender: Sendable {
         approvalResponse response: HermesRealtimeRelayApprovalResponse,
         approvalRequest request: HermesRealtimeRelayApprovalRequest
     ) async throws -> HermesRealtimeRelayAuthorityEnvelope {
-        try await sendSequencer.enqueue { [self] in
+        try await sendSequencer.enqueue(peerNodeId: peerNodeId) { [self] in
             try await sendApprovalResponse(response, approvalRequest: request)
         }
     }
@@ -268,6 +269,7 @@ public final class PhoneControlSender: Sendable {
         }
         let attestationDigest = try await attestationDigestForSignedSend()
         var response = response
+        response.respondedBy = peerNodeId
         response.requestHashBlake3 = try signer.canonicalApprovalRequestHashHex(request: request)
         let counter = nextCounter()
         let timestamp = Date()
@@ -320,7 +322,7 @@ public final class PhoneControlSender: Sendable {
     /// phone-control peer.
     @discardableResult
     public func send(clipboardRequest rawRequest: HermesRealtimeRelayClipboardRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
-        try await sendSequencer.enqueue { [self] in
+        try await sendSequencer.enqueue(peerNodeId: peerNodeId) { [self] in
             try await sendClipboardRequest(rawRequest)
         }
     }
@@ -389,50 +391,57 @@ public final class PhoneControlSender: Sendable {
     }
 
     @discardableResult
-    public func sign(remoteUnlockSession rawSession: HermesRealtimeRelayRemoteUnlockSession) throws -> HermesRealtimeRelayRemoteUnlockSession {
-        guard let identity = signingIdentityProvider() else {
-            throw SendError.signingFailed("no signing key")
-        }
-        let placeholder = HermesRealtimeRelayAuthorityEnvelope(
-            peerNodeId: "",
-            counter: 0,
-            timestamp: Date(timeIntervalSince1970: 0),
-            intentHashBlake3: "",
-            signatureEd25519: ""
-        )
-        var unsignedSession = rawSession
-        unsignedSession.authority = placeholder
-        let counter = nextCounter()
-        let timestamp = Date()
-        let signed: ComputerUsePhoneControlSigner.SignedAuthority
-        do {
-            signed = try signer.signAuthority(
-                intentHashHex: signer.canonicalRemoteUnlockSessionHashHex(session: unsignedSession),
-                peerNodeId: peerNodeId,
-                counter: counter,
-                timestamp: timestamp,
-                key: identity
+    public func send(
+        remoteUnlockSession rawSession: HermesRealtimeRelayRemoteUnlockSession,
+        frameBuilder: @escaping @Sendable (HermesRealtimeRelayRemoteUnlockSession) throws -> HermesRealtimeRelayFrame,
+        frameSink remoteUnlockFrameSink: @escaping MainActorFrameSink
+    ) async throws -> HermesRealtimeRelayRemoteUnlockSession {
+        try await sendSequencer.enqueue(peerNodeId: peerNodeId) { [self] in
+            guard let identity = signingIdentityProvider() else {
+                throw SendError.signingFailed("no signing key")
+            }
+            let placeholder = HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId: "",
+                counter: 0,
+                timestamp: Date(timeIntervalSince1970: 0),
+                intentHashBlake3: "",
+                signatureEd25519: ""
             )
-        } catch {
-            throw SendError.signingFailed(error.localizedDescription)
+            var unsignedSession = rawSession
+            unsignedSession.authority = placeholder
+            let counter = nextCounter()
+            let timestamp = Date()
+            let signed: ComputerUsePhoneControlSigner.SignedAuthority
+            do {
+                signed = try signer.signAuthority(
+                    intentHashHex: signer.canonicalRemoteUnlockSessionHashHex(session: unsignedSession),
+                    peerNodeId: peerNodeId,
+                    counter: counter,
+                    timestamp: timestamp,
+                    key: identity
+                )
+            } catch {
+                throw SendError.signingFailed(error.localizedDescription)
+            }
+            unsignedSession.authority = HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId: signed.peerNodeId,
+                counter: signed.counter,
+                timestamp: signed.timestamp,
+                intentHashBlake3: signed.intentHashHex,
+                signatureEd25519: signed.signatureBase64,
+                attestationHashBlake3: MobileAppCheckAttestationReader.cachedAttestationDigestForEnvelope(),
+                keyKind: identity.wireKeyKind
+            )
+            try await remoteUnlockFrameSink(try frameBuilder(unsignedSession))
+            return unsignedSession
         }
-        unsignedSession.authority = HermesRealtimeRelayAuthorityEnvelope(
-            peerNodeId: signed.peerNodeId,
-            counter: signed.counter,
-            timestamp: signed.timestamp,
-            intentHashBlake3: signed.intentHashHex,
-            signatureEd25519: signed.signatureBase64,
-            attestationHashBlake3: MobileAppCheckAttestationReader.cachedAttestationDigestForEnvelope(),
-            keyKind: identity.wireKeyKind
-        )
-        return unsignedSession
     }
 
     @discardableResult
     public func send(
         remoteUnlockCredential rawCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope
     ) async throws -> HermesRealtimeRelayAuthorityEnvelope {
-        try await sendSequencer.enqueue { [self] in
+        try await sendSequencer.enqueue(peerNodeId: peerNodeId) { [self] in
             try await sendRemoteUnlockCredential(rawCredential)
         }
     }
@@ -502,7 +511,7 @@ public final class PhoneControlSender: Sendable {
     /// replay across every control surface.
     @discardableResult
     public func send(systemPermissionRequest rawRequest: HermesRealtimeRelaySystemPermissionRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
-        try await sendSequencer.enqueue { [self] in
+        try await sendSequencer.enqueue(peerNodeId: peerNodeId) { [self] in
             try await sendSystemPermissionRequest(rawRequest)
         }
     }
@@ -578,7 +587,7 @@ public final class PhoneControlSender: Sendable {
 
     @discardableResult
     public func send(contextTarget rawTarget: HermesRealtimeRelayAgentContextTarget) async throws -> HermesRealtimeRelayAuthorityEnvelope {
-        try await sendSequencer.enqueue { [self] in
+        try await sendSequencer.enqueue(peerNodeId: peerNodeId) { [self] in
             try await sendContextTarget(rawTarget)
         }
     }
@@ -678,30 +687,50 @@ public final class PhoneControlSender: Sendable {
     }
 }
 
-private actor PhoneControlSendSequencer {
-    private var tail: Task<Void, Never> = Task {}
+actor PhoneControlSendSequencer {
+    static let shared = PhoneControlSendSequencer()
+    private var tails: [String: Task<Void, Never>] = [:]
+    private var generations: [String: UInt64] = [:]
 
-    func enqueue<T: Sendable>(_ operation: @escaping @Sendable () async throws -> T) async throws -> T {
+    func enqueue<T: Sendable>(
+        peerNodeId: String,
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
         try Task.checkCancellation()
-        let predecessor = tail
+        let predecessor = tails[peerNodeId] ?? Task {}
+        let generation = (generations[peerNodeId] ?? 0) &+ 1
+        generations[peerNodeId] = generation
         let priority = Task.currentPriority
         let next = Task<T, Error>(priority: priority) {
             await predecessor.value
             try Task.checkCancellation()
             return try await operation()
         }
-        tail = Task {
+        tails[peerNodeId] = Task {
             _ = try? await next.value
         }
         if Task.isCancelled {
             next.cancel()
         }
-        return try await withTaskCancellationHandler {
-            try Task.checkCancellation()
-            return try await next.value
-        } onCancel: {
-            next.cancel()
+        do {
+            let value = try await withTaskCancellationHandler {
+                try Task.checkCancellation()
+                return try await next.value
+            } onCancel: {
+                next.cancel()
+            }
+            clearTail(peerNodeId: peerNodeId, generation: generation)
+            return value
+        } catch {
+            clearTail(peerNodeId: peerNodeId, generation: generation)
+            throw error
         }
+    }
+
+    private func clearTail(peerNodeId: String, generation: UInt64) {
+        guard generations[peerNodeId] == generation else { return }
+        tails[peerNodeId] = nil
+        generations[peerNodeId] = nil
     }
 }
 

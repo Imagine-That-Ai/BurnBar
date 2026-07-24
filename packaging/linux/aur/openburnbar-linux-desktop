@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euo pipefail
+
+export APPDIR=/usr/lib/openburnbar/appdir
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+unset LD_PRELOAD LD_AUDIT
+
+if [[ ! -x "${APPDIR}/AppRun" ]]; then
+  echo "openburnbar-linux-desktop: packaged AppRun is missing or not executable" >&2
+  exit 1
+fi
+
+exec "${APPDIR}/AppRun" "$@"

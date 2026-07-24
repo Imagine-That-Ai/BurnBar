@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { GlassCard } from './GlassCard.js';
 
 /**
  * Primary route surface container. Contract pinned by the evidence harness:
@@ -17,10 +18,10 @@ export function SurfaceCard({
   children?: ReactNode;
 }) {
   return (
-    <section className="card" aria-labelledby={titleId}>
+    <GlassCard as="section" aria-labelledby={titleId}>
       <h2 id={titleId}>{title}</h2>
       {description ? <p className="muted card-description">{description}</p> : null}
       {children}
-    </section>
+    </GlassCard>
   );
 }

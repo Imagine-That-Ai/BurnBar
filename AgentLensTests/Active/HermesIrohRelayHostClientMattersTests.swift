@@ -3,10 +3,14 @@ import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 @testable import OpenBurnBar
 
-/// Focused coverage for the `try?` revoke-swallow sites in
-/// `HermesIrohRelayHostClient` that were judged to MATTER:
+/// Focused security and lifecycle coverage for `HermesIrohRelayHostClient`:
 ///
-/// - `stop()` (was L270) and `handleAcceptLoopTerminated` (was L519) each
+/// - stale directory responses cannot undo a newer authoritative revoke;
+/// - transient callable failures retain only unexpired verified routes;
+/// - established serve and transferred media-control streams close at route
+///   expiry or generation replacement;
+/// - unauthenticated misses share one bounded discovery refresh;
+/// - `stop()` and `handleAcceptLoopTerminated` each previously
 ///   tore down the host and called `try? await directory.revoke(...)`. A
 ///   swallowed revoke leaves the host's `iroh_pairing/*` doc live in Firestore,
 ///   advertising a NodeId that no longer accepts streams — a fail-OPEN: a peer
@@ -17,9 +21,8 @@ import OpenBurnBarIrohRelay
 /// revoke) and logs loudly if every attempt fails (so the divergence is at
 /// least observable instead of silently swallowed).
 ///
-/// These tests drive that one shared revoke path directly through the injected
-/// directory + sleep seams, and also assert the end-to-end teardown contract:
-/// after `stop()` / accept-loop termination the pairing record is gone.
+/// The tests use injected loaders, clocks, transports, and sleep seams so the
+/// concurrency and expiry contracts remain deterministic.
 final class HermesIrohRelayHostClientMattersTests: XCTestCase {
     private let uid = "uid-revoke"
     private let connectionID = "connection-revoke"
@@ -216,6 +219,13 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
     @MainActor
     private func makeClient(
         directory: any IrohPairingDirectory,
+        publicKeyPublisher: IrohPairingPublicKeyPublishing = NoopIrohPairingPublicKeyPublisher(),
+        inboundPeerPolicyLoader: @escaping @Sendable (String, String) async -> IrohInboundPeerPolicyLoadResult = { _, _ in
+            .authoritative(IrohInboundPeerPolicy(allowedPeerNodeIds: []))
+        },
+        now: @escaping @Sendable () -> Date = Date.init,
+        missRefreshMinimumPolicyAge: TimeInterval = 0.5,
+        missRefreshBudgetInterval: TimeInterval = 15,
         transportFactory: (@MainActor (HermesIrohRelayHostClient) -> any IrohRelayTransport)? = nil
     ) -> HermesIrohRelayHostClient {
         let suiteName = "hermes.iroh.host.matters.\(UUID().uuidString)"
@@ -231,17 +241,34 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
                 account: "host"
             ),
             directory: directory,
-            publicKeyPublisher: NoopIrohPairingPublicKeyPublisher(),
+            publicKeyPublisher: publicKeyPublisher,
             auditLogger: NoopIrohTransportAuditLogger(),
-            inboundPeerPolicyLoader: { _, _ in
-                IrohInboundPeerPolicy(allowedPeerNodeIds: [])
-            },
+            inboundPeerPolicyLoader: inboundPeerPolicyLoader,
             pairingPublishInterval: 3_600,
+            now: now,
+            missRefreshMinimumPolicyAge: missRefreshMinimumPolicyAge,
+            missRefreshBudgetInterval: missRefreshBudgetInterval,
             revokeRetryAttempts: 3,
             // Collapse backoff so retries run instantly under test.
             revokeRetrySleep: { _ in },
             transportFactory: transportFactory ?? { _ in StubIrohRelayTransport(nodeId: "node-default") }
         )
+    }
+
+    private func makeBinding(
+        nodeId: String,
+        generation: UInt64,
+        registeredAtMillis: Int64,
+        expiresAtMillis: Int64
+    ) throws -> IrohControllerRouteBinding {
+        try XCTUnwrap(IrohControllerRouteBinding(
+            sourceDeviceId: "ios-device-1",
+            transportNodeId: nodeId,
+            authorityPeerNodeId: "ios-authority-1",
+            generation: generation,
+            registeredAtMillis: registeredAtMillis,
+            expiresAtMillis: expiresAtMillis
+        ))
     }
 
     /// The directory fakes never inspect the signature, so a plainly-constructed
@@ -259,7 +286,142 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
     }
 }
 
+private actor SequencedInboundPolicyLoader {
+    private var policies: [IrohInboundPeerPolicy]
+    private(set) var callCount = 0
+
+    init(policies: [IrohInboundPeerPolicy]) {
+        self.policies = policies
+    }
+
+    func load(uid _: String, connectionID _: String) -> IrohInboundPeerPolicy {
+        callCount += 1
+        guard !policies.isEmpty else {
+            return IrohInboundPeerPolicy(routeBindings: [])
+        }
+        return policies.removeFirst()
+    }
+}
+
+private actor ControlledInboundPolicyLoader {
+    private var immediate: [Int: IrohInboundPeerPolicyLoadResult]
+    private var continuations: [Int: CheckedContinuation<IrohInboundPeerPolicyLoadResult, Never>] = [:]
+    private(set) var callCount = 0
+
+    init(immediate: [Int: IrohInboundPeerPolicyLoadResult]) {
+        self.immediate = immediate
+    }
+
+    func load(uid _: String, connectionID _: String) async -> IrohInboundPeerPolicyLoadResult {
+        let callIndex = callCount
+        callCount += 1
+        if let result = immediate.removeValue(forKey: callIndex) {
+            return result
+        }
+        return await withCheckedContinuation { continuation in
+            continuations[callIndex] = continuation
+        }
+    }
+
+    func resolve(callIndex: Int, with result: IrohInboundPeerPolicyLoadResult) {
+        continuations.removeValue(forKey: callIndex)?.resume(returning: result)
+    }
+}
+
+private final class LockedHostTestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var date: Date
+
+    init(date: Date) {
+        self.date = date
+    }
+
+    var now: Date {
+        lock.withLock { date }
+    }
+
+    func set(_ date: Date) {
+        lock.withLock { self.date = date }
+    }
+}
+
 // MARK: - Test doubles
+
+private actor BlockingHostTestStream: IrohRelayStream {
+    nonisolated let remotePeerNodeId: String?
+    private var frames: [HermesRealtimeRelayFrame]
+    private var closed = false
+
+    init(remotePeerNodeId: String, frames: [HermesRealtimeRelayFrame] = []) {
+        self.remotePeerNodeId = remotePeerNodeId
+        self.frames = frames
+    }
+
+    var isClosed: Bool { closed }
+
+    func send(_ frame: HermesRealtimeRelayFrame) async throws {}
+
+    func receive() async throws -> HermesRealtimeRelayFrame? {
+        if !frames.isEmpty {
+            return frames.removeFirst()
+        }
+        while !closed, !Task.isCancelled {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return nil
+    }
+
+    func close() async {
+        closed = true
+    }
+}
+
+private actor HostMediaControlRegistrarRecorder {
+    private(set) var registrationCount = 0
+
+    func record(stream _: any IrohRelayStream, uid _: String, connectionID _: String) {
+        registrationCount += 1
+    }
+}
+
+private actor SingleInboundStreamTransport: IrohRelayTransport {
+    nonisolated let identity = IrohEndpointIdentity(
+        nodeId: "host-node",
+        rawPublicKey: Data(repeating: 0xAC, count: 32),
+        relayURL: "https://relay.example/",
+        directAddresses: []
+    )
+    private let stream: BlockingHostTestStream
+    private var delivered = false
+    private(set) var acceptCount = 0
+    private var stopped = false
+
+    init(stream: BlockingHostTestStream) {
+        self.stream = stream
+    }
+
+    func start() async throws -> IrohEndpointIdentity { identity }
+
+    func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> any IrohRelayStream {
+        throw IrohRelayTransportError.endpointNotReady
+    }
+
+    func accept(timeout: TimeInterval) async throws -> any IrohRelayStream {
+        acceptCount += 1
+        if !delivered {
+            delivered = true
+            return stream
+        }
+        while !stopped, !Task.isCancelled {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        throw IrohRelayTransportError.shutdown
+    }
+
+    func shutdown() async {
+        stopped = true
+    }
+}
 
 /// Directory that fails `revoke` a configurable number of times before letting
 /// it succeed, counting every attempt. Backed by an in-memory store so the
@@ -295,6 +457,41 @@ private actor FlakyRevokeDirectory: IrohPairingDirectory {
     }
 
     enum RevokeFault: Error { case transient }
+}
+
+private actor ApplyThenThrowPairingDirectory: IrohPairingDirectory {
+    private var store: [String: IrohPairingRecord] = [:]
+    private let failOnPublishCallIndex: Int
+    private var publishCallCount = 0
+    private(set) var revokeAttemptCount = 0
+
+    init(failOnPublishCallIndex: Int) {
+        self.failOnPublishCallIndex = failOnPublishCallIndex
+    }
+
+    func publish(_ record: IrohPairingRecord, for uid: String) async throws {
+        let callIndex = publishCallCount
+        publishCallCount += 1
+        store[key(uid: uid, connectionId: record.connectionId)] = record
+        if callIndex == failOnPublishCallIndex {
+            throw PublishFault.appliedThenFailed
+        }
+    }
+
+    func fetch(uid: String, connectionId: String) async throws -> IrohPairingRecord? {
+        store[key(uid: uid, connectionId: connectionId)]
+    }
+
+    func revoke(uid: String, connectionId: String) async throws {
+        revokeAttemptCount += 1
+        store.removeValue(forKey: key(uid: uid, connectionId: connectionId))
+    }
+
+    private func key(uid: String, connectionId: String) -> String {
+        "\(uid)::\(connectionId)"
+    }
+
+    enum PublishFault: Error { case appliedThenFailed }
 }
 
 /// Directory that always rejects writes/revokes as unsupported — models the
@@ -370,8 +567,68 @@ private final class StubIrohRelayTransport: IrohRelayTransport, @unchecked Senda
     func shutdown() async {}
 }
 
+private actor ControlledStartIrohRelayTransport: IrohRelayTransport {
+    private let identity: IrohEndpointIdentity
+    private var startContinuation: CheckedContinuation<IrohEndpointIdentity, Never>?
+    private(set) var hasEnteredStart = false
+    private(set) var shutdownCount = 0
+
+    init(nodeId: String) {
+        identity = IrohEndpointIdentity(
+            nodeId: nodeId,
+            rawPublicKey: Data(repeating: 0xCD, count: 32),
+            relayURL: "https://relay.example/",
+            directAddresses: ["127.0.0.1:4321"]
+        )
+    }
+
+    func start() async throws -> IrohEndpointIdentity {
+        hasEnteredStart = true
+        return await withCheckedContinuation { startContinuation = $0 }
+    }
+
+    func releaseStart() {
+        startContinuation?.resume(returning: identity)
+        startContinuation = nil
+    }
+
+    func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> any IrohRelayStream {
+        throw IrohRelayTransportError.endpointNotReady
+    }
+
+    func accept(timeout: TimeInterval) async throws -> any IrohRelayStream {
+        throw IrohRelayTransportError.shutdown
+    }
+
+    func shutdown() async {
+        shutdownCount += 1
+    }
+}
+
 private actor NoopIrohPairingPublicKeyPublisher: IrohPairingPublicKeyPublishing {
     func publish(uid: String, deviceId: String, publicKeyBase64: String) async throws {}
+}
+
+private actor ControlledIrohPairingPublicKeyPublisher: IrohPairingPublicKeyPublishing {
+    private let suspendOnCallIndex: Int
+    private var suspendedContinuation: CheckedContinuation<Void, Never>?
+    private(set) var callCount = 0
+
+    init(suspendOnCallIndex: Int) {
+        self.suspendOnCallIndex = suspendOnCallIndex
+    }
+
+    func publish(uid _: String, deviceId _: String, publicKeyBase64 _: String) async throws {
+        let callIndex = callCount
+        callCount += 1
+        guard callIndex == suspendOnCallIndex else { return }
+        await withCheckedContinuation { suspendedContinuation = $0 }
+    }
+
+    func releaseSuspendedPublish() {
+        suspendedContinuation?.resume()
+        suspendedContinuation = nil
+    }
 }
 
 private actor NoopIrohTransportAuditLogger: IrohTransportAuditLogging {
@@ -386,7 +643,7 @@ private actor NoopIrohTransportAuditLogger: IrohTransportAuditLogging {
 }
 
 private func waitUntil(
-    timeout: TimeInterval,
+    timeout: TimeInterval = 2,
     pollInterval: UInt64 = 50_000_000,
     condition: () async throws -> Bool
 ) async throws {
