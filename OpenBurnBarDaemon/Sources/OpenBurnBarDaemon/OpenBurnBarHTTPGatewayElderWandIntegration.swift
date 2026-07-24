@@ -492,7 +492,7 @@ extension BurnBarHTTPGatewayServer {
             rewriteKind: .none
         )
         let finalStatus: BurnBarProxyRouteFinalStatus = {
-            if streamInterrupted { return .interrupted }
+            if streamInterrupted { return .streamRelayOutcome(interrupted: true) }
             return succeeded ? .exact : .failed
         }()
         await recordProxyRouteLogEntry(

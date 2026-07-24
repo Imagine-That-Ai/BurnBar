@@ -1,4 +1,5 @@
 #if os(Linux)
+// cov:ignore-start -- reason: Linux-only gateway paths are exercised by the Linux gateway suite, not macOS package coverage.
 import Foundation
 import Glibc
 import OpenBurnBarEngine
@@ -514,7 +515,7 @@ public actor BurnBarHTTPGatewayServer {
                            ) {
                             do {
                                 let proxyStream = try await streamPlan.open(resolvedModel.variant)
-                                let usage = try await relayStream(
+                                let relay = try await relayStream(
                                     proxyStream,
                                     usageFormat: streamPlan.usageFormat,
                                     route: route,
@@ -537,12 +538,15 @@ public actor BurnBarHTTPGatewayServer {
                                     formatFamily: formatFamily,
                                     route: route
                                 )
+                                let streamStatus = BurnBarProxyRouteFinalStatus.streamRelayOutcome(
+                                    interrupted: relay.interrupted
+                                )
                                 attempts.append(routeAttempt(
                                     sequence: attempts.count + 1,
                                     startedAt: attemptStartedAt,
                                     completedAt: Date(),
                                     route: route,
-                                    status: .exact,
+                                    status: streamStatus,
                                     httpStatus: proxyStream.statusCode
                                 ))
                                 await recordProxyRouteLogEntry(
@@ -550,11 +554,12 @@ public actor BurnBarHTTPGatewayServer {
                                     modelID: clientModelID,
                                     endpoint: endpoint,
                                     route: route,
-                                    finalStatus: .exact,
+                                    finalStatus: streamStatus,
                                     streamed: true,
                                     httpStatus: proxyStream.statusCode,
                                     attempts: attempts,
-                                    usage: usage
+                                    usage: relay.usage,
+                                    streamInterrupted: relay.interrupted
                                 )
                                 return .streamed
                             } catch is BurnBarProxyStreamingUnsupported {
@@ -626,6 +631,47 @@ public actor BurnBarHTTPGatewayServer {
                                 streamed: streamCommit.responseStarted
                             )
                         }
+                        if streamCommit.responseStarted {
+                            // The response head was already committed to the
+                            // client when this attempt broke (mid-stream body
+                            // errors are absorbed inside `relayStream`; this
+                            // path means the client-side write itself failed).
+                            // That is an interruption of delivery, not a
+                            // provider failure: record first-class
+                            // `interrupted` status and leave route health
+                            // untouched, matching the macOS gateway.
+                            logger.error("gateway_linux_stream_interrupted", metadata: [
+                                "model": modelID,
+                                "provider_id": route.providerID,
+                                "error": "\(error)"
+                            ])
+                            let interruptedStatus = BurnBarProxyRouteFinalStatus.streamRelayOutcome(
+                                interrupted: true
+                            )
+                            attempts.append(routeAttempt(
+                                sequence: attempts.count + 1,
+                                startedAt: attemptStartedAt,
+                                completedAt: Date(),
+                                route: route,
+                                status: interruptedStatus,
+                                httpStatus: Self.httpStatus(from: error),
+                                failureMessage: Self.routeLogFailureMessage(from: error)
+                            ))
+                            await recordProxyRouteLogEntry(
+                                startedAt: startedAt,
+                                modelID: clientModelID,
+                                endpoint: endpoint,
+                                route: route,
+                                finalStatus: interruptedStatus,
+                                streamed: true,
+                                httpStatus: Self.httpStatus(from: error) ?? 502,
+                                attempts: attempts,
+                                usage: nil,
+                                streamInterrupted: true,
+                                failureMessage: Self.routeLogFailureMessage(from: error)
+                            )
+                            return .streamed
+                        }
                         attempts.append(routeAttempt(
                             sequence: attempts.count + 1,
                             startedAt: attemptStartedAt,
@@ -642,27 +688,6 @@ public actor BurnBarHTTPGatewayServer {
                             error: error
                         )
                         await router.markRouteFailure(route, error: error)
-                        if streamCommit.responseStarted {
-                            logger.error("gateway_linux_stream_interrupted", metadata: [
-                                "model": modelID,
-                                "provider_id": route.providerID,
-                                "error": "\(error)"
-                            ])
-                            await recordProxyRouteLogEntry(
-                                startedAt: startedAt,
-                                modelID: clientModelID,
-                                endpoint: endpoint,
-                                route: route,
-                                finalStatus: .failed,
-                                streamed: true,
-                                httpStatus: Self.httpStatus(from: error) ?? 502,
-                                attempts: attempts,
-                                usage: nil,
-                                streamInterrupted: true,
-                                failureMessage: Self.routeLogFailureMessage(from: error)
-                            )
-                            return .streamed
-                        }
                         if index < routes.count - 1, shouldFailOverProviderError(error) {
                             continue
                         }
@@ -1112,6 +1137,16 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
+    /// Relay result once the response head has been committed to the client.
+    /// Mirrors the macOS `GatewayStreamRelayResult` semantics: after commit a
+    /// mid-stream error is surfaced as `interrupted` (a delivery interruption,
+    /// not a route failure) rather than thrown, so the caller can log
+    /// first-class `interrupted` status and still record partial usage.
+    private struct LinuxGatewayStreamRelay {
+        let usage: BurnBarProviderProxyUsage?
+        let interrupted: Bool
+    }
+
     private func relayStream(
         _ proxyStream: BurnBarProviderProxyStream,
         usageFormat: GatewayStreamUsageFormat,
@@ -1121,7 +1156,7 @@ public actor BurnBarHTTPGatewayServer {
         streamCommit: LinuxGatewayStreamCommit,
         fileDescriptor: Int32,
         corsHeaders: [String: String]
-    ) async throws -> BurnBarProviderProxyUsage? {
+    ) async throws -> LinuxGatewayStreamRelay {
         var headers = [
             "Content-Type": proxyStream.contentType,
             "Cache-Control": "no-cache",
@@ -1134,10 +1169,27 @@ public actor BurnBarHTTPGatewayServer {
         try writeAll(httpResponseHead(status: proxyStream.statusCode, headers: headers), to: fileDescriptor)
 
         let accumulator = GatewayStreamingUsageAccumulator(format: usageFormat)
-        for try await chunk in proxyStream.chunks {
-            accumulator.consume(chunk)
-            try writeAll(chunk, to: fileDescriptor)
+        var interrupted = false
+        do {
+            for try await chunk in proxyStream.chunks {
+                accumulator.consume(chunk)
+                try writeAll(chunk, to: fileDescriptor)
+            }
+        } catch {
+            // Bytes already flowed to the client; we cannot fail over now.
+            // Match the macOS relay: emit a terminal SSE error event (best
+            // effort — the client socket itself may be the broken side) and
+            // classify the request as interrupted, not failed.
+            interrupted = true
+            logger.warning("gateway_linux_stream_interrupted", metadata: [
+                "provider": route.providerID,
+                "error": "\(error)"
+            ])
+            let errorEvent = "event: error\ndata: {\"error\":{\"message\":\"upstream stream interrupted\"}}\n\n"
+            try? writeAll(Data(errorEvent.utf8), to: fileDescriptor)
         }
+        // Interrupted usage is still real spend: tokens observed before the
+        // interruption were consumed upstream and must hit the local ledger.
         let usage = accumulator.finalize()
         await recordUsageIfAvailable(
             usage,
@@ -1145,7 +1197,7 @@ public actor BurnBarHTTPGatewayServer {
             idempotencyKey: usageIdempotencyKey(accountingRequestID: accountingRequestID, route: route),
             executionSource: executionSource
         )
-        return usage
+        return LinuxGatewayStreamRelay(usage: usage, interrupted: interrupted)
     }
 
     private func shouldFailOverProviderError(_ error: Error) -> Bool {
@@ -1758,4 +1810,5 @@ private func writeAll(_ data: Data, to fileDescriptor: Int32) throws {
         }
     }
 }
+// cov:ignore-end
 #endif
