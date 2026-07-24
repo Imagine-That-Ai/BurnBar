@@ -91,6 +91,9 @@ public actor BurnBarDaemonServer {
     let localUsageIngestionService: BurnBarLocalUsageIngestionService?
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
     let quotaSignalStore: BurnBarQuotaSignalStore
+    #if os(Linux)
+    let linuxQuotaRefreshService: BurnBarLinuxQuotaRefreshService
+    #endif
     let clientRegistry: BurnBarClientRegistry
     let runService: BurnBarRunService
     let toolingProxy: BurnBarToolingProxyService
@@ -224,6 +227,11 @@ public actor BurnBarDaemonServer {
         let resolvedQuotaSignalStore = quotaSignalStore ?? BurnBarQuotaSignalStore(
             logger: BurnBarDaemonLogger(category: "quota-signals")
         )
+        #if os(Linux)
+        let resolvedLinuxQuotaRefreshService = BurnBarLinuxQuotaRefreshService(
+            configStore: resolvedConfigStore
+        )
+        #endif
         let resolvedClientRegistry = clientRegistry ?? BurnBarClientRegistry(
             logger: BurnBarDaemonLogger(category: "client-registry")
         )
@@ -423,6 +431,9 @@ public actor BurnBarDaemonServer {
         self.localUsageIngestionService = resolvedLocalUsageIngestionService
         self.proxyRouteLogStore = resolvedProxyRouteLogStore
         self.quotaSignalStore = resolvedQuotaSignalStore
+        #if os(Linux)
+        self.linuxQuotaRefreshService = resolvedLinuxQuotaRefreshService
+        #endif
         self.clientRegistry = resolvedClientRegistry
         self.runService = resolvedRunService
         self.toolingProxy = BurnBarToolingProxyService(
