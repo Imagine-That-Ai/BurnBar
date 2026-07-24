@@ -436,62 +436,6 @@ struct ContextPackSheet: View {
 
 // MARK: - Dashboard Context Pack Card
 
-/// Entry card shown on the Dashboard overview that opens the Context Pack sheet.
-struct ContextPackDashboardCard: View {
-    @Bindable var dataStore: DataStore
-    let selectedTimeRange: TimeRange
-    var onPresentSheet: () -> Void
-
-    @State private var isHovered = false
-
-    var body: some View {
-        // GlassCard(interactive: true) attaches a simultaneous DragGesture that
-        // swallows taps when wrapped in a Button. Match the ProviderCard pattern
-        // and use .onTapGesture directly on the card instead.
-        GlassCard(interactive: true) {
-            HStack(spacing: DesignSystem.Spacing.md) {
-                // Icon
-                ZStack {
-                    Circle()
-                        .fill(DesignSystem.Colors.whimsy.opacity(0.15))
-                        .frame(width: 40, height: 40)
-
-                    Image(systemName: "doc.text.magnifyingglass")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(DesignSystem.Colors.whimsy)
-                }
-
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                    Text("Create Context Pack")
-                        .font(DesignSystem.Typography.headline)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-                    Text("Build a prompt-ready brief of recent sessions for any AI agent")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        .lineLimit(2)
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(isHovered
-                        ? DesignSystem.Colors.whimsy
-                        : DesignSystem.Colors.textMuted)
-            }
-            .padding(DesignSystem.Spacing.lg)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onPresentSheet)
-        .onHover { isHovered = $0 }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityLabel("Create Context Pack")
-        .accessibilityHint("Build a prompt-ready brief of recent sessions for any AI agent")
-    }
-}
-
 // MARK: - Session Detail Context Pack Row
 
 /// Row action shown in Session Detail for creating a context pack anchored to the current session.

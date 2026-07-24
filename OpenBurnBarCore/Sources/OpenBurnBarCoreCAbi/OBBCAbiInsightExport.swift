@@ -16,20 +16,10 @@ import Foundation
 
 // MARK: - Insights C-ABI contract
 
-public struct OBBCAbiInsightDigestRequest: Codable, Sendable {
-    public let usageJson: String
-    public let windowDays: Int
-}
-
 public struct OBBCAbiInsightDigestResponse: Codable, Sendable {
     public let ok: Bool
     public let digestJson: String?
     public let error: String?
-}
-
-public struct OBBCAbiLocalCanvasRequest: Codable, Sendable {
-    public let digestJson: String
-    public let prompt: String
 }
 
 public struct OBBCAbiLocalCanvasResponse: Codable, Sendable {

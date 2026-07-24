@@ -217,22 +217,6 @@ struct AssistantStatusResolver {
 
 // MARK: - Hermes model summary
 
-@MainActor
-struct HermesModelSummary {
-    let displayName: String
-    let provider: AgentProvider
-
-    init(service: HermesService) {
-        let option = service.selectedModelOption
-        let raw = service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "hermes"
-        self.provider = option?.agentProvider ?? hermesAgentProvider(for: raw)
-        self.displayName = option?.displayName
-            ?? service.selectedModelID
-            ?? service.selectedConnection.advertisedModel
-            ?? "Automatic"
-    }
-}
-
 // MARK: - Agent Identity Chip (toolbar principal)
 
 struct AgentIdentityChip: View {
