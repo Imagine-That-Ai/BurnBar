@@ -40,32 +40,33 @@ const NEEDS_BACKDROP = new Set([
   'antigravity',
 ]);
 
-// Fallback text glyphs for providers without logo assets
-// (mapped from macOS SF Symbol iconName → closest text equivalent)
+// Fallback text glyphs for providers without logo assets. Keep these
+// monochrome and font-stable: emoji presentation varies by distro and can
+// change the visual weight of dense provider lists.
 const FALLBACK_GLYPH: Record<string, string> = {
   openai: '✦',
   anthropic: '✦',
-  'claude-code': '💬',
+  'claude-code': '◌',
   cursor: '◎',
-  codex: '🔨',
+  codex: '⌘',
   copilot: '✦',
   google: '◆',
   gemini: '◆',
   ollama: '▦',
   hermes: '≋',
   opencode: '</>',
-  deepseek: '🧠',
-  grok: '⚡',
-  factory: '🏭',
+  deepseek: '◈',
+  grok: 'ϟ',
+  factory: '▣',
   minimax: '★',
-  kimi: '🌙',
-  cline: '🧠',
+  kimi: '☾',
+  cline: '◈',
   kilocode: 'K',
-  roocode: '🐇',
+  roocode: '◌',
   openclaw: '✦',
-  openburnbar: '🔥',
-  windsurf: '⛵',
-  goose: '🪿',
+  openburnbar: '✦',
+  windsurf: '≈',
+  goose: '✣',
   antigravity: '✦',
   piagent: '⬡',
 };
@@ -133,6 +134,7 @@ export function ProviderLogoView({
   const glyphStyle: React.CSSProperties = {
     fontSize: size * 0.55,
     fontWeight: 600,
+    fontFamily: 'var(--font-mono)',
     color: useFallbackColor ? accent : 'currentColor',
     lineHeight: 1,
   };
