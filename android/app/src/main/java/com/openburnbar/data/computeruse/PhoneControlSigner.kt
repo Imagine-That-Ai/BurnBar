@@ -4,6 +4,7 @@ import com.google.crypto.tink.subtle.Ed25519Sign.KeyPair
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import java.security.SecureRandom
 
 private const val ED25519_SEED_BYTES = 32
@@ -31,6 +32,9 @@ object PhoneControlSigner {
     fun canonicalIntentHashHex(intent: PhoneControlIntent): String = PhoneControlSignerCanonical.intentHashHex(intent)
 
     fun canonicalAgentGrantRequestHashHex(request: HermesRealtimeRelayAgentGrantRequest): String = PhoneControlSignerCanonical.agentGrantRequestHashHex(request)
+
+    fun canonicalComputerUseSessionIntentId(challenge: HermesRealtimeRelaySessionGrantChallenge): String =
+        PhoneControlSignerCanonical.computerUseSessionIntentId(challenge)
 
     fun canonicalClipboardRequestHashHex(request: PhoneControlClipboardRequest): String = PhoneControlSignerCanonical.clipboardRequestHashHex(request)
 

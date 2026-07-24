@@ -3,10 +3,286 @@
 This directory tracks the Linux desktop peer release work. The Linux lane is
 implemented as reviewable infrastructure, not a public availability claim.
 
-Current parity status as of 2026-07-09:
+Current parity status as of 2026-07-20:
 
-- A public signed aarch64 prerelease exists at `linux-v0.1.0`.
-- Full macOS parity is not complete. See
+Current source verification supersedes the older receipt chronology below:
+
+- **Current source head:** `fc0af729e1` (account identity fencing and truthful
+  trusted-device posture, chat resume preservation, daemon memory audit
+  timeline, provider provenance, project history, privacy recovery controls,
+  and route-level code splitting). The source gates are **91 frontend files /
+  877 tests**, TypeScript, production-bundle
+  verification, and **129/129** Tauri Rust tests on the host. Ubuntu ARM64
+  reran the media-enabled Tauri gate at **130/130**.
+- **Latest ARM64 shell run:** source head `fc0af729e1` was synced into the live
+  Ubuntu 24.04.4 GNOME/X11 UTM guest, built with `media-gst`, installed, and
+  launched. Its non-certifying receipt is
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-fc0af729e1-ui-staged-daemon-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-fc0af729e1-ui-staged-daemon-2026-07-20.json).
+  AT-SPI reports 44 nodes, 27 named nodes, and 18 actionable controls; the
+  window and authenticated daemon are present. The staged daemon/CLI and
+  unsigned manifest do not certify an exact-head product row.
+- **Strict certification:** remains **0/40 product rows and 0/7 environment
+  receipts**. That is a release-proof gate, not a source-progress percentage.
+
+- **Prior receipt chronology:** the earlier installed-candidate sequence
+  includes source changes through `af31748ece`; it remains useful historical
+  context but is superseded for current source status by `fc0af729e1` above.
+  through `af31748ece` (with `e114bca710`, `f9bf08c600`, and the media packaging
+  commits). It passes 91 frontend files / 865 tests, TypeScript, production
+  bundle verification, Tauri Rust 130/130 with `media-gst`,
+  package-payload contract checks (2 pass, 2 historical skips), and product
+  validators 12/12. `1130524331` recovers a visible 2D backdrop after
+  backgrounded WebGL context loss and retries the requested kernel on resume;
+  `db8a52f2f2` makes kernel selection keyboard-complete with focus restoration;
+  `2a19ac301a` adds the Support performance empty state; `6ce5ec8623` adds
+  quota/account routing state; `149cfec503` plus `bd10c71919` harden provider
+  refresh and stale-event handling; `ed940164ce` hardens Mercury recovery;
+  `aa188d24fa` makes Tauri invalidate embedded assets when hashed chunks rotate;
+  `cf9499d437` adds viewer capability retry; `7e7e7efdf7` plus `58e21e5f9c`
+  add a typed privacy-export receipt with a metadata-safe fallback;
+  `65f4931c36` keeps onboarding provider recovery actionable; and
+  `ded781e94d` adds route-level render-error recovery with Retry/Open Support
+  actions; `8cafd2d7e0` preserves provider workspace during transient catalog
+  recovery; `da42c16a78` guards daemon subscription lifecycle restarts; and
+  `872074af3a` cancels SmartHub work when the packaged shell loses its bridge;
+  `e6c32ec2b2` repairs stale custom-model provider selection after catalog
+  refreshes; and `c6bf8f2881` makes the chat pop-out status assertion await the
+  asynchronous window-open result. `465431d0fc` bounds single-instance
+  forwarding while the primary listener finishes starting, and `7ac2e021c9`
+  makes native Browser Computer Use fail closed unless the runtime explicitly
+  advertises the capability. `c0a725447d` falls back to the trusted embedded
+  autostart entry for relocatable installs, and `447abb0564` fences stale
+  Mercury capability responses after bridge replacement or recheck. `9e868e60a7`
+  refreshes tray health, usage, and update state every 30 seconds with
+  serialized manual refreshes, while `3e7ede75e3` bounds browser sign-in
+  polling at the daemon-provided authorization deadline and makes expiry
+  actionable to keyboard and screen-reader users. `ebab7da744` fences stale
+  concurrent version/feed responses so older update metadata cannot overwrite
+  newer shell facts. `534d7aae65` completes overflow-menu keyboard navigation
+  and restores trigger focus after menu actions. `519f0456a7` adds a
+  packaged-shell-only Support Reconnect action for degraded daemon health;
+  `811d84172a` queues native notification actions until renderer bootstrap and
+  drains them once so cold-start Reply/open intent is preserved. `66b280162f`
+  fixes the Linux-only Tauri handle ownership compile failure found by the ARM64
+  package build. `b2c8579835` fences stale/overlapping diagnostics exports when
+  a bridge is replaced or concurrent requests resolve out of order.
+  `90fac18c86` scopes the notification queue helper to test builds so the
+  release binary no longer reports that test-only helper as dead code.
+  `7c5b68d750` matches macOS loopback-only CORS, preflight, and streamed
+  response headers on the Linux gateway, with focused allowed/blocked/IPv6
+  origin coverage. `106b15855b` retains the last good mission snapshot during
+  transient refresh failures; `e4f14c4387` avoids duplicate SmartHub health
+  probes; `9f1bd7ca8c` wires Mission **Inspect logs** to canonical detail;
+  `5e1a2dd962` routes **Import sessions** to Activity; and `2ad3b2752d`
+  brackets Avahi-discovered IPv6 control endpoints for SmartHub/Cast/Home
+  Assistant/PixelClock.
+  `10c26c9a5d` makes custom Appearance radios keyboard-navigable with roving
+  focus and Arrow/Home/End behavior; `2b64049552` fences stale Computer Use
+  authority and approval-poll responses; and `3258104c1a` retains the last
+  successful Activity snapshot during transient refresh failures while keeping
+  visible-row exports usable.
+  `f9bf08c600` fails closed from an errored X11 pet child to the contained
+  keyboard/pointer-safe fallback; `e114bca710` retains stale signed-update
+  facts while disabling package mutation until a fresh check succeeds; and
+  `36514bee98`/`72afa18f7e` force and validate the native GStreamer Mercury
+  viewer feature for package builds; `af31748ece` stabilizes the bounded
+  SmartHub output guard and makes its oversized-output fixture deterministic.
+  The ARM VM passed the supported Swift-less staged-payload
+  `pretauri:build`/`tauri:build` path via
+  `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`, and then a separate package was
+  built with the verified staged daemon and CLI payloads from the prior clean
+  `2ad3b2752d` receipt. The installed VM DEB is unsigned and non-certifying.
+  The latest exact-head receipt includes the package hash, installed process,
+  daemon health, and visible focused-window capture in
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-af31748ece-media-update-postinstall-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-af31748ece-media-update-postinstall-2026-07-20.json).
+  The preceding `b4cd3e8b8b`, `534d7aae65`, `872074af3a`, and `ded781e94d` receipts remain historical
+  visible-shell evidence.
+  The strict ledger remains **0/40 product rows and 0/7 environment receipts**.
+  The latest exact-head package receipt now binds these fixes to the installed
+  ARM64 VM smoke run below.
+
+- **Latest live VM candidate:** the exact `af31748ece` ARM64 DEB with native
+  GStreamer media linkage and the verified staged daemon/CLI payloads is installed in the Ubuntu 24.04.4 GNOME/X11
+  UTM guest. Its non-certifying receipt is
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-af31748ece-media-update-postinstall-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-af31748ece-media-update-postinstall-2026-07-20.json).
+  Daemon/CLI health is green and the desktop window exists at `/usr/bin`. A
+  clean launch in the unlocked GNOME session rendered the first-run
+  Secret Service / SQLCipher setup card and Fluid Aurora 2D fallback. The
+  focused capture is visible and non-black; this bounded run did not claim
+  animation because the second capture was byte-identical. The guest reports
+  `webgl2=false` and `webgl1=true`; the visible switcher labels the fallback
+  `2D fallback (WebGL2 unavailable)`. A stale autostart/locked-era blank
+  process was discarded as launch-context evidence, not a package failure. The
+  installed desktop links `libgstreamer-1.0`, discovers `vp9dec`, and has
+  `autovideosink`, `waylandsink`, and `ximagesink` available. The package
+  remains unsigned and is not a public release. The earlier same-named
+  `postinstall` receipt is retained as historical UI-only
+  staged-payload evidence and is not exact gateway-source proof.
+  This package is unsigned and is not a public release. The previous exact
+  `5b70a3d320` package remains the
+  historical installed baseline in
+  [`evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/).
+  The packaging history includes `59d49c7d59`, which made an explicit staged
+  Swift runtime authoritative; the latest package includes that path and the
+  subsequent asset-watcher hardening. The focused iPad
+  navigation receipt is
+  [`evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json`](evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json).
+  The Settings route now mounts and hydrates deterministically: AT-SPI reports
+  105 nodes and 50 actionable controls with no `Loading Settings` node; the
+  General startup checkbox and Media & Sharing route are reachable.
+  The package is unsigned and this receipt is non-certifying.
+- Current source gates are **91 frontend files / 873 tests**, focused provider
+  recovery **11/11**, daemon subscription lifecycle **8/8**, SmartHub **9/9**,
+  Settings/route **51/51**, Support **34/34**, media **38/38**, Tauri Rust
+  **129/129 host and 130/130 Ubuntu with `media-gst`**, TypeScript, formatting,
+  and production-bundle verification. The strict ledger remains
+  **0/40 product rows and 0/7 environment receipts**; this is a certification
+  gate, not a source-progress percentage.
+- PR #1691's only current CI failure is the trusted Domain Core deletion guard:
+  it requires the candidate's legacy-deletion ledger and Domain Core source
+  roots, which this Linux integration branch does not contain. The guard fails
+  before Linux checks; adding a fabricated ledger would be unsafe. A clean
+  mainline/release-head integration is required before that PR can merge.
+- The current focused physical-iPad approval receipt is
+  [`evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19-v2.json):
+  44/44 tests passed on the paired device. It is model/UI coverage only and
+  does not certify installed-Linux enrollment, approval/revoke, or cross-device
+  Computer Use.
+- The immediate Settings fix is split into two reviewable commits:
+  `2f75f3269e` bypasses the packaged route idle gate for Settings, and
+  `5b70a3d320` makes its first config hydration eager while preserving deferred
+  first paint for other routes.
+
+- A historical parity hardening and installed candidate reached `b590d5a77d` (including the WebKit
+  startup fallback from `6321897d4e`). The running Ubuntu 24.04.4 GNOME/X11
+  UTM guest now has an exact-head arm64 package rebuilt from that commit and
+  installed; its non-certifying receipt is
+  [`evidence/mission-002-reanchor/vm-e2e/current-b590d5a77-media-settings-onboarding-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-b590d5a77-media-settings-onboarding-arm64/).
+  The receipt records daemon/desktop health, GStreamer, Secret Service, IBus,
+  autostart packaging, and the current source-test gates. The package is
+  unsigned and does not certify the seven-environment or cross-device matrix.
+  The earlier `5e0fc0e82` receipt remains a historical exact-head baseline at
+  [`evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/).
+  The preceding media-gst shell receipt remains historical at
+  [`evidence/mission-002-reanchor/vm-e2e/current-82b0fcf11e-media-gst-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-82b0fcf11e-media-gst-arm64/).
+  The preceding media-gst receipt remains a historical baseline at
+  [`evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-media-gst-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-media-gst-arm64/), and the earlier non-GStreamer UI receipt remains available at
+  [`evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-ui-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-ui-arm64/).
+  The daemon/media capability receipt remains bound to the `a570c9b087`
+  runtime package; the clean parity-ledger
+  validation is bound to checkpoint `073c2aba45`. The Release and
+  Nightly receipts below are historical engineering evidence for an older
+  checkpoint, not a claim that the current docs head has a promoted artifact.
+- Earlier source hardening added a macOS-style, evidence-bounded Insights
+  comparison workspace (`c31c17aa6e`, `ee679e2ed0`, `eb6a5975d4`) and a secure
+  Linux-native **Launch at login** preference (`f6d3843937`, hardened in
+  `1bddc6d22a`) alongside the
+  fixture-safe daemon-backed **Index project** action in General Settings
+  (`992ef5c580`), single-flight native pet-window launch
+  (`511c8a1049`), body-click `open` routing for notification servers without
+  action buttons (`1397313284`), GStreamer decoder retry without requiring a
+  socket reconnect, and Secret Service/KWallet health-before-write onboarding
+  checks (`82b0fcf11e`). Focused verification is 28/28 Insights, 4/4 autostart Rust,
+  39/39 bridge/renderer, 32/32 settings/accessibility, 28/28 pet UI, 4/4 native
+  notification Rust tests, 5/5 media Rust tests in both feature modes on the
+  VM, and 6/6 Linux onboarding tests on Ubuntu. The installed arm64 package
+  carries the settings action; focused settings verification is **34/34**. The
+  earlier `992ef5c580` install remains historical and the current exact-head
+  install is recorded in
+  [`evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/).
+- `2e609b4061` hardens Mercury viewer lifecycle teardown by detaching the
+  decoder under the viewer lock and stopping GStreamer outside the lock. The
+  VM media tests pass **6/6** with `media-gst` and **5/5** without it; this is a
+  source/runtime reliability improvement, not cross-device media proof.
+- `d581da37b7` exposes daemon-backed Mercury capability state in Media & Sharing
+  settings, and `47cbf2e2f0` makes onboarding fail closed if an ephemeral
+  Secret Service/KWallet probe cannot be cleaned up. The current VM receipt
+  includes those slices; onboarding focused coverage is **8/8**.
+- The physical-device runner now accepts either the CoreDevice identifier from
+  `devicectl` or the hardware UDID required by Xcode, with deterministic
+  missing/ambiguous-device failures (`5cff4281ec`).
+
+- Current-head Release Candidate `29664085758` produced signed x86_64/aarch64
+  candidate `0.1.1` and passed package, daemon, desktop, tray, accessibility,
+  route, lifecycle-contract, and attestation checks at `1dced585af`. The
+  immutable evidence artifact is `8435577756` (digest
+  `sha256:cb4eeed2f2263707bbf5d563200d02367065067b5c6e4ff6deed651f47299807`).
+  A compatible previous same-architecture package was not supplied, so real
+  update/rollback/data-preservation promotion remains blocked. The compact
+  receipt is under
+  [`evidence/mission-005-exact-head-release-1dced585af/`](evidence/mission-005-exact-head-release-1dced585af/).
+- Current-head Nightly `29660228199` passed macOS and Linux matched workloads,
+  the Ubuntu GNOME/X11 packaged shell gate, and the explicit blocked-row
+  contracts for GNOME Wayland, Fedora/KDE Wayland, and Arch/wlroots. The X11
+  artifact is `8435091387`; compact extracts live under
+  [`evidence/mission-004-exact-head-1dced585af/`](evidence/mission-004-exact-head-1dced585af/).
+- Full macOS parity is not complete: the strict ledger remains 0/40 product
+  rows and 0/7 environment receipts. The Nightly pass is engineering evidence,
+  not a promotion claim; production, lifecycle, installed integration, and
+  registered product evidence remain open.
+- The candidate branch now has **83 desktop test files / 787 tests** passing,
+  plus current-checkout P-39 corpus binding, daemon-authoritative activity
+  export resume, forced-colors metric fallbacks, and a focusable-hidden-node
+  accessibility fix. The latest source slices also add the persisted Calendar
+  notification hold-duration selector (`3004da3b72`), redacted/symlink-safe
+  diagnostics exports (`bdd57173e9`), Mercury decoder recovery
+  (`2a80e30921`), and a portal-backed native diagnostics save destination
+  (`8131b51aec`). Tauri Rust is **119/119**, focused diagnostics UI is **24/24**,
+  TypeScript and the production bundle verifier pass. These source results do
+  not promote the ledger.
+- `9fb6e88c33` canonicalizes membership RPC names and degrades unknown methods
+  truthfully (Tauri Rust **119/119**). `f9d3b429e5` adds persisted Dashboard
+  Defaults and truthful Indexing & Search posture, with Session Summaries
+  explicitly unavailable until a Linux RPC exists (focused settings **45/45**,
+  new controls **3/3**). The full desktop suite is green at **83 files / 770
+  tests**, with TypeScript and production bundle verification passing.
+- `b0d27caffa` hardens persisted Insights workspace state by rejecting malformed,
+  future-version, or unsafe records and restoring safe defaults (focused
+  Insights persistence/renderer tests **26/26**). `fec153e40b` plus
+  `e6bf98601b` require explicit daemon `historyComplete === true` proof before
+  Activity full-history export or resume; the bounded recent-usage bridge stays
+  unavailable instead of claiming complete history (focused Activity
+  history/export/resume tests **30/30**). These source results do not promote
+  the strict ledger.
+- `13caa70a1e` adds DEB/RPM post-install and Arch post-transaction migration
+  hooks that move unmanaged stale `/usr/local/bin/openburnbar-cli` binaries to
+  versioned backups, so PATH cannot shadow the packaged CLI. Migration tests and
+  package-wiring checks pass without deleting user data.
+- `c94e7b6113` adds the daemon-owned `daemon.usage.history` RPC and requires an
+  explicit completeness proof before Linux exports full Activity history. The
+  focused Activity/bridge suite passes **102 tests**. The exact-head arm64 DEB
+  was the preceding installed baseline; its non-certifying receipt is
+  [`evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/`](evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/).
+- `a570c9b087` is the current live Linux slice. The exact arm64 DEB is installed
+  in the Ubuntu 24.04 GNOME/X11 UTM guest, the package-owned user daemon is
+  `enabled/active`, bare CLI health is green, and the packaged desktop is
+  running from `/usr/bin`. The release graph builds the daemon-owned
+  `openburnbar-media` crate; the daemon binds the packaged FTS5-capable
+  `libsqlcipher.so.0`; and the live media capability probe reports capture
+  available with known VP9/AV1/Opus codecs, an active daemon-to-shell media
+  socket, and file-transfer capability. The Linux peer-auth test passes 1/1,
+  `MercuryLinuxMediaTests` passes 21/21, and the project/code-memory bootstrap
+  slice passes 3/3 on the VM. The Linux media UI also gates receive-only
+  transport separately from daemon call RPCs (`fdbc7d718b`, focused lane 33/33),
+  and the installed shell is linked against the GStreamer app/base/core/video
+  libraries through the `media-gst` feature.
+  This remains a non-certifying runtime receipt:
+  two-device iPad/Linux media, Computer Use, signed provenance, and the strict
+  0/40 product plus 0/7 environment ledger remain open. See
+  [`evidence/mission-002-reanchor/vm-e2e/current-a570c9b087/live-receipt.json`](evidence/mission-002-reanchor/vm-e2e/current-a570c9b087/live-receipt.json).
+- Fresh local recheck: the wired iPad is paired, booted, has Developer Mode
+  enabled, and a current-checkout focused approval receipt passed **44/44**
+  tests with xcodebuild exit 0 (see
+  [`evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19.json`](evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19.json)).
+  This does not prove installed Linux enrollment, approval/revoke, or
+  cross-device Computer Use. The OpenBurnBar Linux UTM guest is now running
+  and reachable; authenticated daemon health and bare installed CLI health pass
+  through the package-owned Swift runtime launcher and canonical token file for
+  the exact `a570c9b087` package. The full release-mobile approval suite remains
+  unverified.
+  The product-parity workflow is not present on `main`, and GitHub currently
+  has zero self-hosted runners for its required Linux environment labels.
+- For the detailed audit and implementation plan, see
   the browser-ready
   [`LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.html`](LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.html)
   or its Markdown source
@@ -33,6 +309,9 @@ Current active-checkout status as of 2026-07-05:
 
 Primary files:
 
+- [`P16_ACCOUNT_CLOUD_DEVICES.md`](P16_ACCOUNT_CLOUD_DEVICES.md) - Linux
+  daemon-auth account posture, enrollment verification, and the explicit
+  trusted-device mutation boundary.
 - [`release-runbook.md`](release-runbook.md) - package, update, signature,
   provenance, source-offer, and promotion process.
 - [`parity-ledger.json`](parity-ledger.json) - machine-readable Tier A/B/C
@@ -41,30 +320,120 @@ Primary files:
   current-HEAD attestations.
 - [`product-parity-requirements.json`](product-parity-requirements.json) -
   canonical `P-01` through `P-40` inventory and minimum support matrix.
+- [`product-parity-evidence-policies.json`](product-parity-evidence-policies.json) -
+  canonical per-requirement check, environment, installed-subject, registered-
+  producer, and artifact-root policy consumed by
+  `scripts/linux-port/attest-product-requirement.mjs`.
+- [`product-feature-proof-registry.json`](product-feature-proof-registry.json) -
+  exact environment feature-artifact roles and size/media contracts snapshotted
+  into each immutable candidate. See
+  [`PRODUCT_FEATURE_PROOF_CONTRACT.md`](PRODUCT_FEATURE_PROOF_CONTRACT.md) for
+  capture, finalization, materialization, and validator invariants.
 - [`parity-ledger.md`](parity-ledger.md) - generated human-readable ledger.
 - [`parity-ledger-history.json`](parity-ledger-history.json) - archived
   mission evidence that cannot satisfy current product parity.
+
 - [`evidence/mission-002-reanchor/`](evidence/mission-002-reanchor/) - Phase 0
   reanchor baseline for full parity work.
 - [`factory-pr-handoff.md`](factory-pr-handoff.md) - review map and known
   blockers for the factory PR loop.
 - [`runtime-capabilities.md`](runtime-capabilities.md) - canonical native
-  capability probes, fail-closed route gating, change procedure, and QA steps.
+  capability probes, including the fail-closed packaged Browser Computer Use
+  bridge and external runtime boundary, route gating, change procedure, and QA
+  steps.
+- [`P07_COMPUTER_USE_BROWSER_PANEL.md`](P07_COMPUTER_USE_BROWSER_PANEL.md) -
+  typed Browser Computer Use actions, Swift/Rust/Tauri wire-shape boundary,
+  system-mode unavailability, and focused QA contract.
 - [`accessibility-validation.md`](accessibility-validation.md) - axe route
   matrix, installed-app AT-SPI/Orca harness, evidence contract, and remaining
-  manual GNOME/KDE certification.
+  manual GNOME/KDE certification. P-31 additionally requires exact 200 percent
+  reflow, forced-colors/high-contrast/no-color, reduced-motion, and keyboard plus
+  Linux screen-reader evidence on every support-matrix row.
+- [`credential-custody-proof.md`](credential-custody-proof.md) - P-05 installed
+  Secret Service, KWallet, and encrypted systemd credential lifecycle capture,
+  candidate binding, redaction rules, and seven-environment QA.
 - [`performance-reliability-validation.md`](performance-reliability-validation.md) -
   repeated packaged-shell percentiles, matched production-linked macOS/Linux
   workloads, resource soak, supervisor behavior, and fail-closed QA contract.
+- [`P22_DATABASE_CODE_INSPECTION.md`](P22_DATABASE_CODE_INSPECTION.md) - bounded
+  daemon-owned code search/context-pack behavior in the Database route, with
+  trust warnings and fail-closed packaging behavior.
 - [`LINUX_EVENT_SUBSCRIPTION_AUTHORITY.md`](LINUX_EVENT_SUBSCRIPTION_AUTHORITY.md) -
   daemon start/resume/stop cursors, desktop cadence and cancellation, recovery
   behavior, honest degraded-pull status, and remaining installed certification.
+- [`LINUX_CHAT_THREAD_AUTHORITY.md`](LINUX_CHAT_THREAD_AUTHORITY.md) - canonical
+  encrypted thread history, exact-thread typed RPCs, idempotent send ordering,
+  strict renderer decoding, failure behavior, and remaining chat parity work.
 - [`ui-parity/`](ui-parity/README.md) - W6/W7 UI parity execution plan:
   foundation reference plus parallel task packets P01–P15.
 - [`evidence/`](evidence/) - generated and collected mission evidence.
 - [`evidence/parity-audit-2026-07-10/aarch64-installed-session-summary.json`](evidence/parity-audit-2026-07-10/aarch64-installed-session-summary.json) -
   compact retained results and source hashes from the current installed aarch64
   audit sample; it is evidence for this report, not a release-promotion row.
+
+Each ledger command discovers exactly one canonical receipt per required
+check/environment pair below
+`evidence/validator-receipts/<requirement>/<check>/<environment>.json`. Receipt
+schema 2 binds current HEAD, the release closure, signed installed-file manifest,
+candidate package artifact, exact package-manager ownership and installed-file
+inventory, pre/post capability manifests captured from the installed desktop
+binary, the logind-anchored live environment, and the registered validator
+command/source tree. Trust files must be root-owned, the Ed25519 signature must
+verify, and every file hash, size, mode, owner, and symlink target must match.
+Installation and session identity are rechecked after validation; both runtime
+snapshots are retained and the final snapshot is authoritative.
+The adjacent `.sigstore.jsonl` bundle must verify with `gh attestation verify`
+against `Imagine-That-Ai/BurnBar` and the pinned
+`.github/workflows/linux-product-parity.yml` signer. A hand-authored `passed`
+JSON file is never promotion evidence.
+
+`run-product-requirement-validator.mjs` dispatches only to a deterministic
+`scripts/linux-port/product-validators/P-XX.mjs` module and deletes stale output
+on every failure. Its required candidate run and artifact-digest inputs come
+from the trusted GitHub evidence resolver; closure-provided provenance cannot
+replace them. Current release closures must directly match the invoked
+requirement, environment, and selected package, and registered materialized
+feature subjects are byte-validated and required in the validator result.
+Requirement-specific validators exist for P-01 release
+integrity, P-02 parity-certification preflight, P-03 installed runtime, P-04
+architecture reach, P-05 installed credential custody, P-06 native gateway
+credential isolation, P-07 candidate-bound Computer Use, P-31 accessibility,
+P-34 credential security, P-37 Linux
+matrix coverage, P-38 release automation, P-39 same-commit cross-platform differential proof, and P-40 data and privacy. P-02 captures a
+candidate-bound inventory of all 40 requirements, policies, support
+environments, substantive validator modules, registered capture roles, and
+materializer ownership. It remains blocked while any lane is incomplete; today
+27 substantive lanes are absent. The other 27 modules remain intentionally absent until their
+installed-product acceptance packets land. Source availability is not a parity
+claim: every row remains blocked until all seven signed live receipts exist.
+
+The product workflow accepts only an immutable artifact ID resolved from the
+successful canonical Linux Release Candidate workflow in
+`Imagine-That-Ai/BurnBar` at the exact target SHA.
+`finalize-product-proof-closure.mjs` emits the required exact-candidate
+aggregate only after release attestation and final verification.
+It requires signed installed manifests for deb and rpm on both architectures,
+every release sidecar, package/feed signatures, Sigstore bundles, and lifecycle
+proof, and the validated feature-proof registry. Native package shards supply
+signed installed-manifest records; aggregate
+assembly validates, copies, and preserves those records before product-proof
+finalization. `prepare-product-requirement-input.mjs` copies only hash-bound
+subjects from a passed aggregate and a candidate-bound `collected` feature
+closure into the selected requirement/environment root. Collection alone never
+produces a passed parity receipt.
+
+Release is split into three fail-closed workflows. Linux Release Candidate
+builds, signs, verifies, and uploads an immutable candidate but never evaluates
+parity or publishes. Linux Product Parity consumes that exact successful
+candidate to produce one signed requirement/environment receipt. Linux Release
+Promotion resolves exactly 280 successful first-attempt receipt artifacts at
+the candidate HEAD, regenerates all 40 row attestations, runs strict ledger
+validation, binds the candidate and all rows into `promotion-closure.json`, and
+only then stages a draft GitHub release, publishes and verifies the signed R2
+feed, and makes the GitHub release public. Missing, stale, cross-candidate,
+cross-workflow, cross-repository, or cross-HEAD artifacts stop promotion.
+Repeated successful certification for the same candidate is deterministic: the
+newest immutable artifact ID is selected and its producer is revalidated.
 
 The release verifier refuses to publish `latest-linux.json` while the package
 closure has missing artifacts, missing signatures, missing Sigstore provenance,

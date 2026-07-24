@@ -1,0 +1,50 @@
+{
+  "capturedAt": "2026-07-19T12:40:02Z",
+  "sourceCommit": "992ef5c5807052541573b5e197243f394434f597",
+  "environment": {
+    "guest": "Ubuntu 24.04.4 LTS aarch64",
+    "desktop": "GNOME/X11",
+    "vmAddress": "192.168.64.5",
+    "package": "open-burn-bar 0.1.1 arm64",
+    "packageArchiveSha256": "0121b316ab6b8bf7dcd23d46812140a4477693c447fa107b10719f242950b4e3",
+    "packageArchiveBytes": 151387696
+  },
+  "installed": {
+    "desktopSha256": "d4f94e8080bbed1cb41f1822ff7c42cdd143f2469c61a45eae018ceaaeceb7c9",
+    "daemonSha256": "fb0f87ccc0638f84c2ba9f2a34ca97f8cec707534a5473f19bf6f317291c480c",
+    "cliSha256": "db0d6931ca8644a91f78ee3dccac27364bab5a373e63917a53915cf836e180e5",
+    "daemonMainPid": 84947,
+    "desktopPid": 85468,
+    "daemonHealth": "Daemon 1.0.29 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true",
+    "desktopLog": "/tmp/openburnbar-linux-desktop-settings-index.log",
+    "desktopLogFatalOrStub": false,
+    "newDesktopLaunchPeerRejections": 0
+  },
+  "verification": {
+    "settingsGeneralAndSurfaceTests": "34/34",
+    "typescript": "pass",
+    "viteModules": 307,
+    "productionBundleVerifier": "pass",
+    "gstreamerLibraries": [
+      "libgstreamer-1.0.so.0",
+      "libgstbase-1.0.so.0",
+      "libgstapp-1.0.so.0",
+      "libgstvideo-1.0.so.0"
+    ],
+    "gstreamerProbes": {
+      "vp9dec": "available",
+      "ximagesink": "available"
+    },
+    "secretServiceRoundTrip": "pass",
+    "ibusProcess": "active"
+  },
+  "change": "General Settings Indexing & Search now exposes a fixture-safe Index project action through the existing typed databaseIndexProject daemon RPC, with pending/error/completion state.",
+  "certifying": false,
+  "remaining": [
+    "signed exact-head provenance and release lifecycle",
+    "production Linux App Check/OAuth callable deployment",
+    "physical iPad/Linux enrollment and real approval execution",
+    "two-device Mercury and Browser Computer Use proof",
+    "KDE/Wayland/wlroots/accessibility/performance matrix"
+  ]
+}

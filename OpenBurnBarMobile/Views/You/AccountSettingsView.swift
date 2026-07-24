@@ -68,7 +68,7 @@ struct AccountSettingsView: View {
                     }
                 } else {
                     Button(role: .destructive) {
-                        authStore.signOut()
+                        Task { await authStore.signOut() }
                     } label: {
                         Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                     }

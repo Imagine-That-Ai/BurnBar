@@ -213,6 +213,20 @@ public enum PlatformCrypto {
         nonce: Data,
         authenticating: Data
     ) throws -> PlatformAESGCMSealedBox {
+        try sealAESGCMDetachedUsingNonce(
+            plaintext: plaintext,
+            keyData: keyData,
+            nonce: nonce,
+            authenticating: authenticating
+        )
+    }
+
+    public static func sealAESGCMDetachedUsingNonce(
+        plaintext: Data,
+        keyData: Data,
+        nonce: Data,
+        authenticating: Data
+    ) throws -> PlatformAESGCMSealedBox {
         let key = SymmetricKey(data: keyData)
         let aesNonce = try AES.GCM.Nonce(data: nonce)
         let sealed = try AES.GCM.seal(

@@ -1,0 +1,8 @@
+--- stale CLI backups ---
+66748ec3ac7e12e4ed01e067ce132235971f78a8f993bbc29c14dafc9c71919a  /usr/local/bin/openburnbar-cli.openburnbar-legacy-0.1.1
+e39f52319d9d55da81b7a2ee8913a4aef4c4ca5181486b79ba244b92eca6f4b9  /usr/local/bin/openburnbar-cli.openburnbar-legacy-0.1.1.1
+openburnbar-cli.openburnbar-legacy-0.1.1 755 root:root 30 bytes
+openburnbar-cli.openburnbar-legacy-0.1.1.1 755 root:root 34 bytes
+--- active resolution ---
+/usr/bin/openburnbar-cli
+Daemon c94e7b6113 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true

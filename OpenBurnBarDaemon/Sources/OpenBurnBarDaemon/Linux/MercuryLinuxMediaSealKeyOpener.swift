@@ -8,6 +8,25 @@ public protocol MercuryLinuxMediaSealKeyOpening: Sendable {
         for request: HermesRealtimeRelayMirrorRequest,
         frame: HermesRealtimeRelayFrame
     ) async throws -> PlatformSymmetricKey
+
+    /// Opens the call-bound media seal. Call senders bind the same envelope
+    /// to the invite request id as the media-session viewer id; keeping this
+    /// overload separate prevents a mirror envelope being replayed as a call.
+    func openMediaFrameSealKey(
+        for invite: HermesRealtimeRelayCallInvite,
+        frame: HermesRealtimeRelayFrame
+    ) async throws -> PlatformSymmetricKey
+}
+
+public extension MercuryLinuxMediaSealKeyOpening {
+    func openMediaFrameSealKey(
+        for invite: HermesRealtimeRelayCallInvite,
+        frame: HermesRealtimeRelayFrame
+    ) async throws -> PlatformSymmetricKey {
+        _ = invite
+        _ = frame
+        throw MercuryLinuxMediaSealKeyOpenError.missingSealKey
+    }
 }
 
 public enum MercuryLinuxMediaSealKeyOpenError: Error, LocalizedError, Equatable {
@@ -68,6 +87,39 @@ public struct MercuryLinuxMediaSealKeyOpener: MercuryLinuxMediaSealKeyOpening, S
             uid: frame.uid,
             connectionID: frame.connectionId,
             viewerId: request.viewerId ?? "",
+            recipientPrivateKey: recipientPrivateKey,
+            pinnedSenderPublicKeyBase64: pinnedSenderPublicKey
+        )
+    }
+
+    public func openMediaFrameSealKey(
+        for invite: HermesRealtimeRelayCallInvite,
+        frame: HermesRealtimeRelayFrame
+    ) async throws -> PlatformSymmetricKey {
+        guard let envelope = invite.mediaSealKey else {
+            throw MercuryLinuxMediaSealKeyOpenError.missingSealKey
+        }
+        guard envelope.senderPeerNodeId != nil else {
+            throw MercuryLinuxMediaSealKeyOpenError.missingSenderPeerNodeID
+        }
+        guard let recipientPrivateKeyProvider,
+              let pinnedSenderPublicKeyProvider else {
+            throw MercuryLinuxMediaSealKeyOpenError.providerUnavailable
+        }
+        let recipientPrivateKey = try recipientPrivateKeyProvider()
+        let pinnedSenderPublicKey = try await pinnedSenderPublicKeyProvider(
+            frame.uid,
+            frame.connectionId,
+            envelope
+        )
+        // Calls bind the seal to the invite request id. The sender and
+        // receiver must use this exact stable value; no peer-provided display
+        // name or mutable session id participates in the AAD.
+        return try MediaFrameSealSession.open(
+            envelope: envelope,
+            uid: frame.uid,
+            connectionID: frame.connectionId,
+            viewerId: invite.requestId,
             recipientPrivateKey: recipientPrivateKey,
             pinnedSenderPublicKeyBase64: pinnedSenderPublicKey
         )

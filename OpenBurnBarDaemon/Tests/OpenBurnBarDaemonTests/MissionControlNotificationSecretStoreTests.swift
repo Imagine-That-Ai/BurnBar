@@ -131,7 +131,7 @@ final class MissionControlNotificationSecretStoreTests: XCTestCase {
 
         let poisonedJournalConfig = notificationConfig(botToken: secondToken, botTokenConfigured: true)
         try writeControllerEvents(
-            [try notificationConfigEvent(id: "controller-event-marker-second-secret", sequence: 2, config: poisonedJournalConfig)],
+            [try notificationConfigEvent(id: "controller-event-marker-second-secret", sequence: 1, config: poisonedJournalConfig)],
             to: harness.rootURL.appendingPathComponent("controller-events.jsonl")
         )
 

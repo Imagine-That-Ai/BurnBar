@@ -95,6 +95,9 @@ enum class HermesRealtimeRelayFrameType {
     @SerialName("control.approval.response")
     CONTROL_APPROVAL_RESPONSE,
 
+    @SerialName("control.session.grant.challenge")
+    CONTROL_SESSION_GRANT_CHALLENGE,
+
     @SerialName("control.agent.grant.request")
     CONTROL_AGENT_GRANT_REQUEST,
 

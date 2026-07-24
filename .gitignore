@@ -116,6 +116,10 @@ website/public/downloads/*.zip
 docs/linux-port/evidence/**/harness/.build/
 docs/linux-port/evidence/**/sidecars/*.tar
 crates/openburnbar-iroh/target-linux-ffi-serial/
+# Linux architecture release shards use this explicit Cargo target directory;
+# keep its generated native objects out of the checkout integrity gate.
+crates/openburnbar-iroh/target-linux-release/
+crates/openburnbar-media/target-linux-release/
 
 # BurnBar local MCP (Python venv)
 tools/burnbar-mcp/.venv/

@@ -349,3 +349,268 @@ body.reduced-motion .provider-card-skeleton {
   border: 1px dashed var(--color-glass-line);
   color: var(--color-text-mute);
 }
+
+/* P-23 provider/model workspace */
+.provider-model-workspace {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: clamp(2rem, 5vw, 4rem);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-glass-line);
+}
+
+.provider-model-workspace-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.provider-model-eyebrow {
+  margin: 0 0 var(--space-2);
+  color: var(--color-brass-core);
+  font-size: 0.7rem;
+  letter-spacing: 0;
+}
+
+.provider-model-workspace h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: 0;
+}
+
+.provider-model-lede {
+  max-width: 58rem;
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-mute);
+}
+
+.provider-model-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.provider-model-count,
+.provider-model-provenance {
+  color: var(--color-text-mute);
+  font-size: 0.78rem;
+}
+
+.provider-model-retry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--color-tier-server-readable) 42%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-tier-server-readable) 9%, transparent);
+}
+
+.provider-model-retry p {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-mute);
+}
+
+.provider-model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+  gap: var(--space-4);
+}
+
+.provider-model-card {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-glass-bg) 56%, transparent);
+  backdrop-filter: var(--glass-panel-blur, blur(20px) saturate(155%));
+  -webkit-backdrop-filter: var(--glass-panel-blur, blur(20px) saturate(155%));
+  box-shadow: var(--glass-panel-shadow, 0 8px 24px rgba(0, 0, 0, 0.2), inset 0 1px 0 var(--color-frost-line));
+}
+
+.provider-model-card-header,
+.provider-model-row-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.provider-model-card-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.provider-model-card-title > div {
+  min-width: 0;
+}
+
+.provider-model-card h3 {
+  overflow-wrap: anywhere;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.provider-model-account {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-mute);
+  font-size: 0.78rem;
+}
+
+.provider-model-health,
+.provider-model-pill {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: fit-content;
+  padding: 3px 8px;
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-mute);
+  font-size: 0.68rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.provider-model-health[data-state='healthy'],
+.provider-model-pill[data-state='healthy'],
+.provider-model-pill[data-state='enabled'] {
+  color: var(--color-tier-end-to-end);
+  border-color: color-mix(in srgb, var(--color-tier-end-to-end) 42%, transparent);
+}
+
+.provider-model-health[data-state='degraded'],
+.provider-model-pill[data-state='degraded'] {
+  color: var(--color-tier-server-readable);
+  border-color: color-mix(in srgb, var(--color-tier-server-readable) 45%, transparent);
+}
+
+.provider-model-health[data-state='unavailable'],
+.provider-model-pill[data-state='unavailable'],
+.provider-model-pill[data-state='disabled'] {
+  color: var(--color-seal-crimson);
+  border-color: color-mix(in srgb, var(--color-seal-crimson) 45%, transparent);
+}
+
+.provider-model-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  color: var(--color-text-mute);
+  font-size: 0.75rem;
+}
+
+.provider-model-meta strong {
+  color: var(--color-text-base);
+  font-weight: 500;
+}
+
+.provider-capability-list,
+.provider-model-capability-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.provider-capability-list li,
+.provider-model-capability-list li {
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--color-brass-core) 30%, transparent);
+  border-radius: var(--radius-pill);
+  color: var(--color-brass-core);
+  font-size: 0.68rem;
+  text-transform: capitalize;
+}
+
+.provider-failover-detail,
+.provider-model-muted,
+.provider-model-detail,
+.provider-model-aliases {
+  margin: 0;
+  color: var(--color-text-mute);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.provider-model-list {
+  display: grid;
+  gap: var(--space-2);
+  max-height: 28rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.provider-model-row {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-glass-line) 78%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-mercury-wash) 48%, transparent);
+}
+
+.provider-model-row-heading > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.provider-model-row strong,
+.provider-model-row code {
+  overflow-wrap: anywhere;
+}
+
+.provider-model-row code {
+  color: var(--color-text-mute);
+  font-size: 0.7rem;
+}
+
+.provider-model-state {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.provider-model-provenance {
+  text-transform: capitalize;
+}
+
+.provider-model-empty {
+  padding: var(--space-3);
+  border: 1px dashed var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-mute);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 640px) {
+  .provider-model-retry,
+  .provider-model-row-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .provider-model-actions {
+    justify-content: flex-start;
+  }
+
+  .provider-model-state {
+    justify-content: flex-start;
+  }
+}

@@ -1,0 +1,20 @@
+OpenBurnBar Linux ARM64 exact-head VM receipt
+
+Source commit: e4f3109ca8a963303a76e575beea5cfe4c6ba3ea
+Guest: Ubuntu 24.04.4 LTS, aarch64, GNOME/X11, display :0
+Package: OpenBurnBar_0.1.1_arm64.deb
+Package bytes: 151389394
+Package SHA-256: 7fc9f0e3328627fb520ac03ec98f03a62e23382354a7aef707da83d1f99c65e2
+Installed desktop SHA-256: fc5b171d9ed1e9808858f074796e78cc13ca0e6b3183fc2d1ec0741641710860
+Daemon health: Daemon 1.0.29 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true
+WebGL probe: webgl2=false, webgl1=true; Canvas2D fallback selected
+
+Clean unlocked launch rendered the first-run Secret Service / SQLCipher setup
+card and the Fluid Aurora 2D fallback. Two 1280x782 captures two seconds apart
+changed 971972 pixels. The earlier blank surface came from an orphaned duplicate
+autostart/locked-era process; it is retained as a non-certifying diagnostic, not
+as evidence against the exact package.
+
+This receipt is non-certifying: the package is unsigned, and x86_64,
+Wayland/KDE/wlroots, full route/accessibility coverage, cross-device flows, and
+the strict product/environment evidence matrix remain open (0/40, 0/7).

@@ -168,6 +168,20 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
         return BurnBarControllerProjectResponse(project: project)
     }
 
+    public func controllerProjectDelete(
+        _ request: BurnBarControllerProjectDeleteRequest
+    ) async throws -> BurnBarControllerProjectDeleteResponse {
+        let (response, _) = try await store.deleteProject(request)
+        return response
+    }
+
+    public func controllerProjectReassign(
+        _ request: BurnBarControllerProjectReassignRequest
+    ) async throws -> BurnBarControllerProjectReassignResponse {
+        let (response, _) = try await store.reassignProject(request)
+        return response
+    }
+
     public func reviewRunRecord(_ request: BurnBarControllerReviewRunRecordRequest) async throws -> BurnBarControllerReviewRunRecordResponse {
         try await ingestControllerActivityIfNeeded(now: Date())
         return try await launchReviewRun(
@@ -258,6 +272,10 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
 
     public func missionGet(_ request: BurnBarMissionGetRequest) async throws -> BurnBarMissionResponse {
         BurnBarMissionResponse(mission: try await store.mission(id: request.missionID))
+    }
+
+    public func missionHealth(_ request: BurnBarMissionHealthRequest) async throws -> BurnBarMissionHealthResponse {
+        try await store.missionHealth(request)
     }
 
     public func missionApprove(_ request: BurnBarMissionApproveRequest) async throws -> BurnBarMissionMutationResponse {

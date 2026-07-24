@@ -78,6 +78,7 @@ function fixture() {
   };
   const closure = {
     schemaVersion: 3,
+    stage: 'promotion',
     tag: `linux-v${VERSION}`,
     version: VERSION,
     git: { commit: HEAD },
@@ -135,6 +136,19 @@ function fixture() {
 
 test('valid Ed25519 release closure passes pre-attestation verification', () => {
   assert.deepEqual(verifyLinuxReleaseCandidate(fixture().input), { passed: true, failures: [] });
+});
+
+test('candidate verification omits recursive parity only for an explicit candidate closure', () => {
+  const value = fixture();
+  value.input.closure.stage = 'candidate';
+  value.input.requireParity = false;
+  delete value.input.closure.sidecars.parityAttestation;
+  assert.deepEqual(verifyLinuxReleaseCandidate(value.input), { passed: true, failures: [] });
+
+  value.input.requireParity = true;
+  const promotion = verifyLinuxReleaseCandidate(value.input);
+  assert.ok(promotion.failures.some((failure) => /stage must be promotion/u.test(failure.message)));
+  assert.ok(promotion.failures.some((failure) => /parityAttestation sidecar is absent/u.test(failure.message)));
 });
 
 test('artifact mutation fails checksum and signature verification', () => {

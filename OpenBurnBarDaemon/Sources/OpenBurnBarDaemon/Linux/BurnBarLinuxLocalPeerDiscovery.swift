@@ -174,7 +174,10 @@ public enum BurnBarLinuxLocalPeerDiscovery {
         timeoutSeconds: TimeInterval = 3,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) throws -> [DiscoveredPeer] {
-        _ = timeoutSeconds
+        guard timeoutSeconds.isFinite else {
+            throw DiscoveryError.browseFailed("timeout must be finite")
+        }
+        let timeout = max(0, timeoutSeconds)
         if isDiscoveryDisabled(environment: environment) {
             return []
         }
@@ -197,7 +200,31 @@ public enum BurnBarLinuxLocalPeerDiscovery {
         } catch {
             throw DiscoveryError.browseFailed(error.localizedDescription)
         }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        var timedOut = false
+        while process.isRunning {
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else {
+                timedOut = true
+                break
+            }
+            Thread.sleep(forTimeInterval: min(remaining, 0.05))
+        }
+        if timedOut {
+            process.terminate()
+            process.waitUntilExit()
+            throw DiscoveryError.browseFailed(
+                "avahi-browse timed out after \(timeout) seconds"
+            )
+        }
+
         process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw DiscoveryError.browseFailed(
+                "avahi-browse exited with status \(process.terminationStatus)"
+            )
+        }
 
         let output = readPipe(outputPipe)
         return parseBrowseOutput(output)

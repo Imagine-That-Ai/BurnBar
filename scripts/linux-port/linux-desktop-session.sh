@@ -21,6 +21,12 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   export GDK_BACKEND=x11
   export LIBGL_ALWAYS_SOFTWARE=1
   export WEBKIT_DISABLE_COMPOSITING_MODE=1
+  # Xvfb has no DMABUF device. Keep WebKit on the software path just like
+  # the shipped safe-mode desktop entry, otherwise arm64 can expose only a
+  # blank filler through AT-SPI even though the native window is visible.
+  export WEBKIT_DISABLE_DMABUF_RENDERER=1
+  export MESA_GL_VERSION_OVERRIDE=4.5
+  export MESA_GLSL_VERSION_OVERRIDE=450
   export ACCESSIBILITY_ENABLED=1
   export GSETTINGS_BACKEND=memory
   export OPENBURNBAR_SOCKET_PATH="$socket_path"
@@ -35,13 +41,15 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   }
   trap cleanup_inner EXIT
 
-  Xvfb "$DISPLAY" -screen 0 1280x900x24 -nolisten tcp >"$out_dir/xvfb.log" 2>&1 &
-  for _ in $(seq 1 50); do
-    if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
-      break
-    fi
-    sleep 0.1
-  done
+  if [[ "${OB_XVFB_PRESTARTED:-0}" != "1" ]]; then
+    Xvfb "$DISPLAY" -screen 0 1280x900x24 -nolisten tcp >"$out_dir/xvfb.log" 2>&1 &
+    for _ in $(seq 1 50); do
+      if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.1
+    done
+  fi
   xdpyinfo -display "$DISPLAY" >"$out_dir/x11-display-info.txt"
 
   openbox >"$out_dir/openbox.log" 2>&1 &
@@ -100,11 +108,26 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus \
     --method org.a11y.Bus.GetAddress >"$out_dir/atspi-bus-address.txt"
   orca --list-apps >"$out_dir/orca-applications.txt" 2>"$out_dir/orca-list-apps.err"
-  python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+  if ! python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
     --application OpenBurnBar \
+    --wait-for-meaningful-seconds "${OB_ATSPI_READY_TIMEOUT_SECONDS:-45}" \
     --output "$out_dir/atspi-tree-linux-desktop.json" \
     --tree-text "$out_dir/accessibility-tree-linux-desktop.txt" \
-    --expected-name OpenBurnBar
+    --expected-name OpenBurnBar; then
+    echo "Initial AT-SPI tree did not become meaningful before the readiness deadline" >&2
+    for diagnostic in \
+      "$out_dir/openburnbar-linux-desktop.stdout.log" \
+      "$out_dir/openburnbar-linux-desktop.stderr.log" \
+      "$out_dir/daemon-shell-session.log" \
+      "$out_dir/daemon-socket-gui-session.log" \
+      "$out_dir/orca.stderr.log"; do
+      if [[ -f "$diagnostic" ]]; then
+        echo "===== ${diagnostic} =====" >&2
+        tail -200 "$diagnostic" >&2 || true
+      fi
+    done
+    exit 1
+  fi
 
   route_tsv="$work_dir/packaged-route-session.tsv"
   : >"$route_tsv"
@@ -198,18 +221,58 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
 
   xdotool mousemove --window "$window_id" 8 $((HEIGHT - 8)) click 1
   sleep 0.3
+  # Start from a real, named document control. WebKitGTK can retain focus on
+  # the host shell after route activation, which makes the same physical Tab
+  # sequence produce different Orca event counts across architectures.
+  python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+    --application OpenBurnBar \
+    --mode grab-focus \
+    --expected-name "Skip to content" \
+    --output "$out_dir/atspi-keyboard-focus-anchor.json"
+  sleep 0.5
   focus_log_offset="$(wc -c <"$out_dir/orca-debug.log")"
-  physical_tab_presses=14
+  # WebKitGTK and Orca enqueue focus events independently.  Fourteen keys
+  # were enough on the historical arm64 image but intermittently stopped
+  # after the first combo/page-tab group on current x86_64 and arm64 images.
+  # Use a slower, longer traversal so the proof exercises the same focus path
+  # instead of treating a short event queue as an accessibility pass.  Some
+  # arm64 WebKitGTK sessions leave the document after the forward cycle;
+  # reverse traversal re-enters the same real focus path and records that
+  # recovery rather than accepting a six-event partial traversal.
+  physical_tab_presses=28
+  focus_window_and_key() {
+    # Xvfb/Orca can hand the active window back to the desktop shell after a
+    # WebKit focus change. Reassert the same packaged window immediately
+    # before each physical key; this does not synthesize an accessibility
+    # event, it keeps the real document eligible to receive the key.
+    xdotool windowfocus --sync "$window_id" 2>/dev/null || true
+    xdotool key --clearmodifiers "$1"
+  }
   for _ in $(seq 1 "$physical_tab_presses"); do
-    xdotool key --clearmodifiers Tab
+    focus_window_and_key Tab
     # Orca intentionally serializes accessibility events. Fast synthetic input
     # causes its queue to obsolete intermediate focus changes.
-    sleep 1.5
+    sleep 1.25
   done
-  sleep 4
-  node - "$out_dir/orca-debug.log" "$focus_log_offset" "$physical_tab_presses" "$out_dir/atspi-keyboard-focus-sequence.json" <<'FOCUS'
+  # Forward traversal can leave keyboard focus on the desktop shell. Restore
+  # the real document anchor before reverse traversal so those keys exercise
+  # the WebKit document rather than the XFCE panel.
+  xdotool windowfocus --sync "$window_id" 2>/dev/null || true
+  python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+    --application OpenBurnBar \
+    --mode grab-focus \
+    --expected-name "Skip to content" \
+    --output "$out_dir/atspi-keyboard-focus-reverse-anchor.json"
+  sleep 1
+  physical_shift_tab_presses=12
+  for _ in $(seq 1 "$physical_shift_tab_presses"); do
+    focus_window_and_key Shift+Tab
+    sleep 1.25
+  done
+  sleep 8
+  node - "$out_dir/orca-debug.log" "$focus_log_offset" "$physical_tab_presses" "$physical_shift_tab_presses" "$out_dir/atspi-keyboard-focus-sequence.json" <<'FOCUS'
 const fs = require('fs');
-const [debugPath, offsetText, physicalTabPressesText, outPath] = process.argv.slice(2);
+const [debugPath, offsetText, physicalTabPressesText, physicalShiftTabPressesText, outPath] = process.argv.slice(2);
 const debug = fs.readFileSync(debugPath);
 const segment = debug.subarray(Number(offsetText)).toString('utf8');
 const focusEvent = /OBJECT EVENT: object:state-changed:focused for \[([^:\]]+): '([^']*)'\] in \[application: '([^']+)'\] \(1,\s*0,\s*0\)/g;
@@ -229,6 +292,8 @@ const result = {
   method: 'xdotool-tab-plus-orca-atspi-focus-events',
   sourceLog: 'orca-debug.log',
   physicalTabPressCount: Number(physicalTabPressesText),
+  physicalShiftTabPressCount: Number(physicalShiftTabPressesText),
+  physicalKeyPressCount: Number(physicalTabPressesText) + Number(physicalShiftTabPressesText),
   observedTrueFocusEventCount: events.length,
   stepCount: steps.length,
   distinctFocusedTargets: identities.size,
@@ -786,16 +851,118 @@ if [[ "${OB_REUSE_EXISTING_DEB:-0}" == "1" ]]; then
   fi
   echo "reusing_deb=$deb"
 else
+  stage_native_package_inputs() {
+    local native_root="$work_dir/native-package-inputs"
+    local iroh_target_dir="$native_root/iroh-target"
+    local iroh_library_dir="$iroh_target_dir/release"
+    local daemon_scratch="$native_root/daemon-build"
+    local swift_jobs="${OPENBURNBAR_LINUX_SWIFT_BUILD_JOBS:-4}"
+    local iroh_jobs="${OPENBURNBAR_LINUX_IROH_BUILD_JOBS:-1}"
+    local swift_bin_dir
+    local resource_bundle
+
+    # A release package must be built from a coherent native input set.  Keep
+    # caller-provided artifacts as an explicit fast path, but never accept a
+    # partial set: the Swift manifest requires both iroh libraries and the
+    # payload preflight requires the daemon, CLI, and resource bundle together.
+    if [[ -x "${OPENBURNBAR_LINUX_DAEMON_BIN:-}" \
+      && -x "${OPENBURNBAR_LINUX_CLI_BIN:-}" \
+      && -d "${OPENBURNBAR_LINUX_RESOURCE_BUNDLE:-}" \
+      && -f "${OPENBURNBAR_LINUX_IROH_LIBRARY_DIR:-}/libopenburnbar_iroh.so" \
+      && -f "${OPENBURNBAR_LINUX_IROH_LIBRARY_DIR:-}/libopenburnbar_iroh.a" ]]; then
+      echo "reusing_existing_native_package_inputs=true"
+      return 0
+    fi
+
+    mkdir -p "$native_root" "$iroh_target_dir" "$daemon_scratch"
+    echo "== stage iroh native package inputs =="
+    cargo build \
+      --manifest-path "$root/crates/openburnbar-iroh/Cargo.toml" \
+      --target-dir "$iroh_target_dir" \
+      --locked \
+      --release \
+      --jobs "$iroh_jobs"
+    for iroh_library in libopenburnbar_iroh.so libopenburnbar_iroh.a; do
+      if [[ ! -f "$iroh_library_dir/$iroh_library" ]]; then
+        echo "Missing staged iroh library: $iroh_library_dir/$iroh_library" >&2
+        exit 1
+      fi
+    done
+
+    # SwiftPM evaluates OpenBurnBarCore/Package.swift while resolving the
+    # daemon graph.  Export the iroh directory before either product build so
+    # the real FFI target is linked instead of silently pruning it.
+    export OPENBURNBAR_LINUX_IROH_LIBRARY_DIR="$iroh_library_dir"
+    echo "== stage OpenBurnBarDaemon and CLI native package inputs =="
+    swift build \
+      --disable-automatic-resolution \
+      --jobs "$swift_jobs" \
+      --package-path "$root/OpenBurnBarDaemon" \
+      --scratch-path "$daemon_scratch" \
+      -c release \
+      --product OpenBurnBarDaemon \
+      -Xlinker \
+      --allow-shlib-undefined
+    swift build \
+      --disable-automatic-resolution \
+      --jobs "$swift_jobs" \
+      --package-path "$root/OpenBurnBarDaemon" \
+      --scratch-path "$daemon_scratch" \
+      -c release \
+      --product OpenBurnBarCLI \
+      -Xlinker \
+      --allow-shlib-undefined
+
+    swift_bin_dir="$(swift build \
+      --disable-automatic-resolution \
+      --jobs "$swift_jobs" \
+      --package-path "$root/OpenBurnBarDaemon" \
+      --scratch-path "$daemon_scratch" \
+      -c release \
+      --show-bin-path)"
+    resource_bundle="$(find "$swift_bin_dir" -maxdepth 1 -type d \
+      -name 'OpenBurnBarCore_*.resources' -print -quit)"
+    export OPENBURNBAR_LINUX_DAEMON_BIN="$swift_bin_dir/OpenBurnBarDaemon"
+    export OPENBURNBAR_LINUX_CLI_BIN="$swift_bin_dir/OpenBurnBarCLI"
+    export OPENBURNBAR_LINUX_RESOURCE_BUNDLE="$resource_bundle"
+
+    for native_input in \
+      "$OPENBURNBAR_LINUX_DAEMON_BIN" \
+      "$OPENBURNBAR_LINUX_CLI_BIN"; do
+      if [[ ! -x "$native_input" ]]; then
+        echo "Missing staged Swift executable: $native_input" >&2
+        exit 1
+      fi
+    done
+    if [[ ! -d "$OPENBURNBAR_LINUX_RESOURCE_BUNDLE" ]]; then
+      echo "Missing staged OpenBurnBarCore resource bundle: ${OPENBURNBAR_LINUX_RESOURCE_BUNDLE:-unset}" >&2
+      exit 1
+    fi
+    printf 'daemon=%s\ncli=%s\nresource_bundle=%s\niroh_library_dir=%s\n' \
+      "$OPENBURNBAR_LINUX_DAEMON_BIN" \
+      "$OPENBURNBAR_LINUX_CLI_BIN" \
+      "$OPENBURNBAR_LINUX_RESOURCE_BUNDLE" \
+      "$OPENBURNBAR_LINUX_IROH_LIBRARY_DIR"
+  }
+
   build_root="$work_dir/build-root"
-  mkdir -p "$build_root/apps" "$build_root/packages" "$build_root/scripts" "$build_root/packaging"
+  mkdir -p "$build_root/apps" "$build_root/packages" "$build_root/scripts" "$build_root/packaging" "$build_root/crates"
   cp -R "$root/apps/linux-desktop" "$build_root/apps/linux-desktop"
   # Preserve the repository-relative paths consumed by package.json, Vite,
   # the production scanner, native include_str!, and Tauri bundle resources.
   for shared_package in design-tokens entitlements gl-engine; do
     cp -R "$root/packages/$shared_package" "$build_root/packages/$shared_package"
   done
+  # Tauri resolves the optional media dependency from this repository-relative
+  # path while building the packaged shell. Keep the crate in the copied build
+  # root even when the current host does not enable its runtime feature.
+  cp -R "$root/crates/openburnbar-media" "$build_root/crates/openburnbar-media"
   cp -R "$root/scripts/linux-port" "$build_root/scripts/linux-port"
   cp -R "$root/packaging/linux" "$build_root/packaging/linux"
+  mkdir -p "$build_root/OpenBurnBarDaemon/Resources"
+  cp -R "$root/OpenBurnBarDaemon/Resources/PlaywrightBridge" \
+    "$build_root/OpenBurnBarDaemon/Resources/PlaywrightBridge"
+  stage_native_package_inputs
   cd "$build_root/apps/linux-desktop"
   npm ci --no-audit --no-fund
   npm run build
@@ -852,12 +1019,45 @@ socket_path="$(OB_SHELL_DAEMON_BIN="$installed_daemon" OB_SHELL_DAEMON_VERSION="
   "$root/scripts/linux-port/start-shell-session-daemon.sh" "$root" "$out_dir" "$work_dir")"
 daemon_pid="$(cat "$work_dir/daemon.pid")"
 ls -l "$socket_path"
-cleanup_outer() {
-  kill "$daemon_pid" 2>/dev/null || true
-}
-trap cleanup_outer EXIT
 
 echo "== desktop session =="
+desktop_display=:99
+Xvfb "$desktop_display" -screen 0 1280x900x24 -nolisten tcp >"$out_dir/xvfb.log" 2>&1 &
+xvfb_pid="$!"
+for _ in $(seq 1 50); do
+  if DISPLAY="$desktop_display" xdpyinfo >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.1
+done
+if ! DISPLAY="$desktop_display" xdpyinfo >"$out_dir/x11-display-info.txt" 2>&1; then
+  echo "Xvfb did not become ready on $desktop_display" >&2
+  cat "$out_dir/xvfb.log" >&2 || true
+  exit 1
+fi
+cleanup_outer() {
+  kill "$daemon_pid" 2>/dev/null || true
+  kill "$xvfb_pid" 2>/dev/null || true
+}
+trap cleanup_outer EXIT
+export OB_PERFORMANCE_TARGET_HEAD="${OB_PERFORMANCE_TARGET_HEAD:-$(git -C "$root" rev-parse HEAD)}"
+if [[ "$(git -C "$root" rev-parse HEAD)" != "$OB_PERFORMANCE_TARGET_HEAD" ]]; then
+  echo "Performance target HEAD does not match checkout HEAD" >&2
+  exit 1
+fi
+OB_PERFORMANCE_SOURCE_DIGEST="$(node --input-type=module -e \
+  "import { nativePerformanceSourceDigest } from '$root/scripts/linux-port/lib/p32-performance-proof.mjs'; process.stdout.write(nativePerformanceSourceDigest('$root'));" )"
+export OB_PERFORMANCE_SOURCE_DIGEST
+OB_PERFORMANCE_CAPTURE_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
+export OB_PERFORMANCE_CAPTURE_STARTED_AT
+DISPLAY="$desktop_display" \
+HOME="$work_dir/home" \
+XDG_RUNTIME_DIR="$work_dir/runtime" \
+XDG_DATA_HOME="$work_dir/home/.local/share" \
+XDG_CONFIG_HOME="$work_dir/home/.config" \
+XDG_SESSION_TYPE=x11 \
+XDG_CURRENT_DESKTOP=XFCE \
+OB_XVFB_PRESTARTED=1 \
 dbus-run-session -- bash "$root/scripts/linux-port/linux-desktop-session.sh" \
   desktop-inner "$pkg" "$installed_bin" "$out_dir" "$work_dir" "$socket_path"
 
@@ -878,11 +1078,29 @@ echo "uninstall_verified=true"
 
 node - "$out_dir/linux-desktop-session-report.json" "$deb_basename" <<'NODE'
 const fs = require('fs');
+const crypto = require('crypto');
 const reportPath = process.argv[2];
 const debBasename = process.argv[3];
 const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
 report.package.uninstallVerified = true;
 report.package.debArtifact = debBasename;
+report.generatedAt = new Date().toISOString();
+const runId = process.env.OB_CANDIDATE_RUN_ID || null;
+const artifactDigest = process.env.OB_CANDIDATE_ARTIFACT_DIGEST || null;
+report.provenance = {
+  schemaVersion: 1,
+  producer: 'openburnbar-linux-desktop-performance-v1',
+  gitCommit: process.env.OB_PERFORMANCE_TARGET_HEAD,
+  packageVersion: report.package.version,
+  sourceDigest: process.env.OB_PERFORMANCE_SOURCE_DIGEST,
+  candidate: { runId, artifactDigest },
+  startedAt: process.env.OB_PERFORMANCE_CAPTURE_STARTED_AT,
+  endedAt: report.generatedAt,
+  payloadSha256: ''
+};
+const payload = structuredClone(report);
+delete payload.provenance;
+report.provenance.payloadSha256 = crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n');
 console.log(JSON.stringify(report, null, 2));
 NODE

@@ -2,10 +2,10 @@
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from './shellStore.js';
-import { useLaneLoad } from './useLaneLoad.js';
+import { useLaneLoad, type LaneLoadOptions } from './useLaneLoad.js';
 
-function Probe({ load }: { load: () => Promise<void> }) {
-  useLaneLoad(load);
+function Probe({ load, options }: { load: () => Promise<void>; options?: LaneLoadOptions }) {
+  useLaneLoad(load, options);
   return null;
 }
 
@@ -89,5 +89,139 @@ describe('useLaneLoad', () => {
       await Promise.resolve();
     });
     expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('defers packaged-shell hydration until after two frames and idle time', async () => {
+    const originalRaf = window.requestAnimationFrame;
+    const originalCancelRaf = window.cancelAnimationFrame;
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: (deadline: { didTimeout: boolean; timeRemaining(): number }) => void) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    const originalIdle = idleWindow.requestIdleCallback;
+    const originalCancelIdle = idleWindow.cancelIdleCallback;
+    const originalTauri = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    const frames: FrameRequestCallback[] = [];
+    let idleCallback: ((deadline: { didTimeout: boolean; timeRemaining(): number }) => void) | undefined;
+    const cancelAnimationFrame = vi.fn();
+
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} });
+    Object.defineProperty(window, 'requestAnimationFrame', {
+      configurable: true,
+      writable: true,
+      value: (callback: FrameRequestCallback) => {
+        frames.push(callback);
+        return frames.length;
+      }
+    });
+    Object.defineProperty(window, 'cancelAnimationFrame', {
+      configurable: true,
+      writable: true,
+      value: cancelAnimationFrame
+    });
+    Object.defineProperty(window, 'requestIdleCallback', {
+      configurable: true,
+      writable: true,
+      value: (callback: (deadline: { didTimeout: boolean; timeRemaining(): number }) => void) => {
+        idleCallback = callback;
+        return 1;
+      }
+    });
+    Object.defineProperty(window, 'cancelIdleCallback', {
+      configurable: true,
+      writable: true,
+      value: vi.fn()
+    });
+
+    try {
+      const spy = vi.fn(() => Promise.resolve());
+      render(<Probe load={spy} />);
+      expect(spy).not.toHaveBeenCalled();
+      expect(frames).toHaveLength(1);
+
+      // Subscription events can arrive before the deferred first load. They
+      // must not cancel the only pending hydration attempt.
+      act(() => {
+        useShellStore.setState({ dataRevision: 1 });
+        useShellStore.setState({ dataRevision: 2 });
+      });
+      expect(frames).toHaveLength(1);
+      expect(cancelAnimationFrame).not.toHaveBeenCalled();
+
+      await act(async () => {
+        frames.shift()?.(16);
+      });
+      expect(spy).not.toHaveBeenCalled();
+      expect(frames).toHaveLength(1);
+
+      act(() => {
+        useShellStore.setState({ dataRevision: 3 });
+        useShellStore.setState({ dataRevision: 4 });
+      });
+      expect(frames).toHaveLength(1);
+      expect(cancelAnimationFrame).not.toHaveBeenCalled();
+
+      await act(async () => {
+        frames.shift()?.(32);
+      });
+      expect(spy).not.toHaveBeenCalled();
+      expect(idleCallback).toBeDefined();
+
+      await act(async () => {
+        idleCallback?.({ didTimeout: false, timeRemaining: () => 50 });
+        await Promise.resolve();
+      });
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(window, 'requestAnimationFrame', {
+        configurable: true,
+        writable: true,
+        value: originalRaf
+      });
+      Object.defineProperty(window, 'cancelAnimationFrame', {
+        configurable: true,
+        writable: true,
+        value: originalCancelRaf
+      });
+      if (originalIdle) {
+        Object.defineProperty(window, 'requestIdleCallback', {
+          configurable: true,
+          writable: true,
+          value: originalIdle
+        });
+      } else {
+        delete (window as unknown as Record<string, unknown>).requestIdleCallback;
+      }
+      if (originalCancelIdle) {
+        Object.defineProperty(window, 'cancelIdleCallback', {
+          configurable: true,
+          writable: true,
+          value: originalCancelIdle
+        });
+      } else {
+        delete (window as unknown as Record<string, unknown>).cancelIdleCallback;
+      }
+      if (originalTauri === undefined) {
+        delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      } else {
+        Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: originalTauri });
+      }
+    }
+  });
+
+  it('supports eager packaged hydration for recovery-critical lanes', () => {
+    const originalTauri = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} });
+    try {
+      const spy = vi.fn(() => Promise.resolve());
+      render(<Probe load={spy} options={{ deferPackaged: false }} />);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      if (originalTauri === undefined) {
+        delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      } else {
+        Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: originalTauri });
+      }
+    }
   });
 });

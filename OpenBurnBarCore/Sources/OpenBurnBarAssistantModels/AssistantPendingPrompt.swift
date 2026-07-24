@@ -1,5 +1,7 @@
 import Foundation
+#if !os(Linux)
 import Observation
+#endif
 
 // MARK: - AssistantPendingPrompt
 //
@@ -21,7 +23,9 @@ import Observation
 // intents.
 
 @MainActor
+#if !os(Linux)
 @Observable
+#endif
 public final class AssistantPendingPrompt {
     public static let shared = AssistantPendingPrompt()
 
@@ -74,7 +78,9 @@ public final class AssistantPendingPrompt {
 /// taps can route to the exact assistant thread without accidentally treating a
 /// reply notification as a new prompt.
 @MainActor
+#if !os(Linux)
 @Observable
+#endif
 public final class AssistantPendingThread {
     public static let shared = AssistantPendingThread()
 

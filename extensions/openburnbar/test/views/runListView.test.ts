@@ -154,6 +154,14 @@ describe('OpenBurnBarRunTreeItem', () => {
       expect(themeIconId(item.iconPath)).toBe('question');
     });
 
+    it('should map awaiting_computer_use_session phase to device-desktop icon', () => {
+      const run = createMockRun({ phase: 'awaiting_computer_use_session' });
+      const item = new OpenBurnBarRunTreeItem(run);
+
+      expect(item.iconPath).toBeInstanceOf(vscode.ThemeIcon);
+      expect(themeIconId(item.iconPath)).toBe('device-desktop');
+    });
+
     it('should map idle phase to circle-large-outline icon', () => {
       const run = createMockRun({ phase: 'idle' });
       const item = new OpenBurnBarRunTreeItem(run);
@@ -293,7 +301,8 @@ describe('Run List View Integration', () => {
   it('should create tree items for all run phases', () => {
     const phases: BurnBarRunProjection['phase'][] = [
       'completed', 'failed', 'waiting_on_companion', 'planning',
-      'model_streaming', 'executing_tool', 'cancelled', 'awaiting_approval', 'idle'
+      'model_streaming', 'executing_tool', 'cancelled', 'awaiting_approval',
+      'awaiting_computer_use_session', 'idle'
     ];
 
     phases.forEach(phase => {

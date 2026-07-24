@@ -16,3 +16,42 @@ data class FirestoreIrohPairingDoc(
     val expiresAt: String = "",
     val platform: String? = null,
 )
+
+@Keep
+@IgnoreExtraProperties
+data class FirestoreIrohControllerRouteDoc(
+    val connectionId: String = "",
+    val sourceDeviceId: String = "",
+    val transportNodeId: String = "",
+    val authorityPeerNodeId: String = "",
+    val authorityPublicKeySHA256: String = "",
+    val status: String = "",
+    val generation: Long = 0,
+    val registeredAtMillis: Long = 0,
+    val expiresAtMillis: Long = 0,
+    val revokedAtMillis: Long? = null,
+    val schemaVersion: Long = 0,
+    val updatedAt: String = "",
+)
+
+@Keep
+@IgnoreExtraProperties
+data class FirestoreIrohControllerRouteChallengeDoc(
+    val challengeId: String = "",
+    val challengeNonce: String = "",
+    val connectionId: String = "",
+    val sourceDeviceId: String = "",
+    val transportNodeId: String = "",
+    val authorityPeerNodeId: String = "",
+    val proofKind: String = "",
+    val expectedPriorGeneration: Long = 0,
+    val expectedRegisteredAtMillis: Long? = null,
+    val registrationGeneration: Long = 0,
+    val canonicalPayloadBase64: String = "",
+    val issuedAtMillis: Long = 0,
+    val expiresAtMillis: Long = 0,
+    val status: String = "",
+    val consumedAtMillis: Long? = null,
+    val schemaVersion: Long = 0,
+    val expireAt: String = "",
+)

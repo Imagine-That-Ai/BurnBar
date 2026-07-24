@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "capture": {
+    "mode": "installed-exact-native-shell-provider-deep-link-atspi",
+    "capturedAt": "2026-07-20T08:12:04Z",
+    "environment": "ubuntu-24.04-gnome-x11-aarch64",
+    "vmAddress": "192.168.64.5",
+    "window": {
+      "name": "OpenBurnBar",
+      "present": true,
+      "screenshot": "linux-arm64-current-22fd7dfad9-provider-deep-link.png",
+      "screenshotSha256": "2e309cf40c335e1c7e014e43f27b4eb427800d569c93f953f63dd95da7c6c0b9",
+      "dimensions": "1792x851",
+      "visuallyInspected": true,
+      "nativeControlColorScheme": "dark"
+    }
+  },
+  "source": {
+    "head": "22fd7dfad96f",
+    "packageCheckpoint": "22fd7dfad9",
+    "nativeSourceChangedAfterBuild": false,
+    "commitsSincePriorNativeCheckpoint": [
+      "d021847211 fix(ci): reconcile post-merge contract gates",
+      "6771d7f86f fix(ci): close Firestore and audit-root gates",
+      "ca4a083437 refactor(linux): eliminate new force unwraps",
+      "276e5d010a fix(linux): avoid broken Observation runtime linkage",
+      "22fd7dfad9 fix(linux): keep mission observation Apple-only"
+    ]
+  },
+  "package": {
+    "format": "deb",
+    "architecture": "arm64",
+    "version": "0.1.1",
+    "sha256": "72fb15222374ee5231aa53b498aba984e4b281e5c93fa359c4a4f53c29886522",
+    "bytes": 152116006,
+    "buildCommand": "npm run tauri:build -- --bundles deb",
+    "freshPayloadStaging": true,
+    "mediaFeature": "media-gst",
+    "cloudAuthConfigured": false,
+    "swiftResourceBundles": [
+      "OpenBurnBarCore_OpenBurnBarKernel.resources",
+      "OpenBurnBarCore_OpenBurnBarPretext.resources"
+    ],
+    "swiftResourceBundlesPresentInPackage": true
+  },
+  "installed": {
+    "package": "open-burn-bar 0.1.1 arm64 installed",
+    "desktopSha256": "d2f9c0a9950c3f43f8bf935e6b03b546f97e4e3dcb37ae2aa9610b716e75120c",
+    "daemonSha256": "30906f27e6a41ae52ebf288602197a8916a9bf6d996b3ffac69d176843b4f0b4",
+    "cliSha256": "8ec0206be7a3ac26339f7a62684dc71f63c860a3488db84aa644b007b6ead660",
+    "irohSha256": "a43a9d0ec0bdac655a0389fa1ae1db4974cf0d80b88fc37650c6de97a71cea58",
+    "kernelCatalogSha256": "9ca8b713fb794d04f6758ff9378b191ab82ff1138a1fbeb9773a8557a273319a",
+    "pretextIndexSha256": "c7c500f3847dbab227b45e8354c6e9be48a3f1f73f16de2912e8d812d4305e5e",
+    "extractedHashesMatchInstalled": true,
+    "kernelResourceBundleInstalled": true,
+    "pretextResourceBundleInstalled": true,
+    "daemonHealth": "Daemon 1.0.30 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true",
+    "daemonService": "active",
+    "desktopService": "active",
+    "manifestSha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+    "manifestContents": {},
+    "manifestSignatureSha256": "f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b"
+  },
+  "nativeDeepLinkProof": {
+    "input": "openburnbar://providers?provider=codex",
+    "transport": "owner-checked per-user single-instance forwarding",
+    "route": "providers",
+    "selectedProvider": "Codex",
+    "selectedProviderPresentInAtspi": true,
+    "nodeCount": 189,
+    "namedNodeCount": 108,
+    "actionableNodeCount": 91,
+    "focusableNodeCount": 33,
+    "expectedName": "Codex",
+    "pass": true
+  },
+  "verification": {
+    "frontendTests": "94 files / 910 passed",
+    "tauriRustTests": "133 passed",
+    "workflowVerifierNodeTests": "28 passed",
+    "linuxSwiftVerifierPythonTests": "18 passed",
+    "typescript": "passed",
+    "productionBundleVerifier": "passed",
+    "linuxDaemonProductionBuild": "passed",
+    "linuxCLIProductionBuild": "passed",
+    "packageInstall": "passed",
+    "packageRuntimeProbe": "passed",
+    "installedPayloadHashComparison": "passed",
+    "swiftResourceBundlePackaging": "Kernel and Pretext bundles present in package and installed payload",
+    "accessibility": "installed provider deep link AT-SPI minimums passed",
+    "visualInspection": "installed native shell rendered the provider-specific Quota workspace with the dark Linux control palette",
+    "webgl": "webgl2=false; visible 2D fallback label"
+  },
+  "strictParityLedger": {
+    "productRowsPassed": 0,
+    "productRowsTotal": 40,
+    "environmentReceiptsPassed": 0,
+    "environmentReceiptsTotal": 7
+  },
+  "limitations": [
+    "The installed package manifest is the unsigned placeholder {} and is not eligible for release promotion.",
+    "Production Linux OAuth, Firebase App Check, and cloud callable identifiers are not configured in this package.",
+    "The strict evidence ledger remains 0/40 product rows and 0/7 environment receipts; this native ARM64 receipt does not promote any row by itself.",
+    "This receipt covers only Ubuntu 24.04 GNOME on X11 ARM64 and does not prove other distributions, architectures, desktop environments, Wayland, or compositor behavior.",
+    "Physical iPad execution, cross-device Mercury and Computer Use proof, production callables, signed updater and rollback, keyring, IME, SmartHub, and pet integration receipts remain external blockers.",
+    "No physical iPad result is claimed by this receipt."
+  ],
+  "certifying": false
+}

@@ -95,7 +95,8 @@ public enum TokenExtractionUtility {
                 ["input_tokens"],
                 ["prompt_tokens"],
                 ["inputTokens"],
-                ["promptTokens"]
+                ["promptTokens"],
+                ["input"]
             ]
         ) ?? 0
 
@@ -105,7 +106,8 @@ public enum TokenExtractionUtility {
                 ["output_tokens"],
                 ["completion_tokens"],
                 ["outputTokens"],
-                ["completionTokens"]
+                ["completionTokens"],
+                ["output"]
             ]
         ) ?? 0
 
@@ -114,7 +116,9 @@ public enum TokenExtractionUtility {
             paths: [
                 ["cache_creation_input_tokens"],
                 ["cache_creation_tokens"],
-                ["cacheCreationTokens"]
+                ["cacheCreationTokens"],
+                ["cacheWrite"],
+                ["cache_write"]
             ]
         ) ?? 0
 
@@ -123,7 +127,9 @@ public enum TokenExtractionUtility {
             paths: [
                 ["cache_read_input_tokens"],
                 ["cache_read_tokens"],
-                ["cacheReadTokens"]
+                ["cacheReadTokens"],
+                ["cacheRead"],
+                ["cache_read"]
             ]
         ) ?? 0
 

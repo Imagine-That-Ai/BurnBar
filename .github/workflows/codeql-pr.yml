@@ -1,11 +1,8 @@
-name: CodeQL PR (JS+Python)
+name: CodeQL PR
 
-# Required PR CodeQL for the script/service languages that analyze quickly.
-# This workflow must not be path-filtered while branch protection requires the
-# Analyze contexts globally: skipped workflows leave required checks missing and
-# make otherwise-green PRs unmergeable.
-# Swift stays in the nightly/push CodeQL workflow because it requires a traced
-# xcodebuild and routinely takes an hour on hosted macOS runners.
+# Required PR CodeQL for every language configured on main. Keeping the same
+# categories on pull requests prevents GitHub Advanced Security from treating
+# compiled-language configurations as missing on large code changes.
 
 on:
   pull_request:
@@ -26,26 +23,125 @@ concurrency:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
+    env:
+      FIREBASE_SOURCE_FIRESTORE: "1"
     strategy:
       fail-fast: false
       matrix:
-        language:
-          - javascript-typescript
-          - python
+        include:
+          - language: javascript-typescript
+            build-mode: none
+            runner: ubuntu-latest
+          - language: python
+            build-mode: none
+            runner: ubuntu-latest
+          - language: java-kotlin
+            build-mode: manual
+            runner: ubuntu-latest
+          - language: swift
+            build-mode: manual
+            runner: macos-26
     steps:
-      - name: Checkout
+      - name: Checkout (non-Swift)
+        if: matrix.language != 'swift'
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Checkout with Swift submodules
+        if: matrix.language == 'swift'
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          submodules: recursive
+
+      - name: Prepare Firebase plist for Swift
+        if: matrix.language == 'swift'
+        run: cp AgentLens/Resources/GoogleService-Info.plist.example AgentLens/Resources/GoogleService-Info.plist
+
+      - name: Install Rust toolchain for Swift Signal FFI
+        if: matrix.language == 'swift'
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install protobuf for Swift Signal FFI
+        if: matrix.language == 'swift'
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then brew install protobuf; fi
+          protoc --version
+
+      - name: Set up JDK 21 for Android
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        if: matrix.language == 'java-kotlin'
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1 (node24-native)
+
+      - name: Prepare Android Firebase placeholder
+        if: matrix.language == 'java-kotlin'
+        run: cp android/app/google-services.json.template android/app/google-services.json
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
         with:
           languages: ${{ matrix.language }}
-          build-mode: none
+          build-mode: ${{ matrix.build-mode }}
           queries: security-extended
+
+      - name: Prepare Signal FFI for Swift CodeQL
+        if: matrix.language == 'swift'
+        run: |
+          SIGNAL_FFI_BUILD_TARGETS=x86_64-apple-darwin \
+          SIGNAL_FFI_BUILD_PROFILE=debug \
+          CARGO_BUILD_JOBS=2 \
+            ./scripts/lib/prepare-signal-ffi-xcframework.sh
+
+      - name: Resolve Swift packages
+        if: matrix.language == 'swift'
+        run: |
+          for attempt in 1 2 3; do
+            if swift package resolve --package-path OpenBurnBarDaemon; then
+              exit 0
+            fi
+            if [ "$attempt" = "3" ]; then exit 1; fi
+            sleep $((attempt * 20))
+          done
+
+      - name: Build Swift for CodeQL
+        if: matrix.language == 'swift'
+        run: |
+          # The Linux parity product is the UI-free daemon SwiftPM package.
+          # The full Xcode app remains covered by App build + test; using the
+          # package here avoids Xcode app build scripts that can hang a hosted
+          # CodeQL runner while preserving Swift extraction for daemon/core/CLI.
+          build_path="$PWD/.codeql-swiftpm-build"
+          for attempt in 1 2; do
+            if swift build \
+              --package-path OpenBurnBarDaemon \
+              --build-path "$build_path" \
+              --configuration debug \
+              --product OpenBurnBarDaemon && \
+              swift build \
+                --package-path OpenBurnBarDaemon \
+                --build-path "$build_path" \
+                --configuration debug \
+                --product OpenBurnBarCLI; then
+              exit 0
+            fi
+            if [ "$attempt" = "2" ]; then exit 1; fi
+            echo "xcodebuild failed (attempt ${attempt}); retrying once."
+            sleep 20
+          done
+
+      - name: Build Android for CodeQL
+        if: matrix.language == 'java-kotlin'
+        run: cd android && ./gradlew :app:assembleDebug --no-daemon
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
         with:
-          category: "/pr-language:${{ matrix.language }}"
+          category: "/language:${{ matrix.language }}"

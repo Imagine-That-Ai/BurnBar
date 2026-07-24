@@ -72,22 +72,26 @@ public struct HermesInsightHTTPTransport: HermesInsightTransport {
     public func streamAnalysisCompletion(
         request: HermesInsightChatRequest
     ) -> AsyncThrowingStream<HermesInsightChunk, Error> {
-        AsyncThrowingStream { continuation in
+        // The Windows Foundation overlay also exposes the zero-argument
+        // `unfolding` initializer. The buffering-policy label selects the
+        // continuation-based initializer consistently on every toolchain.
+        AsyncThrowingStream<HermesInsightChunk, Error>(bufferingPolicy: .unbounded) { (continuation: AsyncThrowingStream<HermesInsightChunk, Error>.Continuation) in
             let task = Task {
                 do {
                     let urlRequest = try makeURLRequest(for: request, streaming: true)
-                    let (bytes, response) = try await urlSession.bytes(for: urlRequest)
-                    try Self.validate(response: response, modelID: request.modelID)
                     var assembled = ""
                     var terminalUsage: HermesInsightTokenUsage?
-                    for try await line in bytes.lines {
-                        try Task.checkCancellation()
-                        guard line.hasPrefix("data: ") else { continue }
+                    // FoundationNetworking on Linux does not expose
+                    // URLSession.AsyncBytes. Use the same SSE parser over a
+                    // buffered response there; Apple platforms retain the
+                    // incremental bytes path for low-latency streaming.
+                    let consumeLine: (String) -> Bool = { line in
+                        guard line.hasPrefix("data: ") else { return true }
                         let payload = line.dropFirst("data: ".count)
-                        if payload == "[DONE]" { break }
+                        if payload == "[DONE]" { return false }
                         guard let data = payload.data(using: .utf8),
                               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                            continue
+                            return true
                         }
                         if let delta = Self.deltaText(from: json), !delta.isEmpty {
                             assembled += delta
@@ -96,7 +100,23 @@ public struct HermesInsightHTTPTransport: HermesInsightTransport {
                         if let usage = Self.usage(from: json["usage"] as? [String: Any]) {
                             terminalUsage = usage
                         }
+                        return true
                     }
+#if os(Linux) || os(Windows)
+                    let (data, response) = try await urlSession.data(for: urlRequest)
+                    try Self.validate(response: response, modelID: request.modelID)
+                    for line in String(decoding: data, as: UTF8.self).split(whereSeparator: \.isNewline) {
+                        try Task.checkCancellation()
+                        if !consumeLine(String(line)) { break }
+                    }
+#else
+                    let (bytes, response) = try await urlSession.bytes(for: urlRequest)
+                    try Self.validate(response: response, modelID: request.modelID)
+                    for try await line in bytes.lines {
+                        try Task.checkCancellation()
+                        if !consumeLine(line) { break }
+                    }
+#endif
                     try Task.checkCancellation()
                     if let terminalUsage {
                         continuation.yield(.usage(terminalUsage))

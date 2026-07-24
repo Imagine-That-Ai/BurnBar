@@ -16,7 +16,7 @@ The shared Swift contract defines a fixed schema-versioned sequence:
 | `cloud_identity` | Optional | Explicit acknowledgement or deferral only. Native auth readback is future work. |
 | `portal_input` | Optional | Explicit acknowledgement or deferral only. Portal permission readback is future work. |
 | `tray` | Optional | Explicit acknowledgement or deferral only. Tray-host probing is future work. |
-| `updates` | Optional | Explicit acknowledgement or deferral only. Signed-channel readback is future work. |
+| `updates` | Optional | Explicit acknowledgement or deferral only. The native shell now reads and verifies the signed channel; package-manager lifecycle promotion remains separately gated. |
 | `privacy` | Required | Both telemetry and cloud-sync choices are written to daemon state and returned in the committed snapshot. |
 
 Required steps accept only `verified` as terminal. Optional steps accept
@@ -99,6 +99,6 @@ screen reader traversal; denial/retry; reset; and package upgrade migration.
 This authority layer is the foundation for `LNX-ONB-001`, not its final closure.
 Full parity still requires typed probes and repair actions for provider account
 connection, real log scanning, cloud auth, portal grants, tray availability,
-signed update channel, chat-engine selection, and first usable data. Those
+signed feed publication and package lifecycle, chat-engine selection, and first usable data. Those
 steps should become required only when the daemon can verify their outcomes and
 the Linux-native substitute policy is settled.

@@ -252,3 +252,107 @@
 .memory-boundaries-empty {
   margin: 0;
 }
+
+.memory-audit-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid color-mix(in srgb, var(--color-glass-line) 65%, transparent);
+}
+
+.memory-audit-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.memory-audit-heading {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-text-bright);
+}
+
+.memory-audit-lede {
+  margin: var(--space-1) 0 0;
+  max-width: 42rem;
+  font-size: 0.78rem;
+}
+
+.memory-audit-count {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--color-text-dim);
+}
+
+.memory-audit-empty {
+  margin: 0;
+}
+
+.memory-audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-audit-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-glass-line) 70%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-glass-bg, var(--color-glass-fill)) 48%, transparent);
+}
+
+.memory-audit-index {
+  display: grid;
+  flex: 0 0 1.5rem;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--radius-full, 999px);
+  background: color-mix(in srgb, var(--color-ember-core) 18%, transparent);
+  color: var(--color-text-bright);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+
+.memory-audit-event {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.memory-audit-summary,
+.memory-audit-detail {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.memory-audit-summary {
+  color: var(--color-text-base);
+  font-size: 0.82rem;
+}
+
+.memory-audit-detail,
+.memory-audit-id {
+  color: var(--color-text-dim);
+  font-size: 0.7rem;
+}
+
+.memory-audit-id {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+  .memory-audit-header {
+    flex-direction: column;
+  }
+}
