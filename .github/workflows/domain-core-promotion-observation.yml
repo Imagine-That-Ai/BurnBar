@@ -1,0 +1,255 @@
+name: Shared Rust promotion observation
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_commit:
+        description: "Exact rollout candidate commit already reachable from main"
+        required: true
+        type: string
+      domain:
+        description: "Shared Rust promotion domain"
+        required: true
+        type: choice
+        options:
+          - quota
+          - cloudvault
+          - hermes
+          - pricing
+      channel:
+        description: "Signed rollout channel to evaluate"
+        required: true
+        type: choice
+        options:
+          - internal
+          - beta
+      start:
+        description: "Inclusive UTC observation start, for example 2026-07-01T00:00:00Z"
+        required: true
+        type: string
+      end:
+        description: "Inclusive UTC observation end, at least 14 days after start"
+        required: true
+        type: string
+      core_version:
+        description: "Candidate shared Rust semantic version"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: domain-core-promotion-${{ inputs.domain }}-${{ inputs.channel }}
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    name: Export, evaluate, and attest
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: domain-core-promotion
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out the trusted builder
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate immutable observation inputs
+        env:
+          BUILDER_COMMIT: ${{ github.sha }}
+          CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          CORE_VERSION: ${{ inputs.core_version }}
+          OBSERVATION_START: ${{ inputs.start }}
+          OBSERVATION_END: ${{ inputs.end }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::candidate_commit must be a full lowercase Git SHA"
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" != "refs/heads/main" || "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]]; then
+            echo "::error::Promotion observations must run from the exact main builder commit"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$CANDIDATE_COMMIT" HEAD; then
+            echo "::error::candidate_commit must already be reachable from the trusted main builder"
+            exit 1
+          fi
+          if [[ ! "$CORE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::core_version must be a semantic version"
+            exit 1
+          fi
+          python3 - "$OBSERVATION_START" "$OBSERVATION_END" <<'PY'
+          from datetime import datetime
+          import sys
+
+          def parse(value: str) -> datetime:
+              if not value.endswith("Z"):
+                  raise ValueError("timestamps must be UTC and end in Z")
+              return datetime.fromisoformat(value[:-1] + "+00:00")
+
+          try:
+              started = parse(sys.argv[1])
+              ended = parse(sys.argv[2])
+          except ValueError as error:
+              raise SystemExit(f"invalid observation timestamp: {error}") from error
+          if ended <= started:
+              raise SystemExit("observation end must be later than start")
+          PY
+          candidate_version="$(git show "$CANDIDATE_COMMIT:crates/openburnbar-domain-core/Cargo.toml" | python3 -c 'import sys,tomllib; print(tomllib.loads(sys.stdin.read())["workspace"]["package"]["version"])')"
+          if [[ "$candidate_version" != "$CORE_VERSION" ]]; then
+            echo "::error::core_version does not match the candidate Cargo workspace version"
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install evidence exporter dependencies
+        run: npm ci --prefix functions
+
+      - name: Authenticate to Firestore with GitHub OIDC
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 900s
+
+      - name: Export aggregate shadow evidence
+        id: export
+        env:
+          BUILDER_COMMIT: ${{ github.sha }}
+          CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          CORE_VERSION: ${{ inputs.core_version }}
+          DOMAIN: ${{ inputs.domain }}
+          OBSERVATION_CHANNEL: ${{ inputs.channel }}
+          OBSERVATION_START: ${{ inputs.start }}
+          OBSERVATION_END: ${{ inputs.end }}
+        run: |
+          set -euo pipefail
+          node scripts/ops/export-domain-core-promotion-evidence.mjs \
+            --project burnbar \
+            --domain "$DOMAIN" \
+            --start "$OBSERVATION_START" \
+            --end "$OBSERVATION_END" \
+            --channel "$OBSERVATION_CHANNEL" \
+            --core-version "$CORE_VERSION" \
+            --query-revision "$CANDIDATE_COMMIT" \
+            --source-uri https://console.cloud.google.com/firestore/databases/-default-/data/panel/domain_core_shadow_samples \
+            --output "$RUNNER_TEMP/domain-core-promotion-evidence.json"
+
+      - name: Evaluate the committed promotion policy
+        id: evaluate
+        env:
+          DOMAIN: ${{ inputs.domain }}
+        run: |
+          set +e
+          node scripts/ci/evaluate-domain-core-promotion.mjs \
+            --domain "$DOMAIN" \
+            --evidence "$RUNNER_TEMP/domain-core-promotion-evidence.json" \
+            --output "$RUNNER_TEMP/domain-core-promotion-report.json"
+          status=$?
+          set -e
+          if [[ "$status" -ne 0 && "$status" -ne 1 && "$status" -ne 2 ]]; then
+            echo "::error::promotion evaluator returned unexpected status $status"
+            exit 1
+          fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Attest a ready promotion report
+        id: attest_report
+        if: steps.evaluate.outputs.status == '0'
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3.0.0
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-promotion-report.json
+
+      - name: Preserve the Sigstore bundle
+        if: steps.evaluate.outputs.status == '0'
+        env:
+          BUNDLE_PATH: ${{ steps.attest_report.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          cp "$BUNDLE_PATH" "$RUNNER_TEMP/domain-core-promotion-report.sigstore.json"
+          chmod 600 "$RUNNER_TEMP/domain-core-promotion-report.sigstore.json"
+
+      - name: Write observation manifest
+        if: steps.evaluate.outputs.status == '0'
+        env:
+          BUILDER_COMMIT: ${{ github.sha }}
+          CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          CORE_VERSION: ${{ inputs.core_version }}
+          DOMAIN: ${{ inputs.domain }}
+          OBSERVATION_CHANNEL: ${{ inputs.channel }}
+          OBSERVATION_START: ${{ inputs.start }}
+          OBSERVATION_END: ${{ inputs.end }}
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          names = (
+              "domain-core-promotion-evidence.json",
+              "domain-core-promotion-report.json",
+              "domain-core-promotion-report.sigstore.json",
+          )
+          manifest = {
+              "schemaVersion": 1,
+              "candidateCommit": os.environ["CANDIDATE_COMMIT"],
+              "builderCommit": os.environ["BUILDER_COMMIT"],
+              "domain": os.environ["DOMAIN"],
+              "channel": os.environ["OBSERVATION_CHANNEL"],
+              "coreVersion": os.environ["CORE_VERSION"],
+              "startedAt": os.environ["OBSERVATION_START"],
+              "endedAt": os.environ["OBSERVATION_END"],
+              "workflowRun": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+              "sha256": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names},
+          }
+          (root / "domain-core-promotion-manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload immutable observation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: domain-core-promotion-${{ inputs.domain }}-${{ inputs.channel }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/domain-core-promotion-evidence.json
+            ${{ runner.temp }}/domain-core-promotion-report.json
+            ${{ runner.temp }}/domain-core-promotion-report.sigstore.json
+            ${{ runner.temp }}/domain-core-promotion-manifest.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Enforce a ready result
+        if: always()
+        env:
+          EVALUATION_STATUS: ${{ steps.evaluate.outputs.status }}
+          EXPORT_OUTCOME: ${{ steps.export.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$EXPORT_OUTCOME" != "success" ]]; then
+            echo "::error::shadow evidence export failed"
+            exit 1
+          fi
+          if [[ "$EVALUATION_STATUS" != "0" ]]; then
+            echo "::error::promotion evidence is invalid or not ready (status=${EVALUATION_STATUS:-missing})"
+            exit 1
+          fi
