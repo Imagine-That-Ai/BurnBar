@@ -30,9 +30,9 @@ public sealed class NavCatalogTests
     }
 
     [Fact]
-    public void All_HasFourteenKeys_AfterIa1()
+    public void All_HasFifteenKeys_AfterCalendar()
     {
-        Assert.Equal(14, NavCatalog.All.Count);
+        Assert.Equal(15, NavCatalog.All.Count);
         Assert.Single(NavCatalog.Auxiliary);
         Assert.Equal("elderWand", NavCatalog.Auxiliary[0].Key);
     }
@@ -40,7 +40,8 @@ public sealed class NavCatalogTests
     [Theory]
     [InlineData("database", "DatabasePage")]
     [InlineData("projects", "ProjectsPage")]
-    public void DatabaseAndProjects_ResolveToProductPages_NotStub(string key, string logical)
+    [InlineData("calendar", "CalendarPage")]
+    public void ProductRoutes_ResolveToProductPages_NotStub(string key, string logical)
     {
         Assert.False(SurfaceRouteMap.IsIa1DeferredDisclosure(key));
         Assert.Equal(logical, SurfaceRouteMap.LogicalPageType(key));
@@ -73,6 +74,14 @@ public sealed class NavCatalogTests
         Assert.Contains("DatabasePage", SurfaceRouteMap.ProductLogicalPageNames);
         Assert.Contains("ProjectsPage", SurfaceRouteMap.ProductLogicalPageNames);
         Assert.DoesNotContain(SurfaceRouteMap.DeferredStubPage, SurfaceRouteMap.ProductLogicalPageNames);
+    }
+
+    [Fact]
+    public void All_IncludesCalendar_AfterChat()
+    {
+        Assert.Contains(NavCatalog.All, d => d.Key == "calendar" && d.Title == "Calendar");
+        Assert.Equal("Calendar", NavCatalog.Find("calendar")!.Title);
+        Assert.Contains("CalendarPage", SurfaceRouteMap.ProductLogicalPageNames);
     }
 
     [Fact]
