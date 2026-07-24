@@ -1,0 +1,8 @@
+{
+  "name": "dbus-x11-xvfb-xfce-statusnotifier",
+  "displayServer": "X11 via Xvfb",
+  "desktop": "XFCE panel in dbus-run-session",
+  "trayHost": "xfce4-sntray-plugin with Ayatana AppIndicator runtime",
+  "windowManager": "openbox",
+  "purpose": "CI compositor profile for packaged Tauri .deb install/run/tray proof"
+}

@@ -45,6 +45,7 @@ export function DeckBurnHero({ summary, loading }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const popoverId = useId();
+  const isLoading = loading || !summary;
 
   useEffect(() => {
     if (!open) return;
@@ -62,20 +63,9 @@ export function DeckBurnHero({ summary, loading }: Props) {
     };
   }, [open]);
 
-  if (loading || !summary) {
-    return (
-      <div
-        className="burn-hero burn-hero--skeleton"
-        role="status"
-        aria-busy="true"
-        aria-label="Loading telemetry"
-      />
-    );
-  }
-
-  const { value, suffix } = headlineFor(summary, unit, range);
+  const { value, suffix } = summary ? headlineFor(summary, unit, range) : { value: '', suffix: null };
   const ariaValue = suffix ? `${value} ${suffix}` : value;
-  const spark = summary.sevenDay.length >= 2 ? summary.sevenDay : null;
+  const spark = summary && summary.sevenDay.length >= 2 ? summary.sevenDay : null;
 
   const setUnitAndPersist = (next: DeckHeroUnit) => {
     setUnit(next);
@@ -91,29 +81,37 @@ export function DeckBurnHero({ summary, loading }: Props) {
     <div className="deck-burn-hero-wrap" ref={rootRef}>
       <button
         type="button"
-        className="burn-hero burn-hero--interactive"
-        aria-expanded={open}
-        aria-controls={popoverId}
-        aria-label={`BURN ${ariaValue}. Open range and unit controls`}
-        onClick={() => setOpen((v) => !v)}
+        className={`burn-hero ${isLoading ? 'burn-hero--skeleton' : 'burn-hero--interactive'}`}
+        aria-expanded={isLoading ? undefined : open}
+        aria-controls={isLoading ? undefined : popoverId}
+        aria-busy={isLoading || undefined}
+        aria-disabled={isLoading ? 'true' : undefined}
+        aria-label={isLoading ? 'Loading telemetry' : `BURN ${ariaValue}. Open range and unit controls`}
+        onClick={() => {
+          if (!isLoading) setOpen((v) => !v);
+        }}
       >
-        <span className="burn-hero-live-dot" aria-hidden="true" />
-        <span className="burn-hero-copy">
-          <span className="burn-hero-kicker">
-            BURN
-          </span>
-          <span className="burn-hero-headline">
-            <span className={`burn-hero-value${unit === 'cost' ? ' burn-hero-cost' : ''}`}>{value}</span>
-            {suffix ? <span className="burn-hero-suffix">{suffix}</span> : null}
-          </span>
-        </span>
-        {spark ? (
-          <span className="burn-hero-sparkline" aria-hidden="true">
-            <Sparkline values={spark} width={64} height={22} label="7-day token trend" />
-          </span>
-        ) : null}
+        {isLoading ? null : (
+          <>
+            <span className="burn-hero-live-dot" aria-hidden="true" />
+            <span className="burn-hero-copy">
+              <span className="burn-hero-kicker">
+                BURN
+              </span>
+              <span className="burn-hero-headline">
+                <span className={`burn-hero-value${unit === 'cost' ? ' burn-hero-cost' : ''}`}>{value}</span>
+                {suffix ? <span className="burn-hero-suffix">{suffix}</span> : null}
+              </span>
+            </span>
+            {spark ? (
+              <span className="burn-hero-sparkline" aria-hidden="true">
+                <Sparkline values={spark} width={64} height={22} label="7-day token trend" />
+              </span>
+            ) : null}
+          </>
+        )}
       </button>
-      {open ? (
+      {!isLoading && open ? (
         <div className="deck-hero-popover" id={popoverId} role="dialog" aria-label="Time range and unit">
           <p className="deck-hero-popover-label">Time range</p>
           <div className="deck-hero-popover-list">

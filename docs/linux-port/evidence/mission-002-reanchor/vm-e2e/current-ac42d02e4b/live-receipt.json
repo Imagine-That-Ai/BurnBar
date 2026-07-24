@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-19T10:28:35Z",
+  "environment": {
+    "vm": "OpenBurnBar Linux",
+    "ip": "192.168.64.5",
+    "os": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME/X11"
+  },
+  "sourceCommit": "ac42d02e4bec3ff4018c2619e5f004d6527b79a3",
+  "candidate": {
+    "package": "open-burn-bar",
+    "packageVersion": "0.1.1",
+    "packageArchitecture": "arm64",
+    "packagePath": "/home/burnbar/BurnBar/apps/linux-desktop/src-tauri/target/release/bundle/deb/OpenBurnBar_0.1.1_arm64.deb",
+    "packageSha256": "827a5ff61babbe6e7b769461d1feae5e8145026321001f34a362a7fb9c36df24",
+    "packageStatus": "install ok installed"
+  },
+  "service": {
+    "unit": "openburnbar-daemon.service",
+    "enabled": true,
+    "active": true,
+    "mainPID": 32496,
+    "execMainStatus": 0,
+    "socket": "/run/user/1000/openburnbar/daemon.sock",
+    "health": "Daemon 1.0.29 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true"
+  },
+  "installedPeers": {
+    "/usr/bin/openburnbar-daemon": {
+      "sha256": "b58b0d127425f6d69c2eb352dbea7da8540d08f28968fe0a4af6b91035dcd315",
+      "mode": "0755",
+      "uid": 0
+    },
+    "/usr/bin/openburnbar-cli": {
+      "sha256": "5e80879608cacc16a4e98146a5724fcf5fade1188a266c0eaf728e101015bceb",
+      "mode": "0755",
+      "uid": 0
+    },
+    "/usr/bin/openburnbar-linux-desktop": {
+      "sha256": "a572c289e4460294dda1e7f78debf8150d00e25391fb1a171f0bdd4b30965237",
+      "mode": "0755",
+      "uid": 0
+    },
+    "/usr/lib/openburnbar/native/libopenburnbar_iroh.so": {
+      "sha256": "e3d4cea4bf69e0f99f66fc5d01eb40eddd4bb176c3e3da20d6c8c4bc2c1e6ef3",
+      "mode": "0755",
+      "uid": 0
+    },
+    "/usr/lib/systemd/user/openburnbar-daemon.service": {
+      "sha256": "cb5012e6647bd26ac6827952603d18794c0bc6030491ce33c03e5882ad77f939",
+      "mode": "0644",
+      "uid": 0
+    },
+    "/usr/libexec/openburnbar-cli-migrate": {
+      "sha256": "9f859a25f37015431a0eac716f9f270536aa52c9ea926ee0d019e16c03ffee79",
+      "mode": "0755",
+      "uid": 0
+    }
+  },
+  "desktop": {
+    "command": "/usr/bin/openburnbar-linux-desktop --background",
+    "pid": 33011,
+    "authenticatedPeer": true,
+    "recentPeerRejections": false,
+    "nonFatalLog": "Failed to create a graphics context for WebGL using GBM, falling back to textures"
+  },
+  "mediaRPC": {
+    "daemon.media.capability.get": {
+      "available": true,
+      "source": "COpenBurnBarMediaCapture.media_capability_probe",
+      "codecsKnown": true,
+      "codecs": {
+        "av1": true,
+        "h264": false,
+        "opus": true,
+        "vp9": true
+      },
+      "supportsDaemonToShellFrames": true,
+      "supportsShellToDaemonControl": false,
+      "mediaSocketPath": "/run/user/1000/openburnbar-media.sock",
+      "detail": "Daemon-owned capture uses the media C FFI. The shell media socket is daemon-to-shell only; PipeWire fds must be opened by the daemon through xdg-desktop-portal."
+    },
+    "daemon.media.status": {
+      "phase": "idle",
+      "shellConnected": false,
+      "droppedFrameCount": 0,
+      "queuedFrameCount": 0,
+      "capabilityAvailable": true
+    },
+    "daemon.media.file.offer.list": {
+      "downloadDirectory": "/home/burnbar/Downloads",
+      "transfers": [],
+      "capabilityAvailable": true
+    }
+  },
+  "verification": {
+    "hostNodeTests": "7/7 passed: migration and media runtime contracts",
+    "hostPackagingSync": "3/3 pairs passed",
+    "linuxPeerCredentialTest": "1/1 passed on Ubuntu VM",
+    "linuxMercuryMediaTests": "21/21 passed on Ubuntu VM with the linked GStreamer media backend",
+    "daemonHealth": "pass",
+    "packageInstall": "pass"
+  },
+  "certifying": false,
+  "nonCertifyingReasons": [
+    "This is a live package/runtime receipt, not a signed production attestation.",
+    "The strict parity ledger remains 0/40 product rows and 0/7 environment rows.",
+    "Cross-device iPad/Linux enrollment, real two-device file transfer, calls, and screen-share remain unverified.",
+    "Computer Use, SmartHub, accessibility, keyring/IME, update, production, and certification receipts remain open."
+  ]
+}

@@ -6,7 +6,8 @@ const STATE_LABEL: Record<QuotaBucketState, string> = {
   ok: 'OK',
   cooling_down: 'Cooling down',
   missing_credential: 'Missing credential',
-  exhausted: 'Exhausted'
+  exhausted: 'Exhausted',
+  unknown: 'Status unavailable'
 };
 
 function formatResetsAt(iso?: string): string | null {

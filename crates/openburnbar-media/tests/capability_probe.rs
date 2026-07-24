@@ -10,6 +10,22 @@ fn probe_finds_required_media_factories() {
 }
 
 #[test]
+#[cfg(feature = "gstreamer")]
+fn viewer_probe_requires_decoder_and_native_video_sink() {
+    let capabilities = openburnbar_media::viewer_probe();
+    assert!(capabilities.backend_available);
+    assert!(
+        capabilities.vp9_decoder_available,
+        "vp9dec must be installed"
+    );
+    assert!(
+        capabilities.video_sink_available,
+        "autovideosink must be installed for the shell viewer"
+    );
+    assert!(capabilities.available());
+}
+
+#[test]
 #[cfg(not(feature = "gstreamer"))]
 fn probe_is_empty_without_gstreamer_feature() {
     let capabilities = openburnbar_media::probe();
@@ -17,4 +33,27 @@ fn probe_is_empty_without_gstreamer_feature() {
         capabilities,
         openburnbar_media::MediaCapabilities::default()
     );
+}
+
+#[test]
+#[cfg(not(feature = "gstreamer"))]
+fn viewer_probe_is_fail_closed_without_gstreamer_feature() {
+    let capabilities = openburnbar_media::viewer_probe();
+    assert_eq!(
+        capabilities,
+        openburnbar_media::MediaViewerCapabilities::default()
+    );
+    assert!(!capabilities.available());
+}
+
+#[test]
+#[cfg(not(feature = "gstreamer"))]
+fn audio_playback_probe_is_fail_closed_without_gstreamer_feature() {
+    let capabilities = openburnbar_media::audio_playback_probe();
+    assert_eq!(
+        capabilities,
+        openburnbar_media::MediaAudioPlaybackCapabilities::default()
+    );
+    assert!(!capabilities.available());
+    assert_eq!(openburnbar_media::media_audio_playback_probe(), 0);
 }

@@ -145,6 +145,14 @@ export { revokeAllAccess } from "./callables/panic.js";
 export { getAuditLog, verifyAuditLog } from "./callables/auditLog.js";
 export { registerBrowserEscrowDevice } from "./callables/webAppCheck.js";
 export { mintLinuxAppCheckToken } from "./callables/linuxAppCheck.js";
+export { pullLinuxCloudReplicas, pushLinuxCloudReplicas } from "./callables/linuxCloudReplica.js";
+export {
+  approveLinuxAppCheckDevice,
+  issueLinuxAppCheckChallenge,
+  listLinuxAppCheckDevices,
+  registerLinuxAppCheckDevice,
+  revokeLinuxAppCheckDevice,
+} from "./callables/linuxAppCheckDevices.js";
 export { issueWindowsAppCheckChallenge, mintWindowsAppCheckToken } from "./callables/windowsAppCheck.js";
 export { getWindowsRuntimeSafetyConfig } from "./callables/windowsRuntimeSafetyConfig.js";
 export {
@@ -167,6 +175,10 @@ export {
   publishIrohPairingRecord,
   revokeIrohPairingRecord,
   publishPhoneControlAuthority,
+  issueIrohControllerRouteChallenge,
+  registerIrohControllerRoute,
+  revokeIrohControllerRoute,
+  resolveActiveIrohControllerRoutes,
   publishRelaySenderKey,
   publishAgentGrantAuthority,
   queueAgentCapabilityGrantRequest,

@@ -1,13 +1,39 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateArchitectureShardSet } from './lib/linux-release-shards.mjs';
+import { isArchitectureSessionBaselineBlocked } from './lib/linux-package-session.mjs';
 
 const manifest = {
-  requiredArtifacts: ['appimage', 'deb', 'rpm', 'daemon'],
+  requiredArtifacts: ['appimage', 'arch', 'deb', 'rpm', 'daemon'],
   supportedArchitectures: ['aarch64', 'x86_64']
 };
 const version = '1.2.3';
 const commit = '0123456789abcdef0123456789abcdef01234567';
+
+function session(architecture, lifecycleStatus = 'blocked') {
+  const reason = 'No previous same-architecture Linux .deb was supplied; update, rollback, and data-preservation promotion gates remain blocked.';
+  return {
+    architecture,
+    lifecycle: {
+      guiLaunch: { status: 'passed' },
+      daemonLaunch: { status: 'passed' },
+      versionReadback: { status: 'passed' },
+      update: { status: lifecycleStatus, ...(lifecycleStatus === 'blocked' ? { reason } : {}) },
+      rollback: { status: lifecycleStatus, ...(lifecycleStatus === 'blocked' ? { reason } : {}) },
+      dataPreservation: { status: lifecycleStatus, ...(lifecycleStatus === 'blocked' ? { reason } : {}) }
+    }
+  };
+}
+
+test('only an explicit missing-baseline lifecycle block is eligible for prerelease assembly', () => {
+  const sessions = [session('aarch64'), session('x86_64')];
+  assert.equal(isArchitectureSessionBaselineBlocked({ manifest, sessions }), true);
+  sessions[1].lifecycle.update.reason = 'The previous package failed its runtime probe.';
+  assert.equal(isArchitectureSessionBaselineBlocked({ manifest, sessions }), false);
+  sessions[1].lifecycle.update.reason = 'No previous same-architecture Linux .deb was supplied; update, rollback, and data-preservation promotion gates remain blocked.';
+  sessions[1].lifecycle.guiLaunch.status = 'blocked';
+  assert.equal(isArchitectureSessionBaselineBlocked({ manifest, sessions }), false);
+});
 
 function shard(architecture) {
   return {

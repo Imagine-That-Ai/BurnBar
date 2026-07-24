@@ -1,0 +1,18 @@
+Exact ARM64 Linux package smoke receipt
+
+Source commit: 3e7ede75e3
+Package: open-burn-bar 0.1.1 arm64
+Archive: 151390682 bytes
+Archive SHA-256: 6af90e09f81ec836a31fdd659c6171993d7d1f8b80c698c72b8e6d4d72b422b9
+Installed desktop SHA-256: 21af18213c4a60468ff3829f209c6359189edaba34402953f4beee085bdd5afc
+Embedded frontend asset: /assets/index-13OQQcjG.js
+
+Environment: Ubuntu 24.04.4 LTS aarch64, GNOME/X11, 192.168.64.5
+Daemon: 1.0.29, protocol 1, authenticated health ok=true
+Desktop: installed PID 26145, OpenBurnBar window visible
+Backdrop: Fluid Aurora Canvas2D fallback, 1792x851, 776489 pixels changed over 2 seconds
+Onboarding: Overview, Secret Service / SQLCipher, step 2 of 8
+
+This is non-certifying local evidence: unsigned package, no public feed, and no
+claim of full environment or cross-device parity. Strict ledger remains 0/40
+product requirements and 0/7 environment receipts.

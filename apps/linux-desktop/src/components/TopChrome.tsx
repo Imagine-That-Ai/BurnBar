@@ -64,7 +64,8 @@ export function TopChrome({ onOpenCommandPalette, kernelId, onKernelChange }: To
           type="button"
           className="ghost deck-capsule-trigger deck-capsule-trigger--icon deck-toolbar-icon"
           title="Import sessions"
-          onClick={() => setRoute('support')}
+          aria-label="Import sessions"
+          onClick={() => setRoute('activity')}
         >
           <span aria-hidden="true">↓</span>
         </button>
@@ -72,6 +73,7 @@ export function TopChrome({ onOpenCommandPalette, kernelId, onKernelChange }: To
           type="button"
           className="ghost deck-capsule-trigger deck-capsule-trigger--icon deck-toolbar-icon"
           title="Account"
+          aria-label="Account"
           onClick={() => setRoute('account')}
         >
           <span aria-hidden="true">◎</span>
@@ -80,6 +82,7 @@ export function TopChrome({ onOpenCommandPalette, kernelId, onKernelChange }: To
           type="button"
           className="ghost deck-capsule-trigger deck-capsule-trigger--icon deck-toolbar-icon"
           title="Settings"
+          aria-label="Settings"
           onClick={() => setRoute('settings')}
         >
           <span aria-hidden="true">⚙</span>

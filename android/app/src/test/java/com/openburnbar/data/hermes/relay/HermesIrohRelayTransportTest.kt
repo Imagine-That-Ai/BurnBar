@@ -3,9 +3,15 @@ package com.openburnbar.data.hermes.relay
 
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.openburnbar.data.computeruse.ComputerUseSessionGrantChallengeDelivery
+import com.openburnbar.data.computeruse.IrohControllerRouteRegistering
+import com.openburnbar.data.computeruse.IrohControllerRouteRegistration
+import com.openburnbar.data.hermes.HermesAuthLifecycleRegistry
+import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayPayload
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import com.openburnbar.irohrelay.HermesRelayChunkKind
 import com.openburnbar.irohrelay.InMemoryIrohPairingDirectory
 import com.openburnbar.irohrelay.IrohPairingError
@@ -25,7 +31,9 @@ import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import java.security.KeyPair
 import java.util.Base64
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeoutOrNull
@@ -68,6 +76,7 @@ class HermesIrohRelayTransportTest {
 
     @Before
     fun stubAndroidBase64() {
+        HermesAuthLifecycleRegistry.resetForTests()
         mockkStatic(android.util.Base64::class)
         every { android.util.Base64.encodeToString(any(), any()) } answers {
             Base64.getEncoder().encodeToString(firstArg<ByteArray>())
@@ -79,6 +88,7 @@ class HermesIrohRelayTransportTest {
 
     @After
     fun restoreStaticMocks() {
+        HermesAuthLifecycleRegistry.resetForTests()
         unmockkStatic(android.util.Base64::class)
     }
 
@@ -102,12 +112,34 @@ class HermesIrohRelayTransportTest {
         val clientTransport = LoopbackIrohRelayTransport(rendezvous, nodeId = "client-$connectionId")
         hostTransport.start()
         clientTransport.start()
+        val routeEvents = mutableListOf<String>()
+        val routeRegistrar = IrohControllerRouteRegistering { registeredUid, registeredConnectionId, _ ->
+            routeEvents += "register"
+            assertEquals(uid, registeredUid)
+            assertEquals(connectionId, registeredConnectionId)
+            IrohControllerRouteRegistration(
+                connectionId = connectionId,
+                sourceDeviceId = "android-escrow-device",
+                transportNodeId = "transport-node",
+                authorityPeerNodeId = "authority-node",
+                generation = 1,
+                expiresAtMillis = Long.MAX_VALUE,
+            )
+        }
+        val orderedClientTransport = object : IrohRelayTransport by clientTransport {
+            override suspend fun connect(target: com.openburnbar.irohrelay.IrohDialTarget, timeoutMillis: Long): IrohRelayStream {
+                assertEquals(listOf("register"), routeEvents)
+                routeEvents += "connect"
+                return clientTransport.connect(target, timeoutMillis)
+            }
+        }
 
         val (transport, _) =
             makeTransport(
                 uid = uid,
                 connectionId = connectionId,
-                clientTransport = clientTransport,
+                clientTransport = orderedClientTransport,
+                controllerRouteRegistrar = routeRegistrar,
             )
 
         val payload =
@@ -130,6 +162,7 @@ class HermesIrohRelayTransportTest {
         val result = transport.sendUnary(payload = payload, timeoutMillis = 5_000)
         server.await()
         assertEquals("Hello world", result)
+        assertEquals(listOf("register", "connect"), routeEvents)
 
         clientTransport.shutdown()
         hostTransport.shutdown()
@@ -182,6 +215,112 @@ class HermesIrohRelayTransportTest {
         server.await()
         assertEquals(listOf("delta-1", "delta-2"), received)
 
+        clientTransport.shutdown()
+        hostTransport.shutdown()
+    }
+
+    @Test
+    fun account_replacement_closes_active_stream_and_blocks_post_transition_exchange() = runTest {
+        val uid = "uid-before-replacement"
+        val connectionId = "conn-account-replacement"
+        val nodeId = "host-$connectionId"
+        val hostTransport = LoopbackIrohRelayTransport(rendezvous, nodeId = nodeId)
+        val clientTransport = LoopbackIrohRelayTransport(rendezvous, nodeId = "client-$connectionId")
+        hostTransport.start()
+        clientTransport.start()
+        var currentUid = uid
+        val authUser = mockk<FirebaseUser>()
+        every { authUser.uid } answers { currentUid }
+        val auth = mockk<FirebaseAuth>()
+        every { auth.currentUser } returns authUser
+        val directory = InMemoryIrohPairingDirectory()
+        directory.publish(makePairingRecord(uid, connectionId, nodeId), uid)
+        val transport =
+            HermesIrohRelayTransport(
+                context = mockk(relaxed = true),
+                keyStore = mockk(relaxed = true),
+                pairingDirectory = directory,
+                pairingPublicKeyProvider = object : IrohPairingPublicKeyProviding {
+                    override suspend fun fetchPublicKey(uid: String): ByteArray = pairingPublicKeyRaw
+                },
+                transportFactory = { clientTransport },
+                auth = auth,
+            )
+        val payload = chatCompletionsRelayPayload(connectionId)
+        val requestReceived = CompletableDeferred<Unit>()
+        val server = async {
+            val stream = hostTransport.accept(timeoutMillis = 5_000)
+            stream.receive()
+            requestReceived.complete(Unit)
+            runCatching { stream.receive() }
+        }
+        val exchangeOutcome = CompletableDeferred<Result<Unit>>()
+        backgroundScope.launch {
+            exchangeOutcome.complete(runCatching { transport.sendStreaming(payload, 5_000) {} })
+        }
+        requestReceived.await()
+
+        currentUid = "uid-after-replacement"
+        val transition = HermesAuthLifecycleRegistry.holdAuthTransitionGate()
+        HermesAuthLifecycleRegistry.closeResourcesForTransition(transition)
+
+        assertTrue(exchangeOutcome.await().isFailure)
+        assertTrue(runCatching { transport.sendUnary(payload, 1_000) }.isFailure)
+        HermesAuthLifecycleRegistry.releaseAuthTransitionGate(transition)
+        server.await()
+        hostTransport.shutdown()
+    }
+
+    @Test
+    fun requestStreamRoutesSessionGrantChallengeBeforeRequestIdCorrelation() = runTest {
+        val uid = "uid-challenge"
+        val connectionId = "conn-challenge"
+        val hostTransport = LoopbackIrohRelayTransport(rendezvous, nodeId = "host-$connectionId")
+        val clientTransport = LoopbackIrohRelayTransport(rendezvous, nodeId = "client-$connectionId")
+        hostTransport.start()
+        clientTransport.start()
+        val received = mutableListOf<ComputerUseSessionGrantChallengeDelivery>()
+        val (transport, _) =
+            makeTransport(
+                uid = uid,
+                connectionId = connectionId,
+                clientTransport = clientTransport,
+                sessionGrantChallengeHandler = { received += it },
+            )
+        val payload =
+            HermesRelayPayload(
+                operation = "models",
+                method = "GET",
+                path = "/v1/models",
+                connectionID = connectionId,
+                relayPublicKey = Base64.getEncoder().encodeToString(relayPublicX963),
+            )
+        val challenge = sessionGrantChallenge()
+        val challengeFrame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.CONTROL_SESSION_GRANT_CHALLENGE,
+                uid = uid,
+                connectionId = connectionId,
+                requestId = null,
+                control = HermesRealtimeRelayControlPayload(sessionGrantChallenge = challenge),
+            )
+
+        val server =
+            async {
+                val stream = hostTransport.accept(timeoutMillis = 5_000)
+                handleSingleRequest(
+                    stream = stream,
+                    chunks = listOf("ok" to HermesRelayChunkKind.DATA),
+                    beforeResponse = listOf(challengeFrame),
+                )
+            }
+        assertEquals("ok", transport.sendUnary(payload, timeoutMillis = 5_000))
+        server.await()
+
+        assertEquals(listOf(challenge.challengeId), received.map { it.challenge.challengeId })
+        assertEquals("host-$connectionId", received.single().route.authenticatedRemoteNodeId)
+        assertEquals(uid, received.single().route.uid)
+        assertEquals(connectionId, received.single().route.connectionId)
         clientTransport.shutdown()
         hostTransport.shutdown()
     }
@@ -539,6 +678,8 @@ class HermesIrohRelayTransportTest {
         uid: String,
         connectionId: String,
         clientTransport: IrohRelayTransport,
+        sessionGrantChallengeHandler: (ComputerUseSessionGrantChallengeDelivery) -> Unit = {},
+        controllerRouteRegistrar: IrohControllerRouteRegistering? = null,
     ): Pair<HermesIrohRelayTransport, InMemoryIrohPairingDirectory> {
         val directory = InMemoryIrohPairingDirectory()
         val nodeId = "host-$connectionId"
@@ -557,6 +698,8 @@ class HermesIrohRelayTransportTest {
                 transportFactory = { _ -> clientTransport },
                 auth = fakeAuth(uid),
                 connectTimeoutMillis = 2_000,
+                sessionGrantChallengeHandler = sessionGrantChallengeHandler,
+                controllerRouteRegistrar = controllerRouteRegistrar,
             )
         return transport to directory
     }
@@ -566,7 +709,11 @@ class HermesIrohRelayTransportTest {
      * read REQUEST_START → unwrap symmetric key (keyAAD) → open body
      * (requestAAD) → emit `chunks` then RESPONSE_COMPLETE.
      */
-    private suspend fun handleSingleRequest(stream: IrohRelayStream, chunks: List<Pair<String, HermesRelayChunkKind>>) {
+    private suspend fun handleSingleRequest(
+        stream: IrohRelayStream,
+        chunks: List<Pair<String, HermesRelayChunkKind>>,
+        beforeResponse: List<HermesRealtimeRelayFrame> = emptyList(),
+    ) {
         val incoming = stream.receive() ?: return
         val framePayload = incoming.payload ?: return
         val keyData =
@@ -582,11 +729,38 @@ class HermesIrohRelayTransportTest {
             aad = HermesRelayCrypto.requestAAD(incoming.uid, incoming.connectionId, incoming.requestId.orEmpty()),
         )
 
+        beforeResponse.forEach { stream.send(it) }
+
         chunks.forEachIndexed { index, (text, kind) ->
             sendChunk(stream = stream, frame = incoming, keyData = keyData, sequence = index, kind = kind, text = text)
         }
         sendComplete(stream = stream, frame = incoming, chunkCount = chunks.size)
     }
+
+    private fun sessionGrantChallenge() = HermesRealtimeRelaySessionGrantChallenge(
+        version = 1,
+        challengeId = "challenge-00000001",
+        nonce = "0123456789abcdef0123456789abcdef",
+        issuedAt = 800_000_000.0,
+        expiresAt = 800_000_300.0,
+        sessionIntentId = "session-intent-1",
+        runtime = "codex",
+        threadId = "thread-linux-1",
+        preset = "desktop",
+        capabilities = listOf("desktop_browser"),
+        mode = "browser",
+        trustMode = "manual",
+        scopeRuleIds = listOf("workspace-only"),
+        phoneViewerNodeId = "phone-viewer-1",
+        macHostNodeId = "linux-host-1",
+        actionCap = 50,
+        sessionTimeoutSeconds = 1_800,
+        clientId = "linux-desktop",
+        runId = "run-42",
+        runCallId = "call-7",
+        runGeneration = 4,
+        desktopOwnerAuthorizationMethod = "linux_desktop_owner",
+    )
 
     private suspend fun sendChunk(
         stream: IrohRelayStream,

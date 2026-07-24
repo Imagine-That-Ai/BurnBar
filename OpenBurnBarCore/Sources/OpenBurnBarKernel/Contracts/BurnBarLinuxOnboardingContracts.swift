@@ -24,6 +24,21 @@ public enum BurnBarLinuxOnboardingStepState: String, Codable, Hashable, Sendable
     case skipped
 }
 
+/// Daemon-owned repair routing for a failed onboarding probe. The renderer may
+/// use this to choose copy or a native settings route, but it cannot clear a
+/// failure or mark a step complete itself.
+public enum BurnBarLinuxOnboardingRepairAction: String, Codable, Hashable, Sendable {
+    case startDaemon = "start_daemon"
+    case unlockSecretStore = "unlock_secret_store"
+    case repairProviderData = "repair_provider_data"
+    case signIn = "sign_in"
+    case grantPortal = "grant_portal"
+    case enableTray = "enable_tray"
+    case openUpdates = "open_updates"
+    case choosePrivacy = "choose_privacy"
+    case retry
+}
+
 public struct BurnBarLinuxOnboardingStepSnapshot: Codable, Hashable, Sendable {
     public let id: BurnBarLinuxOnboardingStepID
     public let requirement: BurnBarLinuxOnboardingRequirement
@@ -31,6 +46,7 @@ public struct BurnBarLinuxOnboardingStepSnapshot: Codable, Hashable, Sendable {
     public let attemptCount: Int
     public let detail: String?
     public let verifiedAt: String?
+    public let repairAction: BurnBarLinuxOnboardingRepairAction?
 
     public init(
         id: BurnBarLinuxOnboardingStepID,
@@ -38,7 +54,8 @@ public struct BurnBarLinuxOnboardingStepSnapshot: Codable, Hashable, Sendable {
         state: BurnBarLinuxOnboardingStepState = .pending,
         attemptCount: Int = 0,
         detail: String? = nil,
-        verifiedAt: String? = nil
+        verifiedAt: String? = nil,
+        repairAction: BurnBarLinuxOnboardingRepairAction? = nil
     ) {
         self.id = id
         self.requirement = requirement
@@ -46,6 +63,7 @@ public struct BurnBarLinuxOnboardingStepSnapshot: Codable, Hashable, Sendable {
         self.attemptCount = attemptCount
         self.detail = detail
         self.verifiedAt = verifiedAt
+        self.repairAction = repairAction
     }
 }
 

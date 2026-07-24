@@ -56,6 +56,7 @@ public actor OpenBurnBarPlaywrightDriver {
         public let userDataDirectory: URL?
         public let headless: Bool
         public let perActionTimeoutMillis: Int
+        public let processEnvironment: [String: String]?
 
         public init(
             nodeExecutablePath: String,
@@ -63,7 +64,8 @@ public actor OpenBurnBarPlaywrightDriver {
             browserChannel: String? = nil,
             userDataDirectory: URL? = nil,
             headless: Bool = false,
-            perActionTimeoutMillis: Int = 10_000
+            perActionTimeoutMillis: Int = 10_000,
+            processEnvironment: [String: String]? = nil
         ) {
             self.nodeExecutablePath = nodeExecutablePath
             self.bridgeScriptPath = bridgeScriptPath
@@ -71,6 +73,7 @@ public actor OpenBurnBarPlaywrightDriver {
             self.userDataDirectory = userDataDirectory
             self.headless = headless
             self.perActionTimeoutMillis = perActionTimeoutMillis
+            self.processEnvironment = processEnvironment
         }
     }
 
@@ -133,7 +136,7 @@ public actor OpenBurnBarPlaywrightDriver {
         args += ["--session-id", sessionId.rawValue]
         args += ["--per-action-timeout-ms", "\(configuration.perActionTimeoutMillis)"]
         process.arguments = args
-        process.environment = environmentWithNodePath()
+        process.environment = childProcessEnvironment()
         process.standardInput = stdin
         process.standardOutput = stdout
         process.standardError = stderr
@@ -179,8 +182,24 @@ public actor OpenBurnBarPlaywrightDriver {
         }
     }
 
-    private func environmentWithNodePath() -> [String: String] {
-        var environment = ProcessInfo.processInfo.environment
+    func childProcessEnvironment() -> [String: String] {
+        let inherited = configuration.processEnvironment ?? ProcessInfo.processInfo.environment
+        if inherited["OPENBURNBAR_PACKAGED_PLAYWRIGHT_RUNTIME"] == "1" {
+            let allowedKeys: Set<String> = [
+                "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TZ",
+                "DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR",
+                "DBUS_SESSION_BUS_ADDRESS", "DESKTOP_SESSION", "XDG_CURRENT_DESKTOP",
+                "TMPDIR", "LD_LIBRARY_PATH"
+            ]
+            var environment = inherited.filter { allowedKeys.contains($0.key) }
+            environment["PATH"] = "/usr/sbin:/usr/bin:/sbin:/bin"
+            environment["OPENBURNBAR_PACKAGED_PLAYWRIGHT_RUNTIME"] = "1"
+            environment["NODE_PATH"] = "/usr/lib/node_modules"
+            environment["PLAYWRIGHT_BROWSERS_PATH"] = "/usr/lib/openburnbar/playwright-browsers"
+            return environment
+        }
+
+        var environment = inherited
         if let nodePath = environment["NODE_PATH"], !nodePath.isEmpty {
             return environment
         }

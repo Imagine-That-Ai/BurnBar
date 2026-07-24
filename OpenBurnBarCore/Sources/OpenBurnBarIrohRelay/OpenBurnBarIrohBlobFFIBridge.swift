@@ -1,7 +1,9 @@
 // Bridge for the iroh-blobs side of the Mercury media rollout. Wraps the
 // UniFFI-generated `IrohBlobNode` from `OpenBurnBarIrohFFI` and surfaces
-// it as `IrohBlobBackend`. Conditional on `canImport(OpenBurnBarIrohFFI)`
-// so the SwiftPM package keeps compiling before the xcframework reships.
+// it as `IrohBlobBackend`. Apple builds import it from the XCFramework; Linux
+// release builds import it through the cdylib-backed SwiftPM Clang shim.
+// Other targets may compile without the module, while shipping release gates
+// fail closed when their native artifact is absent.
 //
 // See `crates/openburnbar-iroh/src/blobs.rs` for the Rust side and
 // `docs/HERMES_MEDIA_TRANSPORT.md` § Phase 1 for the architecture.
@@ -108,7 +110,9 @@ public final class OpenBurnBarIrohBlobFFIBackend: IrohBlobBackend, @unchecked Se
         }
     }
 
-    private func withFFI<T>(_ block: @escaping () throws -> T) async throws -> T {
+    private func withFFI<T: Sendable>(
+        _ block: @escaping @Sendable () throws -> T
+    ) async throws -> T {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
             queue.async {
                 do {

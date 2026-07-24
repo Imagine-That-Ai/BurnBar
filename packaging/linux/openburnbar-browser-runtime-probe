@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Read-only Browser Computer Use runtime probe. This command never installs or
+# modifies Node, Playwright, Chromium, or package-owned files.
+set -u
+
+APPIMAGE_ROOT=""
+if [[ -n "${APPDIR:-}" ]]; then
+  appdir_real="$(readlink -f "${APPDIR}" 2>/dev/null || true)"
+  script_real="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || true)"
+  case "${script_real}" in
+    "${appdir_real}"/*) APPIMAGE_ROOT="${appdir_real}" ;;
+  esac
+fi
+
+if [[ -n "${APPIMAGE_ROOT}" ]]; then
+  bridge="${APPIMAGE_ROOT}/usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js"
+else
+  bridge="/usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js"
+fi
+
+if [[ ! -f "${bridge}" || -L "${bridge}" ]]; then
+  printf '%s\n' '{"schemaVersion":1,"ready":false,"reason":"packaged_bridge_missing"}'
+  exit 1
+fi
+
+node_path="/usr/bin/node"
+if [[ ! -x "${node_path}" ]]; then
+  printf '%s\n' '{"schemaVersion":1,"ready":false,"reason":"node_missing"}'
+  exit 1
+fi
+
+node_path="$(readlink -f "${node_path}" 2>/dev/null || printf '%s' "${node_path}")"
+node_owner="$(stat -c '%u' "${node_path}" 2>/dev/null || printf 'unknown')"
+node_mode="$(stat -c '%a' "${node_path}" 2>/dev/null || printf 'unknown')"
+if [[ "${node_owner}" != "0" || "${node_mode}" == "unknown" || $((8#${node_mode} & 8#022)) -ne 0 ]]; then
+  printf '%s\n' '{"schemaVersion":1,"ready":false,"reason":"node_untrusted"}'
+  exit 1
+fi
+
+unset NODE_OPTIONS
+OPENBURNBAR_PACKAGED_PLAYWRIGHT_RUNTIME=1 \
+NODE_PATH="/usr/lib/node_modules" \
+PLAYWRIGHT_BROWSERS_PATH="/usr/lib/openburnbar/playwright-browsers" \
+  exec "${node_path}" "${bridge}" --probe-runtime

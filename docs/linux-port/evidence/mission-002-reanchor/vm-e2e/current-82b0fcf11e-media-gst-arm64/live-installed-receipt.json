@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-19T12:17:23Z",
+  "environment": {
+    "vm": "OpenBurnBar Linux",
+    "ip": "192.168.64.5",
+    "os": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME/X11"
+  },
+  "source": {
+    "sourceCommit": "82b0fcf11e",
+    "buildFeatures": ["media-gst"],
+    "scope": "The latest source files from 82b0fcf11e were copied into the VM checkout and rebuilt into this arm64 DEB. The package was installed over the prior media-gst receipt and the daemon plus shell were restarted. This remains an unsigned VM build, not a signed exact-head candidate."
+  },
+  "candidate": {
+    "package": "open-burn-bar",
+    "packageVersion": "0.1.1",
+    "packageArchitecture": "arm64",
+    "packagePath": "/home/burnbar/BurnBar/apps/linux-desktop/src-tauri/target/release/bundle/deb/OpenBurnBar_0.1.1_arm64.deb",
+    "packageSha256": "604b3e05a8adff90a54c05b0b529eee9509c857287114b19175c3ae7b4f7cb01",
+    "packageBytes": 151388968,
+    "packageStatus": "install ok installed",
+    "installedPeers": {
+      "/usr/bin/openburnbar-daemon": {
+        "sha256": "fb0f87ccc0638f84c2ba9f2a34ca97f8cec707534a5473f19bf6f317291c480c",
+        "mode": "0755",
+        "uid": 0
+      },
+      "/usr/bin/openburnbar-cli": {
+        "sha256": "db0d6931ca8644a91f78ee3dccac27364bab5a373e63917a53915cf836e180e5",
+        "mode": "0755",
+        "uid": 0
+      },
+      "/usr/bin/openburnbar-linux-desktop": {
+        "sha256": "27554a63dc650a3c331587d098b8007821d75ee604c32f1bc8e3d234d7d1d9e0",
+        "mode": "0755",
+        "uid": 0
+      }
+    }
+  },
+  "service": {
+    "unit": "openburnbar-daemon.service",
+    "enabled": true,
+    "active": true,
+    "mainPID": 79543,
+    "execMainStatus": 0,
+    "health": "Daemon 1.0.29 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true",
+    "desktopPID": 80052,
+    "peerRejectionsAfterRestart": 0
+  },
+  "verification": {
+    "mediaUIVitest": "33/33 passed on Ubuntu VM",
+    "petUI": "28/28 passed",
+    "nativeNotificationRust": "4/4 passed",
+    "typescript": "npx tsc --noEmit passed",
+    "productionBundle": "Vite 307 modules plus verify-linux-production-bundle passed",
+    "tauriMediaGstRustTests": "5/5 passed with media-gst and 5/5 passed without media-gst",
+    "linuxMercuryMediaTests": "21/21 passed with OPENBURNBAR_LINUX_IROH_LIBRARY_DIR and packaged SQLCipher",
+    "linuxOnboardingTests": "6/6 passed with health-before-write locked-backend coverage",
+    "projectCodeMemoryBootstrapTests": "3/3 passed with packaged FTS5-capable SQLCipher",
+    "linuxPeerCredentialTest": "1/1 passed on Ubuntu VM",
+    "bareCLIHealth": "pass",
+    "webkitRuntime": "desktop stayed up; WebGL GBM fallback was non-fatal",
+    "gstreamerLinkedLibraries": [
+      "libgstapp-1.0.so.0",
+      "libgstbase-1.0.so.0",
+      "libgstreamer-1.0.so.0",
+      "libgstvideo-1.0.so.0"
+    ],
+    "gstreamerRuntimeProbes": {
+      "version": "1.24.2",
+      "vp9dec": true,
+      "waylandsink": true,
+      "ximagesink": true,
+      "glimagesink": true,
+      "pipewiresink": true,
+      "vp9PipelineSmoke": "gst-launch-1.0 videotestsrc num-buffers=1 ! vp9enc ! vp9dec ! fakesink exited 0"
+    },
+    "runtimeLog": "One desktop PID remained running after installation; no media viewer stub, panic, or fatal startup message was observed. The only graphics warning was the non-fatal GBM/WebGL fallback."
+  },
+  "references": {
+    "daemonMediaCapability": "../current-a570c9b087/live-receipt.json",
+    "sourceReceipt": "../current-fdbc7d718b-media-gst-arm64/live-ui-media-gst-receipt.json"
+  },
+  "certifying": false,
+  "nonCertifyingReasons": [
+    "The package is an unsigned arm64 VM build and is not a signed exact-head candidate with release provenance.",
+    "The strict parity ledger remains 0/40 product rows and 0/7 environment rows.",
+    "Physical iPad/Linux enrollment, two-device file transfer/call/screen-share, Computer Use, production, keyring/IME, update/rollback, and compositor-matrix receipts remain open."
+  ]
+}

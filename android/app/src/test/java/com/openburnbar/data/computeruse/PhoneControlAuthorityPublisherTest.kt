@@ -1,6 +1,7 @@
 package com.openburnbar.data.computeruse
 
 import java.util.Base64
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -113,6 +114,31 @@ class PhoneControlAuthorityPublisherTest {
         assertEquals("se-p256", doc.asMap()["keyKind"])
     }
 
+    @Test
+    fun publisherBindsBothAuthorityCallablesToExpectedUid() = runTest {
+        val callables = RecordingAuthorityCallables()
+        val publisher = PhoneControlAuthorityPublisher(securityCallables = callables)
+        val authority =
+            PhoneControlAuthorityDocumentFactory.document(
+                connectionId = "conn-1",
+                deviceId = "android-device-1",
+                publicKey = publicKey,
+                publishedAtMillis = 1_700_000_000_123L,
+            )
+
+        publisher.publish(uid = " uid-a ", authority = authority)
+        publisher.publishAgentGrantAuthority(
+            uid = " uid-a ",
+            sourceDeviceId = "trusted-device-1",
+            authority = authority,
+        )
+
+        assertEquals("uid-a", callables.phoneControlExpectedUid)
+        assertEquals("uid-a", callables.agentGrantExpectedUid)
+        assertEquals("trusted-device-1", callables.agentGrantDeviceId)
+        assertEquals(authority, callables.phoneControlAuthority)
+    }
+
     private fun softwareP256Identity(): PhoneControlSigningIdentity.SecureEnclaveP256 {
         val generator = java.security.KeyPairGenerator.getInstance("EC")
         generator.initialize(java.security.spec.ECGenParameterSpec("secp256r1"))
@@ -121,5 +147,22 @@ class PhoneControlAuthorityPublisherTest {
             pair.private,
             pair.public as? java.security.interfaces.ECPublicKey ?: error("expected EC public key"),
         )
+    }
+
+    private class RecordingAuthorityCallables : PhoneControlAuthorityPublishingCallables {
+        var phoneControlExpectedUid: String? = null
+        var phoneControlAuthority: PhoneControlAuthorityDoc? = null
+        var agentGrantExpectedUid: String? = null
+        var agentGrantDeviceId: String? = null
+
+        override suspend fun publishPhoneControlAuthority(expectedUid: String, authority: PhoneControlAuthorityDoc) {
+            phoneControlExpectedUid = expectedUid
+            phoneControlAuthority = authority
+        }
+
+        override suspend fun publishAgentGrantAuthority(expectedUid: String, deviceId: String, peerNodeId: String, publicKeyBase64: String, keyKind: String?) {
+            agentGrantExpectedUid = expectedUid
+            agentGrantDeviceId = deviceId
+        }
     }
 }

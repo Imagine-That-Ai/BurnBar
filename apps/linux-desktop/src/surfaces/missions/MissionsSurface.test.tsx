@@ -20,6 +20,8 @@ function resetStores(): void {
     loading: false,
     error: null,
     approvalById: {},
+    questionById: {},
+    resumeById: {},
     creating: false,
     createError: null
   });
@@ -86,6 +88,40 @@ describe('MissionsSurface', () => {
     renderMissions();
     expect(screen.getByRole('alert').textContent).toContain('Daemon unreachable');
     expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy();
+  });
+
+  it('keeps the last mission snapshot visible when a refresh fails', async () => {
+    const fx = fixtureMissionList();
+    let shouldFail = false;
+    const load = vi.spyOn(useMissionsStore.getState(), 'load').mockImplementation(async () => {
+      if (shouldFail) {
+        useMissionsStore.setState({ data: null, loading: false, error: 'Daemon temporarily unavailable' });
+      } else {
+        useMissionsStore.setState({ data: fx, loading: false, error: null });
+      }
+    });
+    useShellStore.setState({ fixtureMode: true });
+    useMissionsStore.setState({ data: fx, loading: false, error: null });
+    renderMissions();
+
+    shouldFail = true;
+    await act(async () => {
+      await useMissionsStore.getState().load();
+    });
+
+    expect(screen.getByText('Port dashboard to Linux')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('Showing the last mission snapshot');
+    expect(screen.getByRole('alert').textContent).toContain('Daemon temporarily unavailable');
+
+    shouldFail = false;
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Retry$/i }));
+      await Promise.resolve();
+    });
+
+    expect(load).toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('Port dashboard to Linux')).toBeTruthy();
   });
 
   it('shows offline notice without bridge', async () => {
@@ -191,6 +227,62 @@ describe('MissionsSurface', () => {
     expect(live?.textContent).toMatch(/denied: refactor provider routing/i);
   });
 
+  it('renders and answers daemon-owned pending questions', async () => {
+    const initial: MissionListResult = {
+      missions: [],
+      pendingApprovals: [],
+      pendingQuestions: [{
+        id: 'q-rollout',
+        projectSlug: 'burnbar',
+        title: 'Choose rollout lane',
+        prompt: 'Which rollout lane should continue?',
+        status: 'pending',
+        priority: 'high',
+        askedAt: '2026-07-20T10:00:00Z',
+        answerPlaceholder: 'Choose a lane',
+        contextSummary: 'The safe lane retains review gates.',
+        evidenceRefs: ['evidence://rollout'],
+        suggestedOptions: [{
+          id: 'option-safe',
+          title: 'Safe lane',
+          detail: 'Keep review gates enabled.',
+          answer: 'Continue through the safe lane.'
+        }]
+      }]
+    };
+    const afterAnswer: MissionListResult = { ...initial, pendingQuestions: [] };
+    const questionAnswer = vi.fn().mockResolvedValue({
+      ...initial.pendingQuestions![0],
+      status: 'answered'
+    });
+    const missionList = vi.fn().mockResolvedValue(afterAnswer);
+    const bridge = { missionList, questionAnswer } as unknown as LinuxShellBridge;
+    useShellStore.setState({ fixtureMode: false, bridge });
+    stubLoad(() => useMissionsStore.setState({ data: initial, loading: false, error: null }));
+    useMissionsStore.setState({ data: initial, loading: false, error: null });
+
+    renderMissions();
+    expect(screen.getByRole('heading', { name: 'Pending questions' })).toBeTruthy();
+    expect(screen.getByText('Which rollout lane should continue?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: /safe lane/i }));
+    expect((screen.getByRole('textbox', { name: 'Answer' }) as HTMLTextAreaElement).value)
+      .toBe('Continue through the safe lane.');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Submit answer' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(questionAnswer).toHaveBeenCalledWith({
+      questionId: 'q-rollout',
+      answer: 'Continue through the safe lane.',
+      selectedOptionId: 'option-safe'
+    });
+    expect(document.querySelector('[aria-live="assertive"]')?.textContent)
+      .toMatch(/answered: choose rollout lane/i);
+  });
+
   it('files a new mission through daemon.mission.create and reloads after success', async () => {
     const initial = fixtureMissionList();
     const missionCreate = vi.fn().mockResolvedValue({
@@ -281,5 +373,175 @@ describe('MissionsSurface', () => {
       vi.advanceTimersByTime(60_000);
     });
     expect(loadImpl.mock.calls.length).toBe(afterUnmount);
+  });
+
+  it('expands canonical packet/result/evidence detail and states health is not requested', async () => {
+    const mission: MissionListResult['missions'][number] = {
+      id: 'm-detail',
+      title: 'Inspect mission',
+      state: 'in_progress',
+      updatedAt: new Date().toISOString(),
+      laneCount: 1,
+      summary: 'Mission summary',
+      packets: [{
+        id: 'packet-1', workerName: 'worker-a', objective: 'Run task', status: 'completed', metadata: {}
+      }],
+      results: [{
+        id: 'result-1', status: 'succeeded', summary: 'Task complete', burnDelta: 0,
+        createdAt: new Date().toISOString(), evidenceRefs: ['evidence.json'], metadata: {}
+      }]
+    };
+    const list: MissionListResult = { missions: [mission], pendingApprovals: [] };
+    const missionGet = vi.fn().mockResolvedValue(mission);
+    const bridge = { missionList: vi.fn().mockResolvedValue(list), missionGet } as unknown as LinuxShellBridge;
+    useShellStore.setState({ fixtureMode: false, bridge });
+    stubLoad(() => useMissionsStore.setState({ data: list, loading: false, error: null }));
+    useMissionsStore.setState({ data: list, loading: false, error: null });
+
+    renderMissions();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(missionGet).toHaveBeenCalledWith('m-detail');
+    expect(screen.getByText('Packets / tasks')).toBeTruthy();
+    expect(screen.getByText('Task complete')).toBeTruthy();
+    expect(screen.getByText(/Evidence: evidence\.json/)).toBeTruthy();
+    expect(screen.getByText('Health check not requested.')).toBeTruthy();
+  });
+
+  it('renders daemon-owned mission health and controller history when available', async () => {
+    const mission: MissionListResult['missions'][number] = {
+      id: 'm-health',
+      title: 'Healthy mission',
+      state: 'in_progress',
+      updatedAt: new Date().toISOString(),
+      laneCount: 1,
+      summary: 'Mission summary',
+      packets: [{ id: 'packet-1', workerName: 'worker-a', objective: 'Run task', status: 'running', metadata: {} }],
+      results: []
+    };
+    const list: MissionListResult = { missions: [mission], pendingApprovals: [] };
+    const missionHealth = vi.fn().mockResolvedValue({
+      missionId: 'm-health',
+      health: {
+        status: 'healthy',
+        detail: 'One packet is active.',
+        checkedAt: new Date().toISOString(),
+        lastActivityAt: new Date().toISOString(),
+        activePacketCount: 1,
+        failedResultCount: 0
+      },
+      history: [{
+        id: 'packet:packet-1',
+        kind: 'packet',
+        status: 'running',
+        summary: 'Worker is running.',
+        occurredAt: new Date().toISOString(),
+        metadata: {}
+      }]
+    });
+    const bridge = {
+      missionList: vi.fn().mockResolvedValue(list),
+      missionGet: vi.fn().mockResolvedValue(mission),
+      missionHealth
+    } as unknown as LinuxShellBridge;
+    useShellStore.setState({ fixtureMode: false, bridge });
+    stubLoad(() => useMissionsStore.setState({ data: list, loading: false, error: null }));
+    useMissionsStore.setState({ data: list, loading: false, error: null });
+
+    renderMissions();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(missionHealth).toHaveBeenCalledWith('m-health');
+    expect(screen.getByText(/healthy — One packet is active\./)).toBeTruthy();
+    expect(screen.getByText('Worker is running.')).toBeTruthy();
+  });
+
+  it('makes Inspect logs load and reveal the canonical mission detail', async () => {
+    const mission: MissionListResult['missions'][number] = {
+      id: 'm-inspect',
+      title: 'Inspectable mission',
+      state: 'in_progress',
+      updatedAt: new Date().toISOString(),
+      laneCount: 1,
+      summary: 'Mission detail summary',
+      packets: [],
+      results: []
+    };
+    const list: MissionListResult = { missions: [mission], pendingApprovals: [] };
+    const missionGet = vi.fn().mockResolvedValue(mission);
+    const bridge = { missionList: vi.fn().mockResolvedValue(list), missionGet } as unknown as LinuxShellBridge;
+    useShellStore.setState({ fixtureMode: false, bridge });
+    stubLoad(() => useMissionsStore.setState({ data: list, loading: false, error: null }));
+    useMissionsStore.setState({ data: list, loading: false, error: null });
+
+    renderMissions();
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect logs' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(missionGet).toHaveBeenCalledWith('m-inspect');
+    expect(screen.getByText('Packets / tasks')).toBeTruthy();
+    expect(screen.getByText('Mission detail summary')).toBeTruthy();
+  });
+
+  it('requires confirmation and calls canonical mission.cancel', async () => {
+    const mission: MissionListResult['missions'][number] = {
+      id: 'm-cancel',
+      title: 'Cancelable mission',
+      state: 'in_progress',
+      updatedAt: new Date().toISOString(),
+      laneCount: 0
+    };
+    const list: MissionListResult = { missions: [mission], pendingApprovals: [] };
+    const missionCancel = vi.fn().mockResolvedValue({ ...mission, state: 'cancelled' });
+    const bridge = { missionList: vi.fn().mockResolvedValue(list), missionCancel } as unknown as LinuxShellBridge;
+    useShellStore.setState({ fixtureMode: false, bridge });
+    stubLoad(() => useMissionsStore.setState({ data: list, loading: false, error: null }));
+    useMissionsStore.setState({ data: list, loading: false, error: null });
+
+    renderMissions();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel mission' }));
+    expect(screen.getByRole('button', { name: 'Confirm cancel' })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm cancel' }));
+      await Promise.resolve();
+    });
+    expect(missionCancel).toHaveBeenCalledWith('m-cancel', 'Cancelled from Linux mission control.');
+  });
+
+  it('dispatches a daemon-owned packet when a live mission can resume', async () => {
+    const mission: MissionListResult['missions'][number] = {
+      id: 'm-resume',
+      title: 'Resume mission',
+      state: 'blocked',
+      updatedAt: new Date().toISOString(),
+      laneCount: 1,
+      summary: 'Recover from the latest checkpoint.'
+    };
+    const list: MissionListResult = { missions: [mission], pendingApprovals: [] };
+    const missionResume = vi.fn().mockResolvedValue({ ...mission, state: 'dispatching' });
+    const bridge = { missionList: vi.fn().mockResolvedValue(list), missionResume } as unknown as LinuxShellBridge;
+    useShellStore.setState({ fixtureMode: false, bridge });
+    stubLoad(() => useMissionsStore.setState({ data: list, loading: false, error: null }));
+    useMissionsStore.setState({ data: list, loading: false, error: null });
+
+    renderMissions();
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(missionResume).toHaveBeenCalledWith('m-resume');
+    expect(document.querySelector('[aria-live="assertive"]')?.textContent).toContain('Resumed: Resume mission');
   });
 });

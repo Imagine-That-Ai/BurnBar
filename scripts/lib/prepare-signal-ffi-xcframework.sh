@@ -17,6 +17,61 @@ legacy_xcframework="$repo_root/Vendor/OpenBurnBarSignalFfi.xcframework"
 build_script="$repo_root/scripts/build-signal-ffi-xcframework.sh"
 metadata_file_name=".openburnbar-signal-ffi-build.env"
 
+# The build script historically writes small staging files under
+# build/signal-ffi-xcframework and large Rust intermediates under the vendored
+# submodule's target/.  Physical-device XCTest runs can redirect both roots to
+# a caller-owned scratch directory.  Keep the aliases here so callers can set
+# either the public SIGNAL_FFI_* names or the OpenBurnBar-prefixed names.
+resolve_root_override() {
+  local canonical_name="$1"
+  local alias_name="$2"
+  local raw=""
+
+  if [[ "${!canonical_name+x}" == "x" ]]; then
+    raw="${!canonical_name}"
+  elif [[ "${!alias_name+x}" == "x" ]]; then
+    raw="${!alias_name}"
+  fi
+
+  if [[ -z "$raw" ]]; then
+    if [[ "${!canonical_name+x}" == "x" || "${!alias_name+x}" == "x" ]]; then
+      echo "${canonical_name} cannot be empty." >&2
+      exit 64
+    fi
+    return 0
+  fi
+
+  if [[ "$raw" != /* ]]; then
+    echo "${canonical_name} must be an absolute path: ${raw}" >&2
+    exit 64
+  fi
+
+  # Resolve existing symlink components before the child build script creates
+  # anything. This keeps a configured scratch root from escaping through a
+  # pre-existing symlink.
+  python3 - "$raw" <<'PY'
+import os
+import sys
+
+resolved = os.path.realpath(sys.argv[1])
+if not resolved.startswith('/'):
+    raise SystemExit(64)
+print(resolved)
+PY
+}
+
+signal_ffi_build_root="$(resolve_root_override SIGNAL_FFI_BUILD_ROOT OPENBURNBAR_SIGNAL_FFI_BUILD_ROOT)"
+signal_ffi_cargo_target_root="$(resolve_root_override SIGNAL_FFI_CARGO_TARGET_ROOT OPENBURNBAR_SIGNAL_FFI_CARGO_TARGET_ROOT)"
+
+# Supplying one root is enough to keep the entire FFI build isolated. Explicit
+# values for both roots remain supported for callers that partition staging and
+# Cargo output onto separate volumes.
+if [[ -n "$signal_ffi_build_root" && -z "$signal_ffi_cargo_target_root" ]]; then
+  signal_ffi_cargo_target_root="$signal_ffi_build_root/cargo-target"
+elif [[ -z "$signal_ffi_build_root" && -n "$signal_ffi_cargo_target_root" ]]; then
+  signal_ffi_build_root="$signal_ffi_cargo_target_root/build"
+fi
+
 resolve_requested_profile() {
   if [[ -n "${SIGNAL_FFI_BUILD_PROFILE:-}" ]]; then
     case "${SIGNAL_FFI_BUILD_PROFILE}" in
@@ -162,6 +217,14 @@ if ! command -v cargo >/dev/null 2>&1 && [[ ! -x "$HOME/.cargo/bin/cargo" ]]; th
 fi
 
 echo ">>> Building ${requested_profile} Signal FFI XCFramework artifacts for Xcode tests."
-SIGNAL_FFI_BUILD_PROFILE="${requested_profile}" \
-CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" \
-  bash "$build_script"
+build_environment=(
+  "SIGNAL_FFI_BUILD_PROFILE=${requested_profile}"
+  "CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-2}"
+)
+if [[ -n "$signal_ffi_build_root" ]]; then
+  build_environment+=("SIGNAL_FFI_BUILD_ROOT=${signal_ffi_build_root}")
+fi
+if [[ -n "$signal_ffi_cargo_target_root" ]]; then
+  build_environment+=("SIGNAL_FFI_CARGO_TARGET_ROOT=${signal_ffi_cargo_target_root}")
+fi
+env "${build_environment[@]}" bash "$build_script"

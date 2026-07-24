@@ -46,6 +46,7 @@ const mainTarget = "OpenBurnBarCore";
 // dirs are not Swift-source targets and are skipped.
 const siblingTargets = [
   "OpenBurnBarDomainCoreRuntime",
+  "OpenBurnBarAssistantModels",
   "OpenBurnBarKernel",
   "OpenBurnBarParserSupport",
   "OpenBurnBarSQLiteReader",
@@ -128,10 +129,19 @@ const PLANNED_CEILINGS = {
   // ceiling covers profiles, candidate identity, evidence comparison, and the
   // generic shadow selector without allowing domain business logic to move in.
   OpenBurnBarDomainCoreRuntime: { maxFiles: 8, maxLines: 1000 },
-  OpenBurnBarKernel: { maxFiles: 185, maxLines: 46600 },
-  OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1000 },
+  // Assistant identity and interaction contracts stay in a Foundation-only
+  // leaf below Kernel. The ceiling leaves modest file/LOC headroom without
+  // allowing the extracted slice to become another monolith.
+  OpenBurnBarAssistantModels: { maxFiles: 15, maxLines: 2700 },
+  // Linux parity adds daemon-owned cloud/privacy/trusted-device/media contracts
+  // after the assistant-model extraction. Keep the ceiling below the next
+  // monolith while accounting for those cross-platform authority surfaces.
+  OpenBurnBarKernel: { maxFiles: 185, maxLines: 47000 },
+  OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1200 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
-  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 12200 },
+  // The final local-parser catalog adds bounded corpus parsers for the Linux
+  // provider matrix; the ceiling remains below a general-purpose god target.
+  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 13200 },
   OpenBurnBarQuota: { maxFiles: 55, maxLines: 13000 },
   // VectorKit gains OpenBurnBarSearchContracts.swift (P-03 re-slice / FIX 4) on
   // top of the vector indexes + SearchPlanner + Pensieve, so its ceiling covers

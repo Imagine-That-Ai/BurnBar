@@ -35,6 +35,33 @@ describe('OpenAICompatibleSSEParser', () => {
     ]);
   });
 
+  it('preserves a daemon-issued approval identity without inventing one', () => {
+    const parser = new OpenAICompatibleSSEParser();
+    const events = parser.push(
+      'data: {"choices":[{"delta":{"tool_calls":[{"id":"t-approved","approval_id":"run-approval-1","function":{"name":"workspace.write","arguments":"{}"}}]}}]}\n\n'
+    );
+    expect(events).toContainEqual({
+      type: 'tool_call',
+      toolCall: {
+        id: 't-approved',
+        name: 'workspace.write',
+        arguments: '{}',
+        approvalID: 'run-approval-1'
+      }
+    });
+  });
+
+  it('decodes bounded provider citation identities for live source navigation', () => {
+    const parser = new OpenAICompatibleSSEParser();
+    const events = parser.push(
+      'data: {"choices":[{"delta":{"memory_citations":[{"id":"citation-1","label":"Earlier answer","message_id":"message-1","thread_id":"thread-1","state":"live"}]}}]}\n\n'
+    );
+    expect(events).toContainEqual({
+      type: 'citations',
+      citations: [{ id: 'citation-1', label: 'Earlier answer', messageId: 'message-1', threadID: 'thread-1', state: 'live' }]
+    });
+  });
+
   it('accumulates split tool-call argument frames', () => {
     const parser = new OpenAICompatibleSSEParser();
     const events = parser.push(
@@ -72,6 +99,32 @@ describe('streamGatewayChatNative', () => {
       { type: 'delta', text: 'native' },
       { type: 'done', finishReason: 'stop' }
     ]);
+  });
+
+  it('forwards only opaque daemon attachment references', async () => {
+    const start: NativeGatewayChatTransport['start'] = vi.fn(async (request, onChunk) => {
+      expect(request.messages[0]).toEqual({
+        role: 'user',
+        content: 'summarize',
+        attachments: [{ attachmentId: 'attachment-1' }]
+      });
+      expect(JSON.stringify(request)).not.toContain('contentBase64');
+      onChunk('data: [DONE]\n\n');
+    });
+    for await (const _event of streamGatewayChatNative(
+      { start, cancel: vi.fn(async () => undefined) },
+      {
+        requestId: 'gateway-attachment-ref',
+        model: 'hermes',
+        messages: [{
+          role: 'user',
+          content: 'summarize',
+          attachments: [{ attachmentId: 'attachment-1' }]
+        }]
+      }
+    )) {
+      // The assertion is made by the native transport stub above.
+    }
   });
 
   it('cancels the native request when the renderer aborts', async () => {
