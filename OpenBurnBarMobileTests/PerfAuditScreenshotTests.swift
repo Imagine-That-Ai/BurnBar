@@ -7,7 +7,7 @@ import OpenBurnBarCore
 /// review (findings ios-013 hero-glow collapse and ios-014 session-trace
 /// strip). The capture phase comes from `OBB_SCREENSHOT_PHASE`
 /// (`before`/`after`, default `after`); files land in
-/// `OBB_SCREENSHOT_DIR` (default `/tmp/obb-round2-screens`).
+/// `OBB_SCREENSHOT_DIR` or the test host's sandboxed temporary directory.
 ///
 /// Beyond producing the artifacts, the tests assert the surfaces render
 /// non-empty so a broken hero card or verdict hero fails loudly.
@@ -15,8 +15,11 @@ import OpenBurnBarCore
 final class PerfAuditScreenshotTests: XCTestCase {
 
     private static var outputDirectory: URL {
-        URL(fileURLWithPath: ProcessInfo.processInfo.environment["OBB_SCREENSHOT_DIR"]
-            ?? "/tmp/obb-round2-screens")
+        if let override = ProcessInfo.processInfo.environment["OBB_SCREENSHOT_DIR"] {
+            return URL(fileURLWithPath: override)
+        }
+        return FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-round2-screens", isDirectory: true)
     }
 
     private static var phase: String {

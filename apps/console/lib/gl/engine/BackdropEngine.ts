@@ -24,12 +24,17 @@ import type { SwarmEmberKernelOptions } from "./kernels/swarmEmberKernel";
 // registry's lazyKernel path handles the default (no-options) case; this value
 // import is only reached when swarmEmberOptions is set (linux-desktop dashboard).
 import { createSwarmEmberKernel } from "./kernels/swarmEmberKernel";
-import { DEFAULT_KERNEL_ID, getKernelDescriptor } from "./registry";
+import {
+  DEFAULT_KERNEL_ID,
+  getKernelDescriptor,
+  resolveKernelResolution,
+} from "./registry";
 import type {
   Kernel,
   KernelFrameContext,
   KernelId,
   KernelPalette,
+  KernelResolution,
   KernelSubstrate,
   ThemeName,
 } from "./types";
@@ -50,6 +55,9 @@ interface Slot {
   substrate: KernelSubstrate;
   outgoing: boolean;
   disposeTimer: number | null;
+  contextLost: boolean;
+  onContextLost: ((event: Event) => void) | null;
+  onContextRestored: (() => void) | null;
 }
 
 export interface BackdropEngineOptions {
@@ -63,6 +71,8 @@ export interface BackdropEngineOptions {
   maxFps?: number;
   /** Notified with the kernel actually shown (may differ on GL fallback). */
   onResolve?: (id: KernelId) => void;
+  /** Notified with the requested-vs-resolved capability receipt. */
+  onStatus?: (status: KernelResolution) => void;
   /**
    * Deterministic host profile for performance certification. Production
    * callers leave this unset so the engine follows the user's OS preference.
@@ -104,10 +114,13 @@ export class BackdropEngine {
   private container: HTMLElement;
   private slots: Slot[] = [];
   private activeId: KernelId;
+  /** Latest user request, kept separately from the resolved/visible slot. */
+  private requestedKernelId: KernelId;
   private theme: ThemeName;
   private palette: KernelPalette;
   private swarmEmberOptions?: SwarmEmberKernelOptions;
   private onResolve?: (id: KernelId) => void;
+  private onStatus?: (status: KernelResolution) => void;
 
   private width = 0;
   private height = 0;
@@ -117,6 +130,8 @@ export class BackdropEngine {
 
   private visible = true;
   private pageVisible = true;
+  /** A lost WebGL slot should be retried once the window is visible again. */
+  private retryRequestedKernelOnVisible = false;
   /** Native-host visibility (window occlusion/minimize/app-hide), driven by
    *  the embedder via {@link setHostVisible}. Browsers never touch this. */
   private hostVisible = true;
@@ -151,7 +166,9 @@ export class BackdropEngine {
     this.palette = opts.palette ?? resolvePalette(opts.theme);
     this.swarmEmberOptions = opts.swarmEmberOptions;
     this.onResolve = opts.onResolve;
+    this.onStatus = opts.onStatus;
     this.activeId = opts.initialKernel ?? DEFAULT_KERNEL_ID;
+    this.requestedKernelId = this.activeId;
     this.maxFps =
       opts.maxFps && opts.maxFps > 0 ? Math.min(opts.maxFps, 60) : 0;
 
@@ -172,11 +189,27 @@ export class BackdropEngine {
   // ── Public API ─────────────────────────────────────────────
 
   setKernel(id: KernelId): void {
-    const resolved = this.resolveId(id);
+    this.transitionKernel(id, false);
+  }
+
+  /**
+   * Mount a request, optionally rebuilding an otherwise matching active slot.
+   * The force path is used after a compositor-driven WebGL context loss: the
+   * resolved id can still equal `activeId` even though the existing slot is
+   * no longer renderable.
+   */
+  private transitionKernel(id: KernelId, force: boolean): void {
+    this.requestedKernelId = id;
+    const requested = this.resolveKernel(id);
     if (
-      resolved === this.activeId &&
-      this.slots.some((s) => s.id === resolved && !s.outgoing)
+      !force &&
+      requested.resolvedId === this.activeId &&
+      this.slots.some((s) => s.id === requested.resolvedId && !s.outgoing && !s.contextLost)
     ) {
+      // A different WebGL2 request can resolve to the already-mounted 2D
+      // default. Still publish the request so the UI does not claim that the
+      // requested shader is running when it is actually using the fallback.
+      this.publishResolution(requested);
       return;
     }
     // Finalize any still-fading slots, then retire the current ones.
@@ -190,14 +223,24 @@ export class BackdropEngine {
       );
     }
 
-    const slot = this.createSlot(resolved);
+    const slot = this.createSlot(requested.resolvedId);
     this.activeId = slot.id;
-    this.onResolve?.(slot.id);
+    if (slot.id === requested.resolvedId && slot.substrate === requested.resolvedSubstrate) {
+      this.retryRequestedKernelOnVisible = false;
+    }
+    this.publishResolution(this.withSlotResolution(requested, slot));
     this.harvestObstacles(true); // a freshly-switched kernel gets current geometry
+
+    // A context can disappear between the capability probe and the switch
+    // (common when a WebKit/VM compositor is suspended). `createSlot` then
+    // returns the visible 2D default. Reveal that fallback synchronously so a
+    // throttled or backgrounded rAF cannot leave every canvas at opacity:0.
+    const contextFallback = slot.id !== requested.resolvedId;
+    if (contextFallback) slot.canvas.style.opacity = "1";
 
     // Fade the newcomer in on the next frame (lets the transition apply).
     requestAnimationFrame(() => {
-      slot.canvas.style.opacity = "1";
+      if (slot.canvas.parentNode) slot.canvas.style.opacity = "1";
     });
     if (this.reducedMotion) slot.kernel.renderStatic?.();
   }
@@ -332,32 +375,52 @@ export class BackdropEngine {
 
   // ── Slot lifecycle ─────────────────────────────────────────
 
-  private resolveId(id: KernelId): KernelId {
+  private resolveKernel(id: KernelId): KernelResolution {
+    const base = resolveKernelResolution(id, this.glCaps, this.glSupported);
     const desc = getKernelDescriptor(id);
-    if (desc.substrate === "webgl2" && !this.glSupported)
-      return DEFAULT_KERNEL_ID;
-    // Capability gate (D1): a float-target kernel on a no-float-RT machine
-    // resolves to its fallback BEFORE instantiation — never a black canvas.
-    if (desc.requiresFloatTex && !this.glCaps.colorBufferFloat) {
-      return desc.fallbackId ?? DEFAULT_KERNEL_ID;
-    }
     // WebGPU premium tier degrades to its WebGL fallback when navigator.gpu is
     // absent (older OS/browser) — same "never black" contract.
     if (
+      base.reason === "native" &&
       (desc.requiresWebGPU || desc.substrate === "webgpu") &&
       typeof navigator !== "undefined" &&
       !("gpu" in navigator)
     ) {
-      return desc.fallbackId ?? DEFAULT_KERNEL_ID;
+      const fallbackId = desc.fallbackId ?? DEFAULT_KERNEL_ID;
+      const fallback = getKernelDescriptor(fallbackId);
+      return {
+        ...base,
+        resolvedId: fallbackId,
+        resolvedSubstrate: fallback.substrate,
+        reason: "webgpu-unavailable",
+        fallback: fallbackId !== id,
+      };
     }
-    return desc.id;
+    return base;
+  }
+
+  private withSlotResolution(requested: KernelResolution, slot: Slot): KernelResolution {
+    if (slot.id === requested.resolvedId) return requested;
+    return {
+      ...requested,
+      resolvedId: slot.id,
+      resolvedSubstrate: slot.substrate,
+      reason: "context-unavailable",
+      fallback: slot.id !== requested.requestedId,
+    };
+  }
+
+  private publishResolution(status: KernelResolution): void {
+    this.onStatus?.(status);
+    this.onResolve?.(status.resolvedId);
   }
 
   private mountInitial(): void {
-    const slot = this.createSlot(this.resolveId(this.activeId));
+    const requested = this.resolveKernel(this.activeId);
+    const slot = this.createSlot(requested.resolvedId);
     this.activeId = slot.id;
     slot.canvas.style.opacity = "1";
-    this.onResolve?.(slot.id);
+    this.publishResolution(this.withSlotResolution(requested, slot));
     if (this.reducedMotion) slot.kernel.renderStatic?.();
   }
 
@@ -404,6 +467,9 @@ export class BackdropEngine {
       substrate,
       outgoing: false,
       disposeTimer: null,
+      contextLost: false,
+      onContextLost: null,
+      onContextRestored: null,
     };
     this.sizeCanvas(slot);
     // Track the slot BEFORE init so every failure path can dispose it cleanly
@@ -452,6 +518,26 @@ export class BackdropEngine {
       }
     }
 
+    if (substrate === "webgl2") {
+      // The kernel also listens so it can rebuild its own programs. The host
+      // listener is deliberately attached first and owns the user-visible
+      // fallback: a compositor can lose a context while rAF is throttled, so
+      // waiting for the next frame would leave the whole backdrop transparent.
+      slot.onContextLost = (event: Event) => {
+        event.preventDefault();
+        slot.contextLost = true;
+        if (!slot.outgoing && this.slots.includes(slot)) {
+          this.retryRequestedKernelOnVisible = true;
+          this.transitionKernel(this.requestedKernelId, true);
+        }
+      };
+      slot.onContextRestored = () => {
+        slot.contextLost = false;
+      };
+      canvas.addEventListener("webglcontextlost", slot.onContextLost, false);
+      canvas.addEventListener("webglcontextrestored", slot.onContextRestored, false);
+    }
+
     kernel.init(ctx, this.frameCtx(substrate));
     // Replay the live field so a newly mounted/crossfading world inherits the
     // active mark (it survives switches — spec §2.2).
@@ -463,6 +549,14 @@ export class BackdropEngine {
     if (slot.disposeTimer !== null) {
       clearTimeout(slot.disposeTimer);
       slot.disposeTimer = null;
+    }
+    if (slot.onContextLost) {
+      slot.canvas.removeEventListener("webglcontextlost", slot.onContextLost);
+      slot.onContextLost = null;
+    }
+    if (slot.onContextRestored) {
+      slot.canvas.removeEventListener("webglcontextrestored", slot.onContextRestored);
+      slot.onContextRestored = null;
     }
     try {
       slot.kernel.dispose();
@@ -577,7 +671,14 @@ export class BackdropEngine {
   }
 
   private onVisibility = (): void => {
+    const wasVisible = this.pageVisible;
     this.pageVisible = !document.hidden;
+    if (!wasVisible && this.pageVisible && this.retryRequestedKernelOnVisible) {
+      // A context can remain unavailable for the hidden window's lifetime and
+      // recover only after the compositor presents it again. Force a fresh
+      // slot so the requested shader gets another context acquisition attempt.
+      this.transitionKernel(this.requestedKernelId, true);
+    }
   };
 
   private onPointerMove = (e: PointerEvent): void => {

@@ -83,6 +83,14 @@ public struct MediaPacketCodec: Sendable {
         guard totalPayloadCount <= maxPayloadBytes else {
             throw CodecError.payloadTooLarge(actual: totalPayloadCount, max: maxPayloadBytes)
         }
+        // A hostile peer can advertise a length smaller than the fixed
+        // header while still sending enough bytes to pass the envelope-size
+        // guard above. Reject that shape before any header indexing or range
+        // construction so malformed packets stay a bounded decode failure,
+        // rather than becoming an out-of-bounds trap.
+        guard totalPayloadCount >= MediaFrame.headerByteCount else {
+            throw CodecError.headerTruncated
+        }
         let totalEnvelopeBytes = lengthPrefixBytes + totalPayloadCount
         guard normalized.count >= totalEnvelopeBytes else {
             throw CodecError.headerTruncated

@@ -12,6 +12,7 @@ const requiredWorkflows = [
   "android-ktlint.yml",
   "code-quality.yml",
   "public-macos-download-trust.yml",
+  "public-linux-download-trust.yml",
   "qa.yml",
   "pr-review.yml",
   "droid-review.yml",
@@ -51,6 +52,11 @@ const contracts = [
     "public-macos-download-trust.yml",
     "github.event.pull_request.base.sha || github.event.merge_group.base_sha",
     "public download trust detection must compare the merge group against its base",
+  ],
+  [
+    "public-linux-download-trust.yml",
+    "github.event.pull_request.base.sha || github.event.merge_group.base_sha",
+    "public Linux download trust detection must compare the merge group against its base",
   ],
   [
     "droid-review.yml",

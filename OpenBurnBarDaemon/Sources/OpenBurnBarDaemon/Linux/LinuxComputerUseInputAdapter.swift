@@ -1,5 +1,6 @@
 #if os(Linux)
 import Foundation
+import Glibc
 import OpenBurnBarComputerUseCore
 import OpenBurnBarEngine
 
@@ -93,6 +94,149 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     public enum AdapterID: String, Codable, Equatable, Sendable {
         case atspi2 = "at-spi2"
         case x11XTest = "x11-xtest"
+        /// xdg-desktop-portal RemoteDesktop/libei capability. This is a
+        /// capability probe only until a consent-backed libei event sink is
+        /// provisioned by the desktop session; it must never be treated as an
+        /// input executor by itself.
+        case waylandPortal = "wayland-portal-remote-desktop"
+    }
+
+    public enum WaylandPortalState: String, Codable, Equatable, Sendable {
+        case notWayland = "not_wayland"
+        case unavailable
+        case consentRequired = "consent_required"
+        case denied
+        case timedOut = "timed_out"
+        case cancelled
+        case unsupported
+    }
+
+    public struct WaylandPortalCapability: Codable, Equatable, Sendable {
+        public let state: WaylandPortalState
+        public let remoteDesktop: Bool
+        public let screenCast: Bool
+        public let requiresConsent: Bool
+        public let requiresApproval: Bool
+        /// A fixed, non-sensitive reason. Probe stdout/stderr is intentionally
+        /// not returned because a desktop broker could include window titles,
+        /// account names, or other user data in diagnostics.
+        public let reason: String
+
+        public init(
+            state: WaylandPortalState,
+            remoteDesktop: Bool = false,
+            screenCast: Bool = false,
+            requiresConsent: Bool = true,
+            requiresApproval: Bool = true,
+            reason: String
+        ) {
+            self.state = state
+            self.remoteDesktop = remoteDesktop
+            self.screenCast = screenCast
+            self.requiresConsent = requiresConsent
+            self.requiresApproval = requiresApproval
+            self.reason = reason
+        }
+
+        public var isWayland: Bool {
+            state != .notWayland
+        }
+
+        /// Introspection proves only that the portal interface exists. A live
+        /// input grant is established by an interactive user consent flow and
+        /// is therefore deliberately not implied by this property.
+        public var isProbeReady: Bool {
+            state == .consentRequired && remoteDesktop
+        }
+    }
+
+    /// State returned by the consent-backed RemoteDesktop session contract.
+    ///
+    /// `active` means the portal granted a RemoteDesktop session.  The
+    /// `portalNotify` executor is available for that receipt because all
+    /// events remain scoped to the broker-issued session handle.  A caller
+    /// must still use `dispatchWaylandRemoteDesktop(_:session:)`; the generic
+    /// `dispatch(_:)` path never guesses at a Wayland session.
+    public enum WaylandRemoteDesktopSessionState: String, Codable, Equatable, Sendable {
+        case active
+        case denied
+        case timedOut = "timed_out"
+        case cancelled
+        case stopped
+        case unavailable
+    }
+
+    /// The concrete event path used after the portal grants a session.
+    ///
+    /// `portalNotify` is the v1/v2 RemoteDesktop Notify* path.  It is a
+    /// consent-scoped executor and does not read evdev, install a global
+    /// hook, or require a privileged helper.  `libei` and `uinput` are named
+    /// explicitly so a Linux host can report an unavailable provisioned
+    /// backend instead of silently falling back to an unsafe one.
+    public enum WaylandInputExecutorKind: String, Codable, Equatable, Sendable {
+        case portalNotify = "portal_notify"
+        case libei
+        case uinput
+        case unavailable
+    }
+
+    public struct WaylandInputExecutorStatus: Codable, Equatable, Sendable {
+        public let kind: WaylandInputExecutorKind
+        public let available: Bool
+        public let requiresConsent: Bool
+        public let reason: String
+
+        public init(
+            kind: WaylandInputExecutorKind,
+            available: Bool,
+            requiresConsent: Bool = true,
+            reason: String
+        ) {
+            self.kind = kind
+            self.available = available
+            self.requiresConsent = requiresConsent
+            self.reason = reason
+        }
+    }
+
+    public struct WaylandRemoteDesktopSession: Codable, Equatable, Sendable {
+        public let state: WaylandRemoteDesktopSessionState
+        /// The broker-issued session object path. It is validated before being
+        /// placed in a command argument and contains no user-provided text.
+        public let sessionHandle: String?
+        /// The most recent broker request object path, when a consent request
+        /// was involved. Request output is never surfaced to callers.
+        public let requestHandle: String?
+        public let consentGranted: Bool
+        /// Whether a consent-scoped event executor was provisioned for this
+        /// receipt.  This is not a global-input capability.
+        public let inputExecutorAvailable: Bool
+        /// Fixed, non-sensitive status text suitable for telemetry/UI.
+        public let reason: String
+
+        public init(
+            state: WaylandRemoteDesktopSessionState,
+            sessionHandle: String? = nil,
+            requestHandle: String? = nil,
+            consentGranted: Bool = false,
+            inputExecutorAvailable: Bool = false,
+            reason: String
+        ) {
+            self.state = state
+            self.sessionHandle = sessionHandle
+            self.requestHandle = requestHandle
+            self.consentGranted = consentGranted
+            self.inputExecutorAvailable = inputExecutorAvailable
+            self.reason = reason
+        }
+
+        public var isActive: Bool {
+            state == .active && consentGranted
+        }
+
+        public var canDispatchInput: Bool {
+            isActive && inputExecutorAvailable
+        }
     }
 
     public enum AdapterError: Error, Equatable, CustomStringConvertible {
@@ -101,6 +245,12 @@ public struct LinuxComputerUseInputAdapter: Sendable {
         case unsupportedAction(String)
         case killSwitchActive(String)
         case commandFailed(adapter: String, exitCode: Int32, stderr: String)
+        case portalUnavailable(String)
+        case portalConsentRequired(String)
+        case portalDenied(String)
+        case portalTimedOut
+        case portalCancelled
+        case inputExecutorUnavailable(String)
 
         public var description: String {
             switch self {
@@ -114,6 +264,18 @@ public struct LinuxComputerUseInputAdapter: Sendable {
                 return "linux_input_kill_switch_active: \(detail)"
             case .commandFailed(let adapter, let exitCode, let stderr):
                 return "linux_input_command_failed adapter=\(adapter) exit=\(exitCode) stderr=\(stderr)"
+            case .portalUnavailable(let detail):
+                return "linux_input_portal_unavailable: \(detail)"
+            case .portalConsentRequired(let detail):
+                return "linux_input_portal_consent_required: \(detail)"
+            case .portalDenied(let detail):
+                return "linux_input_portal_denied: \(detail)"
+            case .portalTimedOut:
+                return "linux_input_portal_timed_out"
+            case .portalCancelled:
+                return "linux_input_portal_cancelled"
+            case .inputExecutorUnavailable(let detail):
+                return "linux_input_executor_unavailable: \(detail)"
             }
         }
     }
@@ -158,10 +320,32 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     public typealias EnvironmentReader = @Sendable (_ name: String) -> String?
     public typealias ExecutableResolver = @Sendable (_ name: String) -> String?
     public typealias CommandRunner = @Sendable (_ executablePath: String, _ arguments: [String]) throws -> CommandResult
+    public typealias PortalProbeRunner = @Sendable (
+        _ executablePath: String,
+        _ arguments: [String],
+        _ timeoutMillis: Int
+    ) throws -> CommandResult
+
+    private static let portalProbeArguments = [
+        "introspect",
+        "--session",
+        "--dest", "org.freedesktop.portal.Desktop",
+        "--object-path", "/org/freedesktop/portal/desktop"
+    ]
+    private static let defaultPortalProbeTimeoutMillis = 1_500
+    private static let defaultPortalSessionTimeoutMillis = 60_000
+    private static let portalBusName = "org.freedesktop.portal.Desktop"
+    private static let portalObjectPath = "/org/freedesktop/portal/desktop"
+    private static let remoteDesktopInterface = "org.freedesktop.portal.RemoteDesktop"
+    private static let sessionInterface = "org.freedesktop.portal.Session"
+    private static let portalSessionInputTypes: UInt32 = 3 // keyboard + pointer
 
     private let environment: EnvironmentReader
     private let resolveExecutable: ExecutableResolver
     private let runCommand: CommandRunner
+    private let runPortalProbe: PortalProbeRunner
+    private let portalProbeTimeoutMillis: Int
+    private let portalSessionTimeoutMillis: Int
 
     private enum DenyRegionTarget {
         case clear
@@ -170,25 +354,858 @@ public struct LinuxComputerUseInputAdapter: Sendable {
         case uninspectable(String)
     }
 
+    /// Production construction uses the platform command runners. Keep the
+    /// dependency-injection initializer below internal so its test seams do
+    /// not become part of the daemon's public API or expose private helpers in
+    /// public default arguments.
+    public init() {
+        self.init(
+            environment: { ProcessInfo.processInfo.environment[$0] },
+            resolveExecutable: Self.which,
+            runCommand: Self.runProcess,
+            runPortalProbe: nil,
+            portalProbeTimeoutMillis: Self.defaultPortalProbeTimeoutMillis,
+            portalSessionTimeoutMillis: Self.defaultPortalSessionTimeoutMillis
+        )
+    }
+
     init(
         environment: @escaping EnvironmentReader = { ProcessInfo.processInfo.environment[$0] },
         resolveExecutable: @escaping ExecutableResolver = LinuxComputerUseInputAdapter.which,
-        runCommand: @escaping CommandRunner = LinuxComputerUseInputAdapter.runProcess
+        runCommand: @escaping CommandRunner = LinuxComputerUseInputAdapter.runProcess,
+        runPortalProbe: PortalProbeRunner? = nil,
+        portalProbeTimeoutMillis: Int = LinuxComputerUseInputAdapter.defaultPortalProbeTimeoutMillis,
+        portalSessionTimeoutMillis: Int = LinuxComputerUseInputAdapter.defaultPortalSessionTimeoutMillis
     ) {
         self.environment = environment
         self.resolveExecutable = resolveExecutable
         self.runCommand = runCommand
+        if let runPortalProbe {
+            self.runPortalProbe = runPortalProbe
+        } else {
+            self.runPortalProbe = LinuxComputerUseInputAdapter.runBoundedProcess
+        }
+        self.portalProbeTimeoutMillis = max(1, portalProbeTimeoutMillis)
+        self.portalSessionTimeoutMillis = max(1, portalSessionTimeoutMillis)
     }
 
     public func isAvailableForSystemInput() -> Bool {
         atspi2Available() || x11XTestAvailable()
     }
 
+    /// Returns a bounded, non-invasive probe of the Wayland desktop portal.
+    /// The probe does not open a session or trigger a consent dialog. A
+    /// `consentRequired` result means the interface is present and the next
+    /// step must be an explicit user-approved RemoteDesktop/libei session.
+    public func waylandPortalCapability() -> WaylandPortalCapability {
+        guard !LinuxPrivilegedInputKillFlag.isActive(environment: environment),
+              !LinuxPrivilegedInputKillFlag.environmentKillSwitchActive(environment: environment) else {
+            return WaylandPortalCapability(
+                state: .unavailable,
+                reason: "computer_use_kill_switch_active"
+            )
+        }
+        guard isWaylandSession() else {
+            return WaylandPortalCapability(
+                state: .notWayland,
+                requiresConsent: false,
+                requiresApproval: false,
+                reason: "wayland_session_not_detected"
+            )
+        }
+        guard nonEmptyEnvironment("DBUS_SESSION_BUS_ADDRESS") != nil else {
+            return WaylandPortalCapability(
+                state: .unavailable,
+                reason: "session_bus_unavailable"
+            )
+        }
+        guard let gdbus = resolveExecutable("gdbus") else {
+            return WaylandPortalCapability(
+                state: .unavailable,
+                reason: "gdbus_unavailable"
+            )
+        }
+
+        let result: CommandResult
+        do {
+            result = try runPortalProbe(gdbus, Self.portalProbeArguments, portalProbeTimeoutMillis)
+        } catch is CancellationError {
+            return WaylandPortalCapability(state: .cancelled, reason: "probe_cancelled")
+        } catch {
+            return WaylandPortalCapability(state: .unavailable, reason: "portal_probe_failed")
+        }
+
+        switch result.exitCode {
+        case 0:
+            let output = result.stdout + "\n" + result.stderr
+            let remoteDesktop = output.contains("org.freedesktop.portal.RemoteDesktop")
+            let screenCast = output.contains("org.freedesktop.portal.ScreenCast")
+            guard remoteDesktop else {
+                return WaylandPortalCapability(
+                    state: .unsupported,
+                    remoteDesktop: false,
+                    screenCast: screenCast,
+                    reason: "remote_desktop_portal_unavailable"
+                )
+            }
+            return WaylandPortalCapability(
+                state: .consentRequired,
+                remoteDesktop: true,
+                screenCast: screenCast,
+                reason: "remote_desktop_portal_requires_user_consent"
+            )
+        case 124:
+            return WaylandPortalCapability(state: .timedOut, reason: "portal_probe_timed_out")
+        case 130:
+            return WaylandPortalCapability(state: .cancelled, reason: "probe_cancelled")
+        default:
+            return WaylandPortalCapability(state: .denied, reason: "portal_probe_denied")
+        }
+    }
+
+    /// Async wrapper used by session orchestration when a capability refresh
+    /// may be cancelled while a desktop broker is being probed.
+    public func probeWaylandPortal() async throws -> WaylandPortalCapability {
+        try Task.checkCancellation()
+        let capability = waylandPortalCapability()
+        try Task.checkCancellation()
+        return capability
+    }
+
+    /// Starts a RemoteDesktop portal session and waits for every broker
+    /// consent response (CreateSession, SelectDevices, and Start).  The
+    /// returned receipt authorizes only the portal-scoped Notify* executor;
+    /// callers must pass it to `dispatchWaylandRemoteDesktop(_:session:)`.
+    public func startWaylandRemoteDesktopSession() async throws -> WaylandRemoteDesktopSession {
+        try Task.checkCancellation()
+        try assertKillSwitchNotActive()
+        guard isWaylandSession() else {
+            throw AdapterError.portalUnavailable("wayland_session_not_detected")
+        }
+        guard nonEmptyEnvironment("DBUS_SESSION_BUS_ADDRESS") != nil else {
+            throw AdapterError.portalUnavailable("session_bus_unavailable")
+        }
+        guard resolveExecutable("gdbus") != nil else {
+            throw AdapterError.portalUnavailable("gdbus_unavailable")
+        }
+
+        let sessionToken = portalToken(prefix: "session")
+        let createRequest = try issueRemoteDesktopRequest(
+            method: "CreateSession",
+            arguments: [
+                "{'session_handle_token': <'\(sessionToken)'>}"
+            ]
+        )
+        var sessionHandleForCleanup: String?
+        do {
+            let createResponse = try waitForRemoteDesktopResponse(requestPath: createRequest)
+            guard createResponse.code == 0 else {
+                throw portalResponseError(operation: "create_session", code: createResponse.code)
+            }
+            guard let sessionHandle = parsePortalObjectPath(
+                createResponse.output,
+                requiredComponent: "session"
+            ) else {
+                throw AdapterError.portalUnavailable("remote_desktop_session_handle_missing")
+            }
+            sessionHandleForCleanup = sessionHandle
+
+            let devicesToken = portalToken(prefix: "devices")
+            let selectRequest = try issueRemoteDesktopRequest(
+                method: "SelectDevices",
+                arguments: [
+                    sessionHandle,
+                    "{'handle_token': <'\(devicesToken)'>, 'types': <uint32 \(Self.portalSessionInputTypes)>}"
+                ]
+            )
+            let selectResponse = try waitForRemoteDesktopResponse(requestPath: selectRequest)
+            guard selectResponse.code == 0 else {
+                throw portalResponseError(operation: "select_devices", code: selectResponse.code)
+            }
+
+            let startToken = portalToken(prefix: "start")
+            let startRequest = try issueRemoteDesktopRequest(
+                method: "Start",
+                arguments: [
+                    sessionHandle,
+                    "",
+                    "{'handle_token': <'\(startToken)'>}"
+                ]
+            )
+            let startResponse = try waitForRemoteDesktopResponse(requestPath: startRequest)
+            guard startResponse.code == 0 else {
+                throw portalResponseError(operation: "start_session", code: startResponse.code)
+            }
+
+            try Task.checkCancellation()
+            try assertKillSwitchNotActive()
+            return WaylandRemoteDesktopSession(
+                state: .active,
+                sessionHandle: sessionHandle,
+                requestHandle: startRequest,
+                consentGranted: true,
+                inputExecutorAvailable: true,
+                reason: "remote_desktop_consent_granted_portal_notify_executor"
+            )
+        } catch {
+            if let sessionHandleForCleanup {
+                closeRemoteDesktopSessionBestEffort(sessionHandleForCleanup)
+            }
+            throw error
+        }
+    }
+
+    /// Closes a broker-issued RemoteDesktop session. Session paths are
+    /// revalidated before being passed to gdbus, and no caller text is ever
+    /// forwarded as a D-Bus argument.
+    public func stopWaylandRemoteDesktopSession(
+        _ session: WaylandRemoteDesktopSession
+    ) async throws -> WaylandRemoteDesktopSession {
+        // Closing an already-consented portal grant is teardown, not input.
+        // It must remain available while the kill switch is active so panic
+        // paths cannot leave a live RemoteDesktop session behind.
+        try Task.checkCancellation()
+        guard let sessionHandle = session.sessionHandle,
+              let validatedHandle = parsePortalObjectPath(
+                  sessionHandle,
+                  requiredComponent: "session"
+              ) else {
+            throw AdapterError.portalUnavailable("remote_desktop_session_handle_invalid")
+        }
+        let result = try runFixedPortalCommand(
+            [
+                "call", "--session",
+                "--dest", Self.portalBusName,
+                "--object-path", validatedHandle,
+                "--method", "\(Self.sessionInterface).Close"
+            ],
+            timeoutMillis: portalProbeTimeoutMillis,
+            allowWhenKillSwitchActive: true
+        )
+        guard result.exitCode == 0 else {
+            throw portalCommandError(operation: "close_session", exitCode: result.exitCode)
+        }
+        return WaylandRemoteDesktopSession(
+            state: .stopped,
+            sessionHandle: validatedHandle,
+            consentGranted: false,
+            inputExecutorAvailable: false,
+            reason: "remote_desktop_session_stopped"
+        )
+    }
+
+    /// Returns the typed local status held by a session receipt. The portal
+    /// has no portable status method; callers must use the receipt returned by
+    /// start/stop and must never infer input-executor availability from it.
+    public func remoteDesktopSessionStatus(
+        _ session: WaylandRemoteDesktopSession
+    ) -> WaylandRemoteDesktopSessionState {
+        session.state
+    }
+
+    /// Reports the executor that can be used with a live portal receipt.
+    ///
+    /// The optional environment override is intentionally a deny-only
+    /// control for packaging and emergency rollout.  Selecting `libei` or
+    /// `uinput` does not pretend that either backend exists; it reports an
+    /// unavailable status until a provisioned helper is present.  The
+    /// consent-scoped RemoteDesktop Notify* path remains the default and is
+    /// the only backend implemented in this source slice.
+    public func waylandRemoteDesktopInputExecutorStatus(
+        _ session: WaylandRemoteDesktopSession
+    ) -> WaylandInputExecutorStatus {
+        guard session.isActive else {
+            return WaylandInputExecutorStatus(
+                kind: .unavailable,
+                available: false,
+                reason: "remote_desktop_session_not_active"
+            )
+        }
+        guard session.inputExecutorAvailable else {
+            return WaylandInputExecutorStatus(
+                kind: .unavailable,
+                available: false,
+                reason: "remote_desktop_input_executor_unavailable"
+            )
+        }
+        if LinuxPrivilegedInputKillFlag.isActive(environment: environment)
+            || LinuxPrivilegedInputKillFlag.environmentKillSwitchActive(environment: environment) {
+            return WaylandInputExecutorStatus(
+                kind: .unavailable,
+                available: false,
+                reason: "computer_use_kill_switch_active"
+            )
+        }
+        switch nonEmptyEnvironment("OPENBURNBAR_LINUX_CU_INPUT_EXECUTOR")?.lowercased() {
+        case "unsupported", "none", "disabled":
+            return WaylandInputExecutorStatus(
+                kind: .unavailable,
+                available: false,
+                reason: "linux_input_executor_disabled"
+            )
+        case "libei":
+            return WaylandInputExecutorStatus(
+                kind: .libei,
+                available: false,
+                reason: "libei_executor_not_provisioned"
+            )
+        case "uinput":
+            return WaylandInputExecutorStatus(
+                kind: .uinput,
+                available: false,
+                reason: "uinput_executor_not_provisioned"
+            )
+        default:
+            break
+        }
+        guard isWaylandSession() else {
+            return WaylandInputExecutorStatus(
+                kind: .unavailable,
+                available: false,
+                reason: "wayland_session_not_detected"
+            )
+        }
+        guard nonEmptyEnvironment("DBUS_SESSION_BUS_ADDRESS") != nil else {
+            return WaylandInputExecutorStatus(
+                kind: .unavailable,
+                available: false,
+                reason: "session_bus_unavailable"
+            )
+        }
+        guard resolveExecutable("gdbus") != nil else {
+            return WaylandInputExecutorStatus(
+                kind: .unavailable,
+                available: false,
+                reason: "gdbus_unavailable"
+            )
+        }
+        return WaylandInputExecutorStatus(
+            kind: .portalNotify,
+            available: true,
+            reason: "remote_desktop_notify_methods_available"
+        )
+    }
+
+    /// Dispatches an action through a consent-backed RemoteDesktop session.
+    ///
+    /// This method is deliberately separate from `dispatch(_:)`: callers must
+    /// hold the exact session receipt returned by
+    /// `startWaylandRemoteDesktopSession()`.  Every event is sent via a fixed
+    /// `gdbus` argument vector, never a shell, and the broker session handle is
+    /// validated before it reaches the command runner.  If a deployment asks
+    /// for a libei/uinput backend that is not provisioned, this returns a
+    /// typed unsupported error rather than falling back to global input.
+    public func dispatchWaylandRemoteDesktop(
+        _ action: MacInputAction,
+        session: WaylandRemoteDesktopSession
+    ) async throws -> BurnBarJSONValue {
+        try Task.checkCancellation()
+        try assertKillSwitchNotActive()
+        guard session.isActive,
+              let sessionHandle = session.sessionHandle,
+              let validatedSessionHandle = parsePortalObjectPath(
+                  sessionHandle,
+                  requiredComponent: "session"
+              ) else {
+            throw AdapterError.inputExecutorUnavailable("remote_desktop_session_not_active")
+        }
+        let status = waylandRemoteDesktopInputExecutorStatus(session)
+        guard status.available, status.kind == .portalNotify else {
+            throw AdapterError.inputExecutorUnavailable(status.reason)
+        }
+
+        let commands = try portalNotifyCommands(
+            for: action,
+            sessionHandle: validatedSessionHandle
+        )
+        let startedAt = Date()
+        for command in commands {
+            let result = try runFixedPortalCommand(
+                command,
+                timeoutMillis: portalProbeTimeoutMillis
+            )
+            guard result.exitCode == 0 else {
+                throw portalCommandError(operation: "notify_input", exitCode: result.exitCode)
+            }
+        }
+        try Task.checkCancellation()
+        try assertKillSwitchNotActive()
+        return .object([
+            "platform": .string("linux"),
+            "adapter": .string(AdapterID.waylandPortal.rawValue),
+            "executor": .string(WaylandInputExecutorKind.portalNotify.rawValue),
+            "kind": .string(action.kind.rawValue),
+            "eventCount": .number(Double(commands.count)),
+            "durationMs": .number(Date().timeIntervalSince(startedAt) * 1000),
+            "textLength": action.text.map { .number(Double($0.count)) } ?? .null,
+            "displayX": action.displayX.map { .number(Double($0)) } ?? .null,
+            "displayY": action.displayY.map { .number(Double($0)) } ?? .null
+        ])
+    }
+
+    private func portalNotifyCommands(
+        for action: MacInputAction,
+        sessionHandle: String
+    ) throws -> [[String]] {
+        switch action.kind {
+        case .click, .pointerClick:
+            var commands: [[String]] = []
+            if action.kind == .click {
+                guard let x = action.displayX, let y = action.displayY else {
+                    throw AdapterError.missingCoordinate("portal click requires displayX and displayY")
+                }
+                commands.append(portalNotifyAbsoluteMotion(
+                    sessionHandle: sessionHandle,
+                    x: x,
+                    y: y
+                ))
+            }
+            let button = portalButtonCode(action.mouseButton)
+            commands.append(portalNotifyButton(
+                sessionHandle: sessionHandle,
+                button: button,
+                state: 1
+            ))
+            commands.append(portalNotifyButton(
+                sessionHandle: sessionHandle,
+                button: button,
+                state: 0
+            ))
+            return commands
+
+        case .pointerMove:
+            if action.deltaX != nil || action.deltaY != nil {
+                return [portalNotifyRelativeMotion(
+                    sessionHandle: sessionHandle,
+                    deltaX: action.deltaX ?? 0,
+                    deltaY: action.deltaY ?? 0
+                )]
+            }
+            guard let x = action.displayX, let y = action.displayY else {
+                throw AdapterError.missingCoordinate("portal pointer_move requires displayX and displayY")
+            }
+            return [portalNotifyAbsoluteMotion(
+                sessionHandle: sessionHandle,
+                x: x,
+                y: y
+            )]
+
+        case .scroll:
+            var commands: [[String]] = []
+            if let x = action.displayX, let y = action.displayY {
+                commands.append(portalNotifyAbsoluteMotion(
+                    sessionHandle: sessionHandle,
+                    x: x,
+                    y: y
+                ))
+            }
+            let deltaX = action.deltaX ?? 0
+            let deltaY = action.deltaY ?? 0
+            guard deltaX != 0 || deltaY != 0 else {
+                throw AdapterError.unsupportedAction("portal scroll requires non-zero deltaX or deltaY")
+            }
+            commands.append(portalNotifyAxis(
+                sessionHandle: sessionHandle,
+                deltaX: deltaX,
+                deltaY: deltaY
+            ))
+            return commands
+
+        case .dragDrop:
+            guard let startX = action.displayX,
+                  let startY = action.displayY,
+                  let endX = action.dragEndX,
+                  let endY = action.dragEndY else {
+                throw AdapterError.missingCoordinate("portal drag_drop requires displayX, displayY, dragEndX, and dragEndY")
+            }
+            let button = portalButtonCode(action.mouseButton)
+            return [
+                portalNotifyAbsoluteMotion(sessionHandle: sessionHandle, x: startX, y: startY),
+                portalNotifyButton(sessionHandle: sessionHandle, button: button, state: 1),
+                portalNotifyAbsoluteMotion(sessionHandle: sessionHandle, x: endX, y: endY),
+                portalNotifyButton(sessionHandle: sessionHandle, button: button, state: 0)
+            ]
+
+        case .key:
+            guard let key = action.key,
+                  !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw AdapterError.unsupportedAction("portal key requires key")
+            }
+            let keysym = try portalKeysym(for: key)
+            return portalKeyCommands(sessionHandle: sessionHandle, keysyms: [keysym])
+
+        case .shortcut:
+            guard let key = action.key,
+                  !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw AdapterError.unsupportedAction("portal shortcut requires key")
+            }
+            let modifiers = try (action.modifiers ?? []).map(portalKeysym(for:))
+            let keySym = try portalKeysym(for: key)
+            return portalKeyCommands(
+                sessionHandle: sessionHandle,
+                keysyms: modifiers + [keySym]
+            )
+
+        case .type:
+            guard let text = action.text, !text.isEmpty else {
+                throw AdapterError.unsupportedAction("portal type requires non-empty text")
+            }
+            guard text.count <= 4_096 else {
+                throw AdapterError.unsupportedAction("portal type exceeds the 4096-character event bound")
+            }
+            var commands: [[String]] = []
+            for scalar in text.unicodeScalars {
+                let keysym = try portalKeysym(for: String(scalar))
+                commands.append(contentsOf: portalKeyCommands(
+                    sessionHandle: sessionHandle,
+                    keysyms: [keysym]
+                ))
+            }
+            return commands
+        }
+    }
+
+    private func portalNotifyAbsoluteMotion(
+        sessionHandle: String,
+        x: Int,
+        y: Int
+    ) -> [String] {
+        portalCall(
+            method: "NotifyPointerMotionAbsolute",
+            sessionHandle: sessionHandle,
+            arguments: ["{}", portalStreamID(), String(x), String(y)]
+        )
+    }
+
+    private func portalNotifyRelativeMotion(
+        sessionHandle: String,
+        deltaX: Int,
+        deltaY: Int
+    ) -> [String] {
+        portalCall(
+            method: "NotifyPointerMotion",
+            sessionHandle: sessionHandle,
+            arguments: ["{}", String(deltaX), String(deltaY)]
+        )
+    }
+
+    private func portalNotifyButton(
+        sessionHandle: String,
+        button: Int,
+        state: Int
+    ) -> [String] {
+        portalCall(
+            method: "NotifyPointerButton",
+            sessionHandle: sessionHandle,
+            arguments: ["{}", String(button), String(state)]
+        )
+    }
+
+    private func portalNotifyAxis(
+        sessionHandle: String,
+        deltaX: Int,
+        deltaY: Int
+    ) -> [String] {
+        portalCall(
+            method: "NotifyPointerAxis",
+            sessionHandle: sessionHandle,
+            arguments: ["{}", String(deltaX), String(deltaY)]
+        )
+    }
+
+    private func portalKeyCommands(
+        sessionHandle: String,
+        keysyms: [Int]
+    ) -> [[String]] {
+        var commands: [[String]] = []
+        for keysym in keysyms {
+            commands.append(portalCall(
+                method: "NotifyKeyboardKeysym",
+                sessionHandle: sessionHandle,
+                arguments: ["{}", String(keysym), "1"]
+            ))
+        }
+        for keysym in keysyms.reversed() {
+            commands.append(portalCall(
+                method: "NotifyKeyboardKeysym",
+                sessionHandle: sessionHandle,
+                arguments: ["{}", String(keysym), "0"]
+            ))
+        }
+        return commands
+    }
+
+    private func portalCall(
+        method: String,
+        sessionHandle: String,
+        arguments: [String]
+    ) -> [String] {
+        [
+            "call", "--session",
+            "--dest", Self.portalBusName,
+            "--object-path", sessionHandle,
+            "--method", "\(Self.remoteDesktopInterface).\(method)",
+            sessionHandle
+        ] + arguments
+    }
+
+    private func portalStreamID() -> String {
+        guard let raw = nonEmptyEnvironment("OPENBURNBAR_LINUX_CU_PORTAL_STREAM_ID"),
+              let stream = UInt32(raw) else {
+            return "0"
+        }
+        return String(stream)
+    }
+
+    private func portalButtonCode(_ mouseButton: Int) -> Int {
+        switch mouseButton {
+        case 1: return 0x111 // BTN_RIGHT
+        case 2: return 0x112 // BTN_MIDDLE
+        default: return 0x110 // BTN_LEFT
+        }
+    }
+
+    private func portalKeysym(for rawKey: String) throws -> Int {
+        if rawKey.unicodeScalars.count == 1,
+           let scalar = rawKey.unicodeScalars.first {
+            switch scalar.value {
+            case 0x09: return 0xff09 // tab
+            case 0x0a: return 0xff0a // line feed
+            case 0x0d: return 0xff0d // carriage return
+            default:
+                if scalar.value <= 0x7f {
+                    return Int(scalar.value)
+                }
+                return 0x0100_0000 | Int(scalar.value)
+            }
+        }
+        let normalized = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            throw AdapterError.unsupportedAction("portal key is empty")
+        }
+        switch normalized.lowercased() {
+        case "return", "enter": return 0xff0d
+        case "escape", "esc": return 0xff1b
+        case "delete": return 0xffff
+        case "backspace": return 0xff08
+        case "tab": return 0xff09
+        case "space": return 0x20
+        case "left", "arrowleft": return 0xff51
+        case "up", "arrowup": return 0xff52
+        case "right", "arrowright": return 0xff53
+        case "down", "arrowdown": return 0xff54
+        case "home": return 0xff50
+        case "end": return 0xff57
+        case "pageup": return 0xff55
+        case "pagedown": return 0xff56
+        case "insert": return 0xff63
+        case "control", "ctrl": return 0xffe3
+        case "command", "cmd", "super", "meta": return 0xffeb
+        case "alternate", "option", "alt": return 0xffe9
+        case "shift": return 0xffe1
+        default:
+            let uppercased = normalized.uppercased()
+            if let functionNumber = Int(uppercased.dropFirst()),
+               uppercased.first == "F",
+               (1...24).contains(functionNumber) {
+                return 0xffbe + functionNumber - 1
+            }
+            guard normalized.unicodeScalars.count == 1,
+                  let scalar = normalized.unicodeScalars.first else {
+                throw AdapterError.unsupportedAction("portal key is not a supported keysym")
+            }
+            // X11's Unicode keysym encoding keeps non-ASCII input
+            // deterministic without consulting a keyboard layout.
+            return scalar.value <= 0x7f
+                ? Int(scalar.value)
+                : 0x0100_0000 | Int(scalar.value)
+        }
+    }
+
+    private struct PortalResponse: Sendable {
+        let code: UInt32
+        let output: String
+    }
+
+    private func issueRemoteDesktopRequest(
+        method: String,
+        arguments: [String]
+    ) throws -> String {
+        let result = try runFixedPortalCommand(
+            [
+                "call", "--session",
+                "--dest", Self.portalBusName,
+                "--object-path", Self.portalObjectPath,
+                "--method", "\(Self.remoteDesktopInterface).\(method)"
+            ] + arguments,
+            timeoutMillis: portalProbeTimeoutMillis
+        )
+        guard result.exitCode == 0 else {
+            throw portalCommandError(operation: portalOperationName(method), exitCode: result.exitCode)
+        }
+        guard let requestPath = parsePortalObjectPath(result.stdout, requiredComponent: "request") else {
+            throw AdapterError.portalUnavailable("remote_desktop_\(portalOperationName(method))_request_handle_missing")
+        }
+        return requestPath
+    }
+
+    private func waitForRemoteDesktopResponse(requestPath: String) throws -> PortalResponse {
+        guard let validatedRequest = parsePortalObjectPath(
+            requestPath,
+            requiredComponent: "request"
+        ) else {
+            throw AdapterError.portalUnavailable("remote_desktop_request_handle_invalid")
+        }
+        let result = try runFixedPortalCommand(
+            [
+                "monitor", "--session",
+                "--dest", Self.portalBusName,
+                "--object-path", validatedRequest
+            ],
+            timeoutMillis: portalSessionTimeoutMillis
+        )
+        let boundedOutput = String(result.stdout.prefix(16_384))
+        if let code = parsePortalResponseCode(boundedOutput) {
+            return PortalResponse(code: code, output: boundedOutput)
+        }
+        if result.exitCode == 124 {
+            throw AdapterError.portalTimedOut
+        }
+        if result.exitCode == 130 {
+            throw AdapterError.portalCancelled
+        }
+        throw AdapterError.portalUnavailable("remote_desktop_portal_response_missing")
+    }
+
+    private func runFixedPortalCommand(
+        _ arguments: [String],
+        timeoutMillis: Int,
+        allowWhenKillSwitchActive: Bool = false
+    ) throws -> CommandResult {
+        try Task.checkCancellation()
+        if !allowWhenKillSwitchActive {
+            try assertKillSwitchNotActive()
+        }
+        guard let gdbus = resolveExecutable("gdbus") else {
+            throw AdapterError.portalUnavailable("gdbus_unavailable")
+        }
+        let result: CommandResult
+        do {
+            result = try runPortalProbe(gdbus, arguments, max(1, timeoutMillis))
+        } catch is CancellationError {
+            throw AdapterError.portalCancelled
+        } catch {
+            throw AdapterError.portalUnavailable("remote_desktop_portal_command_failed")
+        }
+        try Task.checkCancellation()
+        if !allowWhenKillSwitchActive {
+            try assertKillSwitchNotActive()
+        }
+        return result
+    }
+
+    private func portalCommandError(operation: String, exitCode: Int32) -> AdapterError {
+        switch exitCode {
+        case 124:
+            return .portalTimedOut
+        case 130:
+            return .portalCancelled
+        case 1, 2:
+            return .portalDenied("remote_desktop_\(operation)_denied")
+        default:
+            return .portalUnavailable("remote_desktop_\(operation)_failed")
+        }
+    }
+
+    private func portalResponseError(operation: String, code: UInt32) -> AdapterError {
+        switch code {
+        case 1:
+            return .portalDenied("remote_desktop_\(operation)_denied")
+        case 2:
+            return .portalCancelled
+        default:
+            return .portalUnavailable("remote_desktop_\(operation)_failed")
+        }
+    }
+
+    private func parsePortalResponseCode(_ output: String) -> UInt32? {
+        guard let responseRange = output.range(of: "Response") else {
+            return nil
+        }
+        let responseOutput = output[responseRange.upperBound...]
+        for code: UInt32 in 0...2 where responseOutput.contains("uint32 \(code)") {
+            return code
+        }
+        return nil
+    }
+
+    private func parsePortalObjectPath(
+        _ output: String,
+        requiredComponent: String
+    ) -> String? {
+        let candidates = output.split { character in
+            character.isWhitespace || "()<>',\";".contains(character)
+        }
+        for candidate in candidates {
+            guard candidate.hasPrefix("/org/freedesktop/portal/desktop/") else {
+                continue
+            }
+            let path = String(candidate)
+            guard path.count <= 256,
+                  path.contains("/\(requiredComponent)/"),
+                  path.unicodeScalars.allSatisfy({ scalar in
+                      scalar.isASCII && (scalar.value == 47 || scalar.value == 95 ||
+                          (scalar.value >= 48 && scalar.value <= 57) ||
+                          (scalar.value >= 65 && scalar.value <= 90) ||
+                          (scalar.value >= 97 && scalar.value <= 122))
+                  }) else {
+                continue
+            }
+            return path
+        }
+        return nil
+    }
+
+    private func portalToken(prefix: String) -> String {
+        "openburnbar_\(prefix)_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+    }
+
+    private func closeRemoteDesktopSessionBestEffort(_ sessionHandle: String) {
+        guard let validatedHandle = parsePortalObjectPath(
+            sessionHandle,
+            requiredComponent: "session"
+        ) else {
+            return
+        }
+        _ = try? runFixedPortalCommand(
+            [
+                "call", "--session",
+                "--dest", Self.portalBusName,
+                "--object-path", validatedHandle,
+                "--method", "\(Self.sessionInterface).Close"
+            ],
+            timeoutMillis: portalProbeTimeoutMillis,
+            allowWhenKillSwitchActive: true
+        )
+    }
+
+    private func portalOperationName(_ method: String) -> String {
+        switch method {
+        case "CreateSession": return "create_session"
+        case "SelectDevices": return "select_devices"
+        case "Start": return "start_session"
+        default: return "request"
+        }
+    }
+
     public func dispatch(_ action: MacInputAction) async throws -> BurnBarJSONValue {
+        try Task.checkCancellation()
         try assertKillSwitchNotActive()
         let plan = try plan(for: action)
         let startedAt = Date()
         let result = try runCommand(plan.executablePath, plan.arguments)
+        try Task.checkCancellation()
+        try assertKillSwitchNotActive()
         let durationMs = Date().timeIntervalSince(startedAt) * 1000
         guard result.exitCode == 0 else {
             throw AdapterError.commandFailed(
@@ -214,14 +1231,19 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     }
 
     public func inspectAccessibility(_ action: MacInspectAction) async throws -> BurnBarJSONValue {
-        .object([
+        try Task.checkCancellation()
+        let portal = waylandPortalCapability()
+        return .object([
             "platform": .string("linux"),
             "adapter": atspi2Available() ? .string(AdapterID.atspi2.rawValue) : .null,
             "kind": .string(action.kind.rawValue),
             "available": .bool(atspi2Available()),
             "dbusSession": .bool(nonEmptyEnvironment("DBUS_SESSION_BUS_ADDRESS") != nil),
             "atspiBus": .bool(nonEmptyEnvironment("AT_SPI_BUS_ADDRESS") != nil),
-            "python3": .bool(resolveExecutable("python3") != nil)
+            "python3": .bool(resolveExecutable("python3") != nil),
+            "waylandPortalState": .string(portal.state.rawValue),
+            "waylandPortalRemoteDesktop": .bool(portal.remoteDesktop),
+            "waylandPortalScreenCast": .bool(portal.screenCast)
         ])
     }
 
@@ -256,7 +1278,8 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     }
 
     public func capabilityRows() -> [BurnBarJSONValue] {
-        [
+        let portal = waylandPortalCapability()
+        return [
             .object([
                 "id": .string(AdapterID.atspi2.rawValue),
                 "kind": .string("input"),
@@ -272,11 +1295,24 @@ public struct LinuxComputerUseInputAdapter: Sendable {
                 "requiresConsent": .bool(false),
                 "requiresApproval": .bool(true),
                 "reason": .string(x11XTestAvailable() ? "X11 DISPLAY and xdotool are reachable." : "X11 DISPLAY or xdotool is unavailable.")
+            ]),
+            .object([
+                "id": .string(AdapterID.waylandPortal.rawValue),
+                "kind": .string("input"),
+                "status": .string(portalCapabilityStatus(portal)),
+                "requiresConsent": .bool(portal.requiresConsent),
+                "requiresApproval": .bool(portal.requiresApproval),
+                "reason": .string(portal.reason),
+                "remoteDesktop": .bool(portal.remoteDesktop),
+                "screenCast": .bool(portal.screenCast)
             ])
         ]
     }
 
     public func plan(for action: MacInputAction) throws -> DispatchPlan {
+        if forcedAdapter() == .waylandPortal {
+            throw portalInputError(for: waylandPortalCapability())
+        }
         if prefersATSPIClick(for: action), atspi2Available() {
             return try atspi2ClickPlan(for: action)
         }
@@ -288,6 +1324,9 @@ public struct LinuxComputerUseInputAdapter: Sendable {
         }
         if forcedAdapter() == .x11XTest {
             throw AdapterError.adapterUnavailable("forced x11-xtest but DISPLAY or xdotool is unavailable")
+        }
+        if isWaylandSession() {
+            throw portalInputError(for: waylandPortalCapability())
         }
         throw AdapterError.adapterUnavailable("no approved Linux input adapter is available")
     }
@@ -391,6 +1430,37 @@ public struct LinuxComputerUseInputAdapter: Sendable {
         resolveExecutable("xdotool") != nil && nonEmptyEnvironment("DISPLAY") != nil
     }
 
+    private func isWaylandSession() -> Bool {
+        nonEmptyEnvironment("XDG_SESSION_TYPE")?.lowercased() == "wayland"
+            || nonEmptyEnvironment("WAYLAND_DISPLAY") != nil
+    }
+
+    private func portalCapabilityStatus(_ capability: WaylandPortalCapability) -> String {
+        switch capability.state {
+        case .notWayland:
+            return "not_applicable"
+        case .consentRequired:
+            return "available_needs_consent"
+        case .unavailable, .denied, .timedOut, .cancelled, .unsupported:
+            return "blocked"
+        }
+    }
+
+    private func portalInputError(for capability: WaylandPortalCapability) -> AdapterError {
+        switch capability.state {
+        case .consentRequired:
+            return .portalConsentRequired(capability.reason)
+        case .denied:
+            return .portalDenied(capability.reason)
+        case .timedOut:
+            return .portalTimedOut
+        case .cancelled:
+            return .portalCancelled
+        case .notWayland, .unavailable, .unsupported:
+            return .portalUnavailable(capability.reason)
+        }
+    }
+
     private func denyRegionTarget(for action: MacInputAction) -> DenyRegionTarget {
         switch action.kind {
         case .click, .pointerClick:
@@ -466,6 +1536,8 @@ public struct LinuxComputerUseInputAdapter: Sendable {
             return .atspi2
         case "x11-xtest", "x11", "xtest", "xdotool":
             return .x11XTest
+        case "wayland-portal", "wayland", "xdg-portal", "remote-desktop", "libei":
+            return .waylandPortal
         default:
             return nil
         }
@@ -479,6 +1551,9 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     }
 
     private func assertKillSwitchNotActive() throws {
+        if LinuxPrivilegedInputKillFlag.environmentKillSwitchActive(environment: environment) {
+            throw AdapterError.killSwitchActive("environment")
+        }
         for path in LinuxPrivilegedInputKillFlag.activeFlagPaths(environment: environment) {
             guard !FileManager.default.fileExists(atPath: path) else {
                 throw AdapterError.killSwitchActive(path)
@@ -544,10 +1619,54 @@ public struct LinuxComputerUseInputAdapter: Sendable {
             candidates = ["/usr/bin/python3", "/usr/local/bin/python3", "/bin/python3"]
         case "xdotool":
             candidates = ["/usr/bin/xdotool", "/usr/local/bin/xdotool"]
+        case "gdbus":
+            candidates = ["/usr/bin/gdbus", "/usr/local/bin/gdbus", "/bin/gdbus"]
         default:
             candidates = []
         }
         return candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) })
+    }
+
+    /// Executes the fixed portal introspection command without a shell and
+    /// with a hard deadline. A timeout/cancellation status is represented by
+    /// the conventional 124/130 exit values and is converted to typed probe
+    /// states by `waylandPortalCapability()`.
+    private static func runBoundedProcess(
+        executablePath: String,
+        arguments: [String],
+        timeoutMillis: Int
+    ) throws -> CommandResult {
+        if Task.isCancelled {
+            return CommandResult(exitCode: 130)
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = arguments
+        let output = Pipe()
+        let error = Pipe()
+        process.standardOutput = output
+        process.standardError = error
+        try process.run()
+
+        let deadline = Date().addingTimeInterval(Double(max(1, timeoutMillis)) / 1_000)
+        while process.isRunning {
+            if Task.isCancelled {
+                process.terminate()
+                process.waitUntilExit()
+                return CommandResult(exitCode: 130)
+            }
+            if Date() >= deadline {
+                process.terminate()
+                process.waitUntilExit()
+                return CommandResult(exitCode: 124)
+            }
+            usleep(10_000)
+        }
+        return CommandResult(
+            exitCode: process.terminationStatus,
+            stdout: readPipe(output),
+            stderr: readPipe(error)
+        )
     }
 
     private static func runProcess(executablePath: String, arguments: [String]) throws -> CommandResult {

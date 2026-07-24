@@ -42,6 +42,9 @@ public enum MemoryReviewStatus: String, Codable, Sendable {
     case quarantined   // default for new memories — cannot inject or replicate (G4)
     case approved      // injectable + replicable
     case rejected
+    /// The authority record remains as a metadata tombstone after a user forgets it.
+    /// Its sealed body is removed and it is never eligible for recall.
+    case forgotten
 }
 
 /// Trust classification resolved server-side against the canonical chat row at

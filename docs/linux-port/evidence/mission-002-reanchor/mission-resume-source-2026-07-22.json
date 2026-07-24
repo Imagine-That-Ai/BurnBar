@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-22T07:28:41Z",
+  "head": {
+    "sourceCommit": "bc30c6a7965c7e32a41e9a635288a54d2a4e3223",
+    "docsCommit": "40c1670e3f18918c8f4451419dca7cb42183e617",
+    "branch": "codex/linux-parity-integration-final"
+  },
+  "scope": "Linux mission Start/Resume dispatch wiring",
+  "implementation": {
+    "tauriCommand": "mission_resume",
+    "daemonMethod": "daemon.mission.packet.dispatch",
+    "gates": [
+      "mission approval",
+      "terminal state",
+      "enterprise policy",
+      "execution readiness"
+    ],
+    "rendererExecutionState": false,
+    "packetIdentity": "fresh daemon packet id per dispatch attempt"
+  },
+  "validation": [
+    {
+      "command": "npm test -- --run src/surfaces/missions/MissionsSurface.test.tsx src/tauriBridge.test.ts",
+      "result": "passed",
+      "tests": "61/61"
+    },
+    {
+      "command": "npm run typecheck -- --pretty false",
+      "result": "passed"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=.tmp/cargo-mission-resume cargo test mission_resume_wire_is_bounded_and_daemon_gated --lib -- --nocapture",
+      "result": "passed",
+      "tests": "1/1",
+      "targetCleaned": true
+    },
+    {
+      "command": "node scripts/linux-port/check-linux-docs.mjs",
+      "result": "passed"
+    }
+  ],
+  "certification": {
+    "certifying": false,
+    "reason": "Source and focused contract validation only; signed installed candidate, takeover/recovery orchestration, and cross-device trust-cycle receipts remain open."
+  }
+}

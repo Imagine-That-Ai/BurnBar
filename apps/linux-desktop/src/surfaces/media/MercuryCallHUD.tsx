@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { MercuryCallState } from '../../state/mediaStore.js';
+import type { MercuryCallState, MercuryMediaControlState } from '../../state/mediaStore.js';
 
 function peerLabel(call: MercuryCallState): string {
   return call.peerName ?? 'Paired device';
@@ -19,12 +19,16 @@ function formatElapsed(startedAt?: string): string {
 export function MercuryCallHUD({
   call,
   error,
+  controlState = 'available',
+  controlReason = null,
   onAccept,
   onDecline,
   onEnd
 }: {
   call: MercuryCallState;
   error: string | null;
+  controlState?: MercuryMediaControlState;
+  controlReason?: string | null;
   onAccept: (requestId?: string) => void;
   onDecline: (requestId?: string) => void;
   onEnd: () => void;
@@ -40,6 +44,22 @@ export function MercuryCallHUD({
     void now;
     return formatElapsed(call.startedAt);
   }, [call.startedAt, now]);
+
+  if (controlState !== 'available' && call.phase !== 'capability-absent') {
+    const isError = controlState === 'error';
+    const label = controlState === 'idle' ? 'Call controls loading' : 'Call controls unavailable';
+    return (
+      <section
+        className={`p12-call-hud ${isError ? 'is-error' : 'is-degraded'}`}
+        aria-label="Mercury call controls"
+        role={isError ? 'alert' : 'status'}
+      >
+        <span className="p12-call-kicker">{label}</span>
+        <p>{controlReason ?? 'The daemon has not advertised an available Mercury control RPC.'}</p>
+        {error ? <p className="p12-call-error" role="alert">{error}</p> : null}
+      </section>
+    );
+  }
 
   if (call.phase === 'capability-absent') {
     return (

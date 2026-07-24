@@ -150,7 +150,7 @@ final class ProviderCockpitParserTests: XCTestCase {
             try db.execute(sql: "INSERT INTO part (data) VALUES (?)", arguments: [assistantPart])
         }
 
-        let result = try await OpenCodeParser(databasePathOverride: dbPath).parse()
+        let result = try await OpenBurnBar.OpenCodeParser(databasePathOverride: dbPath).parse()
 
         let usage = try XCTUnwrap(
             result.usages.first { $0.sessionId == "oc-1" },
@@ -175,13 +175,13 @@ final class ProviderCockpitParserTests: XCTestCase {
         let missing = FileManager.default.temporaryDirectory
             .appendingPathComponent("obb-opencode-missing-\(UUID().uuidString)/opencode.db").path
 
-        let result = try await OpenCodeParser(databasePathOverride: missing).parse()
+        let result = try await OpenBurnBar.OpenCodeParser(databasePathOverride: missing).parse()
         XCTAssertTrue(result.usages.isEmpty)
         XCTAssertTrue(result.conversations.isEmpty)
     }
 
     func testProvidersReportExpectedEnumValues() {
         XCTAssertEqual(GooseParser().provider, .goose)
-        XCTAssertEqual(OpenCodeParser().provider, .openCode)
+        XCTAssertEqual(OpenBurnBar.OpenCodeParser().provider, .openCode)
     }
 }

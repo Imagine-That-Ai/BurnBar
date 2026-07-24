@@ -1,3 +1,5 @@
+import { colorForProviderID } from './providerColors.js';
+
 export type ProviderGlyph = { id: string; label: string; accent: string; logo: string };
 
 export const PROVIDER_GLYPHS: ProviderGlyph[] = [
@@ -25,5 +27,5 @@ export const PROVIDER_GLYPHS: ProviderGlyph[] = [
 
 /** Find a glyph by provider id, with graceful fallback */
 export function findProviderGlyph(id: string): ProviderGlyph {
-  return PROVIDER_GLYPHS.find((g) => g.id === id) ?? { id, label: id, accent: '#8b5cf6', logo: '' };
+  return PROVIDER_GLYPHS.find((g) => g.id === id) ?? { id, label: id, accent: colorForProviderID(id), logo: '' };
 }

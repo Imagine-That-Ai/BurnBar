@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.dev/schemas/linux-product-feature-proof-closure.schema.json",
+  "title": "OpenBurnBar Linux product feature proof closure",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "targetHead", "sourceCommit", "status", "requirementId",
+    "environmentId", "version", "candidate", "registry", "proofs", "blockers"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "targetHead": { "$ref": "#/$defs/head" },
+    "sourceCommit": { "$ref": "#/$defs/head" },
+    "status": { "const": "collected" },
+    "requirementId": { "type": "string", "pattern": "^P-(0[1-9]|[1-3][0-9]|40)$" },
+    "environmentId": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "artifactDigest", "productProofClosureSha256"],
+      "properties": {
+        "runId": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+        "artifactDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "productProofClosureSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "registry": { "$ref": "#/$defs/record" },
+    "proofs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "mediaType", "path", "sha256", "size"],
+        "properties": {
+          "role": { "type": "string", "pattern": "^feature\\.[a-z0-9]+(?:[._-][a-z0-9]+)*$" },
+          "mediaType": { "type": "string", "pattern": "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" },
+          "path": { "type": "string", "minLength": 1 },
+          "sha256": { "$ref": "#/$defs/sha256" },
+          "size": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "blockers": { "type": "array", "maxItems": 0 }
+  },
+  "$defs": {
+    "head": { "type": "string", "pattern": "^[a-f0-9]{40,64}$" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "size": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

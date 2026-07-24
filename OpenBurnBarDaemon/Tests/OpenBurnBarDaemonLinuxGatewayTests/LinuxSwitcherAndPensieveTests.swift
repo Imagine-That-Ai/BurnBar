@@ -1,5 +1,6 @@
 #if os(Linux)
 import Foundation
+import Glibc
 @testable import OpenBurnBarDaemon
 import OpenBurnBarEngine
 import XCTest
@@ -15,6 +16,7 @@ final class LinuxSwitcherAndPensieveTests: XCTestCase {
         let executable = root.appendingPathComponent("codex")
         let script = """
         #!/bin/sh
+        if ! [ -t 0 ] || ! [ -t 1 ] || ! [ -t 2 ]; then exit 93; fi
         if [ -n "${OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN:-}" ]; then exit 92; fi
         printf '%s\n' "$@" > "${OPENBURNBAR_TEST_OUTPUT}"
         """
@@ -35,6 +37,91 @@ final class LinuxSwitcherAndPensieveTests: XCTestCase {
         XCTAssertEqual(result.exitCode, 0)
         XCTAssertEqual(result.launchedProfileID, "linux-path-codex")
         XCTAssertEqual(try String(contentsOf: output, encoding: .utf8), "--version\nvalue with spaces\n")
+    }
+
+    func testSwitcherBoundsLargePTYOutputBeforeReportingTerminalFailure() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-switcher-output-cap-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+        let executable = root.appendingPathComponent("codex")
+        let script = """
+        #!/bin/sh
+        /usr/bin/head -c 524288 /dev/zero | /usr/bin/tr '\\000' x >&2
+        exit 17
+        """
+        try script.write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+
+        let executor = BurnBarCLIShellExecutor(profileStore: EmptyLinuxSwitcherProfileStore()) {
+            ["PATH": root.path]
+        }
+
+        do {
+            _ = try await executor.execute(
+                BurnBarCLIShellLaunchRequest(cliType: .codex, forwardedArguments: [])
+            )
+            XCTFail("A non-zero CLI exit must report terminalExited")
+        } catch let error as BurnBarSwitcherShellError {
+            guard case .terminalExited(let status, let detail) = error else {
+                XCTFail("Unexpected switcher error: \(error)")
+                return
+            }
+            XCTAssertEqual(status, 17)
+            XCTAssertLessThanOrEqual(detail?.utf8.count ?? 0, 2_000)
+        }
+    }
+
+    func testSwitcherCancellationTerminatesPTYProcessGroup() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-switcher-cancel-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+        let parentPIDFile = root.appendingPathComponent("parent.pid")
+        let childPIDFile = root.appendingPathComponent("child.pid")
+        let executable = root.appendingPathComponent("codex")
+        let script = """
+        #!/bin/sh
+        printf '%s\\n' "$$" > "${OPENBURNBAR_PARENT_PID_FILE}"
+        (/bin/sleep 60) &
+        printf '%s\\n' "$!" > "${OPENBURNBAR_CHILD_PID_FILE}"
+        while :; do /bin/sleep 1; done
+        """
+        try script.write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+
+        let executor = BurnBarCLIShellExecutor(profileStore: EmptyLinuxSwitcherProfileStore()) {
+            [
+                "PATH": root.path,
+                "OPENBURNBAR_PARENT_PID_FILE": parentPIDFile.path,
+                "OPENBURNBAR_CHILD_PID_FILE": childPIDFile.path
+            ]
+        }
+        let execution = Task {
+            try await executor.execute(
+                BurnBarCLIShellLaunchRequest(cliType: .codex, forwardedArguments: [])
+            )
+        }
+
+        try waitUntil(timeout: 3) {
+            FileManager.default.fileExists(atPath: childPIDFile.path)
+        }
+        let childPID = try XCTUnwrap(Int32(try String(contentsOf: childPIDFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
+        execution.cancel()
+
+        do {
+            _ = try await execution.value
+            XCTFail("Cancellation must not report a successful shell invocation")
+        } catch is CancellationError {
+            // Expected: the PTY group was torn down by the cancellation handler.
+        }
+
+        try waitUntil(timeout: 3) {
+            guard kill(childPID, 0) != 0 else { return false }
+            return errno == ESRCH
+        }
     }
 
     func testShimInstallerQuotesExecutablePathAndSetsExecutableMode() throws {

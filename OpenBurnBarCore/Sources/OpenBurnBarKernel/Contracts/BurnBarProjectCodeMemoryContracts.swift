@@ -18,6 +18,7 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
     public let tags: [String]
     public let confidence: Double
     public let sourcePath: String?
+    public let reviewStatus: MemoryReviewStatus
 
     public init(
         text: String,
@@ -26,7 +27,8 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
         scope: String = "personal",
         tags: [String] = [],
         confidence: Double = 1.0,
-        sourcePath: String? = nil
+        sourcePath: String? = nil,
+        reviewStatus: MemoryReviewStatus = .approved
     ) {
         self.text = text
         self.projectPath = projectPath
@@ -35,6 +37,23 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
         self.tags = tags
         self.confidence = confidence
         self.sourcePath = sourcePath
+        self.reviewStatus = reviewStatus
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case text, projectPath, kind, scope, tags, confidence, sourcePath, reviewStatus
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.text = try values.decode(String.self, forKey: .text)
+        self.projectPath = try values.decodeIfPresent(String.self, forKey: .projectPath)
+        self.kind = try values.decodeIfPresent(String.self, forKey: .kind) ?? "note"
+        self.scope = try values.decodeIfPresent(String.self, forKey: .scope) ?? "personal"
+        self.tags = try values.decodeIfPresent([String].self, forKey: .tags) ?? []
+        self.confidence = try values.decodeIfPresent(Double.self, forKey: .confidence) ?? 1.0
+        self.sourcePath = try values.decodeIfPresent(String.self, forKey: .sourcePath)
+        self.reviewStatus = try values.decodeIfPresent(MemoryReviewStatus.self, forKey: .reviewStatus) ?? .approved
     }
 }
 
@@ -58,19 +77,40 @@ public struct BurnBarProjectMemoryRecallRequest: Codable, Hashable, Sendable {
     public let limit: Int
     public let scope: String
     public let includeCrossProject: Bool
+    public let includeQuarantined: Bool
+    public let includeForgotten: Bool
 
     public init(
         query: String,
         projectPath: String? = nil,
         limit: Int = 20,
         scope: String = "all",
-        includeCrossProject: Bool = false
+        includeCrossProject: Bool = false,
+        includeQuarantined: Bool = false,
+        includeForgotten: Bool = false
     ) {
         self.query = query
         self.projectPath = projectPath
         self.limit = limit
         self.scope = scope
         self.includeCrossProject = includeCrossProject
+        self.includeQuarantined = includeQuarantined
+        self.includeForgotten = includeForgotten
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case query, projectPath, limit, scope, includeCrossProject, includeQuarantined, includeForgotten
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.query = try values.decode(String.self, forKey: .query)
+        self.projectPath = try values.decodeIfPresent(String.self, forKey: .projectPath)
+        self.limit = try values.decodeIfPresent(Int.self, forKey: .limit) ?? 20
+        self.scope = try values.decodeIfPresent(String.self, forKey: .scope) ?? "all"
+        self.includeCrossProject = try values.decodeIfPresent(Bool.self, forKey: .includeCrossProject) ?? false
+        self.includeQuarantined = try values.decodeIfPresent(Bool.self, forKey: .includeQuarantined) ?? false
+        self.includeForgotten = try values.decodeIfPresent(Bool.self, forKey: .includeForgotten) ?? false
     }
 }
 
@@ -85,6 +125,7 @@ public struct BurnBarProjectMemoryHit: Codable, Hashable, Sendable {
     public let sourcePath: String?
     public let snippet: String
     public let rank: Double?
+    public let reviewStatus: MemoryReviewStatus
 
     public init(
         memoryID: String,
@@ -96,7 +137,8 @@ public struct BurnBarProjectMemoryHit: Codable, Hashable, Sendable {
         tags: [String],
         sourcePath: String?,
         snippet: String,
-        rank: Double?
+        rank: Double?,
+        reviewStatus: MemoryReviewStatus = .approved
     ) {
         self.memoryID = memoryID
         self.projectID = projectID
@@ -108,6 +150,56 @@ public struct BurnBarProjectMemoryHit: Codable, Hashable, Sendable {
         self.sourcePath = sourcePath
         self.snippet = snippet
         self.rank = rank
+        self.reviewStatus = reviewStatus
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case memoryID, projectID, kind, scope, confidence, bodyRedacted, tags, sourcePath, snippet, rank, reviewStatus
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.memoryID = try values.decode(String.self, forKey: .memoryID)
+        self.projectID = try values.decode(String.self, forKey: .projectID)
+        self.kind = try values.decode(String.self, forKey: .kind)
+        self.scope = try values.decode(String.self, forKey: .scope)
+        self.confidence = try values.decode(Double.self, forKey: .confidence)
+        self.bodyRedacted = try values.decode(String.self, forKey: .bodyRedacted)
+        self.tags = try values.decode([String].self, forKey: .tags)
+        self.sourcePath = try values.decodeIfPresent(String.self, forKey: .sourcePath)
+        self.snippet = try values.decode(String.self, forKey: .snippet)
+        self.rank = try values.decodeIfPresent(Double.self, forKey: .rank)
+        self.reviewStatus = try values.decodeIfPresent(MemoryReviewStatus.self, forKey: .reviewStatus) ?? .approved
+    }
+}
+
+/// Durable review transition for an existing memory authority record. The daemon
+/// owns this state; renderers never persist a decision locally.
+public struct BurnBarProjectMemoryReviewStatusRequest: Codable, Hashable, Sendable {
+    public let memoryID: String
+    public let projectPath: String?
+    public let status: MemoryReviewStatus
+
+    public init(memoryID: String, projectPath: String? = nil, status: MemoryReviewStatus) {
+        self.memoryID = memoryID
+        self.projectPath = projectPath
+        self.status = status
+    }
+}
+
+public struct BurnBarProjectMemoryReviewStatusResponse: Codable, Hashable, Sendable {
+    public let traceID: String
+    public let projectID: String
+    public let memoryID: String
+    public let status: MemoryReviewStatus
+    public let auditHash: String
+
+    public init(traceID: String, projectID: String, memoryID: String, status: MemoryReviewStatus, auditHash: String) {
+        self.traceID = traceID
+        self.projectID = projectID
+        self.memoryID = memoryID
+        self.status = status
+        self.auditHash = auditHash
     }
 }
 
@@ -804,6 +896,92 @@ public struct BurnBarProjectCodeOpsDiagnosticsResponse: Codable, Hashable, Senda
         self.agentMemoryCount = agentMemoryCount
         self.pendingCloudForgetCount = pendingCloudForgetCount
         self.projects = projects
+    }
+}
+
+/// Writes a point-in-time copy of the daemon-owned project-code database.
+/// Snapshots are intentionally path-based and local-only: the daemon validates
+/// ownership, permissions, encryption, and the byte ceiling before exposing a
+/// copy to the shell.
+public struct BurnBarProjectCodeDatabaseSnapshotRequest: Codable, Hashable, Sendable {
+    public let destinationPath: String
+    public let maxBytes: Int
+
+    public init(destinationPath: String, maxBytes: Int = 512 * 1_024 * 1_024) {
+        self.destinationPath = destinationPath
+        self.maxBytes = maxBytes
+    }
+}
+
+public struct BurnBarProjectCodeDatabaseSnapshotResponse: Codable, Hashable, Sendable {
+    public let traceID: String
+    public let snapshotPath: String
+    public let byteCount: Int
+    public let sha256: String
+    public let schemaVersion: Int
+    public let databaseEncrypted: Bool
+    public let integrityCheck: String
+    public let createdAt: String
+
+    public init(
+        traceID: String,
+        snapshotPath: String,
+        byteCount: Int,
+        sha256: String,
+        schemaVersion: Int,
+        databaseEncrypted: Bool,
+        integrityCheck: String,
+        createdAt: String
+    ) {
+        self.traceID = traceID
+        self.snapshotPath = snapshotPath
+        self.byteCount = byteCount
+        self.sha256 = sha256
+        self.schemaVersion = schemaVersion
+        self.databaseEncrypted = databaseEncrypted
+        self.integrityCheck = integrityCheck
+        self.createdAt = createdAt
+    }
+}
+
+public struct BurnBarProjectCodeDatabaseRestoreRequest: Codable, Hashable, Sendable {
+    public let snapshotPath: String
+    public let maxBytes: Int
+
+    public init(snapshotPath: String, maxBytes: Int = 512 * 1_024 * 1_024) {
+        self.snapshotPath = snapshotPath
+        self.maxBytes = maxBytes
+    }
+}
+
+public struct BurnBarProjectCodeDatabaseRestoreResponse: Codable, Hashable, Sendable {
+    public let traceID: String
+    public let restoredPath: String
+    public let byteCount: Int
+    public let sha256: String
+    public let schemaVersion: Int
+    public let databaseEncrypted: Bool
+    public let integrityCheck: String
+    public let restoredAt: String
+
+    public init(
+        traceID: String,
+        restoredPath: String,
+        byteCount: Int,
+        sha256: String,
+        schemaVersion: Int,
+        databaseEncrypted: Bool,
+        integrityCheck: String,
+        restoredAt: String
+    ) {
+        self.traceID = traceID
+        self.restoredPath = restoredPath
+        self.byteCount = byteCount
+        self.sha256 = sha256
+        self.schemaVersion = schemaVersion
+        self.databaseEncrypted = databaseEncrypted
+        self.integrityCheck = integrityCheck
+        self.restoredAt = restoredAt
     }
 }
 
