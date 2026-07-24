@@ -303,6 +303,7 @@ regexes = [
 ]
 paths = [
   '''OpenBurnBarCore/Sources/OpenBurnBarKernelPlatform/Platform/PlatformSupport\.swift''',
+  '''OpenBurnBarCore/Sources/OpenBurnBarPlatformSupport/PlatformSupport\.swift''',
 ]
 
 [[allowlists]]
