@@ -294,6 +294,7 @@ jobs:
             scripts/linux-port/sign-linux-release-requests.mjs \
             scripts/linux-port/lib/linux-installed-manifest.mjs \
             scripts/linux-port/lib/linux-appimage-peer-manifest.mjs \
+            scripts/linux-port/lib/stable-file.mjs \
             packaging/linux/openburnbar-linux-ed25519.pub.pem \
             | tar -x -C "$SIGNER_ROOT"
           test "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" = "$GITHUB_SHA"
