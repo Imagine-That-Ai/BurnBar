@@ -59,6 +59,7 @@ test('packaged session provisions and exercises the Linux accessibility stack', 
     'atspi-keyboard-focus-sequence.json',
     'physical_tab_presses=28',
     'physical_shift_tab_presses=12',
+    'focus_window_and_key',
     'screenshot-linux-desktop-zoom-200-requested.png',
     'zoom-accessibility-evidence.json'
   ]) assert.ok(session.includes(marker), marker);
