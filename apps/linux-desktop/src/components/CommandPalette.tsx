@@ -266,9 +266,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
               ) : null}
               <button
                 type="button"
-                role="option"
                 id={`command-palette-option-${index}`}
-                aria-selected={activeIndex === index}
+                aria-current={activeIndex === index ? 'true' : undefined}
                 className="command-palette-row"
                 data-selected={activeIndex === index}
                 onMouseEnter={() => setSelectedIndex(index)}
