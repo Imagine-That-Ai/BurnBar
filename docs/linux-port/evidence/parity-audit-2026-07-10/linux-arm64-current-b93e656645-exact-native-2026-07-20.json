@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "capture": {
+    "mode": "installed-exact-native-shell-atspi",
+    "capturedAt": "2026-07-20T05:37:00Z",
+    "environment": "ubuntu-24.04-gnome-x11-aarch64",
+    "vmAddress": "192.168.64.5",
+    "window": {
+      "name": "OpenBurnBar",
+      "present": true,
+      "screenshot": "linux-arm64-current-b93e656645-settings.png",
+      "screenshotSha256": "6ef5a096833afb056b9a34eeacbbfc98e76817947259176a43583aa44485f119",
+      "visuallyInspected": true
+    }
+  },
+  "source": {
+    "head": "b93e656645092546110338f4e3b1962e80896898",
+    "syncedTrackedSourceFilesMatch": true,
+    "nativeSourceChangedAfterBuild": false,
+    "commits": [
+      "594dc668ab fix(linux-activity): retain replay body on retry",
+      "9250e90092 fix(linux-settings): require privacy mutation readback",
+      "6b707d24b8 fix(linux-quota): retain last snapshot during refresh failures",
+      "b93e656645 fix(linux-daemon): omit absent subscription run id"
+    ],
+    "files": {
+      "apps/linux-desktop/src/surfaces/activity/SessionDetail.tsx": "8cdf2db8eea4ae59e2df9595148bed7b88e28d79e8150476bc7a9331b1e3af64",
+      "apps/linux-desktop/src/surfaces/activity/ActivitySurface.test.tsx": "babf69c9e7fdf4986f219829eda3285a558ad4519745f064934dea3ae5156e1a",
+      "apps/linux-desktop/src/surfaces/quota/QuotaWorkspaceSurface.tsx": "072f6e7a24b5c0e5d0184a9a8f2f91f5528ec6f03e5838cd1107195eda31cdb6",
+      "apps/linux-desktop/src/surfaces/quota/QuotaWorkspaceSurface.test.tsx": "6295893b701407059043f60f71a736d1c439bc10d5a7263f131be676f8a5ce97",
+      "apps/linux-desktop/src/state/settingsWiringStore.ts": "e3884eb1318151a67d04332f14df31fcde54cd9433655db19c9ee24aa3b91fb9",
+      "apps/linux-desktop/src/surfaces/settings/SettingsSurface.test.tsx": "2ce8f3baa1107effd0333db09000a8914e7a2cf4a2c72af48c1b745dccb553b6",
+      "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarSubscriptionService.swift": "bd111a5366d0406e7ed8018f062fda01815986ed481704106d82408cb705161c",
+      "OpenBurnBarDaemon/Tests/OpenBurnBarDaemonLinuxGatewayTests/BurnBarSubscriptionServiceLinuxTests.swift": "c34677e91bf8e8f5433885cbca42f4f24d74d19721df31e18b865277d4a66b7e"
+    }
+  },
+  "package": {
+    "format": "deb",
+    "architecture": "arm64",
+    "version": "0.1.1",
+    "sha256": "23596c491b04c505cbd0755e0d2d613f971598479474cf4e8e4e50fded03a825",
+    "bytes": 149478602,
+    "buildCommand": "npm run tauri:build -- --bundles deb",
+    "freshPayloadStaging": true,
+    "mediaFeature": "media-gst",
+    "cloudAuthConfigured": false
+  },
+  "installed": {
+    "desktopSha256": "c69be12bb63eefc123cd39fdb36d31821cc069c89436e72e38f1c60f19a2bc46",
+    "daemonSha256": "473d43a123d2f03975bb4815b3fc2b30d7a267b65176bb48dccdf75f999b00b2",
+    "cliSha256": "b66800a60ed57f9ae58b0f98ab28d93fe13d360c2ccb5781db6456f031dcbd30",
+    "irohSha256": "6db4ec66e218b6ff79475194e44d9910fcb9c1f0ff46940ea636330d8db1a39a",
+    "nativeHashesMatchSourceBuild": true,
+    "daemonHealth": "ok=true",
+    "daemonService": "active",
+    "desktopService": "active",
+    "manifestSha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+    "manifestContents": {},
+    "manifestSignatureSha256": "f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b"
+  },
+  "routeProof": {
+    "overview": {
+      "nodeCount": 44,
+      "namedNodeCount": 27,
+      "actionableNodeCount": 18,
+      "focusableNodeCount": 21,
+      "expectedName": "Overview",
+      "pass": true
+    },
+    "quota": {
+      "nodeCount": 297,
+      "namedNodeCount": 120,
+      "actionableNodeCount": 104,
+      "focusableNodeCount": 30,
+      "expectedName": "Connect a plan to start tracking quota",
+      "pass": true
+    },
+    "activity": {
+      "nodeCount": 44,
+      "namedNodeCount": 25,
+      "actionableNodeCount": 18,
+      "focusableNodeCount": 21,
+      "expectedName": "Activity",
+      "pass": true
+    },
+    "settingsAfterSubscriptionFix": {
+      "capturedAt": "2026-07-20T05:36:50Z",
+      "nodeCount": 90,
+      "namedNodeCount": 53,
+      "actionableNodeCount": 38,
+      "focusableNodeCount": 38,
+      "expectedName": "General",
+      "connectionStatus": "Connected over AF_UNIX at /run/user/1000/openburnbar/daemon.sock.",
+      "refreshDegradedNodes": [],
+      "pass": true
+    }
+  },
+  "verification": {
+    "frontendTests": "93 files / 890 passed",
+    "linuxSubscriptionTests": "3 passed",
+    "typescript": "passed",
+    "productionBundleVerifier": "passed",
+    "packageRuntimeProbe": "passed",
+    "gitDiffCheck": "passed",
+    "accessibility": "Overview, Quota, Activity, and Settings AT-SPI minimums passed",
+    "webgl": "webgl2=false; visible 2D fallback label",
+    "liveRegression": "empty optional subscription run_id omitted; connected status restored"
+  },
+  "limitations": [
+    "The package manifest is an unsigned placeholder and is not eligible for release promotion.",
+    "Production Linux OAuth, Firebase App Check, and cloud callable identifiers are not configured in this package.",
+    "The live Quota route has no connected plans, so stale-snapshot recovery remains source- and test-proven rather than exercised against populated live quota data.",
+    "The live Activity route has no replayable complete-history body, so retry recovery remains source- and test-proven rather than exercised against a real failed replay.",
+    "The Settings privacy mutation readback contract is source- and test-proven; destructive live privacy mutations were not performed in this receipt.",
+    "This does not close the seven-environment matrix, physical iPad execution, cross-device Mercury/Computer Use proof, production callables, or the 40-row strict ledger."
+  ],
+  "certifying": false
+}

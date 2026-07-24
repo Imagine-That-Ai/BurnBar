@@ -16,6 +16,7 @@ final class AccountStore {
     private let authRepo: AuthRepository
     private let firestore: FirestoreRepository
     private let profileDefaults: UserDefaults
+    private let controllerRouteLifecycle: any IrohControllerRouteAuthLifecycleManaging
 
     private(set) var user: User?
     private(set) var isSignedIn = false
@@ -42,11 +43,13 @@ final class AccountStore {
     init(
         authRepo: AuthRepository = AuthRepository(),
         firestore: FirestoreRepository = FirestoreRepository(),
-        profileDefaults: UserDefaults = .standard
+        profileDefaults: UserDefaults = .standard,
+        controllerRouteLifecycle: any IrohControllerRouteAuthLifecycleManaging = IrohControllerRouteAuthLifecycleCoordinator.shared
     ) {
         self.authRepo = authRepo
         self.firestore = firestore
         self.profileDefaults = profileDefaults
+        self.controllerRouteLifecycle = controllerRouteLifecycle
         self.isSignedIn = authRepo.isSignedIn
         self.user = authRepo.currentUser
 
@@ -85,7 +88,8 @@ final class AccountStore {
         }
     }
 
-    func signOut() {
+    func signOut() async {
+        await controllerRouteLifecycle.tearDownAndRevoke()
         do {
             try authRepo.signOut()
             resetSessionState()

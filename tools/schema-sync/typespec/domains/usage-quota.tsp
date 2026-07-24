@@ -15,6 +15,10 @@ model UsageEventDoc {
   sessionId?: string;
   deviceId?: string;
   sourceDeviceId?: string;
+  executionSourceID?: string;
+  executionSourceName?: string;
+  executionSourceKind?: string;
+  executionSourceConfidence?: string;
   inputTokens?: int32;
   outputTokens?: int32;
   cacheReadTokens?: int32;

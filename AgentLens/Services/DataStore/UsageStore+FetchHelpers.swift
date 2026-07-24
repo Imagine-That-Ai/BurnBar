@@ -56,6 +56,10 @@ extension UsageStore {
             sql: """
                 SELECT provider,
                        model,
+                       executionSourceID,
+                       executionSourceName,
+                       executionSourceKind,
+                       executionSourceConfidence,
                        provenanceConfidence,
                        provenanceMethod,
                        COUNT(*) AS sessionCount,
@@ -68,7 +72,9 @@ extension UsageStore {
                        COALESCE(SUM(cost), 0) AS cost
                 FROM token_usage
                 \(predicate.whereSQL)
-                GROUP BY provider, model, provenanceConfidence, provenanceMethod
+                GROUP BY provider, model, executionSourceID, executionSourceName,
+                         executionSourceKind, executionSourceConfidence,
+                         provenanceConfidence, provenanceMethod
                 """,
             arguments: predicate.arguments
         )

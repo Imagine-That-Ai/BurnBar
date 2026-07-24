@@ -662,11 +662,11 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
 
     func testParserRegistryEveryEntryHonorsGovernedFutureBoundaryWithoutFallback() async {
         let expectedProviders: Set<AgentProvider> = [
-            .factory, .claudeCode, .copilot, .aider, .cursor, .cursorAgent,
-            .codex, .openCode, .piAgent, .zai, .minimax, .kimi, .xAI,
-            .cline, .kiloCode, .rooCode, .forgeDev, .augment, .hermes,
-            .geminiCLI, .antigravity, .goose, .openClaw, .windsurf, .warp,
-            .ollama, .junie
+            .factory, .claudeCode, .openClaude, .copilot, .aider, .cursor,
+            .cursorAgent, .codex, .openCode, .piAgent, .omp, .zai, .minimax,
+            .kimi, .xAI, .cline, .kiloCode, .rooCode, .forgeDev, .augment,
+            .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .windsurf,
+            .warp, .ollama, .junie
         ]
         let parsers = ParserRegistry.defaultParsers()
         let registeredProviders = Set(parsers.keys)

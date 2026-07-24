@@ -8,6 +8,7 @@ import com.openburnbar.irohrelay.IrohRelayTransport
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RetainedIrohControlTransportPoolTest {
@@ -61,13 +62,36 @@ class RetainedIrohControlTransportPoolTest {
         assertEquals(1, created.single().shutdownCalls)
     }
 
-    private class FakeTransport(private val relayURL: String?) : IrohRelayTransport {
+    @Test
+    fun controllerRouteIsRegisteredAfterStartAndBeforeExactControlConnect() = runTest {
+        val events = mutableListOf<String>()
+        val pool = RetainedIrohControlTransportPool { relayURL ->
+            FakeTransport(relayURL, events)
+        }
+
+        pool.dial(
+            target = IrohDialTarget(nodeId = "node-1", relayURL = "https://relay.example"),
+            timeoutMillis = 1_000,
+            beforeConnect = { identity ->
+                events += "register:${identity.nodeId}"
+            },
+        )
+
+        assertEquals(listOf("start", "register:node-1", "connect"), events)
+        assertTrue(events.indexOf("register:node-1") < events.indexOf("connect"))
+    }
+
+    private class FakeTransport(
+        private val relayURL: String?,
+        private val events: MutableList<String>? = null,
+    ) : IrohRelayTransport {
         val stream = FakeStream()
         var startCalls = 0
         var connectCalls = 0
         var shutdownCalls = 0
 
         override suspend fun start(): IrohEndpointIdentity {
+            events?.add("start")
             startCalls += 1
             return IrohEndpointIdentity(
                 nodeId = "node-1",
@@ -77,6 +101,7 @@ class RetainedIrohControlTransportPoolTest {
         }
 
         override suspend fun connect(target: IrohDialTarget, timeoutMillis: Long): IrohRelayStream {
+            events?.add("connect")
             connectCalls += 1
             return stream
         }

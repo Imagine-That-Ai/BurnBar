@@ -128,6 +128,21 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(localOllama.ollamaEndpoints.first?.baseURL, "http://localhost:11434")
     }
 
+    func testOnboardingRoutingProviderIDsExcludeDisabledRoutes() async throws {
+        let harness = try makeHarness(name: "onboarding-routing")
+        let initial = try await harness.configStore.onboardingRoutingProviderIDs()
+        XCTAssertTrue(initial.contains("codex"), "The default local Codex route should satisfy onboarding.")
+
+        let snapshot = try await harness.configStore.snapshot()
+        let codex = try XCTUnwrap(snapshot.providerSettings(id: "codex"))
+        var disabled = codex
+        disabled.isEnabled = false
+        _ = try await harness.configStore.upsertProvider(disabled)
+
+        let afterDisable = try await harness.configStore.onboardingRoutingProviderIDs()
+        XCTAssertFalse(afterDisable.contains("codex"), "A disabled local provider must not satisfy onboarding.")
+    }
+
     func testOllamaEndpointDecodeSynthesizesLegacyDefaultFromProviderBaseURL() throws {
         let previous = setEnvironment("OLLAMA_HOST", to: nil)
         defer { restoreEnvironment("OLLAMA_HOST", previous) }

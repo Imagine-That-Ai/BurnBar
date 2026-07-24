@@ -938,6 +938,39 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertTrue(refreshed)
     }
 
+    func test_usageSync_runtimeSnapshotPreservesExecutionSourceAttribution() throws {
+        let harness = try makeRuntimePathsHarness(name: "runtime-execution-source")
+        defer { harness.cleanup() }
+
+        let event = BurnBarUsageEvent(
+            providerID: "codex",
+            modelID: "gpt-5.6-codex",
+            inputTokens: 100,
+            outputTokens: 20,
+            cacheReadTokens: 10,
+            cost: 1,
+            recordedAt: Date(timeIntervalSince1970: 1_784_592_000),
+            sessionID: "daemon-source-session",
+            projectName: "OpenBurnBar",
+            executionSourceID: "cursor",
+            executionSourceName: "Cursor",
+            executionSourceKind: .ide,
+            executionSourceConfidence: .derivedExact
+        )
+        let service = OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+
+        let snapshot = service.runtimeSnapshot(
+            from: BurnBarProviderConfigurationSnapshot(providers: []),
+            usageEvents: [event]
+        )
+        let usage = try XCTUnwrap(snapshot.importedUsages.first)
+
+        XCTAssertEqual(usage.executionSourceID, "cursor")
+        XCTAssertEqual(usage.executionSourceName, "Cursor")
+        XCTAssertEqual(usage.executionSourceKind, .ide)
+        XCTAssertEqual(usage.executionSourceConfidence, .derivedExact)
+    }
+
     func test_usageSync_importsHermesLedgerRowsAsHermesProvider() async throws {
         let harness = try makeRuntimePathsHarness(name: "hermes-import")
         defer { harness.cleanup() }
@@ -1156,6 +1189,94 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(snapshot.projects.first?.latestConversationID, "conversation-apollo")
         XCTAssertEqual(snapshot.projects.first?.sessionCountLast7Days, 1)
         XCTAssertNil(snapshot.projects.first?.latestQuestionPrompt)
+    }
+
+    @MainActor
+    func test_managerExportsProjectsBeyondLegacyActivityWindowForTenThousandSessionMigration() async throws {
+        let harness = try makeRuntimePathsHarness(name: "activity-export-10k-migration")
+        defer { harness.cleanup() }
+
+        let store = try makeInMemoryStore()
+        let now = Date()
+        let sessionCount = 10_000
+        let projectCount = 100
+
+        // Keep the dataset compact while exercising the full migration input:
+        // 10k distinct sessions span 100 inferred projects. Project 100 is
+        // intentionally older than the legacy newest-80 conversation window.
+        for index in 0..<sessionCount {
+            let projectName = "Project \(index / (sessionCount / projectCount) + 1)"
+            try await store.upsertConversation(
+                ConversationRecord(
+                    id: "migration-conversation-\(index)",
+                    provider: .zai,
+                    sessionId: "migration-session-\(index)",
+                    projectName: projectName,
+                    startTime: now.addingTimeInterval(-Double(index + 1)),
+                    endTime: now.addingTimeInterval(-Double(index)),
+                    messageCount: 1,
+                    userWordCount: 1,
+                    assistantWordCount: 1,
+                    keyFiles: [],
+                    keyCommands: [],
+                    keyTools: [],
+                    inferredTaskTitle: "Migration session \(index)",
+                    lastAssistantMessage: "",
+                    fullText: "Migration session \(index)",
+                    fileModifiedAt: now.addingTimeInterval(-Double(index))
+                )
+            )
+        }
+
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: OpenBurnBarDaemonDependencies(
+                fileManager: .default,
+                runProcess: { _, _ in "" },
+                resolveDaemonBinary: { nil },
+                requestHealth: { _ in
+                    BurnBarHealthResponse(
+                        ok: true,
+                        daemonVersion: "rpc-daemon",
+                        protocolVersion: BurnBarProtocolVersion.current,
+                        socketPath: harness.paths.socketURL.path
+                    )
+                },
+                requestConfig: { _ in BurnBarProviderConfigurationSnapshot(providers: []) },
+                updateConfig: { _, snapshot in snapshot },
+                requestRecentUsage: { _, _ in [] },
+                requestControllerProjects: { _ in [] },
+                upsertControllerProject: { _, project in project },
+                recordControllerReviewRun: { _, run in
+                    BurnBarControllerReviewRunRecordResponse(
+                        run: run,
+                        summary: BurnBarControllerSummary(
+                            updatedAt: Date(),
+                            counts: BurnBarControllerCounts(
+                                projectCount: 0,
+                                pendingQuestionCount: 0,
+                                openFollowupCount: 0,
+                                activeMissionCount: 0,
+                                staleProjectCount: 0
+                            ),
+                            freshness: .missing
+                        )
+                    )
+                }
+            ),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        )
+
+        manager.attach(dataStore: store)
+        await manager.refreshHealth()
+
+        let data = try Data(contentsOf: harness.paths.controllerActivitySnapshotURL)
+        let snapshot = try JSONDecoder().decode(BurnBarControllerActivitySnapshot.self, from: data)
+        XCTAssertEqual(snapshot.projects.count, projectCount)
+        XCTAssertTrue(
+            snapshot.projects.contains(where: { $0.displayName == "Project 100" }),
+            "10k-session migration must preserve projects outside the legacy 80-conversation window"
+        )
     }
 
     func test_makeControllerRuntimeSnapshot_filtersAppActivityQuestionsFromOperatorInbox() {

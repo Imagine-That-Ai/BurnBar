@@ -23,7 +23,7 @@ test('all package recipes carry the primary credential backend contract', () => 
   assert.ok(tauri.bundle.linux.deb.depends.includes('libsecret-tools'));
   assert.ok(tauri.bundle.linux.rpm.depends.includes('libsecret'));
 
-  const pkgbuild = read('packaging/linux/aur/PKGBUILD');
+  const pkgbuild = read('packaging/linux/aur/PKGBUILD.in');
   assert.match(pkgbuild, /depends=\([^\n]*"libsecret"/);
   assert.match(pkgbuild, /optdepends=\([^\n]*"kwallet:/);
 

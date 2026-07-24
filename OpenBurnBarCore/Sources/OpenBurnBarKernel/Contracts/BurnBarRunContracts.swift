@@ -48,6 +48,7 @@ public enum BurnBarRunStateMachine {
         case (.idle, .planning):
             return true
         case (.planning, .awaitingApproval),
+             (.planning, .awaitingComputerUseSession),
              (.planning, .executingTool),
              (.planning, .waitingOnCompanion),
              (.planning, .modelStreaming),
@@ -58,8 +59,13 @@ public enum BurnBarRunStateMachine {
         case (.awaitingApproval, .planning),
              (.awaitingApproval, .cancelled):
             return true
+        case (.awaitingComputerUseSession, .executingTool),
+             (.awaitingComputerUseSession, .cancelled),
+             (.awaitingComputerUseSession, .failed):
+            return true
         case (.executingTool, .planning),
              (.executingTool, .awaitingApproval),
+             (.executingTool, .awaitingComputerUseSession),
              (.executingTool, .waitingOnCompanion),
              (.executingTool, .modelStreaming),
              (.executingTool, .completed),
@@ -74,6 +80,7 @@ public enum BurnBarRunStateMachine {
              (.waitingOnCompanion, .cancelled):
             return true
         case (.modelStreaming, .executingTool),
+             (.modelStreaming, .awaitingComputerUseSession),
              (.modelStreaming, .completed),
              (.modelStreaming, .failed),
              (.modelStreaming, .cancelled):

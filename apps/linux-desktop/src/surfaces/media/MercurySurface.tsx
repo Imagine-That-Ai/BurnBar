@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useShellStore } from '../../state/shellStore.js';
 import { MediaSection } from './MediaSection.js';
+import type { MercuryMediaStatus } from '../../tauriBridge.js';
 
 /**
  * Dedicated Mercury route (Phase 4). Uses media_status capability probe only —
@@ -30,17 +31,16 @@ export function MercurySurface() {
         return;
       }
       try {
-        const status = (await bridge.mediaStatus()) as {
-          capabilityAvailable?: boolean;
-          reason?: string;
-        };
+        const status = (await bridge.mediaStatus()) as MercuryMediaStatus;
         if (cancelled) return;
-        if (status.capabilityAvailable) {
+        const viewer = status.viewerCapability;
+        const available = viewer?.available ?? status.capabilityAvailable;
+        if (available) {
           setCapability('available');
           setDetail(null);
         } else {
           setCapability('absent');
-          setDetail(status.reason ?? 'Mercury transport capability unavailable on this peer.');
+          setDetail(viewer ? viewerDetail(viewer) : status.reason ?? 'Mercury transport capability unavailable on this peer.');
         }
       } catch (err) {
         if (!cancelled) {
@@ -70,4 +70,24 @@ export function MercurySurface() {
       <MediaSection />
     </section>
   );
+}
+
+function viewerDetail(viewer: NonNullable<MercuryMediaStatus['viewerCapability']>): string {
+  const reason = (() => {
+    switch (viewer.status) {
+      case 'built_without_gstreamer':
+        return 'This Linux build was compiled without the GStreamer viewer feature.';
+      case 'gstreamer_backend_unavailable':
+        return 'The GStreamer runtime is unavailable to the packaged shell.';
+      case 'gstreamer_vp9_decoder_missing':
+        return 'The GStreamer runtime is missing a VP9 decoder.';
+      case 'gstreamer_video_sink_missing':
+        return 'The GStreamer runtime is missing a native video sink.';
+      case 'unknown':
+        return viewer.reason ?? 'The packaged shell cannot verify a native Mercury video viewer.';
+      case 'available':
+        return 'The native Mercury viewer is ready.';
+    }
+  })();
+  return viewer.installHint ? `${reason} ${viewer.installHint}` : reason;
 }

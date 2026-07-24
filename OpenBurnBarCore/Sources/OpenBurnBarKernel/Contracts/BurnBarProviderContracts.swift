@@ -1392,6 +1392,215 @@ public struct BurnBarRecentUsageResponse: Codable, Hashable, Sendable {
     }
 }
 
+/// Requests the daemon's durable all-time usage projection. The projection is
+/// rebuilt from the append-only ledger whenever its content fingerprint is
+/// stale, so clients never need to treat renderer-side arithmetic as authority.
+public struct BurnBarUsageProjectionRequest: Codable, Hashable, Sendable {
+    public init() {}
+}
+
+/// Requests an explicit authoritative recount of the daemon usage ledger.
+/// Recount never mutates source events; it replaces only the derived projection.
+public struct BurnBarUsageRecountRequest: Codable, Hashable, Sendable {
+    public init() {}
+}
+
+public struct BurnBarUsageProjectionTotals: Codable, Hashable, Sendable {
+    public let eventCount: Int
+    public let inputTokens: Int
+    public let outputTokens: Int
+    public let cacheCreationTokens: Int
+    public let cacheReadTokens: Int
+    public let reasoningTokens: Int
+    public let totalTokens: Int
+    public let cost: Double
+
+    public init(
+        eventCount: Int,
+        inputTokens: Int,
+        outputTokens: Int,
+        cacheCreationTokens: Int,
+        cacheReadTokens: Int,
+        reasoningTokens: Int,
+        totalTokens: Int,
+        cost: Double
+    ) {
+        self.eventCount = eventCount
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cacheCreationTokens = cacheCreationTokens
+        self.cacheReadTokens = cacheReadTokens
+        self.reasoningTokens = reasoningTokens
+        self.totalTokens = totalTokens
+        self.cost = cost
+    }
+}
+
+/// One UTC-day/provider/model aggregate. Day boundaries are UTC by contract,
+/// making the same ledger project identically on macOS and Linux regardless of
+/// the host locale or current time zone.
+public struct BurnBarUsageProjectionBucket: Codable, Hashable, Sendable {
+    public let dayUTC: String
+    public let providerID: String
+    public let modelID: String
+    public let totals: BurnBarUsageProjectionTotals
+    public let exactEventCount: Int
+    public let estimatedEventCount: Int
+    public let unknownEventCount: Int
+    public let firstRecordedAt: Date
+    public let lastRecordedAt: Date
+
+    public init(
+        dayUTC: String,
+        providerID: String,
+        modelID: String,
+        totals: BurnBarUsageProjectionTotals,
+        exactEventCount: Int,
+        estimatedEventCount: Int,
+        unknownEventCount: Int,
+        firstRecordedAt: Date,
+        lastRecordedAt: Date
+    ) {
+        self.dayUTC = dayUTC
+        self.providerID = providerID
+        self.modelID = modelID
+        self.totals = totals
+        self.exactEventCount = exactEventCount
+        self.estimatedEventCount = estimatedEventCount
+        self.unknownEventCount = unknownEventCount
+        self.firstRecordedAt = firstRecordedAt
+        self.lastRecordedAt = lastRecordedAt
+    }
+}
+
+public struct BurnBarUsageProjection: Codable, Hashable, Sendable {
+    public let schemaVersion: Int
+    public let generation: Int
+    public let generatedAt: Date
+    public let ledgerSHA256: String
+    public let totals: BurnBarUsageProjectionTotals
+    public let buckets: [BurnBarUsageProjectionBucket]
+
+    public init(
+        schemaVersion: Int = 1,
+        generation: Int,
+        generatedAt: Date,
+        ledgerSHA256: String,
+        totals: BurnBarUsageProjectionTotals,
+        buckets: [BurnBarUsageProjectionBucket]
+    ) {
+        self.schemaVersion = schemaVersion
+        self.generation = generation
+        self.generatedAt = generatedAt
+        self.ledgerSHA256 = ledgerSHA256
+        self.totals = totals
+        self.buckets = buckets
+    }
+}
+
+public struct BurnBarUsageProjectionResponse: Codable, Hashable, Sendable {
+    public let projection: BurnBarUsageProjection
+
+    public init(projection: BurnBarUsageProjection) {
+        self.projection = projection
+    }
+}
+
+/// Requests a bounded, daemon-owned snapshot of the indexed conversation
+/// history used by Activity export. Unlike `BurnBarRecentUsageRequest`, this
+/// contract carries an explicit completeness proof and persisted session body.
+public struct BurnBarActivityHistoryRequest: Codable, Hashable, Sendable {
+    public let limit: Int
+
+    public init(limit: Int = 500) {
+        self.limit = limit
+    }
+}
+
+public struct BurnBarActivityHistorySession: Codable, Hashable, Sendable {
+    public let id: String
+    public let provider: String
+    public let model: String
+    public let startedAt: String
+    public let tokens: Int
+    public let costUsd: Double
+    public let title: String
+    public let sourceID: String
+    public let providerSessionID: String
+    public let runID: String?
+    public let projectName: String?
+    public let bodyMD: String
+
+    public init(
+        id: String,
+        provider: String,
+        model: String,
+        startedAt: String,
+        tokens: Int,
+        costUsd: Double,
+        title: String,
+        sourceID: String,
+        providerSessionID: String,
+        runID: String? = nil,
+        projectName: String? = nil,
+        bodyMD: String
+    ) {
+        self.id = id
+        self.provider = provider
+        self.model = model
+        self.startedAt = startedAt
+        self.tokens = tokens
+        self.costUsd = costUsd
+        self.title = title
+        self.sourceID = sourceID
+        self.providerSessionID = providerSessionID
+        self.runID = runID
+        self.projectName = projectName
+        self.bodyMD = bodyMD
+    }
+}
+
+public struct BurnBarActivityHistoryResponse: Codable, Hashable, Sendable {
+    public let sessions: [BurnBarActivityHistorySession]
+    public let nextCursor: String?
+    public let historyComplete: Bool
+    public let historyLimit: Int
+    public let totalCount: Int
+
+    public init(
+        sessions: [BurnBarActivityHistorySession],
+        nextCursor: String?,
+        historyComplete: Bool,
+        historyLimit: Int,
+        totalCount: Int
+    ) {
+        self.sessions = sessions
+        self.nextCursor = nextCursor
+        self.historyComplete = historyComplete
+        self.historyLimit = historyLimit
+        self.totalCount = totalCount
+    }
+}
+
+/// Requests a privacy-bounded, daemon-owned qualitative insight brief. The
+/// daemon builds the digest from its usage ledger; the renderer never receives
+/// raw transcripts or provider credentials.
+public struct BurnBarUsageInsightsRequest: Codable, Hashable, Sendable {
+    public let limit: Int
+    public let windowSeconds: TimeInterval
+    public let prompt: String
+
+    public init(
+        limit: Int = 200,
+        windowSeconds: TimeInterval = 7 * 24 * 60 * 60,
+        prompt: String = "Summarize the most important usage changes and actions."
+    ) {
+        self.limit = limit
+        self.windowSeconds = windowSeconds
+        self.prompt = prompt
+    }
+}
+
 /// Confidence level for a recorded `BurnBarUsageEvent`. Mirrors `UsageProvenanceConfidence`
 /// at the contract layer so the daemon ledger can be written by Hermes/MCP/CLI clients
 /// without depending on the app's `OpenBurnBarCore` runtime types.
@@ -1418,6 +1627,12 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
     public let sessionID: String?
     /// Optional client-supplied project name. Defaults to "OpenBurnBar Daemon" on import when nil.
     public let projectName: String?
+    /// Product surface that originated the request (for example Cursor or
+    /// Grok Build). Optional for backward-compatible daemon ledger decoding.
+    public let executionSourceID: String?
+    public let executionSourceName: String?
+    public let executionSourceKind: UsageExecutionSourceKind?
+    public let executionSourceConfidence: BurnBarUsageConfidence?
     /// Confidence level for the recorded counts. Defaults to `.exact` for backwards compat
     /// (existing daemon-recorded rows are exact provider responses).
     public let confidence: BurnBarUsageConfidence
@@ -1443,6 +1658,10 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         case recordedAt
         case sessionID
         case projectName
+        case executionSourceID
+        case executionSourceName
+        case executionSourceKind
+        case executionSourceConfidence
         case confidence
         case parentRequestID
     }
@@ -1460,6 +1679,10 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         recordedAt: Date,
         sessionID: String? = nil,
         projectName: String? = nil,
+        executionSourceID: String? = nil,
+        executionSourceName: String? = nil,
+        executionSourceKind: UsageExecutionSourceKind? = nil,
+        executionSourceConfidence: BurnBarUsageConfidence? = nil,
         confidence: BurnBarUsageConfidence = .exact,
         parentRequestID: String? = nil
     ) {
@@ -1475,6 +1698,10 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         self.recordedAt = recordedAt
         self.sessionID = sessionID
         self.projectName = projectName
+        self.executionSourceID = executionSourceID
+        self.executionSourceName = executionSourceName
+        self.executionSourceKind = executionSourceKind
+        self.executionSourceConfidence = executionSourceConfidence
         self.confidence = confidence
         self.parentRequestID = parentRequestID
     }
@@ -1493,6 +1720,10 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         recordedAt = try container.decode(Date.self, forKey: .recordedAt)
         sessionID = try container.decodeIfPresent(String.self, forKey: .sessionID)
         projectName = try container.decodeIfPresent(String.self, forKey: .projectName)
+        executionSourceID = try container.decodeIfPresent(String.self, forKey: .executionSourceID)
+        executionSourceName = try container.decodeIfPresent(String.self, forKey: .executionSourceName)
+        executionSourceKind = try container.decodeIfPresent(UsageExecutionSourceKind.self, forKey: .executionSourceKind)
+        executionSourceConfidence = try container.decodeIfPresent(BurnBarUsageConfidence.self, forKey: .executionSourceConfidence)
         confidence = try container.decodeIfPresent(BurnBarUsageConfidence.self, forKey: .confidence) ?? .exact
         parentRequestID = try container.decodeIfPresent(String.self, forKey: .parentRequestID)
     }
@@ -1511,6 +1742,10 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         try container.encode(recordedAt, forKey: .recordedAt)
         try container.encodeIfPresent(sessionID, forKey: .sessionID)
         try container.encodeIfPresent(projectName, forKey: .projectName)
+        try container.encodeIfPresent(executionSourceID, forKey: .executionSourceID)
+        try container.encodeIfPresent(executionSourceName, forKey: .executionSourceName)
+        try container.encodeIfPresent(executionSourceKind, forKey: .executionSourceKind)
+        try container.encodeIfPresent(executionSourceConfidence, forKey: .executionSourceConfidence)
         try container.encode(confidence, forKey: .confidence)
         try container.encodeIfPresent(parentRequestID, forKey: .parentRequestID)
     }

@@ -20,6 +20,7 @@
 
     <!-- Android 14: Picture-in-Picture is opt-in via this feature flag. -->
     <uses-feature android:name="android.software.picture_in_picture" android:required="false" />
+    <uses-feature android:glEsVersion="0x00030000" android:required="false" />
 
     <queries>
         <!-- Hermes Square Phase D — RecognizerIntent.ACTION_RECOGNIZE_SPEECH
@@ -189,6 +190,26 @@
             android:exported="true"
             android:label="Wallpaper Settings"
             android:theme="@style/Theme.BurnBar" />
+
+        <activity
+            android:name=".wallpaper.livingthemes.LivingThemesActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:label="Living Themes"
+            android:theme="@style/Theme.BurnBar" />
+
+        <service
+            android:name=".wallpaper.livingthemes.LivingThemeWallpaperService"
+            android:exported="true"
+            android:label="@string/living_themes_wallpaper_label"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/living_themes_wallpaper" />
+        </service>
 
         <activity
             android:name=".menubar.QuickGlanceActivity"

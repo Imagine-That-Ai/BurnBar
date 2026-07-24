@@ -10,8 +10,12 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayInputIntentKind
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
 import kotlin.math.roundToLong
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -121,6 +125,7 @@ class PhoneControlSenderTest {
         assertEquals(MediaStreamClass.CONTROL_APPROVAL.raw, frame.control?.streamClass)
         assertEquals("session-1", frame.control?.sessionId)
         assertEquals("approval-1", frame.control?.approvalResponse?.approvalId)
+        assertEquals("android-phone-1", signed.respondedBy)
         assertEquals(PhoneControlSignerCanonical.approvalRequestHashHex(request), signed.requestHashBlake3)
         assertNotNull(signed.authority)
         assertEquals("android-phone-1", signed.authority?.peerNodeId)
@@ -220,6 +225,52 @@ class PhoneControlSenderTest {
         assertEquals(43L, second.counter)
         assertEquals(42L, frames[0].control?.inputIntent?.authority?.counter)
         assertEquals(43L, frames[1].control?.inputIntent?.authority?.counter)
+    }
+
+    @Test
+    fun concurrentSenderInstancesPreserveCounterWireOrder() = runBlocking {
+        val counterStore = InMemoryPhoneControlCounterStore()
+        val firstWriteStarted = CompletableDeferred<Unit>()
+        val releaseFirstWrite = CompletableDeferred<Unit>()
+        val frames = java.util.Collections.synchronizedList(mutableListOf<HermesRealtimeRelayFrame>())
+        val firstSender =
+            PhoneControlSender(
+                uid = "uid-1",
+                connectionId = "conn-1",
+                peerNodeId = "android-phone-sequenced",
+                signingIdentityProvider = { PhoneControlSigningIdentity.Ed25519(privateSeed) },
+                counterStore = counterStore,
+                nowMillis = { 1_700_000_000_000L },
+                frameSink = { frame ->
+                    firstWriteStarted.complete(Unit)
+                    releaseFirstWrite.await()
+                    frames += frame
+                },
+            )
+        val secondSender =
+            PhoneControlSender(
+                uid = "uid-1",
+                connectionId = "conn-1",
+                peerNodeId = "android-phone-sequenced",
+                signingIdentityProvider = { PhoneControlSigningIdentity.Ed25519(privateSeed) },
+                counterStore = counterStore,
+                nowMillis = { 1_700_000_000_001L },
+                frameSink = { frames += it },
+            )
+
+        val first = async(Dispatchers.Default) { firstSender.send(PhoneControlIntent(kind = PhoneControlIntentKind.PANIC)) }
+        firstWriteStarted.await()
+        val second = async(Dispatchers.Default) { secondSender.send(PhoneControlIntent(kind = PhoneControlIntentKind.TAP)) }
+
+        assertFalse(second.isCompleted)
+        assertEquals(0, frames.size)
+        releaseFirstWrite.complete(Unit)
+
+        assertEquals(listOf(1L, 2L), listOf(first.await().counter, second.await().counter))
+        assertEquals(
+            listOf(1L, 2L),
+            frames.map { it.control?.inputIntent?.authority?.counter },
+        )
     }
 
     @Test

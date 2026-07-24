@@ -135,7 +135,7 @@ export function IntegrationsSection() {
   return (
     <section className="integrations-section" aria-label="Smart display integrations">
       <p className="muted settings-tab-lede">
-        Read-only Linux parity for SmartHub, Cast, Home Assistant, PixelClock, and AWTRIX. Configure and probe from
+        Typed Linux status and probe parity for SmartHub, Cast, Home Assistant, PixelClock, and AWTRIX. Configure from
         the daemon CLI; this settings view does not collect credentials or contact devices directly.
       </p>
       {ORDER.map((kind) => {

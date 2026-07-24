@@ -1,0 +1,64 @@
+{
+  "schema": "openburnbar.parity.mobile-focused-test-receipt.v1",
+  "capturedAt": "2026-07-19T15:09:36Z",
+  "certificationScope": "non-certifying focused physical-iPad test receipt",
+  "sourceCommit": "c9c679f43b",
+  "sourceWorktree": "/private/tmp/burnbar-linux-parity-continuation",
+  "device": {
+    "name": "Alberto's iPad",
+    "xcodebuildIdentifier": "00008132-001158191E9A401C",
+    "coreDeviceIdentifier": "407C0B12-010B-5970-8E85-D0E43DA8F457",
+    "platform": "iPadOS",
+    "connection": "physical-paired"
+  },
+  "build": {
+    "xcode": "Xcode-27.0.0-Beta",
+    "configuration": "Debug",
+    "signalFfiTargets": ["aarch64-apple-ios"],
+    "firestoreGraph": {
+      "grpc": "grpc-ios@1.69.0",
+      "boringssl": "BoringSSL-SwiftPM@0.32.1"
+    },
+    "automaticProvisioning": false,
+    "xcodebuildExitCode": 0,
+    "commandDurationSeconds": 19
+  },
+  "focusedSuite": "OpenBurnBarMobileTests",
+  "result": {
+    "passed": 44,
+    "failed": 0,
+    "infrastructureCrashes": 0,
+    "appFailures": 0,
+    "total": 44,
+    "durationSeconds": 18.589
+  },
+  "selection": {
+    "AgentLiveStagePresenterTests": 22,
+    "AgentLiveStageWiringTests": 6,
+    "DevicesStoreTests": 13,
+    "HermesGatewayApprovalDetailIndexTests": 3,
+    "OpenBurnBarMobileTests": 3
+  },
+  "verifiedSelectors": [
+    "OpenBurnBarMobileTests/AgentLiveStagePresenterTests",
+    "OpenBurnBarMobileTests/AgentLiveStageWiringTests",
+    "OpenBurnBarMobileTests/DevicesStoreTests",
+    "OpenBurnBarMobileTests/HermesGatewayApprovalDetailIndexTests",
+    "OpenBurnBarMobileTests/testAgentWatchOverlayCoordinatorClassifiesApprovalStreamAndResponds",
+    "OpenBurnBarMobileTests/testGatewaySealedApprovalDetailDecodesActionIdAndKind",
+    "OpenBurnBarMobileTests/testSealedApprovalDecisionCarriesKindAndActionAtRootOfSealedPayload"
+  ],
+  "artifacts": {
+    "wrapperTelemetry": ".tmp/ipad-live-current/artifacts/test-openburnbar-mobile-attempts.jsonl",
+    "resultBundle": "cleaned after verification"
+  },
+  "diagnosticNotes": [
+    "The wrapper telemetry recorded one passing attempt with exit code 0; the bounded rerun used the owned scratch cache and derived-data root.",
+    "The rerun was bound to the current Linux parity source checkout at test start; no iPad source changes were required for this Linux lane.",
+    "The receipt covers focused XCTest execution only; it is not a full mobile-suite, installed Linux, or cross-device approval certification."
+  ],
+  "limitations": [
+    "Trusted-device enrollment, installed Linux candidate pairing, fingerprint confirmation, approval/revoke, and sign-out remain unverified.",
+    "This receipt does not promote any P-01 through P-40 product row or environment receipt."
+  ]
+}

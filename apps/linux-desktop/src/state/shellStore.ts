@@ -21,6 +21,11 @@ import type { DaemonSubscriptionStatus } from './daemonSubscriptionSupervisor.js
 
 export type ShellSkin = 'editorial' | 'aurora';
 
+type RouteUpdateOptions = {
+  /** Startup/deep-link routing is not a command-palette navigation sample. */
+  measure?: boolean;
+};
+
 const SKIN_KEY = 'openburnbar.linux.skin.v1';
 
 function readPersistedSkin(): ShellSkin {
@@ -48,8 +53,8 @@ export type ShellState = {
   runtimeCapabilities: RuntimeCapabilityManifest | null;
   capabilityError: string | null;
   fixtureMode: boolean;
-  setRoute(route: ShellRoute): void;
-  syncRouteFromHash(): void;
+  setRoute(route: ShellRoute, options?: RouteUpdateOptions): void;
+  syncRouteFromHash(options?: RouteUpdateOptions): void;
   refreshHealth(): Promise<void>;
   toggleSkin(): void;
   setFixtureMode(enabled: boolean): void;
@@ -59,7 +64,11 @@ export type ShellState = {
 };
 
 export const useShellStore = create<ShellState>()((set, get) => ({
-  route: routeFromHash(typeof location === 'undefined' ? '' : location.hash),
+  route:
+    typeof location !== 'undefined' &&
+    new URLSearchParams(location.search).get('window') === 'chat-popout'
+      ? 'chat'
+      : routeFromHash(typeof location === 'undefined' ? '' : location.hash),
   health: null,
   healthError: null,
   healthBusy: false,
@@ -76,15 +85,22 @@ export const useShellStore = create<ShellState>()((set, get) => ({
   capabilityError: null,
   fixtureMode: false,
 
-  setRoute(route) {
-    markAfterPaint('route.navigation', `packaged-ui-route-after-paint:${route}`);
+  setRoute(route, options) {
+    if (options?.measure !== false) {
+      markAfterPaint('route.navigation', `packaged-ui-route-after-paint:${route}`);
+    }
     location.hash = `#/${route}`;
     set({ route });
   },
 
-  syncRouteFromHash() {
+  syncRouteFromHash(options) {
     const route = routeFromHash(location.hash);
-    markAfterPaint('route.navigation', `packaged-ui-hash-route-after-paint:${route}`);
+    // setRoute updates the store before the browser dispatches hashchange.
+    // Ignore that echo so one user navigation produces one honest perf mark.
+    if (route === get().route) return;
+    if (options?.measure !== false) {
+      markAfterPaint('route.navigation', `packaged-ui-hash-route-after-paint:${route}`);
+    }
     set({ route });
   },
 

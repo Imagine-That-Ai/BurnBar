@@ -510,22 +510,29 @@ public struct HermesRealtimeRelayCallInvite: Codable, Sendable, Equatable {
     /// `"video"` today; kept as a string so future audio-only/group-call
     /// invites do not break older clients.
     public var callKind: String
+    /// F7 — sealKeyV3-wrapped media-frame-AEAD session key for the
+    /// accepted call. A call must not start native capture unless
+    /// this envelope is present and can be opened by the receiver.
+    public var mediaSealKey: HermesRealtimeRelayControlSealKeyEnvelope?
     public init(
         requestId: String,
         requestedAt: Date,
         requesterDisplayName: String,
-        callKind: String = "video"
+        callKind: String = "video",
+        mediaSealKey: HermesRealtimeRelayControlSealKeyEnvelope? = nil
     ) {
         self.requestId = requestId
         self.requestedAt = requestedAt
         self.requesterDisplayName = requesterDisplayName
         self.callKind = callKind
+        self.mediaSealKey = mediaSealKey
     }
     private enum CodingKeys: String, CodingKey {
         case requestId
         case requestedAt
         case requesterDisplayName
         case callKind
+        case mediaSealKey
     }
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -533,6 +540,7 @@ public struct HermesRealtimeRelayCallInvite: Codable, Sendable, Equatable {
         self.requestedAt = try HermesRealtimeRelayDateCodec.decode(container, forKey: .requestedAt)
         self.requesterDisplayName = try container.decode(String.self, forKey: .requesterDisplayName)
         self.callKind = try container.decodeIfPresent(String.self, forKey: .callKind) ?? "video"
+        self.mediaSealKey = try container.decodeIfPresent(HermesRealtimeRelayControlSealKeyEnvelope.self, forKey: .mediaSealKey)
     }
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
@@ -540,6 +548,7 @@ public struct HermesRealtimeRelayCallInvite: Codable, Sendable, Equatable {
         try container.encode(HermesRealtimeRelayDateCodec.encode(requestedAt), forKey: .requestedAt)
         try container.encode(requesterDisplayName, forKey: .requesterDisplayName)
         try container.encode(callKind, forKey: .callKind)
+        try container.encodeIfPresent(mediaSealKey, forKey: .mediaSealKey)
     }
 }
 

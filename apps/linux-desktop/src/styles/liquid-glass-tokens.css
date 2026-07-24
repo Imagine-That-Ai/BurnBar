@@ -22,6 +22,31 @@
   --macos-ember: #fa5053;
   --macos-amber: #ffa800;
   --macos-whimsy: #8b7fe8;
+  --macos-frost: #6fc2ff;
+  --macos-blaze: #e86100;
+
+  /* ProTheme roles mirrored from macOS/iOS. Pro surfaces stay obsidian and
+   * use mercury/aureate accents instead of the utilitarian shell palette. */
+  --pro-obsidian: #0a0a0d;
+  --pro-obsidian-elevated: #121216;
+  --pro-mercury: var(--macos-hermes-mercury);
+  --pro-aureate: var(--macos-hermes-aureate);
+  --pro-ember-pop: var(--macos-ember);
+  --pro-aureate-stroke: linear-gradient(135deg, var(--pro-aureate), var(--pro-mercury), var(--pro-aureate));
+  --pro-dark-aurora-ribbon: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--pro-ember-pop) 32%, transparent),
+    color-mix(in srgb, var(--macos-amber) 18%, transparent) 42%,
+    color-mix(in srgb, var(--pro-mercury) 14%, transparent) 72%,
+    transparent
+  );
+  --pro-card-radius: 18px;
+  --pro-band-radius: 14px;
+  --pro-foil-stroke: 1px;
+
+  /* DesktopWallpaperBackground palettes. Kept in the palette layer so app
+   * layout CSS remains semantic and skin-aware. */
+  --wallpaper-base: var(--color-ink-void);
 
   /* Prefer macOS cool slate over editorial ink for the shell canvas */
   --color-ink-void: var(--macos-bg);
@@ -50,12 +75,25 @@
   --glass-saturate: 165%;
   --glass-saturate-high: 185%;
 
-  /* tint plates */
-  --glass-tint-base: color-mix(in srgb, var(--macos-surface) 48%, transparent);
-  --glass-tint-elevated: color-mix(in srgb, var(--macos-surface-elevated) 55%, transparent);
-  --glass-tint-sunken: color-mix(in srgb, var(--macos-bg) 42%, transparent);
-  --glass-tint-clear: color-mix(in srgb, var(--macos-surface) 28%, transparent);
-  --glass-tint-interactive: color-mix(in srgb, var(--macos-surface-elevated) 38%, transparent);
+  /* tint plates; the appearance slider updates the opacity variables live */
+  --glass-tint-base-opacity: 48%;
+  --glass-tint-elevated-opacity: 55%;
+  --glass-tint-sunken-opacity: 42%;
+  --glass-tint-clear-opacity: 28%;
+  --glass-tint-interactive-opacity: 38%;
+  --glass-input-opacity: 55%;
+  --glass-tint-base: color-mix(in srgb, var(--macos-surface) var(--glass-tint-base-opacity), transparent);
+  --glass-tint-elevated: color-mix(in srgb, var(--macos-surface-elevated) var(--glass-tint-elevated-opacity), transparent);
+  --glass-tint-sunken: color-mix(in srgb, var(--macos-bg) var(--glass-tint-sunken-opacity), transparent);
+  --glass-tint-clear: color-mix(in srgb, var(--macos-surface) var(--glass-tint-clear-opacity), transparent);
+  --glass-tint-interactive: color-mix(in srgb, var(--macos-surface-elevated) var(--glass-tint-interactive-opacity), transparent);
+
+  /* Per-layout ThemeGlassPalette roles. The selected dashboard layout swaps
+   * these role bindings while the active skin continues to own base tokens. */
+  --glass-theme-tint: var(--macos-frost);
+  --glass-theme-wash-top: var(--macos-text);
+  --glass-theme-wash-bottom: var(--macos-frost);
+  --glass-theme-rim: var(--macos-frost);
 
   /* strokes */
   --glass-stroke: color-mix(in srgb, var(--macos-border) 65%, transparent);
@@ -104,7 +142,7 @@
   --glass-panel-blur: blur(var(--glass-blur-md)) saturate(var(--glass-saturate));
   --glass-panel-shadow: var(--glass-shadow-sm), var(--glass-inner-light);
 
-  --glass-input: color-mix(in srgb, var(--macos-bg) 55%, transparent);
+  --glass-input: color-mix(in srgb, var(--macos-bg) var(--glass-input-opacity), transparent);
   --glass-input-stroke: var(--glass-stroke);
   --glass-input-focus: color-mix(in srgb, var(--color-brass-core) 45%, var(--glass-stroke));
 
@@ -127,4 +165,76 @@
   --color-ink-void: #040610;
   --color-ink-base: #040610;
   --color-ink-elevated: #0c1220;
+}
+
+:root[data-dashboard-glass='classic'] {
+  --glass-theme-tint: var(--macos-text);
+  --glass-theme-wash-top: var(--macos-text);
+  --glass-theme-wash-bottom: var(--macos-whimsy);
+  --glass-theme-rim: var(--macos-text);
+}
+
+:root[data-dashboard-glass='aurora'] {
+  --glass-theme-tint: var(--macos-amber);
+  --glass-theme-wash-top: var(--macos-ember);
+  --glass-theme-wash-bottom: var(--macos-amber);
+  --glass-theme-rim: var(--macos-amber);
+}
+
+:root[data-dashboard-glass='nebula'] {
+  --glass-theme-tint: var(--macos-whimsy);
+  --glass-theme-wash-top: var(--macos-whimsy);
+  --glass-theme-wash-bottom: var(--macos-ember);
+  --glass-theme-rim: var(--macos-whimsy);
+}
+
+:root[data-dashboard-glass='constellation'] {
+  --glass-theme-tint: var(--macos-frost);
+  --glass-theme-wash-top: var(--macos-whimsy);
+  --glass-theme-wash-bottom: var(--macos-frost);
+  --glass-theme-rim: var(--macos-frost);
+}
+
+:root[data-dashboard-glass='cockpit'] {
+  --glass-theme-tint: var(--macos-amber);
+  --glass-theme-wash-top: var(--macos-blaze);
+  --glass-theme-wash-bottom: var(--macos-amber);
+  --glass-theme-rim: var(--macos-blaze);
+}
+
+:root[data-dashboard-glass='atelier'] {
+  --glass-theme-tint: var(--macos-frost);
+  --glass-theme-wash-top: var(--macos-text);
+  --glass-theme-wash-bottom: var(--macos-frost);
+  --glass-theme-rim: var(--macos-frost);
+}
+
+:root[data-wallpaper='macosDesktop'] { --wallpaper-base: radial-gradient(ellipse 85% 70% at 16% 12%, #2e74ed 0%, transparent 58%), radial-gradient(ellipse 72% 64% at 86% 76%, #fa5053 0%, transparent 58%), radial-gradient(ellipse 58% 48% at 56% 46%, #ffa800 0%, transparent 62%), #0d1117; }
+:root[data-wallpaper='midnight'] { --wallpaper-base: radial-gradient(ellipse 90% 74% at 20% 10%, #0f2d64 0%, transparent 58%), radial-gradient(ellipse 72% 60% at 86% 82%, #1d4c91 0%, transparent 62%), #050816; }
+:root[data-wallpaper='amoledBlack'] { --wallpaper-base: #000; }
+:root[data-wallpaper='graphite'] { --wallpaper-base: radial-gradient(ellipse 82% 70% at 18% 12%, #4d5360 0%, transparent 58%), radial-gradient(ellipse 74% 62% at 88% 82%, #1b202a 0%, transparent 64%), #101216; }
+:root[data-wallpaper='warmEmber'] { --wallpaper-base: radial-gradient(ellipse 82% 70% at 18% 10%, #783916 0%, transparent 58%), radial-gradient(ellipse 70% 62% at 88% 82%, #3c160e 0%, transparent 62%), #1d0d0a; }
+:root[data-wallpaper='deepIndigo'] { --wallpaper-base: radial-gradient(ellipse 82% 70% at 16% 12%, #2e1e79 0%, transparent 58%), radial-gradient(ellipse 70% 62% at 88% 80%, #5d45ba 0%, transparent 62%), #100e28; }
+:root[data-wallpaper='auroraTeal'] { --wallpaper-base: radial-gradient(ellipse 82% 68% at 18% 12%, #0d5a64 0%, transparent 58%), radial-gradient(ellipse 70% 62% at 88% 82%, #2f9b9e 0%, transparent 62%), #06181a; }
+:root[data-wallpaper='sunsetCrimson'] { --wallpaper-base: radial-gradient(ellipse 82% 70% at 18% 12%, #6c1e34 0%, transparent 58%), radial-gradient(ellipse 72% 62% at 88% 80%, #b83e53 0%, transparent 62%), #19070d; }
+:root[data-wallpaper='cyberpunkViolet'] { --wallpaper-base: radial-gradient(ellipse 82% 70% at 16% 10%, #641f8f 0%, transparent 56%), radial-gradient(ellipse 72% 62% at 88% 82%, #b23cbb 0%, transparent 62%), #180b24; }
+:root[data-wallpaper='forestMoss'] { --wallpaper-base: radial-gradient(ellipse 82% 70% at 18% 12%, #184c2b 0%, transparent 58%), radial-gradient(ellipse 72% 62% at 88% 82%, #4b8f4d 0%, transparent 62%), #08160d; }
+:root[data-wallpaper='solarFlare'] { --wallpaper-base: radial-gradient(ellipse 82% 70% at 18% 10%, #9a5c16 0%, transparent 58%), radial-gradient(ellipse 72% 62% at 88% 82%, #d2a437 0%, transparent 62%), #191108; }
+
+/* User-controlled Liquid Glass material density. Reduce Transparency on the
+ * body still wins over these visual presets for accessibility. */
+:root[data-glass-transparency='frostier'] {
+  --glass-tint-base-opacity: 64%;
+  --glass-tint-elevated-opacity: 72%;
+  --glass-tint-clear-opacity: 42%;
+  --glass-tint-interactive-opacity: 54%;
+  --glass-input-opacity: 70%;
+}
+
+:root[data-glass-transparency='clearer'] {
+  --glass-tint-base-opacity: 35%;
+  --glass-tint-elevated-opacity: 43%;
+  --glass-tint-clear-opacity: 18%;
+  --glass-tint-interactive-opacity: 29%;
+  --glass-input-opacity: 42%;
 }

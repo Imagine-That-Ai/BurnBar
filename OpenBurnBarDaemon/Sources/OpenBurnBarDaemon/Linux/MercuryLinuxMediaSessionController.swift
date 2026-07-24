@@ -17,6 +17,8 @@ public actor MercuryLinuxMediaSessionController {
         var replySender: MercuryLinuxMediaReplySender?
         var mirrorRequest: HermesRealtimeRelayMirrorRequest?
         var mirrorFrame: HermesRealtimeRelayFrame?
+        var callInvite: HermesRealtimeRelayCallInvite?
+        var callFrame: HermesRealtimeRelayFrame?
         var requestedAt: Date
     }
 
@@ -54,6 +56,8 @@ public actor MercuryLinuxMediaSessionController {
     private let downloadDirectoryProvider: @Sendable () -> URL
     private let captureEngine: MercuryLinuxCaptureEngine
     private let captureAdapter: any MercuryLinuxCaptureAdapterProtocol
+    private let audioCaptureAdapter: any MercuryLinuxAudioCaptureAdapterProtocol
+    private let audioPlaybackAdapter: any MercuryLinuxAudioPlaybackAdapterProtocol
     private let sealKeyOpener: any MercuryLinuxMediaSealKeyOpening
     private let packetCodec = MediaPacketCodec()
     private let frameAEAD = MediaFrameAEAD()
@@ -72,8 +76,12 @@ public actor MercuryLinuxMediaSessionController {
     private var transferIDsByManifestID: [String: String] = [:]
     private var outboundGOPID: UInt32 = 0
     private var outboundFrameIndex: UInt32 = 0
+    private var outboundAudioFrameIndex: UInt32 = 0
     private var captureFrameQueue: MercuryLinuxCaptureFrameQueue?
     private var captureFrameConsumerTask: Task<Void, Never>?
+    private var audioCaptureFrameQueue: MercuryLinuxCaptureFrameQueue?
+    private var audioCaptureFrameConsumerTask: Task<Void, Never>?
+    private var fileTransferTasks: [String: Task<Void, Never>] = [:]
 
     public init(
         channel: MercuryLinuxMediaChannel? = nil,
@@ -84,6 +92,8 @@ public actor MercuryLinuxMediaSessionController {
         },
         captureEngine: MercuryLinuxCaptureEngine = MercuryLinuxCaptureEngine(),
         captureAdapter: (any MercuryLinuxCaptureAdapterProtocol)? = nil,
+        audioCaptureAdapter: (any MercuryLinuxAudioCaptureAdapterProtocol)? = nil,
+        audioPlaybackAdapter: (any MercuryLinuxAudioPlaybackAdapterProtocol)? = nil,
         sealKeyOpener: any MercuryLinuxMediaSealKeyOpening = MercuryLinuxMediaSealKeyOpener(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "linux-media")
     ) {
@@ -93,6 +103,8 @@ public actor MercuryLinuxMediaSessionController {
         self.downloadDirectoryProvider = downloadDirectoryProvider
         self.captureEngine = captureEngine
         self.captureAdapter = captureAdapter ?? MercuryLinuxCaptureAdapter(captureEngine: captureEngine)
+        self.audioCaptureAdapter = audioCaptureAdapter ?? MercuryLinuxAudioCaptureAdapter()
+        self.audioPlaybackAdapter = audioPlaybackAdapter ?? MercuryLinuxGStreamerAudioPlaybackAdapter()
         self.sealKeyOpener = sealKeyOpener
     }
 
@@ -104,8 +116,13 @@ public actor MercuryLinuxMediaSessionController {
     }
 
     public func stop() {
+        fileTransferTasks.values.forEach { $0.cancel() }
+        fileTransferTasks.removeAll()
         stopCaptureFramePump()
+        stopAudioCaptureFramePump()
         captureAdapter.stopOutboundCapture()
+        audioCaptureAdapter.stopOutboundAudioCapture()
+        audioPlaybackAdapter.stop()
         captureEngine.stop()
         channel?.stop()
         phase = .idle
@@ -118,7 +135,48 @@ public actor MercuryLinuxMediaSessionController {
         mediaFrameSealKey = nil
         outboundGOPID = 0
         outboundFrameIndex = 0
+        outboundAudioFrameIndex = 0
         updatedAt = Date()
+    }
+
+    public func routeEnded(
+        uid: String,
+        connectionID: String,
+        remotePeerNodeID: String,
+        reason: String
+    ) {
+        let matches: (MercuryControlRoute?) -> Bool = { route in
+            route?.uid == uid
+                && route?.connectionID == connectionID
+                && route?.remotePeerNodeID?.lowercased() == remotePeerNodeID.lowercased()
+        }
+        let pendingMatches = pending.map {
+            $0.uid == uid && $0.connectionID == connectionID
+                && $0.remotePeerNodeID?.lowercased() == remotePeerNodeID.lowercased()
+        } ?? false
+        let activeMatches = active.map {
+            $0.uid == uid && $0.connectionID == connectionID
+                && $0.remotePeerNodeID?.lowercased() == remotePeerNodeID.lowercased()
+        } ?? false
+        if pendingMatches || activeMatches {
+            transitionToCooldown(reason: reason)
+        }
+        if matches(lastControlRoute) { lastControlRoute = nil }
+        let endedAt = Date()
+        for (transferID, var record) in fileTransfers where matches(record.route) {
+            fileTransferTasks.removeValue(forKey: transferID)?.cancel()
+            record.route = nil
+            if record.phase == .pendingAccept || record.phase == .downloading
+                || record.phase == .sending || record.phase == .offered {
+                record.phase = .failed
+                record.errorCode = .noControlRoute
+                record.detail = "Controller route ended."
+                record.updatedAt = endedAt
+                record.completedAt = endedAt
+            }
+            fileTransfers[transferID] = record
+        }
+        updatedAt = endedAt
     }
 
     public func setMediaFrameSealKey(_ key: PlatformSymmetricKey?) {
@@ -161,6 +219,10 @@ public actor MercuryLinuxMediaSessionController {
                 supportsShellToDaemonControl: false,
                 codecsKnown: false,
                 codecs: [:],
+                supportsSealedMediaFrames: false,
+                supportsCallAudioCapture: false,
+                supportsCallVideoCapture: false,
+                callRequiresMediaSeal: true,
                 source: "MercuryLinuxCapabilityProbe.stub",
                 detail: "XDG_RUNTIME_DIR is not set; media socket is unavailable."
             )
@@ -247,6 +309,41 @@ public actor MercuryLinuxMediaSessionController {
                     detail: "Media frame seal key was not established."
                 )
             }
+        } else if pending.kind == .call {
+            guard let callInvite = pending.callInvite,
+                  let callFrame = pending.callFrame else {
+                await sendDecision(
+                    for: pending,
+                    accepted: false,
+                    sessionID: nil,
+                    detail: "Call invite metadata is unavailable."
+                )
+                transitionToCooldown(reason: "missing_call_invite")
+                return DaemonMediaCallActionResponse(
+                    accepted: false,
+                    session: sessionSnapshot(),
+                    detail: "Call invite metadata is unavailable."
+                )
+            }
+            do {
+                establishedSealKey = try await sealKeyOpener.openMediaFrameSealKey(
+                    for: callInvite,
+                    frame: callFrame
+                )
+            } catch {
+                await sendDecision(
+                    for: pending,
+                    accepted: false,
+                    sessionID: nil,
+                    detail: "Call media frame seal key was not established."
+                )
+                transitionToCooldown(reason: "call_seal_not_established")
+                return DaemonMediaCallActionResponse(
+                    accepted: false,
+                    session: sessionSnapshot(),
+                    detail: "Call media frame seal key was not established."
+                )
+            }
         }
 
         self.pending = nil
@@ -258,6 +355,7 @@ public actor MercuryLinuxMediaSessionController {
         self.mediaFrameSealKey = establishedSealKey
         self.outboundGOPID = 0
         self.outboundFrameIndex = 0
+        self.outboundAudioFrameIndex = 0
         self.updatedAt = Date()
         if pending.kind == .mirror {
             do {
@@ -274,6 +372,23 @@ public actor MercuryLinuxMediaSessionController {
                     accepted: false,
                     session: sessionSnapshot(),
                     detail: "Linux ScreenCast capture did not start."
+                )
+            }
+        } else if pending.kind == .call {
+            do {
+                try await startPortalAudioCaptureForActiveCall()
+            } catch {
+                await sendDecision(
+                    for: pending,
+                    accepted: false,
+                    sessionID: nil,
+                    detail: "Linux PipeWire audio capture did not start."
+                )
+                transitionToCooldown(reason: "audio_capture_start_failed")
+                return DaemonMediaCallActionResponse(
+                    accepted: false,
+                    session: sessionSnapshot(),
+                    detail: "Linux PipeWire audio capture did not start."
                 )
             }
         }
@@ -302,7 +417,9 @@ public actor MercuryLinuxMediaSessionController {
 
     public func stopOutboundCapture() {
         stopCaptureFramePump()
+        stopAudioCaptureFramePump()
         captureAdapter.stopOutboundCapture()
+        audioCaptureAdapter.stopOutboundAudioCapture()
         captureEngine.stop()
     }
 
@@ -330,6 +447,18 @@ public actor MercuryLinuxMediaSessionController {
         )
     }
 
+    private func startPortalAudioCaptureForActiveCall() async throws {
+        let queue = startAudioCaptureFramePump()
+        try await audioCaptureAdapter.startOutboundAudioCapture(
+            onFrame: { frame in
+                queue.offer(frame)
+            },
+            onStopped: { [weak self] _ in
+                Task { await self?.capturePipelineEnded(reason: "audio_capture_pipeline_ended") }
+            }
+        )
+    }
+
     private func startCaptureFramePump() -> MercuryLinuxCaptureFrameQueue {
         stopCaptureFramePump()
         let queue = MercuryLinuxCaptureFrameQueue(bufferingNewest: 30)
@@ -349,27 +478,53 @@ public actor MercuryLinuxMediaSessionController {
         captureFrameConsumerTask = nil
     }
 
+    private func startAudioCaptureFramePump() -> MercuryLinuxCaptureFrameQueue {
+        stopAudioCaptureFramePump()
+        let queue = MercuryLinuxCaptureFrameQueue(bufferingNewest: 60)
+        audioCaptureFrameQueue = queue
+        audioCaptureFrameConsumerTask = Task { [weak self, queue] in
+            for await frame in queue.stream {
+                await self?.ingestCapturedFrame(frame, streamClass: MediaStreamClass.audioOut.rawValue)
+            }
+        }
+        return queue
+    }
+
+    private func stopAudioCaptureFramePump() {
+        audioCaptureFrameQueue?.finish()
+        audioCaptureFrameQueue = nil
+        audioCaptureFrameConsumerTask?.cancel()
+        audioCaptureFrameConsumerTask = nil
+    }
+
     private func capturePipelineEnded(reason: String) {
         _ = reason
         transitionToCooldown(reason: "capture_pipeline_ended")
     }
 
-    public func ingestCapturedFrame(_ frame: MediaFrame) async {
+    public func ingestCapturedFrame(_ frame: MediaFrame, streamClass: String? = nil) async {
         guard phase == .streaming,
               let active,
-              active.kind == .mirror,
+              active.kind == .mirror || active.kind == .call,
               let replySender = active.replySender else {
             return
         }
 
         var outbound = frame
-        if outbound.flags.contains(.keyframe) {
-            outboundGOPID &+= 1
-            outboundFrameIndex = 0
+        let egressStreamClass = streamClass ?? active.streamClass
+        if outbound.kind == .audioOpus {
+            outbound.gopID = 0
+            outbound.frameIndex = outboundAudioFrameIndex
+            outboundAudioFrameIndex &+= 1
+        } else {
+            if outbound.flags.contains(.keyframe) {
+                outboundGOPID &+= 1
+                outboundFrameIndex = 0
+            }
+            outbound.gopID = outboundGOPID
+            outbound.frameIndex = outboundFrameIndex
+            outboundFrameIndex &+= 1
         }
-        outbound.gopID = outboundGOPID
-        outbound.frameIndex = outboundFrameIndex
-        outboundFrameIndex &+= 1
 
         // Fail closed: never egress a captured frame unsealed. If the media
         // seal key was not established for this session, drop to cooldown
@@ -387,7 +542,7 @@ public actor MercuryLinuxMediaSessionController {
                 encoded = try frameAEAD.seal(
                     plaintext: encoded,
                     key: mediaFrameSealKey,
-                    streamClass: active.streamClass,
+                    streamClass: egressStreamClass,
                     kind: outbound.kind.rawValue,
                     gopID: outbound.gopID,
                     frameIndex: outbound.frameIndex
@@ -403,7 +558,7 @@ public actor MercuryLinuxMediaSessionController {
                 uid: active.uid,
                 connectionId: active.connectionID,
                 media: HermesRealtimeRelayMediaPayload(
-                    streamClass: active.streamClass,
+                    streamClass: egressStreamClass,
                     encodedFrameBase64: encoded.base64EncodedString(),
                     sealedFramePosition: sealedPosition
                 )
@@ -535,9 +690,10 @@ public actor MercuryLinuxMediaSessionController {
         record.progress = Self.progress(bytesTransferred: 0, bytesTotal: record.size)
         fileTransfers[transferID] = record
 
-        Task { [transferID, destinationURL] in
+        let task = Task { [transferID, destinationURL] in
             await self.performAcceptedFileDownload(transferID: transferID, destinationURL: destinationURL)
         }
+        fileTransferTasks[transferID] = task
 
         return DaemonMediaFileActionResponse(accepted: true, transfer: snapshot(for: record))
     }
@@ -642,7 +798,7 @@ public actor MercuryLinuxMediaSessionController {
         fileTransfers[transferID] = record
         transferIDsByManifestID[manifest.manifestId] = transferID
 
-        Task { [service, transferID, fileURL, peerDeviceID = request.peerID, route] in
+        let task = Task { [service, transferID, fileURL, peerDeviceID = request.peerID, route] in
             await self.performOutboundFileSend(
                 transferID: transferID,
                 fileURL: fileURL,
@@ -651,6 +807,7 @@ public actor MercuryLinuxMediaSessionController {
                 service: service
             )
         }
+        fileTransferTasks[transferID] = task
 
         return DaemonMediaFileActionResponse(accepted: true, transfer: snapshot(for: record))
     }
@@ -758,6 +915,7 @@ public actor MercuryLinuxMediaSessionController {
     }
 
     private func performAcceptedFileDownload(transferID: String, destinationURL: URL) async {
+        defer { fileTransferTasks.removeValue(forKey: transferID) }
         guard let service = fileTransferService,
               let record = fileTransfers[transferID],
               let ticket = record.ticketText else {
@@ -781,6 +939,7 @@ public actor MercuryLinuxMediaSessionController {
                 manifest: manifest,
                 destinationURL: destinationURL
             )
+            try Task.checkCancellation()
             let completedBytes = Int64(max(
                 result.stats.bytesTotal,
                 UInt64(max(0, Self.fileSize(at: result.destinationURL)))
@@ -798,6 +957,7 @@ public actor MercuryLinuxMediaSessionController {
             await sendFileAck(route: route, manifest: manifest, status: .received, reason: nil)
         } catch {
             try? FileManager.default.removeItem(at: destinationURL)
+            guard Task.isCancelled == false else { return }
             var failed = fileTransfers[transferID] ?? record
             let now = Date()
             failed.phase = .failed
@@ -817,8 +977,10 @@ public actor MercuryLinuxMediaSessionController {
         route: MercuryControlRoute,
         service: MediaFileTransferService
     ) async {
+        defer { fileTransferTasks.removeValue(forKey: transferID) }
         do {
             let publish = try await service.publish(localFile: fileURL, peerDeviceID: peerDeviceID)
+            try Task.checkCancellation()
             let frame = HermesRealtimeRelayFrame(
                 type: .mediaBlobAdvertise,
                 uid: route.uid,
@@ -858,11 +1020,16 @@ public actor MercuryLinuxMediaSessionController {
             if let record {
                 fileTransfers[transferID] = record
             }
+        } catch is CancellationError {
+            return
         } catch let error as MediaFileTransferService.ServiceError {
+            guard Task.isCancelled == false else { return }
             markOutboundTransferFailed(transferID: transferID, errorCode: Self.errorCode(for: error))
         } catch FileTransferRuntimeError.noControlRoute {
+            guard Task.isCancelled == false else { return }
             markOutboundTransferFailed(transferID: transferID, errorCode: .noControlRoute)
         } catch {
+            guard Task.isCancelled == false else { return }
             markOutboundTransferFailed(transferID: transferID, errorCode: .publishFailed)
         }
     }
@@ -922,6 +1089,8 @@ public actor MercuryLinuxMediaSessionController {
             replySender: replySender,
             mirrorRequest: request,
             mirrorFrame: frame,
+            callInvite: nil,
+            callFrame: nil,
             requestedAt: request.requestedAt
         )
         lastPeer = MercuryPeer(
@@ -962,6 +1131,8 @@ public actor MercuryLinuxMediaSessionController {
             replySender: replySender,
             mirrorRequest: nil,
             mirrorFrame: nil,
+            callInvite: invite,
+            callFrame: frame,
             requestedAt: invite.requestedAt
         )
         lastPeer = MercuryPeer(
@@ -990,9 +1161,12 @@ public actor MercuryLinuxMediaSessionController {
         }
 
         let packetData: Data
-        if let position = media.sealedFramePosition,
-           MediaFrameAEAD.isSealedEnvelope(encodedData) {
-            guard let mediaFrameSealKey else {
+        if let mediaFrameSealKey {
+            // Once the mirror handshake establishes a media-frame key, the
+            // negotiated lane is sealed-only. Do not silently downgrade a
+            // malformed, unmarked, or legacy plaintext frame to the decoder.
+            guard MediaFrameAEAD.isSealedEnvelope(encodedData),
+                  let position = media.sealedFramePosition else {
                 return
             }
             do {
@@ -1008,11 +1182,34 @@ public actor MercuryLinuxMediaSessionController {
                 return
             }
         } else {
+            // A sealed envelope without a negotiated key cannot be opened;
+            // dropping it is safer than handing opaque bytes to the codec.
+            guard MediaFrameAEAD.isSealedEnvelope(encodedData) == false else {
+                return
+            }
             packetData = encodedData
         }
 
         guard let decoded = try? packetCodec.decode(packetData).frame else {
             return
+        }
+        if decoded.kind == .audioOpus {
+            do {
+                try audioPlaybackAdapter.startIfNeeded()
+                try audioPlaybackAdapter.play(decoded)
+            } catch {
+                // Inbound media must never be acknowledged as rendered when
+                // the native Linux sink is absent or rejects a packet. End
+                // the route so callers can surface a precise capability or
+                // playback failure instead of silently dropping call audio.
+                logger.warning(
+                    "linux_media_audio_playback_failed",
+                    metadata: ["error": "\(error)"]
+                )
+                audioPlaybackAdapter.stop()
+                transitionToCooldown(reason: "audio_playback_failed")
+                return
+            }
         }
         _ = channel?.offer(decoded)
         updatedAt = Date()
@@ -1030,7 +1227,10 @@ public actor MercuryLinuxMediaSessionController {
     private func transitionToCooldown(reason: String) {
         _ = reason
         stopCaptureFramePump()
+        stopAudioCaptureFramePump()
         captureAdapter.stopOutboundCapture()
+        audioCaptureAdapter.stopOutboundAudioCapture()
+        audioPlaybackAdapter.stop()
         captureEngine.stop()
         phase = .cooldown
         pending = nil
@@ -1041,6 +1241,7 @@ public actor MercuryLinuxMediaSessionController {
         mediaFrameSealKey = nil
         outboundGOPID = 0
         outboundFrameIndex = 0
+        outboundAudioFrameIndex = 0
         updatedAt = Date()
     }
 
@@ -1154,6 +1355,7 @@ public actor MercuryLinuxMediaSessionController {
         errorCode: DaemonMediaFileTransferErrorCode
     ) {
         guard var record = fileTransfers[transferID] else { return }
+        guard record.phase != .failed || record.errorCode == nil else { return }
         let now = Date()
         record.phase = .failed
         record.errorCode = errorCode
@@ -1172,21 +1374,30 @@ public actor MercuryLinuxMediaSessionController {
         let filename = sanitizedFilename(rawFilename)
         let pathExtension = (filename as NSString).pathExtension
         let stem = (filename as NSString).deletingPathExtension
-        let first = directory.appendingPathComponent(filename, isDirectory: false)
-        guard fileManager.fileExists(atPath: first.path) else {
-            return first
-        }
-
-        for index in 1...9999 {
+        for index in 0...9999 {
             let candidateName: String
-            if pathExtension.isEmpty {
+            if index == 0 {
+                candidateName = filename
+            } else if pathExtension.isEmpty {
                 candidateName = "\(stem) (\(index))"
             } else {
                 candidateName = "\(stem) (\(index)).\(pathExtension)"
             }
             let candidate = directory.appendingPathComponent(candidateName, isDirectory: false)
-            if fileManager.fileExists(atPath: candidate.path) == false {
+            // The existence check that used to live here was racy: two
+            // accepted transfers could both select the same path before
+            // either backend began exporting. Reserve the destination at the
+            // filesystem boundary so every accepted transfer owns a unique
+            // path before its async fetch starts.
+            let descriptor = candidate.path.withCString { path in
+                open(path, O_WRONLY | O_CREAT | O_EXCL, mode_t(S_IRUSR | S_IWUSR))
+            }
+            if descriptor >= 0 {
+                close(descriptor)
                 return candidate
+            }
+            guard errno == EEXIST else {
+                throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: candidate.path])
             }
         }
         throw CocoaError(.fileWriteFileExists)

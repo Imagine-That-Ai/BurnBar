@@ -1,0 +1,7 @@
+desktop-health=pass
+payload-modes=
+-rwxr-xr-x 0/0            7984 2026-07-19 08:08 usr/libexec/openburnbar-daemon-launch
+-rwxr-xr-x 0/0            3488 2026-07-19 08:08 usr/libexec/openburnbar-cli-migrate
+-rwxr-xr-x 0/0       124618384 2026-07-19 08:08 usr/bin/openburnbar-cli
+control-scripts=
+-rwxr-xr-x root/root       3488 2026-07-19 08:08 ./postinst

@@ -1,0 +1,51 @@
+{
+  "id": "volumetric",
+  "label": "Volumetric",
+  "metalFileBase": "K_Volumetric",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_volumetric_display"
+  },
+  "controls": [
+    "scroll"
+  ],
+  "params": [
+    {
+      "name": "uLightAzimuth",
+      "kind": "float",
+      "default": 0
+    },
+    {
+      "name": "uDensityGain",
+      "kind": "float",
+      "default": 1.7
+    },
+    {
+      "name": "uScatterG",
+      "kind": "float",
+      "default": 0.45
+    },
+    {
+      "name": "uFlowSpeed",
+      "kind": "float",
+      "default": 1
+    },
+    {
+      "name": "uBreathAmp",
+      "kind": "float",
+      "default": 1
+    }
+  ],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

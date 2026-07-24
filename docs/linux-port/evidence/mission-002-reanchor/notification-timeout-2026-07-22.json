@@ -1,0 +1,16 @@
+{
+  "capturedAt": "2026-07-22T06:25:54Z",
+  "sourceCommit": "78c535402a440f630f29845e1f28fdca9ec30f64",
+  "scope": "Linux freedesktop notification process timeout",
+  "hostedRun": {
+    "runId": 29894925872,
+    "jobId": 88843437034,
+    "conclusion": "success",
+    "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29894925872"
+  },
+  "test": {
+    "name": "LinuxLocalNotificationBridgeTests/testProcessRunnerTerminatesStalledNotifySendWithinBoundedTimeout",
+    "result": "passed"
+  },
+  "certification": "source-and-hosted-test evidence only; not a signed installed-candidate receipt"
+}

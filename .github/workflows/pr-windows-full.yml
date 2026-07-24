@@ -56,7 +56,7 @@ jobs:
   detect-windows-full-changes:
     name: Detect Windows full-suite changes
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 10
     outputs:
       windows: ${{ steps.filter.outputs.windows }}
     steps:

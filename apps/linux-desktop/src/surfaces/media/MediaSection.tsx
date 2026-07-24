@@ -6,11 +6,15 @@ import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { DeviceRow } from './DeviceRow.js';
 import { MercuryCallHUD } from './MercuryCallHUD.js';
 import { SessionStatusCard } from './SessionStatusCard.js';
-import type { MercuryFileTransfer } from '../../tauriBridge.js';
+import type { MercuryFileTransfer, MercuryViewerCapability } from '../../tauriBridge.js';
 
 export function MediaSection() {
   const status = useMediaStore((s) => s.status);
   const loadState = useMediaStore((s) => s.loadState);
+  const mediaControlState = useMediaStore((s) => s.mediaControlState);
+  const mediaControlReason = useMediaStore((s) => s.mediaControlReason);
+  const mediaRpcControlState = useMediaStore((s) => s.mediaRpcControlState);
+  const mediaRpcControlReason = useMediaStore((s) => s.mediaRpcControlReason);
   const error = useMediaStore((s) => s.error);
   const callError = useMediaStore((s) => s.callError);
   const callState = useMediaStore((s) => s.callState);
@@ -31,6 +35,12 @@ export function MediaSection() {
   const scriptFixtureFileTransfer = useMediaStore((s) => s.scriptFixtureFileTransfer);
   const daemonStatus = useDaemonStatusCopy();
   const fixtureMode = useShellStore((s) => s.fixtureMode);
+  const bridge = useShellStore((s) => s.bridge);
+  const pickMediaFile = bridge?.pickMediaFile
+    ? () => bridge.pickMediaFile!()
+    : undefined;
+  const viewerCapability = status?.viewerCapability;
+  const viewerUnavailable = Boolean(viewerCapability && !viewerCapability.available);
 
   useLaneLoad(load);
 
@@ -49,14 +59,18 @@ export function MediaSection() {
     );
   } else if (loadState === 'capability-absent') {
     body = (
-      <div className="p12-absent-state" role="status">
-        <span className="p12-absent-kicker">Capability absent</span>
-        <h3>Media engine is unavailable in this Linux session</h3>
-        <p>
-          The shell checked the daemon's Mercury capability contract. Repair the daemon, runtime
-          directory, portal, or codec dependency reported in Support, then retry this route.
-        </p>
-      </div>
+      viewerUnavailable ? (
+        <MercuryViewerCapabilityNotice capability={viewerCapability!} onRetry={load} />
+      ) : (
+        <div className="p12-absent-state" role="status">
+          <span className="p12-absent-kicker">Capability absent</span>
+          <h3>Media engine is unavailable in this Linux session</h3>
+          <p>
+            The shell checked the daemon's Mercury capability contract. Repair the daemon, runtime
+            directory, portal, or codec dependency reported in Support, then retry this route.
+          </p>
+        </div>
+      )
     );
   } else if (loadState === 'error') {
     body = (
@@ -67,6 +81,7 @@ export function MediaSection() {
   } else if (loadState === 'empty') {
     body = (
       <>
+        {viewerUnavailable ? <MercuryViewerCapabilityNotice capability={viewerCapability!} onRetry={load} /> : null}
         <p className="muted">No paired devices — pair from the mobile app.</p>
         <MercuryFileTransferPanel
           transfers={fileTransfers}
@@ -78,6 +93,7 @@ export function MediaSection() {
           onAccept={(transfer) => void acceptFileTransfer(transfer.transferID, transfer.manifestID)}
           onDecline={(transfer) => void declineFileTransfer(transfer.transferID, transfer.manifestID)}
           onSend={(path) => void sendFileTransfer(path)}
+          onPickFile={pickMediaFile}
           onScriptFixture={scriptFixtureFileTransfer}
         />
       </>
@@ -85,13 +101,21 @@ export function MediaSection() {
   } else {
     body = (
       <>
-        <MercuryCallHUD
-          call={callState}
-          error={callError}
-          onAccept={(requestId) => void acceptCall(requestId)}
-          onDecline={(requestId) => void declineCall(requestId)}
-          onEnd={() => void endCall()}
-        />
+        {viewerUnavailable ? <MercuryViewerCapabilityNotice capability={viewerCapability!} onRetry={load} /> : null}
+        {status?.capabilityAvailable && mediaControlState === 'degraded' ? (
+          <MercuryReceiveOnlyNotice reason={mediaControlReason} />
+        ) : null}
+        {!viewerUnavailable ? (
+          <MercuryCallHUD
+            call={callState}
+            error={callError}
+            controlState={mediaRpcControlState}
+            controlReason={mediaRpcControlReason}
+            onAccept={(requestId) => void acceptCall(requestId)}
+            onDecline={(requestId) => void declineCall(requestId)}
+            onEnd={() => void endCall()}
+          />
+        ) : null}
         {status?.activeSession ? (
           <SessionStatusCard session={status.activeSession} events={stageEvents} />
         ) : (
@@ -110,6 +134,7 @@ export function MediaSection() {
           onAccept={(transfer) => void acceptFileTransfer(transfer.transferID, transfer.manifestID)}
           onDecline={(transfer) => void declineFileTransfer(transfer.transferID, transfer.manifestID)}
           onSend={(path) => void sendFileTransfer(path)}
+          onPickFile={pickMediaFile}
           onScriptFixture={scriptFixtureFileTransfer}
         />
       </>
@@ -136,6 +161,54 @@ export function MediaSection() {
       {body}
     </section>
   );
+}
+
+function MercuryViewerCapabilityNotice({
+  capability,
+  onRetry
+}: {
+  capability: MercuryViewerCapability;
+  onRetry: () => Promise<void>;
+}) {
+  return (
+    <div className="p12-absent-state p12-viewer-absent" role="status">
+      <span className="p12-absent-kicker">Viewer unavailable</span>
+      <h3>Calls and screen sharing are paused on this Linux session</h3>
+      <p>{viewerCapabilityReason(capability)}</p>
+      {capability.installHint ? <p className="p12-viewer-install-hint">{capability.installHint}</p> : null}
+      <small>File transfer remains available when the daemon advertises it.</small>
+      <button type="button" onClick={() => void onRetry()}>
+        Check again
+      </button>
+    </div>
+  );
+}
+
+function MercuryReceiveOnlyNotice({ reason }: { reason: string | null }) {
+  return (
+    <div className="p12-absent-state p12-viewer-absent" role="status">
+      <span className="p12-absent-kicker">Media stream receive-only</span>
+      <p>{reason ?? 'The Linux media socket does not accept shell-originated control frames.'}</p>
+      <small>Authenticated daemon controls remain available for supported calls and transfers.</small>
+    </div>
+  );
+}
+
+function viewerCapabilityReason(capability: MercuryViewerCapability): string {
+  switch (capability.status) {
+    case 'built_without_gstreamer':
+      return 'This Linux build was compiled without the GStreamer viewer feature.';
+    case 'gstreamer_backend_unavailable':
+      return 'The GStreamer runtime is not available to the packaged shell.';
+    case 'gstreamer_vp9_decoder_missing':
+      return 'The GStreamer runtime is present, but its VP9 decoder is missing.';
+    case 'gstreamer_video_sink_missing':
+      return 'The GStreamer runtime is present, but no native video sink is registered.';
+    case 'unknown':
+      return capability.reason ?? 'The packaged shell cannot verify a native Mercury video viewer.';
+    case 'available':
+      return 'The native Mercury viewer is ready.';
+  }
 }
 
 function formatBytes(bytes: number): string {
@@ -185,6 +258,7 @@ function MercuryFileTransferPanel({
   onAccept,
   onDecline,
   onSend,
+  onPickFile,
   onScriptFixture
 }: {
   transfers: MercuryFileTransfer[];
@@ -196,12 +270,31 @@ function MercuryFileTransferPanel({
   onAccept: (transfer: MercuryFileTransfer) => void;
   onDecline: (transfer: MercuryFileTransfer) => void;
   onSend: (path: string) => void;
+  onPickFile?: () => Promise<string | null>;
   onScriptFixture: () => void;
 }) {
   const [sendPath, setSendPath] = useState('');
+  const [pickerBusy, setPickerBusy] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
   const canUseFiles = capabilityAvailable === true || fixtureMode;
+  const nativePickerAvailable = !fixtureMode && typeof onPickFile === 'function';
   const pendingOffers = transfers.filter((transfer) => transfer.direction === 'inbound' && transfer.phase === 'pendingAccept');
   const rows = transfers.filter((transfer) => transfer.phase !== 'pendingAccept');
+
+  async function chooseFile(): Promise<void> {
+    if (!onPickFile || pickerBusy) return;
+    setPickerBusy(true);
+    setPickerError(null);
+    try {
+      const path = await onPickFile();
+      if (path) setSendPath(path);
+    } catch (error) {
+      setPickerError(error instanceof Error ? error.message : 'Choosing a file failed.');
+    } finally {
+      setPickerBusy(false);
+    }
+  }
+
   return (
     <section className="p12-file-panel" aria-label="Mercury file transfers">
       <div className="p12-file-panel-head">
@@ -236,7 +329,7 @@ function MercuryFileTransferPanel({
             <button
               type="button"
               onClick={() => onAccept(transfer)}
-              disabled={busyTransferID === transfer.transferID}
+              disabled={!canUseFiles || busyTransferID === transfer.transferID}
             >
               Accept file
             </button>
@@ -244,38 +337,48 @@ function MercuryFileTransferPanel({
               type="button"
               className="ghost danger"
               onClick={() => onDecline(transfer)}
-              disabled={busyTransferID === transfer.transferID}
+              disabled={!canUseFiles || busyTransferID === transfer.transferID}
             >
               Decline file
             </button>
           </div>
         </section>
       ))}
-      <form
-        className="p12-file-send"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSend(sendPath);
-        }}
-      >
-        <label>
-          <span>File path</span>
-          <input
-            value={sendPath}
-            onChange={(event) => setSendPath(event.currentTarget.value)}
-            placeholder="/home/alberto/Downloads/report.pdf"
-            disabled={!canUseFiles}
-          />
-        </label>
-        <button type="submit" disabled={!canUseFiles || sendPath.trim().length === 0 || busyTransferID === 'send'}>
-          Send file
-        </button>
-        {fixtureMode ? (
+      {nativePickerAvailable ? (
+        <form
+          className="p12-file-send"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSend(sendPath);
+          }}
+        >
+          <div className="p12-file-selection" aria-live="polite">
+            <span>Selected file</span>
+            {sendPath ? <code title={sendPath}>{sendPath}</code> : <span className="muted">No file selected</span>}
+          </div>
+          <button type="button" onClick={() => void chooseFile()} disabled={!canUseFiles || pickerBusy}>
+            {pickerBusy ? 'Choosing…' : 'Choose file'}
+          </button>
+          <button type="submit" disabled={!canUseFiles || sendPath.trim().length === 0 || busyTransferID === 'send'}>
+            Send file
+          </button>
+        </form>
+      ) : fixtureMode ? (
+        <div className="p12-file-send">
           <button type="button" className="ghost" onClick={onScriptFixture}>
             Script transfer
           </button>
-        ) : null}
-      </form>
+        </div>
+      ) : (
+        <div className="p12-file-absent" role="status">
+          Native file picker is unavailable in this packaged shell; file sending is disabled.
+        </div>
+      )}
+      {pickerError ? (
+        <div className="banner degraded p12-file-error" role="alert">
+          {pickerError}
+        </div>
+      ) : null}
       {rows.length > 0 ? (
         <ul className="p12-file-list" aria-label="Mercury file transfer history">
           {rows.map((transfer) => (

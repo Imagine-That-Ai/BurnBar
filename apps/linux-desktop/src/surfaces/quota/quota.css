@@ -10,6 +10,64 @@
   margin: 0;
 }
 
+.quota-routing-cockpit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  gap: var(--space-2) var(--space-4);
+  align-items: center;
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--color-brass-core) 22%, var(--color-glass-line));
+  background: color-mix(in srgb, var(--color-glass-bg-elevated) 48%, transparent);
+  backdrop-filter: var(--glass-panel-blur, blur(22px) saturate(165%));
+  -webkit-backdrop-filter: var(--glass-panel-blur, blur(22px) saturate(165%));
+  box-shadow: var(--glass-panel-shadow, inset 0 1px 0 var(--color-frost-line));
+}
+
+.quota-routing-copy {
+  min-width: 0;
+}
+
+.quota-routing-copy h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  color: var(--color-text-bright);
+}
+
+.quota-routing-copy p:last-child {
+  margin: var(--space-1) 0 0;
+  font-size: 0.78rem;
+}
+
+.quota-routing-select {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--color-text-mute);
+  font-size: 0.78rem;
+}
+
+.quota-routing-select select {
+  width: 100%;
+  min-height: 2.2rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  background: var(--glass-input, color-mix(in srgb, var(--color-glass-bg) 70%, transparent));
+  color: var(--color-text-base);
+}
+
+.quota-routing-status,
+.quota-routing-capability {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.76rem;
+}
+
+.quota-routing-status {
+  color: var(--color-text-mute);
+}
+
 .quota-hero {
   display: flex;
   flex-direction: column;
@@ -266,6 +324,26 @@
   font-size: 0.82rem;
 }
 
+.quota-card-routing {
+  display: grid;
+  gap: 2px;
+  margin: var(--space-1) 0 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--color-text-mute);
+}
+
+.quota-card-routing strong {
+  color: var(--color-text);
+  font-size: 0.64rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.quota-card-routing[data-routing='unavailable'] strong {
+  color: var(--color-tier-error-readable);
+}
+
 .quota-card-badges,
 .quota-card-title-row {
   display: flex;
@@ -437,6 +515,10 @@
   background: color-mix(in srgb, var(--color-glass-bg-elevated) 45%, transparent);
 }
 
+.quota-list-manage {
+  justify-self: start;
+}
+
 .quota-list-pct {
   font-size: 1.1rem;
   font-weight: 700;
@@ -536,6 +618,10 @@
 }
 
 @media (max-width: 900px) {
+  .quota-routing-cockpit {
+    grid-template-columns: 1fr;
+  }
+
   .quota-card-body {
     grid-template-columns: 1fr;
     justify-items: center;

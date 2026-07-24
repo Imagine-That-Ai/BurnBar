@@ -16,7 +16,7 @@ export const HERMES_ROLE_HEADER_NAME = "X-OpenBurnBar-Relay-Role" as const;
 export const HERMES_HOST_ROLE_HEADER_VALUE = "host" as const;
 export const HERMES_CLIENT_ROLE_HEADER_VALUE = "client" as const;
 
-/** Every frame type in the protocol (41 total). */
+/** Every frame type in the protocol (42 total). */
 export type HermesFrameType =
   | "host.register"
   | "host.ready"
@@ -45,6 +45,7 @@ export type HermesFrameType =
   | "control.input.intent"
   | "control.approval.request"
   | "control.approval.response"
+  | "control.session.grant.challenge"
   | "control.agent.grant.request"
   | "control.agent.grant.receipt"
   | "control.clipboard.request"
@@ -88,6 +89,7 @@ export const HERMES_FRAME_TYPES: readonly HermesFrameType[] = [
   "control.input.intent",
   "control.approval.request",
   "control.approval.response",
+  "control.session.grant.challenge",
   "control.agent.grant.request",
   "control.agent.grant.receipt",
   "control.clipboard.request",

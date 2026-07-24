@@ -11,3 +11,12 @@ AgentLens/Services/Media/MacMediaCapabilityGate.swift:generic-api-key:444
 OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUsePhoneControlSigner.swift:generic-api-key:348
 OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUsePhoneControlSigner.swift:generic-api-key:367
 OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/RemoteUnlockCredentialEnvelopeCrypto.swift:generic-api-key:86
+dadc9cbe69963a23fd3dfbd9bca965b812b2892c:OpenBurnBarDaemon/Tests/OpenBurnBarDaemonLinuxGatewayTests/LinuxCloudDataControlBridgeTests.swift:generic-api-key:103
+OpenBurnBarDaemon/Tests/OpenBurnBarDaemonLinuxGatewayTests/LinuxCloudDataControlBridgeTests.swift:generic-api-key:107
+720da69d0bc4af04c68ff7dce01f2a50b14dfec6:OpenBurnBarDaemon/Tests/OpenBurnBarDaemonLinuxGatewayTests/LinuxCloudDataControlBridgeTests.swift:generic-api-key:103
+7219d978c1026202bcabe2c9ca7c54c5ba73fb05:docs/windows-port/evidence/foundation-chat-transfer-7d5f1c4/arm64-utm/arm64-evidence-current/storage-evidence/corrupt-archive-reset/openburnbar.sqlite.key-provenance.json:generic-api-key:5
+7219d978c1026202bcabe2c9ca7c54c5ba73fb05:docs/windows-port/evidence/foundation-chat-transfer-7d5f1c4/arm64-utm/arm64-evidence-current/storage-evidence/corrupt-archive-reset/openburnbar.sqlite.windows-migration-journal.json:generic-api-key:7
+7219d978c1026202bcabe2c9ca7c54c5ba73fb05:docs/windows-port/evidence/foundation-chat-transfer-7d5f1c4/arm64-utm/arm64-evidence-current/storage-evidence/fresh-install/openburnbar.sqlite.key-provenance.json:generic-api-key:5
+7219d978c1026202bcabe2c9ca7c54c5ba73fb05:docs/windows-port/evidence/foundation-chat-transfer-7d5f1c4/arm64-utm/arm64-evidence-current/storage-evidence/fresh-install/openburnbar.sqlite.windows-migration-journal.json:generic-api-key:7
+7219d978c1026202bcabe2c9ca7c54c5ba73fb05:docs/windows-port/evidence/foundation-chat-transfer-7d5f1c4/arm64-utm/arm64-evidence-current/storage-evidence/generated-db-write-seams/openburnbar.sqlite.windows-migration-journal.json:generic-api-key:7
+7219d978c1026202bcabe2c9ca7c54c5ba73fb05:docs/windows-port/evidence/foundation-chat-transfer-7d5f1c4/arm64-utm/arm64-evidence-current/storage-evidence/generated-db-write-seams/openburnbar.sqlite.key-provenance.json:generic-api-key:5

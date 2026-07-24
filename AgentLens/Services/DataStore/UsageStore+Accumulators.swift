@@ -46,6 +46,10 @@ struct UsageTotals: Equatable, Sendable { // pure-move: was private
 struct UsageAggregateRow { // pure-move: was private
     let provider: AgentProvider
     let model: String
+    let executionSourceID: String
+    let executionSourceName: String
+    let executionSourceKind: UsageExecutionSourceKind
+    let executionSourceConfidence: UsageProvenanceConfidence
     let provenanceConfidence: UsageProvenanceConfidence
     let provenanceMethod: UsageProvenanceMethod
     let sessionCount: Int
@@ -63,6 +67,12 @@ struct UsageAggregateRow { // pure-move: was private
               let model = row["model"] as? String else { return nil }
         self.provider = provider
         self.model = model
+        executionSourceID = row["executionSourceID"] as? String ?? "unknown"
+        executionSourceName = row["executionSourceName"] as? String ?? "Unknown"
+        executionSourceKind = (row["executionSourceKind"] as? String)
+            .flatMap { UsageExecutionSourceKind(rawValue: $0) } ?? .unknown
+        executionSourceConfidence = (row["executionSourceConfidence"] as? String)
+            .flatMap { UsageProvenanceConfidence(rawValue: $0) } ?? .unknown
         provenanceConfidence = (row["provenanceConfidence"] as? String)
             .flatMap { UsageProvenanceConfidence(rawValue: $0) } ?? .unknown
         provenanceMethod = (row["provenanceMethod"] as? String)
@@ -201,6 +211,7 @@ struct ModelSummaryAccumulator { // pure-move: was private
     var cacheReadTokens = 0
     var sessionCount = 0
     fileprivate var providerData: [AgentProvider: ProviderUsageAccumulator] = [:]
+    fileprivate var executionSourceData: [String: ExecutionSourceUsageAccumulator] = [:]
 
     init(modelName: String) {
         self.modelName = modelName
@@ -218,6 +229,14 @@ struct ModelSummaryAccumulator { // pure-move: was private
         cacheReadTokens += row.cacheReadTokens
         sessionCount += row.sessionCount
         providerData[row.provider, default: ProviderUsageAccumulator(provider: row.provider)].record(row)
+        executionSourceData[
+            row.executionSourceID,
+            default: ExecutionSourceUsageAccumulator(
+                executionSourceID: row.executionSourceID,
+                name: row.executionSourceName,
+                kind: row.executionSourceKind
+            )
+        ].record(row)
     }
 
     var summary: ModelSummary {
@@ -232,8 +251,54 @@ struct ModelSummaryAccumulator { // pure-move: was private
             providerBreakdown: providerData.values
                 .map { $0.providerUsage(modelTotalCost: totalCost) }
                 .sorted { $0.cost > $1.cost },
+            executionSourceBreakdown: executionSourceData.values
+                .map { $0.usage(modelTotalCost: totalCost) }
+                .sorted { $0.cost > $1.cost },
             cacheEfficiency: CacheEfficiency(
                 inputTokens: totalInputTokens,
+                cacheCreationTokens: cacheCreationTokens,
+                cacheReadTokens: cacheReadTokens
+            )
+        )
+    }
+}
+
+private struct ExecutionSourceUsageAccumulator {
+    let executionSourceID: String
+    var name: String
+    var kind: UsageExecutionSourceKind
+    var confidence: UsageProvenanceConfidence = .unknown
+    var sessionCount = 0
+    var totalTokens = 0
+    var cost: Double = 0
+    var inputTokens = 0
+    var cacheCreationTokens = 0
+    var cacheReadTokens = 0
+
+    mutating func record(_ row: UsageAggregateRow) {
+        if name == "Unknown", row.executionSourceName != "Unknown" { name = row.executionSourceName }
+        if kind == .unknown, row.executionSourceKind != .unknown { kind = row.executionSourceKind }
+        confidence = max(confidence, row.executionSourceConfidence)
+        sessionCount += row.sessionCount
+        totalTokens += row.totalTokens
+        cost += row.cost
+        inputTokens += row.inputTokens
+        cacheCreationTokens += row.cacheCreationTokens
+        cacheReadTokens += row.cacheReadTokens
+    }
+
+    func usage(modelTotalCost: Double) -> ExecutionSourceUsage {
+        ExecutionSourceUsage(
+            executionSourceID: executionSourceID,
+            name: name,
+            kind: kind,
+            confidence: confidence,
+            sessionCount: sessionCount,
+            totalTokens: totalTokens,
+            cost: cost,
+            percentage: modelTotalCost > 0 ? (cost / modelTotalCost) * 100 : 0,
+            cacheEfficiency: CacheEfficiency(
+                inputTokens: inputTokens,
                 cacheCreationTokens: cacheCreationTokens,
                 cacheReadTokens: cacheReadTokens
             )

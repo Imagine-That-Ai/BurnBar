@@ -249,6 +249,51 @@ final class DashboardUsageViewModelTests: XCTestCase {
         XCTAssertEqual(previousTotals.cost, 1, accuracy: 0.001)
     }
 
+    func test_dashboardSnapshotSplitsModelUsageByExecutionSource() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let now = Date()
+
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "codex-cli-source",
+            model: "gpt-5.6-codex",
+            inputTokens: 100,
+            outputTokens: 20,
+            costUSD: 1.25,
+            startTime: now,
+            endTime: now.addingTimeInterval(30),
+            executionSourceID: "codex-cli",
+            executionSourceName: "Codex CLI",
+            executionSourceKind: .cli,
+            executionSourceConfidence: .exact
+        ))
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "codex-desktop-source",
+            model: "gpt-5.6-codex",
+            inputTokens: 60,
+            outputTokens: 20,
+            costUSD: 0.75,
+            startTime: now,
+            endTime: now.addingTimeInterval(30),
+            executionSourceID: "codex-desktop",
+            executionSourceName: "Codex Desktop",
+            executionSourceKind: .desktopApp,
+            executionSourceConfidence: .exact
+        ))
+
+        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        let today = try XCTUnwrap(snapshot.windowSummaries[.today])
+        let model = try XCTUnwrap(today.modelSummaries.first { $0.modelName == "gpt-5.6-codex" })
+
+        XCTAssertEqual(model.totalTokens, 200)
+        XCTAssertEqual(model.totalCost, 2, accuracy: 0.001)
+        XCTAssertEqual(model.executionSourceBreakdown.map(\.executionSourceID), ["codex-cli", "codex-desktop"])
+        XCTAssertEqual(model.executionSourceBreakdown.map(\.totalTokens), [120, 80])
+    }
+
     func test_dashboardSnapshotQueryCount_isIndependentOfRowCount() async throws {
         let queue = try DatabaseQueue(configuration: .withQueryTracing())
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
