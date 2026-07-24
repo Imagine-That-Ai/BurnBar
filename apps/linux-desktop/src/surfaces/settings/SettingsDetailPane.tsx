@@ -13,7 +13,6 @@ import type {
   MercuryMediaStatus
 } from '../../tauriBridge.js';
 import { ACCOUNT_CLOUD_DATA_DELETION_CONFIRMATION } from '../../tauriBridge.js';
-import { PROXY_ROUTE_FINAL_STATUS_COPY } from '../../tauriBridge.js';
 import type { DaemonStatusCopy } from '../../daemonStatusCopy.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
