@@ -1,12 +1,12 @@
 {
   "schema": "openburnbar.parity.linux-source-test-summary.v1",
-  "capturedAt": "2026-07-24T01:25:06Z",
-  "sourceCommit": "ca439fe28c5c87d598414fe75478db2606ca577e",
+  "capturedAt": "2026-07-24T01:26:26Z",
+  "sourceCommit": "488d8d10b6dd4ab370a9df789f49582ee623659a",
   "status": "passed",
-  "testCount": 70,
+  "testCount": 87,
   "failedCount": 0,
   "coveredRequirementIds": [],
-  "command": "node --test scripts/linux-port/linux-toolchain-node-runtime.test.mjs scripts/linux-port/report-parity-evidence-availability.test.mjs scripts/linux-port/signed-installed-package-wiring.test.mjs scripts/linux-port/verify-linux-workflow-wiring.test.mjs",
+  "command": "node --test scripts/linux-port/linux-toolchain-node-runtime.test.mjs scripts/linux-port/report-parity-evidence-availability.test.mjs scripts/linux-port/signed-installed-package-wiring.test.mjs scripts/linux-port/verify-linux-workflow-wiring.test.mjs scripts/linux-port/run-platform-differential.test.mjs scripts/linux-port/p39-differential-proof.test.mjs",
   "scope": "focused Linux release/evidence contract tests",
   "limitations": [
     "This receipt covers release and evidence wiring only; it is not a product-parity attestation.",
