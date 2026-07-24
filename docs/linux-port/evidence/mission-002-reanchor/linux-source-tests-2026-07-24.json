@@ -1,7 +1,7 @@
 {
   "schema": "openburnbar.parity.linux-source-test-summary.v1",
-  "capturedAt": "2026-07-24T01:23:53Z",
-  "sourceCommit": "c567506a1065983e47b7be5b929c8ac9bad7be01",
+  "capturedAt": "2026-07-24T01:25:06Z",
+  "sourceCommit": "ca439fe28c5c87d598414fe75478db2606ca577e",
   "status": "passed",
   "testCount": 70,
   "failedCount": 0,
