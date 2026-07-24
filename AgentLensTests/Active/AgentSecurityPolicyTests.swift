@@ -293,6 +293,32 @@ final class AgentSecurityPolicyTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func test_junieChatStream_failsClosedBeforeResolvingExecutable() async {
+        let bridge = CLIBridge()
+        var receivedError: Error?
+
+        do {
+            for try await _ in bridge.chatJunieStream(
+                systemPrompt: "system",
+                userMessage: "user"
+            ) {}
+        } catch {
+            receivedError = error
+        }
+
+        guard let bridgeError = receivedError as? CLIBridgeError else {
+            return XCTFail("expected Junie grant error, got \(String(describing: receivedError))")
+        }
+        guard case .junieRequiresFullGrant = bridgeError else {
+            return XCTFail("expected Junie full-grant refusal, got \(bridgeError)")
+        }
+        XCTAssertTrue(
+            bridgeError.localizedDescription.contains("read-only mode"),
+            "the refusal should explain why Junie cannot run without the full grant"
+        )
+    }
+
     // MARK: - T-TOOL-10: restricted shell home-data deny
 
     func test_restrictedShellProfile_deniesHomeDataByDefaultWithExplicitWorkspaceAndToolchainReads() {
