@@ -10,6 +10,8 @@ struct iPadDevicesSettingsView: View {
     @State private var showRevokeConfirmation = false
     @State private var showCleanupConfirmation = false
     @State private var deviceToRevoke: DeviceRecord?
+    @State private var linuxDeviceToApprove: LinuxAppCheckDeviceRecord?
+    @State private var linuxDeviceToRevoke: LinuxAppCheckDeviceRecord?
     @State private var isReprobingHermes = false
     @State private var showSmartHubWizard = false
     /// Stream 6 (flag-OFF default): when the safety-code compare step is enabled,
@@ -61,6 +63,7 @@ struct iPadDevicesSettingsView: View {
             smartHubSection
             thisDeviceSection
             otherDevicesSection
+            linuxAppCheckDevicesSection
 
             if !store.staleDuplicates.isEmpty {
                 duplicatesSection
@@ -100,6 +103,38 @@ struct iPadDevicesSettingsView: View {
             }
         } message: {
             Text("Older Firestore copies of devices that share the same name will be revoked. Active devices stay connected.")
+        }
+        .alert(
+            "Approve Linux Device?",
+            isPresented: Binding(
+                get: { linuxDeviceToApprove != nil },
+                set: { if !$0 { linuxDeviceToApprove = nil } }
+            ),
+            presenting: linuxDeviceToApprove
+        ) { device in
+            Button("Cancel", role: .cancel) { linuxDeviceToApprove = nil }
+            Button("Approve") {
+                linuxDeviceToApprove = nil
+                Task { await store.approveLinuxAppCheckDevice(device) }
+            }
+        } message: { device in
+            Text("\(device.deviceName)\n\nDevice: \(device.deviceId)\nFingerprint: \(device.safetyFingerprint)\n\nApprove only if both values match the Linux app.")
+        }
+        .alert(
+            "Revoke Linux Device?",
+            isPresented: Binding(
+                get: { linuxDeviceToRevoke != nil },
+                set: { if !$0 { linuxDeviceToRevoke = nil } }
+            ),
+            presenting: linuxDeviceToRevoke
+        ) { device in
+            Button("Cancel", role: .cancel) { linuxDeviceToRevoke = nil }
+            Button("Revoke", role: .destructive) {
+                linuxDeviceToRevoke = nil
+                Task { await store.revokeLinuxAppCheckDevice(device) }
+            }
+        } message: { device in
+            Text("\(device.deviceName)\n\nDevice: \(device.deviceId)\nFingerprint: \(device.safetyFingerprint)\n\nThis device will immediately lose access. A revoked key cannot be approved again.")
         }
     }
 
@@ -208,6 +243,110 @@ struct iPadDevicesSettingsView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Linux App Check Devices
+
+    private var linuxAppCheckDevicesSection: some View {
+        settingsSection(
+            "Linux Sign-In Devices",
+            footer: "Compare the public safety fingerprint shown here with the Linux app before approval. Private keys never leave the Linux device."
+        ) {
+            if store.isLoadingLinuxAppCheckDevices && store.linuxAppCheckDevices.isEmpty {
+                HStack(spacing: MobileTheme.Spacing.sm) {
+                    ProgressView()
+                    Text("Checking Linux devices…")
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityIdentifier("devicesSync.linux.loading")
+            } else if let error = store.linuxAppCheckError {
+                VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(MobileTheme.Colors.error)
+                    Button {
+                        Task { await store.loadLinuxAppCheckDevices() }
+                    } label: {
+                        Label("Try Again", systemImage: "arrow.clockwise")
+                    }
+                    .accessibilityIdentifier("devicesSync.linux.retry")
+                }
+            } else if store.linuxAppCheckDevices.isEmpty {
+                Text("No Linux sign-in devices are waiting for approval.")
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("devicesSync.linux.empty")
+            } else {
+                ForEach(store.linuxAppCheckDevices) { device in
+                    linuxAppCheckDeviceRow(device)
+                }
+            }
+        }
+    }
+
+    private func linuxAppCheckDeviceRow(_ device: LinuxAppCheckDeviceRecord) -> some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(device.deviceName)
+                        .font(.body)
+                    Text("Linux • \(device.deviceId.prefix(12))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                linuxTrustBadge(device.trustState)
+            }
+
+            Text(device.safetyFingerprint)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .accessibilityLabel("Safety fingerprint \(device.safetyFingerprint)")
+
+            if store.linuxAppCheckActionInFlightFor == device.id {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Updating \(device.deviceName)")
+            } else {
+                switch device.trustState {
+                case .pending:
+                    Button {
+                        linuxDeviceToApprove = device
+                    } label: {
+                        Label("Approve", systemImage: "checkmark.shield")
+                    }
+                    .accessibilityIdentifier("devicesSync.linux.approve.\(device.id)")
+                    .disabled(store.linuxAppCheckActionInFlightFor != nil)
+                case .approved:
+                    Button(role: .destructive) {
+                        linuxDeviceToRevoke = device
+                    } label: {
+                        Label("Revoke", systemImage: "xmark.shield")
+                    }
+                    .accessibilityIdentifier("devicesSync.linux.revoke.\(device.id)")
+                    .disabled(store.linuxAppCheckActionInFlightFor != nil)
+                case .revoked:
+                    EmptyView()
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("devicesSync.linux.device.\(device.id)")
+    }
+
+    private func linuxTrustBadge(_ state: LinuxAppCheckDeviceTrustState) -> some View {
+        let color: Color = switch state {
+        case .pending: MobileTheme.Colors.warning
+        case .approved: MobileTheme.Colors.success
+        case .revoked: MobileTheme.Colors.error
+        }
+        return HStack(spacing: 4) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(state.rawValue.capitalized)
+                .font(.caption)
+                .foregroundStyle(color)
         }
     }
 

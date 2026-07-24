@@ -20,11 +20,14 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         let response = try await LinuxHTTPClient.post(
             port: harness.port,
             path: "/v1/chat/completions",
-            body: body
+            body: body,
+            headers: ["Origin": "http://localhost:3000", "X-OpenBurnBar-Client": "cursor/1.0"]
         )
 
         XCTAssertEqual(response.statusCode, 200)
         XCTAssertEqual(response.headers["content-type"], "text/event-stream")
+        XCTAssertEqual(response.headers["access-control-allow-origin"], "http://localhost:3000")
+        XCTAssertEqual(response.headers["vary"], "Origin")
         XCTAssertTrue(response.body.contains("data: {\"id\":\"chatcmpl-linux\""))
         XCTAssertTrue(response.body.contains("data: [DONE]"))
 
@@ -42,6 +45,10 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         XCTAssertEqual(event.cacheReadTokens, 2)
         XCTAssertEqual(event.cacheCreationTokens, 3)
         XCTAssertEqual(event.reasoningTokens, 1)
+        XCTAssertEqual(event.executionSourceID, "cursor")
+        XCTAssertEqual(event.executionSourceName, "Cursor")
+        XCTAssertEqual(event.executionSourceKind, .ide)
+        XCTAssertEqual(event.executionSourceConfidence, .exact)
 
         let routeLog = try await harness.proxyRouteLogStore.recent(limit: 1)
         let entry = try XCTUnwrap(routeLog.first)
@@ -225,18 +232,174 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         let routeLog = try await harness.proxyRouteLogStore.recent(limit: 10)
         XCTAssertTrue(routeLog.isEmpty)
     }
+
+    func testModelsCatalogIncludesBaseVariantAliasAndCustomRows() async throws {
+        let harness = try LinuxGatewayHarness()
+        addTeardownBlock { await harness.stop() }
+        try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:1/v1")
+        try await harness.configureModelRows()
+        try await harness.start()
+
+        let catalog = try await LinuxHTTPClient.get(port: harness.port, path: "/v1/models/catalog")
+        XCTAssertEqual(catalog.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(catalog.body.utf8)) as? [String: Any])
+        let rows = try XCTUnwrap(object["data"] as? [[String: Any]])
+        let ids = Set(rows.compactMap { $0["id"] as? String })
+        XCTAssertTrue(ids.contains("glm-5-turbo"), catalog.body)
+        XCTAssertTrue(ids.contains("glm-5-turbo-high"), catalog.body)
+        XCTAssertTrue(ids.contains("team-default"), catalog.body)
+        XCTAssertTrue(ids.contains("custom-linux-model"), catalog.body)
+
+        let publicModels = try await LinuxHTTPClient.get(port: harness.port, path: "/v1/models")
+        XCTAssertEqual(publicModels.statusCode, 200)
+        XCTAssertTrue(publicModels.body.contains("glm-5-turbo-high"))
+        XCTAssertTrue(publicModels.body.contains("team-default"))
+    }
+
+    func testFailoverRecordsModelHealthAndSkipsCoolingRoute() async throws {
+        let upstream = LinuxMockOpenAIStreamServer(response: .openAIChatPrimary429)
+        try upstream.start()
+        defer { upstream.stop() }
+
+        let harness = try LinuxGatewayHarness()
+        addTeardownBlock { await harness.stop() }
+        try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:\(upstream.port)/v1")
+        try await harness.configureSecondaryZAICredential()
+        try await harness.start()
+
+        let body = #"{"model":"glm-5-turbo","messages":[{"role":"user","content":"ping"}]}"#
+        let first = try await LinuxHTTPClient.post(
+            port: harness.port,
+            path: "/v1/chat/completions",
+            body: body
+        )
+        XCTAssertEqual(first.statusCode, 200, first.body)
+        let firstRequests = upstream.recordedRequests
+        XCTAssertGreaterThanOrEqual(firstRequests.count, 2)
+        XCTAssertEqual(firstRequests[0].authorization, "Bearer primary-key")
+        XCTAssertEqual(firstRequests[1].authorization, "Bearer secondary-key")
+
+        let failure = await harness.modelHealthStore.activeFailure(
+            modelID: "glm-5-turbo",
+            providerID: "zai",
+            accountID: "primary",
+            formatFamily: .openaiCompat
+        )
+        XCTAssertEqual(failure?.statusCode, 429)
+        XCTAssertNotNil(failure?.blockedUntil)
+
+        let second = try await LinuxHTTPClient.post(
+            port: harness.port,
+            path: "/v1/chat/completions",
+            body: body
+        )
+        XCTAssertEqual(second.statusCode, 200, second.body)
+        let secondRequests = upstream.recordedRequests
+        XCTAssertEqual(secondRequests.last?.authorization, "Bearer secondary-key")
+    }
+
+    func testMalformedAndOversizedHTTPFramesFailWithTypedResponses() async throws {
+        let harness = try LinuxGatewayHarness()
+        addTeardownBlock { await harness.stop() }
+        try await harness.start()
+
+        let oversized = try await LinuxHTTPClient.raw(
+            port: harness.port,
+            request: "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 16777217\r\nConnection: close\r\n\r\n"
+        )
+        XCTAssertEqual(oversized.statusCode, 413, oversized.rawText)
+        XCTAssertTrue(oversized.body.contains("request_too_large"), oversized.body)
+
+        let chunked = try await LinuxHTTPClient.raw(
+            port: harness.port,
+            request: "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n0\r\n\r\n"
+        )
+        XCTAssertEqual(chunked.statusCode, 501, chunked.rawText)
+        XCTAssertTrue(chunked.body.contains("unsupported_transfer_encoding"), chunked.body)
+
+        let incomplete = try await LinuxHTTPClient.raw(
+            port: harness.port,
+            request: "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 20\r\nConnection: close\r\n\r\n{}"
+        )
+        XCTAssertEqual(incomplete.statusCode, 400, incomplete.rawText)
+        XCTAssertTrue(incomplete.body.contains("incomplete_request"), incomplete.body)
+    }
+
+    func testGatewayCORSAllowsLoopbackOriginsOnlyAndHandlesPreflight() async throws {
+        let harness = try LinuxGatewayHarness()
+        addTeardownBlock { await harness.stop() }
+        try await harness.start()
+
+        let allowed = try await LinuxHTTPClient.raw(
+            port: harness.port,
+            request: "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: http://localhost:3000\r\nConnection: close\r\n\r\n"
+        )
+        XCTAssertEqual(allowed.statusCode, 200, allowed.rawText)
+        XCTAssertEqual(allowed.headers["access-control-allow-origin"], "http://localhost:3000")
+        XCTAssertEqual(allowed.headers["access-control-allow-methods"], "GET, POST, OPTIONS")
+        XCTAssertEqual(allowed.headers["access-control-allow-headers"], "Authorization, Content-Type, x-api-key")
+        XCTAssertEqual(allowed.headers["vary"], "Origin")
+
+        let ipv6Origin = try await LinuxHTTPClient.raw(
+            port: harness.port,
+            request: "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: http://[::1]:3000\r\nConnection: close\r\n\r\n"
+        )
+        XCTAssertEqual(ipv6Origin.statusCode, 200, ipv6Origin.rawText)
+        XCTAssertEqual(ipv6Origin.headers["access-control-allow-origin"], "http://[::1]:3000")
+
+        let blocked = try await LinuxHTTPClient.raw(
+            port: harness.port,
+            request: "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: https://evil.example.com\r\nConnection: close\r\n\r\n"
+        )
+        XCTAssertEqual(blocked.statusCode, 200, blocked.rawText)
+        XCTAssertNil(blocked.headers["access-control-allow-origin"])
+
+        let preflight = try await LinuxHTTPClient.raw(
+            port: harness.port,
+            request: "OPTIONS /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: http://127.0.0.1:5173\r\nAccess-Control-Request-Method: POST\r\nConnection: close\r\n\r\n"
+        )
+        XCTAssertEqual(preflight.statusCode, 204, preflight.rawText)
+        XCTAssertEqual(preflight.headers["access-control-allow-origin"], "http://127.0.0.1:5173")
+        XCTAssertEqual(preflight.headers["access-control-allow-methods"], "GET, POST, OPTIONS")
+    }
+
+    func testBindsIPv6LoopbackWhenAvailable() async throws {
+        do {
+            let harness = try LinuxGatewayHarness(host: "::1")
+            addTeardownBlock { await harness.stop() }
+            try await harness.start()
+
+            let response = try await LinuxHTTPClient.get(
+                host: "::1",
+                port: harness.port,
+                path: "/health"
+            )
+            XCTAssertEqual(response.statusCode, 200, response.rawText)
+            XCTAssertTrue(response.body.contains(#""platform":"linux""#), response.body)
+        } catch {
+            // Some minimal/containerized Linux images disable IPv6 entirely.
+            // That is an environment limitation, not a gateway regression.
+            if LinuxSocketSupport.isIPv6Unavailable(error) {
+                throw XCTSkip("IPv6 loopback is unavailable in this Linux environment: \(error)")
+            }
+            throw error
+        }
+    }
 }
 
 private final class LinuxGatewayHarness: @unchecked Sendable {
+    private let host: String
     let port: Int
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
+    let modelHealthStore: BurnBarGatewayModelHealthStore
     private let configStore: BurnBarConfigStore
     private let server: BurnBarHTTPGatewayServer
     private let tempDirectory: URL
 
-    init() throws {
-        self.port = try LinuxSocketSupport.reserveLoopbackPort()
+    init(host: String = "127.0.0.1") throws {
+        self.host = host
+        self.port = try LinuxSocketSupport.reserveLoopbackPort(host: host)
         tempDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-linux-gateway-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
@@ -255,10 +418,14 @@ private final class LinuxGatewayHarness: @unchecked Sendable {
             fileURL: tempDirectory.appendingPathComponent("proxy-route-events.jsonl"),
             logger: BurnBarDaemonLogger(category: "linux-gateway-tests")
         )
+        modelHealthStore = BurnBarGatewayModelHealthStore(
+            fileURL: tempDirectory.appendingPathComponent("model-health.json"),
+            logger: BurnBarDaemonLogger(category: "linux-gateway-tests")
+        )
         server = BurnBarHTTPGatewayServer(
             configuration: BurnBarGatewayConfiguration(
                 isEnabled: true,
-                host: "127.0.0.1",
+                host: host,
                 port: port,
                 authToken: nil,
                 allowUnauthenticatedLoopback: true
@@ -266,6 +433,7 @@ private final class LinuxGatewayHarness: @unchecked Sendable {
             configStore: configStore,
             usageRecorder: usageRecorder,
             proxyRouteLogStore: proxyRouteLogStore,
+            modelHealthStore: modelHealthStore,
             logger: BurnBarDaemonLogger(category: "linux-gateway-tests")
         )
     }
@@ -306,9 +474,40 @@ private final class LinuxGatewayHarness: @unchecked Sendable {
         )
     }
 
+    func configureSecondaryZAICredential() async throws {
+        _ = try await configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "secondary",
+            label: "Secondary",
+            apiKey: "secondary-key"
+        )
+    }
+
+    func configureModelRows() async throws {
+        var snapshot = try await configStore.snapshot()
+        guard var provider = snapshot.providers.first(where: { $0.providerID == "zai" }) else {
+            XCTFail("zai provider missing")
+            return
+        }
+        provider.modelVariants = [BurnBarModelVariant(
+            variantID: "glm-5-turbo-high",
+            label: "GLM High",
+            baseModelID: "glm-5-turbo",
+            thinkingLevel: .high
+        )]
+        provider.modelAliases = [BurnBarModelAlias(
+            aliasID: "team-default",
+            baseModelID: "glm-5-turbo",
+            displayName: "Team Default"
+        )]
+        provider.customModels = [BurnBarCustomModel(modelID: "custom-linux-model", displayName: "Custom Linux")]
+        snapshot.providers = [provider]
+        try await configStore.replaceSnapshot(snapshot)
+    }
+
     func start() async throws {
         try await server.start()
-        try await LinuxSocketSupport.waitForListener(port: port)
+        try await LinuxSocketSupport.waitForListener(port: port, host: host)
     }
 
     func stop() async {
@@ -327,6 +526,7 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
 
     enum Response: Sendable {
         case openAIChatStream
+        case openAIChatPrimary429
         case openAIResponsesJSON
         case anthropicMessagesJSON
         case anthropicMessagesStream
@@ -395,7 +595,7 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
 
         listenFD = socketFD
         acceptTask = Task.detached(priority: .utility) { [weak self] in
-            self?.acceptOnce(socketFD: socketFD)
+            self?.acceptLoop(socketFD: socketFD)
         }
     }
 
@@ -407,11 +607,17 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
         }
     }
 
-    private func acceptOnce(socketFD: Int32) {
-        var address = sockaddr()
-        var addressLength = socklen_t(MemoryLayout<sockaddr>.stride)
-        let clientFD = Glibc.accept(socketFD, &address, &addressLength)
-        guard clientFD >= 0 else { return }
+    private func acceptLoop(socketFD: Int32) {
+        while !Task.isCancelled {
+            var address = sockaddr()
+            var addressLength = socklen_t(MemoryLayout<sockaddr>.stride)
+            let clientFD = Glibc.accept(socketFD, &address, &addressLength)
+            guard clientFD >= 0 else { return }
+            handle(clientFD: clientFD)
+        }
+    }
+
+    private func handle(clientFD: Int32) {
         defer { Glibc.close(clientFD) }
 
         guard let requestText = try? LinuxSocketSupport.readHTTPRequest(from: clientFD) else { return }
@@ -454,6 +660,20 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
                 + #""usage":{"prompt_tokens":7,"completion_tokens":5,"total_tokens":12,"cache_creation_input_tokens":3,"prompt_tokens_details":{"cached_tokens":2},"completion_tokens_details":{"reasoning_tokens":1}}}"# + "\n\n"
             _ = try? LinuxSocketSupport.sendAll(Data(usageChunk.utf8), to: clientFD)
             _ = try? LinuxSocketSupport.sendAll(Data("data: [DONE]\n\n".utf8), to: clientFD)
+        case .openAIChatPrimary429:
+            if request.authorization == "Bearer primary-key" {
+                sendJSON(
+                    #"{"error":{"message":"rate limit"}}"#,
+                    status: 429,
+                    to: clientFD
+                )
+            } else {
+                sendJSON(
+                    #"{"id":"chatcmpl-secondary","object":"chat.completion","model":"glm-5-turbo","choices":[{"index":0,"message":{"role":"assistant","content":"secondary"},"finish_reason":"stop"}]}"#,
+                    status: 200,
+                    to: clientFD
+                )
+            }
         case .openAIResponsesJSON:
             sendJSON(
                 """
@@ -539,9 +759,10 @@ data: {"type":"message_stop"}
         )
     }
 
-    private func sendJSON(_ body: String, to clientFD: Int32) {
+    private func sendJSON(_ body: String, status: Int = 200, to clientFD: Int32) {
         let data = Data(body.utf8)
-        let head = "HTTP/1.1 200 OK\r\n"
+        let reason = status == 429 ? "Too Many Requests" : "OK"
+        let head = "HTTP/1.1 \(status) \(reason)\r\n"
             + "Content-Type: application/json\r\n"
             + "Content-Length: \(data.count)\r\n"
             + "Connection: close\r\n"
@@ -559,22 +780,64 @@ private enum LinuxHTTPClient {
         let rawText: String
     }
 
-    static func post(port: Int, path: String, body: String) async throws -> Response {
+    static func post(
+        host: String = "127.0.0.1",
+        port: Int,
+        path: String,
+        body: String,
+        headers: [String: String] = [:]
+    ) async throws -> Response {
+        try await request(
+            method: "POST",
+            host: host,
+            port: port,
+            path: path,
+            headers: headers.merging([
+                "Content-Type": "application/json",
+                "Content-Length": "\(body.utf8.count)"
+            ]) { _, requestHeader in requestHeader },
+            body: body
+        )
+    }
+
+    static func get(host: String = "127.0.0.1", port: Int, path: String) async throws -> Response {
+        try await request(method: "GET", host: host, port: port, path: path, headers: [:], body: "")
+    }
+
+    static func raw(host: String = "127.0.0.1", port: Int, request: String) async throws -> Response {
         try await Task.detached(priority: .utility) {
-            let socketFD = try LinuxSocketSupport.connectToLoopback(port: port)
+            let socketFD = try LinuxSocketSupport.connectToLoopback(port: port, host: host)
             defer { Glibc.close(socketFD) }
-            let request = """
-            POST \(path) HTTP/1.1\r
-            Host: 127.0.0.1:\(port)\r
-            Content-Type: application/json\r
-            Content-Length: \(body.utf8.count)\r
-            Connection: close\r
-            \r
-            \(body)
-            """
             try LinuxSocketSupport.sendAll(Data(request.utf8), to: socketFD)
-            let raw = try LinuxSocketSupport.readUntilEOF(from: socketFD)
-            return try parseResponse(raw)
+            // Signal end-of-request explicitly so malformed Content-Length
+            // frames fail immediately instead of waiting for the gateway's
+            // production receive timeout before it can return the typed error.
+            guard Glibc.shutdown(socketFD, Int32(SHUT_WR)) == 0 else {
+                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+            }
+            return try parseResponse(try LinuxSocketSupport.readUntilEOF(from: socketFD))
+        }.value
+    }
+
+    private static func request(
+        method: String,
+        host: String,
+        port: Int,
+        path: String,
+        headers: [String: String],
+        body: String
+    ) async throws -> Response {
+        try await Task.detached(priority: .utility) {
+            let socketFD = try LinuxSocketSupport.connectToLoopback(port: port, host: host)
+            defer { Glibc.close(socketFD) }
+            let hostHeader = host == "::1" ? "[::1]:\(port)" : "\(host):\(port)"
+            var request = "\(method) \(path) HTTP/1.1\r\nHost: \(hostHeader)\r\n"
+            for (name, value) in headers {
+                request += "\(name): \(value)\r\n"
+            }
+            request += "Connection: close\r\n\r\n\(body)"
+            try LinuxSocketSupport.sendAll(Data(request.utf8), to: socketFD)
+            return try parseResponse(try LinuxSocketSupport.readUntilEOF(from: socketFD))
         }.value
     }
 
@@ -597,45 +860,86 @@ private enum LinuxHTTPClient {
 }
 
 private enum LinuxSocketSupport {
-    static func reserveLoopbackPort() throws -> Int {
-        let socketFD = Glibc.socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+    static func reserveLoopbackPort(host: String = "127.0.0.1") throws -> Int {
+        let isIPv6 = host == "::1"
+        let socketFD = Glibc.socket(isIPv6 ? AF_INET6 : AF_INET, Int32(SOCK_STREAM.rawValue), 0)
         guard socketFD >= 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
         defer { Glibc.close(socketFD) }
 
-        var address = sockaddr_in()
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_port = 0
-        address.sin_addr.s_addr = UInt32(0x0100007F).littleEndian
-
-        let bindResult = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
-                Glibc.bind(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in>.stride))
+        let bindResult: Int32
+        if isIPv6 {
+            var v6Only: Int32 = 1
+            guard setsockopt(
+                socketFD,
+                Int32(IPPROTO_IPV6),
+                IPV6_V6ONLY,
+                &v6Only,
+                socklen_t(MemoryLayout<Int32>.size)
+            ) == 0 else {
+                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+            }
+            var address = sockaddr_in6()
+            address.sin6_family = sa_family_t(AF_INET6)
+            address.sin6_port = 0
+            guard inet_pton(AF_INET6, "::1", &address.sin6_addr) == 1 else {
+                throw POSIXError(.EINVAL)
+            }
+            bindResult = withUnsafePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                    Glibc.bind(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in6>.stride))
+                }
+            }
+        } else {
+            var address = sockaddr_in()
+            address.sin_family = sa_family_t(AF_INET)
+            address.sin_port = 0
+            address.sin_addr.s_addr = UInt32(0x0100007F).littleEndian
+            bindResult = withUnsafePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                    Glibc.bind(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in>.stride))
+                }
             }
         }
         guard bindResult == 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
 
-        var boundAddress = sockaddr_in()
-        var boundLength = socklen_t(MemoryLayout<sockaddr_in>.stride)
-        let nameResult = withUnsafeMutablePointer(to: &boundAddress) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
-                Glibc.getsockname(socketFD, rebound, &boundLength)
+        let boundPort: UInt16
+        if isIPv6 {
+            var boundAddress = sockaddr_in6()
+            var boundLength = socklen_t(MemoryLayout<sockaddr_in6>.stride)
+            let nameResult = withUnsafeMutablePointer(to: &boundAddress) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                    Glibc.getsockname(socketFD, rebound, &boundLength)
+                }
             }
+            guard nameResult == 0 else {
+                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+            }
+            boundPort = boundAddress.sin6_port
+        } else {
+            var boundAddress = sockaddr_in()
+            var boundLength = socklen_t(MemoryLayout<sockaddr_in>.stride)
+            let nameResult = withUnsafeMutablePointer(to: &boundAddress) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                    Glibc.getsockname(socketFD, rebound, &boundLength)
+                }
+            }
+            guard nameResult == 0 else {
+                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+            }
+            boundPort = boundAddress.sin_port
         }
-        guard nameResult == 0 else {
-            throw POSIXError(.init(rawValue: errno) ?? .EIO)
-        }
-        return Int(UInt16(bigEndian: boundAddress.sin_port))
+        return Int(UInt16(bigEndian: boundPort))
     }
 
-    static func waitForListener(port: Int) async throws {
+    static func waitForListener(port: Int, host: String = "127.0.0.1") async throws {
         var lastError: Error?
         for _ in 0..<250 {
             do {
-                let socketFD = try connectToLoopback(port: port)
+                let socketFD = try connectToLoopback(port: port, host: host)
                 Glibc.close(socketFD)
                 return
             } catch {
@@ -646,20 +950,36 @@ private enum LinuxSocketSupport {
         throw lastError ?? POSIXError(.ETIMEDOUT)
     }
 
-    static func connectToLoopback(port: Int) throws -> Int32 {
-        let socketFD = Glibc.socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+    static func connectToLoopback(port: Int, host: String = "127.0.0.1") throws -> Int32 {
+        let isIPv6 = host == "::1"
+        let socketFD = Glibc.socket(isIPv6 ? AF_INET6 : AF_INET, Int32(SOCK_STREAM.rawValue), 0)
         guard socketFD >= 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
 
-        var address = sockaddr_in()
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_port = UInt16(port).bigEndian
-        address.sin_addr.s_addr = UInt32(0x0100007F).littleEndian
-
-        let connectResult = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
-                Glibc.connect(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in>.stride))
+        let connectResult: Int32
+        if isIPv6 {
+            var address = sockaddr_in6()
+            address.sin6_family = sa_family_t(AF_INET6)
+            address.sin6_port = UInt16(port).bigEndian
+            guard inet_pton(AF_INET6, "::1", &address.sin6_addr) == 1 else {
+                Glibc.close(socketFD)
+                throw POSIXError(.EINVAL)
+            }
+            connectResult = withUnsafePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                    Glibc.connect(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in6>.stride))
+                }
+            }
+        } else {
+            var address = sockaddr_in()
+            address.sin_family = sa_family_t(AF_INET)
+            address.sin_port = UInt16(port).bigEndian
+            address.sin_addr.s_addr = UInt32(0x0100007F).littleEndian
+            connectResult = withUnsafePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                    Glibc.connect(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in>.stride))
+                }
             }
         }
         guard connectResult == 0 else {
@@ -668,6 +988,16 @@ private enum LinuxSocketSupport {
             throw POSIXError(.init(rawValue: code) ?? .ECONNREFUSED)
         }
         return socketFD
+    }
+
+    static func isIPv6Unavailable(_ error: Error) -> Bool {
+        if let gatewayError = error as? BurnBarHTTPGatewayError,
+           case let .listenerCreationFailed(underlying) = gatewayError {
+            return isIPv6Unavailable(underlying)
+        }
+        guard let posixError = error as? POSIXError else { return false }
+        let unavailableCodes: [Int32] = [EAFNOSUPPORT, EADDRNOTAVAIL, ENODEV, ENETUNREACH, EPROTONOSUPPORT]
+        return unavailableCodes.contains(posixError.code.rawValue)
     }
 
     static func readHTTPRequest(from socketFD: Int32) throws -> String {

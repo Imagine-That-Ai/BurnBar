@@ -39,13 +39,16 @@ export type MemoryDecisionState = {
   error: string | null;
 };
 
+type ReviewDecisionStatus = Exclude<MemoryReviewStatus, 'pending' | 'forgotten'>;
+
 export type MemoryState = {
   inbox: MemoryReviewInbox | null;
   loading: boolean;
   error: string | null;
   decisionById: Record<string, MemoryDecisionState>;
   loadInbox(): Promise<void>;
-  decide(id: string, status: Exclude<MemoryReviewStatus, 'pending'>): Promise<void>;
+  decide(id: string, status: ReviewDecisionStatus): Promise<void>;
+  forget(id: string): Promise<void>;
 };
 
 export const useMemoryStore = create<MemoryState>()((set, get) => ({
@@ -71,7 +74,10 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
     set({ loading: true, error: null });
     try {
       const inbox = await bridge.memoryReviewInbox();
-      set({ inbox: applyStoredStatuses(inbox), loading: false, error: null });
+      // The daemon owns live review status. Renderer storage is intentionally
+      // ignored here so a stale local decision cannot resurrect or hide an
+      // item after another device or daemon process changes it.
+      set({ inbox, loading: false, error: null });
     } catch (e) {
       set({
         inbox: null,
@@ -120,12 +126,7 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
         if (status === 'rejected') {
           await bridge.memorySetStatus('reject', { memoryID: id });
         } else {
-          const alreadyDurable =
-            item?.status === 'approved' ||
-            Boolean(item?.auditHash) ||
-            /recall/i.test(item?.sourceLabel ?? '');
-          if (alreadyDurable) {
-            writeStoredStatus(id, 'approved');
+          if (item?.status === 'approved') {
             set((state) => ({
               inbox: state.inbox
                 ? {
@@ -151,29 +152,8 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
           if (text.startsWith('approved:')) {
             throw new Error('Refusing invented approved:<id> placeholder text.');
           }
-          const duplicate = get().inbox?.items.some(
-            (entry) =>
-              entry.id !== id && entry.status === 'approved' && entry.body.trim() === text
-          );
-          if (duplicate) {
-            writeStoredStatus(id, 'approved');
-            set((state) => ({
-              inbox: state.inbox
-                ? {
-                    ...state.inbox,
-                    items: state.inbox.items.map((entry) =>
-                      entry.id === id ? { ...entry, status: 'approved' as const } : entry
-                    )
-                  }
-                : state.inbox,
-              decisionById: {
-                ...state.decisionById,
-                [id]: { pending: false, error: null }
-              }
-            }));
-            return;
-          }
           await bridge.memorySetStatus('approve', {
+            memoryID: id,
             text,
             kind: item?.kind || 'note',
             tags: ['linux-shell-save'],
@@ -188,7 +168,8 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
       } else {
         throw new Error('No memory decision bridge method available.');
       }
-      writeStoredStatus(id, status);
+      // Live decisions are persisted and reconciled by the daemon. Only the
+      // fixture branch above uses renderer-local status storage.
       await get().loadInbox();
       set((state) => ({
         decisionById: {
@@ -204,6 +185,49 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
             pending: false,
             error: e instanceof Error ? e.message : 'Memory decision failed'
           }
+        }
+      }));
+    }
+  },
+
+  async forget(id) {
+    const { fixtureMode, bridge } = useShellStore.getState();
+    if (fixtureMode) {
+      writeStoredStatus(id, 'forgotten');
+      set((state) => ({
+        inbox: state.inbox
+          ? {
+              ...state.inbox,
+              items: state.inbox.items.map((item) => (item.id === id ? { ...item, status: 'forgotten' } : item))
+            }
+          : state.inbox,
+        decisionById: { ...state.decisionById, [id]: { pending: false, error: null } }
+      }));
+      return;
+    }
+    if (!bridge?.memorySetStatus) {
+      set((state) => ({
+        decisionById: {
+          ...state.decisionById,
+          [id]: { pending: false, error: bridge ? 'Memory forget is unavailable in this daemon bridge.' : OFFLINE_ERROR }
+        }
+      }));
+      return;
+    }
+    set((state) => ({
+      decisionById: { ...state.decisionById, [id]: { pending: true, error: null } }
+    }));
+    try {
+      await bridge.memorySetStatus('forget', { memoryID: id });
+      await get().loadInbox();
+      set((state) => ({
+        decisionById: { ...state.decisionById, [id]: { pending: false, error: null } }
+      }));
+    } catch (e) {
+      set((state) => ({
+        decisionById: {
+          ...state.decisionById,
+          [id]: { pending: false, error: e instanceof Error ? e.message : 'Memory forget failed' }
         }
       }));
     }

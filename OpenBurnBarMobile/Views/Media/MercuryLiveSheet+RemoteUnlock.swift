@@ -67,7 +67,11 @@ extension MercuryLiveSheet {
     func makeRemoteUnlockSession(
         uid: String,
         requestID: String
-    ) async throws -> (session: HermesRealtimeRelayRemoteUnlockSession, peerNodeId: String) {
+    ) async throws -> (
+        session: HermesRealtimeRelayRemoteUnlockSession,
+        peerNodeId: String,
+        signingIdentity: PhoneControlAuthoritySigningKey
+    ) {
         let signingIdentity = try PhoneControlSigningKeyStore.shared.signingIdentity()
         let peerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingIdentity)
         let trustGateway = LiveDeviceTrustGateway()
@@ -81,13 +85,6 @@ extension MercuryLiveSheet {
             peerNodeId: peerNodeId,
             signingIdentity: signingIdentity,
             trustGateway: trustGateway
-        )
-        let sessionSigner = PhoneControlSender(
-            peerNodeId: peerNodeId,
-            uid: uid,
-            connectionId: connectionID,
-            signingIdentityProvider: { signingIdentity },
-            frameSink: { _ in }
         )
         let issuedAt = Date()
         let unsignedSession = HermesRealtimeRelayRemoteUnlockSession(
@@ -106,7 +103,7 @@ extension MercuryLiveSheet {
             requestedBackend: .openBurnBarVirtualHID,
             authority: Self.emptyAuthorityEnvelope
         )
-        return (try sessionSigner.sign(remoteUnlockSession: unsignedSession), peerNodeId)
+        return (unsignedSession, peerNodeId, signingIdentity)
     }
 
     func publishPhoneControlAuthorityWithTrustRetry(

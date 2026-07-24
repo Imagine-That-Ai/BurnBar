@@ -8,6 +8,8 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
 import com.openburnbar.BurnBarApplication
+import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
@@ -127,6 +129,106 @@ class AgentCapabilityGrantControllerTest {
     }
 
     @Test
+    fun `session challenge is revalidated after biometric before live delivery`() = runTest {
+        val queue = RecordingGrantQueue()
+        var now = unixMillis(800_000_100.0)
+        val controller =
+            signedInController(
+                queue = queue,
+                localAuthenticator = { _, _ ->
+                    now = unixMillis(800_000_301.0)
+                    true
+                },
+                nowMillis = { now },
+            )
+
+        val error =
+            runCatching {
+                controller.grant(
+                    activity = mockk<FragmentActivity>(),
+                    delivery = challengeDelivery(),
+                )
+            }.exceptionOrNull()
+
+        assertTrue(error is ComputerUseSessionGrantChallengeValidator.ValidationError.Expired)
+        assertTrue(queue.payloads.isEmpty())
+    }
+
+    @Test
+    fun `session challenge response stays on its authenticated connection route`() = runTest {
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        val publisher = RecordingAuthorityPublisher()
+        val now = unixMillis(800_000_100.0)
+        val controller =
+            signedInController(
+                publisher = publisher,
+                localAuthenticator = { _, _ -> true },
+                nowMillis = { now },
+            )
+
+        val receipt =
+            controller.grant(
+                activity = mockk<FragmentActivity>(),
+                delivery = challengeDelivery(frameSink = { frames += it }),
+            )
+
+        val frame = frames.single()
+        assertEquals("uid-1", frame.uid)
+        assertEquals("conn-session", frame.connectionId)
+        assertEquals("challenge-00000001", frame.control?.agentGrantRequest?.requestId)
+        assertEquals("Sent to your Linux host.", receipt.message)
+        assertEquals(listOf("conn-session"), publisher.authorities.map { it.connectionId })
+        assertEquals(listOf("conn-session"), publisher.agentGrantAuthorities.map { it.connectionId })
+    }
+
+    @Test
+    fun `low preset session challenge still requires device owner authentication`() = runTest {
+        val authenticatedPresets = mutableListOf<AgentPermissionPreset>()
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        val unsigned =
+            challenge().copy(
+                preset = AgentPermissionPreset.LOW.wireValue,
+                capabilities = AgentPermissionPreset.LOW.capabilities.map { it.wireValue },
+                sessionIntentId = "pending",
+            )
+        val lowChallenge =
+            unsigned.copy(sessionIntentId = PhoneControlSigner.canonicalComputerUseSessionIntentId(unsigned))
+        val controller =
+            signedInController(
+                localAuthenticator = { _, preset ->
+                    authenticatedPresets += preset
+                    true
+                },
+                nowMillis = { unixMillis(800_000_100.0) },
+            )
+
+        controller.grant(
+            activity = mockk<FragmentActivity>(),
+            delivery = challengeDelivery(challenge = lowChallenge, frameSink = { frames += it }),
+        )
+
+        assertEquals(listOf(AgentPermissionPreset.LOW), authenticatedPresets)
+        assertEquals("challenge-00000001", frames.single().control?.agentGrantRequest?.requestId)
+    }
+
+    private fun challengeDelivery(
+        challenge: HermesRealtimeRelaySessionGrantChallenge = challenge(),
+        frameSink: suspend (HermesRealtimeRelayFrame) -> Unit = {},
+    ) = ComputerUseSessionGrantChallengeDelivery(
+        challenge = challenge,
+        route =
+        ComputerUseSessionGrantRoute(
+            uid = "uid-1",
+            connectionId = "conn-session",
+            authenticatedRemoteNodeId = "linux-host-1",
+            streamToken = "stream-session",
+            nowMillis = { unixMillis(800_000_100.0) },
+            live = { true },
+            frameSink = frameSink,
+        ),
+    )
+
+    @Test
     fun `grant errors carry the exact user facing copy`() {
         assertEquals(
             "Sign in before granting desktop permissions.",
@@ -149,6 +251,8 @@ class AgentCapabilityGrantControllerTest {
     private fun signedInController(
         queue: RecordingGrantQueue = RecordingGrantQueue(),
         publisher: RecordingAuthorityPublisher = RecordingAuthorityPublisher(),
+        localAuthenticator: suspend (FragmentActivity, AgentPermissionPreset) -> Boolean = { _, _ -> false },
+        nowMillis: () -> Long = { System.currentTimeMillis() },
     ): AgentCapabilityGrantController {
         val context = mockk<Context>()
         every { context.applicationContext } returns context
@@ -166,8 +270,43 @@ class AgentCapabilityGrantControllerTest {
             signingKeysOverride = StaticGrantSigningKeys(),
             authorityPublisher = publisher,
             grantQueue = queue,
+            localAuthenticator = localAuthenticator,
+            nowMillis = nowMillis,
+            attestationDigestProvider = { null },
+            attestationEnforcer = { null },
         )
     }
+
+    private fun challenge(): HermesRealtimeRelaySessionGrantChallenge {
+        val unsigned =
+            HermesRealtimeRelaySessionGrantChallenge(
+                version = 1,
+                challengeId = "challenge-00000001",
+                nonce = "0123456789abcdef0123456789abcdef",
+                issuedAt = 800_000_000.0,
+                expiresAt = 800_000_300.0,
+                sessionIntentId = "pending",
+                runtime = "codex",
+                threadId = "thread-linux-1",
+                preset = AgentPermissionPreset.DESKTOP.wireValue,
+                capabilities = AgentPermissionPreset.DESKTOP.capabilities.map { it.wireValue },
+                mode = "browser",
+                trustMode = "manual",
+                scopeRuleIds = listOf("workspace-only"),
+                phoneViewerNodeId = "phone-viewer-1",
+                macHostNodeId = "linux-host-1",
+                actionCap = 50,
+                sessionTimeoutSeconds = 1_800,
+                clientId = "linux-desktop",
+                runId = "run-42",
+                runCallId = "call-7",
+                runGeneration = 4,
+                desktopOwnerAuthorizationMethod = "linux_desktop_owner",
+            )
+        return unsigned.copy(sessionIntentId = PhoneControlSigner.canonicalComputerUseSessionIntentId(unsigned))
+    }
+
+    private fun unixMillis(swiftReferenceSeconds: Double): Long = AgentCapabilityGrantRequest.unixMillisFromSwiftReferenceSeconds(swiftReferenceSeconds)
 
     private class StaticTrustRegistrar(
         private val deviceId: String,
@@ -184,9 +323,12 @@ class AgentCapabilityGrantControllerTest {
     }
 
     private class RecordingAuthorityPublisher : AgentCapabilityGrantAuthorityPublishing {
+        val authorities = mutableListOf<PhoneControlAuthorityDoc>()
         val agentGrantAuthorities = mutableListOf<PhoneControlAuthorityDoc>()
 
-        override suspend fun publish(uid: String, authority: PhoneControlAuthorityDoc) = Unit
+        override suspend fun publish(uid: String, authority: PhoneControlAuthorityDoc) {
+            authorities += authority
+        }
 
         override suspend fun publishAgentGrantAuthority(uid: String, sourceDeviceId: String, authority: PhoneControlAuthorityDoc) {
             agentGrantAuthorities += authority

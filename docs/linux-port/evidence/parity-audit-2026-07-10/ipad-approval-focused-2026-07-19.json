@@ -1,0 +1,63 @@
+{
+  "schema": "openburnbar.parity.mobile-focused-test-receipt.v1",
+  "capturedAt": "2026-07-19T03:59:34Z",
+  "certificationScope": "non-certifying focused physical-iPad test receipt",
+  "sourceCommit": "e0d295e92a",
+  "sourceWorktree": "/private/tmp/burnbar-linux-parity-continuation",
+  "device": {
+    "name": "Alberto's iPad",
+    "xcodebuildIdentifier": "00008132-001158191E9A401C",
+    "coreDeviceIdentifier": "407C0B12-010B-5970-8E85-D0E43DA8F457",
+    "platform": "iPadOS",
+    "connection": "physical-paired"
+  },
+  "build": {
+    "xcode": "Xcode-27.0.0-Beta",
+    "configuration": "Debug",
+    "signalFfiTargets": ["aarch64-apple-ios"],
+    "firestoreGraph": {
+      "grpc": "grpc-ios@1.69.0",
+      "boringssl": "BoringSSL-SwiftPM@0.32.1"
+    },
+    "automaticProvisioning": true,
+    "xcodebuildExitCode": 0
+  },
+  "focusedSuite": "OpenBurnBarMobileTests",
+  "result": {
+    "passed": 44,
+    "failed": 0,
+    "infrastructureCrashes": 0,
+    "appFailures": 0,
+    "total": 44,
+    "durationSeconds": 1.216
+  },
+  "selection": {
+    "AgentLiveStagePresenterTests": 22,
+    "AgentLiveStageWiringTests": 6,
+    "DevicesStoreTests": 13,
+    "HermesGatewayApprovalDetailIndexTests": 3,
+    "OpenBurnBarMobileTests": 3
+  },
+  "verifiedSelectors": [
+    "OpenBurnBarMobileTests/AgentLiveStagePresenterTests",
+    "OpenBurnBarMobileTests/AgentLiveStageWiringTests",
+    "OpenBurnBarMobileTests/DevicesStoreTests",
+    "OpenBurnBarMobileTests/HermesGatewayApprovalDetailIndexTests",
+    "OpenBurnBarMobileTests/testAgentWatchOverlayCoordinatorClassifiesApprovalStreamAndResponds",
+    "OpenBurnBarMobileTests/testGatewaySealedApprovalDetailDecodesActionIdAndKind",
+    "OpenBurnBarMobileTests/testSealedApprovalDecisionCarriesKindAndActionAtRootOfSealedPayload"
+  ],
+  "artifacts": {
+    "compactTranscript": "docs/linux-port/evidence/parity-audit-2026-07-10/ipad-approval-focused-2026-07-19.txt",
+    "originalTelemetry": "/private/tmp/burnbar-linux-parity-continuation/.tmp/ipad-live/focused-50/artifacts/test-openburnbar-mobile-attempts.jsonl",
+    "originalResultBundle": "/private/tmp/burnbar-linux-parity-continuation/.tmp/ipad-live/focused-50/derived-data/openburnbar-mobile-tests.qiaoY3/OpenBurnBarMobileTests-attempt-1.xcresult"
+  },
+  "diagnosticNotes": [
+    "xcodebuild reported a partial devicectl diagnose archive after the successful test session; this did not change the XCTest result.",
+    "The receipt covers focused XCTest execution only; it is not a full mobile-suite, installed Linux, or cross-device approval certification."
+  ],
+  "limitations": [
+    "Trusted-device enrollment, installed Linux candidate pairing, fingerprint confirmation, approval/revoke, and sign-out remain unverified.",
+    "This receipt does not promote any P-01 through P-40 product row or environment receipt."
+  ]
+}

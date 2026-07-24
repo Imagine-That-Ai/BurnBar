@@ -282,6 +282,39 @@ final class OpenBurnBarMissionControlMissionsContractsTests: XCTestCase {
         )
     }
 
+    func testMissionHealthContract_roundTripsTypedHistory() throws {
+        let now = Date(timeIntervalSince1970: 1_710_000_123)
+        let missionID = BurnBarMissionID(rawValue: "mission-health-contract")
+        let response = BurnBarMissionHealthResponse(
+            missionID: missionID,
+            health: BurnBarMissionHealthSnapshot(
+                status: .degraded,
+                detail: "Awaiting approval.",
+                checkedAt: now,
+                lastActivityAt: now.addingTimeInterval(-30),
+                activePacketCount: 0,
+                failedResultCount: 0
+            ),
+            history: [
+                BurnBarMissionHistoryEntry(
+                    id: "mission:mission-health-contract",
+                    kind: "mission",
+                    status: "awaiting_approval",
+                    summary: "Approval is required.",
+                    occurredAt: now
+                )
+            ]
+        )
+
+        let decoded = try JSONDecoder().decode(
+            BurnBarMissionHealthResponse.self,
+            from: JSONEncoder().encode(response)
+        )
+
+        XCTAssertEqual(decoded, response)
+        XCTAssertEqual(decoded.history.first?.kind, "mission")
+    }
+
     // MARK: - Payload
 
     func testRuntimeSnapshotPayload_roundTripsFullyPopulatedSections() throws {

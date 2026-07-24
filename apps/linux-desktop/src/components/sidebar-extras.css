@@ -1,8 +1,15 @@
 /* Sidebar glass — consumes liquid-glass-tokens + utility classes from NavRail/SidebarSegmentedPicker */
 
 .shell-nav {
-  background: var(--glass-tint-base);
-  border-right-color: var(--glass-stroke);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--glass-theme-wash-top) 4%, transparent),
+      color-mix(in srgb, var(--glass-theme-wash-bottom) 3%, transparent) 58%,
+      transparent
+    ),
+    var(--glass-tint-base);
+  border-right-color: color-mix(in srgb, var(--glass-theme-rim) 34%, var(--glass-stroke));
   backdrop-filter: var(--glass-toolbar-blur);
   -webkit-backdrop-filter: var(--glass-toolbar-blur);
 }
@@ -12,12 +19,13 @@
 }
 
 .sidebar-segmented-item[aria-pressed='true'] {
-  border-color: color-mix(in srgb, var(--color-brass-core) 22%, var(--glass-pill-stroke));
-  box-shadow: var(--glass-pill-shadow), 0 0 12px color-mix(in srgb, var(--color-brass-glow) 12%, transparent);
+  border-color: color-mix(in srgb, var(--glass-theme-rim) 42%, var(--glass-pill-stroke));
+  box-shadow: var(--glass-pill-shadow), 0 0 12px color-mix(in srgb, var(--glass-theme-tint) 12%, transparent);
 }
 
 .sidebar-glass-card.glass-card {
   border-radius: var(--glass-radius-sm);
+  border-color: color-mix(in srgb, var(--glass-theme-rim) 24%, var(--glass-card-stroke));
 }
 
 /* Partition B — sidebar chrome (FixerB). Do not edit app.css. */

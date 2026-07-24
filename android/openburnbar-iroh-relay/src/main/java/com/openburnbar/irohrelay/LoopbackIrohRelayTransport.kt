@@ -27,6 +27,7 @@ class LoopbackIrohRelayRendezvous {
 
     private data class PendingConnect(
         val id: UUID,
+        val dialingNodeId: String,
         val continuation: CancellableContinuation<IrohRelayStream>,
     )
 
@@ -40,7 +41,7 @@ class LoopbackIrohRelayRendezvous {
             waiters = pending.remove(nodeId).orEmpty()
         }
         for (waiter in waiters) {
-            transport.fulfillDial(waiter.id, waiter.continuation)
+            transport.fulfillDial(waiter.id, waiter.dialingNodeId, waiter.continuation)
         }
     }
 
@@ -50,13 +51,14 @@ class LoopbackIrohRelayRendezvous {
 
     suspend fun dial(
         peer: String,
+        dialingNodeId: String,
         timeoutMillis: Long,
     ): IrohRelayStream {
         val connectId = UUID.randomUUID()
         val resolvedHost: LoopbackIrohRelayTransport? = synchronized(state) { hosts[peer] }
         if (resolvedHost != null) {
             return suspendCancellableCoroutine<IrohRelayStream> { cont ->
-                resolvedHost.fulfillDial(connectId, cont)
+                resolvedHost.fulfillDial(connectId, dialingNodeId, cont)
             }
         }
         val result =
@@ -69,7 +71,7 @@ class LoopbackIrohRelayRendezvous {
                     }
                     synchronized(state) {
                         pending.getOrPut(peer) { mutableListOf() }
-                            .add(PendingConnect(connectId, cont))
+                            .add(PendingConnect(connectId, dialingNodeId, cont))
                     }
                 }
             }
@@ -115,8 +117,11 @@ class LoopbackIrohRelayStream internal constructor(
     private val readQueue: LoopbackQueue,
     private val writeQueue: LoopbackQueue,
     private val codec: IrohRelayFrameCodec,
+    private val remoteNodeId: String,
 ) : IrohRelayStream {
     private val buffer = ArrayDeque<Byte>()
+
+    override suspend fun authenticatedRemoteNodeId(): String = remoteNodeId
 
     override suspend fun send(frame: HermesRealtimeRelayFrame) {
         writeQueue.push(codec.encode(frame))
@@ -195,7 +200,7 @@ class LoopbackIrohRelayTransport(
         timeoutMillis: Long,
     ): IrohRelayStream {
         if (!stateLock.withLock { started }) throw IrohRelayTransportError.EndpointNotReady
-        return rendezvous.dial(target.nodeId, timeoutMillis)
+        return rendezvous.dial(target.nodeId, identity.nodeId, timeoutMillis)
     }
 
     override suspend fun accept(timeoutMillis: Long): IrohRelayStream {
@@ -220,6 +225,7 @@ class LoopbackIrohRelayTransport(
 
     internal fun fulfillDial(
         connectId: UUID,
+        dialingNodeId: String,
         continuation: CancellableContinuation<IrohRelayStream>,
     ) {
         val pair = LoopbackStreamPair()
@@ -228,12 +234,14 @@ class LoopbackIrohRelayTransport(
                 readQueue = pair.hostToClient,
                 writeQueue = pair.clientToHost,
                 codec = codec,
+                remoteNodeId = identity.nodeId,
             )
         val hostStream =
             LoopbackIrohRelayStream(
                 readQueue = pair.clientToHost,
                 writeQueue = pair.hostToClient,
                 codec = codec,
+                remoteNodeId = dialingNodeId,
             )
         if (continuation.isActive) continuation.resumeWith(Result.success(clientStream))
         accept.trySend(hostStream)

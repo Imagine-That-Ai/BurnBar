@@ -25,15 +25,18 @@ public enum AuthState: Sendable, Equatable {
 final class AuthStore {
     private let gateway: AuthGateway
     private let trustGateway: DeviceTrustGateway
+    private let controllerRouteLifecycle: any IrohControllerRouteAuthLifecycleManaging
     private(set) var state: AuthState
     private(set) var lastError: CloudErrorClassification?
 
     init(
         gateway: AuthGateway = LiveAuthGateway(),
-        trustGateway: DeviceTrustGateway = LiveDeviceTrustGateway()
+        trustGateway: DeviceTrustGateway = LiveDeviceTrustGateway(),
+        controllerRouteLifecycle: any IrohControllerRouteAuthLifecycleManaging = IrohControllerRouteAuthLifecycleCoordinator.shared
     ) {
         self.gateway = gateway
         self.trustGateway = trustGateway
+        self.controllerRouteLifecycle = controllerRouteLifecycle
         if !gateway.isFirebaseAvailable {
             self.state = .firebaseUnavailable
         } else if let identity = gateway.currentIdentity {
@@ -126,7 +129,8 @@ final class AuthStore {
         }
     }
 
-    func signOut() {
+    func signOut() async {
+        await controllerRouteLifecycle.tearDownAndRevoke()
         do {
             try gateway.signOut(); state = .signedOut; lastError = nil
             MobileAnalytics.shared.track(.authSignedOut, ["outcome": "success"])
@@ -145,6 +149,7 @@ final class AuthStore {
         state = .deletingAccount(identity: identity)
         lastError = nil
         do {
+            await controllerRouteLifecycle.tearDownAndRevoke()
             try await gateway.deleteAccount()
             state = .signedOut
             MobileAnalytics.shared.track(.authAccountDeleted, ["outcome": "success"])

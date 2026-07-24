@@ -57,6 +57,33 @@ describe('daemon-owned Linux onboarding snapshot', () => {
     ).toThrow('onboarding_current_step_ahead_of_prerequisite');
   });
 
+  it('preserves daemon repair routing and rejects forged repair values', () => {
+    const snapshot = defaultLinuxOnboardingSnapshot();
+    const blocked = {
+      ...snapshot,
+      steps: snapshot.steps.map((step) =>
+        step.id === 'secret_store'
+          ? {
+              ...step,
+              state: 'blocked' as const,
+              attemptCount: 1,
+              detail: 'wallet locked',
+              repairAction: 'unlock_secret_store' as const
+            }
+          : step
+      )
+    };
+    expect(decodeLinuxOnboardingSnapshot(blocked).steps[1].repairAction).toBe('unlock_secret_store');
+    expect(() =>
+      decodeLinuxOnboardingSnapshot({
+        ...blocked,
+        steps: blocked.steps.map((step) =>
+          step.id === 'secret_store' ? { ...step, repairAction: 'run_shell' } : step
+        )
+      })
+    ).toThrow('onboarding_invalid_repair_action');
+  });
+
   it('does not trust the legacy browser-only completion key', () => {
     localStorage.setItem('openburnbar.linux.onboarding.v1', JSON.stringify({ completed: true }));
     expect(readOnboarding().completed).toBe(false);

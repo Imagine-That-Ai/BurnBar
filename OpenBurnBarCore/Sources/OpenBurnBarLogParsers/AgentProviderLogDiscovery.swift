@@ -1,5 +1,8 @@
 import Foundation
 import OpenBurnBarKernel
+import OpenBurnBarParserSupport
+
+public typealias AgentProviderIngestionCatalog = OpenBurnBarParserSupport.AgentProviderIngestionCatalog
 
 /// Canonical provider log directory and file-pattern discovery for Linux and cross-platform ingestion.
 ///
@@ -29,131 +32,16 @@ public enum AgentProviderLogDiscovery {
     }
 
     public static func logicalLogDirectory(for provider: AgentProvider) -> String {
-        switch provider {
-        case .factory:
-            return "~/.factory/sessions"
-        case .claudeCode:
-            return "~/.claude/projects"
-        case .copilot:
-            return "~/.copilot/session-state"
-        case .aider:
-            return "~/.aider"
-        case .cursor:
-            return "~/.cursor/ai-tracking"
-        case .openAI, .deepSeek, .mimo, .openBurnBar:
-            return "~/.codex"
-        case .codex:
-            return "~/.codex/sessions"
-        case .openCode:
-            return "~/.local/share/opencode"
-        case .zai, .minimax:
-            return "~/.factory/sessions"
-        case .kimi:
-            return "~/.kimi/sessions"
-        case .cline:
-            #if os(Linux)
-            return "~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks"
-            #else
-            return "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks"
-            #endif
-        case .kiloCode:
-            #if os(Linux)
-            return "~/.config/Code/User/globalStorage/kilocode.kilo-code/tasks"
-            #else
-            return "~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/tasks"
-            #endif
-        case .rooCode:
-            #if os(Linux)
-            return "~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks"
-            #else
-            return "~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks"
-            #endif
-        case .forgeDev:
-            return "~/.forge/sessions"
-        case .augment:
-            #if os(Linux)
-            return "~/.config/Code/User/globalStorage/augment.vscode-augment"
-            #else
-            return "~/Library/Application Support/Code/User/globalStorage/augment.vscode-augment"
-            #endif
-        case .hermes:
-            return "~/.hermes/sessions"
-        case .piAgent:
-            return "~/.pi/sessions"
-        case .geminiCLI:
-            return "~/.gemini/tmp"
-        case .antigravity:
-            return "~/.gemini/antigravity-cli"
-        case .cursorAgent:
-            return "~/.cursor-agent/sessions"
-        case .goose:
-            return "~/.local/share/goose/sessions"
-        case .openClaw:
-            return "~/.openclaw/sessions"
-        case .openClaude:
-            return "~/.openclaude/sessions"
-        case .omp:
-            return "~/.omp/agent/sessions"
-        case .junie:
-            return "~/.junie/sessions"
-        case .ollama:
-            return "~/.ollama/logs"
-        case .windsurf:
-            #if os(Linux)
-            return "~/.config/Windsurf - Next/User/globalStorage"
-            #else
-            return "~/Library/Application Support/Windsurf - Next/User/globalStorage"
-            #endif
-        case .warp:
-            #if os(Linux)
-            return "~/.config/Warp"
-            #else
-            return "~/Library/Application Support/dev.warp.Warp-Stable"
-            #endif
-        case .xAI:
-            return "~/.grok/sessions"
-        }
+        let entry = AgentProviderIngestionCatalog.entry(for: provider)
+        #if os(Linux)
+        return entry.linuxLogicalPath
+        #else
+        return entry.macOSLogicalPath
+        #endif
     }
 
     public static func filePattern(for provider: AgentProvider) -> String {
-        switch provider {
-        case .factory, .claudeCode, .copilot, .aider, .zai, .minimax, .forgeDev, .hermes, .piAgent, .cursorAgent, .openClaw, .openClaude, .omp, .junie:
-            return "*.jsonl"
-        case .cursor:
-            return "*.db"
-        case .openAI:
-            return "openai-no-local-logs"
-        case .deepSeek:
-            return "deepseek-no-local-logs"
-        case .codex:
-            return "*.jsonl"
-        case .openCode:
-            return "opencode.db"
-        case .kimi:
-            return "*.jsonl"
-        case .cline, .kiloCode, .rooCode:
-            return "*.json"
-        case .augment:
-            return "*.jsonl"
-        case .geminiCLI:
-            return "*.json"
-        case .antigravity:
-            return "history.jsonl"
-        case .goose:
-            return "sessions.db"
-        case .ollama:
-            return "server*.log"
-        case .windsurf:
-            return "state.vscdb"
-        case .warp:
-            return "warp_network*.log"
-        case .xAI:
-            return "summary.json"
-        case .mimo:
-            return "mimo-no-local-logs"
-        case .openBurnBar:
-            return "openburnbar-no-local-logs"
-        }
+        AgentProviderIngestionCatalog.entry(for: provider).filePattern
     }
 
     public static func resolveLogSource(

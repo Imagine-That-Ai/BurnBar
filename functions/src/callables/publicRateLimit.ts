@@ -24,10 +24,12 @@ type PublicHttpEndpointName =
   | "healthLive"
   | "healthReady"
   | "latestRouterRundown"
+  | "issueLinuxAppCheckChallenge"
   | "issueWindowsAppCheckChallenge"
   | "mintLinuxAppCheckToken"
   | "mintWindowsAppCheckToken"
   | "pollCliLink"
+  | "registerLinuxAppCheckDevice"
   | "startCliLink";
 
 type CallableApprovalRateLimitAction = "cli_link_approve_fail" | "hermes_gateway_approve_fail";
@@ -59,12 +61,16 @@ const PUBLIC_HTTP_ENDPOINT_LIMITS: Record<PublicHttpEndpointName, { windowSecond
   healthLive: { windowSeconds: 60, maxAttempts: 60 },
   healthReady: { windowSeconds: 60, maxAttempts: 30 },
   latestRouterRundown: { windowSeconds: 60, maxAttempts: 60 },
+  // Authenticated pre-App-Check bootstrap. Keep enrollment and challenge
+  // issuance independently bounded so one flow cannot starve the other.
+  issueLinuxAppCheckChallenge: { windowSeconds: 3600, maxAttempts: 20 },
   issueWindowsAppCheckChallenge: { windowSeconds: 3600, maxAttempts: 40 },
   // Device-attestation token mint: Linux/Windows AppCheck bootstrap. 20/hour
   // per IP — same posture as startCliLink since each mints a session-scoped token.
   mintLinuxAppCheckToken: { windowSeconds: 3600, maxAttempts: 20 },
   mintWindowsAppCheckToken: { windowSeconds: 3600, maxAttempts: 20 },
   pollCliLink: { windowSeconds: 60, maxAttempts: 60 },
+  registerLinuxAppCheckDevice: { windowSeconds: 3600, maxAttempts: 20 },
   // Device-enrollment bootstrap: keep the historical 20/hour ceiling from the
   // shared `cli_link_start` action; it is tighter than poll (60/min) because
   // this endpoint mints a fresh session and writes to Firestore.
@@ -334,9 +340,11 @@ export const RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS: ReadonlyArray<PublicHttpEndpoin
   "healthLive",
   "healthReady",
   "latestRouterRundown",
+  "issueLinuxAppCheckChallenge",
   "issueWindowsAppCheckChallenge",
   "mintLinuxAppCheckToken",
   "mintWindowsAppCheckToken",
   "pollCliLink",
+  "registerLinuxAppCheckDevice",
   "startCliLink",
 ]);

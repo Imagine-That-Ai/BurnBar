@@ -88,6 +88,52 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         )
     }
 
+    func test_v57ExecutionSourceAttribution_backfillsDedicatedParserRowsWithoutGuessingCodex() throws {
+        let queue = try DatabaseQueue()
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v56_parser_checkpoint_file_manifest")
+        try queue.write { db in
+            try Self.insertUsageRow(
+                db,
+                id: "grok-history",
+                provider: "xAI",
+                sessionID: "grok-session",
+                model: "grok-4",
+                inputTokens: 100,
+                outputTokens: 20,
+                cost: 1,
+                confidence: "exact",
+                providerID: "xai",
+                now: Date(timeIntervalSince1970: 1)
+            )
+            try Self.insertUsageRow(
+                db,
+                id: "codex-history",
+                provider: "Codex",
+                sessionID: "codex-session",
+                model: "gpt-5.6-codex",
+                inputTokens: 100,
+                outputTokens: 20,
+                cost: 1,
+                confidence: "exact",
+                providerID: "codex",
+                now: Date(timeIntervalSince1970: 1)
+            )
+        }
+
+        try OpenBurnBarDatabase.migrator.migrate(queue)
+
+        try queue.read { db in
+            let grok = try Row.fetchOne(db, sql: "SELECT * FROM token_usage WHERE id = 'grok-history'")
+            XCTAssertEqual(grok?["executionSourceID"] as? String, "grok-build")
+            XCTAssertEqual(grok?["executionSourceName"] as? String, "Grok Build")
+            XCTAssertEqual(grok?["executionSourceConfidence"] as? String, "derived_exact")
+
+            let codex = try Row.fetchOne(db, sql: "SELECT * FROM token_usage WHERE id = 'codex-history'")
+            XCTAssertEqual(codex?["executionSourceID"] as? String, "unknown")
+            XCTAssertEqual(codex?["executionSourceConfidence"] as? String, "unknown")
+        }
+    }
+
     func test_v51aDropBodyFts_removesVestigialAgentMemoriesFts() async throws {
         let queue = try DatabaseQueue()
         try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v50_project_code_memory_schema")

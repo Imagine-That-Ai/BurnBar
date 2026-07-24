@@ -12,14 +12,16 @@ let buildForLinuxBoundary = ProcessInfo.processInfo.environment["OPENBURNBAR_DAE
 // Core-decomposition S17 (docs/CORE_DECOMPOSITION_PROGRAM.md) — THE SECURITY PAYOFF:
 // the daemon + CLI link the UI-free `OpenBurnBarEngine` umbrella instead of the
 // SwiftUI/AppKit `OpenBurnBarCore` monolith, so the most-privileged binaries gain NO
-// transitive path to the presentation layer (OpenBurnBarUI / OpenBurnBarInsights /
-// OpenBurnBarLaunchServices / OpenBurnBarTextExpansion). Engine re-exports the six
+// transitive path to OpenBurnBarUI, OpenBurnBarLaunchServices, or
+// OpenBurnBarTextExpansion. The daemon links the Foundation-only OpenBurnBarInsights
+// module directly for its bounded usage-insights RPC. Engine re-exports the six
 // engine leaves {Kernel, LogParsers, Quota, VectorKit, Hermes, Pretext}; every symbol
 // the daemon used from Core resolves through them (the CLI-launch cluster is now
 // Kernel-resident — P-15b + P-18). ComputerUseCore / IrohRelay / Media / LinuxSecurity
 // stay as-is (K2 privileged closure, orthogonal to the UI monolith).
 var daemonTargetDependencies: [Target.Dependency] = [
     .product(name: "OpenBurnBarEngine", package: "OpenBurnBarCore"),
+    .product(name: "OpenBurnBarInsights", package: "OpenBurnBarCore"),
     .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
     .product(name: "OpenBurnBarIrohRelay", package: "OpenBurnBarCore"),
     .product(name: "OpenBurnBarMedia", package: "OpenBurnBarCore"),
@@ -28,6 +30,7 @@ var daemonTargetDependencies: [Target.Dependency] = [
 var daemonLinkerSettings: [LinkerSetting] = []
 var daemonSwiftSettings: [SwiftSetting] = []
 var daemonExecutableDependencies: [Target.Dependency] = ["OpenBurnBarDaemon"]
+var linuxExecutableLinkerSettings: [LinkerSetting] = []
 var daemonExcludes: [String] = []
 var linuxSupportTargets: [Target] = []
 
@@ -89,7 +92,6 @@ if !buildForLinuxBoundary {
     ])
     daemonTargetDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
     daemonTargetDependencies.append(.product(name: "SQLCipher", package: "SQLCipher.swift"))
-    daemonTargetDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
     daemonLinkerSettings = [.unsafeFlags(["-framework", "Network", "-framework", "CoreServices"])]
     daemonExecutableDependencies.append(.product(name: "Sentry", package: "sentry-cocoa"))
 } else {
@@ -99,6 +101,18 @@ if !buildForLinuxBoundary {
 #endif
 
 #if os(Linux)
+// The packaged daemon launcher supplies these paths for the daemon, but the
+// trusted CLI is also launched directly by the desktop shell and extensions.
+// Keep both executables relocatable for deb/rpm and AppImage payloads so a
+// normal desktop environment does not need to export LD_LIBRARY_PATH.
+linuxExecutableLinkerSettings = [
+    .unsafeFlags([
+        "-Xlinker", "-rpath", "-Xlinker", "$ORIGIN/../lib/openburnbar/swift"
+    ]),
+    .unsafeFlags([
+        "-Xlinker", "-rpath", "-Xlinker", "$ORIGIN/../lib/openburnbar/native"
+    ])
+]
 packageDependencies.append(.package(path: "../Vendor/GRDB-SQLCipher"))
 daemonTargetDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
 daemonTargetDependencies.append("COpenBurnBarMediaCapture")
@@ -129,6 +143,25 @@ if let mediaLibrary = linuxMediaCaptureLibraryIfPresent() {
     daemonSwiftSettings.append(.define("OPENBURNBAR_MEDIA_CAPTURE_LINKED"))
 } else {
     daemonSwiftSettings.append(.define("OPENBURNBAR_MEDIA_CAPTURE_UNAVAILABLE"))
+}
+
+// The Linux package carries the FTS5-enabled SQLCipher runtime as
+// `libsqlcipher.so.0`. When a release build supplies that staged directory,
+// link the exact file instead of allowing pkg-config to select a distro
+// `libsqlcipher.so.1` that may omit FTS5. The explicit path also gives the
+// final executable the packaged SONAME and keeps runtime behavior aligned with
+// the native library copied into deb/rpm/AppImage payloads.
+if let configuredSQLCipherDirectory = ProcessInfo.processInfo.environment["OPENBURNBAR_SQLCIPHER_LIB_DIR"],
+   configuredSQLCipherDirectory.isEmpty == false {
+    let sqlcipherLibrary = URL(fileURLWithPath: configuredSQLCipherDirectory)
+        .appendingPathComponent("libsqlcipher.so.0")
+        .standardizedFileURL
+    if FileManager.default.fileExists(atPath: sqlcipherLibrary.path) {
+        daemonLinkerSettings.append(.unsafeFlags([sqlcipherLibrary.path]))
+        daemonLinkerSettings.append(.unsafeFlags([
+            "-Xlinker", "-rpath", "-Xlinker", configuredSQLCipherDirectory
+        ]))
+    }
 }
 linuxSupportTargets.append(
     .systemLibrary(
@@ -204,11 +237,13 @@ var packageTargets: [Target] = [
     ),
     .executableTarget(
         name: "OpenBurnBarDaemonExecutable",
-        dependencies: daemonExecutableDependencies
+        dependencies: daemonExecutableDependencies,
+        linkerSettings: linuxExecutableLinkerSettings
     ),
     .executableTarget(
         name: "OpenBurnBarCLI",
-        dependencies: ["OpenBurnBarDaemon"]
+        dependencies: ["OpenBurnBarDaemon"],
+        linkerSettings: linuxExecutableLinkerSettings
     ),
     .testTarget(
         name: "OpenBurnBarDaemonLinuxGatewayTests",
@@ -217,6 +252,7 @@ var packageTargets: [Target] = [
             // S17 repoint: the Linux-gateway harness links the UI-free Engine umbrella,
             // matching the daemon target under test (no path to the UI monolith).
             .product(name: "OpenBurnBarEngine", package: "OpenBurnBarCore"),
+            .product(name: "OpenBurnBarInsights", package: "OpenBurnBarCore"),
             .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
             .product(name: "OpenBurnBarIrohRelay", package: "OpenBurnBarCore"),
             .product(name: "OpenBurnBarMedia", package: "OpenBurnBarCore")
@@ -301,7 +337,10 @@ packageTargets.append(contentsOf: [
     ),
     .testTarget(
         name: "OpenBurnBarDaemonTests",
-        dependencies: ["OpenBurnBarDaemon"],
+        dependencies: [
+            "OpenBurnBarDaemon",
+            .product(name: "OpenBurnBarInsights", package: "OpenBurnBarCore")
+        ],
         // Harness-only test target stays Swift 5 (region-isolation checker gaps).
         swiftSettings: [.swiftLanguageMode(.v5)]
     ),

@@ -50,7 +50,11 @@ console.log("Self-test: check-npm-audit-fail-closed.mjs\n");
 // lockfiles in sibling and nested directories without double-counting.
 function discoverLockfileRoots(repoRoot) {
   const roots = [];
-  const SKIP = new Set(["node_modules", ".git"]);
+  // Vendor contains pinned upstream gitlinks whose own test fixtures may ship
+  // package locks when submodules are initialized locally. They are not
+  // first-party npm workspaces and are audited by their dedicated provenance
+  // and supply-chain gates.
+  const SKIP = new Set(["node_modules", ".git", "Vendor"]);
   function walk(absDir) {
     let entries = [];
     try {

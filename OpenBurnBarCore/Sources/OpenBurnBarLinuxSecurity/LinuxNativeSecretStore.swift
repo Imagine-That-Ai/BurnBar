@@ -144,7 +144,11 @@ public struct LinuxNativeSecretStoreBackend: LinuxSecretStoreBackend {
             arguments = ["-l", walletName]
         }
         let result = try execute(arguments: arguments)
-        guard result.exitCode == 0 else {
+        // `secret-tool search` exits non-zero when the probe item is absent,
+        // which is the normal state on a freshly unlocked keyring. Treat only
+        // that explicit not-found result as healthy; locked or unavailable
+        // Secret Service errors must still fail closed before a write.
+        guard result.exitCode == 0 || (kind == .secretService && isMissing(result)) else {
             throw commandError(operation: "health-check", result: result)
         }
     }
@@ -208,6 +212,7 @@ public struct LinuxNativeSecretStoreBackend: LinuxSecretStoreBackend {
         let detail = (result.stdout + "\n" + result.stderr).lowercased()
         return detail.contains("not found")
             || detail.contains("no such entry")
+            || detail.contains("no such secret")
             || detail.contains("no matching")
     }
 

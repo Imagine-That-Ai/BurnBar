@@ -767,6 +767,107 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
+    static func resolveActiveIrohControllerRoutes(
+        uid: String,
+        connectionId: String,
+        authenticatedUID: () throws -> String = { try requireSignedInUser().uid },
+        invokeCallable: (String) async throws -> Any = { connectionId in
+            try await functions.httpsCallable("resolveActiveIrohControllerRoutes").call([
+                "connectionId": connectionId
+            ]).data
+        }
+    ) async throws -> [IrohControllerRouteBinding] {
+        guard try authenticatedUID() == uid else {
+            throw ClientError.invalidResponse("The active account changed before controller-route resolution.")
+        }
+        let raw = try await invokeCallable(connectionId)
+        guard try authenticatedUID() == uid else {
+            throw ClientError.invalidResponse("The active account changed during controller-route resolution.")
+        }
+        return try parseActiveIrohControllerRoutes(
+            raw,
+            expectedUID: uid,
+            expectedConnectionId: connectionId
+        )
+    }
+
+    static func parseActiveIrohControllerRoutes(
+        _ raw: Any,
+        expectedUID: String,
+        expectedConnectionId: String,
+        nowMillis: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)
+    ) throws -> [IrohControllerRouteBinding] {
+        let response = try decodeCallableJSON(
+            ActiveIrohControllerRoutesResponse.self,
+            from: raw,
+            invalidResponseMessage: "Active iroh controller-route resolution was malformed or stale."
+        )
+        guard response.uid == expectedUID,
+              response.connectionId == expectedConnectionId,
+              let resolvedAtMillis = response.resolvedAtMillis,
+              resolvedAtMillis >= nowMillis - 60_000,
+              resolvedAtMillis <= nowMillis + 30_000,
+              response.routes.count <= 1 else {
+            throw ClientError.invalidResponse("Active iroh controller-route resolution was malformed or stale.")
+        }
+        guard let route = response.routes.first else { return [] }
+        guard
+            route.connectionId == expectedConnectionId,
+            route.generation > 0,
+            route.registeredAtMillis <= resolvedAtMillis,
+            route.expiresAtMillis > resolvedAtMillis,
+            route.expiresAtMillis > nowMillis,
+            let binding = IrohControllerRouteBinding(
+                sourceDeviceId: route.sourceDeviceId,
+                transportNodeId: route.transportNodeId,
+                authorityPeerNodeId: route.authorityPeerNodeId,
+                generation: route.generation,
+                registeredAtMillis: route.registeredAtMillis,
+                expiresAtMillis: route.expiresAtMillis
+            ) else {
+            throw ClientError.invalidResponse("Active iroh controller-route resolution was malformed or stale.")
+        }
+        return [binding]
+    }
+
+    private struct ActiveIrohControllerRoutesResponse: Decodable {
+        let uid: String
+        let connectionId: String
+        let resolvedAtMillis: Int64?
+        let routes: [ActiveIrohControllerRouteResponse]
+    }
+
+    private struct ActiveIrohControllerRouteResponse: Decodable {
+        let connectionId: String
+        let sourceDeviceId: String
+        let transportNodeId: String
+        let authorityPeerNodeId: String
+        let generation: UInt64
+        let registeredAtMillis: Int64
+        let expiresAtMillis: Int64
+    }
+
+    private static func decodeCallableJSON<Response: Decodable>(
+        _ type: Response.Type,
+        from raw: Any,
+        invalidResponseMessage: String
+    ) throws -> Response {
+        guard JSONSerialization.isValidJSONObject(raw) else {
+            throw ClientError.invalidResponse(invalidResponseMessage)
+        }
+        let data: Data
+        do {
+            data = try JSONSerialization.data(withJSONObject: raw)
+        } catch {
+            throw ClientError.invalidResponse(invalidResponseMessage)
+        }
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            throw ClientError.invalidResponse(invalidResponseMessage)
+        }
+    }
+
     static func loadOrCreateLocalDeviceId(defaults: UserDefaults = .standard) -> String {
         OpenBurnBarCore.OpenBurnBarMigration.migrateUserDefaults()
         if let stored = defaults.string(forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {

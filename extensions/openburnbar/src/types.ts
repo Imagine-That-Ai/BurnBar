@@ -46,6 +46,7 @@ export type BurnBarRunPhase =
   | 'idle'
   | 'planning'
   | 'awaiting_approval'
+  | 'awaiting_computer_use_session'
   | 'executing_tool'
   | 'waiting_on_companion'
   | 'model_streaming'
@@ -237,6 +238,8 @@ export interface BurnBarRunStateSnapshot {
 
 export type BurnBarToolExecutionErrorCode =
   | 'trust_gated'
+  | 'operator_denied'
+  | 'computer_use_denied'
   | 'no_workspace'
   | 'remote_unsupported'
   | 'apply_failed'

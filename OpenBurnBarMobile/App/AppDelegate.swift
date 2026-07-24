@@ -231,6 +231,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         Auth.auth().addStateDidChangeListener { _, user in
             let isCloudAccount = user?.isAnonymous == false
             Task { @MainActor in
+                await IrohControllerRouteAuthLifecycleCoordinator.shared
+                    .handleAuthenticatedUIDChanged(to: user?.uid)
                 MobileMediaBudgetStatusStore.shared.handleCloudAccountStateChanged(isCloudAccount: isCloudAccount)
                 guard isCloudAccount else { return }
                 await Self.validateAppCheckIfNeeded()

@@ -11,6 +11,7 @@ const outDir = evidenceOutput
   ? path.resolve(evidenceOutput)
   : path.join(root, 'docs/linux-port/evidence/mission-001-shell-ux');
 fs.mkdirSync(outDir, { recursive: true });
+const failureSummaryName = 'shell-smoke-failure-summary.json';
 
 function normalizeTranscript(text) {
   return text
@@ -18,6 +19,56 @@ function normalizeTranscript(text) {
     .split('\n')
     .map((line) => line.replace(/[ \t]+$/u, ''))
     .join('\n');
+}
+
+function envPresent(name) {
+  return typeof process.env[name] === 'string' && process.env[name].trim().length > 0;
+}
+
+function safeEnvironmentValue(name, allowedValues) {
+  const value = process.env[name]?.trim().toLowerCase();
+  if (!value) return 'unset';
+  return allowedValues.includes(value) ? value : 'other';
+}
+
+function runtimeMetadata() {
+  return {
+    nodeVersion: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    evidenceDirectory: path.relative(root, outDir) || '.',
+    environment: {
+      ci: envPresent('CI'),
+      githubActions: envPresent('GITHUB_ACTIONS'),
+      runnerOs: safeEnvironmentValue('RUNNER_OS', ['linux', 'macos', 'windows']),
+      runnerArch: safeEnvironmentValue('RUNNER_ARCH', ['x64', 'arm64']),
+      sessionType: safeEnvironmentValue('XDG_SESSION_TYPE', ['x11', 'wayland', 'tty']),
+      desktop: safeEnvironmentValue('XDG_CURRENT_DESKTOP', ['gnome', 'kde', 'xfce', 'sway']),
+      displayAvailable: envPresent('DISPLAY'),
+      waylandDisplayAvailable: envPresent('WAYLAND_DISPLAY'),
+      dbusSessionAvailable: envPresent('DBUS_SESSION_BUS_ADDRESS')
+    }
+  };
+}
+
+function existingArtifacts(directory, relativeDirectory = '') {
+  let entries;
+  try {
+    entries = fs.readdirSync(directory, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries.flatMap((entry) => {
+    const relativeName = path.join(relativeDirectory, entry.name).split(path.sep).join('/');
+    const filePath = path.join(directory, entry.name);
+    if (entry.isDirectory()) return existingArtifacts(filePath, relativeName);
+    if (!entry.isFile() || relativeName === failureSummaryName) return [];
+    try {
+      return [{ name: relativeName, sizeBytes: fs.statSync(filePath).size }];
+    } catch {
+      return [{ name: relativeName, sizeBytes: null }];
+    }
+  }).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function run(cmd, args, cwd, env = process.env, timeoutMs = 180000) {
@@ -116,16 +167,77 @@ function reusedDesktopStep() {
 const evidenceEnv = { ...process.env, OB_EVIDENCE_OUT: outDir };
 const unitEnv = { ...process.env };
 delete unitEnv.OB_EVIDENCE_OUT;
-fs.writeFileSync(path.join(outDir, 'smoke-transcript.txt'), '');
 const steps = [];
-steps.push(run('npm', ['install', '--no-audit', '--no-fund'], appDir, evidenceEnv, 240000));
-steps.push(run('npm', ['test'], appDir, unitEnv, 180000));
-steps.push(run('npm', ['run', 'build'], appDir, evidenceEnv, 180000));
-const desktopSessionTimeoutMs = Number.parseInt(process.env.OB_SHELL_DESKTOP_TIMEOUT_MS || '1500000', 10);
-steps.push(currentDesktopArtifactsAreReusable()
+const transcriptPath = path.join(outDir, 'smoke-transcript.txt');
+
+try {
+  fs.unlinkSync(path.join(outDir, failureSummaryName));
+} catch (error) {
+  if (error.code !== 'ENOENT') {
+    console.error(`unable to clear stale shell smoke failure summary: ${error.message}`);
+  }
+}
+
+function persistTranscript() {
+  const transcript = steps
+    .map((s, i) => `### step ${i + 1}\n${s.cmd}\nexit_code=${s.code}\ntimed_out=${s.timedOut ? 'true' : 'false'}\n${s.stdout}\n${s.stderr}`)
+    .join('\n\n');
+  fs.writeFileSync(transcriptPath, normalizeTranscript(transcript) + '\n');
+}
+
+function serializeStep(step, index) {
+  return {
+    index: index + 1,
+    command: step.cmd,
+    status: step.code === 0 ? 'passed' : 'failed',
+    exitCode: step.code,
+    timed_out: step.timedOut
+  };
+}
+
+function persistFailureSummary() {
+  const summary = {
+    schemaVersion: 1,
+    type: 'openburnbar.shell-smoke-failure',
+    generatedAt: new Date().toISOString(),
+    failedSteps: steps
+      .map(serializeStep)
+      .filter((step) => step.status === 'failed'),
+    steps: steps.map(serializeStep),
+    artifacts: existingArtifacts(outDir),
+    runtime: runtimeMetadata()
+  };
+  try {
+    fs.writeFileSync(
+      path.join(outDir, failureSummaryName),
+      JSON.stringify(summary, null, 2) + '\n'
+    );
+  } catch (error) {
+    console.error(`unable to write shell smoke failure summary: ${error.message}`);
+  }
+}
+
+function recordStep(step) {
+  steps.push(step);
+  persistTranscript();
+  if (step.code !== 0) {
+    console.error(`shell smoke step failed: ${step.cmd} (exit ${step.code})`);
+    persistFailureSummary();
+  }
+  return step;
+}
+
+recordStep(run('npm', ['install', '--no-audit', '--no-fund'], appDir, evidenceEnv, 240000));
+recordStep(run('npm', ['test'], appDir, unitEnv, 180000));
+recordStep(run('npm', ['run', 'build'], appDir, evidenceEnv, 180000));
+// Fresh arm64 packaging can spend more than 25 minutes compiling the native
+// daemon/CLI before the desktop evidence matrix begins. Match the wrapper's
+// 60-minute default while keeping the workflow's 75-minute job cap intact.
+const desktopSessionTimeoutMs = Number.parseInt(process.env.OB_SHELL_DESKTOP_TIMEOUT_MS || '3600000', 10);
+recordStep(currentDesktopArtifactsAreReusable()
   ? reusedDesktopStep()
   : run('node', [path.join(root, 'scripts/linux-port/run-shell-desktop-session.mjs')], root, evidenceEnv, desktopSessionTimeoutMs));
-steps.push(run('node', [path.join(root, 'scripts/linux-port/run-shell-evidence.mjs')], root, evidenceEnv, 120000));
+recordStep(run('node', [path.join(root, 'scripts/linux-port/run-shell-evidence.mjs')], root, evidenceEnv, 120000));
 const matchedProfile = process.env.OB_MATCHED_PERF_PROFILE || 'pr';
 const matchedArguments = [
   path.join(root, 'scripts/linux-port/run-matched-performance.mjs'),
@@ -138,14 +250,9 @@ if (process.env.OB_MATCHED_LINUX_INPUT) {
   matchedArguments.push('--linux-input', process.env.OB_MATCHED_LINUX_INPUT);
 }
 const matchedTimeoutMs = matchedProfile === 'nightly' ? 2700000 : 900000;
-steps.push(run('node', matchedArguments, root, evidenceEnv, matchedTimeoutMs));
-steps.push(run('node', [path.join(root, 'scripts/linux-port/run-perf-budget.mjs')], root, evidenceEnv, 120000));
-steps.push(run('node', [path.join(root, 'scripts/linux-port/verify-shell-evidence.mjs'), outDir], root, evidenceEnv, 120000));
-
-const transcript = steps
-  .map((s, i) => `### step ${i + 1}\n${s.cmd}\nexit_code=${s.code}\ntimed_out=${s.timedOut ? 'true' : 'false'}\n${s.stdout}\n${s.stderr}`)
-  .join('\n\n');
-
-fs.writeFileSync(path.join(outDir, 'smoke-transcript.txt'), normalizeTranscript(transcript) + '\n');
+recordStep(run('node', matchedArguments, root, evidenceEnv, matchedTimeoutMs));
+recordStep(run('node', [path.join(root, 'scripts/linux-port/run-perf-budget.mjs')], root, evidenceEnv, 120000));
+recordStep(run('node', [path.join(root, 'scripts/linux-port/verify-shell-evidence.mjs'), outDir], root, evidenceEnv, 120000));
 const failed = steps.find((s) => s.code !== 0);
+if (failed) persistFailureSummary();
 process.exit(failed ? failed.code : 0);

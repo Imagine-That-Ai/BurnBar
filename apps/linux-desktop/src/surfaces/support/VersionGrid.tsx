@@ -4,6 +4,7 @@ import type { AppVersionInfo } from '../../tauriBridge.js';
 const CHANNEL_LABEL: Record<AppVersionInfo['packageChannel'], string> = {
   deb: 'Debian package (.deb)',
   rpm: 'RPM package (.rpm)',
+  arch: 'Arch package (.pkg.tar.zst)',
   appimage: 'AppImage',
   unknown: 'Unknown channel'
 };
@@ -33,6 +34,34 @@ export function VersionGrid({ info }: { info: AppVersionInfo }) {
           <dd>{CHANNEL_LABEL[info.packageChannel]}</dd>
         </div>
       </dl>
+      {info.runtime || info.package ? (
+        <dl className="fact-grid p09-runtime-grid" aria-label="Linux runtime facts">
+          <div className="fact">
+            <dt>Architecture</dt>
+            <dd className="mono">{info.runtime?.architecture ?? 'Not reported'}</dd>
+          </div>
+          <div className="fact">
+            <dt>Desktop session</dt>
+            <dd>{info.runtime?.desktop ?? 'Not reported'}</dd>
+          </div>
+          <div className="fact">
+            <dt>Display server</dt>
+            <dd>{info.runtime?.displayServer ?? 'Not reported'}</dd>
+          </div>
+          <div className="fact">
+            <dt>Package manager</dt>
+            <dd>{info.package?.manager ?? 'Not reported'}</dd>
+          </div>
+          <div className="fact">
+            <dt>Package evidence</dt>
+            <dd className="mono">{info.package?.evidence ?? 'Not reported'}</dd>
+          </div>
+          <div className="fact">
+            <dt>Kernel</dt>
+            <dd className="mono">{info.runtime?.kernel ?? 'Not reported'}</dd>
+          </div>
+        </dl>
+      ) : null}
     </>
   );
 }

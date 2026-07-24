@@ -1,0 +1,48 @@
+{
+  "schema": "openburnbar.parity.linux-installed-runtime-receipt.v1",
+  "capturedAt": "2026-07-14T14:48:16Z",
+  "certificationScope": "non-certifying installed runtime smoke receipt",
+  "sourceCommit": "2cebac9e840892ff4fd51583cd8dc108268b4a14",
+  "environment": {
+    "vm": "OpenBurnBar Linux",
+    "utmUUID": "7923D0DD-6367-45EA-9064-152EECC1AC65",
+    "os": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME",
+    "session": "X11",
+    "ip": "192.168.64.5"
+  },
+  "installedPaths": {
+    "gui": "/usr/bin/openburnbar-linux-desktop",
+    "daemon": "/usr/bin/openburnbar-daemon",
+    "launcher": "/usr/libexec/openburnbar-daemon-launch"
+  },
+  "sha256": {
+    "gui": "c6c844e407379ff89abbe053130c4b891474bea5722449756d7f8c1b788ab25b",
+    "daemon": "181e8086925c6f7d66fbc1959edb58537cb828573ec04679ea24f8b2435f5e4c",
+    "launcher": "f1bc55c14523d36bba0dbf8a013abaadd4a7f1f77cfc8abe7c121dc6bdf30f9a"
+  },
+  "ownershipAndMode": "root:root 0755 for GUI, daemon, and launcher",
+  "checks": {
+    "guiLaunch": true,
+    "daemonSpawnedByTrustedLauncher": true,
+    "authenticatedDaemonReadiness": true,
+    "daemonHealthRequestsObserved": 6,
+    "daemonHealthResponseBytes": 215,
+    "runDurationSeconds": 35,
+    "normalTimeoutExit": true,
+    "daemonSIGTERMShutdown": true,
+    "temporaryRuntimeCleaned": true,
+    "bundledSQLCipherSONAME": "libsqlcipher.so.0",
+    "cloudAuthConfigured": true
+  },
+  "expectedCapabilityStates": [
+    "Mercury media socket was unavailable and reported as a capability error.",
+    "Mission notification keychain was unavailable on this Linux guest and remained fail-closed.",
+    "Installed package was OpenBurnBar_0.1.1_arm64.deb on Ubuntu 24.04.4 GNOME/X11; signed release attestation is not claimed by this smoke receipt."
+  ],
+  "limitations": [
+    "This is an installed aarch64 GNOME/X11 smoke receipt from the current 0.1.1 candidate build, not a signed release attestation.",
+    "It does not certify OAuth, keyring round-trip, Browser Computer Use approval, Mercury two-device media, or the remaining desktop matrix."
+  ]
+}

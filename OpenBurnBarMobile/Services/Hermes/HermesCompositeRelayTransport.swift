@@ -23,6 +23,7 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
     private let secondary: HermesRelayTransporting
     private let fallback: HermesRelayTransporting
     private let irohEnabled: @Sendable () -> Bool
+    private let fallbackRecorder: @Sendable (HermesRelayPayload, Error, String) async -> Void
 
     /// Fallback chain. The primary is the iroh peer-to-peer transport;
     /// failures now cascade directly to the Firestore long-poll transport
@@ -38,12 +39,14 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
             }
             #endif
             return UserDefaults.standard.bool(forKey: HermesCompositeRelayTransport.irohEnabledDefaultsKey)
-        }
+        },
+        fallbackRecorder: (@Sendable (HermesRelayPayload, Error, String) async -> Void)? = nil
     ) {
         self.primary = primary
         self.secondary = secondary
         self.fallback = fallback
         self.irohEnabled = irohEnabled
+        self.fallbackRecorder = fallbackRecorder ?? Self.recordFallback
     }
 
     func sendUnary(_ payload: HermesRelayPayload, timeout: TimeInterval) async throws -> Data {
@@ -57,7 +60,7 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
                 guard allowsFirestoreFallback(for: payload) else {
                     throw selectedModelNoFallbackError(error)
                 }
-                await Self.recordFallback(payload: payload, error: error, hop: "iroh-to-firestore")
+                await fallbackRecorder(payload, error, "iroh-to-firestore")
             }
         }
         do {
@@ -69,7 +72,7 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
             if secondary === fallback {
                 throw error
             }
-            await Self.recordFallback(payload: payload, error: error, hop: "secondary-to-firestore")
+            await fallbackRecorder(payload, error, "secondary-to-firestore")
         }
         return try await fallback.sendUnary(payload, timeout: timeout)
     }

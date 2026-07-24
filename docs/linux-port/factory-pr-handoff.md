@@ -62,7 +62,7 @@ Current facts (2026-07-09):
 
 Install paths are wired in:
 
-- AUR `packaging/linux/aur/PKGBUILD`
+- Arch release template `packaging/linux/aur/PKGBUILD.in`
 - Tauri `apps/linux-desktop/src-tauri/tauri.conf.json` `bundle.linux.{deb,rpm,appimage}.files`
 - `packaging/linux/release-manifest.json` `tailMetadata.daemonLaunchScript` + `installPaths`
 

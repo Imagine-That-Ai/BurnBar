@@ -1,0 +1,25 @@
+{
+  "capturedAt": "2026-07-19T12:31:00Z",
+  "environment": {
+    "host": "UTM OpenBurnBar Linux",
+    "guest": "Ubuntu 24.04.4 LTS aarch64",
+    "sessionBus": "/run/user/1000/bus",
+    "desktop": "GNOME/X11"
+  },
+  "checks": {
+    "secretToolPath": "/usr/bin/secret-tool",
+    "secretServiceDaemon": "gnome-keyring-daemon active",
+    "secretServiceRoundTrip": "pass",
+    "sentinelCleanup": "pass",
+    "ibusDaemon": "active",
+    "ibusProcessEvidence": "pass"
+  },
+  "scope": "Disposable Secret Service store/lookup/clear sentinel and IBus process presence. No user credential was read or written.",
+  "certifying": false,
+  "remaining": [
+    "KDE/KWallet runtime proof",
+    "locked-keyring failure and recovery proof",
+    "installed text-expansion expansion/sync proof",
+    "cross-compositor accessibility and IME matrix"
+  ]
+}

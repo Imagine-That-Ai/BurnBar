@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "capture": {
+    "mode": "installed-exact-native-shell-provider-deep-link-atspi",
+    "capturedAt": "2026-07-20T06:24:12Z",
+    "environment": "ubuntu-24.04-gnome-x11-aarch64",
+    "vmAddress": "192.168.64.5",
+    "window": {
+      "name": "OpenBurnBar",
+      "present": true,
+      "screenshot": "linux-arm64-current-bfd0eefea9-provider-deep-link.png",
+      "screenshotSha256": "2eb7115033af665ea5fe9e835a478b1579206ab48c2306ce490019e161f10aba",
+      "visuallyInspected": true,
+      "nativeControlColorScheme": "dark"
+    }
+  },
+  "source": {
+    "head": "bfd0eefea9",
+    "relevantTrackedSourceDigest": "b8fb1e9ee86ed3036a8b334647f00a6d73108ab4c375b03c838db10d75dd614e",
+    "syncedRelevantTrackedSourceFilesMatch": true,
+    "nativeSourceChangedAfterBuild": false,
+    "commits": [
+      "0fd663a3f5 feat(linux-navigation): preserve provider deep links",
+      "5d10b95bc8 feat(linux-navigation): forward typed provider destinations",
+      "b76b67e8bc feat(linux-quota): add daemon failover policy control",
+      "b74bc6d068 fix(linux-activity): resolve unverified session sources",
+      "21a13a6792 feat(linux): wire cloud auth into onboarding",
+      "8d9dba71fe fix(linux-routing): use canonical daemon policy values",
+      "bfd0eefea9 fix(linux-ui): align native controls with dark shell"
+    ],
+    "files": {
+      "apps/linux-desktop/src/routes.ts": "52909b3b11a752a78d279f0242de08593be9038b3b06abcc832a9b2eca6ab168",
+      "apps/linux-desktop/src-tauri/src/lib.rs": "c4ad933cf36b91e36f451ec1b54274214ae3024d3861ff67b209eb8dce601700",
+      "apps/linux-desktop/src-tauri/src/single_instance.rs": "12b3825a1563cc9a2128230a0805a494cca369709041fb7901ecccebad12593c",
+      "apps/linux-desktop/src/surfaces/OnboardingSurface.tsx": "f62faf3b4eded3658486981a2fcf2b2350cb689082ee2ce499a1e3655f2a669a",
+      "apps/linux-desktop/src/surfaces/activity/activityExport.ts": "eb4c96a39334f53d3171297066894a0a71c8e940dad0007c4650c817b2dfd78b",
+      "apps/linux-desktop/src/state/providersStore.ts": "72188e54663fe8f2956bf37e171ac897e99d5696349381180d819839205d11e1",
+      "apps/linux-desktop/src/surfaces/quota/QuotaWorkspaceSurface.tsx": "489e3cab97194e810e7df185ab5d9b240385491c34c573522175921b9d3a45b3",
+      "apps/linux-desktop/src/styles/app.css": "6d8a2b987fcf897cdedebf24b6704ca7bca96963506599934efefd50b28594a5"
+    }
+  },
+  "package": {
+    "format": "deb",
+    "architecture": "arm64",
+    "version": "0.1.1",
+    "sha256": "f2b907d1885dcf7f60f38225c9c3b6df081af1c2d0f9080239a145a46aa39092",
+    "bytes": 132761984,
+    "buildCommand": "npm run tauri:build -- --bundles deb",
+    "freshPayloadStaging": true,
+    "mediaFeature": "media-gst",
+    "cloudAuthConfigured": false
+  },
+  "installed": {
+    "package": "open-burn-bar 0.1.1 arm64 install ok installed",
+    "desktopSha256": "fac3b27df31f6a10b4f952782f738989a77e1b10d795cd9869ed58e6f2b1757c",
+    "daemonSha256": "17aa56ff0e5d4b618f260f83a2b383bad3be275fab697f39c2b3d37ca582e55d",
+    "cliSha256": "c12c5dd24904559c1b11b61a73957bbe9863c21af1a75eb6c42704538a70e739",
+    "irohSha256": "e3d4cea4bf69e0f99f66fc5d01eb40eddd4bb176c3e3da20d6c8c4bc2c1e6ef3",
+    "extractedHashesMatchInstalled": true,
+    "daemonHealth": "ok=true",
+    "daemonService": "active",
+    "desktopService": "active",
+    "manifestSha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+    "manifestContents": {},
+    "manifestSignatureSha256": "f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b"
+  },
+  "nativeDeepLinkProof": {
+    "input": "openburnbar://providers?provider=codex",
+    "transport": "owner-checked per-user single-instance forwarding",
+    "route": "providers",
+    "selectedProvider": "Codex",
+    "selectedProviderVisibleInAtspi": true,
+    "nodeCount": 189,
+    "namedNodeCount": 108,
+    "actionableNodeCount": 91,
+    "focusableNodeCount": 33,
+    "expectedName": "Providers & models",
+    "pass": true
+  },
+  "verification": {
+    "frontendTests": "93 files / 906 passed",
+    "tauriRustTests": "129 passed",
+    "typescript": "passed",
+    "productionBundleVerifier": "passed",
+    "packageRuntimeProbe": "passed",
+    "gitDiffCheck": "passed",
+    "accessibility": "axe all-route audit passed; installed provider deep link AT-SPI minimums passed",
+    "visualInspection": "native selects use a dark Linux control palette after bfd0eefea9",
+    "webgl": "webgl2=false; visible 2D fallback label"
+  },
+  "limitations": [
+    "The package manifest is an unsigned placeholder and is not eligible for release promotion.",
+    "Production Linux OAuth, Firebase App Check, and cloud callable identifiers are not configured in this package.",
+    "The live Activity store has no populated ambiguous/fallback row, so source resolution remains source- and test-proven.",
+    "The live quota catalog exposes the policy read path, but populated failover and account switching were not mutated.",
+    "This does not close the seven-environment matrix, physical iPad execution, cross-device Mercury/Computer Use proof, production callables, or the 40-row strict ledger."
+  ],
+  "certifying": false
+}
