@@ -17,7 +17,11 @@ enum ViewTestFixtures {
         outputTokens: Int = 50,
         costUSD: Double = 0.05,
         startTime: Date = Date(),
-        endTime: Date = Date().addingTimeInterval(60)
+        endTime: Date = Date().addingTimeInterval(60),
+        executionSourceID: String? = nil,
+        executionSourceName: String? = nil,
+        executionSourceKind: UsageExecutionSourceKind? = nil,
+        executionSourceConfidence: UsageProvenanceConfidence? = nil
     ) -> TokenUsage {
         TokenUsage(
             provider: provider,
@@ -28,7 +32,11 @@ enum ViewTestFixtures {
             outputTokens: outputTokens,
             costUSD: costUSD,
             startTime: startTime,
-            endTime: endTime
+            endTime: endTime,
+            executionSourceID: executionSourceID,
+            executionSourceName: executionSourceName,
+            executionSourceKind: executionSourceKind,
+            executionSourceConfidence: executionSourceConfidence
         )
     }
 

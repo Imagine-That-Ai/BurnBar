@@ -55,6 +55,7 @@ export function classifyAuditResult({ dir, status, stdout, stderr, error }) {
   if (error) {
     return {
       ok: false,
+      retryable: true,
       messages: [`npm audit could not start for ${dir}: ${error.message}`],
     };
   }
@@ -63,6 +64,7 @@ export function classifyAuditResult({ dir, status, stdout, stderr, error }) {
   if (!raw) {
     return {
       ok: false,
+      retryable: true,
       messages: [
         `npm audit produced no JSON for ${dir} (exit ${status ?? "unknown"}).`,
         (stderr ?? "").trim(),
@@ -76,6 +78,7 @@ export function classifyAuditResult({ dir, status, stdout, stderr, error }) {
   } catch (parseError) {
     return {
       ok: false,
+      retryable: true,
       messages: [
         `npm audit produced invalid JSON for ${dir} (exit ${status ?? "unknown"}): ${parseError.message}`,
         (stderr ?? "").trim(),
@@ -87,6 +90,7 @@ export function classifyAuditResult({ dir, status, stdout, stderr, error }) {
   if (severe.length > 0) {
     return {
       ok: false,
+      retryable: false,
       messages: [
         `High/critical vulnerabilities found in ${dir}:`,
         ...severe.map(
@@ -99,6 +103,7 @@ export function classifyAuditResult({ dir, status, stdout, stderr, error }) {
   if (status !== 0) {
     return {
       ok: false,
+      retryable: true,
       messages: [
         `npm audit exited ${status ?? "unknown"} for ${dir} without high/critical findings in JSON; failing closed.`,
         (stderr ?? "").trim(),
@@ -108,19 +113,49 @@ export function classifyAuditResult({ dir, status, stdout, stderr, error }) {
 
   return {
     ok: true,
+    retryable: false,
     messages: [`No high/critical vulnerabilities in ${dir}.`],
   };
 }
 
-function auditDirectory(repoRoot, dir) {
-  const absoluteDir = join(repoRoot, dir);
-  if (!existsSync(join(absoluteDir, "package-lock.json"))) {
-    return {
-      ok: false,
-      messages: [`Configured npm audit directory is missing package-lock.json: ${dir}`],
-    };
-  }
+export const AUDIT_ATTEMPTS = 3;
+const RETRY_BACKOFF_SECONDS = [5, 15];
 
+function sleepSeconds(seconds) {
+  spawnSync("sleep", [String(seconds)]);
+}
+
+/**
+ * Run `attempt` until it yields a non-retryable outcome or the budget is spent.
+ *
+ * registry.npmjs.org's audit endpoint intermittently answers 400/429/5xx. npm
+ * surfaces that as a non-zero exit with no findings, which this gate correctly
+ * fails closed on -- so a registry hiccup ejects merge-queue candidates and
+ * discards hours of gate work. Only transport/service outcomes are retryable;
+ * a high/critical finding is non-retryable and still fails on attempt 1, so a
+ * retry can never launder a real vulnerability.
+ *
+ * Kept pure (attempt/sleep/log injected) so the self-test can prove the attempt
+ * count directly instead of hitting the network.
+ */
+export function runWithRetries(
+  attempt,
+  { attempts = AUDIT_ATTEMPTS, sleep = sleepSeconds, log = console.log, label = "npm audit" } = {},
+) {
+  let result = attempt();
+  for (let index = 1; index < attempts && result.retryable; index += 1) {
+    const backoff = RETRY_BACKOFF_SECONDS[index - 1] ?? 15;
+    log(
+      `    ${label} failed transiently; retrying in ${backoff}s ` +
+        `(attempt ${index + 1}/${attempts})`,
+    );
+    sleep(backoff);
+    result = attempt();
+  }
+  return result;
+}
+
+function runAuditOnce(absoluteDir, dir) {
   const result = spawnSync(
     "npm",
     ["audit", "--prefix", absoluteDir, "--audit-level=high", "--json"],
@@ -136,6 +171,21 @@ function auditDirectory(repoRoot, dir) {
     stdout: result.stdout,
     stderr: result.stderr,
     error: result.error,
+  });
+}
+
+function auditDirectory(repoRoot, dir) {
+  const absoluteDir = join(repoRoot, dir);
+  if (!existsSync(join(absoluteDir, "package-lock.json"))) {
+    return {
+      ok: false,
+      retryable: false,
+      messages: [`Configured npm audit directory is missing package-lock.json: ${dir}`],
+    };
+  }
+
+  return runWithRetries(() => runAuditOnce(absoluteDir, dir), {
+    label: `npm audit for ${dir}`,
   });
 }
 

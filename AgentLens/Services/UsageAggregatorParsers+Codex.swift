@@ -34,7 +34,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
         self.cacheStore = OpenBurnBarCore.ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 5,
+            schemaVersion: 6,
             logLabel: "CodexParser"
         )
         ParserSupportDirectoryWarmUp.prepare(fileManager: fileManager, appPaths: appPaths)
@@ -169,14 +169,28 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
         guard let handle = FileHandle(forReadingAtPath: path) else { return false }
         defer { try? handle.close() } // try?-ok(read-only teardown)
 
-        guard let prefix = try? handle.read(upToCount: 256 * 1024), // try?-ok(unreadable rollout is not a subagent match)
-              !prefix.isEmpty else { return false }
+        let prefix: Data
+        do {
+            guard let data = try handle.read(upToCount: 256 * 1024),
+                  !data.isEmpty else { return false }
+            prefix = data
+        } catch {
+            return false
+        }
 
         let text = String(decoding: prefix, as: UTF8.self)
         for line in text.split(separator: "\n", maxSplits: 15, omittingEmptySubsequences: true) {
-            guard let data = String(line).data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(malformed metadata is ignored)
-                  json["type"] as? String == "session_meta",
+            guard let data = String(line).data(using: .utf8) else { continue }
+            let json: [String: Any]
+            do {
+                guard let decoded = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    continue
+                }
+                json = decoded
+            } catch {
+                continue
+            }
+            guard json["type"] as? String == "session_meta",
                   let payload = json["payload"] as? [String: Any],
                   let source = payload["source"] as? [String: Any] else { continue }
             return source["subagent"] != nil

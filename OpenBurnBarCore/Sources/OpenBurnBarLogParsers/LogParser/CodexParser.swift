@@ -48,7 +48,7 @@ public final class CodexParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 5,
+            schemaVersion: 6,
             logLabel: "CodexParser"
         )
         _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths) // try?-ok(best-effort dir prep)
@@ -300,10 +300,17 @@ public struct CodexCacheEntry: Codable, Equatable, Sendable {
     public let signature: FileSignature
     public let tokenUsage: CodexTokenUsage?
     public let scanState: CodexTokenScanState?
+    public let executionSource: UsageExecutionSource
 
-    public init(signature: FileSignature, tokenUsage: CodexTokenUsage?, scanState: CodexTokenScanState?) {
+    public init(
+        signature: FileSignature,
+        tokenUsage: CodexTokenUsage?,
+        scanState: CodexTokenScanState?,
+        executionSource: UsageExecutionSource = .unknown
+    ) {
         self.signature = signature
         self.tokenUsage = tokenUsage
         self.scanState = scanState
+        self.executionSource = executionSource
     }
 }

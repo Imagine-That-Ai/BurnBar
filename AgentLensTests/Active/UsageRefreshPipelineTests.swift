@@ -191,12 +191,20 @@ final class UsageRefreshPipelineTests: XCTestCase {
             inputTokens: 200,
             outputTokens: 20
         )
+        let factoryReplacement = ViewTestFixtures.makeUsage(
+            provider: .factory,
+            sessionId: "factory-parent#day-200",
+            model: "glm-5"
+        )
         try await store.insert(ViewTestFixtures.makeUsage(provider: .codex, sessionId: "parent"))
         try await store.insert(ViewTestFixtures.makeUsage(provider: .codex, sessionId: "parent#day-100"))
         try await store.insert(ViewTestFixtures.makeUsage(provider: .claudeCode, sessionId: "parent"))
 
         let pipeline = UsageRefreshPipeline(
-            parsers: [.codex: RepairParser(replacement: replacement)],
+            parsers: [
+                .codex: RepairParser(replacement: replacement),
+                .factory: RepairParser(provider: .factory, replacement: factoryReplacement)
+            ],
             dataStore: store,
             orchestrator: makeOrchestrator(store: store),
             existingUsages: [],
@@ -205,6 +213,7 @@ final class UsageRefreshPipelineTests: XCTestCase {
 
         let parsed = try await pipeline.parse(from: pipeline.discover())
         XCTAssertEqual(parsed.usageSessionIDsToDeleteByProvider[.codex], ["parent"])
+        XCTAssertEqual(parsed.usageSessionIDsToDeleteByProvider[.factory], ["parent"])
         let persisted = await pipeline.persist(parsed: parsed)
         XCTAssertNil(persisted.persistenceErrorMessage)
 
@@ -393,8 +402,13 @@ private struct CancellingParser: LogParser {
 }
 
 private struct RepairParser: LogParser {
-    let provider: AgentProvider = .codex
+    let provider: AgentProvider
     let replacement: TokenUsage
+
+    init(provider: AgentProvider = .codex, replacement: TokenUsage) {
+        self.provider = provider
+        self.replacement = replacement
+    }
 
     func parse(options _: LogParseOptions) async throws -> ParseResult {
         ParseResult(

@@ -239,7 +239,7 @@ jobs:
   verify-attestations:
     name: Verify dry-run attestations
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     needs: resolve-release
     if: needs.resolve-release.outputs.dry_run != 'true'
     permissions:

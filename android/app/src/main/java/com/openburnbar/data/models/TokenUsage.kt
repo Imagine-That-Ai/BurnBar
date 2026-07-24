@@ -39,6 +39,14 @@ data class TokenUsage(
     val deviceId: String? = null,
     @PropertyName("sourceDeviceId")
     val sourceDeviceId: String? = null,
+    @PropertyName("executionSourceID")
+    val executionSourceId: String? = null,
+    @PropertyName("executionSourceName")
+    val executionSourceName: String? = null,
+    @PropertyName("executionSourceKind")
+    val executionSourceKind: String? = null,
+    @PropertyName("executionSourceConfidence")
+    val executionSourceConfidence: String? = null,
     @PropertyName("inputTokens")
     val inputTokens: Int = 0,
     @PropertyName("outputTokens")

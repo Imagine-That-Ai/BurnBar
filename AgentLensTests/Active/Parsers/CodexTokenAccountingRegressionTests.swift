@@ -198,13 +198,15 @@ final class CodexTokenAccountingRegressionTests: XCTestCase {
             )
         ]
         for index in 0..<500 {
+            let timestamp = Int64(index + 2)
+            let rolloutPath = rolloutDirectory.appendingPathComponent("missing-\(index).jsonl").path
             threads.append((
                 id: "newer-parent-\(index)",
                 model: "openai/gpt-5.2-codex",
                 tokensUsed: 0,
-                rolloutPath: rolloutDirectory.appendingPathComponent("missing-\(index).jsonl").path,
-                createdAt: Int64(index + 2),
-                updatedAt: Int64(index + 2),
+                rolloutPath: rolloutPath,
+                createdAt: timestamp,
+                updatedAt: timestamp,
                 cwd: "/tmp/OpenBurnBar"
             ))
         }
@@ -284,7 +286,10 @@ final class CodexTokenAccountingRegressionTests: XCTestCase {
         let first = try await parser.parse()
         XCTAssertEqual(first.usages.count, 2)
         XCTAssertEqual(first.usages.map(\.totalTokens).sorted(), [66, 110])
-        XCTAssertEqual(Set(first.usages.map { Calendar.current.startOfDay(for: $0.startTime) }).count, 2)
+        XCTAssertEqual(
+            first.usages.map(\.sessionId).sorted(),
+            ["multi-day-parent#day-1783814400", "multi-day-parent#day-1783900800"]
+        )
         XCTAssertEqual(first.usageSessionIDsToDelete, ["multi-day-parent"])
 
         let cached = try await parser.parse()

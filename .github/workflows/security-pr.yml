@@ -143,7 +143,7 @@ jobs:
   npm-audit:
     name: npm Audit (Node package locks)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -172,7 +172,7 @@ jobs:
   production-deploy-auth-policy:
     name: Production Deploy Auth Policy
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
@@ -259,7 +259,7 @@ jobs:
   browser-target-policy:
     name: Browser Target Policy (SSRF / DNS-rebinding)
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
