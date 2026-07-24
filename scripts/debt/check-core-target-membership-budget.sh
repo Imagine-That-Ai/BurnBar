@@ -137,11 +137,11 @@ const PLANNED_CEILINGS = {
   // after the assistant-model extraction. Keep the ceiling below the next
   // monolith while accounting for those cross-platform authority surfaces.
   OpenBurnBarKernel: { maxFiles: 185, maxLines: 47000 },
-  OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1000 },
+  OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1200 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
   // The final local-parser catalog adds bounded corpus parsers for the Linux
   // provider matrix; the ceiling remains below a general-purpose god target.
-  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 13000 },
+  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 13200 },
   OpenBurnBarQuota: { maxFiles: 55, maxLines: 13000 },
   // VectorKit gains OpenBurnBarSearchContracts.swift (P-03 re-slice / FIX 4) on
   // top of the vector indexes + SearchPlanner + Pensieve, so its ceiling covers

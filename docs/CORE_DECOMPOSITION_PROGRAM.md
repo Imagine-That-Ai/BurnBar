@@ -555,6 +555,14 @@ another domain cluster. The canonical baseline refresh also records the
 measured 1.25x ceilings for the non-destination targets that received the same
 Linux source wave; it does not raise any main-target or file-count budget.
 
+**Linux-parity integration ceiling adjustment (2026-07-24):** merging the
+parity integration atop the ParserSupport module-move (#1928) and the
+execution-source additions measures `OpenBurnBarParserSupport` at 1,123 LOC
+(the read-gate cluster moved INTO it from `OpenBurnBarLogParsers`, net-zero
+across the pair) and `OpenBurnBarLogParsers` at 13,064 LOC. Ceilings move to
+1,200 and 13,200 respectively (77/136 LOC of bounded headroom); file ceilings
+unchanged. The shrink-only ratchet reclaims surplus automatically.
+
 **Operation 10 execution-source ceiling adjustment (2026-07-21):** generalized
 execution-source attribution adds the cross-platform usage/wire contract to
 `OpenBurnBarKernel` and evidence-backed Codex history/cache attribution to
