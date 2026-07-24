@@ -532,6 +532,16 @@ on Kernel; LogParsers retains source-compatible public aliases and depends on th
 ParserSupport has an explicit 5-file / 1,000-LOC planned ceiling. This keeps the existing
 LogParsers ceiling intact instead of resetting it to fit the implementation.
 
+**Operation 10 execution-source ceiling adjustment (2026-07-21):** generalized
+execution-source attribution adds the cross-platform usage/wire contract to
+`OpenBurnBarKernel` and evidence-backed Codex history/cache attribution to
+`OpenBurnBarLogParsers`. These responsibilities belong in the existing owning modules;
+splitting them into dependency-only leaf targets would obscure the usage contract and
+parser state boundaries. No source files were added to either target. Their planned LOC
+ceilings move from 46,250 to 46,600 and from 11,800 to 12,200 respectively, covering the
+measured 272/302-LOC growth with less than 160 LOC of bounded headroom per target. File
+ceilings remain unchanged.
+
 ### Whole-program composition proof (verbatim results)
 
 Run on macOS (Apple Swift 6.4, Xcode 27.0 beta, arch arm64) from the isolated

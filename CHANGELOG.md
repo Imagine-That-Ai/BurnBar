@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Execution-source attribution
+
+- **Split model usage by the product that executed each request** with a
+  provider-independent execution-source dimension (for example Cursor, Grok
+  Build, Codex CLI, or Codex Desktop). Local logs, daemon runs, HTTP gateway
+  client markers, cloud sync, Android, and Windows now preserve the same
+  normalized source fields, and model/session dashboards expose the split.
+- **Backfilled historical usage only from durable evidence**: dedicated parser
+  identities map existing rows to their runtime, while Codex rollout
+  `session_meta` distinguishes CLI, Desktop, VS Code, and Cloud sessions.
+  Ambiguous rows remain Unknown instead of being guessed.
+
+### Fixed - Codex usage accounting
+
+- **Stopped Codex subagents from multiplying their parent's cumulative token
+  counter**: refreshes now purge mirrored subagent ledger rows and persist the
+  top-level thread's cumulative high-water increases as exact local-day slices.
+  This also repairs already-inflated dashboards on the next refresh and keeps
+  long-running threads from charging their lifetime total to Today.
+- **Added GPT-5.6 Sol, Terra, and Luna to the shared model catalog** with their
+  current input, cached-input, output, and cache-write rates, so Codex 5.6 logs
+  no longer fall through to generic GPT-5 pricing.
+- **Made dashboard burn tiles follow the selected time range** instead of
+  always labeling the selected range's cost as Today.
+
 ### Fixed - Elder Wand and Pareto Wand reliability
 
 - **Hardened Elder fusion across malformed, repeated, over-budget, and cancelled

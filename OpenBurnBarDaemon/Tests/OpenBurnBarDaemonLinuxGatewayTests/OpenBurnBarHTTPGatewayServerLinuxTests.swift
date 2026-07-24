@@ -20,7 +20,8 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         let response = try await LinuxHTTPClient.post(
             port: harness.port,
             path: "/v1/chat/completions",
-            body: body
+            body: body,
+            headers: ["X-OpenBurnBar-Client": "cursor/1.0"]
         )
 
         XCTAssertEqual(response.statusCode, 200)
@@ -42,6 +43,10 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         XCTAssertEqual(event.cacheReadTokens, 2)
         XCTAssertEqual(event.cacheCreationTokens, 3)
         XCTAssertEqual(event.reasoningTokens, 1)
+        XCTAssertEqual(event.executionSourceID, "cursor")
+        XCTAssertEqual(event.executionSourceName, "Cursor")
+        XCTAssertEqual(event.executionSourceKind, .ide)
+        XCTAssertEqual(event.executionSourceConfidence, .exact)
 
         let routeLog = try await harness.proxyRouteLogStore.recent(limit: 1)
         let entry = try XCTUnwrap(routeLog.first)
@@ -559,16 +564,25 @@ private enum LinuxHTTPClient {
         let rawText: String
     }
 
-    static func post(port: Int, path: String, body: String) async throws -> Response {
+    static func post(
+        port: Int,
+        path: String,
+        body: String,
+        headers: [String: String] = [:]
+    ) async throws -> Response {
         try await Task.detached(priority: .utility) {
             let socketFD = try LinuxSocketSupport.connectToLoopback(port: port)
             defer { Glibc.close(socketFD) }
+            let extraHeaders = headers
+                .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
+                .map { "\($0.key): \($0.value)\r\n" }
+                .joined()
             let request = """
             POST \(path) HTTP/1.1\r
             Host: 127.0.0.1:\(port)\r
             Content-Type: application/json\r
             Content-Length: \(body.utf8.count)\r
-            Connection: close\r
+            \(extraHeaders)Connection: close\r
             \r
             \(body)
             """
