@@ -133,16 +133,18 @@ async function clearRevokedControllerPairings(args: {
       const priorGeneration = route.get("generation");
       const nextGeneration = typeof priorGeneration === "number" && priorGeneration >= 1 ? priorGeneration + 1 : 1;
       const revokedAtMillis = Date.now();
-      batch.set(
-        routeRef,
-        {
-          status: "revoked",
-          generation: nextGeneration,
-          expiresAtMillis: revokedAtMillis,
-          revokedAtMillis,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true },
+      mutations.push((batch) =>
+        batch.set(
+          routeRef,
+          {
+            status: "revoked",
+            generation: nextGeneration,
+            expiresAtMillis: revokedAtMillis,
+            revokedAtMillis,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        ),
       );
     }
   }
