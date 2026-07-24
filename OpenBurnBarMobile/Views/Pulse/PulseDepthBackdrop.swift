@@ -146,36 +146,3 @@ struct PulseDepthBackdrop: View {
 //
 // Thin gradient divider used between major Pulse sections to give the
 // stack a sense of vertical rhythm without adding new chrome.
-
-struct PulseSectionRule: View {
-    var label: String?
-    var accent: Color = MobileTheme.ember
-
-    var body: some View {
-        HStack(spacing: 10) {
-            if let label {
-                Text(label.uppercased())
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    .tracking(2.0)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-            }
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            accent.opacity(0.55),
-                            accent.opacity(0.18),
-                            Color.clear
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .frame(height: 1)
-        }
-        .padding(.horizontal, AuroraDesign.Layout.cardInset + 4)
-        .padding(.top, 2)
-        .padding(.bottom, -6)
-        .accessibilityHidden(true)
-    }
-}

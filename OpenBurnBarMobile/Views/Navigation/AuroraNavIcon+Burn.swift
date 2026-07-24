@@ -103,28 +103,6 @@ struct IgnisOutlineShape: Shape {
     }
 }
 
-/// White-hot pilot — a tiny bright bead inside the core that wobbles
-/// independently and gives the flame a sun-like center.
-struct IgnisPilotShape: Shape {
-    var flicker: CGFloat
-
-    var animatableData: CGFloat {
-        get { flicker }
-        set { flicker = newValue }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        let w = rect.width
-        let h = rect.height
-        let cx = w / 2
-        let cy = h * 0.62 + h * 0.02 * sin(flicker * .pi * 2)
-        let r = w * 0.06 * (1.0 + 0.12 * sin(flicker * .pi * 2 + 0.6))
-        var path = Path()
-        path.addEllipse(in: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2))
-        return path
-    }
-}
-
 /// Wick stripe — a thin charcoal log at the very bottom of the flame.
 struct IgnisWickShape: Shape {
     func path(in rect: CGRect) -> Path {
@@ -140,66 +118,6 @@ struct IgnisWickShape: Shape {
             width: wickW,
             height: wickH
         ), cornerRadius: wickH / 2)
-    }
-}
-
-/// Six rising ember particles. Each one's position is computed from the
-/// `phase` parameter (0…1, looping). Embers drift up + sideways and fade
-/// out as they rise.
-struct IgnisEmbersView: View {
-    var phase: CGFloat
-    let size: CGFloat
-
-    private struct Ember: Identifiable {
-        let id: Int
-        let xJitter: CGFloat   // -1 … 1
-        let drift: CGFloat     // sideways drift
-        let scale: CGFloat
-        let phaseOffset: CGFloat
-    }
-
-    private static let embers: [Ember] = [
-        Ember(id: 0, xJitter: -0.45, drift: 0.10, scale: 0.7, phaseOffset: 0.00),
-        Ember(id: 1, xJitter: 0.30, drift: -0.08, scale: 1.0, phaseOffset: 0.18),
-        Ember(id: 2, xJitter: -0.10, drift: 0.04, scale: 0.85, phaseOffset: 0.36),
-        Ember(id: 3, xJitter: 0.55, drift: 0.12, scale: 0.7, phaseOffset: 0.54),
-        Ember(id: 4, xJitter: -0.25, drift: -0.06, scale: 1.05, phaseOffset: 0.72),
-        Ember(id: 5, xJitter: 0.18, drift: 0.16, scale: 0.8, phaseOffset: 0.90)
-    ]
-
-    var body: some View {
-        Canvas { context, canvasSize in
-            let w = canvasSize.width
-            let h = canvasSize.height
-            let cx = w / 2
-
-            for ember in Self.embers {
-                let local = (phase + ember.phaseOffset).truncatingRemainder(dividingBy: 1)
-                let normalized = local < 0 ? local + 1 : local
-                // Vertical travel: starts near the flame's neck and rises
-                // toward the top of the canvas.
-                let y = h * (0.30 - normalized * 0.28)
-                let x = cx + w * (ember.xJitter * 0.18 + ember.drift * normalized)
-                let baseR = w * 0.022 * ember.scale
-                let opacity = max(0, 1 - normalized * 1.15)
-                let rect = CGRect(
-                    x: x - baseR, y: y - baseR,
-                    width: baseR * 2, height: baseR * 2
-                )
-                context.opacity = Double(opacity)
-                context.fill(
-                    Path(ellipseIn: rect),
-                    with: .linearGradient(
-                        Gradient(colors: [Color.white, MobileTheme.amber, MobileTheme.ember.opacity(0.0)]),
-                        startPoint: CGPoint(x: rect.midX, y: rect.minY),
-                        endPoint: CGPoint(x: rect.midX, y: rect.maxY)
-                    )
-                )
-            }
-        }
-        .frame(width: size, height: size)
-        .allowsHitTesting(false)
-        .blendMode(.plusLighter)
     }
 }
 
