@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ProxyRouteLogEntry } from '../../tauriBridgeTypes.js';
 import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fixtureConfigSnapshot } from '../../daemonFixture.js';
@@ -245,17 +246,18 @@ describe('SettingsSurface', () => {
   });
 
   it('clears only the daemon-owned local proxy route log after explicit confirmation', async () => {
-    let routeRows = [{
+    let routeRows: ProxyRouteLogEntry[] = [{
       id: 'route-1',
       occurredAt: '2026-07-13T12:00:00.000Z',
       endpoint: '/v1/chat/completions',
       clientModelSlug: 'burnbar-default',
       routingModelSlug: 'provider-model',
       providerName: 'Local provider',
-      finalStatus: 'success',
+      finalStatus: 'exact',
       rewriteKind: 'none',
       exactModelInvariant: 'provider-model',
       streamed: false,
+      streamInterrupted: false,
       httpStatus: 200
     }];
     const proxyRouteLogRecent = vi.fn(async () => routeRows);
