@@ -1,0 +1,23 @@
+{
+  "id": "petroleum-sheen",
+  "label": "Petroleum Sheen",
+  "metalFileBase": "K_PetroleumSheen",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_petroleum_sheen_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

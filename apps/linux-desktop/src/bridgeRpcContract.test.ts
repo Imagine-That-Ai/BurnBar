@@ -4,8 +4,27 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const rustBridge = fs.readFileSync(path.join(here, '../src-tauri/src/lib.rs'), 'utf8');
-const tsBridge = fs.readFileSync(path.join(here, 'tauriBridge.ts'), 'utf8');
+const rustSourceRoot = path.join(here, '../src-tauri/src');
+
+function rustSourcePaths(directory: string): string[] {
+  return fs.readdirSync(directory, { withFileTypes: true })
+    .sort((left, right) => Buffer.compare(Buffer.from(left.name), Buffer.from(right.name)))
+    .flatMap((entry) => {
+      const absolute = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) throw new Error(`Rust source must not be a symlink: ${absolute}`);
+      if (entry.isDirectory()) return rustSourcePaths(absolute);
+      return entry.isFile() && entry.name.endsWith('.rs') ? [absolute] : [];
+    });
+}
+
+const rustBridge = rustSourcePaths(rustSourceRoot)
+  .map((sourcePath) => `// source: ${path.relative(rustSourceRoot, sourcePath)}\n${fs.readFileSync(sourcePath, 'utf8')}`)
+  .join('\n');
+const tsBridge = fs.readdirSync(here, { withFileTypes: true })
+  .filter((entry) => entry.isFile() && /^tauriBridge(?:[A-Z][A-Za-z0-9]*)?\.ts$/u.test(entry.name))
+  .sort((left, right) => Buffer.compare(Buffer.from(left.name), Buffer.from(right.name)))
+  .map((entry) => `// source: ${entry.name}\n${fs.readFileSync(path.join(here, entry.name), 'utf8')}`)
+  .join('\n');
 const canonicalRpc = fs.readFileSync(
   path.join(here, '../../../OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCIPCCanon.generated.swift'),
   'utf8'
@@ -17,7 +36,7 @@ const FORBIDDEN_RAW = [
   'daemon.mercury.',
   'daemon.smarthub.',
   'daemon.textexpansion.',
-  'daemon.memory.review_'
+  'daemon.memory.review_legacy'
 ];
 
 /** Strip // line comments and /* block comments for RPC string greps. */
@@ -47,7 +66,7 @@ describe('VAL-RPC bridge contract', () => {
     for (const needle of FORBIDDEN_RAW) {
       expect(
         calls.some((c) => c.startsWith(needle) || c.includes(needle)),
-        `lib.rs must not call_daemon_method ${needle}`
+        `Rust desktop source must not call_daemon_method ${needle}`
       ).toBe(false);
     }
     const tsLive = stripComments(tsBridge);
@@ -70,17 +89,58 @@ describe('VAL-RPC bridge contract', () => {
     expect(rustBridge).not.toContain('fn iso8601_now');
   });
 
-  it('wires memory set status to remember/forget/audit_trail', () => {
+  it('wires memory quarantine/review status to canonical daemon RPCs', () => {
     expect(rustBridge).toContain('daemon.memory.remember');
+    expect(rustBridge).toContain('daemon.memory.review_status');
     expect(rustBridge).toContain('daemon.memory.forget');
     expect(rustBridge).toContain('daemon.memory.audit_trail');
     expect(rustBridge).toContain('fn memory_set_status');
     expect(tsBridge).toContain('memory_set_status');
+    expect(canonicalRpc).toContain('id: "daemon.memory.review_status"');
+  });
+
+  it('wires bounded database retrieval only to canonical code RPCs', () => {
+    expect(rustBridge).toContain('daemon.code.search');
+    expect(rustBridge).toContain('daemon.code.context_pack');
+    expect(rustBridge).toContain('fn database_code_search');
+    expect(rustBridge).toContain('fn database_code_context_pack');
+    expect(tsBridge).toContain("'database_code_search'");
+    expect(tsBridge).toContain("'database_code_context_pack'");
+    expect(canonicalRpc).toContain('id: "daemon.code.search"');
+    expect(canonicalRpc).toContain('id: "daemon.code.context_pack"');
+  });
+
+  it('wires encrypted database snapshot and restore to canonical code RPCs', () => {
+    expect(rustBridge).toContain('daemon.code.database_snapshot');
+    expect(rustBridge).toContain('daemon.code.database_restore');
+    expect(rustBridge).toContain('fn database_snapshot');
+    expect(rustBridge).toContain('fn database_restore');
+    expect(tsBridge).toContain("'database_snapshot'");
+    expect(tsBridge).toContain("'database_restore'");
+    expect(canonicalRpc).toContain('id: "daemon.code.database_snapshot"');
+    expect(canonicalRpc).toContain('id: "daemon.code.database_restore"');
+  });
+
+  it('wires database recovery only to canonical daemon-owned RPCs', () => {
+    expect(rustBridge).toContain('daemon.database.recovery.status');
+    expect(rustBridge).toContain('daemon.database.recovery_bundle.export');
+    expect(rustBridge).toContain('daemon.database.recovery_bundle.import');
+    expect(rustBridge).toContain('fn database_recovery_bundle_status');
+    expect(rustBridge).toContain('fn database_recovery_bundle_export');
+    expect(rustBridge).toContain('fn database_recovery_bundle_import');
+    expect(tsBridge).toContain("'database_recovery_bundle_export'");
+    expect(tsBridge).toContain("'database_recovery_bundle_import'");
+    expect(tsBridge).toContain("'database_recovery_bundle_status'");
+    expect(canonicalRpc).toContain('id: "daemon.database.recovery.status"');
+    expect(canonicalRpc).toContain('id: "daemon.database.recovery_bundle.export"');
+    expect(canonicalRpc).toContain('id: "daemon.database.recovery_bundle.import"');
   });
 
   it('wires computer use wrappers to existing enum methods', () => {
     for (const method of [
       'daemon.computer_use.session.start',
+      'daemon.computer_use.session_grant.acquire',
+      'daemon.computer_use.session_grant.status',
       'daemon.computer_use.invoke',
       'daemon.computer_use.approval.pending',
       'daemon.computer_use.approval.respond',
@@ -103,5 +163,157 @@ describe('VAL-RPC bridge contract', () => {
     for (const method of new Set(mediaCalls)) {
       expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
     }
+  });
+
+  it('keeps SmartHub execution on the fixed Linux CLI allowlist', () => {
+    expect(rustBridge).toContain('fn smarthub_command');
+    for (const operation of ['discover', 'status', 'cast_status', 'homeassistant_status', 'parity']) {
+      expect(rustBridge).toContain(`"${operation}"`);
+    }
+    expect(rustBridge).toContain('smarthub_operation_not_allowlisted');
+    expect(tsBridge).toContain("invoke<RawJsonValue>('smarthub_command'");
+    expect(tsBridge).not.toContain('runCli');
+  });
+
+  it('routes text expansion through typed daemon RPC methods', () => {
+    expect(rustBridge).toContain('fn text_expansion_list');
+    expect(rustBridge).toContain('fn text_expansion_upsert');
+    expect(rustBridge).toContain('fn text_expansion_delete');
+    expect(rustBridge).toContain('fn text_expansion_engine_status');
+    expect(rustBridge).toContain('fn text_expansion_engine_start');
+    expect(rustBridge).toContain('fn text_expansion_engine_stop');
+    expect(rustBridge).toContain('fn text_expansion_engine_expand');
+    expect(tsBridge).toContain("'text_expansion_list'");
+    expect(tsBridge).toContain("'text_expansion_upsert'");
+    expect(tsBridge).toContain("'text_expansion_delete'");
+    expect(tsBridge).toContain("'text_expansion_consent_update'");
+    expect(tsBridge).toContain("'text_expansion_engine_status'");
+    expect(tsBridge).toContain("'text_expansion_engine_start'");
+    expect(tsBridge).toContain("'text_expansion_engine_stop'");
+    expect(tsBridge).toContain("'text_expansion_engine_expand'");
+    for (const method of [
+      'daemon.text_expansion.get',
+      'daemon.text_expansion.upsert',
+      'daemon.text_expansion.delete',
+      'daemon.text_expansion.consent.update',
+      'daemon.text_expansion.engine.status',
+      'daemon.text_expansion.engine.start',
+      'daemon.text_expansion.engine.stop',
+      'daemon.text_expansion.engine.expand'
+    ]) {
+      expect(rustBridge).toContain(method);
+      expect(canonicalRpc).toContain(`id: "${method}"`);
+    }
+  });
+
+  it('routes Linux cloud replica consent and runs through canonical daemon RPCs', () => {
+    for (const method of [
+      'daemon.cloud_sync.status',
+      'daemon.cloud_sync.policy.update',
+      'daemon.cloud_sync.run'
+    ]) {
+      expect(rustBridge).toContain(method);
+      expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
+    }
+    expect(rustBridge).toContain('fn linux_cloud_sync_status');
+    expect(rustBridge).toContain('fn linux_cloud_sync_policy_update');
+    expect(rustBridge).toContain('fn linux_cloud_sync_run');
+    expect(tsBridge).toContain("'linux_cloud_sync_status'");
+    expect(tsBridge).toContain("'linux_cloud_sync_policy_update'");
+    expect(tsBridge).toContain("'linux_cloud_sync_run'");
+  });
+
+  it('wires daemon-owned Linux auth without renderer credential material', () => {
+    for (const method of [
+      'daemon.auth.status',
+      'daemon.auth.begin',
+      'daemon.auth.cancel',
+      'daemon.auth.rotate_identity',
+      'daemon.auth.sign_out'
+    ]) {
+      expect(rustBridge).toContain(method);
+      expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
+    }
+    expect(rustBridge).toContain('object.remove("authorizationURL")');
+    const accountTypes = tsBridge.slice(
+      tsBridge.indexOf('P08: account'),
+      tsBridge.indexOf('P10: membership')
+    );
+    expect(accountTypes).not.toMatch(/\b(refreshToken|idToken|appCheckToken|sessionGeneration|deviceID)\b/);
+  });
+
+  it('wires exact-thread chat only to canonical daemon RPC methods', () => {
+    for (const method of [
+      'daemon.chat.thread.list',
+      'daemon.chat.thread.get',
+      'daemon.chat.message.append'
+    ]) {
+      expect(rustBridge).toContain(method);
+      expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
+    }
+    expect(rustBridge).toContain('fn chat_thread_list');
+    expect(rustBridge).toContain('fn chat_thread_get');
+    expect(rustBridge).toContain('fn chat_message_append');
+    expect(tsBridge).toContain('chat_thread_list');
+    expect(tsBridge).toContain('chat_thread_get');
+    expect(tsBridge).toContain('chat_message_append');
+  });
+
+  it('keeps chat attachment upload daemon-owned and path-free', () => {
+    expect(rustBridge).toContain('fn chat_attachment_upload');
+    expect(rustBridge).toContain('CHAT_ATTACHMENT_MAX_BYTES');
+    expect(rustBridge).toContain('chat_attachment_unsupported');
+    expect(tsBridge).toContain("'chat_attachment_upload'");
+    expect(tsBridge).toContain('must not expose a filesystem path');
+  });
+
+  it('wires project lifecycle operations only to canonical controller RPCs', () => {
+    for (const method of [
+      'daemon.controller.project.list',
+      'daemon.controller.project.get',
+      'daemon.controller.project.upsert',
+      'daemon.controller.project.delete',
+      'daemon.controller.project.reassign'
+    ]) {
+      expect(rustBridge).toContain(method);
+      expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
+    }
+    expect(tsBridge).toContain('projectGet');
+    expect(tsBridge).toContain('projectUpsert');
+    expect(tsBridge).toContain('projectDelete');
+    expect(tsBridge).toContain('projectReassign');
+    expect(rustBridge).toContain('daemon.controller.summary');
+    expect(rustBridge).toContain('fn project_history');
+    expect(tsBridge).toContain("invoke<RawJsonValue>('project_history'");
+    expect(tsBridge).toContain('projectHistory');
+  });
+
+  it('wires Activity persisted body and resume actions through the existing run.resume contract', () => {
+    expect(rustBridge).toContain('run.resume');
+    expect(rustBridge).toContain('fn session_replay');
+    expect(rustBridge).toContain('fn session_resume');
+    expect(tsBridge).toContain("'session_replay'");
+    expect(tsBridge).toContain("'session_resume'");
+    expect(canonicalRpc).toContain('id: "run.resume"');
+  });
+
+  it('wires mission operations and pending questions only to canonical RPCs', () => {
+    for (const method of [
+      'daemon.mission.list',
+      'daemon.mission.get',
+      'daemon.mission.health',
+      'daemon.mission.create',
+      'daemon.mission.approve',
+      'daemon.mission.cancel',
+      'daemon.question.list',
+      'daemon.question.answer'
+    ]) {
+      expect(rustBridge).toContain(method);
+      expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
+    }
+    expect(tsBridge).toContain('mission_get');
+    expect(tsBridge).toContain('mission_cancel');
+    expect(tsBridge).toContain('question_list');
+    expect(tsBridge).toContain('question_answer');
   });
 });

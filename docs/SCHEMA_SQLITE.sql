@@ -14,7 +14,7 @@
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
--- Schema hash: d7e37392aa12f99869fdec1dd60279352c8661eceed035d7ab511bbd5b132d7d
+-- Schema hash: bd8a4e3003e711b5e8307a6d8a5be8d5f83a8d37889a93015019ec4de9f01449
 
 -- ── GRDB migrations tracking ──────────────────────────────────────────────────
 
@@ -33,6 +33,10 @@ CREATE TABLE token_usage (
   provider        TEXT    NOT NULL,                       -- "Claude Code", "Factory Droid", etc.
   providerID      TEXT    NOT NULL DEFAULT '',            -- provider account ID
   model           TEXT    NOT NULL,                       -- model slug, e.g. "claude-sonnet-4-5"
+  executionSourceID TEXT  NOT NULL DEFAULT 'unknown',     -- stable runtime/client identity
+  executionSourceName TEXT NOT NULL DEFAULT 'Unknown',    -- user-facing runtime/client name
+  executionSourceKind TEXT NOT NULL DEFAULT 'unknown',    -- ide | cli | desktop_app | service | automation | unknown
+  executionSourceConfidence TEXT NOT NULL DEFAULT 'unknown', -- exact | derived_exact | high_confidence_estimate | low_confidence_estimate | unknown
   inputTokens     INTEGER NOT NULL DEFAULT 0,
   outputTokens    INTEGER NOT NULL DEFAULT 0,
   cacheReadTokens INTEGER NOT NULL DEFAULT 0,             -- prompt cache read tokens (v20+)
@@ -56,6 +60,7 @@ CREATE INDEX token_usage_provider_time_idx ON token_usage(provider, timestamp DE
 CREATE INDEX token_usage_provider_model_time_idx ON token_usage(provider, model, timestamp DESC);
 CREATE INDEX token_usage_provider_id_time_idx ON token_usage(providerID, timestamp DESC);
 CREATE INDEX token_usage_session_idx ON token_usage(sessionId);
+CREATE INDEX token_usage_execution_source_time_idx ON token_usage(executionSourceID, startTime);
 CREATE INDEX token_usage_timestamp_idx ON token_usage(timestamp DESC);
 
 -- ── Chat Messages (v10+) ─────────────────────────────────────────────────────

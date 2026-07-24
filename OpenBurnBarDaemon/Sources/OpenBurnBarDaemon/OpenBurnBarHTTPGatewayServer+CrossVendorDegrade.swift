@@ -1,4 +1,5 @@
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 import CryptoKit
 import Foundation
 import Network
@@ -21,6 +22,7 @@ extension BurnBarHTTPGatewayServer {
     func attemptCrossVendorDegradeForChat(
         bodyData: Data,
         accountingRequestID: String,
+        executionSource: UsageExecutionSource,
         requestedModelID: String,
         routeLogStartedAt: Date,
         requestPath: String,
@@ -75,6 +77,7 @@ extension BurnBarHTTPGatewayServer {
                 requestedCanonicalModelID: requestedCanonicalModelID,
                 bodyData: bodyData,
                 accountingRequestID: accountingRequestID,
+                executionSource: executionSource,
                 logContext: logContext,
                 priorAttempts: priorAttempts,
                 attempts: &attempts
@@ -97,6 +100,7 @@ extension BurnBarHTTPGatewayServer {
         requestedCanonicalModelID: String?,
         bodyData: Data,
         accountingRequestID: String,
+        executionSource: UsageExecutionSource,
         logContext: GatewayRequestContext,
         priorAttempts: [BurnBarProxyRouteAttempt],
         attempts: inout [BurnBarProxyRouteAttempt]
@@ -119,7 +123,12 @@ extension BurnBarHTTPGatewayServer {
                 variant: nil
             )
             await router.markRouteSuccess(route)
-            await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey)
+            await recordUsageIfAvailable(
+                response.usage,
+                route: route,
+                idempotencyKey: idempotencyKey,
+                executionSource: executionSource
+            )
             attempts.append(routeAttempt(
                 sequence: priorAttempts.count + attempts.count + 1,
                 startedAt: attemptStartedAt,

@@ -1,4 +1,5 @@
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 import CryptoKit
 import Foundation
 import Network
@@ -13,7 +14,8 @@ extension BurnBarHTTPGatewayServer {
         _ usage: BurnBarProviderProxyUsage?,
         route: BurnBarProviderRoute,
         idempotencyKey: String,
-        parentRequestID: String? = nil
+        parentRequestID: String? = nil,
+        executionSource: UsageExecutionSource = .unknown
     ) async {
         guard let usage, let usageRecorder else { return }
         let event = BurnBarUsageEvent(
@@ -32,6 +34,10 @@ extension BurnBarHTTPGatewayServer {
             ),
             recordedAt: Date(),
             projectName: "OpenBurnBar Gateway",
+            executionSourceID: executionSource.id == "unknown" ? nil : executionSource.id,
+            executionSourceName: executionSource.id == "unknown" ? nil : executionSource.name,
+            executionSourceKind: executionSource.kind == .unknown ? nil : executionSource.kind,
+            executionSourceConfidence: executionSource.id == "unknown" ? nil : .exact,
             confidence: usage.confidence,
             parentRequestID: parentRequestID
         )

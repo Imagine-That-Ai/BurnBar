@@ -30,6 +30,16 @@ class HermesCompositeRelayTransport(
     private val featureFlag: () -> Boolean = { true },
     private val auditLogger: IrohTransportAuditLogging = NoopIrohTransportAuditLogging,
 ) : HermesRelayTransporting {
+    override suspend fun closeForAuthTransition() {
+        iroh.closeForAuthTransition()
+        firestoreFallback.closeForAuthTransition()
+    }
+
+    override suspend fun destroy() {
+        iroh.destroy()
+        firestoreFallback.destroy()
+    }
+
     override suspend fun sendUnary(payload: HermesRelayPayload, timeoutMillis: Long): String {
         if (!featureFlag()) {
             return firestoreFallback.sendUnary(payload, timeoutMillis)

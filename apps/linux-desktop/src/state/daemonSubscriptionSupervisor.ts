@@ -40,6 +40,9 @@ export class DaemonSubscriptionSupervisor {
   private consecutiveFailures = 0;
   private subscriptionId: string | null = null;
   private seq = 0;
+  // A stop/start cycle creates a new logical consumer. Responses from an
+  // earlier cycle must never restore its cursor or publish stale events.
+  private lifecycleGeneration = 0;
 
   constructor(
     private readonly bridge: SubscriptionBridge,
@@ -58,6 +61,11 @@ export class DaemonSubscriptionSupervisor {
 
   start(): void {
     if (!this.stopped) return;
+    this.lifecycleGeneration += 1;
+    this.subscriptionId = null;
+    this.seq = 0;
+    this.consecutiveFailures = 0;
+    this.wakePending = false;
     this.stopped = false;
     this.onStatus({ state: 'connecting' });
     this.schedule(0);
@@ -65,12 +73,17 @@ export class DaemonSubscriptionSupervisor {
 
   stop(): void {
     if (this.stopped) return;
+    this.lifecycleGeneration += 1;
     this.stopped = true;
     this.onStatus({ state: 'stopped' });
     this.wakePending = false;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
-    if (this.subscriptionId) void this.stopRemote(this.subscriptionId);
+    const subscriptionId = this.subscriptionId;
+    this.subscriptionId = null;
+    this.seq = 0;
+    this.consecutiveFailures = 0;
+    if (subscriptionId) void this.stopRemote(subscriptionId);
   }
 
   wake(): void {
@@ -88,12 +101,12 @@ export class DaemonSubscriptionSupervisor {
     if (this.stopped || this.timer !== null) return;
     this.timer = setTimeout(() => {
       this.timer = null;
-      void this.runTick();
+      void this.runTick(this.lifecycleGeneration);
     }, Math.max(0, delayMs));
   }
 
-  private async runTick(): Promise<void> {
-    if (this.stopped || this.running) return;
+  private async runTick(generation: number): Promise<void> {
+    if (this.stopped || generation !== this.lifecycleGeneration || this.running) return;
     this.running = true;
     let succeeded = false;
     try {
@@ -112,12 +125,18 @@ export class DaemonSubscriptionSupervisor {
               topic: 'data',
               client_id: this.clientId
             });
+        if (this.stopped || generation !== this.lifecycleGeneration) {
+          await this.stopRemote(response.subscriptionId);
+          if (!this.stopped && generation !== this.lifecycleGeneration) this.schedule(0);
+          return;
+        }
         this.validateResponse(response);
         this.subscriptionId = response.subscriptionId;
         this.seq = response.seq;
         succeeded = true;
-        if (this.stopped) {
+        if (this.stopped || generation !== this.lifecycleGeneration) {
           await this.stopRemote(response.subscriptionId);
+          if (!this.stopped && generation !== this.lifecycleGeneration) this.schedule(0);
           return;
         }
         this.onStatus({ state: response.degradedFallback ? 'pull' : 'live' });
@@ -125,7 +144,7 @@ export class DaemonSubscriptionSupervisor {
       }
     } catch (error) {
       succeeded = false;
-      if (!this.stopped) {
+      if (!this.stopped && generation === this.lifecycleGeneration) {
         this.onStatus({
           state: 'error',
           error: error instanceof Error ? error.message : 'Daemon subscription refresh failed.'
@@ -136,6 +155,10 @@ export class DaemonSubscriptionSupervisor {
     }
     if (this.stopped) {
       if (this.subscriptionId) await this.stopRemote(this.subscriptionId);
+      return;
+    }
+    if (generation !== this.lifecycleGeneration) {
+      this.schedule(0);
       return;
     }
     this.consecutiveFailures = succeeded ? 0 : this.consecutiveFailures + 1;

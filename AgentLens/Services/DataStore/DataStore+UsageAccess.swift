@@ -78,6 +78,10 @@ extension DataStore {
         try await actor.usageStore.driftCredentialCostTotals()
     }
 
+    func deleteUsage(provider: AgentProvider, sessionIDs: [String]) async throws {
+        try await actor.usageStore.deleteUsage(provider: provider, sessionIDs: sessionIDs)
+    }
+
     func fetchUnsynced() async throws -> [TokenUsage] {
         try await actor.usageStore.fetchUnsynced()
     }

@@ -1,0 +1,34 @@
+{
+  "id": "singularity",
+  "label": "Event Horizon",
+  "metalFileBase": "K_Singularity",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_singularity_display"
+  },
+  "controls": [
+    "scroll",
+    "glyph"
+  ],
+  "params": [
+    {
+      "name": "uAbsorb",
+      "kind": "float",
+      "default": 0
+    }
+  ],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {
+      "uGlyphField": 2
+    }
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

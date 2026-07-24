@@ -58,7 +58,7 @@ public struct BurnBarPolicyEngine {
         switch error.code {
         case .trustGated, .noWorkspace, .remoteUnsupported, .applyFailed:
             return true
-        case .terminalFailed, .unknown:
+        case .operatorDenied, .computerUseDenied, .terminalFailed, .unknown:
             return false
         }
     }

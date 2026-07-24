@@ -1,0 +1,246 @@
+{
+  "sources": [
+    "gen/kernels-glsl-wallpaper",
+    "gen/kernels-glsl"
+  ],
+  "results": [
+    {
+      "id": "constellation",
+      "mode": "fallback-2d",
+      "bytes": 976
+    },
+    {
+      "id": "flow",
+      "mode": "fallback-2d",
+      "bytes": 896
+    },
+    {
+      "id": "aurora",
+      "mode": "display",
+      "bytes": 10229,
+      "from": "gen/kernels-glsl-wallpaper/aurora.display.frag"
+    },
+    {
+      "id": "mesh",
+      "mode": "display",
+      "bytes": 9473,
+      "from": "gen/kernels-glsl-wallpaper/mesh.display.frag"
+    },
+    {
+      "id": "prismatica",
+      "mode": "display",
+      "bytes": 35728,
+      "from": "gen/kernels-glsl-wallpaper/prismatica.display.frag"
+    },
+    {
+      "id": "moire",
+      "mode": "display",
+      "bytes": 8224,
+      "from": "gen/kernels-glsl-wallpaper/moire.display.frag"
+    },
+    {
+      "id": "volumetric",
+      "mode": "display",
+      "bytes": 9569,
+      "from": "gen/kernels-glsl-wallpaper/volumetric.display.frag"
+    },
+    {
+      "id": "iridescence",
+      "mode": "display",
+      "bytes": 10051,
+      "from": "gen/kernels-glsl-wallpaper/iridescence.display.frag"
+    },
+    {
+      "id": "gyroid",
+      "mode": "display",
+      "bytes": 11073,
+      "from": "gen/kernels-glsl-wallpaper/gyroid.display.frag"
+    },
+    {
+      "id": "fluid-aurora",
+      "mode": "display",
+      "bytes": 8365,
+      "from": "gen/kernels-glsl-wallpaper/fluid-aurora.display.frag"
+    },
+    {
+      "id": "cloudfield",
+      "mode": "display",
+      "bytes": 7764,
+      "from": "gen/kernels-glsl-wallpaper/cloudfield.display.frag"
+    },
+    {
+      "id": "plasma-orbs",
+      "mode": "display",
+      "bytes": 10291,
+      "from": "gen/kernels-glsl-wallpaper/plasma-orbs.display.frag"
+    },
+    {
+      "id": "blobs-mesh",
+      "mode": "display",
+      "bytes": 10321,
+      "from": "gen/kernels-glsl-wallpaper/blobs-mesh.display.frag"
+    },
+    {
+      "id": "retro-plasma",
+      "mode": "display",
+      "bytes": 9448,
+      "from": "gen/kernels-glsl-wallpaper/retro-plasma.display.frag"
+    },
+    {
+      "id": "inversion-lattice",
+      "mode": "display",
+      "bytes": 7067,
+      "from": "gen/kernels-glsl-wallpaper/inversion-lattice.display.frag"
+    },
+    {
+      "id": "vogel-bloom",
+      "mode": "display",
+      "bytes": 7815,
+      "from": "gen/kernels-glsl-wallpaper/vogel-bloom.display.frag"
+    },
+    {
+      "id": "crystal-drift",
+      "mode": "display",
+      "bytes": 7724,
+      "from": "gen/kernels-glsl-wallpaper/crystal-drift.display.frag"
+    },
+    {
+      "id": "ripple-lattice",
+      "mode": "display",
+      "bytes": 7048,
+      "from": "gen/kernels-glsl-wallpaper/ripple-lattice.display.frag"
+    },
+    {
+      "id": "liquid-lumen",
+      "mode": "display",
+      "bytes": 6908,
+      "from": "gen/kernels-glsl-wallpaper/liquid-lumen.display.frag"
+    },
+    {
+      "id": "spectral-drift",
+      "mode": "display",
+      "bytes": 7224,
+      "from": "gen/kernels-glsl-wallpaper/spectral-drift.display.frag"
+    },
+    {
+      "id": "mycelium-mesh",
+      "mode": "display",
+      "bytes": 6445,
+      "from": "gen/kernels-glsl-wallpaper/mycelium-mesh.display.frag"
+    },
+    {
+      "id": "oilfield",
+      "mode": "display",
+      "bytes": 7428,
+      "from": "gen/kernels-glsl-wallpaper/oilfield.display.frag"
+    },
+    {
+      "id": "suminagashi-drift",
+      "mode": "display",
+      "bytes": 8005,
+      "from": "gen/kernels-glsl-wallpaper/suminagashi-drift.display.frag"
+    },
+    {
+      "id": "kinetic-stipple",
+      "mode": "display",
+      "bytes": 7661,
+      "from": "gen/kernels-glsl-wallpaper/kinetic-stipple.display.frag"
+    },
+    {
+      "id": "agent1",
+      "mode": "display",
+      "bytes": 8644,
+      "from": "gen/kernels-glsl-wallpaper/agent1.display.frag"
+    },
+    {
+      "id": "neural-bloom",
+      "mode": "display",
+      "bytes": 9227,
+      "from": "gen/kernels-glsl-wallpaper/neural-bloom.display.frag"
+    },
+    {
+      "id": "aether-lattice",
+      "mode": "display",
+      "bytes": 10652,
+      "from": "gen/kernels-glsl-wallpaper/aether-lattice.display.frag"
+    },
+    {
+      "id": "bat-signal",
+      "mode": "display",
+      "bytes": 8781,
+      "from": "gen/kernels-glsl-wallpaper/bat-signal.display.frag"
+    },
+    {
+      "id": "storm-signal",
+      "mode": "display",
+      "bytes": 6523,
+      "from": "gen/kernels-glsl-wallpaper/storm-signal.display.frag"
+    },
+    {
+      "id": "origami",
+      "mode": "display",
+      "bytes": 8573,
+      "from": "gen/kernels-glsl-wallpaper/origami.display.frag"
+    },
+    {
+      "id": "ink-diffusion",
+      "mode": "display",
+      "bytes": 8067,
+      "from": "gen/kernels-glsl-wallpaper/ink-diffusion.display.frag"
+    },
+    {
+      "id": "petroleum-sheen",
+      "mode": "display",
+      "bytes": 7327,
+      "from": "gen/kernels-glsl-wallpaper/petroleum-sheen.display.frag"
+    },
+    {
+      "id": "voxel",
+      "mode": "display",
+      "bytes": 12330,
+      "from": "gen/kernels-glsl-wallpaper/voxel.display.frag"
+    },
+    {
+      "id": "star-atlas",
+      "mode": "display",
+      "bytes": 22629,
+      "from": "gen/kernels-glsl-wallpaper/star-atlas.display.frag"
+    },
+    {
+      "id": "sky-ascent",
+      "mode": "display",
+      "bytes": 10881,
+      "from": "gen/kernels-glsl-wallpaper/sky-ascent.display.frag"
+    },
+    {
+      "id": "open-world-armada",
+      "mode": "display",
+      "bytes": 26109,
+      "from": "gen/kernels-glsl-wallpaper/open-world-armada.display.frag"
+    },
+    {
+      "id": "genesis",
+      "mode": "display",
+      "bytes": 23575,
+      "from": "gen/kernels-glsl-wallpaper/genesis.display.frag"
+    },
+    {
+      "id": "singularity",
+      "mode": "display",
+      "bytes": 24068,
+      "from": "gen/kernels-glsl-wallpaper/singularity.display.frag"
+    },
+    {
+      "id": "knot-field",
+      "mode": "display",
+      "bytes": 20966,
+      "from": "gen/kernels-glsl-wallpaper/knot-field.display.frag"
+    },
+    {
+      "id": "hypersphere",
+      "mode": "display",
+      "bytes": 18971,
+      "from": "gen/kernels-glsl-wallpaper/hypersphere.display.frag"
+    }
+  ]
+}

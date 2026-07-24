@@ -6,6 +6,9 @@
   --chrome-glass-elevated: color-mix(in srgb, var(--color-glass-bg-elevated) 38%, transparent);
   --chrome-glass-line: color-mix(in srgb, var(--color-glass-line) 72%, transparent);
   --chrome-frost-inset: inset 0 1px 0 color-mix(in srgb, var(--color-frost-line) 88%, transparent);
+  --chrome-theme-wash-top: color-mix(in srgb, var(--glass-theme-wash-top) 5%, transparent);
+  --chrome-theme-wash-bottom: color-mix(in srgb, var(--glass-theme-wash-bottom) 3%, transparent);
+  --chrome-theme-rim: color-mix(in srgb, var(--glass-theme-rim) 20%, var(--chrome-glass-line));
 
   position: sticky;
   top: 0;
@@ -16,13 +19,14 @@
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-brass-core) 2.5%, transparent),
+      var(--chrome-theme-wash-top),
+      var(--chrome-theme-wash-bottom) 42%,
       transparent 42%
     ),
     var(--chrome-glass-bg);
   backdrop-filter: var(--chrome-glass-blur);
   -webkit-backdrop-filter: var(--chrome-glass-blur);
-  border-bottom: 1px solid var(--chrome-glass-line);
+  border-bottom: 1px solid var(--chrome-theme-rim);
   box-shadow:
     var(--chrome-frost-inset),
     0 10px 32px color-mix(in srgb, var(--color-ink-void) 28%, transparent);
@@ -167,18 +171,18 @@
 
 .top-tab[aria-selected='true'] {
   background: var(--glass-card);
-  border-color: color-mix(in srgb, var(--color-brass-core) 24%, var(--glass-pill-stroke));
+  border-color: color-mix(in srgb, var(--glass-theme-rim) 70%, var(--glass-pill-stroke));
   color: var(--color-text-bright);
   box-shadow:
     var(--glass-pill-shadow),
-    0 2px 12px color-mix(in srgb, var(--color-brass-glow) 16%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--color-brass-core) 10%, transparent);
+    0 2px 12px color-mix(in srgb, var(--glass-theme-tint) 16%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--glass-theme-rim) 18%, transparent);
   transform: translateY(-0.5px);
 }
 
 .top-tab[aria-selected='true']:focus-visible {
   outline: none;
-  border-color: color-mix(in srgb, var(--color-brass-core) 32%, var(--glass-stroke-bright));
+  border-color: color-mix(in srgb, var(--glass-theme-rim) 70%, var(--glass-stroke-bright));
 }
 
 .top-tab-icon {
@@ -199,9 +203,9 @@
 
 .top-tab[aria-selected='true'] .top-tab-icon {
   opacity: 1;
-  border-color: color-mix(in srgb, var(--color-brass-core) 38%, var(--glass-pill-stroke));
-  background: color-mix(in srgb, var(--color-brass-core) 14%, transparent);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--color-brass-glow) 22%, transparent);
+  border-color: color-mix(in srgb, var(--glass-theme-rim) 70%, var(--glass-pill-stroke));
+  background: color-mix(in srgb, var(--glass-theme-tint) 14%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--glass-theme-tint) 22%, transparent);
 }
 
 .top-tab-copy {

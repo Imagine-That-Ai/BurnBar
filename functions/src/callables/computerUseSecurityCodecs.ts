@@ -14,9 +14,9 @@ import { HttpsError } from "firebase-functions/v2/https";
 import { recordOrUndefined } from "../guards.js";
 import { boundedTrimmedString } from "./shared.js";
 
-export const ESCROW_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
+export const ESCROW_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android", "Linux"]);
 export const ESCROW_WEB_PLATFORM = "Web";
-export const MAC_ESCROW_PLATFORMS = new Set(["macOS"]);
+export const IROH_HOST_ESCROW_PLATFORMS = new Set(["macOS", "Linux"]);
 export const PHONE_CONTROL_ESCROW_PLATFORMS = new Set(["iOS", "iPadOS", "Android"]);
 export const LOCAL_AUTH_PROOF_FRESHNESS_SECONDS = 5 * 60;
 export const LOCAL_AUTH_PROOF_CLOCK_SKEW_SECONDS = 30;
@@ -66,7 +66,7 @@ export function isNativeEscrowPlatform(raw: unknown): raw is string {
 export function parseEscrowPlatform(raw: unknown): string {
   const platform = boundedTrimmedString(raw, "platform", 80, true);
   if (!platform || !ESCROW_PLATFORMS.has(platform)) {
-    throw new HttpsError("invalid-argument", "platform must be macOS, iOS, iPadOS, or Android.");
+    throw new HttpsError("invalid-argument", "platform must be macOS, iOS, iPadOS, Android, or Linux.");
   }
   return platform;
 }

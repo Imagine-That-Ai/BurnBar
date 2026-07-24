@@ -50,8 +50,9 @@ public actor BurnBarMissionControlStore {
 
     public func project(slug: String) throws -> BurnBarReviewProjectSnapshot? {
         try ensureLoaded()
+        let canonicalSlug = try canonicalProjectSlug(slug)
         return summaryEnricher.enrichedProjects()
-            .first(where: { $0.projectSlug == slug })
+            .first(where: { $0.projectSlug == canonicalSlug })
     }
 
     public func projects(_ request: BurnBarControllerProjectsListRequest) throws -> [BurnBarReviewProjectSnapshot] {
@@ -62,6 +63,10 @@ public actor BurnBarMissionControlStore {
     }
 
     public func upsertProject(_ project: BurnBarReviewProjectSnapshot) throws -> (BurnBarReviewProjectSnapshot, BurnBarControllerEvent) {
+        try validateProjectIdentity(project)
+        if let tombstonedIdentity = try projectIdentityWasDeleted(project) {
+            throw BurnBarMissionControlError.projectDeleted(tombstonedIdentity)
+        }
         let event = try appendEvent(
             family: .controller,
             eventType: "project_upserted",
@@ -71,6 +76,61 @@ public actor BurnBarMissionControlStore {
             payload: try BurnBarJSONValue.fromEncodable(project)
         )
         return (try projectValue(project.projectSlug), event)
+    }
+
+    public func deleteProject(
+        _ request: BurnBarControllerProjectDeleteRequest
+    ) throws -> (BurnBarControllerProjectDeleteResponse, BurnBarControllerEvent) {
+        let sourceSlug = try resolveProjectSlug(request.projectSlug)
+        guard let project = projection?.projects[sourceSlug] else {
+            throw BurnBarMissionControlError.projectNotFound(sourceSlug)
+        }
+        let payload = BurnBarProjectDeletionPayload(
+            projectSlug: sourceSlug,
+            projectID: project.id,
+            aliases: project.aliases
+        )
+        let event = try appendEvent(
+            family: .controller,
+            eventType: "project_deleted",
+            projectSlug: sourceSlug,
+            summary: "Deleted project \(sourceSlug)",
+            detail: "Project registry entry removed; associated history retained.",
+            payload: try BurnBarJSONValue.fromEncodable(payload)
+        )
+        return (BurnBarControllerProjectDeleteResponse(projectSlug: sourceSlug), event)
+    }
+
+    public func reassignProject(
+        _ request: BurnBarControllerProjectReassignRequest
+    ) throws -> (BurnBarControllerProjectReassignResponse, BurnBarControllerEvent) {
+        let sourceSlug = try resolveProjectSlug(request.sourceProjectSlug, allowDeletedSource: true)
+        let targetSlug = try resolveProjectSlug(request.targetProjectSlug)
+        guard sourceSlug != targetSlug else {
+            throw BurnBarMissionControlError.invalidProjectIdentifier(request.targetProjectSlug)
+        }
+
+        let updatedReferenceCount = referenceCount(for: sourceSlug)
+        let payload = BurnBarProjectReassignmentPayload(
+            sourceProjectSlug: sourceSlug,
+            targetProjectSlug: targetSlug
+        )
+        let event = try appendEvent(
+            family: .controller,
+            eventType: "project_reassigned",
+            projectSlug: sourceSlug,
+            summary: "Reassigned project references",
+            detail: "\(sourceSlug) → \(targetSlug)",
+            payload: try BurnBarJSONValue.fromEncodable(payload)
+        )
+        return (
+            BurnBarControllerProjectReassignResponse(
+                sourceProjectSlug: sourceSlug,
+                targetProjectSlug: targetSlug,
+                updatedReferenceCount: updatedReferenceCount
+            ),
+            event
+        )
     }
 
     public func recordReviewRun(_ run: BurnBarReviewRunSnapshot) throws -> (BurnBarReviewRunSnapshot, BurnBarControllerEvent) {
@@ -414,6 +474,98 @@ public actor BurnBarMissionControlStore {
     public func mission(id: BurnBarMissionID) throws -> BurnBarMissionSnapshot? {
         try ensureLoaded()
         return projection?.missions[id.rawValue]
+    }
+
+    public func missionHealth(_ request: BurnBarMissionHealthRequest) throws -> BurnBarMissionHealthResponse {
+        try ensureLoaded()
+        guard let mission = projection?.missions[request.missionID.rawValue] else {
+            throw BurnBarMissionControlError.missionNotFound(request.missionID)
+        }
+
+        let packetHistory = mission.packets.map { packet in
+            BurnBarMissionHistoryEntry(
+                id: "packet:\(packet.id.rawValue)",
+                kind: "packet",
+                status: packet.status.rawValue,
+                summary: packet.objective,
+                occurredAt: packet.completedAt ?? packet.dispatchedAt ?? mission.createdAt,
+                metadata: packet.metadata
+            )
+        }
+        let resultHistory = mission.results.map { result in
+            BurnBarMissionHistoryEntry(
+                id: "result:\(result.id.rawValue)",
+                kind: "result",
+                status: result.status.rawValue,
+                summary: result.summary,
+                occurredAt: result.createdAt,
+                metadata: result.metadata
+            )
+        }
+        let burnHistory = mission.burnRecords.map { burn in
+            BurnBarMissionHistoryEntry(
+                id: "burn:\(burn.id)",
+                kind: "burn",
+                status: "recorded",
+                summary: "\(burn.label): \(burn.amount) \(burn.unit)",
+                occurredAt: burn.recordedAt
+            )
+        }
+        let takeoverHistory = (mission.takeoverHistory ?? []).map { takeover in
+            BurnBarMissionHistoryEntry(
+                id: "takeover:\(takeover.id)",
+                kind: "takeover",
+                status: takeover.status.rawValue,
+                summary: takeover.reason,
+                occurredAt: takeover.updatedAt,
+                metadata: takeover.metadata
+            )
+        }
+        let history = (packetHistory + resultHistory + burnHistory + takeoverHistory)
+            .sorted {
+                if $0.occurredAt != $1.occurredAt {
+                    return $0.occurredAt < $1.occurredAt
+                }
+                return $0.id < $1.id
+            }
+        let activePacketCount = mission.packets.filter {
+            [.queued, .dispatched, .running].contains($0.status)
+        }.count
+        let failedResultCount = mission.results.filter { $0.status == .failed }.count
+        let failedPacket = mission.packets.contains { $0.status == .failed }
+        let healthStatus: BurnBarMissionHealthStatus
+        let detail: String
+        switch (mission.status, failedResultCount > 0 || failedPacket, activePacketCount) {
+        case (.failed, _, _), (_, true, _):
+            healthStatus = .failed
+            detail = "Mission failure is recorded in the daemon projection."
+        case (_, _, let active) where active > 0:
+            healthStatus = .healthy
+            detail = "\(active) mission packet(s) are active."
+        case (.draft, _, _), (.awaitingApproval, _, _):
+            healthStatus = .degraded
+            detail = "Mission is waiting for approval before dispatch."
+        case (.completed, _, _), (.cancelled, _, _):
+            healthStatus = .healthy
+            detail = "Mission reached a terminal state without an active packet."
+        default:
+            healthStatus = .unknown
+            detail = "The daemon projection has no active packet or terminal result."
+        }
+        let lastActivityAt = history.last?.occurredAt ?? mission.updatedAt
+        let health = BurnBarMissionHealthSnapshot(
+            status: healthStatus,
+            detail: detail,
+            checkedAt: Date(),
+            lastActivityAt: lastActivityAt,
+            activePacketCount: activePacketCount,
+            failedResultCount: failedResultCount
+        )
+        return BurnBarMissionHealthResponse(
+            missionID: mission.id,
+            health: health,
+            history: history
+        )
     }
 
     public func missions(_ request: BurnBarMissionListRequest) throws -> [BurnBarMissionSnapshot] {
@@ -997,6 +1149,26 @@ public actor BurnBarMissionControlStore {
 
         if let decoded = try journal.loadProjectionFromDiskIfPresent(decoder: decoder) {
             projection = decoded
+            // The journal is the durable source of truth. A process crash can
+            // land after appendEventToDisk but before writeProjectionFile; do
+            // not trust a projection whose checkpoint does not match the
+            // journal tail, or a delete/reassignment can be resurrected after
+            // restart.
+            let journalTailSequence = try journal
+                .readRecentEventsFromDisk(limit: 1, decoder: decoder)
+                .last?
+                .sequence ?? 0
+            if journalTailSequence != decoded.lastSequence {
+                logger.warning(
+                    "controller_projection_checkpoint_mismatch",
+                    metadata: [
+                        "projection_sequence": String(decoded.lastSequence),
+                        "journal_sequence": String(journalTailSequence)
+                    ]
+                )
+                try rebuildProjectionFromJournal(rebuiltAt: Date())
+                return
+            }
             try normalizeLoadedMissionClosureQuestionInvariants(writeImmediately: true)
         } else {
             try rebuildProjectionFromJournal(rebuiltAt: Date())
@@ -1240,6 +1412,155 @@ public actor BurnBarMissionControlStore {
         return project
     }
 
+    private func validateProjectIdentity(_ project: BurnBarReviewProjectSnapshot) throws {
+        let projectSlug = try canonicalProjectSlug(project.projectSlug)
+        guard let projectID = canonicalProjectIdentifier(project.id) else {
+            throw BurnBarMissionControlError.invalidProjectIdentifier(project.id)
+        }
+        var identities = Set([projectSlug, projectID])
+        for alias in project.aliases {
+            guard let canonicalAlias = canonicalProjectIdentifier(alias), identities.insert(canonicalAlias).inserted else {
+                throw BurnBarMissionControlError.projectIdentityConflict(alias)
+            }
+        }
+
+        try ensureLoaded()
+        let existingProjects = projection.map { Array($0.projects.values) } ?? []
+        for existing in existingProjects where existing.projectSlug != projectSlug {
+            let existingIdentities = Set([existing.projectSlug, existing.id] + existing.aliases)
+            if let conflict = identities.first(where: { existingIdentities.contains($0) }) {
+                throw BurnBarMissionControlError.projectIdentityConflict(conflict)
+            }
+        }
+    }
+
+    private func canonicalProjectSlug(_ raw: String) throws -> String {
+        let slug = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard slug == raw,
+              slug.count <= 96,
+              slug.isEmpty == false,
+              slug == slug.lowercased(),
+              slug.first.map({ $0.isLetter || $0.isNumber }) == true,
+              slug.last.map({ $0.isLetter || $0.isNumber }) == true,
+              slug.unicodeScalars.allSatisfy({ scalar in
+                  scalar.isASCII && (scalar.value == 45 || scalar.value == 46 || scalar.value == 95 ||
+                      (scalar.value >= 48 && scalar.value <= 57) ||
+                      (scalar.value >= 97 && scalar.value <= 122))
+              }) else {
+            throw BurnBarMissionControlError.invalidProjectIdentifier(raw)
+        }
+        return slug
+    }
+
+    private func canonicalProjectIdentifier(_ raw: String) -> String? {
+        let identifier = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard identifier == raw,
+              identifier.count <= 160,
+              identifier.isEmpty == false,
+              identifier.unicodeScalars.allSatisfy({ scalar in
+                  scalar.isASCII && (scalar.value == 45 || scalar.value == 46 || scalar.value == 58 || scalar.value == 95 ||
+                      (scalar.value >= 48 && scalar.value <= 57) ||
+                      (scalar.value >= 65 && scalar.value <= 90) ||
+                      (scalar.value >= 97 && scalar.value <= 122))
+              }) else {
+            return nil
+        }
+        return identifier
+    }
+
+    private func resolveProjectSlug(_ raw: String, allowDeletedSource: Bool = false) throws -> String {
+        guard let identifier = canonicalProjectIdentifier(raw) else {
+            throw BurnBarMissionControlError.invalidProjectIdentifier(raw)
+        }
+        try ensureLoaded()
+        let projects = projection.map { Array($0.projects.values) } ?? []
+        let matches = projects.filter { project in
+            project.projectSlug == identifier || project.id == identifier || project.aliases.contains(identifier)
+        }
+        let matchingSlugs = Set(matches.map(\.projectSlug))
+        if matchingSlugs.isEmpty,
+           allowDeletedSource,
+           let deletedSourceSlug = try deletedProjectSlug(for: identifier) {
+            return deletedSourceSlug
+        }
+        switch matches.count {
+        case 0:
+            throw BurnBarMissionControlError.projectNotFound(raw)
+        case 1 where matchingSlugs.count == 1:
+            return matches[0].projectSlug
+        default:
+            throw BurnBarMissionControlError.ambiguousProjectIdentifier(raw)
+        }
+    }
+
+    private func projectIdentityWasDeleted(_ project: BurnBarReviewProjectSnapshot) throws -> String? {
+        let identities = [project.projectSlug, project.id] + project.aliases
+        for event in try loadEvents().reversed() {
+            guard event.family == .controller,
+                  event.eventType == "project_deleted" else {
+                continue
+            }
+
+            guard let payload = try? decodePayload(BurnBarProjectDeletionPayload.self, from: event) else {
+                // A legacy or malformed tombstone still protects its event
+                // slug. Never allow a corrupted payload to weaken deletion
+                // semantics for the canonical identity.
+                if identities.contains(event.projectSlug) {
+                    return event.projectSlug
+                }
+                continue
+            }
+            let tombstoned = [payload.projectSlug]
+                + (payload.projectID.map { [$0] } ?? [])
+                + payload.aliases
+            if let match = identities.first(where: tombstoned.contains) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    private func deletedProjectSlug(for identifier: String) throws -> String? {
+        for event in try loadEvents().reversed() {
+            guard event.family == .controller,
+                  event.eventType == "project_deleted" else {
+                continue
+            }
+            guard event.projectSlug != identifier else { return event.projectSlug }
+            guard let payload = try? decodePayload(BurnBarProjectDeletionPayload.self, from: event) else {
+                continue
+            }
+            if payload.projectSlug == identifier
+                || payload.projectID == identifier
+                || payload.aliases.contains(identifier) {
+                return payload.projectSlug
+            }
+        }
+        return nil
+    }
+
+    private func decodePayload<Value: Decodable>(_ type: Value.Type, from event: BurnBarControllerEvent) throws -> Value {
+        guard let payload = event.metadata["payload"] else {
+            throw BurnBarMissionControlError.missingPayload(event.eventType)
+        }
+        let data = try JSONEncoder().encode(payload)
+        return try JSONDecoder().decode(Value.self, from: data)
+    }
+
+    private func referenceCount(for sourceSlug: String) -> Int {
+        let reviewRuns = projection?.reviewRuns.values.filter { $0.projectSlug == sourceSlug }.count ?? 0
+        let questions = projection?.questions.values.filter { $0.projectSlug == sourceSlug }.count ?? 0
+        let followups = projection?.followups.values.filter { $0.projectSlug == sourceSlug }.count ?? 0
+        let missions = projection?.missions.values.reduce(into: 0) { count, mission in
+            if mission.projectSlug == sourceSlug {
+                count += 1
+            }
+            count += mission.takeoverHistory?.filter { $0.projectSlug == sourceSlug }.count ?? 0
+        } ?? 0
+        let simulatorRuns = projection?.simulatorRuns.values.filter { $0.projectSlug == sourceSlug }.count ?? 0
+        return reviewRuns + questions + followups + missions + simulatorRuns
+    }
+
     private func reviewRunValue(_ id: String) throws -> BurnBarReviewRunSnapshot {
         try ensureLoaded()
         guard let run = projection?.reviewRuns[id] else {
@@ -1261,209 +1582,16 @@ public actor BurnBarMissionControlStore {
     private func enforceMissionClosureQuestionInvariant(
         _ incoming: BurnBarPendingQuestionSnapshot
     ) -> BurnBarPendingQuestionSnapshot {
-        guard let missionID = missionClosureQuestionMissionID(for: incoming) else {
-            return incoming
-        }
-        guard let existing = activeMissionClosureQuestion(for: missionID),
-              existing.id != incoming.id else {
-            return incoming
-        }
-
-        return mergedMissionClosureQuestion(existing: existing, incoming: incoming)
+        MissionClosureQuestionInvariant.enforce(incoming, in: projection)
     }
 
     private func normalizeLoadedMissionClosureQuestionInvariants(writeImmediately: Bool) throws {
         guard var currentProjection = projection else { return }
-
-        var groupedClosureQuestions: [String: [BurnBarPendingQuestionSnapshot]] = [:]
-        for question in currentProjection.questions.values {
-            guard let missionID = missionClosureQuestionMissionID(for: question) else { continue }
-            groupedClosureQuestions[missionID, default: []].append(question)
-        }
-
-        var didChange = false
-        for (_, groupedQuestions) in groupedClosureQuestions {
-            let questions = groupedQuestions.sorted(by: missionClosureQuestionSort)
-            guard questions.count > 1, var canonical = questions.first else {
-                continue
-            }
-
-            var duplicateQuestionIDs: Set<BurnBarQuestionID> = []
-            for duplicate in questions.dropFirst() {
-                duplicateQuestionIDs.insert(duplicate.id)
-                canonical = mergedMissionClosureQuestion(existing: canonical, incoming: duplicate)
-            }
-
-            currentProjection.questions[canonical.id.rawValue] = canonical
-            for duplicateID in duplicateQuestionIDs {
-                currentProjection.questions.removeValue(forKey: duplicateID.rawValue)
-            }
-
-            didChange = true
-            didChange = normalizeClosureFollowups(
-                in: &currentProjection,
-                canonicalQuestion: canonical,
-                duplicateQuestionIDs: duplicateQuestionIDs
-            ) || didChange
-        }
-
-        guard didChange else { return }
+        guard MissionClosureQuestionInvariant.normalize(in: &currentProjection) else { return }
         projection = currentProjection
         if writeImmediately {
             try writeProjection()
         }
-    }
-
-    private func missionClosureQuestionSort(
-        lhs: BurnBarPendingQuestionSnapshot,
-        rhs: BurnBarPendingQuestionSnapshot
-    ) -> Bool {
-        if lhs.askedAt != rhs.askedAt {
-            return lhs.askedAt < rhs.askedAt
-        }
-        return lhs.id.rawValue < rhs.id.rawValue
-    }
-
-    private func mergedMissionClosureQuestion(
-        existing: BurnBarPendingQuestionSnapshot,
-        incoming: BurnBarPendingQuestionSnapshot
-    ) -> BurnBarPendingQuestionSnapshot {
-        let mergedEvidenceRefs = incoming.evidenceRefs.isEmpty ? existing.evidenceRefs : incoming.evidenceRefs
-        let mergedSuggestedOptions = incoming.suggestedOptions.isEmpty ? existing.suggestedOptions : incoming.suggestedOptions
-        let mergedTracker = existing.tracker ?? incoming.tracker
-        let mergedMetadata = existing.metadata
-            .merging(incoming.metadata) { _, new in new }
-            .merging(
-                [
-                    "invariant_reason_code": .string("CLOSURE_SINGLE_QUESTION_ENFORCED"),
-                    "closure_merged_from_question_id": .string(incoming.id.rawValue)
-                ]
-            ) { _, new in new }
-
-        return BurnBarPendingQuestionSnapshot(
-            id: existing.id,
-            projectSlug: existing.projectSlug,
-            sessionID: incoming.sessionID ?? existing.sessionID,
-            title: incoming.title,
-            prompt: incoming.prompt,
-            stageLabel: incoming.stageLabel ?? existing.stageLabel,
-            status: .pending,
-            priority: incoming.priority,
-            askedAt: existing.askedAt,
-            dueAt: incoming.dueAt ?? existing.dueAt,
-            latestAnswer: nil,
-            answerPlaceholder: incoming.answerPlaceholder ?? existing.answerPlaceholder,
-            contextSummary: incoming.contextSummary ?? existing.contextSummary,
-            evidenceRefs: mergedEvidenceRefs,
-            suggestedOptions: mergedSuggestedOptions,
-            deepLink: incoming.deepLink ?? existing.deepLink,
-            tracker: mergedTracker,
-            metadata: mergedMetadata
-        )
-    }
-
-    private func normalizeClosureFollowups(
-        in projection: inout BurnBarMissionControlProjectionFile,
-        canonicalQuestion: BurnBarPendingQuestionSnapshot,
-        duplicateQuestionIDs: Set<BurnBarQuestionID>
-    ) -> Bool {
-        let canonicalQuestionID = canonicalQuestion.id
-        let canonicalFollowups = projection.followups.values
-            .filter { $0.questionID == canonicalQuestionID }
-            .sorted(by: followupSort)
-        let duplicateFollowups = projection.followups.values
-            .filter { followup in
-                guard let questionID = followup.questionID else { return false }
-                return duplicateQuestionIDs.contains(questionID)
-            }
-            .sorted(by: followupSort)
-
-        guard canonicalFollowups.count > 1 || !duplicateFollowups.isEmpty else {
-            return false
-        }
-
-        var didChange = false
-        if let keeper = canonicalFollowups.first {
-            for followup in Array(canonicalFollowups.dropFirst()) + duplicateFollowups {
-                guard followup.id != keeper.id else { continue }
-                projection.followups.removeValue(forKey: followup.id.rawValue)
-                didChange = true
-            }
-            return didChange
-        }
-
-        guard let rebound = duplicateFollowups.first else {
-            return didChange
-        }
-        projection.followups[rebound.id.rawValue] = followup(
-            rebound,
-            withQuestionID: canonicalQuestionID,
-            metadata: [
-                "invariant_reason_code": .string("CLOSURE_FOLLOWUP_REBOUND"),
-                "closure_rebound_to_question_id": .string(canonicalQuestionID.rawValue)
-            ]
-        )
-        didChange = true
-
-        for followup in duplicateFollowups.dropFirst() {
-            projection.followups.removeValue(forKey: followup.id.rawValue)
-        }
-        return didChange
-    }
-
-    private func followupSort(lhs: BurnBarFollowupSnapshot, rhs: BurnBarFollowupSnapshot) -> Bool {
-        if lhs.createdAt != rhs.createdAt {
-            return lhs.createdAt < rhs.createdAt
-        }
-        return lhs.id.rawValue < rhs.id.rawValue
-    }
-
-    private func activeMissionClosureQuestion(for missionID: String) -> BurnBarPendingQuestionSnapshot? {
-        projection?.questions.values
-            .filter { question in
-                missionClosureQuestionMissionID(for: question) == missionID
-            }
-            .min { lhs, rhs in
-                if lhs.askedAt != rhs.askedAt {
-                    return lhs.askedAt < rhs.askedAt
-                }
-                return lhs.id.rawValue < rhs.id.rawValue
-            }
-    }
-
-    private func missionClosureQuestionMissionID(
-        for question: BurnBarPendingQuestionSnapshot
-    ) -> String? {
-        guard question.status == .pending else { return nil }
-        guard let missionID = metadataString(question.metadata["mission_id"])?.nonEmpty else {
-            return nil
-        }
-
-        let kind = metadataString(question.metadata["question_kind"])?.lowercased()
-            ?? metadataString(question.metadata["question_type"])?.lowercased()
-            ?? ""
-        let closureState = metadataString(question.metadata["closure_state"])?.lowercased() ?? ""
-        let closureApproval = metadataBool(question.metadata["closure_approval"]) ?? false
-        let stageLabel = question.stageLabel?.lowercased() ?? ""
-
-        let closureKindMatch = kind.contains("closure") && (kind.contains("approval") || kind.contains("question"))
-        let closureStateMatch = ["awaiting_approval", "needs_approval", "blocked_approval"].contains(closureState)
-        let closureStageMatch = stageLabel.contains("closure") && stageLabel.contains("mission")
-
-        guard closureApproval || closureKindMatch || closureStateMatch || closureStageMatch else {
-            return nil
-        }
-        return missionID
-    }
-
-    private func metadataString(_ value: BurnBarJSONValue?) -> String? {
-        guard case .string(let rawValue)? = value else { return nil }
-        return rawValue
-    }
-
-    private func metadataBool(_ value: BurnBarJSONValue?) -> Bool? {
-        guard case .bool(let rawValue)? = value else { return nil }
-        return rawValue
     }
 
     private func followup(

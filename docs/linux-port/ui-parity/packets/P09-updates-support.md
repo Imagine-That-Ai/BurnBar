@@ -14,7 +14,7 @@ Updates: package-channel status, current version, restart guidance. Support: the
 
 ## Data contract
 
-1. Bridge: `app_version_info` → `{ shellVersion, daemonVersion, packageChannel: 'deb'|'appimage'|'unknown', updateCheck: 'unavailable-in-shell' }`; `export_diagnostics` → writes a redacted JSON bundle via Tauri dialog/save and returns the path.
+1. Bridge: `app_version_info` → `{ shellVersion, daemonVersion, packageChannel: 'deb'|'rpm'|'appimage'|'unknown', package, runtime }`; `export_diagnostics` → writes an owner-only redacted JSON bundle and returns the path plus a metadata-only privacy preview (`schemaVersion`, byte count, `0600` mode, included/excluded classes).
 2. Redaction is daemon-side or bridge-side: provider payloads, tokens, and socket auth material never enter the export. List what IS included in the UI before exporting.
 3. Keep existing failure-state rows (`channel-unavailable`, `restart-required`).
 

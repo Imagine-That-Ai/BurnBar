@@ -133,10 +133,12 @@ extension UsageStore {
                         id, provider, sessionId, projectName, model,
                         inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
                         reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
-                        usageSource, sourceDeviceId, sourceDeviceName, isRemote, syncedAt,
+                        usageSource, executionSourceID, executionSourceName,
+                        executionSourceKind, executionSourceConfidence,
+                        sourceDeviceId, sourceDeviceName, isRemote, syncedAt,
                         providerID, providerAccountID, providerAccountLabel, providerAccountSource,
                         provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, '')) DO UPDATE SET
                         projectName = excluded.projectName,
                         inputTokens = excluded.inputTokens,
@@ -171,6 +173,54 @@ extension UsageStore {
                             THEN excluded.usageSource
                             ELSE token_usage.usageSource
                         END,
+                        executionSourceID = CASE
+                            WHEN excluded.executionSourceID != 'unknown' AND
+                                CASE excluded.executionSourceConfidence
+                                    WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                                >=
+                                CASE token_usage.executionSourceConfidence
+                                    WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                            THEN excluded.executionSourceID ELSE token_usage.executionSourceID END,
+                        executionSourceName = CASE
+                            WHEN excluded.executionSourceID != 'unknown' AND
+                                CASE excluded.executionSourceConfidence
+                                    WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                                >=
+                                CASE token_usage.executionSourceConfidence
+                                    WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                            THEN excluded.executionSourceName ELSE token_usage.executionSourceName END,
+                        executionSourceKind = CASE
+                            WHEN excluded.executionSourceID != 'unknown' AND
+                                CASE excluded.executionSourceConfidence
+                                    WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                                >=
+                                CASE token_usage.executionSourceConfidence
+                                    WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                            THEN excluded.executionSourceKind ELSE token_usage.executionSourceKind END,
+                        executionSourceConfidence = CASE
+                            WHEN excluded.executionSourceID != 'unknown' AND
+                                CASE excluded.executionSourceConfidence
+                                    WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                                >=
+                                CASE token_usage.executionSourceConfidence
+                                    WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
+                            THEN excluded.executionSourceConfidence ELSE token_usage.executionSourceConfidence END,
                         sourceDeviceId = CASE
                             WHEN CASE excluded.provenanceConfidence
                                     WHEN 'exact' THEN 4
@@ -264,6 +314,10 @@ extension UsageStore {
                     usage.cacheReadTokens, usage.reasoningTokens, usage.totalTokens, usage.cost,
                     usage.startTime, usage.endTime, usage.createdAt,
                     usage.usageSource.rawValue,
+                    usage.executionSourceID,
+                    usage.executionSourceName,
+                    usage.executionSourceKind.rawValue,
+                    usage.executionSourceConfidence.rawValue,
                     usage.sourceDeviceId, usage.sourceDeviceName, usage.isRemote, Date(),
                     usage.providerID.rawValue,
                     usagePartition,

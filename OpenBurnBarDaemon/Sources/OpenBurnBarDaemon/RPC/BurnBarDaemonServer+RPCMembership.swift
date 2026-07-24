@@ -35,6 +35,25 @@ extension BurnBarDaemonServer {
                     message: error.localizedDescription
                 )
             }
+        case .membershipPortalURL:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarMembershipPortalURLRequest>.self,
+                from: requestData
+            )
+            do {
+                let result = try await membershipService.portalURL(typedRequest.params)
+                return encode(BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
+                ))
+            } catch let error as BurnBarMembershipServiceError {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: error.membershipCode == .unauthenticated ? BurnBarRPCErrorCode.unauthorized : BurnBarRPCErrorCode.internalError,
+                    message: error.localizedDescription
+                )
+            }
         case .membershipRestore:
             let typedRequest = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
             let result = await membershipService.restore()

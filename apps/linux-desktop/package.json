@@ -1,6 +1,6 @@
 {
   "name": "@openburnbar/linux-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "OpenBurnBar Linux desktop shell (Tauri + WebView)",
@@ -11,7 +11,8 @@
     "test": "vitest run",
     "tauri:dev": "tauri dev",
     "pretauri:build": "node ../../scripts/linux-port/prepare-linux-package-payload.mjs",
-    "tauri:build": "tauri build",
+    "tauri:build": "node ../../scripts/linux-port/tauri-build-linux.mjs",
+    "tauri:bundle": "tauri bundle",
     "perf:budget": "node ../../scripts/linux-port/run-perf-budget.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --max-warnings=0"

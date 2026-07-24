@@ -89,6 +89,25 @@ export interface KernelPalette {
 
 export type KernelSubstrate = "2d" | "webgl2" | "webgpu";
 
+/** Why the host mounted a different kernel than the one requested by the user. */
+export type KernelResolutionReason =
+  | "native"
+  | "webgl2-unavailable"
+  | "float-target-unavailable"
+  | "webgpu-unavailable"
+  | "context-unavailable";
+
+/** Deterministic capability receipt for the active backdrop slot. */
+export interface KernelResolution {
+  requestedId: KernelId;
+  resolvedId: KernelId;
+  requestedSubstrate: KernelSubstrate;
+  resolvedSubstrate: KernelSubstrate;
+  reason: KernelResolutionReason;
+  fallback: boolean;
+  glSupported: boolean;
+}
+
 /** Any rendering context a kernel may receive (narrowed by `substrate`).
  *  WebGPU kernels receive the {@link GPUCanvasContext}; they acquire their own
  *  {@link GPUDevice} asynchronously in `init` and no-op `frame()` until ready. */

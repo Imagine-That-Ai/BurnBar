@@ -177,21 +177,14 @@ final class BurnBarRunServiceTests: XCTestCase {
         let initialRecords = try await harness.usageRecorder.records()
         let initialCount = initialRecords.count
 
-        // Verify idempotency: recording the same event again should not create duplicate
-        let usageEvent = BurnBarUsageEvent(
-            runID: createResponse.runID,
-            providerID: "zai",
-            modelID: "glm-5",
-            inputTokens: 100,
-            outputTokens: 50,
-            cacheCreationTokens: 0,
-            cacheReadTokens: 0,
-            cost: 0.001,
-            recordedAt: Date()
+        // Replay the exact persisted event. A same-key payload with different
+        // usage is a data-integrity conflict and must remain fail-closed.
+        let idempotencyKey = "run:\(createResponse.runID.rawValue):attempt:1"
+        let usageEvent = try XCTUnwrap(
+            initialRecords.first(where: { $0.idempotencyKey == idempotencyKey })?.event
         )
 
         // Record with same idempotency key as the completed run (attempt 1)
-        let idempotencyKey = "run:\(createResponse.runID.rawValue):attempt:1"
         let result1 = try await harness.usageRecorder.record(usageEvent, idempotencyKey: idempotencyKey)
         XCTAssertFalse(result1.inserted, "Second record with same idempotency key should not insert")
 

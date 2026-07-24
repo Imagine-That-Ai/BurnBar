@@ -37,6 +37,32 @@ extension UsageStore {
         return deletedRows
     }
 
+    /// Removes parser-invalidated rows by exact provider/session identity.
+    /// Day buckets are namespaced from the base session ID and are deleted
+    /// together so a corrected parse cannot overlap a legacy lifetime row.
+    func deleteUsage(provider: AgentProvider, sessionIDs: [String]) async throws {
+        let uniqueSessionIDs = Set(sessionIDs)
+        guard !uniqueSessionIDs.isEmpty else { return }
+
+        try await dbQueue.write { db in
+            for sessionID in uniqueSessionIDs {
+                try db.execute(
+                    sql: """
+                        DELETE FROM token_usage
+                        WHERE provider = ?
+                          AND COALESCE(sourceDeviceId, '') = ''
+                          AND (
+                              sessionId = ?
+                              OR substr(sessionId, 1, length(?) + 5) = ? || '#day-'
+                          )
+                        """,
+                    arguments: [provider.rawValue, sessionID, sessionID, sessionID]
+                )
+            }
+        }
+        SearchQueryCache.shared.clear()
+    }
+
     // MARK: - Sync
 
     func fetchUnsynced() async throws -> [TokenUsage] {

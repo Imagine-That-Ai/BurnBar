@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { QuotaCard, QuotaListRow } from '../../components/QuotaCard.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
-import { useProvidersStore } from '../../state/providersStore.js';
+import { useProvidersStore, type ProviderRouterMode } from '../../state/providersStore.js';
+import type { ProviderCatalog } from '../../tauriBridge.js';
 import { QuotaFilterRail } from './QuotaFilterRail.js';
 import { QuotaResetAtlas } from './QuotaResetAtlas.js';
 import { SubscriptionConstellationHero } from './SubscriptionConstellationHero.js';
@@ -22,22 +23,61 @@ import {
 } from './quotaModel.js';
 import './quota.css';
 
+const ROUTER_MODE_OPTIONS: ReadonlyArray<{ value: ProviderRouterMode; label: string; detail: string }> = [
+  {
+    value: 'provider_family_failover',
+    label: 'Stay inside one provider',
+    detail: 'Keep fallback inside the selected provider family.'
+  },
+  {
+    value: 'same_model_failover',
+    label: 'Exact model failover',
+    detail: 'Only use routes that prove the same canonical model.'
+  }
+];
+
+function routerModeLabel(mode: string | null): string {
+  return ROUTER_MODE_OPTIONS.find((option) => option.value === mode)?.label ?? mode ?? 'Unavailable';
+}
+
 export function QuotaWorkspaceSurface() {
   const fixtureMode = useShellStore((s) => s.fixtureMode);
+  const setRoute = useShellStore((s) => s.setRoute);
   const bridge = useShellStore((s) => s.bridge);
   const status = useDaemonStatusCopy();
   const catalog = useProvidersStore((s) => s.catalog);
   const loading = useProvidersStore((s) => s.loading);
   const error = useProvidersStore((s) => s.error);
   const load = useProvidersStore((s) => s.load);
+  const loadRouterMode = useProvidersStore((s) => s.loadRouterMode);
+  const routerMode = useProvidersStore((s) => s.routerMode);
+  const routerModeError = useProvidersStore((s) => s.routerModeError);
+  const mutationBusy = useProvidersStore((s) => s.mutationBusy);
+  const setRouterMode = useProvidersStore((s) => s.setRouterMode);
 
   const [prefs, setPrefs] = useState(loadQuotaPrefs);
   const [focusProviderId, setFocusProviderId] = useState<string | null>(null);
+  const [lastCatalog, setLastCatalog] = useState<ProviderCatalog | null>(null);
+
+  useEffect(() => {
+    // A transient daemon refresh failure should not erase a usable quota
+    // snapshot. Explicitly empty catalogs still clear the retained view.
+    if (catalog === null) return;
+    setLastCatalog(catalog.length > 0 ? catalog : null);
+  }, [catalog]);
 
   useLaneLoad(load);
+  useLaneLoad(loadRouterMode);
 
-  const allEntries = useMemo(() => (catalog ? buildSubscriptionEntries(catalog) : []), [catalog]);
-  const inactiveSlots = useMemo(() => (catalog ? buildInactiveSlots(catalog) : []), [catalog]);
+  const workspaceCatalog = catalog === null ? lastCatalog : catalog.length > 0 ? catalog : null;
+  const allEntries = useMemo(
+    () => (workspaceCatalog ? buildSubscriptionEntries(workspaceCatalog) : []),
+    [workspaceCatalog]
+  );
+  const inactiveSlots = useMemo(
+    () => (workspaceCatalog ? buildInactiveSlots(workspaceCatalog) : []),
+    [workspaceCatalog]
+  );
 
   const activeEntries = useMemo(() => {
     let rows = allEntries;
@@ -57,7 +97,12 @@ export function QuotaWorkspaceSurface() {
   const totalProviderCount = useMemo(() => new Set(allEntries.map((e) => e.providerId)).size, [allEntries]);
 
   const showOffline = !fixtureMode && !bridge && !loading && error != null;
-  const provenance = fixtureMode ? 'fixture transcript' : 'live daemon provider catalog';
+  const showingStaleCatalog = catalog === null && lastCatalog !== null;
+  const provenance = fixtureMode
+    ? 'fixture transcript'
+    : showingStaleCatalog
+      ? 'last available daemon provider catalog'
+      : 'live daemon provider catalog';
 
   function updatePrefs(patch: Partial<typeof prefs>) {
     setPrefs((prev) => {
@@ -76,11 +121,24 @@ export function QuotaWorkspaceSurface() {
       {showOffline ? (
         <OfflineNotice
           status={status}
-          summary="Subscription vault needs the packaged shell or fixture mode before quota cards can load."
+          summary={
+            showingStaleCatalog
+              ? 'Live quota catalog is unavailable; showing the last available snapshot until the packaged shell reconnects.'
+              : 'Subscription vault needs the packaged shell or fixture mode before quota cards can load.'
+          }
           fixtureMode={fixtureMode}
         />
       ) : null}
-      {error && !showOffline ? (
+      {showingStaleCatalog && !showOffline ? (
+        <Banner tone="degraded" role="status">
+          <p>Live quota catalog is unavailable. Showing the last available quota snapshot.</p>
+          {error ? <p className="muted">{error}</p> : null}
+          <button type="button" className="ghost" onClick={() => void load()}>
+            Retry quota catalog
+          </button>
+        </Banner>
+      ) : null}
+      {error && !showOffline && !showingStaleCatalog ? (
         <Banner tone="degraded" role="alert">
           <p>{error}</p>
           <button type="button" className="ghost" onClick={() => void load()}>
@@ -89,20 +147,61 @@ export function QuotaWorkspaceSurface() {
         </Banner>
       ) : null}
 
-      {loading && !catalog ? (
+      <section className="quota-routing-cockpit" aria-labelledby="quota-routing-heading">
+        <div className="quota-routing-copy">
+          <p className="quota-hero-eyebrow mono">ROUTING COCKPIT</p>
+          <h2 id="quota-routing-heading">Failover policy</h2>
+          <p className="muted">
+            This daemon-owned policy decides how traffic responds when a quota window is exhausted or a route degrades.
+          </p>
+        </div>
+        <label className="quota-routing-select">
+          <span>Policy</span>
+          <select
+            aria-label="Failover policy"
+            value={ROUTER_MODE_OPTIONS.some((option) => option.value === routerMode) ? routerMode ?? '' : ''}
+            disabled={mutationBusy === 'provider.router_mode' || (!fixtureMode && typeof bridge?.configUpdate !== 'function')}
+            aria-busy={mutationBusy === 'provider.router_mode'}
+            onChange={(event) => void setRouterMode(event.currentTarget.value as ProviderRouterMode)}
+          >
+            {!ROUTER_MODE_OPTIONS.some((option) => option.value === routerMode) ? (
+              <option value="" disabled>
+                {routerMode ? `Unknown daemon mode (${routerMode})` : routerModeError ? 'Unavailable' : 'Loading…'}
+              </option>
+            ) : null}
+            {ROUTER_MODE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="quota-routing-status" role="status" aria-live="polite">
+          {routerModeError
+            ? `Last known policy: ${routerModeLabel(routerMode)}. ${routerModeError}`
+            : routerMode
+              ? `${routerModeLabel(routerMode)} · ${ROUTER_MODE_OPTIONS.find((option) => option.value === routerMode)?.detail ?? 'Daemon returned an unrecognized policy.'}`
+              : 'Waiting for a daemon-confirmed failover policy.'}
+        </p>
+        {!fixtureMode && typeof bridge?.configUpdate !== 'function' ? (
+          <p className="quota-routing-capability muted">Read-only until the packaged daemon exposes config mutation.</p>
+        ) : null}
+      </section>
+
+      {loading && !workspaceCatalog ? (
         <div className="quota-skeleton" aria-busy="true" aria-label="Loading subscription vault">
           <div className="quota-skeleton-hero" />
           <div className="quota-skeleton-grid" />
         </div>
       ) : null}
 
-      {catalog && catalog.length === 0 ? (
+      {catalog !== null && catalog.length === 0 ? (
         <p className="quota-empty" role="status">
           No providers linked — connect from the daemon settings.
         </p>
       ) : null}
 
-      {catalog && catalog.length > 0 ? (
+      {workspaceCatalog && workspaceCatalog.length > 0 ? (
         <>
           <p className="quota-provenance muted">Data source: {provenance}</p>
           <SubscriptionConstellationHero
@@ -160,13 +259,13 @@ export function QuotaWorkspaceSurface() {
           ) : prefs.viewMode === 'list' ? (
             <div className="quota-list" role="list">
               {displayedEntries.map((entry) => (
-                <QuotaListRow key={entry.id} entry={entry} />
+                <QuotaListRow key={entry.id} entry={entry} onManage={() => setRoute('settings')} />
               ))}
             </div>
           ) : (
             <div className="quota-card-grid">
               {displayedEntries.map((entry) => (
-                <QuotaCard key={entry.id} entry={entry} />
+                <QuotaCard key={entry.id} entry={entry} onManage={() => setRoute('settings')} />
               ))}
             </div>
           )}

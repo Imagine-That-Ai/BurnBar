@@ -1,0 +1,23 @@
+{
+  "id": "plasma-orbs",
+  "label": "Plasma Orbs",
+  "metalFileBase": "K_PlasmaOrbs",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_plasma_orbs_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

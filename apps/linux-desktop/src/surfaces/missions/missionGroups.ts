@@ -79,14 +79,19 @@ export function normalizeMissionLifecycle(state: string): MissionLifecycle {
   switch (normalized) {
     case 'planned':
     case 'plan':
+    case 'draft':
+    case 'awaiting_approval':
+    case 'approved':
       return 'planned';
     case 'running':
     case 'active':
+    case 'dispatching':
     case 'in_progress':
     case 'in-progress':
       return 'running';
     case 'partial':
     case 'pending':
+    case 'partially_completed':
       return 'partial';
     case 'blocked':
     case 'cancelled':

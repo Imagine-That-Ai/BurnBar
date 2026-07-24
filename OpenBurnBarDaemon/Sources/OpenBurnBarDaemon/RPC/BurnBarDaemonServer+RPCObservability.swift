@@ -38,10 +38,32 @@ extension BurnBarDaemonServer {
                 from: requestData
             )
             let signals = try await quotaSignalStore.recent(limit: typedRequest.params.limit)
+            var snapshots = BurnBarQuotaSignalStore.providerSnapshots(from: signals)
+            #if os(Linux)
+            let refreshedSnapshots = await linuxQuotaRefreshService.refreshIfNeeded()
+            let refreshedByProvider = Dictionary(
+                uniqueKeysWithValues: refreshedSnapshots.map { ($0.providerID.rawValue, $0) }
+            )
+            snapshots = snapshots.map { signalSnapshot in
+                guard let refreshed = refreshedByProvider[signalSnapshot.providerID.rawValue],
+                      !refreshed.buckets.isEmpty else {
+                    return signalSnapshot
+                }
+                return refreshed
+            }
+            let signalProviders = Set(snapshots.map(\.providerID.rawValue))
+            snapshots.append(contentsOf: refreshedSnapshots.filter {
+                !signalProviders.contains($0.providerID.rawValue) && !$0.buckets.isEmpty
+            })
+            #endif
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
-                result: BurnBarQuotaSignalsRecentResponse(signals: signals)
+                result: BurnBarQuotaSignalsRecentResponse(
+                    signals: signals,
+                    snapshots: snapshots,
+                    adapterCoverage: BurnBarLinuxQuotaAdapterCoverageCatalog.entries()
+                )
             )
             return encode(response)
         case .quotaSignalsClear:

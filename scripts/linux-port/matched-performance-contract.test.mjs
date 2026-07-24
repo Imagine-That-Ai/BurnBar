@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import test from 'node:test';
 import {
+  attachMatchedPerformanceProvenance,
   compareMatchedPerformance,
   dockerHostIdentityArguments
 } from './lib/matched-performance.mjs';
@@ -24,9 +26,10 @@ const budget = {
 };
 
 function report(platform) {
-  return {
+  const value = {
     schemaVersion: 1,
     protocolVersion: 'openburnbar-matched-workload-v1',
+    generatedAt: '2026-07-20T12:00:01.000Z',
     host: { platform, architecture: platform === 'macos' ? 'arm64' : 'aarch64' },
     configuration: { ...profile },
     workloads: ids.map((id, index) => ({
@@ -47,8 +50,18 @@ function report(platform) {
       rssGrowthBytes: 1_000_000,
       cpuUtilizationPercent: 99
     },
-    pass: true
+    pass: true,
+    provenance: {
+      schemaVersion: 1, producer: 'openburnbar-matched-performance-v2', platform, profile: 'smoke',
+      gitCommit: '1'.repeat(40), packageVersion: '1.2.3', sourceDigest: '2'.repeat(64),
+      candidate: { runId: null, artifactDigest: null },
+      startedAt: '2026-07-20T12:00:00.000Z', endedAt: '2026-07-20T12:00:02.000Z', payloadSha256: ''
+    }
   };
+  const payload = structuredClone(value);
+  delete payload.provenance;
+  value.provenance.payloadSha256 = crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+  return value;
 }
 
 function compare(mutator = () => {}) {
@@ -73,6 +86,37 @@ test('matching reports pass with architecture aliases', () => {
   assert.equal(result.workloads.length, 4);
 });
 
+test('producer attaches candidate, source, timing, and payload provenance', () => {
+  const bare = report('linux');
+  delete bare.provenance;
+  const stamped = attachMatchedPerformanceProvenance(bare, {
+    platform: 'linux', profile: 'smoke', gitCommit: '1'.repeat(40), packageVersion: '1.2.3',
+    sourceDigest: '2'.repeat(64), candidateRunId: '42',
+    candidateArtifactDigest: `sha256:${'3'.repeat(64)}`,
+    startedAt: '2026-07-20T12:00:00.000Z', endedAt: '2026-07-20T12:00:02.000Z'
+  });
+  assert.equal(stamped.provenance.candidate.runId, '42');
+  assert.match(stamped.provenance.payloadSha256, /^[a-f0-9]{64}$/u);
+  const macos = report('macos');
+  macos.provenance.candidate = structuredClone(stamped.provenance.candidate);
+  macos.provenance.payloadSha256 = (() => {
+    const payload = structuredClone(macos);
+    delete payload.provenance;
+    return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+  })();
+  const result = compareMatchedPerformance({
+    macos,
+    linux: stamped,
+    budget,
+    profile: 'smoke',
+    expectedProvenance: {
+      gitCommit: '1'.repeat(40), packageVersion: '1.2.3', sourceDigest: '2'.repeat(64),
+      candidateRunId: '42', candidateArtifactDigest: `sha256:${'3'.repeat(64)}`
+    }
+  });
+  assert.equal(result.pass, true, result.errors.join('; '));
+});
+
 test('missing, duplicate, unexpected, or checksum-mutated workloads fail', () => {
   const mutations = [
     ({ linux }) => linux.workloads.pop(),
@@ -89,6 +133,16 @@ test('configuration, platform, architecture, and internal probe drift fail', () 
     ({ linux }) => { linux.host.platform = 'macos'; },
     ({ linux }) => { linux.host.architecture = 'x86_64'; },
     ({ linux }) => { linux.pass = false; }
+  ];
+  for (const mutate of mutations) assert.equal(compare(mutate).pass, false);
+});
+
+test('missing, relabeled, stale, or payload-detached provenance fails', () => {
+  const mutations = [
+    ({ linux }) => { delete linux.provenance; },
+    ({ linux }) => { linux.provenance.gitCommit = '3'.repeat(40); },
+    ({ linux }) => { linux.provenance.endedAt = 'invalid'; },
+    ({ linux }) => { linux.workloads[0].checksum += 1; }
   ];
   for (const mutate of mutations) assert.equal(compare(mutate).pass, false);
 });

@@ -1,0 +1,10 @@
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = openburnbar
+
+[Action]
+Description = Moving stale OpenBurnBar CLI installations out of PATH
+When = PostTransaction
+Exec = /usr/libexec/openburnbar-cli-migrate

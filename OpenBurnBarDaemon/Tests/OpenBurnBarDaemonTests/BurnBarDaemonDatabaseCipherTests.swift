@@ -1,5 +1,8 @@
 import Foundation
 import SQLite3
+#if os(Linux)
+import OpenBurnBarLinuxSecurity
+#endif
 @testable import OpenBurnBarDaemon
 import XCTest
 
@@ -141,6 +144,75 @@ final class BurnBarDaemonDatabaseCipherTests: XCTestCase {
         defer { sqlite3_close(keyless) }
         XCTAssertThrowsError(try readAllRows(keyless!), "keyless open must fail on an encrypted DB")
     }
+
+#if os(Linux)
+    func test_ensureKeyIfNeeded_provisionsAndReadsBackKeyForNewProfile() throws {
+        try requireCodec()
+        let path = NSTemporaryDirectory() + "obb-new-profile-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let backend = MutableSecretBackend()
+        let custodian = LinuxSecretCustodian(backends: [backend])
+        let key = try XCTUnwrap(
+            BurnBarDaemonDatabaseCipher.ensureKeyIfNeeded(at: path, secretStore: custodian)
+        )
+
+        XCTAssertEqual(key, backend.secret)
+        XCTAssertEqual(Data(base64Encoded: key)?.count, 32)
+        let reused = try BurnBarDaemonDatabaseCipher.ensureKeyIfNeeded(
+            at: path,
+            secretStore: custodian
+        )
+        XCTAssertEqual(reused, key, "an existing key must be reused, never rotated")
+    }
+
+    private final class MutableSecretBackend: LinuxSecretStoreBackend, @unchecked Sendable {
+        let backendName = "test-secret-service"
+        let trustLevel: LinuxSecretTrustLevel = .secretService
+        let supportsMutations = true
+        var secret: String?
+
+        func readSecret(
+            id: String,
+            secretClass: LinuxHighValueSecretClass
+        ) throws -> LinuxSecretRecord? {
+            guard let secret else { return nil }
+            return LinuxSecretRecord(
+                secret: secret,
+                metadata: LinuxSecretMetadata(
+                    id: id,
+                    secretClass: secretClass,
+                    trustLevel: trustLevel,
+                    backend: backendName,
+                    createdAtMillis: 1,
+                    note: "test"
+                )
+            )
+        }
+
+        func storeSecret(
+            _ value: String,
+            id: String,
+            secretClass: LinuxHighValueSecretClass
+        ) throws -> LinuxSecretMetadata {
+            secret = value
+            return LinuxSecretMetadata(
+                id: id,
+                secretClass: secretClass,
+                trustLevel: trustLevel,
+                backend: backendName,
+                createdAtMillis: 1,
+                note: "test"
+            )
+        }
+
+        func deleteSecret(id: String, secretClass: LinuxHighValueSecretClass) throws {
+            secret = nil
+        }
+
+        func healthCheck() throws {}
+    }
+#endif
 
     private func requireCodec() throws {
         if ProcessInfo.processInfo.environment["DAEMON_SQLCIPHER_PRESENT"] == "1" {

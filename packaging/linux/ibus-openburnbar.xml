@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component>
+  <name>org.freedesktop.IBus.OpenBurnBar</name>
+  <description>OpenBurnBar text expansion</description>
+  <exec>/usr/libexec/openburnbar/text-expansion-engine --ibus</exec>
+  <version>1</version>
+  <license>AGPL-3.0-only</license>
+  <author>OpenBurnBar</author>
+  <homepage>https://openburnbar.com</homepage>
+  <textdomain>openburnbar</textdomain>
+  <engines>
+    <engine>
+      <name>openburnbar</name>
+      <longname>OpenBurnBar Text Expansion</longname>
+      <description>Expands explicitly configured OpenBurnBar triggers</description>
+      <language>en</language>
+      <license>AGPL-3.0-only</license>
+      <author>OpenBurnBar</author>
+      <icon>/usr/share/icons/hicolor/256x256/apps/dev.openburnbar.OpenBurnBar.png</icon>
+      <layout>default</layout>
+      <rank>20</rank>
+    </engine>
+  </engines>
+</component>

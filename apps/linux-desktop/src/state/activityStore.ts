@@ -5,6 +5,11 @@ import { useShellStore } from './shellStore.js';
 
 export const ACTIVITY_PAGE_SIZE = 50;
 
+// Activity search is user-driven and can overlap when a retry or a new query
+// starts before the daemon answers the previous request. Only the newest
+// request may publish rows or errors into the store.
+let activityLoadGeneration = 0;
+
 export type ActivityState = {
   sessions: SessionEntry[];
   loading: boolean;
@@ -36,6 +41,7 @@ export const useActivityStore = create<ActivityState>()((set, get) => ({
   visibleCount: ACTIVITY_PAGE_SIZE,
 
   async load() {
+    const requestGeneration = ++activityLoadGeneration;
     const { fixtureMode, bridge } = useShellStore.getState();
     const { query } = get();
     if (fixtureMode) {
@@ -56,6 +62,7 @@ export const useActivityStore = create<ActivityState>()((set, get) => ({
     set({ loading: true, error: null });
     try {
       const result = query ? await bridge.sessionSearch(query) : await bridge.sessionList();
+      if (requestGeneration !== activityLoadGeneration) return;
       set({
         sessions: result.sessions,
         loading: false,
@@ -63,6 +70,7 @@ export const useActivityStore = create<ActivityState>()((set, get) => ({
         visibleCount: ACTIVITY_PAGE_SIZE
       });
     } catch (e) {
+      if (requestGeneration !== activityLoadGeneration) return;
       set({
         sessions: [],
         loading: false,
