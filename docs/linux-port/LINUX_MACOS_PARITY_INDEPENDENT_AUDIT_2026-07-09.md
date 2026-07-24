@@ -3338,8 +3338,10 @@ not substitutes for executing and reviewing all seven environment baselines.
 
 - **Difference:** macOS provides mature native windows, consistent controls,
   recovery states, and polished data density. Linux has a strong token base but
-  retains inline styles, Unicode/emoji control glyphs, raw JSON panels, inaccurate
-  save-dialog copy, and no trustworthy current visual regression set. A concrete
+  retains inline styles, raw JSON panels, inaccurate save-dialog copy, and no
+  trustworthy current visual regression set. Provider/logo fallbacks now use
+  stable monochrome glyphs and catalog-derived monograms (`14fcf766d2`), so
+  provider lists no longer depend on distro emoji fonts. A concrete
   recovery gap is now closed: `519f0456a7` adds a packaged-shell-only Reconnect
   action to degraded Support diagnostics instead of leaving users with retry
   text only.
