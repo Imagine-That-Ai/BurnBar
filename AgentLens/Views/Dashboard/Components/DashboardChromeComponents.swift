@@ -259,70 +259,7 @@ private var toolbarPillSurface: some View {
 
 // MARK: - Glass Picker
 
-struct GlassPicker<Option: Identifiable & Hashable>: View {
-    @Binding var selection: Option
-    let options: [Option]
-    var leadingSymbol: String?
-
-    var body: some View {
-        Menu {
-            ForEach(options) { option in
-                Button {
-                    selection = option
-                } label: {
-                    HStack {
-                        Text(optionLabel(option))
-                        if optionLabel(option) == selectionLabel(selection) {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 5) {
-                if let leadingSymbol {
-                    Image(systemName: leadingSymbol)
-                        .font(.system(size: 9.5, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
-                Text(selectionLabel(selection))
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                    .padding(.leading, 1)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .toolbarPill()
-        }
-        .menuStyle(.borderlessButton)
-    }
-
-    private func selectionLabel(_ option: Option) -> String {
-        if let tr = option as? TimeRange { return tr.displayName }
-        return "\(option)"
-    }
-
-    private func optionLabel(_ option: Option) -> String {
-        if let tr = option as? TimeRange { return tr.displayName }
-        return "\(option)"
-    }
-}
-
 // MARK: - Glass Badge
-
-struct GlassBadge<Content: View>: View {
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        content()
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .toolbarPill()
-    }
-}
 
 // MARK: - Toolbar Metric Badge
 //
@@ -330,95 +267,11 @@ struct GlassBadge<Content: View>: View {
 // presence through its content: a softly pulsing gradient dot and the value
 // itself rendered in monospaced gradient text with numeric content transitions.
 
-struct ToolbarMetricBadge: View {
-    let value: String
-
-    var body: some View {
-        HStack(spacing: 7) {
-            Circle()
-                .fill(DesignSystem.Colors.primaryGradient)
-                .frame(width: 5, height: 5)
-                .shadow(color: DesignSystem.Colors.ember.opacity(0.35), radius: 2.5, x: 0, y: 0)
-                .opacity(0.9)
-
-            Text(value)
-                .font(.system(size: 11.5, weight: .bold, design: .monospaced))
-                .foregroundStyle(DesignSystem.Colors.primaryGradient)
-                .contentTransition(.numericText())
-                .animation(DesignSystem.Animation.gentle, value: value)
-                .monospacedDigit()
-                .kerning(0.3)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .toolbarPill()
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text("Total \(value)"))
-    }
-}
-
 // MARK: - Project Navigation Pill
 //
 // Replaces the bare `< Back` button + loose project name with one cohesive
 // navigation atom: chevron back, hairline divider, gradient project tile,
 // project name. Reads as a single object instead of three orphaned controls.
-
-struct ProjectNavigationPill: View {
-    let canGoBack: Bool
-    let projectName: String
-    let backHelp: String
-    let onBack: () -> Void
-
-    @State private var hoveringBack = false
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Button {
-                guard canGoBack else { return }
-                withAnimation(DesignSystem.Animation.standard) { onBack() }
-            } label: {
-                Image(systemName: "chevron.backward")
-                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                    .foregroundStyle(canGoBack ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textMuted)
-                    .frame(width: 22, height: 22)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(hoveringBack && canGoBack ? Color.white.opacity(0.07) : .clear)
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .disabled(!canGoBack)
-            .keyboardShortcut("[", modifiers: [.command])
-            .help(canGoBack ? backHelp : "Back")
-            .accessibilityLabel(canGoBack ? backHelp : "Back")
-            .onHover { hoveringBack = $0 }
-            .padding(.leading, 2)
-
-            Rectangle()
-                .fill(DesignSystem.Colors.border.opacity(canGoBack ? 0.32 : 0.18))
-                .frame(width: 0.5, height: 14)
-                .padding(.horizontal, 6)
-
-            HStack(spacing: 6) {
-                AppLogoView(size: 14)
-                    .shadow(color: DesignSystem.Colors.ember.opacity(0.32), radius: 4, x: 0, y: 1)
-
-                Text(projectName)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    .lineLimit(1)
-                    .fixedSize()
-            }
-            .padding(.trailing, 10)
-            .padding(.vertical, 4)
-        }
-        .toolbarPill()
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(projectName) project")
-    }
-}
 
 // MARK: - Toolbar Action Cluster
 //
@@ -426,55 +279,6 @@ struct ProjectNavigationPill: View {
 // segmented-style pill — the quieter sibling of the Agents/Models picker.
 // Hairline dividers between buttons read as one coherent control rather than
 // three orphans floating in the toolbar.
-
-struct ToolbarActionCluster<Content: View>: View {
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        HStack(spacing: 0) { content() }
-            .padding(.horizontal, 2)
-            .padding(.vertical, 2)
-            .toolbarPill()
-    }
-}
-
-struct ToolbarActionDivider: View {
-    var body: some View {
-        Rectangle()
-            .fill(DesignSystem.Colors.border.opacity(0.22))
-            .frame(width: 0.5, height: 14)
-            .padding(.horizontal, 1)
-    }
-}
-
-struct ToolbarPillButton<Label: View>: View {
-    let action: () -> Void
-    let help: String
-    let accessibilityLabel: String
-    var isDisabled: Bool = false
-    @ViewBuilder let label: () -> Label
-
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            label()
-                .frame(width: 24, height: 22)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(hovering && !isDisabled ? Color.white.opacity(0.08) : .clear)
-                )
-                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .opacity(isDisabled ? 0.45 : 1)
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .help(help)
-        .accessibilityLabel(accessibilityLabel)
-        .onHover { hovering = $0 }
-        .animation(DesignSystem.Animation.snappy, value: hovering)
-    }
-}
 
 #Preview {
     let store = (try? DataStore()) ?? {
