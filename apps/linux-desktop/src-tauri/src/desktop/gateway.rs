@@ -446,6 +446,19 @@ fn gateway_messages_payload_with_native_mime_types(
                             attachment.file_name, attachment_text
                         ),
                     }));
+                } else if attachment.mime_type == "application/pdf" {
+                    // Preserve PDFs as documents. Sending a PDF as an
+                    // image_url makes the upstream provider treat it as an
+                    // image (or reject the request) and loses native PDF
+                    // semantics on providers such as Anthropic.
+                    let encoded = BASE64_STANDARD.encode(&attachment.bytes);
+                    parts.push(serde_json::json!({
+                        "type": "file",
+                        "file": {
+                            "filename": attachment.file_name,
+                            "file_data": format!("data:{};base64,{}", attachment.mime_type, encoded),
+                        },
+                    }));
                 } else {
                     let encoded = BASE64_STANDARD.encode(&attachment.bytes);
                     parts.push(serde_json::json!({

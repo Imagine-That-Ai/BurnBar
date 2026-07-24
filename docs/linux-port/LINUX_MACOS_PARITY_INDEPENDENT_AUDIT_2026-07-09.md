@@ -40,13 +40,13 @@ open.
 
 ## Current integration branch checkpoint — 2026-07-23
 
-The parity integration branch is now at `f26af7e1cf`. This head contains a
-CI-only SwiftLint correction in `BurnBarLinuxOnboardingServiceTests.swift`:
-the two boolean assertions reported by the hosted SwiftPM gate now use the
-specific `XCTAssertEqual` matcher. Local SwiftLint passes for that file, and
-the change is pushed to both GitHub and GitLab in PR #1930. The fresh hosted
-checks have reported no failures while the remaining native, mobile, and
-security jobs continue to run.
+The parity integration branch is now at `b09c763257`. It includes the earlier
+CI-only SwiftLint correction in `BurnBarLinuxOnboardingServiceTests.swift` and
+the latest native PDF attachment parity fix (`63f39a80f0`), with the audit
+receipt for that fix recorded below. Both commits are pushed to GitHub and
+GitLab in PR #1930. Fresh hosted checks for the new head are expected to run;
+the existing SQLCipher, UTM, device, and environment limitations remain
+unchanged.
 
 The host-only onboarding test compiled its product and test bundle but could
 not launch the XCTest bundle because the local Xcode runner could not resolve
@@ -72,6 +72,25 @@ delegated to hosted CI; `git diff --check` passes and the commit is pushed to
 GitHub and GitLab. This is a source/UI improvement only: production cloud
 credentials, signed-candidate execution, trusted-device receipts, and the
 strict **0/40 + 0/7** certification ledger remain open.
+
+### Latest native PDF attachment parity — 2026-07-23
+
+`63f39a80f0` closes a concrete Linux chat attachment gap. The Tauri gateway
+already capability-checked `application/pdf`, but serialized an approved PDF as
+an `image_url`, which could make an upstream provider reject it or interpret it
+as an image. PDF attachments now use a bounded typed `file` part containing the
+validated filename and data URL. The shared Responses-to-Chat Completions
+normalizer preserves that document shape (while retaining image conversion for
+image files), and the Anthropic compatibility bridge maps native PDF documents
+to Anthropic `document` blocks in both directions. Rust coverage proves the
+native PDF payload and one-shot cleanup; Swift conversion and gateway coverage
+assert filename/data preservation and the downstream Anthropic document shape.
+The Swift package compiled locally, but its focused XCTest bundle could not
+launch because the host lacks the pre-existing `SQLCipher.framework` runtime
+loader; hosted Linux CI remains the authoritative execution path. This closes
+the source-level PDF semantics gap, not provider-specific production support or
+installed-candidate certification. The strict **0/40 + 0/7** ledger remains
+unchanged.
 
 ## Latest verification checkpoint — 2026-07-22
 
@@ -101,7 +120,8 @@ encodes as bounded data URLs; the shared policy regression covers extension
 inference, explicit MIME values, and rejection of unsupported audio. This
 removes the prior daemon-side rejection that made the implemented gateway
 image path unusable after message persistence. Provider-specific backend
-coverage, PDF input semantics, and installed-candidate proof remain open.
+coverage and installed-candidate proof remain open; the native PDF document
+wire shape is now covered by the latest attachment-parity delta below.
 
 The malformed/incomplete HTTP frame test is deterministic now: the Linux raw
 request helper half-closes its write side after sending the intentionally short
@@ -2827,18 +2847,17 @@ IDs or implicit approvals are allowed.
   daemon-owned bounded single-use attachment refs, citations, approvals, and
   bounded unloaded-history/export/resume/pop-out behavior. Model-authorized
   PNG/JPEG/WebP image inputs now pass the shared daemon policy and the Tauri
-  gateway's native capability path. Remaining backend breadth, provider-native
-  PDF semantics, and installed proof remain incomplete. The Responses fallback
-  now preserves data-backed `input_file` PDFs/images through the same bounded
-  Chat Completions bridge; unresolved file IDs and remote URLs fail closed.
+  gateway's native capability path. Remaining backend breadth and installed
+  proof remain incomplete. Model-authorized PDF inputs now use a typed native
+  `file` part through the Tauri gateway, Responses fallback, and Anthropic
+  compatibility bridge; unresolved file IDs and remote URLs still fail closed.
 - **Why it matters:** chat is a primary workflow; presenting a file or model
   control without a real transport still creates false confidence and data-loss
   risk. `44a5864b0d` requires a daemon catalog routing capability before a
   backend is advertised, and `7017227ac8` verifies that a missing catalog fails
   closed before any durable append or gateway call.
-- **Recommended solution:** extend the implemented attachment ref store into
-  provider-native PDF/binary handling where the selected model declares it,
-  finish the remaining backend adapters,
+- **Recommended solution:** retain the implemented provider-native PDF/binary
+  handling where the selected model declares it, finish the remaining backend adapters,
   and certify the existing citation/approval/history/pop-out contracts against
   an installed daemon; retain the typed model catalog and fail closed until each
   capability is live.
