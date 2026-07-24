@@ -37,6 +37,9 @@ interface IrohEndpointBackend {
  * write to QUIC.
  */
 interface IrohBackendStream {
+    /** Node id authenticated by the underlying iroh QUIC connection. */
+    suspend fun authenticatedRemoteNodeId(): String? = null
+
     suspend fun sendFrame(envelope: ByteArray)
 
     /** Returns `null` on clean stream close. */

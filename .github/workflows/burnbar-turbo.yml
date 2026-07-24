@@ -145,8 +145,13 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Require prebaked protobuf
-        run: protoc --version
+      - name: Ensure protobuf toolchain
+        run: |
+          set -euo pipefail
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
 
       - name: Validate macOS performance gate
         run: node --test scripts/ci/macos-idle-occlusion-gate.test.mjs
@@ -255,8 +260,13 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Require prebaked protobuf
-        run: protoc --version
+      - name: Ensure protobuf toolchain
+        run: |
+          set -euo pipefail
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
 
       - name: Prepare Signal FFI XCFramework
         run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
@@ -342,8 +352,13 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Require prebaked protobuf
-        run: protoc --version
+      - name: Ensure protobuf toolchain
+        run: |
+          set -euo pipefail
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
 
       - name: Run daemon Swift tests
         env:

@@ -1,4 +1,86 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+
 const PERCENTILE_KEYS = ['minimum', 'p50', 'p95', 'p99', 'maximum'];
+export const MATCHED_PERFORMANCE_SOURCE_FILES = Object.freeze([
+  "budgets/linux-desktop.perf.json",
+  "scripts/linux-port/run-matched-performance.mjs",
+  "scripts/linux-port/lib/matched-performance.mjs",
+  "tools/matched-performance/Package.swift",
+  "tools/matched-performance/Sources/OpenBurnBarPerfProbe/main.swift",
+  "tools/matched-performance/Sources/OpenBurnBarStreamPerfProbe/main.swift",
+]);
+
+export function matchedPerformanceSourceDigest(root) {
+  const hash = crypto.createHash("sha256");
+  for (const relative of MATCHED_PERFORMANCE_SOURCE_FILES) {
+    hash.update(relative);
+    hash.update("\0");
+    hash.update(fs.readFileSync(path.join(root, relative)));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+function reportPayloadSha256(report) {
+  const payload = structuredClone(report);
+  delete payload.provenance;
+  return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+export function attachMatchedPerformanceProvenance(report, identity) {
+  const value = structuredClone(report);
+  value.provenance = {
+    schemaVersion: 1,
+    producer: "openburnbar-matched-performance-v2",
+    platform: identity.platform,
+    profile: identity.profile,
+    gitCommit: identity.gitCommit,
+    packageVersion: identity.packageVersion,
+    sourceDigest: identity.sourceDigest,
+    candidate: {
+      runId: identity.candidateRunId ?? null,
+      artifactDigest: identity.candidateArtifactDigest ?? null,
+    },
+    startedAt: identity.startedAt,
+    endedAt: identity.endedAt,
+    payloadSha256: "",
+  };
+  value.provenance.payloadSha256 = reportPayloadSha256(value);
+  return value;
+}
+
+function validateProvenance(report, platform, profile, expected, errors) {
+  const value = report?.provenance;
+  const startedAt = Date.parse(value?.startedAt);
+  const endedAt = Date.parse(value?.endedAt);
+  const generatedAt = Date.parse(report?.generatedAt);
+  if (value?.schemaVersion !== 1 || value?.producer !== "openburnbar-matched-performance-v2"
+      || value?.platform !== platform || value?.profile !== profile
+      || !/^[a-f0-9]{40,64}$/u.test(value?.gitCommit ?? "")
+      || !/^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:[-+][0-9A-Za-z.-]+)?$/u.test(value?.packageVersion ?? "")
+      || !/^[a-f0-9]{64}$/u.test(value?.sourceDigest ?? "")
+      || !/^[a-f0-9]{64}$/u.test(value?.payloadSha256 ?? "")
+      || !Number.isFinite(startedAt) || !Number.isFinite(endedAt) || !Number.isFinite(generatedAt)
+      || generatedAt < startedAt || generatedAt > endedAt || endedAt < startedAt
+      || value.payloadSha256 !== reportPayloadSha256(report)) {
+    errors.push(`${platform} report provenance is missing, invalid, or not payload-bound`);
+    return;
+  }
+  const runId = value.candidate?.runId;
+  const digest = value.candidate?.artifactDigest;
+  if (!((runId === null && digest === null)
+      || (/^[1-9][0-9]*$/u.test(String(runId)) && /^sha256:[a-f0-9]{64}$/u.test(digest ?? "")))) {
+    errors.push(`${platform} report candidate provenance is invalid`);
+  }
+  if (expected) {
+    for (const [key, wanted] of Object.entries(expected)) {
+      const actual = key === "candidateRunId" ? runId : key === "candidateArtifactDigest" ? digest : value[key];
+      if (String(actual) !== String(wanted)) errors.push(`${platform} report provenance ${key} does not match the selected candidate`);
+    }
+  }
+}
 
 export function dockerHostIdentityArguments(uid, gid) {
   if (!Number.isSafeInteger(uid) || uid < 0 || !Number.isSafeInteger(gid) || gid < 0) {
@@ -31,7 +113,7 @@ function validatePercentiles(result, platform, errors) {
   }
 }
 
-function validateReport(report, platform, expected, matchedBudget, errors) {
+function validateReport(report, platform, expected, matchedBudget, errors, profile, expectedProvenance) {
   if (!report || typeof report !== 'object') {
     errors.push(`${platform} report is missing or invalid`);
     return new Map();
@@ -49,6 +131,7 @@ function validateReport(report, platform, expected, matchedBudget, errors) {
     }
   }
   if (report.pass !== true) errors.push(`${platform} probe did not pass its internal invariants`);
+  validateProvenance(report, platform, profile, expectedProvenance, errors);
 
   const rows = Array.isArray(report.workloads) ? report.workloads : [];
   const ids = rows.map((row) => row?.id);
@@ -98,7 +181,7 @@ function validateReport(report, platform, expected, matchedBudget, errors) {
   return byID;
 }
 
-export function compareMatchedPerformance({ macos, linux, budget, profile }) {
+export function compareMatchedPerformance({ macos, linux, budget, profile, expectedProvenance = null }) {
   const errors = [];
   const matchedBudget = budget?.matched;
   const expected = matchedBudget?.profiles?.[profile];
@@ -106,8 +189,14 @@ export function compareMatchedPerformance({ macos, linux, budget, profile }) {
     return { schemaVersion: 1, profile, pass: false, errors: [`unknown matched performance profile ${profile}`], workloads: [] };
   }
 
-  const macRows = validateReport(macos, 'macos', expected, matchedBudget, errors);
-  const linuxRows = validateReport(linux, 'linux', expected, matchedBudget, errors);
+  const macRows = validateReport(macos, 'macos', expected, matchedBudget, errors, profile, expectedProvenance);
+  const linuxRows = validateReport(linux, 'linux', expected, matchedBudget, errors, profile, expectedProvenance);
+  for (const key of ["gitCommit", "packageVersion", "sourceDigest"]) {
+    if (macos?.provenance?.[key] !== linux?.provenance?.[key]) errors.push(`matched report provenance ${key} differs between macOS and Linux`);
+  }
+  if (JSON.stringify(macos?.provenance?.candidate) !== JSON.stringify(linux?.provenance?.candidate)) {
+    errors.push("matched report candidate provenance differs between macOS and Linux");
+  }
   if (normalizedArchitecture(macos?.host?.architecture) !== normalizedArchitecture(linux?.host?.architecture)) {
     errors.push(`architecture mismatch: macos=${macos?.host?.architecture ?? 'missing'} linux=${linux?.host?.architecture ?? 'missing'}`);
   }
@@ -176,6 +265,14 @@ export function compareMatchedPerformance({ macos, linux, budget, profile }) {
     profile,
     configuration: expected,
     hosts: { macos: macos?.host ?? null, linux: linux?.host ?? null },
+    provenance: {
+      gitCommit: macos?.provenance?.gitCommit ?? null,
+      packageVersion: macos?.provenance?.packageVersion ?? null,
+      sourceDigest: macos?.provenance?.sourceDigest ?? null,
+      candidate: macos?.provenance?.candidate ?? null,
+      macosProducedAt: macos?.provenance?.endedAt ?? null,
+      linuxProducedAt: linux?.provenance?.endedAt ?? null,
+    },
     workloads,
     resources,
     errors,

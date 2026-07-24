@@ -27,8 +27,13 @@ import { buildPetBehaviorGraph } from './petBehaviorGraph.js';
 import { detectPetTierFromEnv } from './petCompanion.js';
 import { parseGlb } from './petGltfRuntime.js';
 import { PROVIDER_GLYPHS } from './providerGlyphs.js';
-import { readTextExpansionConsent, writeTextExpansionConsent } from './textExpansionConsent.js';
 import {
+  configureTextExpansionConsentStorage,
+  readTextExpansionConsent,
+  writeTextExpansionConsent
+} from './textExpansionConsent.js';
+import {
+  configureTextExpansionStorage,
   deleteSnippet,
   expandInAppBuffer,
   listSnippets,
@@ -254,7 +259,7 @@ describe('shell evidence harness', () => {
     };
     expect(tokenDiff.changed).toEqual(expect.arrayContaining(['--color-ink-void', '--color-brass-core']));
     expect(stateKinds).toEqual(
-      new Set(['daemon-backed', 'settings-failure', 'local-crud', 'pet-runtime'])
+      new Set(['daemon-backed', 'settings-failure', 'honest-empty', 'local-crud', 'pet-runtime'])
     );
     expect(reducedMotion.cssRulePresent).toBe(true);
 
@@ -539,15 +544,15 @@ describe('shell evidence harness', () => {
         draggableContained: buildPetBehaviorGraph('draggable-contained')
       },
       overlayClickThrough: {
-        claim: 'Only compositor-supported tiers claim pass-through; GNOME Wayland degrades to contained draggable route.',
+        claim: 'No packaged route claims pass-through until both a compositor capability and native companion-window contract exist.',
         source: 'detectPetTierFromEnv',
         x11PackagedSession: {
-          expectedTier: 'overlay-pass-through-capable',
-          proof: 'packaged route screenshot plus matrix row; pass-through is not claimed on restricted compositor rows'
+          expectedTier: 'draggable-contained',
+          proof: 'environment matrix is diagnostic only; native companion-window contract is not wired'
         }
       },
       inputPassthrough: {
-        overlayTier: 'pointer/input passthrough is allowed only when compositor support is present',
+        overlayTier: 'pointer/input passthrough remains unavailable until the native companion-window contract is wired',
         restrictedTier: 'contained fallback receives drag events and does not intercept global input'
       },
       degradedDraggableFallback: {
@@ -567,6 +572,8 @@ describe('shell evidence harness', () => {
 
   it('emits text expansion CRUD persistence, enable disable, denied, parity, and keylogger safety evidence', () => {
     localStorage.clear();
+    configureTextExpansionStorage(null);
+    configureTextExpansionConsentStorage(null, true);
     const beforeConsent = readTextExpansionConsent();
     writeTextExpansionConsent({ inAppOnly: true, declinedGlobalCapture: true });
     const consent = readTextExpansionConsent();
@@ -600,7 +607,7 @@ describe('shell evidence harness', () => {
     expect(scan.every((row) => row.forbiddenMatches.length === 0 && row.keydownListeners === 0)).toBe(true);
     writeEvidence('text-expansion-crud-safety-evidence.json', {
       generatedAt: new Date().toISOString(),
-      method: 'localStorage-store-execution-plus-runtime-source-scan',
+      method: 'memory-fixture-execution-plus-runtime-source-scan',
       deniedBeforeConsent: beforeConsent === null,
       consent,
       crud: {
@@ -610,7 +617,10 @@ describe('shell evidence harness', () => {
         disabledProbe,
         persistedCount: persisted.length,
         persistedAfterRestartCount: restartPersistence.length,
-        persistenceSurvivesRestart: restartPersistence.some((snippet) => snippet.id === created.id),
+        // This harness runs fixture mode in memory. Restart persistence is
+        // proven by BurnBarTextExpansionService Linux tests, not this renderer fixture.
+        persistenceSurvivesRestart: false,
+        persistenceBoundary: 'daemon-owned AES-GCM sealed snapshot; fixture mode is memory-only',
         afterDeleteCount: afterDelete.length
       },
       enabledDisabledBehavior: {

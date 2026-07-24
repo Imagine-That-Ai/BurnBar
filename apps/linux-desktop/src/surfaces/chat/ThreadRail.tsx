@@ -1,11 +1,11 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
-import type { SessionEntry } from '../../tauriBridge.js';
+import type { ChatThreadSummary } from '../../tauriBridge.js';
 import { formatThreadActivity, threadMessageCount, threadPreview } from './chatTypes.js';
 
 const DEBOUNCE_MS = 300;
 
 type ThreadRailProps = {
-  threads: SessionEntry[];
+  threads: ChatThreadSummary[];
   selectedId: string | null;
   loading: boolean;
   query: string;
@@ -104,7 +104,7 @@ export function ThreadRail({
                   </span>
                   <span className="chat-thread-row-snippet">{threadPreview(t)}</span>
                   <span className="chat-thread-row-meta">
-                    {threadMessageCount(t)} msgs · {formatThreadActivity(t.startedAt)}
+                    {threadMessageCount(t)} msgs · {formatThreadActivity(t.lastMessageAt ?? t.updatedAt)}
                   </span>
                 </button>
               </li>

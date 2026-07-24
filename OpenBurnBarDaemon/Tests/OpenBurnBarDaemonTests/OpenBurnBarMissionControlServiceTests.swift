@@ -675,7 +675,9 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         var projection = BurnBarMissionControlProjectionFile.empty(
             now: Date(timeIntervalSince1970: 1_710_620_500)
         )
-        projection.lastSequence = 42
+        // A matching zero checkpoint proves that an otherwise unreadable old
+        // journal is not replayed when the persisted projection is current.
+        projection.lastSequence = 0
         projection.projects[persistedProject.projectSlug] = persistedProject
         try JSONEncoder().encode(projection).write(to: projectionFileURL, options: .atomic)
 
@@ -4685,49 +4687,296 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(refreshed.mission?.results.count, 1)
         XCTAssertEqual(refreshed.mission?.results.first?.runID, runID)
     }
+
+    func testProjectLifecycleDeleteAndReassignPreserveUnrelatedState() async throws {
+        let harness = try makeHarnessWithStore(name: "project-lifecycle")
+        for slug in ["apollo", "orion", "atlas"] {
+            _ = try await harness.service.controllerProjectUpsert(
+                BurnBarControllerProjectUpsertRequest(project: project(slug: slug))
+            )
+        }
+
+        _ = try await harness.service.questionCreate(
+            BurnBarQuestionCreateRequest(
+                question: BurnBarPendingQuestionSnapshot(
+                    id: BurnBarQuestionID(rawValue: "question-apollo"),
+                    projectSlug: "apollo",
+                    title: "Apollo question",
+                    prompt: "Choose a release window.",
+                    status: .pending,
+                    priority: .medium,
+                    askedAt: Date()
+                )
+            )
+        )
+        _ = try await harness.service.followupCreate(
+            BurnBarFollowupCreateRequest(
+                followup: BurnBarFollowupSnapshot(
+                    id: BurnBarFollowupID(rawValue: "followup-apollo"),
+                    projectSlug: "apollo",
+                    title: "Apollo followup",
+                    summary: "Follow up on the release window.",
+                    status: .open,
+                    kind: .controllerNudge,
+                    createdAt: Date()
+                )
+            )
+        )
+        _ = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "apollo",
+                title: "Apollo mission",
+                summary: "Verify the release evidence.",
+                createdBy: "test",
+                recommendation: .review
+            )
+        )
+        _ = try await harness.store.recordReviewRun(
+            BurnBarReviewRunSnapshot(
+                id: "review-apollo",
+                projectSlug: "apollo",
+                cadence: .daily,
+                recordedAt: Date(),
+                summary: "Apollo review",
+                questionCount: 1,
+                followupCount: 1,
+                missionCount: 1
+            )
+        )
+
+        let reassigned = try await harness.service.controllerProjectReassign(
+            BurnBarControllerProjectReassignRequest(sourceProjectSlug: "apollo", targetProjectSlug: "orion")
+        )
+        XCTAssertEqual(reassigned.updatedReferenceCount, 5)
+        let reassignedQuestions = try await harness.service.questionsList(
+            BurnBarQuestionsListRequest(projectSlug: "orion", statuses: BurnBarPendingQuestionStatus.allCases)
+        )
+        let reassignedFollowups = try await harness.service.followupsList(
+            BurnBarFollowupsListRequest(projectSlug: "orion", statuses: BurnBarFollowupStatus.allCases)
+        )
+        let reassignedMissions = try await harness.service.missionsList(
+            BurnBarMissionListRequest(projectSlug: "orion", statuses: BurnBarMissionStatus.allCases)
+        )
+        let reassignedProject = try await harness.service.controllerProject(
+            BurnBarControllerProjectGetRequest(projectSlug: "orion")
+        )
+        let projectsAfterReassign = try await harness.service.controllerProjects(
+            BurnBarControllerProjectsListRequest(includePaused: true)
+        )
+        XCTAssertFalse(reassignedQuestions.questions.isEmpty)
+        XCTAssertFalse(reassignedFollowups.followups.isEmpty)
+        XCTAssertEqual(
+            reassignedQuestions.questions.map(\.projectSlug),
+            Array(repeating: "orion", count: reassignedQuestions.questions.count)
+        )
+        XCTAssertEqual(
+            reassignedFollowups.followups.map(\.projectSlug),
+            Array(repeating: "orion", count: reassignedFollowups.followups.count)
+        )
+        XCTAssertEqual(
+            reassignedMissions.missions.map(\.projectSlug),
+            ["orion"]
+        )
+        XCTAssertNotNil(reassignedProject.project?.latestDailyReviewAt)
+        XCTAssertEqual(
+            projectsAfterReassign.projects.map(\.projectSlug).sorted(),
+            ["apollo", "atlas", "orion"]
+        )
+
+        let deleted = try await harness.service.controllerProjectDelete(
+            BurnBarControllerProjectDeleteRequest(projectSlug: "apollo")
+        )
+        XCTAssertTrue(deleted.deleted)
+        let deletedProject = try await harness.service.controllerProject(
+            BurnBarControllerProjectGetRequest(projectSlug: "apollo")
+        )
+        let survivingOrion = try await harness.service.controllerProject(
+            BurnBarControllerProjectGetRequest(projectSlug: "orion")
+        )
+        let survivingAtlas = try await harness.service.controllerProject(
+            BurnBarControllerProjectGetRequest(projectSlug: "atlas")
+        )
+        XCTAssertNil(deletedProject.project)
+        XCTAssertNotNil(survivingOrion.project)
+        XCTAssertNotNil(survivingAtlas.project)
+        do {
+            _ = try await harness.service.controllerProjectUpsert(
+                BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+            )
+            XCTFail("Deleted project slugs must not be silently reused")
+        } catch let error as BurnBarMissionControlError {
+            guard case .projectDeleted("apollo") = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+        }
+    }
+
+    func testProjectLifecycleRejectsMissingTargetsAndIdentityCollisionsBeforeMutation() async throws {
+        let harness = try makeHarness(name: "project-lifecycle-fail-closed")
+        for slug in ["apollo", "orion", "one"] {
+            var projectSnapshot = project(slug: slug)
+            if slug == "one" {
+                projectSnapshot = BurnBarReviewProjectSnapshot(
+                    id: projectSnapshot.id,
+                    projectSlug: projectSnapshot.projectSlug,
+                    displayName: projectSnapshot.displayName,
+                    summary: projectSnapshot.summary,
+                    status: projectSnapshot.status,
+                    preferredCadence: projectSnapshot.preferredCadence,
+                    aliases: ["shared-target"],
+                    automationMode: projectSnapshot.automationMode,
+                    reviewModelID: projectSnapshot.reviewModelID,
+                    scheduleHourLocal: projectSnapshot.scheduleHourLocal,
+                    scheduleWeekdayLocal: projectSnapshot.scheduleWeekdayLocal,
+                    freshness: projectSnapshot.freshness,
+                    pendingQuestionCount: 0,
+                    openFollowupCount: 0,
+                    activeMissionCount: 0,
+                    needsOperatorAttention: false
+                )
+            }
+            _ = try await harness.service.controllerProjectUpsert(
+                BurnBarControllerProjectUpsertRequest(project: projectSnapshot)
+            )
+        }
+
+        do {
+            _ = try await harness.service.controllerProjectReassign(
+                BurnBarControllerProjectReassignRequest(sourceProjectSlug: "apollo", targetProjectSlug: "missing")
+            )
+            XCTFail("Missing target must fail closed")
+        } catch let error as BurnBarMissionControlError {
+            guard case .projectNotFound("missing") = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+        }
+
+        var conflictingProject = project(slug: "two")
+        conflictingProject = BurnBarReviewProjectSnapshot(
+            id: conflictingProject.id,
+            projectSlug: conflictingProject.projectSlug,
+            displayName: conflictingProject.displayName,
+            summary: conflictingProject.summary,
+            status: conflictingProject.status,
+            preferredCadence: conflictingProject.preferredCadence,
+            aliases: ["shared-target"],
+            automationMode: conflictingProject.automationMode,
+            reviewModelID: conflictingProject.reviewModelID,
+            scheduleHourLocal: conflictingProject.scheduleHourLocal,
+            scheduleWeekdayLocal: conflictingProject.scheduleWeekdayLocal,
+            freshness: conflictingProject.freshness,
+            pendingQuestionCount: 0,
+            openFollowupCount: 0,
+            activeMissionCount: 0,
+            needsOperatorAttention: false
+        )
+        do {
+            _ = try await harness.service.controllerProjectUpsert(
+                BurnBarControllerProjectUpsertRequest(project: conflictingProject)
+            )
+            XCTFail("Duplicate aliases must fail closed")
+        } catch let error as BurnBarMissionControlError {
+            guard case .projectIdentityConflict("shared-target") = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+        }
+
+        let survivingProject = try await harness.service.controllerProject(
+            BurnBarControllerProjectGetRequest(projectSlug: "apollo")
+        )
+        XCTAssertNotNil(survivingProject.project)
+    }
+
+    func testProjectLifecycleMovesSimulatorAndNestedTakeoverReferences() async throws {
+        let harness = try makeHarnessWithStore(name: "project-lifecycle-nested-references")
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+        )
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        let simulator = try await harness.service.simulatorRun(
+            BurnBarSimulatorRunRequest(projectSlug: "apollo", scenarioName: "lifecycle", seed: 11)
+        )
+        let now = Date()
+        let takeover = BurnBarAutoTakeoverRecord(
+            id: "takeover-apollo",
+            projectSlug: "apollo",
+            status: .monitoring,
+            reason: "Nested lifecycle fixture",
+            createdAt: now,
+            updatedAt: now
+        )
+        let mission = BurnBarMissionSnapshot(
+            id: BurnBarMissionID(rawValue: "mission-apollo-nested"),
+            projectSlug: "apollo",
+            title: "Apollo nested fixture",
+            summary: "Ensures nested references move with the project.",
+            status: .draft,
+            recommendation: .review,
+            createdAt: now,
+            updatedAt: now,
+            approval: BurnBarMissionApprovalSnapshot(approved: false),
+            takeoverHistory: [takeover]
+        )
+        try await harness.store.injectMissionsForTieBreakTesting([mission])
+
+        let reassigned = try await harness.service.controllerProjectReassign(
+            BurnBarControllerProjectReassignRequest(sourceProjectSlug: "apollo", targetProjectSlug: "orion")
+        )
+        XCTAssertEqual(reassigned.updatedReferenceCount, 3)
+
+        let movedMissions = try await harness.store.missionsSnapshot()
+        let movedMission = movedMissions.first
+        XCTAssertEqual(movedMission?.projectSlug, "orion")
+        XCTAssertEqual(movedMission?.takeoverHistory?.first?.projectSlug, "orion")
+        let movedSimulators = try await harness.service.simulatorList(
+            BurnBarSimulatorListRequest(projectSlug: "orion")
+        )
+        XCTAssertEqual(movedSimulators.runs.map(\.id), [simulator.run.id])
+    }
+
+    func testProjectLifecycleCanReassignDurableReferencesAfterRegistryDeletion() async throws {
+        let harness = try makeHarness(name: "project-lifecycle-deleted-source")
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+        )
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+        _ = try await harness.service.questionCreate(
+            BurnBarQuestionCreateRequest(
+                question: BurnBarPendingQuestionSnapshot(
+                    id: BurnBarQuestionID(rawValue: "question-deleted-apollo"),
+                    projectSlug: "apollo",
+                    title: "Deleted source question",
+                    prompt: "Move this durable reference.",
+                    status: .pending,
+                    priority: .low,
+                    askedAt: Date()
+                )
+            )
+        )
+        _ = try await harness.service.controllerProjectDelete(
+            BurnBarControllerProjectDeleteRequest(projectSlug: "apollo")
+        )
+
+        let reassigned = try await harness.service.controllerProjectReassign(
+            BurnBarControllerProjectReassignRequest(sourceProjectSlug: "apollo", targetProjectSlug: "orion")
+        )
+        XCTAssertEqual(reassigned.updatedReferenceCount, 2)
+        let questions = try await harness.service.questionsList(
+            BurnBarQuestionsListRequest(projectSlug: "orion", statuses: BurnBarPendingQuestionStatus.allCases)
+        )
+        XCTAssertEqual(questions.questions.map(\.projectSlug), ["orion"])
+    }
 }
 
 extension BurnBarMissionControlServiceTests {
-    func makeHarness(
-        name: String,
-        transport: BurnBarMissionControlTransport = .live(),
-        activitySnapshot: BurnBarControllerActivitySnapshot? = nil,
-        reviewRunLauncher: BurnBarMissionControlReviewRunLauncher? = nil,
-        runSnapshotLookup: BurnBarMissionControlRunSnapshotLookup? = nil,
-        executionReadinessGate: BurnBarExecutionReadinessGate? = { _, _ in nil },
-        performanceGuardrails: BurnBarMissionControlPerformanceGuardrails? = nil,
-        notificationSecretStore: any BurnBarNotificationSecretStoring = BurnBarInMemoryNotificationSecretStore()
-    ) throws -> (service: BurnBarMissionControlService, rootURL: URL) {
-        let rootURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("openburnbar-mission-control-\(name)-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
-
-        let activitySnapshotURL = rootURL.appendingPathComponent("controller-activity-snapshot.json")
-        if let activitySnapshot {
-            let data = try JSONEncoder().encode(activitySnapshot)
-            try data.write(to: activitySnapshotURL, options: .atomic)
-        }
-
-        let store = BurnBarMissionControlStore(
-            eventsFileURL: rootURL.appendingPathComponent("controller-events.jsonl"),
-            projectionFileURL: rootURL.appendingPathComponent("controller-projection.json"),
-            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
-            notificationSecretStore: notificationSecretStore
-        )
-        let service = BurnBarMissionControlService(
-            store: store,
-            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
-            transport: transport,
-            activitySnapshotURL: activitySnapshot == nil ? nil : activitySnapshotURL,
-            reviewRunLauncher: reviewRunLauncher,
-            runSnapshotLookup: runSnapshotLookup,
-            usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl"),
-            executionReadinessGate: executionReadinessGate,
-            performanceGuardrails: performanceGuardrails
-        )
-        return (service, rootURL)
-    }
-
     // MARK: - VAL-EXEC-009: Parallel scheduler enforces dependency invariants
 
     func testVAL_EXEC_009_ParallelSchedulerEnforcesDependencyGating() async throws {
@@ -5874,256 +6123,4 @@ extension BurnBarMissionControlServiceTests {
         XCTAssertFalse(actions.contains { $0.missionID.rawValue == "mission-00" })
     }
 
-    /// Creates a harness with direct store access for tests that need to manipulate timestamps
-    private func makeHarnessWithStore(
-        name: String,
-        transport: BurnBarMissionControlTransport = .live(),
-        executionReadinessGate: BurnBarExecutionReadinessGate? = nil,
-        performanceGuardrails: BurnBarMissionControlPerformanceGuardrails? = nil,
-        notificationSecretStore: any BurnBarNotificationSecretStoring = BurnBarInMemoryNotificationSecretStore()
-    ) throws -> (service: BurnBarMissionControlService, store: BurnBarMissionControlStore, rootURL: URL) {
-        let rootURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("openburnbar-mission-control-\(name)-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
-
-        let store = BurnBarMissionControlStore(
-            eventsFileURL: rootURL.appendingPathComponent("controller-events.jsonl"),
-            projectionFileURL: rootURL.appendingPathComponent("controller-projection.json"),
-            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
-            notificationSecretStore: notificationSecretStore
-        )
-        let service = BurnBarMissionControlService(
-            store: store,
-            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
-            transport: transport,
-            activitySnapshotURL: nil,
-            reviewRunLauncher: nil,
-            runSnapshotLookup: nil,
-            usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl"),
-            executionReadinessGate: executionReadinessGate,
-            performanceGuardrails: performanceGuardrails
-        )
-        return (service, store, rootURL)
-    }
-
-    private func makeSeededHarness(
-        name: String,
-        events: [BurnBarControllerEvent],
-        transport: BurnBarMissionControlTransport = .live(),
-        executionReadinessGate: BurnBarExecutionReadinessGate? = nil,
-        performanceGuardrails: BurnBarMissionControlPerformanceGuardrails? = nil,
-        notificationSecretStore: any BurnBarNotificationSecretStoring = BurnBarInMemoryNotificationSecretStore()
-    ) throws -> (service: BurnBarMissionControlService, rootURL: URL) {
-        let rootURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("openburnbar-mission-control-\(name)-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
-
-        let eventsFileURL = rootURL.appendingPathComponent("controller-events.jsonl")
-        try writeControllerEvents(events, to: eventsFileURL)
-
-        let store = BurnBarMissionControlStore(
-            eventsFileURL: eventsFileURL,
-            projectionFileURL: rootURL.appendingPathComponent("controller-projection.json"),
-            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
-            notificationSecretStore: notificationSecretStore
-        )
-        let service = BurnBarMissionControlService(
-            store: store,
-            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
-            transport: transport,
-            activitySnapshotURL: nil,
-            reviewRunLauncher: nil,
-            runSnapshotLookup: nil,
-            usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl"),
-            executionReadinessGate: executionReadinessGate,
-            performanceGuardrails: performanceGuardrails
-        )
-        return (service, rootURL)
-    }
-
-    private func writeControllerEvents(
-        _ events: [BurnBarControllerEvent],
-        to url: URL
-    ) throws {
-        let directory = url.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-
-        let encoder = JSONEncoder()
-        var data = Data()
-        for event in events {
-            data.append(try encoder.encode(event))
-            data.append(Data([0x0A]))
-        }
-        try data.write(to: url, options: .atomic)
-    }
-
-    private struct BurnBarPublicProjectionSurfaceSnapshot: Equatable {
-        let counts: BurnBarControllerCounts
-        let missions: [BurnBarMissionSnapshot]
-        let questions: [BurnBarPendingQuestionSnapshot]
-        let followups: [CanonicalFollowup]
-    }
-
-    private struct CanonicalFollowup: Equatable {
-        let id: BurnBarFollowupID
-        let projectSlug: String
-        let questionID: BurnBarQuestionID?
-        let title: String
-        let summary: String
-        let stageLabel: String?
-        let status: BurnBarFollowupStatus
-        let kind: BurnBarFollowupKind
-        let createdAt: Date
-        let metadata: BurnBarMetadata
-    }
-
-    private func capturePublicProjectionSurface(
-        service: BurnBarMissionControlService,
-        projectSlug: String
-    ) async throws -> BurnBarPublicProjectionSurfaceSnapshot {
-        let summary = try await service.controllerSummary(
-            BurnBarControllerSummaryRequest(
-                projectSlug: projectSlug,
-                includeRecentEvents: false,
-                includeProjectionStatus: false
-            )
-        )
-        let questions = try await service.questionsList(
-            BurnBarQuestionsListRequest(
-                projectSlug: projectSlug,
-                statuses: BurnBarPendingQuestionStatus.allCases,
-                limit: 500
-            )
-        )
-        let followups = try await service.followupsList(
-            BurnBarFollowupsListRequest(
-                projectSlug: projectSlug,
-                statuses: BurnBarFollowupStatus.allCases,
-                limit: 500
-            )
-        )
-        let missions = try await service.missionsList(
-            BurnBarMissionListRequest(
-                projectSlug: projectSlug,
-                statuses: BurnBarMissionStatus.allCases,
-                limit: 500
-            )
-        )
-
-        return BurnBarPublicProjectionSurfaceSnapshot(
-            counts: summary.summary.counts,
-            missions: missions.missions.sorted { $0.id.rawValue < $1.id.rawValue },
-            questions: questions.questions.sorted { $0.id.rawValue < $1.id.rawValue },
-            followups: followups.followups
-                .sorted { $0.id.rawValue < $1.id.rawValue }
-                .map { followup in
-                    CanonicalFollowup(
-                        id: followup.id,
-                        projectSlug: followup.projectSlug,
-                        questionID: followup.questionID,
-                        title: followup.title,
-                        summary: followup.summary,
-                        stageLabel: followup.stageLabel,
-                        status: followup.status,
-                        kind: followup.kind,
-                        createdAt: followup.createdAt,
-                        metadata: followup.metadata
-                    )
-                }
-        )
-    }
-
-    private func writeUsageRecord(_ record: BurnBarUsageRecord, to url: URL) throws {
-        let directory = url.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let data = try JSONEncoder().encode(record) + Data([0x0A])
-        try data.write(to: url, options: .atomic)
-    }
-
-    private func project(slug: String) -> BurnBarReviewProjectSnapshot {
-        BurnBarReviewProjectSnapshot(
-            id: "project-\(slug)",
-            projectSlug: slug,
-            displayName: slug.capitalized,
-            summary: "Native OpenBurnBar mission-control test project.",
-            status: .healthy,
-            preferredCadence: .daily,
-            freshness: .provisional,
-            pendingQuestionCount: 0,
-            openFollowupCount: 0,
-            activeMissionCount: 0,
-            needsOperatorAttention: false
-        )
-    }
-
-    private func boolValue(_ value: BurnBarJSONValue?) -> Bool? {
-        guard case .bool(let rawValue)? = value else { return nil }
-        return rawValue
-    }
-
-    private func stringValue(_ value: BurnBarJSONValue?) -> String? {
-        guard case .string(let rawValue)? = value else { return nil }
-        return rawValue
-    }
-
-    private func numberValue(_ value: BurnBarJSONValue?) -> Double? {
-        guard case .number(let rawValue)? = value else { return nil }
-        return rawValue
-    }
-
-    private func objectValue(_ value: BurnBarJSONValue?) -> [String: BurnBarJSONValue]? {
-        guard case .object(let rawValue)? = value else { return nil }
-        return rawValue
-    }
-
-    private func stringArrayValue(_ value: BurnBarJSONValue?) -> [String]? {
-        guard case .array(let rawValues)? = value else { return nil }
-        return rawValues.compactMap { item in
-            guard case .string(let stringValue) = item else { return nil }
-            return stringValue
-        }
-    }
-
-    private func waitUntil(
-        timeoutNanoseconds: UInt64 = 3_000_000_000,
-        pollNanoseconds: UInt64 = 50_000_000,
-        condition: @Sendable () async -> Bool
-    ) async -> Bool {
-        let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanoseconds
-        while DispatchTime.now().uptimeNanoseconds < deadline {
-            if await condition() {
-                return true
-            }
-            try? await Task.sleep(nanoseconds: pollNanoseconds)
-        }
-
-        return await condition()
-    }
-}
-
-private actor TransportRecorder {
-    private(set) var localNotifications: [(title: String, body: String)] = []
-    private(set) var telegramMessages: [(token: String, chatID: String, text: String)] = []
-
-    func recordLocal(title: String, body: String) {
-        localNotifications.append((title, body))
-    }
-
-    func recordTelegram(token: String, chatID: String, text: String) {
-        telegramMessages.append((token, chatID, text))
-    }
-}
-
-private actor ReviewLauncherRecorder {
-    struct Launch: Sendable {
-        let prompt: String
-        let modelID: String
-        let metadata: BurnBarRunCreateMetadata
-    }
-
-    private(set) var launches: [Launch] = []
-
-    func record(prompt: String, modelID: String, metadata: BurnBarRunCreateMetadata) {
-        launches.append(Launch(prompt: prompt, modelID: modelID, metadata: metadata))
-    }
 }

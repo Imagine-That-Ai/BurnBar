@@ -165,4 +165,32 @@ class BurnBarApplicationTest {
         // newest record must leave a valid record inside the server window.
         assertEquals(3L, IrohPairingSelection.QUERY_LIMIT)
     }
+
+    @Test
+    fun `stale account callbacks cannot restart the previous users coordinator`() {
+        assertFalse(
+            ControllerAuthStatePolicy.isCurrent(
+                expectedUid = "account-a",
+                expectedEpoch = 7L,
+                currentUid = "account-b",
+                currentEpoch = 8L,
+            ),
+        )
+        assertFalse(
+            ControllerAuthStatePolicy.isCurrent(
+                expectedUid = "account-a",
+                expectedEpoch = 7L,
+                currentUid = "account-a",
+                currentEpoch = 8L,
+            ),
+        )
+        assertTrue(
+            ControllerAuthStatePolicy.isCurrent(
+                expectedUid = "account-b",
+                expectedEpoch = 8L,
+                currentUid = "account-b",
+                currentEpoch = 8L,
+            ),
+        )
+    }
 }

@@ -1,0 +1,31 @@
+{
+  "schema": "openburnbar.parity.mobile-runtime-receipt.v1",
+  "capturedAt": "2026-07-14T12:52:32Z",
+  "certificationScope": "non-certifying launch/runtime smoke receipt",
+  "sourceWorktree": "/private/tmp/burnbar-linux-parity-continuation",
+  "device": {
+    "devicectlIdentifier": "407C0B12-010B-5970-8E85-D0E43DA8F457",
+    "xcodebuildIdentifier": "00008132-001158191E9A401C",
+    "platform": "iPadOS"
+  },
+  "application": {
+    "bundleID": "com.openburnbar.app",
+    "version": "1.0.2",
+    "build": "82"
+  },
+  "checks": {
+    "installed": true,
+    "launchExitCode": 0,
+    "aliveAfterSeconds": 29,
+    "terminationExitCode": 0,
+    "relaunchExitCode": 0,
+    "consoleWindowSeconds": 20,
+    "consoleCrashMarkers": false,
+    "deviceUnlocked": true
+  },
+  "limitations": [
+    "This receipt proves current-branch installation and process stability only.",
+    "Computer Use approval, trusted-device enrollment, and cross-device action execution remain unverified."
+  ],
+  "rawReceipts": null
+}

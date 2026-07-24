@@ -125,6 +125,19 @@ final class BurnBarDaemonPeerAuthenticatorTests: XCTestCase {
             }
         }
     }
+
+    #if os(Linux)
+    func test_linuxPeerCredential_readsKernelExecutableLink() throws {
+        let pair = try DaemonTestUnixSocketConnection.establish()
+        defer { pair.closeAll() }
+
+        let credential = try BurnBarDaemonPeerAuthenticator.linuxPeerCredential(
+            socketFD: pair.acceptedFD
+        )
+        XCTAssertFalse(credential.executablePath.isEmpty)
+        XCTAssertEqual(credential.executableSHA256.count, 64)
+    }
+    #endif
 }
 
 /// Thread-safe recorder for validator invocations.

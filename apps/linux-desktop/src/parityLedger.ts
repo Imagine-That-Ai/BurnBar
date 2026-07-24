@@ -9,9 +9,9 @@ export const PARITY_LEDGER: ParityRow[] = [
   {
     feature: 'System-wide text expansion (Wayland)',
     macos: 'CGEvent session tap + Accessibility',
-    linux: 'In-app expansion only (v1)',
+    linux: 'Explicit-consent signed IBus engine when the packaged daemon reports it; in-app fallback otherwise',
     substitution:
-      'Future IME/fcitx/IBus integration with per-DE tests; no evdev/global keylogger in v1.'
+      'Fcitx native addon remains unavailable; secure-field denial and no evdev/global keylogger are enforced.'
   },
   {
     feature: 'PetCompanion always-on-top click-through',
@@ -32,17 +32,20 @@ export const PARITY_LEDGER: ParityRow[] = [
   {
     feature: 'Chat tool approvals',
     macos: 'In-chat tool approval riding in-process agent runs',
-    linux: 'Approval buttons disabled; approval flows ride agent runs, not gateway chat.',
-    substitution: 'Wire workspace.executeTool / approval.respond when Linux agent runs land in the shell.'
+    linux: 'Daemon-issued approval IDs enable approve/reject/cancel in chat; gateway calls without a verified run identity remain unavailable.',
+    substitution: 'Gateway tool calls without a daemon approval identity stay visibly unavailable rather than inventing an approval token.'
   },
   {
     feature: 'Memory review queue',
     macos: 'In-process MemoryServing quarantine inbox (no daemon RPC on any platform)',
-    linux: 'Recalled memories shown as approved with revoke-as-forget via daemon.memory.forget; fixture mode demos the queue UX.'
+    linux: 'Daemon-owned review status supports pending, approved, rejected, and forgotten transitions with a bounded quarantine feed and audit hashes; fixture mode only demos the queue UX.',
+    substitution:
+      'Cross-device review replication and installed cloud-authority proof remain separate from the local daemon lifecycle.'
   },
   {
     feature: 'Smart-display integration controls',
     macos: 'Live layout/palette/theme pickers and test-display actions in Settings',
-    linux: 'Read-and-explain status rows from openburnbar-cli devices parity; configuration happens daemon/CLI-side in v1.'
+    linux: 'Typed root-owned discovery/status/test probes for SmartHub, Cast, Home Assistant, PixelClock, and AWTRIX via the trusted packaged CLI.',
+    substitution: 'Device-specific configuration remains daemon/CLI-owned; the renderer never exposes arbitrary shell or credential fields.'
   }
 ];

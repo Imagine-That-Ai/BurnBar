@@ -4,7 +4,11 @@ import OpenBurnBarCore
 extension OpenBurnBarDaemonManager {
 
     private static let controllerActivitySnapshotFreshness: TimeInterval = 60
-    private static let controllerActivityConversationLimit = 80
+    // Project migration must see the full bounded session window, not only the
+    // latest context rows. The daemon ingests this snapshot to turn inferred
+    // activity projects into stable registry entries; capping it at 80 silently
+    // orphaned older projects and made the 10k-session acceptance gate false.
+    private static let controllerActivityConversationLimit = 10_000
 
     func exportControllerActivitySnapshot() async {
         guard let dataStore else { return }

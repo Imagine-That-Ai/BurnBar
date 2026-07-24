@@ -19,11 +19,11 @@ import com.openburnbar.data.computeruse.ComputerUseWatchReducer
 import com.openburnbar.data.computeruse.PhoneControlSender
 import com.openburnbar.data.hermes.HermesConnectionMode
 import com.openburnbar.data.hermes.HermesConnectionRecord
-import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.hermes.refreshRelayConnections
 import com.openburnbar.data.hermes.selectConnection
 import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalResponse
+import com.openburnbar.ui.hermes.rememberAccountScopedHermesService
 import kotlinx.coroutines.launch
 
 @Composable
@@ -57,7 +57,7 @@ fun ComputerUseAgentWatchScreen(
         coordinator?.agentWatchControlFrames?.collect { receiver.ingest(it) }
     }
     val effectiveSender = phoneControlSender ?: phoneControlSenderFor(activePair)
-    val hermesService = remember { HermesService(appContext = context.applicationContext) }
+    val hermesService = rememberAccountScopedHermesService()
     val selectedConnection by hermesService.selectedConnection.collectAsState()
     val connections by hermesService.connections.collectAsState()
     LaunchedEffect(Unit) {

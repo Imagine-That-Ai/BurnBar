@@ -1,0 +1,24 @@
+started pid=6571
+srw------- 1 burnbar burnbar  0 Jul 21 18:03 /tmp/obb-exact-head/daemon.sock
+-rw------- 1 burnbar burnbar 34 Jul 21 18:03 /tmp/obb-exact-head/token
+token_len 33
+sock_exists True
+Unauthorized OpenBurnBar RPC request.
+DAEMON_ALIVE
+2026-07-21 18:03:37 +0000 level=warning subsystem=com.openburnbar.daemon category=cloud-sync event=linux_cloud_sync_runtime_unavailable error=\(error) path=/tmp/obb-exact-head/index.sqlite trace_id=56EDF24D-79D8-4D4E-9FE7-11E2C11B7E5A
+2026-07-21 18:03:37 +0000 level=info subsystem=com.openburnbar.daemon category=linux-media event=linux_media_file_transfer_unavailable reason=iroh_blob_ffi_missing trace_id=56EDF24D-79D8-4D4E-9FE7-11E2C11B7E5A
+2026-07-21 18:03:37 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=pensieve_watcher_configured root_count=1 trace_id=56EDF24D-79D8-4D4E-9FE7-11E2C11B7E5A vault_uid_present=false
+2026-07-21 18:03:37 +0000 level=info subsystem=com.openburnbar.daemon category=process event=bootstrap_starting daemon_version=exact-head-f985370c83 protocol_version=1 socket_path=/tmp/obb-exact-head/daemon.sock trace_id=56EDF24D-79D8-4D4E-9FE7-11E2C11B7E5A
+2026-07-21 18:03:37 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=bootstrap_ready socket_path=/tmp/obb-exact-head/daemon.sock trace_id=56EDF24D-79D8-4D4E-9FE7-11E2C11B7E5A
+2026-07-21 18:03:37 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=process_ready daemon_version=exact-head-f985370c83 socket_path=/tmp/obb-exact-head/daemon.sock trace_id=56EDF24D-79D8-4D4E-9FE7-11E2C11B7E5A
+2026-07-21 18:03:38 +0000 level=notice subsystem=com.openburnbar.daemon category=usage-recorder event=usage_record_inserted idempotency_key=local-usage:b05165e550e5069d8928efc2dbdd9c67eedc1e399643acbcea0b4dfa1c3ecdc7 model_id=claude-opus-4-8 provider_id=claude-code trace_id=56EDF24D-79D8-4D4E-9FE7-11E2C11B7E5A
+2026-07-21 18:03:38 +0000 level=notice subsystem=com.openburnbar.daemon category=usage-recorder event=usage_record_inserted idempotency_key=local-usage:e7b70f68966ec2a920c630338b7f5834572bb0ce137a0bd5726da7b43515ef82 model_id=claude-opus-4-8 provider_id=claude-code trace_id=56EDF24D-79D8-4D4E-9FE7-11E2C11B7E5A
+2026-07-21 18:03:38 +0000 level=notice subsystem=com.openburnbar.daemon category=usage-recorder event=usage_record_inserted idempotency_key=local-usage:5ae4c1a918f9309b904437641b4ef7e308de2b77f9ca6fc3b8bf5b8013c251f6 model_id=gpt-5.5 provider_id=codex trace_id=56EDF24D-79D8-4D4E-9FE7-11E2C11B7E5A
+2026-07-21 18:03:38 +0000 level=notice subsystem=com.openburnbar.daemon category=usage-recorder event=usage_record_inserted idempotency_key=local-usage:e7719e30b5f9e5f86ea0212a3e9812e12d2d50333357ee8320807080356d1b10 model_id=gpt-5.5 provider_id=codex trace_id=56EDF24D-79D8-4D4E-9FE7-11E2C11B7E5A
+2026-07-21 18:03:38 +0000 level=notice subsystem=com.openburnbar.daemon category=usage-recorder event=usage_record_inserted idempotency_key=local-usage:d338e97b1c1cc07bd524bdbb25df9b8008892e665ec1c04843361072e4c461e8 model_id=gpt-5.5 provider_id=codex trace_id=56EDF24D-79D8-4D4E-9FE7-11E2C11B7E5A
+2026-07-21 18:03:38 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=local_usage_ingestion_completed inserted_deltas=5 parsed_rows=5 trace_id=56EDF24D-79D8-4D4E-9FE7-11E2C11B7E5A unchanged_rows=0
+2026-07-21 18:03:38 +0000 level=warning subsystem=com.openburnbar.daemon category=process event=rpc_request_unauthorized method=daemon.health peer_pid=6611 request_id=529B3452-5B78-473F-ADB9-46A157E2F5B5 trace_id=56EDF24D-79D8-4D4E-9FE7-11E2C11B7E5A
+2026-07-21 18:03:38 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=140 trace_id=56EDF24D-79D8-4D4E-9FE7-11E2C11B7E5A
+EXACT_HEAD_SMOKE_DONE
+23fa7b723efa2df56244fcb4204ef6c9caf4142ea73da1af44082459d973cc2e  /tmp/obb-exact-head/openburnbar-daemon
+Linux openburnbar-linux 6.8.0-136-generic #136-Ubuntu SMP PREEMPT_DYNAMIC Wed Jul  1 21:33:11 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux

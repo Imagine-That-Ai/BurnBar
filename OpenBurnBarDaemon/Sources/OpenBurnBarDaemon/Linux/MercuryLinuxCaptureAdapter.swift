@@ -151,6 +151,68 @@ public final class MercuryLinuxCaptureAdapter: MercuryLinuxCaptureAdapterProtoco
     }
 }
 
+/// Portal-backed Opus capture adapter used by Linux Mercury call/media
+/// composition. It deliberately owns a separate grant and pipeline from the
+/// screen-share adapter: a PipeWire node is process-local and cannot be
+/// serialized or reused after its portal session closes.
+public protocol MercuryLinuxAudioCaptureAdapterProtocol: Sendable {
+    func startOutboundAudioCapture(
+        onFrame: @escaping @Sendable (MediaFrame) -> Void,
+        onStopped: @escaping @Sendable (String) -> Void
+    ) async throws
+    func stopOutboundAudioCapture()
+}
+
+public final class MercuryLinuxAudioCaptureAdapter: MercuryLinuxAudioCaptureAdapterProtocol, Sendable {
+    private let portalClient: any MercuryLinuxScreenCastPortalClient
+    private let captureEngine: any MercuryLinuxAudioCaptureEngineProtocol
+    private let activeGrant = Locked<MercuryLinuxScreenCastGrant?>(nil)
+
+    public init(
+        portalClient: any MercuryLinuxScreenCastPortalClient = MercuryLinuxGDBusScreenCastPortalClient(),
+        captureEngine: any MercuryLinuxAudioCaptureEngineProtocol = MercuryLinuxAudioCaptureEngine()
+    ) {
+        self.portalClient = portalClient
+        self.captureEngine = captureEngine
+    }
+
+    public func startOutboundAudioCapture(
+        onFrame: @escaping @Sendable (MediaFrame) -> Void,
+        onStopped: @escaping @Sendable (String) -> Void
+    ) async throws {
+        let grant = try await portalClient.acquireScreenCastConsent()
+        guard grant.isLive else {
+            await portalClient.closeScreenCastSession(grant)
+            throw MercuryLinuxAudioCaptureError.portalConsentNotLive
+        }
+        do {
+            try captureEngine.start(
+                .portal(grant),
+                onFrame: onFrame,
+                onStopped: onStopped
+            )
+            activeGrant.withLock { $0 = grant }
+        } catch {
+            await portalClient.closeScreenCastSession(grant)
+            throw error
+        }
+    }
+
+    public func stopOutboundAudioCapture() {
+        captureEngine.stop()
+        let grant = activeGrant.withLock { stored in
+            let current = stored
+            stored = nil
+            return current
+        }
+        if let grant {
+            Task.detached { [portalClient] in
+                await portalClient.closeScreenCastSession(grant)
+            }
+        }
+    }
+}
+
 final class MercuryLinuxCaptureFrameQueue: Sendable {
     let stream: AsyncStream<MediaFrame>
     private let continuation: Locked<AsyncStream<MediaFrame>.Continuation?>

@@ -1,0 +1,12 @@
+ee9aabeffc6698e1cb95daf07b2c59ce47de1b55899592e3b92a45dda6586110  /home/burnbar/BurnBar/apps/linux-desktop/src-tauri/target/release/bundle/deb/OpenBurnBar_0.1.1_arm64.deb
+Package: open-burn-bar
+Version: 0.1.1
+Architecture: arm64
+--- payload ---
+-rwxr-xr-x 0/0            7984 2026-07-19 08:08 usr/libexec/openburnbar-daemon-launch
+-rwxr-xr-x 0/0            3488 2026-07-19 08:08 usr/libexec/openburnbar-cli-migrate
+-rwxr-xr-x 0/0        27457104 2026-07-19 08:08 usr/bin/openburnbar-linux-desktop
+-rwxr-xr-x 0/0       124747024 2026-07-19 08:08 usr/bin/openburnbar-daemon
+-rwxr-xr-x 0/0       124618384 2026-07-19 08:08 usr/bin/openburnbar-cli
+--- installed ---
+install ok installed open-burn-bar 0.1.1 arm64

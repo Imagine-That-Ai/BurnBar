@@ -1,0 +1,25 @@
+{
+  "id": "genesis",
+  "label": "Genesis",
+  "metalFileBase": "K_Genesis",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_genesis_display"
+  },
+  "controls": [
+    "scroll"
+  ],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

@@ -117,6 +117,63 @@ final class BurnBarResumeServiceTests: XCTestCase {
         XCTAssertEqual(response.briefingMD?.contains("Paragraph 35"), true)
     }
 
+    func testActivityHistoryReturnsExplicitCompletenessAndPersistedBodies() throws {
+        let fixture = try Self.makeFixtureDatabase()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        try Self.withDatabase(at: fixture.databaseURL) { db in
+            try Self.createConversationsTable(db: db)
+            try Self.insertConversation(
+                id: "Codex:history-1",
+                provider: "Codex",
+                sessionID: "history-1",
+                workingDirectory: fixture.workspace.path,
+                db: db
+            )
+            try Self.insertConversation(
+                id: "Claude Code:history-2",
+                provider: "Claude Code",
+                sessionID: "history-2",
+                workingDirectory: fixture.workspace.path,
+                db: db
+            )
+        }
+
+        let service = try BurnBarResumeService(
+            databasePath: fixture.databaseURL.path,
+            logger: BurnBarDaemonLogger(category: "resume-service-test")
+        )
+        let response = try service.activityHistory(limit: 10)
+
+        XCTAssertTrue(response.historyComplete)
+        XCTAssertNil(response.nextCursor)
+        XCTAssertEqual(response.historyLimit, 10)
+        XCTAssertEqual(response.totalCount, 2)
+        XCTAssertEqual(response.sessions.count, 2)
+        XCTAssertTrue(response.sessions.allSatisfy { $0.sourceID == $0.id && !$0.bodyMD.isEmpty })
+    }
+
+    func testActivityHistoryFailsClosedWhenTheBoundedLimitWouldTruncateRows() throws {
+        let fixture = try Self.makeFixtureDatabase()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        try Self.withDatabase(at: fixture.databaseURL) { db in
+            try Self.createConversationsTable(db: db)
+            try Self.insertConversation(id: "Codex:history-1", provider: "Codex", sessionID: "history-1", db: db)
+            try Self.insertConversation(id: "Codex:history-2", provider: "Codex", sessionID: "history-2", db: db)
+        }
+
+        let service = try BurnBarResumeService(
+            databasePath: fixture.databaseURL.path,
+            logger: BurnBarDaemonLogger(category: "resume-service-test")
+        )
+        let response = try service.activityHistory(limit: 1)
+
+        XCTAssertFalse(response.historyComplete)
+        XCTAssertEqual(response.nextCursor, "more")
+        XCTAssertEqual(response.historyLimit, 1)
+        XCTAssertEqual(response.totalCount, 2)
+        XCTAssertTrue(response.sessions.isEmpty)
+    }
+
     func testGrokHandoffUsesPromptFilePackage() throws {
         let fixture = try Self.makeFixtureDatabase()
         defer { try? FileManager.default.removeItem(at: fixture.directory) }

@@ -169,4 +169,398 @@ final class BurnBarUsageRecorderTests: XCTestCase {
         XCTAssertEqual(records.first?.event.cacheCreationTokens, 0)
         XCTAssertEqual(records.first?.event.cacheReadTokens, 10)
     }
+
+    func testUsageRecorderAcceptsZeroUsageAtCurrentTimestamp() async throws {
+        let fixture = try makeRecorderFixture()
+        let event = makeEvent(recordedAt: Date())
+
+        let result = try await fixture.recorder.record(event, idempotencyKey: "zero-usage")
+        let records = try await fixture.recorder.records()
+
+        XCTAssertTrue(result.inserted)
+        XCTAssertEqual(records.count, 1)
+    }
+
+    func testUsageRecorderRejectsEveryNegativeTokenFieldWithoutMutatingState() async throws {
+        let invalidEvents = [
+            makeEvent(inputTokens: -1),
+            makeEvent(outputTokens: -1),
+            makeEvent(cacheCreationTokens: -1),
+            makeEvent(cacheReadTokens: -1),
+            makeEvent(reasoningTokens: -1)
+        ]
+
+        for (index, event) in invalidEvents.enumerated() {
+            let fixture = try makeRecorderFixture()
+            await assertValidationFailure(
+                fixture.recorder,
+                event: event,
+                idempotencyKey: "negative-token-\(index)"
+            )
+            let records = try await fixture.recorder.records()
+            XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.ledgerURL.path))
+            XCTAssertEqual(records, [])
+        }
+    }
+
+    func testUsageRecorderRejectsInvalidCostValuesWithoutMutatingState() async throws {
+        for (index, cost) in [-0.01, .infinity, -.infinity, .nan].enumerated() {
+            let fixture = try makeRecorderFixture()
+            await assertValidationFailure(
+                fixture.recorder,
+                event: makeEvent(cost: cost),
+                idempotencyKey: "invalid-cost-\(index)"
+            )
+            XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.ledgerURL.path))
+        }
+    }
+
+    func testUsageRecorderRejectsInvalidIdentifiersWithoutMutatingDedupeState() async throws {
+        let tooLong = String(repeating: "a", count: BurnBarUsageRecorder.maximumIdentifierBytes + 1)
+        let cases: [(String, BurnBarUsageEvent)] = [
+            ("valid-key", makeEvent(providerID: "")),
+            ("valid-key", makeEvent(modelID: " model")),
+            ("valid-key", makeEvent(runID: BurnBarRunID(rawValue: "run\ninvalid"))),
+            ("valid-key", makeEvent(sessionID: tooLong)),
+            ("valid-key", makeEvent(parentRequestID: "\t")),
+            ("valid-key", makeEvent(projectName: " invalid-project")),
+            ("valid-key", makeEvent(projectName: tooLong))
+        ]
+
+        for (key, event) in cases {
+            let fixture = try makeRecorderFixture()
+            await assertValidationFailure(fixture.recorder, event: event, idempotencyKey: key)
+            let records = try await fixture.recorder.records()
+            XCTAssertEqual(records, [])
+        }
+
+        for key in ["", " key", "key\ninvalid", tooLong] {
+            let fixture = try makeRecorderFixture()
+            await assertValidationFailure(fixture.recorder, event: makeEvent(), idempotencyKey: key)
+            let records = try await fixture.recorder.records()
+            XCTAssertEqual(records, [])
+        }
+    }
+
+    func testUsageRecorderRejectsOutOfRangeAndNonFiniteTimestamps() async throws {
+        let current = Date(timeIntervalSince1970: 1_800_000_000)
+        let invalidDates = [
+            BurnBarUsageRecorder.earliestRecordedAt.addingTimeInterval(-1),
+            current.addingTimeInterval(BurnBarUsageRecorder.maximumFutureSkew + 1),
+            Date(timeIntervalSince1970: .infinity)
+        ]
+
+        for (index, date) in invalidDates.enumerated() {
+            let fixture = try makeRecorderFixture(now: current)
+            await assertValidationFailure(
+                fixture.recorder,
+                event: makeEvent(recordedAt: date),
+                idempotencyKey: "invalid-date-\(index)"
+            )
+            XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.ledgerURL.path))
+        }
+    }
+
+    func testUsageRecorderAcceptsInclusiveTimestampBoundsAndRejectsTokenOverflow() async throws {
+        let current = Date(timeIntervalSince1970: 1_800_000_000)
+        let fixture = try makeRecorderFixture(now: current)
+        _ = try await fixture.recorder.record(
+            makeEvent(recordedAt: BurnBarUsageRecorder.earliestRecordedAt),
+            idempotencyKey: "earliest"
+        )
+        _ = try await fixture.recorder.record(
+            makeEvent(recordedAt: current.addingTimeInterval(BurnBarUsageRecorder.maximumFutureSkew)),
+            idempotencyKey: "latest"
+        )
+        _ = try await fixture.recorder.record(
+            makeEvent(inputTokens: .max, recordedAt: current),
+            idempotencyKey: String(repeating: "k", count: BurnBarUsageRecorder.maximumIdentifierBytes)
+        )
+        let recordsBeforeOverflow = try await fixture.recorder.records()
+        XCTAssertEqual(recordsBeforeOverflow.count, 3)
+
+        await assertValidationFailure(
+            fixture.recorder,
+            event: makeEvent(inputTokens: .max, outputTokens: 1),
+            idempotencyKey: "overflow"
+        )
+        let recordsAfterOverflow = try await fixture.recorder.records()
+        XCTAssertEqual(recordsAfterOverflow.count, 3)
+    }
+
+    func testRejectedInputDoesNotConsumeItsIdempotencyKey() async throws {
+        let fixture = try makeRecorderFixture()
+        await assertValidationFailure(
+            fixture.recorder,
+            event: makeEvent(inputTokens: -1),
+            idempotencyKey: "reusable-key"
+        )
+
+        let validResult = try await fixture.recorder.record(
+            makeEvent(inputTokens: 1),
+            idempotencyKey: "reusable-key"
+        )
+        let records = try await fixture.recorder.records()
+
+        XCTAssertTrue(validResult.inserted)
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records.first?.event.inputTokens, 1)
+    }
+
+    func testDuplicateKeyRejectsConflictingEventWithoutMutatingLedger() async throws {
+        let fixture = try makeRecorderFixture()
+        let original = makeEvent(modelID: "canonical-model", inputTokens: 10)
+        let conflictingRetry = makeEvent(modelID: "different-model", inputTokens: 999)
+
+        _ = try await fixture.recorder.record(original, idempotencyKey: "same-key")
+        do {
+            _ = try await fixture.recorder.record(conflictingRetry, idempotencyKey: "same-key")
+            XCTFail("Expected conflicting in-memory idempotency key to fail closed")
+        } catch let error as BurnBarUsageLedgerError {
+            XCTAssertEqual(error, .conflictingIdempotencyKey("same-key"))
+        }
+
+        let records = try await fixture.recorder.records()
+        XCTAssertEqual(records.map(\.event), [original])
+    }
+
+    func testProjectionRecountsExactUTCDayProviderAndModelBuckets() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let fixture = try makeRecorderFixture(now: now)
+        let first = makeEvent(
+            providerID: "codex",
+            modelID: "gpt-5",
+            inputTokens: 10,
+            outputTokens: 2,
+            cacheCreationTokens: 3,
+            cacheReadTokens: 4,
+            reasoningTokens: 5,
+            cost: 0.25,
+            recordedAt: Date(timeIntervalSince1970: 1_753_055_940),
+            confidence: .exact
+        )
+        let second = makeEvent(
+            providerID: "codex",
+            modelID: "gpt-5",
+            inputTokens: 7,
+            outputTokens: 1,
+            cost: 0.10,
+            recordedAt: Date(timeIntervalSince1970: 1_753_056_060),
+            confidence: .highConfidenceEstimate
+        )
+        let third = makeEvent(
+            providerID: "claude_code",
+            modelID: "claude-sonnet-4",
+            inputTokens: 8,
+            outputTokens: 6,
+            cost: 0.50,
+            recordedAt: Date(timeIntervalSince1970: 1_753_056_120),
+            confidence: .unknown
+        )
+
+        _ = try await fixture.recorder.record(first, idempotencyKey: "first")
+        _ = try await fixture.recorder.record(second, idempotencyKey: "second")
+        _ = try await fixture.recorder.record(third, idempotencyKey: "third")
+        let projection = try await fixture.recorder.projection()
+
+        XCTAssertEqual(projection.schemaVersion, 1)
+        XCTAssertEqual(projection.generation, 1)
+        XCTAssertEqual(projection.ledgerSHA256.count, 64)
+        XCTAssertEqual(projection.totals.eventCount, 3)
+        XCTAssertEqual(projection.totals.inputTokens, 25)
+        XCTAssertEqual(projection.totals.outputTokens, 9)
+        XCTAssertEqual(projection.totals.cacheCreationTokens, 3)
+        XCTAssertEqual(projection.totals.cacheReadTokens, 4)
+        XCTAssertEqual(projection.totals.reasoningTokens, 5)
+        XCTAssertEqual(projection.totals.totalTokens, 46)
+        XCTAssertEqual(projection.totals.cost, 0.85, accuracy: 0.000_001)
+        XCTAssertEqual(
+            projection.buckets.map { "\($0.dayUTC)|\($0.providerID)|\($0.modelID)" },
+            [
+                "2025-07-20|codex|gpt-5",
+                "2025-07-21|claude_code|claude-sonnet-4",
+                "2025-07-21|codex|gpt-5"
+            ]
+        )
+        XCTAssertEqual(projection.buckets[0].exactEventCount, 1)
+        XCTAssertEqual(projection.buckets[1].unknownEventCount, 1)
+        XCTAssertEqual(projection.buckets[2].estimatedEventCount, 1)
+    }
+
+    func testProjectionSurvivesRestartAndRecountRepairsTampering() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-usage-projection-restart-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: rootURL) }
+        let ledgerURL = rootURL.appendingPathComponent("usage-events.jsonl")
+        let projectionURL = rootURL.appendingPathComponent("usage-projection.json")
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let firstRecorder = BurnBarUsageRecorder(
+            fileURL: ledgerURL,
+            projectionFileURL: projectionURL,
+            logger: BurnBarDaemonLogger(category: "usage-projection-tests"),
+            now: { now }
+        )
+        _ = try await firstRecorder.record(
+            makeEvent(inputTokens: 4, recordedAt: Date(timeIntervalSince1970: 1_750_000_000)),
+            idempotencyKey: "one"
+        )
+        let beforeRestart = try await firstRecorder.projection()
+        XCTAssertEqual(beforeRestart.generation, 1)
+
+        let secondRecorder = BurnBarUsageRecorder(
+            fileURL: ledgerURL,
+            projectionFileURL: projectionURL,
+            logger: BurnBarDaemonLogger(category: "usage-projection-tests"),
+            now: { now }
+        )
+        let afterRestart = try await secondRecorder.projection()
+        XCTAssertEqual(afterRestart, beforeRestart)
+
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: projectionURL)) as? [String: Any]
+        )
+        var totals = try XCTUnwrap(object["totals"] as? [String: Any])
+        totals["inputTokens"] = 123_456
+        object["totals"] = totals
+        try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+            .write(to: projectionURL, options: .atomic)
+
+        let thirdRecorder = BurnBarUsageRecorder(
+            fileURL: ledgerURL,
+            projectionFileURL: projectionURL,
+            logger: BurnBarDaemonLogger(category: "usage-projection-tests"),
+            now: { now }
+        )
+        let repaired = try await thirdRecorder.projection()
+        XCTAssertEqual(repaired.generation, 2)
+        XCTAssertEqual(repaired.totals.inputTokens, 4)
+        XCTAssertEqual(repaired.ledgerSHA256, beforeRestart.ledgerSHA256)
+
+        let recounted = try await thirdRecorder.recountProjection()
+        XCTAssertEqual(recounted.generation, 3)
+        XCTAssertEqual(recounted.totals, repaired.totals)
+        XCTAssertEqual(
+            try FileManager.default.attributesOfItem(atPath: projectionURL.path)[.posixPermissions] as? Int,
+            0o600
+        )
+    }
+
+    func testLedgerDeduplicatesIdenticalRowsAndRejectsConflictingRows() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let fixture = try makeRecorderFixture(now: now)
+        let original = BurnBarUsageRecord(
+            idempotencyKey: "duplicate",
+            event: makeEvent(inputTokens: 3, recordedAt: Date(timeIntervalSince1970: 1_750_000_000))
+        )
+        let encoder = JSONEncoder()
+        let line = try encoder.encode(original) + Data([0x0A])
+        try (line + line).write(to: fixture.ledgerURL)
+        let duplicateRecords = try await fixture.recorder.records()
+        XCTAssertEqual(duplicateRecords, [original])
+
+        let conflictingFixture = try makeRecorderFixture(now: now)
+        let conflict = BurnBarUsageRecord(
+            idempotencyKey: "duplicate",
+            event: makeEvent(inputTokens: 4, recordedAt: Date(timeIntervalSince1970: 1_750_000_000))
+        )
+        try (line + encoder.encode(conflict) + Data([0x0A])).write(to: conflictingFixture.ledgerURL)
+        do {
+            _ = try await conflictingFixture.recorder.projection()
+            XCTFail("Expected conflicting idempotency rows to fail closed")
+        } catch let error as BurnBarUsageLedgerError {
+            XCTAssertEqual(error, .conflictingIdempotencyKey("duplicate"))
+        }
+    }
+
+    func testProjectionFailsClosedOnAggregateIntegerOverflow() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let fixture = try makeRecorderFixture(now: now)
+        let recordedAt = Date(timeIntervalSince1970: 1_750_000_000)
+        _ = try await fixture.recorder.record(
+            makeEvent(inputTokens: .max, recordedAt: recordedAt),
+            idempotencyKey: "max"
+        )
+        _ = try await fixture.recorder.record(
+            makeEvent(inputTokens: 1, recordedAt: recordedAt),
+            idempotencyKey: "overflow"
+        )
+        do {
+            _ = try await fixture.recorder.projection()
+            XCTFail("Expected aggregate overflow to fail closed")
+        } catch let error as BurnBarUsageLedgerError {
+            XCTAssertEqual(error, .aggregateOverflow("inputTokens"))
+        }
+    }
+
+    private func makeRecorderFixture(
+        now: Date = Date()
+    ) throws -> (recorder: BurnBarUsageRecorder, ledgerURL: URL) {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-usage-validation-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: rootURL)
+        }
+        let ledgerURL = rootURL.appendingPathComponent("usage-events.jsonl")
+        return (
+            BurnBarUsageRecorder(
+                fileURL: ledgerURL,
+                logger: BurnBarDaemonLogger(category: "usage-validation-tests"),
+                now: { now }
+            ),
+            ledgerURL
+        )
+    }
+
+    private func makeEvent(
+        runID: BurnBarRunID? = nil,
+        providerID: String = "hermes",
+        modelID: String = "minimax-m2.7-highspeed",
+        inputTokens: Int = 0,
+        outputTokens: Int = 0,
+        cacheCreationTokens: Int = 0,
+        cacheReadTokens: Int = 0,
+        reasoningTokens: Int = 0,
+        cost: Double = 0,
+        recordedAt: Date = Date(),
+        sessionID: String? = nil,
+        projectName: String? = nil,
+        parentRequestID: String? = nil,
+        confidence: BurnBarUsageConfidence = .exact
+    ) -> BurnBarUsageEvent {
+        BurnBarUsageEvent(
+            runID: runID,
+            providerID: providerID,
+            modelID: modelID,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens,
+            reasoningTokens: reasoningTokens,
+            cost: cost,
+            recordedAt: recordedAt,
+            sessionID: sessionID,
+            projectName: projectName,
+            confidence: confidence,
+            parentRequestID: parentRequestID
+        )
+    }
+
+    private func assertValidationFailure(
+        _ recorder: BurnBarUsageRecorder,
+        event: BurnBarUsageEvent,
+        idempotencyKey: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        do {
+            _ = try await recorder.record(event, idempotencyKey: idempotencyKey)
+            XCTFail("Expected usage validation to fail", file: file, line: line)
+        } catch is BurnBarUsageValidationError {
+            // Expected.
+        } catch {
+            XCTFail("Unexpected error: \(error)", file: file, line: line)
+        }
+    }
 }

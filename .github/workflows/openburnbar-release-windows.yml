@@ -67,7 +67,7 @@ jobs:
   resolve-release:
     name: Resolve release version
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag_ref: ${{ steps.version.outputs.tag_ref }}

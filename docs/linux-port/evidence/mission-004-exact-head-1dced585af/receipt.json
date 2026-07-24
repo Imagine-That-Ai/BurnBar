@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "workflow": "Linux Nightly Matrix",
+  "runId": 29660228199,
+  "runUrl": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29660228199",
+  "targetHead": "1dced585af2441ac8ac1d4fdcb2e4666177f0474",
+  "status": "success",
+  "jobs": {
+    "macosMatched": { "id": 88121518808, "status": "success" },
+    "linuxMatched": { "id": 88124270582, "status": "success" },
+    "ubuntuGnomeWaylandPortal": { "id": 88127262305, "status": "blocked-row-success" },
+    "archWlroots": { "id": 88127262310, "status": "blocked-row-success" },
+    "fedoraKdeWayland": { "id": 88127262315, "status": "blocked-row-success" },
+    "ubuntuGnomeX11": { "id": 88127262321, "status": "success" }
+  },
+  "artifacts": {
+    "x11": {
+      "id": 8435091387,
+      "name": "linux-nightly-ubuntu-gnome-x11-xvfb",
+      "sizeBytes": 155429322,
+      "digest": "sha256:ff8f26850a7bf771e57da5f9d6c770d186d19dac123e4a85a590407be4879d69"
+    },
+    "matchedLinux": {
+      "id": 8434727108,
+      "name": "linux-parity-matched-performance-nightly",
+      "sizeBytes": 58729,
+      "digest": "sha256:4a6b1f2be776b3b16294014804c27483a41a58a1bbbe24fafcf45cec3c77479e"
+    },
+    "matchedMacOS": {
+      "id": 8434388583,
+      "name": "linux-parity-macos-performance-nightly",
+      "sizeBytes": 24029,
+      "digest": "sha256:7489f7511bddfc51112360ebae2beabced13d48d69a31a0a79ccc190f7101677"
+    }
+  },
+  "proof": {
+    "shellValidators": [
+      "VAL-A11Y-001",
+      "VAL-SHELL-005",
+      "VAL-ONBOARDING-001",
+      "VAL-PET-001",
+      "VAL-TEXTEXP-001",
+      "VAL-PERF-001"
+    ],
+    "routeCount": 19,
+    "nativeP95Ms": {
+      "app.start": 315.55,
+      "route.navigation": 99,
+      "ipc.health.roundtrip": 112.55,
+      "tray.click.open": 72.45
+    },
+    "matchedWorkload": {
+      "profile": "nightly",
+      "soakSeconds": 1800,
+      "workloadCount": 4,
+      "pass": true
+    }
+  },
+  "note": "This is current-head shell/performance evidence. It does not promote the 40 product rows or the seven-environment parity claim; the ledger remains fail-closed until registered product and live integration evidence exists."
+}

@@ -1,5 +1,6 @@
-import type { ProviderCatalog, ProviderCatalogEntry, QuotaBucket } from '../../tauriBridge.js';
+import type { ProviderCatalog, ProviderCatalogEntry, ProviderCredentialSlot, QuotaBucket } from '../../tauriBridge.js';
 import { PROVIDER_GLYPHS } from '../../providerGlyphs.js';
+import { providerPathById } from '../../providerPathRegistry.js';
 import { remainingPct } from '../providers/providerQuotaMetrics.js';
 import { computeIdealPace, type IdealPace } from './quotaPace.js';
 
@@ -48,6 +49,18 @@ export type SubscriptionEntry = {
   nextResetDate: string | null;
   isInactive: boolean;
   isRefreshing: boolean;
+  credentialSlots: ProviderCredentialSlot[];
+  preferredCredentialSlotID?: string;
+  routing: AccountRoutingSummary;
+};
+
+export type AccountRoutingSummary = {
+  mode: 'preferred' | 'automatic' | 'unavailable';
+  preferredSlotLabel?: string;
+  activeSlotLabel?: string;
+  eligibleSlotCount: number;
+  slotCount: number;
+  detail: string;
 };
 
 export type SubscriptionSetupSlot = {
@@ -100,6 +113,54 @@ type CatalogExt = ProviderCatalogEntry & {
   isRefreshing?: boolean;
 };
 
+function slotCanRoute(slot: ProviderCredentialSlot): boolean {
+  if (!slot.isEnabled) return false;
+  const status = slot.status.trim().toLowerCase();
+  if (/(disabled|missing|credential|unauth|expired|invalid|error|failed|exhaust|cool)/.test(status)) return false;
+  return slot.lastQuotaRemainingPercent == null || slot.lastQuotaRemainingPercent > 0;
+}
+
+function accountRouting(entry: CatalogExt): AccountRoutingSummary {
+  const slots = entry.credentialSlots ?? [];
+  const preferredSlot = entry.preferredCredentialSlotID
+    ? slots.find((slot) => slot.slotID === entry.preferredCredentialSlotID)
+    : undefined;
+  const eligibleSlotCount = slots.filter(slotCanRoute).length;
+  const activePreferred = preferredSlot && slotCanRoute(preferredSlot) ? preferredSlot : undefined;
+
+  if (activePreferred) {
+    return {
+      mode: 'preferred',
+      preferredSlotLabel: activePreferred.label,
+      activeSlotLabel: activePreferred.label,
+      eligibleSlotCount,
+      slotCount: slots.length,
+      detail: `Preferred account ${activePreferred.label}; quota pressure may drain to another eligible account.`
+    };
+  }
+  if (slots.length > 0 && eligibleSlotCount > 0) {
+    const detail = preferredSlot
+      ? `Preferred account ${preferredSlot.label} is unavailable; daemon auto-routing has ${eligibleSlotCount} eligible account${eligibleSlotCount === 1 ? '' : 's'}.`
+      : `Daemon auto-routing has ${eligibleSlotCount} eligible account${eligibleSlotCount === 1 ? '' : 's'}.`;
+    return {
+      mode: 'automatic',
+      preferredSlotLabel: preferredSlot?.label,
+      eligibleSlotCount,
+      slotCount: slots.length,
+      detail
+    };
+  }
+  return {
+    mode: 'unavailable',
+    preferredSlotLabel: preferredSlot?.label,
+    eligibleSlotCount,
+    slotCount: slots.length,
+    detail: slots.length > 0
+      ? 'No credential account is currently eligible for routing.'
+      : 'No credential accounts are configured for this provider.'
+  };
+}
+
 function classifyWindow(label: string): SubscriptionBucketView['windowKind'] {
   const lower = label.toLowerCase();
   if (/\d+\s*h|hour|5h|24h/.test(lower)) return 'short';
@@ -146,7 +207,26 @@ function resolveSource(entry: CatalogExt): { kind: QuotaSourceKind; label: strin
   if (entry.quotaBuckets.length === 0) {
     return { kind: 'unavailable', label: 'Unavailable', confidence: 'low' };
   }
-  return { kind: 'officialAPI', label: 'Official API', confidence: entry.quotaConfidence ?? 'high' };
+
+  // The macOS oracle treats provider/path coverage as a source contract. Do
+  // not infer "Official API" merely because a daemon row contains buckets:
+  // local parsers can expose quota-shaped buckets too, and an untyped API
+  // claim would make Linux look healthier than its evidence warrants.
+  const registryRow = providerPathById(entry.id);
+  if (registryRow?.coverage === 'local-parser') {
+    const kind: QuotaSourceKind = registryRow.providerId === 'codex' ? 'localCLI' : 'localSession';
+    return { kind, label: sourceLabelForKind(kind), confidence: entry.quotaConfidence ?? 'medium' };
+  }
+  if (registryRow?.coverage === 'api-backed') {
+    return { kind: 'officialAPI', label: 'Official API', confidence: entry.quotaConfidence ?? 'high' };
+  }
+  if (registryRow?.coverage === 'unavailable') {
+    return { kind: 'provider', label: 'Provider', confidence: entry.quotaConfidence ?? 'low' };
+  }
+
+  // Unknown catalog IDs remain visible, but their source is explicitly
+  // unverified until the daemon supplies source metadata.
+  return { kind: 'provider', label: 'Provider', confidence: entry.quotaConfidence ?? 'low' };
 }
 export function sourceLabelForKind(kind: QuotaSourceKind): string {
   switch (kind) {
@@ -237,7 +317,10 @@ export function buildSubscriptionEntries(catalog: ProviderCatalog, now = Date.no
       remainingPercentRounded: Math.round(remaining),
       nextResetDate: resets ?? null,
       isInactive: buckets.length === 0 || buckets.every((b) => b.state === 'missing_credential'),
-      isRefreshing: Boolean(entry.isRefreshing)
+      isRefreshing: Boolean(entry.isRefreshing),
+      credentialSlots: entry.credentialSlots ?? [],
+      preferredCredentialSlotID: entry.preferredCredentialSlotID,
+      routing: accountRouting(entry)
     };
   });
 }
