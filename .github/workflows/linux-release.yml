@@ -189,11 +189,6 @@ jobs:
           cache: npm
           cache-dependency-path: apps/linux-desktop/package-lock.json
 
-      - uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v5.0.0
-        with:
-          name: linux-text-expansion-trust
-          path: .linux-trust
-
       - name: Assert native runner architecture
         env:
           EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
@@ -208,6 +203,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_COMMIT: ${{ github.sha }}
         run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$CANDIDATE_COMMIT" --expected-release-commit "$RELEASE_COMMIT" --format github-env >> "$GITHUB_ENV"
+
+      - name: Download signed text-expansion trust
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v5.0.0
+        with:
+          name: linux-text-expansion-trust
+          path: .linux-trust
 
       - name: Build mission Linux toolchain image
         run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain

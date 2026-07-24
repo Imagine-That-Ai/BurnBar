@@ -1604,6 +1604,8 @@ export function verifyLinuxWorkflowWiring(input) {
     'Resolve and validate Linux release version',
     'Validate public Linux release configuration',
     'Assert native runner architecture',
+    'Resolve signed Domain Core profile for Linux artifact',
+    'Download signed text-expansion trust',
     'Prepare unsigned native architecture artifacts',
     'Prepare unsigned Arch installed-manifest request',
     'Materialize exact-commit isolated signer',
