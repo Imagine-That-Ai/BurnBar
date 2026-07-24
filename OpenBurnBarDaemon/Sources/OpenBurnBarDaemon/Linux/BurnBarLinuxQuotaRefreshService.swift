@@ -6,6 +6,28 @@ import OpenBurnBarEngine
 import FoundationNetworking
 #endif
 
+private final class BurnBarLinuxQuotaOutputBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+    private var didExceedLimit = false
+
+    func append(_ chunk: Data, limit: Int) -> Bool {
+        lock.withLock {
+            guard !didExceedLimit else { return false }
+            guard data.count + chunk.count <= limit else {
+                didExceedLimit = true
+                return false
+            }
+            data.append(chunk)
+            return true
+        }
+    }
+
+    func snapshot() -> (data: Data, didExceedLimit: Bool) {
+        lock.withLock { (data, didExceedLimit) }
+    }
+}
+
 /// Synchronous adapter-backed secret lookup used only while constructing a
 /// daemon-owned quota refresh context. Values are copied from the resolved
 /// credential slots and never cross the daemon RPC boundary.
@@ -38,11 +60,17 @@ private struct BurnBarLinuxQuotaBridgeManager: ClaudeQuotaBridgeManaging {
 
 /// Runs only the fixed, first-party provider CLI names used by quota adapters.
 /// The adapter contract does not accept arbitrary renderer-provided commands.
-private struct BurnBarLinuxQuotaCLIExecutor: CLIExecutor {
+struct BurnBarLinuxQuotaCLIExecutor: CLIExecutor {
+    private static let maxOutputBytes = 1_048_576
+    private let timeout: TimeInterval
     private static let allowedNames: Set<String> = [
         "aider", "claude", "codex", "cursor", "factory", "goose", "junie",
         "kimi", "ollama", "opencode", "omp", "pi", "warp", "zai"
     ]
+
+    init(timeout: TimeInterval = 8) {
+        self.timeout = timeout
+    }
 
     func run(executable: String, arguments: [String], environment: [String: String]) throws -> Data {
         let name = URL(fileURLWithPath: executable).lastPathComponent
@@ -66,19 +94,62 @@ private struct BurnBarLinuxQuotaCLIExecutor: CLIExecutor {
         process.arguments = arguments
         process.environment = environment
         process.standardInput = FileHandle.nullDevice
-        let output = Pipe()
-        let error = Pipe()
-        process.standardOutput = output
-        process.standardError = error
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
         try process.run()
+
+        let outputBuffer = BurnBarLinuxQuotaOutputBuffer()
+        let errorBuffer = BurnBarLinuxQuotaOutputBuffer()
+        let outputDrain = DispatchWorkItem {
+            Self.drain(outputPipe.fileHandleForReading, into: outputBuffer)
+        }
+        let errorDrain = DispatchWorkItem {
+            Self.drain(errorPipe.fileHandleForReading, into: errorBuffer)
+        }
+        DispatchQueue.global(qos: .utility).async(execute: outputDrain)
+        DispatchQueue.global(qos: .utility).async(execute: errorDrain)
+
+        let deadline = Date().addingTimeInterval(Self.timeout)
+        while process.isRunning, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        let timedOut = process.isRunning
+        if timedOut {
+            process.terminate()
+        }
         process.waitUntilExit()
-        let stdout = output.fileHandleForReading.readDataToEndOfFile()
+        outputDrain.wait()
+        errorDrain.wait()
+
+        if timedOut {
+            throw QuotaServiceError.invalidResponse("Linux quota CLI timed out.")
+        }
+        let stdout = outputBuffer.snapshot()
+        let stderr = errorBuffer.snapshot()
+        guard !stdout.didExceedLimit, !stderr.didExceedLimit else {
+            throw QuotaServiceError.invalidResponse("Linux quota CLI output exceeded the safety bound.")
+        }
         guard process.terminationStatus == 0 else {
             throw QuotaServiceError.invalidResponse(
                 "Linux quota CLI exited with status \(process.terminationStatus)."
             )
         }
-        return stdout
+        return stdout.data
+    }
+
+    private static func drain(_ handle: FileHandle, into buffer: BurnBarLinuxQuotaOutputBuffer) {
+        while true {
+            do {
+                guard let chunk = try handle.read(upToCount: 64 * 1024), !chunk.isEmpty else {
+                    return
+                }
+                guard buffer.append(chunk, limit: maxOutputBytes) else { return }
+            } catch {
+                return
+            }
+        }
     }
 }
 

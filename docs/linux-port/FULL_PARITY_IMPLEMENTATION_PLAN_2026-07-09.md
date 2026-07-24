@@ -291,6 +291,20 @@ known platform divergences.
 > Typed takeover/recovery orchestration, signed installed proof, and the
 > cross-device trust cycle remain open for strict certification.
 
+> **Continuation update (2026-07-24, Linux quota transport):** `feb81153cd`
+> moves Linux provider-quota refresh into the daemon-owned path. The daemon
+> resolves the selected credential slot, constructs the shared 19-provider
+> adapter context without exposing secrets to the renderer, refreshes with
+> bounded concurrency and per-provider timeouts, validates snapshots, and
+> persists only owner-readable quota data atomically. The quota RPC overlays
+> fresh adapter buckets while preserving known-good traffic-header signals on
+> adapter failure or empty results. `dc477a4d82` binds the focused source
+> receipt to the quota-transport head; the six-file Node evidence suite passes
+> **87/87**, and the daemon package build plus Swift parsing pass. This closes
+> the Linux source-level quota-refresh gap; signed packaging, production
+> credentials, live keyring/desktop integrations, and the seven-environment
+> certification matrix remain release dependencies.
+
 ## Executive Verdict
 
 Linux is not at full macOS parity.

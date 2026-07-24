@@ -65,6 +65,59 @@ final class BurnBarLinuxQuotaRefreshServiceTests: XCTestCase {
         let reloaded = BurnBarLinuxQuotaSnapshotCache(fileURL: cacheURL)
         XCTAssertEqual(reloaded.snapshots(), [snapshot])
     }
+
+    func testCLIExecutorDrainsBothStreamsAndRejectsOversizedOutput() throws {
+        let root = try makeExecutableDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("codex")
+        try "#!/bin/sh\ni=0\nwhile [ $i -lt 20 ]; do printf '%65536s' '' >&2; i=$((i + 1)); done\n"
+            .write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+
+        XCTAssertThrowsError(
+            try BurnBarLinuxQuotaCLIExecutor(timeout: 1).run(
+                executable: executable.path,
+                arguments: [],
+                environment: ["PATH": root.path]
+            )
+        ) { error in
+            XCTAssertEqual(
+                (error as? QuotaServiceError)?.errorDescription,
+                "Linux quota CLI output exceeded the safety bound."
+            )
+        }
+    }
+
+    func testCLIExecutorTerminatesAWedgedProviderProcess() throws {
+        let root = try makeExecutableDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("codex")
+        try "#!/bin/sh\nwhile :; do :; done\n"
+            .write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+
+        let started = Date()
+        XCTAssertThrowsError(
+            try BurnBarLinuxQuotaCLIExecutor(timeout: 0.1).run(
+                executable: executable.path,
+                arguments: [],
+                environment: ["PATH": root.path]
+            )
+        ) { error in
+            XCTAssertEqual(
+                (error as? QuotaServiceError)?.errorDescription,
+                "Linux quota CLI timed out."
+            )
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+    }
+
+    private func makeExecutableDirectory() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-linux-quota-cli-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
 }
 
 #endif
