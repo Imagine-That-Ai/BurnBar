@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "capture": {
+    "mode": "installed-shell-atspi",
+    "capturedAt": "2026-07-20T04:16:03Z",
+    "environment": "ubuntu-24.04-gnome-x11-aarch64",
+    "vmAddress": "192.168.64.5",
+    "window": {
+      "name": "OpenBurnBar",
+      "geometry": "1280x782",
+      "present": true
+    },
+    "atspi": {
+      "nodeCount": 44,
+      "namedNodeCount": 27,
+      "actionableNodeCount": 18,
+      "focusableNodeCount": 21,
+      "pass": true,
+      "sha256": "d811ccbced1ed685eb57930bcdf8b4eceb54fec7da6658659136de0a2341e706"
+    }
+  },
+  "routeProof": {
+    "account": {
+      "activation": "Account header action press returned true",
+      "atspi": {
+        "nodeCount": 84,
+        "namedNodeCount": 46,
+        "actionableNodeCount": 26,
+        "focusableNodeCount": 25,
+        "pass": true,
+        "sha256": "f816f53acfac60735c577854c68b3d93bd03fb11067b6d42956c9ba04499409b"
+      },
+      "trustedDevicePostureNamePresent": true
+    }
+  },
+  "source": {
+    "shellHead": "fc0af729e1",
+    "syncedSourceFilesMatch": true,
+    "files": {
+      "apps/linux-desktop/src/state/chatStore.ts": "982345d635b2b73141af0feb8ef7780e78b3a8dfb27130a22405cec18689d2f1",
+      "apps/linux-desktop/src/surfaces/memory/MemorySurface.tsx": "1aae6e30ef24663cbc0ff13414c886a4af6743c60775af181003983f0bfa335f",
+      "apps/linux-desktop/src/surfaces/account/AccountSurface.tsx": "c32c2de550d6897a08400f72fb5639dacce47890212f63a53ee0e21cb818c2e1"
+    }
+  },
+  "package": {
+    "format": "deb",
+    "architecture": "arm64",
+    "version": "0.1.1",
+    "sha256": "3bcacc61322c0bf2c9dc9aa116e7a6e74d33bcf5d23e221c1003d88521df4f50",
+    "bytes": 184092502,
+    "buildCommand": "OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1 npm run tauri:build -- --bundles deb",
+    "mediaFeature": "media-gst"
+  },
+  "installed": {
+    "desktopSha256": "ca948cf4045d72a2335400cb70d1aeabe7c034c9e514dfad53f8166f8f791b38",
+    "daemonSha256": "17aa56ff0e5d4b618f260f83a2b383bad3be275fab697f39c2b3d37ca582e55d",
+    "cliSha256": "c12c5dd24904559c1b11b61a73957bbe9863c21af1a75eb6c42704538a70e739",
+    "daemonHealth": "ok=true",
+    "daemonService": "active",
+    "dependencies": [
+      "libsecret-tools",
+      "gstreamer1.0-plugins-base",
+      "gstreamer1.0-plugins-good",
+      "gstreamer1.0-pipewire",
+      "libayatana-appindicator3-1",
+      "libwebkit2gtk-4.1-0",
+      "libgtk-3-0"
+    ]
+  },
+  "verification": {
+    "frontendTests": "91 files / 877 passed",
+    "typescript": "passed",
+    "productionBundleVerifier": "passed",
+    "tauriRustHost": "129 passed",
+    "tauriRustUbuntuMediaGst": "130 passed",
+    "accessibility": "AT-SPI passed",
+    "webgl": "webgl2=false; webgl1=true; visible 2D fallback label",
+    "manifest": {
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "status": "staged payload manifest did not contain a source commit and is not certifying"
+    }
+  },
+  "limitations": [
+    "The daemon and CLI were reused from the previously staged ARM64 payload; this receipt certifies the current shell, not an exact current-head daemon payload.",
+    "The package and manifest are unsigned/non-certifying for release promotion.",
+    "The UTM guest reports WebGL2 unavailable and the compositor matrix is not closed; the explicit Canvas2D fallback is the accepted behavior for this run.",
+    "This does not close the seven-environment matrix, physical iPad execution, cross-device Mercury/Computer Use proof, production callables, or the 40-row strict ledger."
+  ],
+  "certifying": false
+}

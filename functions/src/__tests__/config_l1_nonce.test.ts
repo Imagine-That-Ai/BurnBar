@@ -16,7 +16,9 @@ const TOUCHED = [
   "FUNCTIONS_EMULATOR",
   "FIRESTORE_EMULATOR_HOST",
   "FIREBASE_CONFIG",
+  "LINUX_APP_CHECK_APP_ID",
 ] as const;
+const VALID_LINUX_APP_CHECK_APP_ID = "1:246956661961:web:ab19bc3a6f6d4580480118";
 
 describe("L1 high-risk nonce production fail-closed default", () => {
   const saved: Record<string, string | undefined> = {};
@@ -27,6 +29,7 @@ describe("L1 high-risk nonce production fail-closed default", () => {
       saved[k] = process.env[k];
       delete process.env[k];
     }
+    process.env.LINUX_APP_CHECK_APP_ID = VALID_LINUX_APP_CHECK_APP_ID;
   });
   afterEach(() => {
     for (const k of TOUCHED) {

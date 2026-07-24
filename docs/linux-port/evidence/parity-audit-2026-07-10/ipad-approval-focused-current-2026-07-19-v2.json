@@ -1,0 +1,71 @@
+{
+  "schema": "openburnbar.parity.mobile-focused-test-receipt.v1",
+  "capturedAt": "2026-07-19T20:14:04Z",
+  "certificationScope": "non-certifying focused physical-iPad test receipt",
+  "sourceCommit": "eace4cc2001319d9c9a6a1cd9a997d4f3c801c53",
+  "sourceCommitRole": "checkout HEAD at test-process start",
+  "sourceCheckoutAfterRun": "e6c32ec2b2f7cdf4684a38b89f681920ee1386be",
+  "sourceCheckoutAfterRunRole": "HEAD advanced during the run; this later provider-only commit was not part of the test-start source snapshot",
+  "sourceWorktree": "/private/tmp/burnbar-linux-parity-continuation",
+  "device": {
+    "name": "Alberto's iPad",
+    "xcodebuildIdentifier": "00008132-001158191E9A401C",
+    "coreDeviceIdentifier": "407C0B12-010B-5970-8E85-D0E43DA8F457",
+    "platform": "iPadOS",
+    "connection": "physical-paired USB"
+  },
+  "build": {
+    "xcode": "Xcode-27.0.0-Beta",
+    "configuration": "Debug",
+    "signalFfiTargets": ["aarch64-apple-ios"],
+    "signalFfiPreparation": "existing debug XCFramework artifacts reused",
+    "firestoreGraph": {
+      "grpc": "grpc-ios@1.69.0",
+      "boringssl": "BoringSSL-SwiftPM@0.32.1"
+    },
+    "automaticProvisioning": true,
+    "xcodebuildExitCode": 0,
+    "wrapperAttemptDurationSeconds": 424,
+    "xctestSessionDurationSeconds": 109.041
+  },
+  "focusedSuite": "OpenBurnBarMobileTests",
+  "result": {
+    "passed": 44,
+    "failed": 0,
+    "unexpectedFailures": 0,
+    "infrastructureCrashes": 0,
+    "total": 44
+  },
+  "selection": {
+    "AgentLiveStagePresenterTests": 22,
+    "AgentLiveStageWiringTests": 6,
+    "DevicesStoreTests": 13,
+    "HermesGatewayApprovalDetailIndexTests": 3,
+    "OpenBurnBarMobileTests": 3
+  },
+  "verifiedSelectors": [
+    "OpenBurnBarMobileTests/AgentLiveStagePresenterTests",
+    "OpenBurnBarMobileTests/AgentLiveStageWiringTests",
+    "OpenBurnBarMobileTests/DevicesStoreTests",
+    "OpenBurnBarMobileTests/HermesGatewayApprovalDetailIndexTests",
+    "OpenBurnBarMobileTests/testAgentWatchOverlayCoordinatorClassifiesApprovalStreamAndResponds",
+    "OpenBurnBarMobileTests/testGatewaySealedApprovalDetailDecodesActionIdAndKind",
+    "OpenBurnBarMobileTests/testSealedApprovalDecisionCarriesKindAndActionAtRootOfSealedPayload"
+  ],
+  "artifacts": {
+    "wrapperTelemetry": ".tmp/ipad-live-current-20260719/artifacts/test-openburnbar-mobile-attempts.jsonl",
+    "resultBundle": "cleaned by the wrapper after verification"
+  },
+  "diagnosticNotes": [
+    "The physical iPad readiness check passed before xcodebuild started.",
+    "One bounded attempt ran all seven requested selectors and reported TEST SUCCEEDED with 44 tests and 0 failures.",
+    "After the tests passed, Xcode's optional devicectl device-diagnostics collection requested macOS sudo and stopped waiting for credentials. The diagnostics child was terminated; the test process then finalized with xcodebuild exit code 0. This did not affect the XCTest result.",
+    "The checkout advanced from sourceCommit to sourceCheckoutAfterRun during the run; the sourceCommit field is the exact SHA observed at test-process start.",
+    "The receipt covers focused XCTest execution only; it is not a full mobile-suite, installed Linux, or cross-device approval certification."
+  ],
+  "limitations": [
+    "Trusted-device enrollment against an installed Linux candidate, fingerprint confirmation, approval/revoke, and sign-out remain unverified.",
+    "No Linux desktop runtime behavior or backend production deployment is exercised by this receipt.",
+    "This receipt does not promote any P-01 through P-40 product row or environment receipt."
+  ]
+}

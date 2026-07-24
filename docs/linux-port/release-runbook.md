@@ -11,6 +11,56 @@ seal, not current-head release closure. Release promotion still requires a
 rerun at the release head plus the package, update, signature/provenance,
 nightly, and clean-commit evidence below.
 
+Product parity receipts are not hand-authored test reports. For each `P-01`
+through `P-40` requirement, the registered dispatcher runs the deterministic
+`scripts/linux-port/product-validators/P-XX.mjs` implementation on every support
+environment, binds the installed release/package plus live runtime subjects, and emits the
+canonical schema-2 receipt. `.github/workflows/linux-product-parity.yml` signs
+the exact receipt with GitHub Artifact Attestations and preserves the adjacent
+`.sigstore.jsonl` bundle. `attest-product-requirement.mjs` independently verifies
+repository, signer workflow, source ref/commit, receipt digest, subject digests,
+and the complete environment matrix before a row can become ready. P-01, P-03,
+P-04, P-37, and P-38 are release-owned validators; P-02, P-31, P-34, and P-40
+use registered feature-proof validators. The other modules remain absent until
+their acceptance-specific evidence exists. The release workflow
+must not promote until the complete signed matrix is aggregated after
+exact-candidate assembly.
+
+The producer accepts only `candidate_run_id`. It resolves the fixed
+`linux-release-evidence` artifact from the canonical successful Linux Release
+Candidate workflow, verifies repository/workflow/run/head/attempt/artifact
+identity through GitHub's API, and downloads by immutable artifact ID. The dispatcher then
+requires the downloaded signed manifest bytes to equal the live root-owned
+manifest, verifies its Ed25519 signature and complete file inventory, compares
+the package manager's exact owned-path set, anchors the desktop through logind,
+and captures capability JSON directly from the installed desktop binary before
+and after requirement execution. It repeats installation/session checks before
+emitting a receipt; package identity must remain stable, while both valid runtime
+states are retained. After final release verification,
+`finalize-product-proof-closure.mjs` requires the six deb/rpm/Arch native
+architecture rows, exact signed installed manifests, package and feed signatures, Sigstore
+bundles, supply-chain sidecars, and lifecycle proof before it emits
+`product-proof-closure.json`; the isolated signer immediately emits the detached
+`product-proof-closure.json.ed25519.sig` sidecar. Native shards attach those signed records and the
+aggregate assembler validates confinement, exact bytes, package identity, and
+commit/version/architecture binding before preserving them.
+The product workflow materializes a requirement-owned closure from that
+aggregate before it invokes the registered validator.
+
+The Linux Release Candidate workflow produces the signed package graph and
+`product-proof-closure.json`, then uploads it as a successful immutable artifact;
+it neither reads parity receipts nor publishes. Linux Product Parity consumes
+that exact candidate and signs one live environment receipt. Linux Release
+Promotion resolves exactly 40 requirements by seven environments, downloads
+all 280 receipt artifacts by immutable ID, regenerates the 40 current-HEAD row
+attestations, and runs `validate-parity-ledger.mjs` in strict mode. It then
+hash-binds the candidate, strict ledger report, and all 40 seven-receipt rows in
+`promotion-closure.json`, stages a draft GitHub release, publishes and verifies
+the signed R2 feed, then makes the GitHub release public. Any missing, stale,
+wrong-candidate, wrong-producer, wrong-attempt, failed, empty, or cross-HEAD
+artifact aborts. A repeated successful certification for the same candidate is
+resolved deterministically to the newest immutable artifact ID and revalidated.
+
 ## Artifacts
 
 Required package artifacts:
@@ -18,9 +68,18 @@ Required package artifacts:
 - AppImage primary artifact.
 - Debian package.
 - RPM package.
-- AUR metadata in [`../../packaging/linux/aur/PKGBUILD`](../../packaging/linux/aur/PKGBUILD).
+- Arch packages for `x86_64` and `aarch64`, plus a checksum-complete `PKGBUILD`,
+  `arch-release-metadata.json`, and architecture-specific installed-manifest
+  sidecars rendered from
+  [`../../packaging/linux/aur/PKGBUILD.in`](../../packaging/linux/aur/PKGBUILD.in).
+  These assets are published with the `linux-vX.Y.Z` GitHub release. AUR
+  repository publication is a separate credentialed operator action and is
+  recorded as unpublished until that action occurs.
 - Flatpak tail metadata in
   [`../../packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml`](../../packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml).
+- The aggregate `product-proof-closure.json` and detached
+  `product-proof-closure.json.ed25519.sig`; Arch update/rollback evidence must
+  authenticate both before accepting a previous-release baseline.
 - Desktop entry, autostart entry, and systemd user service under
   [`../../packaging/linux/`](../../packaging/linux/).
 - Daemon launch script
@@ -32,20 +91,104 @@ Required package artifacts:
   `/usr/lib/openburnbar/swift`, and SQLCipher shared libraries under
   `/usr/lib/openburnbar/native`. `npm run tauri:build` stages and executes the
   daemon with those exact packaged libraries before Tauri bundles anything.
+- Every deb/rpm owns a root-installed Ed25519 trust set under
+  `/usr/share/openburnbar/attestation/`: the canonical installed-file manifest,
+  its raw 64-byte signature, and the pinned release public key. The signed
+  inventory covers every package-owned non-directory path except the manifest
+  and signature themselves, including the desktop and daemon executables. The
+  shard closure binds the exact manifest and signature bytes by path, SHA-256,
+  and size.
 - Custom XDG drop-in example:
   [`../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example`](../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example).
 
 Build locally:
 
 ```bash
-OPENBURNBAR_LINUX_RELEASE_OUT="$PWD/.linux-shard" \
+export OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID="...apps.googleusercontent.com"
+export OPENBURNBAR_FIREBASE_API_KEY="..."
+export OPENBURNBAR_LINUX_APP_CHECK_APP_ID="1:...:web:..."
+export VERSION="1.2.3"
+export COMMIT="$(git rev-parse HEAD)"
+export ARCH="$(node -p "process.arch === 'arm64' ? 'aarch64' : 'x86_64'")"
+export OUT="$PWD/.linux-shard"
+export TOOLCHAIN="openburnbar-linux-toolchain:mission-001"
+docker build -t "$TOOLCHAIN" tools/linux-toolchain
+docker run --rm \
+  -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+  -e OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID \
+  -e OPENBURNBAR_FIREBASE_API_KEY \
+  -e OPENBURNBAR_LINUX_APP_CHECK_APP_ID \
+  -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
   node scripts/linux-port/build-linux-release.mjs \
-  --architecture-shard --version 1.2.3
-OPENBURNBAR_LINUX_RELEASE_OUT="$PWD/.linux-shard" \
+    --architecture-shard --phase prepare --version "$VERSION"
+
+SIGNER_ROOT="$(mktemp -d)"
+git archive "$COMMIT" \
+  scripts/linux-port/sign-linux-release-requests.mjs \
+  scripts/linux-port/lib/linux-installed-manifest.mjs \
+  scripts/linux-port/lib/linux-appimage-peer-manifest.mjs \
+  packaging/linux/openburnbar-linux-ed25519.pub.pem \
+  | tar -x -C "$SIGNER_ROOT"
+export OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM="..."
+docker run --rm --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m \
+  -e OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM \
+  -v "$SIGNER_ROOT:/signer:ro" -v "$OUT/signing-state:/state:rw" \
+  -w /signer "$TOOLCHAIN" \
+  node scripts/linux-port/sign-linux-release-requests.mjs \
+    --state-dir /state --version "$VERSION" \
+    --git-commit "$COMMIT" --architecture "$ARCH"
+unset OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM
+
+docker run --rm \
+  -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+  -e OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID \
+  -e OPENBURNBAR_FIREBASE_API_KEY \
+  -e OPENBURNBAR_LINUX_APP_CHECK_APP_ID \
+  -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
+  node scripts/linux-port/build-linux-release.mjs \
+    --architecture-shard --phase finalize --version "$VERSION"
+docker run --rm -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+  -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
   node scripts/linux-port/smoke-linux-packages.mjs --architecture-shard
+
+# Arch package lifecycle (the isolated signer must run between these phases).
+docker run --rm -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+  -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
+  node scripts/linux-port/build-signed-arch-package.mjs \
+    --phase prepare --version "$VERSION" --git-commit "$COMMIT" \
+    --architecture "$ARCH" --state-dir /workspace/.linux-shard/signing-state
+# Run sign-linux-release-requests.mjs against signing-state, then:
+docker run --rm -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+  -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
+  node scripts/linux-port/build-signed-arch-package.mjs \
+    --phase finalize --version "$VERSION" --git-commit "$COMMIT" \
+    --architecture "$ARCH" --state-dir /workspace/.linux-shard/signing-state
+docker run --rm -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+  -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
+  node scripts/linux-port/smoke-arch-package.mjs
 ```
 
-Run that pair on native aarch64 and x86_64 hosts. CI uploads each hash-bound
+Run prepare and finalize in the pinned Linux toolchain container as root; native
+archive inventory intentionally rejects non-root extraction because it cannot
+prove the package's installed uid/gid contract. Release CI is the canonical
+invocation. It runs the prepare container without the private key, exits it,
+materializes the signer from the exact release commit, and gives a separate
+networkless, read-only, capability-free signer container only the four
+canonical request files. Final Tauri bundling and package verification then run
+without the key. The key never enters npm, Tauri, an archive extractor, or the
+mutable build container.
+
+The prepare phase compiles the Tauri executable and creates exact deb, rpm, Arch,
+and AppImage signing requests. The isolated signer binds explicit version, commit,
+and architecture inputs. Finalize rebuilds each native format with its detached
+attestation, preflights archive member paths, extracts with libarchive's secure
+path handling, and re-verifies exact bytes, Ed25519 signatures, authorized daemon
+identity, manager metadata, modes, and absence of extra files before recording
+the shard. Missing or mismatched inputs fail instead of emitting a candidate.
+
+Run those three phases on native aarch64 and x86_64 hosts. CI uploads each hash-bound
 `architecture-closure.json` and native smoke result, downloads both into
 `.linux-shards/`, then runs:
 
@@ -67,19 +210,42 @@ native smoke result.
 
 Architecture-shard smoke must inspect and install each native package, execute
 the package-owned daemon launcher against the embedded Swift/SQLCipher runtime,
-run the AppImage version path, and uninstall cleanly. Candidate certification
-must additionally prove the painted GUI, long-running daemon health, and
-update/rollback lifecycle.
+run the package-owned desktop path, and uninstall cleanly. The Arch package
+installs the extracted AppDir under `/usr/lib/openburnbar/appdir`, a fixed
+`/usr/bin/openburnbar-linux-desktop` launcher, and the canonical hicolor icon;
+it does not require FUSE or retain the AppImage as its installed executable.
+Candidate certification must additionally prove the painted GUI, long-running
+daemon health, and both deb and pacman update/rollback lifecycles.
 
 ```bash
 node scripts/linux-port/smoke-linux-packages.mjs
 ```
 
-The current first-release update path is blocked until a previous stable or
-prerelease Linux artifact exists. The smoke script records that blocker instead
-of inventing update success.
+The current first-release update path is blocked until previous same-architecture
+deb and Arch artifacts exist. When an Arch baseline is present, the pacman proof
+authenticates its detached package signature, signed installed manifest, and prior
+product-proof closure before installing the previous package; it then installs the previous package,
+updates to the exact candidate closure artifact, rolls back, restores the
+candidate, and verifies package-manager identity plus persisted-data hashes at
+every transition. Missing prior artifacts remain explicit blockers instead of
+inventing update success.
 
 ### In-app update availability
+
+Before changing the public Linux download metadata or marking a release
+available, run the public trust gate from a checkout with the website parser
+dependencies installed:
+
+```bash
+npm ci --prefix website --ignore-scripts
+bash scripts/ci/verify-public-linux-download-trust.sh
+```
+
+The gate downloads the configured AppImage, deb, rpm, and release public key,
+verifies each detached Ed25519 signature, then validates the signed update feed
+and its version against `website/src/data/site.ts`. A missing or stale branded
+feed is a hard failure; do not weaken the check or publish website metadata to
+make an unreleased artifact appear available.
 
 The packaged shell checks update availability through the native Tauri
 `update_status` command. The renderer does not fetch or authenticate release
@@ -104,6 +270,15 @@ open only an exact first-party BurnBar download path; it never self-mutates
 distro-owned files. Apt/dnf/AppImage upgrade, restart, and rollback instructions
 remain visible in the Updates and Support surfaces.
 
+The native status payload also carries a fixed package action plan. Debian
+surfaces `apt-get install --only-upgrade`, RPM surfaces `dnf upgrade`, and
+AppImage surfaces atomic replacement guidance. Rollback remains explicit and
+operator-confirmed (`PREVIOUS_VERSION` is a placeholder, not a value inferred
+from the feed); the shell never executes or silently substitutes it. Every
+action is rendered with a copyable command or a reasoned unavailable state, so
+feed outages still leave honest recovery guidance without inventing release
+metadata.
+
 The public endpoint currently does not satisfy this contract, so the installed
 application correctly reports **Update metadata rejected**. That is valid
 fail-closed client evidence, not release/update closure. Promotion still
@@ -112,11 +287,20 @@ evidence for every declared package channel.
 
 ## Signatures and provenance
 
-Local signing verifier support is implemented with Ed25519 detached signatures
-when `OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM` is present. GitHub release CI
-additionally produces and verifies keyless Sigstore/cosign bundles with
+Local signing verifier support uses the isolated
+`sign-linux-release-requests.mjs` process with Ed25519 detached signatures.
+Prepare and finalize reject `OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM` when it
+is present. GitHub release CI additionally produces and verifies keyless
+Sigstore/cosign bundles with
 `id-token: write`. The workflow runs only from a pre-existing
 `linux-v<version>` tag and uses this identity:
+
+The attestation input is the fail-closed set emitted by
+`scripts/linux-port/list-linux-release-attestation-subjects.mjs`, not a filename
+glob. It covers the exact ten-artifact matrix, all six native installed-manifest
+pairs, and the eight required release sidecars. Finalization requires a bundle
+for every subject and re-renders the Arch `PKGBUILD` from the canonical template
+to cross-check its source hashes, release metadata, tag, version, and commit.
 
 ```text
 https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/linux-v<version>
@@ -157,6 +341,8 @@ This must exit 0 before `website/public/downloads/latest-linux.json` or any
 public website/download metadata is added. The verifier checks:
 
 - required artifacts and package metadata exist;
+- each deb/rpm/Arch package embeds the same signed installed manifest recorded by its native
+  architecture shard;
 - checksums match artifact bytes;
 - SBOM, VEX, provenance predicate, and exact-commit source archive exist;
 - detached signatures are recorded;

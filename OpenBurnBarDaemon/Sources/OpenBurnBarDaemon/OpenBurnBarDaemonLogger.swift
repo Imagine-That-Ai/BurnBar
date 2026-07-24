@@ -121,9 +121,9 @@ public struct BurnBarDaemonLogger: Sendable {
 #endif
 
     private func format(event: String, metadata: [String: String]) -> String {
-        var merged = TraceContextBridge.currentContext().logFields()
+        var merged = TraceContextBridge.currentContext().logFields().mapValues(Self.redactedMetadataValue)
         for (key, value) in metadata {
-            merged[key] = sanitize(value)
+            merged[key] = Self.redactedMetadataValue(value)
         }
         guard !merged.isEmpty else {
             return "event=\(event)"
@@ -137,11 +137,27 @@ public struct BurnBarDaemonLogger: Sendable {
         return "event=\(event) \(fields)"
     }
 
-    private func sanitize(_ value: String) -> String {
-        if value.count > 120 {
-            return String(value.prefix(117)) + "..."
+    static func redactedMetadataValue(_ value: String) -> String {
+        var output = value
+        let patterns = [
+            #"(?i)\bBearer\s+[A-Za-z0-9._~+\-/=]+"#,
+            #"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"#,
+            #"(?i)\b(refresh[_-]?token|id[_-]?token|app[_-]?check[_-]?token|authorization|api[_-]?key|secret|private[_-]?key)\s*[:=]\s*[^\s,;]+"#,
+            #"\bAIza[0-9A-Za-z_-]{16,}\b"#
+        ]
+        for pattern in patterns {
+            output = output.replacingOccurrences(
+                of: pattern,
+                with: "[REDACTED]",
+                options: [.regularExpression, .caseInsensitive]
+            )
         }
-        return value
+        output = output.replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+        if output.count > 120 {
+            return String(output.prefix(117)) + "..."
+        }
+        return output
     }
 }
 

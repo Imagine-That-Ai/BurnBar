@@ -6,6 +6,7 @@ final class BurnBarRunStateMachineTests: XCTestCase {
         XCTAssertTrue(BurnBarRunStateMachine.canTransition(from: .idle, to: .planning))
         XCTAssertTrue(BurnBarRunStateMachine.canTransition(from: .planning, to: .awaitingApproval))
         XCTAssertTrue(BurnBarRunStateMachine.canTransition(from: .executingTool, to: .awaitingApproval))
+        XCTAssertTrue(BurnBarRunStateMachine.canTransition(from: .executingTool, to: .awaitingComputerUseSession))
         XCTAssertTrue(BurnBarRunStateMachine.canTransition(from: .waitingOnCompanion, to: .awaitingApproval))
         XCTAssertTrue(BurnBarRunStateMachine.canTransition(from: .failed, to: .planning))
     }

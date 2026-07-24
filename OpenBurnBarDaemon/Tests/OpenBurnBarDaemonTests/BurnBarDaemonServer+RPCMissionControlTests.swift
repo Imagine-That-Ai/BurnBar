@@ -41,6 +41,7 @@ final class BurnBarDaemonServerRPCMissionControlTests: XCTestCase {
         var questions: [BurnBarPendingQuestionSnapshot] = []
         var followups: [BurnBarFollowupSnapshot] = []
         var missions: [BurnBarMissionSnapshot] = []
+        var missionHealthResult: BurnBarMissionHealthResponse?
         var notificationHealthSnapshot: BurnBarNotificationHealthSnapshot
         var simulatorRuns: [BurnBarSimulatorRunSnapshot] = []
 
@@ -190,6 +191,15 @@ final class BurnBarDaemonServerRPCMissionControlTests: XCTestCase {
             throw StubError(label: "missionGet unexpected")
         }
 
+        func missionHealth(_ request: BurnBarMissionHealthRequest) async throws -> BurnBarMissionHealthResponse {
+            record("missionHealth")
+            guard let missionHealthResult else {
+                throw StubError(label: "missionHealth unexpected")
+            }
+            XCTAssertEqual(request.missionID, missionHealthResult.missionID)
+            return missionHealthResult
+        }
+
         func missionApprove(_ request: BurnBarMissionApproveRequest) async throws -> BurnBarMissionMutationResponse {
             record("missionApprove")
             if let missionApproveError {
@@ -304,6 +314,48 @@ final class BurnBarDaemonServerRPCMissionControlTests: XCTestCase {
     }
 
     // MARK: - Aggregated snapshot
+
+    func testMissionHealthRPC_returnsDaemonHealthAndHistory() async throws {
+        let now = Date(timeIntervalSince1970: 1_710_010_000)
+        let missionID = BurnBarMissionID(rawValue: "mission-health-1")
+        let service = StubMissionControlService(now: now)
+        service.missionHealthResult = BurnBarMissionHealthResponse(
+            missionID: missionID,
+            health: BurnBarMissionHealthSnapshot(
+                status: .healthy,
+                detail: "One packet is active.",
+                checkedAt: now,
+                lastActivityAt: now.addingTimeInterval(-10),
+                activePacketCount: 1,
+                failedResultCount: 0
+            ),
+            history: [
+                BurnBarMissionHistoryEntry(
+                    id: "packet:packet-health-1",
+                    kind: "packet",
+                    status: "running",
+                    summary: "Worker is running.",
+                    occurredAt: now.addingTimeInterval(-10)
+                )
+            ]
+        )
+        let server = makeServer(service: service)
+
+        let response: BurnBarRPCResponseEnvelope<BurnBarMissionHealthResponse> = try await invoke(
+            server,
+            method: .missionHealth,
+            params: BurnBarMissionHealthRequest(missionID: missionID),
+            id: "mission-health-rpc-1"
+        )
+
+        XCTAssertEqual(response.id, "mission-health-rpc-1")
+        XCTAssertNil(response.error)
+        XCTAssertEqual(response.result?.missionID, missionID)
+        XCTAssertEqual(response.result?.health.status, .healthy)
+        XCTAssertEqual(response.result?.health.activePacketCount, 1)
+        XCTAssertEqual(response.result?.history.first?.id, "packet:packet-health-1")
+        XCTAssertEqual(service.calls, ["missionHealth"])
+    }
 
     func testControllerRuntimeSnapshot_emptyState_returnsEmptyPayload() async throws {
         let now = Date(timeIntervalSince1970: 1_710_010_000)

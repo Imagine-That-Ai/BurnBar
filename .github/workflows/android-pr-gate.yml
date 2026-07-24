@@ -52,13 +52,16 @@ jobs:
       - name: Run Android unit tests
         run: ./scripts/test-openburnbar-android.sh
 
+      - name: Verify living theme assets
+        run: node scripts/verify-living-theme-assets.mjs
+
       - name: Generate JaCoCo evidence and enforce diff coverage
         if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
           ./scripts/diff-coverage-android-self-test.sh
           cd android
-          ./gradlew :app:jacocoTestReport --no-daemon --stacktrace
+          ./gradlew :app:jacocoTestReport :openburnbar-iroh-relay:jacocoTestReport --no-daemon --stacktrace
           cd ..
           git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
           ./scripts/diff-coverage-android.sh origin/main

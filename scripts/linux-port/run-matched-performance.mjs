@@ -6,7 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   compareMatchedPerformance,
-  dockerHostIdentityArguments
+  dockerHostIdentityArguments,
+  attachMatchedPerformanceProvenance,
+  matchedPerformanceSourceDigest
 } from './lib/matched-performance.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -24,16 +26,63 @@ function parseArguments(values) {
     if (value === '--macos-only') result.mode = 'macos';
     else if (value === '--linux-only') result.mode = 'linux';
     else if (value === '--compare-only') result.mode = 'compare';
-    else if (['--profile', '--macos-input', '--linux-input'].includes(value)) {
+    else if (['--profile', '--macos-input', '--linux-input', '--target-head', '--package-version', '--candidate-run-id', '--candidate-artifact-digest'].includes(value)) {
       const next = values[index + 1];
       if (!next) throw new Error(`Missing value for ${value}`);
-      result[value.slice(2).replace('-input', 'Input')] = next;
+      const keys = {
+        '--profile': 'profile', '--macos-input': 'macosInput', '--linux-input': 'linuxInput',
+        '--target-head': 'targetHead', '--package-version': 'packageVersion',
+        '--candidate-run-id': 'candidateRunId', '--candidate-artifact-digest': 'candidateArtifactDigest'
+      };
+      result[keys[value]] = next;
       index += 1;
     } else {
       throw new Error(`Unknown argument ${value}`);
     }
   }
   return result;
+}
+
+function gitHead() {
+  const result = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' });
+  if (result.status !== 0) throw new Error(`Cannot resolve matched-performance HEAD: ${result.stderr.trim()}`);
+  return result.stdout.trim();
+}
+
+function packageVersion() {
+  return readJSON(path.join(root, 'apps/linux-desktop/package.json')).version;
+}
+
+function provenanceIdentity(options) {
+  const head = gitHead();
+  if (options.targetHead && options.targetHead !== head) throw new Error('Matched-performance target HEAD does not match checkout HEAD');
+  const runId = options.candidateRunId ?? null;
+  const digest = options.candidateArtifactDigest ?? null;
+  if ((runId === null) !== (digest === null)
+      || (runId !== null && (!/^[1-9][0-9]*$/u.test(runId) || !/^sha256:[a-f0-9]{64}$/u.test(digest)))) {
+    throw new Error('Matched-performance candidate binding must provide a valid run ID and artifact digest together');
+  }
+  const version = options.packageVersion ?? packageVersion();
+  if (!/^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:[-+][0-9A-Za-z.-]+)?$/u.test(version)) {
+    throw new Error('Matched-performance package version is invalid');
+  }
+  return {
+    gitCommit: head,
+    packageVersion: version,
+    sourceDigest: matchedPerformanceSourceDigest(root),
+    candidate: { runId, artifactDigest: digest }
+  };
+}
+
+function stampReport(file, platform, profile, identity, startedAt) {
+  const endedAt = new Date().toISOString();
+  const report = attachMatchedPerformanceProvenance(readJSON(file), {
+    platform, profile, ...identity,
+    candidateRunId: identity.candidate.runId,
+    candidateArtifactDigest: identity.candidate.artifactDigest,
+    startedAt, endedAt
+  });
+  fs.writeFileSync(file, JSON.stringify(report, null, 2) + '\n');
 }
 
 function readJSON(file) {
@@ -166,6 +215,7 @@ function copyInput(input, destination) {
 
 function main() {
   const options = parseArguments(process.argv.slice(2));
+  const identity = provenanceIdentity(options);
   const budget = readJSON(budgetPath);
   const configuration = budget.matched?.profiles?.[options.profile];
   if (!configuration) throw new Error(`Unknown profile ${options.profile}`);
@@ -177,18 +227,30 @@ function main() {
   if (options.linuxInput) copyInput(options.linuxInput, linuxPath);
 
   if (options.mode === 'macos') {
+    const startedAt = new Date().toISOString();
     runMacOS(configuration, macosPath);
+    stampReport(macosPath, 'macos', options.profile, identity, startedAt);
     console.log(JSON.stringify(readJSON(macosPath), null, 2));
     return;
   }
   if (options.mode === 'linux') {
+    const startedAt = new Date().toISOString();
     runLinux(configuration, linuxPath);
+    stampReport(linuxPath, 'linux', options.profile, identity, startedAt);
     console.log(JSON.stringify(readJSON(linuxPath), null, 2));
     return;
   }
   if (options.mode !== 'compare') {
-    if (!options.macosInput) runMacOS(configuration, macosPath);
-    if (!options.linuxInput) runLinux(configuration, linuxPath);
+    if (!options.macosInput) {
+      const startedAt = new Date().toISOString();
+      runMacOS(configuration, macosPath);
+      stampReport(macosPath, 'macos', options.profile, identity, startedAt);
+    }
+    if (!options.linuxInput) {
+      const startedAt = new Date().toISOString();
+      runLinux(configuration, linuxPath);
+      stampReport(linuxPath, 'linux', options.profile, identity, startedAt);
+    }
   }
   if (!fs.existsSync(macosPath) || !fs.existsSync(linuxPath)) {
     throw new Error('Comparison requires both matched-performance-macos.json and matched-performance-linux.json');
@@ -198,9 +260,16 @@ function main() {
     macos: readJSON(macosPath),
     linux: readJSON(linuxPath),
     budget,
-    profile: options.profile
+    profile: options.profile,
+    expectedProvenance: {
+      gitCommit: identity.gitCommit,
+      packageVersion: identity.packageVersion,
+      sourceDigest: identity.sourceDigest,
+      candidateRunId: identity.candidate.runId,
+      candidateArtifactDigest: identity.candidate.artifactDigest
+    }
   });
-  report.runner = 'openburnbar-matched-performance-v1';
+  report.runner = 'openburnbar-matched-performance-v2';
   report.host = { platform: process.platform, architecture: os.arch() };
   report.inputs = {
     macos: path.relative(root, macosPath),

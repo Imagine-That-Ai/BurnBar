@@ -20,9 +20,10 @@ const UPDATE_CASES = [
   }
 ];
 
-const CHANNEL_CARD_COPY: Record<'deb' | 'rpm' | 'appimage' | 'unknown', string> = {
+const CHANNEL_CARD_COPY: Record<'deb' | 'rpm' | 'arch' | 'appimage' | 'unknown', string> = {
   deb: 'Installed via the Debian package channel; apt/dpkg owns upgrades.',
   rpm: 'Installed via the RPM package channel; dnf/rpm owns upgrades.',
+  arch: 'Installed via the Arch package channel; pacman owns upgrades.',
   appimage: 'Installed as AppImage; replace the image file from your release source.',
   unknown: 'Package channel could not be determined; use your distro package manager or release notes.'
 };
@@ -35,6 +36,7 @@ export function UpdatesSurface() {
   const versionError = useSupportStore((s) => s.versionError);
   const loadVersion = useSupportStore((s) => s.loadVersion);
   const updateStatus = useSupportStore((s) => s.updateStatus);
+  const updateStatusStale = useSupportStore((s) => s.updateStatusStale);
   const updateLoading = useSupportStore((s) => s.updateLoading);
   const updateError = useSupportStore((s) => s.updateError);
   const checkUpdate = useSupportStore((s) => s.checkUpdate);
@@ -86,11 +88,20 @@ export function UpdatesSurface() {
         status={updateStatus}
         loading={updateLoading}
         error={updateError}
+        stale={updateStatusStale}
         onCheck={() => void checkUpdate()}
       />
       <div className="p09-channel-card">
         <h3>Package channel</h3>
-        <p>{CHANNEL_CARD_COPY[versionInfo.packageChannel]}</p>
+        <p>{updateStatus?.channelInfo?.explanation ?? CHANNEL_CARD_COPY[versionInfo.packageChannel]}</p>
+        {updateStatus?.channelInfo ? (
+          <dl className="p09-channel-facts">
+            <div><dt>Owner</dt><dd>{updateStatus.channelInfo.owner}</dd></div>
+            <div><dt>Install</dt><dd>{updateStatus.channelInfo.installMode}</dd></div>
+            <div><dt>Rollback</dt><dd>{updateStatus.channelInfo.rollbackMode}</dd></div>
+            <div><dt>Automatic install</dt><dd>{updateStatus.channelInfo.automaticInstall ? 'Supported' : 'Not supported'}</dd></div>
+          </dl>
+        ) : null}
       </div>
       <div className="p09-restart-guidance">
         <h3>Restart guidance</h3>

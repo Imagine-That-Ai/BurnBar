@@ -1,0 +1,33 @@
+{
+  "generatedAt": "2026-07-18T22:33:45.405Z",
+  "mode": "full",
+  "evidenceDir": "/home/runner/work/BurnBar/BurnBar/.linux-evidence",
+  "targetStatus": {
+    "VAL-A11Y-001": {
+      "pass": true,
+      "errors": []
+    },
+    "VAL-SHELL-005": {
+      "pass": true,
+      "errors": []
+    },
+    "VAL-ONBOARDING-001": {
+      "pass": true,
+      "errors": []
+    },
+    "VAL-PET-001": {
+      "pass": true,
+      "errors": []
+    },
+    "VAL-TEXTEXP-001": {
+      "pass": true,
+      "errors": []
+    },
+    "VAL-PERF-001": {
+      "pass": true,
+      "errors": []
+    }
+  },
+  "status": "ok",
+  "errors": []
+}

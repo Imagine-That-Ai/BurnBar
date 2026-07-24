@@ -1,0 +1,151 @@
+import { describe, expect, it } from 'vitest';
+import { decodeSmartHubCommandResponse } from './tauriBridge.js';
+
+describe('P28 SmartHub command decoder', () => {
+  it('decodes discovery results while preserving an empty Avahi transcript', () => {
+    expect(
+      decodeSmartHubCommandResponse({
+        operation: 'discover',
+        payload: [
+          {
+            adapter: 'smart_hub_bridge',
+            serviceType: '_openburnbar-peer._tcp',
+            instances: [],
+            rawTranscript: ''
+          }
+        ]
+      })
+    ).toEqual({
+      operation: 'discover',
+      payload: [
+        {
+          adapter: 'smart_hub_bridge',
+          serviceType: '_openburnbar-peer._tcp',
+          instances: [],
+          rawTranscript: '',
+          status: undefined,
+          blocker: undefined
+        }
+      ]
+    });
+  });
+
+  it('preserves bounded Avahi timeout outcomes for actionable renderer copy', () => {
+    expect(
+      decodeSmartHubCommandResponse({
+        operation: 'discover',
+        payload: [{
+          adapter: 'smart_hub_bridge',
+          serviceType: '_openburnbar-peer._tcp',
+          instances: [],
+          rawTranscript: '<avahi-timeout>',
+          status: 'timeout',
+          blocker: 'Avahi discovery exceeded the timeout.'
+        }]
+      })
+    ).toMatchObject({
+      operation: 'discover',
+      payload: [{ status: 'timeout', blocker: 'Avahi discovery exceeded the timeout.' }]
+    });
+  });
+
+  it('decodes status metadata as string-only details', () => {
+    const result = decodeSmartHubCommandResponse({
+      operation: 'status',
+      payload: {
+        adapter: 'smart_hub_bridge',
+        status: 'blocked_bridge_not_reachable',
+        blocker: 'Start the bridge.',
+        bridge_listen: '127.0.0.1:8787'
+      }
+    });
+    expect(result.operation).toBe('status');
+    if (result.operation === 'status') {
+      expect(result.payload.details.bridge_listen).toBe('127.0.0.1:8787');
+    }
+  });
+
+  it('rejects unknown operations and non-string status fields', () => {
+    expect(() => decodeSmartHubCommandResponse({ operation: 'status --json', payload: {} })).toThrow(
+      /not allowlisted/
+    );
+    expect(() =>
+      decodeSmartHubCommandResponse({
+        operation: 'status',
+        payload: { adapter: 'smart_hub_bridge', status: 'ok', online: true }
+      })
+    ).toThrow(/must be a string/);
+  });
+
+  it('rejects oversized and control-character payloads before renderer display', () => {
+    expect(() => decodeSmartHubCommandResponse({
+      operation: 'status',
+      payload: { adapter: 'smart_hub_bridge', status: 'ok', detail: 'x'.repeat(32_769) }
+    })).toThrow(/payload limit/);
+    expect(() => decodeSmartHubCommandResponse({
+      operation: 'status',
+      payload: { adapter: 'smart_hub_bridge', status: 'ok', detail: 'safe\u0000text' }
+    })).toThrow(/control character/);
+    expect(() => decodeSmartHubCommandResponse({
+      operation: 'discover',
+      payload: Array.from({ length: 129 }, () => ({
+        adapter: 'smart_hub_bridge', serviceType: '_openburnbar-peer._tcp', instances: [], rawTranscript: ''
+      }))
+    })).toThrow(/item limit/);
+  });
+
+  it('accepts every typed status operation without opening an argument escape hatch', () => {
+    for (const operation of [
+      'status',
+      'test',
+      'cast',
+      'cast_status',
+      'homeassistant_status',
+      'device',
+      'pixel_clock_control'
+    ] as const) {
+      expect(decodeSmartHubCommandResponse({
+        operation,
+        payload: { adapter: 'smart_hub_bridge', status: 'blocked', detail: '' }
+      })).toMatchObject({ operation, payload: { status: 'blocked' } });
+    }
+  });
+
+  it('preserves degraded status and blocker fields for offline device bridges', () => {
+    expect(decodeSmartHubCommandResponse({
+      operation: 'homeassistant_status',
+      payload: {
+        adapter: 'home_assistant',
+        status: 'degraded_bridge_unreachable',
+        blocker: 'Home Assistant did not answer on the configured loopback bridge.',
+        retryAfterSeconds: '8'
+      }
+    })).toEqual({
+      operation: 'homeassistant_status',
+      payload: {
+        adapter: 'home_assistant',
+        status: 'degraded_bridge_unreachable',
+        blocker: 'Home Assistant did not answer on the configured loopback bridge.',
+        details: {
+          adapter: 'home_assistant',
+          status: 'degraded_bridge_unreachable',
+          blocker: 'Home Assistant did not answer on the configured loopback bridge.',
+          retryAfterSeconds: '8'
+        }
+      }
+    });
+  });
+
+  it('requires a complete command response rather than defaulting malformed payloads', () => {
+    expect(() => decodeSmartHubCommandResponse({ operation: 'discover' })).toThrow(/payload is missing/);
+    expect(() => decodeSmartHubCommandResponse({ operation: 'discover', payload: {} })).toThrow(
+      /payload must be an array/
+    );
+    expect(() =>
+      decodeSmartHubCommandResponse({
+        operation: 'discover',
+        payload: [{ adapter: 'smart_hub_bridge', serviceType: '_openburnbar-peer._tcp', instances: [] }]
+      })
+    ).toThrow(/rawTranscript/);
+  });
+});

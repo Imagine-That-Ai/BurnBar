@@ -1,4 +1,5 @@
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 import CryptoKit
 import Foundation
 import Network
@@ -30,7 +31,8 @@ extension BurnBarHTTPGatewayServer {
                 wantsStream: request.stream == true,
                 connection: connection,
                 corsHeaders: corsHeaders,
-                hostedSearch: ElderWandHostedSearchConfig.resolve(headers: headers)
+                hostedSearch: ElderWandHostedSearchConfig.resolve(headers: headers),
+                executionSource: executionSource(from: headers)
             )
         }
 
@@ -38,6 +40,7 @@ extension BurnBarHTTPGatewayServer {
             body: body,
             connection: connection,
             corsHeaders: corsHeaders,
+            executionSource: executionSource(from: headers),
             descriptor: chatCompletionsEndpointDescriptor
         )
     }
@@ -91,6 +94,7 @@ extension BurnBarHTTPGatewayServer {
                 await self.attemptCrossVendorDegradeForChat(
                     bodyData: request.bodyData,
                     accountingRequestID: request.accountingRequestID,
+                    executionSource: request.executionSource,
                     requestedModelID: request.modelID,
                     routeLogStartedAt: request.startedAt,
                     requestPath: request.requestPath,
@@ -104,11 +108,12 @@ extension BurnBarHTTPGatewayServer {
         )
     }
 
-    func handleResponses(body: String?) async -> GatewayRouteOutcome {
+    func handleResponses(body: String?, headers: [String: String]) async -> GatewayRouteOutcome {
         await routeModelRequest(
             body: body,
             connection: nil,
             corsHeaders: [:],
+            executionSource: executionSource(from: headers),
             descriptor: responsesEndpointDescriptor
         )
     }
@@ -148,6 +153,7 @@ extension BurnBarHTTPGatewayServer {
 
     func handleAnthropicMessages(
         body: String?,
+        headers: [String: String],
         connection: NWConnection,
         corsHeaders: [String: String]
     ) async -> GatewayRouteOutcome {
@@ -155,8 +161,18 @@ extension BurnBarHTTPGatewayServer {
             body: body,
             connection: connection,
             corsHeaders: corsHeaders,
+            executionSource: executionSource(from: headers),
             descriptor: anthropicMessagesEndpointDescriptor
         )
+    }
+
+    private func executionSource(from headers: [String: String]) -> UsageExecutionSource {
+        UsageExecutionSourceResolver.fromClientMarker(
+            headers["x-openburnbar-client"],
+            allowCustom: true
+        )
+            ?? UsageExecutionSourceResolver.fromClientMarker(headers["user-agent"])
+            ?? .unknown
     }
 
     /// Per-endpoint pipeline parameterization for `/v1/messages`.

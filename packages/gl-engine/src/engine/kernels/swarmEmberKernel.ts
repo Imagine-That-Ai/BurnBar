@@ -5,6 +5,12 @@
 
 import { toCss } from "../palette";
 import { PROVIDER_SHAPE_POINTS } from "./swarmEmberShapeData";
+import {
+  normalizeSwarmProviderGlyphs,
+  SWARM_PROVIDER_GLYPH_OPTIONS,
+  SWARM_PROVIDER_GLYPH_IDS,
+  type SwarmProviderGlyphId,
+} from "./swarmCatalog";
 import type {
   Kernel,
   KernelFrameContext,
@@ -76,6 +82,7 @@ const SHOWCASE_PROVIDER_IDS: string[] = [
   "omp",
   "hermes",
   "geminicli",
+  "junie",
   "antigravity",
   "openai",
   "openburnbar",
@@ -97,7 +104,18 @@ const SHOWCASE_PROVIDER_IDS: string[] = [
   "goose",
   "ollama",
   "windsurf",
+  "warp",
+  "cursoragent",
 ];
+
+const PROVIDER_LOGO_ASSETS: Record<string, string> = {
+  claudecode: "claude-code.png",
+  geminicli: "gemini.png",
+  xai: "grok.png",
+};
+
+const providerLogoPointsCache = new Map<string, ShapePoint[]>();
+const providerLogoLoadStarted = new Set<string>();
 
 /** Shape tables use a few catalog aliases (anthropic/google) vs persisted tokens. */
 const SHAPE_PROVIDER_ALIASES: Record<string, string> = {
@@ -112,12 +130,13 @@ function shapeProviderKey(persistedId: string): string | null {
   return flat && flat.length >= 2 ? alias : null;
 }
 
-function normalizedShowcaseProviders(): string[] {
-  return SHOWCASE_PROVIDER_IDS.filter((id) => shapeProviderKey(id) != null);
+function normalizedShowcaseProviders(providerGlyphs?: readonly string[]): string[] {
+  const selected = normalizeSwarmProviderGlyphs(providerGlyphs);
+  return SHOWCASE_PROVIDER_IDS.filter((id) => selected.includes(id as SwarmProviderGlyphId));
 }
 
-function providerLogoGroups(): string[][] {
-  const enabled = normalizedShowcaseProviders();
+function providerLogoGroups(providerGlyphs?: readonly string[]): string[][] {
+  const enabled = normalizedShowcaseProviders(providerGlyphs);
   const groups: string[][] = [];
   for (let i = 0; i < enabled.length; i += 2) {
     groups.push(enabled.slice(i, i + 2));
@@ -125,16 +144,34 @@ function providerLogoGroups(): string[][] {
   return groups;
 }
 
-function buildDashboardExcludeBrandCycle(): FormationMode[] {
-  const logoModes: FormationMode[] = providerLogoGroups().map((providers) => ({
+export function buildDashboardCycle(
+  providerGlyphs: readonly string[] | undefined,
+  excludeBrandShapes: boolean,
+  autoCycleShapes: boolean
+): FormationMode[] {
+  if (!autoCycleShapes) return ["swarm"];
+  const logoModes: FormationMode[] = providerLogoGroups(providerGlyphs).map((providers) => ({
     type: "shapeProviderLogo",
     providers,
   }));
-  if (logoModes.length === 0) return ["swarm"];
-  return logoModes.flatMap((mode) => [mode, "swarm"]);
+  if (excludeBrandShapes) {
+    if (logoModes.length === 0) return ["swarm"];
+    return logoModes.flatMap((mode) => [mode, "swarm"]);
+  }
+  return [
+    "swarm",
+    "shapeDollar",
+    "swarm",
+    "shapeCode",
+    "swarm",
+    "shapeBurnBarLogo",
+    ...logoModes.flatMap((mode) => ["swarm" as const, mode]),
+    "swarm",
+    "shapeRings",
+    "swarm",
+    "shapeRouterFlow",
+  ];
 }
-
-const MODE_CYCLE: FormationMode[] = buildDashboardExcludeBrandCycle();
 
 
 interface LogoSlot {
@@ -194,11 +231,73 @@ function flatToShapePoints(flat: number[]): ShapePoint[] {
   return pts;
 }
 
-function providerShapePoints(providerId: string): ShapePoint[] {
+function providerLabel(providerId: string): string {
+  return SWARM_PROVIDER_GLYPH_OPTIONS.find((option) => option.id === providerId)?.label ?? providerId;
+}
+
+function providerTextFallbackPoints(providerId: string): ShapePoint[] {
+  const words = providerLabel(providerId).split(/\s+/).filter(Boolean);
+  const initials = words.length > 1
+    ? words.map((word) => word[0]).join("").slice(0, 4)
+    : providerLabel(providerId).replace(/[^a-z0-9]/gi, "").slice(0, 6);
+  return sampleTextPoints(initials || "?", 150);
+}
+
+function imageToShapePoints(image: HTMLImageElement): ShapePoint[] {
+  const side = 240;
+  const canvas = document.createElement("canvas");
+  canvas.width = side;
+  canvas.height = side;
+  const context = canvas.getContext("2d");
+  if (!context) return [];
+  context.clearRect(0, 0, side, side);
+  const scale = Math.min(side / Math.max(image.naturalWidth || side, 1), side / Math.max(image.naturalHeight || side, 1));
+  const width = (image.naturalWidth || side) * scale;
+  const height = (image.naturalHeight || side) * scale;
+  context.drawImage(image, (side - width) / 2, (side - height) / 2, width, height);
+  const pixels = context.getImageData(0, 0, side, side).data;
+  const points: ShapePoint[] = [];
+  const stride = 4;
+  for (let y = 0; y < side; y += stride) {
+    for (let x = 0; x < side; x += stride) {
+      const offset = (y * side + x) * 4;
+      const alpha = pixels[offset + 3] ?? 0;
+      const luminance = (pixels[offset] ?? 0) + (pixels[offset + 1] ?? 0) + (pixels[offset + 2] ?? 0);
+      if (alpha < 48 || luminance < 30) continue;
+      points.push({
+        x: (x - side / 2) / (side / 2),
+        y: -((y - side / 2) / (side / 2)),
+        role: "logo-flame-inner",
+        progress: Math.random(),
+      });
+    }
+  }
+  return points;
+}
+
+function requestProviderLogoPoints(providerId: string, onReady: () => void): void {
+  if (providerLogoLoadStarted.has(providerId) || typeof Image === "undefined") return;
+  providerLogoLoadStarted.add(providerId);
+  const image = new Image();
+  image.onload = () => {
+    const points = imageToShapePoints(image);
+    if (points.length > 0) {
+      providerLogoPointsCache.set(providerId, points);
+      onReady();
+    }
+  };
+  image.onerror = () => undefined;
+  const asset = PROVIDER_LOGO_ASSETS[providerId] ?? `${providerId}.png`;
+  image.src = `/provider-logos/${asset}`;
+}
+
+function providerShapePoints(providerId: string, onImageReady: () => void): ShapePoint[] {
   const key = shapeProviderKey(providerId);
-  if (!key) return [];
-  const flat = PROVIDER_SHAPE_POINTS[key];
-  return flatToShapePoints(flat);
+  if (key) return flatToShapePoints(PROVIDER_SHAPE_POINTS[key]);
+  const cached = providerLogoPointsCache.get(providerId);
+  if (cached) return cached;
+  requestProviderLogoPoints(providerId, onImageReady);
+  return providerTextFallbackPoints(providerId);
 }
 
 function formationKind(mode: FormationMode): string {
@@ -372,6 +471,14 @@ export type SwarmEmberKernelOptions = {
   enableSwarmSparkles?: boolean;
   /** macOS SwarmCanvasView.motionSpeedMultiplier — clamped 0.35…2.5. */
   motionSpeedMultiplier?: number;
+  /** Provider IDs selected in macOS Appearance > Customize Provider Glyphs. */
+  providerGlyphs?: readonly string[];
+  /** Include the non-provider $, code, BurnBar, rings, and router formations. */
+  excludeBrandShapes?: boolean;
+  /** Keep the formation cycle running; false leaves the field in swarm mode. */
+  autoCycleShapes?: boolean;
+  /** macOS clickDesktopToCycleSwarm equivalent for the Linux backdrop surface. */
+  allowsClickCycle?: boolean;
 };
 
 function clampMotionSpeedMultiplier(value: number): number {
@@ -427,6 +534,13 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
   let reducedMotion = false;
   const motionSpeedMultiplier = clampMotionSpeedMultiplier(options.motionSpeedMultiplier ?? 1);
   const enableSwarmSparkles = options.enableSwarmSparkles ?? false;
+  const providerGlyphs = options.providerGlyphs ?? SWARM_PROVIDER_GLYPH_IDS;
+  const modeCycle = buildDashboardCycle(
+    providerGlyphs,
+    options.excludeBrandShapes ?? true,
+    options.autoCycleShapes ?? true
+  );
+  const allowsClickCycle = options.allowsClickCycle ?? false;
 
   let particles: Particle[] = [];
   let mode: FormationMode = "swarm";
@@ -638,7 +752,11 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
       ensureShapeCaches();
       const specs = next.providers.map((providerId) => ({
         providerId,
-        points: providerShapePoints(providerId),
+        points: providerShapePoints(providerId, () => {
+          if (isProviderLogoMode(mode) && sameFormation(mode, next)) {
+            assignMode(mode, lastAdvanceMs ?? 0);
+          }
+        }),
       }));
       assignProviderLogoFormation(specs);
       return;
@@ -662,6 +780,20 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
         clearFormation(p);
       }
     }
+  }
+
+  function sameFormation(a: FormationMode, b: FormationMode): boolean {
+    if (typeof a === 'string' || typeof b === 'string') return a === b;
+    return a.type === b.type && a.providers.join(',') === b.providers.join(',');
+  }
+
+  function cycleFormation(atMs: number): void {
+    if (!allowsClickCycle || modeCycle.length < 2) return;
+    const currentIndex = modeCycle.findIndex((candidate) => sameFormation(candidate, mode));
+    cycleIndex = (currentIndex < 0 ? cycleIndex : currentIndex) + 1;
+    cycleIndex %= modeCycle.length;
+    assignMode(modeCycle[cycleIndex]!, atMs);
+    nextCycleAtMs = atMs + effectiveCycleIntervalMs();
   }
 
   function applyTransform(): void {
@@ -817,8 +949,8 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
     lastAdvanceMs = tMs;
 
     if (!reducedMotion && tMs >= nextCycleAtMs) {
-      cycleIndex = (cycleIndex + 1) % MODE_CYCLE.length;
-      assignMode(MODE_CYCLE[cycleIndex]!, tMs);
+      cycleIndex = (cycleIndex + 1) % modeCycle.length;
+      assignMode(modeCycle[cycleIndex]!, tMs);
       nextCycleAtMs = tMs + effectiveCycleIntervalMs();
     }
 
@@ -1006,6 +1138,10 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
 
     pointer(x: number, y: number, active: boolean) {
       pointer = { x, y, active };
+    },
+
+    click(_x: number, _y: number) {
+      cycleFormation(lastAdvanceMs ?? 0);
     },
 
     wake(x: number, y: number, _dx: number, _dy: number, radius: number, strength: number) {

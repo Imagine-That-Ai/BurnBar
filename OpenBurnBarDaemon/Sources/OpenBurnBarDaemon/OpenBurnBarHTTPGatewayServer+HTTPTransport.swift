@@ -1,4 +1,5 @@
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 import CryptoKit
 import Foundation
 import Network
@@ -73,6 +74,7 @@ extension BurnBarHTTPGatewayServer {
         route: BurnBarProviderRoute,
         idempotencyKey: String,
         parentRequestID: String? = nil,
+        executionSource: UsageExecutionSource = .unknown,
         openStream: () async throws -> BurnBarProviderProxyStream
     ) async throws -> GatewayStreamRelayResult {
         let stream = try await openStream()
@@ -104,7 +106,13 @@ extension BurnBarHTTPGatewayServer {
         }
 
         let usage = accumulator.finalize()
-        await recordUsageIfAvailable(usage, route: route, idempotencyKey: idempotencyKey, parentRequestID: parentRequestID)
+        await recordUsageIfAvailable(
+            usage,
+            route: route,
+            idempotencyKey: idempotencyKey,
+            parentRequestID: parentRequestID,
+            executionSource: executionSource
+        )
         return GatewayStreamRelayResult(
             outcome: .streamed,
             usage: usage,

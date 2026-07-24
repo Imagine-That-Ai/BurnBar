@@ -71,7 +71,7 @@ export interface HermesConnectionAuditEventDoc {
 // ---------------------------------------------------------------------------
 
 /**
- * Iroh transport pairing record. Published by the Mac (AgentLens) once it
+ * Iroh transport pairing record. Published by the trusted macOS/Linux host once it
  * has bootstrapped an iroh endpoint and signed the dialable NodeAddr fields
  * with the user's
  * Ed25519 pairing key (`provider_accounts/{uid}.irohPairingPublicKey`).
@@ -79,7 +79,7 @@ export interface HermesConnectionAuditEventDoc {
  * Lives at:
  *   /users/{uid}/iroh_pairing/{connectionId}
  *
- * Read-side (iOS / iPadOS):
+ * Read-side (iOS / iPadOS / Android and server route resolution):
  *   1. Look up the user's `irohPairingPublicKey` (32 raw bytes, base64).
  *   2. Verify `signature` over
  *      `openburnbar.iroh.pairing.v1|{uid}|{connectionId}|{nodeId}|{relayURL}|{directAddresses}|{publishedAtMillis}`.
@@ -90,31 +90,31 @@ export interface HermesConnectionAuditEventDoc {
  *
  * Firestore rules keep owner read access, but live writes are server-owned and
  * must flow through `publishIrohPairingRecord` / `revokeIrohPairingRecord`.
- * The callable verifies ownership, trusted Mac escrow-device state, freshness,
- * key shape, peer derivation, and proof-of-possession before writing.
+ * Publication verifies ownership and trusted host escrow-device state. Readers
+ * verify freshness, key shape, and proof-of-possession before using the route.
  */
 export interface IrohPairingRecordDoc {
-  /** Stable connection ID (matches `HermesConnectionDoc.id` on the Mac side). */
+  /** Stable connection ID (matches the host-side Hermes connection id). */
   id: string;
 
-  /** Base32 NodeId surface form (52 chars) advertised by the Mac. */
+  /** Canonical lowercase-hex NodeId (64 chars); legacy readers may also accept 52-char base32. */
   nodeId: string;
 
-  /** Home relay URL selected by the Mac endpoint. Required for reliable mobile dialing. */
+  /** Home relay URL selected by the host endpoint. Required for reliable mobile dialing. */
   relayURL?: string;
 
-  /** Optional direct socket addresses observed by the Mac endpoint. */
+  /** Optional direct socket addresses observed by the host endpoint. */
   directAddresses?: string[];
 
-  /** Milliseconds since epoch when the Mac signed and published the record. */
+  /** Milliseconds since epoch when the host signed and published the record. */
   publishedAtMillis: number;
 
-  /** Frame schema version the Mac is willing to speak. Default 1. */
+  /** Frame schema version the host is willing to speak. Default 1. */
   protocolVersion?: number;
 
   /**
    * Base64 Ed25519 signature over the canonical AAD string. The signing key
-   * is the user's `irohPairingPublicKey`, persisted in the Mac Keychain.
+   * is the user's `irohPairingPublicKey`, persisted in native host secret custody.
    */
   signature: string;
 
@@ -136,7 +136,7 @@ export const IROH_PAIRING_FRESHNESS_MS = 3 * 60 * 1000;
 export const IROH_PAIRING_SIGNATURE_PREFIX = "openburnbar.iroh.pairing.v1";
 
 /**
- * Singleton document published by the Mac through `publishIrohPairingPublicKey`
+ * Singleton document published by the trusted host through `publishIrohPairingPublicKey`
  * at `users/{uid}/iroh_pairing_keys/host` containing the Ed25519 public half of
  * the pairing key. iOS clients fetch this once per session and verify every
  * `IrohPairingRecordDoc.signature` against it before dialing a NodeId.
@@ -155,7 +155,7 @@ export interface IrohPairingPublicKeyDoc {
   /** Base64 of the 32-byte Ed25519 public key. */
   publicKeyBase64: string;
 
-  /** Milliseconds since epoch when the Mac wrote/refreshed the doc. */
+  /** Milliseconds since epoch when the host wrote/refreshed the doc. */
   publishedAtMillis: number;
 
   /** Frame schema version the key is bound to. Default 1. */

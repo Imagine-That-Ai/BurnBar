@@ -5,7 +5,6 @@ import OpenBurnBarCore
 import OSLog
 
 // Mission runtime planner, live device-trust checker, cancellation tracker.
-// Extracted from CLIAgentMissionRequestListener.swift (god-file decomposition) — same module, verbatim.
 
 enum CLIAgentMissionRuntimePlanner {
     static func resolve(
@@ -567,11 +566,7 @@ final class LiveCLIAgentMissionDeviceTrustChecker: CLIAgentMissionDeviceTrustChe
         guard trustState == EscrowDeviceTrustState.trusted.rawValue else {
             if !preparedDeviceIDs.contains(deviceID) {
                 Task { @MainActor in
-                    // Best-effort metadata refresh (deviceName/appVersion/updatedAt)
-                    // for an already-untrusted device. The trust verdict is fixed
-                    // (untrusted) above regardless of this write — so failing here
-                    // does not flip a security decision — but losing the write
-                    // silently would hide Firestore faults from operators, so log.
+                    // Best-effort metadata refresh; the untrusted verdict above is fixed, and failures are logged.
                     do {
                         try await self.registerPendingMac(
                             deviceRef: snapshot.reference,

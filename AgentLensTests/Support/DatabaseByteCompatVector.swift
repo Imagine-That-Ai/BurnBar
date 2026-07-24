@@ -44,7 +44,7 @@ enum DatabaseByteCompatVector {
     /// The last registered migration identifier the fixture is migrated to.
     /// Kept in one place so a future migration bump fails the test loudly and
     /// forces a conscious fixture/vector refresh.
-    static let expectedSchemaEndpoint = "v56_parser_checkpoint_file_manifest"
+    static let expectedSchemaEndpoint = "v57_execution_source_attribution"
 
     // MARK: - Pinned SQLCipher parameters (SQLCipher.swift 4.16.0 defaults)
 
@@ -163,7 +163,7 @@ enum DatabaseByteCompatVector {
     struct Vector: Codable, Equatable {
         /// Trace/label of the SQLCipher version the fixture was produced with.
         let sqlcipherPin: String
-        /// Last migration identifier reached (`v56_parser_checkpoint_file_manifest`).
+        /// Last migration identifier reached (`v57_execution_source_attribution`).
         let schemaEndpoint: String
         /// Number of registered migrations (fails loudly on a schema bump).
         let migrationCount: Int

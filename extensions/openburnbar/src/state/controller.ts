@@ -478,6 +478,7 @@ export class OpenBurnBarExtensionController {
     const activePhasesSet = new Set<BurnBarRunPhase>([
       'planning',
       'awaiting_approval',
+      'awaiting_computer_use_session',
       'executing_tool',
       'waiting_on_companion',
       'model_streaming'

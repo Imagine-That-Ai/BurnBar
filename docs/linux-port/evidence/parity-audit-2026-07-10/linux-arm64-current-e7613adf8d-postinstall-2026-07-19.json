@@ -1,0 +1,93 @@
+{
+  "schema": "openburnbar.parity.linux-installed-runtime-receipt.v1",
+  "capturedAt": "2026-07-19T21:00:07Z",
+  "certificationScope": "non-certifying exact integration-head ARM64 package and live VM smoke receipt",
+  "sourceCommit": "e7613adf8d6cecd7be5ae20053992d884e32b325",
+  "sourceDescription": "Exact integration checkout with provider-selection reconciliation, chat pop-out test stabilization, bounded single-instance listener forwarding, and fail-closed native Browser Computer Use capability checks synced into the Ubuntu guest; frontend and Rust source gates passed, native ARM64 DEB build and install completed, daemon health verified, and a clean unlocked GNOME launch rendered the packaged desktop.",
+  "environment": {
+    "guest": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME/X11",
+    "display": ":0",
+    "vmAddress": "192.168.64.5",
+    "session": "Unlocked GNOME session 1; clean launch used the session X authority and D-Bus bus",
+    "webgl2": false,
+    "webgl1": true,
+    "webkitNote": "WebKitGTK reports the GBM WebGL2 path unavailable; the packaged shell uses the Canvas2D fallback."
+  },
+  "package": {
+    "name": "open-burn-bar",
+    "version": "0.1.1",
+    "architecture": "arm64",
+    "archiveBytes": 151390286,
+    "archiveSha256": "6000c9823433642288696fca3e976f349692527e004f14062ee78968e67fa9e4",
+    "desktopSha256": "dc16a7d5aa34692c3e971331d84dbf181279d5fba6cffd2822cd3391322bba9d",
+    "daemonSha256": "fb0f87ccc0638f84c2ba9f2a34ca97f8cec707534a5473f19bf6f317291c480c",
+    "cliSha256": "db0d6931ca8644a91f78ee3dccac27364bab5a373e63917a53915cf836e180e5",
+    "embeddedFrontendAsset": "/assets/index-Dg04CP3q.js",
+    "stalePreviousFrontendAssetAbsent": true,
+    "signed": false,
+    "publicFeed": false
+  },
+  "runtime": {
+    "daemonService": "active",
+    "daemonHealth": {
+      "ok": true,
+      "protocolVersion": 1,
+      "daemonVersion": "1.0.29",
+      "socketPath": "/run/user/1000/openburnbar/daemon.sock"
+    },
+    "installedDesktopPid": 18715,
+    "desktopWindow": {
+      "exists": true,
+      "title": "OpenBurnBar",
+      "renderedSurface": "first-run-setup-secret-service-visible-after-clean-unlocked-launch"
+    },
+    "launchEnvironment": {
+      "display": ":0",
+      "xauthority": "/run/user/1000/gdm/Xauthority",
+      "dbusSessionBus": "unix:path=/run/user/1000/bus",
+      "webkitSafeMode": true
+    }
+  },
+  "backdrop": {
+    "requestedKernel": "fluid-aurora",
+    "resolvedSubstrate": "2d",
+    "resolutionLabel": "Fluid Aurora - 2D fallback (WebGL2 unavailable)",
+    "captureIntervalSeconds": 2,
+    "captureASha256": "c2e390d25efcbad23b6505f81af4ab739e7e75031630f38782af6a23a385974a",
+    "captureBSha256": "dfd87837fc37784c4a9d3ab6628e6c02ce7d4c22166730e5fc5cda7e725a39d7",
+    "capturePaths": [
+      ".tmp/arm64-build-20260719-final/frame-final-a.png",
+      ".tmp/arm64-build-20260719-final/frame-final-b.png"
+    ],
+    "captureDimensions": "1792x851",
+    "pixelsChangedBetweenCaptures": 894899,
+    "visible": true,
+    "animated": true,
+    "blackFrame": false,
+    "captureNote": "The guest session was explicitly unlocked before capture. The exact package was launched normally with the default XDG runtime single-instance directory; the resulting captures show the onboarding surface and animated Canvas2D fallback.",
+    "backgroundRecovery": {
+      "verified": false,
+      "reason": "Minimize/restore was not part of this bounded capture."
+    }
+  },
+  "onboarding": {
+    "daemonVerifyAction": "not-captured-current-run",
+    "advancedToStep": null,
+    "visibleRoute": "Overview",
+    "visibleCard": "Secret Service / SQLCipher",
+    "visibleStep": "2 of 8"
+  },
+  "limitations": [
+    "The package is locally built and unsigned; it is not release provenance evidence.",
+    "The clean launch proves the exact ARM64 package renders on Ubuntu GNOME/X11, but does not certify every route, onboarding interaction, accessibility matrix, or full visual parity.",
+    "This guest does not certify WebGL2-only kernels, KDE/Wayland/wlroots, x86_64, or cross-device workflows.",
+    "The strict ledger remains 0/40 product requirements and 0/7 environment receipts."
+  ],
+  "strictLedger": {
+    "productRequirementsReady": "0/40",
+    "environmentReceiptsComplete": "0/7",
+    "productParityClaim": false
+  }
+}

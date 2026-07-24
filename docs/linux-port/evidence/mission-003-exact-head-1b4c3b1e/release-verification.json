@@ -1,0 +1,11 @@
+{
+  "generatedAt": "2026-07-18T17:37:52.651Z",
+  "phase": "final",
+  "diagnostic": false,
+  "outDir": ".linux-release",
+  "expectedHead": "1b4c3b1e269b3d58d38226af1084f88bc7c6f742",
+  "expectedVersion": "0.1.1",
+  "passed": true,
+  "failures": [],
+  "warnings": []
+}

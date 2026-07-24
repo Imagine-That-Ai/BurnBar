@@ -1,0 +1,1554 @@
+{
+  "generatedAt": "2026-07-18T17:34:33.467Z",
+  "profile": "dbus-x11-xvfb-xfce-statusnotifier",
+  "package": {
+    "name": "open-burn-bar",
+    "version": "0.1.1",
+    "executable": "/usr/bin/openburnbar-linux-desktop",
+    "daemonExecutable": "/usr/bin/openburnbar-daemon",
+    "shellVersionReadback": "OpenBurnBar 0.1.1",
+    "daemonHealthReadback": {
+      "generatedAt": "2026-07-18T17:27:17.942Z",
+      "expectedVersion": "0.1.1",
+      "response": {
+        "result": {
+          "ok": true,
+          "protocolVersion": 1,
+          "daemonVersion": "0.1.1",
+          "socketPath": "/tmp/openburnbar-linux-desktop-session/runtime/openburnbar/daemon.sock",
+          "gatewayEnabled": false,
+          "gatewayHost": null,
+          "gatewayPort": null,
+          "error": null
+        }
+      },
+      "passed": true
+    },
+    "uninstallVerified": true,
+    "debArtifact": "OpenBurnBar_0.1.1_amd64.deb"
+  },
+  "session": {
+    "display": ":99",
+    "xdgSessionType": "x11",
+    "desktop": "XFCE",
+    "statusNotifierItem": ":1.11/org/ayatana/NotificationItem/tray_icon_tray_app_243_1",
+    "menuPath": "/org/ayatana/NotificationItem/tray_icon_tray_app_243_1/Menu",
+    "windowId": "16777219",
+    "reopenedWindowId": "16777219"
+  },
+  "performance": {
+    "appStartMs": 409.55,
+    "trayClickOpenMs": 198,
+    "ipcHealthRoundTripMs": 117.19999999999999,
+    "appStartSamples": [
+      321,
+      340,
+      337,
+      409,
+      387,
+      362,
+      410,
+      353,
+      325,
+      370
+    ],
+    "trayClickOpenSamples": [
+      59,
+      53,
+      56,
+      119,
+      198,
+      80,
+      47,
+      73,
+      103,
+      198
+    ],
+    "ipcHealthRoundTripSamples": [
+      111,
+      112,
+      115,
+      119,
+      11,
+      64,
+      99,
+      56,
+      98,
+      96
+    ],
+    "appStartPercentiles": {
+      "minimum": 321,
+      "p50": 357.5,
+      "p95": 409.55,
+      "p99": 409.91,
+      "maximum": 410
+    },
+    "trayClickOpenPercentiles": {
+      "minimum": 47,
+      "p50": 76.5,
+      "p95": 198,
+      "p99": 198,
+      "maximum": 198
+    },
+    "ipcHealthRoundTripPercentiles": {
+      "minimum": 11,
+      "p50": 98.5,
+      "p95": 117.19999999999999,
+      "p99": 118.64,
+      "maximum": 119
+    },
+    "trayQuitMs": 198
+  },
+  "accessibility": {
+    "atspiTree": {
+      "schemaVersion": 1,
+      "capturedAt": "2026-07-18T17:27:23Z",
+      "application": "OpenBurnBar",
+      "route": null,
+      "expectedName": "OpenBurnBar",
+      "expectedNamePresent": true,
+      "nodeCount": 38,
+      "namedNodeCount": 24,
+      "actionableNodeCount": 15,
+      "focusableNodeCount": 18,
+      "focusedNodes": [],
+      "roleCounts": {
+        "application": 1,
+        "combo box": 2,
+        "document web": 1,
+        "filler": 3,
+        "frame": 1,
+        "heading": 2,
+        "landmark": 2,
+        "link": 1,
+        "page tab": 7,
+        "page tab list": 1,
+        "paragraph": 2,
+        "push button": 5,
+        "scroll pane": 1,
+        "section": 6,
+        "status bar": 3
+      },
+      "namedSamples": [
+        {
+          "path": "0",
+          "depth": 0,
+          "role": "application",
+          "name": "openburnbar-linux-desktop",
+          "description": "",
+          "states": [],
+          "actions": [],
+          "childCount": 1
+        },
+        {
+          "path": "0.0",
+          "depth": 1,
+          "role": "frame",
+          "name": "OpenBurnBar",
+          "description": "",
+          "states": [
+            "active",
+            "enabled",
+            "resizable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 1
+        },
+        {
+          "path": "0.0.0.0.0.0.0",
+          "depth": 6,
+          "role": "document web",
+          "name": "OpenBurnBar",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 4
+        },
+        {
+          "path": "0.0.0.0.0.0.0.0",
+          "depth": 7,
+          "role": "link",
+          "name": "Skip to content",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "visible"
+          ],
+          "actions": [
+            "jump"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2",
+          "depth": 7,
+          "role": "page tab list",
+          "name": "Primary",
+          "description": "",
+          "states": [
+            "enabled",
+            "horizontal",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 7
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.0",
+          "depth": 8,
+          "role": "push button",
+          "name": "OpenBurnBar — go to dashboard overview",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "press"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.1",
+          "depth": 8,
+          "role": "push button",
+          "name": "Open command palette",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "press"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.4",
+          "depth": 8,
+          "role": "status bar",
+          "name": "Connected over AF_UNIX at /tmp/openburnbar-linux-desktop-session/runtime/openburnbar/daemon.sock.",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 1
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.6",
+          "depth": 8,
+          "role": "status bar",
+          "name": "Loading telemetry",
+          "description": "",
+          "states": [
+            "busy",
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.7",
+          "depth": 8,
+          "role": "push button",
+          "name": "Import sessions",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "press"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.8",
+          "depth": 8,
+          "role": "push button",
+          "name": "Account",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "press"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.9",
+          "depth": 8,
+          "role": "push button",
+          "name": "Settings",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "press"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.0",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Chat Full-canvas chat",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.1",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Quota Subscriptions & limits",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.2",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Database Browse tracked sessions",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.3",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Projects Group by project",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.4",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Missions Active runs & tasks",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.5",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Session Logs Indexed conversations",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.6",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Memory Review what OpenBurnBar learned",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.3.0",
+          "depth": 8,
+          "role": "heading",
+          "name": "First-run setup",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.3.1",
+          "depth": 8,
+          "role": "status bar",
+          "name": "Checking setup authority",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 4
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.5.0",
+          "depth": 9,
+          "role": "combo box",
+          "name": "Swarm Ember",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "has popup",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "select"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.10.0",
+          "depth": 9,
+          "role": "combo box",
+          "name": "More actions",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "has popup",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "select"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.3.1.2",
+          "depth": 9,
+          "role": "heading",
+          "name": "Checking daemon-owned setup",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        }
+      ],
+      "actionableSamples": [
+        {
+          "path": "0.0.0.0.0.0.0.0",
+          "depth": 7,
+          "role": "link",
+          "name": "Skip to content",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "visible"
+          ],
+          "actions": [
+            "jump"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.0",
+          "depth": 8,
+          "role": "push button",
+          "name": "OpenBurnBar — go to dashboard overview",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "press"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.1",
+          "depth": 8,
+          "role": "push button",
+          "name": "Open command palette",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "press"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.7",
+          "depth": 8,
+          "role": "push button",
+          "name": "Import sessions",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "press"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.8",
+          "depth": 8,
+          "role": "push button",
+          "name": "Account",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "press"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.9",
+          "depth": 8,
+          "role": "push button",
+          "name": "Settings",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "press"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.0",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Chat Full-canvas chat",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.1",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Quota Subscriptions & limits",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.2",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Database Browse tracked sessions",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.3",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Projects Group by project",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.4",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Missions Active runs & tasks",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.5",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Session Logs Indexed conversations",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.6",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Memory Review what OpenBurnBar learned",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.5.0",
+          "depth": 9,
+          "role": "combo box",
+          "name": "Swarm Ember",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "has popup",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "select"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.10.0",
+          "depth": 9,
+          "role": "combo box",
+          "name": "More actions",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "has popup",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "select"
+          ],
+          "childCount": 0
+        }
+      ],
+      "truncated": false,
+      "minimums": {
+        "nodes": 20,
+        "named": 8,
+        "actionable": 5
+      },
+      "pass": true,
+      "failures": [],
+      "readinessAttempts": 1,
+      "nodes": [
+        {
+          "path": "0",
+          "depth": 0,
+          "role": "application",
+          "name": "openburnbar-linux-desktop",
+          "description": "",
+          "states": [],
+          "actions": [],
+          "childCount": 1
+        },
+        {
+          "path": "0.0",
+          "depth": 1,
+          "role": "frame",
+          "name": "OpenBurnBar",
+          "description": "",
+          "states": [
+            "active",
+            "enabled",
+            "resizable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 1
+        },
+        {
+          "path": "0.0.0",
+          "depth": 2,
+          "role": "filler",
+          "name": "",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "showing",
+            "vertical",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 1
+        },
+        {
+          "path": "0.0.0.0",
+          "depth": 3,
+          "role": "filler",
+          "name": "",
+          "description": "",
+          "states": [],
+          "actions": [],
+          "childCount": 1
+        },
+        {
+          "path": "0.0.0.0.0",
+          "depth": 4,
+          "role": "filler",
+          "name": "",
+          "description": "",
+          "states": [],
+          "actions": [],
+          "childCount": 1
+        },
+        {
+          "path": "0.0.0.0.0.0",
+          "depth": 5,
+          "role": "scroll pane",
+          "name": "",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive"
+          ],
+          "actions": [],
+          "childCount": 1
+        },
+        {
+          "path": "0.0.0.0.0.0.0",
+          "depth": 6,
+          "role": "document web",
+          "name": "OpenBurnBar",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 4
+        },
+        {
+          "path": "0.0.0.0.0.0.0.0",
+          "depth": 7,
+          "role": "link",
+          "name": "Skip to content",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "visible"
+          ],
+          "actions": [
+            "jump"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1",
+          "depth": 7,
+          "role": "landmark",
+          "name": "",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 11
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2",
+          "depth": 7,
+          "role": "page tab list",
+          "name": "Primary",
+          "description": "",
+          "states": [
+            "enabled",
+            "horizontal",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 7
+        },
+        {
+          "path": "0.0.0.0.0.0.0.3",
+          "depth": 7,
+          "role": "landmark",
+          "name": "",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 2
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.0",
+          "depth": 8,
+          "role": "push button",
+          "name": "OpenBurnBar — go to dashboard overview",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "press"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.1",
+          "depth": 8,
+          "role": "push button",
+          "name": "Open command palette",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "press"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.2",
+          "depth": 8,
+          "role": "section",
+          "name": "",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.3",
+          "depth": 8,
+          "role": "section",
+          "name": "",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.4",
+          "depth": 8,
+          "role": "status bar",
+          "name": "Connected over AF_UNIX at /tmp/openburnbar-linux-desktop-session/runtime/openburnbar/daemon.sock.",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 1
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.5",
+          "depth": 8,
+          "role": "section",
+          "name": "",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 1
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.6",
+          "depth": 8,
+          "role": "status bar",
+          "name": "Loading telemetry",
+          "description": "",
+          "states": [
+            "busy",
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.7",
+          "depth": 8,
+          "role": "push button",
+          "name": "Import sessions",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "press"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.8",
+          "depth": 8,
+          "role": "push button",
+          "name": "Account",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "press"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.9",
+          "depth": 8,
+          "role": "push button",
+          "name": "Settings",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "press"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.10",
+          "depth": 8,
+          "role": "section",
+          "name": "",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 1
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.0",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Chat Full-canvas chat",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.1",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Quota Subscriptions & limits",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.2",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Database Browse tracked sessions",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.3",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Projects Group by project",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.4",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Missions Active runs & tasks",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.5",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Session Logs Indexed conversations",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.2.6",
+          "depth": 8,
+          "role": "page tab",
+          "name": "Memory Review what OpenBurnBar learned",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "selectable",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.3.0",
+          "depth": 8,
+          "role": "heading",
+          "name": "First-run setup",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.3.1",
+          "depth": 8,
+          "role": "status bar",
+          "name": "Checking setup authority",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 4
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.4.0",
+          "depth": 9,
+          "role": "section",
+          "name": "",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.5.0",
+          "depth": 9,
+          "role": "combo box",
+          "name": "Swarm Ember",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "has popup",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "select"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.1.10.0",
+          "depth": 9,
+          "role": "combo box",
+          "name": "More actions",
+          "description": "",
+          "states": [
+            "enabled",
+            "focusable",
+            "has popup",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [
+            "select"
+          ],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.3.1.0",
+          "depth": 9,
+          "role": "section",
+          "name": "",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.3.1.1",
+          "depth": 9,
+          "role": "paragraph",
+          "name": "",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.3.1.2",
+          "depth": 9,
+          "role": "heading",
+          "name": "Checking daemon-owned setup",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        },
+        {
+          "path": "0.0.0.0.0.0.0.3.1.3",
+          "depth": 9,
+          "role": "paragraph",
+          "name": "",
+          "description": "",
+          "states": [
+            "enabled",
+            "sensitive",
+            "showing",
+            "visible"
+          ],
+          "actions": [],
+          "childCount": 0
+        }
+      ]
+    },
+    "keyboardFocus": {
+      "generatedAt": "2026-07-18T17:28:32.536Z",
+      "method": "xdotool-tab-plus-orca-atspi-focus-events",
+      "sourceLog": "orca-debug.log",
+      "physicalTabPressCount": 28,
+      "physicalShiftTabPressCount": 12,
+      "physicalKeyPressCount": 40,
+      "observedTrueFocusEventCount": 16,
+      "stepCount": 10,
+      "distinctFocusedTargets": 7,
+      "namedFocusedTargets": 10,
+      "steps": [
+        {
+          "step": 1,
+          "key": "Tab",
+          "focused": {
+            "role": "link",
+            "name": "Skip to content",
+            "application": "openburnbar-linux-desktop"
+          },
+          "capturePass": true
+        },
+        {
+          "step": 2,
+          "key": "Tab",
+          "focused": {
+            "role": "push button",
+            "name": "OpenBurnBar — go to dashboard overview",
+            "application": "openburnbar-linux-desktop"
+          },
+          "capturePass": true
+        },
+        {
+          "step": 3,
+          "key": "Tab",
+          "focused": {
+            "role": "push button",
+            "name": "BURN $0.00. Open range and unit controls",
+            "application": "openburnbar-linux-desktop"
+          },
+          "capturePass": true
+        },
+        {
+          "step": 4,
+          "key": "Tab",
+          "focused": {
+            "role": "push button",
+            "name": "Account",
+            "application": "openburnbar-linux-desktop"
+          },
+          "capturePass": true
+        },
+        {
+          "step": 5,
+          "key": "Tab",
+          "focused": {
+            "role": "combo box",
+            "name": "More actions",
+            "application": "openburnbar-linux-desktop"
+          },
+          "capturePass": true
+        },
+        {
+          "step": 6,
+          "key": "Tab",
+          "focused": {
+            "role": "toggle button",
+            "name": "Aurora",
+            "application": "openburnbar-linux-desktop"
+          },
+          "capturePass": true
+        },
+        {
+          "step": 7,
+          "key": "Tab",
+          "focused": {
+            "role": "toggle button",
+            "name": "Atelier",
+            "application": "openburnbar-linux-desktop"
+          },
+          "capturePass": true
+        },
+        {
+          "step": 8,
+          "key": "Tab",
+          "focused": {
+            "role": "link",
+            "name": "Skip to content",
+            "application": "openburnbar-linux-desktop"
+          },
+          "capturePass": true
+        },
+        {
+          "step": 9,
+          "key": "Tab",
+          "focused": {
+            "role": "push button",
+            "name": "OpenBurnBar — go to dashboard overview",
+            "application": "openburnbar-linux-desktop"
+          },
+          "capturePass": true
+        },
+        {
+          "step": 10,
+          "key": "Tab",
+          "focused": {
+            "role": "push button",
+            "name": "BURN $0.00. Open range and unit controls",
+            "application": "openburnbar-linux-desktop"
+          },
+          "capturePass": true
+        }
+      ],
+      "pass": true
+    },
+    "zoom": {
+      "generatedAt": "2026-07-18T17:34:26.425Z",
+      "method": "packaged-webkitgtk-keyboard-zoom",
+      "keyboardShortcut": "Ctrl+plus",
+      "incrementCount": 7,
+      "requestedApproximatePercent": 200,
+      "exactScaleObservable": false,
+      "screenshot": "screenshot-linux-desktop-zoom-200-requested.png",
+      "atspiSummary": "atspi-zoom-200-requested.json",
+      "pass": true
+    },
+    "orcaVersion": "46.1",
+    "orcaApplications": "17:27:22   pid:   164   xfce4-panel                xfce4-panel --disable-wm-check \n17:27:22   pid:   202   wrapper-2.0                /usr/lib/x86_64-linux-gnu/xfce4/panel/wrapper-2.0 /usr/lib/x86_64-linux-gnu/xfce4/panel/plugins/libactions.so 14 2097165 actions Action Buttons Log out, lock or other system actions \n17:27:22   pid:   198   wrapper-2.0                /usr/lib/x86_64-linux-gnu/xfce4/panel/wrapper-2.0 /usr/lib/x86_64-linux-gnu/xfce4/panel/plugins/libsystray.so 6 2097164 systray Status Tray Plugin Provides status notifier items (application indicators) and legacy systray items \n17:27:22   pid:   219   orca                       /usr/bin/python3 /usr/bin/orca --replace --disable speech --disable braille --disable braille-monitor --debug-file=/workspace/.linux-shard/session/orca-debug.log \n17:27:22   pid:   276   xdg-desktop-portal-gtk     /usr/libexec/xdg-desktop-portal-gtk \n17:27:22   pid:   243   openburnbar-linux-desktop  /usr/bin/openburnbar-linux-desktop",
+    "orcaProcessObserved": true
+  },
+  "evidence": {
+    "firstRunScreenshot": "screenshot-linux-desktop-first-run.png",
+    "afterTrayOpenScreenshot": "screenshot-linux-desktop-after-tray-open.png",
+    "packagedRouteTranscript": "packaged-route-session-transcript.json",
+    "runtimePerfSamples": "runtime-perf-samples.jsonl",
+    "daemonSocketLog": "daemon-shell-session.log",
+    "trayMenuLayout": "tray-menu-layout.txt",
+    "accessibilitySnapshot": "accessibility-tree-linux-desktop.txt",
+    "atspiTree": "atspi-tree-linux-desktop.json",
+    "atspiFocusSequence": "atspi-keyboard-focus-sequence.json",
+    "orcaDebugLog": "orca-debug.log",
+    "zoomScreenshot": "screenshot-linux-desktop-zoom-200-requested.png",
+    "zoomAtspiSummary": "atspi-zoom-200-requested.json"
+  }
+}

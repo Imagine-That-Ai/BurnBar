@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
   fileSize,
   gitInfo,
+  expectedLinuxCosignIdentity,
   manifestPath,
   readJson,
   reanchorEvidenceDir,
@@ -18,11 +19,19 @@ import { validateFeedDocument } from './lib/linux-update-feed.mjs';
 import { validateArchitectureShardSet } from './lib/linux-release-shards.mjs';
 import {
   aggregateArchitectureLifecycle,
+  isArchitectureSessionBaselineBlocked,
   validateArchitectureSessionSet
 } from './lib/linux-package-session.mjs';
+import {
+  readShardAttestationSubject,
+  validateAggregateInstalledManifest
+} from './lib/linux-aggregate-installed-attestation.mjs';
+import { materializeArchReleaseMetadata } from './lib/linux-arch-pkgbuild.mjs';
 
 const versionIndex = process.argv.indexOf('--version');
 const channelIndex = process.argv.indexOf('--channel');
+const candidate = process.argv.includes('--candidate');
+const allowBlockedLifecycle = process.argv.includes('--allow-blocked-lifecycle');
 const version = versionIndex >= 0 ? process.argv[versionIndex + 1]?.trim() : null;
 const channel = channelIndex >= 0 ? process.argv[channelIndex + 1]?.trim() : 'prerelease';
 const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? path.join(repoRoot, '.linux-release'));
@@ -38,6 +47,14 @@ const dirtyEntries = rawGit.dirtyEntries.filter((entry) => {
 });
 const git = { ...rawGit, dirty: dirtyEntries.length > 0, dirtyEntries };
 const blockers = [];
+const candidateWarnings = [];
+
+if (allowBlockedLifecycle && (!candidate || channel === 'stable')) {
+  blockers.push({
+    kind: 'blocked-lifecycle-flag',
+    message: '--allow-blocked-lifecycle is permitted only for prerelease or nightly candidates.'
+  });
+}
 
 if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version ?? '')) {
   blockers.push({ kind: 'version', message: 'Assembly requires --version with strict X.Y.Z semver.' });
@@ -63,9 +80,11 @@ if (!releaseBaseUrl) {
 
 const logsDir = path.join(outDir, 'logs');
 const artifactsDir = path.join(outDir, 'artifacts');
+const installedManifestsDir = path.join(outDir, 'installed-manifests');
 const sidecarsDir = path.join(outDir, 'sidecars');
 const smokeDir = path.join(outDir, 'smoke');
-for (const directory of [logsDir, artifactsDir, sidecarsDir, smokeDir]) {
+const archDir = path.join(outDir, 'arch');
+for (const directory of [logsDir, artifactsDir, installedManifestsDir, sidecarsDir, smokeDir, archDir]) {
   fs.mkdirSync(directory, { recursive: true });
 }
 
@@ -128,13 +147,47 @@ for (const shardFile of shardFiles) {
     const destination = path.join(artifactsDir, name);
     fs.copyFileSync(source, destination);
     fs.chmodSync(destination, fs.statSync(source).mode & 0o777);
-    artifacts.push({
+    const assembledArtifact = {
       type: artifact.type,
       architecture,
       file: relative(destination),
       size: fileSize(destination),
       sha256: sha256(destination)
-    });
+    };
+    if (['arch', 'deb', 'rpm'].includes(artifact.type)) {
+      const manifestRecord = copyInstalledAttestationSubject({
+        shardFile,
+        record: artifact.installedManifest,
+        destination: path.join(installedManifestsDir, `${name}.installed-manifest.json`),
+        label: `${artifact.type}:${architecture} installed manifest`,
+        blockers
+      });
+      const signatureRecord = copyInstalledAttestationSubject({
+        shardFile,
+        record: artifact.installedManifestSignature,
+        destination: path.join(installedManifestsDir, `${name}.installed-manifest.json.sig`),
+        label: `${artifact.type}:${architecture} installed manifest signature`,
+        blockers
+      });
+      if (manifestRecord && signatureRecord) {
+        try {
+          validateAggregateInstalledManifest(fs.readFileSync(path.join(repoRoot, manifestRecord.file)), {
+            architecture,
+            format: artifact.type,
+            version,
+            commit: git.commit
+          });
+          assembledArtifact.installedManifest = manifestRecord;
+          assembledArtifact.installedManifestSignature = signatureRecord;
+        } catch (error) {
+          blockers.push({
+            kind: 'installed-manifest',
+            message: `${artifact.type}:${architecture} installed manifest binding is invalid: ${error.message}`
+          });
+        }
+      }
+    }
+    artifacts.push(assembledArtifact);
   }
   const smokeFile = findNamedFiles(path.dirname(shardFile), 'architecture-smoke.json')[0];
   let smoke = null;
@@ -164,19 +217,34 @@ for (const sessionFile of sessionFiles) {
     blockers.push({ kind: 'architecture-session-json', message: `Architecture session is invalid JSON: ${sessionFile}`, error: String(error) });
   }
 }
-for (const message of validateArchitectureSessionSet({
+const architectureSessionFailures = validateArchitectureSessionSet({
   manifest,
   sessions: architectureSessions,
   version,
   commit: git.commit
-})) {
-  blockers.push({ kind: 'architecture-session', message });
+});
+const baselineBlocked = isArchitectureSessionBaselineBlocked({
+  manifest,
+  sessions: architectureSessions
+});
+const lifecycleWarningAllowed = allowBlockedLifecycle && baselineBlocked;
+if (architectureSessionFailures.length > 0 && !lifecycleWarningAllowed) {
+  for (const message of architectureSessionFailures) {
+    blockers.push({ kind: 'architecture-session', message });
+  }
+} else if (lifecycleWarningAllowed) {
+  candidateWarnings.push({
+    kind: 'blocked-lifecycle-baseline',
+    message: 'One or more architectures lack a compatible older signed baseline; update, rollback, and data-preservation proof remains blocked for this non-stable candidate.'
+  });
 }
 const architectureSessionFile = path.join(smokeDir, 'architecture-sessions.json');
 writeJson(architectureSessionFile, {
   schemaVersion: 1,
   generatedAt: new Date().toISOString(),
-  sessions: architectureSessions
+  sessions: architectureSessions,
+  failedCount: architectureSessionFailures.length,
+  passed: architectureSessionFailures.length === 0
 });
 const packageLifecycle = aggregateArchitectureLifecycle({ manifest, sessions: architectureSessions });
 const packageSmokeFile = path.join(smokeDir, 'package-smoke-summary.json');
@@ -184,8 +252,29 @@ writeJson(packageSmokeFile, {
   schemaVersion: 2,
   generatedAt: new Date().toISOString(),
   architectures: manifest.supportedArchitectures,
-  ...packageLifecycle
+  ...packageLifecycle,
+  promotionBlocked: lifecycleWarningAllowed || packageLifecycle.passed !== true,
+  candidateWarnings
 });
+
+let archRelease = null;
+try {
+  archRelease = materializeArchReleaseMetadata({
+    repoRoot,
+    outDir: archDir,
+    version,
+    gitCommit: git.commit,
+    artifacts
+  });
+  for (const artifact of artifacts.filter((entry) => entry.type === 'arch')) {
+    const published = archRelease.installedAttestations[artifact.architecture];
+    if (!published) throw new Error(`missing published Arch installed attestation for ${artifact.architecture}`);
+    artifact.installedManifest = published.installedManifest;
+    artifact.installedManifestSignature = published.installedManifestSignature;
+  }
+} catch (error) {
+  blockers.push({ kind: 'arch-release-metadata', message: error.message });
+}
 
 const checksumsFile = path.join(sidecarsDir, `OpenBurnBar-${version}-linux-checksums.txt`);
 fs.writeFileSync(
@@ -215,13 +304,13 @@ if (vex.exitCode !== 0 || !fs.existsSync(vexFile)) blockers.push({ kind: 'vex', 
 
 const paritySource = path.join(reanchorEvidenceDir, 'parity-ledger-validation.json');
 const parityFile = path.join(sidecarsDir, `OpenBurnBar-${version}-linux.parity-attestation.json`);
-if (fs.existsSync(paritySource)) {
+if (!candidate && fs.existsSync(paritySource)) {
   fs.copyFileSync(paritySource, parityFile);
   const parity = readJson(parityFile);
   if (parity.targetHead !== git.commit || parity.promotionPassed !== true || parity.productParityClaim !== true) {
     blockers.push({ kind: 'parity-attestation', message: 'Parity attestation is not green for the assembly commit.' });
   }
-} else {
+} else if (!candidate) {
   blockers.push({ kind: 'parity-attestation', message: 'Current release-head parity attestation is missing.' });
 }
 
@@ -295,7 +384,7 @@ for (const row of metadata) {
 const provenance = {
   predicateType: 'https://openburnbar.dev/attestations/linux-release-artifact/v1',
   generatedAt: new Date().toISOString(),
-  expectedCosignIdentity: manifest.signing.cosignIdentityTemplate.replace('{version}', version ?? ''),
+  expectedCosignIdentity: expectedLinuxCosignIdentity({ manifest, version, candidate }),
   expectedCosignIssuer: manifest.signing.cosignIssuer,
   publicKeySpkiSha256: manifest.signing.publicKeySpkiSha256,
   git,
@@ -320,18 +409,32 @@ const provenance = {
     sha256: sha256(packageSmokeFile),
     size: fileSize(packageSmokeFile)
   },
+  archRelease: archRelease ? {
+    pkgbuild: {
+      file: relative(archRelease.pkgbuildFile),
+      sha256: sha256(archRelease.pkgbuildFile),
+      size: fileSize(archRelease.pkgbuildFile)
+    },
+    metadata: {
+      file: relative(archRelease.metadataFile),
+      sha256: sha256(archRelease.metadataFile),
+      size: fileSize(archRelease.metadataFile)
+    }
+  } : null,
   promotionBlocked: blockers.length > 0,
-  blockers
+  blockers,
+  candidateWarnings
 };
 const provenanceFile = path.join(sidecarsDir, `OpenBurnBar-${version}-linux.provenance-predicate.json`);
 writeJson(provenanceFile, provenance);
 
-const closureRecord = (file) => fs.existsSync(file)
+const closureRecord = (file) => file && fs.existsSync(file)
   ? { file: relative(file), sha256: sha256(file), size: fileSize(file) }
   : null;
 writeJson(path.join(outDir, 'package-closure.json'), {
   schemaVersion: 3,
   generatedAt: new Date().toISOString(),
+  stage: candidate ? 'candidate' : 'promotion',
   manifest: relative(manifestPath),
   tag: `linux-v${version}`,
   git,
@@ -348,10 +451,14 @@ writeJson(path.join(outDir, 'package-closure.json'), {
     parityAttestation: closureRecord(parityFile),
     architectureSessions: closureRecord(architectureSessionFile),
     packageSmoke: closureRecord(packageSmokeFile),
+    archPkgbuild: closureRecord(archRelease?.pkgbuildFile),
+    archReleaseMetadata: closureRecord(archRelease?.metadataFile),
     updateFeed: closureRecord(feedFile),
     updateFeedSignature: closureRecord(feedSignatureFile)
   },
-  blockers
+  blockers,
+  allowBlockedLifecycle: lifecycleWarningAllowed,
+  candidateWarnings
 });
 
 writeJson(path.join(smokeDir, 'architecture-smoke-summary.json'), {
@@ -412,4 +519,15 @@ function writeLog(file, steps) {
     step.stderr
   ].join('\n')).join('\n\n');
   fs.writeFileSync(file, `${body}\n`, 'utf8');
+}
+
+function copyInstalledAttestationSubject({ shardFile, record, destination, label, blockers }) {
+  try {
+    const snapshot = readShardAttestationSubject(path.dirname(shardFile), record, label);
+    fs.writeFileSync(destination, snapshot.bytes, { mode: 0o600 });
+    return { file: relative(destination), sha256: snapshot.sha256, size: snapshot.size };
+  } catch (error) {
+    blockers.push({ kind: 'installed-manifest', message: `${label}: ${error.message}.` });
+    return null;
+  }
 }

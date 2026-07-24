@@ -74,8 +74,12 @@ public enum InsightWidgetShared {
     public static let verdictFilename = "insight_verdict_snapshot.json"
 
     public static var containerURL: URL? {
+        #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
         FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
+        #else
+        nil
+        #endif
     }
 
     public static var verdictURL: URL? {

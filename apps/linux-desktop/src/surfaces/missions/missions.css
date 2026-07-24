@@ -583,8 +583,59 @@
 }
 
 .missions-gate-details {
+  display: grid;
+  gap: var(--space-3);
   padding-top: var(--space-2);
   border-top: 1px solid var(--color-glass-line);
+}
+
+.missions-detail-summary {
+  margin: 0;
+  color: var(--color-text-dim);
+  line-height: 1.45;
+}
+
+.missions-detail-section {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid color-mix(in srgb, var(--color-glass-line) 70%, transparent);
+}
+
+.missions-detail-section h5 {
+  margin: 0;
+  color: var(--color-text-bright);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.missions-detail-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.missions-detail-list li {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2);
+  border-left: 2px solid var(--color-glass-line);
+  color: var(--color-text-dim);
+  font-size: 0.78rem;
+}
+
+.missions-detail-list strong {
+  color: var(--color-text-bright);
+}
+
+.missions-detail-unavailable {
+  margin: 0;
+  color: var(--color-warn, var(--color-text-dim));
+  font-size: 0.78rem;
+  line-height: 1.4;
 }
 
 .missions-gate-detail-list {
@@ -647,6 +698,11 @@
   color: var(--color-text-mute);
 }
 
+.missions-gate-btn--danger {
+  border-color: color-mix(in srgb, var(--color-seal-crimson) 65%, transparent);
+  color: var(--color-seal-crimson);
+}
+
 .missions-gate-expand {
   border: none;
   background: transparent;
@@ -655,6 +711,103 @@
   font-weight: 500;
   cursor: pointer;
   padding: 4px var(--space-2);
+}
+
+.missions-question-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.missions-question-card {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-glass-line);
+  border-left: 3px solid var(--color-brass-core);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-glass-bg-elevated) 72%, transparent);
+}
+
+.missions-question-card p,
+.missions-question-card h4 {
+  margin: 0;
+}
+
+.missions-question-header,
+.missions-question-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.missions-question-meta,
+.missions-question-status {
+  color: var(--color-text-dim);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.missions-question-status {
+  flex: 0 0 auto;
+  color: var(--color-brass-core);
+}
+
+.missions-question-form,
+.missions-question-answer,
+.missions-question-options {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.missions-question-options {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-glass-line);
+  border-radius: 6px;
+}
+
+.missions-question-options legend,
+.missions-question-answer {
+  color: var(--color-text-mute);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.missions-question-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--color-text-base);
+  cursor: pointer;
+}
+
+.missions-question-options label span {
+  display: grid;
+  gap: 2px;
+}
+
+.missions-question-options small {
+  color: var(--color-text-dim);
+}
+
+.missions-question-answer textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  padding: var(--space-3);
+  border: 1px solid var(--color-glass-line);
+  border-radius: 6px;
+  background: var(--color-glass-bg-elevated);
+  color: var(--color-text-base);
+  font: inherit;
+}
+
+.missions-question-answer textarea:focus-visible,
+.missions-question-options input:focus-visible {
+  outline: 2px solid var(--color-brass-core);
+  outline-offset: 2px;
 }
 
 .missions-provenance {

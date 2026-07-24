@@ -66,6 +66,7 @@ enum ParserRegistry {
         var parsers: [AgentProvider: any LogParser] = [:]
         parsers[.factory] = RegisteredLogParser(FactoryDroidParser())
         parsers[.claudeCode] = RegisteredLogParser(ClaudeCodeParser())
+        parsers[.openClaude] = RegisteredLogParser(ClaudeCodeParser(provider: .openClaude))
         parsers[.copilot] = RegisteredLogParser(CopilotParser())
         parsers[.aider] = RegisteredLogParser(AiderParser())
         parsers[.cursor] = RegisteredLogParser(CursorParser())
@@ -73,6 +74,7 @@ enum ParserRegistry {
         parsers[.codex] = RegisteredLogParser(LiftedCodexParser())
         parsers[.openCode] = RegisteredLogParser(OpenCodeParser())
         parsers[.piAgent] = RegisteredLogParser(PiAgentParser())
+        parsers[.omp] = RegisteredLogParser(OMPParser())
         parsers[.zai] = RegisteredLogParser(ModelFilterParser(modelPattern: "zai", provider: .zai))
         parsers[.minimax] = RegisteredLogParser(ModelFilterParser(modelPattern: "minimax", provider: .minimax))
         parsers[.kimi] = RegisteredLogParser(KimiParser())

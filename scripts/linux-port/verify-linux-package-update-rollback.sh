@@ -38,6 +38,18 @@ if [[ -z "$previous" || ! -f "$previous" ]]; then
   exit 0
 fi
 
+# The first Linux prerelease package predates the package-owned daemon launcher
+# contract. Treat that known baseline as unavailable for lifecycle proof instead
+# of reporting a misleading command failure; stable promotion still rejects the
+# blocked report and requires a compatible older package.
+if ! dpkg-deb -c "$previous" | grep -F ' ./usr/libexec/openburnbar-daemon-launch' >/dev/null; then
+  reason='Previous same-architecture Linux .deb predates the daemon launcher contract; update, rollback, and data-preservation promotion gates remain blocked until a compatible baseline is available.'
+  write_blocked "$reason"
+  printf '%s\n' "$reason" >"$log"
+  cat "$report"
+  exit 0
+fi
+
 exec > >(tee "$log") 2>&1
 candidate_pkg="$(dpkg-deb -f "$candidate" Package)"
 previous_pkg="$(dpkg-deb -f "$previous" Package)"
