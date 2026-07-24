@@ -182,6 +182,11 @@ updates:
   # block a merge now has a bot that opens the fix. Grouped and rate-limited so
   # 11 new ecosystems cannot flood the PR queue -- these are mostly small
   # internal packages, so one grouped PR each is the expected steady state.
+  #
+  # The root package.json exists so this entry has a valid npm manifest to
+  # update; Dependabot cannot process a directory that only holds a lockfile.
+  # The root lockfile is a workspaces index with no direct dependencies of its
+  # own -- the real dependencies live in the per-package lockfiles below.
   - package-ecosystem: "npm"
     directory: "/"
     schedule: &lockfile-schedule

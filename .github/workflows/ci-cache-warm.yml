@@ -28,16 +28,25 @@ name: CI cache warm (default branch)
 # different slices share one key:
 #
 #   aarch64-apple-darwin          app-pr-gate, headless-app-build,
-#                                 computer-use-loopback-test, burnbar-turbo
+#                                 computer-use-loopback-test,
+#                                 pr-native-fast (host target on hosted arm64)
 #   x86_64-apple-darwin           codeql, codeql-pr
-#   (script default: all five)    pr-native-fast
+#
+# (burnbar-turbo intentionally does NOT restore these entries: it runs on the
+# isolated self-hosted turbo fleet, a different Xcode surface, and builds its
+# own artifacts under its turbo-* keys.)
 #
 # Whichever job saved first won, so a thin single-slice artifact could be
 # restored by a consumer that needed a different slice. This job deliberately
 # builds the SCRIPT DEFAULT -- all five targets -- so the entry that every PR
-# restores is a superset that satisfies all of them. Fixing the key to include
-# the target set is the complete fix and is tracked separately; warming a
-# superset here removes the race in practice without touching six workflows.
+# restores is a superset that satisfies all of them. Because entries are
+# immutable per key, an exact-key hit here is NOT trusted blindly: the restored
+# artifact's metadata is validated against the consumer contract (debug
+# profile, all five targets), and a thin entry (e.g. the x86_64-only artifact
+# the main-branch CodeQL job can save under this key first) is evicted and
+# replaced with the superset. Fixing the key to include the target set is the
+# complete fix and is tracked separately; warming a validated superset here
+# removes the race in practice without touching six workflows.
 
 on:
   push:
@@ -49,7 +58,6 @@ on:
       - ".gitmodules"
       - "scripts/build-signal-ffi-xcframework.sh"
       - "scripts/lib/prepare-signal-ffi-xcframework.sh"
-      - "**/Package.resolved"
       - ".github/workflows/ci-cache-warm.yml"
   # GitHub evicts caches untouched for 7 days. A daily pass keeps the entry warm
   # on a quiet week so PRs never silently fall back to a cold build.
@@ -59,6 +67,10 @@ on:
 
 permissions:
   contents: read
+  # Cache entries are immutable per key. Upgrading a thin entry saved by
+  # another main-branch writer (see the shared-key note above) requires
+  # deleting it before saving the superset, which needs actions: write.
+  actions: write
 
 # Never race two warms against the same key; a superseded warm is pointless.
 concurrency:
@@ -67,7 +79,7 @@ concurrency:
 
 jobs:
   signal-ffi:
-    name: Warm Signal FFI + SwiftPM caches
+    name: Warm Signal FFI caches
     # Hosted macos-26 on purpose: the PR gates that consume these entries run
     # here, so warming on the same image keeps toolchain provenance identical.
     # The free self-hosted fleet is cheaper but is a different Xcode/Homebrew
@@ -89,50 +101,141 @@ jobs:
         id: signal-ffi-cache
         run: echo "sha=$(git -C Vendor/libsignal rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache macOS Signal FFI artifact
-        id: cache-macos
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+      - name: Restore macOS Signal FFI artifact
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
         with:
           path: Vendor/OpenBurnBarSignalFfiMac.xcframework
           key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
 
-      - name: Cache iOS Signal FFI artifact
-        id: cache-ios
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+      - name: Restore iOS Signal FFI artifact
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
         with:
           path: Vendor/OpenBurnBarSignalFfiIOS.xcframework
           key: ${{ runner.os }}-signal-ffi-ios-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
 
+      # An exact-key hit is not proof of health. Other writers share this key
+      # and can save a single-target artifact first; consumers validate the
+      # metadata that build-signal-ffi-xcframework.sh embeds and rebuild on any
+      # mismatch, so a thin entry restored here must be rebuilt and replaced,
+      # never trusted just because the key matched.
+      - name: Validate restored artifacts against the consumer contract
+        id: validate
+        run: |
+          set -euo pipefail
+          expected_targets="aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios"
+          is_debug_superset() {
+            local fw="$1"
+            local meta="${fw}/.openburnbar-signal-ffi-build.env"
+            [[ -d "${fw}" && -f "${meta}" ]] || return 1
+            local profile targets target
+            profile="$(sed -n 's/^profile=//p' "${meta}" | head -n 1)"
+            targets="$(sed -n 's/^targets=//p' "${meta}" | head -n 1)"
+            [[ "${profile}" == "debug" ]] || return 1
+            for target in ${expected_targets}; do
+              [[ " ${targets} " == *" ${target} "* ]] || return 1
+            done
+          }
+          for entry in macos:Vendor/OpenBurnBarSignalFfiMac.xcframework ios:Vendor/OpenBurnBarSignalFfiIOS.xcframework; do
+            name="${entry%%:*}"
+            fw="${entry#*:}"
+            if is_debug_superset "${fw}"; then
+              echo "${fw} already holds the debug all-target superset; no rebuild needed."
+              echo "build_${name}=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "${fw} is missing or cannot satisfy every consumer; will rebuild and replace it."
+              echo "build_${name}=true" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
       - name: Install Rust toolchain for libsignal Swift FFI
-        if: steps.cache-macos.outputs.cache-hit != 'true' || steps.cache-ios.outputs.cache-hit != 'true'
+        if: steps.validate.outputs.build_macos == 'true' || steps.validate.outputs.build_ios == 'true'
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
         with:
           toolchain: stable
 
       - name: Ensure libsignal native toolchain (protoc + cmake)
-        if: steps.cache-macos.outputs.cache-hit != 'true' || steps.cache-ios.outputs.cache-hit != 'true'
+        if: steps.validate.outputs.build_macos == 'true' || steps.validate.outputs.build_ios == 'true'
         uses: ./.github/actions/ensure-libsignal-toolchain
 
-      # No SIGNAL_FFI_BUILD_TARGETS: the script default builds all five Apple
+      # SIGNAL_FFI_BUILD_PROFILE=debug on purpose: every PR consumer goes
+      # through prepare-signal-ffi-xcframework.sh, whose CI default resolves to
+      # debug (CONFIGURATION is unset on PR gates), and it rejects restored
+      # artifacts whose metadata profile differs. A release-profile warm would
+      # be restored and immediately rebuilt by every consumer. No
+      # SIGNAL_FFI_BUILD_TARGETS: the script default builds all five Apple
       # targets and emits BOTH xcframeworks, so one build warms both entries
-      # with a superset every consumer can use.
-      - name: Build Signal FFI xcframeworks (all default targets)
-        if: steps.cache-macos.outputs.cache-hit != 'true' || steps.cache-ios.outputs.cache-hit != 'true'
-        run: ./scripts/build-signal-ffi-xcframework.sh
+      # with a superset every consumer accepts.
+      - name: Build debug Signal FFI xcframeworks (all default targets)
+        if: steps.validate.outputs.build_macos == 'true' || steps.validate.outputs.build_ios == 'true'
+        run: SIGNAL_FFI_BUILD_PROFILE=debug ./scripts/build-signal-ffi-xcframework.sh
+
+      # Saved cache entries are immutable, so replacing a thin entry means
+      # deleting it first. Deleting by key (no ref filter) also clears
+      # PR-scoped shadows of the same key so open PRs fall through to the
+      # default-branch superset. If another writer re-saves between this
+      # eviction and the save below, the save is skipped with a warning and
+      # the daily scheduled pass heals the entry.
+      - name: Evict stale entries that cannot satisfy every consumer
+        if: steps.validate.outputs.build_macos == 'true' || steps.validate.outputs.build_ios == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BUILD_MACOS: ${{ steps.validate.outputs.build_macos }}
+          BUILD_IOS: ${{ steps.validate.outputs.build_ios }}
+          MACOS_KEY: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
+          IOS_KEY: ${{ runner.os }}-signal-ffi-ios-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
+        run: |
+          set -euo pipefail
+          if [[ "${BUILD_MACOS}" == "true" ]]; then
+            gh cache delete "${MACOS_KEY}" || echo "No existing macOS entry to evict."
+          fi
+          if [[ "${BUILD_IOS}" == "true" ]]; then
+            gh cache delete "${IOS_KEY}" || echo "No existing iOS entry to evict."
+          fi
+
+      - name: Save macOS Signal FFI artifact
+        if: steps.validate.outputs.build_macos == 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: Vendor/OpenBurnBarSignalFfiMac.xcframework
+          key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
+
+      - name: Save iOS Signal FFI artifact
+        if: steps.validate.outputs.build_ios == 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: Vendor/OpenBurnBarSignalFfiIOS.xcframework
+          key: ${{ runner.os }}-signal-ffi-ios-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
 
       - name: Report what was warmed
+        env:
+          BUILD_MACOS: ${{ steps.validate.outputs.build_macos }}
+          BUILD_IOS: ${{ steps.validate.outputs.build_ios }}
         run: |
           set -euo pipefail
           echo "libsignal SHA: ${{ steps.signal-ffi-cache.outputs.sha }}"
-          echo "macOS entry pre-existing: ${{ steps.cache-macos.outputs.cache-hit == 'true' }}"
-          echo "iOS entry pre-existing:   ${{ steps.cache-ios.outputs.cache-hit == 'true' }}"
+          echo "macOS entry rebuilt this run: ${BUILD_MACOS}"
+          echo "iOS entry rebuilt this run:   ${BUILD_IOS}"
+          expected_targets="aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios"
           for fw in Vendor/OpenBurnBarSignalFfiMac.xcframework Vendor/OpenBurnBarSignalFfiIOS.xcframework; do
-            if [[ -d "$fw" ]]; then
-              echo "--- $fw slices:"
-              # Slice directories are the per-platform arch folders inside the xcframework.
-              find "$fw" -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | sort | sed 's/^/    /'
-            else
-              echo "::error::$fw was neither restored nor built; consumers would still rebuild cold."
+            meta="${fw}/.openburnbar-signal-ffi-build.env"
+            if [[ ! -d "${fw}" || ! -f "${meta}" ]]; then
+              echo "::error::${fw} was neither restored nor built; consumers would still rebuild cold."
               exit 1
             fi
+            profile="$(sed -n 's/^profile=//p' "${meta}" | head -n 1)"
+            targets="$(sed -n 's/^targets=//p' "${meta}" | head -n 1)"
+            if [[ "${profile}" != "debug" ]]; then
+              echo "::error::${fw} carries profile=${profile:-<missing>}; consumers request debug and would rebuild."
+              exit 1
+            fi
+            for target in ${expected_targets}; do
+              if [[ " ${targets} " != *" ${target} "* ]]; then
+                echo "::error::${fw} is missing target ${target}; some consumers would still rebuild."
+                exit 1
+              fi
+            done
+            echo "--- ${fw} (profile=${profile}, targets=${targets}) slices:"
+            # Slice directories are the per-platform arch folders inside the xcframework.
+            find "${fw}" -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | sort | sed 's/^/    /'
           done
