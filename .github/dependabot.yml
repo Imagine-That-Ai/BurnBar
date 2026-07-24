@@ -165,6 +165,119 @@ updates:
       prefix: "deps"
       include: "scope"
 
+  # ── Lockfiles the required OSV gate scans but nothing auto-fixed ──────────
+  #
+  # `OSV Scanner (open source vulnerabilities)` is a REQUIRED status check on
+  # main and scans every package-lock.json in the tree (19 of them). Dependabot
+  # watched only 8. An advisory landing in one of the other 11 therefore had no
+  # auto-fix owner: the required check went red on every open PR at once and
+  # stayed red until somebody hand-patched it.
+  #
+  # That is exactly what happened on 2026-07-24. The postcss and tar advisories
+  # hit `/apps/linux-desktop` and `/tools/schema-sync` -- both unwatched -- and
+  # red-lined all 17 open PRs for a vulnerability none of them introduced, until
+  # #1968 fixed the lockfiles by hand.
+  #
+  # Closing the gap makes the required gate self-healing: anything that can
+  # block a merge now has a bot that opens the fix. Grouped and rate-limited so
+  # 11 new ecosystems cannot flood the PR queue -- these are mostly small
+  # internal packages, so one grouped PR each is the expected steady state.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule: &lockfile-schedule
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 2
+    commit-message: &lockfile-commit
+      prefix: "deps"
+      include: "scope"
+    groups:
+      lockfile-updates: &lockfile-groups
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "npm"
+    directory: "/apps/linux-desktop"
+    schedule: *lockfile-schedule
+    open-pull-requests-limit: 2
+    commit-message: *lockfile-commit
+    groups:
+      lockfile-updates: *lockfile-groups
+
+  - package-ecosystem: "npm"
+    directory: "/packages/design-tokens"
+    schedule: *lockfile-schedule
+    open-pull-requests-limit: 2
+    commit-message: *lockfile-commit
+    groups:
+      lockfile-updates: *lockfile-groups
+
+  - package-ecosystem: "npm"
+    directory: "/packages/entitlements"
+    schedule: *lockfile-schedule
+    open-pull-requests-limit: 2
+    commit-message: *lockfile-commit
+    groups:
+      lockfile-updates: *lockfile-groups
+
+  - package-ecosystem: "npm"
+    directory: "/packages/libsignal-bridge"
+    schedule: *lockfile-schedule
+    open-pull-requests-limit: 2
+    commit-message: *lockfile-commit
+    groups:
+      lockfile-updates: *lockfile-groups
+
+  - package-ecosystem: "npm"
+    directory: "/packages/libsignal-protocol"
+    schedule: *lockfile-schedule
+    open-pull-requests-limit: 2
+    commit-message: *lockfile-commit
+    groups:
+      lockfile-updates: *lockfile-groups
+
+  - package-ecosystem: "npm"
+    directory: "/packages/signal-envelope-contracts"
+    schedule: *lockfile-schedule
+    open-pull-requests-limit: 2
+    commit-message: *lockfile-commit
+    groups:
+      lockfile-updates: *lockfile-groups
+
+  - package-ecosystem: "npm"
+    directory: "/scripts/linux-port"
+    schedule: *lockfile-schedule
+    open-pull-requests-limit: 2
+    commit-message: *lockfile-commit
+    groups:
+      lockfile-updates: *lockfile-groups
+
+  - package-ecosystem: "npm"
+    directory: "/tools/app-store-connect"
+    schedule: *lockfile-schedule
+    open-pull-requests-limit: 2
+    commit-message: *lockfile-commit
+    groups:
+      lockfile-updates: *lockfile-groups
+
+  - package-ecosystem: "npm"
+    directory: "/tools/openburnbar-mcp-remote"
+    schedule: *lockfile-schedule
+    open-pull-requests-limit: 2
+    commit-message: *lockfile-commit
+    groups:
+      lockfile-updates: *lockfile-groups
+
+  - package-ecosystem: "npm"
+    directory: "/tools/schema-sync"
+    schedule: *lockfile-schedule
+    open-pull-requests-limit: 2
+    commit-message: *lockfile-commit
+    groups:
+      lockfile-updates: *lockfile-groups
+
   # Security updates for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"

@@ -1,0 +1,138 @@
+name: CI cache warm (default branch)
+
+# WHY THIS EXISTS
+#
+# GitHub Actions scopes a cache to the ref that wrote it. A cache written on
+# refs/pull/<n>/merge is readable ONLY by that pull request; caches written on
+# the DEFAULT branch are readable by every branch and every PR. Nothing in this
+# repo was writing the expensive macOS caches on `main`:
+#
+#   $ gh api repos/.../actions/caches --jq '[.actions_caches[].ref]|unique'
+#   ["refs/pull/1564/merge","refs/pull/1744/merge","refs/pull/1764/merge",
+#    "refs/pull/1959/merge","refs/pull/1969/merge","refs/pull/1970/merge"]
+#
+# Zero entries on refs/heads/main. Every PR therefore started COLD and rebuilt
+# the libsignal Signal FFI xcframework from Rust source (five Apple targets) on
+# every macOS job, which is the bulk of the ~25 min median on App PR Gate,
+# Headless App Build and CodeQL PR. With hosted macos-* capped near five
+# concurrent jobs, that cold rebuild is what turned a normal PR burst into a
+# 46-queued-vs-5-running backlog.
+#
+# This workflow builds those artifacts once per relevant change on `main` so
+# every PR restores them instead of rebuilding.
+#
+# SECOND EFFECT -- DE-RACING A SHARED KEY
+#
+# The signal-ffi cache key intentionally covers the vendored libsignal SHA and
+# the build scripts, but NOT SIGNAL_FFI_BUILD_TARGETS, so consumers requesting
+# different slices share one key:
+#
+#   aarch64-apple-darwin          app-pr-gate, headless-app-build,
+#                                 computer-use-loopback-test, burnbar-turbo
+#   x86_64-apple-darwin           codeql, codeql-pr
+#   (script default: all five)    pr-native-fast
+#
+# Whichever job saved first won, so a thin single-slice artifact could be
+# restored by a consumer that needed a different slice. This job deliberately
+# builds the SCRIPT DEFAULT -- all five targets -- so the entry that every PR
+# restores is a superset that satisfies all of them. Fixing the key to include
+# the target set is the complete fix and is tracked separately; warming a
+# superset here removes the race in practice without touching six workflows.
+
+on:
+  push:
+    branches: [main]
+    # Only the inputs that actually change the cache key. Product code does not
+    # invalidate these artifacts, so a normal merge does not pay this cost.
+    paths:
+      - "Vendor/libsignal"
+      - ".gitmodules"
+      - "scripts/build-signal-ffi-xcframework.sh"
+      - "scripts/lib/prepare-signal-ffi-xcframework.sh"
+      - "**/Package.resolved"
+      - ".github/workflows/ci-cache-warm.yml"
+  # GitHub evicts caches untouched for 7 days. A daily pass keeps the entry warm
+  # on a quiet week so PRs never silently fall back to a cold build.
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never race two warms against the same key; a superseded warm is pointless.
+concurrency:
+  group: ci-cache-warm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  signal-ffi:
+    name: Warm Signal FFI + SwiftPM caches
+    # Hosted macos-26 on purpose: the PR gates that consume these entries run
+    # here, so warming on the same image keeps toolchain provenance identical.
+    # The free self-hosted fleet is cheaper but is a different Xcode/Homebrew
+    # surface, and a subtly mismatched artifact restored by every PR would be a
+    # far worse failure than one hosted job per libsignal bump.
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          submodules: false
+
+      - name: Initialize libsignal submodule with retry
+        run: bash scripts/ci/update-submodules-with-retry.sh Vendor/libsignal
+
+      # Must match the consumers byte for byte or the warmed entry is unreachable.
+      - name: Resolve Signal FFI cache identity
+        id: signal-ffi-cache
+        run: echo "sha=$(git -C Vendor/libsignal rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache macOS Signal FFI artifact
+        id: cache-macos
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: Vendor/OpenBurnBarSignalFfiMac.xcframework
+          key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
+
+      - name: Cache iOS Signal FFI artifact
+        id: cache-ios
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: Vendor/OpenBurnBarSignalFfiIOS.xcframework
+          key: ${{ runner.os }}-signal-ffi-ios-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        if: steps.cache-macos.outputs.cache-hit != 'true' || steps.cache-ios.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        if: steps.cache-macos.outputs.cache-hit != 'true' || steps.cache-ios.outputs.cache-hit != 'true'
+        uses: ./.github/actions/ensure-libsignal-toolchain
+
+      # No SIGNAL_FFI_BUILD_TARGETS: the script default builds all five Apple
+      # targets and emits BOTH xcframeworks, so one build warms both entries
+      # with a superset every consumer can use.
+      - name: Build Signal FFI xcframeworks (all default targets)
+        if: steps.cache-macos.outputs.cache-hit != 'true' || steps.cache-ios.outputs.cache-hit != 'true'
+        run: ./scripts/build-signal-ffi-xcframework.sh
+
+      - name: Report what was warmed
+        run: |
+          set -euo pipefail
+          echo "libsignal SHA: ${{ steps.signal-ffi-cache.outputs.sha }}"
+          echo "macOS entry pre-existing: ${{ steps.cache-macos.outputs.cache-hit == 'true' }}"
+          echo "iOS entry pre-existing:   ${{ steps.cache-ios.outputs.cache-hit == 'true' }}"
+          for fw in Vendor/OpenBurnBarSignalFfiMac.xcframework Vendor/OpenBurnBarSignalFfiIOS.xcframework; do
+            if [[ -d "$fw" ]]; then
+              echo "--- $fw slices:"
+              # Slice directories are the per-platform arch folders inside the xcframework.
+              find "$fw" -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | sort | sed 's/^/    /'
+            else
+              echo "::error::$fw was neither restored nor built; consumers would still rebuild cold."
+              exit 1
+            fi
+          done
