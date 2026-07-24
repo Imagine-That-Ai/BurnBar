@@ -7,14 +7,25 @@ import {
   resolveObservedSha,
 } from "./await-burnbar-ci-gate.mjs";
 
-test("workflow observes the PR head and the merge-group candidate exactly", () => {
+test("workflow executes trusted base code and observes the exact candidate", () => {
   const workflow = readFileSync(
     new URL("../../.github/workflows/burnbar-ci-gate.yml", import.meta.url),
     "utf8",
   );
+  assert.match(workflow, /\n  pull_request_target:\n/);
+  assert.doesNotMatch(workflow, /\n  pull_request:\n/);
   assert.match(
     workflow,
-    /BURNBAR_CI_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/,
+    /ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.merge_group\.base_sha \|\| github\.sha \}\}/,
+  );
+  assert.match(
+    workflow,
+    /BURNBAR_CI_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.event\.merge_group\.head_sha \|\| github\.sha \}\}/,
+  );
+  assert.match(workflow, /persist-credentials: false/);
+  assert.match(
+    workflow,
+    /\[\[ "\$\(git rev-parse HEAD\)" == "\$BURNBAR_BASE_SHA" \]\]/,
   );
 });
 
