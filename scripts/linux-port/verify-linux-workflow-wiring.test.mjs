@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
+import { repoRoot } from "./lib/linux-release-common.mjs";
 import { verifyLinuxWorkflowWiring } from "./verify-linux-workflow-wiring.mjs";
+
+const releaseWorkflow = fs.readFileSync(
+  path.join(repoRoot, ".github/workflows/linux-release.yml"),
+  "utf8",
+);
 
 function valid() {
   return {
@@ -1229,6 +1237,26 @@ test("complete fail-closed workflow wiring passes", () => {
     passed: true,
     failures: [],
   });
+});
+
+test("Linux release reclaims hosted-runner disk before native Docker builds", () => {
+  const reclaim = releaseWorkflow.indexOf(
+    "      - name: Reclaim hosted-runner build disk",
+  );
+  const toolchainBuild = releaseWorkflow.indexOf(
+    "      - name: Build mission Linux toolchain image",
+  );
+  assert.ok(reclaim >= 0, "release must reclaim hosted-runner disk");
+  assert.ok(
+    toolchainBuild > reclaim,
+    "disk reclamation must precede toolchain image build",
+  );
+  const reclaimStep = releaseWorkflow.slice(reclaim, toolchainBuild);
+  assert.match(
+    reclaimStep,
+    /docker system prune --all --volumes --force/u,
+  );
+  assert.match(reclaimStep, /test "\$available_kb" -ge 20000000/u);
 });
 
 test("P-38 workflow step cannot be removed or weakened", () => {

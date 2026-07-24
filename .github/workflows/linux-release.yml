@@ -212,6 +212,19 @@ jobs:
           # release checkout cleanliness remains fail-closed.
           path: .linux-shard/text-expansion-trust
 
+      - name: Reclaim hosted-runner build disk
+        run: |
+          set -euo pipefail
+          # Swift/Cargo and the architecture package images are both large;
+          # hosted runner language/tool caches are not part of the release
+          # subject and must not be allowed to starve the native build.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo apt-get clean
+          docker system prune --all --volumes --force
+          available_kb="$(df --output=avail / | tail -n 1 | tr -d ' ')"
+          test "$available_kb" -ge 20000000
+          df -h /
+
       - name: Build mission Linux toolchain image
         run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
 
