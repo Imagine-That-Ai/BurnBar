@@ -73,6 +73,25 @@ GitHub and GitLab. This is a source/UI improvement only: production cloud
 credentials, signed-candidate execution, trusted-device receipts, and the
 strict **0/40 + 0/7** certification ledger remain open.
 
+### Latest native PDF attachment parity — 2026-07-23
+
+`63f39a80f0` closes a concrete Linux chat attachment gap. The Tauri gateway
+already capability-checked `application/pdf`, but serialized an approved PDF as
+an `image_url`, which could make an upstream provider reject it or interpret it
+as an image. PDF attachments now use a bounded typed `file` part containing the
+validated filename and data URL. The shared Responses-to-Chat Completions
+normalizer preserves that document shape (while retaining image conversion for
+image files), and the Anthropic compatibility bridge maps native PDF documents
+to Anthropic `document` blocks in both directions. Rust coverage proves the
+native PDF payload and one-shot cleanup; Swift conversion and gateway coverage
+assert filename/data preservation and the downstream Anthropic document shape.
+The Swift package compiled locally, but its focused XCTest bundle could not
+launch because the host lacks the pre-existing `SQLCipher.framework` runtime
+loader; hosted Linux CI remains the authoritative execution path. This closes
+the source-level PDF semantics gap, not provider-specific production support or
+installed-candidate certification. The strict **0/40 + 0/7** ledger remains
+unchanged.
+
 ## Latest verification checkpoint — 2026-07-22
 
 The integration branch's hosted Linux gate is green at commit
