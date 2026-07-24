@@ -1,0 +1,76 @@
+DISPLAY=:0
+=== capabilities --json ===
+{
+  "capabilities" : [
+    "daemon.health",
+    "client.attach",
+    "run.create",
+    "run.list",
+    "run.get",
+    "run.poll",
+    "run.cancel",
+    "run.retry",
+    "approval.respond",
+    "code.index",
+    "code.search",
+    "memory.recall"
+  ],
+  "schema" : "openburnbar.cli.capabilities.v1"
+}
+=== config ===
+project_id=proj_df40f779c4865eaa
+project_root=unindexed
+indexed_at=never
+artifacts=0
+symbols=0
+references=0
+call_edges=0
+storage_bytes=0
+storage_budget_bytes=536870912
+storage_within_budget=true
+last_vacuumed_at=never
+=== healthcheck ===
+liveness=ok daemon=1.0.30 protocol=1
+project_id=proj_df40f779c4865eaa
+readiness=unindexed
+artifacts=0 chunks=0 symbols=0
+pending_forgets=0
+storage=0/536870912 within_budget=true
+last_vacuumed_at=never
+=== service status ===
+service=running
+daemon_version=1.0.30
+protocol=1
+socket=/run/user/1000/openburnbar/daemon.sock
+gateway=disabled
+=== X windows (desktop) ===
+35651585
+6291460
+35651587
+35651585
+35651587
+     0x600004 "OpenBurnBar": ("mutter-x11-frames" "mutter-x11-frames")  1308x848+52+20  +52+20
+        0x2200003 "OpenBurnBar": ("openburnbar-linux-desktop" "Openburnbar-linux-desktop")  1280x782+14+49  +66+69
+     0x2200001 "openburnbar-linux-desktop": ("openburnbar-linux-desktop" "Openburnbar-linux-desktop")  10x10+10+10  +10+10
+=== AT-SPI / a11y bus ===
+:1.53                                        1953 gsd-a11y-settin burnbar :1.53         user@1000.service -       -
+org.a11y.Bus                                 1760 at-spi-bus-laun burnbar :1.22         user@1000.service -       -
+org.gnome.SettingsDaemon.A11ySettings        1953 gsd-a11y-settin burnbar :1.53         user@1000.service -       -
+=== GStreamer exact ===
+opusdec=yes
+autoaudiosink=yes
+pipewiresrc=yes
+=== desktop process env ===
+XDG_RUNTIME_DIR=/run/user/1000
+XDG_DATA_DIRS=/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop
+DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+DISPLAY=:0
+XDG_CONFIG_DIRS=/etc/xdg/xdg-ubuntu:/etc/xdg
+XDG_CURRENT_DESKTOP=ubuntu:GNOME
+XDG_SESSION_CLASS=user
+XDG_SESSION_DESKTOP=ubuntu
+XDG_SESSION_TYPE=x11
+XDG_MENU_PREFIX=gnome-
+=== privacy-rpc smoke if possible ===
+privacy-rpc input must contain a supported method and params object
+DONE

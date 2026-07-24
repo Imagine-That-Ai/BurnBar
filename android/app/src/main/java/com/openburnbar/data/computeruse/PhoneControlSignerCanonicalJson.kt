@@ -5,6 +5,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalResponse
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 
 object PhoneControlSignerCanonicalJson {
     fun canonicalIntentJson(intent: PhoneControlIntent): String {
@@ -43,6 +44,28 @@ object PhoneControlSignerCanonicalJson {
         fields["sourceDeviceId"] = PhoneControlSignerJsonEncoding.quote(request.sourceDeviceId)
         fields["threadId"] = PhoneControlSignerJsonEncoding.quote(request.threadId)
         fields["trustMode"] = PhoneControlSignerJsonEncoding.quote(request.trustMode)
+        return PhoneControlSignerJsonEncoding.sortedJson(fields)
+    }
+
+    fun canonicalComputerUseSessionIntentJson(challenge: HermesRealtimeRelaySessionGrantChallenge): String {
+        val fields = linkedMapOf<String, String>()
+        fields["actionCap"] = challenge.actionCap.toString()
+        fields["clientId"] = PhoneControlSignerJsonEncoding.quote(challenge.clientId)
+        challenge.desktopOwnerAuthorizationMethod?.let {
+            fields["desktopOwnerAuthorizationMethod"] = PhoneControlSignerJsonEncoding.quote(it)
+        }
+        challenge.macHostNodeId?.let { fields["macHostNodeId"] = PhoneControlSignerJsonEncoding.quote(it) }
+        fields["mode"] = PhoneControlSignerJsonEncoding.quote(challenge.mode)
+        challenge.phoneViewerNodeId?.let { fields["phoneViewerNodeId"] = PhoneControlSignerJsonEncoding.quote(it) }
+        challenge.runCallId?.let { fields["runCallId"] = PhoneControlSignerJsonEncoding.quote(it) }
+        challenge.runGeneration?.let { fields["runGeneration"] = it.toString() }
+        challenge.runId?.let { fields["runId"] = PhoneControlSignerJsonEncoding.quote(it) }
+        fields["scopeRuleIds"] =
+            challenge.scopeRuleIds.sorted()
+                .joinToString(separator = ",", prefix = "[", postfix = "]") { PhoneControlSignerJsonEncoding.quote(it) }
+        fields["sessionTimeoutSeconds"] = challenge.sessionTimeoutSeconds.toString()
+        fields["trustMode"] = PhoneControlSignerJsonEncoding.quote(challenge.trustMode)
+        fields["version"] = "2"
         return PhoneControlSignerJsonEncoding.sortedJson(fields)
     }
 

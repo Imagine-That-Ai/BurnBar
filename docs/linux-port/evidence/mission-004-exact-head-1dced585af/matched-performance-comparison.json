@@ -1,0 +1,200 @@
+{
+  "generatedAt": "2026-07-18T22:33:45.361Z",
+  "status": "measured-pass",
+  "protocolVersion": "openburnbar-matched-workload-v1",
+  "profile": "nightly",
+  "workloads": [
+    {
+      "id": "sqlite.range-query",
+      "checksum": {
+        "macos": 6601960080,
+        "linux": 6601960080
+      },
+      "macos": {
+        "maximum": 9.502625,
+        "minimum": 8.214333,
+        "p50": 8.557833500000001,
+        "p95": 9.328466599999999,
+        "p99": 9.47845814
+      },
+      "linux": {
+        "maximum": 8.300344,
+        "minimum": 8.022477,
+        "p50": 8.145154,
+        "p95": 8.2830387,
+        "p99": 8.300012240000001
+      },
+      "limits": {
+        "absolute": {
+          "p95": 250,
+          "p99": 400
+        },
+        "linuxP95Parity": 27.985399799999996,
+        "linuxP99Parity": 37.91383256
+      },
+      "checks": {
+        "macP95Absolute": true,
+        "linuxP95Absolute": true,
+        "macP99Absolute": true,
+        "linuxP99Absolute": true,
+        "linuxP95Parity": true,
+        "linuxP99Parity": true,
+        "checksumMatch": true
+      },
+      "pass": true
+    },
+    {
+      "id": "sqlite.fts-memory-search",
+      "checksum": {
+        "macos": 258750,
+        "linux": 258750
+      },
+      "macos": {
+        "maximum": 8.563667,
+        "minimum": 6.791041,
+        "p50": 7.183708,
+        "p95": 8.109960449999999,
+        "p99": 8.479132
+      },
+      "linux": {
+        "maximum": 7.813565,
+        "minimum": 7.493815,
+        "p50": 7.7211005,
+        "p95": 7.78578235,
+        "p99": 7.80767655
+      },
+      "limits": {
+        "absolute": {
+          "p95": 250,
+          "p99": 400
+        },
+        "linuxP95Parity": 24.329881349999997,
+        "linuxP99Parity": 33.916528
+      },
+      "checks": {
+        "macP95Absolute": true,
+        "linuxP95Absolute": true,
+        "macP99Absolute": true,
+        "linuxP99Absolute": true,
+        "linuxP95Parity": true,
+        "linuxP99Parity": true,
+        "checksumMatch": true
+      },
+      "pass": true
+    },
+    {
+      "id": "jsonl.incremental-decode",
+      "checksum": {
+        "macos": 154861500000,
+        "linux": 154861500000
+      },
+      "macos": {
+        "maximum": 788.709042,
+        "minimum": 607.350334,
+        "p50": 633.794667,
+        "p95": 713.2386813999999,
+        "p99": 771.2267785700001
+      },
+      "linux": {
+        "maximum": 939.784859,
+        "minimum": 938.483402,
+        "p50": 939.179905,
+        "p95": 939.672736,
+        "p99": 939.77024271
+      },
+      "limits": {
+        "absolute": {
+          "p95": 2000,
+          "p99": 3000
+        },
+        "linuxP95Parity": 2139.7160441999995,
+        "linuxP99Parity": 3084.9071142800003
+      },
+      "checks": {
+        "macP95Absolute": true,
+        "linuxP95Absolute": true,
+        "macP99Absolute": true,
+        "linuxP99Absolute": true,
+        "linuxP95Parity": true,
+        "linuxP99Parity": true,
+        "checksumMatch": true
+      },
+      "pass": true
+    },
+    {
+      "id": "stream.first-visible-delta-decode",
+      "checksum": {
+        "macos": 210030,
+        "linux": 210030
+      },
+      "macos": {
+        "maximum": 0.060333,
+        "minimum": 0.037333,
+        "p50": 0.037958,
+        "p95": 0.05462324999999997,
+        "p99": 0.06003111
+      },
+      "linux": {
+        "maximum": 0.070178,
+        "minimum": 0.028009,
+        "p50": 0.028253,
+        "p95": 0.0346926,
+        "p99": 0.06007411000000003
+      },
+      "limits": {
+        "absolute": {
+          "p95": 50,
+          "p99": 100
+        },
+        "linuxP95Parity": 5.05462325,
+        "linuxP99Parity": 10.06003111
+      },
+      "checks": {
+        "macP95Absolute": true,
+        "linuxP95Absolute": true,
+        "macP99Absolute": true,
+        "linuxP99Absolute": true,
+        "linuxP95Parity": true,
+        "linuxP99Parity": true,
+        "checksumMatch": true
+      },
+      "pass": true
+    }
+  ],
+  "resources": {
+    "macos": {
+      "cpuUtilizationPercent": 99.40815064265145,
+      "elapsedSeconds": 1800.137532417,
+      "iterations": 2981,
+      "requestedSeconds": 1800,
+      "rssEndBytes": 39960576,
+      "rssGrowthBytes": -3555328,
+      "rssMaximumBytes": 43515904,
+      "rssStartBytes": 43515904,
+      "checks": {
+        "maximumRss": true,
+        "rssGrowth": true,
+        "cpuUtilization": true
+      },
+      "pass": true
+    },
+    "linux": {
+      "cpuUtilizationPercent": 99.98488931874701,
+      "elapsedSeconds": 1800.2691569340002,
+      "iterations": 1885,
+      "requestedSeconds": 1800,
+      "rssEndBytes": 53874688,
+      "rssGrowthBytes": 81920,
+      "rssMaximumBytes": 53874688,
+      "rssStartBytes": 53792768,
+      "checks": {
+        "maximumRss": true,
+        "rssGrowth": true,
+        "cpuUtilization": true
+      },
+      "pass": true
+    }
+  },
+  "errors": [],
+  "pass": true
+}

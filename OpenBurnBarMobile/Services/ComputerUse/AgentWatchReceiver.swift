@@ -4,6 +4,132 @@ import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 
+/// Validates and serializes Linux session-grant challenges before handing one
+/// exact challenge to the live-only mobile grant controller.
+@MainActor
+public final class MobileComputerUseSessionGrantChallengeReceiver {
+    typealias Validator = (_ challenge: HermesRealtimeRelaySessionGrantChallenge, _ now: Date) throws -> Void
+    typealias AuthenticationWillBegin = @MainActor @Sendable () -> Void
+    typealias GrantHandler = (
+        _ challenge: HermesRealtimeRelaySessionGrantChallenge,
+        _ authenticationWillBegin: @escaping AuthenticationWillBegin
+    ) async throws -> Void
+
+    public static let shared = MobileComputerUseSessionGrantChallengeReceiver()
+
+    private let now: () -> Date
+    private let validator: Validator
+    private let grantHandler: GrantHandler?
+    private let completedRetentionLimit: Int
+    private var activeChallengeId: String?
+    private var activeTask: Task<Void, Never>?
+    private var completedExpirations: [String: Date] = [:]
+    private var completedOrder: [String] = []
+
+    init(
+        now: @escaping () -> Date = Date.init,
+        validator: Validator? = nil,
+        completedRetentionLimit: Int = 128,
+        grantHandler: GrantHandler? = nil
+    ) {
+        let signer = ComputerUsePhoneControlSigner()
+        self.now = now
+        self.completedRetentionLimit = max(1, completedRetentionLimit)
+        self.validator = validator ?? { challenge, validationDate in
+            try signer.validateSessionGrantChallenge(challenge, now: validationDate)
+        }
+        self.grantHandler = grantHandler
+    }
+
+    func ingest(
+        _ challenge: HermesRealtimeRelaySessionGrantChallenge,
+        liveGrantDelivery: MobileAgentPermissionGrantController.LiveGrantDelivery? = nil
+    ) {
+        let validationDate = now()
+        pruneCompleted(at: validationDate)
+        do {
+            try validator(challenge, validationDate)
+        } catch {
+            return
+        }
+        guard activeChallengeId == nil,
+              completedExpirations[challenge.challengeId] == nil else {
+            return
+        }
+        let handler: GrantHandler
+        if let grantHandler {
+            handler = grantHandler
+        } else {
+            guard let liveGrantDelivery else {
+                return
+            }
+            handler = { challenge, authenticationWillBegin in
+                _ = try await MobileAgentPermissionGrantController.shared.grant(
+                    sessionChallenge: challenge,
+                    liveGrantDelivery: liveGrantDelivery,
+                    authenticationWillBegin: authenticationWillBegin
+                )
+            }
+        }
+
+        activeChallengeId = challenge.challengeId
+        activeTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await handler(challenge) { [weak self] in
+                    self?.markCompleted(challenge)
+                }
+                // A handler that completes before an authentication boundary
+                // still consumed the challenge successfully and is terminal.
+                markCompleted(challenge)
+            } catch {
+                // Failures before the authentication boundary remain retryable.
+                // Once the callback has fired, denial/cancellation is terminal.
+            }
+            if activeChallengeId == challenge.challengeId {
+                activeChallengeId = nil
+                activeTask = nil
+            }
+        }
+    }
+
+    func ingestAndWait(
+        _ challenge: HermesRealtimeRelaySessionGrantChallenge,
+        liveGrantDelivery: @escaping MobileAgentPermissionGrantController.LiveGrantDelivery
+    ) async {
+        ingest(challenge, liveGrantDelivery: liveGrantDelivery)
+        let task = activeTask
+        await task?.value
+    }
+
+    func waitUntilIdleForTesting() async {
+        let task = activeTask
+        await task?.value
+    }
+
+    var completedChallengeCountForTesting: Int {
+        completedExpirations.count
+    }
+
+    func hasCompletedChallengeForTesting(_ challengeId: String) -> Bool {
+        completedExpirations[challengeId] != nil
+    }
+
+    private func markCompleted(_ challenge: HermesRealtimeRelaySessionGrantChallenge) {
+        guard completedExpirations[challenge.challengeId] == nil else { return }
+        completedExpirations[challenge.challengeId] = challenge.expiresAt
+        completedOrder.append(challenge.challengeId)
+        while completedOrder.count > completedRetentionLimit {
+            completedExpirations[completedOrder.removeFirst()] = nil
+        }
+    }
+
+    private func pruneCompleted(at validationDate: Date) {
+        completedExpirations = completedExpirations.filter { $0.value > validationDate }
+        completedOrder.removeAll { completedExpirations[$0] == nil }
+    }
+}
+
 /// iOS-side reducer for Computer Use `control.*` frames.
 ///
 /// The transport layer owns bytes and streams; this receiver owns the
@@ -15,6 +141,7 @@ public final class AgentWatchReceiver: ObservableObject {
     public let state: AgentWatchState
     private let approvalFrameSink: PhoneControlSender.FrameSink
     private let phoneControlSender: PhoneControlSender?
+    private let sessionGrantChallengeReceiver: MobileComputerUseSessionGrantChallengeReceiver
     private let uid: String
     private let connectionId: String
 
@@ -23,13 +150,15 @@ public final class AgentWatchReceiver: ObservableObject {
         uid: String,
         connectionId: String,
         approvalFrameSink: @escaping PhoneControlSender.FrameSink,
-        phoneControlSender: PhoneControlSender? = nil
+        phoneControlSender: PhoneControlSender? = nil,
+        sessionGrantChallengeReceiver: MobileComputerUseSessionGrantChallengeReceiver = .shared
     ) {
         self.state = state
         self.uid = uid
         self.connectionId = connectionId
         self.approvalFrameSink = approvalFrameSink
         self.phoneControlSender = phoneControlSender
+        self.sessionGrantChallengeReceiver = sessionGrantChallengeReceiver
     }
 
     public func ingest(_ frame: HermesRealtimeRelayFrame) {
@@ -53,6 +182,21 @@ public final class AgentWatchReceiver: ObservableObject {
             if let response = frame.control?.approvalResponse,
                state.pendingApproval?.approvalId == response.approvalId {
                 state.setPendingApproval(nil)
+            }
+        case .controlSessionGrantChallenge:
+            guard let challenge = frame.control?.sessionGrantChallenge else { return }
+            if let phoneControlSender {
+                sessionGrantChallengeReceiver.ingest(
+                    challenge,
+                    liveGrantDelivery: { request in
+                        _ = try await phoneControlSender.send(agentGrant: request)
+                        return true
+                    }
+                )
+            } else {
+                // The shared receiver still fails closed without a live route.
+                // Injected receivers can supply their own delivery handler in tests.
+                sessionGrantChallengeReceiver.ingest(challenge)
             }
         case .controlAgentGrantReceipt:
             guard let wireReceipt = frame.control?.agentGrantReceipt,

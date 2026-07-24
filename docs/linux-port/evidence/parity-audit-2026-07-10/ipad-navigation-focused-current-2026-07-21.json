@@ -1,0 +1,37 @@
+{
+  "schema": "openburnbar.parity.mobile-focused-test-receipt.v1",
+  "capturedAt": "2026-07-21T11:44:45Z",
+  "certificationScope": "non-certifying focused physical-iPad test receipt",
+  "sourceCommit": "8776a196f6",
+  "sourceWorktree": "/private/tmp/burnbar-linux-parity-continuation",
+  "device": {
+    "name": "Alberto's iPad",
+    "xcodebuildIdentifier": "<IOS_USB_UDID>",
+    "platform": "iPadOS",
+    "connection": "physical-paired"
+  },
+  "build": {
+    "xcode": "Xcode-27.0.0-Beta",
+    "configuration": "Debug",
+    "signalFfiTargets": ["aarch64-apple-ios"],
+    "automaticProvisioning": true,
+    "xcodebuildExitCode": 0,
+    "durationSeconds": 409
+  },
+  "focusedSuite": "OpenBurnBarMobileTests/iPadNavigationUITests/testiPadSettingsTabs_countAndNoDaemon",
+  "result": {
+    "passed": 1,
+    "failed": 0,
+    "infrastructureCrashes": 0,
+    "appFailures": 0,
+    "total": 1
+  },
+  "command": "OPENBURNBAR_IOS_DESTINATION='platform=iOS,id=<IOS_USB_UDID>' OPENBURNBAR_MOBILE_TEST_FILTER='OpenBurnBarMobileTests/iPadNavigationUITests/testiPadSettingsTabs_countAndNoDaemon' OPENBURNBAR_MOBILE_TEST_ATTEMPTS=1 ./scripts/test-openburnbar-mobile.sh",
+  "verifiedSurface": [
+    "physical iPad settings tab identity and Linux/macOS tab boundary"
+  ],
+  "limitations": [
+    "This is focused XCTest coverage only; it does not prove installed Linux enrollment or cross-device approval.",
+    "The receipt does not promote any P-01 through P-40 product row or environment receipt."
+  ]
+}

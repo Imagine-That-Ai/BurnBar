@@ -557,6 +557,7 @@ type BurnBarMissionRecommendation = 'proceed' | 'review' | 'pause';
 type BurnBarRunPhase =
   | 'idle'
   | 'planning'
+  | 'awaiting_computer_use_session'
   | 'executing_tool'
   | 'waiting_on_companion'
   | 'model_streaming'
@@ -1411,6 +1412,10 @@ function describeRunNote(
       return 'Awaiting trust';
     }
     return 'Awaiting approval';
+  }
+
+  if (run.phase === 'awaiting_computer_use_session') {
+    return 'Waiting for a verified Browser Computer Use session.';
   }
 
   if (run.phase === 'completed' && usage) {

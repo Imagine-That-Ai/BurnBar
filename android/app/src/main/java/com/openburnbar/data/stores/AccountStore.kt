@@ -7,6 +7,7 @@ import com.google.firebase.FirebaseException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.functions.FirebaseFunctionsException
+import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.models.ProviderAccount
@@ -146,8 +147,10 @@ class AccountStore(
     }
 
     fun signOut() {
-        auth.signOut()
-        resetSessionState()
+        viewModelScope.launch {
+            BurnBarApplication.signOutSafely(auth)
+            resetSessionState()
+        }
     }
 
     private fun resetSessionState() {

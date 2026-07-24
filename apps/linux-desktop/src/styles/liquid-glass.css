@@ -51,6 +51,23 @@
   z-index: 1;
 }
 
+.glass-card--interactive {
+  cursor: pointer;
+  transition: transform 180ms var(--motion-ease-standard), filter 180ms var(--motion-ease-standard), var(--glass-transition);
+}
+
+.glass-card--interactive:hover,
+.glass-card--interactive:focus-within {
+  filter: brightness(1.035);
+  transform: translateY(-1px);
+}
+
+.glass-card--embedded {
+  padding: var(--space-3);
+  background: color-mix(in srgb, var(--glass-tint-clear) 72%, transparent);
+  box-shadow: var(--glass-inner-light);
+}
+
 .glass-panel {
   background: var(--glass-panel);
   border: 1px solid var(--glass-panel-stroke);
@@ -104,6 +121,53 @@
   border-color: color-mix(in srgb, var(--color-brass-core) 35%, var(--glass-stroke));
   background: color-mix(in srgb, var(--color-brass-core) 12%, var(--glass-tint-elevated));
   box-shadow: var(--glass-inner-light), 0 0 16px color-mix(in srgb, var(--color-brass-glow) 18%, transparent);
+}
+
+/* Typed GlassButton primitive. Variants mirror macOS GlassButton.Style. */
+.glass-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--glass-radius-md);
+  background: var(--glass-tint-interactive);
+  color: var(--color-text-base);
+  font: inherit;
+  font-weight: 650;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: var(--glass-transition), transform 160ms var(--motion-ease-standard);
+}
+
+.glass-button:hover:not(:disabled),
+.glass-button:focus-visible {
+  border-color: var(--glass-stroke-bright);
+  background: color-mix(in srgb, var(--color-frost-veil) 65%, var(--glass-tint-interactive));
+  color: var(--color-text-bright);
+  outline: none;
+}
+
+.glass-button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+
+.glass-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.glass-button--prominent {
+  border-color: color-mix(in srgb, var(--color-brass-core) 42%, var(--glass-stroke));
+  background: color-mix(in srgb, var(--color-brass-core) 14%, var(--glass-tint-elevated));
+  color: var(--color-text-bright);
+}
+
+.glass-button--cool {
+  border-color: color-mix(in srgb, var(--macos-frost) 42%, var(--glass-stroke));
+  background: color-mix(in srgb, var(--macos-frost) 10%, var(--glass-tint-elevated));
+  color: var(--color-text-bright);
 }
 
 .glass-segmented {

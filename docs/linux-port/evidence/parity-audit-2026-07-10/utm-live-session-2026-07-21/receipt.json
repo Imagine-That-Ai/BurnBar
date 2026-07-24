@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "role": "utm-live-session-receipt",
+  "capturedAt": "2026-07-21T17:57:16Z",
+  "environmentId": "ubuntu-24.04-gnome-x11-aarch64",
+  "host": "openburnbar-linux",
+  "guestIp": "192.168.64.5",
+  "sourceBranch": "codex/linux-parity-integration-final",
+  "sourceHeadAtCapture": "6e65ce55080a1c7737da38a197e1436da372cc99",
+  "installedPackage": {
+    "name": "open-burn-bar",
+    "version": "0.1.1",
+    "architecture": "arm64",
+    "status": "install ok installed",
+    "binaries": {
+      "openburnbar-daemon": "566d324df1d9e4b4791a2222db86774901fab25c90a72503b07caa2734b8f8c6",
+      "openburnbar-cli": "b78c9db0716bf0cb6b7fb46a9b960947f12e44fa07905fd90283faac29460a67",
+      "openburnbar-linux-desktop": "9c866c7750ee354e035fd6d7c7bddabc9823f16297b534ef29818aebacc44257"
+    }
+  },
+  "runtime": {
+    "daemonHealth": "ok=true",
+    "daemonVersion": "1.0.30",
+    "protocol": 1,
+    "socket": "/run/user/1000/openburnbar/daemon.sock",
+    "desktopProcess": "/usr/local/bin/openburnbar-linux-desktop --background",
+    "sessionType": "x11",
+    "secretService": "gnome-keyring store/lookup OK",
+    "pipewire": "1.0.5 present",
+    "gstreamer": {
+      "opusdec": true,
+      "autoaudiosink": true
+    },
+    "guestAgent": "active",
+    "atspi": {
+      "openburnbarApplicationPresent": true,
+      "frameName": "OpenBurnBar",
+      "desktopType": "ubuntu:GNOME X11"
+    }
+  },
+  "limitations": [
+    "Installed package is not the exact PR head 6e65ce5508; it is package version 0.1.1 from prior install.",
+    "This is one environment receipt (ubuntu-24.04-gnome-x11-aarch64), not the full 7-environment matrix.",
+    "No signed release manifest/feed was exercised in this capture.",
+    "Not a strict 40/40 product certification closure."
+  ],
+  "transcriptSha256": {
+    "live-session.txt": "3d30ce850bc81bcbd6f2b991058afb1f79690cdbf9870cb6e612502869d7acd7",
+    "capabilities-and-desktop.txt": "cce0a5abb758552ab4c209a41e4b934a1a3f0b79693601ac3a9daa7cc0d81b87"
+  },
+  "artifacts": [
+    "live-session.txt",
+    "capabilities-and-desktop.txt",
+    "desktop-atspi.txt",
+    "receipt.json"
+  ]
+}

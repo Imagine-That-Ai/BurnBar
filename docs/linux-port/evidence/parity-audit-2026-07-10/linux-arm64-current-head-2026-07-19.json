@@ -1,0 +1,68 @@
+{
+  "schema": "openburnbar.parity.linux-installed-runtime-receipt.v1",
+  "capturedAt": "2026-07-19T17:23:02Z",
+  "certificationScope": "non-certifying local ARM64 package and live VM smoke receipt",
+  "sourceCommit": "4ca71a859d",
+  "sourceDescription": "Current parity branch; selected current-head frontend and GL fallback files synced into the ARM guest before build",
+  "environment": {
+    "guest": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME/X11",
+    "display": ":0",
+    "vmAddress": "192.168.64.5",
+    "webgl2": false,
+    "webgl1": true,
+    "webkitNote": "WebKitGTK reported GBM context failure and fell back to textures"
+  },
+  "package": {
+    "name": "open-burn-bar",
+    "version": "0.1.1",
+    "architecture": "arm64",
+    "archiveBytes": 151373768,
+    "archiveSha256": "771691e4c6ca6cfe9decea1d5f7542a40981c73df1c481457932b517d1ecf676",
+    "desktopSha256": "d503b6b508395923f4e1556c937be400458c681c3671739f3d542b9ef2173472",
+    "daemonSha256": "fb0f87ccc0638f84c2ba9f2a34ca97f8cec707534a5473f19bf6f317291c480c",
+    "cliSha256": "db0d6931ca8644a91f78ee3dccac27364bab5a373e63917a53915cf836e180e5",
+    "signed": false,
+    "publicFeed": false
+  },
+  "runtime": {
+    "daemonService": "active",
+    "daemonHealth": {
+      "ok": true,
+      "protocolVersion": 1,
+      "daemonVersion": "1.0.29",
+      "socketPath": "/run/user/1000/openburnbar/daemon.sock"
+    },
+    "installedDesktopPid": 175535
+  },
+  "backdrop": {
+    "requestedKernel": "fluid-aurora",
+    "resolvedSubstrate": "2d",
+    "resolutionLabel": "Fluid Aurora - 2D fallback (WebGL2 unavailable)",
+    "captureIntervalSeconds": 2,
+    "captureASha256": "2aa4541358637578f6f9ba6149a1e759ac1ac08ad4e394fa3918422148e381bb",
+    "captureBSha256": "64cb9875615f5a77151c2f8fd326330ab3b9250a93766098cb7e33c1057fabc5",
+    "animated": true,
+    "afterLockUnlockCapture": {
+      "captureASha256": "6e6422e1156c18936d23a5f3f5e7679496bfacd456d62073423ba5c56aeec16d",
+      "captureBSha256": "9772e0efa122ce115f3aa9f30c9b1d9f2cb42cec460f12029dfacf55ba566a81",
+      "animated": true,
+      "result": "rendering recovered after GNOME lock/unlock"
+    }
+  },
+  "onboarding": {
+    "daemonVerifyAction": "passed",
+    "advancedToStep": 2
+  },
+  "limitations": [
+    "The package is locally built and unsigned; it is not release provenance evidence.",
+    "This guest does not certify WebGL2-only kernels, KDE/Wayland/wlroots, x86_64, or cross-device workflows.",
+    "The strict ledger remains 0/40 product requirements and 0/7 environment receipts."
+  ],
+  "strictLedger": {
+    "productRequirementsReady": "0/40",
+    "environmentReceiptsComplete": "0/7",
+    "productParityClaim": false
+  }
+}

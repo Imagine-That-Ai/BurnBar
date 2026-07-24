@@ -101,18 +101,25 @@ object PhoneControlAuthorityDocumentFactory {
         .joinToString("") { "%02x".format(it) }
 }
 
+interface PhoneControlAuthorityPublishingCallables {
+    suspend fun publishPhoneControlAuthority(expectedUid: String, authority: PhoneControlAuthorityDoc)
+
+    suspend fun publishAgentGrantAuthority(expectedUid: String, deviceId: String, peerNodeId: String, publicKeyBase64: String, keyKind: String? = null)
+}
+
 class PhoneControlAuthorityPublisher(
-    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
-    private val securityCallables: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient(),
+    private val securityCallables: PhoneControlAuthorityPublishingCallables = ComputerUseSecurityCallableClient(),
+    private val firestore: FirebaseFirestore? = null,
 ) {
     suspend fun publish(uid: String, authority: PhoneControlAuthorityDoc) {
-        require(uid.isNotBlank()) { "uid is required to publish phone-control authority" }
-        securityCallables.publishPhoneControlAuthority(authority)
+        val expectedUid = uid.trim().also { require(it.isNotEmpty()) { "uid is required to publish phone-control authority" } }
+        securityCallables.publishPhoneControlAuthority(expectedUid = expectedUid, authority = authority)
     }
 
     suspend fun publishAgentGrantAuthority(uid: String, sourceDeviceId: String, authority: PhoneControlAuthorityDoc) {
-        require(uid.isNotBlank()) { "uid is required to publish agent-grant authority" }
+        val expectedUid = uid.trim().also { require(it.isNotEmpty()) { "uid is required to publish agent-grant authority" } }
         securityCallables.publishAgentGrantAuthority(
+            expectedUid = expectedUid,
             deviceId = sourceDeviceId,
             peerNodeId = authority.peerNodeId,
             publicKeyBase64 = authority.publicKeyBase64,

@@ -1,4 +1,5 @@
 import OpenBurnBarDaemon
+import OpenBurnBarEngine
 import Foundation
 #if canImport(Darwin)
 import Darwin
@@ -19,10 +20,48 @@ struct BurnBarCLIExecutable {
         }
 
         let environment = ProcessInfo.processInfo.environment
-        let socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
-            ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
+        let socketAuthToken: String?
+        do {
+            socketAuthToken = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: environment)
+        } catch {
+            writeLine(Self.message(for: error), toStandardError: true)
+            exit(EXIT_FAILURE)
+        }
         let socketURL = BurnBarCLISocketClient.resolvedSocketURL(environment: environment)
         let client = BurnBarCLISocketClient(socketURL: socketURL, authToken: socketAuthToken)
+
+        #if os(Linux)
+        if arguments == ["text-expansion-engine-expand"] {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                guard input.count <= 64 * 1024 else {
+                    throw BurnBarCLIError.missingArgument("text expansion request exceeds 64 KiB")
+                }
+                let request = try JSONDecoder().decode(
+                    BurnBarTextExpansionEngineExpandRequest.self,
+                    from: input
+                )
+                let response = try client.textExpansionEngineExpand(request)
+                let output = try JSONEncoder().encode(response)
+                writeLine(String(decoding: output, as: UTF8.self))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+        #endif
+
+        if arguments == ["privacy-rpc"] {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                writeLine(try BurnBarCLIRunner(client: client).runPrivacyRPC(input: input))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
 
         if BurnBarCLIRunner.shouldUseHealthFastPath(
             arguments: arguments,

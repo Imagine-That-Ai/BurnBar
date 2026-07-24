@@ -16,13 +16,13 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.messaging.FirebaseMessaging
 import com.openburnbar.data.budget.BudgetNotificationCenter
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
+import com.openburnbar.data.computeruse.IrohControllerRouteRegistrarProvider
+import com.openburnbar.data.hermes.HermesAuthLifecycleRegistry
 import com.openburnbar.data.hermes.relay.FirestoreIrohPairingDirectory
 import com.openburnbar.data.hermes.relay.FirestoreIrohPairingPublicKeyProvider
 import com.openburnbar.data.hermes.relay.HermesRelayKeyStore
 import com.openburnbar.data.media.AndroidFileTransferService
-import com.openburnbar.data.media.IrohBlobKeyStore
 import com.openburnbar.data.media.MediaControlStreamCoordinator
-import com.openburnbar.data.media.MediaFileTransferService
 import com.openburnbar.data.media.RetainedIrohControlTransportPool
 import com.openburnbar.data.text.TextExpansionSyncWorker
 import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
@@ -31,17 +31,17 @@ import com.openburnbar.diagnostics.CrashReportingConsentStore
 import com.openburnbar.irohrelay.IrohDialTarget
 import com.openburnbar.irohrelay.IrohPairingPublisher
 import com.openburnbar.irohrelay.IrohRelayStream
-import com.openburnbar.irohrelay.OpenBurnBarIrohBlobFfiBackend
 import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
 import com.openburnbar.irohrelay.OpenBurnBarIrohNativeContext
 import com.openburnbar.remote.BurnBarRemoteBridge
 import com.openburnbar.services.media.AgentReplyNotificationState
-import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 
 internal object IrohPairingSelection {
@@ -80,6 +80,11 @@ internal object IrohPairingSelection {
         )
 }
 
+internal object ControllerAuthStatePolicy {
+    fun isCurrent(expectedUid: String?, expectedEpoch: Long, currentUid: String?, currentEpoch: Long): Boolean =
+        expectedUid == currentUid && expectedEpoch == currentEpoch
+}
+
 class BurnBarApplication : Application() {
     companion object {
         lateinit var appContext: Context
@@ -114,10 +119,42 @@ class BurnBarApplication : Application() {
 
         @Volatile var agentCapabilityGrantController:
             com.openburnbar.data.computeruse.AgentCapabilityGrantController? = null
+
+        @Volatile internal var sessionGrantChallengeReceiver:
+            com.openburnbar.data.computeruse.ComputerUseSessionGrantChallengeReceiver? = null
+
+        internal suspend fun signOutSafely(auth: FirebaseAuth) {
+            val application = if (isAppContextInitialized) {
+                appContext.applicationContext as? BurnBarApplication
+            } else {
+                null
+            }
+            if (application != null) {
+                application.signOutWithControllerTeardown(auth)
+                return
+            }
+            val routeGate = IrohControllerRouteRegistrarProvider.holdAuthTransitionGate()
+            val hermesGate = HermesAuthLifecycleRegistry.holdAuthTransitionGate()
+            try {
+                runCatching { HermesAuthLifecycleRegistry.closeResourcesForTransition(hermesGate) }
+                    .onFailure { error -> Log.w("BurnBar", "Hermes teardown before sign-out failed: ${error.message}") }
+                runCatching { IrohControllerRouteRegistrarProvider.invalidateAllIfCreated(revokeRemote = true) }
+                    .onFailure { error ->
+                        Log.w("BurnBar", "Controller-route revocation before sign-out failed: ${error.message}")
+                    }
+                auth.signOut()
+            } finally {
+                HermesAuthLifecycleRegistry.releaseAuthTransitionGate(hermesGate)
+                IrohControllerRouteRegistrarProvider.releaseAuthTransitionGate(routeGate)
+            }
+        }
     }
 
     private var pairingListener: ListenerRegistration? = null
     private var authListener: FirebaseAuth.AuthStateListener? = null
+    private var controllerRouteAuthUid: String? = null
+    private val controllerAuthTransitionLock = Mutex()
+    private val controllerAuthEpoch = AtomicLong()
     internal val controlTransportPool by lazy {
         RetainedIrohControlTransportPool { relayURL ->
             val keyStore = HermesRelayKeyStore(applicationContext)
@@ -135,8 +172,13 @@ class BurnBarApplication : Application() {
             }
         }
     }
+    internal val controllerRouteRegistrar by lazy {
+        IrohControllerRouteRegistrarProvider.fromContext(applicationContext)
+    }
 
     @Volatile internal var activeCoordinatorConnection: String? = null
+
+    @Volatile internal var activeCoordinatorUid: String? = null
 
     @Volatile internal var activeCoordinatorPublishedAtMillis: Long? = null
 
@@ -160,6 +202,7 @@ class BurnBarApplication : Application() {
             .onFailure { Log.w("BurnBar", "Sentry privacy scrubber install failed: ${it.message}") }
         FirebaseApp.initializeApp(this)
         installAppCheckProvider()
+        installComputerUseSessionGrantReceiver()
         val domainCoreEvidenceChannel = com.openburnbar.data.DomainCoreBuildProfile.evidenceChannel()
         runCatching {
             if (domainCoreEvidenceChannel == null) {
@@ -232,56 +275,70 @@ class BurnBarApplication : Application() {
         registerFcmToken()
     }
 
-    private fun installFileTransferService() {
-        val blobKeyStore = IrohBlobKeyStore(applicationContext)
-        val transferService = MediaFileTransferService(
-            backend = OpenBurnBarIrohBlobFfiBackend(),
-            configuration = MediaFileTransferService.Configuration(
-                storeDirectory = File(filesDir, "mercury_blob_store"),
-                inboxDirectory = File(filesDir, "mercury_blob_inbox"),
-                secretKeyProvider = { blobKeyStore.secretKeyMaterial() },
-            ),
-        )
-        registerFileTransferService(
-            AndroidFileTransferService(
-                appContext = applicationContext,
-                service = transferService,
-                settingsProvider = {
-                    getSharedPreferences("mercury_media", MODE_PRIVATE)
-                        .getBoolean("media_blob_transfer_enabled", true)
-                },
-            ),
-        )
-    }
-
     private fun installAuthListener() {
         val listener = FirebaseAuth.AuthStateListener { auth ->
             val uid = auth.currentUser?.uid
-            if (uid == null) {
-                tearDownPairingListener()
-                stopMediaControlCoordinator()
-                applicationScope.launch {
-                    BurnBarWidgetSyncWorker.clearAndRefresh(applicationContext)
-                }
-            } else {
-                applicationScope.launch {
-                    runCatching {
-                        ComputerUseSecurityCallableClient().bindAppCheckAttestation()
-                    }.onFailure { error ->
-                        Log.w("BurnBar", "App Check attestation bind failed: ${error.message}")
-                    }
-                }
-                restartPairingListener(uid)
+            val epoch = controllerAuthEpoch.incrementAndGet()
+            val gate = IrohControllerRouteRegistrarProvider.holdAuthTransitionGate()
+            val hermesGate = HermesAuthLifecycleRegistry.holdAuthTransitionGate()
+            tearDownPairingListener()
+            applicationScope.launch {
+                reconcileControllerAuthState(uid = uid, epoch = epoch, gate = gate, hermesGate = hermesGate)
             }
         }
         authListener = listener
         FirebaseAuth.getInstance().addAuthStateListener(listener)
-        // Cover the case where Auth is already signed in by the time
-        // onCreate runs (warm starts).
-        FirebaseAuth.getInstance().currentUser?.uid?.let { restartPairingListener(it) }
     }
 
-    private fun restartPairingListener(uid: String) {
+    private suspend fun reconcileControllerAuthState(
+        uid: String?,
+        epoch: Long,
+        gate: IrohControllerRouteRegistrarProvider.AuthTransitionGateToken,
+        hermesGate: HermesAuthLifecycleRegistry.TransitionToken,
+    ) {
+        try {
+            controllerAuthTransitionLock.withLock {
+                if (controllerAuthEpoch.get() != epoch) return@withLock
+                val previousUid = controllerRouteAuthUid
+                controllerRouteRegistrar.beginAuthTransition()
+                try {
+                    runCatching { HermesAuthLifecycleRegistry.closeResourcesForTransition(hermesGate) }
+                        .onFailure { error -> Log.w("BurnBar", "Hermes auth transition cleanup failed: ${error.message}") }
+                    stopMediaControlCoordinatorAndWait()
+                    if (previousUid != null && previousUid != uid) {
+                        // Firebase has already switched identities at this callback. Purge local
+                        // ownership without issuing an old-account revoke as the replacement user.
+                        runCatching { controllerRouteRegistrar.invalidateAll(revokeRemote = false) }
+                            .onFailure { error ->
+                                Log.w("BurnBar", "Controller-route auth transition cleanup failed: ${error.message}")
+                            }
+                    }
+                    controllerRouteAuthUid = uid
+                } finally {
+                    controllerRouteRegistrar.endAuthTransition()
+                }
+
+                if (!controllerAuthStateIsCurrent(uid = uid, epoch = epoch)) return@withLock
+                IrohControllerRouteRegistrarProvider.releaseAuthTransitionGate(gate)
+                if (uid == null) {
+                    BurnBarWidgetSyncWorker.clearAndRefresh(applicationContext)
+                    return@withLock
+                }
+                runCatching { ComputerUseSecurityCallableClient().bindAppCheckAttestation() }
+                    .onFailure { error ->
+                        Log.w("BurnBar", "App Check attestation bind failed: ${error.message}")
+                    }
+                if (controllerAuthStateIsCurrent(uid = uid, epoch = epoch)) {
+                    restartPairingListener(uid = uid, epoch = epoch)
+                }
+            }
+        } finally {
+            HermesAuthLifecycleRegistry.releaseAuthTransitionGate(hermesGate)
+            IrohControllerRouteRegistrarProvider.releaseAuthTransitionGate(gate)
+        }
+    }
+
+    private fun restartPairingListener(uid: String, epoch: Long) {
         tearDownPairingListener()
         pairingListener = FirebaseFirestore.getInstance()
             .collection("users").document(uid)
@@ -289,6 +346,9 @@ class BurnBarApplication : Application() {
             .orderBy("publishedAtMillis", Query.Direction.DESCENDING)
             .limit(IrohPairingSelection.QUERY_LIMIT)
             .addSnapshotListener { snapshot, error ->
+                if (!controllerAuthStateIsCurrent(uid = uid, epoch = epoch)) {
+                    return@addSnapshotListener
+                }
                 if (error != null) {
                     Log.w("BurnBar", "Iroh pairing listener error: ${error.message}")
                     return@addSnapshotListener
@@ -305,6 +365,9 @@ class BurnBarApplication : Application() {
                     return@addSnapshotListener
                 }
                 applicationScope.launch {
+                    if (!controllerAuthStateIsCurrent(uid = uid, epoch = epoch)) {
+                        return@launch
+                    }
                     runCatching {
                         ensureMediaControlCoordinator(uid = uid, selection = selected)
                     }.onFailure { error ->
@@ -320,8 +383,46 @@ class BurnBarApplication : Application() {
         pairingListener = null
     }
 
+    private fun controllerAuthStateIsCurrent(uid: String?, epoch: Long): Boolean = ControllerAuthStatePolicy.isCurrent(
+        expectedUid = uid,
+        expectedEpoch = epoch,
+        currentUid = FirebaseAuth.getInstance().currentUser?.uid,
+        currentEpoch = controllerAuthEpoch.get(),
+    )
+
     private suspend fun ensureMediaControlCoordinator(uid: String, selection: IrohPairingSelection.Candidate, forceRestart: Boolean = false) {
+        check(controllerRouteAuthUid == uid && FirebaseAuth.getInstance().currentUser?.uid == uid) {
+            "Mercury controller auth changed before the pairing stream could start."
+        }
         ensureMediaControlCoordinatorManaged(uid = uid, selection = selection, forceRestart = forceRestart)
+    }
+
+    internal suspend fun signOutWithControllerTeardown(auth: FirebaseAuth) {
+        controllerAuthEpoch.incrementAndGet()
+        val gate = IrohControllerRouteRegistrarProvider.holdAuthTransitionGate()
+        val hermesGate = HermesAuthLifecycleRegistry.holdAuthTransitionGate()
+        tearDownPairingListener()
+        try {
+            controllerAuthTransitionLock.withLock {
+                controllerRouteRegistrar.beginAuthTransition()
+                try {
+                    runCatching { HermesAuthLifecycleRegistry.closeResourcesForTransition(hermesGate) }
+                        .onFailure { error -> Log.w("BurnBar", "Hermes teardown before sign-out failed: ${error.message}") }
+                    stopMediaControlCoordinatorAndWait()
+                    runCatching { controllerRouteRegistrar.invalidateAll(revokeRemote = true) }
+                        .onFailure { error ->
+                            Log.w("BurnBar", "Controller-route revocation before sign-out failed: ${error.message}")
+                        }
+                    controllerRouteAuthUid = null
+                    auth.signOut()
+                } finally {
+                    controllerRouteRegistrar.endAuthTransition()
+                }
+            }
+        } finally {
+            HermesAuthLifecycleRegistry.releaseAuthTransitionGate(hermesGate)
+            IrohControllerRouteRegistrarProvider.releaseAuthTransitionGate(gate)
+        }
     }
 
     suspend fun ensureMediaControlStream(connectionID: String, forceRestart: Boolean = false) {
@@ -374,15 +475,20 @@ class BurnBarApplication : Application() {
     }
 
     private fun stopMediaControlCoordinator() {
-        val coordinator = mediaControlCoordinator ?: return
-        applicationScope.launch {
-            runCatching { coordinator.stop() }
+        applicationScope.launch { stopMediaControlCoordinatorAndWait() }
+    }
+
+    private suspend fun stopMediaControlCoordinatorAndWait() {
+        mediaCoordinatorLock.withLock {
+            val coordinator = mediaControlCoordinator
+            mediaControlCoordinator = null
+            activeCoordinatorUid = null
+            activeCoordinatorConnection = null
+            activeCoordinatorPublishedAtMillis = null
+            activeCoordinatorTarget = null
+            runCatching { coordinator?.stop() }
             runCatching { controlTransportPool.shutdown() }
         }
-        mediaControlCoordinator = null
-        activeCoordinatorConnection = null
-        activeCoordinatorPublishedAtMillis = null
-        activeCoordinatorTarget = null
     }
 
     internal suspend fun fetchVerifiedPairingTarget(uid: String, connectionId: String): IrohDialTarget {
@@ -395,20 +501,27 @@ class BurnBarApplication : Application() {
     }
 
     /**
-     * Default control-stream dialer. The production iroh transport is
-     * provided through `HermesIrohRelayTransport.defaultTransport(...)`
-     * once the AAR is on the classpath; without the AAR we fall back to
-     * the in-process loopback transport so the wiring still completes
-     * for tests and CI screenshots.
+     * Default control-stream dialer. Production requires the native iroh backend and fails closed
+     * during transport-pool construction when the AAR/native library is unavailable.
      */
-    internal suspend fun dialControlStream(target: IrohDialTarget): IrohRelayStream {
+    internal suspend fun dialControlStream(uid: String, connectionId: String, target: IrohDialTarget): IrohRelayStream {
         Log.i(
             "BurnBar",
             "Mercury control dial target node=${target.nodeId.take(
                 LOG_NODE_ID_PREFIX_LENGTH,
             )} relay=${target.relayURL != null} directAddresses=${target.directAddresses.size}",
         )
-        return controlTransportPool.dial(target, timeoutMillis = MEDIA_CONTROL_DIAL_TIMEOUT_MILLIS)
+        return controlTransportPool.dial(
+            target = target,
+            timeoutMillis = MEDIA_CONTROL_DIAL_TIMEOUT_MILLIS,
+            beforeConnect = { endpointIdentity ->
+                controllerRouteRegistrar.ensureRegistered(
+                    uid = uid,
+                    connectionId = connectionId,
+                    endpointIdentity = endpointIdentity,
+                )
+            },
+        )
     }
 
     /**

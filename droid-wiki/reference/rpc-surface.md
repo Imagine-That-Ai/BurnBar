@@ -138,6 +138,9 @@ Methods are defined in `OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/Burn
 | Method | Key | Description |
 |--------|-----|-------------|
 | `computerUseSessionStart` | `daemon.computer_use.session.start` | Starts a Computer Use session |
+| `computerUseSessionGrantReadiness` | `daemon.computer_use.session_grant.readiness` | Reports whether the daemon-owned phone-grant transport, validator, and trusted pairing path are operational |
+| `computerUseSessionGrantAcquire` | `daemon.computer_use.session_grant.acquire` | Requests an exact paired-phone session grant without exposing authority material to the renderer |
+| `computerUseSessionGrantStatus` | `daemon.computer_use.session_grant.status` | Returns non-secret status for one exact session-grant challenge |
 | `computerUseInvoke` | `daemon.computer_use.invoke` | Invokes a Computer Use action |
 | `computerUseApprovalPending` | `daemon.computer_use.approval.pending` | Lists pending approvals |
 | `computerUseApprovalRespond` | `daemon.computer_use.approval.respond` | Responds to an approval request |

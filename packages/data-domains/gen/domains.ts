@@ -343,6 +343,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "pi_agent_relay_requests",
       "iroh_pairing",
       "iroh_pairing_keys",
+      "iroh_controller_route_challenges",
       "relay_sender_keys",
       "runtime_connection_preferences"
     ],
@@ -535,7 +536,9 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "escrow_envelopes",
       "escrow_audit_events",
       "account_recovery_methods",
-      "roaming_profile"
+      "roaming_profile",
+      "linux_app_check_devices",
+      "linux_app_check_challenges"
     ],
     "storagePaths": [],
     "countSource": "escrow_devices",

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "role": "linux-parity-environment-remediation",
+  "capturedAt": "2026-07-22T06:49:00Z",
+  "guest": {
+    "name": "OpenBurnBar Linux",
+    "os": "Ubuntu 24.04 ARM64",
+    "address": "192.168.64.5"
+  },
+  "finding": {
+    "unit": "openburnbar-daemon.service",
+    "staleUnitPath": "/etc/systemd/system/openburnbar-daemon.service",
+    "failure": "root-level unit repeatedly crashed with missingSocketAuthToken",
+    "restartCounterObserved": 4408,
+    "cause": "stale system service bypassed the packaged per-user XDG launcher and had no token-file configuration"
+  },
+  "remediation": {
+    "action": "disabled and stopped the stale root-level unit",
+    "scope": "VM environment only; no repository files changed",
+    "command": "sudo systemctl disable --now openburnbar-daemon.service"
+  },
+  "verification": {
+    "userUnit": "active",
+    "userSocket": "/run/user/1000/openburnbar/daemon.sock",
+    "userToken": "0600 /home/burnbar/.local/share/openburnbar/daemon-socket-auth-token",
+    "cliHealth": "Daemon 1.0.30 | protocol 1 | ok=true"
+  },
+  "certification": {
+    "strictParity": false,
+    "reason": "This repairs stale VM state and uses the previously installed unsigned candidate; it is not signed current-head package or seven-environment proof."
+  }
+}

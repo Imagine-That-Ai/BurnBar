@@ -4,19 +4,28 @@
  * The switcher renders this list and the host constructs from it. Adding a
  * backdrop is: write `kernels/<x>.ts` exporting a factory, add one entry here.
  *
- * Lazy loading: only `constellation` (the default) is imported eagerly so first
- * paint is instant. Every other kernel's heavy GLSL + helpers are loaded
- * on-demand via dynamic `import()` wrapped in `lazyKernel()`. The proxy exposes
- * `id`/`label`/`substrate` synchronously so the host can size the canvas and pick
- * the right context immediately; the real factory is imported on first
- * `init()`/`frame()`.
+ * Lazy loading: `constellation` and `swarmEmber` (the Linux dashboard default)
+ * are imported eagerly so first paint is instant on both shells. Every other
+ * kernel's heavy GLSL + helpers are loaded on-demand via dynamic `import()`
+ * wrapped in `lazyKernel()`. The proxy exposes `id`/`label`/`substrate`
+ * synchronously so the host can size the canvas and pick the right context
+ * immediately; the real factory is imported on first `init()`/`frame()`.
  */
 
 import type { GlCapabilities } from "./gl/glCapabilities";
-// Eager: the default kernel — first paint depends on it.
+// Eager: these are the default first-paint paths for the macOS and Linux
+// shells. Keeping the Linux 2D default eager avoids a transparent canvas while
+// a WebKitGTK/Tauri dynamic chunk is still resolving.
 import { createConstellationKernel } from "./kernels/constellationKernel";
+import { createSwarmEmberKernel } from "./kernels/swarmEmberKernel";
 import { lazyKernel } from "./lazyKernel";
-import type { KernelDescriptor, KernelId, KernelSubstrate } from "./types";
+import type {
+  KernelDescriptor,
+  KernelId,
+  KernelResolution,
+  KernelResolutionReason,
+  KernelSubstrate,
+} from "./types";
 
 export const KERNELS: KernelDescriptor[] = [
   {
@@ -312,9 +321,7 @@ export const KERNELS: KernelDescriptor[] = [
     label: "Swarm Ember",
     blurb: "Ember particles murmurate, then spell token glyphs and dissolve.",
     substrate: "2d",
-    create: () =>
-      lazyKernel("swarmEmber", "Swarm Ember", "2d", () =>
-        import("./kernels/swarmEmberKernel").then((m) => () => m.createSwarmEmberKernel({ enableSwarmSparkles: false }))),
+    create: () => createSwarmEmberKernel({ enableSwarmSparkles: false }),
   },
   ];
 
@@ -354,10 +361,41 @@ export function resolveRenderableKernelId(
   glSupported: boolean,
   lookup: (id: KernelId) => KernelDescriptor = getKernelDescriptor
 ): KernelId {
-  const desc = lookup(id);
-  if (desc.substrate === "webgl2" && !glSupported) return DEFAULT_KERNEL_ID;
-  if (desc.requiresFloatTex && !caps.colorBufferFloat) {
-    return desc.fallbackId ?? DEFAULT_KERNEL_ID;
+  return resolveKernelResolution(id, caps, glSupported, lookup).resolvedId;
+}
+
+/**
+ * Return the complete, stable explanation for a host kernel choice.
+ *
+ * Keep this pure so desktop, browser, and test hosts can expose the same
+ * receipt without constructing a canvas or importing a kernel implementation.
+ */
+export function resolveKernelResolution(
+  id: KernelId,
+  caps: GlCapabilities,
+  glSupported: boolean,
+  lookup: (id: KernelId) => KernelDescriptor = getKernelDescriptor
+): KernelResolution {
+  const requested = lookup(id);
+  let resolvedId = id;
+  let reason: KernelResolutionReason = "native";
+
+  if (requested.substrate === "webgl2" && !glSupported) {
+    resolvedId = DEFAULT_KERNEL_ID;
+    reason = "webgl2-unavailable";
+  } else if (requested.requiresFloatTex && !caps.colorBufferFloat) {
+    resolvedId = requested.fallbackId ?? DEFAULT_KERNEL_ID;
+    reason = "float-target-unavailable";
   }
-  return id;
+
+  const resolved = lookup(resolvedId);
+  return {
+    requestedId: id,
+    resolvedId,
+    requestedSubstrate: requested.substrate,
+    resolvedSubstrate: resolved.substrate,
+    reason,
+    fallback: resolvedId !== id,
+    glSupported,
+  };
 }

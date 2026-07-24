@@ -1,0 +1,345 @@
+{
+  "generatedAt": "2026-07-18T22:33:45.361Z",
+  "runner": "linux-desktop-packaged-runtime-perf-v4",
+  "note": "Native packaged-shell p50/p95/p99 metrics are combined with identical production-linked macOS/Linux workloads. Boot-time synthetic subsystem operations are forbidden.",
+  "host": {
+    "platform": "linux",
+    "arch": "arm64"
+  },
+  "command": "node scripts/linux-port/run-perf-budget.mjs",
+  "budgetFile": "budgets/linux-desktop.perf.json",
+  "measurements": {
+    "desktopSessionReport": ".linux-evidence/linux-desktop-session-report.json",
+    "desktopSessionPresent": true,
+    "runtimeSamples": ".linux-evidence/runtime-perf-samples.jsonl",
+    "runtimeSampleCount": 61,
+    "packagedRouteTranscript": ".linux-evidence/packaged-route-session-transcript.json",
+    "packagedRouteCount": 19,
+    "matchedComparison": ".linux-evidence/matched-performance-comparison.json",
+    "matchedComparisonPresent": true,
+    "matchedProfile": "nightly"
+  },
+  "nativeShellBudget": {
+    "requiredMetrics": [
+      "app.start",
+      "route.navigation",
+      "ipc.health.roundtrip",
+      "tray.click.open"
+    ],
+    "thresholdsP95Ms": {
+      "app.start": 2500,
+      "route.navigation": 120,
+      "ipc.health.roundtrip": 800,
+      "tray.click.open": 400
+    },
+    "minimumSamples": {
+      "app.start": 10,
+      "route.navigation": 19,
+      "ipc.health.roundtrip": 10,
+      "tray.click.open": 10
+    }
+  },
+  "matchedPerformance": {
+    "schemaVersion": 1,
+    "protocolVersion": "openburnbar-matched-workload-v1",
+    "generatedAt": "2026-07-18T22:33:45.334Z",
+    "profile": "nightly",
+    "configuration": {
+      "rows": 100000,
+      "samples": 30,
+      "warmups": 5,
+      "soakSeconds": 1800,
+      "seed": 20260709
+    },
+    "hosts": {
+      "macos": {
+        "architecture": "arm64",
+        "operatingSystemVersion": "Version 26.4 (Build 25E246)",
+        "platform": "macos",
+        "processorCount": 3
+      },
+      "linux": {
+        "architecture": "aarch64",
+        "operatingSystemVersion": "Ubuntu 24.04.4 LTS",
+        "platform": "linux",
+        "processorCount": 4
+      }
+    },
+    "workloads": [
+      {
+        "id": "sqlite.range-query",
+        "checksum": {
+          "macos": 6601960080,
+          "linux": 6601960080
+        },
+        "macos": {
+          "maximum": 9.502625,
+          "minimum": 8.214333,
+          "p50": 8.557833500000001,
+          "p95": 9.328466599999999,
+          "p99": 9.47845814
+        },
+        "linux": {
+          "maximum": 8.300344,
+          "minimum": 8.022477,
+          "p50": 8.145154,
+          "p95": 8.2830387,
+          "p99": 8.300012240000001
+        },
+        "limits": {
+          "absolute": {
+            "p95": 250,
+            "p99": 400
+          },
+          "linuxP95Parity": 27.985399799999996,
+          "linuxP99Parity": 37.91383256
+        },
+        "checks": {
+          "macP95Absolute": true,
+          "linuxP95Absolute": true,
+          "macP99Absolute": true,
+          "linuxP99Absolute": true,
+          "linuxP95Parity": true,
+          "linuxP99Parity": true,
+          "checksumMatch": true
+        },
+        "pass": true
+      },
+      {
+        "id": "sqlite.fts-memory-search",
+        "checksum": {
+          "macos": 258750,
+          "linux": 258750
+        },
+        "macos": {
+          "maximum": 8.563667,
+          "minimum": 6.791041,
+          "p50": 7.183708,
+          "p95": 8.109960449999999,
+          "p99": 8.479132
+        },
+        "linux": {
+          "maximum": 7.813565,
+          "minimum": 7.493815,
+          "p50": 7.7211005,
+          "p95": 7.78578235,
+          "p99": 7.80767655
+        },
+        "limits": {
+          "absolute": {
+            "p95": 250,
+            "p99": 400
+          },
+          "linuxP95Parity": 24.329881349999997,
+          "linuxP99Parity": 33.916528
+        },
+        "checks": {
+          "macP95Absolute": true,
+          "linuxP95Absolute": true,
+          "macP99Absolute": true,
+          "linuxP99Absolute": true,
+          "linuxP95Parity": true,
+          "linuxP99Parity": true,
+          "checksumMatch": true
+        },
+        "pass": true
+      },
+      {
+        "id": "jsonl.incremental-decode",
+        "checksum": {
+          "macos": 154861500000,
+          "linux": 154861500000
+        },
+        "macos": {
+          "maximum": 788.709042,
+          "minimum": 607.350334,
+          "p50": 633.794667,
+          "p95": 713.2386813999999,
+          "p99": 771.2267785700001
+        },
+        "linux": {
+          "maximum": 939.784859,
+          "minimum": 938.483402,
+          "p50": 939.179905,
+          "p95": 939.672736,
+          "p99": 939.77024271
+        },
+        "limits": {
+          "absolute": {
+            "p95": 2000,
+            "p99": 3000
+          },
+          "linuxP95Parity": 2139.7160441999995,
+          "linuxP99Parity": 3084.9071142800003
+        },
+        "checks": {
+          "macP95Absolute": true,
+          "linuxP95Absolute": true,
+          "macP99Absolute": true,
+          "linuxP99Absolute": true,
+          "linuxP95Parity": true,
+          "linuxP99Parity": true,
+          "checksumMatch": true
+        },
+        "pass": true
+      },
+      {
+        "id": "stream.first-visible-delta-decode",
+        "checksum": {
+          "macos": 210030,
+          "linux": 210030
+        },
+        "macos": {
+          "maximum": 0.060333,
+          "minimum": 0.037333,
+          "p50": 0.037958,
+          "p95": 0.05462324999999997,
+          "p99": 0.06003111
+        },
+        "linux": {
+          "maximum": 0.070178,
+          "minimum": 0.028009,
+          "p50": 0.028253,
+          "p95": 0.0346926,
+          "p99": 0.06007411000000003
+        },
+        "limits": {
+          "absolute": {
+            "p95": 50,
+            "p99": 100
+          },
+          "linuxP95Parity": 5.05462325,
+          "linuxP99Parity": 10.06003111
+        },
+        "checks": {
+          "macP95Absolute": true,
+          "linuxP95Absolute": true,
+          "macP99Absolute": true,
+          "linuxP99Absolute": true,
+          "linuxP95Parity": true,
+          "linuxP99Parity": true,
+          "checksumMatch": true
+        },
+        "pass": true
+      }
+    ],
+    "resources": {
+      "macos": {
+        "cpuUtilizationPercent": 99.40815064265145,
+        "elapsedSeconds": 1800.137532417,
+        "iterations": 2981,
+        "requestedSeconds": 1800,
+        "rssEndBytes": 39960576,
+        "rssGrowthBytes": -3555328,
+        "rssMaximumBytes": 43515904,
+        "rssStartBytes": 43515904,
+        "checks": {
+          "maximumRss": true,
+          "rssGrowth": true,
+          "cpuUtilization": true
+        },
+        "pass": true
+      },
+      "linux": {
+        "cpuUtilizationPercent": 99.98488931874701,
+        "elapsedSeconds": 1800.2691569340002,
+        "iterations": 1885,
+        "requestedSeconds": 1800,
+        "rssEndBytes": 53874688,
+        "rssGrowthBytes": 81920,
+        "rssMaximumBytes": 53874688,
+        "rssStartBytes": 53792768,
+        "checks": {
+          "maximumRss": true,
+          "rssGrowth": true,
+          "cpuUtilization": true
+        },
+        "pass": true
+      }
+    },
+    "errors": [],
+    "pass": true,
+    "runner": "openburnbar-matched-performance-v1",
+    "host": {
+      "platform": "linux",
+      "architecture": "arm64"
+    },
+    "inputs": {
+      "macos": ".linux-evidence/matched-performance-macos.json",
+      "linux": ".linux-evidence/matched-performance-linux.json",
+      "budget": "budgets/linux-desktop.perf.json"
+    }
+  },
+  "verdicts": [
+    {
+      "name": "app.start",
+      "unit": "milliseconds",
+      "source": "packaged-tauri-deb-process-launch-to-x11-window-visible",
+      "sampleCount": 10,
+      "minimumSamples": 10,
+      "limitP95Ms": 2500,
+      "stats": {
+        "minimum": 293,
+        "p50": 301.5,
+        "p95": 315.55,
+        "p99": 315.91,
+        "maximum": 316
+      },
+      "measured": true,
+      "pass": true
+    },
+    {
+      "name": "route.navigation",
+      "unit": "milliseconds",
+      "source": "packaged-tauri-command-palette-route-to-two-animation-frames",
+      "sampleCount": 31,
+      "minimumSamples": 19,
+      "limitP95Ms": 120,
+      "stats": {
+        "minimum": 57,
+        "p50": 67,
+        "p95": 99,
+        "p99": 155.59999999999994,
+        "maximum": 179
+      },
+      "measured": true,
+      "pass": true
+    },
+    {
+      "name": "ipc.health.roundtrip",
+      "unit": "milliseconds",
+      "source": "packaged-tray-reconnect-to-af-unix-daemon-activity",
+      "sampleCount": 10,
+      "minimumSamples": 10,
+      "limitP95Ms": 800,
+      "stats": {
+        "minimum": 108,
+        "p50": 110,
+        "p95": 112.55,
+        "p99": 112.91,
+        "maximum": 113
+      },
+      "measured": true,
+      "pass": true
+    },
+    {
+      "name": "tray.click.open",
+      "unit": "milliseconds",
+      "source": "appindicator-dbusmenu-open-to-visible-x11-window",
+      "sampleCount": 10,
+      "minimumSamples": 10,
+      "limitP95Ms": 400,
+      "stats": {
+        "minimum": 35,
+        "p50": 43.5,
+        "p95": 72.44999999999997,
+        "p99": 79.29,
+        "maximum": 81
+      },
+      "measured": true,
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "allPass": true
+}

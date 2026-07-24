@@ -18,9 +18,13 @@ export function resolveLinuxReleaseVersion(input) {
     version = tagMatch?.[1] ?? null;
     publishAllowed = tagMatch !== null;
   } else if (eventName === 'workflow_dispatch') {
-    version = input.inputVersion?.trim() || null;
-    if (!version) failures.push('Manual Linux release version is required.');
-    if (tagMatch && tagMatch[1] !== version) failures.push('Manual version does not match the selected Linux tag.');
+    const requestedVersion = input.inputVersion?.trim() || null;
+    const packageVersion = input.packageVersion?.trim() || null;
+    version = requestedVersion ?? packageVersion;
+    if (!version) {
+      failures.push('Manual Linux release version is required when package.json version is unavailable.');
+    }
+    if (tagMatch && tagMatch[1] !== version) failures.push('Resolved version does not match the selected Linux tag.');
     publishAllowed = tagMatch?.[1] === version;
   } else {
     failures.push(`Unsupported Linux release event: ${eventName ?? '<missing>'}.`);

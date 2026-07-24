@@ -441,6 +441,21 @@ describe("F2 publishPhoneControlAuthority keyKind", () => {
     expect(store.get(`users/${UID}/escrow_devices/${DEVICE}`)?.peerNodeId).toBe(key.peerNodeId);
   });
 
+  it("rejects authority publication when the expected account is stale", async () => {
+    const key = ed25519Key();
+    await expect(
+      invokeCallable(publishPhoneControlAuthority, {
+        deviceId: DEVICE,
+        connectionId: CONN,
+        peerNodeId: key.peerNodeId,
+        publicKeyBase64: key.base64,
+        publishedAtMillis: Date.now(),
+        expectedUid: "replaced-account",
+      }),
+    ).rejects.toMatchObject({ code: "permission-denied" });
+    expect(store.has(`users/${UID}/iroh_pairing/${CONN}/controllers/${key.peerNodeId}`)).toBe(false);
+  });
+
   it("rejects a peerNodeId that does not match the published key", async () => {
     const key = seP256Key();
     await expect(
@@ -661,6 +676,15 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
       publicKeyBase64: key.base64,
     });
     publishedPeerNodeId = key.peerNodeId;
+    store.set(`users/${UID}/iroh_pairing/${CONN}/controller_routes/${DEVICE}`, {
+      connectionId: CONN,
+      sourceDeviceId: DEVICE,
+      transportNodeId: "a".repeat(52),
+      authorityPeerNodeId: key.peerNodeId,
+      status: "active",
+      generation: 4,
+      expiresAtMillis: Date.now() + 60_000,
+    });
   });
 
   it("deletes the controller record, clears the grant authority, and emits a receipt", async () => {
@@ -689,6 +713,10 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
     // Atomic clear: the controller record and grant authority are gone.
     expect(store.has(`users/${UID}/iroh_pairing/${CONN}/controllers/${peerNodeId}`)).toBe(false);
     expect(store.has(`users/${UID}/agent_grant_authorities/${DEVICE}`)).toBe(false);
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}/controller_routes/${DEVICE}`)).toMatchObject({
+      status: "revoked",
+      generation: 5,
+    });
     // Device itself is flipped to revoked.
     expect(store.get(`users/${UID}/escrow_devices/${DEVICE}`)?.trustState).toBe("revoked");
     expect(store.get(`users/${UID}/cloud_vault_key_wrappers/wrap-phone`)?.status).toBe("revoked");

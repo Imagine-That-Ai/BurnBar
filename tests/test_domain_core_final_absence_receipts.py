@@ -373,6 +373,12 @@ def _build_ledger_repo(repo: Path) -> tuple[Path, dict[str, Any]]:
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
     subprocess.run(["git", "config", "user.email", "test@openburnbar.invalid"], cwd=repo, check=True)
     subprocess.run(["git", "config", "user.name", "OpenBurnBar Test"], cwd=repo, check=True)
+    # Git may launch background maintenance after a commit.  That can race
+    # TemporaryDirectory cleanup while the test is intentionally destroying
+    # this isolated fixture, leaving .git/objects/pack non-empty.  Keep the
+    # fixture deterministic and process-local instead.
+    subprocess.run(["git", "config", "maintenance.auto", "false"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "gc.auto", "0"], cwd=repo, check=True)
     base_commit = _git_commit(repo, "initial ledger")
 
     # Write receipt and plan files for each row.

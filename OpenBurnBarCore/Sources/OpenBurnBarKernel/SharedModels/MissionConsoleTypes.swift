@@ -1,5 +1,7 @@
 import Foundation
+#if !os(Linux)
 import Observation
+#endif
 
 // MARK: - Mission Control Console — Public Types
 //
@@ -592,8 +594,13 @@ public enum MissionConsoleDispatchOutcome: Sendable {
 /// approvals through these callbacks. Hosts adapt their native services
 /// (`CLIAgentMissionDispatcher` on iOS, `OpenBurnBarOperatingLayer` on macOS)
 /// to this minimal contract.
+#if os(Linux)
+public protocol MissionConsoleObservable: AnyObject {}
+#else
+public protocol MissionConsoleObservable: AnyObject, Observable {}
+#endif
 @MainActor
-public protocol MissionConsoleHost: AnyObject, Observable {
+public protocol MissionConsoleHost: MissionConsoleObservable {
     var snapshot: MissionConsoleSnapshot { get }
     /// Most recently-dispatched mission ID (for the lift-off transition).
     var lastDispatchedMissionID: String? { get }

@@ -507,6 +507,9 @@ targets:
         product: OpenBurnBarEngine
         link: false
       - package: OpenBurnBarCore
+        product: OpenBurnBarInsights
+        link: false
+      - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
         link: false
       - package: OpenBurnBarCore
@@ -550,6 +553,8 @@ targets:
       - target: OpenBurnBarDaemon
       - package: OpenBurnBarCore
         product: OpenBurnBarEngine
+      - package: OpenBurnBarCore
+        product: OpenBurnBarInsights
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
       - package: OpenBurnBarCore
@@ -775,6 +780,8 @@ targets:
         embed: false
       - package: OpenBurnBarCore
         product: OpenBurnBarEngine
+      - package: OpenBurnBarCore
+        product: OpenBurnBarInsights
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
       - package: OpenBurnBarCore
