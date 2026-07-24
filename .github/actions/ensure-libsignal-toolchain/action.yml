@@ -23,11 +23,17 @@ runs:
     # Self-hosted runners launched as a launchd agent inherit a minimal PATH that
     # usually omits Homebrew. Put it back before probing for tools, otherwise an
     # installed cmake still looks missing.
+    #
+    # Iteration order matters on Apple Silicon hosts that also carry a legacy
+    # Intel /usr/local prefix: the runner prepends $GITHUB_PATH entries so the
+    # LAST line written gets the highest PATH precedence. Writing /usr/local
+    # first and /opt/homebrew last keeps the ARM-native toolchain ahead of any
+    # stale or Rosetta-dependent /usr/local/bin/brew.
     - name: Ensure Homebrew is on PATH
       shell: bash
       run: |
         set -euo pipefail
-        for prefix in /opt/homebrew /usr/local; do
+        for prefix in /usr/local /opt/homebrew; do
           if [[ -x "${prefix}/bin/brew" ]]; then
             case ":${PATH}:" in
               *":${prefix}/bin:"*) ;;
@@ -45,7 +51,9 @@ runs:
         set -euo pipefail
 
         # $GITHUB_PATH only affects *later* steps, so mirror it into this shell.
-        for prefix in /opt/homebrew /usr/local; do
+        # Same ordering rule as above: each iteration prepends, so /opt/homebrew
+        # goes last to end up first on PATH, ahead of a legacy Intel /usr/local.
+        for prefix in /usr/local /opt/homebrew; do
           if [[ -x "${prefix}/bin/brew" ]]; then
             case ":${PATH}:" in
               *":${prefix}/bin:"*) ;;

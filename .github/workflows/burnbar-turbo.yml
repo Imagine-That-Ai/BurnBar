@@ -145,13 +145,8 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Ensure protobuf toolchain
-        run: |
-          set -euo pipefail
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Validate macOS performance gate
         run: node --test scripts/ci/macos-idle-occlusion-gate.test.mjs
@@ -260,13 +255,8 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Ensure protobuf toolchain
-        run: |
-          set -euo pipefail
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Prepare Signal FFI XCFramework
         run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
@@ -352,13 +342,8 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Ensure protobuf toolchain
-        run: |
-          set -euo pipefail
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Run daemon Swift tests
         env:
