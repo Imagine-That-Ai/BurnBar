@@ -240,8 +240,16 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   # reverse traversal re-enters the same real focus path and records that
   # recovery rather than accepting a six-event partial traversal.
   physical_tab_presses=28
+  focus_window_and_key() {
+    # Xvfb/Orca can hand the active window back to the desktop shell after a
+    # WebKit focus change. Reassert the same packaged window immediately
+    # before each physical key; this does not synthesize an accessibility
+    # event, it keeps the real document eligible to receive the key.
+    xdotool windowfocus --sync "$window_id" 2>/dev/null || true
+    xdotool key --clearmodifiers "$1"
+  }
   for _ in $(seq 1 "$physical_tab_presses"); do
-    xdotool key --clearmodifiers Tab
+    focus_window_and_key Tab
     # Orca intentionally serializes accessibility events. Fast synthetic input
     # causes its queue to obsolete intermediate focus changes.
     sleep 1.25
@@ -258,7 +266,7 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   sleep 1
   physical_shift_tab_presses=12
   for _ in $(seq 1 "$physical_shift_tab_presses"); do
-    xdotool key --clearmodifiers Shift+Tab
+    focus_window_and_key Shift+Tab
     sleep 1.25
   done
   sleep 8
