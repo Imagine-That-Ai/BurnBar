@@ -11,15 +11,14 @@ private final class BurnBarLinuxQuotaOutputBuffer: @unchecked Sendable {
     private var data = Data()
     private var didExceedLimit = false
 
-    func append(_ chunk: Data, limit: Int) -> Bool {
+    func append(_ chunk: Data, limit: Int) {
         lock.withLock {
-            guard !didExceedLimit else { return false }
+            guard !didExceedLimit else { return }
             guard data.count + chunk.count <= limit else {
                 didExceedLimit = true
-                return false
+                return
             }
             data.append(chunk)
-            return true
         }
     }
 
@@ -111,7 +110,7 @@ struct BurnBarLinuxQuotaCLIExecutor: CLIExecutor {
         DispatchQueue.global(qos: .utility).async(execute: outputDrain)
         DispatchQueue.global(qos: .utility).async(execute: errorDrain)
 
-        let deadline = Date().addingTimeInterval(Self.timeout)
+        let deadline = Date().addingTimeInterval(timeout)
         while process.isRunning, Date() < deadline {
             Thread.sleep(forTimeInterval: 0.02)
         }
@@ -145,7 +144,7 @@ struct BurnBarLinuxQuotaCLIExecutor: CLIExecutor {
                 guard let chunk = try handle.read(upToCount: 64 * 1024), !chunk.isEmpty else {
                     return
                 }
-                guard buffer.append(chunk, limit: maxOutputBytes) else { return }
+                buffer.append(chunk, limit: maxOutputBytes)
             } catch {
                 return
             }
