@@ -18,6 +18,7 @@ threshold="${COVERAGE_THRESHOLD:-80}"
 
 ANDROID_DIFF_COVERAGE_ALLOWLIST_JSON="$(cat <<'JSON'
 {
+  "android/app/src/main/java/com/openburnbar/BurnBarApplication.kt": "Firebase App Check provider installation is an Android Application lifecycle boundary that requires initialized Firebase SDK state and a real Android runtime; release selection is independently fail-closed through BuildConfig.DEBUG and verified by release compilation, artifact inspection, and Firebase contract tests.",
   "android/app/src/main/java/com/openburnbar/MainActivity.kt": "Living Themes adds Android deep-link activity routing at the host lifecycle boundary; URI parsing and fallback selection are isolated in LivingThemeIntent and covered by JVM tests, while Activity launch dispatch requires instrumented coverage.",
   "android/app/src/main/java/com/openburnbar/data/assistants/CLIAgentMissionDispatcher.kt": "Firebase Functions mission-dispatch integration: callable transport, auth context, and cloud error mapping require Firebase emulator/instrumented coverage; the seal/canonical payload logic remains covered by mobile and cloud tests.",
   "android/app/src/main/java/com/openburnbar/data/cloud/AndroidCloudVaultRevocationRotation.kt": "CloudVault revocation/rotation orchestration crosses Firestore transactions, trusted-device state, and Android crypto providers; pure crypto helpers remain JVM-covered, while live rotation requires emulator/instrumented coverage.",

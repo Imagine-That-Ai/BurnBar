@@ -392,7 +392,6 @@ tasks.withType<Test>().configureEach {
     }
 }
 
-
 androidComponents {
     onVariants(selector().all()) { variant ->
         variant.sources.assets?.addGeneratedSourceDirectory(

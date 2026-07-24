@@ -476,7 +476,6 @@ class BurnBarApplication : Application() {
             .invoke(null) as? AppCheckProviderFactory
             ?: error("DebugAppCheckProviderFactory.getInstance returned an unexpected type")
     }
-
 }
 
 private fun MediaControlStreamCoordinator.Phase.isActiveOrConnecting(): Boolean = this is MediaControlStreamCoordinator.Phase.Dialing ||
