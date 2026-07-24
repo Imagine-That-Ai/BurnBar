@@ -1,3 +1,4 @@
+import type { ProxyRouteFinalStatus } from './proxyRouteContracts.js';
 import type { DaemonHealth } from './daemonClient.js';
 import type { RuntimeCapabilityManifest } from './runtimeCapabilities.js';
 import type { LinuxOnboardingActionRequest, LinuxOnboardingSnapshot } from './onboardingStore.js';
@@ -958,10 +959,11 @@ export type ProxyRouteLogEntry = {
   upstreamModelSlug?: string;
   providerName?: string;
   accountLabel?: string;
-  finalStatus: string;
+  finalStatus: ProxyRouteFinalStatus;
   rewriteKind: string;
   exactModelInvariant: string;
   streamed: boolean;
+  streamInterrupted: boolean;
   httpStatus?: number;
   failureMessage?: string;
 };
