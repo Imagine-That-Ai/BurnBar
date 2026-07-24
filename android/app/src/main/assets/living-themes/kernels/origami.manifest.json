@@ -1,0 +1,25 @@
+{
+  "id": "origami",
+  "label": "Origami",
+  "metalFileBase": "K_Origami",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_origami_display"
+  },
+  "controls": [
+    "scroll"
+  ],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

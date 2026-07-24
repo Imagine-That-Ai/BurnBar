@@ -249,10 +249,15 @@ extension BurnBarHTTPGatewayServer {
             )
 
         case ("POST", "/v1/responses"):
-            return await handleResponses(body: request.body)
+            return await handleResponses(body: request.body, headers: request.headers)
 
         case ("POST", "/v1/messages"):
-            return await handleAnthropicMessages(body: request.body, connection: connection, corsHeaders: corsHeaders)
+            return await handleAnthropicMessages(
+                body: request.body,
+                headers: request.headers,
+                connection: connection,
+                corsHeaders: corsHeaders
+            )
 
         default:
             return .buffered(jsonResponse(status: 404, body: errorBody("not found")))

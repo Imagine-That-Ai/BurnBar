@@ -48,7 +48,7 @@ public final class CodexParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 2,
+            schemaVersion: 6,
             logLabel: "CodexParser"
         )
         _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths) // try?-ok(best-effort dir prep)
@@ -71,8 +71,8 @@ public final class CodexParser: LogParser, Sendable {
             return ParseResult(usages: [], conversations: [])
         }
 
-        // The state database is a bounded (LIMIT 500) enumeration index, not
-        // rollout content. Charging its on-disk size to the rollout byte budget
+        // The state database is a metadata-only enumeration index, not rollout
+        // content. Charging its on-disk size to the rollout byte budget
         // can starve every rollout forever when the index is larger than one
         // pass. Account for the metadata probe and enforce memory checkpoints,
         // but reserve the byte budget for the rollout bytes actually scanned.
@@ -81,13 +81,17 @@ public final class CodexParser: LogParser, Sendable {
         try options.resourceGovernor?.checkpoint()
 
         let parsed = try parseCodexDatabase(dbPath: dbURL.path, options: options)
-        return ParseResult(usages: parsed.usages, conversations: parsed.conversations)
+        return ParseResult(
+            usages: parsed.usages,
+            conversations: parsed.conversations,
+            usageSessionIDsToDelete: parsed.usageSessionIDsToDelete
+        )
     }
 
     private func fetchThreadRows(
         dbPath: String,
         governor: ParserResourceGovernor?
-    ) throws -> [CodexThreadRow] {
+    ) throws -> (rows: [CodexThreadRow], usageSessionIDsToDelete: [String]) {
         // Read-only, plain SQLite (matches GRDB `Configuration.readonly = true`).
         try governor?.checkpoint()
         let reader = try SQLiteConnection.openReadOnly(path: dbPath)
@@ -97,17 +101,43 @@ public final class CodexParser: LogParser, Sendable {
         let columnNames = Set(try reader.columnNames(ofTable: "threads"))
         try governor?.checkpoint()
         let hasRolloutPath = columnNames.contains("rollout_path")
+        let hasThreadSource = columnNames.contains("thread_source")
+
+        let subagentSessionIDs: Set<String>
+        if hasThreadSource {
+            subagentSessionIDs = Set(try reader.query(
+                "SELECT id FROM threads WHERE thread_source = 'subagent'"
+            ).compactMap { $0.string("id") })
+        } else if hasRolloutPath {
+            subagentSessionIDs = Set(try reader.query(
+                "SELECT id, rollout_path FROM threads"
+            ).compactMap { row -> String? in
+                guard let threadID = row.string("id"),
+                      let rolloutPath = row.string("rollout_path") else { return nil }
+                let expandedPath = (rolloutPath as NSString).expandingTildeInPath
+                return isCodexSubagentRollout(expandedPath) ? threadID : nil
+            })
+        } else {
+            subagentSessionIDs = []
+        }
+        try governor?.checkpoint()
 
         let sql: String
         if hasRolloutPath {
+            let sourceFilter = hasThreadSource
+                ? "AND (thread_source IS NULL OR thread_source != 'subagent')"
+                : ""
             sql = """
                 SELECT
                     id, title, model, model_provider, tokens_used,
                     created_at, updated_at, cwd, rollout_path
                 FROM threads
                 WHERE archived = 0
-                ORDER BY created_at DESC
-                LIMIT 500
+                \(sourceFilter)
+                -- The scanner is byte-budgeted. Prioritize threads that
+                -- changed most recently so long-running parents active today
+                -- are repaired before newer but idle sessions.
+                ORDER BY updated_at DESC
             """
         } else {
             sql = """
@@ -116,8 +146,7 @@ public final class CodexParser: LogParser, Sendable {
                     created_at, updated_at, cwd
                 FROM threads
                 WHERE archived = 0
-                ORDER BY created_at DESC
-                LIMIT 500
+                ORDER BY updated_at DESC
             """
         }
 
@@ -137,6 +166,7 @@ public final class CodexParser: LogParser, Sendable {
             }
             let cwd: String = row.string("cwd") ?? "~"
             let rolloutPath: String? = hasRolloutPath ? row.string("rollout_path") : nil
+            guard !subagentSessionIDs.contains(threadId) else { continue }
             threadRows.append(
                 CodexThreadRow(
                     threadId: threadId,
@@ -150,25 +180,51 @@ public final class CodexParser: LogParser, Sendable {
                 )
             )
         }
-        return threadRows
+        return (threadRows, subagentSessionIDs.sorted())
     }
 
     private func parseCodexDatabase(
         dbPath: String,
         options: LogParseOptions
-    ) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
+    ) throws -> (
+        usages: [TokenUsage],
+        conversations: [ConversationRecord],
+        usageSessionIDsToDelete: [String]
+    ) {
         // Rows first, reader closed, then file scanning — never hold a read
         // connection on Codex's live database across multi-second file work.
-        let threadRows = try fetchThreadRows(
+        let fetched = try fetchThreadRows(
             dbPath: dbPath,
             governor: options.resourceGovernor
         )
-        return try CodexSessionLogScanner.processThreadRows(
-            threadRows,
+        let parsed = try CodexSessionLogScanner.processThreadRows(
+            fetched.rows,
             options: options,
             fileManager: fileManager,
             cacheStore: cacheStore
         )
+        let invalidations = Set(fetched.usageSessionIDsToDelete)
+            .union(parsed.usageSessionIDsToDelete)
+        return (parsed.usages, parsed.conversations, invalidations.sorted())
+    }
+
+    private func isCodexSubagentRollout(_ path: String) -> Bool {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
+        defer { try? handle.close() } // try?-ok(read-only teardown)
+
+        guard let prefix = try? handle.read(upToCount: 256 * 1024),
+              !prefix.isEmpty else { return false }
+
+        let text = String(decoding: prefix, as: UTF8.self)
+        for line in text.split(separator: "\n", maxSplits: 15, omittingEmptySubsequences: true) {
+            guard let data = String(line).data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  json["type"] as? String == "session_meta",
+                  let payload = json["payload"] as? [String: Any],
+                  let source = payload["source"] as? [String: Any] else { continue }
+            return source["subagent"] != nil
+        }
+        return false
     }
 
 }
@@ -177,8 +233,26 @@ public struct CodexTokenUsage: Codable, Equatable, Sendable {
     public let input: Int
     public let output: Int
     public let cacheRead: Int
+    public let daily: [CodexDailyTokenUsage]
 
-    public init(input: Int, output: Int, cacheRead: Int) {
+    public init(input: Int, output: Int, cacheRead: Int, daily: [CodexDailyTokenUsage] = []) {
+        self.input = input
+        self.output = output
+        self.cacheRead = cacheRead
+        self.daily = daily
+    }
+}
+
+public struct CodexDailyTokenUsage: Codable, Equatable, Sendable {
+    public let dayStart: Date
+    public let endTime: Date
+    public let input: Int
+    public let output: Int
+    public let cacheRead: Int
+
+    public init(dayStart: Date, endTime: Date, input: Int, output: Int, cacheRead: Int) {
+        self.dayStart = dayStart
+        self.endTime = endTime
         self.input = input
         self.output = output
         self.cacheRead = cacheRead
@@ -226,10 +300,17 @@ public struct CodexCacheEntry: Codable, Equatable, Sendable {
     public let signature: FileSignature
     public let tokenUsage: CodexTokenUsage?
     public let scanState: CodexTokenScanState?
+    public let executionSource: UsageExecutionSource
 
-    public init(signature: FileSignature, tokenUsage: CodexTokenUsage?, scanState: CodexTokenScanState?) {
+    public init(
+        signature: FileSignature,
+        tokenUsage: CodexTokenUsage?,
+        scanState: CodexTokenScanState?,
+        executionSource: UsageExecutionSource = .unknown
+    ) {
         self.signature = signature
         self.tokenUsage = tokenUsage
         self.scanState = scanState
+        self.executionSource = executionSource
     }
 }

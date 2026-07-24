@@ -17,6 +17,10 @@ public sealed record FirestoreUsageEventDoc
     [JsonPropertyName("sessionId")] public string? SessionId { get; init; }
     [JsonPropertyName("deviceId")] public string? DeviceId { get; init; }
     [JsonPropertyName("sourceDeviceId")] public string? SourceDeviceId { get; init; }
+    [JsonPropertyName("executionSourceID")] public string? ExecutionSourceID { get; init; }
+    [JsonPropertyName("executionSourceName")] public string? ExecutionSourceName { get; init; }
+    [JsonPropertyName("executionSourceKind")] public string? ExecutionSourceKind { get; init; }
+    [JsonPropertyName("executionSourceConfidence")] public string? ExecutionSourceConfidence { get; init; }
     [JsonPropertyName("inputTokens")] public long? InputTokens { get; init; }
     [JsonPropertyName("outputTokens")] public long? OutputTokens { get; init; }
     [JsonPropertyName("cacheReadTokens")] public long? CacheReadTokens { get; init; }

@@ -37,7 +37,6 @@ final class MemoryFootprintWatchdog {
     private var softLimitTripped = false
     private var criticalTripped = false
     private weak var aggregator: UsageAggregator?
-
     init() {}
 
     func start(
