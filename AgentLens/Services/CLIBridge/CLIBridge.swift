@@ -682,6 +682,12 @@ final class CLIBridge: ObservableObject {
                     continuation.finish()
                     return
                 }
+                // Junie has no enforceable read-only/no-shell flags: require the
+                // full interactive grant, matching the mission-launch planner.
+                guard CLIAgentJunieMissionPolicy.chatLaunchPermitted(capabilityGrant) else {
+                    continuation.finish(throwing: CLIBridgeError.junieRequiresFullGrant)
+                    return
+                }
                 guard let executable = await self.resolveExecutable(named: "junie") else {
                     continuation.finish(throwing: CLIBridgeError.noCLI)
                     return

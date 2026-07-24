@@ -240,6 +240,59 @@ final class AgentSecurityPolicyTests: XCTestCase {
         XCTAssertEqual(value(after: "--task", in: trustedArgs), "Ship it")
     }
 
+    func test_junieChatLaunch_failsClosedWithoutFullActiveGrant() {
+        XCTAssertFalse(
+            CLIAgentJunieMissionPolicy.chatLaunchPermitted(nil),
+            "a relay chat with no grant must not spawn Junie"
+        )
+
+        let readOnly = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .junie,
+            threadID: "t",
+            capabilities: [.workspaceRead],
+            trustMode: .step,
+            now: Date(),
+            duration: 60
+        )
+        XCTAssertFalse(
+            CLIAgentJunieMissionPolicy.chatLaunchPermitted(readOnly),
+            "a read-only grant must not spawn Junie"
+        )
+
+        let now = Date()
+        let expired = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .junie,
+            threadID: "t",
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .trusted,
+            now: now.addingTimeInterval(-120),
+            duration: 60
+        )
+        XCTAssertFalse(
+            CLIAgentJunieMissionPolicy.chatLaunchPermitted(expired, now: now),
+            "an expired grant must not spawn Junie"
+        )
+
+        let full = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .junie,
+            threadID: "t",
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .trusted,
+            now: now,
+            duration: 60
+        )
+        XCTAssertTrue(
+            CLIAgentJunieMissionPolicy.chatLaunchPermitted(full, now: now),
+            "an active full grant permits Junie"
+        )
+
+        let revoked = full.revoked()
+        XCTAssertFalse(
+            CLIAgentJunieMissionPolicy.chatLaunchPermitted(revoked, now: now),
+            "a revoked grant must not spawn Junie"
+        )
+    }
+
     // MARK: - T-TOOL-10: restricted shell home-data deny
 
     func test_restrictedShellProfile_deniesHomeDataByDefaultWithExplicitWorkspaceAndToolchainReads() {

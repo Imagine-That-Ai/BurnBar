@@ -125,6 +125,10 @@ enum CLIBridgeError: LocalizedError {
     case disallowedModel(backend: String, model: String)
     case hermesSSEError(String)
     case emptyResponse
+    /// Junie has no enforceable read-only/no-shell flags, so launching it
+    /// without a full interactive grant would leave capability limits as
+    /// prompt text only. Fail closed instead.
+    case junieRequiresFullGrant
 
     var errorDescription: String? {
         switch self {
@@ -153,6 +157,8 @@ enum CLIBridgeError: LocalizedError {
             return "Chat server error: \(detail)"
         case .emptyResponse:
             return "CLI returned an empty response."
+        case .junieRequiresFullGrant:
+            return "Junie cannot run in read-only mode. Grant file edits and shell access for this thread, or pick a different assistant."
         }
     }
 }
