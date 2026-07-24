@@ -1,0 +1,15 @@
+{
+  "schema": "openburnbar.parity.linux-source-test-summary.v1",
+  "capturedAt": "2026-07-24T01:22:25Z",
+  "sourceCommit": "292030829bfff8d0f034b050ba464f0ba98c8ff6",
+  "status": "passed",
+  "testCount": 70,
+  "failedCount": 0,
+  "coveredRequirementIds": [],
+  "command": "node --test scripts/linux-port/linux-toolchain-node-runtime.test.mjs scripts/linux-port/report-parity-evidence-availability.test.mjs scripts/linux-port/signed-installed-package-wiring.test.mjs scripts/linux-port/verify-linux-workflow-wiring.test.mjs",
+  "scope": "focused Linux release/evidence contract tests",
+  "limitations": [
+    "This receipt covers release and evidence wiring only; it is not a product-parity attestation.",
+    "The broader Swift, Tauri, frontend, installed-runtime, and cross-environment suites are recorded separately."
+  ]
+}
