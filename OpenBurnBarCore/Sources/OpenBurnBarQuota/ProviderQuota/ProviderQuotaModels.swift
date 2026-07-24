@@ -133,16 +133,6 @@ public struct CursorUserInfo: Decodable {
     public let name: String?
 }
 
-public struct CursorLegacyUsageResponse: Decodable {
-    let gpt4: CursorLegacyRequestUsage?
-}
-
-public struct CursorLegacyRequestUsage: Decodable {
-    let numRequests: Int?
-    let numRequestsTotal: Int?
-    let maxRequestUsage: Int?
-}
-
 // MARK: - Factory Models
 
 public struct FactorySessionCredentialEnvelope: Sendable {
