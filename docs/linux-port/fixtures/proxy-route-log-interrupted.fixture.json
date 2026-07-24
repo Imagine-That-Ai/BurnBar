@@ -1,0 +1,64 @@
+{
+  "_comment": "Cross-platform contract fixture for the first-class `interrupted` proxy-route final status. This is the daemon.proxy.route_log.recent RPC `result` payload as the daemon encodes it (default Foundation JSONEncoder: dates are seconds since the reference date). Consumed by OpenBurnBarDaemonTests (Swift Codable decode) and apps/linux-desktop tauriBridge tests (TS normalization) so both sides fail if the wire contract for status `interrupted` drifts. Wire names are BurnBarRPC canon — do not rename without changing BurnBarProxyRouteLogContracts.swift.",
+  "entries": [
+    {
+      "id": "fixture-interrupted-route-1",
+      "occurredAt": 806716800,
+      "completedAt": 806716803,
+      "durationMilliseconds": 3000,
+      "requestPath": "/v1/chat/completions",
+      "endpoint": "Chat Completions",
+      "clientModelSlug": "openburnbar/primary",
+      "advertisedModelSlug": "openburnbar/primary",
+      "routingModelSlug": "claude-opus-4-8",
+      "upstreamModelSlug": "claude-opus-4-8",
+      "clientModelDisplayName": "OpenBurnBar Primary",
+      "routingModelDisplayName": "Claude Opus 4.8",
+      "upstreamModelDisplayName": "Claude Opus 4.8",
+      "providerID": "anthropic",
+      "providerName": "Anthropic",
+      "accountID": "slot-team",
+      "accountLabel": "Team workspace",
+      "requestedCanonicalModelID": "anthropic/claude-opus-4-8",
+      "servedCanonicalModelID": "anthropic/claude-opus-4-8",
+      "formatFamily": "anthropic",
+      "transportKind": "http",
+      "rewriteKind": "none",
+      "exactModelInvariant": "passed",
+      "finalStatus": "interrupted",
+      "streamed": true,
+      "streamInterrupted": true,
+      "httpStatus": 200,
+      "attempts": [
+        {
+          "id": "fixture-interrupted-attempt-1",
+          "sequence": 1,
+          "startedAt": 806716800,
+          "completedAt": 806716803,
+          "durationMilliseconds": 3000,
+          "providerID": "anthropic",
+          "providerName": "Anthropic",
+          "accountID": "slot-team",
+          "accountLabel": "Team workspace",
+          "routingModelSlug": "claude-opus-4-8",
+          "upstreamModelSlug": "claude-opus-4-8",
+          "canonicalModelID": "anthropic/claude-opus-4-8",
+          "formatFamily": "anthropic",
+          "transportKind": "http",
+          "status": "interrupted",
+          "httpStatus": 200
+        }
+      ],
+      "usage": {
+        "inputTokens": 412,
+        "outputTokens": 96,
+        "cacheCreationTokens": 0,
+        "cacheReadTokens": 0,
+        "reasoningTokens": 0,
+        "cost": 0.0123,
+        "confidence": "derived_exact"
+      },
+      "failureMessage": "upstream stream interrupted"
+    }
+  ]
+}
