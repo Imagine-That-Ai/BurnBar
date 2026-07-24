@@ -179,31 +179,17 @@ enum BurnBarDaemonDatabaseCipher {
 
     // MARK: - Codec Availability Probe
 
-    /// Whether the daemon's linked SQLite actually provides the SQLCipher codec,
-    /// i.e. `PRAGMA cipher_version` is non-empty after `PRAGMA key`. On the stock
-    /// `SQLite3` system library this returns `false`, so callers fall back to a
-    /// disclosed-plaintext open rather than applying a silent no-op key. Probes a
-    /// throwaway in-memory database once; the result is cached for the process
-    /// lifetime. Mirrors `DatabaseEncryptionService.isCipherAvailable()`.
-    static func isCipherAvailable() -> Bool { cipherAvailabilityProbe }
-
-    private static let cipherAvailabilityProbe: Bool = {
-        var handle: OpaquePointer?
-        guard sqlite3_open_v2(":memory:", &handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK,
-              let handle else {
-            if let handle { sqlite3_close(handle) }
-            return false
-        }
-        defer { sqlite3_close(handle) }
-        // A 64-char dummy key only exercises the codec plumbing; the in-memory DB
-        // is discarded immediately.
-        do {
-            try applyKey(String(repeating: "a", count: 64), to: handle)
-            return true
-        } catch {
-            return false
-        }
-    }()
+    /// Whether the daemon's linked SQLite actually provides the SQLCipher codec.
+    ///
+    /// This must remain a non-invasive capability check. Calling `sqlite3_key`
+    /// from a one-time probe can re-enter SQLCipher's global initialization on
+    /// Linux and deadlock the daemon before its control socket is bound. The
+    /// compile-option query is exported by both stock SQLite and SQLCipher and
+    /// does not open a database or acquire the codec mutex. On stock SQLite it
+    /// returns zero, preserving the plaintext compatibility path.
+    static func isCipherAvailable() -> Bool {
+        sqlite3_compileoption_used("SQLITE_HAS_CODEC") != 0
+    }
 
     // MARK: - Keyed Open
 
