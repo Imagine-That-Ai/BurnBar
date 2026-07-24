@@ -2775,7 +2775,7 @@ inconsistent aggregate values before the UI accepts them. This closes the
 projection/recount authority gap, not the complete parser/catalog, API/quota,
 cloud-mirror, installed, or cross-platform corpus gap.
 
-- **Difference:** macOS registers 27 parsers and combines local logs, APIs,
+- **Difference:** macOS registers 29 parsers and combines local logs, APIs,
   quotas, recount, persistence, projections, and cloud mirroring. Linux now has
 the same 29 local parser identities in its daemon default registry, with
   membership and ordering derived from the generated
@@ -2796,7 +2796,7 @@ the same 29 local parser identities in its daemon default registry, with
 - **Implementation notes:** include feature flags for local scan, API polling,
   quota, chat backend, account switching, model catalog, and secret needs; map
   XDG, symlink, Flatpak, Snap, malformed log, and multi-account cases.
-- **QA verification:** generated-catalog parity and all 28 Linux registrations
+- **QA verification:** generated-catalog parity and all 29 Linux registrations
   are source-tested. Remaining verification is an identical macOS/Linux input
   corpus producing equivalent normalized usage, cost, quota, model/provider
   identity, timestamps, and deduplication; every declared provider still needs
