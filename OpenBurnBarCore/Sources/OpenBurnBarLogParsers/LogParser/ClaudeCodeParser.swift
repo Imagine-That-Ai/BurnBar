@@ -3,9 +3,8 @@ import OpenBurnBarKernel
 
 // MARK: - Claude Code Parser
 
-/// Parses Claude Code transcripts under `~/.claude/projects` (plus per-session
-/// `subagents/agent-*.jsonl`) into token usage and, optionally, conversation
-/// records.
+/// Parses Claude Code-compatible transcripts (including OpenClaude) into token
+/// usage and, optionally, conversation records.
 ///
 /// Resource behavior (2026-07-16 incident fix — this corpus was 4.2GB/3804
 /// files on the incident machine, with live transcripts growing for hours):
@@ -24,7 +23,7 @@ import OpenBurnBarKernel
 ///  * conversation bodies are never written to the on-disk parser cache
 ///    (privacy-transient, PR #1808) — the cache stores usage + scan state.
 public final class ClaudeCodeParser: LogParser, Sendable {
-    public let provider: AgentProvider = .claudeCode
+    public let provider: AgentProvider
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths
     private let cacheURL: URL
@@ -43,12 +42,13 @@ public final class ClaudeCodeParser: LogParser, Sendable {
     public convenience init(
         fileManager: FileManager = .default,
         appPaths: OpenBurnBarAppPaths = .live(),
-        projectsDirectoryOverride: URL? = nil
+        projectsDirectoryOverride: URL? = nil, provider: AgentProvider = .claudeCode
     ) {
         self.init(
             fileManager: fileManager,
             appPaths: appPaths,
             projectsDirectoryOverride: projectsDirectoryOverride,
+            provider: provider,
             openFileForReading: { try? FileHandle(forReadingFrom: $0) }
         )
     }
@@ -56,14 +56,15 @@ public final class ClaudeCodeParser: LogParser, Sendable {
     init(
         fileManager: FileManager,
         appPaths: OpenBurnBarAppPaths,
-        projectsDirectoryOverride: URL?,
+        projectsDirectoryOverride: URL?, provider: AgentProvider = .claudeCode,
         openFileForReading: @escaping @Sendable (URL) -> FileHandle?
     ) {
+        self.provider = provider
         self.fileManager = fileManager
         self.appPaths = appPaths
         self.projectsDirectoryOverride = projectsDirectoryOverride
         self.openFileForReading = openFileForReading
-        self.cacheURL = appPaths.claudeCodeParserCacheURL
+        self.cacheURL = provider == .claudeCode ? appPaths.claudeCodeParserCacheURL : appPaths.supportDirectory.appendingPathComponent("\(provider.persistedToken)_parser_cache.json")
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
@@ -439,7 +440,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         let usageEndTime = effective.endTime ?? conversationAccumulator?.endTime ?? mtime ?? usageStartTime
 
         let usage = TokenUsage(
-            provider: .claudeCode,
+            provider: provider,
             sessionId: sessionId,
             projectName: projectName,
             model: model,
@@ -457,8 +458,8 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         var conversation: ConversationRecord?
         if let conv = conversationAccumulator {
             conversation = ConversationRecord(
-                id: ConversationRecord.stableId(provider: .claudeCode, sessionId: sessionId),
-                provider: .claudeCode,
+                id: ConversationRecord.stableId(provider: provider, sessionId: sessionId),
+                provider: provider,
                 sessionId: sessionId,
                 projectName: projectName,
                 startTime: conv.startTime ?? usage.startTime,

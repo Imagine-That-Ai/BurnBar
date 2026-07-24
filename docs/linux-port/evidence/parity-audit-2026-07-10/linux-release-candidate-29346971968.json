@@ -1,0 +1,29 @@
+{
+  "schema": "openburnbar.parity.linux-release-candidate-receipt.v1",
+  "capturedAt": "2026-07-14T16:14:08Z",
+  "runId": "29346971968",
+  "runUrl": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29346971968",
+  "headCommit": "cf1abfe197d13568773f6c7eb7121786c412cfc0",
+  "version": "0.1.1",
+  "result": "failure",
+  "failedJobs": [
+    "Build Linux aarch64 shard",
+    "Build Linux x86_64 shard"
+  ],
+  "failureStage": "Prepare unsigned Arch installed-manifest request",
+  "failureClass": "makepkg package() exited 1 after AppImage extraction and required-source checks; the hosted log did not identify the failing package command",
+  "diagnosticArtifacts": [
+    "linux-native-preparation-diagnostics-aarch64",
+    "linux-native-preparation-diagnostics-x86_64"
+  ],
+  "observations": [
+    "Both native daemon and Tauri UI builds completed.",
+    "DEB and corrected RPM signing requests completed with installed file inventories.",
+    "The Arch package script found every required source and payload path before makepkg returned the generic package() failure.",
+    "This run predates the Node 22 toolchain pin and cannot certify any product or environment row."
+  ],
+  "limitations": [
+    "No signed candidate or installed lifecycle evidence was produced.",
+    "The Arch package failure must be fixed and rerun at the final source head before promotion."
+  ]
+}

@@ -116,6 +116,12 @@ public enum BurnBarDaemonPaths {
     public static var defaultLinuxOnboardingStateURL: URL {
         supportDirectoryURL.appendingPathComponent("linux-onboarding-state.json", isDirectory: false)
     }
+
+    /// AES-GCM sealed Linux text-expansion snapshot. The key lives in the
+    /// native Secret Service/KWallet custodian; this path is never renderer-owned.
+    public static var defaultTextExpansionURL: URL {
+        supportDirectoryURL.appendingPathComponent("text-expansion-v1.obbsealed", isDirectory: false)
+    }
 }
 
 public enum BurnBarDaemonVersion {
@@ -276,7 +282,8 @@ public struct BurnBarDaemonConfiguration: Sendable {
     public let socketAuthToken: String?
     public let daemonVersion: String
     public let catalog: BurnBarCatalog
-    /// Read-only path to the OpenBurnBar app SQLite database (`openburnbar.sqlite`) for indexed search RPC.
+    /// Path to the canonical local OpenBurnBar SQLite database (`openburnbar.sqlite`).
+    /// Search opens it read-only; daemon chat authority performs bounded transactional writes.
     public let indexDatabasePath: String?
     /// HTTP gateway configuration for OpenBurnBar Hydrant client access.
     public let gateway: BurnBarGatewayConfiguration

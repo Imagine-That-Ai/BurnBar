@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "capture": {
+    "mode": "installed-exact-native-shell-cold-start-provider-deep-link-atspi",
+    "capturedAt": "2026-07-20T11:26:30Z",
+    "environment": "ubuntu-24.04-gnome-x11-aarch64",
+    "vmAddress": "192.168.64.5",
+    "window": {
+      "name": "OpenBurnBar",
+      "present": true,
+      "width": 1280,
+      "height": 782,
+      "screenshot": "linux-arm64-current-5571e65f85-provider-deep-link.png",
+      "screenshotSha256": "1dffd55e0656431b1b3c90dfb6e1c83030aada9ede83e1ff536b58469b39399f",
+      "visuallyInspected": true,
+      "nativeControlColorScheme": "dark"
+    }
+  },
+  "source": {
+    "head": "5571e65f8529c0f4b40aac8b8cd82c252c8007e5",
+    "archiveSha256": "9cc2d2b5711bedb952996a7ae41502bd291d5f9068f4bede5d6eb8b0f2c60d20",
+    "trackedBlobCount": 12456,
+    "trackedBlobsMatchAfterBuild": true,
+    "nativeSourceChangedAfterBuild": false,
+    "nativePayload": {
+      "sourceHead": "dd34c005fb5818c9b737b10aad32aad962128823",
+      "reusedAfterValidation": true,
+      "reuseReason": "The exact diff from dd34c005fb to 5571e65f85 changes only Tauri desktop, frontend, proof-script, and documentation files. It does not change OpenBurnBarCore, OpenBurnBarDaemon, iroh, media-native, SQLCipher, or Swift runtime inputs.",
+      "daemonSha256": "566d324df1d9e4b4791a2222db86774901fab25c90a72503b07caa2734b8f8c6",
+      "cliSha256": "b78c9db0716bf0cb6b7fb46a9b960947f12e44fa07905fd90283faac29460a67",
+      "irohSha256": "a43a9d0ec0bdac655a0389fa1ae1db4974cf0d80b88fc37650c6de97a71cea58"
+    },
+    "fix": {
+      "commit": "5571e65f85 fix(linux): separate startup and forwarded deep links",
+      "rootCause": "main.tsx and App.tsx concurrently drained the same one-shot initialDeepLinkRoute command. App could consume the initial provider route before main, after which main observed null and overwrote the destination with onboarding.",
+      "solution": "The native bridge now exposes distinct initial_deep_link_route and forwarded_deep_link_route commands. Startup bootstrap exclusively owns the initial route, while the mounted App exclusively drains routes from later launches."
+    }
+  },
+  "package": {
+    "format": "deb",
+    "architecture": "arm64",
+    "version": "0.1.1",
+    "sha256": "5c3218d60fc188df6102c6832f7c864aeb95ab0397963ccc86013c2f1a56d9d8",
+    "bytes": 152137340,
+    "buildCommand": "npm run tauri:build -- --bundles deb",
+    "payloadMode": "validated exact native payload reuse",
+    "mediaFeature": "media-gst",
+    "cloudAuthConfigured": false
+  },
+  "installed": {
+    "package": "open-burn-bar 0.1.1 arm64 install ok installed",
+    "packageRegularFiles": 163,
+    "installedFilesMatchingPackage": 163,
+    "desktopSha256": "9c866c7750ee354e035fd6d7c7bddabc9823f16297b534ef29818aebacc44257",
+    "daemonSha256": "566d324df1d9e4b4791a2222db86774901fab25c90a72503b07caa2734b8f8c6",
+    "cliSha256": "b78c9db0716bf0cb6b7fb46a9b960947f12e44fa07905fd90283faac29460a67",
+    "irohSha256": "a43a9d0ec0bdac655a0389fa1ae1db4974cf0d80b88fc37650c6de97a71cea58",
+    "desktopLinkageComplete": true,
+    "daemonLinkageComplete": true,
+    "daemonHealth": "ok=true",
+    "daemonService": "active",
+    "desktopExecutable": "/usr/bin/openburnbar-linux-desktop",
+    "staleLocalBinaryProcessesPresent": false,
+    "manifestSha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+    "manifestContents": {},
+    "manifestSignatureSha256": "f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b"
+  },
+  "coldStartDeepLinkProof": {
+    "input": "openburnbar://providers?provider=codex",
+    "launchMode": "direct primary process argument with no pre-warmed desktop process",
+    "runs": 3,
+    "passed": 3,
+    "failed": 0,
+    "windowReadyMilliseconds": [269, 271, 250],
+    "routeVerifiedMilliseconds": [18891, 18063, 16995],
+    "results": [
+      {
+        "run": 1,
+        "nodeCount": 189,
+        "namedNodeCount": 108,
+        "actionableNodeCount": 91,
+        "focusableNodeCount": 32,
+        "codexPresent": true,
+        "pass": true
+      },
+      {
+        "run": 2,
+        "nodeCount": 189,
+        "namedNodeCount": 108,
+        "actionableNodeCount": 91,
+        "focusableNodeCount": 32,
+        "codexPresent": true,
+        "pass": true
+      },
+      {
+        "run": 3,
+        "nodeCount": 189,
+        "namedNodeCount": 108,
+        "actionableNodeCount": 91,
+        "focusableNodeCount": 31,
+        "codexPresent": true,
+        "pass": true
+      }
+    ],
+    "preFixReproduction": {
+      "candidate": "6f84640f8147e9363b00f00bc6dc7fb657776314",
+      "result": "intermittent failure reproduced",
+      "detail": "Two cold starts reached Providers; one remained on onboarding after 27 seconds with expected_name_missing."
+    }
+  },
+  "finalAccessibilityProof": {
+    "route": "providers",
+    "selectedProvider": "Codex",
+    "selectedProviderVisibleInAtspi": true,
+    "nodeCount": 189,
+    "namedNodeCount": 108,
+    "actionableNodeCount": 91,
+    "focusableNodeCount": 31,
+    "pass": true,
+    "failures": []
+  },
+  "verification": {
+    "bridgeBehaviorTests": "73 passed",
+    "tauriRustTests": "133 passed",
+    "typescript": "passed",
+    "eslint": "passed",
+    "cargoFmt": "passed",
+    "gitDiffCheck": "passed",
+    "productionBundleVerifier": "passed",
+    "packageRuntimeProbe": "passed",
+    "sourceClosure": "12456/12456 tracked blobs match after build",
+    "installedPayloadClosure": "163/163 regular package files match installed bytes",
+    "accessibility": "Three cold-start provider deep links and the final installed AT-SPI capture passed",
+    "webgl": "webgl2=false; visible 2D fallback label"
+  },
+  "limitations": [
+    "The installed manifest is an unsigned placeholder and this candidate is not eligible for release promotion.",
+    "Production Linux OAuth, Firebase App Check, and cloud callable identifiers are not configured in this package.",
+    "This receipt covers Ubuntu 24.04 GNOME X11 ARM64 only; it does not close the seven-environment desktop and architecture matrix.",
+    "This receipt does not close physical-iPad Computer Use or Mercury execution, production callables, updater rollback, hardware integrations, or the 40-row strict certification ledger.",
+    "The VM exposes WebGL2 as unavailable, so Flow Imaging used the labeled 2D fallback."
+  ],
+  "certifying": false
+}

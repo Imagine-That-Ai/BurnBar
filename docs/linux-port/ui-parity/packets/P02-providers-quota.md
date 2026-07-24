@@ -46,3 +46,18 @@ Populated (≥1 provider per quota state) / Loading skeleton / Empty ("No provid
 ## Done / Forbidden
 
 README §4. Forbidden: computing quota percentages from raw counts in the shell (daemon provides them); non-token colors; editing other lanes' fixture rows.
+
+## Linux daemon refresh transport
+
+The Linux daemon now refreshes the shared `ProviderQuotaAdapterRegistry` behind
+the existing `daemon.quota.signals.recent` RPC. It resolves only the preferred
+credential slot inside the daemon, invokes the adapter with a bounded five-minute
+refresh window, validates provider identity/timestamps/bucket values, and writes
+only redacted snapshots to the owner-only quota cache. Traffic-header signals
+remain authoritative when an adapter has no usable bucket, so a failed refresh
+cannot erase a known-good signal. The renderer still receives typed snapshots
+and never receives a bearer credential.
+
+The source path is covered by a Linux-only adapter/cache regression. Production
+API credentials, live populated account switching, and signed installed-candidate
+receipts remain environment certification work.

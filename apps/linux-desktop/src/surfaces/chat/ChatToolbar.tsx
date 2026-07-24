@@ -1,14 +1,36 @@
 import { BackendStrip } from './BackendStrip.js';
-import type { SessionEntry } from '../../tauriBridge.js';
+import type { ChatThreadSummary, ConfigSnapshot, ProviderCatalog } from '../../tauriBridge.js';
 import type { ChatBackendId } from './chatTypes.js';
+import type { ChatExportFormat } from './chatExport.js';
+import type { ChatThinkingSelection } from './chatOptions.js';
 
 type ChatToolbarProps = {
-  thread: SessionEntry | null;
+  thread: ChatThreadSummary | null;
   gatewayHint: string | null;
   backend: ChatBackendId;
   modelLabel: string;
+  modelOptionID: string;
+  thinkingLevel: ChatThinkingSelection;
+  config: ConfigSnapshot | null;
+  catalog: ProviderCatalog | null;
   onBackendChange: (id: ChatBackendId) => void;
+  onModelOptionChange: (id: string) => void;
+  onThinkingLevelChange: (level: ChatThinkingSelection) => void;
+  onReconnect: () => void;
+  onResume: () => void;
+  resumeDisabled: boolean;
+  resumeStatus?: string | null;
+  onPopOut?: () => void;
+  onClosePopOut?: () => void;
+  popoutWindow: boolean;
+  popoutStatus?: string | null;
   onNewChat: () => void;
+  exportFormat: ChatExportFormat;
+  onExportFormatChange: (format: ChatExportFormat) => void;
+  onExport: () => void;
+  exportDisabled: boolean;
+  exportBusy: boolean;
+  exportStatus: string | null;
   compact?: boolean;
 };
 
@@ -17,8 +39,28 @@ export function ChatToolbar({
   gatewayHint,
   backend,
   modelLabel,
+  modelOptionID,
+  thinkingLevel,
+  config,
+  catalog,
   onBackendChange,
+  onModelOptionChange,
+  onThinkingLevelChange,
+  onReconnect,
+  onResume,
+  resumeDisabled,
+  resumeStatus,
+  onPopOut,
+  onClosePopOut,
+  popoutWindow,
+  popoutStatus,
   onNewChat,
+  exportFormat,
+  onExportFormatChange,
+  onExport,
+  exportDisabled,
+  exportBusy,
+  exportStatus,
   compact: _compact = false
 }: ChatToolbarProps) {
   return (
@@ -27,12 +69,45 @@ export function ChatToolbar({
         <BackendStrip
           backend={backend}
           modelLabel={modelLabel}
+          modelOptionID={modelOptionID}
+          thinkingLevel={thinkingLevel}
+          config={config}
+          catalog={catalog}
           thread={thread}
           gatewayHint={gatewayHint}
           onBackendChange={onBackendChange}
+          onModelOptionChange={onModelOptionChange}
+          onThinkingLevelChange={onThinkingLevelChange}
         />
       </div>
       <div className="chat-toolbar-actions">
+        <div className="chat-export-control" role="group" aria-label="Chat export">
+          <span className="sr-only">Chat export format</span>
+          <select
+            value={exportFormat}
+            onChange={(event) => onExportFormatChange(event.target.value as ChatExportFormat)}
+            aria-label="Chat export format"
+            disabled={exportDisabled || exportBusy}
+          >
+            <option value="json">JSON</option>
+            <option value="markdown">Markdown</option>
+          </select>
+          <button
+            type="button"
+            className="ghost chat-toolbar-icon"
+            onClick={onExport}
+            disabled={exportDisabled || exportBusy}
+            title={exportDisabled ? 'Select a thread with durable messages to export' : exportBusy ? 'Loading the complete transcript from the daemon' : `Export chat as ${exportFormat === 'json' ? 'JSON' : 'Markdown'}`}
+            aria-label={`Export chat as ${exportFormat === 'json' ? 'JSON' : 'Markdown'}`}
+          >
+            <span aria-hidden="true">⇩</span>
+          </button>
+          {exportStatus ? (
+            <span className="chat-export-status" role="status" aria-live="polite">
+              {exportStatus}
+            </span>
+          ) : null}
+        </div>
         <button
           type="button"
           className="ghost chat-toolbar-text-button"
@@ -42,16 +117,31 @@ export function ChatToolbar({
         >
           ✎ New
         </button>
-        <button
-          type="button"
-          className="ghost chat-toolbar-icon"
-          disabled
-          title="Chat options (v1)"
-          aria-label="Chat options"
-        >
-          <span aria-hidden="true">⋯</span>
-        </button>
-        {/* Floating HUD controls (pop-out / restore / close) are macOS-only. */}
+        <details className="chat-options-control">
+          <summary className="ghost chat-toolbar-icon" title="Chat options" aria-label="Chat options">
+            <span aria-hidden="true">⋯</span>
+          </summary>
+          <div className="chat-options-menu" role="menu" aria-label="Chat options">
+            <button type="button" role="menuitem" onClick={onReconnect}>
+              Reconnect gateway
+            </button>
+            <button type="button" role="menuitem" onClick={onResume} disabled={resumeDisabled}>
+              Resume thread from daemon
+            </button>
+            {onPopOut ? (
+              <button type="button" role="menuitem" onClick={onPopOut}>
+                Pop out chat
+              </button>
+            ) : null}
+            {popoutWindow && onClosePopOut ? (
+              <button type="button" role="menuitem" onClick={onClosePopOut}>
+                Close chat window
+              </button>
+            ) : null}
+            {popoutStatus ? <span className="chat-options-status" role="status">{popoutStatus}</span> : null}
+            {resumeStatus ? <span className="chat-options-status" role="status">{resumeStatus}</span> : null}
+          </div>
+        </details>
       </div>
     </div>
   );

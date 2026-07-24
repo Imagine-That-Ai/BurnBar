@@ -124,18 +124,25 @@ jobs:
           # allow it so patched releases can land without vulnerable downgrades.
           # Zlib and Apache-2.0 WITH LLVM-exception arrive with the Linux Tauri
           # shell's Cargo.lock (foldhash, target-lexicon); both are permissive.
-          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, LGPL-2.0-only, LGPL-2.1-only, LGPL-3.0-only, LGPL-3.0-or-later, MPL-2.0, CC-BY-4.0, OFL-1.1, Unicode-3.0, BlueOak-1.0.0, Zlib, Apache-2.0 WITH LLVM-exception
+          # CDLA-Permissive-2.0 is the permissive attribution-style data license
+          # Mozilla uses for its CA trust-store data; it arrives via the
+          # webpki-root-certs / webpki-roots crates (Sentry's rustls transport)
+          # and imposes no copyleft or source-availability terms, so it is
+          # compatible with the AGPL-3.0 product posture.
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, LGPL-2.0-only, LGPL-2.1-only, LGPL-3.0-only, LGPL-3.0-or-later, MPL-2.0, CC-BY-4.0, OFL-1.1, Unicode-3.0, BlueOak-1.0.0, Zlib, Apache-2.0 WITH LLVM-exception, CDLA-Permissive-2.0
           # Per-package license exemptions (PURL) for classifier false-positives.
           # Microsoft.Graphics.Win2D is MIT (github.com/microsoft/Win2D LICENSE.txt),
           # but GitHub's dependency graph reports it as `LicenseRef-github-OTHER`
           # because it cannot resolve the NuGet package's license expression. The
           # actual license (MIT) is already in allow-licenses above; exempt the
           # package by PURL so the Windows particle GPU renderer can land.
-          # brotli-decompressor (BSD-3-Clause/MIT), dbus and libdbus-sys
-          # (Apache-2.0 OR MIT) are dual-licensed Rust crates from the Linux
-          # Tauri shell; the dependency graph mangles their SPDX expressions
-          # into LicenseRef-bad-* strings, so exempt them by PURL.
-          allow-dependencies-licenses: pkg:nuget/Microsoft.Graphics.Win2D, pkg:cargo/brotli-decompressor, pkg:cargo/dbus, pkg:cargo/libdbus-sys
+          # brotli-decompressor (BSD-3-Clause/MIT), dbus, libdbus-sys,
+          # mac-notification-sys (MIT/Apache-2.0), and rustc-demangle
+          # (MIT/Apache-2.0, pulled in by Sentry's backtrace support) are
+          # permissively licensed Rust crates from the Linux Tauri shell; the
+          # dependency graph mangles their SPDX expressions into
+          # LicenseRef-bad-* strings, so exempt them by PURL.
+          allow-dependencies-licenses: pkg:nuget/Microsoft.Graphics.Win2D, pkg:cargo/brotli-decompressor, pkg:cargo/dbus, pkg:cargo/libdbus-sys, pkg:cargo/mac-notification-sys, pkg:cargo/rustc-demangle
           # Deny packages that have been deprecated or yanked
           deny-packages: ""
           comment-summary-in-pr: always
@@ -295,6 +302,7 @@ jobs:
             --lockfile=packages/libsignal-protocol/package-lock.json
             --lockfile=packages/signal-envelope-contracts/package-lock.json
             --lockfile=quota-runner/package-lock.json
+            --lockfile=scripts/linux-port/package-lock.json
             --lockfile=services/hermes-realtime-relay/package-lock.json
             --lockfile=services/hosted-mcp/package-lock.json
             --lockfile=tools/app-store-connect/package-lock.json

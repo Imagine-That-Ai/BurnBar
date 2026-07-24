@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "role": "utm-exact-head-daemon-build",
+  "capturedAt": "2026-07-21T18:03:00Z",
+  "environmentId": "ubuntu-24.04-gnome-x11-aarch64",
+  "sourceHead": "f985370c833241a821aa973092b70d845268ebb7",
+  "toolchain": "Swift 6.1 (swift-6.1-RELEASE) aarch64-unknown-linux-gnu",
+  "product": "OpenBurnBarDaemon",
+  "configuration": "release",
+  "buildResult": "success",
+  "binaryPathOnGuest": "/tmp/obb-exact-head/openburnbar-daemon",
+  "binarySha256": "23fa7b723efa2df56244fcb4204ef6c9caf4142ea73da1af44082459d973cc2e",
+  "buildDurationSecondsApprox": 88,
+  "notes": [
+    "Built on live UTM guest from rsynced PR tree after compile fixes.",
+    "Isolated smoke started the binary; does not replace the installed package daemon.",
+    "Not a signed package install; not multi-environment certification."
+  ]
+}

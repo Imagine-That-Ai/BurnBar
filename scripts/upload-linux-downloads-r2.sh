@@ -35,15 +35,17 @@ else
   wrangler=(npm exec --yes wrangler@latest --)
 fi
 
-"${wrangler[@]}" r2 object put "$bucket/latest-linux.json" \
-  --remote \
-  --file "$feed" \
-  --content-type 'application/json; charset=utf-8' \
-  --cache-control 'public, max-age=60, must-revalidate'
+# Publish the detached signature first and the signed feed pointer last. Each R2
+# object replacement is atomic, so clients never observe a new feed with the old signature.
 "${wrangler[@]}" r2 object put "$bucket/latest-linux.json.ed25519.sig" \
   --remote \
   --file "$signature" \
   --content-type 'application/octet-stream' \
+  --cache-control 'public, max-age=60, must-revalidate'
+"${wrangler[@]}" r2 object put "$bucket/latest-linux.json" \
+  --remote \
+  --file "$feed" \
+  --content-type 'application/json; charset=utf-8' \
   --cache-control 'public, max-age=60, must-revalidate'
 
 tmp_dir="$(mktemp -d)"

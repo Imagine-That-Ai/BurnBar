@@ -1,4 +1,5 @@
 import { findProviderGlyph } from '../../providerGlyphs.js';
+import { colorForProviderID } from '../../providerColors.js';
 import type { MixEntry, UsageInsights, UsageSummary } from '../../tauriBridge.js';
 
 export type OverviewProviderRow = {
@@ -84,7 +85,7 @@ export function providerRowsFromInsights(
         id: m.id,
         label: m.label,
         costUsd: (m.pct / 100) * totalCostUsd,
-        accent: g.accent.startsWith('#') ? 'var(--color-brass-core)' : g.accent
+        accent: g.accent
       };
     })
     .sort((a, b) => b.costUsd - a.costUsd);
@@ -154,7 +155,7 @@ export function buildSpendCurveModel(
       bands.push({
         id: def.id,
         label: def.label,
-        color: PROVIDER_COLORS[def.id] ?? 'var(--color-text-mute)',
+        color: PROVIDER_COLORS[def.id] ?? colorForProviderID(def.id),
         points
       });
     }
@@ -211,7 +212,7 @@ export function buildSpendCurveModel(
     bands.push({
       id: def.id,
       label: def.label,
-      color: PROVIDER_COLORS[def.id] ?? 'var(--color-brass-core)',
+      color: PROVIDER_COLORS[def.id] ?? colorForProviderID(def.id),
       points
     });
   }

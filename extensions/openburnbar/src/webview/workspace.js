@@ -48,6 +48,7 @@ function phaseToColor(phase) {
   case 'model_streaming':
     return 'active';
   case 'awaiting_approval':
+  case 'awaiting_computer_use_session':
     return 'warning';
   case 'completed':
     return 'success';

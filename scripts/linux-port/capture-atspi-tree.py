@@ -34,7 +34,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tree-text")
     parser.add_argument("--expected-name")
     parser.add_argument("--route")
-    parser.add_argument("--mode", choices=("tree", "summary", "focus", "activate"), default="tree")
+    parser.add_argument(
+        "--mode",
+        choices=("tree", "summary", "focus", "grab-focus", "activate"),
+        default="tree",
+    )
     parser.add_argument("--within-role")
     parser.add_argument("--timeout-seconds", type=float, default=20.0)
     parser.add_argument("--max-depth", type=int, default=48)
@@ -42,6 +46,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-nodes", type=int, default=20)
     parser.add_argument("--min-named", type=int, default=8)
     parser.add_argument("--min-actionable", type=int, default=5)
+    parser.add_argument(
+        "--wait-for-meaningful-seconds",
+        type=float,
+        default=0.0,
+        help="retry a discovered application until it meets the accessibility minimums",
+    )
     parser.add_argument("--self-test", action="store_true")
     return parser.parse_args()
 
@@ -234,6 +244,17 @@ def activate_node(node: Any) -> dict[str, Any]:
     }
 
 
+def grab_focus(node: Any) -> dict[str, Any]:
+    """Put keyboard focus on a real AT-SPI component before traversal."""
+    component = node.queryComponent()
+    grabbed = bool(component.grabFocus())
+    return {
+        "role": role_name(node),
+        "name": node_name(node),
+        "grabbed": grabbed,
+    }
+
+
 def activate_with_retry(
     pyatspi: Any,
     application_name: str,
@@ -351,44 +372,67 @@ def main() -> int:
     try:
         import pyatspi  # type: ignore
 
-        if args.mode == "activate":
+        if args.mode in ("activate", "grab-focus"):
             if not args.expected_name:
-                raise RuntimeError("--expected-name is required in activate mode")
-            activation = activate_with_retry(
-                pyatspi,
-                args.application,
-                args.expected_name,
-                args.within_role,
-                args.timeout_seconds,
-            )
-            result = {
-                "schemaVersion": 1,
-                "capturedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "application": args.application,
-                "expectedName": args.expected_name,
-                "withinRole": args.within_role,
-                "activation": activation,
-                "pass": activation["activated"],
-                "failures": [] if activation["activated"] else ["action_returned_false"],
-            }
+                raise RuntimeError(f"--expected-name is required in {args.mode} mode")
+            if args.mode == "activate":
+                activation = activate_with_retry(
+                    pyatspi,
+                    args.application,
+                    args.expected_name,
+                    args.within_role,
+                    args.timeout_seconds,
+                )
+                result = {
+                    "schemaVersion": 1,
+                    "capturedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "application": args.application,
+                    "expectedName": args.expected_name,
+                    "withinRole": args.within_role,
+                    "activation": activation,
+                    "pass": activation["activated"],
+                    "failures": [] if activation["activated"] else ["action_returned_false"],
+                }
+            else:
+                application = find_application(pyatspi, args.application, args.timeout_seconds)
+                node = find_actionable_node(application, args.expected_name, args.within_role)
+                focus = grab_focus(node)
+                result = {
+                    "schemaVersion": 1,
+                    "capturedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "application": args.application,
+                    "expectedName": args.expected_name,
+                    "withinRole": args.within_role,
+                    "focus": focus,
+                    "pass": focus["grabbed"],
+                    "failures": [] if focus["grabbed"] else ["focus_grab_returned_false"],
+                }
             Path(args.output).write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
             print(json.dumps(result, separators=(",", ":")))
             return 0 if result["pass"] else 1
         application = find_application(pyatspi, args.application, args.timeout_seconds)
-        rows, truncated = collect_nodes(application, pyatspi, args.max_depth, args.max_nodes)
-        minimums = (
-            0 if args.mode == "focus" else args.min_nodes,
-            0 if args.mode == "focus" else args.min_named,
-            0 if args.mode == "focus" else args.min_actionable,
-        )
-        result = summarize(
-            rows,
-            args.application,
-            args.route,
-            args.expected_name,
-            truncated,
-            minimums,
-        )
+        deadline = time.monotonic() + max(0.0, args.wait_for_meaningful_seconds)
+        attempts = 0
+        while True:
+            rows, truncated = collect_nodes(application, pyatspi, args.max_depth, args.max_nodes)
+            attempts += 1
+            minimums = (
+                0 if args.mode == "focus" else args.min_nodes,
+                0 if args.mode == "focus" else args.min_named,
+                0 if args.mode == "focus" else args.min_actionable,
+            )
+            result = summarize(
+                rows,
+                args.application,
+                args.route,
+                args.expected_name,
+                truncated,
+                minimums,
+            )
+            if args.mode == "focus" or result["pass"] or time.monotonic() >= deadline:
+                break
+            time.sleep(0.25)
+        result["readinessAttempts"] = attempts
         if args.mode == "tree":
             result["nodes"] = rows
         if args.mode == "focus":

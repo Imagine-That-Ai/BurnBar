@@ -453,6 +453,56 @@ public struct BurnBarMissionSnapshot: Codable, Hashable, Identifiable, Sendable 
     }
 }
 
+public struct BurnBarMissionHealthSnapshot: Codable, Hashable, Sendable {
+    public let status: BurnBarMissionHealthStatus
+    public let detail: String
+    public let checkedAt: Date
+    public let lastActivityAt: Date
+    public let activePacketCount: Int
+    public let failedResultCount: Int
+
+    public init(
+        status: BurnBarMissionHealthStatus,
+        detail: String,
+        checkedAt: Date,
+        lastActivityAt: Date,
+        activePacketCount: Int,
+        failedResultCount: Int
+    ) {
+        self.status = status
+        self.detail = detail
+        self.checkedAt = checkedAt
+        self.lastActivityAt = lastActivityAt
+        self.activePacketCount = activePacketCount
+        self.failedResultCount = failedResultCount
+    }
+}
+
+public struct BurnBarMissionHistoryEntry: Codable, Hashable, Identifiable, Sendable {
+    public let id: String
+    public let kind: String
+    public let status: String
+    public let summary: String
+    public let occurredAt: Date
+    public let metadata: BurnBarMetadata
+
+    public init(
+        id: String,
+        kind: String,
+        status: String,
+        summary: String,
+        occurredAt: Date,
+        metadata: BurnBarMetadata = [:]
+    ) {
+        self.id = id
+        self.kind = kind
+        self.status = status
+        self.summary = summary
+        self.occurredAt = occurredAt
+        self.metadata = metadata
+    }
+}
+
 public struct BurnBarNotificationChannelHealth: Codable, Hashable, Sendable {
     public let channel: BurnBarNotificationChannel
     public let status: BurnBarNotificationHealthStatus
@@ -733,6 +783,56 @@ public struct BurnBarControllerProjectUpsertRequest: Codable, Hashable, Sendable
     }
 }
 
+/// Deletes only the daemon-owned project registry entry. Associated missions,
+/// questions, followups, and review history remain durable and can be
+/// reassigned explicitly through `BurnBarControllerProjectReassignRequest`.
+public struct BurnBarControllerProjectDeleteRequest: Codable, Hashable, Sendable {
+    public let projectSlug: String
+
+    public init(projectSlug: String) {
+        self.projectSlug = projectSlug
+    }
+}
+
+public struct BurnBarControllerProjectDeleteResponse: Codable, Hashable, Sendable {
+    public let projectSlug: String
+    public let deleted: Bool
+
+    public init(projectSlug: String, deleted: Bool = true) {
+        self.projectSlug = projectSlug
+        self.deleted = deleted
+    }
+}
+
+/// Reassigns durable controller references from one project to another. The
+/// daemon resolves each identifier against the canonical slug, stable id, or
+/// unique alias and rejects missing/ambiguous matches before writing an event.
+public struct BurnBarControllerProjectReassignRequest: Codable, Hashable, Sendable {
+    public let sourceProjectSlug: String
+    public let targetProjectSlug: String
+
+    public init(sourceProjectSlug: String, targetProjectSlug: String) {
+        self.sourceProjectSlug = sourceProjectSlug
+        self.targetProjectSlug = targetProjectSlug
+    }
+}
+
+public struct BurnBarControllerProjectReassignResponse: Codable, Hashable, Sendable {
+    public let sourceProjectSlug: String
+    public let targetProjectSlug: String
+    public let updatedReferenceCount: Int
+
+    public init(
+        sourceProjectSlug: String,
+        targetProjectSlug: String,
+        updatedReferenceCount: Int
+    ) {
+        self.sourceProjectSlug = sourceProjectSlug
+        self.targetProjectSlug = targetProjectSlug
+        self.updatedReferenceCount = updatedReferenceCount
+    }
+}
+
 public struct BurnBarControllerReviewRunRecordRequest: Codable, Hashable, Sendable {
     public let run: BurnBarReviewRunSnapshot
 
@@ -1009,6 +1109,30 @@ public struct BurnBarMissionResponse: Codable, Hashable, Sendable {
 
     public init(mission: BurnBarMissionSnapshot?) {
         self.mission = mission
+    }
+}
+
+public struct BurnBarMissionHealthRequest: Codable, Hashable, Sendable {
+    public let missionID: BurnBarMissionID
+
+    public init(missionID: BurnBarMissionID) {
+        self.missionID = missionID
+    }
+}
+
+public struct BurnBarMissionHealthResponse: Codable, Hashable, Sendable {
+    public let missionID: BurnBarMissionID
+    public let health: BurnBarMissionHealthSnapshot
+    public let history: [BurnBarMissionHistoryEntry]
+
+    public init(
+        missionID: BurnBarMissionID,
+        health: BurnBarMissionHealthSnapshot,
+        history: [BurnBarMissionHistoryEntry]
+    ) {
+        self.missionID = missionID
+        self.health = health
+        self.history = history
     }
 }
 

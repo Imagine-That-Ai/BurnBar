@@ -1,13 +1,18 @@
 pub mod capability;
 pub mod capture;
 pub mod decode;
+pub mod playback;
 
-pub use capability::{media_capability_probe, probe, MediaCapabilities};
+pub use capability::{
+    audio_playback_probe, media_audio_playback_probe, media_capability_probe, probe, viewer_probe,
+    MediaAudioPlaybackCapabilities, MediaCapabilities, MediaViewerCapabilities,
+};
 pub use capture::{
     media_audio_capture_start, media_capture_set_bitrate, media_capture_start, media_capture_stop,
     CaptureCodec, CaptureFrameCallback, CapturePipeline,
 };
 pub use decode::{DecodePipeline, DecodeSinkMode};
+pub use playback::AudioPlaybackPipeline;
 
 pub const MEDIA_FRAME_FLAG_KEYFRAME: u8 = 1 << 0;
 

@@ -9,6 +9,7 @@ final class BurnBarMissionControlContractsTests: XCTestCase {
         XCTAssertEqual(BurnBarRPCMethod.questionAnswer.rawValue, "daemon.question.answer")
         XCTAssertEqual(BurnBarRPCMethod.followupCalendar.rawValue, "daemon.followup.calendar")
         XCTAssertEqual(BurnBarRPCMethod.missionDispatchPacket.rawValue, "daemon.mission.packet.dispatch")
+        XCTAssertEqual(BurnBarRPCMethod.missionHealth.rawValue, "daemon.mission.health")
         XCTAssertEqual(BurnBarRPCMethod.simulatorReplay.rawValue, "daemon.simulator.replay")
         XCTAssertEqual(BurnBarRPCMethod.notificationConfigUpdate.rawValue, "daemon.notification.config.update")
         XCTAssertEqual(BurnBarRPCMethod.notificationHealth.rawValue, "daemon.notification.health")

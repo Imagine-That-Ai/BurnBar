@@ -72,6 +72,11 @@ class IrohJniTransport(
         if (!stateLock.withLock { started }) throw IrohRelayTransportError.EndpointNotReady
         return try {
             val stream = backend.connect(target, timeoutMillis)
+            val authenticatedRemoteNodeId = stream.authenticatedRemoteNodeId()?.trim()
+            if (authenticatedRemoteNodeId.isNullOrEmpty() || authenticatedRemoteNodeId != target.nodeId) {
+                stream.runCatching { close() }
+                throw IrohBackendError.ConnectFailed("authenticated remote node id did not match signed dial target")
+            }
             IrohBackendStreamAdapter(stream, codec)
         } catch (err: IrohBackendError) {
             throw surface(err)
@@ -157,6 +162,8 @@ class IrohBackendStreamAdapter(
     private val stream: IrohBackendStream,
     private val codec: IrohRelayFrameCodec,
 ) : IrohRelayStream {
+    override suspend fun authenticatedRemoteNodeId(): String? = stream.authenticatedRemoteNodeId()
+
     override suspend fun send(frame: HermesRealtimeRelayFrame) {
         val envelope = codec.encode(frame)
         try {

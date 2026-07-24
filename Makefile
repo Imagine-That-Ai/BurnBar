@@ -313,11 +313,12 @@ sbom: ## Generate SPDX Software Bill of Materials
 .PHONY: linux-gate linux-diagnostic linux-performance-smoke release-linux linux-matrix
 
 linux-gate: ## Linux structural, frontend, and native behavior gate
+	npm ci --prefix scripts/linux-port --ignore-scripts
 	node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked
 	node scripts/linux-port/render-parity-ledger.mjs --check
-	node --test scripts/linux-port/validate-parity-ledger.test.mjs scripts/linux-port/render-parity-ledger.test.mjs
+	node --test scripts/linux-port/attest-product-requirement.test.mjs scripts/linux-port/github-artifact-provenance.test.mjs scripts/linux-port/live-installed-product-evidence.test.mjs scripts/linux-port/run-linux-matrix-harness.test.mjs scripts/linux-port/run-product-requirement-validator.test.mjs scripts/linux-port/resolve-product-evidence-run.test.mjs scripts/linux-port/validate-parity-ledger.test.mjs scripts/linux-port/render-parity-ledger.test.mjs
 	node --test scripts/linux-port/check-linux-update-feed.test.mjs
-	node --test scripts/linux-port/assemble-linux-release.test.mjs scripts/linux-port/prepare-linux-package-payload.test.mjs scripts/linux-port/credential-storage-contract.test.mjs scripts/linux-port/verify-linux-release.test.mjs scripts/linux-port/resolve-linux-release-version.test.mjs scripts/linux-port/verify-linux-workflow-wiring.test.mjs scripts/linux-port/runtime-capability-contract.test.mjs scripts/linux-port/accessibility-harness-contract.test.mjs scripts/linux-port/matched-performance-contract.test.mjs scripts/linux-port/perf-budget-contract.test.mjs
+	node --test scripts/linux-port/assemble-linux-release.test.mjs scripts/linux-port/prepare-linux-package-payload.test.mjs scripts/linux-port/validate-linux-release-public-config.test.mjs scripts/linux-port/browser-runtime-packaging.test.mjs scripts/linux-port/aur-browser-runtime-packaging.test.mjs scripts/linux-port/embed-linux-appimage-payload.test.mjs scripts/linux-port/credential-storage-contract.test.mjs scripts/linux-port/verify-linux-release.test.mjs scripts/linux-port/resolve-linux-release-version.test.mjs scripts/linux-port/resolve-linux-previous-release.test.mjs scripts/linux-port/verify-linux-workflow-wiring.test.mjs scripts/linux-port/runtime-capability-contract.test.mjs scripts/linux-port/accessibility-harness-contract.test.mjs scripts/linux-port/matched-performance-contract.test.mjs scripts/linux-port/perf-budget-contract.test.mjs
 	node scripts/linux-port/verify-linux-workflow-wiring.mjs
 	npm test --prefix apps/linux-desktop
 	npm run build --prefix apps/linux-desktop

@@ -1,0 +1,34 @@
+{
+  "schema": "openburnbar.parity.linux-rpm-package-repro-receipt.v1",
+  "capturedAt": "2026-07-14",
+  "certificationScope": "non-certifying packaging regression receipt",
+  "sourceCommit": "2cebac9e840892ff4fd51583cd8dc108268b4a14",
+  "correctiveCommit": "b325c76eb8",
+  "environment": {
+    "vm": "OpenBurnBar Linux",
+    "os": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "rpm": "4.18.2",
+    "packageManager": "rpmbuild"
+  },
+  "artifact": {
+    "name": "OpenBurnBar-0.1.1-1.aarch64.rpm",
+    "sizeBytes": 76060773,
+    "packageName": "open-burn-bar",
+    "version": "0.1.1",
+    "architecture": "aarch64",
+    "requires": ["libsecret"]
+  },
+  "checks": {
+    "rpmMetadata": true,
+    "rpm2cpioExitCode": 0,
+    "bsdtarPayloadListing": true,
+    "signedManifestExtraction": true,
+    "debInstalledFileCount": 154,
+    "rpmInstalledFileCount": 174
+  },
+  "limitations": [
+    "This receipt proves the corrected RPM construction and extraction path only.",
+    "A fresh exact-head signed candidate and installed lifecycle matrix remain required."
+  ]
+}

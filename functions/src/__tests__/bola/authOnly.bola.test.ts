@@ -46,7 +46,6 @@ export const AUTH_ONLY_CALLABLES = [
   "beginPasskeyAssertion",
   "verifyPasskeyAssertion",
   "bindAppCheckAttestation",
-  "mintLinuxAppCheckToken",
   "mintWindowsAppCheckToken",
   "issueWindowsAppCheckChallenge",
   "getWindowsRuntimeSafetyConfig",
@@ -60,6 +59,8 @@ export const AUTH_ONLY_CALLABLES = [
   "backfillPrivacyPlaintext",
   "scanLegacyPlaintextArtifacts",
   "getProfileAvatarDownloadUrl",
+  "pushLinuxCloudReplicas",
+  "pullLinuxCloudReplicas",
 ] as const;
 
 export const PLATFORM_TRIGGER_ENDPOINTS = [

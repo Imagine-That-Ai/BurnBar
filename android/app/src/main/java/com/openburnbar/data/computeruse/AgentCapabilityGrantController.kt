@@ -28,6 +28,22 @@ class AgentCapabilityGrantController(
     private val authorityPublisher: AgentCapabilityGrantAuthorityPublishing =
         FirebaseAgentCapabilityGrantAuthorityPublishing(firestore),
     private val grantQueue: AgentCapabilityGrantQueueing = FirebaseAgentCapabilityGrantQueueing(),
+    private val localAuthenticator: suspend (FragmentActivity, AgentPermissionPreset) -> Boolean = { activity, preset ->
+        BiometricCryptoAuth.requireStrongBiometric(
+            activity = activity,
+            title = "Allow ${preset.title} desktop permissions",
+            subtitle = "This grant applies only to this agent thread.",
+            failureMessage = GrantError.LocalAuthenticationFailed.message.orEmpty(),
+        )
+        true
+    },
+    private val nowMillis: () -> Long = { System.currentTimeMillis() },
+    private val attestationDigestProvider: suspend () -> String? = {
+        AndroidAppCheckAttestationReader.currentAttestationDigestForEnvelope()
+    },
+    private val attestationEnforcer: suspend () -> String? = {
+        AndroidAppCheckAttestationReader.ensureAttestationDigestOrThrow()
+    },
 ) {
     private val appContext = context.applicationContext
     private val keyStore = PhoneControlSigningKeyStore(appContext)
@@ -67,8 +83,76 @@ class AgentCapabilityGrantController(
                 localAuthenticationSatisfied = authenticated,
             )
 
-        if (deliveryMode != AgentGrantDeliveryMode.QUEUED) {
-            sendLive(uid = uid, sourceDeviceId = sourceDeviceId, request = request, deliveryMode = deliveryMode)
+        return deliver(uid = uid, sourceDeviceId = sourceDeviceId, request = request)
+    }
+
+    /** Issues a grant back over the exact authenticated stream carrying one Linux challenge. */
+    suspend fun grant(activity: FragmentActivity, delivery: ComputerUseSessionGrantChallengeDelivery): AgentCapabilityGrantReceipt {
+        val sessionChallenge = delivery.challenge
+        val uid = auth.currentUser?.uid ?: throw GrantError.NotSignedIn
+        ComputerUseSessionGrantChallengeValidator.validate(sessionChallenge, nowMillis = nowMillis())
+        delivery.route.validate()
+        if (delivery.route.uid != uid) throw ComputerUseSessionGrantRoute.RouteError.InvalidBinding
+        val sourceDeviceId = trustedSourceDeviceId(uid)
+        var request =
+            AgentCapabilityGrantRequest.fromValidatedSessionChallenge(
+                challenge = sessionChallenge,
+                sourceDeviceId = sourceDeviceId,
+                nowMillis = nowMillis(),
+            )
+        request = request.copy(localAuthenticationSatisfied = authenticateSessionGrant(activity, request.preset))
+        // The biometric prompt may outlive a short challenge. Never sign an expired response.
+        ComputerUseSessionGrantChallengeValidator.validate(sessionChallenge, nowMillis = nowMillis())
+        delivery.route.validate()
+        delivery.route.requireLive()
+        return sendSessionChallengeGrant(
+            uid = uid,
+            sourceDeviceId = sourceDeviceId,
+            request = request,
+            route = delivery.route,
+        )
+    }
+
+    private suspend fun sendSessionChallengeGrant(
+        uid: String,
+        sourceDeviceId: String,
+        request: AgentCapabilityGrantRequest,
+        route: ComputerUseSessionGrantRoute,
+    ): AgentCapabilityGrantReceipt {
+        val identity = signingKeys.signingIdentity()
+        val peerNodeId = signingKeys.peerNodeId(identity)
+        val authority =
+            PhoneControlAuthorityDocumentFactory.document(
+                connectionId = route.connectionId,
+                deviceId = sourceDeviceId,
+                identity = identity,
+                publishedAtMillis = nowMillis(),
+            )
+        authorityPublisher.publish(uid = uid, authority = authority)
+        authorityPublisher.publishAgentGrantAuthority(
+            uid = uid,
+            sourceDeviceId = sourceDeviceId,
+            authority = authority,
+        )
+        val sender =
+            PhoneControlSender(
+                uid = uid,
+                connectionId = route.connectionId,
+                peerNodeId = peerNodeId,
+                signingIdentityProvider = { identity },
+                counterStore = counterStore,
+                nowMillis = nowMillis,
+                attestationDigestProvider = attestationDigestProvider,
+                attestationEnforcer = attestationEnforcer,
+                frameSink = { frame -> route.send(frame = frame, expiresAtMillis = request.expiresAtMillis) },
+            )
+        sender.send(agentGrant = request)
+        return remember(request.pendingReceipt("Sent to your Linux host."))
+    }
+
+    private suspend fun deliver(uid: String, sourceDeviceId: String, request: AgentCapabilityGrantRequest): AgentCapabilityGrantReceipt {
+        if (request.deliveryMode != AgentGrantDeliveryMode.QUEUED) {
+            sendLive(uid = uid, sourceDeviceId = sourceDeviceId, request = request, deliveryMode = request.deliveryMode)
                 ?.let { return it }
         }
 
@@ -113,17 +197,13 @@ class AgentCapabilityGrantController(
 
     private suspend fun authenticateIfNeeded(activity: FragmentActivity, preset: AgentPermissionPreset): Boolean {
         if (!preset.requiresDeviceAuth) return false
-        runCatching {
-            BiometricCryptoAuth.requireStrongBiometric(
-                activity = activity,
-                title = "Allow ${preset.title} desktop permissions",
-                subtitle = "This grant applies only to this agent thread.",
-                failureMessage = GrantError.LocalAuthenticationFailed.message.orEmpty(),
-            )
-        }.getOrElse {
+        return authenticateSessionGrant(activity, preset)
+    }
+
+    private suspend fun authenticateSessionGrant(activity: FragmentActivity, preset: AgentPermissionPreset): Boolean {
+        return runCatching { localAuthenticator(activity, preset) }.getOrElse {
             throw GrantError.LocalAuthenticationFailed
-        }
-        return true
+        }.takeIf { it } ?: throw GrantError.LocalAuthenticationFailed
     }
 
     private suspend fun ensurePhoneControlSender(uid: String, sourceDeviceId: String): PhoneControlSender = senderMutex.withLock {
@@ -167,9 +247,9 @@ class AgentCapabilityGrantController(
             peerNodeId = peerNodeId,
             signingIdentityProvider = { identity },
             counterStore = counterStore,
-            attestationDigestProvider = { AndroidAppCheckAttestationReader.currentAttestationDigestForEnvelope() },
+            attestationDigestProvider = attestationDigestProvider,
             // RR-7c: fail-closed attestation gate under the strict ramp (the agent-grant path enforces, mirror iOS).
-            attestationEnforcer = { AndroidAppCheckAttestationReader.ensureAttestationDigestOrThrow() },
+            attestationEnforcer = attestationEnforcer,
             frameSink = sealSession
                 ?.let { ControlSealSessionEstablisher.sealingFrameSink(baseSink, it) }
                 ?: baseSink,
@@ -227,20 +307,23 @@ class AgentCapabilityGrantController(
         // F2: one identity resolution covers the published authority key and
         // the queued request's signature.
         val identity = signingKeys.signingIdentity()
-        val signedWire = signedWireRequest(request, identity)
-        val authority =
-            PhoneControlAuthorityDocumentFactory.document(
-                connectionId = phoneControlConnectionID ?: "agent-grant-queued",
-                deviceId = request.sourceDeviceId,
-                identity = identity,
-                publishedAtMillis = System.currentTimeMillis(),
+        val peerNodeId = signingKeys.peerNodeId(identity)
+        PhoneControlSendSequencer.withPeer(peerNodeId) {
+            val signedWire = signedWireRequest(request, identity)
+            val authority =
+                PhoneControlAuthorityDocumentFactory.document(
+                    connectionId = phoneControlConnectionID ?: "agent-grant-queued",
+                    deviceId = request.sourceDeviceId,
+                    identity = identity,
+                    publishedAtMillis = System.currentTimeMillis(),
+                )
+            authorityPublisher.publishAgentGrantAuthority(
+                uid = uid,
+                sourceDeviceId = request.sourceDeviceId,
+                authority = authority,
             )
-        authorityPublisher.publishAgentGrantAuthority(
-            uid = uid,
-            sourceDeviceId = request.sourceDeviceId,
-            authority = authority,
-        )
-        grantQueue.queueAgentCapabilityGrantRequest(wireRequestMap(signedWire))
+            grantQueue.queueAgentCapabilityGrantRequest(wireRequestMap(signedWire))
+        }
     }
 
     private fun signedWireRequest(
@@ -376,7 +459,7 @@ private class FirebaseAgentCapabilityGrantAuthorityPublishing(
     private val firestore: FirebaseFirestore,
 ) : AgentCapabilityGrantAuthorityPublishing {
     private val publisher: PhoneControlAuthorityPublisher by lazy {
-        PhoneControlAuthorityPublisher(firestore)
+        PhoneControlAuthorityPublisher(firestore = firestore)
     }
 
     override suspend fun publish(uid: String, authority: PhoneControlAuthorityDoc) {
