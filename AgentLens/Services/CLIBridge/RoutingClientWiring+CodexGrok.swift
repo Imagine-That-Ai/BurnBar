@@ -252,7 +252,9 @@ extension RoutingClientWiring {
                 slug: codexProxyModelID(for: model),
                 displayName: model.displayName.isEmpty ? model.id : model.displayName,
                 providerName: "\(model.providerName) via OpenBurnBar",
-                priority: 10_000
+                priority: 10_000,
+                contextWindow: model.contextWindowTokens ?? 65_536,
+                inputModalities: model.inputModalities
             )
         }
         let rows = Self.codexNativeFallbackCatalogRows + proxyRows
@@ -291,9 +293,12 @@ extension RoutingClientWiring {
         slug: String,
         displayName: String,
         providerName: String,
-        priority: Int
+        priority: Int,
+        contextWindow: Int,
+        inputModalities: [String]
     ) -> [String: Any] {
-        [
+        let effectiveContextWindow = max(1, contextWindow)
+        return [
             "slug": slug,
             "display_name": OpenBurnBarModelDisplayName.compose(
                 modelName: displayName,
@@ -319,15 +324,15 @@ extension RoutingClientWiring {
             "default_verbosity": NSNull(),
             "apply_patch_tool_type": NSNull(),
             "web_search_tool_type": "text",
-            "truncation_policy": ["mode": "tokens", "limit": 65_536],
+            "truncation_policy": ["mode": "tokens", "limit": effectiveContextWindow],
             "supports_parallel_tool_calls": false,
             "supports_image_detail_original": false,
-            "context_window": 65_536,
-            "max_context_window": 65_536,
+            "context_window": effectiveContextWindow,
+            "max_context_window": effectiveContextWindow,
             "auto_compact_token_limit": NSNull(),
             "effective_context_window_percent": 95,
             "experimental_supported_tools": [],
-            "input_modalities": ["text"],
+            "input_modalities": inputModalities.isEmpty ? ["text"] : inputModalities,
             "supports_search_tool": false
         ]
     }

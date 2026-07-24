@@ -258,6 +258,8 @@ final class RoutingClientWiringTests: XCTestCase {
                     providerID: "codex",
                     providerName: "Codex",
                     servedEndpoints: ["/v1/responses"],
+                    contextWindowTokens: 272_000,
+                    inputModalities: ["text", "image"],
                     routeEligible: true
                 ),
                 RoutingClientAdvertisedModel(
@@ -292,8 +294,49 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertTrue(models.contains { $0["slug"] as? String == "gpt-5.5" })
         XCTAssertTrue(models.contains { $0["slug"] as? String == "gpt-5.4" })
         XCTAssertTrue(models.contains { $0["slug"] as? String == "openburnbar/gpt-5.5" })
+        let proxyModel = try XCTUnwrap(
+            models.first { $0["slug"] as? String == "openburnbar/gpt-5.5" }
+        )
+        XCTAssertEqual(proxyModel["context_window"] as? Int, 272_000)
+        XCTAssertEqual(proxyModel["max_context_window"] as? Int, 272_000)
+        XCTAssertEqual(
+            (proxyModel["truncation_policy"] as? [String: Any])?["limit"] as? Int,
+            272_000
+        )
+        XCTAssertEqual(proxyModel["input_modalities"] as? [String], ["text", "image"])
         XCTAssertFalse(models.contains { $0["slug"] as? String == "openburnbar/claude-opus-4-8" })
         XCTAssertFalse(models.contains { $0["slug"] as? String == "openburnbar/chat-only-model" })
+    }
+
+    func test_advertisedModelsPreservesLiveContextWindowMetadata() async throws {
+        let wiring = makeWiring()
+        let session = makeProbeSession { _ in
+            try JSONSerialization.data(withJSONObject: [
+                "data": [
+                    [
+                        "id": "claude-opus-4-8",
+                        "display_name": "Claude Opus 4.8",
+                        "provider_id": "anthropic",
+                        "provider_name": "Anthropic",
+                        "served_endpoints": ["/v1/responses"],
+                        "model_capabilities": [
+                            "contextWindowTokens": 1_000_000,
+                            "inputModalities": ["text", "image"]
+                        ],
+                        "route_eligible": true
+                    ]
+                ]
+            ])
+        }
+
+        let models = await wiring.advertisedModels(
+            gateway: exampleGateway(token: "catalog-token"),
+            session: session
+        )
+
+        let model = try XCTUnwrap(models.first)
+        XCTAssertEqual(model.contextWindowTokens, 1_000_000)
+        XCTAssertEqual(model.inputModalities, ["text", "image"])
     }
 
     func test_wireCodex_preservesPriorUserTOML() throws {
