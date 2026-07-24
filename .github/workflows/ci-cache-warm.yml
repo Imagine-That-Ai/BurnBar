@@ -47,6 +47,22 @@ name: CI cache warm (default branch)
 # replaced with the superset. Fixing the key to include the target set is the
 # complete fix and is tracked separately; warming a validated superset here
 # removes the race in practice without touching six workflows.
+#
+# TOOLCHAIN ROTATION -- CONTENT, NOT KEY
+#
+# The cache key covers runner.os, the libsignal SHA and the build scripts, but
+# NOT the rolling macos-26 image version or the unpinned `stable` Rust
+# toolchain. Left alone, the daily schedule would keep one entry alive forever
+# (immutability + touch-on-restore), so an artifact built months ago on an old
+# Xcode/rustc surface would keep being restored after the hosted image moved
+# on. The key expression cannot grow a new component without editing the same
+# expression in six consumer workflows, so rotation happens on CONTENT under
+# the SAME key instead: every warm build stamps a provenance sidecar
+# (.openburnbar-signal-ffi-warm-provenance.env) with the hosted ImageVersion
+# it was built on, and the validation step treats an ImageVersion mismatch
+# exactly like a thin entry -- evict, rebuild on the current image, re-save.
+# Staleness after an image bump is therefore bounded by the daily schedule
+# (~24h), instead of unbounded.
 
 on:
   push:
@@ -117,7 +133,10 @@ jobs:
       # and can save a single-target artifact first; consumers validate the
       # metadata that build-signal-ffi-xcframework.sh embeds and rebuild on any
       # mismatch, so a thin entry restored here must be rebuilt and replaced,
-      # never trusted just because the key matched.
+      # never trusted just because the key matched. The same check enforces
+      # toolchain rotation: the warm-provenance sidecar written below must
+      # name the hosted image THIS runner is on, or the entry is treated as
+      # stale and rebuilt (see "TOOLCHAIN ROTATION" in the header).
       - name: Validate restored artifacts against the consumer contract
         id: validate
         run: |
@@ -126,23 +145,31 @@ jobs:
           is_debug_superset() {
             local fw="$1"
             local meta="${fw}/.openburnbar-signal-ffi-build.env"
-            [[ -d "${fw}" && -f "${meta}" ]] || return 1
-            local profile targets target
+            local prov="${fw}/.openburnbar-signal-ffi-warm-provenance.env"
+            [[ -d "${fw}" && -f "${meta}" && -f "${prov}" ]] || return 1
+            local profile targets target image
             profile="$(sed -n 's/^profile=//p' "${meta}" | head -n 1)"
             targets="$(sed -n 's/^targets=//p' "${meta}" | head -n 1)"
             [[ "${profile}" == "debug" ]] || return 1
             for target in ${expected_targets}; do
               [[ " ${targets} " == *" ${target} "* ]] || return 1
             done
+            # Rotation check: the entry must have been warmed on the hosted
+            # image this runner is using. ImageVersion is set on every hosted
+            # runner; an entry stamped "unknown" or built on an older image is
+            # stale and gets rebuilt on the current toolchain surface.
+            image="$(sed -n 's/^image_version=//p' "${prov}" | head -n 1)"
+            [[ "${image}" != "unknown" && -n "${image}" ]] || return 1
+            [[ "${image}" == "${ImageVersion:-unknown}" ]] || return 1
           }
           for entry in macos:Vendor/OpenBurnBarSignalFfiMac.xcframework ios:Vendor/OpenBurnBarSignalFfiIOS.xcframework; do
             name="${entry%%:*}"
             fw="${entry#*:}"
             if is_debug_superset "${fw}"; then
-              echo "${fw} already holds the debug all-target superset; no rebuild needed."
+              echo "${fw} already holds the debug all-target superset built on image ${ImageVersion:-unknown}; no rebuild needed."
               echo "build_${name}=false" >> "$GITHUB_OUTPUT"
             else
-              echo "${fw} is missing or cannot satisfy every consumer; will rebuild and replace it."
+              echo "${fw} is missing, cannot satisfy every consumer, or predates hosted image ${ImageVersion:-unknown}; will rebuild and replace it."
               echo "build_${name}=true" >> "$GITHUB_OUTPUT"
             fi
           done
@@ -168,6 +195,29 @@ jobs:
       - name: Build debug Signal FFI xcframeworks (all default targets)
         if: steps.validate.outputs.build_macos == 'true' || steps.validate.outputs.build_ios == 'true'
         run: SIGNAL_FFI_BUILD_PROFILE=debug ./scripts/build-signal-ffi-xcframework.sh
+
+      # Stamp both artifacts with the hosted image they were built on. The
+      # validation step above requires this stamp to match the current
+      # runner's ImageVersion, which is what rotates the (immutable,
+      # daily-touched) cache entry when the rolling macos-26 image or its
+      # toolchain moves on -- content rotation under the same key, because the
+      # key expression is shared byte-for-byte with six consumer workflows.
+      # rustc/xcode lines are informational only (they aid post-mortems; the
+      # image version is the rotation trigger).
+      - name: Record warm provenance in both artifacts
+        if: steps.validate.outputs.build_macos == 'true' || steps.validate.outputs.build_ios == 'true'
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustc_version="$(rustc --version 2>/dev/null || echo unknown)"
+          xcode_version="$(xcodebuild -version 2>/dev/null | tr '\n' ' ' | sed 's/ $//' || echo unknown)"
+          for fw in Vendor/OpenBurnBarSignalFfiMac.xcframework Vendor/OpenBurnBarSignalFfiIOS.xcframework; do
+            {
+              echo "image_version=${ImageVersion:-unknown}"
+              echo "rustc=${rustc_version}"
+              echo "xcode=${xcode_version}"
+            } > "${fw}/.openburnbar-signal-ffi-warm-provenance.env"
+          done
 
       # Saved cache entries are immutable, so replacing a thin entry means
       # deleting it first. Deleting by key (no ref filter) also clears

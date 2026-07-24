@@ -185,8 +185,10 @@ updates:
   #
   # The root package.json exists so this entry has a valid npm manifest to
   # update; Dependabot cannot process a directory that only holds a lockfile.
-  # The root lockfile is a workspaces index with no direct dependencies of its
-  # own -- the real dependencies live in the per-package lockfiles below.
+  # It deliberately declares NO dependencies and NO workspaces (a root
+  # `workspaces` field would hijack `npm ci` runs inside packages/* in CI) --
+  # the real dependencies live in the per-package lockfiles below, and the
+  # root lockfile is a trivial self-entry kept in sync for OSV scanning.
   - package-ecosystem: "npm"
     directory: "/"
     schedule: &lockfile-schedule

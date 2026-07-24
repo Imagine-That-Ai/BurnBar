@@ -1,8 +1,5 @@
 {
   "name": "BurnBar",
   "private": true,
-  "license": "AGPL-3.0-only",
-  "workspaces": [
-    "packages/*"
-  ]
+  "license": "AGPL-3.0-only"
 }
