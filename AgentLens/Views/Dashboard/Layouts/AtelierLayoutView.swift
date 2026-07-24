@@ -91,7 +91,7 @@ extension DashboardView {
 
             HStack(spacing: DesignSystem.Spacing.lg) {
                 ConceptStatTile(
-                    label: "Burn · Today",
+                    label: "Burn · \(selectedTimeRange.displayName)",
                     value: totalCostForTimeRange.formatAsCost(),
                     accent: DesignSystem.Colors.whimsy,
                     prominence: .hero

@@ -324,9 +324,11 @@ public final class OpenBurnBarLocalDatabase: @unchecked Sendable {
                 INSERT INTO token_usage (
                     id, provider, sessionId, projectName, model, inputTokens,
                     outputTokens, cacheCreationTokens, cacheReadTokens, totalTokens,
-                    cost, startTime, endTime, createdAt, providerID,
+                    cost, startTime, endTime, createdAt,
+                    executionSourceID, executionSourceName, executionSourceKind,
+                    executionSourceConfidence, providerID,
                     providerAccountID, providerAccountLabel, providerAccountSource
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: usage.databaseArguments
             )
@@ -717,6 +719,10 @@ public struct OpenBurnBarUsageRow: Equatable, Sendable {
     public var startTime: Date
     public var endTime: Date
     public var createdAt: Date
+    public var executionSourceID: String
+    public var executionSourceName: String
+    public var executionSourceKind: String
+    public var executionSourceConfidence: String
     public var providerID: String
     public var providerAccountID: String
     public var providerAccountLabel: String
@@ -737,6 +743,10 @@ public struct OpenBurnBarUsageRow: Equatable, Sendable {
         startTime: Date,
         endTime: Date,
         createdAt: Date,
+        executionSourceID: String = "unknown",
+        executionSourceName: String = "Unknown",
+        executionSourceKind: String = "unknown",
+        executionSourceConfidence: String = "unknown",
         providerID: String,
         providerAccountID: String,
         providerAccountLabel: String,
@@ -756,6 +766,10 @@ public struct OpenBurnBarUsageRow: Equatable, Sendable {
         self.startTime = startTime
         self.endTime = endTime
         self.createdAt = createdAt
+        self.executionSourceID = executionSourceID
+        self.executionSourceName = executionSourceName
+        self.executionSourceKind = executionSourceKind
+        self.executionSourceConfidence = executionSourceConfidence
         self.providerID = providerID
         self.providerAccountID = providerAccountID
         self.providerAccountLabel = providerAccountLabel
@@ -766,7 +780,9 @@ public struct OpenBurnBarUsageRow: Equatable, Sendable {
         [
             id, provider, sessionID, projectName, model, inputTokens,
             outputTokens, cacheCreationTokens, cacheReadTokens, totalTokens,
-            cost, startTime, endTime, createdAt, providerID,
+            cost, startTime, endTime, createdAt,
+            executionSourceID, executionSourceName, executionSourceKind,
+            executionSourceConfidence, providerID,
             providerAccountID, providerAccountLabel, providerAccountSource
         ]
     }

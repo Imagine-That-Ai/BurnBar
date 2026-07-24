@@ -1,4 +1,5 @@
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 import Foundation
 
 extension BurnBarRunService {
@@ -242,7 +243,8 @@ extension BurnBarRunService {
     }
 
     func makeUsageEvent(for run: BurnBarManagedRun, plan: BurnBarRunExecutionPlan) -> BurnBarUsageEvent {
-        BurnBarUsageEvent(
+        let executionSource = executionSource(for: run)
+        return BurnBarUsageEvent(
             runID: run.runID,
             providerID: run.route.providerID,
             modelID: run.route.resolvedModelID,
@@ -256,7 +258,18 @@ extension BurnBarRunService {
                 cacheCreationTokens: plan.cacheCreationTokens,
                 cacheReadTokens: plan.cacheReadTokens
             ),
-            recordedAt: Date()
+            recordedAt: Date(),
+            executionSourceID: executionSource.id == "unknown" ? nil : executionSource.id,
+            executionSourceName: executionSource.id == "unknown" ? nil : executionSource.name,
+            executionSourceKind: executionSource.kind == .unknown ? nil : executionSource.kind,
+            executionSourceConfidence: executionSource.id == "unknown" ? nil : .exact
         )
+    }
+
+    func executionSource(for run: BurnBarManagedRun) -> UsageExecutionSource {
+        UsageExecutionSourceResolver.fromClientMarker(
+            run.snapshot.clientID.rawValue,
+            allowCustom: true
+        ) ?? .unknown
     }
 }

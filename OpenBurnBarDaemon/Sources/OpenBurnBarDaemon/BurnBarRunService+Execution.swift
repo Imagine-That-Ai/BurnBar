@@ -1,4 +1,5 @@
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 import Foundation
 
 extension BurnBarRunService {
@@ -367,6 +368,7 @@ extension BurnBarRunService {
                     route: route
                 )
                 await router.markRouteSuccess(route)
+                let executionSource = executionSource(for: run)
                 let usageEvent = BurnBarUsageEvent(
                     runID: run.runID,
                     providerID: route.providerID,
@@ -381,7 +383,11 @@ extension BurnBarRunService {
                         cacheCreationTokens: providerResult.cacheCreationTokens,
                         cacheReadTokens: providerResult.cacheReadTokens
                     ),
-                    recordedAt: Date()
+                    recordedAt: Date(),
+                    executionSourceID: executionSource.id == "unknown" ? nil : executionSource.id,
+                    executionSourceName: executionSource.id == "unknown" ? nil : executionSource.name,
+                    executionSourceKind: executionSource.kind == .unknown ? nil : executionSource.kind,
+                    executionSourceConfidence: executionSource.id == "unknown" ? nil : .exact
                 )
                 try transition(&run, to: .completed, activeApprovalID: nil)
                 _ = try await usageRecorder.record(

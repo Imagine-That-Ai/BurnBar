@@ -94,6 +94,18 @@ jobs:
         if: matrix.language == 'swift'
         run: cp AgentLens/Resources/GoogleService-Info.plist.example AgentLens/Resources/GoogleService-Info.plist
 
+      - name: Resolve Signal FFI cache identity
+        if: matrix.language == 'swift'
+        id: signal-ffi-cache
+        run: echo "sha=$(git -C Vendor/libsignal rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache macOS Signal FFI artifact
+        if: matrix.language == 'swift'
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: Vendor/OpenBurnBarSignalFfiMac.xcframework
+          key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
+
       - name: Install Rust toolchain for libsignal Swift FFI
         if: matrix.language == 'swift'
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable

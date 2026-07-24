@@ -105,6 +105,40 @@ final class UsageAggregatorTests: XCTestCase {
         XCTAssertNil(aggregator.lastRefresh)
     }
 
+    func test_memoryFootprintWatchdog_startIsIdempotentAndStopCancelsMonitor() async throws {
+        let aggregator = UsageAggregator(dataStore: try makeTestDataStore())
+        let watchdog = MemoryFootprintWatchdog()
+
+        watchdog.start(aggregator: aggregator)
+        watchdog.start(aggregator: aggregator)
+        try await Task.sleep(for: .milliseconds(50))
+        watchdog.stop()
+        try await Task.sleep(for: .milliseconds(50))
+
+        XCTAssertFalse(
+            aggregator.memoryPressureSheddingActive,
+            "A normal-footprint sample followed by cancellation must not shed background work"
+        )
+    }
+
+    func test_memoryFootprintWatchdog_unexpectedSleepFailureStopsWithoutShedding() async throws {
+        struct UnexpectedSleepFailure: Error {}
+
+        let aggregator = UsageAggregator(dataStore: try makeTestDataStore())
+        let watchdog = MemoryFootprintWatchdog()
+
+        watchdog.start(aggregator: aggregator, sleep: {
+            throw UnexpectedSleepFailure()
+        })
+        try await Task.sleep(for: .milliseconds(50))
+        watchdog.stop()
+
+        XCTAssertFalse(
+            aggregator.memoryPressureSheddingActive,
+            "A scheduler failure must stop monitoring without inventing a memory-pressure event"
+        )
+    }
+
     func test_init_projectionBacklogStartsDrainingWithoutRefresh() async throws {
         let dataStore = try makeTestDataStore()
         let jobCount = ProjectionWorkerPolicy.maxJobsPerPass + 3
@@ -1179,6 +1213,15 @@ final class ModelPricingTests: XCTestCase {
 
         XCTAssertEqual(pricing.inputPerMToken, 5, accuracy: 0.001)
         XCTAssertEqual(pricing.outputPerMToken, 30, accuracy: 0.001)
+        XCTAssertEqual(pricing.cacheReadPerMToken, 0.5, accuracy: 0.001)
+    }
+
+    func test_lookup_gpt56SolUsesCurrentTokenRates() throws {
+        let pricing = ModelPricing.lookup(model: "gpt-5.6-sol")
+
+        XCTAssertEqual(pricing.inputPerMToken, 5, accuracy: 0.001)
+        XCTAssertEqual(pricing.outputPerMToken, 30, accuracy: 0.001)
+        XCTAssertEqual(pricing.cacheCreationPerMToken ?? 0, 6.25, accuracy: 0.001)
         XCTAssertEqual(pricing.cacheReadPerMToken, 0.5, accuracy: 0.001)
     }
 

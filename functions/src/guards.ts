@@ -479,6 +479,10 @@ function assignUsageEventStringFields(doc: UsageEventDoc, raw: Record<string, un
   if (typeof raw.sessionId === "string") doc.sessionId = raw.sessionId;
   if (typeof raw.deviceId === "string") doc.deviceId = raw.deviceId;
   if (typeof raw.sourceDeviceId === "string") doc.sourceDeviceId = raw.sourceDeviceId;
+  if (typeof raw.executionSourceID === "string") doc.executionSourceID = raw.executionSourceID;
+  if (typeof raw.executionSourceName === "string") doc.executionSourceName = raw.executionSourceName;
+  if (typeof raw.executionSourceKind === "string") doc.executionSourceKind = raw.executionSourceKind;
+  if (typeof raw.executionSourceConfidence === "string") doc.executionSourceConfidence = raw.executionSourceConfidence;
 }
 
 function assignUsageEventNumberFields(doc: UsageEventDoc, raw: Record<string, unknown>): void {
