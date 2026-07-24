@@ -60,6 +60,16 @@ describe('chat composer attachments', () => {
     expect(screen.getByRole('button', { name: 'Send message' })).toHaveProperty('disabled', false);
   });
 
+  it('accepts audio attachments in the native file picker contract', () => {
+    renderComposer();
+    fireEvent.change(screen.getByLabelText('Message composer'), { target: { value: 'transcribe this' } });
+    fireEvent.change(screen.getByLabelText('Attachment file'), {
+      target: { files: [new File(['audio'], 'voice.m4a', { type: 'audio/mp4' })] }
+    });
+    expect(screen.getByTestId('pending-attachment').textContent).toContain('voice.m4a');
+    expect(screen.getByLabelText('Attachment file')).toHaveProperty('accept', expect.stringContaining('.m4a'));
+  });
+
   it('shows visible errors for size and type bounds without staging a file', () => {
     renderComposer();
     const input = screen.getByLabelText('Attachment file');

@@ -17,10 +17,18 @@ export const CHAT_ATTACHMENT_ACCEPT = [
   '.png',
   '.jpg',
   '.jpeg',
-  '.webp'
+  '.webp',
+  '.mp3',
+  '.wav',
+  '.m4a',
+  '.aac',
+  '.flac',
+  '.aif',
+  '.aiff'
 ] as const;
 const CHAT_ATTACHMENT_EXTENSIONS = new Set([
-  '.txt', '.md', '.markdown', '.csv', '.json', '.pdf', '.png', '.jpg', '.jpeg', '.webp'
+  '.txt', '.md', '.markdown', '.csv', '.json', '.pdf', '.png', '.jpg', '.jpeg', '.webp',
+  '.mp3', '.wav', '.m4a', '.aac', '.flac', '.aif', '.aiff'
 ]);
 
 export type PendingChatAttachment = {
@@ -89,7 +97,7 @@ export function Composer({
     const type = file.type.trim().toLowerCase();
     const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
     if (!CHAT_ATTACHMENT_METADATA_MIME_TYPES.includes(type as (typeof CHAT_ATTACHMENT_METADATA_MIME_TYPES)[number]) && !CHAT_ATTACHMENT_EXTENSIONS.has(extension)) {
-      setAttachmentError('Unsupported attachment type. Choose text, JSON, CSV, Markdown, PDF, PNG, JPEG, or WebP.');
+      setAttachmentError('Unsupported attachment type. Choose text, JSON, CSV, Markdown, PDF, PNG, JPEG, WebP, or audio.');
       return null;
     }
     setAttachmentError(null);
