@@ -2933,8 +2933,9 @@ denial/revocation, codec absence, cleanup, and multi-monitor selection on each
 supported compositor and architecture.</li>
 </ul>
 <h3>GAP-007 - Make usage/provider coverage authoritative</h3>
-<p><strong>Implementation update (2026-07-21): authoritative projection/recount core
-implemented; parser breadth remains open.</strong> <code>336ee0eca2</code> derives the durable
+<p><strong>Implementation update (2026-07-24): authoritative projection/recount and
+the shared provider catalog are implemented; installed/runtime proof remains open.</strong>
+<code>336ee0eca2</code> derives the durable
 all-time projection from the canonical daemon ledger, fingerprints it, rebuilds
 stale or tampered state, and exposes an explicit recount RPC without changing
 the ledger. <code>736fcae8a9</code> rejects negative, non-finite, out-of-range, or internally
@@ -2942,13 +2943,12 @@ inconsistent aggregate values before the UI accepts them. This closes the
 projection/recount authority gap, not the complete parser/catalog, API/quota,
 cloud-mirror, installed, or cross-platform corpus gap.</p>
 <ul>
-<li><strong>Difference:</strong> macOS registers 27 parsers and combines local logs, APIs,
-quotas, recount, persistence, projections, and cloud mirroring. Linux now has
-authoritative daemon projection/recount, but its UI path registry has 15 rows
-and no generated proof that the shared daemon parsers, Linux path discovery,
-settings, and UI share one complete catalog.
-The registry count alone does not prove the remaining parser implementations
-are absent; it proves coverage and wiring are not authoritatively demonstrated.</li>
+<li><strong>Difference:</strong> macOS and Linux now share a generated 33-provider catalog
+with 29 local parser registrations and four API/native-ledger sources. Linux
+derives daemon parser membership, path discovery, and Settings coverage from
+that catalog, including Claude-compatible OpenClaude transcripts and the
+Pi-compatible OMP format. API/quota polling, cloud mirroring, installed scans,
+and cross-platform corpus receipts remain separate runtime gates.</li>
 <li><strong>Why it matters:</strong> missing or mislabeled usage silently breaks the app&#39;s core
 value and makes parity counts unreliable.</li>
 <li><strong>Recommended solution:</strong> generate macOS and Linux provider/model/path
