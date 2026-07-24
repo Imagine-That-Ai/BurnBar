@@ -38,6 +38,15 @@ requireText(
   "uses: Imagine-That-Ai/BurnBar/.github/workflows/deploy-staging-trusted.yml@main",
   "candidate workflow must delegate deployment to the reusable workflow pinned to main",
 );
+if (
+  caller.split(
+    "Imagine-That-Ai/BurnBar/.github/workflows/deploy-staging-trusted.yml@main",
+  ).length !== 2
+) {
+  failures.push(
+    "the protected-main reusable workflow reference must appear exactly once",
+  );
+}
 requireText(
   caller,
   "      id-token: write",
