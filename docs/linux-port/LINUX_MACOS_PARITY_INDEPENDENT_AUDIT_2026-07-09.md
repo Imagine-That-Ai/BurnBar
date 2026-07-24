@@ -94,7 +94,8 @@ unchanged.
 
 ### Latest native audio attachment parity — 2026-07-23
 
-The Linux chat transport now accepts the macOS-supported audio attachment
+Commits `d8607f4d2f` and `567c152058` extend the Linux chat transport to accept
+the macOS-supported audio attachment
 families (`mp3`, `wav`, `m4a`, `aac`, `flac`, and `aiff`) under the same bounded
 single-use attachment reference model. The typed frontend/daemon MIME policies
 canonicalize extensions, require the selected model to advertise `audio` input,
