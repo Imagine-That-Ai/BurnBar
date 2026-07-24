@@ -138,6 +138,35 @@ public sealed class MicrosoftStorePackagingTests
     }
 
     [Fact]
+    public void BackgroundUpdaterPublishesVerifiedCandidateWithoutInstallingIt()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        string updateService = File.ReadAllText(Path.Combine(
+            root,
+            "windows",
+            "app",
+            "OpenBurnBar.App",
+            "Settings",
+            "WindowsUpdateService.cs"));
+        string updaterHost = File.ReadAllText(Path.Combine(
+            root,
+            "windows",
+            "packaging",
+            "updater",
+            "OpenBurnBar.Updater.Windows",
+            "WinSparkleUpdaterHost.cs"));
+
+        Assert.Contains("BackgroundUpdateCheckResult result = await host", updateService, StringComparison.Ordinal);
+        Assert.Contains("AvailableVersion = result.CandidateVersion", updateService, StringComparison.Ordinal);
+        Assert.Contains("Choose Check Now to verify and install it.", updateService, StringComparison.Ordinal);
+        Assert.Contains("if (!launchInstaller)", updaterHost, StringComparison.Ordinal);
+        Assert.Contains("return BackgroundUpdateCheckResult.Available(manifest.Version);", updaterHost, StringComparison.Ordinal);
+        Assert.True(
+            updaterHost.IndexOf("if (!launchInstaller)", StringComparison.Ordinal)
+            < updaterHost.IndexOf("DownloadBoundedAsync(\n                artifactUri", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void V1035PrivateSubmissionRunbookIsBoundToTheExactStoreCandidate()
     {
         string root = DistTestSupport.RepositoryRoot();

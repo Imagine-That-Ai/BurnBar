@@ -58,13 +58,14 @@ public sealed class WinSparkleUpdaterHost : IUpdaterHost, IDisposable
     }
 
     /// <inheritdoc />
-    public Task CheckForUpdatesWithUiAsync(CancellationToken cancellationToken = default)
+    public async Task CheckForUpdatesWithUiAsync(CancellationToken cancellationToken = default)
     {
-        return CheckAsync(launchInstaller: true, cancellationToken);
+        _ = await CheckAsync(launchInstaller: true, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public Task CheckForUpdatesInBackgroundAsync(CancellationToken cancellationToken = default)
+    public Task<BackgroundUpdateCheckResult> CheckForUpdatesInBackgroundAsync(
+        CancellationToken cancellationToken = default)
     {
         return CheckAsync(launchInstaller: false, cancellationToken);
     }
@@ -89,7 +90,9 @@ public sealed class WinSparkleUpdaterHost : IUpdaterHost, IDisposable
         }
     }
 
-    private async Task CheckAsync(bool launchInstaller, CancellationToken cancellationToken)
+    private async Task<BackgroundUpdateCheckResult> CheckAsync(
+        bool launchInstaller,
+        CancellationToken cancellationToken)
     {
         EnsureConfigured();
         var configuration = _configuration!;
@@ -105,7 +108,7 @@ public sealed class WinSparkleUpdaterHost : IUpdaterHost, IDisposable
             {
                 throw new InvalidOperationException($"Update feed rejected: {evaluation.Reason}.");
             }
-            return;
+            return BackgroundUpdateCheckResult.UpToDate;
         }
 
         var manifest = evaluation.Manifest!;
@@ -119,7 +122,7 @@ public sealed class WinSparkleUpdaterHost : IUpdaterHost, IDisposable
         // invoke the native installer without a user-initiated check.
         if (!launchInstaller)
         {
-            return;
+            return BackgroundUpdateCheckResult.Available(manifest.Version);
         }
 
         if (manifest.Length is null or <= 0 or > MaxArtifactBytes)
@@ -149,6 +152,7 @@ public sealed class WinSparkleUpdaterHost : IUpdaterHost, IDisposable
             File.Delete(path);
             throw new InvalidOperationException("Windows App Installer could not be started.");
         }
+        return BackgroundUpdateCheckResult.Available(manifest.Version);
     }
 
     private async Task<byte[]> DownloadBoundedAsync(
