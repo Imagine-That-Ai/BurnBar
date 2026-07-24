@@ -423,6 +423,25 @@ pub extern "C" fn media_audio_capture_start(
     }
 }
 
+/// Start a deterministic Opus audio pipeline for native integration tests.
+/// Production paths must use a live PipeWire portal grant via
+/// `media_audio_capture_start`.
+#[no_mangle]
+pub extern "C" fn media_audio_capture_start_test(
+    num_buffers: u32,
+    on_frame: Option<CaptureFrameCallback>,
+    on_stopped: Option<CaptureStoppedCallback>,
+    user_data: *mut c_void,
+) -> *mut CapturePipeline {
+    let Some(on_frame) = on_frame else {
+        return std::ptr::null_mut();
+    };
+    match CapturePipeline::start_test_audio(num_buffers, on_frame, on_stopped, user_data) {
+        Ok(pipeline) => Box::into_raw(Box::new(pipeline)),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn media_capture_stop(pipeline: *mut CapturePipeline) {
     if pipeline.is_null() {

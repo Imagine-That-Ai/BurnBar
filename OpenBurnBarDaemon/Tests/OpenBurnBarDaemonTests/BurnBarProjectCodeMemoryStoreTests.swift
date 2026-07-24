@@ -6,6 +6,91 @@ import SQLite3
 import XCTest
 
 final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
+    func testDatabaseSnapshotRejectsTraversalBeforeCodecProbe() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "snapshot-test")
+        )
+        XCTAssertThrowsError(try store.databaseSnapshot(
+            BurnBarProjectCodeDatabaseSnapshotRequest(
+                destinationPath: fixture.database.deletingLastPathComponent()
+                    .appendingPathComponent("..", isDirectory: true)
+                    .appendingPathComponent("escape.snapshot").path
+            )
+        )) { error in
+            guard case .databaseSnapshotInvalidPath = error as? BurnBarProjectCodeMemoryStoreError else {
+                return XCTFail("expected path validation failure, got \(error)")
+            }
+        }
+    }
+
+    func testDatabaseSnapshotRejectsOversizedLimit() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "snapshot-test")
+        )
+        XCTAssertThrowsError(try store.databaseSnapshot(
+            BurnBarProjectCodeDatabaseSnapshotRequest(
+                destinationPath: fixture.database.deletingLastPathComponent()
+                    .appendingPathComponent("store.snapshot").path,
+                maxBytes: BurnBarProjectCodeMemoryStore.maximumDatabaseSnapshotBytes + 1
+            )
+        )) { error in
+            guard case .databaseSnapshotTooLarge = error as? BurnBarProjectCodeMemoryStoreError else {
+                return XCTFail("expected size validation failure, got \(error)")
+            }
+        }
+    }
+
+    func testDatabaseRestoreRejectsInsecureSnapshotPermissions() throws {
+        let fixture = try makeFixture()
+        let snapshot = fixture.database.deletingLastPathComponent().appendingPathComponent("unsafe.snapshot")
+        try Data("not-a-database".utf8).write(to: snapshot)
+        try FileManager.default.setAttributes([.posixPermissions: NSNumber(value: 0o644)], ofItemAtPath: snapshot.path)
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "snapshot-test")
+        )
+        XCTAssertThrowsError(try store.restoreDatabaseSnapshot(
+            BurnBarProjectCodeDatabaseRestoreRequest(snapshotPath: snapshot.path)
+        )) { error in
+            guard case .databaseSnapshotPermissions = error as? BurnBarProjectCodeMemoryStoreError else {
+                return XCTFail("expected permission validation failure, got \(error)")
+            }
+        }
+    }
+
+#if os(Linux)
+    func testEncryptedDatabaseSnapshotRoundTripsWhenCodecAndSecretAreAvailable() throws {
+        guard BurnBarDaemonDatabaseCipher.isCipherAvailable(),
+              BurnBarDaemonDatabaseCipher.resolveKey() != nil else {
+            throw XCTSkip("Linux SQLCipher test requires the configured daemon database secret")
+        }
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "snapshot-test")
+        )
+        XCTAssertTrue(BurnBarDaemonDatabaseCipher.isEncryptedDatabaseFile(at: fixture.database.path))
+        let snapshot = fixture.root.appendingPathComponent("code-memory.snapshot")
+        let exported = try store.databaseSnapshot(
+            BurnBarProjectCodeDatabaseSnapshotRequest(destinationPath: snapshot.path)
+        )
+        XCTAssertEqual(exported.integrityCheck, "ok")
+        XCTAssertTrue(exported.databaseEncrypted)
+        XCTAssertEqual(exported.byteCount, try Data(contentsOf: snapshot).count)
+
+        let restored = try store.restoreDatabaseSnapshot(
+            BurnBarProjectCodeDatabaseRestoreRequest(snapshotPath: snapshot.path)
+        )
+        XCTAssertEqual(restored.sha256, exported.sha256)
+        XCTAssertEqual(restored.integrityCheck, "ok")
+        XCTAssertTrue(BurnBarDaemonDatabaseCipher.isEncryptedDatabaseFile(at: fixture.database.path))
+    }
+#endif
+
     func testIndexSearchSymbolsReferencesCallGraphAndStatus() throws {
         let fixture = try makeFixture()
         let fakeIndexedOpenAIKey = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
@@ -417,6 +502,93 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let audit = try store.auditTrail(BurnBarProjectMemoryAuditTrailRequest(projectPath: fixture.project.path))
         XCTAssertTrue(audit.events.contains { $0.action == "memory.remember" })
         XCTAssertTrue(audit.events.contains { $0.action == "memory.forget" && $0.labels.contains("snapshot section removed") })
+    }
+
+    func testQuarantineLifecycleIsDaemonOwnedAndFailClosedForRecall() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-review-test")
+        )
+        let candidate = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "User prefers a compact parity review inbox.",
+                projectPath: fixture.project.path,
+                kind: "preference",
+                reviewStatus: .quarantined
+            )
+        )
+
+        let normalRecall = try store.recall(
+            BurnBarProjectMemoryRecallRequest(query: "compact parity", projectPath: fixture.project.path)
+        )
+        XCTAssertTrue(normalRecall.hits.isEmpty, "quarantined memories must never enter normal recall")
+
+        let reviewFeed = try store.recall(
+            BurnBarProjectMemoryRecallRequest(
+                query: "memory review",
+                projectPath: fixture.project.path,
+                includeQuarantined: true,
+                includeForgotten: true
+            )
+        )
+        XCTAssertEqual(reviewFeed.hits.first?.memoryID, candidate.memoryID)
+        XCTAssertEqual(reviewFeed.hits.first?.reviewStatus, .quarantined)
+        XCTAssertEqual(reviewFeed.hits.first?.bodyRedacted, "User prefers a compact parity review inbox.")
+
+        let approved = try store.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: candidate.memoryID,
+                projectPath: fixture.project.path,
+                status: .approved
+            )
+        )
+        XCTAssertEqual(approved.status, .approved)
+        XCTAssertFalse(
+            try store.recall(BurnBarProjectMemoryRecallRequest(query: "compact parity", projectPath: fixture.project.path)).hits.isEmpty
+        )
+
+        _ = try store.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: candidate.memoryID,
+                projectPath: fixture.project.path,
+                status: .rejected
+            )
+        )
+        XCTAssertTrue(
+            try store.recall(BurnBarProjectMemoryRecallRequest(query: "compact parity", projectPath: fixture.project.path)).hits.isEmpty
+        )
+        let rejectedFeed = try store.recall(
+            BurnBarProjectMemoryRecallRequest(
+                query: "memory review",
+                projectPath: fixture.project.path,
+                includeQuarantined: true
+            )
+        )
+        XCTAssertEqual(rejectedFeed.hits.first?.reviewStatus, .rejected)
+
+        let forgotten = try store.forget(
+            BurnBarProjectMemoryForgetRequest(memoryID: candidate.memoryID, projectPath: fixture.project.path)
+        )
+        XCTAssertTrue(forgotten.localDeleted)
+        XCTAssertTrue(
+            try store.recall(BurnBarProjectMemoryRecallRequest(query: "compact parity", projectPath: fixture.project.path)).hits.isEmpty
+        )
+        let forgottenFeed = try store.recall(
+            BurnBarProjectMemoryRecallRequest(
+                query: "memory review",
+                projectPath: fixture.project.path,
+                includeQuarantined: true,
+                includeForgotten: true
+            )
+        )
+        XCTAssertEqual(forgottenFeed.hits.first?.reviewStatus, .forgotten)
+        XCTAssertEqual(forgottenFeed.hits.first?.bodyRedacted, "")
+
+        let audit = try store.auditTrail(BurnBarProjectMemoryAuditTrailRequest(projectPath: fixture.project.path))
+        XCTAssertTrue(audit.events.contains { $0.action == "memory.review_status" && $0.labels.contains("review_status:approved") })
+        XCTAssertTrue(audit.events.contains { $0.action == "memory.review_status" && $0.labels.contains("review_status:rejected") })
+        XCTAssertTrue(audit.events.contains { $0.action == "memory.forget" && $0.labels.contains("review_status:forgotten") })
     }
 
     func testRememberStoresBodyInProjectMemorySnapshotNotAgentIndex() throws {
@@ -1194,6 +1366,41 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         var reindexed = false
         while Date() < deadline {
             if try !store.getSymbol(BurnBarProjectCodeSymbolRequest(name: "rewatchTwo", projectPath: fixture.project.path)).symbols.isEmpty {
+                reindexed = true
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.15)
+        }
+        XCTAssertTrue(reindexed)
+    }
+
+    func testSuspendedProjectWatchersResumeAfterDatabaseReplacement() throws {
+        let fixture = try makeFixture()
+        let source = fixture.project.appendingPathComponent("Sources").appendingPathComponent("RestoreWatch.swift")
+        try write("func beforeRestoreWatch() {}\n", to: source)
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "test")
+        )
+        _ = try store.watchProject(
+            BurnBarProjectCodeWatchProjectRequest(
+                projectPath: fixture.project.path,
+                maxFiles: 20,
+                pollIntervalSeconds: 0.25
+            )
+        )
+
+        let suspended = store.suspendProjectWatchersForSnapshot()
+        XCTAssertEqual(suspended.count, 1)
+        try store.resumeProjectWatchersAfterSnapshot(suspended)
+        try write("func afterRestoreWatch() {}\n", to: source)
+
+        let deadline = Date().addingTimeInterval(4.0)
+        var reindexed = false
+        while Date() < deadline {
+            if try !store.getSymbol(
+                BurnBarProjectCodeSymbolRequest(name: "afterRestoreWatch", projectPath: fixture.project.path)
+            ).symbols.isEmpty {
                 reindexed = true
                 break
             }

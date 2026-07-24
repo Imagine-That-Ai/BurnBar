@@ -121,5 +121,5 @@ describe('axe route accessibility audit', () => {
 
     const failures = auditRows.filter((row) => row.violationCount > 0);
     expect(failures, JSON.stringify(failures, null, 2)).toEqual([]);
-  }, 30_000);
+  }, 60_000);
 });

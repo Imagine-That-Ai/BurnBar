@@ -1538,6 +1538,54 @@ describe("buildPanelViewModel", () => {
     expect(vm.historyRuns[0]?.phaseColor).toBe("success");
   });
 
+  it("treats a Computer Use session wait as the active run", async () => {
+    const client = makeConnectedClient({
+      pollRuns: vi.fn().mockResolvedValue({
+        runs: [
+          {
+            runID: "run-done",
+            clientID: "test-client",
+            sessionID: "session-1",
+            phase: "completed",
+            modelID: "glm-4.6",
+            updatedAt: "2026-03-22T10:01:00.000Z"
+          },
+          {
+            runID: "run-computer-use",
+            clientID: "test-client",
+            sessionID: "session-1",
+            phase: "awaiting_computer_use_session",
+            modelID: "glm-4.6",
+            updatedAt: "2026-03-22T10:00:00.000Z"
+          }
+        ],
+        approvals: [],
+        pendingToolCalls: [],
+        arbitration: {
+          activeClientID: "test-client",
+          attachedClientIDs: ["test-client"]
+        },
+        emittedAt: "2026-03-22T10:01:00.000Z"
+      }),
+      getRun: vi.fn().mockResolvedValue({ run: null, approvalRequest: null, arbitration: null })
+    });
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: { repair: vi.fn().mockResolvedValue({ message: "ok" }) }
+      },
+      { clientID: "test-client", sessionID: "session-1" }
+    );
+
+    await controller.refresh();
+
+    expect(controller.activeRun()?.id).toBe("run-computer-use");
+    expect(controller.historyRuns().map((run) => run.id)).toEqual(["run-done"]);
+  });
+
   it("populates model options from catalog public models", async () => {
     const client = makeConnectedClient({
       pollRuns: vi.fn().mockResolvedValue({

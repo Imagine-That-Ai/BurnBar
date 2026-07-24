@@ -68,13 +68,42 @@ struct OpenBurnBarDaemonExecutable {
             enforced: peerAuthenticator.isEnforced,
             logger: BurnBarDaemonLogger(category: "local-auth-proof")
         )
+        #if os(Linux)
+        let linuxCloudCredentialAuthority = LinuxDaemonCloudCredentialAuthority.production(
+            environment: ProcessInfo.processInfo.environment
+        )
+        let linuxCredentialProvider: LinuxIrohControllerCredentialProvider = {
+            try await linuxCloudCredentialAuthority.credentialContext()
+        }
+        let linuxCloudSyncRuntime = LinuxCloudSyncRuntimeFactory.makeProduction(
+            configuration: configuration,
+            credentialAuthority: linuxCloudCredentialAuthority,
+            environment: ProcessInfo.processInfo.environment,
+            logger: BurnBarDaemonLogger(category: "cloud-sync")
+        )
+        #else
+        let linuxCloudCredentialAuthority: LinuxDaemonCloudCredentialAuthority? = nil
+        let linuxCredentialProvider: LinuxIrohControllerCredentialProvider? = nil
+        let linuxCloudSyncRuntime: LinuxCloudSyncRuntime? = nil
+        #endif
         let server = BurnBarDaemonServer(
             configuration: configuration,
             logger: logger,
             peerAuthenticator: peerAuthenticator,
             localAuthProofVerifier: localAuthProofSetup.verifier,
-            phoneControlPinStore: localAuthProofSetup.pinStore
+            phoneControlPinStore: localAuthProofSetup.pinStore,
+            linuxIrohControllerCredentialProvider: linuxCredentialProvider,
+            linuxCloudCredentialAuthority: linuxCloudCredentialAuthority,
+            linuxCloudSyncRuntime: linuxCloudSyncRuntime
         )
+        #if os(Linux)
+        await linuxCloudCredentialAuthority.setLifecycleHandler { event in
+            await server.handleLinuxCloudAuthSessionEvent(event)
+        }
+        await linuxCloudCredentialAuthority.setTeardownHandler { credentials in
+            await server.handleLinuxCloudAuthTeardown(credentials: credentials)
+        }
+        #endif
         let pensieveWatcher = makePensieveKnowledgeWatcher(
             environment: ProcessInfo.processInfo.environment,
             logger: logger

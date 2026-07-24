@@ -3,6 +3,10 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  TEXT_EXPANSION_NATIVE_RECEIPT,
+  writeTextExpansionNativeEvidence
+} from './text-expansion-native-evidence.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const appDir = path.join(root, 'apps/linux-desktop');
@@ -24,6 +28,7 @@ const transcript = [
   r.stderr
 ].join('\n');
 fs.appendFileSync(path.join(outDir, 'smoke-transcript.txt'), '\n' + transcript + '\n');
+writeTextExpansionNativeEvidence(outDir);
 
 const artifacts = [
   'route-snapshot-plan.json',
@@ -45,7 +50,8 @@ const artifacts = [
   'settings-account-update-support-scenarios.json',
   'onboarding-linux-flow-evidence.json',
   'pet-runtime-behavior-evidence.json',
-  'text-expansion-crud-safety-evidence.json'
+  'text-expansion-crud-safety-evidence.json',
+  TEXT_EXPANSION_NATIVE_RECEIPT
 ];
 const missing = artifacts.filter((a) => !fs.existsSync(path.join(outDir, a)));
 if (missing.length) {

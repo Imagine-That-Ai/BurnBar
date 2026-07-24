@@ -6,12 +6,15 @@ export type SettingsTabId =
   | 'account'
   | 'cloud'
   | 'agents'
+  | 'model-proxy'
   | 'alerts'
   | 'notifications'
   | 'devices-and-sync'
   | 'text-expansion'
   | 'media'
-  | 'data-privacy';
+  | 'data-privacy'
+  | 'computer-use'
+  | 'pets';
 
 export type SettingsSectionId =
   | 'agents-and-models'
@@ -97,6 +100,15 @@ export const SETTINGS_TABS: SettingsTabMeta[] = [
     detailTitle: 'Agents'
   },
   {
+    id: 'model-proxy',
+    title: 'Model Proxy',
+    subtitle: 'Routing, failover, and local gateway health',
+    iconGlyph: '⇄',
+    iconTint: 'var(--color-brass-core)',
+    section: 'agents-and-models',
+    detailTitle: 'Model Proxy'
+  },
+  {
     id: 'alerts',
     title: 'Alerts',
     subtitle: 'Spend thresholds and daily digest',
@@ -147,13 +159,31 @@ export const SETTINGS_TABS: SettingsTabMeta[] = [
     subtitle: 'Vault inventory, exports, telemetry, and consent',
     iconGlyph: '⛨',
     iconTint: 'var(--color-tier-end-to-end)',
-    section: 'extras',
+    section: 'system',
     detailTitle: 'Data & Privacy'
+  },
+  {
+    id: 'computer-use',
+    title: 'Computer Use',
+    subtitle: 'Browser automation, approvals, panic, and audit',
+    iconGlyph: '⌁',
+    iconTint: 'var(--color-seal-crimson)',
+    section: 'extras',
+    detailTitle: 'Computer Use'
+  },
+  {
+    id: 'pets',
+    title: 'Pets',
+    subtitle: 'Companion overlay and compositor fallback',
+    iconGlyph: '✧',
+    iconTint: 'var(--color-brass-bright)',
+    section: 'extras',
+    detailTitle: 'Pets'
   }
 ];
 
 export const SETTINGS_SECTIONS: { id: SettingsSectionId; title: string; tabIds: SettingsTabId[] }[] = [
-  { id: 'agents-and-models', title: 'Agents & Models', tabIds: ['agents'] },
+  { id: 'agents-and-models', title: 'Agents & Models', tabIds: ['agents', 'model-proxy'] },
   { id: 'look-and-feel', title: 'Look & Feel', tabIds: ['general'] },
   {
     id: 'account-and-sync',
@@ -161,8 +191,22 @@ export const SETTINGS_SECTIONS: { id: SettingsSectionId; title: string; tabIds: 
     tabIds: ['account', 'cloud', 'devices-and-sync', 'alerts', 'notifications']
   },
   { id: 'system', title: 'System', tabIds: ['daemon', 'updates', 'data-privacy'] },
-  { id: 'extras', title: 'More', tabIds: ['text-expansion', 'media'] }
+  { id: 'extras', title: 'More', tabIds: ['text-expansion', 'media', 'computer-use', 'pets'] }
 ];
+
+/**
+ * Return settings destinations that match the user-facing search contract.
+ * Keep this shared by the sidebar and selection logic so a filtered result
+ * never points at a different tab set than the detail pane.
+ */
+export function settingsTabsMatchingQuery(query: string): SettingsTabMeta[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return SETTINGS_TABS;
+  return SETTINGS_TABS.filter((tab) => {
+    const haystack = `${tab.title} ${tab.subtitle} ${tab.detailTitle}`.toLowerCase();
+    return haystack.includes(normalizedQuery);
+  });
+}
 
 export function isSettingsTabId(value: string): value is SettingsTabId {
   return SETTINGS_TABS.some((t) => t.id === value);

@@ -62,6 +62,106 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.account.cloud_data.delete",
+    "caseName": "linuxAccountCloudDataDelete",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxAccountCloudDataDeletionRequest",
+    "result": "BurnBarLinuxAccountCloudDataDeletionResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.account.cloud_data.export",
+    "caseName": "linuxAccountCloudDataExport",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.account.cloud_data.export",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.account.trusted_device.approve",
+    "caseName": "linuxTrustedDeviceApprove",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxTrustedDeviceMutationRequest",
+    "result": "BurnBarLinuxTrustedDeviceMutationResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.account.trusted_device.revoke",
+    "caseName": "linuxTrustedDeviceRevoke",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxTrustedDeviceMutationRequest",
+    "result": "BurnBarLinuxTrustedDeviceMutationResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.account.trusted_devices.list",
+    "caseName": "linuxTrustedDeviceList",
+    "domain": "auth",
+    "capability": "lifecycle",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxTrustedDeviceListResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.auth.begin",
+    "caseName": "linuxAuthBegin",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxAuthBeginResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.auth.cancel",
+    "caseName": "linuxAuthCancel",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxAuthCancelRequest",
+    "result": "BurnBarLinuxAuthMutationResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.auth.rotate_identity",
+    "caseName": "linuxAuthRotateIdentity",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxAuthMutationResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.auth.sign_out",
+    "caseName": "linuxAuthSignOut",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxAuthMutationResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.auth.status",
+    "caseName": "linuxAuthStatus",
+    "domain": "auth",
+    "capability": "lifecycle",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxAuthStatusResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.browser.action",
     "caseName": "browserAction",
     "domain": "tooling",
@@ -102,6 +202,66 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.chat.message.append",
+    "caseName": "chatMessageAppend",
+    "domain": "chat",
+    "capability": "chat",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarChatMessageAppendRequest",
+    "result": "BurnBarChatMessageAppendResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.chat.thread.get",
+    "caseName": "chatThreadGet",
+    "domain": "chat",
+    "capability": "chat",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarChatThreadGetRequest",
+    "result": "BurnBarChatThreadGetResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.chat.thread.list",
+    "caseName": "chatThreadList",
+    "domain": "chat",
+    "capability": "chat",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarChatThreadListRequest",
+    "result": "BurnBarChatThreadListResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.cloud_sync.policy.update",
+    "caseName": "linuxCloudSyncPolicyUpdate",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxCloudSyncPolicyUpdateRequest",
+    "result": "BurnBarLinuxCloudSyncStatusResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.cloud_sync.run",
+    "caseName": "linuxCloudSyncRun",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxCloudSyncRunRequest",
+    "result": "BurnBarLinuxCloudSyncRunResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.cloud_sync.status",
+    "caseName": "linuxCloudSyncStatus",
+    "domain": "auth",
+    "capability": "lifecycle",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxCloudSyncStatusResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.code.call_graph",
     "caseName": "codeCallGraph",
     "domain": "code",
@@ -119,6 +279,26 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable response for daemon.code.context_pack",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.code.database_restore",
+    "caseName": "codeDatabaseRestore",
+    "domain": "code",
+    "capability": "code_operator",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.code.database_restore",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.code.database_snapshot",
+    "caseName": "codeDatabaseSnapshot",
+    "domain": "code",
+    "capability": "code_operator",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.code.database_snapshot",
     "error": "BurnBarRPCError"
   },
   {
@@ -272,6 +452,36 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.computer_use.session_grant.acquire",
+    "caseName": "computerUseSessionGrantAcquire",
+    "domain": "computer_use",
+    "capability": "computer_use",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.computer_use.session_grant.acquire",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.computer_use.session_grant.readiness",
+    "caseName": "computerUseSessionGrantReadiness",
+    "domain": "computer_use",
+    "capability": "computer_use",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.computer_use.session_grant.readiness",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.computer_use.session_grant.status",
+    "caseName": "computerUseSessionGrantStatus",
+    "domain": "computer_use",
+    "capability": "computer_use",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.computer_use.session_grant.status",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.computer_use.session.start",
     "caseName": "computerUseSessionStart",
     "domain": "computer_use",
@@ -332,6 +542,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.controller.project.delete",
+    "caseName": "controllerProjectDelete",
+    "domain": "mission_control",
+    "capability": "mission_control",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.controller.project.delete",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.controller.project.get",
     "caseName": "controllerProjectGet",
     "domain": "mission_control",
@@ -349,6 +569,16 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable response for daemon.controller.project",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.controller.project.reassign",
+    "caseName": "controllerProjectReassign",
+    "domain": "mission_control",
+    "capability": "mission_control",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.controller.project.reassign",
     "error": "BurnBarRPCError"
   },
   {
@@ -389,6 +619,36 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable response for daemon.controller.summary",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.database.recovery_bundle.export",
+    "caseName": "databaseRecoveryBundleExport",
+    "domain": "database_recovery",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarDatabaseRecoveryBundleExportRequest",
+    "result": "BurnBarDatabaseRecoveryBundleExportResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.database.recovery_bundle.import",
+    "caseName": "databaseRecoveryBundleImport",
+    "domain": "database_recovery",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarDatabaseRecoveryBundleImportRequest",
+    "result": "BurnBarDatabaseRecoveryBundleImportResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.database.recovery.status",
+    "caseName": "databaseRecoveryStatus",
+    "domain": "database_recovery",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarDatabaseRecoveryStatusResponse",
     "error": "BurnBarRPCError"
   },
   {
@@ -562,6 +822,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.membership.portalUrl",
+    "caseName": "membershipPortalURL",
+    "domain": "membership",
+    "capability": "membership",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.membership.portalUrl",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.membership.restore",
     "caseName": "membershipRestore",
     "domain": "membership",
@@ -632,6 +902,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.memory.review_status",
+    "caseName": "memoryReviewStatus",
+    "domain": "memory",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.memory.review_status",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.mission.approve",
     "caseName": "missionApprove",
     "domain": "mission_control",
@@ -679,6 +959,16 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable response for daemon.mission",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.mission.health",
+    "caseName": "missionHealth",
+    "domain": "mission_control",
+    "capability": "mission_control",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.mission.health",
     "error": "BurnBarRPCError"
   },
   {
@@ -789,6 +1079,66 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable response for daemon.phone_control.pin.provision",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.privacy.deletion.execute",
+    "caseName": "linuxPrivacyDeletionExecute",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxPrivacyDeletionExecuteRequest",
+    "result": "BurnBarLinuxPrivacyDeletionExecuteResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.privacy.deletion.preview",
+    "caseName": "linuxPrivacyDeletionPreview",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxPrivacyDeletionPreviewRequest",
+    "result": "BurnBarLinuxPrivacyDeletionPreviewResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.privacy.export",
+    "caseName": "linuxPrivacyExport",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxPrivacyExportRequest",
+    "result": "BurnBarLinuxPrivacyExportResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.privacy.inventory",
+    "caseName": "linuxPrivacyInventory",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxPrivacyInventoryResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.privacy.retention.apply",
+    "caseName": "linuxPrivacyRetentionApply",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxPrivacyRetentionApplyRequest",
+    "result": "BurnBarLinuxPrivacyRetentionApplyResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.privacy.retention.status",
+    "caseName": "linuxPrivacyRetentionStatus",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxPrivacyRetentionStatusRequest",
+    "result": "BurnBarLinuxPrivacyRetentionStatusResponse",
     "error": "BurnBarRPCError"
   },
   {
@@ -1022,6 +1372,116 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.text_expansion.consent.update",
+    "caseName": "textExpansionConsentUpdate",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarTextExpansionConsentUpdateRequest",
+    "result": "BurnBarTextExpansionConsentResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.text_expansion.delete",
+    "caseName": "textExpansionDelete",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarTextExpansionDeleteRequest",
+    "result": "BurnBarTextExpansionSnapshot",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.text_expansion.engine.expand",
+    "caseName": "textExpansionEngineExpand",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarTextExpansionEngineExpandRequest",
+    "result": "BurnBarTextExpansionEngineExpandResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.text_expansion.engine.start",
+    "caseName": "textExpansionEngineStart",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.text_expansion.engine.start",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.text_expansion.engine.status",
+    "caseName": "textExpansionEngineStatus",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.text_expansion.engine.status",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.text_expansion.engine.stop",
+    "caseName": "textExpansionEngineStop",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.text_expansion.engine.stop",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.text_expansion.get",
+    "caseName": "textExpansionGet",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarTextExpansionSnapshot",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.text_expansion.upsert",
+    "caseName": "textExpansionUpsert",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarTextExpansionUpsertRequest",
+    "result": "BurnBarTextExpansionWireSnippet",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.usage.history",
+    "caseName": "usageHistory",
+    "domain": "usage",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarActivityHistoryRequest",
+    "result": "BurnBarActivityHistoryResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.usage.insights",
+    "caseName": "usageInsights",
+    "domain": "usage",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarUsageInsightsRequest",
+    "result": "BurnBarUsageInsightsResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.usage.projection",
+    "caseName": "usageProjection",
+    "domain": "usage",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarUsageProjectionRequest",
+    "result": "BurnBarUsageProjectionResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.usage.recent",
     "caseName": "usageRecent",
     "domain": "usage",
@@ -1039,6 +1499,16 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable mutation response for daemon.usage",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.usage.recount",
+    "caseName": "usageRecount",
+    "domain": "usage",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarUsageRecountRequest",
+    "result": "BurnBarUsageProjectionResponse",
     "error": "BurnBarRPCError"
   },
   {

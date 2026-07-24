@@ -142,6 +142,10 @@ extension BurnBarDaemonServer {
             supportsShellToDaemonControl: false,
             codecsKnown: false,
             codecs: [:],
+            supportsSealedMediaFrames: false,
+            supportsCallAudioCapture: false,
+            supportsCallVideoCapture: false,
+            callRequiresMediaSeal: true,
             source: "platform-unavailable",
             detail: "Linux Mercury media is unavailable on this platform."
         )

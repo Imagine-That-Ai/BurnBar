@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.dev/schemas/linux-product-feature-proof-registration.schema.json",
+  "title": "OpenBurnBar Linux product feature proof registration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requirementId", "environmentId", "artifacts"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "requirementId": { "type": "string", "pattern": "^P-(0[1-9]|[1-3][0-9]|40)$" },
+    "environmentId": { "type": "string", "minLength": 1 },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "path"],
+        "properties": {
+          "role": { "type": "string", "pattern": "^feature\\.[a-z0-9]+(?:[._-][a-z0-9]+)*$" },
+          "path": { "type": "string", "pattern": "^feature-artifacts/[A-Za-z0-9._/-]+$" }
+        }
+      }
+    }
+  }
+}

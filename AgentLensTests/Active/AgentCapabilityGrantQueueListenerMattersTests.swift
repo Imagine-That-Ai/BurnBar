@@ -16,6 +16,20 @@ import XCTest
 ///      detached process Task) while NEVER falling open into approval.
 @MainActor
 final class AgentCapabilityGrantQueueListenerMattersTests: XCTestCase {
+    func testDaemonPinProvisionRequestPreservesAuthorityPeerIdentity() {
+        let request = AgentCapabilityGrantQueueListener.daemonPinProvisionRequest(
+            deviceId: "ios-device-1",
+            peerNodeId: "ios-authority-peer-1",
+            publicKeyBase64: "cHVibGljLWtleQ==",
+            keyKind: .ed25519
+        )
+
+        XCTAssertEqual(request.deviceId, "ios-device-1")
+        XCTAssertEqual(request.peerNodeId, "ios-authority-peer-1")
+        XCTAssertEqual(request.publicKeyBase64, "cHVibGljLWtleQ==")
+        XCTAssertEqual(request.keyKind, .ed25519)
+    }
+
     /// Records every receipt-write the listener attempts; can be armed to throw
     /// so the catch-path's durable-but-graceful handling is exercised.
     private actor CaptureWriter {

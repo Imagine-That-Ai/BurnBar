@@ -7,7 +7,6 @@ import androidx.compose.ui.platform.LocalContext
 import com.openburnbar.data.assistants.AssistantChatHistoryStore
 import com.openburnbar.data.assistants.CLIAgentRelayChatTransport
 import com.openburnbar.data.hermes.AssistantRuntimeID
-import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.hermes.PiService
 
 @Composable
@@ -30,7 +29,7 @@ fun AssistantsScreen(initialRuntime: AssistantRuntimeID? = null, initialThreadId
     val historyStore = remember { AssistantChatHistoryStore.shared(context.applicationContext) }
     LaunchedEffect(historyStore) { historyStore.bootstrap() }
     val piService = remember { PiService().apply { bindHistoryStore(historyStore) } }
-    val hermesService = remember(context) { HermesService(appContext = context.applicationContext) }
+    val hermesService = rememberAccountScopedHermesService()
     val cliRelayChatTransport = remember(hermesService) { CLIAgentRelayChatTransport(hermesService) }
 
     AssistantsScreenContent(

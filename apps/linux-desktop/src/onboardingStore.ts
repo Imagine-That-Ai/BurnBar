@@ -20,6 +20,17 @@ export type LinuxOnboardingStepState =
   | 'acknowledged'
   | 'skipped';
 
+export type LinuxOnboardingRepairAction =
+  | 'start_daemon'
+  | 'unlock_secret_store'
+  | 'repair_provider_data'
+  | 'sign_in'
+  | 'grant_portal'
+  | 'enable_tray'
+  | 'open_updates'
+  | 'choose_privacy'
+  | 'retry';
+
 export type LinuxOnboardingStepSnapshot = {
   id: LinuxOnboardingStepId;
   requirement: LinuxOnboardingRequirement;
@@ -27,6 +38,7 @@ export type LinuxOnboardingStepSnapshot = {
   attemptCount: number;
   detail?: string;
   verifiedAt?: string;
+  repairAction?: LinuxOnboardingRepairAction;
 };
 
 export type LinuxOnboardingPrivacyChoices = {
@@ -75,6 +87,17 @@ const STEP_STATES = new Set<LinuxOnboardingStepState>([
   'verified',
   'acknowledged',
   'skipped'
+]);
+const REPAIR_ACTIONS = new Set<LinuxOnboardingRepairAction>([
+  'start_daemon',
+  'unlock_secret_store',
+  'repair_provider_data',
+  'sign_in',
+  'grant_portal',
+  'enable_tray',
+  'open_updates',
+  'choose_privacy',
+  'retry'
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -138,13 +161,23 @@ export function decodeLinuxOnboardingSnapshot(raw: unknown): LinuxOnboardingSnap
     if (value.verifiedAt !== undefined && typeof value.verifiedAt !== 'string') {
       throw new Error('onboarding_invalid_verified_at');
     }
+    if (
+      value.repairAction !== undefined &&
+      (typeof value.repairAction !== 'string' ||
+        !REPAIR_ACTIONS.has(value.repairAction as LinuxOnboardingRepairAction))
+    ) {
+      throw new Error('onboarding_invalid_repair_action');
+    }
     return {
       id: expectedId,
       requirement: REQUIREMENTS[expectedId],
       state: value.state as LinuxOnboardingStepState,
       attemptCount: Number(value.attemptCount),
       ...(typeof value.detail === 'string' ? { detail: value.detail } : {}),
-      ...(typeof value.verifiedAt === 'string' ? { verifiedAt: value.verifiedAt } : {})
+      ...(typeof value.verifiedAt === 'string' ? { verifiedAt: value.verifiedAt } : {}),
+      ...(typeof value.repairAction === 'string'
+        ? { repairAction: value.repairAction as LinuxOnboardingRepairAction }
+        : {})
     };
   });
 

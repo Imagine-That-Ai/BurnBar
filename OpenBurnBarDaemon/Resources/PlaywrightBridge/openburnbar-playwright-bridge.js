@@ -33,6 +33,8 @@
 
 const net = require("net");
 const dnsPromises = require("dns").promises;
+const fs = require("fs");
+const path = require("path");
 
 // ---------------------------------------------------------------------------
 // Pure target-policy helpers (no side effects; exported for unit tests).
@@ -256,6 +258,132 @@ module.exports = {
   isBlockedBrowserTarget,
 };
 
+const PINNED_PLAYWRIGHT_VERSION = "1.49.1";
+const PACKAGED_RUNTIME_ENV = "OPENBURNBAR_PACKAGED_PLAYWRIGHT_RUNTIME";
+const PACKAGED_MODULE_ROOT = "/usr/lib/node_modules/playwright";
+const PACKAGED_CORE_MODULE_ROOT = "/usr/lib/node_modules/playwright-core";
+const PACKAGED_BROWSER_ROOT = "/usr/lib/openburnbar/playwright-browsers";
+
+function isWithinPath(candidate, root) {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function assertTrustedPackagedTree(root, expectedUid = 0) {
+  const canonicalRoot = fs.realpathSync(root);
+  const pending = [canonicalRoot];
+  const visited = new Set();
+  while (pending.length > 0) {
+    const candidate = pending.pop();
+    const resolved = fs.realpathSync(candidate);
+    if (!isWithinPath(resolved, canonicalRoot)) {
+      throw new Error(`packaged_runtime_path_escape:${candidate}`);
+    }
+    if (visited.has(resolved)) continue;
+    visited.add(resolved);
+    const status = fs.statSync(resolved);
+    if (status.uid !== expectedUid) {
+      throw new Error(`packaged_runtime_owner_invalid:${resolved}:${status.uid}`);
+    }
+    if ((status.mode & 0o022) !== 0) {
+      throw new Error(`packaged_runtime_writable:${resolved}`);
+    }
+    if (status.isDirectory()) {
+      for (const entry of fs.readdirSync(resolved)) {
+        pending.push(path.join(resolved, entry));
+      }
+    } else if (!status.isFile()) {
+      throw new Error(`packaged_runtime_type_invalid:${resolved}`);
+    }
+  }
+  return canonicalRoot;
+}
+
+function verifyPackagedRuntimeBeforeRequire() {
+  if (process.env[PACKAGED_RUNTIME_ENV] !== "1") return;
+  const nodeExecutable = fs.realpathSync(process.execPath);
+  const nodeStatus = fs.statSync(nodeExecutable);
+  if (!nodeStatus.isFile() || nodeStatus.uid !== 0 || (nodeStatus.mode & 0o022) !== 0) {
+    throw new Error(`packaged_node_untrusted:${nodeExecutable}`);
+  }
+  const packageJSON = require.resolve("playwright/package.json");
+  const packageRoot = fs.realpathSync(path.dirname(packageJSON));
+  if (packageRoot !== fs.realpathSync(PACKAGED_MODULE_ROOT)) {
+    throw new Error(`packaged_playwright_path_invalid:${packageRoot}`);
+  }
+  assertTrustedPackagedTree(PACKAGED_MODULE_ROOT);
+  const corePackageJSON = require.resolve("playwright-core/package.json");
+  const corePackageRoot = fs.realpathSync(path.dirname(corePackageJSON));
+  if (corePackageRoot !== fs.realpathSync(PACKAGED_CORE_MODULE_ROOT)) {
+    throw new Error(`packaged_playwright_core_path_invalid:${corePackageRoot}`);
+  }
+  assertTrustedPackagedTree(PACKAGED_CORE_MODULE_ROOT);
+}
+
+function verifyPackagedBrowserBeforeLaunch(executablePath) {
+  if (process.env[PACKAGED_RUNTIME_ENV] !== "1") return;
+  const browserRoot = assertTrustedPackagedTree(PACKAGED_BROWSER_ROOT);
+  const executable = fs.realpathSync(executablePath);
+  if (!isWithinPath(executable, browserRoot)) {
+    throw new Error(`packaged_chromium_path_invalid:${executable}`);
+  }
+}
+
+Object.assign(module.exports, {
+  assertTrustedPackagedTree,
+  isWithinPath,
+});
+
+async function probeRuntime() {
+  let browser = null;
+  try {
+    const nodeMajor = Number.parseInt(process.versions.node.split(".")[0], 10);
+    if (!Number.isInteger(nodeMajor) || nodeMajor < 18) {
+      throw new Error(`node_unsupported:${process.versions.node}`);
+    }
+    verifyPackagedRuntimeBeforeRequire();
+    const playwrightVersion = require("playwright/package.json").version;
+    if (playwrightVersion !== PINNED_PLAYWRIGHT_VERSION) {
+      throw new Error(
+        `playwright_version_mismatch:${playwrightVersion || "unknown"}`,
+      );
+    }
+    const { chromium } = require("playwright");
+    const chromiumExecutablePath = chromium.executablePath();
+    verifyPackagedBrowserBeforeLaunch(chromiumExecutablePath);
+    fs.accessSync(chromiumExecutablePath, fs.constants.R_OK | fs.constants.X_OK);
+    browser = await chromium.launch({ headless: true });
+    await browser.close();
+    browser = null;
+    process.stdout.write(
+      JSON.stringify({
+        schemaVersion: 1,
+        ready: true,
+        nodeVersion: process.versions.node,
+        playwrightVersion,
+        chromiumExecutablePath,
+        chromiumLaunch: true,
+        dynamicInstallPerformed: false,
+      }) + "\n",
+    );
+  } catch (error) {
+    try {
+      if (browser) await browser.close();
+    } catch (_) {}
+    process.stdout.write(
+      JSON.stringify({
+        schemaVersion: 1,
+        ready: false,
+        reason: String(error && error.message ? error.message : error),
+        nodeVersion: process.versions.node,
+        requiredPlaywrightVersion: PINNED_PLAYWRIGHT_VERSION,
+        dynamicInstallPerformed: false,
+      }) + "\n",
+    );
+    process.exitCode = 1;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Live bridge (only when executed directly — kept out of the module import
 // path so unit tests never require playwright or spawn the process).
@@ -266,7 +394,15 @@ function runBridge() {
 
   let chromium;
   try {
+    verifyPackagedRuntimeBeforeRequire();
+    const playwrightVersion = require("playwright/package.json").version;
+    if (playwrightVersion !== PINNED_PLAYWRIGHT_VERSION) {
+      throw new Error(
+        `playwright_version_mismatch:${playwrightVersion || "unknown"}`,
+      );
+    }
     ({ chromium } = require("playwright"));
+    verifyPackagedBrowserBeforeLaunch(chromium.executablePath());
   } catch (e) {
     console.error(
       "[playwright-bridge] failed to require playwright:",
@@ -512,5 +648,9 @@ function runBridge() {
 }
 
 if (require.main === module) {
-  runBridge();
+  if (process.argv.includes("--probe-runtime")) {
+    probeRuntime();
+  } else {
+    runBridge();
+  }
 }

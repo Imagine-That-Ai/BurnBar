@@ -160,6 +160,53 @@ describe('DaemonSubscriptionSupervisor', () => {
     expect(bridge.subscriptionResume).toHaveBeenCalledTimes(1);
   });
 
+  it('starts a fresh subscription after stop instead of resuming the old cursor', async () => {
+    vi.useFakeTimers();
+    const bridge = makeBridge();
+    const supervisor = new DaemonSubscriptionSupervisor(bridge, vi.fn());
+
+    supervisor.start();
+    await vi.advanceTimersByTimeAsync(0);
+    supervisor.stop();
+    supervisor.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(bridge.subscriptionStart).toHaveBeenCalledTimes(2);
+    expect(bridge.subscriptionResume).not.toHaveBeenCalled();
+    supervisor.stop();
+  });
+
+  it('drops an in-flight response from a previous lifecycle before publishing it', async () => {
+    vi.useFakeTimers();
+    let resolveFirst: ((value: DaemonSubscriptionResponse) => void) | undefined;
+    const bridge = makeBridge();
+    vi.mocked(bridge.subscriptionStart)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockResolvedValueOnce(response(1, { subscriptionId: 'sub-new' }));
+    const onEvent = vi.fn();
+    const supervisor = new DaemonSubscriptionSupervisor(bridge, onEvent);
+
+    supervisor.start();
+    await vi.advanceTimersByTimeAsync(0);
+    supervisor.stop();
+    supervisor.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    resolveFirst?.(response(1, { subscriptionId: 'sub-old' }));
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    await Promise.resolve();
+
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(onEvent).toHaveBeenLastCalledWith(expect.objectContaining({ subscriptionId: 'sub-new' }));
+    expect(bridge.subscriptionStop).toHaveBeenCalledWith({
+      subscription_id: 'sub-old',
+      client_id: 'linux-desktop-shell'
+    });
+    supervisor.stop();
+  });
+
   it('cancels a subscription that starts after shutdown was requested', async () => {
     vi.useFakeTimers();
     let resolveStart: ((value: DaemonSubscriptionResponse) => void) | undefined;

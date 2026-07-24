@@ -7,6 +7,9 @@ package com.openburnbar.irohrelay
  * moves length-prefixed JSON between endpoints.
  */
 interface IrohRelayStream {
+    /** Node id authenticated by the underlying iroh QUIC connection. */
+    suspend fun authenticatedRemoteNodeId(): String? = null
+
     suspend fun send(frame: HermesRealtimeRelayFrame)
 
     /** Returns `null` on a clean stream close. */

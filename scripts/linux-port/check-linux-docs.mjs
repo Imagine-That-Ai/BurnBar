@@ -25,6 +25,21 @@ const forbiddenClaims = [
 ];
 const failures = [];
 
+const parityAuditArtifacts = [
+  'docs/linux-port/LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md',
+  'docs/linux-port/LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.html'
+];
+const requiredParityAuditSignals = [
+  { pattern: /0\/40/u, label: 'strict 0/40 product status' },
+  { pattern: /0\/7/u, label: 'strict 0/7 environment status' },
+  { pattern: /parity claim is false|productParityClaim(?:=|[^a-z])false/iu, label: 'false parity claim' }
+];
+const staleParityAuditClaims = [
+  /verify-linux-release\.mjs(?:<\/code>)?\s*(?:checks only recorded signature entries|still\s*reports green)/iu,
+  /accepts blocked update\/?rollback evidence/iu,
+  /JSON ledger says parity is true/iu
+];
+
 for (const rel of files) {
   const full = path.join(repoRoot, rel);
   if (!fs.existsSync(full)) {
@@ -48,6 +63,34 @@ for (const rel of files) {
         failures.push({ file: rel, message: `broken local link: ${href}` });
       }
     }
+  }
+}
+
+for (const rel of parityAuditArtifacts) {
+  const full = path.join(repoRoot, rel);
+  if (!fs.existsSync(full)) {
+    failures.push({ file: rel, message: 'parity audit artifact is missing' });
+    continue;
+  }
+  const text = fs.readFileSync(full, 'utf8');
+  for (const { pattern, label } of requiredParityAuditSignals) {
+    if (!pattern.test(text)) failures.push({ file: rel, message: `missing ${label}` });
+  }
+  for (const pattern of staleParityAuditClaims) {
+    if (pattern.test(text)) failures.push({ file: rel, message: `stale parity-audit claim: ${pattern}` });
+  }
+}
+
+const implementationPlan = path.join(repoRoot, 'docs/linux-port/FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md');
+if (!fs.existsSync(implementationPlan)) {
+  failures.push({ file: 'docs/linux-port/FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md', message: 'implementation plan is missing' });
+} else {
+  const planText = fs.readFileSync(implementationPlan, 'utf8');
+  if (!planText.includes('## Current-head reconciliation')) {
+    failures.push({ file: 'docs/linux-port/FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md', message: 'current-head reconciliation is missing' });
+  }
+  if (!planText.includes('Loop 1 - factual source verification (historical snapshot)')) {
+    failures.push({ file: 'docs/linux-port/FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md', message: 'historical baseline marker is missing' });
   }
 }
 

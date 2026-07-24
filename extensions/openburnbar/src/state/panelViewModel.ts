@@ -279,6 +279,7 @@ function buildModelOptions(catalog?: BurnBarCatalog): OpenBurnBarPanelModelOptio
 const ACTIVE_PHASES = new Set<BurnBarRunPhase>([
   'planning',
   'awaiting_approval',
+  'awaiting_computer_use_session',
   'executing_tool',
   'waiting_on_companion',
   'model_streaming'
@@ -292,6 +293,7 @@ function phaseColor(phase: BurnBarRunPhase): OpenBurnBarPanelRunCard['phaseColor
     case 'model_streaming':
       return 'active';
     case 'awaiting_approval':
+    case 'awaiting_computer_use_session':
       return 'warning';
     case 'completed':
       return 'success';

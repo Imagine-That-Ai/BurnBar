@@ -3,6 +3,11 @@ export type GatewayChatRole = 'system' | 'user' | 'assistant' | 'tool';
 export type GatewayChatMessage = {
   role: GatewayChatRole;
   content: string;
+  attachments?: GatewayChatAttachmentReference[];
+};
+
+export type GatewayChatAttachmentReference = {
+  attachmentId: string;
 };
 
 export type GatewayChatUsage = {
@@ -15,11 +20,22 @@ export type GatewayToolCallDelta = {
   id: string;
   name: string;
   arguments: string;
+  /** Daemon-issued run approval identity when the gateway provides one. */
+  approvalID?: string;
+};
+
+export type GatewayMemoryCitation = {
+  id: string;
+  label: string;
+  messageId?: string;
+  threadID?: string;
+  state?: 'live' | 'cross-device' | 'source-unavailable';
 };
 
 export type GatewayChatStreamEvent =
   | { type: 'delta'; text: string }
   | { type: 'thinking'; text: string }
+  | { type: 'citations'; citations: GatewayMemoryCitation[] }
   | { type: 'tool_call'; toolCall: GatewayToolCallDelta }
   | { type: 'usage'; usage: GatewayChatUsage }
   | { type: 'done'; finishReason?: string };
@@ -121,6 +137,8 @@ export class OpenAICompatibleSSEParser {
       if (content) events.push({ type: 'delta', text: content });
       const thinking = str(delta?.reasoning_content) ?? str(delta?.reasoning) ?? str(delta?.thinking);
       if (thinking) events.push({ type: 'thinking', text: thinking });
+      const citations = memoryCitationsFrom(delta?.memory_citations ?? delta?.memoryCitations);
+      if (citations.length) events.push({ type: 'citations', citations });
       const toolCalls = Array.isArray(delta?.tool_calls) ? delta.tool_calls : [];
       for (const rawCall of toolCalls) {
         const call = this.toolCallFrom(rawCall);
@@ -140,6 +158,13 @@ export class OpenAICompatibleSSEParser {
     const explicitId = str(call?.id);
     const id = explicitId ?? (index === undefined ? undefined : this.toolCallIndexKeys.get(index) ?? `tool-${index}`);
     const name = str(fn?.name);
+    const approvalID =
+      str(call?.approvalID) ??
+      str(call?.approvalId) ??
+      str(call?.approval_id) ??
+      str(fn?.approvalID) ??
+      str(fn?.approvalId) ??
+      str(fn?.approval_id);
     const args = fn?.arguments;
     const argumentsText = typeof args === 'string' ? args : args === undefined ? '' : JSON.stringify(args);
     if (!id && !name) return null;
@@ -149,11 +174,32 @@ export class OpenAICompatibleSSEParser {
     const merged = {
       id: key,
       name: name ?? previous?.name ?? 'tool',
-      arguments: `${previous?.arguments ?? ''}${argumentsText}`
+      arguments: `${previous?.arguments ?? ''}${argumentsText}`,
+      approvalID: approvalID ?? previous?.approvalID
     };
     this.toolCallBuffers.set(key, merged);
     return merged;
   }
+}
+
+function memoryCitationsFrom(raw: RawJson): GatewayMemoryCitation[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 8).flatMap((value) => {
+    const row = object(value);
+    const id = str(row?.id);
+    const label = str(row?.label);
+    if (!id || !label) return [];
+    const state = str(row?.state);
+    return [{
+      id,
+      label,
+      ...(str(row?.messageId) ?? str(row?.message_id) ? { messageId: str(row?.messageId) ?? str(row?.message_id) } : {}),
+      ...(str(row?.threadID) ?? str(row?.threadId) ?? str(row?.thread_id)
+        ? { threadID: str(row?.threadID) ?? str(row?.threadId) ?? str(row?.thread_id) } : {}),
+      ...(['live', 'cross-device', 'source-unavailable'].includes(state ?? '')
+        ? { state: state as GatewayMemoryCitation['state'] } : {})
+    }];
+  });
 }
 
 function usageFrom(raw: RawJson): GatewayChatUsage | null {

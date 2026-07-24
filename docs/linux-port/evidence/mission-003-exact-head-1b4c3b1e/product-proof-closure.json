@@ -1,0 +1,1076 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-18T17:38:00.229Z",
+  "targetHead": "1b4c3b1e269b3d58d38226af1084f88bc7c6f742",
+  "sourceCommit": "1b4c3b1e269b3d58d38226af1084f88bc7c6f742",
+  "status": "passed",
+  "stage": "candidate",
+  "git": {
+    "commit": "1b4c3b1e269b3d58d38226af1084f88bc7c6f742",
+    "dirty": false
+  },
+  "version": "0.1.1",
+  "architectures": [
+    "aarch64",
+    "x86_64"
+  ],
+  "supportEnvironments": [
+    "ubuntu-24.04-gnome-x11-x86_64",
+    "ubuntu-24.04-gnome-x11-aarch64",
+    "ubuntu-24.04-gnome-wayland-x86_64",
+    "ubuntu-24.04-gnome-wayland-aarch64",
+    "fedora-kde-wayland-x86_64",
+    "fedora-kde-wayland-aarch64",
+    "arch-sway-wayland-x86_64"
+  ],
+  "releaseArtifacts": [
+    {
+      "type": "appimage",
+      "architecture": "aarch64",
+      "artifact": {
+        "path": "artifacts/OpenBurnBar_0.1.1_aarch64.AppImage",
+        "sha256": "addbbf576c73f4f805266dc02a3fac1bb5ecef98148efb3a01dcd7200d28f2e2",
+        "size": 200669704
+      },
+      "detachedSignature": {
+        "path": "sidecars/OpenBurnBar_0.1.1_aarch64.AppImage.ed25519.sig",
+        "sha256": "91faf4ab72e071520080f14df744a7e9acb3a965a80f48945a067ac06e415e39",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/OpenBurnBar_0.1.1_aarch64.AppImage.sigstore.json",
+        "sha256": "c728a19fe93871a6c53c548d43a719a8d88b0f0e9e2ebf1e0682864cea8af919",
+        "size": 26655
+      }
+    },
+    {
+      "type": "appimage",
+      "architecture": "x86_64",
+      "artifact": {
+        "path": "artifacts/OpenBurnBar_0.1.1_amd64.AppImage",
+        "sha256": "2a38fb6a61f60562d5718ddd1552181daa70811b5ace3c1f38344b8b872adf3b",
+        "size": 203233784
+      },
+      "detachedSignature": {
+        "path": "sidecars/OpenBurnBar_0.1.1_amd64.AppImage.ed25519.sig",
+        "sha256": "fc022d65499212ee2ebd30a7adaed315f780c99043165413b8266d665aba8699",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/OpenBurnBar_0.1.1_amd64.AppImage.sigstore.json",
+        "sha256": "67c44061bfa08823a8766775674ea35d5d30d9dc3dfd76f0ac739e00abb5de37",
+        "size": 26747
+      }
+    },
+    {
+      "type": "arch",
+      "architecture": "aarch64",
+      "artifact": {
+        "path": "artifacts/openburnbar-0.1.1-1-aarch64.pkg.tar.zst",
+        "sha256": "50deef58da92df21440dee21ca95d35c20b40ed528cb6867f29c2d29e4afc1e2",
+        "size": 245028400
+      },
+      "detachedSignature": {
+        "path": "sidecars/openburnbar-0.1.1-1-aarch64.pkg.tar.zst.ed25519.sig",
+        "sha256": "0df021b5ccc9dfdd5575694b08c8966c0941f5b685df50db0de4ff28df157bc9",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/openburnbar-0.1.1-1-aarch64.pkg.tar.zst.sigstore.json",
+        "sha256": "65a610ee271cceae1c0b6bd9ad23bc224f8157119451a7eb7b73636b389bc370",
+        "size": 26667
+      }
+    },
+    {
+      "type": "arch",
+      "architecture": "x86_64",
+      "artifact": {
+        "path": "artifacts/openburnbar-0.1.1-1-x86_64.pkg.tar.zst",
+        "sha256": "296150102e6b7afb11f97ba90e0b6a4cfbdcb878ac53f4d3002c3493ffb64a8b",
+        "size": 248805878
+      },
+      "detachedSignature": {
+        "path": "sidecars/openburnbar-0.1.1-1-x86_64.pkg.tar.zst.ed25519.sig",
+        "sha256": "db03bf4d5552e5fdec94892b08e8b29d49c0c21e281b3e43db7c59744d36ea9e",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/openburnbar-0.1.1-1-x86_64.pkg.tar.zst.sigstore.json",
+        "sha256": "40b5535f679a455f0699102a33b37865fc8cf462951932d5c5efd1afddc36244",
+        "size": 26571
+      }
+    },
+    {
+      "type": "daemon",
+      "architecture": "aarch64",
+      "artifact": {
+        "path": "artifacts/openburnbar-daemon-0.1.1-linux-aarch64",
+        "sha256": "9e539c1c1990e5f0b44c5ac913ec9dd48d5512df77b736ef5181406284a19eb5",
+        "size": 149990760
+      },
+      "detachedSignature": {
+        "path": "sidecars/openburnbar-daemon-0.1.1-linux-aarch64.ed25519.sig",
+        "sha256": "c65afcae438c2e4d5152b0cf313879e1ef0cb52c1580f26e9fb64032325ba32f",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/openburnbar-daemon-0.1.1-linux-aarch64.sigstore.json",
+        "sha256": "6f32b4af7e44f0b305b05f217a9cb476937e2855103c4caff9fd551940be3f3b",
+        "size": 26659
+      }
+    },
+    {
+      "type": "daemon",
+      "architecture": "x86_64",
+      "artifact": {
+        "path": "artifacts/openburnbar-daemon-0.1.1-linux-x86_64",
+        "sha256": "75a48cf1dd552d445de7b2e82991104c3eaaecc5f6a79fe9f9a3cf0fd50ac9a5",
+        "size": 146815512
+      },
+      "detachedSignature": {
+        "path": "sidecars/openburnbar-daemon-0.1.1-linux-x86_64.ed25519.sig",
+        "sha256": "7270ac42f0fc089f6d40eded204d315caef5fd83dff54a028e4ab1c39f1cde99",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/openburnbar-daemon-0.1.1-linux-x86_64.sigstore.json",
+        "sha256": "90cbd36a538c2fb29d3b791753a4acbd1a3a9594e4279e5b32ee417a88ced2ec",
+        "size": 26755
+      }
+    },
+    {
+      "type": "deb",
+      "architecture": "aarch64",
+      "artifact": {
+        "path": "artifacts/OpenBurnBar_0.1.1_arm64.deb",
+        "sha256": "5f5576fc1302bdb58499bd96cb22c9e6091615a42986bf8d79ea12b8f7272f0d",
+        "size": 148041238
+      },
+      "detachedSignature": {
+        "path": "sidecars/OpenBurnBar_0.1.1_arm64.deb.ed25519.sig",
+        "sha256": "6069637e88eec5a8b8722c031814bf4886da947f0bc7891ec60ce3e0df05b41f",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/OpenBurnBar_0.1.1_arm64.deb.sigstore.json",
+        "sha256": "e3aae1a245696f90a94055dc81388fefac264bb1e1f4f68a69ced9eb1b018a14",
+        "size": 26643
+      }
+    },
+    {
+      "type": "deb",
+      "architecture": "x86_64",
+      "artifact": {
+        "path": "artifacts/OpenBurnBar_0.1.1_amd64.deb",
+        "sha256": "57c29c1103841fecb1fe1071d5deb1456f387b534592e1e2cfb548ac874d6bfe",
+        "size": 147773136
+      },
+      "detachedSignature": {
+        "path": "sidecars/OpenBurnBar_0.1.1_amd64.deb.ed25519.sig",
+        "sha256": "dc29eb7ad42930bee3405a872b6df74e3239aef284a1b3e3302a83b11e330a4b",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/OpenBurnBar_0.1.1_amd64.deb.sigstore.json",
+        "sha256": "16cf538c0c6783a51146fce33ac04d4f8a050fce7392707965c01cd1c8c0ca34",
+        "size": 26643
+      }
+    },
+    {
+      "type": "rpm",
+      "architecture": "aarch64",
+      "artifact": {
+        "path": "artifacts/OpenBurnBar-0.1.1-1.aarch64.rpm",
+        "sha256": "263c0f93309535421e71fcc2741d50528f6def06fc31199c6728de9224f38112",
+        "size": 104563966
+      },
+      "detachedSignature": {
+        "path": "sidecars/OpenBurnBar-0.1.1-1.aarch64.rpm.ed25519.sig",
+        "sha256": "c52e6fa4cefbc3c4cf129800eebbf86115d57b0c3a63cd60bc145c8a55370980",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/OpenBurnBar-0.1.1-1.aarch64.rpm.sigstore.json",
+        "sha256": "5904d09e7c5854dca08c208aa93c2036d85f179de05aecafbc3bd7572e974b5d",
+        "size": 26707
+      }
+    },
+    {
+      "type": "rpm",
+      "architecture": "x86_64",
+      "artifact": {
+        "path": "artifacts/OpenBurnBar-0.1.1-1.x86_64.rpm",
+        "sha256": "393b78493f933b79e5a1f3556ad8cb56317a0e1fe96fcfe1d7ce5c1e0e64af0e",
+        "size": 104856337
+      },
+      "detachedSignature": {
+        "path": "sidecars/OpenBurnBar-0.1.1-1.x86_64.rpm.ed25519.sig",
+        "sha256": "f8bb7f9e3c872860baac0adfb74f9ce9382963184eba11300403dc8d4b59a09a",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/OpenBurnBar-0.1.1-1.x86_64.rpm.sigstore.json",
+        "sha256": "078e86570a80d23351042acc88365b4e7d16c36a2e3d4354f17ce4f3d5b3e9c4",
+        "size": 26699
+      }
+    }
+  ],
+  "packages": [
+    {
+      "format": "arch",
+      "architecture": "aarch64",
+      "artifact": {
+        "path": "artifacts/openburnbar-0.1.1-1-aarch64.pkg.tar.zst",
+        "sha256": "50deef58da92df21440dee21ca95d35c20b40ed528cb6867f29c2d29e4afc1e2",
+        "size": 245028400
+      },
+      "installedManifest": {
+        "path": "arch/openburnbar-0.1.1-aarch64.installed-manifest.json",
+        "sha256": "c94798eb51df6ed428e23c09c693eda8a7f7ff60af2005ba34a2452477595359",
+        "size": 150706
+      },
+      "installedManifestSignature": {
+        "path": "arch/openburnbar-0.1.1-aarch64.installed-manifest.ed25519",
+        "sha256": "fa9b1a4aca5ee30e059ee8beda260a76a67820c57e48a07c9038309ee92c731f",
+        "size": 64
+      },
+      "detachedSignature": {
+        "path": "sidecars/openburnbar-0.1.1-1-aarch64.pkg.tar.zst.ed25519.sig",
+        "sha256": "0df021b5ccc9dfdd5575694b08c8966c0941f5b685df50db0de4ff28df157bc9",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/openburnbar-0.1.1-1-aarch64.pkg.tar.zst.sigstore.json",
+        "sha256": "65a610ee271cceae1c0b6bd9ad23bc224f8157119451a7eb7b73636b389bc370",
+        "size": 26667
+      }
+    },
+    {
+      "format": "arch",
+      "architecture": "x86_64",
+      "artifact": {
+        "path": "artifacts/openburnbar-0.1.1-1-x86_64.pkg.tar.zst",
+        "sha256": "296150102e6b7afb11f97ba90e0b6a4cfbdcb878ac53f4d3002c3493ffb64a8b",
+        "size": 248805878
+      },
+      "installedManifest": {
+        "path": "arch/openburnbar-0.1.1-x86_64.installed-manifest.json",
+        "sha256": "c7145111178b5d7a574575119249c50ed4658ca62885769f0f2955e4aba49f3e",
+        "size": 130320
+      },
+      "installedManifestSignature": {
+        "path": "arch/openburnbar-0.1.1-x86_64.installed-manifest.ed25519",
+        "sha256": "35b66bfb1b3159c14fda79ec7fd2bba3da34c19383a0e4bac0e9f2f3ad2c0f12",
+        "size": 64
+      },
+      "detachedSignature": {
+        "path": "sidecars/openburnbar-0.1.1-1-x86_64.pkg.tar.zst.ed25519.sig",
+        "sha256": "db03bf4d5552e5fdec94892b08e8b29d49c0c21e281b3e43db7c59744d36ea9e",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/openburnbar-0.1.1-1-x86_64.pkg.tar.zst.sigstore.json",
+        "sha256": "40b5535f679a455f0699102a33b37865fc8cf462951932d5c5efd1afddc36244",
+        "size": 26571
+      }
+    },
+    {
+      "format": "deb",
+      "architecture": "aarch64",
+      "artifact": {
+        "path": "artifacts/OpenBurnBar_0.1.1_arm64.deb",
+        "sha256": "5f5576fc1302bdb58499bd96cb22c9e6091615a42986bf8d79ea12b8f7272f0d",
+        "size": 148041238
+      },
+      "installedManifest": {
+        "path": "installed-manifests/OpenBurnBar_0.1.1_arm64.deb.installed-manifest.json",
+        "sha256": "09a48e62c7d47364ab9b510ffa07e555cad382f07e445ec0f8b0c49f072266ee",
+        "size": 37883
+      },
+      "installedManifestSignature": {
+        "path": "installed-manifests/OpenBurnBar_0.1.1_arm64.deb.installed-manifest.json.sig",
+        "sha256": "1a06f333b68082cd5aee09cbc12465865ea0eb864364af06541594d22ca637c5",
+        "size": 64
+      },
+      "detachedSignature": {
+        "path": "sidecars/OpenBurnBar_0.1.1_arm64.deb.ed25519.sig",
+        "sha256": "6069637e88eec5a8b8722c031814bf4886da947f0bc7891ec60ce3e0df05b41f",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/OpenBurnBar_0.1.1_arm64.deb.sigstore.json",
+        "sha256": "e3aae1a245696f90a94055dc81388fefac264bb1e1f4f68a69ced9eb1b018a14",
+        "size": 26643
+      }
+    },
+    {
+      "format": "deb",
+      "architecture": "x86_64",
+      "artifact": {
+        "path": "artifacts/OpenBurnBar_0.1.1_amd64.deb",
+        "sha256": "57c29c1103841fecb1fe1071d5deb1456f387b534592e1e2cfb548ac874d6bfe",
+        "size": 147773136
+      },
+      "installedManifest": {
+        "path": "installed-manifests/OpenBurnBar_0.1.1_amd64.deb.installed-manifest.json",
+        "sha256": "621ea742528d1a523ee892bb5af5c2f274ed857917007e2958d6971a3f6290cd",
+        "size": 37777
+      },
+      "installedManifestSignature": {
+        "path": "installed-manifests/OpenBurnBar_0.1.1_amd64.deb.installed-manifest.json.sig",
+        "sha256": "10315a0cb22eb4a58e5cc5a82eb5c60264df8a17a4dea76289951e32f8df005b",
+        "size": 64
+      },
+      "detachedSignature": {
+        "path": "sidecars/OpenBurnBar_0.1.1_amd64.deb.ed25519.sig",
+        "sha256": "dc29eb7ad42930bee3405a872b6df74e3239aef284a1b3e3302a83b11e330a4b",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/OpenBurnBar_0.1.1_amd64.deb.sigstore.json",
+        "sha256": "16cf538c0c6783a51146fce33ac04d4f8a050fce7392707965c01cd1c8c0ca34",
+        "size": 26643
+      }
+    },
+    {
+      "format": "rpm",
+      "architecture": "aarch64",
+      "artifact": {
+        "path": "artifacts/OpenBurnBar-0.1.1-1.aarch64.rpm",
+        "sha256": "263c0f93309535421e71fcc2741d50528f6def06fc31199c6728de9224f38112",
+        "size": 104563966
+      },
+      "installedManifest": {
+        "path": "installed-manifests/OpenBurnBar-0.1.1-1.aarch64.rpm.installed-manifest.json",
+        "sha256": "151288face31c7a206a5e281ef5ba531dd2623c1fedcd6c406f531a7dae78816",
+        "size": 41833
+      },
+      "installedManifestSignature": {
+        "path": "installed-manifests/OpenBurnBar-0.1.1-1.aarch64.rpm.installed-manifest.json.sig",
+        "sha256": "f340d1d76ddfb1dfe8f5c010dee20bfb48c382deaf811c0edd87e2d33d35a0dc",
+        "size": 64
+      },
+      "detachedSignature": {
+        "path": "sidecars/OpenBurnBar-0.1.1-1.aarch64.rpm.ed25519.sig",
+        "sha256": "c52e6fa4cefbc3c4cf129800eebbf86115d57b0c3a63cd60bc145c8a55370980",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/OpenBurnBar-0.1.1-1.aarch64.rpm.sigstore.json",
+        "sha256": "5904d09e7c5854dca08c208aa93c2036d85f179de05aecafbc3bd7572e974b5d",
+        "size": 26707
+      }
+    },
+    {
+      "format": "rpm",
+      "architecture": "x86_64",
+      "artifact": {
+        "path": "artifacts/OpenBurnBar-0.1.1-1.x86_64.rpm",
+        "sha256": "393b78493f933b79e5a1f3556ad8cb56317a0e1fe96fcfe1d7ce5c1e0e64af0e",
+        "size": 104856337
+      },
+      "installedManifest": {
+        "path": "installed-manifests/OpenBurnBar-0.1.1-1.x86_64.rpm.installed-manifest.json",
+        "sha256": "57ab0a7e3fa10e20275505a1248fdeb0472fcbdc41819c5d15dcdc789b143625",
+        "size": 41727
+      },
+      "installedManifestSignature": {
+        "path": "installed-manifests/OpenBurnBar-0.1.1-1.x86_64.rpm.installed-manifest.json.sig",
+        "sha256": "457b695b1c8475cd79df1942d0db12edb76e181be139b5b4a6f321fb7fe9f404",
+        "size": 64
+      },
+      "detachedSignature": {
+        "path": "sidecars/OpenBurnBar-0.1.1-1.x86_64.rpm.ed25519.sig",
+        "sha256": "f8bb7f9e3c872860baac0adfb74f9ce9382963184eba11300403dc8d4b59a09a",
+        "size": 64
+      },
+      "sigstore": {
+        "path": "artifacts/OpenBurnBar-0.1.1-1.x86_64.rpm.sigstore.json",
+        "sha256": "078e86570a80d23351042acc88365b4e7d16c36a2e3d4354f17ce4f3d5b3e9c4",
+        "size": 26699
+      }
+    }
+  ],
+  "featureProofRegistry": {
+    "path": "sidecars/product-feature-proof-registry.json",
+    "sha256": "7c0858894f1f76f1002fb432f1f90b36175de186c27b1673a64a7d7e201a02ec",
+    "size": 11864
+  },
+  "attestationSubjects": [
+    {
+      "role": "arch-release-metadata",
+      "subject": {
+        "path": "arch/arch-release-metadata.json",
+        "sha256": "970beb702c0ffe1e62981c8c5e587553e81371e34c9f69e04dbc2b5c6c11e77a",
+        "size": 5437
+      },
+      "bundle": {
+        "path": "arch/arch-release-metadata.json.sigstore.json",
+        "sha256": "81b26e6815cd52d45ed1af2404b23c734e6c1324aa6f1d759a4a0e9201d2671a",
+        "size": 26503
+      }
+    },
+    {
+      "role": "installed-manifest-signature",
+      "architecture": "aarch64",
+      "format": "arch",
+      "subject": {
+        "path": "arch/openburnbar-0.1.1-aarch64.installed-manifest.ed25519",
+        "sha256": "fa9b1a4aca5ee30e059ee8beda260a76a67820c57e48a07c9038309ee92c731f",
+        "size": 64
+      },
+      "bundle": {
+        "path": "arch/openburnbar-0.1.1-aarch64.installed-manifest.ed25519.sigstore.json",
+        "sha256": "c39367c44828879970b58c400b30505dac0ab91fd4f72608355ccdd3f8c40697",
+        "size": 26535
+      }
+    },
+    {
+      "role": "installed-manifest",
+      "architecture": "aarch64",
+      "format": "arch",
+      "subject": {
+        "path": "arch/openburnbar-0.1.1-aarch64.installed-manifest.json",
+        "sha256": "c94798eb51df6ed428e23c09c693eda8a7f7ff60af2005ba34a2452477595359",
+        "size": 150706
+      },
+      "bundle": {
+        "path": "arch/openburnbar-0.1.1-aarch64.installed-manifest.json.sigstore.json",
+        "sha256": "0a9739c9dec2e84f317c35886710e9e3970ae8f857aaee5910964b533a5f2005",
+        "size": 26643
+      }
+    },
+    {
+      "role": "installed-manifest-signature",
+      "architecture": "x86_64",
+      "format": "arch",
+      "subject": {
+        "path": "arch/openburnbar-0.1.1-x86_64.installed-manifest.ed25519",
+        "sha256": "35b66bfb1b3159c14fda79ec7fd2bba3da34c19383a0e4bac0e9f2f3ad2c0f12",
+        "size": 64
+      },
+      "bundle": {
+        "path": "arch/openburnbar-0.1.1-x86_64.installed-manifest.ed25519.sigstore.json",
+        "sha256": "a69aea1e6d069c7d0dce550fb9ce3e8b3285562be5d6559f63ea5d7ad260f39b",
+        "size": 26579
+      }
+    },
+    {
+      "role": "installed-manifest",
+      "architecture": "x86_64",
+      "format": "arch",
+      "subject": {
+        "path": "arch/openburnbar-0.1.1-x86_64.installed-manifest.json",
+        "sha256": "c7145111178b5d7a574575119249c50ed4658ca62885769f0f2955e4aba49f3e",
+        "size": 130320
+      },
+      "bundle": {
+        "path": "arch/openburnbar-0.1.1-x86_64.installed-manifest.json.sigstore.json",
+        "sha256": "89ee7df2f27e7ba87139b9d6f88e0ea60d4959f38fa82ec0374ea05dc6d9f545",
+        "size": 26775
+      }
+    },
+    {
+      "role": "arch-pkgbuild",
+      "subject": {
+        "path": "arch/PKGBUILD",
+        "sha256": "9ed00b258b1ec1850728a4a3cd7fda64b4e157d0c0634b2fe53fc2c9b0497cee",
+        "size": 11866
+      },
+      "bundle": {
+        "path": "arch/PKGBUILD.sigstore.json",
+        "sha256": "7bec84975e4007d1bc29ce0e6051594d4ab3f5dd43bb59ac444e59902b79665f",
+        "size": 26619
+      }
+    },
+    {
+      "role": "release-artifact",
+      "architecture": "aarch64",
+      "format": "appimage",
+      "subject": {
+        "path": "artifacts/OpenBurnBar_0.1.1_aarch64.AppImage",
+        "sha256": "addbbf576c73f4f805266dc02a3fac1bb5ecef98148efb3a01dcd7200d28f2e2",
+        "size": 200669704
+      },
+      "bundle": {
+        "path": "artifacts/OpenBurnBar_0.1.1_aarch64.AppImage.sigstore.json",
+        "sha256": "c728a19fe93871a6c53c548d43a719a8d88b0f0e9e2ebf1e0682864cea8af919",
+        "size": 26655
+      }
+    },
+    {
+      "role": "release-artifact",
+      "architecture": "x86_64",
+      "format": "appimage",
+      "subject": {
+        "path": "artifacts/OpenBurnBar_0.1.1_amd64.AppImage",
+        "sha256": "2a38fb6a61f60562d5718ddd1552181daa70811b5ace3c1f38344b8b872adf3b",
+        "size": 203233784
+      },
+      "bundle": {
+        "path": "artifacts/OpenBurnBar_0.1.1_amd64.AppImage.sigstore.json",
+        "sha256": "67c44061bfa08823a8766775674ea35d5d30d9dc3dfd76f0ac739e00abb5de37",
+        "size": 26747
+      }
+    },
+    {
+      "role": "release-artifact",
+      "architecture": "x86_64",
+      "format": "deb",
+      "subject": {
+        "path": "artifacts/OpenBurnBar_0.1.1_amd64.deb",
+        "sha256": "57c29c1103841fecb1fe1071d5deb1456f387b534592e1e2cfb548ac874d6bfe",
+        "size": 147773136
+      },
+      "bundle": {
+        "path": "artifacts/OpenBurnBar_0.1.1_amd64.deb.sigstore.json",
+        "sha256": "16cf538c0c6783a51146fce33ac04d4f8a050fce7392707965c01cd1c8c0ca34",
+        "size": 26643
+      }
+    },
+    {
+      "role": "release-artifact",
+      "architecture": "aarch64",
+      "format": "deb",
+      "subject": {
+        "path": "artifacts/OpenBurnBar_0.1.1_arm64.deb",
+        "sha256": "5f5576fc1302bdb58499bd96cb22c9e6091615a42986bf8d79ea12b8f7272f0d",
+        "size": 148041238
+      },
+      "bundle": {
+        "path": "artifacts/OpenBurnBar_0.1.1_arm64.deb.sigstore.json",
+        "sha256": "e3aae1a245696f90a94055dc81388fefac264bb1e1f4f68a69ced9eb1b018a14",
+        "size": 26643
+      }
+    },
+    {
+      "role": "release-artifact",
+      "architecture": "aarch64",
+      "format": "arch",
+      "subject": {
+        "path": "artifacts/openburnbar-0.1.1-1-aarch64.pkg.tar.zst",
+        "sha256": "50deef58da92df21440dee21ca95d35c20b40ed528cb6867f29c2d29e4afc1e2",
+        "size": 245028400
+      },
+      "bundle": {
+        "path": "artifacts/openburnbar-0.1.1-1-aarch64.pkg.tar.zst.sigstore.json",
+        "sha256": "65a610ee271cceae1c0b6bd9ad23bc224f8157119451a7eb7b73636b389bc370",
+        "size": 26667
+      }
+    },
+    {
+      "role": "release-artifact",
+      "architecture": "x86_64",
+      "format": "arch",
+      "subject": {
+        "path": "artifacts/openburnbar-0.1.1-1-x86_64.pkg.tar.zst",
+        "sha256": "296150102e6b7afb11f97ba90e0b6a4cfbdcb878ac53f4d3002c3493ffb64a8b",
+        "size": 248805878
+      },
+      "bundle": {
+        "path": "artifacts/openburnbar-0.1.1-1-x86_64.pkg.tar.zst.sigstore.json",
+        "sha256": "40b5535f679a455f0699102a33b37865fc8cf462951932d5c5efd1afddc36244",
+        "size": 26571
+      }
+    },
+    {
+      "role": "release-artifact",
+      "architecture": "aarch64",
+      "format": "rpm",
+      "subject": {
+        "path": "artifacts/OpenBurnBar-0.1.1-1.aarch64.rpm",
+        "sha256": "263c0f93309535421e71fcc2741d50528f6def06fc31199c6728de9224f38112",
+        "size": 104563966
+      },
+      "bundle": {
+        "path": "artifacts/OpenBurnBar-0.1.1-1.aarch64.rpm.sigstore.json",
+        "sha256": "5904d09e7c5854dca08c208aa93c2036d85f179de05aecafbc3bd7572e974b5d",
+        "size": 26707
+      }
+    },
+    {
+      "role": "release-artifact",
+      "architecture": "x86_64",
+      "format": "rpm",
+      "subject": {
+        "path": "artifacts/OpenBurnBar-0.1.1-1.x86_64.rpm",
+        "sha256": "393b78493f933b79e5a1f3556ad8cb56317a0e1fe96fcfe1d7ce5c1e0e64af0e",
+        "size": 104856337
+      },
+      "bundle": {
+        "path": "artifacts/OpenBurnBar-0.1.1-1.x86_64.rpm.sigstore.json",
+        "sha256": "078e86570a80d23351042acc88365b4e7d16c36a2e3d4354f17ce4f3d5b3e9c4",
+        "size": 26699
+      }
+    },
+    {
+      "role": "release-artifact",
+      "architecture": "aarch64",
+      "format": "daemon",
+      "subject": {
+        "path": "artifacts/openburnbar-daemon-0.1.1-linux-aarch64",
+        "sha256": "9e539c1c1990e5f0b44c5ac913ec9dd48d5512df77b736ef5181406284a19eb5",
+        "size": 149990760
+      },
+      "bundle": {
+        "path": "artifacts/openburnbar-daemon-0.1.1-linux-aarch64.sigstore.json",
+        "sha256": "6f32b4af7e44f0b305b05f217a9cb476937e2855103c4caff9fd551940be3f3b",
+        "size": 26659
+      }
+    },
+    {
+      "role": "release-artifact",
+      "architecture": "x86_64",
+      "format": "daemon",
+      "subject": {
+        "path": "artifacts/openburnbar-daemon-0.1.1-linux-x86_64",
+        "sha256": "75a48cf1dd552d445de7b2e82991104c3eaaecc5f6a79fe9f9a3cf0fd50ac9a5",
+        "size": 146815512
+      },
+      "bundle": {
+        "path": "artifacts/openburnbar-daemon-0.1.1-linux-x86_64.sigstore.json",
+        "sha256": "90cbd36a538c2fb29d3b791753a4acbd1a3a9594e4279e5b32ee417a88ced2ec",
+        "size": 26755
+      }
+    },
+    {
+      "role": "installed-manifest",
+      "architecture": "x86_64",
+      "format": "deb",
+      "subject": {
+        "path": "installed-manifests/OpenBurnBar_0.1.1_amd64.deb.installed-manifest.json",
+        "sha256": "621ea742528d1a523ee892bb5af5c2f274ed857917007e2958d6971a3f6290cd",
+        "size": 37777
+      },
+      "bundle": {
+        "path": "installed-manifests/OpenBurnBar_0.1.1_amd64.deb.installed-manifest.json.sigstore.json",
+        "sha256": "ade504e251fefa96cb1483b854b97009def82fd28fc400a1c2fdc156a5c8cf72",
+        "size": 26675
+      }
+    },
+    {
+      "role": "installed-manifest-signature",
+      "architecture": "x86_64",
+      "format": "deb",
+      "subject": {
+        "path": "installed-manifests/OpenBurnBar_0.1.1_amd64.deb.installed-manifest.json.sig",
+        "sha256": "10315a0cb22eb4a58e5cc5a82eb5c60264df8a17a4dea76289951e32f8df005b",
+        "size": 64
+      },
+      "bundle": {
+        "path": "installed-manifests/OpenBurnBar_0.1.1_amd64.deb.installed-manifest.json.sig.sigstore.json",
+        "sha256": "91b21e978e7f3580713ecc7f0693ad9312a718ee16e3a9908c3720276a9078ae",
+        "size": 26587
+      }
+    },
+    {
+      "role": "installed-manifest",
+      "architecture": "aarch64",
+      "format": "deb",
+      "subject": {
+        "path": "installed-manifests/OpenBurnBar_0.1.1_arm64.deb.installed-manifest.json",
+        "sha256": "09a48e62c7d47364ab9b510ffa07e555cad382f07e445ec0f8b0c49f072266ee",
+        "size": 37883
+      },
+      "bundle": {
+        "path": "installed-manifests/OpenBurnBar_0.1.1_arm64.deb.installed-manifest.json.sigstore.json",
+        "sha256": "90160136f43c6f00d4ebe728a89f71d101365fc87b3c9ddadc6504a352685ab1",
+        "size": 26631
+      }
+    },
+    {
+      "role": "installed-manifest-signature",
+      "architecture": "aarch64",
+      "format": "deb",
+      "subject": {
+        "path": "installed-manifests/OpenBurnBar_0.1.1_arm64.deb.installed-manifest.json.sig",
+        "sha256": "1a06f333b68082cd5aee09cbc12465865ea0eb864364af06541594d22ca637c5",
+        "size": 64
+      },
+      "bundle": {
+        "path": "installed-manifests/OpenBurnBar_0.1.1_arm64.deb.installed-manifest.json.sig.sigstore.json",
+        "sha256": "c50b1f1cb2bdf92c1bfd9ef8733301575abb72036d62e4c120a67616c200863c",
+        "size": 26683
+      }
+    },
+    {
+      "role": "installed-manifest",
+      "architecture": "aarch64",
+      "format": "rpm",
+      "subject": {
+        "path": "installed-manifests/OpenBurnBar-0.1.1-1.aarch64.rpm.installed-manifest.json",
+        "sha256": "151288face31c7a206a5e281ef5ba531dd2623c1fedcd6c406f531a7dae78816",
+        "size": 41833
+      },
+      "bundle": {
+        "path": "installed-manifests/OpenBurnBar-0.1.1-1.aarch64.rpm.installed-manifest.json.sigstore.json",
+        "sha256": "4265216ab8bdd9f331f98f7c87141a6c6234ee574cbe3ee8d2ca4a24351c3250",
+        "size": 26639
+      }
+    },
+    {
+      "role": "installed-manifest-signature",
+      "architecture": "aarch64",
+      "format": "rpm",
+      "subject": {
+        "path": "installed-manifests/OpenBurnBar-0.1.1-1.aarch64.rpm.installed-manifest.json.sig",
+        "sha256": "f340d1d76ddfb1dfe8f5c010dee20bfb48c382deaf811c0edd87e2d33d35a0dc",
+        "size": 64
+      },
+      "bundle": {
+        "path": "installed-manifests/OpenBurnBar-0.1.1-1.aarch64.rpm.installed-manifest.json.sig.sigstore.json",
+        "sha256": "ff71dfd4fc2246a9f7057078843e6b1c5bd455b01b5e87cd305c7afe23da9925",
+        "size": 26587
+      }
+    },
+    {
+      "role": "installed-manifest",
+      "architecture": "x86_64",
+      "format": "rpm",
+      "subject": {
+        "path": "installed-manifests/OpenBurnBar-0.1.1-1.x86_64.rpm.installed-manifest.json",
+        "sha256": "57ab0a7e3fa10e20275505a1248fdeb0472fcbdc41819c5d15dcdc789b143625",
+        "size": 41727
+      },
+      "bundle": {
+        "path": "installed-manifests/OpenBurnBar-0.1.1-1.x86_64.rpm.installed-manifest.json.sigstore.json",
+        "sha256": "292deb856568f20a884e0e85eebc461ca8b2abf63dde93810e277bcfc6c9edc7",
+        "size": 26727
+      }
+    },
+    {
+      "role": "installed-manifest-signature",
+      "architecture": "x86_64",
+      "format": "rpm",
+      "subject": {
+        "path": "installed-manifests/OpenBurnBar-0.1.1-1.x86_64.rpm.installed-manifest.json.sig",
+        "sha256": "457b695b1c8475cd79df1942d0db12edb76e181be139b5b4a6f321fb7fe9f404",
+        "size": 64
+      },
+      "bundle": {
+        "path": "installed-manifests/OpenBurnBar-0.1.1-1.x86_64.rpm.installed-manifest.json.sig.sigstore.json",
+        "sha256": "ec7d63e0a89554fffb2590293d31b5cebd2e117fcf3494a753ddd6dae218e56b",
+        "size": 26639
+      }
+    },
+    {
+      "role": "update-feed",
+      "subject": {
+        "path": "latest-linux.draft.json",
+        "sha256": "cbc6839b71b6d99401d4d191e48caba99a5cee83e1a1b13ba9698a340a2c8c01",
+        "size": 4971
+      },
+      "bundle": {
+        "path": "latest-linux.draft.json.sigstore.json",
+        "sha256": "44798e338d2867abe72c7951e6501b1193b6410e1956c5174a2d017b8e9360d5",
+        "size": 26639
+      }
+    },
+    {
+      "role": "checksums",
+      "subject": {
+        "path": "sidecars/OpenBurnBar-0.1.1-linux-checksums.txt",
+        "sha256": "0efb0da5ac55570d737725086e6338b1e04f32612dfd69fed52eab4bc522efef",
+        "size": 1253
+      },
+      "bundle": {
+        "path": "sidecars/OpenBurnBar-0.1.1-linux-checksums.txt.sigstore.json",
+        "sha256": "a26211c6d1f9ad5c94b137af314b51ded919f414b031866b060e1e268e9af1a9",
+        "size": 26659
+      }
+    },
+    {
+      "role": "vex",
+      "subject": {
+        "path": "sidecars/OpenBurnBar-0.1.1-linux.openvex.json",
+        "sha256": "f1ea87356a7a5482183d864358187402aad7234ad80fdd1040ea2c9c857d1ba0",
+        "size": 720
+      },
+      "bundle": {
+        "path": "sidecars/OpenBurnBar-0.1.1-linux.openvex.json.sigstore.json",
+        "sha256": "23da9fb1ec3ae8dacae9dc7298cf3e31bcc5b20814e70ab68d8a9eab9d7f184a",
+        "size": 26611
+      }
+    },
+    {
+      "role": "provenance",
+      "subject": {
+        "path": "sidecars/OpenBurnBar-0.1.1-linux.provenance-predicate.json",
+        "sha256": "963d4a9546711b38c4965cbaa27ab4fd3698b1b6a79b41d484de123d0b87a2dd",
+        "size": 13032
+      },
+      "bundle": {
+        "path": "sidecars/OpenBurnBar-0.1.1-linux.provenance-predicate.json.sigstore.json",
+        "sha256": "a33821b821c62f8533766cc4d40adacea16dd234b2b324406379c4d9dee24cdc",
+        "size": 26727
+      }
+    },
+    {
+      "role": "sbom",
+      "subject": {
+        "path": "sidecars/OpenBurnBar-0.1.1-linux.spdx.json",
+        "sha256": "05a7f9832ba2c26a6d31c710d1283711a0f7723133a0bd4d54a3406c42551bd9",
+        "size": 2205051
+      },
+      "bundle": {
+        "path": "sidecars/OpenBurnBar-0.1.1-linux.spdx.json.sigstore.json",
+        "sha256": "3d3bdcddcbfacc2929e45ef623dfe9c1ab57382653d738c618d8e52b7447b244",
+        "size": 26511
+      }
+    },
+    {
+      "role": "source-archive",
+      "subject": {
+        "path": "sidecars/OpenBurnBar-0.1.1-source-1b4c3b1e269b.tar",
+        "sha256": "25bc7510127e01f17872b5c8ed55723c42521b3d4ec6493c8ee0ee1c4a9c3b90",
+        "size": 644761600
+      },
+      "bundle": {
+        "path": "sidecars/OpenBurnBar-0.1.1-source-1b4c3b1e269b.tar.sigstore.json",
+        "sha256": "93cad33d7b031ef1eae1c21c83fa4f79a6976e46798650436fab4b71e5fe4cfd",
+        "size": 26571
+      }
+    }
+  ],
+  "proofs": [
+    {
+      "role": "arch-pkgbuild",
+      "path": "arch/PKGBUILD",
+      "sha256": "9ed00b258b1ec1850728a4a3cd7fda64b4e157d0c0634b2fe53fc2c9b0497cee",
+      "size": 11866
+    },
+    {
+      "role": "arch-release-metadata",
+      "path": "arch/arch-release-metadata.json",
+      "sha256": "970beb702c0ffe1e62981c8c5e587553e81371e34c9f69e04dbc2b5c6c11e77a",
+      "size": 5437
+    },
+    {
+      "role": "architecture-sessions",
+      "path": "smoke/architecture-sessions.json",
+      "sha256": "1655543d2875080887545a50b11c5e42a54071b8467084e6d5aa406afbacabcd",
+      "size": 4832
+    },
+    {
+      "role": "architecture-smoke",
+      "path": "smoke/architecture-smoke-summary.json",
+      "sha256": "57882add7758f2b0cf22d3a523eade69521fc016100451c3c5aba8870c37550b",
+      "size": 556
+    },
+    {
+      "role": "checksums",
+      "path": "sidecars/OpenBurnBar-0.1.1-linux-checksums.txt",
+      "sha256": "0efb0da5ac55570d737725086e6338b1e04f32612dfd69fed52eab4bc522efef",
+      "size": 1253
+    },
+    {
+      "role": "package-signature",
+      "architecture": "aarch64",
+      "format": "appimage",
+      "path": "sidecars/OpenBurnBar_0.1.1_aarch64.AppImage.ed25519.sig",
+      "sha256": "91faf4ab72e071520080f14df744a7e9acb3a965a80f48945a067ac06e415e39",
+      "size": 64
+    },
+    {
+      "role": "package-signature",
+      "architecture": "x86_64",
+      "format": "appimage",
+      "path": "sidecars/OpenBurnBar_0.1.1_amd64.AppImage.ed25519.sig",
+      "sha256": "fc022d65499212ee2ebd30a7adaed315f780c99043165413b8266d665aba8699",
+      "size": 64
+    },
+    {
+      "role": "package-signature",
+      "architecture": "x86_64",
+      "format": "deb",
+      "path": "sidecars/OpenBurnBar_0.1.1_amd64.deb.ed25519.sig",
+      "sha256": "dc29eb7ad42930bee3405a872b6df74e3239aef284a1b3e3302a83b11e330a4b",
+      "size": 64
+    },
+    {
+      "role": "package-signature",
+      "architecture": "aarch64",
+      "format": "deb",
+      "path": "sidecars/OpenBurnBar_0.1.1_arm64.deb.ed25519.sig",
+      "sha256": "6069637e88eec5a8b8722c031814bf4886da947f0bc7891ec60ce3e0df05b41f",
+      "size": 64
+    },
+    {
+      "role": "package-signature",
+      "architecture": "aarch64",
+      "format": "arch",
+      "path": "sidecars/openburnbar-0.1.1-1-aarch64.pkg.tar.zst.ed25519.sig",
+      "sha256": "0df021b5ccc9dfdd5575694b08c8966c0941f5b685df50db0de4ff28df157bc9",
+      "size": 64
+    },
+    {
+      "role": "package-signature",
+      "architecture": "x86_64",
+      "format": "arch",
+      "path": "sidecars/openburnbar-0.1.1-1-x86_64.pkg.tar.zst.ed25519.sig",
+      "sha256": "db03bf4d5552e5fdec94892b08e8b29d49c0c21e281b3e43db7c59744d36ea9e",
+      "size": 64
+    },
+    {
+      "role": "package-signature",
+      "architecture": "aarch64",
+      "format": "rpm",
+      "path": "sidecars/OpenBurnBar-0.1.1-1.aarch64.rpm.ed25519.sig",
+      "sha256": "c52e6fa4cefbc3c4cf129800eebbf86115d57b0c3a63cd60bc145c8a55370980",
+      "size": 64
+    },
+    {
+      "role": "package-signature",
+      "architecture": "x86_64",
+      "format": "rpm",
+      "path": "sidecars/OpenBurnBar-0.1.1-1.x86_64.rpm.ed25519.sig",
+      "sha256": "f8bb7f9e3c872860baac0adfb74f9ce9382963184eba11300403dc8d4b59a09a",
+      "size": 64
+    },
+    {
+      "role": "package-signature",
+      "architecture": "aarch64",
+      "format": "daemon",
+      "path": "sidecars/openburnbar-daemon-0.1.1-linux-aarch64.ed25519.sig",
+      "sha256": "c65afcae438c2e4d5152b0cf313879e1ef0cb52c1580f26e9fb64032325ba32f",
+      "size": 64
+    },
+    {
+      "role": "package-signature",
+      "architecture": "x86_64",
+      "format": "daemon",
+      "path": "sidecars/openburnbar-daemon-0.1.1-linux-x86_64.ed25519.sig",
+      "sha256": "7270ac42f0fc089f6d40eded204d315caef5fd83dff54a028e4ab1c39f1cde99",
+      "size": 64
+    },
+    {
+      "role": "package-sigstore",
+      "architecture": "aarch64",
+      "format": "appimage",
+      "path": "artifacts/OpenBurnBar_0.1.1_aarch64.AppImage.sigstore.json",
+      "sha256": "c728a19fe93871a6c53c548d43a719a8d88b0f0e9e2ebf1e0682864cea8af919",
+      "size": 26655
+    },
+    {
+      "role": "package-sigstore",
+      "architecture": "x86_64",
+      "format": "appimage",
+      "path": "artifacts/OpenBurnBar_0.1.1_amd64.AppImage.sigstore.json",
+      "sha256": "67c44061bfa08823a8766775674ea35d5d30d9dc3dfd76f0ac739e00abb5de37",
+      "size": 26747
+    },
+    {
+      "role": "package-sigstore",
+      "architecture": "x86_64",
+      "format": "deb",
+      "path": "artifacts/OpenBurnBar_0.1.1_amd64.deb.sigstore.json",
+      "sha256": "16cf538c0c6783a51146fce33ac04d4f8a050fce7392707965c01cd1c8c0ca34",
+      "size": 26643
+    },
+    {
+      "role": "package-sigstore",
+      "architecture": "aarch64",
+      "format": "deb",
+      "path": "artifacts/OpenBurnBar_0.1.1_arm64.deb.sigstore.json",
+      "sha256": "e3aae1a245696f90a94055dc81388fefac264bb1e1f4f68a69ced9eb1b018a14",
+      "size": 26643
+    },
+    {
+      "role": "package-sigstore",
+      "architecture": "aarch64",
+      "format": "arch",
+      "path": "artifacts/openburnbar-0.1.1-1-aarch64.pkg.tar.zst.sigstore.json",
+      "sha256": "65a610ee271cceae1c0b6bd9ad23bc224f8157119451a7eb7b73636b389bc370",
+      "size": 26667
+    },
+    {
+      "role": "package-sigstore",
+      "architecture": "x86_64",
+      "format": "arch",
+      "path": "artifacts/openburnbar-0.1.1-1-x86_64.pkg.tar.zst.sigstore.json",
+      "sha256": "40b5535f679a455f0699102a33b37865fc8cf462951932d5c5efd1afddc36244",
+      "size": 26571
+    },
+    {
+      "role": "package-sigstore",
+      "architecture": "aarch64",
+      "format": "rpm",
+      "path": "artifacts/OpenBurnBar-0.1.1-1.aarch64.rpm.sigstore.json",
+      "sha256": "5904d09e7c5854dca08c208aa93c2036d85f179de05aecafbc3bd7572e974b5d",
+      "size": 26707
+    },
+    {
+      "role": "package-sigstore",
+      "architecture": "x86_64",
+      "format": "rpm",
+      "path": "artifacts/OpenBurnBar-0.1.1-1.x86_64.rpm.sigstore.json",
+      "sha256": "078e86570a80d23351042acc88365b4e7d16c36a2e3d4354f17ce4f3d5b3e9c4",
+      "size": 26699
+    },
+    {
+      "role": "package-sigstore",
+      "architecture": "aarch64",
+      "format": "daemon",
+      "path": "artifacts/openburnbar-daemon-0.1.1-linux-aarch64.sigstore.json",
+      "sha256": "6f32b4af7e44f0b305b05f217a9cb476937e2855103c4caff9fd551940be3f3b",
+      "size": 26659
+    },
+    {
+      "role": "package-sigstore",
+      "architecture": "x86_64",
+      "format": "daemon",
+      "path": "artifacts/openburnbar-daemon-0.1.1-linux-x86_64.sigstore.json",
+      "sha256": "90cbd36a538c2fb29d3b791753a4acbd1a3a9594e4279e5b32ee417a88ced2ec",
+      "size": 26755
+    },
+    {
+      "role": "package-smoke",
+      "path": "smoke/package-smoke-summary.json",
+      "sha256": "d071ab6e199ccff8b799dcfd5cb7ca9525491144fc31c617467c7b06f01cc559",
+      "size": 2325
+    },
+    {
+      "role": "provenance",
+      "path": "sidecars/OpenBurnBar-0.1.1-linux.provenance-predicate.json",
+      "sha256": "963d4a9546711b38c4965cbaa27ab4fd3698b1b6a79b41d484de123d0b87a2dd",
+      "size": 13032
+    },
+    {
+      "role": "sbom",
+      "path": "sidecars/OpenBurnBar-0.1.1-linux.spdx.json",
+      "sha256": "05a7f9832ba2c26a6d31c710d1283711a0f7723133a0bd4d54a3406c42551bd9",
+      "size": 2205051
+    },
+    {
+      "role": "source-archive",
+      "path": "sidecars/OpenBurnBar-0.1.1-source-1b4c3b1e269b.tar",
+      "sha256": "25bc7510127e01f17872b5c8ed55723c42521b3d4ec6493c8ee0ee1c4a9c3b90",
+      "size": 644761600
+    },
+    {
+      "role": "update-feed-signature",
+      "path": "sidecars/latest-linux.json.ed25519.sig",
+      "sha256": "f79afc3d12c5f3516b7232024b6be912b46f87f9efc1f17550faac10eac27308",
+      "size": 64
+    },
+    {
+      "role": "update-feed-sigstore",
+      "path": "latest-linux.draft.json.sigstore.json",
+      "sha256": "44798e338d2867abe72c7951e6501b1193b6410e1956c5174a2d017b8e9360d5",
+      "size": 26639
+    },
+    {
+      "role": "update-feed",
+      "path": "latest-linux.draft.json",
+      "sha256": "cbc6839b71b6d99401d4d191e48caba99a5cee83e1a1b13ba9698a340a2c8c01",
+      "size": 4971
+    },
+    {
+      "role": "vex",
+      "path": "sidecars/OpenBurnBar-0.1.1-linux.openvex.json",
+      "sha256": "f1ea87356a7a5482183d864358187402aad7234ad80fdd1040ea2c9c857d1ba0",
+      "size": 720
+    }
+  ],
+  "blockers": []
+}
