@@ -938,6 +938,39 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertTrue(refreshed)
     }
 
+    func test_usageSync_runtimeSnapshotPreservesExecutionSourceAttribution() throws {
+        let harness = try makeRuntimePathsHarness(name: "runtime-execution-source")
+        defer { harness.cleanup() }
+
+        let event = BurnBarUsageEvent(
+            providerID: "codex",
+            modelID: "gpt-5.6-codex",
+            inputTokens: 100,
+            outputTokens: 20,
+            cacheReadTokens: 10,
+            cost: 1,
+            recordedAt: Date(timeIntervalSince1970: 1_784_592_000),
+            sessionID: "daemon-source-session",
+            projectName: "OpenBurnBar",
+            executionSourceID: "cursor",
+            executionSourceName: "Cursor",
+            executionSourceKind: .ide,
+            executionSourceConfidence: .derivedExact
+        )
+        let service = OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+
+        let snapshot = service.runtimeSnapshot(
+            from: BurnBarProviderConfigurationSnapshot(providers: []),
+            usageEvents: [event]
+        )
+        let usage = try XCTUnwrap(snapshot.importedUsages.first)
+
+        XCTAssertEqual(usage.executionSourceID, "cursor")
+        XCTAssertEqual(usage.executionSourceName, "Cursor")
+        XCTAssertEqual(usage.executionSourceKind, .ide)
+        XCTAssertEqual(usage.executionSourceConfidence, .derivedExact)
+    }
+
     func test_usageSync_importsHermesLedgerRowsAsHermesProvider() async throws {
         let harness = try makeRuntimePathsHarness(name: "hermes-import")
         defer { harness.cleanup() }

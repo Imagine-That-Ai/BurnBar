@@ -66,6 +66,7 @@ public sealed partial class WindowsSqlCipherProvisioner
         "v53_memory_forget_outbox",
         "v54_provider_quota_snapshots",
         "v55_search_chunks_fts_rowid",
+        "v56_parser_checkpoint_file_manifest",
         CurrentMigrationEndpoint,
     };
 

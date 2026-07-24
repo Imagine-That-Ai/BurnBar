@@ -41,6 +41,7 @@ public struct CodexTokenScanState: Codable, Equatable, Sendable {
     public var cacheReadTokens: Int
     public var foundCumulative: Bool
     public var foundDelta: Bool
+    public var dailyUsage: [CodexDailyTokenUsage]
 
     public init(
         byteOffset: Int64,
@@ -50,7 +51,8 @@ public struct CodexTokenScanState: Codable, Equatable, Sendable {
         outputTokens: Int = 0,
         cacheReadTokens: Int = 0,
         foundCumulative: Bool = false,
-        foundDelta: Bool = false
+        foundDelta: Bool = false,
+        dailyUsage: [CodexDailyTokenUsage] = []
     ) {
         self.byteOffset = byteOffset
         self.headDigest = headDigest
@@ -60,6 +62,7 @@ public struct CodexTokenScanState: Codable, Equatable, Sendable {
         self.cacheReadTokens = cacheReadTokens
         self.foundCumulative = foundCumulative
         self.foundDelta = foundDelta
+        self.dailyUsage = dailyUsage
     }
 }
 
@@ -108,8 +111,12 @@ public enum CodexSessionLogScanner {
         /// Exact token breakdown, or `nil` when the file contained no token
         /// events (callers fall back to their heuristic estimate).
         public let usage: (input: Int, output: Int, cacheRead: Int)?
+        /// Exact cumulative increases grouped by the local day of each event.
+        public let dailyUsage: [CodexDailyTokenUsage]
         /// State to persist for the next incremental scan.
         public let state: CodexTokenScanState
+        /// Execution surface found in the rollout's leading session metadata.
+        let executionSource: UsageExecutionSource
     }
 
     private enum TokenScanAttempt {
@@ -234,7 +241,13 @@ public enum CodexSessionLogScanner {
                     output: previous.outputTokens,
                     cacheRead: previous.cacheReadTokens,
                     foundCumulative: previous.foundCumulative,
-                    foundDelta: previous.foundDelta
+                    foundDelta: previous.foundDelta,
+                    cumulativeInput: previous.foundCumulative ? previous.inputTokens : 0,
+                    cumulativeOutput: previous.foundCumulative ? previous.outputTokens : 0,
+                    cumulativeCacheRead: previous.foundCumulative ? previous.cacheReadTokens : 0,
+                    dailyUsage: previous.dailyUsage.reduce(into: [:]) { result, bucket in
+                        result[bucket.dayStart] = bucket
+                    }
                 )
                 resumeOffset = previous.byteOffset
                 headDigest = previous.headDigest
@@ -272,11 +285,21 @@ public enum CodexSessionLogScanner {
         var persistedOffset = resumeOffset
         var scannedLines = 0
         var tailAccumulator: TokenAccumulator?
+        var sourceProbeLinesRemaining = resumeOffset == 0 ? 20 : 0
+        var executionSource = UsageExecutionSource.unknown
 
         while let line = reader.nextLine() {
             scannedLines += 1
             if scannedLines % checkpointLineInterval == 0 {
                 try governor?.checkpoint()
+            }
+
+            if sourceProbeLinesRemaining > 0 {
+                sourceProbeLinesRemaining -= 1
+                if executionSource.id == UsageExecutionSource.unknown.id,
+                   let detected = Self.executionSource(fromSessionMetadataLine: line.text) {
+                    executionSource = detected
+                }
             }
 
             // Cheap byte-scan prefilter: every envelope shape that can carry
@@ -314,13 +337,22 @@ public enum CodexSessionLogScanner {
             outputTokens: accumulator.output,
             cacheReadTokens: accumulator.cacheRead,
             foundCumulative: accumulator.foundCumulative,
-            foundDelta: accumulator.foundDelta
+            foundDelta: accumulator.foundDelta,
+            dailyUsage: accumulator.dailyUsage.values.sorted { $0.dayStart < $1.dayStart }
         )
         let usage: (input: Int, output: Int, cacheRead: Int)? =
             (effective.foundCumulative || effective.foundDelta)
             ? (effective.input, effective.output, effective.cacheRead)
             : nil
-        return .scanned(TokenScanResult(usage: usage, state: state), contentReadBytes: contentReadBytes)
+        return .scanned(
+            TokenScanResult(
+                usage: usage,
+                dailyUsage: effective.dailyUsage.values.sorted { $0.dayStart < $1.dayStart },
+                state: state,
+                executionSource: executionSource
+            ),
+            contentReadBytes: contentReadBytes
+        )
     }
 
     struct TokenAccumulator {
@@ -329,6 +361,10 @@ public enum CodexSessionLogScanner {
         var cacheRead = 0
         var foundCumulative = false
         var foundDelta = false
+        var cumulativeInput = 0
+        var cumulativeOutput = 0
+        var cumulativeCacheRead = 0
+        var dailyUsage: [Date: CodexDailyTokenUsage] = [:]
     }
 
     /// One line of the VAL-TOKEN-002 / VAL-TOKEN-010 state machine, verbatim
@@ -344,15 +380,42 @@ public enum CodexSessionLogScanner {
 
         // VAL-TOKEN-010: cumulative totals take precedence over delta events.
         if let extracted = TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(info) {
-            // Codex reports `input_tokens` inclusive of `cached_input_tokens`.
-            // Subtract the cached portion so the non-cached input and cached
-            // buckets stay disjoint (VAL-TOKEN-002).
-            let nonCachedInput = max(extracted.input - extracted.cacheRead, 0)
-            accumulator.input = nonCachedInput
-            accumulator.output = extracted.output
-            accumulator.cacheRead = extracted.cacheRead
-            accumulator.foundDelta = false
+            if !accumulator.foundCumulative, accumulator.foundDelta {
+                accumulator.input = 0
+                accumulator.output = 0
+                accumulator.cacheRead = 0
+                accumulator.dailyUsage.removeAll()
+                accumulator.foundDelta = false
+            }
+            // Keep the high-water marks in the same disjoint buckets that we
+            // persist. High-watering inclusive input and cache separately,
+            // then subtracting their deltas, can overcount non-cached input
+            // when Codex reports a transient cache rebalance.
+            let extractedInput = max(extracted.input - extracted.cacheRead, 0)
+            let nextInput = max(accumulator.cumulativeInput, extractedInput)
+            let nextOutput = max(accumulator.cumulativeOutput, extracted.output)
+            let nextCacheRead = max(accumulator.cumulativeCacheRead, extracted.cacheRead)
+
+            accumulator.input = nextInput
+            accumulator.output = nextOutput
+            accumulator.cacheRead = nextCacheRead
             accumulator.foundCumulative = true
+
+            if let eventDate = codexEventDate(from: json) {
+                let inputDelta = nextInput - accumulator.cumulativeInput
+                let outputDelta = nextOutput - accumulator.cumulativeOutput
+                let cacheReadDelta = nextCacheRead - accumulator.cumulativeCacheRead
+                recordDailyUsage(
+                    eventDate: eventDate,
+                    input: inputDelta,
+                    output: outputDelta,
+                    cacheRead: cacheReadDelta,
+                    buckets: &accumulator.dailyUsage
+                )
+            }
+            accumulator.cumulativeInput = nextInput
+            accumulator.cumulativeOutput = nextOutput
+            accumulator.cumulativeCacheRead = nextCacheRead
             return
         }
 
@@ -365,10 +428,46 @@ public enum CodexSessionLogScanner {
                 ?? lastUsage["cache_read_input_tokens"] as? Int
                 ?? 0
             accumulator.input += max(deltaInput - deltaCacheRead, 0)
-            accumulator.output += lastUsage["output_tokens"] as? Int ?? 0
+            let deltaOutput = lastUsage["output_tokens"] as? Int ?? 0
+            accumulator.output += deltaOutput
             accumulator.cacheRead += deltaCacheRead
+            if let eventDate = codexEventDate(from: json) {
+                recordDailyUsage(
+                    eventDate: eventDate,
+                    input: max(deltaInput - deltaCacheRead, 0),
+                    output: deltaOutput,
+                    cacheRead: deltaCacheRead,
+                    buckets: &accumulator.dailyUsage
+                )
+            }
             accumulator.foundDelta = true
         }
+    }
+
+    private static func codexEventDate(from json: [String: Any]) -> Date? {
+        guard let timestamp = json["timestamp"] as? String else { return nil }
+        return ThreadSafeISO8601DateFormatter.parse(timestamp)
+    }
+
+    private static func recordDailyUsage(
+        eventDate: Date,
+        input: Int,
+        output: Int,
+        cacheRead: Int,
+        buckets: inout [Date: CodexDailyTokenUsage]
+    ) {
+        guard input > 0 || output > 0 || cacheRead > 0 else { return }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .gmt
+        let dayStart = calendar.startOfDay(for: eventDate)
+        let existing = buckets[dayStart]
+        buckets[dayStart] = CodexDailyTokenUsage(
+            dayStart: dayStart,
+            endTime: max(existing?.endTime ?? eventDate, eventDate),
+            input: (existing?.input ?? 0) + input,
+            output: (existing?.output ?? 0) + output,
+            cacheRead: (existing?.cacheRead ?? 0) + cacheRead
+        )
     }
 
     private enum ConversationScanAttempt {
@@ -533,7 +632,11 @@ public enum CodexSessionLogScanner {
         options: LogParseOptions,
         fileManager: FileManager,
         cacheStore: ParserDiskCacheStore<CodexCacheEntry>
-    ) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
+    ) throws -> (
+        usages: [TokenUsage],
+        conversations: [ConversationRecord],
+        usageSessionIDsToDelete: [String]
+    ) {
         try processThreadRows(
             threadRows,
             options: options,
@@ -549,9 +652,14 @@ public enum CodexSessionLogScanner {
         fileManager: FileManager,
         cacheStore: ParserDiskCacheStore<CodexCacheEntry>,
         openFileForReading: (String) -> FileHandle?
-    ) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
+    ) throws -> (
+        usages: [TokenUsage],
+        conversations: [ConversationRecord],
+        usageSessionIDsToDelete: [String]
+    ) {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
+        var usageSessionIDsToDelete = Set<String>()
         var sessionCache = cacheStore.load()
         var activePaths = Set<String>()
         var cacheMutated = false
@@ -569,7 +677,9 @@ public enum CodexSessionLogScanner {
             var inputTokens = 0
             var outputTokens = 0
             var cacheReadTokens = 0
+            var dailyTokenUsage: [CodexDailyTokenUsage] = []
             var foundExact = false
+            var executionSource = UsageExecutionSource.unknown
             var deferredWithoutCache = false
             var contentUnavailable = false
 
@@ -590,6 +700,12 @@ public enum CodexSessionLogScanner {
                 )
                 let isNewlyDiscovered = options.fileDiscoveryTracker?.record(discoveredFile) ?? false
                 let cached = sessionCache.fileEntries[cacheKey]
+                let cachedExecutionSource = cached?.executionSource ?? .unknown
+                if cachedExecutionSource.id != UsageExecutionSource.unknown.id,
+                   executionSource.id == UsageExecutionSource.unknown.id
+                       || cachedExecutionSource.confidence > executionSource.confidence {
+                    executionSource = cachedExecutionSource
+                }
 
                 if governor != nil, signature == nil {
                     governor?.recordDeferredFile()
@@ -599,6 +715,7 @@ public enum CodexSessionLogScanner {
                         inputTokens = tokenUsage.input
                         outputTokens = tokenUsage.output
                         cacheReadTokens = tokenUsage.cacheRead
+                        dailyTokenUsage = tokenUsage.daily
                         foundExact = true
                     }
                 } else {
@@ -615,6 +732,7 @@ public enum CodexSessionLogScanner {
                             inputTokens = tokenUsage.input
                             outputTokens = tokenUsage.output
                             cacheReadTokens = tokenUsage.cacheRead
+                            dailyTokenUsage = tokenUsage.daily
                             foundExact = true
                         }
                     } else if boundaryDeferred {
@@ -622,6 +740,7 @@ public enum CodexSessionLogScanner {
                             inputTokens = tokenUsage.input
                             outputTokens = tokenUsage.output
                             cacheReadTokens = tokenUsage.cacheRead
+                            dailyTokenUsage = tokenUsage.daily
                             foundExact = true
                         } else {
                             deferredWithoutCache = true
@@ -638,10 +757,17 @@ public enum CodexSessionLogScanner {
                             options.fileDiscoveryTracker?.recordAdmitted(discoveredFile)
                             options.metrics?.recordContentRead(bytes: contentReadBytes)
 
+                            if scan.executionSource.id != UsageExecutionSource.unknown.id,
+                               executionSource.id == UsageExecutionSource.unknown.id
+                                   || scan.executionSource.confidence > executionSource.confidence {
+                                executionSource = scan.executionSource
+                            }
+
                             if let usage = scan.usage {
                                 inputTokens = usage.input
                                 outputTokens = usage.output
                                 cacheReadTokens = usage.cacheRead
+                                dailyTokenUsage = scan.dailyUsage
                                 foundExact = true
                             }
 
@@ -649,9 +775,15 @@ public enum CodexSessionLogScanner {
                                 sessionCache.fileEntries[cacheKey] = CodexCacheEntry(
                                     signature: signature,
                                     tokenUsage: scan.usage.map {
-                                        CodexTokenUsage(input: $0.input, output: $0.output, cacheRead: $0.cacheRead)
+                                        CodexTokenUsage(
+                                            input: $0.input,
+                                            output: $0.output,
+                                            cacheRead: $0.cacheRead,
+                                            daily: scan.dailyUsage
+                                        )
                                     },
-                                    scanState: scan.state
+                                    scanState: scan.state,
+                                    executionSource: executionSource
                                 )
                                 cacheMutated = true
                             }
@@ -666,6 +798,7 @@ public enum CodexSessionLogScanner {
                                 inputTokens = tokenUsage.input
                                 outputTokens = tokenUsage.output
                                 cacheReadTokens = tokenUsage.cacheRead
+                                dailyTokenUsage = tokenUsage.daily
                                 foundExact = true
                             } else {
                                 deferredWithoutCache = true
@@ -684,6 +817,7 @@ public enum CodexSessionLogScanner {
                                 inputTokens = tokenUsage.input
                                 outputTokens = tokenUsage.output
                                 cacheReadTokens = tokenUsage.cacheRead
+                                dailyTokenUsage = tokenUsage.daily
                                 foundExact = true
                             }
                         }
@@ -738,7 +872,45 @@ public enum CodexSessionLogScanner {
                 outputTokens = max(row.tokensUsed - inputTokens, 0)
             }
 
-            if inputTokens > 0 || outputTokens > 0 {
+            let completeDailyUsage = foundExact
+                && !dailyTokenUsage.isEmpty
+                && dailyTokenUsage.reduce(0) { $0 + $1.input } == inputTokens
+                && dailyTokenUsage.reduce(0) { $0 + $1.output } == outputTokens
+                && dailyTokenUsage.reduce(0) { $0 + $1.cacheRead } == cacheReadTokens
+
+            if completeDailyUsage {
+                // Remove the old lifetime row and any stale day descendants
+                // before the current exact day slices are inserted.
+                usageSessionIDsToDelete.insert(row.threadId)
+                for bucket in dailyTokenUsage {
+                    let pricing = ModelPricing.lookup(model: row.model)
+                    let cost = try pricing.cost(
+                        inputTokens: bucket.input,
+                        outputTokens: bucket.output,
+                        cacheReadTokens: bucket.cacheRead
+                    )
+                    usages.append(TokenUsage(
+                        provider: .codex,
+                        sessionId: "\(row.threadId)#day-\(Int(bucket.dayStart.timeIntervalSince1970))",
+                        projectName: row.projectName,
+                        model: row.model,
+                        inputTokens: bucket.input,
+                        outputTokens: bucket.output,
+                        cacheCreationTokens: 0,
+                        cacheReadTokens: bucket.cacheRead,
+                        costUSD: cost,
+                        startTime: bucket.dayStart,
+                        endTime: bucket.endTime,
+                        executionSourceID: executionSource.id,
+                        executionSourceName: executionSource.name,
+                        executionSourceKind: executionSource.kind,
+                        executionSourceConfidence: executionSource.confidence,
+                        provenanceMethod: .providerLog,
+                        provenanceConfidence: .exact,
+                        estimatorVersion: "codex-daily-cumulative-v1"
+                    ))
+                }
+            } else if inputTokens > 0 || outputTokens > 0 {
                 let pricing = ModelPricing.lookup(model: row.model)
                 let cost = try pricing.cost(
                     inputTokens: inputTokens,
@@ -758,6 +930,10 @@ public enum CodexSessionLogScanner {
                     costUSD: cost,
                     startTime: row.startTime,
                     endTime: row.endTime,
+                    executionSourceID: executionSource.id,
+                    executionSourceName: executionSource.name,
+                    executionSourceKind: executionSource.kind,
+                    executionSourceConfidence: executionSource.confidence,
                     provenanceMethod: foundExact ? .providerLog : .heuristicEstimate,
                     provenanceConfidence: foundExact ? .exact : .lowConfidenceEstimate,
                     estimatorVersion: foundExact ? "" : "tokens-used-split-v1"
@@ -801,7 +977,48 @@ public enum CodexSessionLogScanner {
             cacheMutated = true
         }
 
-        return (usages, conversations)
+        return (usages, conversations, usageSessionIDsToDelete.sorted())
+    }
+
+    private static func executionSource(fromSessionMetadataLine line: String) -> UsageExecutionSource? {
+        guard let data = line.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              json["type"] as? String == "session_meta",
+              let payload = json["payload"] as? [String: Any] else { return nil }
+
+        if let originator = payload["originator"] as? String,
+           let source = UsageExecutionSourceResolver.fromClientMarker(originator) {
+            return source
+        }
+        guard let source = payload["source"] as? String else { return nil }
+        if let resolved = UsageExecutionSourceResolver.fromClientMarker(source) {
+            return resolved
+        }
+        switch source.lowercased() {
+        case "cli", "exec":
+            return UsageExecutionSource(
+                id: "codex-cli",
+                name: "Codex CLI",
+                kind: .cli,
+                confidence: .exact
+            )
+        case "vscode":
+            return UsageExecutionSource(
+                id: "codex-vscode",
+                name: "Codex for VS Code",
+                kind: .ide,
+                confidence: .exact
+            )
+        case "cloud", "web":
+            return UsageExecutionSource(
+                id: "codex-cloud",
+                name: "Codex Cloud",
+                kind: .service,
+                confidence: .exact
+            )
+        default:
+            return nil
+        }
     }
 
     /// `LogParseOptions.minimumFileModificationDate` contract: files whose
