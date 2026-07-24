@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { ProviderLogoView } from './ProviderLogoView.js';
+import { ProviderLogoView, providerFallbackGlyph } from './ProviderLogoView.js';
 
 describe('ProviderLogoView fallback glyphs', () => {
   it('uses a deterministic monochrome glyph when a provider asset is absent', () => {
     render(<ProviderLogoView id="unknown-provider" size={24} />);
-    const fallback = screen.getByText('✦');
+    const fallback = screen.getByText('UP');
 
     expect((fallback as HTMLElement).style.fontFamily).toBe('var(--font-mono)');
     expect(fallback.getAttribute('aria-hidden')).toBe('true');
@@ -25,5 +25,12 @@ describe('ProviderLogoView fallback glyphs', () => {
     );
 
     expect(container.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
+  });
+
+  it('keeps catalog-only providers visually distinct with stable monograms', () => {
+    expect(providerFallbackGlyph('zai')).toBe('ZA');
+    expect(providerFallbackGlyph('cursor-agent')).toBe('CU');
+    expect(providerFallbackGlyph('JetBrains Junie')).toBe('JJ');
+    expect(providerFallbackGlyph('')).toBe('?');
   });
 });

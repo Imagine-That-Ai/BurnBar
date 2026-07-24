@@ -71,6 +71,19 @@ const FALLBACK_GLYPH: Record<string, string> = {
   piagent: '⬡',
 };
 
+/** Return a stable, readable fallback for catalog providers without an asset. */
+export function providerFallbackGlyph(id: string): string {
+  const normalized = id.trim().toLowerCase();
+  const explicit = FALLBACK_GLYPH[normalized];
+  if (explicit) return explicit;
+
+  const words = normalized.split(/[\s._-]+/u).filter(Boolean);
+  const monogram = words.length > 1
+    ? words.slice(0, 2).map((word) => word[0]).join('')
+    : (words[0] ?? '?').slice(0, 2);
+  return monogram.toUpperCase();
+}
+
 export type ProviderLogoProps = {
   /** Provider ID — matches PROVIDER_GLYPHS ids and /provider-logos/{id}.png filenames */
   id: string;
@@ -102,7 +115,7 @@ export function ProviderLogoView({
   const url = useMemo(() => logoUrl(id), [id]);
   const needsBackdrop = NEEDS_BACKDROP.has(id);
   const radius = size * 0.2237;
-  const glyph = FALLBACK_GLYPH[id] ?? '✦';
+  const glyph = providerFallbackGlyph(id);
 
   const containerStyle: React.CSSProperties = {
     width: size,
