@@ -93,6 +93,7 @@ public actor BurnBarLocalUsageIngestionService {
             .cursor: { CursorParser() },
             .openCode: { OpenCodeParser() },
             .piAgent: { PiAgentParser() },
+            .omp: { OMPParser() },
             .openClaw: { OpenClawParser() },
             .ollama: { OllamaParser() },
             .junie: { JunieParser() },

@@ -40,8 +40,8 @@ export type ProviderPathRow = {
 /**
  * Canonical provider path and ingestion coverage rows.
  *
- * There are 33 canonical AgentProvider cases and 27 ParserRegistry entries.
- * The six rows without a local parser remain visible with an explicit
+ * There are 33 canonical AgentProvider cases and 28 ParserRegistry entries.
+ * The five rows without a local parser remain visible with an explicit
  * `api-backed` or `unavailable` state; they must not be presented as parsed
  * local usage until a real source is wired.
  */

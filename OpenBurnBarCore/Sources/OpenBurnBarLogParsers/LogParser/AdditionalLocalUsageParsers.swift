@@ -499,14 +499,18 @@ public final class PiAgentParser: LogParser, Sendable {
         var usages: [TokenUsage] = []; var conversations: [ConversationRecord] = []
         for file in LocalUsageParserSupport.files(in: root, extensions: ["jsonl"]) {
             let id = file.deletingPathExtension().lastPathComponent
-            let parsed = Self.parse(file: file, sessionID: id)
+            let parsed = Self.parse(file: file, sessionID: id, provider: .piAgent)
             guard let usage = parsed.usage else { continue }
             usages.append(usage)
             if options.includeConversationBodies, let conversation = parsed.conversation { conversations.append(conversation) }
         }
         return ParseResult(usages: usages, conversations: conversations)
     }
-    private static func parse(file: URL, sessionID: String) -> (usage: TokenUsage?, conversation: ConversationRecord?) {
+    fileprivate static func parse(
+        file: URL,
+        sessionID: String,
+        provider: AgentProvider
+    ) -> (usage: TokenUsage?, conversation: ConversationRecord?) {
         let objects = LocalUsageParserSupport.jsonLines(at: file)
         let mtime = LocalUsageParserSupport.modificationDate(file) ?? Date()
         var input = 0, output = 0, cacheCreation = 0, cacheRead = 0, userChars = 0, assistantChars = 0
@@ -537,7 +541,7 @@ public final class PiAgentParser: LogParser, Sendable {
             ? TokenExtractionUtility.currentEstimatorVersion
             : ""
         let usage = LocalUsageParserSupport.usage(
-            provider: .piAgent,
+            provider: provider,
             sessionID: sessionID,
             project: project,
             model: model,
@@ -555,7 +559,7 @@ public final class PiAgentParser: LogParser, Sendable {
         let conversation = turns.isEmpty
             ? nil
             : LocalUsageParserSupport.transcript(
-                provider: .piAgent,
+                provider: provider,
                 sessionID: sessionID,
                 project: cwd ?? sessionID,
                 turns: turns,
@@ -565,6 +569,37 @@ public final class PiAgentParser: LogParser, Sendable {
                 workingDirectory: cwd
             )
         return (usage, conversation)
+    }
+}
+
+// MARK: Oh My Pi (OMP)
+
+/// OMP session files use the Pi-compatible JSONL envelope: a session header
+/// followed by nested `message` entries with role/content/usage fields. Keep
+/// the parser implementation shared with Pi so token and transcript handling
+/// cannot drift between the two local providers.
+public final class OMPParser: LogParser, Sendable {
+    public let provider: AgentProvider = .omp
+    private let sessionsOverride: URL?
+
+    public init(sessionsOverride: URL? = nil) { self.sessionsOverride = sessionsOverride }
+
+    public func parse() async throws -> ParseResult { try await parse(options: .default) }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
+        let root = sessionsOverride ?? LocalUsageParserSupport.expanded(provider.logDirectory)
+        var usages: [TokenUsage] = []
+        var conversations: [ConversationRecord] = []
+        for file in LocalUsageParserSupport.files(in: root, extensions: ["jsonl"]) {
+            let id = file.deletingPathExtension().lastPathComponent
+            let parsed = PiAgentParser.parse(file: file, sessionID: id, provider: .omp)
+            guard let usage = parsed.usage else { continue }
+            usages.append(usage)
+            if options.includeConversationBodies, let conversation = parsed.conversation {
+                conversations.append(conversation)
+            }
+        }
+        return ParseResult(usages: usages, conversations: conversations)
     }
 }
 

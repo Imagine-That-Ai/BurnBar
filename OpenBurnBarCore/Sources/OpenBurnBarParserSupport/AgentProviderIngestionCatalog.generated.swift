@@ -360,8 +360,8 @@ public enum AgentProviderIngestionCatalog {
             linuxLogicalPath: "~/.omp/agent/sessions",
             macOSLogicalPath: "~/.omp/agent/sessions",
             filePattern: "*.jsonl",
-            ingestion: .unavailable,
-            coverageNote: "No ParserRegistry entry; local usage is unavailable.",
+            ingestion: .localParser,
+            coverageNote: "Pi-compatible local parser registered in ParserRegistry.",
             quotaSignal: true
         ),
         Entry(

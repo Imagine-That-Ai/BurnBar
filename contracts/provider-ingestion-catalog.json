@@ -447,8 +447,8 @@
         "macos": "~/.omp/agent/sessions"
       },
       "filePattern": "*.jsonl",
-      "ingestion": "unavailable",
-      "coverageNote": "No ParserRegistry entry; local usage is unavailable.",
+      "ingestion": "local-parser",
+      "coverageNote": "Pi-compatible local parser registered in ParserRegistry.",
       "xdgBehavior": "home-relative",
       "symlinkBehavior": "identity-on-resolved-path",
       "quotaSignal": true

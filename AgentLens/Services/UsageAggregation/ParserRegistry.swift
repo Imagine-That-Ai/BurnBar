@@ -73,6 +73,7 @@ enum ParserRegistry {
         parsers[.codex] = RegisteredLogParser(LiftedCodexParser())
         parsers[.openCode] = RegisteredLogParser(OpenCodeParser())
         parsers[.piAgent] = RegisteredLogParser(PiAgentParser())
+        parsers[.omp] = RegisteredLogParser(OMPParser())
         parsers[.zai] = RegisteredLogParser(ModelFilterParser(modelPattern: "zai", provider: .zai))
         parsers[.minimax] = RegisteredLogParser(ModelFilterParser(modelPattern: "minimax", provider: .minimax))
         parsers[.kimi] = RegisteredLogParser(KimiParser())

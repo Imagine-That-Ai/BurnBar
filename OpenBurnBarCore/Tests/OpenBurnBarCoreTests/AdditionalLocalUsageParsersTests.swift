@@ -52,6 +52,30 @@ final class AdditionalLocalUsageParsersTests: XCTestCase {
         XCTAssertEqual(claw.conversations.count, 1)
     }
 
+    func testOMPReadsPiCompatibleNestedMessagesAndPreservesProviderIdentity() async throws {
+        let root = try makeDirectory("omp")
+        defer { remove(root) }
+        try write(
+            """
+            {"type":"session","version":3,"id":"omp-session","timestamp":"2026-07-01T00:00:00Z","cwd":"/tmp/omp-demo"}
+            {"type":"message","message":{"role":"user","content":[{"type":"text","text":"inspect"}],"timestamp":"2026-07-01T00:00:01Z"}}
+            {"type":"message","message":{"role":"assistant","model":"claude-3-7-sonnet","content":[{"type":"text","text":"done"}],"usage":{"input":17,"output":4,"cacheRead":2,"cacheWrite":1},"timestamp":"2026-07-01T00:00:02Z"}}
+            """,
+            to: root.appendingPathComponent("omp-session.jsonl")
+        )
+
+        let result = try await OMPParser(sessionsOverride: root).parse()
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(result.usages.first?.provider, .omp)
+        XCTAssertEqual(result.usages.first?.inputTokens, 17)
+        XCTAssertEqual(result.usages.first?.outputTokens, 4)
+        XCTAssertEqual(result.usages.first?.cacheReadTokens, 2)
+        XCTAssertEqual(result.usages.first?.cacheCreationTokens, 1)
+        XCTAssertEqual(result.usages.first?.projectName, "omp-demo")
+        XCTAssertEqual(result.conversations.first?.provider, .omp)
+        XCTAssertEqual(result.conversations.first?.lastAssistantMessage, "done")
+    }
+
     func testOllamaReadsOnlyExplicitServerCounters() async throws {
         let root = try makeDirectory("ollama")
         defer { remove(root) }
