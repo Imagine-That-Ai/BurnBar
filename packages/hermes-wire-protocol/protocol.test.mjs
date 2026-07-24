@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { generateAll, loadProtocol, screamingSnake, validateProtocol } from "./codegen.mjs";
@@ -8,6 +9,34 @@ import { kotlinGeneratableTypes, loadKotlinOverrides, loadRelayTypes, validateKo
 const proto = validateProtocol(loadProtocol());
 const relayTypes = validateRelayTypes(loadRelayTypes());
 const kotlinOverrides = loadKotlinOverrides();
+
+test("Computer Use session-grant challenge golden vector is internally canonical", () => {
+  const vector = JSON.parse(readFileSync(
+    new URL("./fixtures/computer-use-session-grant-challenge-v1.json", import.meta.url),
+    "utf8",
+  ));
+  const challenge = vector.challenge;
+  const signable = {
+    actionCap: challenge.actionCap,
+    clientId: challenge.clientId,
+    desktopOwnerAuthorizationMethod: challenge.desktopOwnerAuthorizationMethod,
+    macHostNodeId: challenge.macHostNodeId,
+    mode: challenge.mode,
+    phoneViewerNodeId: challenge.phoneViewerNodeId,
+    runCallId: challenge.runCallId,
+    runGeneration: challenge.runGeneration,
+    runId: challenge.runId,
+    scopeRuleIds: [...challenge.scopeRuleIds].sort(),
+    sessionTimeoutSeconds: challenge.sessionTimeoutSeconds,
+    trustMode: challenge.trustMode,
+    version: vector.sessionIntentVersion,
+  };
+  const canonical = JSON.stringify(signable);
+  const hash = createHash("sha256").update(canonical).digest("hex");
+  assert.equal(canonical, vector.canonicalSessionIntentJson);
+  assert.equal(hash, vector.sessionIntentId);
+  assert.equal(challenge.sessionIntentId, vector.sessionIntentId);
+});
 
 test("protocol.json is structurally valid", () => {
   assert.equal(proto.schemaVersion, 1);

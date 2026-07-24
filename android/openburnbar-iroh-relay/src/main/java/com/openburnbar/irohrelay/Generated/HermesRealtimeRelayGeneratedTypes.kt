@@ -49,6 +49,7 @@ data class HermesRealtimeRelayControlPayload(
     val inputIntent: HermesRealtimeRelayInputIntent? = null,
     val approvalRequest: HermesRealtimeRelayApprovalRequest? = null,
     val approvalResponse: HermesRealtimeRelayApprovalResponse? = null,
+    val sessionGrantChallenge: HermesRealtimeRelaySessionGrantChallenge? = null,
     val agentGrantRequest: HermesRealtimeRelayAgentGrantRequest? = null,
     val agentGrantReceipt: HermesRealtimeRelayAgentGrantReceipt? = null,
     val clipboardRequest: HermesRealtimeRelayClipboardRequest? = null,
@@ -192,6 +193,32 @@ data class HermesRealtimeRelayAgentGrantLocalAuthProof(
     val authenticatedAt: Double,
     val expiresAt: Double,
     val signatureEd25519: String,
+)
+
+@Serializable
+data class HermesRealtimeRelaySessionGrantChallenge(
+    val version: Int,
+    val challengeId: String,
+    val nonce: String,
+    val issuedAt: Double,
+    val expiresAt: Double,
+    val sessionIntentId: String,
+    val runtime: String,
+    val threadId: String,
+    val preset: String,
+    val capabilities: List<String>,
+    val mode: String,
+    val trustMode: String,
+    val scopeRuleIds: List<String>,
+    val phoneViewerNodeId: String? = null,
+    val macHostNodeId: String? = null,
+    val actionCap: Int,
+    val sessionTimeoutSeconds: Int,
+    val clientId: String,
+    val runId: String? = null,
+    val runCallId: String? = null,
+    val runGeneration: Long? = null,
+    val desktopOwnerAuthorizationMethod: String? = null,
 )
 
 @Serializable
@@ -853,6 +880,7 @@ data class HermesRealtimeRelayCallInvite(
     @OptIn(ExperimentalSerializationApi::class)
     @EncodeDefault
     val callKind: String = "video",
+    val mediaSealKey: HermesRealtimeRelayControlSealKeyEnvelope? = null,
 )
 
 @Serializable

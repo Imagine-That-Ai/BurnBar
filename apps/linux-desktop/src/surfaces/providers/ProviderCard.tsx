@@ -1,4 +1,4 @@
-import { PROVIDER_GLYPHS } from '../../providerGlyphs.js';
+import { findProviderGlyph } from '../../providerGlyphs.js';
 import type { ProviderCatalogEntry } from '../../tauriBridge.js';
 import { AccountChips } from './AccountChips.js';
 import { ProviderActivityBadge } from './ProviderActivityBadge.js';
@@ -14,12 +14,7 @@ export function ProviderCard({
   provider: ProviderCatalogEntry;
   quotaRefreshing?: boolean;
 }) {
-  const glyph =
-    PROVIDER_GLYPHS.find((g) => g.id === provider.id) ?? {
-      id: provider.id,
-      label: provider.id,
-      accent: 'var(--color-brass-core)'
-    };
+  const glyph = findProviderGlyph(provider.id);
   const meta = resolveProviderCardMeta(provider);
 
   return (

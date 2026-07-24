@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "capture": {
+    "mode": "installed-shell-atspi",
+    "capturedAt": "2026-07-20T04:50:59Z",
+    "environment": "ubuntu-24.04-gnome-x11-aarch64",
+    "vmAddress": "192.168.64.5",
+    "window": {
+      "name": "OpenBurnBar",
+      "geometry": "1280x782",
+      "present": true
+    }
+  },
+  "source": {
+    "shellHead": "2d42a3367c475148285b00b7298ce7efbd2473dc",
+    "syncedSourceFilesMatch": true,
+    "commits": [
+      "e161148b27 fix(linux-insights): preserve stale snapshots on refresh",
+      "15b7e3c2ee feat(linux-database): add indexed record inspector",
+      "cfb73aa6b4 feat(linux-providers): expose preferred account routing",
+      "f7c93c7693 test(linux-database): cover inspector keyboard focus",
+      "2d42a3367c fix(linux-providers): bound provider detail rendering"
+    ],
+    "files": {
+      "apps/linux-desktop/src/state/insightsStore.ts": "832b4b1b55d3aa66446b245479549eee39ad44bd70c44014daa4133c6aa033af",
+      "apps/linux-desktop/src/surfaces/database/DatabaseSurface.tsx": "90d14d3066db8b3adaf37907769c63ab158b7f347afb40e040d63c9caa1d7bd3",
+      "apps/linux-desktop/src/surfaces/providers/ProviderModelWorkspace.tsx": "7f3c5d1a53acf5613fef0f05d840cb9846f9848df0f1e8fb48912734e10a20b6",
+      "apps/linux-desktop/src/surfaces/providers/provider-model-workspace.css": "c3ebf6a1ef91e1dc3ab56f06e0df8526ae593022bf1f0d9e73d0b3194275e1e8"
+    }
+  },
+  "package": {
+    "format": "deb",
+    "architecture": "arm64",
+    "version": "0.1.1",
+    "sha256": "677d069765f44311cbcec77d24cac63a82c9b97a75b818c75ada9c0aae857390",
+    "bytes": 184092756,
+    "buildCommand": "OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1 npm run tauri:build -- --bundles deb",
+    "mediaFeature": "media-gst"
+  },
+  "installed": {
+    "desktopSha256": "294c0cd92339c4c72b87998f0516ad95730aceb8ab2abb7a5f4102a69d03a577",
+    "daemonSha256": "17aa56ff0e5d4b618f260f83a2b383bad3be275fab697f39c2b3d37ca582e55d",
+    "cliSha256": "c12c5dd24904559c1b11b61a73957bbe9863c21af1a75eb6c42704538a70e739",
+    "daemonHealth": "ok=true",
+    "daemonService": "active"
+  },
+  "routeProof": {
+    "providers": {
+      "catalogSize": {
+        "providers": 21,
+        "models": 181
+      },
+      "beforeBoundedRendering": {
+        "result": "timed_out",
+        "timeoutMilliseconds": 15000,
+        "note": "The installed all-provider renderer did not finish a bounded AT-SPI walk before the guard expired."
+      },
+      "afterBoundedRendering": {
+        "captureMilliseconds": 10322,
+        "nodeCount": 297,
+        "namedNodeCount": 120,
+        "actionableNodeCount": 104,
+        "focusableNodeCount": 30,
+        "providerDetailSelectorPresent": true,
+        "selectedProviderHeading": "Anthropic",
+        "pass": true,
+        "sha256": "c5a085aafbb9787abd72af6621bda3fa5d9af81035eb2c747342a55edaf500fb"
+      }
+    }
+  },
+  "verification": {
+    "frontendTests": "92 files / 886 passed",
+    "typescript": "passed",
+    "productionBundleVerifier": "passed",
+    "gitDiffCheck": "passed",
+    "accessibility": "Provider route AT-SPI passed after bounded detail rendering",
+    "webgl": "webgl2=false; visible 2D fallback label"
+  },
+  "limitations": [
+    "The daemon and CLI were reused from the previously staged ARM64 payload; this receipt certifies the exact current shell files, not an exact current-head daemon payload.",
+    "The package and installed-manifest path are unsigned/non-certifying for release promotion.",
+    "The live database Atlas had no indexed file rows, so the record inspector is source- and test-proven but not exercised against a live row in this receipt.",
+    "The live Insights route had no usage payload, so last-good refresh and qualitative freshness remain source- and test-proven in this receipt.",
+    "This does not close the seven-environment matrix, physical iPad execution, cross-device Mercury/Computer Use proof, production callables, or the 40-row strict ledger."
+  ],
+  "certifying": false
+}

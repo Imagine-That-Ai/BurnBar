@@ -16,6 +16,9 @@ const sampleMissions: MissionListResult['missions'] = [
 describe('missionGroups', () => {
   it('normalizes daemon states to lifecycles', () => {
     expect(normalizeMissionLifecycle('active')).toBe('running');
+    expect(normalizeMissionLifecycle('awaiting_approval')).toBe('planned');
+    expect(normalizeMissionLifecycle('dispatching')).toBe('running');
+    expect(normalizeMissionLifecycle('partially_completed')).toBe('partial');
     expect(normalizeMissionLifecycle('pending')).toBe('partial');
     expect(normalizeMissionLifecycle('done')).toBe('completed');
     expect(normalizeMissionLifecycle('cancelled')).toBe('blocked');

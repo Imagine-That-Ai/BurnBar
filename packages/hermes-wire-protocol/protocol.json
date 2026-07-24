@@ -54,6 +54,7 @@
     { "id": "controlInputIntent", "wire": "control.input.intent", "group": "control", "relayAccepted": false, "doc": "Signed phone-control input intent. Security-relevant: carries the agent's intended input action." },
     { "id": "controlApprovalRequest", "wire": "control.approval.request", "group": "control", "relayAccepted": false, "doc": "Request human approval for a control action." },
     { "id": "controlApprovalResponse", "wire": "control.approval.response", "group": "control", "relayAccepted": false, "doc": "Human approval response for a control action." },
+    { "id": "controlSessionGrantChallenge", "wire": "control.session.grant.challenge", "group": "control", "relayAccepted": false, "doc": "Request a phone-authenticated grant bound to one exact Computer Use session intent." },
     { "id": "controlAgentGrantRequest", "wire": "control.agent.grant.request", "group": "control", "relayAccepted": false, "doc": "Request an agent capability grant." },
     { "id": "controlAgentGrantReceipt", "wire": "control.agent.grant.receipt", "group": "control", "relayAccepted": false, "doc": "Receipt for an agent capability grant." },
     { "id": "controlClipboardRequest", "wire": "control.clipboard.request", "group": "control", "relayAccepted": false, "doc": "Request clipboard contents." },

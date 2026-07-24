@@ -275,6 +275,8 @@ extension ControlPlaneStore {
             return 1
         case .rejected:
             return 2
+        case .forgotten:
+            return 3
         }
     }
 

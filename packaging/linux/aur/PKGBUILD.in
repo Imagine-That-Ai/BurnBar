@@ -1,0 +1,212 @@
+# Maintainer: OpenBurnBar Release Engineering <release@openburnbar.dev>
+pkgname=openburnbar
+pkgver=REPLACE_WITH_RELEASE_VERSION
+pkgrel=1
+pkgdesc="Local-first AI agent cost and control dashboard"
+arch=("x86_64" "aarch64")
+url="https://github.com/Imagine-That-Ai/BurnBar"
+license=("AGPL-3.0-only")
+depends=("webkit2gtk-4.1" "gtk3" "libayatana-appindicator" "libsecret" "nodejs" "npm" "polkit" "gstreamer" "gst-plugins-base" "gst-plugins-good" "gst-plugin-pipewire" "ibus" "python-gobject")
+optdepends=("kwallet: KDE Wallet credential backend" "fcitx5: input-method host (OpenBurnBar Fcitx5 addon is source-only and unavailable)")
+
+source=(
+  "openburnbar.desktop::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar.desktop"
+  "openburnbar-safe-mode.desktop::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar-safe-mode.desktop"
+  "openburnbar-autostart.desktop::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/autostart/openburnbar.desktop"
+  "openburnbar-daemon.service::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar-daemon.service"
+  "openburnbar-daemon-launch::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar-daemon-launch"
+  "openburnbar-linux-desktop::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar-linux-desktop"
+  "openburnbar-icon.png::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/apps/linux-desktop/src-tauri/icons/icon.png"
+  "com.openburnbar.computer-use.policy::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/com.openburnbar.computer-use.policy"
+  "openburnbar-playwright-bridge.js::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js"
+  "openburnbar-browser-runtime-probe::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/openburnbar-browser-runtime-probe"
+  "browser-runtime-requirements.json::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/browser-runtime-requirements.json"
+  "release-ed25519.pub.pem::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/openburnbar-linux-ed25519.pub.pem"
+  "openburnbar-cli-migrate::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/openburnbar-cli-migrate.sh"
+  "openburnbar-cli-migrate.hook::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar-cli-migrate.hook"
+)
+sha256sums=(
+  "REPLACE_WITH_DESKTOP_SHA256"
+  "REPLACE_WITH_SAFE_MODE_DESKTOP_SHA256"
+  "REPLACE_WITH_AUTOSTART_DESKTOP_SHA256"
+  "REPLACE_WITH_SERVICE_SHA256"
+  "REPLACE_WITH_LAUNCH_SHA256"
+  "REPLACE_WITH_DESKTOP_LAUNCHER_SHA256"
+  "REPLACE_WITH_ICON_SHA256"
+  "REPLACE_WITH_COMPUTER_USE_POLKIT_POLICY_SHA256"
+  "REPLACE_WITH_PLAYWRIGHT_BRIDGE_SHA256"
+  "REPLACE_WITH_BROWSER_RUNTIME_PROBE_SHA256"
+  "REPLACE_WITH_BROWSER_RUNTIME_REQUIREMENTS_SHA256"
+  "REPLACE_WITH_RELEASE_PUBLIC_KEY_SHA256"
+  "REPLACE_WITH_CLI_MIGRATION_SHA256"
+  "REPLACE_WITH_CLI_MIGRATION_HOOK_SHA256"
+)
+
+source_x86_64=(
+  "OpenBurnBar_${pkgver}_amd64.AppImage::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/OpenBurnBar_${pkgver}_amd64.AppImage"
+  "openburnbar-daemon-${pkgver}-x86_64::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/openburnbar-daemon-${pkgver}-linux-x86_64"
+  "installed-manifest.json::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/openburnbar-${pkgver}-x86_64.installed-manifest.json"
+  "installed-manifest.ed25519::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/openburnbar-${pkgver}-x86_64.installed-manifest.ed25519"
+)
+sha256sums_x86_64=(
+  "REPLACE_WITH_APPIMAGE_X86_64_SHA256"
+  "REPLACE_WITH_DAEMON_X86_64_SHA256"
+  "REPLACE_WITH_INSTALLED_MANIFEST_X86_64_SHA256"
+  "REPLACE_WITH_INSTALLED_MANIFEST_SIGNATURE_X86_64_SHA256"
+)
+
+source_aarch64=(
+  "OpenBurnBar_${pkgver}_aarch64.AppImage::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/OpenBurnBar_${pkgver}_aarch64.AppImage"
+  "openburnbar-daemon-${pkgver}-aarch64::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/openburnbar-daemon-${pkgver}-linux-aarch64"
+  "installed-manifest.json::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/openburnbar-${pkgver}-aarch64.installed-manifest.json"
+  "installed-manifest.ed25519::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/openburnbar-${pkgver}-aarch64.installed-manifest.ed25519"
+)
+sha256sums_aarch64=(
+  "REPLACE_WITH_APPIMAGE_AARCH64_SHA256"
+  "REPLACE_WITH_DAEMON_AARCH64_SHA256"
+  "REPLACE_WITH_INSTALLED_MANIFEST_AARCH64_SHA256"
+  "REPLACE_WITH_INSTALLED_MANIFEST_SIGNATURE_AARCH64_SHA256"
+)
+
+package() {
+  # makepkg only reports a generic package() failure unless the recipe emits
+  # the failing command itself. Keep this trap local to package() so release
+  # logs identify the exact path/mode/copy operation without weakening
+  # makepkg's fail-closed behavior.
+  set -E
+  trap 'status=$?; printf "openburnbar: Arch package() failed (status %d) at %s:%d: %s\n" "${status}" "${BASH_SOURCE[0]}" "${LINENO}" "${BASH_COMMAND}" >&2' ERR
+  local extraction_log="${srcdir}/openburnbar-appimage-extract.log"
+  local appimage_arch="${CARCH}"
+  if [[ "${CARCH}" == "x86_64" ]]; then appimage_arch="amd64"; fi
+  local appimage="${srcdir}/OpenBurnBar_${pkgver}_${appimage_arch}.AppImage"
+
+  chmod 755 "${appimage}"
+  rm -rf "${srcdir}/squashfs-root"
+  if ! (
+    cd "${srcdir}"
+    "${appimage}" --appimage-extract >"${extraction_log}" 2>&1
+  ); then
+    printf 'openburnbar: AppImage extraction failed for %s (see %s)\n' "${appimage}" "${extraction_log}" >&2
+    cat "${extraction_log}" >&2 || true
+    return 1
+  fi
+  if [[ ! -d "${srcdir}/squashfs-root" ]]; then
+    printf 'openburnbar: AppImage extraction produced no squashfs-root (see %s)\n' "${extraction_log}" >&2
+    cat "${extraction_log}" >&2 || true
+    return 1
+  fi
+  require_payload_path() {
+    local required="$1"
+    if [[ ! -e "${srcdir}/squashfs-root/${required}" ]]; then
+      printf 'openburnbar: extracted AppImage is missing required path: %s\n' "${required}" >&2
+      return 1
+    fi
+  }
+  for required in \
+    AppRun \
+    usr/bin/openburnbar-cli \
+    usr/libexec/openburnbar/text-expansion-engine \
+    usr/share/ibus/component/openburnbar.xml \
+    usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json \
+    usr/share/openburnbar/text-expansion/text-expansion-engine.json \
+    usr/lib/openburnbar/native/libopenburnbar_iroh.so \
+    usr/lib/openburnbar/native/libsqlcipher.so.0 \
+    usr/lib/openburnbar/swift; do
+    require_payload_path "${required}"
+  done
+  local resource_bundles=("${srcdir}"/squashfs-root/usr/bin/OpenBurnBarCore_*.resources)
+  if (( ${#resource_bundles[@]} == 0 )) || [[ ! -d "${resource_bundles[0]}" ]]; then
+    printf 'openburnbar: extracted AppImage has no OpenBurnBarCore resource bundles\n' >&2
+    return 1
+  fi
+
+  # AppImage extraction preserves the source mode bits. Some AppImage
+  # producers mark wrapper files (notably AppRun.wrapped) 0777, which is
+  # executable but unsafe to ship in a root-owned package. Remove only
+  # group/world write bits so user-read/write/execute intent is preserved,
+  # then fail closed if any unsupported type or unsafe mode remains.
+  path_mode() {
+    local entry="$1"
+    local mode
+    if mode="$(stat -c '%a' "${entry}" 2>/dev/null)"; then
+      printf '%s\n' "${mode}"
+    else
+      # The recipe is built on Arch (GNU stat), but this fallback keeps the
+      # package() contract executable by the macOS fixture harness as well.
+      stat -f '%Lp' "${entry}"
+    fi
+  }
+  normalize_extracted_modes() {
+    local paths_file="${srcdir}/openburnbar-appimage-paths.list"
+    local entry mode
+    if ! find -P "${srcdir}/squashfs-root" -print0 >"${paths_file}"; then
+      printf 'openburnbar: unable to enumerate extracted AppImage paths\n' >&2
+      rm -f "${paths_file}"
+      return 1
+    fi
+    while IFS= read -r -d '' entry; do
+      if [[ -L "${entry}" ]]; then
+        continue
+      fi
+      if [[ ! -d "${entry}" && ! -f "${entry}" ]]; then
+        printf 'openburnbar: unsupported extracted AppImage path type: %s\n' "${entry}" >&2
+        rm -f "${paths_file}"
+        return 1
+      fi
+      chmod go-w "${entry}"
+      mode="$(path_mode "${entry}")"
+      if (( (8#${mode}) & 8#022 )); then
+        printf 'openburnbar: extracted AppImage path remains group/world-writable: %s (mode %s)\n' "${entry}" "${mode}" >&2
+        rm -f "${paths_file}"
+        return 1
+      fi
+    done <"${paths_file}"
+    rm -f "${paths_file}"
+  }
+  normalize_extracted_modes
+
+  if [[ ! -x "${srcdir}/squashfs-root/AppRun" ]]; then
+    printf 'openburnbar: extracted AppRun is not executable: %s\n' "${srcdir}/squashfs-root/AppRun" >&2
+    return 1
+  fi
+  install -d "${pkgdir}/usr/lib/openburnbar/appdir"
+  cp -a "${srcdir}/squashfs-root/." "${pkgdir}/usr/lib/openburnbar/appdir/"
+  # The AppImage-only peer attestation is added after Arch's signed manifest
+  # is prepared. Keep it out of the Arch AppDir so rebuilding from the final
+  # AppImage remains byte-for-byte bound to the Arch installed manifest.
+  rm -f \
+    "${pkgdir}/usr/lib/openburnbar/appdir/usr/share/openburnbar/appimage-peer-manifest.json" \
+    "${pkgdir}/usr/lib/openburnbar/appdir/usr/share/openburnbar/appimage-peer-manifest.ed25519.sig"
+  install -Dm755 "${srcdir}/openburnbar-linux-desktop" "${pkgdir}/usr/bin/openburnbar-linux-desktop"
+  install -Dm755 "${srcdir}/squashfs-root/usr/bin/openburnbar-cli" "${pkgdir}/usr/bin/openburnbar-cli"
+  install -Dm755 "${srcdir}/openburnbar-daemon-${pkgver}-${CARCH}" "${pkgdir}/usr/bin/openburnbar-daemon"
+  local resource_bundle
+  for resource_bundle in "${resource_bundles[@]}"; do
+    install -d "${pkgdir}/usr/bin/$(basename "${resource_bundle}")"
+    cp -a "${resource_bundle}/." "${pkgdir}/usr/bin/$(basename "${resource_bundle}")/"
+  done
+  install -d "${pkgdir}/usr/lib/openburnbar"
+  cp -a "${srcdir}/squashfs-root/usr/lib/openburnbar/native" "${pkgdir}/usr/lib/openburnbar/"
+  cp -a "${srcdir}/squashfs-root/usr/lib/openburnbar/swift" "${pkgdir}/usr/lib/openburnbar/"
+  install -Dm755 "${srcdir}/openburnbar-daemon-launch" "${pkgdir}/usr/libexec/openburnbar-daemon-launch"
+  install -Dm755 "${srcdir}/openburnbar-cli-migrate" "${pkgdir}/usr/libexec/openburnbar-cli-migrate"
+  install -Dm644 "${srcdir}/openburnbar-cli-migrate.hook" "${pkgdir}/usr/share/libalpm/hooks/openburnbar-cli-migrate.hook"
+  install -Dm644 "${srcdir}/openburnbar.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
+  install -Dm644 "${srcdir}/openburnbar-safe-mode.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.SafeMode.desktop"
+  install -Dm644 "${srcdir}/openburnbar-autostart.desktop" "${pkgdir}/etc/xdg/autostart/openburnbar.desktop"
+  install -Dm644 "${srcdir}/openburnbar-icon.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/dev.openburnbar.OpenBurnBar.png"
+  install -Dm644 "${srcdir}/openburnbar-daemon.service" "${pkgdir}/usr/lib/systemd/user/openburnbar-daemon.service"
+  install -Dm644 "${srcdir}/com.openburnbar.computer-use.policy" "${pkgdir}/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy"
+  install -Dm644 "${srcdir}/openburnbar-playwright-bridge.js" "${pkgdir}/usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js"
+  install -Dm755 "${srcdir}/openburnbar-browser-runtime-probe" "${pkgdir}/usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe"
+  install -Dm644 "${srcdir}/browser-runtime-requirements.json" "${pkgdir}/usr/lib/openburnbar/playwright/browser-runtime-requirements.json"
+  install -Dm644 "${srcdir}/installed-manifest.json" "${pkgdir}/usr/share/openburnbar/attestation/installed-manifest.json"
+  install -Dm644 "${srcdir}/installed-manifest.ed25519" "${pkgdir}/usr/share/openburnbar/attestation/installed-manifest.json.sig"
+  install -Dm644 "${srcdir}/release-ed25519.pub.pem" "${pkgdir}/usr/share/openburnbar/attestation/release-ed25519.pub.pem"
+  install -Dm755 "${srcdir}/squashfs-root/usr/libexec/openburnbar/text-expansion-engine" "${pkgdir}/usr/libexec/openburnbar/text-expansion-engine"
+  install -Dm644 "${srcdir}/squashfs-root/usr/share/ibus/component/openburnbar.xml" "${pkgdir}/usr/share/ibus/component/openburnbar.xml"
+  install -Dm644 "${srcdir}/squashfs-root/usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json" "${pkgdir}/usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json"
+  install -Dm644 "${srcdir}/squashfs-root/usr/share/openburnbar/text-expansion/text-expansion-engine.json" "${pkgdir}/usr/share/openburnbar/text-expansion/text-expansion-engine.json"
+  rm -rf "${srcdir}/squashfs-root"
+  trap - ERR
+}

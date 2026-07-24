@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import { KERNEL_META } from '@openburnbar/gl-engine/engine/registry';
+import {
+  DEFAULT_KERNEL_ID,
+  KERNEL_META,
+  resolveKernelResolution
+} from '@openburnbar/gl-engine/engine/registry';
 import {
   DEFAULT_LINUX_KERNEL_ID,
   KERNEL_PREFS_KEY,
@@ -32,5 +36,23 @@ describe('kernelPrefs', () => {
 
   it('exposes all 32 kernels in registry metadata', () => {
     expect(KERNEL_META.length).toBe(32);
+  });
+
+  it('explains the deterministic 2D fallback when WebGL2 is unavailable', () => {
+    const status = resolveKernelResolution(
+      'aurora',
+      { colorBufferFloat: false, floatBlend: false },
+      false
+    );
+
+    expect(status).toEqual({
+      requestedId: 'aurora',
+      resolvedId: DEFAULT_KERNEL_ID,
+      requestedSubstrate: 'webgl2',
+      resolvedSubstrate: '2d',
+      reason: 'webgl2-unavailable',
+      fallback: true,
+      glSupported: false
+    });
   });
 });

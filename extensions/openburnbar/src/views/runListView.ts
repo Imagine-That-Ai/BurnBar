@@ -65,6 +65,8 @@ function iconForPhase(phase: BurnBarRunProjection['phase']): string {
       return 'circle-slash';
     case 'awaiting_approval':
       return 'question';
+    case 'awaiting_computer_use_session':
+      return 'device-desktop';
     case 'idle':
       return 'circle-large-outline';
     default:

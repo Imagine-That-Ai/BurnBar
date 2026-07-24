@@ -6,6 +6,31 @@ import Darwin
 import Glibc
 #endif
 import Foundation
+public typealias LinuxComputerUseOwnerAuthorizer = @Sendable (
+    _ peerProcessID: Int32,
+    _ operationID: String,
+    _ reason: String
+) async throws -> Void
+
+/// Resolves phone-pairing authority from daemon-owned state for one exact run.
+/// The socket client cannot supply peer, device, connection, or grant scope.
+public typealias ComputerUseSessionGrantMetadataResolver = @Sendable (
+    _ requirement: BurnBarComputerUseRunRequirement,
+    _ request: ComputerUseSessionStartRequest
+) async throws -> ComputerUseSessionGrantBroker.AcquisitionMetadata
+
+/// Confirms that the daemon can resolve a currently trusted paired controller
+/// before the desktop advertises the Browser Computer Use flow as available.
+public typealias ComputerUseSessionGrantReadinessProvider = @Sendable () async -> Bool
+
+enum ComputerUseTransportIngressError: Error, Equatable, Sendable {
+    case rejected
+}
+
+enum ComputerUseIngressProvenance: Equatable, Sendable {
+    case authenticatedIrohTransport(peerNodeID: String, routeGeneration: Int64)
+    case authenticatedLocalRPC
+}
 
 public actor BurnBarDaemonServer {
     private static let maxRequestBytes = 64 * 1024
@@ -43,24 +68,59 @@ public actor BurnBarDaemonServer {
     /// first-party Mac app provisions this store via `phoneControlPinProvision` so
     /// the daemon can verify local-auth proofs independently of the app.
     let phoneControlPinStore: DaemonPhoneKeyPinStore?
+    let computerUseApprovalAuthorityVerifier: DaemonComputerUseApprovalAuthorityVerifier?
+    let computerUsePanicAuthorityVerifier: DaemonComputerUsePanicAuthorityVerifier?
+    let computerUseSessionGrantBroker: ComputerUseSessionGrantBroker?
+    let computerUseSessionGrantMetadataResolver: ComputerUseSessionGrantMetadataResolver?
+    let computerUseSessionGrantReadinessProvider: ComputerUseSessionGrantReadinessProvider?
+    #if os(Linux)
+    let linuxComputerUseOwnerAuthorizer: LinuxComputerUseOwnerAuthorizer
+    let linuxCloudCredentialAuthority: LinuxDaemonCloudCredentialAuthority?
+    /// Optional companion-device bridge for trusted-device list/approve/revoke.
+    /// Production composition leaves this nil until the authenticated callable
+    /// and Iroh/mobile transport are available; RPCs then fail closed.
+    let linuxTrustedDeviceManager: (any LinuxTrustedDeviceManaging)?
+    let linuxCloudSyncRuntime: LinuxCloudSyncRuntime?
+    let linuxIrohControllerRuntime: LinuxIrohControllerRuntime?
+    let linuxIrohControllerUnavailableStatus: LinuxIrohControllerRuntime.RuntimeStatus?
+    #endif
     let linuxOnboardingService: BurnBarLinuxOnboardingService
     let subscriptionService: BurnBarSubscriptionService
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
+    let localUsageIngestionService: BurnBarLocalUsageIngestionService?
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
     let quotaSignalStore: BurnBarQuotaSignalStore
+    #if os(Linux)
+    let linuxQuotaRefreshService: BurnBarLinuxQuotaRefreshService
+    #endif
     let clientRegistry: BurnBarClientRegistry
     let runService: BurnBarRunService
     let toolingProxy: BurnBarToolingProxyService
     let computerUseService: ComputerUseService
+    let computerUseAuthorizationRegistry: ComputerUseAuthorizationRegistry
     #if os(Linux)
     let mediaService: MercuryLinuxMediaSessionController
+    let linuxPrivacyService: BurnBarLinuxPrivacyService
     #endif
     let missionControlService: any BurnBarMissionControlServing
     let membershipService: any BurnBarMembershipServing
-    let indexedSearch: BurnBarIndexedSearchService?
-    let projectCodeMemory: BurnBarProjectCodeMemoryStore?
-    let resumeService: BurnBarResumeService?
+    var chatThreadService: (any BurnBarChatThreadServing)?
+    var indexedSearch: BurnBarIndexedSearchService?
+    /// The code-memory store is opened lazily when a configured database file
+    /// appears. Chat owns first-use database creation on a fresh profile, so
+    /// opening this store only during daemon init would leave code/memory RPCs
+    /// unavailable until the next restart.
+    private var projectCodeMemoryStorage: BurnBarProjectCodeMemoryStore?
+    private var projectCodeMemoryBootstrapAttempted = false
+    private var projectCodeMemoryBootstrapFailure: String?
+    var projectCodeMemory: BurnBarProjectCodeMemoryStore? {
+        ensureProjectCodeMemoryBootstrapped()
+    }
+    let databaseRecoveryService: BurnBarDatabaseRecoveryBundleService?
+    let textExpansionService: BurnBarTextExpansionService?
+    var resumeService: BurnBarResumeService?
+    let ownsChatThreadService: Bool
     private let gatewayServer: BurnBarHTTPGatewayServer?
     private let rateLimiter: BurnBarRateLimiter?
     private var listenerFileDescriptor: Int32?
@@ -69,17 +129,19 @@ public actor BurnBarDaemonServer {
     private var acceptLoopTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var oauthRefreshTask: Task<Void, Never>?
-    var localAuthVerifiedComputerUseSessions: [String: Date] = [:]
-
+    private var localUsageIngestionTask: Task<Void, Never>?
     public init(
         configuration: BurnBarDaemonConfiguration = BurnBarDaemonConfiguration(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(),
         configStore: BurnBarConfigStore? = nil,
         usageRecorder: BurnBarUsageRecorder? = nil,
+        localUsageIngestionService: BurnBarLocalUsageIngestionService? = nil,
         proxyRouteLogStore: BurnBarProxyRouteLogStore? = nil,
         quotaSignalStore: BurnBarQuotaSignalStore? = nil,
         clientRegistry: BurnBarClientRegistry? = nil,
         runService: BurnBarRunService? = nil,
+        computerUseService: ComputerUseService? = nil,
+        computerUseAuthorizationRegistry: ComputerUseAuthorizationRegistry? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
         membershipService: (any BurnBarMembershipServing)? = nil,
         rateLimiter: BurnBarRateLimiter? = nil,
@@ -87,8 +149,19 @@ public actor BurnBarDaemonServer {
         capabilityProfile: BurnBarPeerCapabilityProfile = .full,
         localAuthProofVerifier: DaemonLocalAuthProofVerifier? = nil,
         phoneControlPinStore: DaemonPhoneKeyPinStore? = nil,
+        computerUseApprovalAuthorityVerifier: DaemonComputerUseApprovalAuthorityVerifier? = nil,
+        computerUseSessionGrantBroker: ComputerUseSessionGrantBroker? = nil,
+        computerUseSessionGrantMetadataResolver: ComputerUseSessionGrantMetadataResolver? = nil,
+        computerUseSessionGrantReadinessProvider: ComputerUseSessionGrantReadinessProvider? = nil,
+        linuxIrohControllerCredentialProvider: LinuxIrohControllerCredentialProvider? = nil,
+        linuxCloudCredentialAuthority: LinuxDaemonCloudCredentialAuthority? = nil,
+        linuxTrustedDeviceManager: (any LinuxTrustedDeviceManaging)? = nil,
+        linuxCloudSyncRuntime: LinuxCloudSyncRuntime? = nil,
+        linuxComputerUseOwnerAuthorizer: LinuxComputerUseOwnerAuthorizer? = nil,
         linuxOnboardingService: BurnBarLinuxOnboardingService? = nil,
-        subscriptionService: BurnBarSubscriptionService? = nil
+        linuxPrivacyService: BurnBarLinuxPrivacyService? = nil,
+        subscriptionService: BurnBarSubscriptionService? = nil,
+        chatThreadService: (any BurnBarChatThreadServing)? = nil
     ) {
         self.configuration = configuration
         self.logger = logger
@@ -97,29 +170,248 @@ public actor BurnBarDaemonServer {
         self.capabilityProfile = capabilityProfile
         self.localAuthProofVerifier = localAuthProofVerifier
         self.phoneControlPinStore = phoneControlPinStore
+        #if os(Linux)
+        self.linuxCloudCredentialAuthority = linuxCloudCredentialAuthority
+        self.linuxTrustedDeviceManager = linuxTrustedDeviceManager
+        self.linuxCloudSyncRuntime = linuxCloudSyncRuntime
+        if let linuxComputerUseOwnerAuthorizer {
+            self.linuxComputerUseOwnerAuthorizer = linuxComputerUseOwnerAuthorizer
+        } else {
+            let coordinator = LinuxComputerUseOwnerAuthorizationCoordinator()
+            self.linuxComputerUseOwnerAuthorizer = { peerProcessID, operationID, reason in
+                _ = try await coordinator.authorize(
+                    peerProcessID: peerProcessID,
+                    operationID: operationID,
+                    reason: reason
+                )
+            }
+        }
+        #else
+        _ = linuxCloudCredentialAuthority
+        _ = linuxCloudSyncRuntime
+        // Production macOS callers leave this nil. Retaining an explicitly
+        // injected verifier keeps the transport authority path testable on
+        // non-Linux CI without enabling it by default.
+        self.computerUseApprovalAuthorityVerifier = computerUseApprovalAuthorityVerifier
+        self.computerUsePanicAuthorityVerifier = nil
+        self.computerUseSessionGrantBroker = computerUseSessionGrantBroker
+        self.computerUseSessionGrantMetadataResolver = computerUseSessionGrantMetadataResolver
+        self.computerUseSessionGrantReadinessProvider = computerUseSessionGrantReadinessProvider
+        #endif
         self.subscriptionService = subscriptionService ?? BurnBarSubscriptionService(
             daemonVersion: configuration.daemonVersion
         )
+        self.chatThreadService = chatThreadService
+        self.ownsChatThreadService = chatThreadService == nil
 
         let resolvedConfigStore = configStore ?? BurnBarConfigStore(
             catalog: configuration.catalog,
             logger: BurnBarDaemonLogger(category: "config-store")
         )
         self.linuxOnboardingService = linuxOnboardingService ?? BurnBarLinuxOnboardingService(
+            providerCatalogCount: configuration.catalog.providers.count,
             configStore: resolvedConfigStore
         )
         let resolvedUsageRecorder = usageRecorder ?? BurnBarUsageRecorder(
             logger: BurnBarDaemonLogger(category: "usage-recorder")
         )
+        #if os(Linux)
+        let resolvedLocalUsageIngestionService = localUsageIngestionService
+            ?? BurnBarLocalUsageIngestionService.linuxDefault(usageRecorder: resolvedUsageRecorder)
+        #else
+        let resolvedLocalUsageIngestionService = localUsageIngestionService
+        #endif
         let resolvedProxyRouteLogStore = proxyRouteLogStore ?? BurnBarProxyRouteLogStore(
             logger: BurnBarDaemonLogger(category: "proxy-route-log")
         )
         let resolvedQuotaSignalStore = quotaSignalStore ?? BurnBarQuotaSignalStore(
             logger: BurnBarDaemonLogger(category: "quota-signals")
         )
+        #if os(Linux)
+        let resolvedLinuxQuotaRefreshService = BurnBarLinuxQuotaRefreshService(
+            configStore: resolvedConfigStore
+        )
+        #endif
         let resolvedClientRegistry = clientRegistry ?? BurnBarClientRegistry(
             logger: BurnBarDaemonLogger(category: "client-registry")
         )
+        let resolvedComputerUseAuthorizationRegistry = computerUseAuthorizationRegistry
+            ?? ComputerUseAuthorizationRegistry(enforcementEnabled: localAuthProofVerifier != nil)
+        #if os(Linux)
+        let resolvePinnedKey: @Sendable (String) -> PhoneControlVerifyingKey? = { identifier in
+            guard let phoneControlPinStore,
+                  case .pinned(let key) = phoneControlPinStore.pinnedKey(deviceId: identifier) else {
+                return nil
+            }
+            return key
+        }
+        let resolvedApprovalVerifier: DaemonComputerUseApprovalAuthorityVerifier?
+        let resolvedPanicVerifier: DaemonComputerUsePanicAuthorityVerifier?
+        let resolvedGrantVerifier: DaemonComputerUseSessionGrantAuthorityVerifier?
+        if let localAuthProofVerifier {
+            resolvedApprovalVerifier = computerUseApprovalAuthorityVerifier
+                ?? DaemonComputerUseApprovalAuthorityVerifier(
+                    resolvePinnedKey: resolvePinnedKey,
+                    replayCounterStore: .production()
+                )
+            resolvedPanicVerifier = DaemonComputerUsePanicAuthorityVerifier(
+                resolvePinnedKey: resolvePinnedKey,
+                replayCounterStore: .production()
+            )
+            resolvedGrantVerifier = DaemonComputerUseSessionGrantAuthorityVerifier(
+                resolvePinnedKey: resolvePinnedKey,
+                localAuthProofVerifier: localAuthProofVerifier,
+                replayCounterStore: .production()
+            )
+        } else {
+            resolvedApprovalVerifier = nil
+            resolvedPanicVerifier = nil
+            resolvedGrantVerifier = nil
+        }
+        self.computerUseApprovalAuthorityVerifier = resolvedApprovalVerifier
+        self.computerUsePanicAuthorityVerifier = resolvedPanicVerifier
+
+        let ownsProductionControllerStack = localAuthProofVerifier != nil
+            && phoneControlPinStore != nil
+            && computerUseService == nil
+            && computerUseSessionGrantBroker == nil
+            && computerUseSessionGrantMetadataResolver == nil
+            && computerUseSessionGrantReadinessProvider == nil
+        let resolvedIrohRuntime: LinuxIrohControllerRuntime?
+        if ownsProductionControllerStack,
+           let linuxIrohControllerCredentialProvider,
+           let resolvedGrantVerifier,
+           let resolvedApprovalVerifier,
+           let resolvedPanicVerifier,
+           let phoneControlPinStore {
+            resolvedIrohRuntime = LinuxIrohControllerRuntime.production(
+                credentialProvider: linuxIrohControllerCredentialProvider,
+                phoneControlPinStore: phoneControlPinStore,
+                authorityHealth: {
+                    let grantHealthy = await resolvedGrantVerifier.isOperational()
+                    let approvalHealthy = await resolvedApprovalVerifier.isOperational()
+                    let panicHealthy = await resolvedPanicVerifier.isOperational()
+                    return grantHealthy && approvalHealthy && panicHealthy
+                }
+            )
+        } else {
+            resolvedIrohRuntime = nil
+        }
+        self.linuxIrohControllerRuntime = resolvedIrohRuntime
+        if ownsProductionControllerStack && resolvedIrohRuntime == nil {
+            self.linuxIrohControllerUnavailableStatus = LinuxIrohControllerRuntime.RuntimeStatus(
+                phase: .stopped,
+                reason: linuxIrohControllerCredentialProvider == nil
+                    ? .credentialsUnavailable
+                    : .nativeTransportUnavailable,
+                changedAt: Date(),
+                retryAt: nil
+            )
+        } else {
+            self.linuxIrohControllerUnavailableStatus = nil
+        }
+
+        let resolvedGrantBroker: ComputerUseSessionGrantBroker?
+        if let computerUseSessionGrantBroker {
+            resolvedGrantBroker = computerUseSessionGrantBroker
+        } else if let resolvedIrohRuntime, let resolvedGrantVerifier {
+            resolvedGrantBroker = ComputerUseSessionGrantBroker(
+                publisher: { peerNodeID, frame in
+                    try await resolvedIrohRuntime.publish(to: peerNodeID, frame: frame)
+                },
+                prevalidatePinnedPhoneGrant: { request, authorityPeerNodeID, now in
+                    try await resolvedGrantVerifier.verify(
+                        request,
+                        expectedAuthorityPeerNodeID: authorityPeerNodeID,
+                        now: now
+                    )
+                }
+            )
+        } else {
+            resolvedGrantBroker = nil
+        }
+        self.computerUseSessionGrantBroker = resolvedGrantBroker
+        let resolvedMetadataResolver: ComputerUseSessionGrantMetadataResolver?
+        if let computerUseSessionGrantMetadataResolver {
+            resolvedMetadataResolver = computerUseSessionGrantMetadataResolver
+        } else if let runtime = resolvedIrohRuntime {
+            resolvedMetadataResolver = { requirement, request in
+                try await runtime.acquisitionMetadata(requirement: requirement, request: request)
+            }
+        } else {
+            resolvedMetadataResolver = nil
+        }
+        self.computerUseSessionGrantMetadataResolver = resolvedMetadataResolver
+        let resolvedReadinessProvider: ComputerUseSessionGrantReadinessProvider?
+        if let computerUseSessionGrantReadinessProvider {
+            resolvedReadinessProvider = computerUseSessionGrantReadinessProvider
+        } else if let runtime = resolvedIrohRuntime {
+            resolvedReadinessProvider = { await runtime.isReady() }
+        } else {
+            resolvedReadinessProvider = nil
+        }
+        self.computerUseSessionGrantReadinessProvider = resolvedReadinessProvider
+        let approvalPublisher: ComputerUseService.ApprovalPublisher?
+        let sessionEndedObserver: ComputerUseService.SessionEndedObserver?
+        if let runtime = resolvedIrohRuntime {
+            approvalPublisher = { request in try await runtime.publishApproval(request) }
+            sessionEndedObserver = { sessionID in await runtime.unbindSession(sessionID) }
+        } else {
+            approvalPublisher = nil
+            sessionEndedObserver = nil
+        }
+        let resolvedComputerUseService = computerUseService ?? ComputerUseService(
+            authorizationRegistry: resolvedComputerUseAuthorizationRegistry,
+            approvalPublisher: approvalPublisher,
+            sessionEndedObserver: sessionEndedObserver
+        )
+        #else
+        let resolvedComputerUseService = computerUseService ?? ComputerUseService(
+            authorizationRegistry: resolvedComputerUseAuthorizationRegistry
+        )
+        #endif
+        let computerUseBrowserDispatcher: BurnBarComputerUseBrowserDispatcher?
+        let computerUseRunBindingChecker: BurnBarComputerUseRunBindingChecker?
+        let computerUseRunRevoker: BurnBarComputerUseRunRevoker?
+        #if os(Linux)
+        computerUseBrowserDispatcher = { invocation in
+            guard let sessionID = await resolvedComputerUseService.sessionID(for: invocation.runID),
+                  await resolvedComputerUseAuthorizationRegistry.permits(
+                    sessionID: sessionID,
+                    invocation: invocation
+                  ) else {
+                throw ComputerUseService.ServiceError.authorizationExpired(invocation.runID.rawValue)
+            }
+            let response = try await resolvedComputerUseService.invokeForRun(invocation)
+            return BurnBarComputerUseBrowserDispatchResult(
+                expectedSessionID: sessionID,
+                response: response
+            )
+        }
+        computerUseRunBindingChecker = { runID, expectedGeneration in
+            await resolvedComputerUseAuthorizationRegistry.hasActiveBinding(
+                runID: runID,
+                generation: expectedGeneration
+            )
+        }
+        computerUseRunRevoker = { runID, expectedGeneration in
+            guard let binding = await resolvedComputerUseAuthorizationRegistry.binding(runID: runID),
+                  binding.generation == expectedGeneration else {
+                return
+            }
+            await resolvedComputerUseAuthorizationRegistry.revoke(sessionID: binding.sessionID)
+            _ = try? await resolvedComputerUseService.panicHalt(
+                ComputerUsePanicHaltRequest(
+                    sessionId: binding.sessionID.rawValue,
+                    source: ComputerUsePanicSource.revoked.rawValue
+                )
+            )
+        }
+        #else
+        computerUseBrowserDispatcher = nil
+        computerUseRunBindingChecker = nil
+        computerUseRunRevoker = nil
+        #endif
         let resolvedRunService = runService ?? BurnBarRunService(
             router: BurnBarProviderRouter(
                 configStore: resolvedConfigStore,
@@ -128,20 +420,28 @@ public actor BurnBarDaemonServer {
             ),
             usageRecorder: resolvedUsageRecorder,
             clientRegistry: resolvedClientRegistry,
+            computerUseBrowserDispatcher: computerUseBrowserDispatcher,
+            computerUseRunBindingChecker: computerUseRunBindingChecker,
+            computerUseRunRevoker: computerUseRunRevoker,
             logger: BurnBarDaemonLogger(category: "run-service")
         )
 
         self.configStore = resolvedConfigStore
         self.usageRecorder = resolvedUsageRecorder
+        self.localUsageIngestionService = resolvedLocalUsageIngestionService
         self.proxyRouteLogStore = resolvedProxyRouteLogStore
         self.quotaSignalStore = resolvedQuotaSignalStore
+        #if os(Linux)
+        self.linuxQuotaRefreshService = resolvedLinuxQuotaRefreshService
+        #endif
         self.clientRegistry = resolvedClientRegistry
         self.runService = resolvedRunService
         self.toolingProxy = BurnBarToolingProxyService(
             connectorPlaneService: resolvedRunService.connectorPlaneService,
             browserToolService: resolvedRunService.browserToolService
         )
-        self.computerUseService = ComputerUseService()
+        self.computerUseService = resolvedComputerUseService
+        self.computerUseAuthorizationRegistry = resolvedComputerUseAuthorizationRegistry
         #if os(Linux)
         let mediaLogger = BurnBarDaemonLogger(category: "linux-media")
         self.mediaService = MercuryLinuxMediaSessionController(
@@ -151,6 +451,7 @@ public actor BurnBarDaemonServer {
             },
             logger: mediaLogger
         )
+        self.linuxPrivacyService = linuxPrivacyService ?? BurnBarLinuxPrivacyService()
         #endif
         self.rateLimiter = rateLimiter ?? BurnBarRateLimiter(configuration: configuration.socketRateLimit)
         // VAL-DAEMON-011: Wire a concrete execution readiness gate with fail-closed semantics.
@@ -219,65 +520,120 @@ public actor BurnBarDaemonServer {
         self.membershipService = membershipService ?? BurnBarMembershipService()
 
         if let path = configuration.indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines),
-           path.isEmpty == false,
-           FileManager.default.fileExists(atPath: path) {
-            // RR-1: one-time plaintext→encrypted migration of the shared SQLite
-            // file BEFORE any service opens it. No-op on a stock-SQLite build or
-            // when no key is provisioned, so the disclosed-plaintext file is left
-            // exactly as-is (do-not-brick). On failure we log and continue —
-            // the original plaintext file is untouched and still opens below.
+           path.isEmpty == false {
+            self.databaseRecoveryService = BurnBarDatabaseRecoveryBundleService(
+                databasePath: path,
+                logger: BurnBarDaemonLogger(category: "database-recovery")
+            )
+#if os(Linux)
+            // Match macOS's encryption-at-rest default on first launch. The
+            // key is persisted in the approved native SecretStore before the
+            // chat store can create the database; encrypted existing profiles
+            // without a readable key remain fail-closed.
             do {
-                _ = try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
-                    at: path,
-                    logger: BurnBarDaemonLogger(category: "database-cipher")
-                )
+                _ = try BurnBarDaemonDatabaseCipher.ensureKeyIfNeeded(at: path)
             } catch {
                 logger.warning(
-                    "daemon_database_encrypted_migration_failed",
+                    "daemon_database_key_provision_failed",
                     metadata: ["path": path, "error": "\(error)"]
                 )
             }
-            do {
-                self.indexedSearch = try BurnBarIndexedSearchService(
-                    databasePath: path,
-                    logger: BurnBarDaemonLogger(category: "indexed-search")
-                )
-            } catch {
-                logger.warning(
-                    "indexed_search_init_failed",
-                    metadata: ["path": path, "error": "\(error)"]
-                )
+#endif
+            if FileManager.default.fileExists(atPath: path) {
+                // RR-1: one-time plaintext→encrypted migration of the shared SQLite
+                // file BEFORE any service opens it. No-op on a stock-SQLite build or
+                // when no key is provisioned, so the disclosed-plaintext file is left
+                // exactly as-is (do-not-brick). On failure we log and continue —
+                // the original plaintext file is untouched and still opens below.
+                do {
+                    _ = try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
+                        at: path,
+                        logger: BurnBarDaemonLogger(category: "database-cipher")
+                    )
+                } catch {
+                    logger.warning(
+                        "daemon_database_encrypted_migration_failed",
+                        metadata: ["path": path, "error": "\(error)"]
+                    )
+                }
+                do {
+                    self.indexedSearch = try BurnBarIndexedSearchService(
+                        databasePath: path,
+                        logger: BurnBarDaemonLogger(category: "indexed-search")
+                    )
+                } catch {
+                    logger.warning(
+                        "indexed_search_init_failed",
+                        metadata: ["path": path, "error": "\(error)"]
+                    )
+                    self.indexedSearch = nil
+                }
+                do {
+                    self.resumeService = try BurnBarResumeService(
+                        databasePath: path,
+                        logger: BurnBarDaemonLogger(category: "resume-service")
+                    )
+                } catch {
+                    logger.warning(
+                        "resume_service_init_failed",
+                        metadata: ["path": path, "error": "\(error)"]
+                    )
+                    self.resumeService = nil
+                }
+                do {
+                    self.projectCodeMemoryStorage = try BurnBarProjectCodeMemoryStore(
+                        databasePath: path,
+                        logger: BurnBarDaemonLogger(category: "project-code-memory")
+                    )
+                    self.projectCodeMemoryBootstrapAttempted = true
+                } catch {
+                    logger.warning(
+                        "project_code_memory_init_failed",
+                        metadata: ["path": path, "error": "\(error)"]
+                    )
+                    self.projectCodeMemoryStorage = nil
+                    self.projectCodeMemoryBootstrapAttempted = true
+                    self.projectCodeMemoryBootstrapFailure = error.localizedDescription
+                }
+            } else {
+                // Chat opens the database below with SQLITE_OPEN_CREATE. Leave
+                // code memory unattempted so its first RPC can bootstrap after
+                // chat (or another database owner) creates the file.
                 self.indexedSearch = nil
-            }
-            do {
-                self.resumeService = try BurnBarResumeService(
-                    databasePath: path,
-                    logger: BurnBarDaemonLogger(category: "resume-service")
-                )
-            } catch {
-                logger.warning(
-                    "resume_service_init_failed",
-                    metadata: ["path": path, "error": "\(error)"]
-                )
                 self.resumeService = nil
+                self.projectCodeMemoryStorage = nil
             }
-            do {
-                self.projectCodeMemory = try BurnBarProjectCodeMemoryStore(
-                    databasePath: path,
-                    logger: BurnBarDaemonLogger(category: "project-code-memory")
-                )
-            } catch {
-                logger.warning(
-                    "project_code_memory_init_failed",
-                    metadata: ["path": path, "error": "\(error)"]
-                )
-                self.projectCodeMemory = nil
+            // The chat thread store must NOT be gated on the file existing: it
+            // opens with SQLITE_OPEN_CREATE so the very first chat on a fresh
+            // profile creates `openburnbar.sqlite`. Gating it above left fresh
+            // Linux profiles with permanently unavailable chat RPCs.
+            if self.chatThreadService == nil {
+                do {
+                    self.chatThreadService = try BurnBarChatThreadService(
+                        databasePath: path,
+                        logger: BurnBarDaemonLogger(category: "chat-thread-store")
+                    )
+                } catch {
+                    logger.warning(
+                        "chat_thread_service_init_failed",
+                        metadata: ["path": path, "error": "\(error)"]
+                    )
+                }
             }
         } else {
             self.indexedSearch = nil
-            self.projectCodeMemory = nil
+            self.projectCodeMemoryStorage = nil
+            self.databaseRecoveryService = nil
             self.resumeService = nil
         }
+
+        #if os(Linux)
+        self.textExpansionService = BurnBarTextExpansionService(
+            logger: BurnBarDaemonLogger(category: "text-expansion")
+        )
+        #else
+        self.textExpansionService = nil
+        #endif
 
         // HTTP gateway — only initialized if enabled.
         if configuration.gateway.isEnabled {
@@ -296,6 +652,270 @@ public actor BurnBarDaemonServer {
             )
         } else {
             self.gatewayServer = nil
+        }
+    }
+
+    /// Opens the project code-memory store exactly once after the configured
+    /// database path becomes a real file. This method is actor-isolated through
+    /// `BurnBarDaemonServer`, so concurrent RPCs cannot race store construction.
+    ///
+    /// A missing file is deliberately not considered a failed attempt: the
+    /// chat service creates it on first use for a fresh profile. Once a file is
+    /// present, however, any open/schema/key failure is cached and remains
+    /// unavailable until the daemon restarts. That avoids retry storms and
+    /// keeps the RPC surface fail closed without ever opening an unconfigured
+    /// or plaintext fallback database.
+    @discardableResult
+    func ensureProjectCodeMemoryBootstrapped() -> BurnBarProjectCodeMemoryStore? {
+        if let projectCodeMemoryStorage {
+            return projectCodeMemoryStorage
+        }
+        guard projectCodeMemoryBootstrapAttempted == false else {
+            return nil
+        }
+        guard let path = configuration.indexDatabasePath?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            path.isEmpty == false,
+            FileManager.default.fileExists(atPath: path) else {
+            return nil
+        }
+
+        // Only mark the attempt after the configured file exists. The chat
+        // store may create that file after the daemon has initialized.
+        projectCodeMemoryBootstrapAttempted = true
+        do {
+            // Keep the same migration/key ordering as daemon initialization.
+            // The helper never creates an unconfigured plaintext fallback.
+            do {
+                _ = try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
+                    at: path,
+                    logger: BurnBarDaemonLogger(category: "database-cipher")
+                )
+            } catch {
+                logger.warning(
+                    "daemon_database_encrypted_migration_failed",
+                    metadata: ["path": path, "error": "\(error)"]
+                )
+            }
+            let store = try BurnBarProjectCodeMemoryStore(
+                databasePath: path,
+                logger: BurnBarDaemonLogger(category: "project-code-memory")
+            )
+            projectCodeMemoryStorage = store
+            projectCodeMemoryBootstrapFailure = nil
+            logger.info(
+                "project_code_memory_lazy_bootstrap_succeeded",
+                metadata: ["path": path]
+            )
+            return store
+        } catch {
+            projectCodeMemoryBootstrapFailure = error.localizedDescription
+            logger.warning(
+                "project_code_memory_lazy_bootstrap_failed",
+                metadata: ["path": path, "error": error.localizedDescription]
+            )
+            return nil
+        }
+    }
+
+    /// Entry point for the authenticated paired-controller transport. The
+    /// transport must pass the peer identity established by its own handshake;
+    /// renderer/socket fields are never accepted as that identity.
+    public func ingestComputerUseSessionGrant(
+        _ request: HermesRealtimeRelayAgentGrantRequest,
+        authenticatedTransportPeerNodeID: String,
+        now: Date = Date()
+    ) async throws {
+        guard let computerUseSessionGrantBroker else {
+            throw ComputerUseSessionGrantBroker.BrokerError.transportUnavailable
+        }
+        try await computerUseSessionGrantBroker.ingest(
+            request,
+            authenticatedTransportPeerNodeID: authenticatedTransportPeerNodeID,
+            now: now
+        )
+    }
+
+    func ingestComputerUseApprovalResponse(
+        _ response: HermesRealtimeRelayApprovalResponse,
+        sessionID: String,
+        provenance: ComputerUseIngressProvenance
+    ) async throws {
+        guard let verifier = computerUseApprovalAuthorityVerifier else {
+            throw ComputerUseTransportIngressError.rejected
+        }
+        #if os(Linux)
+        if let linuxIrohControllerRuntime {
+            guard case .authenticatedIrohTransport(let transportPeerNodeID, let routeGeneration) = provenance,
+                  let authorityPeerNodeID = response.authority?.peerNodeId,
+                  response.respondedBy == authorityPeerNodeID,
+                  await linuxIrohControllerRuntime.authorizesSessionAuthority(
+                    sessionID: sessionID,
+                    authorityPeerNodeID: authorityPeerNodeID,
+                    transportPeerNodeID: transportPeerNodeID,
+                    routeGeneration: routeGeneration
+                  ) else {
+                throw ComputerUseTransportIngressError.rejected
+            }
+        }
+        #endif
+        let pending = await computerUseService.pendingApprovals(
+            ComputerUseApprovalPendingRequest(sessionId: sessionID)
+        ).requests.first { $0.approvalId == response.approvalId }
+        guard let pending else { throw ComputerUseTransportIngressError.rejected }
+        try await verifier.verify(response: response, pendingRequest: pending, sessionID: sessionID)
+        guard await computerUseService.respondToApproval(
+            ComputerUseApprovalRespondRequest(sessionId: sessionID, response: response)
+        ).accepted else {
+            throw ComputerUseTransportIngressError.rejected
+        }
+    }
+
+    #if os(Linux)
+    func linuxIrohControllerStatus() async -> LinuxIrohControllerRuntime.RuntimeStatus? {
+        if let linuxIrohControllerRuntime { return await linuxIrohControllerRuntime.status() }
+        return linuxIrohControllerUnavailableStatus
+    }
+
+    public func handleLinuxCloudAuthSessionEvent(_ event: LinuxCloudAuthSessionEvent) async {
+        guard let linuxIrohControllerRuntime else { return }
+        switch event {
+        case .credentialsAvailable:
+            do {
+                try await linuxIrohControllerRuntime.start()
+            } catch {
+                logger.warning(
+                    "linux_iroh_controller_credential_restart_failed",
+                    metadata: ["reason": "unavailable"]
+                )
+            }
+        case .invalidated:
+            await linuxIrohControllerRuntime.stop()
+        }
+    }
+
+    public func handleLinuxCloudAuthTeardown(
+        credentials: LinuxIrohControllerCredentialContext?
+    ) async {
+        guard let linuxIrohControllerRuntime else { return }
+        await linuxIrohControllerRuntime.stop(teardownCredentials: credentials)
+    }
+
+    public func linuxCloudAuthStatus() async -> BurnBarLinuxAuthStatusResponse {
+        guard let linuxCloudCredentialAuthority else {
+            return BurnBarLinuxAuthStatusResponse(
+                state: .unavailable,
+                signedIn: false,
+                detail: "credential_authority_unavailable"
+            )
+        }
+        return await linuxCloudCredentialAuthority.status()
+    }
+
+    public func beginLinuxCloudSignIn() async throws -> BurnBarLinuxAuthBeginResponse {
+        guard let linuxCloudCredentialAuthority else {
+            throw LinuxCloudAuthAuthorityError.configurationRequired
+        }
+        return try await linuxCloudCredentialAuthority.beginSignIn()
+    }
+
+    public func cancelLinuxCloudSignIn(operationID: String) async throws -> BurnBarLinuxAuthStatusResponse {
+        guard let linuxCloudCredentialAuthority else {
+            throw LinuxCloudAuthAuthorityError.configurationRequired
+        }
+        try await linuxCloudCredentialAuthority.cancelSignIn(operationID: operationID)
+        return await linuxCloudCredentialAuthority.status()
+    }
+
+    public func signOutLinuxCloud() async throws -> BurnBarLinuxAuthStatusResponse {
+        guard let linuxCloudCredentialAuthority else {
+            throw LinuxCloudAuthAuthorityError.configurationRequired
+        }
+        try await linuxCloudCredentialAuthority.signOut()
+        return await linuxCloudCredentialAuthority.status()
+    }
+
+    public func rotateLinuxCloudInstallationIdentity() async throws -> BurnBarLinuxAuthStatusResponse {
+        guard let linuxCloudCredentialAuthority else {
+            throw LinuxCloudAuthAuthorityError.configurationRequired
+        }
+        try await linuxCloudCredentialAuthority.rotateInstallationIdentity()
+        return await linuxCloudCredentialAuthority.status()
+    }
+
+    /// Execute the canonical server-owned account erasure through the Linux
+    /// credential authority. The renderer supplies only the confirmation
+    /// phrase; trusted-device authorization, Firebase credentials, and the
+    /// callable request remain daemon-owned.
+    public func deleteLinuxAccountCloudData(
+        confirmation: String
+    ) async throws -> BurnBarLinuxAccountCloudDataDeletionResponse {
+        guard let linuxCloudCredentialAuthority else {
+            throw LinuxCloudAuthAuthorityError.configurationRequired
+        }
+        let result = try await linuxCloudCredentialAuthority.requestCloudDataDeletion(
+            confirmationToken: confirmation
+        )
+        return BurnBarLinuxAccountCloudDataDeletionResponse(
+            ok: result.success,
+            cloudDataDeleted: result.cloudDataDeleted,
+            retryRequired: result.retryRequired,
+            deletedDocuments: result.deletedDocuments,
+            destroyedSecrets: result.destroyedSecrets,
+            failedSecretDestroys: result.failedSecretDestroys,
+            deletedStoragePrefixes: result.deletedStoragePrefixes,
+            failedStorageDeletes: result.failedStorageDeletes,
+            deletedAuthUser: result.deletedAuthUser,
+            authUserAlreadyMissing: result.authUserAlreadyMissing
+        )
+    }
+
+    /// Execute the canonical server-owned account export through the Linux
+    /// credential authority, then write the bounded payload to a daemon-
+    /// validated owner-only path. Cloud credentials and export bytes never
+    /// cross the renderer bridge.
+    public func exportLinuxAccountCloudData(
+        domains: [String]?,
+        destinationPath: String
+    ) async throws -> BurnBarLinuxAccountCloudDataExportResponse {
+        guard let linuxCloudCredentialAuthority else {
+            throw LinuxCloudAuthAuthorityError.configurationRequired
+        }
+        let data = try await linuxCloudCredentialAuthority.requestCloudDataExport(domains: domains)
+        let receipt = try await linuxPrivacyService.writePlaintextExport(
+            data,
+            destinationPath: destinationPath
+        )
+        return BurnBarLinuxAccountCloudDataExportResponse(
+            ok: true,
+            destinationPath: receipt.destinationPath,
+            byteCount: Int(receipt.byteCount),
+            schemaVersion: 2
+        )
+    }
+    #endif
+
+    func ingestComputerUsePanic(
+        _ intent: HermesRealtimeRelayInputIntent,
+        sessionIDs: [String],
+        authenticatedTransportPeerNodeID: String,
+        authorityPeerNodeID: String
+    ) async throws {
+        guard authenticatedTransportPeerNodeID.isEmpty == false,
+              let verifier = computerUsePanicAuthorityVerifier else {
+            throw ComputerUseTransportIngressError.rejected
+        }
+        try await verifier.verify(
+            intent: intent,
+            expectedAuthorityPeerNodeID: authorityPeerNodeID
+        )
+        for sessionID in sessionIDs {
+            _ = try? await computerUseService.panicHalt(
+                ComputerUsePanicHaltRequest(
+                    sessionId: sessionID,
+                    source: ComputerUsePanicSource.phoneGesture.rawValue
+                )
+            )
         }
     }
 
@@ -391,6 +1011,36 @@ public actor BurnBarDaemonServer {
             configStore: configStore,
             logger: logger
         )
+        if let localUsageIngestionService {
+            localUsageIngestionTask = Task.detached(priority: .background) { [logger] in
+                while !Task.isCancelled {
+                    let report = await localUsageIngestionService.refresh()
+                    if report.failures.isEmpty {
+                        logger.debug(
+                            "local_usage_ingestion_completed",
+                            metadata: [
+                                "parsed_rows": "\(report.parsedRows)",
+                                "inserted_deltas": "\(report.insertedDeltas)",
+                                "unchanged_rows": "\(report.unchangedRows)"
+                            ]
+                        )
+                    } else {
+                        logger.warning(
+                            "local_usage_ingestion_degraded",
+                            metadata: [
+                                "failure_count": "\(report.failures.count)",
+                                "first_failure": report.failures[0]
+                            ]
+                        )
+                    }
+                    do {
+                        try await Task.sleep(for: .seconds(60))
+                    } catch {
+                        break
+                    }
+                }
+            }
+        }
         #if os(Linux)
         do {
             try await mediaService.start()
@@ -400,6 +1050,76 @@ public actor BurnBarDaemonServer {
                 metadata: ["error": "\(error)"]
             )
         }
+        if let linuxIrohControllerRuntime {
+            await linuxIrohControllerRuntime.installHandlers(
+                grant: { [weak self] request, transportPeerNodeID in
+                    guard let self else { throw LinuxIrohControllerRuntime.RuntimeError.handlersUnavailable }
+                    try await self.ingestComputerUseSessionGrant(
+                        request,
+                        authenticatedTransportPeerNodeID: transportPeerNodeID
+                    )
+                },
+                approval: { [weak self] sessionID, response, transportPeerNodeID, routeGeneration in
+                    guard let self else { throw LinuxIrohControllerRuntime.RuntimeError.handlersUnavailable }
+                    try await self.ingestComputerUseApprovalResponse(
+                        response,
+                        sessionID: sessionID,
+                        provenance: .authenticatedIrohTransport(
+                            peerNodeID: transportPeerNodeID,
+                            routeGeneration: routeGeneration
+                        )
+                    )
+                },
+                panic: { [weak self] sessionIDs, intent, transportPeerNodeID, authorityPeerNodeID in
+                    guard let self else { throw LinuxIrohControllerRuntime.RuntimeError.handlersUnavailable }
+                    try await self.ingestComputerUsePanic(
+                        intent,
+                        sessionIDs: sessionIDs,
+                        authenticatedTransportPeerNodeID: transportPeerNodeID,
+                        authorityPeerNodeID: authorityPeerNodeID
+                    )
+                },
+                revokeSessions: { [weak self] sessionIDs, _ in
+                    guard let self else { return }
+                    for sessionID in sessionIDs {
+                        _ = try? await self.computerUseService.panicHalt(
+                            ComputerUsePanicHaltRequest(
+                                sessionId: sessionID,
+                                source: ComputerUsePanicSource.revoked.rawValue
+                            )
+                        )
+                    }
+                },
+                routeEnded: { [weak self] route, reason in
+                    guard let self else { return }
+                    await self.mediaService.routeEnded(
+                        uid: route.uid,
+                        connectionID: route.connectionID,
+                        remotePeerNodeID: route.transportNodeID,
+                        reason: reason
+                    )
+                },
+                media: { [weak self] frame, remotePeerNodeID, replySender in
+                    guard let self else { return }
+                    await self.mediaService.ingestMercuryFrame(
+                        frame,
+                        remotePeerNodeID: remotePeerNodeID,
+                        replySender: replySender
+                    )
+                }
+            )
+            do {
+                try await linuxIrohControllerRuntime.start()
+            } catch {
+                logger.warning(
+                    "linux_iroh_controller_start_failed",
+                    metadata: ["reason": "unavailable"]
+                )
+            }
+        }
+        #endif
+        #if os(Linux)
+        await linuxCloudSyncRuntime?.startBackgroundLoop()
         #endif
         if configuration.startsMissionControlBackgroundLoops {
             await missionControlService.startBackgroundLoops()
@@ -483,6 +1203,8 @@ public actor BurnBarDaemonServer {
         heartbeatTask = nil
         oauthRefreshTask?.cancel()
         oauthRefreshTask = nil
+        localUsageIngestionTask?.cancel()
+        localUsageIngestionTask = nil
         let acceptTask = acceptLoopTask
         acceptLoopTask = nil
         acceptTask?.cancel()
@@ -513,6 +1235,8 @@ public actor BurnBarDaemonServer {
         ownership?.release()
         await missionControlService.stopBackgroundLoops()
         #if os(Linux)
+        await linuxCloudSyncRuntime?.stopBackgroundLoop()
+        await linuxIrohControllerRuntime?.stop()
         await mediaService.stop()
         #endif
 
@@ -647,6 +1371,18 @@ public actor BurnBarDaemonServer {
             let request = BurnBarRPCRequestEnvelope(id: incomingRequest.id, method: method, authToken: incomingRequest.authToken)
 
             switch method {
+            case .linuxAuthStatus, .linuxAuthBegin, .linuxAuthCancel,
+                 .linuxAuthRotateIdentity, .linuxAuthSignOut,
+                 .linuxAccountCloudDataExport,
+                 .linuxAccountCloudDataDelete, .linuxTrustedDeviceList,
+                 .linuxTrustedDeviceApprove, .linuxTrustedDeviceRevoke,
+                 .linuxCloudSyncStatus,
+                 .linuxCloudSyncPolicyUpdate, .linuxCloudSyncRun:
+                return try await handleLinuxAuthRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
             case .health, .catalog, .authBootstrap, .linuxOnboardingSnapshot:
                 return try await handleLifecycleRPC(
                     method: method,
@@ -655,6 +1391,9 @@ public actor BurnBarDaemonServer {
                     requestData: requestData
                 )
             case .configGet, .configUpdate, .linuxOnboardingAction, .linuxOnboardingReset,
+                 .textExpansionGet, .textExpansionUpsert, .textExpansionDelete, .textExpansionConsentUpdate,
+                 .textExpansionEngineStatus, .textExpansionEngineStart, .textExpansionEngineStop,
+                 .textExpansionEngineExpand,
                  .providerCredentialSlotUpsert, .providerCredentialSlotRemove,
                  .providerModelVariantUpsert, .providerModelVariantRemove,
                  .providerModelAliasUpsert, .providerModelAliasRemove,
@@ -665,8 +1404,34 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .usageRecord, .usageRecent:
+#if os(Linux)
+            case .linuxPrivacyInventory, .linuxPrivacyDeletionPreview,
+                 .linuxPrivacyDeletionExecute, .linuxPrivacyExport,
+                 .linuxPrivacyRetentionStatus, .linuxPrivacyRetentionApply:
+                return try await handleLinuxPrivacyRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+#else
+            case .linuxPrivacyInventory, .linuxPrivacyDeletionPreview,
+                 .linuxPrivacyDeletionExecute, .linuxPrivacyExport,
+                 .linuxPrivacyRetentionStatus, .linuxPrivacyRetentionApply:
+                return encodeErrorResponse(
+                    id: request.id,
+                    code: BurnBarRPCErrorCode.methodNotFound,
+                    message: "Linux privacy RPCs are unavailable on macOS."
+                )
+#endif
+            case .usageRecord, .usageRecent, .usageProjection, .usageRecount,
+                 .usageHistory, .usageInsights:
                 return try await handleUsageRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+            case .chatThreadList, .chatThreadGet, .chatMessageAppend:
+                return try await handleChatRPC(
                     method: method,
                     decoder: decoder,
                     requestData: requestData
@@ -679,7 +1444,7 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .membershipStatus, .membershipCheckoutURL, .membershipRestore:
+            case .membershipStatus, .membershipCheckoutURL, .membershipPortalURL, .membershipRestore:
                 return try await handleMembershipRPC(
                     method: method,
                     decoder: decoder,
@@ -693,6 +1458,8 @@ public actor BurnBarDaemonServer {
                     requestData: requestData
                 )
             case .computerUseCapabilityStateUpdate,
+                 .computerUseSessionGrantReadiness, .computerUseSessionGrantAcquire,
+                 .computerUseSessionGrantStatus,
                  .computerUseSessionStart, .computerUseInvoke,
                  .computerUseApprovalPending, .computerUseApprovalRespond,
                  .computerUsePanicHalt, .computerUseAuditExport,
@@ -700,7 +1467,8 @@ public actor BurnBarDaemonServer {
                 return try await handleComputerUseRPC(
                     method: method,
                     decoder: decoder,
-                    requestData: requestData
+                    requestData: requestData,
+                    peerPID: peerPID
                 )
             case .daemonMediaSessionState, .daemonMediaCallAccept,
                  .daemonMediaCallDecline, .daemonMediaCallEnd,
@@ -715,10 +1483,11 @@ public actor BurnBarDaemonServer {
                 )
             case .controllerSummary, .controllerRuntimeSnapshot,
                  .controllerProjectsList, .controllerProjectGet,
-                 .controllerProjectUpsert, .reviewRunRecord,
+                 .controllerProjectUpsert, .controllerProjectDelete,
+                 .controllerProjectReassign, .reviewRunRecord,
                  .questionCreate, .questionGet, .questionsList, .questionAnswer,
                  .followupCreate, .followupsList, .followupDone, .followupSnooze, .followupCalendar,
-                 .missionCreate, .missionsList, .missionGet, .missionApprove, .missionCancel,
+                 .missionCreate, .missionsList, .missionGet, .missionHealth, .missionApprove, .missionCancel,
                  .missionDispatchPacket, .missionRecordResult, .missionAuthorizeRemote,
                  .notificationConfigGet, .notificationConfigUpdate, .notificationHealth, .notificationCommand,
                  .simulatorRun, .simulatorList, .simulatorReplay, .projectionRebuild:
@@ -747,15 +1516,22 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .memoryRemember, .memoryRecall, .memoryForget, .memoryAuditTrail, .memoryAnalytics:
+            case .memoryRemember, .memoryRecall, .memoryReviewStatus, .memoryForget, .memoryAuditTrail, .memoryAnalytics:
                 return try await handleMemoryRPC(
                     method: method,
                     decoder: decoder,
                     requestData: requestData
                 )
             case .codeIndexProject, .codeWatchProject, .codeSearch, .codeContextPack, .codeGetSymbol, .codeFindReferences,
-                 .codeCallGraph, .codeDiagnostics, .codeIndexStatus, .codeExplore, .codeOpsDiagnostics:
+             .codeCallGraph, .codeDiagnostics, .codeIndexStatus, .codeExplore, .codeOpsDiagnostics,
+             .codeDatabaseSnapshot, .codeDatabaseRestore:
                 return try await handleCodeRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+            case .databaseRecoveryStatus, .databaseRecoveryBundleExport, .databaseRecoveryBundleImport:
+                return try await handleDatabaseRecoveryRPC(
                     method: method,
                     decoder: decoder,
                     requestData: requestData
@@ -832,6 +1608,17 @@ public actor BurnBarDaemonServer {
         var pidSize = socklen_t(MemoryLayout<pid_t>.size)
         let result = getsockopt(clientFileDescriptor, SOL_LOCAL, LOCAL_PEERPID, &pid, &pidSize)
         return result == 0 ? pid : nil
+        #elseif os(Linux)
+        var credential = BurnBarLinuxPeerSocketCredentials()
+        var credentialSize = socklen_t(MemoryLayout<BurnBarLinuxPeerSocketCredentials>.size)
+        let result = withUnsafeMutablePointer(to: &credential) { pointer in
+            getsockopt(clientFileDescriptor, SOL_SOCKET, SO_PEERCRED, pointer, &credentialSize)
+        }
+        guard result == 0,
+              credentialSize == socklen_t(MemoryLayout<BurnBarLinuxPeerSocketCredentials>.size) else {
+            return nil
+        }
+        return credential.pid
         #else
         return nil
         #endif
@@ -896,343 +1683,5 @@ public actor BurnBarDaemonServer {
                 metadata: ["error": "\(error)"]
             )
         }
-    }
-}
-
-private struct BurnBarSocketIdentity: Equatable {
-    let device: dev_t
-    let inode: ino_t
-
-    init(status: stat) {
-        self.device = status.st_dev
-        self.inode = status.st_ino
-    }
-}
-
-private struct BurnBarDaemonSocketOwnership {
-    let lockFileDescriptor: Int32
-
-    static func acquire(for socketPath: String) throws -> BurnBarDaemonSocketOwnership {
-        let lockPath = socketPath + ".lock"
-        let descriptor = open(lockPath, O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, mode_t(0o600))
-        guard descriptor != -1 else {
-            throw POSIXError(.init(rawValue: errno) ?? .EIO)
-        }
-
-        do {
-            var status = stat()
-            guard fstat(descriptor, &status) == 0 else {
-                throw POSIXError(.init(rawValue: errno) ?? .EIO)
-            }
-            guard status.st_mode & S_IFMT == S_IFREG,
-                  status.st_uid == geteuid(),
-                  status.st_nlink == 1 else {
-                throw BurnBarDaemonError.unexpectedExistingItem(lockPath)
-            }
-            guard fchmod(descriptor, S_IRUSR | S_IWUSR) == 0 else {
-                throw POSIXError(.init(rawValue: errno) ?? .EIO)
-            }
-            guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
-                let code = errno
-                if code == EWOULDBLOCK || code == EAGAIN {
-                    throw BurnBarDaemonError.daemonAlreadyRunning(socketPath)
-                }
-                throw POSIXError(.init(rawValue: code) ?? .EIO)
-            }
-            return BurnBarDaemonSocketOwnership(lockFileDescriptor: descriptor)
-        } catch {
-            close(descriptor)
-            throw error
-        }
-    }
-
-    func release() {
-        _ = flock(lockFileDescriptor, LOCK_UN)
-        close(lockFileDescriptor)
-    }
-}
-
-private enum BurnBarUnixDomainSocket {
-    static func ensureParentDirectory(for socketPath: String) throws {
-        let socketURL = URL(fileURLWithPath: socketPath)
-        let directoryURL = socketURL.deletingLastPathComponent()
-
-        do {
-            try FileManager.default.createDirectory(
-                at: directoryURL,
-                withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
-        } catch {
-            throw BurnBarDaemonError.failedToCreateParentDirectory(directoryURL.path)
-        }
-    }
-
-    static func preparePathForBind(at socketPath: String) throws -> Bool {
-        var fileStatus = stat()
-        let result = lstat(socketPath, &fileStatus)
-        if result == -1 {
-            if errno == ENOENT {
-                return false
-            }
-            throw POSIXError(.init(rawValue: errno) ?? .EIO)
-        }
-
-        let itemType = fileStatus.st_mode & S_IFMT
-        guard itemType == S_IFSOCK else {
-            throw BurnBarDaemonError.unexpectedExistingItem(socketPath)
-        }
-
-        if try isAcceptingConnections(at: socketPath) {
-            throw BurnBarDaemonError.activeSocketAlreadyExists(socketPath)
-        }
-
-        let originalIdentity = BurnBarSocketIdentity(status: fileStatus)
-        guard try removeSocket(at: socketPath, ifIdentityMatches: originalIdentity) else {
-            throw BurnBarDaemonError.socketPathChanged(socketPath)
-        }
-        return true
-    }
-
-    static func socketIdentity(at socketPath: String) throws -> BurnBarSocketIdentity {
-        var fileStatus = stat()
-        guard lstat(socketPath, &fileStatus) == 0 else {
-            throw POSIXError(.init(rawValue: errno) ?? .EIO)
-        }
-        guard fileStatus.st_mode & S_IFMT == S_IFSOCK else {
-            throw BurnBarDaemonError.unexpectedExistingItem(socketPath)
-        }
-        return BurnBarSocketIdentity(status: fileStatus)
-    }
-
-    static func removeSocket(
-        at socketPath: String,
-        ifIdentityMatches expectedIdentity: BurnBarSocketIdentity
-    ) throws -> Bool {
-        var currentStatus = stat()
-        guard lstat(socketPath, &currentStatus) == 0 else {
-            if errno == ENOENT {
-                return false
-            }
-            throw POSIXError(.init(rawValue: errno) ?? .EIO)
-        }
-        guard currentStatus.st_mode & S_IFMT == S_IFSOCK else {
-            return false
-        }
-        guard BurnBarSocketIdentity(status: currentStatus) == expectedIdentity else {
-            return false
-        }
-        guard unlink(socketPath) == 0 else {
-            throw POSIXError(.init(rawValue: errno) ?? .EIO)
-        }
-        return true
-    }
-
-    static func isAcceptingConnections(at socketPath: String) throws -> Bool {
-        #if canImport(Glibc)
-        let socketType = Int32(SOCK_STREAM.rawValue)
-        #else
-        let socketType = SOCK_STREAM
-        #endif
-        let descriptor = socket(AF_UNIX, socketType, 0)
-        guard descriptor != -1 else {
-            throw POSIXError(.init(rawValue: errno) ?? .EIO)
-        }
-        defer { close(descriptor) }
-
-        var address = try makeSocketAddress(for: socketPath)
-        let result = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { reboundPointer in
-                connect(descriptor, reboundPointer, socklen_t(MemoryLayout<sockaddr_un>.stride))
-            }
-        }
-        if result == 0 {
-            return true
-        }
-        let code = errno
-        if code == ECONNREFUSED || code == ENOENT {
-            return false
-        }
-        throw POSIXError(.init(rawValue: code) ?? .EIO)
-    }
-
-    static func makeListeningSocket(at socketPath: String) throws -> Int32 {
-        #if canImport(Glibc)
-        let socketType = Int32(SOCK_STREAM.rawValue)
-        #else
-        let socketType = SOCK_STREAM
-        #endif
-        let fileDescriptor = socket(AF_UNIX, socketType, 0)
-        guard fileDescriptor != -1 else {
-            throw BurnBarDaemonError.failedToCreateSocket(
-                code: errno,
-                detail: String(cString: strerror(errno))
-            )
-        }
-
-        configureNoSigPipe(for: fileDescriptor)
-
-        do {
-            var address = try makeSocketAddress(for: socketPath)
-            let bindResult = withUnsafePointer(to: &address) { pointer in
-                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { reboundPointer in
-                    bind(fileDescriptor, reboundPointer, socklen_t(MemoryLayout<sockaddr_un>.stride))
-                }
-            }
-
-            guard bindResult == 0 else {
-                let code = errno
-                throw BurnBarDaemonError.failedToBindSocket(
-                    path: socketPath,
-                    code: code,
-                    detail: String(cString: strerror(code))
-                )
-            }
-
-            guard listen(fileDescriptor, SOMAXCONN) == 0 else {
-                let code = errno
-                throw BurnBarDaemonError.failedToListen(
-                    path: socketPath,
-                    code: code,
-                    detail: String(cString: strerror(code))
-                )
-            }
-
-            return fileDescriptor
-        } catch {
-            close(fileDescriptor)
-            throw error
-        }
-    }
-
-    static func restrictSocketPermissions(at socketPath: String) throws {
-        guard chmod(socketPath, S_IRUSR | S_IWUSR) == 0 else {
-            throw POSIXError(.init(rawValue: errno) ?? .EIO)
-        }
-    }
-
-    static func readRequest(from fileDescriptor: Int32, maxBytes: Int) throws -> Data {
-        var buffer = Data()
-        buffer.reserveCapacity(4_096)
-
-        // 64KB chunks: large requests (mission packets, simulator runs)
-        // used to cost one read() syscall per KB.
-        var chunk = [UInt8](repeating: 0, count: 65_536)
-
-        while true {
-            let bytesRead = read(fileDescriptor, &chunk, chunk.count)
-            if bytesRead == 0 {
-                break
-            }
-
-            if bytesRead < 0 {
-                let code = errno
-                if code == EINTR {
-                    continue
-                }
-                throw POSIXError(.init(rawValue: code) ?? .EIO)
-            }
-
-            buffer.append(contentsOf: chunk.prefix(bytesRead))
-            if buffer.count > maxBytes {
-                throw BurnBarDaemonError.requestTooLarge(maxBytes)
-            }
-
-            if buffer.last == 0x0A {
-                break
-            }
-        }
-
-        while buffer.last == 0x0A || buffer.last == 0x0D {
-            buffer.removeLast()
-        }
-
-        return buffer
-    }
-
-    static func writeAll(_ data: Data, to fileDescriptor: Int32) throws {
-        try data.withUnsafeBytes { rawBuffer in
-            guard let baseAddress = rawBuffer.baseAddress else {
-                return
-            }
-
-            var bytesRemaining = rawBuffer.count
-            var writeOffset = 0
-
-            while bytesRemaining > 0 {
-                let pointer = baseAddress.advanced(by: writeOffset)
-                let bytesWritten = write(fileDescriptor, pointer, bytesRemaining)
-                if bytesWritten < 0 {
-                    let code = errno
-                    if code == EINTR {
-                        continue
-                    }
-                    throw POSIXError(.init(rawValue: code) ?? .EIO)
-                }
-                guard bytesWritten > 0 else {
-                    throw POSIXError(.EIO)
-                }
-
-                bytesRemaining -= bytesWritten
-                writeOffset += bytesWritten
-            }
-        }
-    }
-
-    static func configureNoSigPipe(for fileDescriptor: Int32) {
-        #if canImport(Darwin)
-        var value: Int32 = 1
-        setsockopt(
-            fileDescriptor,
-            SOL_SOCKET,
-            SO_NOSIGPIPE,
-            &value,
-            socklen_t(MemoryLayout<Int32>.size)
-        )
-        #else
-        _ = fileDescriptor
-        #endif
-    }
-
-    static func configureIOTimeouts(for fileDescriptor: Int32, seconds: Int = 30) {
-        var timeout = timeval(tv_sec: seconds, tv_usec: 0)
-        setsockopt(
-            fileDescriptor,
-            SOL_SOCKET,
-            SO_RCVTIMEO,
-            &timeout,
-            socklen_t(MemoryLayout<timeval>.size)
-        )
-        setsockopt(
-            fileDescriptor,
-            SOL_SOCKET,
-            SO_SNDTIMEO,
-            &timeout,
-            socklen_t(MemoryLayout<timeval>.size)
-        )
-    }
-
-    private static func makeSocketAddress(for socketPath: String) throws -> sockaddr_un {
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-
-        let pathBytes = Array(socketPath.utf8)
-        let maxPathLength = MemoryLayout.size(ofValue: address.sun_path)
-        guard pathBytes.count < maxPathLength else {
-            throw BurnBarDaemonError.socketPathTooLong(socketPath)
-        }
-
-        #if os(macOS)
-        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.stride)
-        #endif
-
-        withUnsafeMutableBytes(of: &address.sun_path) { rawBuffer in
-            rawBuffer.initializeMemory(as: UInt8.self, repeating: 0)
-            for (index, byte) in pathBytes.enumerated() {
-                rawBuffer[index] = byte
-            }
-        }
-
-        return address
     }
 }

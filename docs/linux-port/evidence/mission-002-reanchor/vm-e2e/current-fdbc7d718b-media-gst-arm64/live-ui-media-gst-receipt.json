@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-19T11:56:07Z",
+  "environment": {
+    "vm": "OpenBurnBar Linux",
+    "ip": "192.168.64.5",
+    "os": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME/X11"
+  },
+  "source": {
+    "uiCommit": "fdbc7d718b",
+    "daemonRuntimeCommit": "a570c9b087",
+    "buildFeatures": ["media-gst"],
+    "scope": "The current fdbc7d718b media UI/state files and the existing a570c9b087 daemon runtime were rebuilt into an arm64 DEB with the media-gst shell feature and installed in the VM. This is not a signed exact-head release build."
+  },
+  "candidate": {
+    "package": "open-burn-bar",
+    "packageVersion": "0.1.1",
+    "packageArchitecture": "arm64",
+    "packagePath": "/home/burnbar/BurnBar/apps/linux-desktop/src-tauri/target/release/bundle/deb/OpenBurnBar_0.1.1_arm64.deb",
+    "packageSha256": "4a0a0b122dce50644710260b4a3f7673164b4c9611e5f6e5588fe9ed6d4b4e4c",
+    "packageBytes": 151386954,
+    "packageStatus": "install ok installed",
+    "installedPeers": {
+      "/usr/bin/openburnbar-daemon": {
+        "sha256": "fb0f87ccc0638f84c2ba9f2a34ca97f8cec707534a5473f19bf6f317291c480c",
+        "mode": "0755",
+        "uid": 0
+      },
+      "/usr/bin/openburnbar-cli": {
+        "sha256": "db0d6931ca8644a91f78ee3dccac27364bab5a373e63917a53915cf836e180e5",
+        "mode": "0755",
+        "uid": 0
+      },
+      "/usr/bin/openburnbar-linux-desktop": {
+        "sha256": "dc0ac4b0a1069fd6dc76d89b1ab4716aba86e38df6367ca5a59c772cbe5cf94b",
+        "mode": "0755",
+        "uid": 0
+      }
+    }
+  },
+  "service": {
+    "unit": "openburnbar-daemon.service",
+    "enabled": true,
+    "active": true,
+    "mainPID": 70265,
+    "execMainStatus": 0,
+    "health": "Daemon 1.0.29 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true",
+    "desktopPID": 68462,
+    "peerRejectionsAfterRestart": 0
+  },
+  "verification": {
+    "mediaUIVitest": "33/33 passed on Ubuntu VM",
+    "typescript": "npx tsc --noEmit passed on Ubuntu VM",
+    "productionBundle": "Vite 307 modules plus verify-linux-production-bundle passed",
+    "tauriMediaGstBuild": "DEB bundle completed with --features media-gst",
+    "linuxMercuryMediaTests": "21/21 passed with OPENBURNBAR_LINUX_IROH_LIBRARY_DIR and packaged SQLCipher",
+    "projectCodeMemoryBootstrapTests": "3/3 passed with packaged FTS5-capable SQLCipher",
+    "linuxPeerCredentialTest": "1/1 passed on Ubuntu VM",
+    "tauriMediaGstRustTests": "5/5 passed",
+    "gstreamerVp9PipelineSmoke": "gst-launch-1.0 videotestsrc num-buffers=1 ! vp9enc ! vp9dec ! fakesink exited 0",
+    "bareCLIHealth": "pass",
+    "webkitRuntime": "desktop stayed up; WebGL GBM fallback was non-fatal",
+    "gstreamerLinkedLibraries": [
+      "libgstapp-1.0.so.0",
+      "libgstbase-1.0.so.0",
+      "libgstreamer-1.0.so.0",
+      "libgstvideo-1.0.so.0"
+    ],
+    "gstreamerCapabilityStrings": [
+      "gstreamer_backend_unavailable",
+      "gstreamer_vp9_decoder_missing",
+      "gstreamer_video_sink_missing",
+      "media-gst",
+      "media-viewer-ready"
+    ],
+    "gstreamerRuntimeProbes": {
+      "version": "1.24.2",
+      "vp9dec": true,
+      "waylandsink": true,
+      "ximagesink": true,
+      "glimagesink": true,
+      "pipewiresink": true
+    },
+    "runtimeLog": "No openburnbar media viewer stub message or fatal startup/panic was observed; the only graphics warning was the non-fatal GBM/WebGL fallback."
+  },
+  "mediaBackendReference": "The daemon-owned media capability/file RPC receipt remains in ../current-a570c9b087/live-receipt.json; direct ad-hoc Python RPC was intentionally rejected by executable-peer authentication and is not used as product evidence.",
+  "certifying": false,
+  "nonCertifyingReasons": [
+    "The package is an unsigned arm64 VM build assembled from the current UI slice plus the existing daemon runtime and is not a signed exact-head candidate.",
+    "The strict parity ledger remains 0/40 product rows and 0/7 environment rows.",
+    "Physical iPad/Linux enrollment, two-device file transfer/call/screen-share, Computer Use, production, keyring/IME, update/rollback, and compositor-matrix receipts remain open."
+  ]
+}

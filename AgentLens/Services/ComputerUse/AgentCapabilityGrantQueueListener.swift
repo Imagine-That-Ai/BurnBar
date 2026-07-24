@@ -156,14 +156,29 @@ final class AgentCapabilityGrantQueueListener {
             now: Date()
         )
         try await daemonPinProvisioner(
-            DaemonPhoneControlPinProvisionRequest(
+            Self.daemonPinProvisionRequest(
                 deviceId: wireRequest.sourceDeviceId,
+                peerNodeId: authority.peerNodeId,
                 publicKeyBase64: authority.publicKey.publicKeyRepresentation.base64EncodedString(),
                 keyKind: authority.publicKey.kind
             )
         )
         let request = try AgentCapabilityGrantRequest(wire: wireRequest)
         return await AgentCapabilityGrantStore.shared.apply(request)
+    }
+
+    nonisolated static func daemonPinProvisionRequest(
+        deviceId: String,
+        peerNodeId: String,
+        publicKeyBase64: String,
+        keyKind: PhoneControlSigningKeyKind
+    ) -> DaemonPhoneControlPinProvisionRequest {
+        DaemonPhoneControlPinProvisionRequest(
+            deviceId: deviceId,
+            peerNodeId: peerNodeId,
+            publicKeyBase64: publicKeyBase64,
+            keyKind: keyKind
+        )
     }
 
     private func authorityPublicKey(

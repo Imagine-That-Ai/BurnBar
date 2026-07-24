@@ -149,6 +149,8 @@ public struct BurnBarToolResult: Codable, Hashable, Sendable {
 
 public enum BurnBarToolExecutionErrorCode: String, Codable, CaseIterable, Hashable, Sendable {
     case trustGated = "trust_gated"
+    case operatorDenied = "operator_denied"
+    case computerUseDenied = "computer_use_denied"
     case noWorkspace = "no_workspace"
     case remoteUnsupported = "remote_unsupported"
     case applyFailed = "apply_failed"

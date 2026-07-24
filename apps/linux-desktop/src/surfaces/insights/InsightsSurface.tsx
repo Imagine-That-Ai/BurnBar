@@ -1,12 +1,16 @@
+import { useEffect } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useInsightsStore } from '../../state/insightsStore.js';
-import { hasInsightsUsage, weekOverWeekTokenDeltaPct } from './insightsChartMath.js';
-import { MixBar } from './MixBar.js';
-import { StatCallout } from './StatCallout.js';
-import { TrendChart } from './TrendChart.js';
+import { useAccountStore } from '../../state/accountStore.js';
+import { hasInsightsUsage } from './insightsChartMath.js';
+import { InsightsEditorialBrief } from './InsightsEditorialBrief.js';
+import { buildInsightsBrief } from './insightsBrief.js';
+import { InsightsWorkspace } from './InsightsWorkspace.js';
+import { accountScopeForInsights } from './insightsWorkspacePersistence.js';
+import { useChatStore } from '../../state/chatStore.js';
 import './insights.css';
 
 function InsightsSkeleton() {
@@ -25,11 +29,26 @@ function InsightsSkeleton() {
 export function InsightsSurface() {
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const bridge = useShellStore((s) => s.bridge);
+  const accountStatus = useAccountStore((s) => s.data);
+  const accountLoading = useAccountStore((s) => s.loading);
+  const loadAccount = useAccountStore((s) => s.load);
   const status = useDaemonStatusCopy();
   const data = useInsightsStore((s) => s.data);
   const loading = useInsightsStore((s) => s.loading);
   const error = useInsightsStore((s) => s.error);
   const load = useInsightsStore((s) => s.load);
+  const openFollowUp = (question: string) => {
+    useShellStore.getState().setRoute('chat');
+    useChatStore.getState().startNewChat();
+    void useChatStore.getState().sendToThread({ backend: 'hermes', text: question });
+  };
+
+  useEffect(() => {
+    // Load the daemon-owned identity while Insights is open so persisted
+    // canvas state is namespaced per account even when Settings was never
+    // visited in this session. Failure keeps the local-only fallback.
+    if (!fixtureMode && bridge && !accountStatus && !accountLoading) void loadAccount();
+  }, [accountLoading, accountStatus, bridge, fixtureMode, loadAccount]);
 
   useLaneLoad(load);
 
@@ -69,35 +88,27 @@ export function InsightsSurface() {
     );
   }
 
-  const wow = weekOverWeekTokenDeltaPct(data.weekly);
   const sourceLabel = fixtureMode ? 'fixture transcript' : 'live daemon usage insights';
-
+  const accountScope = accountScopeForInsights(accountStatus);
+  const brief = buildInsightsBrief(data);
   return (
     <div className="insights-observatory">
-      <p className="data-source muted">Provenance: {sourceLabel}</p>
-      <div className="insights-grid">
-        <div className="insights-panel insights-panel--chart">
-          <TrendChart weekly={data.weekly} />
-        </div>
-        <div className="insights-panel insights-panel--stats">
-          <StatCallout cacheHitRatePct={data.cacheHitRatePct} caption="Cache hit rate" />
-          <StatCallout value={`${data.weekly.length}`} caption="Weeks tracked" deltaPct={wow} />
-        </div>
-        <div className="insights-panel">
-          <MixBar
-            title="Provider mix"
-            entries={data.providerMix}
-            ariaLabel={`Provider mix: ${data.providerMix.map((e) => `${e.label} ${e.pct}%`).join(', ')}`}
-          />
-        </div>
-        <div className="insights-panel">
-          <MixBar
-            title="Model mix"
-            entries={data.modelMix}
-            ariaLabel={`Model mix: ${data.modelMix.map((e) => `${e.label} ${e.pct}%`).join(', ')}`}
-          />
-        </div>
-      </div>
+      {error ? (
+        <Banner tone="degraded">
+          <p>Showing the last successful Insights snapshot. {error}</p>
+          <button type="button" className="primary" onClick={() => void load()}>
+            Retry
+          </button>
+        </Banner>
+      ) : null}
+      <InsightsEditorialBrief brief={brief} />
+      <InsightsWorkspace
+        data={data}
+        sourceLabel={sourceLabel}
+        onRefresh={() => void load()}
+        onFollowUp={openFollowUp}
+        accountScope={accountScope}
+      />
     </div>
   );
 }
