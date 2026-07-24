@@ -41,7 +41,7 @@ open.
 
 ## Current integration branch checkpoint — 2026-07-23
 
-The parity integration branch is now at `54d346024c`. It includes the earlier
+The parity integration branch is now at `76f045802f`. It includes the earlier
 CI-only SwiftLint correction, native PDF/audio attachment parity, OMP and
 OpenClaude local usage ingestion, and the refreshed provider-count audit text.
 The commits are pushed to GitHub and GitLab in PR #1930. Fresh hosted checks
