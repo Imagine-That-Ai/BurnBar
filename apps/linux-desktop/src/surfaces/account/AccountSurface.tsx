@@ -5,7 +5,7 @@ import { FailureStateList } from '../../components/FailureStateList.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { SurfaceCard } from '../../components/SurfaceCard.js';
 import { useAccountStore } from '../../state/accountStore.js';
-import type { AccountStatus } from '../../tauriBridge.js';
+import type { AccountStatus, LinuxCloudSyncStatus } from '../../tauriBridge.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { accountPlanTier } from './accountPlanTier.js';
 import { MembershipSection } from './membership/MembershipSection.js';
@@ -152,6 +152,10 @@ export function AccountSurface() {
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [confirmingIdentityRotation, setConfirmingIdentityRotation] = useState(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<LinuxCloudSyncStatus | null>(null);
+  const [cloudSyncLoading, setCloudSyncLoading] = useState(false);
+  const [cloudSyncError, setCloudSyncError] = useState<string | null>(null);
+  const cloudSyncRequestID = useRef(0);
 
   const authorizationExpiresAt = authorizationExpiryTimestamp(data);
   const authorizationExpired = authorizationExpiresAt !== null && authorizationExpiresAt <= clockNow;
@@ -204,6 +208,60 @@ export function AccountSurface() {
       }
     : statusForCard;
   const trustPosture = displayStatus ? deviceTrustPosture(displayStatus) : null;
+
+  useEffect(() => {
+    const requestID = ++cloudSyncRequestID.current;
+    if (
+      fixtureMode
+      || !bridge?.linuxCloudSyncStatus
+      || displayStatus?.signedIn !== true
+      || displayStatus.state !== 'active'
+    ) {
+      setCloudSyncStatus(null);
+      setCloudSyncLoading(false);
+      setCloudSyncError(null);
+      return () => {
+        cloudSyncRequestID.current += 1;
+      };
+    }
+    setCloudSyncLoading(true);
+    setCloudSyncError(null);
+    void bridge.linuxCloudSyncStatus()
+      .then((next) => {
+        if (requestID !== cloudSyncRequestID.current) return;
+        setCloudSyncStatus(next);
+        setCloudSyncLoading(false);
+      })
+      .catch((reason: unknown) => {
+        if (requestID !== cloudSyncRequestID.current) return;
+        setCloudSyncStatus(null);
+        setCloudSyncLoading(false);
+        setCloudSyncError(reason instanceof Error ? reason.message : 'Daemon sync status is unavailable.');
+      });
+    return () => {
+      cloudSyncRequestID.current += 1;
+    };
+  }, [bridge, displayStatus?.signedIn, displayStatus?.state, fixtureMode]);
+
+  const syncNow = async () => {
+    if (!bridge?.linuxCloudSyncRun) {
+      setCloudSyncError('The packaged daemon does not expose encrypted sync controls.');
+      return;
+    }
+    const requestID = ++cloudSyncRequestID.current;
+    setCloudSyncLoading(true);
+    setCloudSyncError(null);
+    try {
+      const result = await bridge.linuxCloudSyncRun(false);
+      if (requestID !== cloudSyncRequestID.current) return;
+      setCloudSyncStatus(result.status);
+    } catch (reason: unknown) {
+      if (requestID !== cloudSyncRequestID.current) return;
+      setCloudSyncError(reason instanceof Error ? reason.message : 'Encrypted cloud sync did not complete.');
+    } finally {
+      if (requestID === cloudSyncRequestID.current) setCloudSyncLoading(false);
+    }
+  };
 
   const politeSummary = useMemo(() => {
     if (loading) return 'Loading account and sync status.';
@@ -344,7 +402,13 @@ export function AccountSurface() {
                 <p className="account-device-trust-detail muted">{trustPosture.detail}</p>
               </section>
             ) : null}
-            <SyncStateCard status={displayStatus} />
+            <SyncStateCard
+              status={displayStatus}
+              cloudSync={cloudSyncStatus}
+              syncBusy={cloudSyncLoading}
+              syncError={cloudSyncError}
+              onSync={displayStatus.signedIn ? () => void syncNow() : undefined}
+            />
           </div>
         </SurfaceCard>
       ) : null}

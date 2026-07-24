@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AccountStatus } from '../../tauriBridge.js';
+import type { AccountStatus, LinuxCloudSyncStatus } from '../../tauriBridge.js';
 import { useAccountStore } from '../../state/accountStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { accountPlanTier } from './accountPlanTier.js';
@@ -129,6 +129,54 @@ describe('AccountSurface', () => {
     expect(screen.getByText(/Plan · Cloud/i)).toBeTruthy();
     expect(screen.getByText(/Account session active/i)).toBeTruthy();
     expect(screen.getByText(/approval and revocation remain native companion-device actions/i)).toBeTruthy();
+  });
+
+  it('hydrates daemon sync posture and offers a bounded sync action', async () => {
+    const status: LinuxCloudSyncStatus = {
+      phase: 'ready',
+      pendingMutationCount: 2,
+      consecutiveFailures: 0,
+      enabledDomains: ['text_expansion'],
+      remoteAccessEnabled: false,
+      vaultKeyAvailable: true
+    };
+    const linuxCloudSyncStatus = vi.fn(async () => status);
+    const linuxCloudSyncRun = vi.fn(async () => ({
+      pushedCount: 2,
+      appliedRemoteCount: 1,
+      retainedLocalConflictCount: 0,
+      status: { ...status, pendingMutationCount: 0 }
+    }));
+    useShellStore.setState({
+      bridge: { linuxCloudSyncStatus, linuxCloudSyncRun } as never
+    });
+    setAccount({ data: signedInActive });
+
+    render(<AccountSurface />);
+
+    await waitFor(() => expect(screen.getByTestId('cloud-sync-posture')).toBeTruthy());
+    expect(screen.getByTestId('cloud-sync-posture').textContent).toMatch(/2 pending changes/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+    await waitFor(() => expect(linuxCloudSyncRun).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(screen.getByTestId('cloud-sync-posture').textContent).toMatch(/no pending changes/i));
+  });
+
+  it('does not call an optimistic account snapshot active when the keyring is locked', async () => {
+    const linuxCloudSyncStatus = vi.fn(async (): Promise<LinuxCloudSyncStatus> => ({
+      phase: 'locked',
+      pendingMutationCount: 1,
+      consecutiveFailures: 0,
+      enabledDomains: ['text_expansion'],
+      remoteAccessEnabled: false,
+      vaultKeyAvailable: false
+    }));
+    useShellStore.setState({ bridge: { linuxCloudSyncStatus } as never });
+    setAccount({ data: signedInActive });
+
+    render(<AccountSurface />);
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Sync keyring locked' })).toBeTruthy());
+    expect((screen.getByRole('button', { name: 'Sync now' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('renders signed-in paused sync', () => {
