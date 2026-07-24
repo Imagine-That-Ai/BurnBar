@@ -425,12 +425,12 @@
         "open-claude"
       ],
       "paths": {
-        "linux": "~/.openclaude/sessions",
-        "macos": "~/.openclaude/sessions"
+        "linux": "~/.openclaude/projects",
+        "macos": "~/.openclaude/projects"
       },
       "filePattern": "*.jsonl",
-      "ingestion": "unavailable",
-      "coverageNote": "No ParserRegistry entry; local usage is unavailable.",
+      "ingestion": "local-parser",
+      "coverageNote": "Claude-compatible local transcript parser registered in ParserRegistry.",
       "xdgBehavior": "home-relative",
       "symlinkBehavior": "identity-on-resolved-path",
       "quotaSignal": false

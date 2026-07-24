@@ -30,24 +30,24 @@ The catalog is checked against the committed macOS/core sources by
 - `AgentProvider.swift` must expose exactly the same 33 case tokens.
 - generated Swift must contain every row's platform paths, file pattern,
   aliases, coverage, and quota declaration.
-- `ParserRegistry.swift` must expose exactly the 28 local parser registrations
+- `ParserRegistry.swift` must expose exactly the 29 local parser registrations
   represented by `local-parser` rows.
 - `AgentProvider.quotaSignalProviders` must match the 19 quota-capable rows.
 - shared golden vectors pin provider identity, RFC3339 timestamps,
   deterministic dedup IDs, billed-token normalization, USD cost preservation,
   account partitioning, and quota capability.
-- The five canonical providers without a local parser remain explicit:
-  `OpenAI`, `OpenBurnBar`, `DeepSeek`, and `MiMo` are API/native-ledger backed;
-  `OpenClaude` remains unavailable for local ingestion. OMP now uses the
-  Pi-compatible local JSONL parser and is no longer advertised as unavailable.
+- The four canonical providers without a local parser remain explicit:
+  `OpenAI`, `OpenBurnBar`, `DeepSeek`, and `MiMo` are API/native-ledger backed.
+  OpenClaude now uses the Claude-compatible project JSONL parser and OMP uses
+  the Pi-compatible local JSONL parser.
 
 No parser implementation is invented for a provider that is absent from the
 canonical registry.
 
 ## User-facing behavior
 
-Settings -> Engine Room shows a coverage summary (`28 local parsers, 4
-API-backed sources, 1 unavailable local source`) and labels every provider
+Settings -> Engine Room shows a coverage summary (`29 local parsers, 4
+API-backed sources, 0 unavailable local sources`) and labels every provider
 path with its source state. Onboarding repeats the same count and explains that
 API-backed and unavailable sources are not local scans. This prevents a path
 row from implying that a parser exists merely because the provider is in the
@@ -81,16 +81,17 @@ open and must stay visible in the parity ledger:
    and multi-account cases in installed environments.
 3. Prove live API/quota aggregation, recount, projections, cloud mirror, and account
    switching against the same candidate release and installed environments.
-4. Wire real local ingestion for `OpenClaude` only after a canonical parser
-   contract and committed fixture corpus exists; its unavailable state is
-   intentional until then.
+4. Run the OpenClaude parser against installed project transcripts and retain a
+   signed scan receipt. The source fixture proves the Claude-compatible shape;
+   packaging, permissions, rotation, and real-account behavior remain live gates.
 
 ## QA checklist
 
 - [x] 33 canonical provider cases have one and only one catalog row.
-- [x] 28 `ParserRegistry` registrations have `local-parser` rows.
+- [x] 29 `ParserRegistry` registrations have `local-parser` rows.
 - [x] API-backed providers are not shown as local parsers.
-- [x] Providers without a parser show an explicit unavailable state.
+- [x] Providers without a parser show an explicit unavailable state (none in the
+  current 33-provider catalog).
 - [x] Linux conditional VS Code/Windsurf/Warp paths are checked.
 - [x] macOS and Linux discovery and parser log-directory access share one
   generated path/pattern contract.

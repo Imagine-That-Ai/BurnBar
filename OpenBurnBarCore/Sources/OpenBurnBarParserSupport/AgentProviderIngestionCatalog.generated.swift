@@ -344,11 +344,11 @@ public enum AgentProviderIngestionCatalog {
             providerID: "openclaude",
             displayLabel: "OpenClaude",
             aliases: ["open-claude"],
-            linuxLogicalPath: "~/.openclaude/sessions",
-            macOSLogicalPath: "~/.openclaude/sessions",
+            linuxLogicalPath: "~/.openclaude/projects",
+            macOSLogicalPath: "~/.openclaude/projects",
             filePattern: "*.jsonl",
-            ingestion: .unavailable,
-            coverageNote: "No ParserRegistry entry; local usage is unavailable.",
+            ingestion: .localParser,
+            coverageNote: "Claude-compatible local transcript parser registered in ParserRegistry.",
             quotaSignal: false
         ),
         Entry(

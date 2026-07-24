@@ -66,6 +66,7 @@ enum ParserRegistry {
         var parsers: [AgentProvider: any LogParser] = [:]
         parsers[.factory] = RegisteredLogParser(FactoryDroidParser())
         parsers[.claudeCode] = RegisteredLogParser(ClaudeCodeParser())
+        parsers[.openClaude] = RegisteredLogParser(ClaudeCodeParser(provider: .openClaude))
         parsers[.copilot] = RegisteredLogParser(CopilotParser())
         parsers[.aider] = RegisteredLogParser(AiderParser())
         parsers[.cursor] = RegisteredLogParser(CursorParser())

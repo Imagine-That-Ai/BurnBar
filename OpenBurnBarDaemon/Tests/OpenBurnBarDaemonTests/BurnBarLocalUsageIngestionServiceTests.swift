@@ -11,13 +11,13 @@ final class BurnBarLocalUsageIngestionServiceTests: XCTestCase {
             homeDirectoryURL: home
         )
 
-        XCTAssertEqual(parsers.count, 28)
+        XCTAssertEqual(parsers.count, 29)
         XCTAssertEqual(Set(parsers.map(\.provider)), [
             .factory, .claudeCode, .copilot, .cursorAgent, .codex, .windsurf,
             .warp, .kimi, .xAI, .cline, .kiloCode, .rooCode, .forgeDev,
             .augment, .hermes, .geminiCLI, .antigravity, .goose, .aider,
             .cursor, .openCode, .piAgent, .openClaw, .ollama, .junie, .zai,
-            .minimax, .omp
+            .minimax, .omp, .openClaude
         ])
 
         let paths = BurnBarLocalUsageIngestionService.linuxClineStoragePaths(

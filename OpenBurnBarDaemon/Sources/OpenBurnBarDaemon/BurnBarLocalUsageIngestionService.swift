@@ -73,6 +73,7 @@ public actor BurnBarLocalUsageIngestionService {
         let factories: [AgentProvider: () -> any LogParser] = [
             .factory: { FactoryDroidParser() },
             .claudeCode: { ClaudeCodeParser() },
+            .openClaude: { ClaudeCodeParser(provider: .openClaude) },
             .copilot: { CopilotParser() },
             .cursorAgent: { CursorAgentParser() },
             .codex: { CodexParser() },

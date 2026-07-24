@@ -58,7 +58,7 @@ known platform divergences.
 > registers the available local parser identities on Linux, including Aider,
 > Cursor SQLite, OpenCode SQLite, Pi Agent, OpenClaw, Ollama, Junie, and
 > Z.ai/MiniMax model filters. The follow-on OMP slice adds the Pi-compatible
-> nested JSONL parser and raises the catalog to 28 local parser identities,
+> nested JSONL parser and raises the catalog to 29 local parser identities,
 > with focused parser tests and explicit
 > exact-versus-estimated provenance. `e9923ca4c4` adds cancellation-safe
 > daemon start/stop scheduling for periodic cloud sync. `dd95895ee9` makes

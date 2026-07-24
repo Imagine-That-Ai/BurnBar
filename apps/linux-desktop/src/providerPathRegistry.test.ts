@@ -57,17 +57,16 @@ describe('providerPathRegistry', () => {
   it('makes non-parser coverage explicit instead of implying local ingestion', () => {
     expect(providerCoverageCounts()).toEqual({
       total: 33,
-      localParser: 28,
+      localParser: 29,
       apiBacked: 4,
-      unavailable: 1
+      unavailable: 0
     });
-    expect(providerPathById('openclaude')?.coverage).toBe('unavailable');
+    expect(providerPathById('openclaude')?.coverage).toBe('local-parser');
     expect(providerPathById('omp')?.coverage).toBe('local-parser');
     expect(providerPathById('openai')?.coverage).toBe('api-backed');
     expect(providerPathById('mimo')?.coverage).toBe('api-backed');
-    expect(providerPathById('openclaude')?.coverageNote).toMatch(/No ParserRegistry entry/);
     expect(providerCoverageSummary()).toBe(
-      '28 local parsers, 4 API-backed sources, 1 unavailable local sources (33 canonical providers)'
+      '29 local parsers, 4 API-backed sources, 0 unavailable local sources (33 canonical providers)'
     );
   });
 

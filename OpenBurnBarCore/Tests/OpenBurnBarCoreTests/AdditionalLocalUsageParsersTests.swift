@@ -76,6 +76,31 @@ final class AdditionalLocalUsageParsersTests: XCTestCase {
         XCTAssertEqual(result.conversations.first?.lastAssistantMessage, "done")
     }
 
+    func testOpenClaudeReadsClaudeCompatibleProjectTranscriptAndPreservesProviderIdentity() async throws {
+        let root = try makeDirectory("openclaude")
+        defer { remove(root) }
+        try write(
+            """
+            {"type":"user","timestamp":"2026-07-01T00:00:00Z","sessionId":"openclaude-session","cwd":"/tmp/openclaude-demo","message":{"role":"user","content":[{"type":"text","text":"inspect"}]}}
+            {"type":"assistant","timestamp":"2026-07-01T00:00:01Z","sessionId":"openclaude-session","cwd":"/tmp/openclaude-demo","message":{"role":"assistant","model":"claude-3-7-sonnet","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":19,"output_tokens":5,"cache_read_input_tokens":2,"cache_creation_input_tokens":1}}}
+            """,
+            to: root.appendingPathComponent("-Users-test-Project/openclaude-session.jsonl")
+        )
+
+        let parser = ClaudeCodeParser(projectsDirectoryOverride: root, provider: .openClaude)
+        let result = try await parser.parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        let conversation = try XCTUnwrap(result.conversations.first)
+        XCTAssertEqual(usage.provider, .openClaude)
+        XCTAssertEqual(usage.inputTokens, 19)
+        XCTAssertEqual(usage.outputTokens, 5)
+        XCTAssertEqual(usage.cacheReadTokens, 2)
+        XCTAssertEqual(usage.cacheCreationTokens, 1)
+        XCTAssertEqual(usage.projectName, "~/Project")
+        XCTAssertEqual(conversation.provider, .openClaude)
+        XCTAssertEqual(conversation.lastAssistantMessage, "done")
+    }
+
     func testOllamaReadsOnlyExplicitServerCounters() async throws {
         let root = try makeDirectory("ollama")
         defer { remove(root) }

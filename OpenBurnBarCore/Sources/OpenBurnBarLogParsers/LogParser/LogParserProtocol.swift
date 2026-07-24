@@ -98,6 +98,7 @@ public struct ParserConversationCacheScrubber {
         var urls = [
             appPaths.supportDirectory.appendingPathComponent("codex_parser_cache.json"),
             appPaths.claudeCodeParserCacheURL,
+            appPaths.supportDirectory.appendingPathComponent("openclaude_parser_cache.json"),
             appPaths.factoryDroidParserCacheURL,
             appPaths.junieParserCacheURL
         ]
