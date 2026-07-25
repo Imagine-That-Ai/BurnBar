@@ -12,7 +12,6 @@ struct UsageRefreshPipeline: Sendable {
     let parsers: [AgentProvider: any OpenBurnBarCore.LogParser]
     let dataStore: DataStore
     let orchestrator: RefreshOrchestrator
-    let existingUsages: [TokenUsage]
     let settings: RefreshSettingsSnapshot
 
     struct DiscoverResult: Sendable {

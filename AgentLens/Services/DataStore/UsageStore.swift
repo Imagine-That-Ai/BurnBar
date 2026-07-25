@@ -7,29 +7,47 @@ import OpenBurnBarCore
 /// Token-usage CRUD, sync helpers, refresh reads, and provider/model summary builders.
 final class UsageStore: Sendable {
     let dbQueue: any DatabaseWriter
+    /// New-event marker for the periodic refresh tick (see `UsageTableWriteMarker`).
+    /// Every mutator below that can change `token_usage` content bumps it when
+    /// SQLite reports at least one changed row for the committed transaction.
+    let writeMarker: UsageTableWriteMarker
 
-    init(dbQueue: any DatabaseWriter) {
+    init(dbQueue: any DatabaseWriter, writeMarker: UsageTableWriteMarker = UsageTableWriteMarker()) {
         self.dbQueue = dbQueue
+        self.writeMarker = writeMarker
+    }
+
+    /// Bumps the write marker when a write closure actually changed rows.
+    /// `changedRows` is a `db.totalChangesCount`/`db.changesCount` delta
+    /// sampled inside the same write closure, so it is exact for that
+    /// transaction.
+    func noteUsageWrite(changedRows: Int) {
+        guard changedRows > 0 else { return }
+        writeMarker.bump()
     }
 
     // MARK: - Insert
 
     func insert(_ usage: TokenUsage) async throws {
-        try await dbQueue.write { db in
+        let changedRows = try await dbQueue.write { db -> Int in
+            let before = db.totalChangesCount
             try self.deleteKimiRequestIDModelRows(replacedBy: usage, in: db)
             if try self.shouldSuppressFactoryRoutedMirror(usage, in: db) {
-                return
+                return db.totalChangesCount - before
             }
             try self.deleteFactoryRoutedMirrorRows(replacedBy: usage, in: db)
             try self.deleteStaleLowerConfidenceModelRows(replacedBy: usage, in: db)
             try self.upsertUsage(usage, in: db)
+            return db.totalChangesCount - before
         }
+        noteUsageWrite(changedRows: changedRows)
         SearchQueryCache.shared.clear()
     }
 
     func insert(_ newUsages: [TokenUsage]) async throws {
         guard !newUsages.isEmpty else { return }
-        try await dbQueue.write { db in
+        let changedRows = try await dbQueue.write { db -> Int in
+            let before = db.totalChangesCount
             for usage in newUsages {
                 try self.deleteKimiRequestIDModelRows(replacedBy: usage, in: db)
                 if try self.shouldSuppressFactoryRoutedMirror(usage, in: db) {
@@ -39,7 +57,9 @@ final class UsageStore: Sendable {
                 try self.deleteStaleLowerConfidenceModelRows(replacedBy: usage, in: db)
                 try self.upsertUsage(usage, in: db)
             }
+            return db.totalChangesCount - before
         }
+        noteUsageWrite(changedRows: changedRows)
         SearchQueryCache.shared.clear()
     }
 

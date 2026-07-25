@@ -92,6 +92,9 @@ jobs:
       - name: Check Swift file-size debt budget (shrink-only)
         run: ./scripts/debt/check-swift-file-size-budget.sh
 
+      - name: Check usage refresh-tick budget (shrink-only)
+        run: ./scripts/debt/check-usage-refresh-tick-budget.sh
+
       - name: Refresh tech debt metrics snapshot
         run: |
           set -euo pipefail
