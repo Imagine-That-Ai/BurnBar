@@ -711,7 +711,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     // Official Signal libsignal at-rest HPKE identity seal (v0.94.4 pin).
-    implementation("org.signal:libsignal-android:0.94.4")
+    implementation("org.signal:libsignal-android:0.99.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // Glance for Widget
@@ -737,7 +737,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testImplementation("io.mockk:mockk:1.13.13")
-    testImplementation("org.signal:libsignal-client:0.94.4")
+    testImplementation("org.signal:libsignal-client:0.99.1")
     // Android's JNA AAR supplies only device JNI slices. Activated Rust-mode
     // JVM contracts need the desktop JAR's host libjnidispatch resource.
     testImplementation("net.java.dev.jna:jna:5.19.0")
