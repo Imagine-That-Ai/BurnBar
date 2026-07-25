@@ -99,9 +99,13 @@ jobs:
         id: signal-ffi-cache
         run: echo "sha=$(git -C Vendor/libsignal rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache macOS Signal FFI artifact
+      # Restore-only: this lane builds an x86_64-only artifact on a cache miss,
+      # so letting it save would poison the shared superset key for the arm64
+      # consumers (SwiftPM/App gates). Only ci-cache-warm.yml and full-target
+      # builders may write this key.
+      - name: Restore macOS Signal FFI artifact
         if: matrix.language == 'swift'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
         with:
           path: Vendor/OpenBurnBarSignalFfiMac.xcframework
           key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
