@@ -163,12 +163,8 @@ jobs:
         with:
           toolchain: "1.96.0"
 
-      - name: Install protobuf for libsignal Swift FFI
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       # SwiftLint --strict over the tree. Same pinned binary + config the App
       # XCTest lane uses; this is the PR-time copy of that gate so a lint
@@ -252,7 +248,12 @@ jobs:
           xcodegen_sha256=090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef
           xcodegen_root="$RUNNER_TEMP/xcodegen-$xcodegen_version"
           mkdir -p "$xcodegen_root"
-          curl --fail --silent --show-error --location --retry 3 \
+          # --retry 3 alone still lost this gate to a burst of 504s from
+          # github.com/*/releases/download: the default 1s backoff retried
+          # inside the same outage window, and not every curl build treats an
+          # HTTP error as retryable. --retry-all-errors + a 3s floor covers both.
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 15 \
             "https://github.com/yonaskolb/XcodeGen/releases/download/$xcodegen_version/xcodegen.zip" \
             --output "$xcodegen_root/xcodegen.zip"
           echo "$xcodegen_sha256  $xcodegen_root/xcodegen.zip" | shasum --algorithm 256 --check --strict
