@@ -25,6 +25,9 @@ on:
       - "scripts/ci/burnbar-turbo-runner-host.test.mjs"
       - "scripts/ci/verify-merge-queue-workflows.mjs"
       - "scripts/ci/verify-merge-queue-workflows.test.mjs"
+      - "scripts/ci/verify-libsignal-toolchain-preflight.mjs"
+      - "scripts/ci/verify-libsignal-toolchain-preflight.test.mjs"
+      - ".github/actions/ensure-libsignal-toolchain/action.yml"
       - "scripts/ci/verify-curl-bearer-token-boundary.sh"
       - "scripts/ci/verify-curl-bearer-token-boundary.test.sh"
       - "scripts/lib/curl-bearer.sh"
@@ -220,6 +223,14 @@ jobs:
         run: |
           node scripts/ci/verify-merge-queue-workflows.mjs
           node scripts/ci/verify-merge-queue-workflows.test.mjs
+
+      # A macOS Swift job that builds libsignal without this preflight fails only
+      # on the self-hosted half of the fleet, and only as an opaque cargo panic
+      # ("is `cmake` not installed?"). That blocked the merge queue for days.
+      - name: Verify libsignal native toolchain preflight coverage
+        run: |
+          node scripts/ci/verify-libsignal-toolchain-preflight.mjs
+          node scripts/ci/verify-libsignal-toolchain-preflight.test.mjs
 
       - name: Verify GitHub Actions pins
         run: node scripts/ci/verify-github-action-pins.mjs
