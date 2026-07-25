@@ -9,6 +9,57 @@ public enum BurnBarProxyRouteFinalStatus: String, Codable, Hashable, CaseIterabl
     case interrupted
 }
 
+extension BurnBarProxyRouteFinalStatus {
+    /// Canonical producer mapping for a committed stream relay: once response
+    /// bytes have flowed to the client, the request either completed (`exact`
+    /// at the attempt level) or was `interrupted` — never `failed`, because the
+    /// route itself worked and any usage observed before the interruption is
+    /// real recorded spend. Every gateway (macOS `RoutePipeline`, Linux
+    /// gateway, Elder Wand synthesis) derives its stream outcome from this one
+    /// helper so the platforms cannot drift.
+    public static func streamRelayOutcome(interrupted: Bool) -> BurnBarProxyRouteFinalStatus {
+        interrupted ? .interrupted : .exact
+    }
+
+    /// `interrupted` is first-class and distinct from `failed`/`rejected`: the
+    /// stream ended early (upstream drop or client hang-up) *after* delivery
+    /// began. The client may retry the request; renderers must not bucket it
+    /// with hard failures.
+    public var isInterruption: Bool {
+        switch self {
+        case .interrupted:
+            return true
+        case .exact, .sameModelFailover, .crossVendorFallback, .failed, .rejected:
+            return false
+        }
+    }
+
+    /// Whether this terminal status should count against provider/route
+    /// health. Interruptions must not: penalizing a route because the client
+    /// hung up (or the wire dropped mid-relay) would misclassify a healthy
+    /// provider as failing. `rejected` never reached a provider at all.
+    public var countsAgainstRouteHealth: Bool {
+        switch self {
+        case .failed:
+            return true
+        case .exact, .sameModelFailover, .crossVendorFallback, .rejected, .interrupted:
+            return false
+        }
+    }
+
+    /// Whether usage recorded alongside this status may be partial. Usage/cost
+    /// aggregation treats interrupted usage as real spend (tokens were
+    /// consumed upstream) — it is *not* discarded, merely incomplete.
+    public var mayCarryPartialUsage: Bool {
+        switch self {
+        case .interrupted:
+            return true
+        case .exact, .sameModelFailover, .crossVendorFallback, .failed, .rejected:
+            return false
+        }
+    }
+}
+
 public enum BurnBarProxyRewriteKind: String, Codable, Hashable, CaseIterable, Sendable {
     case none
     case modelAlias = "model_alias"

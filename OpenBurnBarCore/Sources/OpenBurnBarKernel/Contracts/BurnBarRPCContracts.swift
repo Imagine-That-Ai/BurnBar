@@ -225,16 +225,6 @@ public struct BurnBarAuthBootstrapRequest: Codable, Hashable, Sendable {
     }
 }
 
-public struct BurnBarAuthBootstrapResponse: Codable, Hashable, Sendable {
-    public let sessionToken: String
-    public let issuedAt: Date
-
-    public init(sessionToken: String, issuedAt: Date = Date()) {
-        self.sessionToken = sessionToken
-        self.issuedAt = issuedAt
-    }
-}
-
 public enum BurnBarLinuxAuthState: String, Codable, Hashable, Sendable {
     case signedOut = "signed_out"
     case authorizing
@@ -1299,17 +1289,5 @@ public struct BurnBarProtocolHandshakeRequest: Codable, Hashable, Sendable {
         self.clientName = clientName
         self.clientVersion = clientVersion
         self.supportedProtocolVersions = supportedProtocolVersions
-    }
-}
-
-public struct BurnBarProtocolHandshakeResponse: Codable, Hashable, Sendable {
-    public let negotiatedProtocolVersion: Int?
-    public let daemonVersion: String
-    public let compatible: Bool
-
-    public init(negotiatedProtocolVersion: Int?, daemonVersion: String, compatible: Bool) {
-        self.negotiatedProtocolVersion = negotiatedProtocolVersion
-        self.daemonVersion = daemonVersion
-        self.compatible = compatible
     }
 }
