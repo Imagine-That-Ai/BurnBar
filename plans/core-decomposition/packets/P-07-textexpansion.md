@@ -41,7 +41,15 @@ Standard. This packet may write `core-ui-purity-baseline.json` (BASELINE-TOUCHIN
 no OTHER baseline may be `--update`d here.
 
 ## Enumerated semantic edits
-None expected (consumed by AgentLens/Keyboard → already `public`).
+No `public` keyword changes to source (Hermes/Keyboard consumers use the public API). BUT
+EDIT-CLASS 2 IS REQUIRED (see standard block): `TextExpansionTests.swift` reaches the
+now-cross-module `internal` `TextExpansionKeyEventCharacters.usKeyboardCharacter(keyCode:shift:)`
+(the func has no access modifier = internal) via `@testable import OpenBurnBarCore`. After the
+move that internal symbol lives in `OpenBurnBarTextExpansion`, so add `@testable import
+OpenBurnBarTextExpansion` beneath the existing `@testable import OpenBurnBarCore` in
+`OpenBurnBarCore/Tests/OpenBurnBarCoreTests/TextExpansionTests.swift`. Keep `usKeyboardCharacter`
+INTERNAL — do NOT make it public (the `@testable` route matches the shim design and is
+narrower). This is the exact wall wave-1 executor P-07 correctly BLOCKED on.
 
 ## Pre-flight checks
 1. Path-pin grep of each basename + `TextExpansion/` over the automation roots →
@@ -60,11 +68,35 @@ V5 daemon build ·
 V6: `./scripts/debt/check-core-ui-purity-budget.sh --update && ./scripts/debt/check-core-ui-purity-budget.sh`
   (first regenerates dropping TextExpansionKeyEventCharacters; second must pass) ·
 V7 mission-splitbrain (pre-existing single failure only) · V8 file-size · V9/V9b
-membership + umbrella ratchets (membership shrink) · V11 scope (5 R100, 1 D marker,
-1 M Package.swift, 1 M core-ui-purity-baseline.json).
+membership + umbrella ratchets (membership shrink; TextExpansion 5 files/~826 lines stays
+UNDER its planned ceiling 8 files/1100 lines) · V11 scope (5 R100, 1 D marker, 1 M
+Package.swift, 1 M core-ui-purity-baseline.json, 1 M TextExpansionTests.swift).
 
 ## PR body / Acceptance
 Title: "P-07: move TextExpansion/ into OpenBurnBarTextExpansion". Invariants: Apple-only
 target (pruned off-Apple), ui-purity baseline ratcheted DOWN by one file, zero call-site
 changes. A1–A6; A3 exception: `openBurnBarCoreExcludes` deletion + `core-ui-purity-baseline.json`
-`--update` are IN scope (BASELINE-TOUCHING). A4 waived (target carries AppKit by design).
+`--update` + the EDIT-CLASS 2 `@testable import` in TextExpansionTests.swift are IN scope
+(BASELINE-TOUCHING). A4 waived (target carries AppKit by design).
+
+## Standard wave-1 allowed-edit classes (S0-repair — apply to this card)
+
+Added after Wave-1 executors correctly BLOCKED (docs/CORE_DECOMPOSITION_PROGRAM.md
+§ Wave-1 learnings). ALLOWED here.
+
+### EDIT-CLASS 1 — cross-module imports on MOVED files
+Add `import <Dep>` at the top of MOVED files ONLY, where `<Dep>` is a declared dependency of
+the destination target, exactly as the compiler demands. Enumerate added lines in the PR
+body. `import OpenBurnBarCore` on a moved file is FORBIDDEN. P-07 expectation: NONE (the
+executor's V1/V2 already compiled the moved files; the break was the TEST, not the source).
+
+### EDIT-CLASS 2 — `@testable import OpenBurnBarTextExpansion` on OpenBurnBarCoreTests files
+For OpenBurnBarCoreTests files that fail to COMPILE reaching `internal` members of MOVED
+files (public symbols resolve via `@_exported`; `@testable`/internal does NOT cross module
+boundaries), add `@testable import OpenBurnBarTextExpansion` beneath `@testable import
+OpenBurnBarCore`. Do NOT modify test logic/assertions or move test files. Enumerate touched
+files in the PR body. Pre-flight grep found the REQUIRED file for P-07:
+**`TextExpansionTests.swift`** (reaches internal `usKeyboardCharacter`) → add the `@testable
+import`. (`OpenBurnBarMissionControlContractsTests.swift`, `Plan2SharedModelsTests.swift`,
+`ProviderAccountContractTests.swift`, `ProviderCredentialSlotRoutingPolicyTests.swift` matched
+only the generic name `Plan` — NOT TextExpansion types — and need NO edit.)

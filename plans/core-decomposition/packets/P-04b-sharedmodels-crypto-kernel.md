@@ -59,14 +59,39 @@ None expected.
 4. Not a CANON packet.
 
 ## Local validation
-V1 Kernel build · V2 Core build · V3 PURE · V4 test · V5 daemon build ·
+V1 Kernel build · V2 Core build · V3 PURE · V4 test (EDIT-CLASS 2 candidates from pre-flight:
+`CLIAgentSessionCodecTests.swift`, `EscrowDeviceSafetyCodeTests.swift`,
+`HermesRatchetCryptoTests.swift`, `HermesRelayAuthenticatedRequestOpenerTests.swift` — add
+`@testable import OpenBurnBarKernel` to whichever V4 shows reaching an `internal` symbol) ·
+V5 daemon build ·
 V-linux: `OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD=1 swift build` (these files now
 compile off-Apple in Kernel — this is the key check; if docker/Linux unavailable,
-declare "CI-covered by linux-pr-gate" and note the risk) · V6–V9b ratchets ·
-V11 scope (7 R100 + 1 M Package.swift).
+declare "CI-covered by linux-pr-gate" and note the risk) · V6–V9b ratchets
+(Kernel stays under its planned ceiling) · V11 scope (7 R100 + 1 M Package.swift, plus any
+EDIT-CLASS 2 test files).
 
 ## PR body / Acceptance
 Title: "P-04b: move crypto-chain SharedModels into OpenBurnBarKernel (off-Apple surface win)".
 Invariants: off-Apple exclude seam updated (7 entries removed, byte-equivalent Linux
 graph), crypto chains kept together, zero call-site changes. A1–A6; A3 exception:
-Package.swift exclude-line deletions are IN scope.
+Package.swift exclude-line deletions are IN scope; EDIT-CLASS 1/2 edits below are IN scope.
+
+## Standard wave-1 allowed-edit classes (S0-repair — apply to this card)
+
+Added after Wave-1 executors correctly BLOCKED (docs/CORE_DECOMPOSITION_PROGRAM.md
+§ Wave-1 learnings). ALLOWED here.
+
+### EDIT-CLASS 1 — cross-module imports on MOVED files
+Add `import <Dep>` at the top of MOVED files ONLY, where `<Dep>` is a module the destination
+target's manifest already declares as a dependency, exactly as the compiler demands.
+Enumerate every added line in the PR body. `import OpenBurnBarCore` on a moved file is
+FORBIDDEN (inverts layering). P-04b expectation: NONE (crypto chains reference CloudVaultCrypto
+— already in Kernel via P-04a — and swift-crypto, a declared Kernel dependency; closed).
+
+### EDIT-CLASS 2 — `@testable import OpenBurnBarKernel` on OpenBurnBarCoreTests files
+For OpenBurnBarCoreTests files that fail to COMPILE reaching `internal` members of MOVED
+files (public symbols resolve via `@_exported`; `@testable`/internal does NOT cross module
+boundaries), add `@testable import OpenBurnBarKernel` beneath `@testable import
+OpenBurnBarCore`. Do NOT modify test logic/assertions or move test files. Enumerate touched
+files in the PR body. Pre-flight candidates listed in V4 above — edit ONLY those V4 proves
+reach an internal symbol.

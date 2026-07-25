@@ -22,8 +22,25 @@ P-16f (UI SharedModels): `UIModeTheme.swift`, `AgentInsights/AgentInsightsViewMo
 `Services/Insights/Share/InsightShareCardRenderer.swift`, `SharedModels/{ThemePrimitives,
 RGBA,SwarmColorDriver,DesignSystemTokens,AgentProvider+LogoBackdrop,PixelClockSettingsModel,
 SmartHubDisplaySettingsModel,AgentWatchLiveActivityAttributes,AgentWatchLiveActivityIntents,
-BurnBarLiveActivityAttributes}.swift`, `PixelClockQuotaRenderer.swift`,
-`PixelClockProviderLogoAssets.generated.swift`.
+BurnBarLiveActivityAttributes,SubstrateFamily,SubscriptionTopic}.swift`,
+`PixelClockQuotaRenderer.swift`, `PixelClockProviderLogoAssets.generated.swift`.
+
+**RELOCATED INTO P-16f (S0-repair, wave-1 learning — from P-04a):** `SubstrateFamily.swift`
+and `SubscriptionTopic.swift` moved here because they forward-reference UI-bound types that
+land in THIS target: `SubstrateFamily` uses `RGBA` (12 calls) and `SubscriptionTopic` binds
+`Views/Cards/CardEnvelope.swift` (`card: CardEnvelope?`). They cannot precede those types into
+Kernel (a leaf that cannot see Core). Landing them with RGBA (P-16f) and Views/Cards/CardEnvelope
+(P-16e) closes the dependency. Sub-packet ordering NOTE: P-16f must land AFTER P-16e (or move
+`Views/Cards/CardEnvelope.swift` into P-16f) so both `RGBA` and `CardEnvelope` are visible to
+`SubscriptionTopic` in this target. NOTE: neither file is in `openBurnBarCoreExcludes` today
+(they compile cross-platform in Core main), so relocating them to Apple-only OpenBurnBarUI
+drops them from the off-Apple graph. Verified SAFE at S0-repair: no off-Apple code CONSUMES
+either type — `SubstrateFamily` refs off-Apple are `LinuxSubstrateSupport`/`SubstrateCatalog`
+(which use the cross-platform `SubstrateCatalog`, not `SubstrateFamily`); every
+`SubscriptionTopic` reference in Kernel/off-Apple Core (`AgentTier.swift`, `LinuxCardEnvelope.swift`,
+`CloudVaultCrypto.swift`) is comment-text only; all real consumers are Apple (AgentLens,
+OpenBurnBarMobile). RE-CONFIRM at the S14 wave; if a new off-Apple consumer appeared, the
+integrator adds a cross-platform stub — enumerate at wave.
 
 ## Per-sub-packet rules
 - Deps: `OpenBurnBarUI` already depends on Kernel/Quota/Insights/Hermes/Pretext/LogParsers

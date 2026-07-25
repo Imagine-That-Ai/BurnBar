@@ -79,7 +79,14 @@ via `KernelReexport.swift`. Do NOT edit it.
 ## Local validation
 - V1: `cd OpenBurnBarCore && swift build --target OpenBurnBarKernel`
 - V2: `cd OpenBurnBarCore && swift build --target OpenBurnBarCore`
-- V4: `cd OpenBurnBarCore && swift test` (catalog + PII gate tests must resolve the new bundle)
+- V4: `cd OpenBurnBarCore && swift test` (catalog + PII gate tests must resolve the new
+  bundle). EXPECTED to need EDIT-CLASS 2: `MemorySecretPIIGateTests.swift` reaches the
+  now-cross-module `internal` `_evaluate(_:policy:overrideCorpus:)` + `LoadedCorpus` of
+  the moved `MemorySecretPIIGate` → add `@testable import OpenBurnBarKernel` beneath its
+  `@testable import OpenBurnBarCore`. `OpenBurnBarCatalogTests.swift` uses only the
+  PUBLIC `BurnBarCatalogLoader` API → needs NO edit (its errors, if any, are cascade from
+  the shared compile unit and clear once the PII-gate test compiles). See the standard
+  block below.
 - V5: `cd OpenBurnBarDaemon && swift build`
 - V6–V9b: the four ratchets (membership = "Improved" shrink, non-fatal)
 - Release smoke: `bash scripts/ci/smoke-openburnbar-release-dmg.sh` (or declare CI-covered)
@@ -96,4 +103,28 @@ Title: "P-02: move catalog loader + PII gate (+resources) into OpenBurnBarKernel
 ## Acceptance criteria
 A1–A6 per template. A3 exception: this packet IS allowed to edit the enumerated ops
 files + the two tools/openburnbar-mcp py files (integrator packet). project.yml/pbxproj
-still forbidden.
+still forbidden. A3 also allows the EDIT-CLASS 1/2 edits enumerated below (moved-file
+imports; `@testable import OpenBurnBarKernel` in the failing test file).
+
+## Standard wave-1 allowed-edit classes (S0-repair — apply to this card)
+
+Added after Wave-1 executors correctly BLOCKED on them (docs/CORE_DECOMPOSITION_PROGRAM.md
+§ Wave-1 learnings). ALLOWED here.
+
+### EDIT-CLASS 1 — cross-module imports on MOVED files
+Add `import <Dep>` at the top of MOVED files ONLY, where `<Dep>` is a module the
+destination target's manifest already declares as a dependency, exactly as the compiler
+demands (same-module references become cross-module after the move). Enumerate every added
+line in the PR body. `import OpenBurnBarCore` on a moved file is FORBIDDEN (inverts
+layering). P-02 expectation: catalog loader + PII gate are Foundation/Crypto — NO import
+additions expected; if V1 demands one, it must be a declared Kernel dependency.
+
+### EDIT-CLASS 2 — `@testable import <NewTarget>` on OpenBurnBarCoreTests files
+For test files under `OpenBurnBarCore/Tests/OpenBurnBarCoreTests/` that fail to COMPILE
+because they reach `internal` members of MOVED files (public symbols resolve via the
+`@_exported` shim; `@testable`/internal does NOT cross the module boundary), add
+`@testable import <NewTarget>` beneath the existing `@testable import OpenBurnBarCore`.
+Do NOT modify test logic/assertions or move test files. Enumerate every touched test file
+in the PR body. Pre-flight (grep OpenBurnBarCoreTests for the moved basenames/type names)
+found the expected file for P-02: **`MemorySecretPIIGateTests.swift`** → add `@testable
+import OpenBurnBarKernel` (the one authorized test edit).

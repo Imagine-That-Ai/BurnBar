@@ -69,3 +69,26 @@ Title: "P-06: move Pretext/ (+resources) into OpenBurnBarPretext". Invariants: P
 gains its own bundle (`OpenBurnBarCore_OpenBurnBarPretext.bundle`), three-tier
 Bundle.module lookup preserved, no external stager affected, zero call-site changes.
 A1–A6; A3 exception: the enumerated `resources:` manifest edit is IN scope.
+
+STATUS NOTE (S0-repair): the P-06 executor already opened PR #1561 with a green tree, blocked
+ONLY on the membership-gate false FAIL (marker-sized sibling ceiling). That defect is fixed
+at S0 (Pretext now has a planned ceiling of 5 files/850 lines); V6 (membership) now passes
+with Pretext's 4 files/~650 lines UNDER the planned ceiling. Re-run V6 after rebasing #1561
+onto the S0-repair tip.
+
+## Standard wave-1 allowed-edit classes (S0-repair — apply to this card)
+
+Added after Wave-1 executors correctly BLOCKED (docs/CORE_DECOMPOSITION_PROGRAM.md
+§ Wave-1 learnings). ALLOWED here.
+
+### EDIT-CLASS 1 — cross-module imports on MOVED files
+Add `import <Dep>` at the top of MOVED files ONLY, where `<Dep>` is a declared dependency of
+the destination target, exactly as the compiler demands. Enumerate added lines in the PR
+body. `import OpenBurnBarCore` on a moved file is FORBIDDEN. P-06 expectation: NONE (Pretext
+is self-contained + `@_exported` shim; the executor's build was already green).
+
+### EDIT-CLASS 2 — `@testable import OpenBurnBarPretext` on OpenBurnBarCoreTests files
+For OpenBurnBarCoreTests files that fail to COMPILE reaching `internal` members of MOVED
+files, add `@testable import OpenBurnBarPretext` beneath `@testable import OpenBurnBarCore`.
+Do NOT modify test logic/assertions or move test files. Enumerate touched files in the PR
+body. P-06 expectation: NONE (the executor's V4 was green).

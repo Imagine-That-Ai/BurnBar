@@ -1,5 +1,5 @@
 {
-  "note": "OpenBurnBarCore main-target membership snapshot + per-sibling {files, LOC} ceilings (docs/CORE_DECOMPOSITION_PROGRAM.md). Deny-gate: no NEW .swift file may be added to OpenBurnBarCore/Sources/OpenBurnBarCore/ (new code lands in a sibling target); main-target totals may only shrink; no sibling may exceed its 1.25x ceiling. Shrink is non-fatal (run --update to ratchet down). Regenerate via scripts/debt/check-core-target-membership-budget.sh --update.",
+  "note": "OpenBurnBarCore main-target membership snapshot + per-sibling {files, LOC} ceilings (docs/CORE_DECOMPOSITION_PROGRAM.md). Deny-gate: no NEW .swift file may be added to OpenBurnBarCore/Sources/OpenBurnBarCore/ (new code lands in a sibling target); main-target totals may only shrink. Non-decomposition siblings keep a measured 1.25x ceiling. Decomposition destinations carry an explicit `plannedCeiling` (seeded at ~1.25x their architecture end-state) that the gate enforces and that --update preserves, so a partial fill can never ratchet a destination's ceiling below its end-state (wave-1 learning). Shrink is non-fatal (run --update to ratchet down). Regenerate via scripts/debt/check-core-target-membership-budget.sh --update.",
   "main": {
     "target": "OpenBurnBarCore",
     "totalLines": 95621,
@@ -372,51 +372,99 @@
   "siblingCeilings": {
     "OpenBurnBarKernel": {
       "maxFiles": 133,
-      "maxLines": 35955
+      "maxLines": 35955,
+      "plannedCeiling": {
+        "maxFiles": 166,
+        "maxLines": 49000
+      }
     },
     "OpenBurnBarSQLiteReader": {
       "maxFiles": 2,
-      "maxLines": 10
+      "maxLines": 10,
+      "plannedCeiling": {
+        "maxFiles": 3,
+        "maxLines": 450
+      }
     },
     "OpenBurnBarLogParsers": {
       "maxFiles": 2,
-      "maxLines": 10
+      "maxLines": 10,
+      "plannedCeiling": {
+        "maxFiles": 35,
+        "maxLines": 11700
+      }
     },
     "OpenBurnBarQuota": {
       "maxFiles": 2,
-      "maxLines": 10
+      "maxLines": 10,
+      "plannedCeiling": {
+        "maxFiles": 55,
+        "maxLines": 13000
+      }
     },
     "OpenBurnBarVectorKit": {
       "maxFiles": 2,
-      "maxLines": 10
+      "maxLines": 10,
+      "plannedCeiling": {
+        "maxFiles": 12,
+        "maxLines": 5800
+      }
     },
     "OpenBurnBarInsights": {
       "maxFiles": 2,
-      "maxLines": 10
+      "maxLines": 10,
+      "plannedCeiling": {
+        "maxFiles": 100,
+        "maxLines": 20000
+      }
     },
     "OpenBurnBarHermes": {
       "maxFiles": 2,
-      "maxLines": 10
+      "maxLines": 10,
+      "plannedCeiling": {
+        "maxFiles": 10,
+        "maxLines": 1800
+      }
     },
     "OpenBurnBarPretext": {
       "maxFiles": 2,
-      "maxLines": 10
+      "maxLines": 10,
+      "plannedCeiling": {
+        "maxFiles": 5,
+        "maxLines": 850
+      }
     },
     "OpenBurnBarTextExpansion": {
       "maxFiles": 2,
-      "maxLines": 10
+      "maxLines": 10,
+      "plannedCeiling": {
+        "maxFiles": 8,
+        "maxLines": 1100
+      }
     },
     "OpenBurnBarLaunchServices": {
       "maxFiles": 2,
-      "maxLines": 10
+      "maxLines": 10,
+      "plannedCeiling": {
+        "maxFiles": 12,
+        "maxLines": 6100
+      }
     },
     "OpenBurnBarUI": {
       "maxFiles": 2,
-      "maxLines": 10
+      "maxLines": 10,
+      "plannedCeiling": {
+        "maxFiles": 160,
+        "maxLines": 40000
+      }
     },
     "OpenBurnBarEngine": {
       "maxFiles": 2,
-      "maxLines": 34
+      "maxLines": 34,
+      "plannedCeiling": {
+        "maxFiles": 3,
+        "maxLines": 60
+      }
     },
     "OpenBurnBarComputerUseCore": {
       "maxFiles": 74,

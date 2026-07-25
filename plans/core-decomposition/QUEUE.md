@@ -9,27 +9,34 @@ DEPENDS-ON is not yet MERGED.
 
 Full cards: P-01…P-10. Draft cards (enumerate mv lists at wave start): P-11…P-20, S-H.
 
-## Wave 1 (parallel after S0 merges)
-| Lane | Packet | Card | Notes |
-|---|---|---|---|
-| B | P-01 SQLiteReader | full | K3 fix; unblocks P-12/P-13 |
-| Integrator | P-02 Kernel resources | full | ops-file bundle staging; unblocks P-12 |
-| D | P-03 root contracts → Kernel | full | canon stays green (not a canon source) |
-| D | P-04a SharedModels pure → Kernel | full | after P-03 in lane D |
-| D | P-04b SharedModels crypto → Kernel | full | after P-04a (needs CloudVaultCrypto) |
-| D | P-05 Hermes | full | independent |
-| D | P-06 Pretext | full | resources manifest edit |
-| C | P-10 Insights models | full | lands before P-08/P-09 |
-| C | P-08 Insights Services core | full | after P-10 |
-| C | P-09 Insights Services remainder | full | after P-08 |
-| A | P-07 TextExpansion | full | ui-purity --update; lane A serial |
+**Wave-1b re-run (S0 repair landed):** wave-1 executors correctly BLOCKED on four systemic
+S0 defects (gate ceilings, cross-module imports, `@testable` internal access, P-03/P-04a
+dependency closure). All four are fixed on the S0 scaffold branch — see
+docs/CORE_DECOMPOSITION_PROGRAM.md § Wave-1 learnings, and the "Standard wave-1 allowed-edit
+classes" block now at the end of each card. Re-run every QUEUED wave-1 packet from its updated
+card. P-06 (#1561) and P-00 (#1560) already have open PRs.
+
+## Wave 1 (parallel after S0 merges — re-run from repaired cards)
+| Lane | Packet | Card | STATE | Notes |
+|---|---|---|---|---|
+| B | P-01 SQLiteReader | full | QUEUED (wave-1b) | K3 fix; unblocks P-12/P-13; planned ceiling 3/450 |
+| Integrator | P-02 Kernel resources | full | QUEUED (wave-1b) | ops-file bundle staging; unblocks P-12/P-04a; +@testable MemorySecretPIIGateTests |
+| D | P-03 root contracts → Kernel | full | QUEUED (wave-1b) | 6 files (SearchContracts → P-14); canon stays green |
+| D | P-04a SharedModels pure → Kernel | full | QUEUED (wave-1b) | 10 files (SubstrateFamily+SubscriptionTopic → P-16); after P-02 (BurnBarCatalogLoader) + P-03 in lane D |
+| D | P-04b SharedModels crypto → Kernel | full | QUEUED (wave-1b) | after P-04a (needs CloudVaultCrypto) |
+| D | P-05 Hermes | full | QUEUED (wave-1b) | +import OpenBurnBarKernel on HermesAtomNavigator |
+| D | P-06 Pretext | full | PR_OPEN #1561 | resources manifest edit; unblocked by gate repair |
+| C | P-10 Insights models | full | QUEUED (wave-1b) | lands before P-08/P-09; +import OpenBurnBarKernel on ~8 moved files |
+| C | P-08 Insights Services core | full | QUEUED (wave-1b) | after P-10; +import OpenBurnBarKernel iterate-to-green |
+| C | P-09 Insights Services remainder | full | QUEUED (wave-1b) | after P-08; +import OpenBurnBarKernel iterate-to-green |
+| A | P-07 TextExpansion | full | QUEUED (wave-1b) | ui-purity --update; +@testable TextExpansionTests; lane A serial |
 
 ## Wave 2 (after their deps merge)
 | Lane | Packet | Card | DEPENDS-ON |
 |---|---|---|---|
 | B | P-12 LogParsers | draft | P-01, P-02 |
 | C | P-13 Quota | draft | P-01 |
-| D | P-14 VectorKit | draft | P-03 |
+| D | P-14 VectorKit (+SearchContracts re-sliced from P-03) | draft | P-03 |
 | A | P-11 MissionGroupContracts inversion | draft | P-04a/b |
 | A | P-15 LaunchServices | draft | P-04a/b (SwitcherProfile/CLIAuthDiscovery → Kernel) |
 | Integrator | S-H headless app build CI | draft | S0 (anytime before P-16) |

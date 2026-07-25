@@ -11,8 +11,14 @@
 #     doc), or
 #   - the main target's total line count or file count exceeds the baseline
 #     (blocks growth inside existing files), or
-#   - any sibling target exceeds its per-target {files, LOC} ceiling (set at
-#     1.25x the S0 extraction size so no sibling becomes the next monolith).
+#   - any sibling target exceeds its per-target {files, LOC} ceiling. Non-decomposition
+#     siblings use a measured 1.25x-of-current ceiling. Decomposition destinations
+#     (the targets move packets fill) instead carry an explicit `plannedCeiling` seeded
+#     at ~1.25x their architecture end-state, so a packet FILLING a destination is
+#     allowed up to the planned size (but no further — no sibling becomes the next
+#     monolith). --update preserves plannedCeiling verbatim (wave-1 learning: measuring
+#     a marker-only destination at S0 gave a ~10-line ceiling that every fill packet
+#     falsely tripped).
 #
 # NON-FATAL shrink (mirrors scripts/debt/check-swift-file-size-budget.sh): when
 # the live main target is SMALLER than the baseline (files moved out), the gate
@@ -70,6 +76,45 @@ const siblingTargets = [
   "OpenBurnBarCoreCAbi",
 ];
 
+// PLANNED ceilings for the decomposition-destination siblings (wave-1 learnings).
+//
+// The S0 scaffold created these siblings holding only a ModuleMarker.swift stub, so
+// measuring them at S0 gave a ~2-file/10-line ceiling. Every move packet that FILLS
+// one of them (its entire purpose) would then blow that marker-sized ceiling — which
+// is exactly how Wave-1's P-01/P-06 got a false gate FAIL. The fix: give each
+// decomposition destination an EXPLICIT planned ceiling, seeded at ~1.25x the
+// architecture end-state size (docs/CORE_DECOMPOSITION_PROGRAM.md end-state map), that
+// `--update` MUST NOT clobber. When a target has a plannedCeiling the gate enforces IT
+// (not measured x1.25), so a sibling can grow up to its end-state as move packets land,
+// while still being blocked from becoming the next god module beyond the planned size.
+//
+// Non-decomposition siblings (already-real targets) are absent here and keep their
+// measured x1.25 ceiling, ratcheting down on --update as before.
+const plannedCeilings = {
+  // Kernel is the single largest decomposition destination: wave-1 alone moves ~25
+  // files / ~9.3k LOC into it (P-02 catalog+PII, P-03 root contracts, P-04a/P-04b
+  // SharedModels), and P-11 adds MissionGroupContracts + MissionConsoleTypes. That
+  // pushes Kernel to ~133 files / ~39.3k LOC — over its S0 measured ceiling of
+  // 133 files / 35955 lines, so without an explicit planned ceiling the Kernel-ward
+  // wave-1 packets (the majority of the wave) trip the LOC ceiling. End-state ~39.3k;
+  // seed at ~1.25x. (Not in the integrator's original 11-item list, but required by the
+  // same defect — see the Wave-1 learnings note in docs/CORE_DECOMPOSITION_PROGRAM.md.)
+  OpenBurnBarKernel: { maxFiles: 166, maxLines: 49000 },
+  OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
+  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 11700 },
+  OpenBurnBarQuota: { maxFiles: 55, maxLines: 13000 },
+  // VectorKit end-state includes OpenBurnBarSearchContracts.swift (P-03 re-slice —
+  // it depends on VectorKit-bound types, see docs/CORE_DECOMPOSITION_PROGRAM.md).
+  OpenBurnBarVectorKit: { maxFiles: 12, maxLines: 5800 },
+  OpenBurnBarInsights: { maxFiles: 100, maxLines: 20000 },
+  OpenBurnBarHermes: { maxFiles: 10, maxLines: 1800 },
+  OpenBurnBarPretext: { maxFiles: 5, maxLines: 850 },
+  OpenBurnBarTextExpansion: { maxFiles: 8, maxLines: 1100 },
+  OpenBurnBarLaunchServices: { maxFiles: 12, maxLines: 6100 },
+  OpenBurnBarUI: { maxFiles: 160, maxLines: 40000 },
+  OpenBurnBarEngine: { maxFiles: 3, maxLines: 60 },
+};
+
 function countLines(absPath) {
   const text = fs.readFileSync(absPath, "utf8");
   if (text.length === 0) return 0;
@@ -98,17 +143,40 @@ function scanTarget(target) {
 
 const mainLive = scanTarget(mainTarget);
 
-// Per-sibling ceilings at ceil(1.25 x current size).
+// Per-sibling ceilings. Non-decomposition siblings ratchet to ceil(1.25 x current
+// size). Decomposition destinations (plannedCeilings) instead carry an explicit
+// `plannedCeiling` seeded at ~1.25x their architecture end-state, which `--update`
+// preserves verbatim so a partial fill can never ratchet the ceiling below the
+// end-state. The measured `maxFiles`/`maxLines` are still recorded for visibility.
 function ceilings() {
   const out = {};
   for (const t of siblingTargets) {
     const s = scanTarget(t);
-    out[t] = {
+    const entry = {
       maxFiles: Math.ceil(s.fileCount * 1.25),
       maxLines: Math.ceil(s.totalLines * 1.25),
     };
+    if (plannedCeilings[t]) {
+      entry.plannedCeiling = {
+        maxFiles: plannedCeilings[t].maxFiles,
+        maxLines: plannedCeilings[t].maxLines,
+      };
+    }
+    out[t] = entry;
   }
   return out;
+}
+
+// The ceiling the gate actually enforces: the planned end-state ceiling when a target
+// has one (decomposition destination), else the measured x1.25 ratchet.
+function effectiveCeiling(target, baselineEntry) {
+  const planned =
+    plannedCeilings[target] ||
+    (baselineEntry && baselineEntry.plannedCeiling);
+  if (planned) {
+    return { maxFiles: planned.maxFiles, maxLines: planned.maxLines };
+  }
+  return { maxFiles: baselineEntry.maxFiles, maxLines: baselineEntry.maxLines };
 }
 
 if (mode === "update") {
@@ -117,9 +185,13 @@ if (mode === "update") {
       "OpenBurnBarCore main-target membership snapshot + per-sibling {files, LOC} " +
       "ceilings (docs/CORE_DECOMPOSITION_PROGRAM.md). Deny-gate: no NEW .swift file " +
       "may be added to OpenBurnBarCore/Sources/OpenBurnBarCore/ (new code lands in a " +
-      "sibling target); main-target totals may only shrink; no sibling may exceed its " +
-      "1.25x ceiling. Shrink is non-fatal (run --update to ratchet down). Regenerate " +
-      "via scripts/debt/check-core-target-membership-budget.sh --update.",
+      "sibling target); main-target totals may only shrink. Non-decomposition siblings " +
+      "keep a measured 1.25x ceiling. Decomposition destinations carry an explicit " +
+      "`plannedCeiling` (seeded at ~1.25x their architecture end-state) that the gate " +
+      "enforces and that --update preserves, so a partial fill can never ratchet a " +
+      "destination's ceiling below its end-state (wave-1 learning). Shrink is non-fatal " +
+      "(run --update to ratchet down). Regenerate via " +
+      "scripts/debt/check-core-target-membership-budget.sh --update.",
     main: {
       target: mainTarget,
       totalLines: mainLive.totalLines,
@@ -179,20 +251,23 @@ if (mainLive.fileCount > baseline.main.fileCount) {
 }
 
 for (const target of siblingTargets) {
-  const ceiling = baseline.siblingCeilings[target];
-  if (!ceiling) continue; // targets added after baseline are covered on next --update
+  const baselineEntry = baseline.siblingCeilings[target];
+  if (!baselineEntry) continue; // targets added after baseline are covered on next --update
+  const ceiling = effectiveCeiling(target, baselineEntry);
+  const planned =
+    plannedCeilings[target] || baselineEntry.plannedCeiling ? " (planned end-state)" : "";
   const live = scanTarget(target);
   if (live.fileCount > ceiling.maxFiles) {
     failed = true;
     console.error(
-      `\nFAIL: sibling ${target} exceeded its file ceiling (${live.fileCount} > ${ceiling.maxFiles}); ` +
+      `\nFAIL: sibling ${target} exceeded its file ceiling${planned} (${live.fileCount} > ${ceiling.maxFiles}); ` +
         "decompose it or raise the ceiling with rationale (docs/CORE_DECOMPOSITION_PROGRAM.md)."
     );
   }
   if (live.totalLines > ceiling.maxLines) {
     failed = true;
     console.error(
-      `\nFAIL: sibling ${target} exceeded its LOC ceiling (${live.totalLines} > ${ceiling.maxLines}); ` +
+      `\nFAIL: sibling ${target} exceeded its LOC ceiling${planned} (${live.totalLines} > ${ceiling.maxLines}); ` +
         "decompose it or raise the ceiling with rationale (docs/CORE_DECOMPOSITION_PROGRAM.md)."
     );
   }

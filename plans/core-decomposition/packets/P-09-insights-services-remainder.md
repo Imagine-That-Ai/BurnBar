@@ -38,7 +38,29 @@ None. Do NOT edit `OpenBurnBarInsightsReexport.swift`.
 Standard. Do NOT move `Share/`.
 
 ## Pre-flight / validation / PR / Acceptance
-As P-08. Extra: after the move, `find Services/Insights` shows ONLY `Share/`. V-linux
-boundary build confirms the narrowed exclude keeps the off-Apple graph valid.
-Title: "P-09: move Services/Insights remainder into OpenBurnBarInsights". A1–A6; A3
-exception: the `openBurnBarCoreExcludes` narrowing edit is IN scope.
+As P-08 — including the two standard wave-1 allowed-edit classes below. Extra: after the
+move, `find Services/Insights` shows ONLY `Share/`. V-linux boundary build confirms the
+narrowed exclude keeps the off-Apple graph valid. Title: "P-09: move Services/Insights
+remainder into OpenBurnBarInsights". A1–A6; A3 exception: the `openBurnBarCoreExcludes`
+narrowing edit + EDIT-CLASS 1 `import OpenBurnBarKernel` additions on moved files + any
+EDIT-CLASS 2 test edits are IN scope. Membership: Insights under its planned ceiling
+(100 files/20000 lines).
+
+## Standard wave-1 allowed-edit classes (S0-repair — apply to this card)
+
+Added after Wave-1 executors correctly BLOCKED (docs/CORE_DECOMPOSITION_PROGRAM.md
+§ Wave-1 learnings). ALLOWED here.
+
+### EDIT-CLASS 1 — cross-module imports on MOVED files
+Add `import OpenBurnBarKernel` at the top of MOVED Adapters/Cadence/Trace/Verdict files that
+reference Kernel PUBLIC types, exactly as `swift build --target OpenBurnBarInsights` demands;
+iterate until green. Enumerate every added line in the PR body. `import OpenBurnBarCore` on a
+moved file is FORBIDDEN (inverts layering).
+
+### EDIT-CLASS 2 — `@testable import OpenBurnBarInsights` on OpenBurnBarCoreTests files
+For OpenBurnBarCoreTests files that fail to COMPILE reaching `internal` members of MOVED
+files (public symbols resolve via `@_exported`; `@testable`/internal does NOT cross module
+boundaries), add `@testable import OpenBurnBarInsights` beneath `@testable import
+OpenBurnBarCore`. Do NOT modify test logic/assertions or move test files. Enumerate touched
+files in the PR body. Pre-flight candidates: `CadenceRendererTests.swift`, adapter/verdict
+test files under OpenBurnBarCoreTests — edit ONLY those V4 proves reach an internal symbol.

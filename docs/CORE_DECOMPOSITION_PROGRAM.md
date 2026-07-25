@@ -28,11 +28,11 @@ is untouched by every slice.
 
 | Target | Product | Approx LOC (end) | Contents | Deps |
 |---|---|---|---|---|
-| `OpenBurnBarKernel` | yes (exists) | ~37k | root mission/search contracts, TraceContext, pure/crypto SharedModels, MissionGroupContracts + MissionConsoleTypes (post-inversion), catalog loader + PII gate + their resources, Platform/ | FirestoreModels, crypto |
+| `OpenBurnBarKernel` | yes (exists) | ~39k | root mission contracts (NOT SearchContracts — see wave-1 learnings), TraceContext, pure/crypto SharedModels, MissionGroupContracts + MissionConsoleTypes (post-inversion), catalog loader + PII gate + their resources, Platform/ | FirestoreModels, crypto |
 | `OpenBurnBarSQLiteReader` | **no** | 325 | `Services/SQLite/` + the SQLite backend conditional. The K3 fix. | SQLite backend |
 | `OpenBurnBarLogParsers` | yes | ~9.3k | `Services/LogParser/` + `Services/LogPath/` + 2 log-discovery SharedModels | Kernel, SQLiteReader |
 | `OpenBurnBarQuota` | yes | ~10.4k | `ProviderQuota/` + root `XAISuperGrokPacingLog.swift` | Kernel, SQLiteReader, crypto |
-| `OpenBurnBarVectorKit` | yes | ~3.6k | HNSW/Persistent/Signpost vector indexes, VectorIndexDelta, SearchPlanner, Pensieve chunker/cloak | Kernel |
+| `OpenBurnBarVectorKit` | yes | ~4.5k | HNSW/Persistent/Signpost vector indexes, VectorIndexDelta, SearchPlanner, **SearchContracts** (re-sliced from Kernel — depends on VectorKit types), Pensieve chunker/cloak | Kernel |
 | `OpenBurnBarInsights` | yes (Apple-only) | ~16k | `Services/Insights/` (minus ShareCardRenderer) + `SharedModels/Insights/` + AgentInsights models + Demo fixture | Kernel |
 | `OpenBurnBarHermes` | yes | 1.4k | `Hermes/` (Foundation-only) | Kernel |
 | `OpenBurnBarPretext` | yes | 650+res | `Pretext/` + its own `Resources/` bundle | Kernel |
@@ -94,7 +94,7 @@ PR loop (Codex reviews, branch protection merges; agents never self-merge).
 | `Package.swift` target/product/dependency declarations | S0 only, once. Packets only delete from `openBurnBarCoreExcludes` + add to their own target's exclude array. S10 is the one exception (adds `resources: [.process("Resources")]` to the Pretext target). |
 | `docs/LINT_RATIONALE.md` allowlist | S0 only, once (two budget paths added). |
 | `budgets/core-ui-purity-baseline.json` `--update` | Only Lane A, internally sequential. |
-| `budgets/core-target-membership-baseline.json` | Never touched by packets (deny-gate; shrink is non-fatal). Integrator lands JSON-only ratchet-down PRs per merged wave. |
+| `budgets/core-target-membership-baseline.json` | Never touched by packets (deny-gate; shrink is non-fatal; `plannedCeiling` end-state ceilings seeded once at S0-repair and preserved by `--update`). Integrator lands JSON-only ratchet-down PRs per merged wave. |
 | `budgets/core-umbrella-imports-baseline.json` | Shrink-only. Integrator ratchets a root to zero after its repoint packet (daemon S17, widget S18, keyboard S19). |
 | Consumer repoints (project.yml/pbxproj) | Integrator-only serial packets, between waves. |
 | Canon-bearing moves | None in S1–S13 (canon generator only reads `OpenBurnBarKernel/Contracts/BurnBarRPCContracts.swift` + `BurnBarRPCIPCCanon.generated.swift`; the root mission contracts S3 moves are NOT canon sources — verified). |
@@ -103,8 +103,11 @@ PR loop (Codex reviews, branch protection merges; agents never self-merge).
 
 1. **`scripts/debt/check-core-target-membership-budget.sh`** + `budgets/core-target-membership-baseline.json`
    — deny-gate: any NEW `.swift` in `Sources/OpenBurnBarCore/` fails CI; main-target
-   totals may only shrink; each sibling has a 1.25× {files, LOC} ceiling. Shrink is
-   non-fatal (`Improved: … run --update`, exit 0).
+   totals may only shrink. Non-decomposition siblings have a measured 1.25× {files, LOC}
+   ceiling; decomposition DESTINATIONS carry an explicit `plannedCeiling` (~1.25× their
+   end-state) that the gate enforces and `--update` preserves, so a packet FILLING a
+   destination is allowed up to its planned end-state (wave-1 learning — see § Wave-1
+   learnings). Shrink is non-fatal (`Improved: … run --update`, exit 0).
 2. **`scripts/debt/check-core-umbrella-imports-budget.sh`** + `budgets/core-umbrella-imports-baseline.json`
    — per-consumer-root `import OpenBurnBarCore` snapshot; any NEW umbrella import in a
    tracked root fails CI; privileged roots ratchet to zero after their repoints.
@@ -142,6 +145,64 @@ PR #1421's ratchets were.
    deletion-through-symlink hazard). `scripts/lane-teardown.sh` does this for you.
    Never run `git worktree remove` by hand in a lane with a live Vendor symlink.
 
+## Wave-1 learnings (S0 repair — read before running any move packet)
+
+Wave-1 executors correctly BLOCKED on four SYSTEMIC defects in the S0 scaffold/cards (not
+bad moves). All four were fixed ONCE on the scaffold branch (PR #1559 follow-up) so every
+packet re-runs from a corrected card. Later waves inherit these policies.
+
+**Defect 1 — membership-gate sibling ceilings captured at marker size.** S0 generated
+`budgets/core-target-membership-baseline.json` while each decomposition sibling held only
+`ModuleMarker.swift`, giving a ~2-file/10-line ceiling. Any packet FILLING a sibling (its
+whole purpose) blew that ceiling; the sibling-ceiling check fires BEFORE the non-fatal-shrink
+branch, so it hard-FAILed CI. **Fix:** each decomposition destination now carries an explicit
+`plannedCeiling` (seeded at ~1.25× its architecture end-state) that the gate enforces and
+`--update` preserves verbatim — a partial fill can never ratchet a destination's ceiling below
+its end-state. Non-decomposition siblings keep the measured 1.25× ceiling. Planned ceilings:
+SQLiteReader 3/450, LogParsers 35/11700, Quota 55/13000, VectorKit 12/5800 (incl.
+SearchContracts), Insights 100/20000, Hermes 10/1800, Pretext 5/850, TextExpansion 8/1100,
+LaunchServices 12/6100, UI 160/40000, Engine 3/60, and Kernel 166/49000 (Kernel is the largest
+destination — wave-1 alone pushes it to ~131 files/38.1k LOC, over its S0 measured 35955-line
+ceiling; sized to its ~39.3k end-state). Negative-tested three ways (fill-within-ceiling PASS;
+exceed-planned-ceiling FAIL; new-Core-file FAIL). Main-target rules unchanged (new file = FAIL,
+growth = FAIL, shrink = non-fatal `run --update`).
+
+**Defect 2 — cross-module imports on moved files (EDIT-CLASS 1).** A file moved out of the
+monolith into a standalone target needs explicit `import <Dep>` for symbols that were
+same-module before (e.g. `HermesAtomNavigator.swift` uses `PlatformLogger` from Kernel; the
+Insights model files use `AgentProvider`/`BurnBarWidgetError`/etc. from Kernel). This is
+mechanical, not judgment. **Fix:** every move card now authorizes adding `import <Dep>` to
+MOVED files ONLY, where `<Dep>` is a DECLARED dependency of the destination target, exactly as
+the compiler demands; each added line is enumerated in the PR body. Adding `import
+OpenBurnBarCore` to a moved file is FORBIDDEN (it would invert the layering — destinations sit
+below Core). `PlatformLogger` is already `public` in Kernel (both `#if canImport(OSLog)`
+branches), so P-05 needs only the import, no access-level change.
+
+**Defect 3 — `@testable` internal access across the new module boundary (EDIT-CLASS 2).**
+`OpenBurnBarCoreTests` reaches `internal` members of moved files via `@testable import
+OpenBurnBarCore`; the `@_exported` shim carries PUBLIC symbols across modules but NOT internal
+ones under `@testable`. So moving a file whose test reaches its internals breaks the test
+build (P-02 → `MemorySecretPIIGateTests` internal `_evaluate`/`LoadedCorpus`; P-07 →
+`TextExpansionTests` internal `usKeyboardCharacter`). **Fix:** every move card now authorizes
+adding `@testable import <NewTarget>` beneath the existing `@testable import OpenBurnBarCore`
+in the failing `OpenBurnBarCoreTests` file (no test-logic/assertion changes, no test-file
+moves), with a pre-flight grep of the test dir for the moved basenames/type names to
+anticipate which test files need it, enumerated per card.
+
+**Defect 4 — dependency-closure re-slices.** `OpenBurnBarSearchContracts.swift` references
+`BurnBarEmbeddingDistanceMetric` + `BurnBarSearchPlan` (both VectorKit-bound), so it CANNOT
+precede them into the leaf Kernel target. **Fix:** removed from P-03 (now 6 files, verified
+closed) and moved to **P-14 (VectorKit)** with SearchPlanner + the vector index files (the
+daemon reaches it via the Engine umbrella, so Kernel-residency is unnecessary). A symbol-level
+closure re-check of P-04a surfaced two more forward-refs into Core-staying UI types:
+`SubstrateFamily.swift` (uses `RGBA`, 12 calls) and `SubscriptionTopic.swift` (binds the Apple
+`Views/Cards/CardEnvelope`) — both **relocated to P-16 (UI)** where `RGBA`/`CardEnvelope` land
+(P-04a is now 10 files). Off-Apple safety confirmed (no off-Apple code consumes either type;
+all real consumers are Apple). P-04b, the other P-03 files, and the remaining P-04a files are
+dependency-closed. Cross-packet ordering note: P-04a's `CLIRuntimeModelCatalog.swift` calls
+`BurnBarCatalogLoader` (moved to Kernel by P-02), so P-02 must merge before P-04a (both target
+Kernel; the ref then resolves cross-module in Kernel).
+
 ## Packet status
 
 Every packet ends as `MERGED`, `CLOSED`, or `OPEN_WITH_NAMED_BLOCKER`. Full cards
@@ -150,23 +211,28 @@ Every packet ends as `MERGED`, `CLOSED`, or `OPEN_WITH_NAMED_BLOCKER`. Full card
 `plans/core-decomposition/packets/`; the lane-ordered pull queue is
 `plans/core-decomposition/QUEUE.md`.
 
+Wave-1 packets are re-queued for wave-1b after the S0 repair (gate ceilings +
+import/@testable card policies + P-03 re-slice — see § Wave-1 learnings). P-06 and P-00
+already have open PRs.
+
 | Packet | Slice | Target | Lane | Card | STATE |
 |---|---|---|---|---|---|
-| P-01 | S1 | OpenBurnBarSQLiteReader | B | full | QUEUED |
-| P-02 | S2 | Kernel resources (catalog+PII+ops staging) | Integrator | full | QUEUED |
-| P-03 | S3 | root contracts → Kernel | D | full | QUEUED |
-| P-04a | S4 | SharedModels pure → Kernel | D | full | QUEUED |
-| P-04b | S4 | SharedModels crypto chains → Kernel | D | full | QUEUED |
-| P-05 | S9 | OpenBurnBarHermes | D | full | QUEUED |
-| P-06 | S10 | OpenBurnBarPretext (+resources manifest edit) | D | full | QUEUED |
-| P-07 | S11 | OpenBurnBarTextExpansion | A | full | QUEUED |
-| P-08 | S12 | Insights — Services core engine | C | full | QUEUED |
-| P-09 | S12 | Insights — Services remainder | C | full | QUEUED |
-| P-10 | S12 | Insights — SharedModels + AgentInsights models | C | full | QUEUED |
+| P-00 | — | mission-splitbrain baseline RAISE (unblocks wave) | Integrator | n/a | PR_OPEN #1560 |
+| P-01 | S1 | OpenBurnBarSQLiteReader | B | full | QUEUED (wave-1b re-run pending S0 repair) |
+| P-02 | S2 | Kernel resources (catalog+PII+ops staging) | Integrator | full | QUEUED (wave-1b re-run pending S0 repair) |
+| P-03 | S3 | root contracts → Kernel (6 files; SearchContracts re-sliced to P-14) | D | full | QUEUED (wave-1b re-run pending S0 repair) |
+| P-04a | S4 | SharedModels pure → Kernel (10 files; SubstrateFamily+SubscriptionTopic re-sliced to P-16) | D | full | QUEUED (wave-1b re-run pending S0 repair) |
+| P-04b | S4 | SharedModels crypto chains → Kernel | D | full | QUEUED (wave-1b re-run pending S0 repair) |
+| P-05 | S9 | OpenBurnBarHermes | D | full | QUEUED (wave-1b re-run pending S0 repair) |
+| P-06 | S10 | OpenBurnBarPretext (+resources manifest edit) | D | full | PR_OPEN #1561 (unblocked by S0 gate repair) |
+| P-07 | S11 | OpenBurnBarTextExpansion | A | full | QUEUED (wave-1b re-run pending S0 repair) |
+| P-08 | S12 | Insights — Services core engine | C | full | QUEUED (wave-1b re-run pending S0 repair) |
+| P-09 | S12 | Insights — Services remainder | C | full | QUEUED (wave-1b re-run pending S0 repair) |
+| P-10 | S12 | Insights — SharedModels + AgentInsights models | C | full | QUEUED (wave-1b re-run pending S0 repair) |
 | P-11 | S5 | MissionGroupContracts + MissionConsoleTypes inversion → Kernel | A | draft | QUEUED |
 | P-12 | S6 | OpenBurnBarLogParsers | B | draft | QUEUED |
 | P-13 | S7 | OpenBurnBarQuota | C | draft | QUEUED |
-| P-14 | S8 | OpenBurnBarVectorKit | D | draft | QUEUED |
+| P-14 | S8 | OpenBurnBarVectorKit (+SearchContracts re-sliced from P-03) | D | draft | QUEUED |
 | P-15 | S13 | OpenBurnBarLaunchServices | A | draft | QUEUED |
 | P-16a…f | S14 | OpenBurnBarUI (K4) — by Views subdirectory | A | draft | QUEUED |
 | P-17 | S16 | OpenBurnBarEngine umbrella (fill) | Integrator | draft | QUEUED |

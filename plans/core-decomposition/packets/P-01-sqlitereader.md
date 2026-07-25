@@ -29,6 +29,9 @@ sources): `git rm OpenBurnBarCore/Sources/OpenBurnBarSQLiteReader/ModuleMarker.s
     `sqliteReaderSQLiteDependencies` (an alias of `coreSQLiteDependencies`), declared
     by S0.
   - Do NOT add/remove targets, products, or the reader's dependency line (S0 did that).
+- **Standard wave-1 allowed-edit classes (see the block at the end of this card):** you
+  MAY add `import <Dep>` to MOVED files and `@testable import <NewTarget>` to failing
+  `OpenBurnBarCoreTests` files, per the enumerated policies below.
 
 ## Shim
 None to create. `@_exported import OpenBurnBarSQLiteReader` already exists in
@@ -72,7 +75,11 @@ because Core's parsers and quota adapters — in other files — use them.)
   red on main for an unrelated AgentLens file — see the S0 PR body; confirm your diff
   does not touch AgentLens and the SAME single failure persists, else STOP)
 - V8: `./scripts/debt/check-swift-file-size-budget.sh`
-- V9: `./scripts/debt/check-core-target-membership-budget.sh` → prints "Improved: 2 file(s) left … run --update"; exit 0 (non-fatal shrink — do NOT run --update; the integrator ratchets)
+- V9: `./scripts/debt/check-core-target-membership-budget.sh` → exit 0. The main-target
+  shrink prints "Improved: 2 file(s) left … run --update", AND the destination sibling
+  `OpenBurnBarSQLiteReader` (2 files/325 lines after the move) stays UNDER its planned
+  ceiling (3 files/450 lines, seeded at S0-repair — see Wave-1 learnings). Do NOT run
+  `--update`; the integrator ratchets the main snapshot per wave.
 - V9b: `./scripts/debt/check-core-umbrella-imports-budget.sh`
 - V11: `git diff --name-status -M100 origin/main | sort` → 2 lines R100 (the mv), 1 line D (ModuleMarker.swift), 1 line M (Package.swift). Nothing else.
 
@@ -101,3 +108,34 @@ A3: No diff hunks in project.yml/pbxproj/LINT_RATIONALE.md/budgets.
 A4: V3 shows PURE.
 A5: All pre-flight path-pin hits (none) resolved.
 A6: PR body names packet file + sha.
+
+## Standard wave-1 allowed-edit classes (S0-repair — apply to this card)
+
+These two mechanical edit classes were added after Wave-1 executors correctly BLOCKED on
+them (see docs/CORE_DECOMPOSITION_PROGRAM.md § Wave-1 learnings). They are ALLOWED here.
+
+### EDIT-CLASS 1 — cross-module imports on MOVED files
+Add `import <Dep>` lines at the top of MOVED files ONLY, where `<Dep>` is a module the
+destination target's manifest already declares as a dependency, exactly as the compiler
+demands. In the monolith these were same-module references needing no import; once the
+file lives in a standalone target they are cross-module and require the import.
+- Enumerate every added `import` line in the PR body (file → line).
+- Adding `import OpenBurnBarCore` to a moved file is FORBIDDEN (it would invert the
+  layering — the destination targets sit BELOW Core).
+- P-01 expectation: the SQLite reader is self-contained (Foundation + its SQLite backend
+  via the target's own `sqliteReaderSQLiteDependencies`). NO `import` additions expected;
+  if V1 demands one, it must be a declared reader dependency, else STOP.
+
+### EDIT-CLASS 2 — `@testable import <NewTarget>` on OpenBurnBarCoreTests files
+For test files under `OpenBurnBarCore/Tests/OpenBurnBarCoreTests/` that fail to COMPILE
+because they reach `internal` members of MOVED files (public symbols still resolve via the
+`@_exported` shim; `@testable`/internal access does NOT cross the module boundary), add
+`@testable import <NewTarget>` beneath the existing `@testable import OpenBurnBarCore`.
+- Do NOT modify test logic, assertions, or move test files. Enumerate every touched test
+  file in the PR body.
+- Pre-flight (run BEFORE the move, to anticipate): grep OpenBurnBarCoreTests for the
+  basenames / top-level type names of the moved files.
+- P-01 expectation: candidate `SQLiteSeamParityTests.swift` references `SQLiteConnection`
+  — but the reader's API is `public` (V1 confirms), so `@testable import
+  OpenBurnBarSQLiteReader` is expected to be UNNEEDED. Add it ONLY if V4 fails on an
+  internal SQLite symbol.

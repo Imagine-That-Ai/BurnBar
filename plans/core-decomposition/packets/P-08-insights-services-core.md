@@ -47,8 +47,16 @@ Standard. Do NOT move `Share/InsightShareCardRenderer.swift`. Do NOT move the
 subdirectories.
 
 ## Enumerated semantic edits
-TO-ENUMERATE-AT-WAVE: compile-driven `public` additions if the engine exposed types to
-Core that were `internal` (cap 3; if more, STOP — not dependency-closed).
+EDIT-CLASS 1 EXPECTED (see standard block): the moved Services/Insights engine files
+reference Kernel PUBLIC types and (post-P-10) Insights model types now in this target; in the
+monolith these were same-module and carried no import. Add `import OpenBurnBarKernel` to each
+moved file the `swift build --target OpenBurnBarInsights` reports as missing a Kernel symbol;
+iterate until green. Enumerate every added line in the PR body. `import OpenBurnBarCore` is
+FORBIDDEN.
+
+TO-ENUMERATE-AT-WAVE: compile-driven `public` additions ONLY if the engine exposed a type to
+Core's remaining files that was `internal` (cap 3; if more, STOP — not dependency-closed).
+Prefer EDIT-CLASS 2 (`@testable import`) for test-only access over widening `public`.
 
 ## Pre-flight checks
 1. Path-pin grep of `Services/Insights` over the automation roots → expected NONE (verified at S0).
@@ -58,12 +66,37 @@ Core that were `internal` (cap 3; if more, STOP — not dependency-closed).
 4. Not a CANON packet.
 
 ## Local validation
-V1 `swift build --target OpenBurnBarInsights` · V2 Core build · V3 PURE (engine is
-UI-free; if a file imports SwiftUI/AppKit, it belongs in S14, STOP) · V4 test · V5
-daemon build · V6–V9b ratchets · V-linux boundary build (Insights is pruned off-Apple —
-confirm the boundary build still succeeds WITHOUT this target) · V11 scope.
+V1 `swift build --target OpenBurnBarInsights` (add EDIT-CLASS 1 `import OpenBurnBarKernel`;
+iterate until green) · V2 Core build · V3 PURE (engine is UI-free; if a file imports
+SwiftUI/AppKit, it belongs in S14, STOP) · V4 test (add EDIT-CLASS 2 `@testable import
+OpenBurnBarInsights` where V4 shows a test reaching an internal symbol) · V5 daemon build ·
+V6–V9b ratchets · V-linux boundary build (Insights is pruned off-Apple — confirm the
+boundary build still succeeds WITHOUT this target) · V11 scope.
 
 ## PR body / Acceptance
 Title: "P-08: move Services/Insights core engine into OpenBurnBarInsights". Invariants:
 Apple-only target, InsightShareCardRenderer stays in Core, zero call-site changes,
-`InsightMissionApprovalPolicy` now UI-free (daemon-linkable for M4/M5). A1–A6.
+`InsightMissionApprovalPolicy` now UI-free (daemon-linkable for M4/M5). A1–A6; A3 exception:
+EDIT-CLASS 1 `import OpenBurnBarKernel` additions on moved files + any EDIT-CLASS 2 test edits
+are IN scope. Membership: Insights stays under its planned ceiling (100 files/20000 lines).
+
+## Standard wave-1 allowed-edit classes (S0-repair — apply to this card)
+
+Added after Wave-1 executors correctly BLOCKED (docs/CORE_DECOMPOSITION_PROGRAM.md
+§ Wave-1 learnings). ALLOWED here.
+
+### EDIT-CLASS 1 — cross-module imports on MOVED files
+Add `import OpenBurnBarKernel` at the top of MOVED files that reference Kernel PUBLIC types,
+exactly as `swift build --target OpenBurnBarInsights` demands; iterate until green. Enumerate
+every added line in the PR body. `import OpenBurnBarCore` on a moved file is FORBIDDEN
+(inverts layering).
+
+### EDIT-CLASS 2 — `@testable import OpenBurnBarInsights` on OpenBurnBarCoreTests files
+For OpenBurnBarCoreTests files that fail to COMPILE reaching `internal` members of MOVED
+files (public symbols resolve via `@_exported`; `@testable`/internal does NOT cross module
+boundaries), add `@testable import OpenBurnBarInsights` beneath `@testable import
+OpenBurnBarCore`. Do NOT modify test logic/assertions or move test files. Enumerate touched
+files in the PR body. Pre-flight candidates (grep of OpenBurnBarCoreTests): `InsightAnalysisTests.swift`,
+`InsightCacheAndAuditTests.swift`, `InsightCanvasStoreTests.swift`, `InsightDigestPrivacyTests.swift`,
+`HermesInsightAdapterTests.swift`, `AgentInsightsBundleAssemblerTests.swift` — edit ONLY those
+V4 proves reach an internal symbol.
