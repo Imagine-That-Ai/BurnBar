@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { P09_REQUIRED_ROUTES } from './lib/p09-navigation-shell-proof.mjs';
 import {
+  P31_ENVIRONMENTS,
   P31_REQUIRED_ROUTES,
   validateP31LiveSession
 } from './lib/p31-accessibility-proof.mjs';
@@ -16,14 +16,98 @@ import { verifyInstalledCandidate } from './run-p08-mercury-media-session.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const DESKTOP = '/usr/bin/openburnbar-linux-desktop';
 const ATSPI = path.join(ROOT, 'scripts/linux-port/capture-atspi-tree.py');
-const P09 = path.join(ROOT, 'scripts/linux-port/run-p09-native-navigation-probes.mjs');
-const ENVIRONMENT = 'ubuntu-24.04-gnome-x11-aarch64';
 const HEAD = /^[a-f0-9]{40,64}$/u;
 const RUN_ID = /^[1-9][0-9]*$/u;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const VERSION = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:[-+][0-9A-Za-z.-]+)?$/u;
-const FORBIDDEN_SESSION = /(?:xvfb|xfce|synthetic|fixture|mock)/iu;
+const FORBIDDEN_SESSION = /(?:xvfb|xfce|openbox|synthetic|fixture|mock|headless|nested)/iu;
+export const P31_LIVE_ENVIRONMENTS = Object.freeze({
+  'ubuntu-24.04-gnome-x11-x86_64': Object.freeze({
+    osId: 'ubuntu',
+    versionId: '24.04',
+    architecture: 'x86_64',
+    desktop: 'GNOME',
+    desktopPattern: /gnome/iu,
+    session: 'X11',
+    compositor: 'Mutter',
+    compositorPattern: /(?:gnome shell|mutter)/iu,
+    scaleBackend: 'gnome',
+    keyboardBackend: 'xdotool'
+  }),
+  'ubuntu-24.04-gnome-x11-aarch64': Object.freeze({
+    osId: 'ubuntu',
+    versionId: '24.04',
+    architecture: 'aarch64',
+    desktop: 'GNOME',
+    desktopPattern: /gnome/iu,
+    session: 'X11',
+    compositor: 'Mutter',
+    compositorPattern: /(?:gnome shell|mutter)/iu,
+    scaleBackend: 'gnome',
+    keyboardBackend: 'xdotool'
+  }),
+  'ubuntu-24.04-gnome-wayland-x86_64': Object.freeze({
+    osId: 'ubuntu',
+    versionId: '24.04',
+    architecture: 'x86_64',
+    desktop: 'GNOME',
+    desktopPattern: /gnome/iu,
+    session: 'Wayland',
+    compositor: 'Mutter',
+    compositorPattern: /(?:gnome shell|mutter)/iu,
+    scaleBackend: 'gnome',
+    keyboardBackend: 'ydotool'
+  }),
+  'ubuntu-24.04-gnome-wayland-aarch64': Object.freeze({
+    osId: 'ubuntu',
+    versionId: '24.04',
+    architecture: 'aarch64',
+    desktop: 'GNOME',
+    desktopPattern: /gnome/iu,
+    session: 'Wayland',
+    compositor: 'Mutter',
+    compositorPattern: /(?:gnome shell|mutter)/iu,
+    scaleBackend: 'gnome',
+    keyboardBackend: 'ydotool'
+  }),
+  'fedora-kde-wayland-x86_64': Object.freeze({
+    osId: 'fedora',
+    versionId: null,
+    architecture: 'x86_64',
+    desktop: 'KDE Plasma',
+    desktopPattern: /(?:kde|plasma)/iu,
+    session: 'Wayland',
+    compositor: 'KWin',
+    compositorPattern: /kwin/iu,
+    scaleBackend: 'kscreen',
+    keyboardBackend: 'ydotool'
+  }),
+  'fedora-kde-wayland-aarch64': Object.freeze({
+    osId: 'fedora',
+    versionId: null,
+    architecture: 'aarch64',
+    desktop: 'KDE Plasma',
+    desktopPattern: /(?:kde|plasma)/iu,
+    session: 'Wayland',
+    compositor: 'KWin',
+    compositorPattern: /kwin/iu,
+    scaleBackend: 'kscreen',
+    keyboardBackend: 'ydotool'
+  }),
+  'arch-sway-wayland-x86_64': Object.freeze({
+    osId: 'arch',
+    versionId: null,
+    architecture: 'x86_64',
+    desktop: 'Sway/wlroots',
+    desktopPattern: /(?:sway|wlroots)/iu,
+    session: 'Wayland',
+    compositor: 'Sway',
+    compositorPattern: /sway/iu,
+    scaleBackend: 'sway',
+    keyboardBackend: 'ydotool'
+  })
+});
 const ROUTE_LABELS = Object.freeze({
   overview: 'Overview',
   insights: 'Insights',
@@ -89,7 +173,7 @@ function readOsRelease(file = '/etc/os-release') {
   );
 }
 
-function exactHostArchitecture(platformArchitecture = os.arch()) {
+function exactHostArchitecture(platformArchitecture = os.machine()) {
   if (platformArchitecture === 'arm64') return 'aarch64';
   if (platformArchitecture === 'x64') return 'x86_64';
   return platformArchitecture;
@@ -105,43 +189,62 @@ function parseLoginctl(text) {
 }
 
 export function validateP31HostIdentity({
+  environmentId,
   platform = process.platform,
   architecture = exactHostArchitecture(),
   release = readOsRelease(),
   environment = process.env,
   loginctl = null,
+  compositorIdentity = '',
+  waylandSocketIsReal = null,
   windowManager = ''
 } = {}) {
+  const expected = P31_LIVE_ENVIRONMENTS[environmentId];
+  assert(expected && P31_ENVIRONMENTS[environmentId],
+    `P-31 live producer received unknown canonical environment ${environmentId ?? '<missing>'}`);
   assert(platform === 'linux', 'P-31 live producer must run on Linux');
-  assert(architecture === 'aarch64', 'P-31 UTM producer requires native aarch64');
-  assert(release.ID === 'ubuntu' && release.VERSION_ID === '24.04',
-    'P-31 UTM producer requires Ubuntu 24.04');
-  assert((environment.XDG_SESSION_TYPE ?? '').toLowerCase() === 'x11',
-    'P-31 UTM producer requires a real X11 session');
-  const desktop = environment.XDG_CURRENT_DESKTOP ?? environment.DESKTOP_SESSION ?? '';
-  assert(/gnome/iu.test(desktop) && !FORBIDDEN_SESSION.test(desktop),
-    'P-31 UTM producer requires GNOME and rejects substitute desktops');
-  assert(environment.DISPLAY && environment.DBUS_SESSION_BUS_ADDRESS && environment.XDG_RUNTIME_DIR,
-    'P-31 UTM producer requires DISPLAY, the session bus, and XDG_RUNTIME_DIR');
-  assert(!environment.WAYLAND_DISPLAY,
-    'P-31 GNOME X11 evidence cannot be captured through a Wayland display');
-  assert(!FORBIDDEN_SESSION.test(`${environment.DISPLAY} ${windowManager}`),
-    'P-31 GNOME evidence rejects Xvfb, XFCE, fixture, and synthetic sessions');
-  if (loginctl) {
-    assert(loginctl.Type === 'x11' && loginctl.Active === 'yes' && loginctl.Remote === 'no'
-      && loginctl.Class === 'user' && ['active', 'online'].includes(loginctl.State),
-    'P-31 logind identity is not an active local GNOME X11 user session');
+  assert(architecture === expected.architecture,
+    `P-31 ${environmentId} requires native ${expected.architecture}, observed ${architecture}`);
+  assert(release.ID === expected.osId
+    && (expected.versionId === null || release.VERSION_ID === expected.versionId),
+  `P-31 ${environmentId} does not match the live distribution`);
+  const observedSession = (environment.XDG_SESSION_TYPE ?? '').toLowerCase();
+  assert(observedSession === expected.session.toLowerCase(),
+    `P-31 ${environmentId} requires a real ${expected.session} session`);
+  const desktop = `${environment.XDG_CURRENT_DESKTOP ?? ''} ${environment.DESKTOP_SESSION ?? ''}`.trim();
+  assert(expected.desktopPattern.test(desktop) && !FORBIDDEN_SESSION.test(desktop),
+    `P-31 ${environmentId} does not match the live ${expected.desktop} desktop`);
+  assert(environment.DBUS_SESSION_BUS_ADDRESS && environment.XDG_RUNTIME_DIR,
+    `P-31 ${environmentId} requires the user session bus and XDG_RUNTIME_DIR`);
+  if (expected.session === 'X11') {
+    assert(environment.DISPLAY && !environment.WAYLAND_DISPLAY,
+      `P-31 ${environmentId} requires DISPLAY without a Wayland display`);
+  } else {
+    assert(environment.WAYLAND_DISPLAY && waylandSocketIsReal === true,
+      `P-31 ${environmentId} requires a real owned Wayland compositor socket`);
   }
-  if (windowManager) {
-    assert(/(?:gnome shell|mutter)/iu.test(windowManager),
-      'P-31 window manager is not GNOME Shell/Mutter');
+  const observedCompositor = compositorIdentity || windowManager;
+  assert(observedCompositor && expected.compositorPattern.test(observedCompositor),
+    `P-31 ${environmentId} compositor is not ${expected.compositor}`);
+  assert(!FORBIDDEN_SESSION.test(
+    `${environment.DISPLAY ?? ''} ${environment.WAYLAND_DISPLAY ?? ''} ${observedCompositor}`
+  ), `P-31 ${environmentId} rejects substitute, nested, fixture, and synthetic sessions`);
+  if (loginctl) {
+    assert((loginctl.Type ?? '').toLowerCase() === expected.session.toLowerCase()
+      && loginctl.Active === 'yes' && loginctl.Remote === 'no'
+      && loginctl.Class === 'user' && ['active', 'online'].includes(loginctl.State),
+    `P-31 ${environmentId} logind identity is not an active local user session`);
+    if ((loginctl.Desktop ?? '').trim()) {
+      assert(expected.desktopPattern.test(loginctl.Desktop),
+        `P-31 ${environmentId} logind desktop does not match ${expected.desktop}`);
+    }
   }
   return {
-    environmentId: ENVIRONMENT,
+    environmentId,
     architecture,
-    desktop: 'GNOME',
-    session: 'X11',
-    compositor: 'Mutter'
+    desktop: expected.desktop,
+    session: expected.session,
+    compositor: expected.compositor
   };
 }
 
@@ -172,59 +275,163 @@ function atomicJson(file, value) {
   fs.renameSync(temporary, file);
 }
 
-export function applyGnomeAccessibilityPreferences(rawDir, {
-  invoke = (args, label) => required('gsettings', args, label)
+export function parseKScreenOutputs(text) {
+  return text.split(/(?=^Output:\s)/gmu).flatMap((block) => {
+    const identity = block.match(/^Output:\s+([1-9][0-9]*)\s+(\S+)/mu);
+    const scale = block.match(/^\s+Scale:\s+([0-9]+(?:\.[0-9]+)?)\s*$/mu);
+    if (!identity || !scale || !/^\s+enabled\s*$/mu.test(block)
+      || !/^\s+connected\s*$/mu.test(block)) return [];
+    return [{
+      id: identity[1],
+      name: identity[2],
+      scale: Number(scale[1])
+    }];
+  });
+}
+
+export function parseSwayOutputs(text) {
+  let outputs;
+  try {
+    outputs = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`P-31 Sway output inventory is not JSON: ${error.message}`);
+  }
+  assert(Array.isArray(outputs), 'P-31 Sway output inventory must be an array');
+  return outputs.filter((output) => output?.active === true)
+    .map((output) => ({
+      name: output.name,
+      scale: Number(output.scale)
+    }))
+    .filter((output) => typeof output.name === 'string' && output.name.length > 0
+      && Number.isFinite(output.scale) && output.scale > 0);
+}
+
+export function detectYdotoolDialect(helpText) {
+  if (/<KEYCODE:PRESSED>|keycode:pressed/iu.test(helpText)) return 'linux-input-events';
+  if (/key sequence[\s\S]*separated by plus/iu.test(helpText)) return 'legacy-key-names';
+  fail('P-31 could not identify the installed ydotool keyboard dialect');
+}
+
+export function applyDesktopAccessibilityPreferences(rawDir, identity, {
+  invokeGsettings = (args, label) => required('gsettings', args, label),
+  invokeKscreen = (args, label) => required('kscreen-doctor', args, label),
+  invokeSway = (args, label) => required('swaymsg', args, label)
 } = {}) {
-  const preferences = [
-    { key: 'scaling-factor', value: '2', expected: /^uint32 2$/u },
-    { key: 'gtk-theme', value: 'HighContrast', expected: /^'HighContrast'$/u },
-    { key: 'enable-animations', value: 'false', expected: /^false$/u }
-  ];
+  const profile = P31_LIVE_ENVIRONMENTS[identity?.environmentId];
+  assert(profile, 'P-31 desktop preference application requires a canonical environment identity');
   const changed = [];
   const restore = () => {
     const errors = [];
-    for (const preference of [...changed].reverse()) {
+    for (const change of [...changed].reverse()) {
       try {
-        invoke([
-          'set', 'org.gnome.desktop.interface', preference.key, preference.original
-        ], `P-31 restore GNOME ${preference.key}`);
-        const observed = invoke([
-          'get', 'org.gnome.desktop.interface', preference.key
-        ], `P-31 verify restored GNOME ${preference.key}`);
-        assert(observed === preference.original,
-          `P-31 GNOME ${preference.key} was not restored exactly`);
+        change.write(change.original, `P-31 restore ${change.label}`);
+        const observed = change.read(`P-31 verify restored ${change.label}`);
+        assert(change.equal(observed, change.original),
+          `P-31 ${change.label} was not restored exactly`);
       } catch (error) {
         errors.push(error);
       }
     }
-    if (errors.length) throw new AggregateError(errors, 'P-31 GNOME preference restoration failed');
+    if (errors.length) throw new AggregateError(errors, 'P-31 desktop preference restoration failed');
   };
+  const mutate = ({ label, read, write, value, equal }) => {
+    const original = read(`P-31 read ${label}`);
+    const change = { label, read, write, original, equal };
+    changed.push(change);
+    write(value, `P-31 set ${label}`);
+    const observed = read(`P-31 verify ${label}`);
+    assert(equal(observed, value), `P-31 ${label} did not reach its required live value`);
+    return observed;
+  };
+  const gsettings = (key, value, expected) => mutate({
+    label: `GTK ${key}`,
+    read: (label) => invokeGsettings(
+      ['get', 'org.gnome.desktop.interface', key],
+      label
+    ),
+    write: (next, label) => invokeGsettings(
+      ['set', 'org.gnome.desktop.interface', key, next],
+      label
+    ),
+    value,
+    equal: (observed, wanted) => wanted === value ? expected.test(observed) : observed === wanted
+  });
   try {
-    for (const preference of preferences) {
-      const original = invoke([
-        'get', 'org.gnome.desktop.interface', preference.key
-      ], `P-31 read GNOME ${preference.key}`);
-      changed.push({ ...preference, original });
-      invoke([
-        'set', 'org.gnome.desktop.interface', preference.key, preference.value
-      ], `P-31 set GNOME ${preference.key}`);
-      const observed = invoke([
-        'get', 'org.gnome.desktop.interface', preference.key
-      ], `P-31 verify GNOME ${preference.key}`);
-      assert(preference.expected.test(observed),
-        `P-31 GNOME ${preference.key} did not reach its required live value`);
-      preference.observed = observed;
+    let scaleOutputs = [];
+    if (profile.scaleBackend === 'gnome') {
+      const readback = gsettings('scaling-factor', '2', /^uint32 2$/u);
+      scaleOutputs = [{
+        name: 'GNOME global scale',
+        scale: 2,
+        readback
+      }];
+    } else if (profile.scaleBackend === 'kscreen') {
+      const readOutputs = (label) => parseKScreenOutputs(invokeKscreen(['-o'], label));
+      const originals = readOutputs('P-31 read KScreen outputs');
+      assert(originals.length > 0, 'P-31 KDE session has no active connected output');
+      for (const output of originals) {
+        mutate({
+          label: `KScreen output ${output.id} (${output.name}) scale`,
+          read: (label) => {
+            const observed = readOutputs(label).find((candidate) => candidate.id === output.id);
+            assert(observed, `P-31 KScreen output ${output.id} disappeared`);
+            return observed.scale;
+          },
+          write: (next, label) => invokeKscreen(
+            [`output.${output.id}.scale.${next}`],
+            label
+          ),
+          value: 2,
+          equal: (observed, wanted) => observed === wanted
+        });
+      }
+      scaleOutputs = readOutputs('P-31 verify all KScreen output scales');
+      assert(scaleOutputs.length === originals.length
+        && scaleOutputs.every((output) => output.scale === 2),
+      'P-31 KDE did not reach exact 200 percent on every active output');
+    } else if (profile.scaleBackend === 'sway') {
+      const readOutputs = (label) => parseSwayOutputs(invokeSway(
+        ['-t', 'get_outputs', '-r'],
+        label
+      ));
+      const originals = readOutputs('P-31 read Sway outputs');
+      assert(originals.length > 0, 'P-31 Sway session has no active output');
+      for (const output of originals) {
+        mutate({
+          label: `Sway output ${output.name} scale`,
+          read: (label) => {
+            const observed = readOutputs(label).find((candidate) => candidate.name === output.name);
+            assert(observed, `P-31 Sway output ${output.name} disappeared`);
+            return observed.scale;
+          },
+          write: (next, label) => invokeSway(
+            ['output', output.name, 'scale', String(next)],
+            label
+          ),
+          value: 2,
+          equal: (observed, wanted) => observed === wanted
+        });
+      }
+      scaleOutputs = readOutputs('P-31 verify all Sway output scales');
+      assert(scaleOutputs.length === originals.length
+        && scaleOutputs.every((output) => output.scale === 2),
+      'P-31 Sway did not reach exact 200 percent on every active output');
     }
+    const gtkTheme = gsettings('gtk-theme', 'HighContrast', /^'HighContrast'$/u);
+    const enableAnimations = gsettings('enable-animations', 'false', /^false$/u);
     const evidence = {
-      producer: 'openburnbar-p31-gnome-accessibility-preferences-v1',
-      desktop: 'GNOME',
-      session: 'X11',
-      scalingFactor: preferences[0].observed,
-      gtkTheme: preferences[1].observed,
-      enableAnimations: preferences[2].observed,
+      producer: 'openburnbar-p31-desktop-accessibility-preferences-v1',
+      environmentId: identity.environmentId,
+      desktop: identity.desktop,
+      session: identity.session,
+      compositor: identity.compositor,
+      scaleBackend: profile.scaleBackend,
+      scaleOutputs,
+      gtkTheme,
+      enableAnimations,
       pass: true
     };
-    const evidenceFile = path.join(rawDir, 'p31-gnome-accessibility-settings.json');
+    const evidenceFile = path.join(rawDir, 'p31-desktop-accessibility-settings.json');
     atomicJson(evidenceFile, evidence);
     return { evidence, evidenceFile, restore };
   } catch (error) {
@@ -232,7 +439,7 @@ export function applyGnomeAccessibilityPreferences(rawDir, {
       restore();
     } catch (restoreError) {
       throw new AggregateError([error, restoreError],
-        'P-31 GNOME preference application and restoration failed');
+        'P-31 desktop preference application and restoration failed');
     }
     throw error;
   }
@@ -250,6 +457,69 @@ function exactDesktopPids() {
     })
     .map(Number)
     .sort((left, right) => left - right);
+}
+
+function exactExecutablePids(names) {
+  const accepted = new Set(names);
+  return fs.readdirSync('/proc')
+    .filter((entry) => /^[1-9][0-9]*$/u.test(entry))
+    .filter((entry) => {
+      try {
+        return accepted.has(path.basename(fs.realpathSync(`/proc/${entry}/exe`)));
+      } catch {
+        return false;
+      }
+    })
+    .map(Number)
+    .sort((left, right) => left - right);
+}
+
+function assertRealSessionSocket(file, label) {
+  assert(path.isAbsolute(file), `${label} must be absolute`);
+  const link = fs.lstatSync(file);
+  const stat = fs.statSync(file);
+  assert(!link.isSymbolicLink() && stat.isSocket() && stat.uid === process.getuid(),
+    `${label} must be a real socket owned by the runner user`);
+  return true;
+}
+
+function observeP31Compositor(profile, environment) {
+  if (profile.compositor === 'Mutter') {
+    const pids = exactExecutablePids(['gnome-shell']);
+    assert(pids.length === 1, 'P-31 requires exactly one live GNOME Shell compositor process');
+    if (profile.session === 'X11') {
+      return `${required('wmctrl', ['-m'], 'P-31 GNOME X11 compositor identity')}\npid=${pids[0]}`;
+    }
+    const shellVersion = required('gnome-shell', ['--version'], 'P-31 GNOME Shell version');
+    const busNames = required('busctl', [
+      '--user', '--no-pager', '--no-legend', 'list'
+    ], 'P-31 GNOME Shell session bus identity');
+    assert(/^org\.gnome\.Shell\s/mu.test(busNames),
+      'P-31 GNOME Wayland session bus has no org.gnome.Shell owner');
+    return `${shellVersion}\norg.gnome.Shell\npid=${pids[0]}`;
+  }
+  if (profile.compositor === 'KWin') {
+    const pids = exactExecutablePids(['kwin_wayland', 'kwin_wayland_wrapper']);
+    assert(pids.length > 0, 'P-31 requires a live KWin Wayland compositor process');
+    const busNames = required('busctl', [
+      '--user', '--no-pager', '--no-legend', 'list'
+    ], 'P-31 KWin session bus identity');
+    assert(/^org\.kde\.KWin\s/mu.test(busNames),
+      'P-31 KDE Wayland session bus has no org.kde.KWin owner');
+    return `KWin Wayland\norg.kde.KWin\npids=${pids.join(',')}`;
+  }
+  if (profile.compositor === 'Sway') {
+    const pids = exactExecutablePids(['sway']);
+    assert(pids.length === 1, 'P-31 requires exactly one live Sway compositor process');
+    assert(environment.SWAYSOCK, 'P-31 Sway session requires SWAYSOCK');
+    assertRealSessionSocket(environment.SWAYSOCK, 'P-31 Sway IPC socket');
+    const version = required('swaymsg', ['-t', 'get_version', '-r'], 'P-31 Sway compositor identity');
+    const parsed = JSON.parse(version);
+    assert(/sway/iu.test(`${parsed?.human_readable ?? ''} ${parsed?.variant ?? ''}`),
+      'P-31 Sway IPC did not identify a Sway compositor');
+    return `${parsed.human_readable ?? 'Sway'}\npid=${pids[0]}`;
+  }
+  fail(`P-31 has no live compositor probe for ${profile.compositor}`);
 }
 
 async function terminateNewDesktopProcesses(baseline) {
@@ -470,8 +740,9 @@ return {
   activeName: (document.activeElement?.getAttribute('aria-label') || document.activeElement?.textContent || '').trim()
 };`;
 
-async function captureDriverEvidence(driver, rawDir, gnomePreferences) {
+async function captureDriverEvidence(driver, rawDir, desktopPreferences, options, identity) {
   const routeAudits = [];
+  const navigationRoutes = [];
   for (const route of P31_REQUIRED_ROUTES) {
     const expectedHash = `#/${route}`;
     const expectedLabel = ROUTE_LABELS[route];
@@ -490,6 +761,22 @@ async function captureDriverEvidence(driver, rawDir, gnomePreferences) {
         `P-31 WebDriver route identity mismatch for ${route}: ${JSON.stringify(observed)}`);
       return observed;
     }, 10_000);
+    const atspiName = `p31-route-${route}-atspi.json`;
+    const atspiPath = path.join(rawDir, atspiName);
+    required('python3', [
+      ATSPI, '--application', 'OpenBurnBar', '--mode', 'summary',
+      '--expected-name', expectedLabel, '--route', route,
+      '--output', atspiPath, '--min-nodes', '12', '--min-named', '6',
+      '--min-actionable', '3', '--wait-for-meaningful-seconds', '5'
+    ], `P-31 live AT-SPI route ${route}`);
+    const atspi = JSON.parse(fs.readFileSync(atspiPath, 'utf8'));
+    assert(atspi.pass === true, `P-31 live AT-SPI route ${route} did not pass`);
+    navigationRoutes.push({
+      route,
+      expectedLabel,
+      atspi: atspiName,
+      routeIdentity
+    });
     const layout = await driver.execute(P36_LAYOUT_SCRIPT, ['p31-exact-200-percent']);
     const focused = await driver.execute(
       "const e=document.querySelector('a[href=\"#main\"],button:not([disabled]),a[href],input:not([disabled])');e?.focus();return !!e&&document.activeElement===e&&e.matches(':focus-visible');"
@@ -498,6 +785,24 @@ async function captureDriverEvidence(driver, rawDir, gnomePreferences) {
   }
   const layoutPath = path.join(rawDir, 'p31-scale-route-audit.json');
   atomicJson(layoutPath, { producer: 'openburnbar-p31-webkit-scale-audit-v1', routes: routeAudits });
+  const navigation = {
+    producer: 'openburnbar-p31-webdriver-atspi-navigation-v1',
+    surface: 'installed-tauri-native-session',
+    environmentId: options.environmentId,
+    targetHead: options.targetHead,
+    candidate: {
+      runId: options.candidateRunId,
+      artifactDigest: options.candidateArtifactDigest
+    },
+    packageVersion: options.packageVersion,
+    desktop: {
+      desktop: identity.desktop,
+      session: identity.session,
+      compositor: identity.compositor
+    },
+    routes: navigationRoutes
+  };
+  atomicJson(path.join(rawDir, 'packaged-route-session-transcript.json'), navigation);
 
   const scaleAtspi = path.join(rawDir, 'p31-scale-atspi.json');
   required('python3', [
@@ -556,11 +861,12 @@ async function captureDriverEvidence(driver, rawDir, gnomePreferences) {
     contrast,
     noColor,
     scalePng,
-    gnomePreferences
+    desktopPreferences
   });
   return {
     runtime,
     routeAudits,
+    navigation,
     evidence: {
       layout: path.basename(layoutPath),
       scaleAtspi: path.basename(scaleAtspi),
@@ -569,23 +875,75 @@ async function captureDriverEvidence(driver, rawDir, gnomePreferences) {
       noColorScreenshot: path.basename(noColorScreenshot),
       forcedColorsScreenshot: path.basename(forcedColorsScreenshot),
       runtime: path.basename(runtimePath),
-      gnomeSettings: 'p31-gnome-accessibility-settings.json'
+      desktopSettings: 'p31-desktop-accessibility-settings.json'
     }
   };
 }
 
-async function captureKeyboardAndOrca(rawDir, orcaDebug, physicalTabPresses = 28, physicalShiftTabPresses = 12) {
-  const windowIds = required('xdotool', [
-    'search', '--onlyvisible', '--name', '^OpenBurnBar$'
-  ], 'P-31 installed window lookup').split(/\s+/u).filter(Boolean);
-  assert(windowIds.length === 1 && /^[0-9]+$/u.test(windowIds[0]),
-    'P-31 requires exactly one installed WebDriver window');
-  const windowId = windowIds[0];
-  const windowPid = required('xdotool', ['getwindowpid', windowId], 'P-31 installed window PID');
-  assert(/^[1-9][0-9]*$/u.test(windowPid), 'P-31 installed window PID is invalid');
-  const executable = fs.realpathSync(`/proc/${windowPid}/exe`);
-  assert(executable === DESKTOP,
-    `P-31 keyboard window is not owned by ${DESKTOP}: ${executable}`);
+async function captureKeyboardAndOrca(
+  rawDir,
+  orcaDebug,
+  identity,
+  environment,
+  physicalTabPresses = 28,
+  physicalShiftTabPresses = 12
+) {
+  const profile = P31_LIVE_ENVIRONMENTS[identity.environmentId];
+  let windowId = null;
+  if (profile.keyboardBackend === 'xdotool') {
+    const windowIds = required('xdotool', [
+      'search', '--onlyvisible', '--name', '^OpenBurnBar$'
+    ], 'P-31 installed window lookup').split(/\s+/u).filter(Boolean);
+    assert(windowIds.length === 1 && /^[0-9]+$/u.test(windowIds[0]),
+      'P-31 requires exactly one installed WebDriver window');
+    [windowId] = windowIds;
+    const windowPid = required('xdotool', ['getwindowpid', windowId], 'P-31 installed window PID');
+    assert(/^[1-9][0-9]*$/u.test(windowPid), 'P-31 installed window PID is invalid');
+    const executable = fs.realpathSync(`/proc/${windowPid}/exe`);
+    assert(executable === DESKTOP,
+      `P-31 keyboard window is not owned by ${DESKTOP}: ${executable}`);
+  } else {
+    assert(profile.keyboardBackend === 'ydotool', 'P-31 has no canonical keyboard input backend');
+    const desktopPids = exactDesktopPids();
+    assert(desktopPids.length === 1,
+      'P-31 Wayland keyboard traversal requires exactly one installed desktop process');
+    assert(environment.YDOTOOL_SOCKET,
+      'P-31 Wayland keyboard traversal requires an explicit YDOTOOL_SOCKET');
+    assertRealSessionSocket(environment.YDOTOOL_SOCKET, 'P-31 ydotoold socket');
+    required('sh', ['-c', 'command -v "$1" >/dev/null', 'p31-tool', 'ydotool'],
+      'P-31 required tool ydotool', { env: environment });
+  }
+  let inputDialect = profile.keyboardBackend;
+  if (profile.keyboardBackend === 'ydotool') {
+    const help = run('ydotool', ['key', '--help'], { env: environment });
+    assert(help.status === 0, `P-31 ydotool keyboard help failed (${help.status})`);
+    inputDialect = detectYdotoolDialect(`${help.stdout}\n${help.stderr}`);
+    if (inputDialect === 'legacy-key-names') {
+      assert(environment.YDOTOOL_SOCKET === '/tmp/.ydotool_socket',
+        'P-31 legacy Ubuntu ydotool requires YDOTOOL_SOCKET=/tmp/.ydotool_socket');
+    }
+  }
+  const pressKey = (reverse = false) => {
+    if (profile.keyboardBackend === 'xdotool') {
+      required('xdotool', [
+        'windowfocus', '--sync', windowId
+      ], reverse ? 'P-31 reverse window focus' : 'P-31 window focus');
+      required('xdotool', [
+        'key', '--window', windowId, '--clearmodifiers', reverse ? 'shift+Tab' : 'Tab'
+      ], reverse ? 'P-31 physical Shift+Tab' : 'P-31 physical Tab');
+      return;
+    }
+    const input = inputDialect === 'legacy-key-names'
+      ? ['key', reverse ? 'shift+Tab' : 'Tab']
+      : [
+          'key',
+          ...(reverse ? ['42:1', '15:1', '15:0', '42:0'] : ['15:1', '15:0'])
+        ];
+    required('ydotool', input,
+      reverse ? 'P-31 physical Wayland Shift+Tab' : 'P-31 physical Wayland Tab', {
+      env: environment
+    });
+  };
   const forwardAnchor = path.join(rawDir, 'p31-focus-forward-anchor.json');
   required('python3', [
     ATSPI, '--application', 'OpenBurnBar', '--mode', 'grab-focus',
@@ -595,8 +953,7 @@ async function captureKeyboardAndOrca(rawDir, orcaDebug, physicalTabPresses = 28
   const focusLogOffset = fs.statSync(orcaDebug).size;
   const observations = [];
   for (let index = 0; index < physicalTabPresses; index += 1) {
-    required('xdotool', ['windowfocus', '--sync', windowId], 'P-31 window focus');
-    required('xdotool', ['key', '--window', windowId, '--clearmodifiers', 'Tab'], 'P-31 physical Tab');
+    pressKey();
     await wait(1_250);
     const focused = path.join(rawDir, `p31-focus-${String(index + 1).padStart(2, '0')}.json`);
     required('python3', [
@@ -612,8 +969,7 @@ async function captureKeyboardAndOrca(rawDir, orcaDebug, physicalTabPresses = 28
   ], 'P-31 reverse keyboard focus anchor');
   await wait(1_000);
   for (let index = 0; index < physicalShiftTabPresses; index += 1) {
-    required('xdotool', ['windowfocus', '--sync', windowId], 'P-31 reverse window focus');
-    required('xdotool', ['key', '--window', windowId, '--clearmodifiers', 'shift+Tab'], 'P-31 physical Shift+Tab');
+    pressKey(true);
     await wait(1_250);
   }
   await wait(8_000);
@@ -633,6 +989,8 @@ async function captureKeyboardAndOrca(rawDir, orcaDebug, physicalTabPresses = 28
   const focusTrap = identities.size < 3;
   const result = {
     producer: 'openburnbar-p31-orca-focus-v1',
+    inputBackend: profile.keyboardBackend,
+    inputDialect,
     physicalTabPressCount: physicalTabPresses,
     physicalShiftTabPressCount: physicalShiftTabPresses,
     physicalKeyPressCount: physicalTabPresses + physicalShiftTabPresses,
@@ -679,6 +1037,7 @@ export function buildP31LiveSession({
     && row.layout.horizontalOverflow === 0 && row.layout.clippedCount === 0
     && row.focusPreserved === true);
   const runtime = driverEvidence.runtime;
+  const expectedEnvironment = P31_ENVIRONMENTS[options.environmentId];
   const document = {
     schemaVersion: 1,
     id: 'openburnbar-linux-p31-live-session-v1',
@@ -691,7 +1050,7 @@ export function buildP31LiveSession({
     },
     package: {
       architecture: identity.architecture,
-      format: 'deb',
+      format: expectedEnvironment.format,
       installed: true,
       manifestSha256: options.manifestSha256,
       source: 'signed-installed-candidate',
@@ -713,11 +1072,11 @@ export function buildP31LiveSession({
           evidence(driverEvidence.evidence.scaleAtspi),
           evidence(driverEvidence.evidence.scaleScreenshot),
           evidence(driverEvidence.evidence.runtime),
-          evidence(driverEvidence.evidence.gnomeSettings)
+          evidence(driverEvidence.evidence.desktopSettings)
         ],
         focusPreserved: driverEvidence.routeAudits.every((row) => row.focusPreserved),
         horizontalScrollbars: runtime.horizontalScrollbars,
-        method: 'installed-WebKitGTK live desktop exact GDK scale with raster readback',
+        method: 'installed-WebKitGTK live desktop exact compositor scale with raster readback',
         observedPercent: runtime.dpr * 100,
         overflowCount: Math.max(...driverEvidence.routeAudits.map((row) => row.layout.horizontalOverflow)),
         reflowPass: routeAuditPassed,
@@ -729,14 +1088,14 @@ export function buildP31LiveSession({
           evidence(driverEvidence.evidence.highContrastScreenshot),
           evidence(driverEvidence.evidence.noColorScreenshot),
           evidence(driverEvidence.evidence.runtime),
-          evidence(driverEvidence.evidence.gnomeSettings)
+          evidence(driverEvidence.evidence.desktopSettings)
         ],
         forcedColors: {
           evidencePath: evidence(driverEvidence.evidence.forcedColorsScreenshot),
           mode: 'forced-colors',
           observed: runtime.forcedColors,
           pass: runtime.forcedColors,
-          test: 'WebKit forced-colors media query under the real GTK HighContrast theme'
+          test: 'WebKit forced-colors media query under the real desktop GTK HighContrast theme'
         },
         highContrast: {
           evidencePath: evidence(driverEvidence.evidence.highContrastScreenshot),
@@ -760,7 +1119,7 @@ export function buildP31LiveSession({
         evidencePaths: [
           evidence(driverEvidence.evidence.runtime),
           evidence(driverEvidence.evidence.scaleScreenshot),
-          evidence(driverEvidence.evidence.gnomeSettings)
+          evidence(driverEvidence.evidence.desktopSettings)
         ],
         mediaQuery: '(prefers-reduced-motion: reduce)',
         method: 'installed-live motion preference with computed runtime styles',
@@ -836,19 +1195,22 @@ export function parseP31LiveArguments(argv) {
     manifestSignatureSha256: values.get('--manifest-signature-sha256'),
     compositor: values.get('--compositor')
   };
-  assert(options.environmentId === ENVIRONMENT,
-    `P-31 live producer currently requires exactly ${ENVIRONMENT}`);
+  const profile = P31_LIVE_ENVIRONMENTS[options.environmentId];
+  assert(profile && P31_ENVIRONMENTS[options.environmentId],
+    `P-31 live producer requires a canonical environment, received ${options.environmentId}`);
   assert(HEAD.test(options.targetHead) && RUN_ID.test(options.candidateRunId)
     && DIGEST.test(options.candidateArtifactDigest) && VERSION.test(options.packageVersion)
     && SHA256.test(options.manifestSha256) && SHA256.test(options.manifestSignatureSha256),
   'P-31 candidate binding is invalid');
-  assert(options.compositor === 'Mutter' && !FORBIDDEN_SESSION.test(options.compositor),
-    'P-31 UTM producer requires the Mutter compositor');
+  assert(options.compositor === profile.compositor && !FORBIDDEN_SESSION.test(options.compositor),
+    `P-31 ${options.environmentId} requires the ${profile.compositor} compositor`);
   return options;
 }
 
 export async function runP31LiveAccessibilitySession(options) {
   const repository = fs.realpathSync(ROOT);
+  const profile = P31_LIVE_ENVIRONMENTS[options.environmentId];
+  assert(profile, `P-31 has no live profile for ${options.environmentId}`);
   assertInside(repository, options.outputRoot, 'P-31 output root');
   assertInside(options.outputRoot, options.rawOutputDir, 'P-31 raw output');
   assertRealOwnedDirectory(options.outputRoot, 'P-31 output root');
@@ -876,13 +1238,49 @@ export async function runP31LiveAccessibilitySession(options) {
     'show-session', sessionId, '--property=Type', '--property=Desktop', '--property=Class',
     '--property=Active', '--property=Remote', '--property=State'
   ], 'P-31 logind identity'));
-  const windowManager = required('wmctrl', ['-m'], 'P-31 window manager identity');
-  required('pgrep', ['-x', 'gnome-shell'], 'P-31 GNOME Shell process');
-  const identity = validateP31HostIdentity({ loginctl, windowManager });
+  let waylandSocketIsReal = null;
+  if (profile.session === 'Wayland') {
+    assert(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(process.env.WAYLAND_DISPLAY ?? ''),
+      'P-31 WAYLAND_DISPLAY must name a socket inside XDG_RUNTIME_DIR');
+    assertRealOwnedDirectory(process.env.XDG_RUNTIME_DIR, 'P-31 XDG runtime directory');
+    const waylandSocket = path.join(process.env.XDG_RUNTIME_DIR, process.env.WAYLAND_DISPLAY);
+    assertInside(process.env.XDG_RUNTIME_DIR, waylandSocket, 'P-31 Wayland display socket');
+    waylandSocketIsReal = assertRealSessionSocket(
+      waylandSocket,
+      'P-31 Wayland display socket'
+    );
+  }
+  const compositorIdentity = observeP31Compositor(profile, process.env);
+  const machineArchitecture = exactHostArchitecture();
+  assert(machineArchitecture === exactHostArchitecture(os.arch()),
+    'P-31 live producer requires a native Node runtime matching the Linux machine architecture');
+  const identity = validateP31HostIdentity({
+    environmentId: options.environmentId,
+    architecture: machineArchitecture,
+    loginctl,
+    compositorIdentity,
+    waylandSocketIsReal
+  });
   assert(options.compositor === identity.compositor, 'P-31 compositor argument does not match the live host');
 
   verifyInstalledCandidate(options);
-  for (const tool of ['python3', 'gsettings', 'orca', 'xdotool', 'wmctrl', 'xrandr', 'xwininfo', 'scrot']) {
+  const requiredTools = new Set(['python3', 'gsettings', 'orca']);
+  if (profile.session === 'X11') {
+    requiredTools.add('wmctrl');
+    requiredTools.add('xdotool');
+  } else {
+    requiredTools.add('ydotool');
+  }
+  if (profile.compositor === 'Mutter' && profile.session === 'Wayland') {
+    requiredTools.add('busctl');
+    requiredTools.add('gnome-shell');
+  } else if (profile.compositor === 'KWin') {
+    requiredTools.add('busctl');
+    requiredTools.add('kscreen-doctor');
+  } else if (profile.compositor === 'Sway') {
+    requiredTools.add('swaymsg');
+  }
+  for (const tool of requiredTools) {
     required('sh', ['-c', 'command -v "$1" >/dev/null', 'p31-tool', tool], `P-31 required tool ${tool}`);
   }
   const desktopBaseline = exactDesktopPids();
@@ -902,7 +1300,7 @@ export async function runP31LiveAccessibilitySession(options) {
     const daemonHealth = required('/usr/bin/openburnbar-cli', ['health'], 'P-31 package daemon health');
     fs.writeFileSync(path.join(options.rawOutputDir, 'daemon-health.txt'),
       `${daemonHealth}\n`, { mode: 0o600 });
-    preferences = applyGnomeAccessibilityPreferences(options.rawOutputDir);
+    preferences = applyDesktopAccessibilityPreferences(options.rawOutputDir, identity);
     const orcaDebug = path.join(options.rawOutputDir, 'orca-debug.log');
     const orcaVersion = required('orca', ['--version'], 'P-31 Orca version');
     fs.writeFileSync(path.join(options.rawOutputDir, 'orca-version.txt'), `${orcaVersion}\n`, { mode: 0o600 });
@@ -924,27 +1322,6 @@ export async function runP31LiveAccessibilitySession(options) {
     fs.writeFileSync(path.join(options.rawOutputDir, 'orca-process.txt'),
       `pid=${orca.pid}\nversion=${orcaVersion}\n`, { mode: 0o600 });
 
-    const navigationArgs = [
-      P09, '--output-dir', options.rawOutputDir, '--environment', options.environmentId,
-      '--target-head', options.targetHead, '--candidate-run-id', options.candidateRunId,
-      '--candidate-artifact-digest', options.candidateArtifactDigest,
-      '--package-version', options.packageVersion, '--manifest-sha256', options.manifestSha256,
-      '--manifest-signature-sha256', options.manifestSignatureSha256,
-      '--compositor', options.compositor
-    ];
-    required(process.execPath, navigationArgs, 'P-31 native route and AT-SPI capture', {
-      env: { ...stateEnvironment, OPENBURNBAR_LINUX_FIXTURE_MODE: '0' },
-      timeout: 20 * 60_000
-    });
-    assert(exactDesktopPids().length === 0,
-      'P-31 native navigation probe leaked an installed desktop process');
-    const navigation = JSON.parse(fs.readFileSync(
-      path.join(options.rawOutputDir, 'packaged-route-session-transcript.json'), 'utf8'
-    ));
-    assert(navigation.surface === 'installed-tauri-native-session'
-      && navigation.routes?.length === P09_REQUIRED_ROUTES.length,
-    'P-31 navigation transcript is not a complete installed session');
-
     const driverEnvironment = {
       ...stateEnvironment,
       OPENBURNBAR_LINUX_FIXTURE_MODE: '0',
@@ -955,9 +1332,20 @@ export async function runP31LiveAccessibilitySession(options) {
     const driverEvidence = await captureDriverEvidence(
       driver,
       options.rawOutputDir,
-      preferences.evidence
+      preferences.evidence,
+      options,
+      identity
     );
-    const keyboard = await captureKeyboardAndOrca(options.rawOutputDir, orcaDebug);
+    const navigation = driverEvidence.navigation;
+    assert(navigation.surface === 'installed-tauri-native-session'
+      && navigation.routes?.length === P31_REQUIRED_ROUTES.length,
+    'P-31 navigation transcript is not a complete installed session');
+    const keyboard = await captureKeyboardAndOrca(
+      options.rawOutputDir,
+      orcaDebug,
+      identity,
+      process.env
+    );
     report = buildP31LiveSession({
       options,
       identity,

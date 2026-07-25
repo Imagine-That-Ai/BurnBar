@@ -84,6 +84,8 @@ jobs:
       - self-hosted
       - macos
       - arm64
+      - m5max
+      - ios
     timeout-minutes: 30
     steps:
       - name: Check out the exact evidence source
@@ -653,25 +655,59 @@ jobs:
           set -euo pipefail
           bash scripts/linux-port/install-tauri-webdriver-prerequisites.sh
 
-      - name: Provision P-31 live GNOME accessibility prerequisites
+      - name: Provision P-31 live accessibility prerequisites
         if: inputs.requirement == 'P-31'
         shell: bash
         env:
           ENVIRONMENT_ID: ${{ inputs.environment }}
         run: |
           set -euo pipefail
-          test "$ENVIRONMENT_ID" = 'ubuntu-24.04-gnome-x11-aarch64'
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            at-spi2-core \
-            libglib2.0-bin \
-            orca \
-            python3-pyatspi \
-            scrot \
-            wmctrl \
-            x11-utils \
-            x11-xserver-utils \
-            xdotool
+          case "$ENVIRONMENT_ID" in
+            ubuntu-24.04-gnome-x11-*)
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends \
+                at-spi2-core \
+                gnome-accessibility-themes \
+                libglib2.0-bin \
+                orca \
+                python3-pyatspi \
+                wmctrl \
+                xdotool
+              ;;
+            ubuntu-24.04-gnome-wayland-*)
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends \
+                at-spi2-core \
+                gnome-accessibility-themes \
+                libglib2.0-bin \
+                orca \
+                python3-pyatspi \
+                ydotool \
+                ydotoold
+              ;;
+            fedora-kde-wayland-*)
+              sudo dnf install -y \
+                at-spi2-core \
+                glib2 \
+                gnome-themes-extra \
+                gsettings-desktop-schemas \
+                kscreen \
+                orca \
+                python3-pyatspi \
+                ydotool
+              ;;
+            arch-sway-wayland-x86_64)
+              sudo pacman -S --needed --noconfirm \
+                at-spi2-core \
+                glib2 \
+                gnome-themes-extra \
+                gsettings-desktop-schemas \
+                orca \
+                python-atspi \
+                ydotool
+              ;;
+            *) echo "unsupported P-31 environment: $ENVIRONMENT_ID" >&2; exit 1 ;;
+          esac
 
       - name: Capture P-09 installed navigation shell proof
         if: inputs.requirement == 'P-09'
@@ -2712,8 +2748,17 @@ jobs:
         run: |
           set -euo pipefail
           input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
-          test "$ENVIRONMENT_ID" = 'ubuntu-24.04-gnome-x11-aarch64' \
-            || { echo 'P-31 live producer currently certifies only the real Ubuntu 24.04 GNOME X11 aarch64 session.' >&2; exit 1; }
+          case "$ENVIRONMENT_ID" in
+            ubuntu-24.04-gnome-x11-*) compositor=Mutter ;;
+            ubuntu-24.04-gnome-wayland-*) compositor=Mutter ;;
+            fedora-kde-wayland-*) compositor=KWin ;;
+            arch-sway-wayland-x86_64) compositor=Sway ;;
+            *) echo "unsupported P-31 environment: $ENVIRONMENT_ID" >&2; exit 1 ;;
+          esac
+          if [[ "$ENVIRONMENT_ID" == *-wayland-* ]]; then
+            test -n "${YDOTOOL_SOCKET:-}" \
+              || { echo 'P-31 Wayland runners require an explicit runner-owned YDOTOOL_SOCKET.' >&2; exit 1; }
+          fi
           state_home="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p31-home.XXXXXX")"
           cleanup_p31() {
             status=$?
@@ -2735,7 +2780,7 @@ jobs:
             --package-version "$PACKAGE_VERSION" \
             --manifest-sha256 "$MANIFEST_SHA256" \
             --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256" \
-            --compositor Mutter
+            --compositor "$compositor"
           session_report="$input_root/p31-live-session.json"
           test -f "$session_report"
           node scripts/linux-port/capture-p31-accessibility.mjs \

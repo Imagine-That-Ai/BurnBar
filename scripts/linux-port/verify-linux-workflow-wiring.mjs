@@ -279,7 +279,7 @@ export function verifyLinuxWorkflowWiring(input) {
     }
   };
   const requireP31LiveAccessibilityContract = (body) => {
-    const prerequisiteStep = 'Provision P-31 live GNOME accessibility prerequisites';
+    const prerequisiteStep = 'Provision P-31 live accessibility prerequisites';
     const prerequisiteStart = body.indexOf(`- name: ${prerequisiteStep}`);
     const prerequisiteEnd = prerequisiteStart < 0 ? -1
       : body.indexOf('\n      - name:', prerequisiteStart + 1);
@@ -293,21 +293,76 @@ export function verifyLinuxWorkflowWiring(input) {
       for (const line of [
         "if: inputs.requirement == 'P-31'",
         'set -euo pipefail',
-        "test \"$ENVIRONMENT_ID\" = 'ubuntu-24.04-gnome-x11-aarch64'",
-        'sudo apt-get update',
-        'sudo apt-get install -y --no-install-recommends',
-        'at-spi2-core',
-        'libglib2.0-bin',
-        'orca',
-        'python3-pyatspi',
-        'scrot',
-        'wmctrl',
-        'x11-utils',
-        'x11-xserver-utils',
-        'xdotool'
+        'case "$ENVIRONMENT_ID" in',
+        'ubuntu-24.04-gnome-x11-*)',
+        'ubuntu-24.04-gnome-wayland-*)',
+        'fedora-kde-wayland-*)',
+        'arch-sway-wayland-x86_64)',
+        '*) echo "unsupported P-31 environment: $ENVIRONMENT_ID" >&2; exit 1 ;;'
       ]) {
         if (!prerequisiteLines.includes(line) && !prerequisiteLines.includes(`${line} \\`)) {
           failures.push(`product parity evidence workflow ${prerequisiteStep} is missing: ${line}`);
+        }
+      }
+      const requiredArms = [
+        ['ubuntu-24.04-gnome-x11-*)', [
+          'sudo apt-get update',
+          'sudo apt-get install -y --no-install-recommends',
+          'at-spi2-core',
+          'gnome-accessibility-themes',
+          'libglib2.0-bin',
+          'orca',
+          'python3-pyatspi',
+          'wmctrl',
+          'xdotool'
+        ]],
+        ['ubuntu-24.04-gnome-wayland-*)', [
+          'sudo apt-get update',
+          'sudo apt-get install -y --no-install-recommends',
+          'at-spi2-core',
+          'gnome-accessibility-themes',
+          'libglib2.0-bin',
+          'orca',
+          'python3-pyatspi',
+          'ydotool',
+          'ydotoold'
+        ]],
+        ['fedora-kde-wayland-*)', [
+          'sudo dnf install -y',
+          'at-spi2-core',
+          'glib2',
+          'gnome-themes-extra',
+          'gsettings-desktop-schemas',
+          'kscreen',
+          'orca',
+          'python3-pyatspi',
+          'ydotool'
+        ]],
+        ['arch-sway-wayland-x86_64)', [
+          'sudo pacman -S --needed --noconfirm',
+          'at-spi2-core',
+          'glib2',
+          'gnome-themes-extra',
+          'gsettings-desktop-schemas',
+          'orca',
+          'python-atspi',
+          'ydotool'
+        ]]
+      ];
+      for (const [arm, requiredLines] of requiredArms) {
+        const armStart = prerequisiteLines.indexOf(arm);
+        const armEnd = prerequisiteLines.indexOf(';;', armStart + 1);
+        if (armStart < 0 || armEnd < 0) {
+          failures.push(`product parity evidence workflow ${prerequisiteStep} has no complete case arm: ${arm}`);
+          continue;
+        }
+        const armLines = prerequisiteLines.slice(armStart + 1, armEnd);
+        for (const line of requiredLines) {
+          if (!armLines.includes(line) && !armLines.includes(`${line} \\`)) {
+            failures.push(
+              `product parity evidence workflow ${prerequisiteStep} ${arm} is missing: ${line}`
+            );
+          }
         }
       }
       for (const forbidden of ['continue-on-error: true', 'set +e', '|| true', '; true']) {
@@ -330,7 +385,12 @@ export function verifyLinuxWorkflowWiring(input) {
     for (const line of [
       "if: inputs.requirement == 'P-31'",
       'set -euo pipefail',
-      "test \"$ENVIRONMENT_ID\" = 'ubuntu-24.04-gnome-x11-aarch64'",
+      'ubuntu-24.04-gnome-x11-*) compositor=Mutter ;;',
+      'ubuntu-24.04-gnome-wayland-*) compositor=Mutter ;;',
+      'fedora-kde-wayland-*) compositor=KWin ;;',
+      'arch-sway-wayland-x86_64) compositor=Sway ;;',
+      'if [[ "$ENVIRONMENT_ID" == *-wayland-* ]]; then',
+      'test -n "${YDOTOOL_SOCKET:-}"',
       'state_home="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p31-home.XXXXXX")"',
       'trap cleanup_p31 EXIT',
       'chmod 700 "$state_home"',
@@ -346,7 +406,7 @@ export function verifyLinuxWorkflowWiring(input) {
       '--package-version "$PACKAGE_VERSION"',
       '--manifest-sha256 "$MANIFEST_SHA256"',
       '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
-      '--compositor Mutter',
+      '--compositor "$compositor"',
       'session_report="$input_root/p31-live-session.json"',
       'test -f "$session_report"',
       'node scripts/linux-port/capture-p31-accessibility.mjs',
@@ -379,7 +439,7 @@ export function verifyLinuxWorkflowWiring(input) {
       '--package-version "$PACKAGE_VERSION"',
       '--manifest-sha256 "$MANIFEST_SHA256"',
       '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
-      '--compositor Mutter'
+      '--compositor "$compositor"'
     ]) {
       if (!producerLines.includes(line) && !producerLines.includes(`${line} \\`)) {
         failures.push(`product parity evidence workflow ${stepName} live producer is missing: ${line}`);
@@ -438,6 +498,8 @@ export function verifyLinuxWorkflowWiring(input) {
       '- self-hosted',
       '- macos',
       '- arm64',
+      '- m5max',
+      '- ios',
       'FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}',
       'bash scripts/ci/inject-firebase-config.sh',
       'P16_COORDINATION_ROOT: ${{ vars.OPENBURNBAR_P16_MACOS_COORDINATION_ROOT }}',
@@ -966,7 +1028,7 @@ export function verifyLinuxWorkflowWiring(input) {
     "if: inputs.requirement == 'P-36'",
     'Provision native Tauri WebDriver prerequisites',
     'install-tauri-webdriver-prerequisites.sh',
-    'Provision P-31 live GNOME accessibility prerequisites',
+    'Provision P-31 live accessibility prerequisites',
     'python3-pyatspi',
     'capture-parity-certification-preflight.mjs',
     'capture-p34-credential-security-proof.mjs',
