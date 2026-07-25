@@ -8,11 +8,17 @@ class UITestBase: XCTestCase {
     /// ephemerally-keyed store. Stable across a relaunch within the same test so
     /// persistence assertions hold.
     private var supportRoot: String!
+    /// Random per-test SQLCipher key so the encrypted store opens without a
+    /// Keychain prompt, without shipping or relying on any predictable constant.
+    /// Stable across a relaunch within the same test so persistence holds.
+    private var databaseKey: String!
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         supportRoot = NSTemporaryDirectory()
             + "openburnbar-uitest-" + UUID().uuidString
+        databaseKey = Data((0..<32).map { _ in UInt8.random(in: .min ... .max) })
+            .base64EncodedString()
     }
 
     override func tearDownWithError() throws {
@@ -45,6 +51,7 @@ class UITestBase: XCTestCase {
         ]
         app.launchEnvironment = [
             "OPENBURNBAR_UITEST": "1",
+            "OPENBURNBAR_UITEST_DB_KEY": databaseKey,
             "OPENBURNBAR_ALLOW_MULTIPLE_INSTANCES": "1",
             "OPENBURNBAR_DISABLE_UPDATE_CHECK": "1",
             "OPENBURNBAR_E2E_HOLD_OPEN": "1",
