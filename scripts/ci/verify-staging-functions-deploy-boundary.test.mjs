@@ -16,25 +16,20 @@ import { spawnSync } from "node:child_process";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(scriptDir, "..", "..");
 const gate = join(scriptDir, "verify-staging-functions-deploy-boundary.mjs");
-const realWorkflow = join(
-  repoRoot,
-  ".github",
-  "workflows",
-  "deploy-staging.yml",
-);
-const fixtureRoot = mkdtempSync(
-  join(tmpdir(), "openburnbar-staging-boundary-"),
-);
-const fixtureWorkflow = join(
-  fixtureRoot,
-  ".github",
-  "workflows",
-  "deploy-staging.yml",
-);
+const fixtureRoot = mkdtempSync(join(tmpdir(), "openburnbar-staging-boundary-"));
+const workflowDir = join(fixtureRoot, ".github", "workflows");
+mkdirSync(workflowDir, { recursive: true });
 
-mkdirSync(dirname(fixtureWorkflow), { recursive: true });
-cpSync(realWorkflow, fixtureWorkflow);
-const pristine = readFileSync(fixtureWorkflow, "utf8");
+for (const name of ["deploy-staging.yml", "deploy-staging-trusted.yml"]) {
+  cpSync(
+    join(repoRoot, ".github", "workflows", name),
+    join(workflowDir, name),
+  );
+}
+const callerPath = join(workflowDir, "deploy-staging.yml");
+const trustedPath = join(workflowDir, "deploy-staging-trusted.yml");
+const pristineCaller = readFileSync(callerPath, "utf8");
+const pristineTrusted = readFileSync(trustedPath, "utf8");
 
 function runGate() {
   return spawnSync(process.execPath, [gate], {
@@ -46,63 +41,55 @@ function runGate() {
 function expectPass(label) {
   const result = runGate();
   if (result.status !== 0) {
-    throw new Error(
-      `${label}: expected PASS\n${result.stdout}${result.stderr}`,
-    );
+    throw new Error(`${label}: expected PASS\n${result.stdout}${result.stderr}`);
   }
 }
 
-function expectFailure(label, mutate) {
-  writeFileSync(fixtureWorkflow, mutate(pristine));
+function expectFailure(label, path, source) {
+  writeFileSync(path, source);
   const result = runGate();
-  if (result.status === 0) {
-    throw new Error(`${label}: expected failure`);
-  }
-  writeFileSync(fixtureWorkflow, pristine);
+  if (result.status === 0) throw new Error(`${label}: expected failure`);
+  writeFileSync(callerPath, pristineCaller);
+  writeFileSync(trustedPath, pristineTrusted);
 }
 
 try {
-  expectPass("real workflow");
-  expectFailure("self-overwrite", (source) =>
-    source.replace('} > "$TEMP_ENV_FILE"', '} > "$ENV_FILE"'),
-  );
-  expectFailure("unvalidated targets", (source) =>
-    source.replace(
-      "^functions:[A-Za-z][A-Za-z0-9_-]*(,functions:[A-Za-z][A-Za-z0-9_-]*)*$",
-      ".*",
+  expectPass("real workflows");
+  expectFailure(
+    "unpinned reusable workflow",
+    callerPath,
+    pristineCaller.replace(
+      "deploy-staging-trusted.yml@main",
+      "deploy-staging-trusted.yml@feature",
     ),
   );
-  expectFailure("unquoted deploy scope", (source) =>
-    source.replace('--only "$deploy_scope"', "--only $deploy_scope"),
+  expectFailure(
+    "candidate auth",
+    callerPath,
+    `${pristineCaller}\n# google-github-actions/auth\n`,
   );
-  expectFailure("direct expression interpolation", (source) =>
-    source.replace(
-      'deploy_scope="$FUNCTION_TARGETS"',
-      'deploy_scope="${{ github.event.inputs.function_targets }}"',
-    ),
+  expectFailure(
+    "candidate scripts enabled",
+    trustedPath,
+    pristineTrusted.replace(" --ignore-scripts", ""),
   );
-  expectFailure("missing scoped entrypoint", (source) =>
-    source.replace(
-      `          node scripts/ci/prepare-scoped-functions-deploy.mjs \\
-            --targets "$FUNCTION_TARGETS" \\
-            --functions-dir functions
-`,
-      "",
-    ),
-  );
-  expectFailure("scoping after auth", (source) => {
-    const command = `          node scripts/ci/prepare-scoped-functions-deploy.mjs \\
-            --targets "$FUNCTION_TARGETS" \\
-            --functions-dir functions
-`;
-    return source
-      .replace(command, "")
+  expectFailure(
+    "verification after auth",
+    trustedPath,
+    pristineTrusted
+      .replace("Verify bounded candidate artifacts before authentication", "TEMP")
       .replace(
-        "      - name: Deploy Cloud Functions (staging)\n",
-        `${command}      - name: Deploy Cloud Functions (staging)\n`,
-      );
-  });
-  console.log("PASS: staging Functions deploy boundary self-test.");
+        "Authenticate to Google Cloud through trusted-main WIF",
+        "Verify bounded candidate artifacts before authentication",
+      )
+      .replace("TEMP", "Authenticate to Google Cloud through trusted-main WIF"),
+  );
+  expectFailure(
+    "unquoted deploy scope",
+    trustedPath,
+    pristineTrusted.replace('--only "$deploy_scope"', "--only $deploy_scope"),
+  );
+  console.log("PASS: staging deployment boundary self-test.");
 } finally {
   rmSync(fixtureRoot, { recursive: true, force: true });
 }

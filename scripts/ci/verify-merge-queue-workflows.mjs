@@ -37,21 +37,25 @@ const contracts = [
     "domain-core-deletion-guard.yml",
     "github.event.pull_request.head.sha || github.event.merge_group.head_sha",
     "trusted deletion guard must evaluate the merge-group candidate SHA",
+    1,
   ],
   [
     "domain-core-deletion-guard.yml",
     "gh-readonly-queue/main/pr-([0-9]+)-",
     "trusted deletion guard must recover the single queued PR identity",
+    1,
   ],
   [
     "pr-review.yml",
     "github.event.pull_request.base.sha || github.event.merge_group.base_sha",
     "automated review must compare the merge group against its base",
+    1,
   ],
   [
     "public-macos-download-trust.yml",
     "github.event.pull_request.base.sha || github.event.merge_group.base_sha",
-    "public download trust detection must compare the merge group against its base",
+    "public download trust detection and trusted checkout must both compare the merge group against its base",
+    2,
   ],
   [
     "public-linux-download-trust.yml",
@@ -62,12 +66,16 @@ const contracts = [
     "droid-review.yml",
     "Reuse PR-head Droid review for merge queue",
     "Droid's advisory check must emit a merge-group receipt without invoking PR-only APIs",
+    1,
   ],
 ];
 
-for (const [name, needle, message] of contracts) {
+for (const [name, needle, message, minimumOccurrences] of contracts) {
   const source = readFileSync(join(root, ".github", "workflows", name), "utf8");
-  if (!source.includes(needle)) failures.push(`${name}: ${message}`);
+  const occurrences = source.split(needle).length - 1;
+  if (occurrences < minimumOccurrences) {
+    failures.push(`${name}: ${message} (expected at least ${minimumOccurrences}, found ${occurrences})`);
+  }
 }
 
 if (failures.length > 0) {

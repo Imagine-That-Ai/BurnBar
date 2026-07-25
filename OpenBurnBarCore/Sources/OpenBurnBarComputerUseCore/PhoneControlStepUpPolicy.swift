@@ -25,15 +25,11 @@ public extension AgentDesktopCapability {
 /// then trusted possession of the software signing key for every subsequent
 /// intent. F2 requires a fresh user-presence proof (Face ID / Touch ID /
 /// fingerprint) for the sensitive action classes on *every* signing, and binds
-/// that proof to the key custody:
-///
-///  - A Secure-Enclave / StrongBox key created with biometry-gated access
-///    control cannot produce a signature without a live biometric match, so the
-///    presence of a valid `se-p256` signature *is* the step-up proof — the OS
-///    enforces it and it cannot be forged by mere key possession.
-///  - A legacy software Ed25519 key offers no such guarantee, so a sensitive
-///    action signed by one must additionally carry a single-use local-auth
-///    proof (the existing `HermesRealtimeRelayAgentGrantLocalAuthProof` flow).
+/// that proof to the exact action. A wire-level key-kind label is not hardware
+/// attestation: both `se-p256` and legacy Ed25519 envelopes must therefore carry
+/// the existing single-use local-auth proof. A future hardware-backed fast path
+/// may only be enabled after validating platform attestation and a fresh
+/// user-presence policy for the exact registered key.
 ///
 /// This type is the shared, platform-independent decision surface; the Mac
 /// validator, the server, and the iOS/Android signers all consult it so the
@@ -43,9 +39,6 @@ public struct PhoneControlStepUpPolicy: Sendable, Equatable {
 
     /// How a sensitive action's step-up requirement is satisfied for a key kind.
     public enum StepUpEvidence: Sendable, Equatable {
-        /// The signature itself proves a live biometric (biometry-gated Secure
-        /// Enclave / StrongBox key). No extra proof field is required.
-        case enforcedBySecureEnclaveSignature
         /// Possession of a software key is not a biometric proof; the action
         /// must carry an explicit single-use local-auth proof.
         case requiresExplicitLocalAuthProof
@@ -66,18 +59,13 @@ public struct PhoneControlStepUpPolicy: Sendable, Equatable {
     /// The evidence a controller of the given key kind must supply to satisfy a
     /// step-up requirement.
     public func stepUpEvidence(for kind: PhoneControlSigningKeyKind) -> StepUpEvidence {
-        switch kind {
-        case .secureEnclaveP256:
-            return .enforcedBySecureEnclaveSignature
-        case .ed25519:
-            return .requiresExplicitLocalAuthProof
-        }
+        _ = kind
+        return .requiresExplicitLocalAuthProof
     }
 
     /// Convenience for the validator chokepoint: given the action's capabilities
     /// and the signing key kind, does the envelope additionally need an explicit
-    /// local-auth proof attached? (True only for sensitive actions signed by a
-    /// legacy software key.)
+    /// local-auth proof attached?
     public func requiresExplicitLocalAuthProof(
         capabilities: Set<AgentDesktopCapability>,
         keyKind: PhoneControlSigningKeyKind
