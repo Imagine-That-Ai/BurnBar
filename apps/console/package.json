@@ -30,7 +30,7 @@
     "@sentry/browser": "10.64.0",
     "@sentry/core": "10.64.0",
     "@sentry/node": "10.64.0",
-    "@sentry/vercel-edge": "10.64.0",
+    "@sentry/vercel-edge": "10.68.0",
     "@simplewebauthn/browser": "13.3.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
