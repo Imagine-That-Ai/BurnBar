@@ -194,7 +194,8 @@ extension DashboardView {
         .background {
             DashboardSidebarMaterial(
                 liveBackdropActive: dashboardLiveBackdropActive,
-                moodBand: dataStore.moodBand
+                moodBand: dataStore.moodBand,
+                kernelColorScheme: dashboardKernelColorScheme
             )
         }
         .scrollContentBackground(.hidden)
@@ -233,6 +234,12 @@ extension DashboardView {
 private struct DashboardSidebarMaterial: View {
     let liveBackdropActive: Bool
     let moodBand: MoodBand
+    /// The app's appearance, passed in explicitly because the sidebar subtree
+    /// runs under a `\.colorScheme` override chosen for foreground contrast.
+    /// Without it `KernelBackdropView` here would read that overridden value
+    /// and drive the sidebar's kernel WKWebView with a palette opposite to the
+    /// main backdrop's.
+    let kernelColorScheme: ColorScheme
 
     var body: some View {
         if liveBackdropActive {
@@ -244,7 +251,7 @@ private struct DashboardSidebarMaterial: View {
 
     private var liveGlass: some View {
         ZStack {
-            DashboardBackdrop(moodBand: moodBand)
+            DashboardBackdrop(moodBand: moodBand, kernelColorScheme: kernelColorScheme)
                 .allowsHitTesting(false)
 
             Color.clear

@@ -201,7 +201,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
             ],
             dataStore: store,
             orchestrator: makeOrchestrator(store: store),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(conversationIndexingEnabled: false, snapshotAPIs: [])
         )
 
