@@ -86,16 +86,18 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
     func testMacProjectCarriesAppCheckDebugTokenReleaseGuards() throws {
         let source = try bundledTextResource(named: "project", extension: "yml")
 
-        // The July 2026 security remediation removed the internal debug-token
-        // injection hook entirely: no build phase may embed a reusable App
-        // Check debug token, and the release blocker no longer carries an
-        // OPENBURNBAR_USE_DEBUG_APP_CHECK escape hatch (it exits early for
-        // Debug configurations only). Mirrors the iOS assertions in
-        // OpenBurnBarMobileTests/AppStoreReviewComplianceTests.
+        // The July 2026 security remediation (#1959) deleted the debug-token
+        // injection build phase outright, so the compliance property is no
+        // longer "injection is gated behind an env var": it is that no build
+        // phase can stage a debug App Check token at all, while the release
+        // artifact verifier still blocks any token that slips in some other
+        // way. The release blocker exits early for Debug configurations only,
+        // with no OPENBURNBAR_USE_DEBUG_APP_CHECK escape hatch. Mirrors the
+        // iOS assertions in OpenBurnBarMobileTests/AppStoreReviewComplianceTests.
         XCTAssertFalse(source.contains("Inject Internal Mac App Check Debug Token"))
-        XCTAssertFalse(source.contains("Add :FirebaseAppCheckDebugToken"))
-        XCTAssertFalse(source.contains("Add :FIRAAppCheckDebugToken"))
         XCTAssertFalse(source.contains("OPENBURNBAR_USE_DEBUG_APP_CHECK"))
+        XCTAssertFalse(source.contains("FIRAAppCheckDebugToken"))
+        XCTAssertFalse(source.contains("FirebaseAppCheckDebugToken"))
         XCTAssertTrue(source.contains("Block Mac App Check Debug Token In Release"))
         XCTAssertTrue(source.contains("if [[ \"${CONFIGURATION:-}\" == \"Debug\" ]]; then"))
         XCTAssertTrue(source.contains("AgentLens/Resources/GoogleService-Info.plist"))

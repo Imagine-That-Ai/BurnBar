@@ -111,7 +111,10 @@ final class MercuryRouterTests: XCTestCase {
             screenCaptureFactory: { _, _ in RouterNoopScreenCaptureSession() },
             videoEncoderFactory: { _, _ in RouterNoopVideoEncoder() }
         )
-        let consentStore = MercuryConsentStore(defaults: makeIsolatedDefaults())
+        // The store must share the router's clock: its defaults observer
+        // prunes grants against that clock, and these tests pin `now` years
+        // away from the wall clock.
+        let consentStore = MercuryConsentStore(defaults: makeIsolatedDefaults(), clock: clock)
         if consent {
             seedTestAutoAcceptGrants(in: consentStore)
         }
