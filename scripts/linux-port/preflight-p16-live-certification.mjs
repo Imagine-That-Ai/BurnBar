@@ -7,6 +7,8 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 export const EXPECTED_REPOSITORY = "Imagine-That-Ai/BurnBar";
+export const EXPECTED_ORGANIZATION = "Imagine-That-Ai";
+export const MAX_RUNNER_GROUPS = 32;
 export const EXPECTED_VM = Object.freeze({
   name: "OpenBurnBar Linux",
   uuid: "7923D0DD-6367-45EA-9064-152EECC1AC65",
@@ -350,6 +352,88 @@ export function parseOrganizationRunnersOutput(raw) {
   };
 }
 
+export function parseRunnerGroupsOutput(raw) {
+  const rows = parsePagedCollection(raw, "runner_groups", "GitHub organization runner groups");
+  const ids = new Set();
+  const groups = [];
+  for (const rawRow of rows) {
+    const row = plainObject(rawRow, "GitHub organization runner group");
+    if (!Number.isSafeInteger(row.id) || row.id < 1) {
+      fail("malformed_input", "GitHub organization runner group id is malformed");
+    }
+    if (ids.has(row.id)) {
+      fail("duplicate_input", "GitHub organization runner groups contain a duplicate id");
+    }
+    ids.add(row.id);
+    groups.push({
+      id: row.id,
+      name: safeString(row.name, "GitHub organization runner group name"),
+      visibility: safeString(row.visibility, "GitHub organization runner group visibility"),
+    });
+  }
+  if (groups.length > MAX_RUNNER_GROUPS) {
+    fail("ambiguous_input", "GitHub organization runner groups exceed the bounded preflight limit");
+  }
+  return groups;
+}
+
+/**
+ * An organization runner is only usable by this repository when its runner
+ * group grants the repository access: either the group is visible to all
+ * repositories, or the repository appears in the group's selected list.
+ * Runners that cannot be mapped to exactly one group, and groups whose
+ * membership or repository grants cannot be read, fail closed.
+ */
+export function resolveRunnerGroupRepositoryAccess({
+  groups,
+  groupRunnersOutputs,
+  groupRepositoriesOutputs,
+}) {
+  const runnerGroupIds = new Map();
+  const accessibleRunnerIds = new Set();
+  for (const group of groups) {
+    const membershipRaw = groupRunnersOutputs?.[group.id];
+    if (typeof membershipRaw !== "string") {
+      fail("command_failed", `runner group ${group.id} membership could not be read`);
+    }
+    let grantsRepositoryAccess = false;
+    if (group.visibility === "all") {
+      grantsRepositoryAccess = true;
+    } else if (group.visibility === "selected") {
+      const repositoriesRaw = groupRepositoriesOutputs?.[group.id];
+      if (typeof repositoriesRaw !== "string") {
+        fail("command_failed", `runner group ${group.id} repository grants could not be read`);
+      }
+      const repositories = parsePagedCollection(
+        repositoriesRaw,
+        "repositories",
+        `runner group ${group.id} repositories`,
+      );
+      grantsRepositoryAccess = repositories.some((rawRepository) => {
+        const repository = plainObject(rawRepository, `runner group ${group.id} repository`);
+        return repository.full_name === EXPECTED_REPOSITORY;
+      });
+    }
+    const members = parsePagedCollection(
+      membershipRaw,
+      "runners",
+      `runner group ${group.id} runners`,
+    );
+    for (const rawMember of members) {
+      const member = plainObject(rawMember, `runner group ${group.id} runner`);
+      if (!Number.isSafeInteger(member.id) || member.id < 1) {
+        fail("malformed_input", `runner group ${group.id} contains a malformed runner id`);
+      }
+      if (runnerGroupIds.has(member.id)) {
+        fail("ambiguous_input", "a runner appears in more than one runner group");
+      }
+      runnerGroupIds.set(member.id, group.id);
+      if (grantsRepositoryAccess) accessibleRunnerIds.add(member.id);
+    }
+  }
+  return { runnerGroupIds, accessibleRunnerIds };
+}
+
 function checkError(error, fallbackCode) {
   if (error instanceof PreflightValidationError) {
     return { code: error.code, message: error.message };
@@ -481,22 +565,31 @@ export function evaluateP16HostPreflight(input, dependencies = {}) {
 
   try {
     const runners = parseOrganizationRunnersOutput(commandOutput("runnersOutput"));
-    if (runners.eligible.length === 0) {
+    const groups = parseRunnerGroupsOutput(commandOutput("runnerGroupsOutput"));
+    const access = resolveRunnerGroupRepositoryAccess({
+      groups,
+      groupRunnersOutputs: input.runnerGroupRunnersOutputs,
+      groupRepositoriesOutputs: input.runnerGroupRepositoriesOutputs,
+    });
+    const accessible = runners.eligible.filter((runner) => access.accessibleRunnerIds.has(runner.id));
+    if (accessible.length === 0) {
       addBlocker(
         "macRunner",
         "eligible_mac_runner_unavailable",
-        "No online, non-busy macOS org runner has every required P16 label.",
+        "No online, non-busy macOS org runner has every required P16 label and a runner group that grants this repository access.",
         {
           requiredLabels: [...REQUIRED_RUNNER_LABELS],
           totalCount: runners.totalCount,
           labelMatchCount: runners.labelMatchCount,
           onlineMatchCount: runners.onlineMatchCount,
+          eligibleCount: runners.eligible.length,
+          repositoryAccessibleCount: accessible.length,
         },
       );
     } else {
-      addPass("macRunner", "An eligible online, non-busy macOS org runner is available.", {
+      addPass("macRunner", "An eligible online, non-busy macOS org runner with repository-visible runner-group access is available.", {
         requiredLabels: [...REQUIRED_RUNNER_LABELS],
-        eligible: runners.eligible,
+        eligible: accessible,
       });
     }
   } catch (error) {
@@ -566,7 +659,17 @@ export const READ_ONLY_COMMANDS = Object.freeze([
       "api",
       "--paginate",
       "--slurp",
-      "orgs/Imagine-That-Ai/actions/runners?per_page=100",
+      `orgs/${EXPECTED_ORGANIZATION}/actions/runners?per_page=100`,
+    ]),
+  }),
+  Object.freeze({
+    key: "runnerGroupsOutput",
+    command: "gh",
+    args: Object.freeze([
+      "api",
+      "--paginate",
+      "--slurp",
+      `orgs/${EXPECTED_ORGANIZATION}/actions/runner-groups?per_page=100`,
     ]),
   }),
 ]);
@@ -586,20 +689,61 @@ function runReadOnlyCommand(command, args) {
 }
 
 export function collectReadOnlyCommandOutputs(commandRunner = runReadOnlyCommand) {
-  const outputs = { commandErrors: {} };
-  for (const spec of READ_ONLY_COMMANDS) {
-    const result = commandRunner(spec.command, [...spec.args]);
+  const outputs = { commandErrors: {}, runnerGroupRunnersOutputs: {}, runnerGroupRepositoriesOutputs: {} };
+  function collect(key, command, args) {
+    const result = commandRunner(command, args);
     if (
       result === null
       || typeof result !== "object"
       || typeof result.stdout !== "string"
       || typeof result.failed !== "boolean"
+      || result.failed
     ) {
+      return null;
+    }
+    return result.stdout;
+  }
+  for (const spec of READ_ONLY_COMMANDS) {
+    const stdout = collect(spec.key, spec.command, [...spec.args]);
+    if (stdout === null) {
       outputs.commandErrors[spec.key] = true;
       continue;
     }
-    outputs[spec.key] = result.stdout;
-    if (result.failed) outputs.commandErrors[spec.key] = true;
+    outputs[spec.key] = stdout;
+  }
+  // Bounded second phase: each discovered runner group is inspected with the
+  // same read-only `gh api` shape so runner eligibility can be tied to a
+  // group that actually grants this repository access.  Any failure to read
+  // a group is folded into the runner-groups command error and fails closed.
+  if (!outputs.commandErrors.runnerGroupsOutput) {
+    try {
+      const groups = parseRunnerGroupsOutput(outputs.runnerGroupsOutput);
+      for (const group of groups) {
+        const membership = collect(
+          "runnerGroupRunnersOutputs",
+          "gh",
+          ["api", "--paginate", "--slurp", `orgs/${EXPECTED_ORGANIZATION}/actions/runner-groups/${group.id}/runners?per_page=100`],
+        );
+        if (membership === null) {
+          outputs.commandErrors.runnerGroupsOutput = true;
+          break;
+        }
+        outputs.runnerGroupRunnersOutputs[group.id] = membership;
+        if (group.visibility !== "selected") continue;
+        const repositories = collect(
+          "runnerGroupRepositoriesOutputs",
+          "gh",
+          ["api", "--paginate", "--slurp", `orgs/${EXPECTED_ORGANIZATION}/actions/runner-groups/${group.id}/repositories?per_page=100`],
+        );
+        if (repositories === null) {
+          outputs.commandErrors.runnerGroupsOutput = true;
+          break;
+        }
+        outputs.runnerGroupRepositoriesOutputs[group.id] = repositories;
+      }
+    } catch {
+      outputs.commandErrors.runnerGroupsOutput = true;
+    }
   }
   return outputs;
 }

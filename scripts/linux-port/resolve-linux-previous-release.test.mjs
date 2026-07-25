@@ -1,4 +1,9 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import {
   assertDebianLifecyclePayload,
@@ -119,4 +124,29 @@ test('Debian payload inspection requires exact identity and the daemon launcher'
   const rejected = assertDebianLifecyclePayload({ packagePath: '/tmp/candidate.deb', version: '1.2.3', architecture: 'x86_64', run: missingLauncher });
   assert.equal(rejected.passed, false);
   assert.match(rejected.reason, /missing .*daemon-launch/u);
+});
+
+test('strict mode fails closed on transient release discovery errors instead of reporting no baseline', () => {
+  const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'resolve-linux-previous-release.mjs');
+  const shimDir = fs.mkdtempSync(path.join(os.tmpdir(), 'resolve-strict-'));
+  fs.writeFileSync(path.join(shimDir, 'gh'), '#!/bin/sh\necho "API rate limit exceeded" >&2\nexit 1\n', { mode: 0o755 });
+  const run = (extraArgs) => spawnSync(process.execPath, [script, '--current-version', '1.2.3', ...extraArgs], {
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${shimDir}:${process.env.PATH}`, GITHUB_OUTPUT: '', RUNNER_TEMP: shimDir }
+  });
+  try {
+    const strict = run(['--strict']);
+    assert.equal(strict.status, 1);
+    const strictResult = JSON.parse(strict.stdout);
+    assert.equal(strictResult.passed, false);
+    assert.equal(strictResult.discoveryError, true);
+
+    const lenient = run([]);
+    assert.equal(lenient.status, 0);
+    const lenientResult = JSON.parse(lenient.stdout);
+    assert.equal(lenientResult.passed, false);
+    assert.equal(lenientResult.discoveryError, true);
+  } finally {
+    fs.rmSync(shimDir, { recursive: true, force: true });
+  }
 });

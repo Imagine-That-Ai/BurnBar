@@ -19,6 +19,8 @@ const REQUIRED = Object.freeze([
   '--target-head "$TARGET_HEAD"',
   "Refuse a second lifecycle bootstrap",
   "resolve-linux-previous-release.mjs",
+  "--strict",
+  '(has("discoveryError") | not)',
   "Require an exact pre-existing Linux tag",
   'tag="linux-v${version}"',
   'test "$tag_commit" = "$GITHUB_SHA"',

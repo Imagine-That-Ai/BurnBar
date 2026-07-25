@@ -22,6 +22,7 @@ const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const VERSION = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:[-+][0-9A-Za-z.-]+)?$/u;
 const FORBIDDEN_SESSION = /(?:xvfb|xfce|openbox|synthetic|fixture|mock|headless|nested)/iu;
+const SESSION_ID = /^[A-Za-z0-9_-]+$/u;
 export const P31_LIVE_ENVIRONMENTS = Object.freeze({
   'ubuntu-24.04-gnome-x11-x86_64': Object.freeze({
     osId: 'ubuntu',
@@ -186,6 +187,37 @@ function parseLoginctl(text) {
       .filter(Boolean)
       .map((match) => [match[1], match[2]])
   );
+}
+
+// The ephemeral runner service inherits the graphical environment (display,
+// runtime directory, D-Bus address) but not XDG_SESSION_ID, so discover the
+// unique active local graphical session for this user through loginctl, the
+// same authority the P-40 producer uses.  Discovery is fail-closed: exactly
+// one matching session may exist, and every candidate identifier is
+// validated before it is handed back to loginctl.
+export function discoverP31GraphicalSessionId(expectedSession, {
+  uid = process.getuid(),
+  listSessions = () => required('loginctl', ['list-sessions', '--no-legend', '--no-pager'],
+    'P-31 logind session discovery'),
+  showSession = (candidate) => parseLoginctl(required('loginctl', [
+    'show-session', candidate, '--property=Type', '--property=Class',
+    '--property=Active', '--property=Remote', '--property=State'
+  ], `P-31 logind session ${candidate}`))
+} = {}) {
+  const matches = [];
+  for (const line of listSessions().split('\n')) {
+    const [candidate, sessionUid] = line.trim().split(/\s+/u);
+    if (!candidate || sessionUid !== String(uid)) continue;
+    assert(SESSION_ID.test(candidate), 'P-31 loginctl returned an unsafe session identifier');
+    const detail = showSession(candidate);
+    if ((detail.Type ?? '').toLowerCase() !== expectedSession.toLowerCase()) continue;
+    if (detail.Class !== 'user' || detail.Active !== 'yes' || detail.Remote !== 'no') continue;
+    if (!['active', 'online'].includes((detail.State ?? '').toLowerCase())) continue;
+    matches.push(candidate);
+  }
+  assert(matches.length === 1,
+    `P-31 requires exactly one active local ${expectedSession} session for this user, found ${matches.length}`);
+  return matches[0];
 }
 
 export function validateP31HostIdentity({
@@ -1232,8 +1264,12 @@ export async function runP31LiveAccessibilitySession(options) {
   ]) assertOwnerOnlyDirectory(directory, 'P-31 isolated application state');
   fs.rmSync(path.join(options.outputRoot, 'p31-live-session.json'), { force: true });
 
-  const sessionId = process.env.XDG_SESSION_ID;
-  assert(sessionId && /^[A-Za-z0-9_-]+$/u.test(sessionId), 'P-31 requires XDG_SESSION_ID');
+  let sessionId = process.env.XDG_SESSION_ID ?? '';
+  if (sessionId) {
+    assert(SESSION_ID.test(sessionId), 'P-31 XDG_SESSION_ID is malformed');
+  } else {
+    sessionId = discoverP31GraphicalSessionId(profile.session);
+  }
   const loginctl = parseLoginctl(required('loginctl', [
     'show-session', sessionId, '--property=Type', '--property=Desktop', '--property=Class',
     '--property=Active', '--property=Remote', '--property=State'

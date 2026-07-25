@@ -208,7 +208,7 @@ function main() {
     };
     if (requestedVersion && !selected) result.reason = `requested baseline ${requestedVersion} is not lifecycle-compatible: ${result.reason}`;
   } catch (error) {
-    result = { passed: false, version: '', tag: '', reason: error.message };
+    result = { passed: false, version: '', tag: '', discoveryError: true, reason: error.message };
   } finally {
     fs.rmSync(workDir, { recursive: true, force: true });
   }
@@ -221,6 +221,10 @@ function main() {
   // lifecycle report explain the promotion state.  A strict but incompatible
   // requested release is also retained as a blocked input so prerelease runs
   // still produce honest evidence; only malformed semver is an input error.
+  // Under --strict, a transient discovery failure (for example a gh API
+  // outage) is fatal: consumers that treat "no baseline" as an authorization
+  // signal must never mistake an error for an authoritative empty result.
+  if (process.argv.includes('--strict') && result.discoveryError === true) process.exit(1);
   process.exit(requestedVersion && !SEMVER.test(requestedVersion) ? 1 : 0);
 }
 

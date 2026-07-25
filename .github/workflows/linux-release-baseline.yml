@@ -61,9 +61,10 @@ jobs:
           version="$(node -p 'require("./apps/linux-desktop/package.json").version')"
           result="$RUNNER_TEMP/linux-previous-baseline.json"
           node scripts/linux-port/resolve-linux-previous-release.mjs \
+            --strict \
             --current-version "$version" \
             --repo "$GITHUB_REPOSITORY" > "$result"
-          jq -e '.passed == false and .version == "" and .tag == ""' "$result" >/dev/null
+          jq -e '.passed == false and .version == "" and .tag == "" and (has("discoveryError") | not)' "$result" >/dev/null
 
       - name: Require an exact pre-existing Linux tag
         id: identity

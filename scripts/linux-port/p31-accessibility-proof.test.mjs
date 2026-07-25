@@ -20,6 +20,7 @@ import {
   applyDesktopAccessibilityPreferences,
   buildP31LiveSession,
   detectYdotoolDialect,
+  discoverP31GraphicalSessionId,
   P31_LIVE_ENVIRONMENTS,
   parseP31LiveArguments,
   parseKScreenOutputs,
@@ -615,6 +616,48 @@ test('P-31 live producer applies real compositor settings and paced Orca travers
     'restoreDaemonState(daemonWasActive)',
     'cleanupErrors'
   ]) assert.ok(source.includes(marker), marker);
+});
+
+test('P-31 discovers exactly one active local graphical session when XDG_SESSION_ID is not inherited', () => {
+  const sessions = {
+    2: { Type: 'tty', Class: 'user', Active: 'yes', Remote: 'no', State: 'active' },
+    3: { Type: 'x11', Class: 'user', Active: 'yes', Remote: 'no', State: 'active' },
+    4: { Type: 'x11', Class: 'greeter', Active: 'yes', Remote: 'no', State: 'active' },
+    5: { Type: 'x11', Class: 'user', Active: 'yes', Remote: 'yes', State: 'active' }
+  };
+  const listed = [
+    ' 2 1000 runner seat0 tty1',
+    ' 3 1000 runner seat0 tty2',
+    ' 4 1000 gdm seat0 tty3',
+    ' 5 1000 runner',
+    ' 6 0 root seat0 tty4'
+  ].join('\n');
+  const dependencies = {
+    uid: 1000,
+    listSessions: () => listed,
+    showSession: (candidate) => sessions[candidate] ?? { Type: 'x11', Class: 'user', Active: 'yes', Remote: 'no', State: 'active' }
+  };
+  assert.equal(discoverP31GraphicalSessionId('X11', dependencies), '3');
+  assert.throws(
+    () => discoverP31GraphicalSessionId('Wayland', dependencies),
+    /exactly one active local Wayland session .* found 0/u
+  );
+  assert.throws(
+    () => discoverP31GraphicalSessionId('X11', {
+      ...dependencies,
+      listSessions: () => `${listed}\n 7 1000 runner seat0 tty5`,
+      showSession: (candidate) => sessions[candidate]
+        ?? { Type: 'x11', Class: 'user', Active: 'yes', Remote: 'no', State: 'active' }
+    }),
+    /found 2/u
+  );
+  assert.throws(
+    () => discoverP31GraphicalSessionId('X11', {
+      ...dependencies,
+      listSessions: () => ' evil;id 1000 runner seat0 tty1'
+    }),
+    /unsafe session identifier/u
+  );
 });
 
 test('P-31 identifies Ubuntu legacy and current ydotool keyboard contracts exactly', () => {

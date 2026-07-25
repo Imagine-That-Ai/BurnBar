@@ -8,6 +8,8 @@ import {
   collectReadOnlyCommandOutputs,
   evaluateP16HostPreflight,
   parseOrganizationRunnersOutput,
+  parseRunnerGroupsOutput,
+  resolveRunnerGroupRepositoryAccess,
   parseRepositoryIdentityOutput,
   parseRepositoryVariablesOutput,
   parseUtmListOutput,
@@ -75,6 +77,23 @@ function runnersOutput(rows = [runner()]) {
   return JSON.stringify([{ total_count: rows.length, runners: rows }]);
 }
 
+const RUNNER_GROUP_ID = 7;
+
+function runnerGroupsOutput(groups = [{ id: RUNNER_GROUP_ID, name: "mac-fleet", visibility: "all" }]) {
+  return JSON.stringify([{ total_count: groups.length, runner_groups: groups }]);
+}
+
+function runnerGroupRunnersOutput(ids = [129]) {
+  return JSON.stringify([{ total_count: ids.length, runners: ids.map((id) => ({ id, name: `runner-${id}` })) }]);
+}
+
+function runnerGroupRepositoriesOutput(names = [EXPECTED_REPOSITORY]) {
+  return JSON.stringify([{
+    total_count: names.length,
+    repositories: names.map((fullName, index) => ({ id: index + 1, full_name: fullName })),
+  }]);
+}
+
 function trustedRootMetadata(overrides = {}) {
   return {
     isDirectory: true,
@@ -93,6 +112,9 @@ function readyInput(overrides = {}) {
     variablesOutput: variablesOutput(),
     devicesOutput: devicesOutput(),
     runnersOutput: runnersOutput(),
+    runnerGroupsOutput: runnerGroupsOutput(),
+    runnerGroupRunnersOutputs: { [RUNNER_GROUP_ID]: runnerGroupRunnersOutput() },
+    runnerGroupRepositoriesOutputs: {},
     currentUid: 501,
     inspectMacRoot: () => trustedRootMetadata(),
     commandErrors: {},
@@ -274,6 +296,71 @@ test("runner parser requires real macOS OS state, every label, online status, an
   );
 });
 
+test("runner-group parsing binds runners to groups and repository grants fail closed", () => {
+  assert.deepEqual(parseRunnerGroupsOutput(runnerGroupsOutput()), [
+    { id: RUNNER_GROUP_ID, name: "mac-fleet", visibility: "all" },
+  ]);
+  assert.throws(
+    () => parseRunnerGroupsOutput(runnerGroupsOutput([
+      { id: RUNNER_GROUP_ID, name: "one", visibility: "all" },
+      { id: RUNNER_GROUP_ID, name: "two", visibility: "all" },
+    ])),
+    /duplicate id/u,
+  );
+  const access = resolveRunnerGroupRepositoryAccess({
+    groups: [
+      { id: 1, name: "open", visibility: "all" },
+      { id: 2, name: "scoped", visibility: "selected" },
+      { id: 3, name: "other", visibility: "private" },
+    ],
+    groupRunnersOutputs: {
+      1: runnerGroupRunnersOutput([129]),
+      2: runnerGroupRunnersOutput([130]),
+      3: runnerGroupRunnersOutput([131]),
+    },
+    groupRepositoriesOutputs: { 2: runnerGroupRepositoriesOutput(["Imagine-That-Ai/OtherRepo"]) },
+  });
+  assert.deepEqual([...access.accessibleRunnerIds], [129]);
+  assert.equal(access.runnerGroupIds.get(130), 2);
+  assert.throws(
+    () => resolveRunnerGroupRepositoryAccess({
+      groups: [{ id: 1, name: "open", visibility: "all" }],
+      groupRunnersOutputs: {},
+      groupRepositoriesOutputs: {},
+    }),
+    /membership could not be read/u,
+  );
+});
+
+test("an eligible-labeled runner is rejected unless its runner group grants this repository access", () => {
+  const denied = evaluateP16HostPreflight(readyInput({
+    runnerGroupsOutput: runnerGroupsOutput([{ id: RUNNER_GROUP_ID, name: "mac-fleet", visibility: "selected" }]),
+    runnerGroupRepositoriesOutputs: { [RUNNER_GROUP_ID]: runnerGroupRepositoriesOutput(["Imagine-That-Ai/OtherRepo"]) },
+  }));
+  assert.equal(denied.ready, false);
+  const blocker = denied.checks.find((check) => check.id === "macRunner");
+  assert.equal(blocker.code, "eligible_mac_runner_unavailable");
+  assert.equal(blocker.details.eligibleCount, 1);
+  assert.equal(blocker.details.repositoryAccessibleCount, 0);
+
+  const granted = evaluateP16HostPreflight(readyInput({
+    runnerGroupsOutput: runnerGroupsOutput([{ id: RUNNER_GROUP_ID, name: "mac-fleet", visibility: "selected" }]),
+    runnerGroupRepositoriesOutputs: { [RUNNER_GROUP_ID]: runnerGroupRepositoriesOutput() },
+  }));
+  assert.equal(granted.checks.find((check) => check.id === "macRunner").status, "pass");
+
+  const unmapped = evaluateP16HostPreflight(readyInput({
+    runnerGroupRunnersOutputs: { [RUNNER_GROUP_ID]: runnerGroupRunnersOutput([777]) },
+  }));
+  assert.equal(
+    unmapped.checks.find((check) => check.id === "macRunner").code,
+    "eligible_mac_runner_unavailable",
+  );
+
+  const unreadable = evaluateP16HostPreflight(readyInput({ runnerGroupRunnersOutputs: {} }));
+  assert.equal(unreadable.checks.find((check) => check.id === "macRunner").code, "command_failed");
+});
+
 test("malformed command output is a blocker and raw command output is never copied into the report", () => {
   const secretLikeText = "SUPER_SECRET_SHOULD_NOT_APPEAR";
   const report = evaluateP16HostPreflight(readyInput({
@@ -292,10 +379,17 @@ test("the live collector invokes only the bounded read-only command set", () => 
     ["gh api --paginate --slurp", variablesOutput()],
     ["xcrun xctrace list", devicesOutput()],
   ]);
-  const outputs = collectReadOnlyCommandOutputs((command, args) => {
+  const commandRunner = (command, args) => {
     calls.push([command, ...args]);
     let stdout = "";
-    if (command === "gh" && args[0] === "api" && args.at(-1).startsWith("orgs/")) {
+    const endpoint = command === "gh" && args[0] === "api" ? args.at(-1) : "";
+    if (endpoint.includes("/actions/runner-groups/")) {
+      stdout = endpoint.includes("/runners?")
+        ? runnerGroupRunnersOutput()
+        : runnerGroupRepositoriesOutput();
+    } else if (endpoint.includes("/actions/runner-groups")) {
+      stdout = runnerGroupsOutput();
+    } else if (endpoint.startsWith("orgs/")) {
       stdout = runnersOutput();
     } else {
       stdout = fixtures.get([command, ...args.slice(0, 2)].join(" "))
@@ -303,10 +397,43 @@ test("the live collector invokes only the bounded read-only command set", () => 
         ?? "";
     }
     return { status: 0, stdout, failed: false };
-  });
-  assert.equal(calls.length, READ_ONLY_COMMANDS.length);
-  assert.deepEqual(calls, READ_ONLY_COMMANDS.map((spec) => [spec.command, ...spec.args]));
+  };
+  const outputs = collectReadOnlyCommandOutputs(commandRunner);
+  assert.equal(calls.length, READ_ONLY_COMMANDS.length + 1);
+  assert.deepEqual(
+    calls.slice(0, READ_ONLY_COMMANDS.length),
+    READ_ONLY_COMMANDS.map((spec) => [spec.command, ...spec.args]),
+  );
+  assert.deepEqual(calls.at(-1), [
+    "gh",
+    "api",
+    "--paginate",
+    "--slurp",
+    `orgs/Imagine-That-Ai/actions/runner-groups/${RUNNER_GROUP_ID}/runners?per_page=100`,
+  ]);
   assert.deepEqual(outputs.commandErrors, {});
+  assert.equal(outputs.runnerGroupRunnersOutputs[RUNNER_GROUP_ID], runnerGroupRunnersOutput());
   assert.equal(calls.some((call) => call.includes("--method") || call.includes("POST")), false);
   assert.equal(calls.some((call) => call[0] === "utmctl" && call[1] !== "list"), false);
+
+  calls.length = 0;
+  const selectedFixture = runnerGroupsOutput([{ id: RUNNER_GROUP_ID, name: "mac-fleet", visibility: "selected" }]);
+  const selectedOutputs = collectReadOnlyCommandOutputs((command, args) => {
+    const result = commandRunner(command, args);
+    const endpoint = command === "gh" && args[0] === "api" ? args.at(-1) : "";
+    if (endpoint.includes("/actions/runner-groups") && !endpoint.includes("/actions/runner-groups/")) {
+      return { status: 0, stdout: selectedFixture, failed: false };
+    }
+    return result;
+  });
+  assert.equal(calls.length, READ_ONLY_COMMANDS.length + 2);
+  assert.deepEqual(calls.at(-1), [
+    "gh",
+    "api",
+    "--paginate",
+    "--slurp",
+    `orgs/Imagine-That-Ai/actions/runner-groups/${RUNNER_GROUP_ID}/repositories?per_page=100`,
+  ]);
+  assert.equal(selectedOutputs.runnerGroupRepositoriesOutputs[RUNNER_GROUP_ID], runnerGroupRepositoriesOutput());
+  assert.deepEqual(selectedOutputs.commandErrors, {});
 });
