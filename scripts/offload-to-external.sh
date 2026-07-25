@@ -5,41 +5,66 @@
 #
 # Copies with ditto (preserves ACLs / xattrs / resource forks), then proves the
 # copy before deleting anything:
-#   1. file count, exact byte totals, and per-file size manifest must match
+#   1. identical file AND directory path sets in both directions, exact byte
+#      totals, and a per-file size manifest must match
 #   2. sha256 spot-check over a random sample
 # Only if all checks pass is the source removed and replaced with a symlink.
 # Dry-run unless --apply is given.
 #
+# Refuses a destination that already exists: ditto would merge into it, and a
+# merged tree is not provably equivalent to the source.
+#
 # Deliberately refuses to touch a source that is a git repo with worktrees —
 # git stores absolute paths in .git/worktrees/*/gitdir, so those need
 # `git worktree move`, not a copy+symlink.
-set -u
+set -euo pipefail
 
 SRC="${1:?usage: offload-to-external.sh <src> <dest> [--apply]}"
 DST="${2:?usage: offload-to-external.sh <src> <dest> [--apply]}"
 APPLY="${3:-}"
 
 SRC="${SRC%/}"; DST="${DST%/}"
+# Canonicalize both to absolute paths. ditto resolves a relative DST against
+# $PWD, while the trailing `ln -s` target would resolve relative to $SRC's
+# parent — a mismatch that strands the verified copy and leaves a dangling
+# symlink where the source used to be.
+SRC="${SRC:a}"; DST="${DST:a}"
 
 [[ -d "$SRC" ]] || { echo "error: source $SRC is not a directory"; exit 2; }
 [[ -L "$SRC" ]] && { echo "error: $SRC is already a symlink"; exit 2; }
+[[ -e "$DST" ]] && { echo "error: destination $DST already exists — ditto would merge into it; move it aside first"; exit 2; }
 
 # Refuse git repos that have worktrees — those need `git worktree move`.
 if [[ -e "$SRC/.git" ]]; then
-  WT=$(cd "$SRC" && git worktree list 2>/dev/null | wc -l | tr -d ' ')
+  WT=$(cd "$SRC" && git worktree list 2>/dev/null | wc -l | tr -d ' ') \
+    || { echo "error: could not inspect git worktree state of $SRC"; exit 2; }
   if [[ "${WT:-0}" -gt 1 ]]; then
     echo "error: $SRC is a git repo with $WT worktrees — use 'git worktree move' instead"
     exit 2
   fi
 fi
 
-OPEN=$(lsof +D "$SRC" 2>/dev/null | wc -l | tr -d ' ')
-if [[ "${OPEN:-0}" -gt 0 ]]; then
+# Open-handle probe fails closed: an answer lsof could not produce is not
+# "no open files". lsof exits 0 when it lists open files and 1 when it finds
+# none; any other status, or diagnostics on stderr, means the probe itself
+# failed and the offload must not proceed.
+command -v lsof >/dev/null 2>&1 \
+  || { echo "error: lsof not found — cannot prove nothing has $SRC open"; exit 2; }
+LSOF_ERR_FILE="$(mktemp)"
+LSOF_RC=0
+LSOF_OUT="$(lsof +D "$SRC" 2>"$LSOF_ERR_FILE")" || LSOF_RC=$?
+LSOF_DIAG="$(cat "$LSOF_ERR_FILE")"
+rm -f "$LSOF_ERR_FILE"
+if (( LSOF_RC == 0 )); then
+  OPEN=$(print -r -- "$LSOF_OUT" | tail -n +2 | wc -l | tr -d ' ')
   echo "error: $OPEN open file handles under $SRC — close them first"
+  exit 2
+elif (( LSOF_RC != 1 )) || [[ -n "$LSOF_DIAG" ]]; then
+  echo "error: lsof could not inspect $SRC (rc=$LSOF_RC)${LSOF_DIAG:+: $LSOF_DIAG}"
   exit 2
 fi
 
-SIZE=$(du -sh "$SRC" 2>/dev/null | awk '{print $1}')
+SIZE=$(du -sh "$SRC" 2>/dev/null | awk '{print $1}') || SIZE="?"
 echo "source $SRC  ($SIZE)"
 echo "dest   $DST"
 
@@ -58,24 +83,33 @@ import os, sys, random, hashlib
 src_root, dst_root = sys.argv[1], sys.argv[2]
 
 def scan(root):
-    out, total = {}, 0
-    for dp, _, fns in os.walk(root):
+    files, dirs, total = {}, set(), 0
+    for dp, dns, fns in os.walk(root):
+        for d in dns:
+            dirs.add(os.path.relpath(os.path.join(dp, d), root))
         for f in fns:
             p = os.path.join(dp, f)
             try: sz = os.lstat(p).st_size
             except OSError: continue
-            out[os.path.relpath(p, root)] = sz
+            files[os.path.relpath(p, root)] = sz
             total += sz
-    return out, total
+    return files, dirs, total
 
-src, st = scan(src_root)
-dst, dt = scan(dst_root)
+src, sdirs, st = scan(src_root)
+dst, ddirs, dt = scan(dst_root)
+# Entry sets must be identical in BOTH directions: an extra file (even a
+# zero-length one) or a missing/extra empty directory in the destination is
+# as disqualifying as a missing copy.
 missing  = set(src) - set(dst)
+extra    = set(dst) - set(src)
+dirdiff  = sdirs ^ ddirs
 sizediff = [k for k in (set(src) & set(dst)) if src[k] != dst[k]]
-print(f"    files {len(src):,} -> {len(dst):,}   bytes {st:,} -> {dt:,}")
-if missing or sizediff or st != dt:
-    print(f"    MISMATCH  missing={len(missing)} sizediff={len(sizediff)}")
-    for k in list(missing)[:5]:  print("      MISSING:", k)
+print(f"    files {len(src):,} -> {len(dst):,}   dirs {len(sdirs):,} -> {len(ddirs):,}   bytes {st:,} -> {dt:,}")
+if missing or extra or dirdiff or sizediff or st != dt:
+    print(f"    MISMATCH  missing={len(missing)} extra={len(extra)} dirdiff={len(dirdiff)} sizediff={len(sizediff)}")
+    for k in sorted(missing)[:5]: print("      MISSING:", k)
+    for k in sorted(extra)[:5]:   print("      EXTRA:  ", k)
+    for k in sorted(dirdiff)[:5]: print("      DIRDIFF:", k)
     sys.exit(1)
 
 rels = list(src)
@@ -99,7 +133,11 @@ sys.exit(1 if bad else 0)
 PY
 
 echo "==> removing verified source and symlinking"
+# set -e aborts before the success banner if any of these fail; verify the
+# final link explicitly before declaring victory.
 rm -rf "$SRC"
 ln -s "$DST" "$SRC"
+[[ -L "$SRC" && "$(readlink "$SRC")" == "$DST" && -d "$SRC" ]] \
+  || { echo "error: symlink verification failed — the verified copy is intact at $DST"; exit 1; }
 ls -ld "$SRC"
 echo "done: $SIZE reclaimed from internal"

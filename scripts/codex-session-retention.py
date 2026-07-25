@@ -8,27 +8,36 @@ several GB/day, which costs SSD capacity, backup churn (Backblaze/Time Machine
 re-read every changed file), and read amplification for anything that scans the
 tree.
 
-Tiered policy, by file modification time:
+Tiered policy, by file modification time (compression preserves the original
+mtime, so archives age out of the compressed tier on the session's real age):
 
     age <= --keep-raw-days      leave alone   (resumable via `codex resume`)
     age <= --compress-days      gzip in place (readable, ~2.9x on this corpus)
-    age >  --compress-days      delete
+    age >  --compress-days      delete        (raw and previously-gzipped alike)
 
 Safety properties:
   * dry-run unless --apply is passed;
   * never touches a file younger than --min-age-hours (default 12), so a live
     or just-finished session is never raced;
-  * never touches a file any process currently holds open (lsof probe);
+  * never touches a file any process currently holds open (lsof probe); an
+    lsof that cannot complete counts as "held", never as "free";
+  * every candidate's size, mtime, and open-handle state are re-checked
+    immediately before its unlink, so a session resumed mid-sweep is skipped
+    rather than raced;
   * compression is atomic — the .gz is written, fsync'd, size-verified and
     gzip-tested before the original is unlinked, so an interrupted run loses
     nothing;
   * refuses to operate outside the configured sessions root.
 
-Pruning is lossless for OpenBurnBar usage history: CodexSessionLogScanner keys
-off Codex's own state database (`threadRows`), and a missing rollout simply
-falls through to the state-database totals for that thread rather than
-disappearing (see OpenBurnBarLogParsers/LogParser/CodexSessionLogScanner.swift).
-Already-ingested rows in openburnbar.sqlite are untouched either way.
+OpenBurnBar usage history: rows already ingested into openburnbar.sqlite are
+untouched. Reconstructed history survives pruning as long as OpenBurnBar's
+parser cache has seen the session once — CodexSessionLogScanner serves token
+usage for a missing rollout from that cache, but on a fresh or cleared cache
+it skips threads whose state-database `rollout_path` no longer exists instead
+of falling back to the state-database totals (see
+OpenBurnBarLogParsers/LogParser/CodexSessionLogScanner.swift). If from-scratch
+reconstruction matters, run a full OpenBurnBar scan to warm that cache before
+the first --apply sweep.
 """
 
 from __future__ import annotations
@@ -61,11 +70,16 @@ def human(n: float) -> str:
     return f"{n:,.1f} TB"
 
 
+class RolloutActive(OSError):
+    """A candidate changed or was reopened between the scan and the unlink."""
+
+
 @dataclass
 class Candidate:
     path: Path
     size: int
     age_days: float
+    mtime: float
     action: str  # "compress" | "delete"
 
     @property
@@ -103,7 +117,13 @@ def steady_state_gb(rate_gb_day: float, keep_raw_days: int, compress_days: int) 
 
 
 def open_files(paths: list[Path]) -> set[Path]:
-    """Paths currently held open by some process, via a single lsof batch."""
+    """Paths currently held open by some process, via a single lsof batch.
+
+    Fails closed: any probe that does not provably complete marks the whole
+    chunk as held. lsof exits 0 when it lists open files and 1 when none of
+    the named files are open; any other exit status, or diagnostics on
+    stderr, means the check itself failed rather than "nothing is open".
+    """
     if not paths:
         return set()
     held: set[Path] = set()
@@ -111,17 +131,22 @@ def open_files(paths: list[Path]) -> set[Path]:
     for i in range(0, len(paths), 400):
         chunk = [str(p) for p in paths[i : i + 400]]
         try:
-            out = subprocess.run(
+            proc = subprocess.run(
                 ["lsof", "-Fn", "--", *chunk],
                 capture_output=True,
                 text=True,
                 timeout=60,
-            ).stdout
-        except (subprocess.TimeoutExpired, FileNotFoundError):
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             # Fail closed: if we cannot prove a file is unused, skip the chunk.
             held.update(paths[i : i + 400])
             continue
-        for line in out.splitlines():
+        if proc.returncode not in (0, 1) or (
+            proc.returncode == 1 and proc.stderr.strip()
+        ):
+            held.update(paths[i : i + 400])
+            continue
+        for line in proc.stdout.splitlines():
             if line.startswith("n"):
                 held.add(Path(line[1:]))
     return held
@@ -133,29 +158,55 @@ def collect(
     now = time.time()
     min_age = min_age_hours * 3600
     out: list[Candidate] = []
-    for path in root.rglob("*.jsonl"):
-        try:
-            st = path.stat()
-        except OSError:
-            continue
-        if not path.is_file():
-            continue
-        age = now - st.st_mtime
-        if age < min_age:
-            continue
-        age_days = age / 86400
-        if age_days <= keep_raw_days:
-            continue
-        action = "compress" if age_days <= compress_days else "delete"
-        out.append(Candidate(path, st.st_size, age_days, action))
+    # Scan *.jsonl.gz too: archives produced by earlier sweeps must age out of
+    # the compressed tier, not accumulate forever.
+    for pattern in ("*.jsonl", "*.jsonl.gz"):
+        for path in root.rglob(pattern):
+            try:
+                st = path.stat()
+            except OSError:
+                continue
+            if not path.is_file():
+                continue
+            age = now - st.st_mtime
+            if age < min_age:
+                continue
+            age_days = age / 86400
+            if age_days <= keep_raw_days:
+                continue
+            if age_days <= compress_days:
+                if path.name.endswith(".gz"):
+                    continue  # already in its final tier for this age band
+                action = "compress"
+            else:
+                action = "delete"
+            out.append(Candidate(path, st.st_size, age_days, st.st_mtime, action))
     return sorted(out, key=lambda c: -c.size)
 
 
-def compress(path: Path) -> int:
+def ensure_still_quiet(path: Path, expected_size: int, expected_mtime: float) -> None:
+    """Raise RolloutActive unless `path` is unchanged since the scan and unheld.
+
+    The sweep-wide lsof snapshot goes stale during a long compression pass; an
+    old session can be resumed after it. Call this immediately before any
+    unlink so an active rollout is skipped instead of raced.
+    """
+    try:
+        st = path.stat()
+    except OSError as exc:
+        raise RolloutActive(f"disappeared since the scan ({exc})") from exc
+    if st.st_size != expected_size or st.st_mtime != expected_mtime:
+        raise RolloutActive("changed since the scan")
+    if open_files([path]):
+        raise RolloutActive("reopened since the scan")
+
+
+def compress(path: Path, expected_size: int, expected_mtime: float) -> int:
     """gzip `path` atomically. Returns bytes reclaimed. Raises on any failure."""
     dest = path.with_suffix(path.suffix + ".gz")
     tmp = path.with_suffix(path.suffix + ".gz.partial")
-    original = path.stat().st_size
+    st = path.stat()
+    original = st.st_size
     try:
         with open(path, "rb") as src, gzip.open(tmp, "wb", compresslevel=6) as dst:
             shutil.copyfileobj(src, dst, length=4 * 1024 * 1024)
@@ -168,10 +219,16 @@ def compress(path: Path) -> int:
                 checked += len(chunk)
         if checked != original:
             raise OSError(f"verify mismatch: {checked} != {original}")
+        # Compression takes long enough for a session to be resumed; re-check
+        # identity and open handles immediately before the unlink.
+        ensure_still_quiet(path, expected_size, expected_mtime)
         os.replace(tmp, dest)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
+    # Preserve the original mtime so the delete tier keys off the session's
+    # real age rather than the compression time.
+    os.utime(dest, (st.st_atime, st.st_mtime))
     path.unlink()
     return original - dest.stat().st_size
 
@@ -196,6 +253,10 @@ def main() -> int:
     root = args.root.expanduser().resolve()
     if not root.is_dir():
         print(f"error: {root} is not a directory", file=sys.stderr)
+        return 2
+    if min(args.keep_raw_days, args.compress_days, args.min_age_hours) < 0:
+        print("error: --keep-raw-days, --compress-days and --min-age-hours "
+              "must all be >= 0", file=sys.stderr)
         return 2
     if args.keep_raw_days > args.compress_days:
         print("error: --keep-raw-days must be <= --compress-days", file=sys.stderr)
@@ -246,21 +307,28 @@ def main() -> int:
 
     reclaimed = 0
     failures = 0
+    became_active = 0
     for c in cands:
         try:
             if c.action == "compress":
-                got = compress(c.path)
+                got = compress(c.path, c.size, c.mtime)
             else:
+                ensure_still_quiet(c.path, c.size, c.mtime)
                 got = c.size
                 c.path.unlink()
             reclaimed += got
             if not args.quiet:
                 print(f"  {c.action:<8} {human(c.size):>10}  {c.path.name}")
+        except RolloutActive as exc:
+            became_active += 1
+            if not args.quiet:
+                print(f"  skipped  {c.path.name}: {exc}")
         except Exception as exc:  # keep going; one bad file must not abort the sweep
             failures += 1
             print(f"  FAILED   {c.path}: {exc}", file=sys.stderr)
 
     print(f"\nreclaimed {human(reclaimed)}"
+          + (f"  ({became_active} skipped as active)" if became_active else "")
           + (f"  ({failures} failures)" if failures else ""))
     return 1 if failures else 0
 
