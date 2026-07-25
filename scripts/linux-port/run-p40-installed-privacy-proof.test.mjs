@@ -7,11 +7,13 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   P40_DEFAULT_RETENTION_RULES,
-  P40_ENVIRONMENTS,
   P40_STORES
 } from './lib/p40-privacy-proof.mjs';
 import { SUPPORT_ENVIRONMENTS } from './lib/product-proof-closure.mjs';
-import { buildSession } from './run-p40-privacy-rpc-session.mjs';
+import {
+  buildSession,
+  environmentIdentity
+} from './run-p40-privacy-rpc-session.mjs';
 
 const script = fileURLToPath(new URL('./run-p40-installed-privacy-proof.sh', import.meta.url));
 const root = path.resolve(path.dirname(script), '../..');
@@ -108,6 +110,7 @@ function writeEvidenceTree(directory) {
   fs.mkdirSync(path.join(directory, 'privacy'), { recursive: true, mode: 0o700 });
   fs.chmodSync(directory, 0o700);
   fs.chmodSync(path.join(directory, 'privacy'), 0o700);
+  const identity = environmentIdentity(environment);
   const session = buildSession(
     {
       environmentId: environment,
@@ -117,10 +120,17 @@ function writeEvidenceTree(directory) {
       packageVersion: '1.2.3',
       manifestSha256: 'c'.repeat(64)
     },
-    P40_ENVIRONMENTS[environment],
+    identity,
     '1.2.3',
     'c'.repeat(64),
-    observations()
+    observations(),
+    {
+      architecture: identity.architecture,
+      compositor: identity.compositor,
+      desktop: identity.desktop,
+      displayServer: identity.displayServer,
+      os: { id: identity.os.id, versionId: identity.os.versionId }
+    }
   );
   const files = new Map([
     ['p40-live-session.json', session],
