@@ -204,7 +204,10 @@ public sealed class ConnectorPlaneService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        Uri url = await ValidatePublicHttpsAsync(request.Config.BaseUrl, cancellationToken).ConfigureAwait(false);
+        Uri url = await ValidateConnectorBaseUrlAsync(
+            request.Config.Kind,
+            request.Config.BaseUrl,
+            cancellationToken).ConfigureAwait(false);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -248,7 +251,10 @@ public sealed class ConnectorPlaneService
         ConnectorActionResponse result;
         try
         {
-            Uri baseUrl = await ValidatePublicHttpsAsync(config.BaseUrl, cancellationToken).ConfigureAwait(false);
+            Uri baseUrl = await ValidateConnectorBaseUrlAsync(
+                config.Kind,
+                config.BaseUrl,
+                cancellationToken).ConfigureAwait(false);
             using HttpRequestMessage outbound = BuildRequest(config.Kind, baseUrl, secret!);
             ConnectorTransportResponse response = await _transport.SendAsync(outbound, cancellationToken).ConfigureAwait(false);
             if (response.StatusCode is < 200 or >= 300)
@@ -291,6 +297,33 @@ public sealed class ConnectorPlaneService
             throw new ArgumentException("Connector host must resolve exclusively to public addresses.", nameof(rawUrl));
         return url;
     }
+
+    public async Task<Uri> ValidateConnectorBaseUrlAsync(
+        ConnectorKind kind,
+        string rawUrl,
+        CancellationToken cancellationToken = default)
+    {
+        Uri url = await ValidatePublicHttpsAsync(rawUrl, cancellationToken).ConfigureAwait(false);
+        string host = url.IdnHost.TrimEnd('.').ToLowerInvariant();
+        if (!AllowedHosts(kind).Contains(host, StringComparer.Ordinal))
+        {
+            throw new ArgumentException(
+                $"{DisplayName(kind)} credentials may only be sent to the connector's reviewed provider host.",
+                nameof(rawUrl));
+        }
+        return url;
+    }
+
+    private static IReadOnlyList<string> AllowedHosts(ConnectorKind kind) => kind switch
+    {
+        ConnectorKind.Github => new[] { "api.github.com" },
+        ConnectorKind.Slack => new[] { "slack.com" },
+        ConnectorKind.Linear => new[] { "api.linear.app" },
+        ConnectorKind.Posthog => new[] { "app.posthog.com", "us.posthog.com", "eu.posthog.com" },
+        ConnectorKind.Sentry => new[] { "sentry.io" },
+        ConnectorKind.Gmail => new[] { "gmail.googleapis.com" },
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
 
     private ConnectorActionResponse Record(StoredConnectorPlane state, ConnectorActionRequest request, bool ok,
         string summary, string? detail, ConnectorHealthStatus status, JsonElement? payload)

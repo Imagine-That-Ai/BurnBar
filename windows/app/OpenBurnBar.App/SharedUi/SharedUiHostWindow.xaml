@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="OpenBurnBar.App.SharedUi.SharedUiHostWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="using:OpenBurnBar.App.Components"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
+    Title="OpenBurnBar">
+
+    <Grid x:Name="RootGrid" RowSpacing="0" Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border x:Name="WindowBlendScrim"
+                Grid.RowSpan="2"
+                IsHitTestVisible="False" />
+
+        <!-- The shared Linux/macOS shell (React bundle in WebView2, created in
+             code like every other WebView2 host in this app). -->
+        <Grid x:Name="WebViewHost" Grid.Row="1" />
+
+        <!-- Honest failure surface: shown only when the shared bundle or the
+             WebView2 runtime is unavailable; never a dead end. -->
+        <Border x:Name="FailurePanel"
+                Grid.Row="1"
+                Visibility="Collapsed"
+                Padding="32"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Style="{StaticResource AuroraGlassCardStyle}">
+            <StackPanel Spacing="12" MaxWidth="420">
+                <TextBlock Text="The shared shell could not start"
+                           FontWeight="SemiBold"
+                           FontSize="18"
+                           Foreground="{ThemeResource AuroraTextBrush}" />
+                <TextBlock x:Name="FailureReasonText"
+                           TextWrapping="Wrap"
+                           Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
+                <Button x:Name="OpenLegacyWindowButton"
+                        Content="Open the native window instead"
+                        Click="OpenLegacyWindowButton_Click"
+                        HorizontalAlignment="Left" />
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="0"
+                Style="{StaticResource LiquidGlassToolbarStyle}"
+                Margin="8,4,8,0"
+                theme:LiquidGlass.Surface="True">
+            <Grid x:Name="TitleBar" Height="32" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <components:AppLogoView Grid.Column="0" Size="18" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           Text="OpenBurnBar"
+                           FontWeight="SemiBold"
+                           Foreground="{ThemeResource AuroraTextBrush}" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

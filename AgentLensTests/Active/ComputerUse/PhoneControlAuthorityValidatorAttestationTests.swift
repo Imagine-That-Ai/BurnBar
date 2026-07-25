@@ -617,9 +617,8 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         }
     }
 
-    /// F2 step-up: a sensitive grant (shell) signed by a biometry-gated SE key
-    /// needs no explicit local-auth proof — the signature is the user-presence
-    /// proof. The same grant signed by a legacy software key still demands one.
+    /// A key-kind label is not hardware attestation. Sensitive grants require
+    /// the same explicit, single-use local-auth proof for every signing key.
     func test_stepUpEvidencePerKeyKindOnSensitiveGrant() throws {
         let now = Date()
         func grant(authority: HermesRealtimeRelayAuthorityEnvelope) -> HermesRealtimeRelayAgentGrantRequest {
@@ -641,7 +640,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
             )
         }
 
-        // SE key: validates without any proof attached.
+        // A software P-256 key labeled as Secure Enclave must not bypass proof.
         let seValidator = makeValidator()
         let identity = PhoneControlAuthoritySigningKey.secureEnclaveP256(P256.Signing.PrivateKey())
         XCTAssertTrue(seValidator.registerPeer(nodeId: "peer-1", verifyingKey: identity.verifyingKey))
@@ -663,7 +662,13 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         )
         seRequest.authority.intentHashBlake3 = seSigned.intentHashHex
         seRequest.authority.signatureEd25519 = seSigned.signatureBase64
-        XCTAssertNoThrow(try seValidator.validate(envelope: seRequest.authority, grantRequest: seRequest, now: now))
+        XCTAssertThrowsError(
+            try seValidator.validate(envelope: seRequest.authority, grantRequest: seRequest, now: now)
+        ) { error in
+            guard case PhoneControlAuthorityValidator.ValidationError.localAuthProofRequired = error else {
+                return XCTFail("Expected localAuthProofRequired, got \(error)")
+            }
+        }
 
         // Legacy key: the identical grant fails for want of the explicit proof.
         let legacyValidator = makeValidator()

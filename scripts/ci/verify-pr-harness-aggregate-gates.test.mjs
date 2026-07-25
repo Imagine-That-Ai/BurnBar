@@ -626,25 +626,39 @@ check("TypeScript package lint floors install, lint, and typecheck linux-desktop
   assert.ok(invocations.includes("run typecheck --prefix apps/linux-desktop"));
 });
 
-check("desired main branch protection requires only the umbrella gate", () => {
+check("desired main branch protection keeps immutable security checks beside the umbrella gate", () => {
   const protection = JSON.parse(readFileSync(join(REPO_ROOT, BRANCH_PROTECTION), "utf8"));
   const gate = JSON.parse(
     readFileSync(join(REPO_ROOT, "governance/burnbar-ci-gate.json"), "utf8"),
   );
-  assert.deepEqual(protection.required_status_checks.contexts, ["BurnBar CI Gate"]);
+  for (const context of [
+    "BurnBar CI Gate",
+    "Dependency Review (CVE check)",
+    "Firestore Security Rules Tests",
+    "Functions (security vitest)",
+    "OSV Scanner (open source vulnerabilities)",
+    "Secret Detection (gitleaks)",
+  ]) {
+    assert.ok(protection.required_status_checks.contexts.includes(context), `${context} must remain required`);
+  }
+  assert.equal(protection.required_pull_request_reviews.required_approving_review_count, 1);
+  assert.equal(protection.required_pull_request_reviews.require_code_owner_reviews, true);
+  assert.equal(protection.required_pull_request_reviews.dismiss_stale_reviews, true);
+  assert.equal(protection.required_pull_request_reviews.require_last_push_approval, true);
   assert.ok(gate.required_contexts.includes("Mobile build + unit test"));
+
+  const umbrella = readFileSync(join(REPO_ROOT, ".github/workflows/burnbar-ci-gate.yml"), "utf8");
+  assert.match(
+    umbrella,
+    /ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.merge_group\.base_sha \|\| github\.sha \}\}/,
+  );
+  assert.match(umbrella, /persist-credentials: false/);
 });
 
-check("macOS gates route free+trusted, and never run untrusted code on self-hosted", () => {
-  // Cost + security policy. Each macOS gate has three routing arms:
-  //   1. MACOS_GATE_POOL=paid -> isolated capped hosted pool (manual fast burst)
-  //   2. merge_group          -> free self-hosted `burnbar-swift` fleet
-  //   3. else (pull_request)  -> hosted macos-26
-  // Self-hosted MUST be gated on merge_group only: the merge queue runs
-  // post-approval TRUSTED code, whereas a pull_request can carry untrusted fork
-  // code, and running that on self-hosted hardware is a pwn-request. So every
-  // self-hosted route is guarded by `event_name == 'merge_group'`, and no gate
-  // routes self-hosted on any other event.
+check("macOS gates never run pull-request or merge-group code on persistent self-hosted runners", () => {
+  // A merge-group ref is still pre-merge candidate code. It receives the same
+  // isolation boundary as pull_request: GitHub-hosted macos-26, or the
+  // explicitly selected isolated paid runner group.
   for (const [workflow, expectedCount] of [
     [APP_WORKFLOW, 2],
     [DAEMON_WORKFLOW, 2],
@@ -658,15 +672,9 @@ check("macOS gates route free+trusted, and never run untrusted code on self-host
     assert.equal(source.split('{"group":"burnbar-ci-paid"}').length - 1, expectedCount);
     assert.equal(source.split("group: burnbar-ci-paid").length - 1, 0);
     assert.doesNotMatch(source, /burnbar-turbo-ephemeral|BurnBar-macos-26-xlarge/);
-    // SECURITY: every self-hosted route is merge_group-gated, and there are
-    // exactly as many merge_group-gated self-hosted routes as gates -- so no
-    // self-hosted route exists on any untrusted (pull_request) path.
     const selfHosted = source.split('"self-hosted","macOS","ARM64","burnbar-swift"').length - 1;
-    const mergeGroupGated = source.split(
-      `github.event_name == 'merge_group' && fromJSON('["self-hosted","macOS","ARM64","burnbar-swift"]')`,
-    ).length - 1;
-    assert.equal(selfHosted, expectedCount, `${workflow}: self-hosted route count`);
-    assert.equal(mergeGroupGated, expectedCount, `${workflow}: every self-hosted route must be merge_group-gated`);
+    assert.equal(selfHosted, 0, `${workflow}: candidate code must not reach persistent self-hosted runners`);
+    assert.equal(source.split("|| 'macos-26'").length - 1, expectedCount);
   }
 });
 

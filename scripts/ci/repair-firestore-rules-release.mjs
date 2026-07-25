@@ -121,12 +121,19 @@ async function getLatestMatchingRuleset({
     const files = Array.isArray(ruleset.source?.files)
       ? ruleset.source.files
       : [];
-    const rulesFile = files.find(
-      (file) =>
-        file?.name === "firestore.rules" ||
-        file?.name?.endsWith("/firestore.rules"),
-    );
-    if (typeof rulesFile?.content === "string" && rulesFile.content.trimEnd() === expected) {
+    // A Firestore release must be bound to the complete uploaded source set,
+    // not merely one matching file inside an attacker-supplied multi-file
+    // ruleset. firebase-tools uploads exactly one Firestore source file here.
+    if (files.length !== 1) continue;
+    const [rulesFile] = files;
+    const canonicalRulesName =
+      rulesFile?.name === "firestore.rules" ||
+      rulesFile?.name?.endsWith("/firestore.rules");
+    if (
+      canonicalRulesName &&
+      typeof rulesFile?.content === "string" &&
+      rulesFile.content.trimEnd() === expected
+    ) {
       return { ...candidate, sourceFiles: files };
     }
   }
@@ -148,6 +155,9 @@ async function ensureReleaseCompatibleRuleset({
   ruleset,
 }) {
   const sourceFiles = Array.isArray(ruleset.sourceFiles) ? ruleset.sourceFiles : [];
+  if (sourceFiles.length !== 1) {
+    throw new Error("Refusing to release a Firestore ruleset that does not contain exactly one source file");
+  }
   const needsNormalization = sourceFiles.some(
     (file) => typeof file?.name === "string" && file.name.endsWith("/firestore.rules"),
   );

@@ -134,17 +134,14 @@ public sealed class BurnBarPolicyEngineTests
         await using var server = new CompanionCliServer(0, router, "policy-token");
         server.Start();
 
-        using var client = new TcpClient();
-        await client.ConnectAsync(System.Net.IPAddress.Loopback, server.Port);
-        await using NetworkStream stream = client.GetStream();
-        using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
-        using var reader = new StreamReader(stream, Encoding.UTF8);
-        await writer.WriteLineAsync(
-            "{\"op\":\"policy.evaluate\",\"authToken\":\"policy-token\",\"intent\":{\"kind\":\"generic\",\"objective\":\"Inspect\",\"summary\":\"Inspect\"},\"tool\":\"read_file\",\"explicitApprovalRequired\":true}");
+        var client = new CompanionCliClient(
+            new CompanionCliClientOptions(server.Port),
+            () => "policy-token");
+        using JsonDocument request = JsonDocument.Parse(
+            "{\"op\":\"policy.evaluate\",\"intent\":{\"kind\":\"generic\",\"objective\":\"Inspect\",\"summary\":\"Inspect\"},\"tool\":\"read_file\",\"explicitApprovalRequired\":true}");
+        JsonElement response = await client.ExchangeAsync(request.RootElement);
+        string line = response.GetRawText();
 
-        string? line = await reader.ReadLineAsync();
-
-        Assert.NotNull(line);
         Assert.Contains("\"risk\":\"low\"", line, StringComparison.Ordinal);
         Assert.Contains("Approve read_file", line, StringComparison.Ordinal);
         Assert.DoesNotContain("policy-token", line, StringComparison.Ordinal);

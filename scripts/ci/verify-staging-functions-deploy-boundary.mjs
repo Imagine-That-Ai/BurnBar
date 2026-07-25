@@ -7,108 +7,140 @@ import { fileURLToPath } from "node:url";
 const root =
   process.env.STAGING_DEPLOY_BOUNDARY_ROOT ??
   join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const workflowPath = join(root, ".github", "workflows", "deploy-staging.yml");
+const callerPath = join(root, ".github", "workflows", "deploy-staging.yml");
+const trustedPath = join(
+  root,
+  ".github",
+  "workflows",
+  "deploy-staging-trusted.yml",
+);
 
-if (!existsSync(workflowPath)) {
-  console.error(`MISCONFIGURED: workflow not found: ${workflowPath}`);
+const failures = [];
+for (const path of [callerPath, trustedPath]) {
+  if (!existsSync(path)) failures.push(`workflow not found: ${path}`);
+}
+if (failures.length > 0) {
+  console.error(`MISCONFIGURED: ${failures.join("; ")}`);
   process.exit(2);
 }
 
-const source = readFileSync(workflowPath, "utf8");
-const failures = [];
-const requireText = (needle, message) => {
+const caller = readFileSync(callerPath, "utf8");
+const trusted = readFileSync(trustedPath, "utf8");
+const requireText = (source, needle, message) => {
   if (!source.includes(needle)) failures.push(message);
 };
-const reject = (pattern, message) => {
+const reject = (source, pattern, message) => {
   if (pattern.test(source)) failures.push(message);
 };
 
 requireText(
-  "      function_targets:\n",
-  "workflow_dispatch must expose an explicit function_targets input",
+  caller,
+  "uses: Imagine-That-Ai/BurnBar/.github/workflows/deploy-staging-trusted.yml@main",
+  "candidate workflow must delegate deployment to the reusable workflow pinned to main",
+);
+if (
+  caller.split(
+    "Imagine-That-Ai/BurnBar/.github/workflows/deploy-staging-trusted.yml@main",
+  ).length !== 2
+) {
+  failures.push(
+    "the protected-main reusable workflow reference must appear exactly once",
+  );
+}
+requireText(
+  caller,
+  "      id-token: write",
+  "caller must explicitly delegate only the OIDC permission needed by the reusable workflow",
+);
+reject(
+  caller,
+  /google-github-actions\/auth|firebase-tools.*deploy|\bdeploy\s+--only/u,
+  "candidate workflow must not authenticate or deploy directly",
 );
 requireText(
-  "      FUNCTION_TARGETS: ${{ github.event.inputs.function_targets }}",
-  "function_targets must enter shell only through the job environment",
+  caller,
+  "npm run test:security --prefix functions",
+  "candidate Functions must pass the security suite before packaging",
 );
 requireText(
+  caller,
   "^functions:[A-Za-z][A-Za-z0-9_-]*(,functions:[A-Za-z][A-Za-z0-9_-]*)*$",
   "function_targets must be constrained to explicit Firebase Functions selectors",
 );
 requireText(
-  'TEMP_ENV_FILE="$(mktemp "$RUNNER_TEMP/openburnbar-functions-env.XXXXXX")"',
-  "runtime config must be assembled in a runner-temporary file",
-);
-requireText(
-  '} > "$TEMP_ENV_FILE"\n          mv "$TEMP_ENV_FILE" "$ENV_FILE"',
-  "runtime config must be atomically moved over the Firebase env file",
-);
-requireText(
-  'deploy_scope="functions"',
-  "an empty function_targets input must retain the explicit all-functions default",
-);
-requireText(
-  'deploy_scope="$FUNCTION_TARGETS"',
-  "validated function_targets must select the requested deployment scope",
-);
-requireText(
+  caller,
   `node scripts/ci/prepare-scoped-functions-deploy.mjs \\
             --targets "$FUNCTION_TARGETS" \\
             --functions-dir functions`,
-  "scoped targets must replace the all-functions module graph before authentication",
-);
-requireText(
-  '--only "$deploy_scope"',
-  "Firebase deploy scope must remain a single quoted argument",
+  "scoped targets must replace the all-functions module graph before artifact upload",
 );
 reject(
-  /\}\s*>\s*"\$ENV_FILE"/u,
-  "staging config must never be read from and redirected directly onto the same file",
-);
-reject(
-  /\beval\b/u,
-  "staging deployment must not evaluate function_targets as shell code",
-);
-reject(
-  /^\s{10,}[^\n]*\$\{\{\s*github\.event\.inputs\.function_targets\s*\}\}/mu,
-  "function_targets must not be interpolated directly into a run script",
+  caller,
+  /^\s{10,}[^\n]*\$\{\{\s*inputs\.function_targets\s*\}\}/mu,
+  "function_targets must not be interpolated directly into a candidate run script",
 );
 
-const functionsJobIndex = source.indexOf("  functions-staging:");
-const scopeIndex = source.indexOf(
-  "prepare-scoped-functions-deploy.mjs",
-  functionsJobIndex,
+requireText(
+  trusted,
+  "  workflow_call:",
+  "trusted deployment boundary must be reusable only",
 );
-const authIndex = source.indexOf(
-  "Authenticate to Google Cloud (staging WIF/OIDC only)",
-  functionsJobIndex,
+requireText(
+  trusted,
+  "          ref: main",
+  "trusted workflow must check out deployment instructions from main",
 );
-const deployIndex = source.indexOf(
-  "Deploy Cloud Functions (staging)",
-  functionsJobIndex,
+requireText(
+  trusted,
+  "      - name: Verify bounded candidate artifacts before authentication",
+  "candidate artifacts must be bounded and verified before authentication",
 );
+requireText(
+  trusted,
+  "npm ci --prefix \"$deploy_root/functions\" --omit=dev --ignore-scripts",
+  "candidate package lifecycle scripts must remain disabled",
+);
+requireText(
+  trusted,
+  "Authenticate to Google Cloud through trusted-main WIF",
+  "trusted reusable workflow must own WIF authentication",
+);
+requireText(
+  trusted,
+  '--only "$deploy_scope"',
+  "validated Functions deployment scope must remain one quoted argument",
+);
+reject(
+  trusted,
+  /\beval\b/u,
+  "trusted deployment must not evaluate candidate input as shell code",
+);
+
+const verificationIndex = trusted.indexOf(
+  "Verify bounded candidate artifacts before authentication",
+);
+const authIndex = trusted.indexOf(
+  "Authenticate to Google Cloud through trusted-main WIF",
+);
+const deployIndex = trusted.indexOf("Deploy reviewed Functions artifact");
 if (
-  functionsJobIndex === -1 ||
+  verificationIndex === -1 ||
   authIndex === -1 ||
   deployIndex === -1 ||
+  verificationIndex > authIndex ||
   authIndex > deployIndex
 ) {
   failures.push(
-    "WIF/OIDC authentication must precede the credentialed Functions deploy",
-  );
-}
-if (scopeIndex === -1 || scopeIndex > authIndex) {
-  failures.push(
-    "the scoped Functions entrypoint must be prepared before WIF/OIDC credentials exist",
+    "artifact verification must precede WIF authentication and credentialed deployment",
   );
 }
 
 if (failures.length > 0) {
-  console.error("Staging Functions deploy boundary verification failed:");
-  for (const failure of failures) console.error(`  - ${failure}`);
+  console.error("Staging deployment boundary verification failed:");
+  failures.forEach((failure) => console.error(`  - ${failure}`));
   process.exit(1);
 }
 
 console.log(
-  "PASS: staging Functions deploy preserves config and isolates scoped targets before auth.",
+  "PASS: untrusted candidates produce bounded data for the trusted-main staging deploy workflow.",
 );

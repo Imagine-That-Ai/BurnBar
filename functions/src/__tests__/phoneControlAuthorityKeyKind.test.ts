@@ -17,7 +17,7 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { createECDH, createHash, randomBytes, generateKeyPairSync, sign as cryptoSign } from "node:crypto";
 
-const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
+const { store, dbMock, FieldValueMock, FakeTimestamp, batchCommitSizes } = vi.hoisted(() => {
   // The store is a Map for path→data. We also hang a __hook on the store
   // object so query/transaction mocks can see hook mutations at call time
   // without relying on module-level variables (which are not in scope
@@ -39,6 +39,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
     }
   }
   const FieldValueMock = { serverTimestamp: () => ({ __serverTimestamp: true }) };
+  const batchCommitSizes: number[] = [];
 
   const snapshotFor = (path: string) => {
     const data = store.get(path);
@@ -156,13 +157,14 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
           ops.push(() => store.set(ref.path, { ...(store.get(ref.path) ?? {}), ...data })),
         delete: (ref: { path: string }) => ops.push(() => store.delete(ref.path)),
         async commit() {
+          batchCommitSizes.push(ops.length);
           ops.forEach((op) => op());
         },
       };
     },
   };
 
-  return { store, dbMock, FieldValueMock, FakeTimestamp };
+  return { store, dbMock, FieldValueMock, FakeTimestamp, batchCommitSizes };
 });
 
 // setBeforeTransactionHook: sets a function to run at the START of the next
@@ -175,6 +177,7 @@ function setBeforeTransactionHook(fn: (() => void) | null) {
 }
 beforeEach(() => {
   store.__hook = null;
+  batchCommitSizes.length = 0;
   requireTrustedDeviceActionProof.mockClear();
   requireTrustedDeviceActionProof.mockResolvedValue({
     deviceId: "mac-1",
@@ -1130,5 +1133,24 @@ describe("F-RR04-005 revokeEscrowDeviceTrust grant-revocation race", () => {
     expect(concurrentGrantStatus).toBe("revoked");
     const concurrentSourceGrantStatus = store.get(`users/${UID}/escrow_grants/concurrent-source-grant`)?.status;
     expect(concurrentSourceGrantStatus).toBe("revoked");
+  });
+
+  it("chunks cleanup below Firestore's write limit and converges a large grant set", async () => {
+    for (let index = 0; index < 850; index += 1) {
+      store.set(`users/${UID}/escrow_grants/grant-${index}`, {
+        sourceDeviceId: "mac-1",
+        targetDeviceId: DEVICE,
+        status: "granted",
+      });
+    }
+
+    await invokeCallable(revokeEscrowDeviceTrust, { deviceId: DEVICE });
+
+    expect(batchCommitSizes.length).toBeGreaterThanOrEqual(3);
+    expect(Math.max(...batchCommitSizes)).toBeLessThanOrEqual(400);
+    expect(store.get(`users/${UID}/escrow_devices/${DEVICE}`)?.trustState).toBe("revoked");
+    for (let index = 0; index < 850; index += 1) {
+      expect(store.get(`users/${UID}/escrow_grants/grant-${index}`)?.status).toBe("revoked");
+    }
   });
 });

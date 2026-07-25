@@ -40,6 +40,7 @@ final class MercuryConsentStore: ObservableObject {
 
     private let defaults: UserDefaults
     private let encodeGrants: ([MirrorAutoAcceptGrant]) throws -> Data
+    private var defaultsObserver: AnyCancellable?
 
     init(
         defaults: UserDefaults = .standard,
@@ -89,6 +90,14 @@ final class MercuryConsentStore: ObservableObject {
             persist()
         }
         pruneExpired()
+        defaultsObserver = NotificationCenter.default
+            .publisher(for: UserDefaults.didChangeNotification, object: defaults)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.synchronizeFromDefaults()
+                }
+            }
     }
 
     var activeGrantCount: Int {
@@ -174,6 +183,26 @@ final class MercuryConsentStore: ObservableObject {
         guard grants.contains(where: { $0.expiresAt <= now }) else { return }
         grants.removeAll { $0.expiresAt <= now }
         persist()
+    }
+
+    private func synchronizeFromDefaults(now: Date = Date()) {
+        let remembered = defaults.bool(forKey: Self.rememberAcceptedPeersKey)
+        if rememberAcceptedMirrorPeers != remembered {
+            rememberAcceptedMirrorPeers = remembered
+        }
+
+        var persistedGrants = Self.decodeGrants(defaults.data(forKey: Self.grantsKey))
+        let hadPersistedGrants = !persistedGrants.isEmpty
+        persistedGrants.removeAll { $0.expiresAt <= now }
+        if !remembered {
+            persistedGrants.removeAll()
+        }
+        if grants != persistedGrants {
+            grants = persistedGrants
+        }
+        if !remembered, hadPersistedGrants {
+            persist()
+        }
     }
 
     private func persist() {

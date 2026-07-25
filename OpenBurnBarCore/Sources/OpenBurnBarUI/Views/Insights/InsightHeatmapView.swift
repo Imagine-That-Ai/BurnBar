@@ -33,6 +33,11 @@ public struct InsightHeatmapView: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: 7 * 18)
+        // A 7×24 grid of individually-labeled cells is unusable with
+        // VoiceOver (168 swipes). Collapse to one element that reads the
+        // grid shape and the peak cell.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(InsightChartAccessibility.heatmapSummary(data))
     }
 
     private func colorFor(value: Double, max: Double) -> Color {

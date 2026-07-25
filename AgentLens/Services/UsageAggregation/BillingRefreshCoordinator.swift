@@ -15,8 +15,11 @@ enum BillingRefreshCoordinator {
         var supplementalUsages: [TokenUsage] = []
         /// Non-fatal error messages accumulated during the flow.
         var errors: [String] = []
-        /// Refreshed records from persistence so the caller can replace usages.
-        var refreshedRecords: [TokenUsage]?
+        /// True when this cycle changed `token_usage` content (deleted prior
+        /// API-reconciled rows or persisted new supplemental rows). Purely
+        /// informational — the aggregator's post-refresh reload is driven by
+        /// the `UsageTableWriteMarker`, which these writes bump.
+        var usageRowsChanged = false
         /// Drift events: per-credential entries where local cost diverges from
         /// billing-API cost by more than 5%. Each entry names the credential,
         /// the local total, the API total, and the percent divergence.
@@ -28,35 +31,50 @@ enum BillingRefreshCoordinator {
     /// 2. Rebuilds API service configuration
     /// 3. Fetches billing data from all configured providers
     /// 4. Computes supplemental usage deltas via `BillingUsageReconciliation`
-    /// 5. Persists supplemental rows and reloads the canonical set
+    /// 5. Persists supplemental rows
     /// 6. Detects drift between local-pricing totals and billing-API totals (>5%)
     ///
     /// Each step that can fail appends to `Result.errors` without aborting
     /// the remaining steps.
+    ///
+    /// **Bounded-window baseline.** Step 4 used to load the ENTIRE
+    /// `token_usage` table (`fetchAllUsage`) every refresh tick. The
+    /// reconciliation math only ever matches local rows whose
+    /// `[startTime, endTime]` intersects one of the per-record day windows
+    /// `startOfDay(record.date)...+1d`, so `fetchReconciliationBaseline` is
+    /// handed the earliest such window start and may return just the rows
+    /// intersecting `[cutoff, ∞)`. Any superset of those rows produces
+    /// byte-identical supplemental output (each record's window filter is
+    /// re-applied per record); `RefreshTickPerfTests` asserts the
+    /// bounded == full equality on realistic fixtures.
+    ///
+    /// **Aggregated drift baseline.** Step 6 used the same full-table load to
+    /// reduce per-credential all-time cost sums. `fetchCredentialCostTotals`
+    /// now returns those sums from one SQL `GROUP BY` — same totals, ~#credential
+    /// rows moved instead of the whole history.
     nonisolated static func reconcile(
         usageAPIService: ProviderUsageAPIService?,
         allParsedUsages: [TokenUsage],
-        fetchCanonicalUsage: () async throws -> [TokenUsage],
-        persistAndReload: ([TokenUsage]) async throws -> [TokenUsage],
-        deleteAndReload: (String) async throws -> [TokenUsage],
+        fetchReconciliationBaseline: (Date) async throws -> [TokenUsage],
+        fetchCredentialCostTotals: () async throws -> [String: Double],
+        persistSupplemental: ([TokenUsage]) async throws -> Void,
+        deleteReconciled: (String) async throws -> Int,
         recordDriftEvent: (BillingDriftEvent) -> Void = { _ in }
     ) async -> Result {
         var result = Result()
-        var refreshedRecords: [TokenUsage]?
 
         // 1. Clear prior API-reconciled rows
         do {
-            let records = try await deleteAndReload(
+            let deletedCount = try await deleteReconciled(
                 BillingUsageReconciliation.apiReconciliationSessionPrefix
             )
-            refreshedRecords = records
+            result.usageRowsChanged = deletedCount > 0
         } catch {
             result.errors.append("Failed to clear prior API-reconciled usage rows: \(error.localizedDescription)")
         }
 
         guard let apiService = usageAPIService else {
             result.apiUsages = []
-            result.refreshedRecords = refreshedRecords
             return result
         }
 
@@ -66,7 +84,6 @@ enum BillingRefreshCoordinator {
         let configuredProviders = await MainActor.run { apiService.configuredProviders }
         guard !configuredProviders.isEmpty else {
             result.apiUsages = []
-            result.refreshedRecords = refreshedRecords
             return result
         }
 
@@ -74,14 +91,24 @@ enum BillingRefreshCoordinator {
         let thirtyDaysAgo = Date().addingTimeInterval(-30 * 86400)
         result.apiUsages = await apiService.fetchAll(since: thirtyDaysAgo)
 
-        // 4. Compute canonical baseline
+        // 4. Compute canonical baseline, bounded to the earliest window any
+        //    fetched record can match.
         // VAL-CROSS-011: Use canonical multi-source baseline from database, not just parser output.
-        let canonicalBaseline: [TokenUsage]
-        do {
-            canonicalBaseline = try await fetchCanonicalUsage()
-        } catch {
-            canonicalBaseline = allParsedUsages
-            result.errors.append("Failed to fetch canonical usage baseline: \(error.localizedDescription)")
+        var canonicalBaseline: [TokenUsage] = []
+        if !result.apiUsages.isEmpty {
+            let calendar = Calendar.current
+            let defaultCutoff = calendar.startOfDay(for: thirtyDaysAgo)
+            let earliestWindowStart = result.apiUsages
+                .map { calendar.startOfDay(for: $0.date) }
+                .min() ?? defaultCutoff
+            do {
+                canonicalBaseline = try await fetchReconciliationBaseline(
+                    min(earliestWindowStart, defaultCutoff)
+                )
+            } catch {
+                canonicalBaseline = allParsedUsages
+                result.errors.append("Failed to fetch canonical usage baseline: \(error.localizedDescription)")
+            }
         }
 
         // 5. Compute supplemental deltas
@@ -93,8 +120,8 @@ enum BillingRefreshCoordinator {
         // 6. Persist supplemental rows
         if !result.supplementalUsages.isEmpty {
             do {
-                let records = try await persistAndReload(result.supplementalUsages)
-                refreshedRecords = records
+                try await persistSupplemental(result.supplementalUsages)
+                result.usageRowsChanged = true
             } catch {
                 result.errors.append("Failed to store API-reconciled usage rows: \(error.localizedDescription)")
             }
@@ -103,15 +130,20 @@ enum BillingRefreshCoordinator {
         // 7. Drift detection: compare local-pricing spend vs billing-API spend per credential.
         //    Flags any credential where divergence exceeds 5%. These drift events feed
         //    budget_events for the "Reconciliation" section in Settings → Budgets.
-        let baselineByCredential: [String: [TokenUsage]] = Dictionary(grouping: canonicalBaseline) { usage in
-            "\(usage.providerID.rawValue):\(usage.providerAccountID ?? "default")"
+        let credentialCostTotals: [String: Double]
+        do {
+            credentialCostTotals = try await fetchCredentialCostTotals()
+        } catch {
+            // Same degradation as the old full-table path: fall back to the
+            // parser output for this cycle.
+            credentialCostTotals = Self.credentialCostTotals(from: allParsedUsages)
+            result.errors.append("Failed to fetch credential cost totals: \(error.localizedDescription)")
         }
         let apiByCredential: [String: [ProviderUsageRecord]] = Dictionary(grouping: result.apiUsages) { record in
             "\(record.providerName):default"
         }
         var driftEvents: [BillingDriftEvent] = []
-        for (key, localUsages) in baselineByCredential {
-            let localCost = localUsages.reduce(into: 0.0) { $0 += $1.cost }
+        for (key, localCost) in credentialCostTotals {
             let apiCost = (apiByCredential[key] ?? []).reduce(into: 0.0) { $0 += $1.costUSD }
             let parts = key.split(separator: ":", maxSplits: 1).map(String.init)
             let providerID = parts.first ?? key
@@ -131,8 +163,17 @@ enum BillingRefreshCoordinator {
         }
         result.driftEvents = driftEvents
 
-        result.refreshedRecords = refreshedRecords
         return result
+    }
+
+    /// In-memory equivalent of `UsageStore.driftCredentialCostTotals()` used
+    /// as the fallback when the SQL aggregate is unavailable, and by tests to
+    /// assert SQL/Swift parity. Key format: `"providerID:accountID-or-default"`.
+    static func credentialCostTotals(from usages: [TokenUsage]) -> [String: Double] {
+        usages.reduce(into: [String: Double]()) { totals, usage in
+            let key = "\(usage.providerID.rawValue):\(usage.providerAccountID ?? "default")"
+            totals[key, default: 0] += usage.cost
+        }
     }
 }
 

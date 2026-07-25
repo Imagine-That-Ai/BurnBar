@@ -28,7 +28,8 @@ internal sealed record WindowsUpdateStatus(
     bool AutomaticChecksAvailable,
     bool CheckActionAvailable,
     bool ManagedByStore,
-    string Message);
+    string Message,
+    string? AvailableVersion = null);
 
 internal sealed record WindowsStartupStatus(
     bool IsEnabled,
@@ -151,8 +152,21 @@ internal static class WindowsUpdateService
 
         try
         {
-            await host.CheckForUpdatesInBackgroundAsync(cancellationToken).ConfigureAwait(false);
+            BackgroundUpdateCheckResult result = await host
+                .CheckForUpdatesInBackgroundAsync(cancellationToken)
+                .ConfigureAwait(false);
             persistence.Write(LastBackgroundCheckKey, DateTimeOffset.UtcNow);
+            if (result.CandidateAvailable)
+            {
+                lock (Gate)
+                {
+                    _lastStatus = status with
+                    {
+                        AvailableVersion = result.CandidateVersion,
+                        Message = $"OpenBurnBar {result.CandidateVersion} is available. Choose Check Now to verify and install it.",
+                    };
+                }
+            }
         }
         catch (Exception ex) when (IsNativeUpdaterFailure(ex))
         {

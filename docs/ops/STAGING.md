@@ -19,7 +19,7 @@ Read-only inspection produced this fail-closed state:
 | GCP project `burnbar-staging` | Active; Firebase APIs are attached |
 | Deploy service account | `burnbar-staging-deployer` exists with all nine documented project roles; secret metadata access is granted only per deployed staging secret |
 | GitHub OIDC | `github-pool/github-provider` is active and repository-scoped |
-| GitHub Environment | `staging` requires review and permits deployments from `main` only |
+| GitHub Environment | `staging` requires review; candidate branches may enter only through the reusable deployment workflow pinned to `main` |
 | Billing | Enabled through the approved company billing account |
 | Firestore database | Native-mode `(default)` database active in `us-central1` |
 | Firebase Storage bucket | `burnbar-staging.firebasestorage.app` active in `us-central1`; uniform bucket-level access and public-access prevention enforced |
@@ -204,10 +204,20 @@ gcloud iam workload-identity-pools providers describe "$PROVIDER" \
     --workload-identity-pool="$POOL" \
     --display-name="GitHub OIDC" \
     --issuer-uri="https://token.actions.githubusercontent.com" \
-    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
-    --attribute-condition="assertion.repository=='${REPO}'"
+    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.environment=assertion.environment,attribute.job_workflow_ref=assertion.job_workflow_ref" \
+    --attribute-condition="assertion.repository=='${REPO}' && assertion.environment=='staging' && assertion.job_workflow_ref=='${REPO}/.github/workflows/deploy-staging-trusted.yml@refs/heads/main'"
 
-# Let the deploy SA be impersonated ONLY from this repo (optionally pin a ref).
+# Converge existing providers too. The caller's `ref` may be a reviewed feature
+# branch, so cloud trust binds to `job_workflow_ref`: the called reusable
+# workflow definition must be the exact file on trusted `main`.
+gcloud iam workload-identity-pools providers update-oidc "$PROVIDER" \
+  --project=burnbar-staging --location=global \
+  --workload-identity-pool="$POOL" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.environment=assertion.environment,attribute.job_workflow_ref=assertion.job_workflow_ref" \
+  --attribute-condition="assertion.repository=='${REPO}' && assertion.environment=='staging' && assertion.job_workflow_ref=='${REPO}/.github/workflows/deploy-staging-trusted.yml@refs/heads/main'"
+
+# The repository principal set is safe only because the provider above enforces
+# the exact environment, ref, and workflow before issuing any federated identity.
 gcloud iam service-accounts add-iam-policy-binding "$SA" \
   --project=burnbar-staging \
   --role="roles/iam.workloadIdentityUser" \
@@ -216,9 +226,6 @@ gcloud iam service-accounts add-iam-policy-binding "$SA" \
 # The provider resource name is the STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER secret:
 echo "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/providers/${PROVIDER}"
 ```
-
-> Harden later by narrowing the `principalSet` / attribute condition to a
-> specific ref (e.g. `attribute.ref=='refs/heads/main'`) once the flow works.
 
 ### 4. Create the `staging` GitHub Environment
 
@@ -302,21 +309,27 @@ gcloud secrets add-iam-policy-binding WINDOWS_TPM_VERIFIER_TOKEN \
 ### 7. First deploy (rules/indexes/storage), then functions
 
 ```bash
-# Dry run first (default): rules emulator tests + config checks, no deploy.
-gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar -f dry_run=true
+# Dry run first (default): rules emulator tests + bounded artifact builds, no deploy.
+gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
+  --ref "$FEATURE_BRANCH" -f dry_run=true
 
-# Real rules/indexes/storage deploy to staging:
-gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar -f dry_run=false
+# Real rules/indexes/storage rehearsal from the feature branch. Candidate code
+# receives no credentials; the deploy job is defined by the reusable workflow
+# pinned to main and consumes the artifact only as bounded data.
+gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
+  --ref "$FEATURE_BRANCH" -f dry_run=false
 
 # Deploy only the reviewed Windows App Check bootstrap targets. The selector is
 # validated as a comma-separated functions:<exportName> allowlist before auth.
 gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
+  --ref "$FEATURE_BRANCH" \
   -f dry_run=false \
   -f deploy_functions=true \
   -f function_targets='functions:issueWindowsAppCheckChallenge,functions:mintWindowsAppCheckToken'
 
 # Deliberately deploy every Function only after every staging secret exists:
 gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
+  --ref "$FEATURE_BRANCH" \
   -f dry_run=false -f deploy_functions=true -f function_targets=''
 ```
 
@@ -331,10 +344,11 @@ green.
 1. Edit `firestore.rules` (and/or `firestore.indexes.json` / `storage.rules`) on
    a branch.
 2. `npm --prefix functions run test:firestore-rules` locally against the emulator.
-3. Push the branch, then run `deploy-staging.yml` with `dry_run=false` — this
-   deploys the branch's rules/indexes to **staging**, drift-checks them against
-   the live staging project, and verifies every declared `ttl:true` override is a
-   live TTL policy.
+3. Push the branch, then dispatch `deploy-staging.yml` at that exact branch with
+   `dry_run=false`. The branch builds and tests bounded artifacts without
+   credentials. `deploy-staging-trusted.yml@main` verifies those artifacts,
+   obtains WIF credentials, deploys them to **staging**, drift-checks the live
+   project, and verifies every declared `ttl:true` override.
 4. Exercise the change against `burnbar-staging` (console client pointed at the
    staging project, or ad-hoc reads/writes) to confirm intended allow/deny.
 5. Only then merge to `main`. `deploy-firestore.yml` promotes the identical files
@@ -348,12 +362,21 @@ green.
   "not provisioned" summary. It cannot fail against a non-existent project.
 - **Manual trigger only:** no `push`/tag trigger, so staging never fires
   unexpectedly. `dry_run` defaults to `true`.
-- **WIF/OIDC only:** no long-lived JSON keys, same as production.
+- **WIF/OIDC only:** no long-lived JSON keys. Cloud trust requires the protected
+  `staging` environment and the `job_workflow_ref` claim for
+  `deploy-staging-trusted.yml@refs/heads/main`; a candidate cannot replace the
+  credentialed job definition.
 - **Predeploy stripped:** reuses `scripts/ci/write-firebase-hosting-ci-config.mjs
   --check` and the `grep -q '"predeploy"'` guard, so no repo-controlled predeploy
   hook runs under staging deploy credentials.
 - **Environment-gated:** the `staging` GitHub Environment provides an approval
-  gate and (optionally) branch restrictions, mirroring `environment: production`.
+  gate. Its deployment branch policy must allow reviewed rehearsal branches;
+  reusable-workflow identity, not the caller ref, is the immutable code boundary.
+- **Candidate code stays uncredentialed:** candidate jobs run tests/builds,
+  validate explicit function targets, and upload short-lived bounded artifacts.
+  The trusted workflow verifies path, size, SHA-256, and candidate-SHA bindings
+  before authentication and installs production dependencies with npm lifecycle
+  scripts disabled.
 - **Isolated blast radius:** every credentialed step targets the staging project
   via `--project`; production (`burnbar`) is never referenced by this workflow.
 

@@ -19,21 +19,19 @@ BurnBar's hard merge gates are:
 - one independent approving review;
 - CODEOWNER review for protected paths;
 - dismissal of stale approvals after a new push;
+- approval from someone other than the actor who made the latest push;
 - required conversation resolution;
 - no force pushes;
 - no branch deletion;
 - exact-head merge discipline in the automation lane.
 
-Required last-push approval remains disabled because strict checks, stale-approval
-dismissal, and exact-head review already bind approval to the current head without
-requiring a second reviewer after an approved maintainer merge update.
-
-**Operation 9 owner decision (2026-07-16):** the QA §M-1 stale-base finding and
-security P-SEC-4 scanner-governance finding retire the former solo-maintainer
-review exception. `required_status_checks.strict` is `true`, one approving review
-and CODEOWNER review are required, and approvals are dismissed when the head
-changes. The repository has two named CODEOWNERS, so this closes the protected-file
-two-PR bypass without deadlocking ordinary review.
+**Security-governance decision (2026-07-24):** the stale-base and scanner
+findings retire the former solo-maintainer review exception.
+`required_status_checks.strict` is `true`, one approving review and CODEOWNER
+review are required, approvals are dismissed when the head changes, and the
+latest pusher cannot approve their own update. The repository has two named
+CODEOWNERS, so this closes both the protected-file two-PR bypass and the
+post-approval push bypass.
 
 Strict checks were chosen over a merge queue because they do not require every
 required context to support `merge_group`. `Domain Core Trusted Deletion Guard`

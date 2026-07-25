@@ -124,6 +124,8 @@ public sealed class CompanionCliServer : IAsyncDisposable
             using var reader = new StreamReader(conn.Stream, utf8WithoutBom);
             using var writer = new StreamWriter(conn.Stream, utf8WithoutBom) { AutoFlush = true };
             var boundedReader = new BoundedLineReader(reader);
+            CompanionCliAuthentication.Session? authenticationSession = null;
+            var connectionAuthenticated = _accessToken is null;
             while (!cancellationToken.IsCancellationRequested)
             {
                 BoundedLine line = await boundedReader.ReadAsync(cancellationToken).ConfigureAwait(false);
@@ -132,9 +134,31 @@ public sealed class CompanionCliServer : IAsyncDisposable
                     break;
                 }
 
-                string response = line.TooLarge
-                    ? JsonSerializer.Serialize(new { ok = false, error = "request_too_large" })
-                    : await HandleLineAsync(line.Value!, _handler, cancellationToken, _accessToken).ConfigureAwait(false);
+                string response;
+                if (line.TooLarge)
+                {
+                    response = JsonSerializer.Serialize(new { ok = false, error = "request_too_large" });
+                }
+                else if (!connectionAuthenticated && authenticationSession is null)
+                {
+                    authenticationSession = CompanionCliAuthentication.TryCreateSession(line.Value!, _accessToken!);
+                    response = authenticationSession is null
+                        ? JsonSerializer.Serialize(new { ok = false, error = "authentication_required" })
+                        : CompanionCliAuthentication.ChallengeResponse(authenticationSession);
+                }
+                else
+                {
+                    string requestLine = line.Value!;
+                    if (!connectionAuthenticated)
+                    {
+                        requestLine = CompanionCliAuthentication.VerifyAndStripProof(
+                            requestLine,
+                            authenticationSession!,
+                            _accessToken!);
+                        connectionAuthenticated = true;
+                    }
+                    response = await HandleLineAsync(requestLine, _handler, cancellationToken).ConfigureAwait(false);
+                }
                 await writer.WriteLineAsync(response.AsMemory(), cancellationToken).ConfigureAwait(false);
             }
         }
@@ -334,6 +358,121 @@ public sealed class CompanionCliServer : IAsyncDisposable
         {
             try { Stream.Dispose(); } catch { /* ignore */ }
             try { Client.Dispose(); } catch { /* ignore */ }
+        }
+    }
+}
+
+public static class CompanionCliAuthentication
+{
+    private const string ChallengeOperation = "auth.challenge.v1";
+    private const string ProofProperty = "authProof";
+
+    public sealed record Session(string ClientNonce, string ServerNonce, string ServerProof);
+
+    public static Session? TryCreateSession(string line, byte[] accessToken)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(line);
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                root.GetProperty("op").GetString() != ChallengeOperation ||
+                !root.TryGetProperty("clientNonce", out JsonElement nonceElement) ||
+                nonceElement.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+            string clientNonce = nonceElement.GetString() ?? string.Empty;
+            if (!IsCanonicalNonce(clientNonce)) return null;
+            string serverNonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+            string proof = ComputeProof(accessToken, $"server\n{clientNonce}\n{serverNonce}");
+            return new Session(clientNonce, serverNonce, proof);
+        }
+        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or FormatException)
+        {
+            return null;
+        }
+    }
+
+    public static string ChallengeResponse(Session session) => JsonSerializer.Serialize(new
+    {
+        ok = true,
+        op = ChallengeOperation,
+        serverNonce = session.ServerNonce,
+        serverProof = session.ServerProof,
+    });
+
+    public static string VerifyAndStripProof(string line, Session session, byte[] accessToken)
+    {
+        JsonObject root = JsonNode.Parse(line) as JsonObject
+            ?? throw new ArgumentException("The authenticated request must be an object.", nameof(line));
+        if (root[ProofProperty] is not JsonObject proof ||
+            proof["clientNonce"]?.GetValue<string>() != session.ClientNonce ||
+            proof["serverNonce"]?.GetValue<string>() != session.ServerNonce)
+        {
+            throw new ArgumentException("The companion authentication proof is missing or mismatched.", nameof(line));
+        }
+        string supplied = proof["proof"]?.GetValue<string>() ?? string.Empty;
+        root.Remove(ProofProperty);
+        string canonicalRequest = root.ToJsonString();
+        string requestDigest = Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalRequest)));
+        string expected = ComputeProof(
+            accessToken,
+            $"client\n{session.ClientNonce}\n{session.ServerNonce}\n{requestDigest}");
+        if (!FixedTimeBase64Equals(supplied, expected))
+        {
+            throw new ArgumentException("The companion authentication proof is invalid.", nameof(line));
+        }
+        return canonicalRequest;
+    }
+
+    public static string CreateClientProof(
+        JsonObject request,
+        string clientNonce,
+        string serverNonce,
+        byte[] accessToken)
+    {
+        string requestDigest = Convert.ToBase64String(
+            SHA256.HashData(Encoding.UTF8.GetBytes(request.ToJsonString())));
+        return ComputeProof(accessToken, $"client\n{clientNonce}\n{serverNonce}\n{requestDigest}");
+    }
+
+    public static bool VerifyServerProof(
+        string supplied,
+        string clientNonce,
+        string serverNonce,
+        byte[] accessToken)
+    {
+        string expected = ComputeProof(accessToken, $"server\n{clientNonce}\n{serverNonce}");
+        return FixedTimeBase64Equals(supplied, expected);
+    }
+
+    private static string ComputeProof(byte[] key, string value) =>
+        Convert.ToBase64String(HMACSHA256.HashData(key, Encoding.UTF8.GetBytes(value)));
+
+    private static bool FixedTimeBase64Equals(string left, string right)
+    {
+        try
+        {
+            byte[] leftBytes = Convert.FromBase64String(left);
+            byte[] rightBytes = Convert.FromBase64String(right);
+            return CryptographicOperations.FixedTimeEquals(leftBytes, rightBytes);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsCanonicalNonce(string value)
+    {
+        try
+        {
+            return Convert.FromBase64String(value).Length == 32;
+        }
+        catch (FormatException)
+        {
+            return false;
         }
     }
 }

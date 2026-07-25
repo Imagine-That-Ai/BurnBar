@@ -919,7 +919,6 @@ jobs:
   functions-security-fast:
     name: Functions (security vitest)
     needs: classify
-    if: needs.classify.outputs.functions == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -1337,6 +1336,12 @@ jobs:
       - name: Windows tree budget (per-tree shrink-only ratchet)
         run: ./scripts/debt/check-windows-tree-budget.sh
 
+      # Refresh-tick perf ratchet: no new unbounded fetchAllUsage() call
+      # sites (O(total-history) tick work) and no raw token_usage writers
+      # outside the UsageTableWriteMarker-aware stores.
+      - name: Usage refresh-tick budget (shrink-only ratchet)
+        run: ./scripts/debt/check-usage-refresh-tick-budget.sh
+
       - name: BurnBarRPC IPC canon is current
         run: node tools/ipc/generate-burnbarrpc-canon.mjs --check
 
@@ -1395,7 +1400,7 @@ jobs:
           rust_changed = os.environ.get('RUST_CHANGED', '')
           selected = {
               'functions-fast': os.environ.get('FUNCTIONS_REQUIRED') == 'true',
-              'functions-security-fast': os.environ.get('FUNCTIONS_REQUIRED') == 'true',
+              'functions-security-fast': True,
               'functions-correctness': os.environ.get('FUNCTIONS_REQUIRED') == 'true',
               'extension-fast': os.environ.get('WEB_REQUIRED') == 'true',
               'website-fast': os.environ.get('WEB_REQUIRED') == 'true',

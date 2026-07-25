@@ -18,7 +18,7 @@ threshold="${COVERAGE_THRESHOLD:-80}"
 
 ANDROID_DIFF_COVERAGE_ALLOWLIST_JSON="$(cat <<'JSON'
 {
-  "android/app/src/main/java/com/openburnbar/BurnBarApplication.kt": "Android Application lifecycle composition: Firebase, WorkManager, media wiring, and process startup require framework/instrumented coverage; extracted registries and route/controller logic remain JVM-covered.",
+  "android/app/src/main/java/com/openburnbar/BurnBarApplication.kt": "Android Application lifecycle composition: Firebase, WorkManager, media wiring, and process startup require framework/instrumented coverage; extracted registries and route/controller logic remain JVM-covered. Firebase App Check provider selection is additionally fail-closed through BuildConfig.DEBUG and verified by release compilation, artifact inspection, and Firebase contract tests.",
   "android/app/src/main/java/com/openburnbar/BurnBarApplicationMediaControlSections.kt": "Application-level media-control wiring crosses Android services and retained process state; unit-testable transport/coordinator logic remains covered separately.",
   "android/app/src/main/java/com/openburnbar/BurnBarApplicationStartupSections.kt": "Application startup orchestration depends on Android process lifecycle, Firebase initialization, and notification/service registration; owned helpers remain covered by focused JVM tests.",
   "android/app/src/main/java/com/openburnbar/MainActivityE2EComputerUseActions.kt": "Debug E2E activity hooks are Android intent/UI glue exercised by instrumented flows, not local JVM line attribution.",

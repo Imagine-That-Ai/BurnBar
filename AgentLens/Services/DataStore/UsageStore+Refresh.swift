@@ -21,6 +21,44 @@ extension UsageStore {
         }
     }
 
+    /// Per-credential all-time cost totals for billing drift detection.
+    ///
+    /// Replaces the previous approach of materializing EVERY `token_usage`
+    /// row into memory each refresh tick just to reduce per-credential cost
+    /// sums. One `GROUP BY` query returns ~#credentials rows instead.
+    ///
+    /// Key format matches the in-memory grouping in
+    /// `BillingRefreshCoordinator`: `"providerID:providerAccountID"` with
+    /// `"default"` when the account id is NULL. The `providerID` fallback for
+    /// NULL columns mirrors `decodeUsage` (`provider.providerID`), and rows
+    /// whose provider fails to decode are skipped, exactly like the decoded
+    /// row path was.
+    func driftCredentialCostTotals() async throws -> [String: Double] {
+        try await dbQueue.read { db -> [String: Double] in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT provider,
+                           providerID,
+                           providerAccountID,
+                           COALESCE(SUM(cost), 0) AS cost
+                    FROM token_usage
+                    GROUP BY provider, providerID, providerAccountID
+                    """
+            )
+            var totals: [String: Double] = [:]
+            for row in rows {
+                guard let providerRaw = row["provider"] as? String,
+                      let provider = AgentProvider(rawValue: providerRaw) else { continue }
+                let providerID = (row["providerID"] as? String).map(ProviderID.init(rawValue:))
+                    ?? provider.providerID
+                let accountID = row["providerAccountID"] as? String ?? "default"
+                totals["\(providerID.rawValue):\(accountID)", default: 0] += Self.doubleValue(row["cost"])
+            }
+            return totals
+        }
+    }
+
     /// Fetches only the scalar totals needed by dashboard comparison telemetry.
     /// The query stays on the database worker and does not decode or materialize
     /// any usage rows, which keeps large windows off the main actor.

@@ -22,7 +22,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: false,
                 snapshotAPIs: []
@@ -51,7 +50,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: false,
                 snapshotAPIs: []
@@ -77,7 +75,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: false,
                 snapshotAPIs: []
@@ -103,7 +100,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: false,
                 snapshotAPIs: []
@@ -133,7 +129,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: true,
                 snapshotAPIs: []
@@ -166,7 +161,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: false,
                 snapshotAPIs: []
@@ -308,7 +302,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
             parsers: [.factory: RecordingParser(recorder: recorder)],
             dataStore: store,
             orchestrator: orchestrator,
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: true,
                 snapshotAPIs: []
