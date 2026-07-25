@@ -593,6 +593,19 @@ func runningOpenBurnBarApp(appURL: URL) -> NSRunningApplication? {
     }
 }
 
+/// A fresh Application Support root for one CUClickSmoke launch.
+///
+/// `OpenBurnBarAppPaths.live()` honours `OPENBURNBAR_SUPPORT_ROOT`, so pointing
+/// it at a per-run directory keeps the smoke launch off the operator's real
+/// `~/Library/Application Support/OpenBurnBar` store — the only way a per-run
+/// SQLCipher key can be handed to a store that was encrypted with it.
+func isolatedUITestSupportRoot() throws -> URL {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent("cuclicksmoke-support-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    return root
+}
+
 @discardableResult
 func launchOpenBurnBar(appURL: URL) throws -> NSRunningApplication {
     guard FileManager.default.fileExists(atPath: appURL.path) else {
@@ -613,9 +626,20 @@ func launchOpenBurnBar(appURL: URL) throws -> NSRunningApplication {
     var childEnv = ProcessInfo.processInfo.environment
     childEnv["OPENBURNBAR_UITEST"] = "1"
     // Inject a random per-run SQLCipher key so the encrypted store opens without
-    // a Keychain prompt, without relying on any predictable constant. Preserve a
-    // caller-supplied key if one is already set.
+    // a Keychain prompt, without relying on any predictable constant.
+    //
+    // The key and the store it unlocks are chosen together, never separately: a
+    // per-run key against the operator's persistent
+    // `~/Library/Application Support/OpenBurnBar/openburnbar.sqlite` works
+    // exactly once. Run 1 encrypts that file with key A; run 2 hands SQLCipher
+    // key B for the same existing file, so the store is present but cannot be
+    // opened and the AX smoke lane fails on every launch after the first. So
+    // the random key always comes with a fresh per-run support root, the same
+    // isolation `UITestBase` and the macOS idle/occlusion gate give their
+    // launches. A caller that pins `OPENBURNBAR_UITEST_DB_KEY` owns the pairing
+    // and keeps whatever store root it configured.
     if (childEnv["OPENBURNBAR_UITEST_DB_KEY"] ?? "").isEmpty {
+        childEnv["OPENBURNBAR_SUPPORT_ROOT"] = try isolatedUITestSupportRoot().path
         childEnv["OPENBURNBAR_UITEST_DB_KEY"] = Data((0..<32).map { _ in UInt8.random(in: .min ... .max) })
             .base64EncodedString()
     }
