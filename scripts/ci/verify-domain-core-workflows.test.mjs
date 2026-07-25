@@ -57,7 +57,15 @@ test("native consumer jobs keep their measured execution margin and emulator she
   );
   assert.match(
     core,
-    /^            adb exec-out run-as com\.openburnbar\.domaincore\.test cat files\/domain-core-observed-identity\.json > "\$RUNNER_TEMP\/android-observed-identity\.json"$/mu,
+    /^            observed_identity="\$\(adb logcat -d -v raw -s OpenBurnBarDomainCore:I '\*:S' \| grep '\^observed-identity:' \| tail -n 1\)"$/mu,
+  );
+  assert.match(
+    core,
+    /^            printf '%s\\n' "\$\{observed_identity#observed-identity:\}" > "\$RUNNER_TEMP\/android-observed-identity\.json"$/mu,
+  );
+  assert.doesNotMatch(
+    core,
+    /run-as com\.openburnbar\.domaincore\.test/u,
   );
   const nativeBuild = core.indexOf("- name: Build host domain-core XCFramework");
   const nativeContracts = core.indexOf("- name: Run Swift domain-core consumer contracts");

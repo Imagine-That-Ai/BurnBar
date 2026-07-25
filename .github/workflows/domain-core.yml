@@ -876,7 +876,8 @@ jobs:
             -no-boot-anim
           script: |
             cd android && ./gradlew :openburnbar-domain-core:connectedDebugAndroidTest --no-daemon -Pandroid.testInstrumentationRunnerArguments.candidateCommit="$GITHUB_SHA"
-            adb exec-out run-as com.openburnbar.domaincore.test cat files/domain-core-observed-identity.json > "$RUNNER_TEMP/android-observed-identity.json"
+            observed_identity="$(adb logcat -d -v raw -s OpenBurnBarDomainCore:I '*:S' | grep '^observed-identity:' | tail -n 1)"
+            printf '%s\n' "${observed_identity#observed-identity:}" > "$RUNNER_TEMP/android-observed-identity.json"
 
       - name: Record successful Android native load
         run: |
