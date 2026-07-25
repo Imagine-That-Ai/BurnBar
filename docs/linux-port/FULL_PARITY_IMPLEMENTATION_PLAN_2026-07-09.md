@@ -99,6 +99,24 @@ known platform divergences.
 > certification remains **0/40 product requirements and 0/7 environments**
 > until a replacement candidate and live environment receipts pass.
 
+> **Closure-wave update (2026-07-24):** the branch now carries portable
+> all-environment P-31 accessibility production, portable DEB/RPM/Arch P-40
+> privacy execution, a bounded P-16 host/device/runner preflight, canonical
+> runner selectors, and a protected one-time P-25 authenticated-baseline lane.
+> The P-25 lane emits package-format-and-architecture-specific installed
+> manifests and Ed25519 signatures while forbidding `latest`, update-feed, and
+> parity publication. The reconciled Linux desktop passes **1,029/1,029**
+> tests, typecheck, lint, production build, and bundle verification; focused
+> parity and control-plane coverage passes **120/120** and **35/35**,
+> respectively, and `actionlint` is clean. The remaining critical path is
+> operational and ordered: merge to exact `main`; obtain the exact-main Domain
+> Core push receipt; pass the protected Functions dry run; deploy and read back
+> the six Linux App Check callables; publish the authenticated non-latest
+> `0.1.1` baseline; produce signed `0.1.2`; then execute all 40 rows in all
+> seven environments. The UTM guest remains stopped by operator choice, the
+> exact physical iPad is unavailable, and six environment runners are not
+> provisioned, so no certification counters move yet.
+
 > **Continuation update (2026-07-21, integration closeout):** `2df8b03a5a`
 > hardens the Linux Iroh directory client so bearer/App Check credentials are
 > sent only to an explicitly allowlisted HTTPS host, with rejection tests for

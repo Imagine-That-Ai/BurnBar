@@ -25,5 +25,9 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "8.60.1"
   },
-  "license": "AGPL-3.0-only"
+  "license": "AGPL-3.0-only",
+  "overrides": {
+    "brace-expansion": "^5.0.8",
+    "minimatch": "^10.0.3"
+  }
 }
