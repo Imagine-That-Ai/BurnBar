@@ -329,6 +329,48 @@ Missing local signing material, OIDC, package-store credentials, or Flathub/AUR
 publisher access is a named blocker. It is not a reason to publish weaker
 metadata.
 
+## One-time lifecycle baseline bootstrap
+
+P-25 cannot certify a candidate unless a lower, lifecycle-compatible Linux
+release already publishes both-architecture deb, rpm, and Arch packages plus
+their signed installed manifests and product closure. The historical
+`linux-v0.1.0` release predates that contract. Strict promotion also requires
+P-25, so using the normal promotion workflow to create the first compatible
+baseline would be circular.
+
+`.github/workflows/linux-release-baseline.yml` is the protected, one-time
+bootstrap lane for this exact condition. It accepts only a successful,
+first-attempt Linux Release Candidate run at the selected commit, requires an
+existing `linux-v<version>` tag at that same commit, re-verifies the candidate's
+signatures, provenance, source, package identities, and both architectures, and
+refuses to run if any compatible earlier baseline already exists.
+
+The resulting GitHub release is always a non-latest prerelease. It does not
+publish `latest-linux.json`, does not update `downloads.burnbar.ai`, has no
+promotion closure, and makes no parity claim. Its only purpose is to supply
+authenticated previous-version packages to the next candidate's update,
+rollback, restore, and data-preservation tests.
+
+Operator sequence:
+
+```bash
+# 1. Complete a successful first-attempt Linux Release Candidate run.
+# 2. Bind the candidate commit to its exact Linux tag.
+git tag linux-v<baseline-version> <candidate-commit>
+git push both linux-v<baseline-version>
+
+# 3. Dispatch "Linux Lifecycle Baseline Bootstrap" from that same commit/ref
+#    with candidate_run_id=<successful-candidate-run>.
+# 4. Confirm the next version resolves the new baseline.
+node scripts/linux-port/resolve-linux-previous-release.mjs \
+  --current-version <next-version> \
+  --previous-version <baseline-version> \
+  --repo Imagine-That-Ai/BurnBar
+```
+
+The normal promotion gate below remains unchanged and still requires all 280
+current-candidate receipts plus a green strict parity ledger.
+
 ## Promotion gate
 
 Strict verification:

@@ -80,6 +80,43 @@ known platform divergences.
 > parser gap; installed OpenClaude scans, account credentials, and signed
 > cross-environment receipts remain release gates.
 
+> **Release-candidate checkpoint (2026-07-24):** `222556ab34` preserves
+> telemetry focus during hydration; `fd0c3d3338` and `7173af3625` anchor
+> forward and reverse Orca traversal; and integration commit `f2c1299c00`
+> retains the trusted manifest and window-focus fix. Linux Release Candidate
+> run `30109002594` passed both architecture shards, including **12 aarch64**
+> and **14 x86_64 true-focus events**, but final assembly failed when generated
+> release outputs tripped the signed source-checkout cleanliness gate.
+> `4a057f7627` isolates those generated outputs without masking other drift,
+> with the focused local release/control-plane contract suites green at
+> **77/77**. Replacement run `30134090049` proved the x86_64 shard and all
+> aarch64 build, packaging, signing, install, lifecycle, and daemon gates, but
+> the final aarch64 accessibility session observed **9** package-owned Orca
+> focus events against the unchanged **10-event** minimum; assembly was
+> therefore skipped. The follow-up keeps the 10-event, 3-distinct-target, and
+> 3-named-target gates intact while adding at most three paced, physically
+> keyed recovery traversals from the real AT-SPI document anchor. Strict
+> certification remains **0/40 product requirements and 0/7 environments**
+> until a replacement candidate and live environment receipts pass.
+
+> **Closure-wave update (2026-07-24):** the branch now carries portable
+> all-environment P-31 accessibility production, portable DEB/RPM/Arch P-40
+> privacy execution, a bounded P-16 host/device/runner preflight, canonical
+> runner selectors, and a protected one-time P-25 authenticated-baseline lane.
+> The P-25 lane emits package-format-and-architecture-specific installed
+> manifests and Ed25519 signatures while forbidding `latest`, update-feed, and
+> parity publication. The reconciled Linux desktop passes **1,029/1,029**
+> tests, typecheck, lint, production build, and bundle verification; focused
+> parity and control-plane coverage passes **120/120** and **35/35**,
+> respectively, and `actionlint` is clean. The remaining critical path is
+> operational and ordered: merge to exact `main`; obtain the exact-main Domain
+> Core push receipt; pass the protected Functions dry run; deploy and read back
+> the six Linux App Check callables; publish the authenticated non-latest
+> `0.1.1` baseline; produce signed `0.1.2`; then execute all 40 rows in all
+> seven environments. The UTM guest remains stopped by operator choice, the
+> exact physical iPad is unavailable, and six environment runners are not
+> provisioned, so no certification counters move yet.
+
 > **Continuation update (2026-07-21, integration closeout):** `2df8b03a5a`
 > hardens the Linux Iroh directory client so bearer/App Check credentials are
 > sent only to an explicitly allowlisted HTTPS host, with rejection tests for

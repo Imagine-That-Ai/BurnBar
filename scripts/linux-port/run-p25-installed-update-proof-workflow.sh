@@ -68,8 +68,8 @@ test -n "$candidate_package" || {
   exit 1
 }
 
-manifest_name="openburnbar-${PREVIOUS_VERSION}-${architecture}.installed-manifest.json"
-manifest_signature_name="openburnbar-${PREVIOUS_VERSION}-${architecture}.installed-manifest.ed25519"
+manifest_name="openburnbar-${PREVIOUS_VERSION}-${package_channel}-${architecture}.installed-manifest.json"
+manifest_signature_name="openburnbar-${PREVIOUS_VERSION}-${package_channel}-${architecture}.installed-manifest.ed25519"
 if ! gh release download "$PREVIOUS_TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --pattern "$previous_pattern" \

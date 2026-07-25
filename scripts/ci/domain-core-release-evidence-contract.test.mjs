@@ -305,6 +305,42 @@ test("every direct release-evidence workflow supplies a canonical activation doc
   }
 });
 
+test("Linux release outputs cannot dirty the signed Domain Core source checkout", () => {
+  const workflow = readFileSync(
+    join(REPO_ROOT, ".github/workflows/linux-release.yml"),
+    "utf8",
+  );
+  const assembleStart = workflow.indexOf("\n  assemble-release:");
+  assert.ok(assembleStart >= 0, "assemble-release job is missing");
+  const assemble = workflow.slice(assembleStart);
+  const isolation = assemble.indexOf(
+    "Isolate generated release output from source cleanliness gates",
+  );
+  const dependencyInstall = assemble.indexOf(
+    "Install Linux evidence contract dependencies",
+  );
+  assert.ok(isolation >= 0, "generated-output isolation step is missing");
+  assert.ok(
+    isolation < dependencyInstall,
+    "generated outputs must be excluded before release tooling runs",
+  );
+  for (const path of [
+    "/.linux-evidence/",
+    "/.linux-release/",
+    "/.linux-shards/",
+  ]) {
+    assert.match(assemble, new RegExp(`'${path.replaceAll("/", "\\/")}'`, "u"));
+  }
+  assert.match(
+    assemble,
+    /test -z "\$\(git status --porcelain=v1 --untracked-files=all\)"/u,
+  );
+  assert.doesNotMatch(
+    workflow.slice(0, assembleStart),
+    /Isolate generated release output from source cleanliness gates/u,
+  );
+});
+
 test("release substrate contains no telemetry promotion authority", () => {
   const paths = [
     "config/domain-core-release-predicate.schema.json",

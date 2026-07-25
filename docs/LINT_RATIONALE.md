@@ -95,6 +95,13 @@ budgets/macos-idle-cpu.perf.json
 budgets/migrator-parity-baseline.json
 budgets/force-unwrap-baseline.json
 
+# --- Filename false positive: not a lint baseline ---
+# GitHub Actions workflow for the protected one-time P-25 Linux release-baseline
+# bootstrap (signs the 0.1.1 update baseline). "baseline" names the signed release
+# artifact it produces, not a checked-in lint/type baseline; the file contains no
+# suppression configuration.
+.github/workflows/linux-release-baseline.yml
+
 # --- File-level TypeScript suppressions (token-scoped) ---
 functions/src/types/legacy.ts | eslint-disable
 website/src/scripts/dotConstellation.ts | ts-suppress
