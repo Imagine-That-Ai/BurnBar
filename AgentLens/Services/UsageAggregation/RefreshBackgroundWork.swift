@@ -92,12 +92,20 @@ enum RefreshBackgroundWork {
             settings: settings
         )
 
-        // discover → usage-only parse → persist
+        // discover → usage-only parse → publish usage → index conversations
         //
         // Conversation bodies are intentionally excluded here. The caller
         // schedules the optional indexing pass after this result is applied so
         // today's token usage is visible without waiting for historical text
         // reconstruction.
+        //
+        // `includeConversationBodies: false` is a performance choice and must
+        // not be load-bearing for correctness: the ordering guarantee lives in
+        // `publishUsageThenIndexConversations`, which commits the parsed usage
+        // rows (and the invalidations that retire superseded ones) before any
+        // conversation indexing touches the store. Before this, the stages ran
+        // reconcile-then-persist, and the only thing keeping the indexer out of
+        // the pre-publication window was the `false` literal below.
         //
         // The governor bounds the pass: at most
         // `ParserResourcePolicy.refreshFileByteBudget` bytes of new log
@@ -114,8 +122,9 @@ enum RefreshBackgroundWork {
         )
         result.parseConsumedByteCount = governor.consumedBytes
         result.parseDeferredFileCount = governor.deferredFileCount
-        let reconciled = await pipeline.reconcile(parsed: parsed)
-        let persisted = await pipeline.persist(parsed: parsed)
+        let published = await pipeline.publishUsageThenIndexConversations(parsed: parsed)
+        let persisted = published.persist
+        let reconciled = published.reconcile
 
         result.parserHealth = parsed.parserHealth
         result.errors = parsed.errors
@@ -254,6 +263,14 @@ enum RefreshBackgroundWork {
                 )
                 let providerHadDeferrals = governor.deferredFileCount > deferredFilesBeforeProvider
                 result.parsedConversationCount += parseResult.conversations.count
+
+                // `parseResult.usages` and `parseResult.usageSessionIDsToDelete`
+                // are deliberately dropped. This pass is scoped by a checkpoint
+                // watermark and a byte budget, so its usage view is partial by
+                // construction — persisting it would let a background indexing
+                // tick overwrite the totals the foreground refresh published.
+                // Usage rows have exactly one writer: the refresh pipeline.
+                // Pinned by `test_conversationIndexingDoesNotPersistUsageRows`.
 
                 guard indexingEnabled else { continue }
 
