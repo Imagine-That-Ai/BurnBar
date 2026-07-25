@@ -177,6 +177,7 @@ export function KernelSwitcher({ kernelId, onKernelChange, className }: Props) {
                 type="button"
                 role="option"
                 aria-selected={selected}
+                data-kernel-id={kernel.id}
                 aria-label={
                   selected && fallbackLabel
                     ? `${kernel.label}, ${fallbackLabel}`

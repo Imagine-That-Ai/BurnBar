@@ -219,6 +219,12 @@ export async function runP11UsageIngestionSession(options, dependencies = {}) {
     const rawRequest = isRaw ? rawMalformedRequest(options, rejectedKey, event, kind) : null;
     const evidenceRawRequest = isRaw ? rawMalformedRequest({ ...options, authToken: undefined }, rejectedKey, event, kind) : null;
     const response = isRaw ? await rawRpc(rawRequest) : await rpc('daemon.usage.record', malformedParams);
+    // Stamp the rejection when it happens, not after the recovery call below.
+    // The validator requires `recovery.at >= row.at` (the recovery genuinely
+    // follows the rejection); stamping `row.at` last inverted that whenever the
+    // millisecond ticked over between the two `new Date()` calls, failing the
+    // proof with `P-11 <case> rejected key recovery failed`.
+    const rejectedAt = new Date().toISOString();
     const ledgerAfterRejection = ledger();
     assert(response?.error?.code === -32602 && response.result === undefined, `P-11 ${kind} was not rejected with invalid params`);
     assert(ledgerBefore.equals(ledgerAfterRejection), `P-11 ${kind} rejection mutated the ledger`);
@@ -227,7 +233,7 @@ export async function runP11UsageIngestionSession(options, dependencies = {}) {
     assertRecordResponse(recoveryResponse, rejectedKey, true, `P-11 ${kind} rejected-key recovery`);
     const recovery = { at: new Date().toISOString(), request: sanitizeRequest('daemon.usage.record', recoveryParams), response: recoveryResponse };
     malformedRows.push({
-      at: new Date().toISOString(), case: kind,
+      at: rejectedAt, case: kind,
       request: isRaw ? { encoding: 'utf8', rawBase64: Buffer.from(evidenceRawRequest, 'utf8').toString('base64') } : sanitizeRequest('daemon.usage.record', malformedParams),
       response, recovery,
       ledger: {

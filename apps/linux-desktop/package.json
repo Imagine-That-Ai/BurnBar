@@ -9,6 +9,7 @@
     "build": "vite build && node ../../scripts/linux-port/verify-linux-production-bundle.mjs",
     "preview": "vite preview",
     "test": "vitest run",
+    "contrast:audit": "node ../../scripts/linux-port/verify-backdrop-contrast.mjs",
     "tauri:dev": "tauri dev",
     "pretauri:build": "node ../../scripts/linux-port/prepare-linux-package-payload.mjs",
     "tauri:build": "node ../../scripts/linux-port/tauri-build-linux.mjs",

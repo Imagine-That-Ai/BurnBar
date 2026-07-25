@@ -179,6 +179,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Adaptive foregrounds for animated desktop backdrops** - macOS and Linux now
+  sample the effective rendered kernel at a bounded cadence and automatically select
+  a WCAG AA light or dark semantic foreground family. Crossfades, both skins, canvas
+  and CSS/native fallbacks, increased contrast, forced colors, and reduced motion use
+  deterministic scrim and hysteresis behavior without full-frame readback.
 - **Candidate-bound Shared Rust Functions releases** - production Functions
   releases now verify the exact deterministic source run, protected signer run
   and attempt, rollback bytes, selected compiled receipt, live source/version,

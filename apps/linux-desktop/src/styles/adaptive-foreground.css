@@ -1,0 +1,118 @@
+:root {
+  --adaptive-text-primary: rgb(255 255 255);
+  --adaptive-text-secondary: rgb(235 239 246);
+  --adaptive-text-muted: rgb(218 224 234);
+  --adaptive-accent: rgb(255 226 166);
+  --adaptive-icon: rgb(242 246 252);
+  --adaptive-focus: rgb(255 255 255);
+  --adaptive-shadow: rgb(0 0 0);
+  --adaptive-scrim: rgb(5 7 11);
+  --adaptive-scrim-opacity: 0.24;
+}
+
+:root[data-backdrop-foreground] :is(.top-chrome, .shell-nav) {
+  --color-brass-core: var(--adaptive-accent);
+}
+
+:root[data-backdrop-foreground='dark'] {
+  --color-ink-elevated: rgb(248 250 252);
+  --color-glass-bg: color-mix(in srgb, rgb(248 250 252) 52%, transparent);
+  --color-glass-bg-elevated: color-mix(in srgb, rgb(255 255 255) 68%, transparent);
+  --color-glass-line: color-mix(in srgb, rgb(13 17 23) 26%, transparent);
+  --color-glass-line-bright: color-mix(in srgb, rgb(13 17 23) 34%, transparent);
+  --color-frost-veil: color-mix(in srgb, rgb(13 17 23) 7%, transparent);
+  --color-frost-line: color-mix(in srgb, rgb(13 17 23) 13%, transparent);
+  --glass-tint-base: color-mix(in srgb, rgb(248 250 252) 56%, transparent);
+  --glass-tint-elevated: color-mix(in srgb, rgb(255 255 255) 70%, transparent);
+  --glass-tint-sunken: color-mix(in srgb, rgb(235 239 246) 52%, transparent);
+  --glass-tint-clear: color-mix(in srgb, rgb(255 255 255) 38%, transparent);
+  --glass-tint-interactive: color-mix(in srgb, rgb(255 255 255) 52%, transparent);
+  --glass-stroke: color-mix(in srgb, rgb(13 17 23) 24%, transparent);
+  --glass-stroke-bright: color-mix(in srgb, rgb(13 17 23) 34%, transparent);
+  --glass-stroke-frost: color-mix(in srgb, rgb(13 17 23) 18%, transparent);
+  --glass-input: color-mix(in srgb, rgb(255 255 255) 76%, transparent);
+}
+
+:root[data-backdrop-foreground] {
+  --color-text-bright: var(--adaptive-text-primary);
+  --color-text-base: var(--adaptive-text-secondary);
+  --color-text-mute: var(--adaptive-text-muted);
+  --color-text-dim: var(--adaptive-text-muted);
+  --color-text-secondary: var(--adaptive-text-secondary);
+  --color-icon: var(--adaptive-icon);
+  --focus-ring:
+    0 0 0 2px var(--color-ink-void),
+    0 0 0 4px color-mix(in srgb, var(--adaptive-focus) 78%, transparent);
+}
+
+/* Dense surfaces carry their own dark material and do not expose enough of the
+ * canvas for backdrop-selected dark ink to remain valid. */
+:root[data-backdrop-foreground] :is(
+    [role='dialog'],
+    [role='menu'],
+    .capability-boundary,
+    .command-palette,
+    .deck-hero-popover,
+    .deck-overflow-panel,
+    .kernel-switcher-panel
+  ) {
+  --color-text-bright: var(--surface-text-bright);
+  --color-text-base: var(--surface-text-base);
+  --color-text-mute: var(--surface-text-mute);
+  --color-text-dim: var(--surface-text-dim);
+  --color-text-secondary: var(--surface-text-mute);
+  --color-icon: var(--surface-text-base);
+  --color-ink-elevated: var(--surface-ink-elevated);
+  --color-glass-bg: var(--surface-glass-bg);
+  --color-glass-bg-elevated: var(--surface-glass-bg-elevated);
+  --glass-input: var(--surface-glass-input);
+  text-shadow: none;
+}
+
+.adaptive-backdrop-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--adaptive-scrim);
+  opacity: var(--adaptive-scrim-opacity);
+  transition:
+    background-color 220ms var(--motion-ease-standard),
+    opacity 220ms var(--motion-ease-standard);
+}
+
+:root[data-backdrop-foreground='light'] :is(.top-chrome, .shell-nav) {
+  text-shadow: 0 1px 1px color-mix(in srgb, var(--adaptive-shadow) 28%, transparent);
+}
+
+:root[data-backdrop-foreground='dark'] :is(.top-chrome, .shell-nav) {
+  text-shadow: 0 1px 1px color-mix(in srgb, var(--adaptive-shadow) 18%, transparent);
+}
+
+@media (prefers-contrast: more) {
+  .adaptive-backdrop-scrim {
+    opacity: max(var(--adaptive-scrim-opacity), 0.38);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .adaptive-backdrop-scrim {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  :root[data-backdrop-foreground] {
+    --color-text-bright: CanvasText;
+    --color-text-base: CanvasText;
+    --color-text-mute: CanvasText;
+    --color-text-dim: CanvasText;
+    --color-text-secondary: CanvasText;
+    --adaptive-accent: LinkText;
+    --adaptive-icon: ButtonText;
+  }
+
+  .adaptive-backdrop-scrim {
+    display: none;
+  }
+}
