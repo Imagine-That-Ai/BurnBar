@@ -57,37 +57,6 @@ struct YouBustShape: Shape {
     }
 }
 
-/// Halo arc above the head. `spread` 0…1 grows the arc outward from a tight
-/// crown to a generous aurora.
-struct YouHaloShape: Shape {
-    var spread: CGFloat
-
-    var animatableData: CGFloat {
-        get { spread }
-        set { spread = newValue }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        let w = rect.width
-        let h = rect.height
-        let cx = w / 2
-        let headCY = h * 0.36
-        let baseR = w * 0.30
-        let r = baseR * (0.78 + spread * 0.40)
-
-        var path = Path()
-        // ~140° crown arc, opening downward toward the head
-        path.addArc(
-            center: CGPoint(x: cx, y: headCY),
-            radius: r,
-            startAngle: .degrees(200),
-            endAngle: .degrees(340),
-            clockwise: false
-        )
-        return path
-    }
-}
-
 /// Combined silhouette for halo/glow. Just the bust (the halo is so thin
 /// it doesn't need to contribute to the soft halo blur).
 struct YouGlyphShape: Shape {

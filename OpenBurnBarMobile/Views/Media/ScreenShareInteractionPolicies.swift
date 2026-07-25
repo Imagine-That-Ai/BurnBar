@@ -25,46 +25,6 @@ enum ScreenShareInteractionModePolicy {
     }
 }
 
-/// Orientation of the floating mirror-control tray: a vertical (upward) stack
-/// or a horizontal (sideways) row.
-enum ScreenShareControlTrayOrientation: String, CaseIterable, Sendable {
-    case vertical
-    case horizontal
-}
-
-enum ScreenShareControlTrayPolicy {
-    /// Flips the tray between its vertical and horizontal layouts.
-    static func toggled(_ orientation: ScreenShareControlTrayOrientation) -> ScreenShareControlTrayOrientation {
-        orientation == .vertical ? .horizontal : .vertical
-    }
-
-    /// Resolves a tray orientation from a chevron drag once it clears the activation
-    /// threshold. A dominant horizontal drag opens the horizontal menu; an upward drag
-    /// opens the vertical menu. Small or downward drags resolve to `nil` (no change).
-    static func orientation(
-        forDragWidth dx: CGFloat,
-        height dy: CGFloat,
-        threshold: CGFloat
-    ) -> ScreenShareControlTrayOrientation? {
-        if abs(dx) > abs(dy), abs(dx) > threshold {
-            return .horizontal
-        }
-        if dy < -threshold {
-            return .vertical
-        }
-        return nil
-    }
-}
-
-enum ScreenShareTrackpadViewportPolicy {
-    /// In trackpad mode the user is actively nudging the pointer, so auto-follow
-    /// re-framing would pan the mirror on every pointer delta. The viewport stays put
-    /// while the trackpad drives the cursor; other modes keep smart auto-follow.
-    static func allowsAutoFollowOnFocusChange(interactionMode: ScreenShareInteractionMode) -> Bool {
-        interactionMode != .trackpad
-    }
-}
-
 enum ScreenShareSmartTextActivationPolicy {
     /// Decides whether to surface the "double-tap to type" coaching hint. The hint
     /// teaches the fast path at the exact moment it pays off: a text field is focused

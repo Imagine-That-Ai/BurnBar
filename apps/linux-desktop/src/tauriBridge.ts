@@ -2,6 +2,13 @@ import { Channel, invoke } from '@tauri-apps/api/core';
 import type { DaemonHealth } from './daemonClient.js';
 import { decodeRuntimeCapabilityManifest } from './runtimeCapabilities.js';
 import { decodeLinuxOnboardingSnapshot } from './onboardingStore.js';
+
+export {
+  normalizeProxyRouteFinalStatus,
+  PROXY_ROUTE_FINAL_STATUS_COPY
+} from './proxyRouteContracts.js';
+export type { ProxyRouteFinalStatus } from './proxyRouteContracts.js';
+export { mapProxyRouteLog } from './tauriBridgePlatformDecoders.js';
 import type {
   ComputerUseSessionAuthorityStatus,
   LinuxShellBridge

@@ -111,7 +111,8 @@ function Invoke-LoggedProcess(
     [string] $Name,
     [string] $File,
     [string[]] $Arguments,
-    [ValidateRange(1, 7200)] [int] $TimeoutSeconds = 1800
+    [ValidateRange(1, 7200)] [int] $TimeoutSeconds = 1800,
+    [hashtable] $Environment = @{}
 ) {
     $logPath = Join-Path $OutputDir ("logs\" + $Name + '.log')
     $start = [DateTimeOffset]::UtcNow
@@ -137,6 +138,9 @@ function Invoke-LoggedProcess(
         $startInfo.CreateNoWindow = $true
         $startInfo.RedirectStandardOutput = $true
         $startInfo.RedirectStandardError = $true
+        foreach ($entry in $Environment.GetEnumerator()) {
+            $startInfo.EnvironmentVariables[[string]$entry.Key] = [string]$entry.Value
+        }
         # Windows PowerShell 5.1 (.NET Framework) has no ProcessStartInfo.ArgumentList;
         # probe via PSObject so strict-mode sessions cannot throw before the fallback.
         if ($null -ne $startInfo.PSObject.Properties['ArgumentList']) {
@@ -454,14 +458,21 @@ if ($SkipAutomatedTests) {
     $receiptEntries.Add((New-Receipt 'local-automated-checks' 'Windows solution and focused test suites' 'BLOCKED' 'The Windows solution and focused test suites exit 0.' 'Automated tests were explicitly skipped.' $null @() @('Run dotnet restore/build/test on the exact candidate.') ([ordered]@{ id = 'LOCAL-AUTOMATION-SKIPPED'; owner = 'operator'; missing = 'automated test execution'; recovery = 'Run the script without -SkipAutomatedTests.' }) @($skipBlocker) $device $artifact))
 } else {
     $steps.Add((Invoke-LoggedProcess 'dotnet-restore' 'dotnet' @('restore', 'windows\OpenBurnBar.sln', "-p:Platform=$Platform")))
+    # Bind the native domain core to the certified candidate: embed the
+    # snapshotted commit, resolve dependencies only from the tracked lockfile,
+    # and build the MSVC triple for the certified -Platform instead of the
+    # host default, then stage the DLL where the test csprojs copy it from.
+    $rustTargetTriple = if ($Platform -eq 'ARM64') { 'aarch64-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
+    $steps.Add((Invoke-LoggedProcess 'domain-core-native-build' 'cargo' @('build', '--locked', '--manifest-path', 'crates\openburnbar-domain-core\Cargo.toml', '-p', 'openburnbar-domain-ffi', '--target', $rustTargetTriple) -Environment @{ OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT = $script:SourceIdentity.commitSha }))
+    $steps.Add((Invoke-LoggedProcess 'domain-core-native-stage' (Get-Process -Id $PID).Path @('-NoProfile', '-NonInteractive', '-Command', "`$ErrorActionPreference = 'Stop'; New-Item -ItemType Directory -Force -Path 'crates\openburnbar-domain-core\target\debug' | Out-Null; Copy-Item -LiteralPath 'crates\openburnbar-domain-core\target\$rustTargetTriple\debug\openburnbar_domain_ffi.dll' -Destination 'crates\openburnbar-domain-core\target\debug\openburnbar_domain_ffi.dll' -Force")))
     $steps.Add((Invoke-LoggedProcess 'dotnet-build' 'dotnet' @('build', 'windows\OpenBurnBar.sln', '-c', 'Release', '--no-restore', '-m:1', "-p:Platform=$Platform")))
-    $steps.Add((Invoke-LoggedProcess 'dotnet-test' 'dotnet' @('test', 'windows\OpenBurnBar.sln', '-c', 'Release', '--no-build', '--nologo', '-m:1', "-p:Platform=$Platform", '--logger', 'trx;LogFileName=physical-certification.trx')))
+    $steps.Add((Invoke-LoggedProcess 'dotnet-test' 'dotnet' @('test', 'windows\OpenBurnBar.sln', '-c', 'Release', '--no-build', '--nologo', '-m:1', "-p:Platform=$Platform", '--logger', 'trx;LogFileName=physical-certification.trx') -Environment @{ OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE = '1' }))
     $failed = @($steps | Where-Object { $_.exitCode -ne 0 })
     $localLogRefs = @($steps | ForEach-Object { [ordered]@{ path = $_.log; sha256 = $_.logSha256 } })
     if ($failed.Count -eq 0) {
-        $receiptEntries.Add((New-Receipt 'local-automated-checks' 'Windows solution build and test' 'PASS' 'Restore, Release build, and full solution test exit 0.' 'All automated Windows solution steps exited 0.' 0 @($steps.command) @('Automated proof is supporting evidence only; it is not physical certification.') $null $localLogRefs $device $artifact))
+        $receiptEntries.Add((New-Receipt 'local-automated-checks' 'Windows solution and native domain-core build and test' 'PASS' 'Restore, native domain-core build, Release build, and full solution test exit 0 with the native core required.' 'All automated Windows solution steps exited 0 with OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE=1.' 0 @($steps.command) @('Automated proof is supporting evidence only; it is not physical certification.') $null $localLogRefs $device $artifact))
     } else {
-        $receiptEntries.Add((New-Receipt 'local-automated-checks' 'Windows solution build and test' 'FAIL' 'Restore, Release build, and full solution test exit 0.' ("Failed steps: " + (($failed | ForEach-Object { $_.name }) -join ', ')) 1 @($steps.command) @() $null $localLogRefs $device $artifact))
+        $receiptEntries.Add((New-Receipt 'local-automated-checks' 'Windows solution and native domain-core build and test' 'FAIL' 'Restore, native domain-core build, Release build, and full solution test exit 0 with the native core required.' ("Failed steps: " + (($failed | ForEach-Object { $_.name }) -join ', ')) 1 @($steps.command) @() $null $localLogRefs $device $artifact))
     }
 }
 
