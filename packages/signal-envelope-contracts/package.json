@@ -16,9 +16,9 @@
     "@eslint/js": "9.39.4",
     "@types/node": "^24.6.0",
     "eslint": "9.39.4",
-    "globals": "17.6.0",
+    "globals": "17.7.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "8.60.1"
+    "typescript-eslint": "8.65.0"
   },
   "overrides": {
     "brace-expansion": "^5.0.8",
