@@ -187,10 +187,13 @@ jobs:
           scripts/linux-port/verify-linux-release.test.mjs
           scripts/linux-port/resolve-linux-release-version.test.mjs
           scripts/linux-port/resolve-linux-previous-release.test.mjs
+          scripts/linux-port/materialize-linux-lifecycle-release-assets.test.mjs
+          scripts/linux-port/verify-linux-baseline-workflow.test.mjs
 
       - name: Verify Linux workflow wiring
         run: |
           node scripts/linux-port/verify-linux-workflow-wiring.mjs
+          node scripts/linux-port/verify-linux-baseline-workflow.mjs
           node --test \
             scripts/linux-port/verify-linux-workflow-wiring.test.mjs \
             scripts/linux-port/resolve-product-evidence-run.test.mjs \

@@ -1,0 +1,229 @@
+name: Linux Lifecycle Baseline Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful first-attempt Linux Release Candidate run at this exact commit
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: linux-lifecycle-baseline-${{ github.sha }}-${{ inputs.candidate_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  publish-baseline:
+    name: Publish one non-promotable Linux lifecycle baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: release
+    env:
+      OPENBURNBAR_LINUX_RELEASE_OUT: ${{ github.workspace }}/.baseline-candidate/.linux-release
+      OPENBURNBAR_LINUX_SHARDS_DIR: ${{ github.workspace }}/.baseline-candidate/.linux-shards
+      OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ github.workspace }}/.baseline-evidence
+    steps:
+      - name: Check out the exact baseline source
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Resolve the immutable successful candidate artifact
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          TARGET_HEAD: ${{ github.sha }}
+        run: >-
+          node scripts/linux-port/resolve-product-evidence-run.mjs
+          --run-id "$CANDIDATE_RUN_ID"
+          --target-head "$TARGET_HEAD"
+
+      - name: Refuse a second lifecycle bootstrap
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./apps/linux-desktop/package.json").version')"
+          result="$RUNNER_TEMP/linux-previous-baseline.json"
+          node scripts/linux-port/resolve-linux-previous-release.mjs \
+            --current-version "$version" \
+            --repo "$GITHUB_REPOSITORY" > "$result"
+          jq -e '.passed == false and .version == "" and .tag == ""' "$result" >/dev/null
+
+      - name: Require an exact pre-existing Linux tag
+        id: identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./apps/linux-desktop/package.json").version')"
+          tauri_version="$(node -p 'require("./apps/linux-desktop/src-tauri/tauri.conf.json").version')"
+          test "$version" = "$tauri_version"
+          tag="linux-v${version}"
+          git fetch --force origin "+refs/tags/${tag}:refs/tags/${tag}"
+          tag_commit="$(git rev-list -n 1 "refs/tags/${tag}^{commit}")"
+          test "$tag_commit" = "$GITHUB_SHA"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Linux lifecycle baseline release already exists: $tag"
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Reclaim hosted-runner disk
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo apt-get clean
+          docker system prune --all --volumes --force
+          available_kb="$(df --output=avail / | tail -n 1 | tr -d ' ')"
+          test "$available_kb" -ge 20000000
+
+      - name: Download the exact candidate
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          artifact-ids: ${{ steps.candidate.outputs.artifact_id }}
+          repository: Imagine-That-Ai/BurnBar
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ github.workspace }}/.baseline-candidate
+
+      - name: Verify candidate signatures, provenance, and package identity
+        env:
+          OPENBURNBAR_GIT_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(node -p 'require(process.argv[1]).version' "$OPENBURNBAR_LINUX_RELEASE_OUT/package-closure.json")" \
+            = "${{ steps.identity.outputs.version }}"
+          node scripts/linux-port/verify-linux-release.mjs \
+            --candidate \
+            --phase final \
+            --version "${{ steps.identity.outputs.version }}"
+
+      - name: Materialize format-specific lifecycle release assets
+        run: |
+          node scripts/linux-port/materialize-linux-lifecycle-release-assets.mjs \
+            --candidate-root "${{ github.workspace }}/.baseline-candidate" \
+            --output-root "$OPENBURNBAR_LINUX_RELEASE_OUT"
+
+      - name: Stage the exact non-promotable lifecycle assets
+        id: assets
+        run: |
+          set -euo pipefail
+          art="$OPENBURNBAR_LINUX_RELEASE_OUT"
+          version="${{ steps.identity.outputs.version }}"
+          cp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/"
+          for architecture in aarch64 x86_64; do
+            native_arch="$(test "$architecture" = aarch64 && echo arm64 || echo amd64)"
+            test -f "$art/artifacts/OpenBurnBar_${version}_${native_arch}.deb"
+            mapfile -t rpm_packages < <(find "$art/artifacts" -maxdepth 1 -type f \
+              -name "*${version}*${architecture}*.rpm" -print)
+            test "${#rpm_packages[@]}" -eq 1
+            mapfile -t arch_packages < <(find "$art/artifacts" -maxdepth 1 -type f \
+              -name "openburnbar-${version}-*-${architecture}.pkg.tar.zst" -print)
+            test "${#arch_packages[@]}" -eq 1
+            test -f "${arch_packages[0]}.ed25519.sig"
+            for format in arch deb rpm; do
+              test -f "$art/openburnbar-${version}-${format}-${architecture}.installed-manifest.json"
+              test -f "$art/openburnbar-${version}-${format}-${architecture}.installed-manifest.ed25519"
+            done
+          done
+          test -f "$art/product-proof-closure.json"
+          test -f "$art/product-proof-closure.json.ed25519.sig"
+          mapfile -t assets < <(find "$art/artifacts" "$art/sidecars" "$art" -maxdepth 3 -type f \
+            \( -name '*.AppImage' -o -name '*.pkg.tar.zst' -o -name '*.deb' -o -name '*.rpm' \
+               -o -name 'openburnbar-daemon-*' -o -name '*.ed25519.sig' \
+               -o -name '*.sigstore.json' -o -name '*.sigstore.jsonl' \
+               -o -name '*.spdx.json' -o -name '*.openvex.json' \
+               -o -name '*checksums*.txt' -o -name '*source-*.tar' \
+               -o -name '*provenance-predicate.json' -o -name 'PKGBUILD' \
+               -o -name 'arch-release-metadata.json' \
+               -o -name 'openburnbar-*.installed-manifest.json' \
+               -o -name 'openburnbar-*.installed-manifest.ed25519' \
+               -o -name 'product-proof-closure.json' \
+               -o -name 'product-proof-closure.json.ed25519.sig' \
+               -o -name 'package-closure.json' \
+               -o -name 'linux-lifecycle-release-assets.json' \
+               -o -name 'openburnbar-linux-ed25519.pub.pem' \) | sort -u)
+          test "${#assets[@]}" -gt 20
+          printf '%s\0' "${assets[@]}" > "$RUNNER_TEMP/linux-baseline-assets.nul"
+          printf 'count=%s\n' "${#assets[@]}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish non-latest prerelease baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ steps.candidate.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.candidate.outputs.artifact_digest }}
+        run: |
+          set -euo pipefail
+          mapfile -d '' -t assets < "$RUNNER_TEMP/linux-baseline-assets.nul"
+          test "${#assets[@]}" = "${{ steps.assets.outputs.count }}"
+          tag="${{ steps.identity.outputs.tag }}"
+          version="${{ steps.identity.outputs.version }}"
+          notes="$RUNNER_TEMP/linux-baseline-notes.md"
+          cat > "$notes" <<EOF
+          OpenBurnBar Linux ${version} lifecycle baseline.
+
+          This protected prerelease exists only to provide authenticated previous-version packages for P-25 update, rollback, restore, and data-preservation certification. It does not claim macOS parity, does not publish the Linux update feed, is not GitHub latest, and has no promotion closure.
+
+          Candidate run: ${CANDIDATE_RUN_ID}
+          Candidate artifact digest: ${CANDIDATE_ARTIFACT_DIGEST}
+          Source commit: ${GITHUB_SHA}
+          EOF
+          gh release create "$tag" "${assets[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --prerelease \
+            --verify-tag \
+            --target "$GITHUB_SHA" \
+            --latest=false \
+            --title "OpenBurnBar Linux ${version} lifecycle baseline" \
+            --notes-file "$notes"
+
+      - name: Verify public baseline is lifecycle-compatible
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          next_version="$(node -e '
+            const parts = process.argv[1].split(".").map(Number);
+            parts[2] += 1;
+            process.stdout.write(parts.join("."));
+          ' "${{ steps.identity.outputs.version }}")"
+          node scripts/linux-port/resolve-linux-previous-release.mjs \
+            --current-version "$next_version" \
+            --previous-version "${{ steps.identity.outputs.version }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            | tee "$RUNNER_TEMP/linux-baseline-readback.json"
+          jq -e \
+            --arg version "${{ steps.identity.outputs.version }}" \
+            --arg tag "${{ steps.identity.outputs.tag }}" \
+            '.passed == true and .version == $version and .tag == $tag' \
+            "$RUNNER_TEMP/linux-baseline-readback.json" >/dev/null
+
+      - name: Upload bootstrap receipt
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: linux-lifecycle-baseline-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/linux-previous-baseline.json
+            ${{ runner.temp }}/linux-baseline-readback.json
+          if-no-files-found: error
+          retention-days: 90

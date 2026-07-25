@@ -62,13 +62,35 @@ test('complete release asset matrix is accepted for both architectures', () => {
       expected.deb,
       `openburnbar-1.2.3-1-${architecture}.pkg.tar.zst`,
       `openburnbar-1.2.3-1-${architecture}.pkg.tar.zst.ed25519.sig`,
-      expected.installedManifest,
-      expected.installedManifestSignature,
+      ...Object.values(expected.installedAttestations).flatMap((attestation) => [
+        attestation.manifest,
+        attestation.signature
+      ]),
       expected.productProof,
       expected.productProofSignature
     );
   }
   assert.equal(inspectReleaseAssets({ version: '1.2.3', assets }).passed, true);
+});
+
+test('format-specific installed attestations cannot substitute for one another', () => {
+  const assets = [];
+  for (const architecture of ['aarch64', 'x86_64']) {
+    const expected = expectedAssets('1.2.3', architecture);
+    assets.push(
+      expected.deb,
+      `openburnbar-1.2.3-1-${architecture}.pkg.tar.zst`,
+      `openburnbar-1.2.3-1-${architecture}.pkg.tar.zst.ed25519.sig`,
+      expected.installedAttestations.arch.manifest,
+      expected.installedAttestations.arch.signature,
+      expected.productProof,
+      expected.productProofSignature
+    );
+  }
+  const result = inspectReleaseAssets({ version: '1.2.3', assets });
+  assert.equal(result.passed, false);
+  assert.ok(result.failures.some((failure) => /deb-aarch64.*installed-manifest/u.test(failure)));
+  assert.ok(result.failures.some((failure) => /rpm-x86_64.*installed-manifest/u.test(failure)));
 });
 
 test('Debian payload inspection requires exact identity and the daemon launcher', () => {

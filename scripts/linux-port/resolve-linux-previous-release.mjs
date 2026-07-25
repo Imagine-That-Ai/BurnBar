@@ -34,12 +34,20 @@ export function compareSemver(left, right) {
 export function expectedAssets(version, architecture) {
   const deb = DEB_ASSET[architecture]?.replace('{version}', version);
   const arch = `openburnbar-${version}-`;
+  const installedAttestations = Object.fromEntries(
+    ['arch', 'deb', 'rpm'].map((format) => [
+      format,
+      {
+        manifest: `openburnbar-${version}-${format}-${architecture}.installed-manifest.json`,
+        signature: `openburnbar-${version}-${format}-${architecture}.installed-manifest.ed25519`
+      }
+    ])
+  );
   return {
     deb,
     archPackage: new RegExp(`^${escapeRegExp(arch)}[0-9]+-${escapeRegExp(architecture)}\\.pkg\\.tar\\.zst$`, 'u'),
     archSignature: new RegExp(`^${escapeRegExp(arch)}[0-9]+-${escapeRegExp(architecture)}\\.pkg\\.tar\\.zst\\.ed25519\\.sig$`, 'u'),
-    installedManifest: `openburnbar-${version}-${architecture}.installed-manifest.json`,
-    installedManifestSignature: `openburnbar-${version}-${architecture}.installed-manifest.ed25519`,
+    installedAttestations,
     productProof: 'product-proof-closure.json',
     productProofSignature: 'product-proof-closure.json.ed25519.sig'
   };
@@ -56,13 +64,23 @@ export function inspectReleaseAssets({ version, assets, architectures = ARCHITEC
     const archSignatures = [...names].filter((name) => expected.archSignature.test(name));
     if (archPackages.length !== 1) failures.push(`${architecture}: expected one canonical Arch package, found ${archPackages.length}`);
     if (archSignatures.length !== 1) failures.push(`${architecture}: expected one detached Arch package signature, found ${archSignatures.length}`);
-    for (const sidecar of ['installedManifest', 'installedManifestSignature', 'productProof', 'productProofSignature']) {
+    for (const format of ['arch', 'deb', 'rpm']) {
+      const attestation = expected.installedAttestations[format];
+      if (!names.has(attestation.manifest)) {
+        failures.push(`${architecture}: missing ${attestation.manifest}`);
+      }
+      if (!names.has(attestation.signature)) {
+        failures.push(`${architecture}: missing ${attestation.signature}`);
+      }
+    }
+    for (const sidecar of ['productProof', 'productProofSignature']) {
       if (!names.has(expected[sidecar])) failures.push(`${architecture}: missing ${expected[sidecar]}`);
     }
     selected[architecture] = {
       deb: expected.deb,
       archPackage: archPackages[0] ?? null,
-      archSignature: archSignatures[0] ?? null
+      archSignature: archSignatures[0] ?? null,
+      installedAttestations: expected.installedAttestations
     };
   }
   return { passed: failures.length === 0, failures, selected };

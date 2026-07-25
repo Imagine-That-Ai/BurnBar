@@ -430,8 +430,8 @@ jobs:
             fi
             arch_pattern="openburnbar-${PREVIOUS_VERSION}-*-${{ matrix.architecture }}.pkg.tar.zst"
             arch_signature_pattern="${arch_pattern}.ed25519.sig"
-            arch_manifest_pattern="openburnbar-${PREVIOUS_VERSION}-${{ matrix.architecture }}.installed-manifest.json"
-            arch_manifest_signature_pattern="openburnbar-${PREVIOUS_VERSION}-${{ matrix.architecture }}.installed-manifest.ed25519"
+            arch_manifest_pattern="openburnbar-${PREVIOUS_VERSION}-arch-${{ matrix.architecture }}.installed-manifest.json"
+            arch_manifest_signature_pattern="openburnbar-${PREVIOUS_VERSION}-arch-${{ matrix.architecture }}.installed-manifest.ed25519"
             if ! gh release download "linux-v${PREVIOUS_VERSION}" \
               --pattern "$arch_pattern" \
               --pattern "$arch_signature_pattern" \
@@ -472,8 +472,8 @@ jobs:
             command+=(
               --previous "/workspace/$previous_relative"
               --previous-signature "/workspace/$previous_relative.ed25519.sig"
-              --previous-installed-manifest "/workspace/$release_output_relative/previous/arch/openburnbar-${PREVIOUS_VERSION}-${{ matrix.architecture }}.installed-manifest.json"
-              --previous-installed-manifest-signature "/workspace/$release_output_relative/previous/arch/openburnbar-${PREVIOUS_VERSION}-${{ matrix.architecture }}.installed-manifest.ed25519"
+              --previous-installed-manifest "/workspace/$release_output_relative/previous/arch/openburnbar-${PREVIOUS_VERSION}-arch-${{ matrix.architecture }}.installed-manifest.json"
+              --previous-installed-manifest-signature "/workspace/$release_output_relative/previous/arch/openburnbar-${PREVIOUS_VERSION}-arch-${{ matrix.architecture }}.installed-manifest.ed25519"
               --previous-product-proof "/workspace/$release_output_relative/previous/arch/product-proof-closure.json"
               --previous-product-proof-signature "/workspace/$release_output_relative/previous/arch/product-proof-closure.json.ed25519.sig"
               --previous-release-tag "linux-v${PREVIOUS_VERSION}"
@@ -714,6 +714,12 @@ jobs:
           node scripts/linux-port/sign-product-proof-closure.mjs \
             --closure "$OPENBURNBAR_LINUX_RELEASE_OUT/product-proof-closure.json" \
             --signature "$OPENBURNBAR_LINUX_RELEASE_OUT/product-proof-closure.json.ed25519.sig"
+
+      - name: Materialize format-specific lifecycle release assets
+        run: |
+          node scripts/linux-port/materialize-linux-lifecycle-release-assets.mjs \
+            --candidate-root "$GITHUB_WORKSPACE" \
+            --output-root "$OPENBURNBAR_LINUX_RELEASE_OUT"
 
       - name: Upload Linux release evidence
         if: always()
