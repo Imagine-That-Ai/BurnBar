@@ -23,7 +23,8 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
         approvalMode: String? = "existing_policy",
         approvalStatus: String? = nil,
         entitlementTier: String = "ultra",
-        requestedFanOutCount: Int = 1
+        requestedFanOutCount: Int = 1,
+        trustedFanOutCap: Int? = nil
     ) -> BurnBarRemoteMissionAuthorizeRequest {
         BurnBarRemoteMissionAuthorizeRequest(
             missionID: "mission-authz-1",
@@ -45,6 +46,7 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
             approverDeviceID: nil,
             entitlementTier: entitlementTier,
             requestedFanOutCount: requestedFanOutCount,
+            trustedFanOutCap: trustedFanOutCap,
             workingDirectory: "/tmp/mission-workspace"
         )
     }
@@ -301,6 +303,47 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
                 response.deniedReason, row.expectedReason,
                 "tier '\(row.tier)' fanOut \(row.requested)"
             )
+        }
+    }
+
+    // MARK: - (d) GUI-resolved trusted fan-out cap (split-brain M4)
+
+    func testTrustedFanOutCapHonorsGUIResolvedCapClampedToCeiling() {
+        struct Row {
+            let reportedCap: Int?
+            let requested: Int
+            let expected: BurnBarRemoteMissionAuthorizationVerdict
+            let note: String
+        }
+        // freeCap=1, ultraCap=16.
+        let rows: [Row] = [
+            // Absent cap fails closed to the free cap.
+            Row(reportedCap: nil, requested: 1, expected: .authorized, note: "nil cap runs solo"),
+            Row(reportedCap: nil, requested: 2, expected: .denied, note: "nil cap denies fan-out"),
+            // The GUI-resolved paid caps are honored.
+            Row(reportedCap: 3, requested: 3, expected: .authorized, note: "cloud cap 3 runs 3"),
+            Row(reportedCap: 3, requested: 4, expected: .denied, note: "cloud cap 3 denies 4"),
+            Row(reportedCap: 8, requested: 8, expected: .authorized, note: "pro cap 8 runs 8"),
+            Row(reportedCap: 16, requested: 16, expected: .authorized, note: "ultra cap 16 runs 16"),
+            // A cap above the ultra ceiling is clamped to 16 (never widened).
+            Row(reportedCap: 999, requested: 17, expected: .denied, note: "over-ceiling cap clamped to 16, denies 17"),
+            Row(reportedCap: 999, requested: 16, expected: .authorized, note: "over-ceiling cap clamped to 16, runs 16"),
+            // A cap below the free cap is clamped UP to 1 (never drops the floor).
+            Row(reportedCap: 0, requested: 1, expected: .authorized, note: "sub-floor cap clamped to 1, runs 1"),
+            Row(reportedCap: -5, requested: 2, expected: .denied, note: "negative cap clamped to 1, denies 2")
+        ]
+        for row in rows {
+            let response = BurnBarRemoteMissionAuthorizationPolicy.evaluate(
+                makeRequest(
+                    approvalStatus: "approved",
+                    requestedFanOutCount: row.requested,
+                    trustedFanOutCap: row.reportedCap
+                )
+            )
+            XCTAssertEqual(response.verdict, row.expected, row.note)
+            if response.verdict == .denied, row.requested >= 1 {
+                XCTAssertEqual(response.deniedReason, .fanOutCapExceeded, row.note)
+            }
         }
     }
 

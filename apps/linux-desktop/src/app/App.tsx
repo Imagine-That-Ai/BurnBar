@@ -1,3 +1,9 @@
+import type { BackdropReadabilityProfile } from '@openburnbar/gl-engine/engine/readability';
+import {
+  applyAdaptiveForeground,
+  fallbackProfileForSkin,
+  readabilityDiagnostic
+} from '../lib/adaptiveForeground.js';
 import { useEffect, useState } from 'react';
 import type { KernelId } from '@openburnbar/gl-engine/engine/types';
 import { decodeNativeNotificationActionEvent } from '../tauriBridge.js';
@@ -61,6 +67,9 @@ function isLinuxNativeRouteShortcut(event: KeyboardEvent, key: string): boolean 
  */
 export function App() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [readability, setReadability] = useState<BackdropReadabilityProfile>(() =>
+    fallbackProfileForSkin(useShellStore.getState().skin)
+  );
   const [kernelId, setKernelId] = useState<KernelId>(() => readPersistedKernelId());
   const route = useShellStore((s) => s.route);
   const setRoute = useShellStore((s) => s.setRoute);
@@ -71,6 +80,8 @@ export function App() {
   const chatPopout = isChatPopoutWindow();
   const petCompanion = isPetCompanionWindow();
   const [nativeShortcutStatus, setNativeShortcutStatus] = useState<NativeShortcutStatus | null | undefined>(undefined);
+
+  useEffect(() => applyAdaptiveForeground(readability), [readability]);
 
   useEffect(() => {
     let cancelled = false;
@@ -311,8 +322,17 @@ export function App() {
   return (
     <>
       {/* Keep the fixed backdrop outside the shell stacking context. */}
-      <KernelBackdrop skin={skin} kernelId={kernelId} />
-      <div className="shell">
+      <KernelBackdrop
+        skin={skin}
+        kernelId={kernelId}
+        onReadability={setReadability}
+      />
+      <div className="adaptive-backdrop-scrim" aria-hidden="true" />
+      <div
+        className="shell"
+        data-foreground-tone={readability.tone}
+        data-readability={readabilityDiagnostic(readability)}
+      >
         <a
           className="skip-link"
           href="#main"
@@ -332,7 +352,12 @@ export function App() {
           }}
         />
         <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
-        <main className="shell-main shell-main--bleed" id="main" tabIndex={-1}>
+        <main
+          className="shell-main shell-main--bleed"
+          id="main"
+          tabIndex={-1}
+          data-readability-region="content"
+        >
           <SurfaceRouter route={route} />
         </main>
       </div>

@@ -1,0 +1,88 @@
+{
+  "generatedAt": "2026-07-15T02:46:00.829Z",
+  "baseURL": "http://127.0.0.1:4178/",
+  "browserMode": "headed",
+  "kernels": [
+    "constellation",
+    "flow",
+    "aurora",
+    "mesh",
+    "moire",
+    "volumetric",
+    "lic",
+    "fluid-aurora",
+    "cloudfield",
+    "plasma-orbs",
+    "blobs-mesh",
+    "retro-plasma",
+    "inversion-lattice",
+    "vogel-bloom",
+    "crystal-drift",
+    "ripple-lattice",
+    "liquid-lumen",
+    "spectral-drift",
+    "mycelium-mesh",
+    "oilfield",
+    "suminagashi-drift",
+    "kinetic-stipple",
+    "agent1",
+    "neural-bloom",
+    "aether-lattice",
+    "bat-signal",
+    "storm-signal",
+    "origami",
+    "ink-diffusion",
+    "petroleum-sheen",
+    "boids",
+    "swarmEmber"
+  ],
+  "skins": [
+    "editorial",
+    "aurora"
+  ],
+  "timestampsMs": [
+    250,
+    750,
+    1250
+  ],
+  "sampleCount": 192,
+  "toneCounts": {
+    "light": 190,
+    "dark": 2
+  },
+  "minimumContrastRatio": 4.5,
+  "samplingDurationMs": {
+    "p50": 0.2,
+    "p95": 0.4,
+    "maximum": 0.5
+  },
+  "fallback": {
+    "tone": "light",
+    "source": "css-fallback",
+    "contrastRatio": 4.5,
+    "minLuminance": 0.003,
+    "maxLuminance": 0.844,
+    "scrimOpacity": 0.597,
+    "samplingDurationMs": 0
+  },
+  "screenshots": [
+    "docs/linux-port/evidence/adaptive-foreground/editorial-mesh-desktop.jpg",
+    "docs/linux-port/evidence/adaptive-foreground/editorial-retro-plasma-desktop.jpg",
+    "docs/linux-port/evidence/adaptive-foreground/editorial-storm-signal-desktop.jpg",
+    "docs/linux-port/evidence/adaptive-foreground/editorial-origami-desktop.jpg",
+    "docs/linux-port/evidence/adaptive-foreground/editorial-mesh-compact.jpg",
+    "docs/linux-port/evidence/adaptive-foreground/aurora-mesh-desktop.jpg",
+    "docs/linux-port/evidence/adaptive-foreground/aurora-retro-plasma-desktop.jpg",
+    "docs/linux-port/evidence/adaptive-foreground/aurora-storm-signal-desktop.jpg",
+    "docs/linux-port/evidence/adaptive-foreground/aurora-origami-desktop.jpg",
+    "docs/linux-port/evidence/adaptive-foreground/aurora-mesh-kernel-menu-desktop.jpg",
+    "docs/linux-port/evidence/adaptive-foreground/aurora-mesh-command-palette-desktop.jpg",
+    "docs/linux-port/evidence/adaptive-foreground/aurora-mesh-compact.jpg"
+  ],
+  "interactionStates": [
+    "kernel-menu:hover+focus+selected",
+    "command-palette:modal+focus+hover+selected+muted"
+  ],
+  "consoleErrors": [],
+  "passed": true
+}

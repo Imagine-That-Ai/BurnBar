@@ -5,29 +5,7 @@ import OpenBurnBarCore
 import OSLog
 
 // Mission cancellation, approval, and failure state flow.
-// Extracted from CLIAgentMissionRequestListener.swift (god-file decomposition) — same module.
-
-enum CLIAgentMissionApprovalDecision: Equatable {
-    case proceed
-    case cancel(approvalStatus: String)
-    case cliAssistantDisabled
-    case waitForApproval
-    case requestApproval
-    var willPauseForApproval: Bool { self != .proceed }
-    var isTerminalDenial: Bool { self == .cliAssistantDisabled }
-
-    static func resolve(data: [String: Any], backend: CLIAgentMissionBackend, cliAssistantAllowed: Bool) -> Self {
-        let approvalStatus = ((data["approvalStatus"] as? String) ?? "none").lowercased()
-        let status = ((data["status"] as? String) ?? "pending").lowercased()
-        if ["rejected", "canceled", "cancelled"].contains(approvalStatus) { return .cancel(approvalStatus: approvalStatus) }
-        if CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend), !cliAssistantAllowed {
-            return .cliAssistantDisabled
-        }
-        if approvalStatus == "approved" { return .proceed }
-        guard CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(data: data, backend: backend) else { return .proceed }
-        return status == "waiting_for_approval" ? .waitForApproval : .requestApproval
-    }
-}
+// Extracted from CLIAgentMissionRequestListener.swift (god-file decomposition) — same module, verbatim.
 
 extension CLIAgentMissionRequestListener {
     func handleCancellation(document: QueryDocumentSnapshot, backend: CLIAgentMissionBackend) async {
@@ -62,7 +40,11 @@ extension CLIAgentMissionRequestListener {
         )
     }
 
-    func modelAwareSuccessMessage(backend: CLIAgentMissionBackend, requestedModelID: String?, fallback: String) -> String {
+    func modelAwareSuccessMessage(
+        backend: CLIAgentMissionBackend,
+        requestedModelID: String?,
+        fallback: String
+    ) -> String {
         let preview = fallback.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         if let preview {
             return "\(backend.displayName): \(preview.prefix(180).description)"
@@ -73,7 +55,11 @@ extension CLIAgentMissionRequestListener {
         return "\(backend.displayName) returned a result."
     }
 
-    func modelAwareFailureMessage(backend: CLIAgentMissionBackend, requestedModelID: String?, errorMessage: String?) -> String {
+    func modelAwareFailureMessage(
+        backend: CLIAgentMissionBackend,
+        requestedModelID: String?,
+        errorMessage: String?
+    ) -> String {
         let safeError = errorMessage
             .flatMap { CLIAgentMissionEventFactory.mobileSafeText($0, limit: 1800).nilIfEmpty }
         let prefix = requestedModelID.map {
@@ -117,28 +103,13 @@ extension CLIAgentMissionRequestListener {
         }
     }
 
-    func approvalDecision(data: [String: Any], backend: CLIAgentMissionBackend) -> CLIAgentMissionApprovalDecision {
-        .resolve(data: data, backend: backend, cliAssistantAllowed: settingsManager.cliAssistantAllowed)
-    }
-
-    func applyApprovalDecision(
-        _ decision: CLIAgentMissionApprovalDecision,
-        document: QueryDocumentSnapshot,
-        data: [String: Any],
-        backend: CLIAgentMissionBackend
-    ) async {
-        switch decision {
-        case .proceed, .waitForApproval: return
-        case .cancel(let approvalStatus): await cancelAfterApprovalDecision(document: document, approvalStatus: approvalStatus)
-        case .cliAssistantDisabled:
-            await failAfterTrustedClaim(
-                document: document,
-                backend: backend,
-                message: "Mac CLI assistants are off. Enable Mac CLI assistants in Settings -> Privacy & Indexing before this Mac can run remote agent missions."
-            )
-        case .requestApproval: await requestApproval(document: document, data: data, backend: backend)
-        }
-    }
+    // The allow / requires-approval / deny DECISION (`shouldPauseForApproval`,
+    // `missionRequiresApproval`) moved to the daemon in split-brain M4; the
+    // daemon-driven writeback helpers live in
+    // `MissionRemoteAuthorizationEnforcement.swift` (outside the frozen cluster).
+    // The approval-request writeback (`requestApproval`) and cancellation
+    // writeback (`cancelAfterApprovalDecision`) below stay: they render the
+    // daemon's `.requiresApproval` / `.denied` verdicts into mission state.
 
     func failAfterTrustedClaim(document: QueryDocumentSnapshot, backend: CLIAgentMissionBackend, message: String) async {
         do {
