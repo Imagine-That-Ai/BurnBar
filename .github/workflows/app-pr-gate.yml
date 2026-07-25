@@ -45,9 +45,7 @@ jobs:
     name: AgentLens Rust + Swift build/test prerequisites
     # Routing (cost + security): pull-request and merge-queue candidates may both
     # contain untrusted PR code, so they run only on isolated hosted macOS pools.
-    # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
-    # billed fast burst.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    runs-on: macos-26
     # Cold cache + libsignal FFI + full xcodebuild of the app target on a hosted
     # runner needs headroom; observed cold macos-26 runs can approach 120
     # minutes before the 1,920-test suite and coverage upload finish.
@@ -188,9 +186,7 @@ jobs:
     name: Mobile build + unit test
     # Routing (cost + security): pull-request and merge-queue candidates may both
     # contain untrusted PR code, so they run only on isolated hosted macOS pools.
-    # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
-    # billed fast burst.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    runs-on: macos-26
     # Compile + unit test execution: Signal FFI + full mobile app-and-tests
     # compile, THEN run the unit-test bundle on a booted simulator.
     # Observing-first: build-for-testing first (fail fast on compile errors),
