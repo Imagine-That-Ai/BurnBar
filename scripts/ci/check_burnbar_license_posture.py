@@ -118,6 +118,28 @@ def check_package_lock_license() -> Check:
     license_expr = root.get("license")
     if license_expr != "AGPL-3.0-only":
         return Check("package-lock AGPL license", False, f"expected AGPL-3.0-only, found {license_expr!r}")
+    manifest_path = ROOT / "package.json"
+    if manifest_path.is_file():
+        # A real root manifest exists (so Dependabot can own this lockfile).
+        # It deliberately declares NO workspaces: a root `workspaces` field
+        # makes npm treat the repo root as the project root for every
+        # `npm ci` run inside packages/*, breaking per-package CI installs.
+        # The lockfile must mirror the manifest exactly so nothing can smuggle
+        # a divergent root shape past `npm install`; product package licenses
+        # are enforced directly by the packages/* checks below.
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if root.get("workspaces") != manifest.get("workspaces"):
+            return Check(
+                "package-lock AGPL license",
+                False,
+                "package-lock.json root entry workspaces disagree with package.json",
+            )
+        return Check(
+            "package-lock AGPL license",
+            True,
+            "package-lock.json declares the AGPL root and mirrors package.json",
+        )
+    # Lockfile-only root (no manifest): the historical workspaces-index shape.
     workspaces = root.get("workspaces", [])
     if "packages/*" not in workspaces:
         return Check("package-lock AGPL license", False, "package-lock.json does not include packages/* workspace")

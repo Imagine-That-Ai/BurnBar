@@ -262,6 +262,21 @@ rows:
   - windows/app/OpenBurnBar.App/Shell/FlyoutModule.cs
   owner_lane: wave-2-production-data
   notes: Production flyout module Real.
+- id: shell-shared-ui
+  macos_route: shell
+  macos_capability: Full desktop shell (Linux apps/linux-desktop React bundle; AgentLens design-system peer)
+  windows_route: shared-ui-shell
+  windows_capability: SharedUiHostWindow (WebView2) + OpenBurnBar.App.SharedUi dispatcher serving the LinuxShellBridge command surface
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/shared-ui-shell.md
+  tests:
+  - windows/tests/shared-ui
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.SharedUi
+  - windows/app/OpenBurnBar.App/SharedUi
+  owner_lane: wave-5-shared-ui-shell
+  notes: Linux-parity React shell hosted on Windows; 85-test contract suite green on macOS; WinUI transport compiles on the Windows host per DEV_HOST_RUNBOOK.
 - id: engine-parsers-g2
   macos_route: parsers
   macos_capability: 15 log parsers → ParserOutputContract golden (AgentLensTests/Fixtures/ParserContract)

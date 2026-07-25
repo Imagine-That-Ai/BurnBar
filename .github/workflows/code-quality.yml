@@ -15,6 +15,14 @@ on:
 permissions:
   contents: read
 
+# Agent branches push repeatedly, and without this every push left the previous
+# run of this workflow occupying a runner slot until it finished on a commit
+# nobody was waiting for. Superseded pull_request runs are cancelled; scheduled
+# and merge_group runs are never cancelled.
+concurrency:
+  group: code-quality-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   duplicate-code:
     name: Duplicate Code Detection (jscpd)
