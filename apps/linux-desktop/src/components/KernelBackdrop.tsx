@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { BackdropEngine } from '@openburnbar/gl-engine/engine/BackdropEngine';
 import type { KernelId, KernelResolution } from '@openburnbar/gl-engine/engine/types';
+import type { BackdropReadabilityProfile } from '@openburnbar/gl-engine/engine/readability';
 import { resolveSkinPalette } from '../lib/resolveSkinPalette.js';
+import { fallbackProfileForSkin } from '../lib/adaptiveForeground.js';
 import {
   DASHBOARD_MOTION_SPEED_MULTIPLIER
 } from '../state/kernelPrefs.js';
@@ -31,17 +33,21 @@ function publishKernelResolution(container: HTMLElement, status: KernelResolutio
  */
 export function KernelBackdrop({
   skin,
-  kernelId
+  kernelId,
+  onReadability
 }: {
   skin: ShellSkin;
   kernelId: KernelId;
+  onReadability?: (profile: BackdropReadabilityProfile) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<BackdropEngine | null>(null);
   const requestedKernelRef = useRef(kernelId);
+  const onReadabilityRef = useRef(onReadability);
   const [mode, setMode] = useState<'canvas' | 'css'>('canvas');
   const [swarmPreferences, setSwarmPreferences] = useState<SwarmPreferences>(() => readSwarmPreferences());
   requestedKernelRef.current = kernelId;
+  onReadabilityRef.current = onReadability;
 
   useEffect(() => {
     const onChange = (event: Event) => {
@@ -55,7 +61,12 @@ export function KernelBackdrop({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    if (typeof process !== 'undefined' && process.env.VITEST) return;
+    onReadabilityRef.current?.(fallbackProfileForSkin(skin));
+    if (typeof process !== 'undefined' && process.env.VITEST) {
+      setMode('css');
+      container.dataset.backdropMode = 'css';
+      return;
+    }
     const forcedMode =
       typeof localStorage === 'undefined'
         ? null
@@ -98,12 +109,18 @@ export function KernelBackdrop({
         onStatus: (status) => publishKernelResolution(container, status),
         onResolve: (resolvedId) => {
           container.dataset.kernelResolved = resolvedId;
-        }
+        },
+        onReadability: (profile) => onReadabilityRef.current?.(profile),
+        readabilityRegions: () =>
+          Array.from(document.querySelectorAll<HTMLElement>('[data-readability-region]'))
+            .filter((element) => element.offsetParent !== null)
+            .map((element) => element.getBoundingClientRect())
       });
     } catch (error) {
       console.error('[KernelBackdrop] engine initialization failed', error);
       setMode('css');
       container.dataset.backdropMode = 'css';
+      onReadabilityRef.current?.(fallbackProfileForSkin(skin));
       return;
     }
 
@@ -141,11 +158,15 @@ export function KernelBackdrop({
   }, [kernelId]);
 
   useEffect(() => {
+    if (mode === 'css') {
+      onReadabilityRef.current?.(fallbackProfileForSkin(skin));
+      return;
+    }
     const engine = engineRef.current;
     if (!engine) return;
     engine.setTheme('dark');
     engine.setPalette(resolveSkinPalette(skin));
-  }, [skin]);
+  }, [mode, skin]);
 
   return (
     <div
