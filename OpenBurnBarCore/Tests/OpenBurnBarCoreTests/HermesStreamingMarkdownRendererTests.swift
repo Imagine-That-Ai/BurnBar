@@ -98,6 +98,47 @@ final class HermesStreamingMarkdownRendererTests: XCTestCase {
         )
     }
 
+    /// A same-length replacement of text the cache has already CONSUMED (not
+    /// just the pending tail) must rebuild. The structural checks all pass for
+    /// `old\n` → `new\n` — identical length, newline still immediately before
+    /// the consumed boundary, tail still empty — so a boundary-only validity
+    /// check reported "unchanged" and kept rendering the replaced text.
+    func test_sameLengthConsumedPrefixReplacement_rebuilds() {
+        let renderer = HermesStreamingMarkdownRenderer()
+        _ = renderer.attributedString(for: "old\n")
+        assertRendersEqual(
+            renderer.attributedString(for: "new\n"),
+            HermesInlineMarkdown.attributedString("new\n"),
+            "same-length consumed-prefix replacement"
+        )
+
+        // Multi-line, still equal length and still ending on a newline.
+        _ = renderer.attributedString(for: "aaa\nbbb\n")
+        assertRendersEqual(
+            renderer.attributedString(for: "xxx\nyyy\n"),
+            HermesInlineMarkdown.attributedString("xxx\nyyy\n"),
+            "same-length multi-line consumed-prefix replacement"
+        )
+
+        // The stale prefix must not survive into later appends either: the
+        // replacement is same-length, and the text then grows normally.
+        _ = renderer.attributedString(for: "old\nab")
+        assertRendersEqual(
+            renderer.attributedString(for: "new\nabc"),
+            HermesInlineMarkdown.attributedString("new\nabc"),
+            "append after a same-length consumed-prefix replacement"
+        )
+
+        // Emphasis differences that keep byte length identical must also be
+        // reflected, since the divergence is in attributes as well as text.
+        _ = renderer.attributedString(for: "**bold** line\n")
+        assertRendersEqual(
+            renderer.attributedString(for: "*ital*ic line\n"),
+            HermesInlineMarkdown.attributedString("*ital*ic line\n"),
+            "same-length consumed-prefix replacement changing emphasis"
+        )
+    }
+
     func test_replacement_shrink_sameLengthAndUnicodeInputsResetSafely() {
         let renderer = HermesStreamingMarkdownRenderer()
         _ = renderer.attributedString(for: "**partial** answer\nthat was strea", suffix: "▍")

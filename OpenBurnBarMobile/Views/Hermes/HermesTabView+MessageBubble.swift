@@ -31,7 +31,22 @@ struct HermesMessageBubble: View {
     /// only for the most recent assistant turn whose outcome supports
     /// retry — the bubble renders the inline "Try again" pill in that
     /// case. Earlier turns and successful replies pass nil (no pill).
-    var onRetry: (() -> Void)?
+    ///
+    /// Takes the retry context as a parameter instead of capturing it, so the
+    /// closure captures nothing that can drift — see `retryContext`.
+    var onRetry: ((String?) -> Void)?
+    /// Dashboard context handed to `onRetry` when the pill is tapped.
+    ///
+    /// Deliberately an equatable *input* rather than a value captured inside
+    /// `onRetry`. The semantic `==` below compares retry actions by presence
+    /// only, which is safe exactly as long as two non-nil actions cannot
+    /// behave differently — and a captured context would be precisely such a
+    /// difference. Carrying it here makes that provable instead of assumed:
+    /// if the context changes, the bubble compares unequal, so SwiftUI
+    /// installs the fresh action rather than keeping a stale one. `nil`
+    /// whenever `onRetry` is nil, so rows without a pill never re-render on
+    /// dashboard refreshes.
+    var retryContext: String?
 
     @State private var permissionSheetItem: SystemPermissionItem?
     @State private var permissionStore = SystemPermissionInboxStore.shared
@@ -202,7 +217,7 @@ struct HermesMessageBubble: View {
             }
 
             if let onRetry, message.outcome.supportsRetry {
-                retryPill(onRetry: onRetry)
+                retryPill(onRetry: { onRetry(retryContext) })
                     .padding(.leading, 6)
                     .padding(.top, 2)
             }
@@ -638,10 +653,19 @@ struct HermesMessageBubble: View {
 // change detection can never prove equal — so every ~80ms streaming commit
 // re-rendered EVERY row in the transcript, making each commit O(total
 // transcript). This semantic equality (used via `.equatable()` at the
-// `ForEach` call site) compares the render inputs and treats the closure by
-// presence only: nil-ness is what gates the retry pill, and the closure body
-// always routes to the same service call. The service reference is compared
-// by identity — bubbles never re-bind to a different service in place.
+// `ForEach` call site) compares the render inputs and treats the retry action
+// by presence only.
+//
+// Comparing an action by presence is sound only while two non-nil actions
+// cannot behave differently, so the bubble is built so they cannot: the retry
+// closure takes its context as a parameter (`(String?) -> Void`) instead of
+// capturing it, and the context travels as the equatable `retryContext` input
+// compared below. Anything that would change what a tap does therefore changes
+// a compared value, and SwiftUI installs the new action. What remains inside
+// the closure is a fixed route to one service call.
+//
+// The service reference is compared by identity — bubbles never re-bind to a
+// different service in place.
 // `nonisolated`: the Equatable witness must not inherit the struct's
 // View-conformance MainActor isolation. Safe — both operands are value
 // copies, the service is compared by reference identity only, and SwiftUI
@@ -654,5 +678,6 @@ extension HermesMessageBubble: Equatable {
             && lhs.usePretextRendering == rhs.usePretextRendering
             && lhs.viewMode == rhs.viewMode
             && (lhs.onRetry == nil) == (rhs.onRetry == nil)
+            && lhs.retryContext == rhs.retryContext
     }
 }

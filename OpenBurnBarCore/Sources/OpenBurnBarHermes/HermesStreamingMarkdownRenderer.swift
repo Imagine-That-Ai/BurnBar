@@ -45,6 +45,18 @@ public final class HermesStreamingMarkdownRenderer {
     /// Styled attributed text for everything up to (and including) the last
     /// consumed `\n` of the previously seen text.
     private var parsedPrefix = AttributedString()
+    /// The exact bytes `parsedPrefix` was parsed from.
+    ///
+    /// Retained so every render can *prove* the cached parse still describes
+    /// the text it is about to be reused for, rather than inferring it from
+    /// the newline boundary. Checking the boundary alone accepted a
+    /// same-length replacement of already-consumed text (`old\n` → `new\n` on
+    /// a reused bubble identity): the length matched, the byte before the
+    /// boundary was still `\n`, and the tail was still empty, so `ingest`
+    /// reported "unchanged" and the UI kept rendering the replaced text — and
+    /// kept rendering it through every subsequent append, since the stale
+    /// prefix stayed cached.
+    private var consumedBytes: [UInt8] = []
     /// UTF-8 length of the consumed prefix. Always sits immediately after a
     /// newline byte (or at 0), so byte slicing here is UTF-8 safe — no
     /// multi-byte scalar contains 0x0A.
@@ -68,6 +80,7 @@ public final class HermesStreamingMarkdownRenderer {
     /// Drop all cached state. The next render re-parses from scratch.
     public func reset() {
         parsedPrefix = AttributedString()
+        consumedBytes.removeAll(keepingCapacity: true)
         consumedUTF8Count = 0
         pendingTail = ""
         memoKey = nil
@@ -116,19 +129,32 @@ public final class HermesStreamingMarkdownRenderer {
         return true
     }
 
-    /// O(partial line) check that the incoming bytes still agree with the
-    /// cached prefix/tail split: the byte before the consumed boundary is
-    /// still a newline and the pending tail bytes are unchanged. The parsed
-    /// prefix itself is not re-compared byte-for-byte — the boundary + tail
-    /// check, combined with the caller-side append-only streaming contract,
-    /// makes a silent prefix replacement unreachable in practice, and any
-    /// length change at all triggers the full rebuild path.
+    /// Whether the incoming bytes still begin with exactly the text the cache
+    /// was built from — the consumed prefix byte-for-byte, then the pending
+    /// tail byte-for-byte.
+    ///
+    /// The prefix comparison is exact (`memcmp`) rather than inferred from the
+    /// newline boundary. Reusing a parse is a claim about *content*, so it is
+    /// checked against content: a same-length replacement of consumed text
+    /// (`old\n` → `new\n`) satisfies every structural check — same length,
+    /// newline still before the boundary, tail still empty — yet must rebuild.
+    /// Accepting it left the bubble rendering replaced text indefinitely,
+    /// because the stale prefix survived every later append too.
+    ///
+    /// `memcmp` over the accumulated prefix is comfortably cheaper than the
+    /// markdown re-parse this class exists to avoid — sub-microsecond even at
+    /// 500 KB of accumulated reply, versus the O(n) parse per commit it
+    /// replaces — so correctness here costs no measurable streaming budget.
     private func cachedRegionMatches(_ bytes: UnsafeBufferPointer<UInt8>) -> Bool {
         let tailUTF8Count = pendingTail.utf8.count
         guard bytes.count >= consumedUTF8Count + tailUTF8Count else { return false }
         if consumedUTF8Count > 0 {
-            guard consumedUTF8Count <= bytes.count,
-                  bytes[consumedUTF8Count - 1] == 0x0A else { return false }
+            guard consumedBytes.count == consumedUTF8Count,
+                  let incoming = bytes.baseAddress else { return false }
+            let prefixMatches = consumedBytes.withUnsafeBytes { cached in
+                memcmp(cached.baseAddress!, incoming, consumedUTF8Count) == 0
+            }
+            guard prefixMatches else { return false }
         }
         guard tailUTF8Count > 0 else { return true }
         let region = bytes[consumedUTF8Count ..< consumedUTF8Count + tailUTF8Count]
@@ -153,6 +179,7 @@ public final class HermesStreamingMarkdownRenderer {
         let completedEnd = lastNewlineIndex + 1 // slice keeps absolute indices
         let completed = String(decoding: bytes[consumedUTF8Count ..< completedEnd], as: UTF8.self)
         parsedPrefix.append(HermesInlineMarkdown.attributedString(completed))
+        consumedBytes.append(contentsOf: bytes[consumedUTF8Count ..< completedEnd])
         consumedUTF8Count = completedEnd
         pendingTail = String(decoding: bytes[completedEnd...], as: UTF8.self)
         return true

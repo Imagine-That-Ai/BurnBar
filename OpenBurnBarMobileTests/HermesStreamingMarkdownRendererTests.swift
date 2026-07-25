@@ -139,6 +139,36 @@ final class HermesStreamingMarkdownRendererTests: XCTestCase {
         )
     }
 
+    /// The tail case above is only half the problem: a same-length replacement
+    /// of already-CONSUMED text passes every structural check (identical
+    /// length, newline still immediately before the consumed boundary, tail
+    /// still empty), so a boundary-only validity check reused the stale parse
+    /// — and kept reusing it through every later append.
+    func test_sameLengthReplacementOnConsumedPrefix_isDetected() {
+        let renderer = HermesStreamingMarkdownRenderer()
+        _ = renderer.attributedString(for: "old\n")
+        assertRendersEqual(
+            renderer.attributedString(for: "new\n"),
+            HermesInlineMarkdown.attributedString("new\n"),
+            "same-length consumed-prefix replacement"
+        )
+
+        _ = renderer.attributedString(for: "aaa\nbbb\n")
+        assertRendersEqual(
+            renderer.attributedString(for: "xxx\nyyy\n"),
+            HermesInlineMarkdown.attributedString("xxx\nyyy\n"),
+            "same-length multi-line consumed-prefix replacement"
+        )
+
+        // The stale prefix must not survive into subsequent appends.
+        _ = renderer.attributedString(for: "old\nab")
+        assertRendersEqual(
+            renderer.attributedString(for: "new\nabc"),
+            HermesInlineMarkdown.attributedString("new\nabc"),
+            "append after a same-length consumed-prefix replacement"
+        )
+    }
+
     func test_emptyText_andSuffixOnlyRenders() {
         let renderer = HermesStreamingMarkdownRenderer()
         assertRendersEqual(

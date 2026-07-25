@@ -134,7 +134,13 @@ struct HermesChatView: View {
                                     showTPS: showMessageTPS,
                                     usePretextRendering: usePretextRendering,
                                     viewMode: chatViewMode,
-                                    onRetry: canRetry(message) ? { service.retryLastUserTurn(context: dashboardContextPrompt) } : nil
+                                    // The context rides as an equatable input
+                                    // (`retryContext`) instead of being captured,
+                                    // so the bubble's `==` can see it change.
+                                    onRetry: canRetry(message)
+                                        ? { context in service.retryLastUserTurn(context: context) }
+                                        : nil,
+                                    retryContext: canRetry(message) ? dashboardContextPrompt : nil
                                 )
                                     // Skip re-rendering unchanged rows on
                                     // every streaming commit — the bubble's
