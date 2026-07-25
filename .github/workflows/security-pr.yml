@@ -8,7 +8,7 @@ name: PR Security Gate
 #   1. Secret detection via gitleaks
 #   2. GitHub Dependency Review (blocks PRs that introduce known CVEs)
 #   3. npm audit on all PR-gated Node package locks (high/critical only)
-#   4. OSV-Scanner on package-lock.json files
+#   4. OSV-Scanner on package-lock.json files + the .deepsec pnpm lock
 #   5. Remote installer / CODEOWNERS / Signal activation / Browser target policy gates
 #   6. Hosted-MCP isolation: smoke (always) + local deterministic adversarial
 #      proofs (cross-tenant / revocation / entitlement / cap / at-rest) — RR-11
@@ -178,7 +178,10 @@ jobs:
       # npm gate above skips any directory without a package-lock.json — which is
       # how .deepsec/pnpm-lock.yaml accumulated 15 open Dependabot alerts (1
       # critical) without ever failing a PR. This floor check reads both lockfile
-      # formats and fails closed on known-vulnerable pins.
+      # formats and fails closed on known-vulnerable pins. It is a regression
+      # tripwire for the specific advisories cleared in that backlog, not full
+      # advisory coverage: the OSV-Scanner job below audits the pnpm lock against
+      # the live advisory database (on PRs and the RR-17 push: main backstop).
       - name: Enforce known vulnerability floors
         run: node scripts/security/check-known-vulnerability-floors.mjs
 
@@ -311,6 +314,7 @@ jobs:
         with:
           scan-args: |-
             --config=osv-scanner.toml
+            --lockfile=.deepsec/pnpm-lock.yaml
             --lockfile=package-lock.json
             --lockfile=apps/console/package-lock.json
             --lockfile=apps/linux-desktop/package-lock.json
