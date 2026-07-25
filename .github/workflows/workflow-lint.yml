@@ -70,6 +70,12 @@ on:
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
+      - "scripts/ci/verify-dependabot-config.mjs"
+      - "scripts/ci/verify-dependabot-config.test.mjs"
+      # A new package-lock.json is exactly the change that can reopen the
+      # "advisory with no auto-fix owner" gap, so it must re-run the ratchet.
+      - ".github/dependabot.yml"
+      - "**/package-lock.json"
       - "scripts/ci/redact-qa-artifacts.mjs"
       - "scripts/ci/redact-qa-artifacts.test.mjs"
       - "scripts/ci/app-check-smoke.sh"
@@ -163,6 +169,12 @@ on:
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
+      - "scripts/ci/verify-dependabot-config.mjs"
+      - "scripts/ci/verify-dependabot-config.test.mjs"
+      # A new package-lock.json is exactly the change that can reopen the
+      # "advisory with no auto-fix owner" gap, so it must re-run the ratchet.
+      - ".github/dependabot.yml"
+      - "**/package-lock.json"
       - "scripts/ci/redact-qa-artifacts.mjs"
       - "scripts/ci/redact-qa-artifacts.test.mjs"
       - "scripts/ci/app-check-smoke.sh"
@@ -385,6 +397,14 @@ jobs:
 
       - name: Self-test npm audit fail-closed gate
         run: node scripts/ci/check-npm-audit-fail-closed.test.mjs
+
+      # Nothing else in CI reads dependabot.yml, so a bad edit there is silent:
+      # updates just stop arriving. These two steps make it loud instead.
+      - name: Self-test Dependabot config gate
+        run: node scripts/ci/verify-dependabot-config.test.mjs
+
+      - name: Verify Dependabot config (no YAML aliases, every lockfile owned)
+        run: node scripts/ci/verify-dependabot-config.mjs
 
       - name: Self-test gitleaks allowlist boundary
         run: node scripts/ci/verify-gitleaks-allowlist-boundary.test.mjs

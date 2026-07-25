@@ -173,117 +173,197 @@ updates:
   # auto-fix owner: the required check went red on every open PR at once and
   # stayed red until somebody hand-patched it.
   #
-  # That is exactly what happened on 2026-07-24. The postcss and tar advisories
-  # hit `/apps/linux-desktop` and `/tools/schema-sync` -- both unwatched -- and
-  # red-lined all 17 open PRs for a vulnerability none of them introduced, until
-  # #1968 fixed the lockfiles by hand.
+  # 2026-07-24 produced two examples in one day -- the postcss/tar advisories in
+  # /apps/linux-desktop and /tools/schema-sync (#1968), then brace-expansion
+  # GHSA-mh99-v99m-4gvg -- each red-lining all 17 open PRs for a vulnerability
+  # none of them introduced.
   #
   # Closing the gap makes the required gate self-healing: anything that can
   # block a merge now has a bot that opens the fix. Grouped and rate-limited so
-  # 11 new ecosystems cannot flood the PR queue -- these are mostly small
-  # internal packages, so one grouped PR each is the expected steady state.
+  # 11 new ecosystems cannot flood the PR queue.
   #
-  # The root package.json exists so this entry has a valid npm manifest to
-  # update; Dependabot cannot process a directory that only holds a lockfile.
-  # It deliberately declares NO dependencies and NO workspaces (a root
-  # `workspaces` field would hijack `npm ci` runs inside packages/* in CI) --
-  # the real dependencies live in the per-package lockfiles below, and the
-  # root lockfile is a trivial self-entry kept in sync for OSV scanning.
+  # These blocks are deliberately written out in full. dependabot.yml does NOT
+  # support YAML anchors/aliases -- Dependabot rejects the whole file with
+  # "YAML aliases are not supported" (dependabot-core#1582, open since 2019),
+  # which would disable every entry above as well. Do not "de-duplicate" this
+  # with anchors; scripts/ci/verify-dependabot-config.mjs fails the build if you
+  # try. Keep entries in sync by editing all of them.
+
   - package-ecosystem: "npm"
     directory: "/"
-    schedule: &lockfile-schedule
+    schedule:
       interval: "weekly"
       day: "monday"
       time: "09:00"
       timezone: "America/Los_Angeles"
     open-pull-requests-limit: 2
-    commit-message: &lockfile-commit
+    commit-message:
       prefix: "deps"
       include: "scope"
     groups:
-      lockfile-updates: &lockfile-groups
+      lockfile-updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 
   - package-ecosystem: "npm"
     directory: "/apps/linux-desktop"
-    schedule: *lockfile-schedule
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
     open-pull-requests-limit: 2
-    commit-message: *lockfile-commit
+    commit-message:
+      prefix: "deps"
+      include: "scope"
     groups:
-      lockfile-updates: *lockfile-groups
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "npm"
     directory: "/packages/design-tokens"
-    schedule: *lockfile-schedule
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
     open-pull-requests-limit: 2
-    commit-message: *lockfile-commit
+    commit-message:
+      prefix: "deps"
+      include: "scope"
     groups:
-      lockfile-updates: *lockfile-groups
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "npm"
     directory: "/packages/entitlements"
-    schedule: *lockfile-schedule
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
     open-pull-requests-limit: 2
-    commit-message: *lockfile-commit
+    commit-message:
+      prefix: "deps"
+      include: "scope"
     groups:
-      lockfile-updates: *lockfile-groups
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "npm"
     directory: "/packages/libsignal-bridge"
-    schedule: *lockfile-schedule
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
     open-pull-requests-limit: 2
-    commit-message: *lockfile-commit
+    commit-message:
+      prefix: "deps"
+      include: "scope"
     groups:
-      lockfile-updates: *lockfile-groups
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "npm"
     directory: "/packages/libsignal-protocol"
-    schedule: *lockfile-schedule
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
     open-pull-requests-limit: 2
-    commit-message: *lockfile-commit
+    commit-message:
+      prefix: "deps"
+      include: "scope"
     groups:
-      lockfile-updates: *lockfile-groups
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "npm"
     directory: "/packages/signal-envelope-contracts"
-    schedule: *lockfile-schedule
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
     open-pull-requests-limit: 2
-    commit-message: *lockfile-commit
+    commit-message:
+      prefix: "deps"
+      include: "scope"
     groups:
-      lockfile-updates: *lockfile-groups
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "npm"
     directory: "/scripts/linux-port"
-    schedule: *lockfile-schedule
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
     open-pull-requests-limit: 2
-    commit-message: *lockfile-commit
+    commit-message:
+      prefix: "deps"
+      include: "scope"
     groups:
-      lockfile-updates: *lockfile-groups
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "npm"
     directory: "/tools/app-store-connect"
-    schedule: *lockfile-schedule
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
     open-pull-requests-limit: 2
-    commit-message: *lockfile-commit
+    commit-message:
+      prefix: "deps"
+      include: "scope"
     groups:
-      lockfile-updates: *lockfile-groups
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "npm"
     directory: "/tools/openburnbar-mcp-remote"
-    schedule: *lockfile-schedule
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
     open-pull-requests-limit: 2
-    commit-message: *lockfile-commit
+    commit-message:
+      prefix: "deps"
+      include: "scope"
     groups:
-      lockfile-updates: *lockfile-groups
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "npm"
     directory: "/tools/schema-sync"
-    schedule: *lockfile-schedule
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
     open-pull-requests-limit: 2
-    commit-message: *lockfile-commit
+    commit-message:
+      prefix: "deps"
+      include: "scope"
     groups:
-      lockfile-updates: *lockfile-groups
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # Security updates for GitHub Actions
   - package-ecosystem: "github-actions"
