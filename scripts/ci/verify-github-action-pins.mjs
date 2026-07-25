@@ -5,6 +5,12 @@ import { join } from "node:path";
 const workflowDir = join(process.cwd(), ".github", "workflows");
 const shaRef = /^[a-f0-9]{40}$/iu;
 const digestRef = /^sha256:[a-f0-9]{64}$/iu;
+const protectedBranchReusableWorkflows = new Map([
+  [
+    "deploy-staging.yml",
+    "Imagine-That-Ai/BurnBar/.github/workflows/deploy-staging-trusted.yml@main",
+  ],
+]);
 const failures = [];
 
 for (const file of readdirSync(workflowDir).filter((name) => /\.ya?ml$/u.test(name)).sort()) {
@@ -22,6 +28,12 @@ for (const file of readdirSync(workflowDir).filter((name) => /\.ya?ml$/u.test(na
       return;
     }
     const ref = spec.slice(at + 1);
+    // This single self-reusable workflow intentionally binds cloud OIDC trust
+    // to job_workflow_ref ending in @refs/heads/main. A squash commit cannot be
+    // known before landing, and substituting a candidate SHA would move the
+    // credentialed job definition back under candidate control. The staging
+    // boundary verifier independently requires this exact repository/file/ref.
+    if (protectedBranchReusableWorkflows.get(file) === spec) return;
     if (!shaRef.test(ref) && !digestRef.test(ref)) {
       failures.push(`${file}:${index + 1}: ${spec} is not pinned to a full commit SHA or sha256 digest`);
     }
@@ -34,4 +46,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("OK: all external GitHub Actions uses are pinned to immutable refs.");
+console.log(
+  "OK: external actions are immutable; the reviewed staging reusable workflow is bound to protected main.",
+);

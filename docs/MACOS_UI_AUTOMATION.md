@@ -208,6 +208,13 @@ Run once, in the mini's own GUI session (Screen Sharing is fine):
 - **Menu-bar app has no window by default.** `--uitest` /
   `OPENBURNBAR_UITEST=1` deterministically opens the dashboard and dismisses
   first-run modals; `CUClickSmoke` sets both when launching.
+- **UI-test SQLCipher key is injected, never hardcoded.** The encrypted store
+  opens without a Keychain prompt only when the harness supplies a non-empty
+  `OPENBURNBAR_UITEST_DB_KEY` (a random per-run value; `UITestBase`,
+  `CUClickSmoke`, and the idle-occlusion gate each generate one). The UI-test key
+  path is compiled out of release builds (`#if DEBUG`) and has no predictable
+  fallback: with the flag set but no injected key it fails closed and the app
+  falls back to the real Keychain-backed key.
 
 ### Known limitation — headless XCUITest Accessibility
 

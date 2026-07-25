@@ -47,6 +47,18 @@ permissions:
   security-events: write
   pull-requests: write
 
+# Agent branches push repeatedly, and without this every push left the previous
+# run of this workflow occupying a runner slot until it finished on a commit
+# nobody was waiting for. Only superseded pull_request runs share a group and
+# get cancelled. `push: main` runs are the RR-17 direct-push backstop and MUST
+# always complete, as must merge_group runs -- and a shared group would still
+# cancel *pending* runs even with cancel-in-progress false (GitHub keeps at
+# most one queued run per group), so those events get a unique per-run group
+# that can never collide.
+concurrency:
+  group: security-pr-${{ github.event_name == 'pull_request' && format('pr-{0}', github.ref) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   secret-detection:
     name: Secret Detection (gitleaks)
@@ -290,6 +302,7 @@ jobs:
         uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
         with:
           scan-args: |-
+            --config=osv-scanner.toml
             --lockfile=package-lock.json
             --lockfile=apps/console/package-lock.json
             --lockfile=apps/linux-desktop/package-lock.json

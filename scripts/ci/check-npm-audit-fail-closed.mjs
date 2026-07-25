@@ -36,6 +36,30 @@ export const AUDIT_DIRS = [
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
+/**
+ * Time-boxed advisory allowlist for findings with NO actionable fix.
+ *
+ * An entry only ever tolerates a finding whose ENTIRE via-chain resolves to
+ * allowlisted advisories, and only until its `expires` date (UTC): past that
+ * date the gate fails closed again, forcing re-evaluation instead of letting a
+ * suppression rot. Keep entries in sync with the osv-scanner.toml ignore list
+ * (same id, same expiry) and the rationale in docs/LINT_RATIONALE.md.
+ */
+export const ADVISORY_ALLOWLIST = {
+  "GHSA-mh99-v99m-4gvg": {
+    // reason: brace-expansion DoS. Only unfixable transitive 1.x/2.x copies
+    // remain: minimatch 3/5/6/9 pin ^1/^2 and upstream published no patched
+    // 1.x/2.x release; the only fixed version (5.0.8) exports a named-only CJS
+    // surface that breaks those majors' require-and-call / __importDefault
+    // interop, so overriding would crash eslint/glob/firebase-tools at
+    // runtime. All in-range 5.0.x copies are bumped to 5.0.8. Re-evaluate for
+    // upstream backports before expiry.
+    reason:
+      "brace-expansion DoS: no patched 1.x/2.x release exists for minimatch 3/5/6/9 pins; forcing 5.0.8 breaks their CJS interop. Fixable 5.0.x copies updated to 5.0.8.",
+    expires: "2026-08-21",
+  },
+};
+
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -52,7 +76,51 @@ function severeVulnerabilities(report) {
   );
 }
 
-export function classifyAuditResult({ dir, status, stdout, stderr, error }) {
+const GHSA_RE = /GHSA-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}/i;
+
+function activeAllowlistEntry(ghsaId, allowlist, now) {
+  const entry = allowlist[ghsaId];
+  if (!isObject(entry)) return null;
+  // An unparseable expiry is treated as already expired: fail closed.
+  const expires = Date.parse(`${entry.expires}T23:59:59Z`);
+  if (Number.isNaN(expires) || now.getTime() > expires) return null;
+  return entry;
+}
+
+/**
+ * A vulnerability entry is tolerated iff EVERY advisory object in its
+ * transitive via-chain resolves to an active allowlist entry. String vias name
+ * another vulnerable package; that package's own entry must itself be fully
+ * tolerated. Anything unresolvable (missing package, cycle, advisory without a
+ * GHSA id) fails closed.
+ */
+function isTolerated(name, vulnerabilities, allowlist, now, visiting = new Set()) {
+  if (visiting.has(name)) return false;
+  const vulnerability = vulnerabilities[name];
+  if (!isObject(vulnerability) || !Array.isArray(vulnerability.via) || vulnerability.via.length === 0) {
+    return false;
+  }
+  visiting.add(name);
+  try {
+    for (const via of vulnerability.via) {
+      if (typeof via === "string") {
+        if (!isTolerated(via, vulnerabilities, allowlist, now, visiting)) return false;
+        continue;
+      }
+      if (!isObject(via)) return false;
+      const ghsa = `${via.url ?? ""}`.match(GHSA_RE);
+      if (!ghsa || !activeAllowlistEntry(ghsa[0], allowlist, now)) return false;
+    }
+    return true;
+  } finally {
+    visiting.delete(name);
+  }
+}
+
+export function classifyAuditResult(
+  { dir, status, stdout, stderr, error },
+  { allowlist = ADVISORY_ALLOWLIST, now = new Date() } = {},
+) {
   if (error) {
     return {
       ok: false,
@@ -88,13 +156,37 @@ export function classifyAuditResult({ dir, status, stdout, stderr, error }) {
   }
 
   const severe = severeVulnerabilities(report);
-  if (severe.length > 0) {
+  const vulnerabilities = isObject(report.vulnerabilities)
+    ? report.vulnerabilities
+    : {};
+  const tolerated = severe.filter(([name]) =>
+    isTolerated(name, vulnerabilities, allowlist, now),
+  );
+  const blocking = severe.filter(
+    ([name]) => !tolerated.some(([toleratedName]) => toleratedName === name),
+  );
+  if (blocking.length > 0) {
     return {
       ok: false,
       retryable: false,
       messages: [
         `High/critical vulnerabilities found in ${dir}:`,
-        ...severe.map(
+        ...blocking.map(
+          ([name, vulnerability]) => `  ${name}: ${vulnerability.severity}`,
+        ),
+      ],
+    };
+  }
+
+  if (tolerated.length > 0) {
+    // npm audit exits non-zero for these findings, but every one of them
+    // resolves to a time-boxed allowlist entry: pass, loudly.
+    return {
+      ok: true,
+      retryable: false,
+      messages: [
+        `Tolerated allowlisted advisories in ${dir} (time-boxed, see ADVISORY_ALLOWLIST):`,
+        ...tolerated.map(
           ([name, vulnerability]) => `  ${name}: ${vulnerability.severity}`,
         ),
       ],

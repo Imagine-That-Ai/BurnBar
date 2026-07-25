@@ -125,6 +125,7 @@ extension RoutingClientWiring {
                     ?? "openburnbar"
                 let providerName = (row["provider_name"] as? String)
                     ?? providerID
+                let modelCapabilities = row["model_capabilities"] as? [String: Any]
                 return RoutingClientAdvertisedModel(
                     id: id,
                     displayName: (row["display_name"] as? String) ?? id,
@@ -133,6 +134,8 @@ extension RoutingClientWiring {
                     formatFamily: (row["format_family"] as? String) ?? "openai_compat",
                     servedEndpoints: (row["served_endpoints"] as? [String]) ?? [],
                     capabilities: (row["capabilities"] as? [String]) ?? [],
+                    contextWindowTokens: modelCapabilities?["contextWindowTokens"] as? Int,
+                    inputModalities: (modelCapabilities?["inputModalities"] as? [String]) ?? ["text"],
                     routeEligible: (row["route_eligible"] as? Bool) ?? true
                 )
             }
@@ -179,6 +182,8 @@ extension RoutingClientWiring {
                     formatFamily: row.formatFamily,
                     servedEndpoints: row.servedEndpoints,
                     capabilities: row.capabilities,
+                    contextWindowTokens: row.contextWindowTokens,
+                    inputModalities: row.inputModalities,
                     routeEligible: row.routeEligible
                 )
             )
@@ -206,6 +211,8 @@ extension RoutingClientWiring {
             formatFamily: model.formatFamily,
             servedEndpoints: model.servedEndpoints,
             capabilities: model.capabilities,
+            contextWindowTokens: model.contextWindowTokens,
+            inputModalities: model.inputModalities,
             routeEligible: model.routeEligible
         )
     }

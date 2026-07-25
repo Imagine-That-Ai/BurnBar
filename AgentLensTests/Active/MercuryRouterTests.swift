@@ -176,10 +176,20 @@ final class MercuryRouterTests: XCTestCase {
         return suite
     }
 
+    /// Polls until a frame matching `predicate` has been sent.
+    ///
+    /// The budget is wall-clock tolerance for the CI scheduler, not a behavioural
+    /// assertion: a passing run returns as soon as the frame appears, so a larger
+    /// timeout costs nothing when healthy and cannot mask a wrong frame — the
+    /// predicate still has to be satisfied. One second was too tight on the
+    /// shared macOS runners, where this suite runs alongside parallel Swift
+    /// compiles and the emitting task can be starved past the deadline
+    /// (`testControlStreamMirrorSinkEmitsHealthHeartbeatsWithoutVideoFrames`
+    /// asks for a 20 ms heartbeat and still timed out).
     private func waitForSentFrame(
         on stream: RecordingIrohStream,
         matching predicate: (HermesRealtimeRelayFrame) -> Bool,
-        timeout: TimeInterval = 1.0
+        timeout: TimeInterval = 10.0
     ) async throws -> HermesRealtimeRelayFrame {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {

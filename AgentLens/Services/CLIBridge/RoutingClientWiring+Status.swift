@@ -163,6 +163,17 @@ extension RoutingClientWiring {
             guard Set(installed) == Set(expected) else {
                 return .stale(installedModelIDs: installed, expectedModelIDs: expected)
             }
+            // Metadata-only catalog changes (context window, input
+            // modalities) keep the model-ID sets identical, so compare the
+            // capability-aware fingerprint too. A missing fingerprint means
+            // a pre-metadata wiring and triggers one refreshing rewrite.
+            let expectedFingerprint = codexModelCatalogFingerprint(
+                advertisedModels: advertisedModels,
+                gateway: gateway
+            )
+            guard installedCodexCatalogFingerprint() == expectedFingerprint else {
+                return .stale(installedModelIDs: installed, expectedModelIDs: expected)
+            }
             return .current(modelIDs: installed)
         case .claudeCode:
             let expected = gatewayServedModelIDs(advertisedModels, target: .claudeCode)

@@ -22,7 +22,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: false,
                 snapshotAPIs: []
@@ -51,7 +50,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: false,
                 snapshotAPIs: []
@@ -77,7 +75,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: false,
                 snapshotAPIs: []
@@ -103,7 +100,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: false,
                 snapshotAPIs: []
@@ -133,7 +129,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: true,
                 snapshotAPIs: []
@@ -166,7 +161,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: false,
                 snapshotAPIs: []
@@ -207,7 +201,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
             ],
             dataStore: store,
             orchestrator: makeOrchestrator(store: store),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(conversationIndexingEnabled: false, snapshotAPIs: [])
         )
 
@@ -220,6 +213,117 @@ final class UsageRefreshPipelineTests: XCTestCase {
         let rows = try await store.fetchAllUsage()
         XCTAssertEqual(Set(rows.filter { $0.provider == .codex }.map(\.sessionId)), ["parent#day-200"])
         XCTAssertEqual(Set(rows.filter { $0.provider == .claudeCode }.map(\.sessionId)), ["parent"])
+    }
+
+    // MARK: - Usage-Before-Indexing Ordering (re-implements closed PR #1639)
+
+    /// Pins the refresh ordering contract: by the time conversation indexing
+    /// runs, the tick's usage rows are already committed.
+    ///
+    /// The probe observes the usage table from inside the indexing call. Under
+    /// the old `reconcile` → `persist` order it sees an un-updated table: the
+    /// superseded lifetime row still present, its per-day replacements missing —
+    /// exactly the state in which projection jobs enqueued by the indexer would
+    /// double-count. Under `persist` → `reconcile` it sees the committed totals.
+    func test_publishUsageThenIndexCommitsUsageBeforeIndexingRuns() async throws {
+        let store = try makeInMemoryDataStore()
+        // A superseded lifetime row that this tick's invalidation retires.
+        try await store.insert(ViewTestFixtures.makeUsage(provider: .codex, sessionId: "parent"))
+
+        let probe = UsageVisibilityProbe(dataStore: store)
+        let pipeline = UsageRefreshPipeline(
+            parsers: [:],
+            dataStore: store,
+            orchestrator: probe,
+            settings: RefreshSettingsSnapshot(conversationIndexingEnabled: true, snapshotAPIs: [])
+        )
+
+        var parsed = UsageRefreshPipeline.ParsedBatch()
+        parsed.allUsages = [
+            ViewTestFixtures.makeUsage(provider: .codex, sessionId: "parent#day-200")
+        ]
+        parsed.usageSessionIDsToDeleteByProvider = [.codex: ["parent"]]
+        parsed.allConversations = [makeConversationRecord(id: "Codex:ordering-probe")]
+
+        let published = await pipeline.publishUsageThenIndexConversations(parsed: parsed)
+        XCTAssertNil(published.persist.persistenceErrorMessage)
+
+        let observed = await probe.observedUsageSessionIDs
+        XCTAssertNotNil(observed, "Conversation indexing must have been invoked")
+        XCTAssertEqual(
+            observed,
+            ["parent#day-200"],
+            "Usage rows must be committed before conversation indexing runs"
+        )
+    }
+
+    /// Pins the failure half of the ordering contract: when usage publication
+    /// fails, conversation indexing must not run at all.
+    ///
+    /// `persist` commits the invalidation deletes and the chunked inserts in
+    /// separate transactions, so a mid-flight failure can leave the usage table
+    /// partially published: some superseded rows deleted, some replacements
+    /// missing. Indexing against that state would enqueue projection jobs that
+    /// materialize incomplete totals. The pipeline must skip reconciliation and
+    /// surface the persistence error instead.
+    func test_publishUsageSkipsIndexingWhenPersistenceFails() async throws {
+        let queue = try DatabaseQueue()
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let probe = UsageVisibilityProbe(dataStore: store)
+        let pipeline = UsageRefreshPipeline(
+            parsers: [:],
+            dataStore: store,
+            orchestrator: probe,
+            settings: RefreshSettingsSnapshot(conversationIndexingEnabled: true, snapshotAPIs: [])
+        )
+
+        var parsed = UsageRefreshPipeline.ParsedBatch()
+        parsed.allUsages = [
+            ViewTestFixtures.makeUsage(provider: .codex, sessionId: "parent#day-200")
+        ]
+        parsed.usageSessionIDsToDeleteByProvider = [.codex: ["parent"]]
+        parsed.allConversations = [makeConversationRecord(id: "Codex:persist-failure-probe")]
+
+        // Close the database so every write in `persist` fails.
+        try queue.close()
+
+        let published = await pipeline.publishUsageThenIndexConversations(parsed: parsed)
+
+        XCTAssertNotNil(published.persist.persistenceErrorMessage)
+        XCTAssertEqual(published.reconcile.indexedConversationChanges, 0)
+        let observed = await probe.observedUsageSessionIDs
+        XCTAssertNil(
+            observed,
+            "Conversation indexing must not run when usage publication failed"
+        )
+    }
+
+    /// The background indexing pass reads with a checkpoint watermark and a byte
+    /// budget, so its usage view is partial. It must never write usage rows —
+    /// re-persisting them would let a background tick overwrite the totals the
+    /// foreground refresh published. (Original branch commit 2670c8c0a.)
+    func test_conversationIndexingDoesNotPersistUsageRows() async throws {
+        let store = try makeInMemoryDataStore()
+        let recorder = ParseOptionsRecorder()
+        let usage = ViewTestFixtures.makeUsage(
+            provider: .factory,
+            sessionId: "indexing-pass-usage",
+            inputTokens: 10,
+            outputTokens: 5
+        )
+
+        _ = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: RecordingParser(recorder: recorder, usages: [usage])],
+            dataStore: store,
+            orchestrator: makeOrchestrator(store: store),
+            indexingEnabled: true
+        )
+
+        let persistedUsages = try await store.fetchAllUsage()
+        XCTAssertTrue(
+            persistedUsages.isEmpty,
+            "The conversation-indexing pass must not write usage rows; found \(persistedUsages.count)"
+        )
     }
 
     func test_conversationIndexingUsesSeparateBodyEnabledPass() async throws {
@@ -308,7 +412,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
             parsers: [.factory: RecordingParser(recorder: recorder)],
             dataStore: store,
             orchestrator: orchestrator,
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: true,
                 snapshotAPIs: []
@@ -375,6 +478,53 @@ final class UsageRefreshPipelineTests: XCTestCase {
         let queue = try DatabaseQueue()
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }
+
+    private func makeConversationRecord(id: String) -> ConversationRecord {
+        let timestamp = Date(timeIntervalSince1970: 1_700_000_000)
+        return ConversationRecord(
+            id: id,
+            provider: .codex,
+            sessionId: "session-\(id)",
+            projectName: "Ordering",
+            startTime: timestamp,
+            endTime: timestamp,
+            messageCount: 2,
+            userWordCount: 3,
+            assistantWordCount: 4,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Ordering probe",
+            lastAssistantMessage: "Done",
+            fullText: "Ordering probe\n\nDone",
+            indexedAt: timestamp,
+            fileModifiedAt: timestamp,
+            summary: nil
+        )
+    }
+}
+
+/// Stands in for `RefreshOrchestrator` so the ordering test can look at the
+/// usage table from inside the conversation-indexing call.
+private actor UsageVisibilityProbe: ConversationIndexingCoordinator {
+    private let dataStore: DataStore
+    /// `nil` until indexing is invoked; otherwise the usage session IDs visible
+    /// in the store at that instant.
+    private(set) var observedUsageSessionIDs: [String]?
+
+    init(dataStore: DataStore) {
+        self.dataStore = dataStore
+    }
+
+    func indexConversationsOffMain(
+        _ conversations: [ConversationRecord],
+        indexingEnabled: Bool
+    ) async -> Int {
+        guard !conversations.isEmpty, indexingEnabled else { return 0 }
+        let rows = (try? await dataStore.fetchAllUsage()) ?? [] // try?-ok(test probe)
+        observedUsageSessionIDs = rows.map(\.sessionId).sorted()
+        return conversations.count
+    }
 }
 
 private struct EmptyParser: LogParser {
@@ -440,6 +590,9 @@ private actor ParseOptionsRecorder {
 private struct RecordingParser: LogParser {
     let provider: AgentProvider = .factory
     let recorder: ParseOptionsRecorder
+    /// Usage the parser hands back. The conversation-indexing pass must discard
+    /// it rather than persist it.
+    var usages: [TokenUsage] = []
 
     func parse() async throws -> ParseResult {
         ParseResult(usages: [], conversations: [])
@@ -447,6 +600,6 @@ private struct RecordingParser: LogParser {
 
     func parse(options: LogParseOptions) async throws -> ParseResult {
         await recorder.record(options)
-        return ParseResult(usages: [], conversations: [])
+        return ParseResult(usages: usages, conversations: [])
     }
 }

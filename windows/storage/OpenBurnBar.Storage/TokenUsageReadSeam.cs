@@ -146,6 +146,17 @@ public static class TokenUsageReadSeam
         return scalar is null or DBNull ? 0 : Convert.ToInt64(scalar, CultureInfo.InvariantCulture);
     }
 
+    /// <summary>Column list consumed by <see cref="ReadRow"/> — shared by every row-returning query.</summary>
+    private const string RowColumns =
+        "id, provider, sessionId, projectName, model,\n" +
+        "                   inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,\n" +
+        "                   reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,\n" +
+        "                   usageSource, executionSourceID, executionSourceName,\n" +
+        "                   executionSourceKind, executionSourceConfidence,\n" +
+        "                   sourceDeviceId, sourceDeviceName, isRemote,\n" +
+        "                   providerID, providerAccountID, providerAccountLabel, providerAccountSource,\n" +
+        "                   provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID";
+
     /// <summary>Most recent rows by <c>createdAt</c> for inspection after a parser write.</summary>
     public static IReadOnlyList<TokenUsageRecord> ListRecent(SqliteConnection connection, int limit = 20)
     {
@@ -180,6 +191,88 @@ public static class TokenUsageReadSeam
         }
 
         return rows;
+    }
+
+    /// <summary>
+    /// Rows whose <c>startTime</c> falls in <paramref name="startUtc"/> (inclusive) …
+    /// <paramref name="endUtcExclusive"/>, ascending — the Calendar surface's fetch
+    /// window. Attribution follows the macOS rule (sessions belong to the day their
+    /// <c>startTime</c> lands in), so the range filter uses <c>startTime</c>, not
+    /// <c>createdAt</c>.
+    /// </summary>
+    public static IReadOnlyList<TokenUsageRecord> ListInRange(
+        SqliteConnection connection,
+        DateTimeOffset startUtc,
+        DateTimeOffset endUtcExclusive)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        if (endUtcExclusive <= startUtc)
+        {
+            return Array.Empty<TokenUsageRecord>();
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            SELECT {RowColumns}
+            FROM token_usage
+            WHERE startTime >= $start AND startTime < $end
+            ORDER BY startTime ASC
+            """;
+        command.Parameters.AddWithValue("$start", FormatTimestamp(startUtc));
+        command.Parameters.AddWithValue("$end", FormatTimestamp(endUtcExclusive));
+
+        var rows = new List<TokenUsageRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            rows.Add(ReadRow(reader));
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Per-session token/cost rollups for a set of session ids — one GROUP BY
+    /// query (the SharedUi session list joins these onto session-log records so
+    /// rows never display fabricated zero usage). Ids are bound as parameters;
+    /// the empty set short-circuits.
+    /// </summary>
+    public static IReadOnlyDictionary<string, (long TotalTokens, double CostUsd)> LoadSessionTotals(
+        SqliteConnection connection,
+        IReadOnlyCollection<string> sessionIds)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        if (sessionIds is null || sessionIds.Count == 0)
+        {
+            return new Dictionary<string, (long, double)>(StringComparer.Ordinal);
+        }
+
+        var names = new List<string>(sessionIds.Count);
+        using var command = connection.CreateCommand();
+        int index = 0;
+        foreach (string id in sessionIds)
+        {
+            string name = "$sid" + index.ToString(CultureInfo.InvariantCulture);
+            names.Add(name);
+            command.Parameters.AddWithValue(name, id);
+            index += 1;
+        }
+
+        command.CommandText =
+            $"SELECT sessionId, COALESCE(SUM(totalTokens), 0), COALESCE(SUM(cost), 0)\n" +
+            $"FROM token_usage\n" +
+            $"WHERE sessionId IN ({string.Join(", ", names)})\n" +
+            $"GROUP BY sessionId";
+
+        var totals = new Dictionary<string, (long, double)>(StringComparer.Ordinal);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            totals[reader.GetString(0)] = (reader.GetInt64(1), reader.GetDouble(2));
+        }
+
+        return totals;
     }
 
     private static TokenUsageRecord ReadRow(SqliteDataReader reader)

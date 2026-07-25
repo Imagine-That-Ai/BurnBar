@@ -207,6 +207,8 @@ struct RoutingClientAdvertisedModel: Sendable, Equatable {
     let formatFamily: String
     let servedEndpoints: [String]
     let capabilities: [String]
+    let contextWindowTokens: Int?
+    let inputModalities: [String]
     let routeEligible: Bool
 
     init(
@@ -217,6 +219,8 @@ struct RoutingClientAdvertisedModel: Sendable, Equatable {
         formatFamily: String = "openai_compat",
         servedEndpoints: [String] = [],
         capabilities: [String] = [],
+        contextWindowTokens: Int? = nil,
+        inputModalities: [String] = ["text"],
         routeEligible: Bool
     ) {
         self.id = id
@@ -226,6 +230,8 @@ struct RoutingClientAdvertisedModel: Sendable, Equatable {
         self.formatFamily = formatFamily
         self.servedEndpoints = servedEndpoints
         self.capabilities = capabilities
+        self.contextWindowTokens = contextWindowTokens.flatMap { $0 > 0 ? $0 : nil }
+        self.inputModalities = inputModalities.isEmpty ? ["text"] : inputModalities
         self.routeEligible = routeEligible
     }
 

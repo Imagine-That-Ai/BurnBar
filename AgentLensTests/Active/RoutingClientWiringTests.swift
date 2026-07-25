@@ -258,6 +258,8 @@ final class RoutingClientWiringTests: XCTestCase {
                     providerID: "codex",
                     providerName: "Codex",
                     servedEndpoints: ["/v1/responses"],
+                    contextWindowTokens: 272_000,
+                    inputModalities: ["text", "image"],
                     routeEligible: true
                 ),
                 RoutingClientAdvertisedModel(
@@ -292,8 +294,153 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertTrue(models.contains { $0["slug"] as? String == "gpt-5.5" })
         XCTAssertTrue(models.contains { $0["slug"] as? String == "gpt-5.4" })
         XCTAssertTrue(models.contains { $0["slug"] as? String == "openburnbar/gpt-5.5" })
+        let proxyModel = try XCTUnwrap(
+            models.first { $0["slug"] as? String == "openburnbar/gpt-5.5" }
+        )
+        XCTAssertEqual(proxyModel["context_window"] as? Int, 272_000)
+        XCTAssertEqual(proxyModel["max_context_window"] as? Int, 272_000)
+        XCTAssertEqual(
+            (proxyModel["truncation_policy"] as? [String: Any])?["limit"] as? Int,
+            272_000
+        )
+        XCTAssertEqual(proxyModel["input_modalities"] as? [String], ["text", "image"])
         XCTAssertFalse(models.contains { $0["slug"] as? String == "openburnbar/claude-opus-4-8" })
         XCTAssertFalse(models.contains { $0["slug"] as? String == "openburnbar/chat-only-model" })
+    }
+
+    func test_advertisedModelsPreservesLiveContextWindowMetadata() async throws {
+        let wiring = makeWiring()
+        let session = makeProbeSession { _ in
+            try JSONSerialization.data(withJSONObject: [
+                "data": [
+                    [
+                        "id": "claude-opus-4-8",
+                        "display_name": "Claude Opus 4.8",
+                        "provider_id": "anthropic",
+                        "provider_name": "Anthropic",
+                        "served_endpoints": ["/v1/responses"],
+                        "model_capabilities": [
+                            "contextWindowTokens": 1_000_000,
+                            "inputModalities": ["text", "image"]
+                        ],
+                        "route_eligible": true
+                    ]
+                ]
+            ])
+        }
+
+        let models = await wiring.advertisedModels(
+            gateway: exampleGateway(token: "catalog-token"),
+            session: session
+        )
+
+        let model = try XCTUnwrap(models.first)
+        XCTAssertEqual(model.contextWindowTokens, 1_000_000)
+        XCTAssertEqual(model.inputModalities, ["text", "image"])
+    }
+
+    // Codex CLI rejects the entire catalog file when any row carries a
+    // modality outside its `text`/`image` enum ("unknown variant 'audio'"),
+    // so the row builder must filter before serialization.
+    func test_wireCodexFiltersInputModalitiesToCodexEnum() throws {
+        let wiring = makeWiring()
+        _ = try wiring.wire(
+            target: .codex,
+            gateway: exampleGateway(token: "codex-token"),
+            advertisedModels: [
+                RoutingClientAdvertisedModel(
+                    id: "omni-model",
+                    displayName: "Omni",
+                    providerID: "openai",
+                    providerName: "OpenAI",
+                    servedEndpoints: ["/v1/responses"],
+                    inputModalities: ["text", "audio", "image", "video"],
+                    routeEligible: true
+                ),
+                RoutingClientAdvertisedModel(
+                    id: "audio-only-model",
+                    displayName: "Audio Only",
+                    providerID: "openai",
+                    providerName: "OpenAI",
+                    servedEndpoints: ["/v1/responses"],
+                    inputModalities: ["audio"],
+                    routeEligible: true
+                )
+            ]
+        )
+
+        let catalog = try loadJSONObject(at: tempHome.appendingPathComponent(".codex/openburnbar-model-catalog.json"))
+        let models = try XCTUnwrap(catalog["models"] as? [[String: Any]])
+        let omni = try XCTUnwrap(models.first { $0["slug"] as? String == "openburnbar/omni-model" })
+        XCTAssertEqual(omni["input_modalities"] as? [String], ["text", "image"])
+        let audioOnly = try XCTUnwrap(models.first { $0["slug"] as? String == "openburnbar/audio-only-model" })
+        XCTAssertEqual(audioOnly["input_modalities"] as? [String], ["text"])
+    }
+
+    // Metadata-only catalog changes keep the model-ID sets identical, so the
+    // Codex freshness check must also compare capability metadata; otherwise
+    // the sidecar keeps a stale truncation limit or modality list forever.
+    func test_codexModelSyncStatusStaleWhenModelMetadataChanges() throws {
+        let wiring = makeWiring()
+        let gateway = exampleGateway(token: "codex-token")
+        let model = { (contextWindow: Int, modalities: [String]) in
+            RoutingClientAdvertisedModel(
+                id: "glm-5",
+                displayName: "GLM-5",
+                providerID: "zai",
+                providerName: "Z.AI",
+                servedEndpoints: ["/v1/responses"],
+                contextWindowTokens: contextWindow,
+                inputModalities: modalities,
+                routeEligible: true
+            )
+        }
+        _ = try wiring.wire(
+            target: .codex,
+            gateway: gateway,
+            advertisedModels: [model(200_000, ["text"])]
+        )
+
+        // Same IDs, same metadata → current.
+        XCTAssertEqual(
+            wiring.modelSyncStatus(
+                target: .codex,
+                gateway: gateway,
+                advertisedModels: [model(200_000, ["text"])]
+            ),
+            .current(modelIDs: ["glm-5"])
+        )
+
+        // Same IDs, larger live context window → stale.
+        XCTAssertEqual(
+            wiring.modelSyncStatus(
+                target: .codex,
+                gateway: gateway,
+                advertisedModels: [model(400_000, ["text"])]
+            ),
+            .stale(installedModelIDs: ["glm-5"], expectedModelIDs: ["glm-5"])
+        )
+
+        // Same IDs, new Codex-visible modality → stale.
+        XCTAssertEqual(
+            wiring.modelSyncStatus(
+                target: .codex,
+                gateway: gateway,
+                advertisedModels: [model(200_000, ["text", "image"])]
+            ),
+            .stale(installedModelIDs: ["glm-5"], expectedModelIDs: ["glm-5"])
+        )
+
+        // Same IDs, only a Codex-invisible modality added (filtered out of
+        // the written catalog) → still current, no pointless rewrite.
+        XCTAssertEqual(
+            wiring.modelSyncStatus(
+                target: .codex,
+                gateway: gateway,
+                advertisedModels: [model(200_000, ["text", "audio"])]
+            ),
+            .current(modelIDs: ["glm-5"])
+        )
     }
 
     func test_wireCodex_preservesPriorUserTOML() throws {

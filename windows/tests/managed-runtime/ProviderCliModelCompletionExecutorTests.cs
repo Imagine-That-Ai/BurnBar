@@ -14,7 +14,6 @@ namespace OpenBurnBar.App.ManagedAgentRuntime.Tests;
 public sealed class ProviderCliModelCompletionExecutorTests
 {
     [Theory]
-    [InlineData("codex", "cli://codex")]
     [InlineData("factory", "cli://factory")]
     [InlineData("factory-droid", "cli://factory")]
     public void MatchingCliEndpointIsExecutable(string vendor, string endpoint)
@@ -27,6 +26,7 @@ public sealed class ProviderCliModelCompletionExecutorTests
 
     [Theory]
     [InlineData("codex", "cli://factory")]
+    [InlineData("codex", "cli://codex")]
     [InlineData("factory", "cli://codex")]
     [InlineData("codex", "cli://codex/path")]
     [InlineData("codex", "cli://codex?mode=unsafe")]
@@ -45,51 +45,30 @@ public sealed class ProviderCliModelCompletionExecutorTests
         ModelRoute httpCodex = new(
             "codex-http", "codex", "gpt-5", 0, true,
             new Uri("https://provider.example/v1/chat/completions"));
-        ModelRoute cliCodex = CliRoute("codex", "gpt-5", "cli://codex");
+        ModelRoute cliFactory = CliRoute("factory", "claude-sonnet", "cli://factory");
 
         Assert.Equal(201, (await composite.ExecuteAsync(httpCodex, Body())).StatusCode);
-        Assert.Equal(202, (await composite.ExecuteAsync(cliCodex, Body())).StatusCode);
+        Assert.Equal(202, (await composite.ExecuteAsync(cliFactory, Body())).StatusCode);
         Assert.Single(http.Routes);
         Assert.Single(cli.Routes);
     }
 
     [Fact]
-    public async Task CodexUsesGuardedReadOnlyStdinAndExtractsLatestAgentMessage()
+    public async Task CodexCliRouteIsRejectedBeforeProcessLaunch()
     {
-        ProviderCliProcessRequest? captured = null;
-        var runner = new DelegateRunner(request =>
-        {
-            captured = request;
-            return new ProviderCliProcessResult(
-                0,
-                "{\"item\":{\"type\":\"agent_message\",\"text\":\"first\"}}\n"
-                + "{\"item\":{\"type\":\"agent_message\",\"text\":\"final answer\"}}\n",
-                string.Empty);
-        });
+        var runner = new DelegateRunner(_ => throw new InvalidOperationException("must not launch"));
         var executor = new ProviderCliModelCompletionExecutor(runner);
 
         ModelCompletionResult result = await executor.ExecuteAsync(
             CliRoute("codex", "gpt-5", "cli://codex", "secret-key"),
             Body("hello from user", role: ""));
 
-        Assert.True(result.Succeeded);
-        Assert.NotNull(captured);
-        Assert.Equal("codex", captured.ExecutableId);
-        Assert.Contains("--sandbox", captured.Arguments);
-        Assert.Contains("read-only", captured.Arguments);
-        Assert.Contains("--ignore-user-config", captured.Arguments);
-        Assert.Contains("--ignore-rules", captured.Arguments);
-        Assert.Equal("-", captured.Arguments[^1]);
-        Assert.DoesNotContain(captured.Arguments, argument => argument.Contains("hello from user", StringComparison.Ordinal));
-        Assert.Contains("Do not inspect or modify files", captured.StandardInput, StringComparison.Ordinal);
-        Assert.Contains("User:\nhello from user", captured.StandardInput, StringComparison.Ordinal);
-        Assert.Equal("secret-key", captured.RequiredEnvironment["OPENAI_API_KEY"]);
-        Assert.Equal("final answer", ResponseText(result));
-        Assert.False(Directory.Exists(captured.WorkingDirectory));
+        Assert.Equal(503, result.StatusCode);
+        Assert.Equal(0, runner.CallCount);
     }
 
     [Fact]
-    public async Task CodexStreamingResponseCarriesTerminalUsage()
+    public async Task CodexStreamingCliRouteIsRejected()
     {
         var runner = new DelegateRunner(_ => new ProviderCliProcessResult(
             0,
@@ -101,14 +80,8 @@ public sealed class ProviderCliModelCompletionExecutorTests
             CliRoute("codex", "gpt-5", "cli://codex"),
             Body("stream this", stream: true));
 
-        Assert.True(result.Succeeded);
-        Assert.Equal("text/event-stream", result.ContentType);
-        string stream = Encoding.UTF8.GetString(result.Body);
-        Assert.Contains("streamed answer", stream, StringComparison.Ordinal);
-        Assert.EndsWith("data: [DONE]\n\n", stream, StringComparison.Ordinal);
-        GatewayTokenUsage usage = Assert.IsType<GatewayTokenUsage>(GatewayUsageParser.Parse(result));
-        Assert.True(usage.InputTokens > 0);
-        Assert.True(usage.OutputTokens > 0);
+        Assert.Equal(503, result.StatusCode);
+        Assert.Equal(0, runner.CallCount);
     }
 
     [Fact]
@@ -206,7 +179,7 @@ public sealed class ProviderCliModelCompletionExecutorTests
         var executor = new ProviderCliModelCompletionExecutor(runner);
 
         ModelCompletionResult result = await executor.ExecuteAsync(
-            CliRoute("codex", "gpt-5", "cli://codex"),
+            CliRoute("factory", "claude-sonnet", "cli://factory", "factory-secret"),
             Body());
 
         Assert.Equal(429, result.StatusCode);

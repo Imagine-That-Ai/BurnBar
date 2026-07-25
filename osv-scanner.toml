@@ -1,0 +1,19 @@
+# OSV-Scanner override config for the "OSV Scanner (open source vulnerabilities)"
+# job in .github/workflows/security-pr.yml (passed via --config).
+#
+# Ignores listed here are deliberately time-boxed with ignoreUntil so the gate
+# fails closed again and forces re-evaluation instead of rotting as a permanent
+# suppression. Keep the paired npm-audit allowlist entry in
+# scripts/ci/check-npm-audit-fail-closed.mjs in sync (same id, same expiry), and
+# the rationale in docs/LINT_RATIONALE.md current.
+
+[[IgnoredVulns]]
+id = "GHSA-mh99-v99m-4gvg"
+ignoreUntil = 2026-08-21T00:00:00Z
+# reason: no fixed release exists on the brace-expansion 1.x/2.x lines consumed
+# by minimatch 3/5/6/9 (the only fix, 5.0.8, exports a named-only CJS surface
+# that breaks those majors' require-and-call / __importDefault interop, so an
+# override would crash eslint/glob/firebase-tools at runtime). All in-range
+# 5.0.x copies are already bumped to the fixed 5.0.8. Re-evaluate for upstream
+# 1.x/2.x backports before the ignoreUntil date.
+reason = "brace-expansion DoS (GHSA-mh99-v99m-4gvg): only unfixable transitive 1.x/2.x copies remain (minimatch 3/5/6/9 pin ^1/^2 and no patched 1.x/2.x release exists; forcing 5.0.8 breaks their CJS interop). Fixable 5.0.x copies are updated to 5.0.8. Time-boxed pending upstream backports."

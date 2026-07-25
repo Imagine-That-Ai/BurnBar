@@ -85,6 +85,7 @@ budgets/mission-splitbrain-baseline.json
 budgets/core-target-membership-baseline.json
 budgets/core-umbrella-imports-baseline.json
 budgets/linux-desktop.perf.json
+budgets/usage-refresh-tick-baseline.json
 # macOS idle/occluded CPU regression tripwire (P-PERF-3): structural assertion
 # gate for the backdrop WebGL rAF pause on occlusion — no existing baseline raised.
 budgets/macos-idle-cpu.perf.json
@@ -132,6 +133,26 @@ Vendor/GRDB-SQLCipher/GRDB/ValueObservation/Observers/ValueConcurrentObserver.sw
 Vendor/GRDB-SQLCipher/GRDB/ValueObservation/Reducers/Trace.swift | swiftlint-disable
 ```
 <!-- END:suppression-allowlist -->
+
+## Security-gate advisory ignores (time-boxed)
+
+The PR security gates keep a **paired, expiring** ignore list for dependency
+advisories that have **no actionable fix**: [`osv-scanner.toml`](../osv-scanner.toml)
+(OSV Scanner job, `ignoreUntil`) and `ADVISORY_ALLOWLIST` in
+[`scripts/ci/check-npm-audit-fail-closed.mjs`](../scripts/ci/check-npm-audit-fail-closed.mjs)
+(npm audit job, `expires`). Entries must stay in sync (same GHSA id, same expiry)
+and each carries a `reason:`; past the expiry date both gates fail closed again,
+forcing re-evaluation instead of letting the ignore rot.
+
+Current entries:
+
+- **GHSA-mh99-v99m-4gvg** (brace-expansion DoS, expires 2026-08-21): upstream
+  published the fix only as 5.0.8; minimatch 3/5/6/9 pin `^1`/`^2`, no patched
+  1.x/2.x release exists, and forcing 5.0.8 breaks those majors' CJS interop
+  (named-only exports vs require-and-call / `__importDefault`). All in-range
+  5.0.x copies are bumped to 5.0.8; only the unfixable transitive 1.x/2.x
+  dev-tooling copies (plus glob's minimatch@9 chain) remain. Remove the entries
+  as soon as upstream backports land.
 
 ## Mac/iOS Swift twin-basename allowlist
 

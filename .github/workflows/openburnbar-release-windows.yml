@@ -849,22 +849,6 @@ jobs:
               -MakeAppxPath '${{ steps.packaging-tools.outputs.makeappx }}'
           }
 
-      - name: Exercise signed x64 MSIX install and sustained-launch lifecycle
-        if: steps.config.outputs.codesign == 'true'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $expectedPublisher = "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
-          $packagePath = Join-Path $env:GITHUB_WORKSPACE "artifacts/OpenBurnBar-${env:VERSION}-x64.msix"
-          $receiptPath = Join-Path $env:GITHUB_WORKSPACE "artifacts/signed-x64-msix-lifecycle.json"
-          & windows/packaging/msix/Test-SignedMsixLifecycle.ps1 `
-            -PackagePath $packagePath `
-            -ExpectedVersion "${env:VERSION}.0" `
-            -ExpectedArchitecture X64 `
-            -ExpectedPublisher $expectedPublisher `
-            -ReceiptPath $receiptPath `
-            -HoldSeconds 20
-
       - name: Write physical-certification artifact manifests
         if: steps.config.outputs.codesign == 'true'
         env:
@@ -1027,6 +1011,59 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  # Launching a newly built application is an untrusted-code boundary. Keep
+  # lifecycle certification in a separate job that has no release environment,
+  # signing key, code-signing credential, OIDC token, or write permission.
+  windows-msix-lifecycle:
+    name: Signed MSIX lifecycle (secretless)
+    needs:
+      - resolve-release
+      - build-sign
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.resolve-release.outputs.version }}
+    steps:
+      - name: Check out authorized release scripts
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ needs.resolve-release.outputs.release_commit }}
+          persist-credentials: false
+
+      - name: Download signed Windows release artifacts
+        if: needs.build-sign.outputs.signed_release == 'true'
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: windows-release-v${{ needs.resolve-release.outputs.version }}
+          path: artifacts
+
+      - name: Exercise signed x64 MSIX install and sustained-launch lifecycle
+        if: needs.build-sign.outputs.signed_release == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expectedPublisher = "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+          $packagePath = Join-Path $env:GITHUB_WORKSPACE "artifacts/OpenBurnBar-${env:VERSION}-x64.msix"
+          $receiptPath = Join-Path $env:RUNNER_TEMP "signed-x64-msix-lifecycle.json"
+          & windows/packaging/msix/Test-SignedMsixLifecycle.ps1 `
+            -PackagePath $packagePath `
+            -ExpectedVersion "${env:VERSION}.0" `
+            -ExpectedArchitecture X64 `
+            -ExpectedPublisher $expectedPublisher `
+            -ReceiptPath $receiptPath `
+            -HoldSeconds 20
+
+      - name: Upload lifecycle receipt
+        if: needs.build-sign.outputs.signed_release == 'true'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: windows-msix-lifecycle-v${{ needs.resolve-release.outputs.version }}
+          path: ${{ runner.temp }}/signed-x64-msix-lifecycle.json
+          if-no-files-found: error
+          retention-days: 90
+
   # ── Supply chain: SBOM (SPDX) + OpenVEX + keyless Sigstore over the artifacts ─
   supply-chain:
     name: SBOM + OpenVEX + Sigstore
@@ -1034,6 +1071,7 @@ jobs:
       - resolve-release
       - domain-core-native-release-gate
       - build-sign
+      - windows-msix-lifecycle
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

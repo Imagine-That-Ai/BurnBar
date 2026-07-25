@@ -934,16 +934,24 @@ struct TokenBreakdownChart: View {
                         }
                     }
                     .frame(height: 170)
+                    .accessibilityChartDescriptor(self)
+                    .accessibilityLabel(accessibilitySummary)
                 } else {
                     Text("No data")
                         .font(UnifiedDesignSystem.Typography.caption)
                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                         .frame(height: 170)
                         .frame(maxWidth: .infinity)
+                        .accessibilityLabel("Token breakdown chart. No token data in this window.")
                 }
             }
             .padding(UnifiedDesignSystem.Spacing.lg)
         }
+    }
+
+    private var accessibilitySummary: String {
+        let parts = tokenData.map { "\($0.label) \(formatTokens($0.value))" }
+        return "Token breakdown bar chart. \(parts.joined(separator: ", ")). Total \(formatTokens(totalTokens))."
     }
 
     private var totalTokens: Int {
@@ -968,6 +976,38 @@ struct TokenBreakdownChart: View {
             return String(format: "%.1fK", Double(tokens) / 1_000)
         }
         return "\(tokens)"
+    }
+}
+
+// MARK: - TokenBreakdownChart accessibility
+
+extension TokenBreakdownChart: @preconcurrency AXChartDescriptorRepresentable {
+    /// VoiceOver audio-graph descriptor for the token breakdown bars.
+    func makeChartDescriptor() -> AXChartDescriptor {
+        let data = tokenData
+        let xAxis = AXCategoricalDataAxisDescriptor(
+            title: "Token type",
+            categoryOrder: data.map(\.label)
+        )
+        let upper = Swift.max(Double(data.map(\.value).max() ?? 1), 1)
+        let yAxis = AXNumericDataAxisDescriptor(
+            title: "Tokens",
+            range: 0...upper,
+            gridlinePositions: []
+        ) { [self] value in formatTokens(Int(value)) }
+        let series = AXDataSeriesDescriptor(
+            name: "Token breakdown",
+            isContinuous: false,
+            dataPoints: data.map { AXDataPoint(x: $0.label, y: Double($0.value)) }
+        )
+        return AXChartDescriptor(
+            title: "Token Breakdown",
+            summary: accessibilitySummary,
+            xAxis: xAxis,
+            yAxis: yAxis,
+            additionalAxes: [],
+            series: [series]
+        )
     }
 }
 
@@ -1040,6 +1080,8 @@ struct DailyTrendChart: View {
                     }
                     .chartYScale(domain: 0...(maxDailyValue * 1.15))
                     .frame(height: 170)
+                    .accessibilityChartDescriptor(self)
+                    .accessibilityLabel(accessibilitySummary)
 
                     HStack(spacing: UnifiedDesignSystem.Spacing.lg) {
                         UnifiedMiniStat(label: "Avg/Day", value: formatSummary(averageDailyValue))
@@ -1052,6 +1094,7 @@ struct DailyTrendChart: View {
                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                         .frame(height: 170)
                         .frame(maxWidth: .infinity)
+                        .accessibilityLabel("Daily trend chart. No usage in the last \(days) days.")
                 }
             }
             .padding(UnifiedDesignSystem.Spacing.lg)
@@ -1115,6 +1158,56 @@ struct DailyTrendChart: View {
         return v.formatAsTokenVolume()
     }
 
+    private var accessibilitySummary: String {
+        let unit = displayMode == .currency ? "spend" : "token volume"
+        return "Daily \(unit) trend, last \(days) days. "
+            + "Average \(formatSummary(averageDailyValue)) per day, "
+            + "peak \(formatSummary(peakDailyValue)), "
+            + "total \(formatSummary(totalValue))."
+    }
+}
+
+// MARK: - DailyTrendChart accessibility
+
+extension DailyTrendChart: @preconcurrency AXChartDescriptorRepresentable {
+    /// VoiceOver audio-graph descriptor for the daily trend line.
+    func makeChartDescriptor() -> AXChartDescriptor {
+        let points = dailyDataPoints
+        let intervals = points.map { $0.date.timeIntervalSinceReferenceDate }
+        let lower = intervals.min() ?? 0
+        let upper = Swift.max(intervals.max() ?? 1, lower + 1)
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .none
+        let xAxis = AXNumericDataAxisDescriptor(
+            title: "Date",
+            range: lower...upper,
+            gridlinePositions: []
+        ) { interval in
+            dateFormatter.string(from: Date(timeIntervalSinceReferenceDate: interval))
+        }
+        let yUpper = Swift.max(points.map(\.value).max() ?? 1, 0.01)
+        let yAxis = AXNumericDataAxisDescriptor(
+            title: displayMode == .currency ? "Spend" : "Tokens",
+            range: 0...yUpper,
+            gridlinePositions: []
+        ) { [self] value in formatSummary(value) }
+        let series = AXDataSeriesDescriptor(
+            name: "Daily trend",
+            isContinuous: true,
+            dataPoints: points.map {
+                AXDataPoint(x: $0.date.timeIntervalSinceReferenceDate, y: $0.value)
+            }
+        )
+        return AXChartDescriptor(
+            title: "Daily Trend",
+            summary: accessibilitySummary,
+            xAxis: xAxis,
+            yAxis: yAxis,
+            additionalAxes: [],
+            series: [series]
+        )
+    }
 }
 
 #Preview {
