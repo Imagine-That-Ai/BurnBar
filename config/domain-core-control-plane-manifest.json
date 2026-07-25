@@ -271,7 +271,7 @@
     "scripts/test-openburnbar-mobile.sh": ["ee1e2a07585418af","adc011d6fb51ef41","cf7d3a50e4895dd4","50e08724c65e2e75"],
     "scripts/test-openburnbar-replay-evals.sh": ["3b22eb8a2b7b4593","8e37c6eef5714aa5","966fdb5771009db3","fe968b5cade68ce9"],
     "scripts/test-openburnbar-retrieval-evals.sh": ["950a9e5117dc6573","bc5a47d3e7119598","ab3f0a381129b187","927a67d19926d572"],
-    "scripts/test-openburnbar-swift.sh": ["a940ac167674dbd0","71aa022221415314","bcbc63dafd102db8","57c899e5e4541f73"],
+    "scripts/test-openburnbar-swift.sh": ["07586714490acf01","9ad9813a11a6e2d7","dfda6bf49d9ad5ff","43b38f297c3b56e1"],
     "scripts/test-openburnbar-ts.sh": ["b991331e7ed2bd10","f7e5e126487cff98","e2a3fb3b90239646","e54badf466a2aa4f"],
     "scripts/update-homebrew.sh": ["c76f17b8c7722706","8af958070dc20535","c6019d0faee60080","8c6d7ea9ab234286"],
     "scripts/verify-version-consistency.sh": ["c142b8a68ea1689a","763e9f25f867cf1f","d3fff876ec079d1a","ad3db27f35f28b95"],
