@@ -141,11 +141,6 @@ enum CLIAgentMissionPersonaScopeResolution: Equatable {
     case resolved(CLIAgentMissionPersonaScopeApplier.RuntimeOverrides)
     case refused(String)
 
-    var isRefused: Bool {
-        if case .refused = self { return true }
-        return false
-    }
-
     private static let refusalMessage = "The persona scope attached to this mission could not be read, "
         + "so it was rejected instead of running with broader permissions. "
         + "Re-send the mission from your device."

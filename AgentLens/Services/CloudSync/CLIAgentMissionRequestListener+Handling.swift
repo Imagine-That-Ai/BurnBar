@@ -125,7 +125,9 @@ extension CLIAgentMissionRequestListener {
         )
     }
 
-    private func resolvedWandFanOutCap(uid: String) async throws -> Int {
+    // Internal (not private): the M4 authorization gate in
+    // MissionRemoteAuthorizationEnforcement.swift calls this.
+    func resolvedWandFanOutCap(uid: String) async throws -> Int {
         let entitlements = Firestore.firestore()
             .collection("users").document(uid)
             .collection("entitlements")
@@ -263,32 +265,6 @@ extension CLIAgentMissionRequestListener {
             return
         }
         var data = mergePrivateMissionPayload(privatePayload, into: rawData)
-        // Build authorization context from post-wand-routing values.
-        func shadowCtx(
-            _ id: String,
-            _ p: String,
-            _ fanOut: Int,
-            runtimeOverride: String? = nil,
-            trustedFanOutCap: Int? = nil
-        ) -> MissionRemoteAuthorizationShadow.ShadowContext {
-            MissionRemoteAuthorizationShadow.ShadowContext(
-                missionID: id, prompt: p,
-                runtime: runtimeOverride ?? (data["requestedRuntime"] as? String) ?? "auto",
-                modelID: (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                commandsAllowed: (data["commandsAllowed"] as? Bool) ?? false,
-                fileEditsAllowed: (data["fileEditsAllowed"] as? Bool) ?? false,
-                originDeviceID: (data["originDeviceID"] as? String)?.nilIfBlank ?? (data["createdBy"] as? String)?.nilIfBlank ?? "unknown",
-                originPlatform: (data["originPlatform"] as? String)?.nilIfBlank ?? (data["source"] as? String)?.nilIfBlank ?? "unknown",
-                personaScopeJSON: (data["personaScopeJSON"] as? String)?.nilIfBlank,
-                approvalMode: (data["approvalMode"] as? String)?.nilIfBlank,
-                approvalStatus: (data["approvalStatus"] as? String) ?? "",
-                approverDeviceID: (data["approverDeviceID"] as? String)?.nilIfBlank,
-                entitlementTier: (data["entitlementTier"] as? String)?.nilIfBlank ?? "none",
-                workingDirectory: (data["workingDirectory"] as? String)?.nilIfBlank,
-                fanOutCount: fanOut,
-                trustedFanOutCap: trustedFanOutCap
-            )
-        }
         let missionGroupContext: MissionGroupClaimContext?
         do {
             missionGroupContext = try await validateMissionGroupClaimIfNeeded(
@@ -297,7 +273,8 @@ extension CLIAgentMissionRequestListener {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused before claim: \(error.localizedDescription, privacy: .public)")
             // cov:ignore-start -- live Firestore mission-listener denial telemetry; reducer behavior is unit-tested.
             MissionRemoteAuthorizationShadow.observeDeny(
-                ctx: shadowCtx(document.documentID, "", 1), executorTrustState: "trusted")
+                ctx: .fromMissionData(data, missionID: document.documentID, prompt: "", fanOutCount: 1),
+                executorTrustState: "trusted")
             // cov:ignore-end
             await fail(document: document, message: error.localizedDescription)
             return
@@ -350,78 +327,18 @@ extension CLIAgentMissionRequestListener {
             await fail(document: document, message: error.localizedDescription)
             return
         }
-        let personaScopeIsMalformed: Bool = {
-            guard data["personaScopeJSON"] != nil else { return false }
-            return CLIAgentMissionPersonaScopeResolution.resolve(from: data).isRefused
-        }()
-        if personaScopeIsMalformed {
-            await fail(
-                document: document,
-                message: "The persona scope attached to this mission could not be read, "
-                    + "so it was rejected instead of running with broader permissions. "
-                    + "Re-send the mission from your device."
-            )
+        // The daemon is the sole mission authority (M4). It may attenuate the
+        // requested grant, so its ceiling replaces the Firestore-requested
+        // capabilities before any launch planner reads them.
+        switch await resolveRemoteMissionAuthorization(
+            document: document, data: data, backend: backend, uid: uid, prompt: prompt,
+            executorTrustState: executorTrustState, missionGroupContext: missionGroupContext
+        ) {
+        case .stop:
             return
-        }
-
-        guard MissionRemoteAuthorizationShadow.mode == .enforce else {
-            logger.warning("mission id=\(document.documentID, privacy: .public) refused: daemon mission authorization is not enforced (OBB_MISSION_AUTHORIZE_SHADOW=\(MissionRemoteAuthorizationShadow.mode.rawValue, privacy: .public)); remote missions fail closed")
-            await fail(
-                document: document,
-                message: "Remote missions require daemon authorization, which is currently disabled on this Mac. "
-                    + "Remove OBB_MISSION_AUTHORIZE_SHADOW (or set it to enforce) to run remote missions."
-            )
-            return
-        }
-        var fanOutCap = missionGroupContext?.tierCap
-        if fanOutCap == nil {
-            fanOutCap = try? await resolvedWandFanOutCap(uid: uid) // try?-ok(fail-closed entitlement cap)
-        }
-        let authorization = await MissionRemoteAuthorizationShadow.authorize(
-            ctx: shadowCtx(
-                document.documentID,
-                prompt,
-                missionGroupContext?.siblingCount ?? 1,
-                runtimeOverride: backend.rawValue,
-                trustedFanOutCap: fanOutCap
-            ),
-            executorTrustState: executorTrustState
-        )
-        switch authorization {
-        case let .authorized(grantCeiling):
-            guard let grantCeiling else {
-                await failDaemonDenied(
-                    document: document,
-                    backend: backend,
-                    reason: .invalidRequest,
-                    detail: "Authorized daemon response omitted its capability ceiling."
-                )
-                return
-            }
-            // The daemon may attenuate a requested grant based on persona
-            // policy. Carry its ceiling into every downstream launch planner;
-            // never continue with the broader Firestore request.
+        case let .proceed(grantCeiling):
             data["commandsAllowed"] = grantCeiling.commandsAllowed
             data["fileEditsAllowed"] = grantCeiling.fileEditsAllowed
-        case .requiresApproval:
-            await driveApprovalWriteback(document: document, data: data, backend: backend)
-            return
-        case let .denied(reason, detail):
-            switch reason {
-            case .some(.untrustedDevice), .some(.unknownTrustState):
-                // Executor-local trust failures must not consume a shared
-                // pending mission; another trusted Mac may still execute it.
-                logger.info("mission id=\(document.documentID, privacy: .public) remains pending for another trusted executor")
-                return
-            default:
-                await failDaemonDenied(document: document, backend: backend, reason: reason, detail: detail)
-                return
-            }
-        case let .daemonUnreachable(detail):
-            // An unhealthy daemon is local to this executor. Leave the shared
-            // mission pending so a healthy Mac can claim it.
-            logger.warning("mission id=\(document.documentID, privacy: .public) remains pending while local daemon is unavailable: \(detail, privacy: .public)")
-            return
         }
 
         // Execution-side local-privacy gate (NOT remote authorization): this Mac
