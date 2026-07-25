@@ -919,7 +919,7 @@ test('state lock excludes live writers and ignores only descriptor-validated dea
       pid: 2_147_483_647,
       nonce: deadNonce,
       acquiredAt: '2026-07-24T13:00:00.000Z'
-    }), { mode: 0o600 });
+    }), { mode: 0o600, flag: 'wx' });
     const releaseRecovered = acquireStateLock(stateFile, {
       kill: () => {
         const error = new Error('no such process');
@@ -940,7 +940,7 @@ test('state lock excludes live writers and ignores only descriptor-validated dea
       pid: 2_147_483_647,
       nonce: deadNonce,
       acquiredAt: '2026-07-24T13:00:00.000Z'
-    }), { mode: 0o600 });
+    }), { mode: 0o600, flag: 'wx' });
     let openAttempts = 0;
     const releaseRaced = acquireStateLock(stateFile, {
       openSync: (...args) => {
@@ -960,7 +960,7 @@ test('state lock excludes live writers and ignores only descriptor-validated dea
     assert.deepEqual(fs.readdirSync(lockDirectory), []);
 
     const target = path.join(root, 'outside-lock');
-    fs.writeFileSync(target, '{}', { mode: 0o600 });
+    fs.writeFileSync(target, '{}', { mode: 0o600, flag: 'wx' });
     fs.symlinkSync(target, deadFile);
     assert.throws(
       () => acquireStateLock(stateFile),
@@ -974,7 +974,7 @@ test('state lock excludes live writers and ignores only descriptor-validated dea
       pid: 2_147_483_647,
       nonce: deadNonce,
       acquiredAt: '2026-07-24T13:00:00.000Z'
-    }), { mode: 0o644 });
+    }), { mode: 0o644, flag: 'wx' });
     assert.throws(
       () => acquireStateLock(stateFile),
       /owner-only bounded regular file/u
