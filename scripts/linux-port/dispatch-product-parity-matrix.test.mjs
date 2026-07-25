@@ -927,8 +927,9 @@ test('state lock excludes live writers and ignores only descriptor-validated dea
         throw error;
       }
     });
-    assert.equal(fs.existsSync(deadFile), true);
-    assert.equal(fs.readdirSync(lockDirectory).length, 2);
+    const recoveredLockNames = fs.readdirSync(lockDirectory);
+    assert.equal(recoveredLockNames.length, 2);
+    assert.ok(recoveredLockNames.includes(deadName));
     releaseRecovered();
     assert.deepEqual(fs.readdirSync(lockDirectory), [deadName]);
     fs.unlinkSync(deadFile);
