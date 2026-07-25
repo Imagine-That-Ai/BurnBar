@@ -42,16 +42,19 @@ function variablesOutput(rows = [
 }
 
 function devicesOutput({ available = true, offline = false, duplicate = false } = {}) {
-  const availableLine = "QA iPad (27.0) (00008132-001158191E9A401C)";
+  // Synthetic fixture identifiers: parser-valid ([0-9A-F-]{24,40}) but shaped
+  // 8-8-8 so they cannot collide with real CoreDevice UUIDs or USB UDIDs
+  // (privacy invariant I7 bans real physical-device identifier shapes).
+  const availableLine = "QA iPad (27.0) (AAAA0001-AAAA0001-AAAA0001)";
   const lines = [
     "== Devices ==",
     "QA Mac (AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE)",
   ];
   if (available) lines.push(availableLine);
   lines.push("", "== Devices Offline ==");
-  if (offline) lines.push("Offline iPad (27.0) (00008132-001158191E9A402D)");
+  if (offline) lines.push("Offline iPad (27.0) (AAAA0002-AAAA0002-AAAA0002)");
   if (duplicate) lines.push(availableLine);
-  lines.push("", "== Simulators ==", "QA iPad Simulator (27.0) (4CD09CFC-5105-4FF7-AB44-A33E723E06CD)", "");
+  lines.push("", "== Simulators ==", "QA iPad Simulator (27.0) (AAAA0004-AAAA0004-AAAA0004)", "");
   return lines.join("\n");
 }
 
@@ -254,7 +257,7 @@ test("xcrun parser accepts one available physical iPad and rejects duplicate, am
   assert.equal(parsed.availableCount, 1);
   assert.equal(parsed.offlineCount, 1);
   assert.equal(parsed.selected.identifierSha256.length, 64);
-  assert.equal(parsed.selected.identifierSha256.includes("00008132"), false);
+  assert.equal(parsed.selected.identifierSha256.includes("aaaa0001"), false);
   assert.throws(
     () => parseXcrunDeviceOutput(devicesOutput({ duplicate: true })),
     /duplicate device identifier/u,
@@ -262,7 +265,7 @@ test("xcrun parser accepts one available physical iPad and rejects duplicate, am
   assert.throws(
     () => parseXcrunDeviceOutput(devicesOutput().replace(
       "QA Mac (AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE)",
-      "Second iPad (27.0) (00008132-001158191E9A4099)",
+      "Second iPad (27.0) (AAAA0003-AAAA0003-AAAA0003)",
     )),
     /more than one available physical iPad/u,
   );
