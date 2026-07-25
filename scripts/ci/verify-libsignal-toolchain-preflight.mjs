@@ -36,8 +36,14 @@ const ACTION = "ensure-libsignal-toolchain";
 
 // Entry points that end up building the Signal FFI (directly, or via a script
 // that prepares it before running Swift tests).
+//
+// prepare-signal-ffi-xcframework.sh is on this list deliberately: codeql-pr.yml
+// and app-pr-gate.yml drive the FFI build through the `prepare` wrapper rather
+// than build-signal-ffi-xcframework.sh, so leaving it out let those jobs drop
+// the preflight without this gate noticing.
 const FFI_BUILD_SCRIPTS = [
   "build-signal-ffi-xcframework.sh",
+  "prepare-signal-ffi-xcframework.sh",
   "test-openburnbar-swift.sh",
   "test-openburnbar-mobile.sh",
   "headless-app-build.sh",
