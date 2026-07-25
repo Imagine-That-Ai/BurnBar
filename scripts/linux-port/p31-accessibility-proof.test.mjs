@@ -10,15 +10,20 @@ import { captureP31Accessibility } from './capture-p31-accessibility.mjs';
 import { main as finalizeProductFeatureProofClosure } from './finalize-product-feature-proof-closure.mjs';
 import { validateProductRequirement } from './product-validators/P-31.mjs';
 import {
+  P31_ENVIRONMENTS,
   P31_REQUIRED_ROUTES,
   P31_ROLES,
   validateP31LiveSession,
   validateP31Proof
 } from './lib/p31-accessibility-proof.mjs';
 import {
-  applyGnomeAccessibilityPreferences,
+  applyDesktopAccessibilityPreferences,
   buildP31LiveSession,
+  detectYdotoolDialect,
+  P31_LIVE_ENVIRONMENTS,
   parseP31LiveArguments,
+  parseKScreenOutputs,
+  parseSwayOutputs,
   validateP31HostIdentity
 } from './run-p31-live-accessibility-session.mjs';
 import { readRegularSnapshot } from './lib/product-proof-closure.mjs';
@@ -31,6 +36,7 @@ const CANDIDATE_ARTIFACT_DIGEST = `sha256:${'b'.repeat(64)}`;
 const VERSION = '1.2.3';
 const FEATURE_ROOT = 'docs/linux-port/evidence/product-parity-inputs/P-31';
 const X11_ARM_ENVIRONMENT = 'ubuntu-24.04-gnome-x11-aarch64';
+const CANONICAL_ENVIRONMENTS = Object.keys(P31_ENVIRONMENTS);
 
 function write(file, contents) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -316,93 +322,117 @@ test('P-31 source session validator fails closed on approximate zoom', () => {
   }), /exact 200/u);
 });
 
-test('P-31 live producer admits only the exact local Ubuntu GNOME X11 aarch64 identity', () => {
+function hostIdentityFixture(environmentId) {
+  const profile = P31_LIVE_ENVIRONMENTS[environmentId];
   const environment = {
-    XDG_SESSION_TYPE: 'x11',
-    XDG_CURRENT_DESKTOP: 'GNOME',
-    DISPLAY: ':0',
+    XDG_SESSION_TYPE: profile.session.toLowerCase(),
+    XDG_CURRENT_DESKTOP: profile.desktop,
     DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/1000/bus',
     XDG_RUNTIME_DIR: '/run/user/1000'
   };
-  const loginctl = {
-    Type: 'x11',
-    Active: 'yes',
-    Remote: 'no',
-    Class: 'user',
-    State: 'active'
-  };
-  assert.deepEqual(validateP31HostIdentity({
+  if (profile.session === 'X11') environment.DISPLAY = ':0';
+  else environment.WAYLAND_DISPLAY = 'wayland-0';
+  return {
+    environmentId,
     platform: 'linux',
-    architecture: 'aarch64',
-    release: { ID: 'ubuntu', VERSION_ID: '24.04' },
+    architecture: profile.architecture,
+    release: {
+      ID: profile.osId,
+      ...(profile.versionId === null ? {} : { VERSION_ID: profile.versionId })
+    },
     environment,
-    loginctl,
-    windowManager: 'Name: GNOME Shell (Mutter)'
-  }), {
-    environmentId: X11_ARM_ENVIRONMENT,
-    architecture: 'aarch64',
-    desktop: 'GNOME',
-    session: 'X11',
-    compositor: 'Mutter'
-  });
-  for (const mutation of [
-    { architecture: 'x86_64' },
-    { environment: { ...environment, XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-0' } },
-    { environment: { ...environment, XDG_CURRENT_DESKTOP: 'XFCE' } },
-    { environment: { ...environment, DISPLAY: 'Xvfb:99' } },
-    { loginctl: { ...loginctl, Remote: 'yes' } },
-    { windowManager: 'Name: Openbox' }
+    loginctl: {
+      Type: profile.session.toLowerCase(),
+      Desktop: profile.desktop,
+      Active: 'yes',
+      Remote: 'no',
+      Class: 'user',
+      State: 'active'
+    },
+    compositorIdentity: `${profile.compositor} live compositor`,
+    waylandSocketIsReal: profile.session === 'Wayland' ? true : null
+  };
+}
+
+test('P-31 live producer admits every canonical identity and binds it to the real host', () => {
+  assert.deepEqual(Object.keys(P31_LIVE_ENVIRONMENTS), CANONICAL_ENVIRONMENTS);
+  for (const environmentId of CANONICAL_ENVIRONMENTS) {
+    const profile = P31_LIVE_ENVIRONMENTS[environmentId];
+    assert.deepEqual(validateP31HostIdentity(hostIdentityFixture(environmentId)), {
+      environmentId,
+      architecture: profile.architecture,
+      desktop: profile.desktop,
+      session: profile.session,
+      compositor: profile.compositor
+    });
+  }
+
+  const x11 = hostIdentityFixture('ubuntu-24.04-gnome-x11-aarch64');
+  const wayland = hostIdentityFixture('ubuntu-24.04-gnome-wayland-x86_64');
+  const kde = hostIdentityFixture('fedora-kde-wayland-x86_64');
+  const sway = hostIdentityFixture('arch-sway-wayland-x86_64');
+  for (const invalid of [
+    { ...x11, architecture: 'x86_64' },
+    { ...x11, release: { ID: 'fedora' } },
+    { ...x11, environment: { ...x11.environment, XDG_CURRENT_DESKTOP: 'XFCE' } },
+    { ...x11, environment: { ...x11.environment, DISPLAY: 'Xvfb:99' } },
+    { ...wayland, waylandSocketIsReal: false },
+    { ...kde, compositorIdentity: 'Mutter' },
+    { ...sway, loginctl: { ...sway.loginctl, Remote: 'yes' } }
   ]) {
-    assert.throws(() => validateP31HostIdentity({
-      platform: 'linux',
-      architecture: 'aarch64',
-      release: { ID: 'ubuntu', VERSION_ID: '24.04' },
-      environment,
-      loginctl,
-      windowManager: 'Name: GNOME Shell (Mutter)',
-      ...mutation
-    }), /P-31/u);
+    assert.throws(() => validateP31HostIdentity(invalid), /P-31/u);
   }
 });
 
-test('P-31 live producer binds invocation fields and rejects environment substitution', () => {
-  const values = [
+function liveArguments(environmentId) {
+  const profile = P31_LIVE_ENVIRONMENTS[environmentId];
+  return [
     '--output-root', '/repo/input',
     '--raw-output-dir', '/repo/input/p31-live',
     '--state-home', '/tmp/p31-home',
-    '--environment', X11_ARM_ENVIRONMENT,
+    '--environment', environmentId,
     '--target-head', TARGET_HEAD,
     '--candidate-run-id', CANDIDATE_RUN_ID,
     '--candidate-artifact-digest', CANDIDATE_ARTIFACT_DIGEST,
     '--package-version', VERSION,
     '--manifest-sha256', 'c'.repeat(64),
     '--manifest-signature-sha256', 'd'.repeat(64),
-    '--compositor', 'Mutter'
+    '--compositor', profile.compositor
   ];
-  assert.equal(parseP31LiveArguments(values).environmentId, X11_ARM_ENVIRONMENT);
-  const substituted = [...values];
-  substituted[substituted.indexOf('--environment') + 1] = 'ubuntu-24.04-gnome-x11-x86_64';
-  assert.throws(() => parseP31LiveArguments(substituted), /requires exactly/u);
+}
+
+test('P-31 live producer binds every canonical invocation and rejects unsupported substitution', () => {
+  for (const environmentId of CANONICAL_ENVIRONMENTS) {
+    assert.equal(parseP31LiveArguments(liveArguments(environmentId)).environmentId, environmentId);
+  }
+  const substituted = liveArguments(X11_ARM_ENVIRONMENT);
+  substituted[substituted.indexOf('--environment') + 1] = 'debian-gnome-x11-aarch64';
+  assert.throws(() => parseP31LiveArguments(substituted), /canonical environment/u);
+  const wrongCompositor = liveArguments('fedora-kde-wayland-x86_64');
+  wrongCompositor[wrongCompositor.indexOf('--compositor') + 1] = 'Mutter';
+  assert.throws(() => parseP31LiveArguments(wrongCompositor), /requires the KWin/u);
+  const values = liveArguments(X11_ARM_ENVIRONMENT);
   const approximate = [...values];
   approximate[approximate.indexOf('--manifest-sha256') + 1] = 'not-a-digest';
   assert.throws(() => parseP31LiveArguments(approximate), /candidate binding/u);
 });
 
-function liveProducerFixture() {
+function liveProducerFixture(environmentId = X11_ARM_ENVIRONMENT) {
+  const profile = P31_LIVE_ENVIRONMENTS[environmentId];
   const outputRoot = '/repo/input';
   const rawDir = '/repo/input/p31-live';
   const options = {
     outputRoot,
     rawOutputDir: rawDir,
     stateHome: '/tmp/p31-home',
-    environmentId: X11_ARM_ENVIRONMENT,
+    environmentId,
     targetHead: TARGET_HEAD,
     candidateRunId: CANDIDATE_RUN_ID,
     candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
     packageVersion: VERSION,
     manifestSha256: 'c'.repeat(64),
     manifestSignatureSha256: 'd'.repeat(64),
-    compositor: 'Mutter'
+    compositor: profile.compositor
   };
   const navigation = {
     routes: P31_REQUIRED_ROUTES.map((route) => ({ route, atspi: `route-${route}-atspi.json` }))
@@ -458,7 +488,7 @@ function liveProducerFixture() {
       noColorScreenshot: 'p31-no-color.png',
       forcedColorsScreenshot: 'p31-forced-colors.png',
       runtime: 'p31-runtime-state.json',
-      gnomeSettings: 'p31-gnome-accessibility-settings.json'
+      desktopSettings: 'p31-desktop-accessibility-settings.json'
     }
   };
   const keyboard = {
@@ -473,11 +503,11 @@ function liveProducerFixture() {
   return {
     options,
     identity: {
-      environmentId: X11_ARM_ENVIRONMENT,
-      architecture: 'aarch64',
-      desktop: 'GNOME',
-      session: 'X11',
-      compositor: 'Mutter'
+      environmentId,
+      architecture: profile.architecture,
+      desktop: profile.desktop,
+      session: profile.session,
+      compositor: profile.compositor
     },
     navigation,
     driverEvidence,
@@ -486,14 +516,19 @@ function liveProducerFixture() {
   };
 }
 
-test('P-31 live producer materializes a canonical exact-scale GNOME session', () => {
-  const fixture = liveProducerFixture();
-  const session = buildP31LiveSession(fixture);
-  assert.equal(session.environmentId, X11_ARM_ENVIRONMENT);
-  assert.equal(session.observations.scale.observedPercent, 200);
-  assert.equal(session.observations.scale.exactScaleObservable, true);
-  assert.deepEqual(session.observations.assistiveTech.routesCovered, [...P31_REQUIRED_ROUTES]);
-  assert.ok(session.observations.scale.evidencePaths.every((value) => value.startsWith('p31-live/')));
+test('P-31 live producer materializes canonical exact-scale sessions for every environment', () => {
+  for (const environmentId of CANONICAL_ENVIRONMENTS) {
+    const session = buildP31LiveSession(liveProducerFixture(environmentId));
+    assert.equal(session.environmentId, environmentId);
+    assert.equal(session.package.architecture, P31_ENVIRONMENTS[environmentId].architecture);
+    assert.equal(session.package.format, P31_ENVIRONMENTS[environmentId].format);
+    assert.equal(session.desktop.desktop, P31_ENVIRONMENTS[environmentId].desktop);
+    assert.equal(session.desktop.session, P31_ENVIRONMENTS[environmentId].session);
+    assert.equal(session.observations.scale.observedPercent, 200);
+    assert.equal(session.observations.scale.exactScaleObservable, true);
+    assert.deepEqual(session.observations.assistiveTech.routesCovered, [...P31_REQUIRED_ROUTES]);
+    assert.ok(session.observations.scale.evidencePaths.every((value) => value.startsWith('p31-live/')));
+  }
 
   const approximate = liveProducerFixture();
   approximate.driverEvidence.runtime.dpr = 1.99;
@@ -516,7 +551,7 @@ test('P-31 live producer materializes a canonical exact-scale GNOME session', ()
   assert.throws(() => buildP31LiveSession(noAnnouncement), /screen-reader|live-region/u);
 });
 
-test('P-31 workflow installs the candidate and runs live production before proof capture', () => {
+test('P-31 workflow provisions every canonical distro and runs live production before proof capture', () => {
   const workflow = fs.readFileSync(path.join(
     path.dirname(fileURLToPath(import.meta.url)),
     '../../.github/workflows/linux-product-parity.yml'
@@ -526,28 +561,46 @@ test('P-31 workflow installs the candidate and runs live production before proof
   const capture = workflow.indexOf('node scripts/linux-port/capture-p31-accessibility.mjs');
   assert.ok(install >= 0 && producer > install && capture > producer);
   for (const marker of [
-    "test \"$ENVIRONMENT_ID\" = 'ubuntu-24.04-gnome-x11-aarch64'",
+    'ubuntu-24.04-gnome-x11-*) compositor=Mutter',
+    'ubuntu-24.04-gnome-wayland-*) compositor=Mutter',
+    'fedora-kde-wayland-*) compositor=KWin',
+    'arch-sway-wayland-x86_64) compositor=Sway',
+    'sudo apt-get install -y --no-install-recommends',
+    'sudo dnf install -y',
+    'sudo pacman -S --needed --noconfirm',
+    'test -n "${YDOTOOL_SOCKET:-}"',
     '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
-    '--compositor Mutter',
+    '--compositor "$compositor"',
     "inputs.requirement == 'P-31' || inputs.requirement == 'P-36'"
   ]) assert.match(workflow, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'));
 });
 
-test('P-31 live producer applies real GNOME settings and paced Orca traversal', () => {
+test('P-31 live producer applies real compositor settings and paced Orca traversal', () => {
   const source = fs.readFileSync(path.join(
     path.dirname(fileURLToPath(import.meta.url)),
     'run-p31-live-accessibility-session.mjs'
   ), 'utf8');
   for (const marker of [
-    "{ key: 'scaling-factor', value: '2'",
-    "{ key: 'gtk-theme', value: 'HighContrast'",
-    "{ key: 'enable-animations', value: 'false'",
+    "gsettings('scaling-factor', '2'",
+    "gsettings('gtk-theme', 'HighContrast'",
+    "gsettings('enable-animations', 'false'",
+    "output.${output.id}.scale.${next}",
+    "['output', output.name, 'scale', String(next)]",
+    "profile.keyboardBackend === 'ydotool'",
+    "'legacy-key-names'",
+    "reverse ? 'shift+Tab' : 'Tab'",
+    "'42:1', '15:1', '15:0', '42:0'",
+    'exactHostArchitecture(platformArchitecture = os.machine())',
+    'native Node runtime matching the Linux machine architecture',
+    "assertRealOwnedDirectory(process.env.XDG_RUNTIME_DIR",
+    "assertRealSessionSocket(environment.YDOTOOL_SOCKET",
     'XDG_CONFIG_HOME: path.join(options.stateHome',
     "await wait(1_250)",
     "await wait(8_000)",
     "const focusLogOffset = fs.statSync(orcaDebug).size",
     "'--mode', 'grab-focus'",
     "OPENBURNBAR_LINUX_FIXTURE_MODE: '0'",
+    "openburnbar-p31-webdriver-atspi-navigation-v1",
     "fs.readdirSync(options.rawOutputDir).length === 0"
   ]) assert.ok(source.includes(marker), marker);
   assert.doesNotMatch(source, /spawn\(['"]Xvfb['"]|GDK_SCALE:|GTK_THEME:|GTK_ENABLE_ANIMATIONS:/u);
@@ -562,6 +615,17 @@ test('P-31 live producer applies real GNOME settings and paced Orca traversal', 
     'restoreDaemonState(daemonWasActive)',
     'cleanupErrors'
   ]) assert.ok(source.includes(marker), marker);
+});
+
+test('P-31 identifies Ubuntu legacy and current ydotool keyboard contracts exactly', () => {
+  assert.equal(detectYdotoolDialect([
+    'Usage: key [--delay <ms>] <key sequence> ...',
+    'Each key sequence can be any number of modifiers and keys, separated by plus (+)'
+  ].join('\n')), 'legacy-key-names');
+  assert.equal(detectYdotoolDialect(
+    'key [-d,--key-delay <ms>] [<KEYCODE:PRESSED> ...]'
+  ), 'linux-input-events');
+  assert.throws(() => detectYdotoolDialect('generic keyboard helper'), /could not identify/u);
 });
 
 function fakeGsettings({ failApplyKey = null, failRestoreKey = null } = {}) {
@@ -591,23 +655,142 @@ function fakeGsettings({ failApplyKey = null, failRestoreKey = null } = {}) {
   };
 }
 
-test('P-31 GNOME preferences restore exactly and continue after a restore failure', () => {
+function identityFor(environmentId) {
+  const profile = P31_LIVE_ENVIRONMENTS[environmentId];
+  return {
+    environmentId,
+    architecture: profile.architecture,
+    desktop: profile.desktop,
+    session: profile.session,
+    compositor: profile.compositor
+  };
+}
+
+function fakeKscreen() {
+  const original = new Map([
+    ['1', { name: 'eDP-1', scale: 1 }],
+    ['2', { name: 'DP-1', scale: 1.25 }]
+  ]);
+  const values = new Map([...original].map(([id, output]) => [id, { ...output }]));
+  const inventory = () => [...values].map(([id, output]) => [
+    `Output: ${id} ${output.name}`,
+    '        enabled',
+    '        connected',
+    `        Scale: ${output.scale}`
+  ].join('\n')).join('\n');
+  return {
+    values,
+    original,
+    invoke(args) {
+      if (args[0] === '-o') return inventory();
+      const match = args[0]?.match(/^output\.([1-9][0-9]*)\.scale\.([0-9.]+)$/u);
+      assert.ok(match, args.join(' '));
+      values.get(match[1]).scale = Number(match[2]);
+      return '';
+    }
+  };
+}
+
+function fakeSway() {
+  const original = new Map([
+    ['eDP-1', 1],
+    ['DP-1', 1.5]
+  ]);
+  const values = new Map(original);
+  const inventory = () => JSON.stringify([...values].map(([name, scale]) => ({
+    name,
+    active: true,
+    scale
+  })));
+  return {
+    values,
+    original,
+    invoke(args) {
+      if (args.join(' ') === '-t get_outputs -r') return inventory();
+      assert.deepEqual(args.slice(0, 1), ['output']);
+      assert.equal(args[2], 'scale');
+      values.set(args[1], Number(args[3]));
+      return JSON.stringify([{ success: true }]);
+    }
+  };
+}
+
+test('P-31 compositor output parsers reject ambiguity and retain exact active scales', () => {
+  assert.deepEqual(parseKScreenOutputs([
+    'Output: 1 eDP-1',
+    '        enabled',
+    '        connected',
+    '        Scale: 1.25',
+    'Output: 2 DP-1',
+    '        disabled',
+    '        connected',
+    '        Scale: 2'
+  ].join('\n')), [{ id: '1', name: 'eDP-1', scale: 1.25 }]);
+  assert.deepEqual(parseSwayOutputs(JSON.stringify([
+    { name: 'eDP-1', active: true, scale: 2 },
+    { name: 'DP-1', active: false, scale: 1 }
+  ])), [{ name: 'eDP-1', scale: 2 }]);
+  assert.throws(() => parseSwayOutputs('not-json'), /not JSON/u);
+});
+
+test('P-31 desktop preferences reach and restore exact GNOME, KDE, and Sway state', () => {
   const directory = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-p31-settings-'));
   const success = fakeGsettings();
-  const applied = applyGnomeAccessibilityPreferences(directory(), success);
+  const applied = applyDesktopAccessibilityPreferences(
+    directory(),
+    identityFor(X11_ARM_ENVIRONMENT),
+    { invokeGsettings: success.invoke }
+  );
   assert.equal(success.values.get('scaling-factor'), 'uint32 2');
+  assert.deepEqual(applied.evidence.scaleOutputs, [{
+    name: 'GNOME global scale',
+    scale: 2,
+    readback: 'uint32 2'
+  }]);
   applied.restore();
   assert.deepEqual(success.values, success.original);
 
+  const kdeSettings = fakeGsettings();
+  const kscreen = fakeKscreen();
+  const kde = applyDesktopAccessibilityPreferences(
+    directory(),
+    identityFor('fedora-kde-wayland-x86_64'),
+    { invokeGsettings: kdeSettings.invoke, invokeKscreen: kscreen.invoke }
+  );
+  assert.deepEqual([...kscreen.values.values()].map((output) => output.scale), [2, 2]);
+  kde.restore();
+  assert.deepEqual(kscreen.values, kscreen.original);
+  assert.deepEqual(kdeSettings.values, kdeSettings.original);
+
+  const swaySettings = fakeGsettings();
+  const sway = fakeSway();
+  const swayApplied = applyDesktopAccessibilityPreferences(
+    directory(),
+    identityFor('arch-sway-wayland-x86_64'),
+    { invokeGsettings: swaySettings.invoke, invokeSway: sway.invoke }
+  );
+  assert.deepEqual([...sway.values.values()], [2, 2]);
+  swayApplied.restore();
+  assert.deepEqual(sway.values, sway.original);
+  assert.deepEqual(swaySettings.values, swaySettings.original);
+
   const partialApply = fakeGsettings({ failApplyKey: 'enable-animations' });
   assert.throws(
-    () => applyGnomeAccessibilityPreferences(directory(), partialApply),
+    () => applyDesktopAccessibilityPreferences(
+      directory(),
+      identityFor(X11_ARM_ENVIRONMENT),
+      { invokeGsettings: partialApply.invoke }
+    ),
     /apply enable-animations/u
   );
   assert.deepEqual(partialApply.values, partialApply.original);
 
   const partialRestore = fakeGsettings({ failRestoreKey: 'gtk-theme' });
-  const restorable = applyGnomeAccessibilityPreferences(directory(), partialRestore);
+  const restorable = applyDesktopAccessibilityPreferences(
+    directory(),
+    identityFor(X11_ARM_ENVIRONMENT),
+    { invokeGsettings: partialRestore.invoke }
+  );
   assert.throws(() => restorable.restore(), /restoration failed/u);
   assert.equal(partialRestore.values.get('scaling-factor'), 'uint32 1');
   assert.equal(partialRestore.values.get('enable-animations'), 'true');
@@ -615,7 +798,11 @@ test('P-31 GNOME preferences restore exactly and continue after a restore failur
   const evidenceFailure = fakeGsettings();
   const missing = path.join(directory(), 'missing');
   assert.throws(
-    () => applyGnomeAccessibilityPreferences(missing, evidenceFailure),
+    () => applyDesktopAccessibilityPreferences(
+      missing,
+      identityFor(X11_ARM_ENVIRONMENT),
+      { invokeGsettings: evidenceFailure.invoke }
+    ),
     /ENOENT|no such/u
   );
   assert.deepEqual(evidenceFailure.values, evidenceFailure.original);

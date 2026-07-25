@@ -138,6 +138,8 @@ function valid() {
         "      - self-hosted",
         "      - macos",
         "      - arm64",
+        "      - m5max",
+        "      - ios",
         "    steps:",
         "      - name: Check out the exact evidence source",
         "        with:",
@@ -199,7 +201,7 @@ function valid() {
       '2>&1 | tee "$capture_log"',
       "run-p31-live-accessibility-session.mjs",
       "capture-p31-accessibility.mjs",
-      "Provision P-31 live GNOME accessibility prerequisites",
+      "Provision P-31 live accessibility prerequisites",
       "python3-pyatspi",
       "if: inputs.requirement == 'P-31'",
       "id: p31_capture",
@@ -283,22 +285,56 @@ function valid() {
         "          bash scripts/linux-port/install-tauri-webdriver-prerequisites.sh",
       ].join("\n"),
       [
-        "      - name: Provision P-31 live GNOME accessibility prerequisites",
+        "      - name: Provision P-31 live accessibility prerequisites",
         "        if: inputs.requirement == 'P-31'",
         "        run: |",
         "          set -euo pipefail",
-        "          test \"$ENVIRONMENT_ID\" = 'ubuntu-24.04-gnome-x11-aarch64'",
-        "          sudo apt-get update",
-        "          sudo apt-get install -y --no-install-recommends \\",
-        "            at-spi2-core \\",
-        "            libglib2.0-bin \\",
-        "            orca \\",
-        "            python3-pyatspi \\",
-        "            scrot \\",
-        "            wmctrl \\",
-        "            x11-utils \\",
-        "            x11-xserver-utils \\",
-        "            xdotool",
+        '          case "$ENVIRONMENT_ID" in',
+        "            ubuntu-24.04-gnome-x11-*)",
+        "              sudo apt-get update",
+        "              sudo apt-get install -y --no-install-recommends \\",
+        "                at-spi2-core \\",
+        "                gnome-accessibility-themes \\",
+        "                libglib2.0-bin \\",
+        "                orca \\",
+        "                python3-pyatspi \\",
+        "                wmctrl \\",
+        "                xdotool",
+        "              ;;",
+        "            ubuntu-24.04-gnome-wayland-*)",
+        "              sudo apt-get update",
+        "              sudo apt-get install -y --no-install-recommends \\",
+        "                at-spi2-core \\",
+        "                gnome-accessibility-themes \\",
+        "                libglib2.0-bin \\",
+        "                orca \\",
+        "                python3-pyatspi \\",
+        "                ydotool \\",
+        "                ydotoold",
+        "              ;;",
+        "            fedora-kde-wayland-*)",
+        "              sudo dnf install -y \\",
+        "                at-spi2-core \\",
+        "                glib2 \\",
+        "                gnome-themes-extra \\",
+        "                gsettings-desktop-schemas \\",
+        "                kscreen \\",
+        "                orca \\",
+        "                python3-pyatspi \\",
+        "                ydotool",
+        "              ;;",
+        "            arch-sway-wayland-x86_64)",
+        "              sudo pacman -S --needed --noconfirm \\",
+        "                at-spi2-core \\",
+        "                glib2 \\",
+        "                gnome-themes-extra \\",
+        "                gsettings-desktop-schemas \\",
+        "                orca \\",
+        "                python-atspi \\",
+        "                ydotool",
+        "              ;;",
+        '            *) echo "unsupported P-31 environment: $ENVIRONMENT_ID" >&2; exit 1 ;;',
+        "          esac",
       ].join("\n"),
       [
         "      - name: Capture P-09 installed navigation shell proof",
@@ -960,8 +996,17 @@ function valid() {
         "        run: |",
         "          set -euo pipefail",
         '          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"',
-        "          test \"$ENVIRONMENT_ID\" = 'ubuntu-24.04-gnome-x11-aarch64' \\",
-        "            || { exit 1; }",
+        '          case "$ENVIRONMENT_ID" in',
+        "            ubuntu-24.04-gnome-x11-*) compositor=Mutter ;;",
+        "            ubuntu-24.04-gnome-wayland-*) compositor=Mutter ;;",
+        "            fedora-kde-wayland-*) compositor=KWin ;;",
+        "            arch-sway-wayland-x86_64) compositor=Sway ;;",
+        '            *) echo "unsupported P-31 environment: $ENVIRONMENT_ID" >&2; exit 1 ;;',
+        "          esac",
+        '          if [[ "$ENVIRONMENT_ID" == *-wayland-* ]]; then',
+        '            test -n "${YDOTOOL_SOCKET:-}" \\',
+        "              || { exit 1; }",
+        "          fi",
         '          state_home="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p31-home.XXXXXX")"',
         "          cleanup_p31() {",
         "            status=$?",
@@ -983,7 +1028,7 @@ function valid() {
         '            --package-version "$PACKAGE_VERSION" \\',
         '            --manifest-sha256 "$MANIFEST_SHA256" \\',
         '            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256" \\',
-        "            --compositor Mutter",
+        '            --compositor "$compositor"',
         '          session_report="$input_root/p31-live-session.json"',
         '          test -f "$session_report"',
         "          node scripts/linux-port/capture-p31-accessibility.mjs \\",
@@ -1475,6 +1520,8 @@ test("P-16 physical iPad producer and Linux handshake remain exact and fail clos
     ["producer", "      - self-hosted", "      - hosted"],
     ["producer", "      - macos", "      - linux"],
     ["producer", "      - arm64", "      - x64"],
+    ["producer", "      - m5max", "      - generic-arm64"],
+    ["producer", "      - ios", "      - no-ios-device"],
     ["producer", "FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}"],
     ["producer", "bash scripts/ci/inject-firebase-config.sh"],
     [
@@ -1858,9 +1905,14 @@ test("shared installed proof package and WebDriver prerequisites fail closed", (
   }
 });
 
-test("P-31 live GNOME accessibility workflow fails closed on contract drift", () => {
+test("P-31 cross-environment live accessibility workflow fails closed on contract drift", () => {
   for (const marker of [
-    "test \"$ENVIRONMENT_ID\" = 'ubuntu-24.04-gnome-x11-aarch64'",
+    "ubuntu-24.04-gnome-x11-*) compositor=Mutter ;;",
+    "ubuntu-24.04-gnome-wayland-*) compositor=Mutter ;;",
+    "fedora-kde-wayland-*) compositor=KWin ;;",
+    "arch-sway-wayland-x86_64) compositor=Sway ;;",
+    'if [[ "$ENVIRONMENT_ID" == *-wayland-* ]]; then',
+    'test -n "${YDOTOOL_SOCKET:-}"',
     'state_home="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p31-home.XXXXXX")"',
     'rm -rf "$input_root/p31-live" "$input_root/p31-live-session.json"',
     'install -d -m 700 "$input_root/p31-live"',
@@ -1873,7 +1925,7 @@ test("P-31 live GNOME accessibility workflow fails closed on contract drift", ()
     '--package-version "$PACKAGE_VERSION"',
     '--manifest-sha256 "$MANIFEST_SHA256"',
     '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
-    "--compositor Mutter",
+    '--compositor "$compositor"',
     'test -f "$session_report"',
     "node scripts/linux-port/capture-p31-accessibility.mjs",
   ]) {
@@ -1895,28 +1947,30 @@ test("P-31 live GNOME accessibility workflow fails closed on contract drift", ()
   }
 });
 
-test("P-31 live GNOME prerequisite packages fail closed on contract drift", () => {
-  for (const marker of [
-    "test \"$ENVIRONMENT_ID\" = 'ubuntu-24.04-gnome-x11-aarch64'",
-    "sudo apt-get update",
-    "sudo apt-get install -y --no-install-recommends",
-    "at-spi2-core",
-    "libglib2.0-bin",
-    "orca",
-    "python3-pyatspi",
-    "scrot",
-    "wmctrl",
-    "x11-utils",
-    "x11-xserver-utils",
-    "xdotool",
+test("P-31 distro-specific live prerequisite packages fail closed on contract drift", () => {
+  for (const [arm, marker] of [
+    ["ubuntu-24.04-gnome-x11-*)", "xdotool"],
+    ["ubuntu-24.04-gnome-x11-*)", "gnome-accessibility-themes"],
+    ["ubuntu-24.04-gnome-wayland-*)", "ydotoold"],
+    ["ubuntu-24.04-gnome-wayland-*)", "python3-pyatspi"],
+    ["fedora-kde-wayland-*)", "sudo dnf install -y"],
+    ["fedora-kde-wayland-*)", "kscreen"],
+    ["arch-sway-wayland-x86_64)", "sudo pacman -S --needed --noconfirm"],
+    ["arch-sway-wayland-x86_64)", "python-atspi"],
   ]) {
     const input = valid();
-    const stepName = "Provision P-31 live GNOME accessibility prerequisites";
+    const stepName = "Provision P-31 live accessibility prerequisites";
     const start = input.productParityWorkflow.indexOf(`      - name: ${stepName}`);
     const end = input.productParityWorkflow.indexOf("\n      - name:", start + 1);
     assert.ok(start >= 0 && end > start, marker);
     const original = input.productParityWorkflow.slice(start, end);
-    const mutated = original.replace(marker, "removed-p31-prerequisite");
+    const armStart = original.indexOf(arm);
+    const armEnd = original.indexOf("\n              ;;", armStart);
+    assert.ok(armStart >= 0 && armEnd > armStart, arm);
+    const armBlock = original.slice(armStart, armEnd);
+    const mutatedArm = armBlock.replace(marker, "removed-p31-prerequisite");
+    assert.notEqual(mutatedArm, armBlock, `${arm} ${marker}`);
+    const mutated = `${original.slice(0, armStart)}${mutatedArm}${original.slice(armEnd)}`;
     assert.notEqual(mutated, original, marker);
     input.productParityWorkflow = `${input.productParityWorkflow.slice(0, start)}${mutated}${input.productParityWorkflow.slice(end)}`;
     const result = verifyLinuxWorkflowWiring(input);
