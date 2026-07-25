@@ -54,7 +54,7 @@
     "globals": "17.7.0",
     "jsdom": "^25.0.1",
     "postcss": "8.5.23",
-    "tailwindcss": "^3.4.17",
+    "tailwindcss": "^4.3.3",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.7.3",
     "typescript-eslint": "8.60.1",
