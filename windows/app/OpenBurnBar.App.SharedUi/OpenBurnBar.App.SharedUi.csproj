@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable SharedUi shell bridge for the Windows port (SharedUiHost).
+
+    This library holds the PLATFORM-INDEPENDENT half of the SharedUi host: the
+    WebView2 shim wire protocol (invoke/listen -> invoke-result/channel/event),
+    the command dispatcher and its validation, the runtime-capability manifest
+    synthesis, the onboarding snapshot machine, the subscription supervisor
+    contract, the Stripe/update URL allowlists, and the gateway chat request
+    validator. It serves the EXACT `LinuxShellBridge` command surface that the
+    Linux Tauri backend (apps/linux-desktop/src-tauri/src/lib.rs) serves, so the
+    identical React bundle (apps/linux-desktop, built via `vite build` with the
+    `windows` Vite mode into apps/linux-desktop/dist-windows) renders the
+    Windows app with pixel parity to the Linux app.
+
+    It targets plain net8.0 (no Windows TFM, no WinUI, no WebView2 hard
+    dependency) ON PURPOSE:
+      * the same assembly compiles and its logic is unit-tested on the macOS
+        authoring host today via `dotnet build` / `dotnet test` against fake
+        data/gateway/system planes (no browser needed);
+      * the WinUI app (net8.0-windows) plugs the REAL WebView2 transport and the
+        Windows backing services into the seam interfaces
+        (windows/app/OpenBurnBar.App/SharedUi/);
+      * net8.0 (not net10.0) so the net8.0-windows app target can reference it.
+
+    Contract discipline: every command name, wire casing, error-string taxonomy
+    ("not implemented on Windows", "gateway_*", "external_url_*", ...), and
+    strict-decoder invariant (runtime capabilities, onboarding, subscriptions)
+    mirrors apps/linux-desktop/src/tauriBridge.ts + the shim contract in
+    apps/linux-desktop/src/shim/tauriWebviewShim.ts. Unknown commands MUST fail
+    with an error containing "not implemented on Windows" so the frontend's
+    isCapabilityAbsentError maps them to the graceful-degrade path — the same
+    contract the real Tauri backend uses for absent capabilities.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.SharedUi</RootNamespace>
+    <AssemblyName>OpenBurnBar.App.SharedUi</AssemblyName>
+    <!-- Lets a net10-only SDK build the net8 target without the net8 shared
+         runtime installed (the ref pack restores from NuGet). -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenBurnBar.App.SharedUi.Tests" />
+  </ItemGroup>
+
+</Project>

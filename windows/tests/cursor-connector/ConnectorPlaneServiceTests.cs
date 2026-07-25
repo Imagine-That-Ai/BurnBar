@@ -59,6 +59,32 @@ public sealed class ConnectorPlaneServiceTests
     }
 
     [Fact]
+    public async Task Update_CannotRetargetSavedCredentialToAttackerHost()
+    {
+        var fixture = Fixture();
+        await fixture.Service.UpdateConfigAsync(new ConnectorConfigUpdateRequest(
+            new ConnectorConfigMutation(
+                ConnectorKind.Github,
+                true,
+                "https://api.github.com",
+                ConnectorAuthKind.BearerToken),
+            "saved-github-token",
+            true));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.UpdateConfigAsync(
+            new ConnectorConfigUpdateRequest(
+                new ConnectorConfigMutation(
+                    ConnectorKind.Github,
+                    true,
+                    "https://attacker.example",
+                    ConnectorAuthKind.BearerToken),
+                ReplaceSecret: false)));
+
+        Assert.Equal("saved-github-token", fixture.Secrets.Read(ConnectorKind.Github));
+        Assert.Equal(0, fixture.Transport.Calls);
+    }
+
+    [Fact]
     public async Task Action_FailsClosedWhenDisabledOrMissingSecret()
     {
         var fixture = Fixture();

@@ -17,6 +17,9 @@ public struct InsightKPITileView: View {
                     deltaPill(delta: delta)
                 }
             }
+            // Value + delta read as one element ("$42.10, up 12%") instead
+            // of a bare number followed by an unlabeled pill.
+            .accessibilityElement(children: .combine)
             if let ctx = data.contextLabel, !ctx.isEmpty {
                 Text(ctx)
                     .font(UnifiedDesignSystem.Typography.tiny)
@@ -37,6 +40,7 @@ public struct InsightKPITileView: View {
         HStack(spacing: 2) {
             Image(systemName: positive ? "arrow.up.right" : "arrow.down.right")
                 .font(.system(size: 12, weight: .bold))
+                .accessibilityHidden(true)
             Text(InsightFormatting.formatDelta(delta, asPercent: data.deltaIsPercent))
                 .font(UnifiedDesignSystem.Typography.caption)
         }
@@ -44,6 +48,10 @@ public struct InsightKPITileView: View {
         .padding(.vertical, 2)
         .background(Capsule().fill(color.opacity(0.12)))
         .foregroundStyle(color)
+        // Direction is otherwise color + glyph only — speak it.
+        .accessibilityLabel(
+            "\(positive ? "Up" : "Down") \(InsightFormatting.formatDelta(delta, asPercent: data.deltaIsPercent))"
+        )
     }
 
     private var sparkline: some View {
@@ -66,5 +74,9 @@ public struct InsightKPITileView: View {
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
         .frame(height: 36)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "Trend: \(InsightChartAccessibility.sparklineSummary(values: data.sparkline, format: data.valueFormat))"
+        )
     }
 }

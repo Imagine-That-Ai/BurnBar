@@ -38,17 +38,14 @@ public sealed class CompanionCliPlannerHandlerTests
         await using var server = new CompanionCliServer(0, router, "planner-token");
         server.Start();
 
-        using var client = new TcpClient();
-        await client.ConnectAsync(System.Net.IPAddress.Loopback, server.Port);
-        await using NetworkStream stream = client.GetStream();
-        using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
-        using var reader = new StreamReader(stream, Encoding.UTF8);
-        await writer.WriteLineAsync(
-            "{\"op\":\"planner.plan\",\"authToken\":\"planner-token\",\"prompt\":\"search for PlannerService\"}");
+        var client = new CompanionCliClient(
+            new CompanionCliClientOptions(server.Port),
+            () => "planner-token");
+        using JsonDocument request = JsonDocument.Parse(
+            "{\"op\":\"planner.plan\",\"prompt\":\"search for PlannerService\"}");
+        JsonElement response = await client.ExchangeAsync(request.RootElement);
+        string line = response.GetRawText();
 
-        string? line = await reader.ReadLineAsync();
-
-        Assert.NotNull(line);
         Assert.Contains("inspect_workspace", line, StringComparison.Ordinal);
         Assert.Contains("Search the workspace", line, StringComparison.Ordinal);
         Assert.DoesNotContain("planner-token", line, StringComparison.Ordinal);

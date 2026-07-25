@@ -363,6 +363,10 @@ final class AtomicIngestionTransaction {
     private let dbQueue: any DatabaseWriter
     private let checkpointStore: ParserCheckpointStore
     private let provider: AgentProvider
+    /// Optional refresh-tick new-event marker (see `UsageTableWriteMarker`).
+    /// When provided, `commit()` bumps it if the transaction changed any
+    /// `token_usage` rows so the periodic tick knows to re-aggregate.
+    private let usageWriteMarker: UsageTableWriteMarker?
 
     private var usages: [TokenUsage] = []
     private var conversations: [OpenBurnBarCore.ConversationRecord] = []
@@ -372,10 +376,16 @@ final class AtomicIngestionTransaction {
     private var isCommitted: Bool = false
     private var isRolledBack: Bool = false
 
-    init(dbQueue: any DatabaseWriter, checkpointStore: ParserCheckpointStore, provider: AgentProvider) {
+    init(
+        dbQueue: any DatabaseWriter,
+        checkpointStore: ParserCheckpointStore,
+        provider: AgentProvider,
+        usageWriteMarker: UsageTableWriteMarker? = nil
+    ) {
         self.dbQueue = dbQueue
         self.checkpointStore = checkpointStore
         self.provider = provider
+        self.usageWriteMarker = usageWriteMarker
     }
 
     /// Adds parsed usages and conversations to the transaction.
@@ -406,7 +416,8 @@ final class AtomicIngestionTransaction {
         let lastProcessedFilePath = self.lastProcessedFilePath
         let provider = self.provider
 
-        try await dbQueue.write { db in
+        let usageRowsChanged = try await dbQueue.write { db -> Int in
+            let usageChangesBefore = db.totalChangesCount
             // First, persist usages
             for usage in usages {
                 let usagePartition = Self.usagePartitionToken(from: usage.providerAccountID)
@@ -547,6 +558,9 @@ final class AtomicIngestionTransaction {
                         usage.estimatorVersion
                     ])
             }
+            // Sampled BEFORE the checkpoint upsert so the delta covers
+            // exactly the token_usage statements above.
+            let usageRowsChanged = db.totalChangesCount - usageChangesBefore
 
             // NOW advance the checkpoint - only after successful usage insert
             // VAL-PERSIST-004
@@ -566,6 +580,10 @@ final class AtomicIngestionTransaction {
                         Date()
                     ])
             }
+            return usageRowsChanged
+        }
+        if usageRowsChanged > 0 {
+            usageWriteMarker?.bump()
         }
 
         isCommitted = true

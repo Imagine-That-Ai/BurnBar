@@ -586,6 +586,17 @@ function exactConditionTerms(condition, operator) {
   ).map((part) => stripBalancedOuterParens(part).trim());
 }
 
+
+// A required conjunct may be a nested array, meaning "any one of these is
+// acceptable". That lets a workflow adopt a STRICTER policy than the baseline
+// (e.g. dropping COLLABORATOR) without failing the gate, while anything outside
+// the trusted set still has no accepted spelling.
+function conjunctSatisfied(conjuncts, required) {
+  return Array.isArray(required)
+    ? required.some((alternative) => conjuncts.has(alternative))
+    : conjuncts.has(required);
+}
+
 function conditionRequiresEventConjunct(
   condition,
   eventConjunct,
@@ -600,7 +611,8 @@ function conditionRequiresEventConjunct(
     const conjuncts = new Set(exactConditionTerms(branch, "&&"));
     if (!conjuncts.has(eventConjunct)) continue;
     sawEventBranch = true;
-    if (!required.every((conjunct) => conjuncts.has(conjunct))) return false;
+    if (!required.every((conjunct) => conjunctSatisfied(conjuncts, conjunct)))
+      return false;
   }
   return sawEventBranch;
 }
@@ -615,7 +627,7 @@ function conditionRequiresGlobalConjunctWithoutDisjunction(
   const normalized = normalizedCondition(condition);
   if (splitTopLevelBooleanOperator(normalized, "||").length > 1) return false;
   const conjuncts = new Set(exactConditionTerms(normalized, "&&"));
-  return required.every((conjunct) => conjuncts.has(conjunct));
+  return required.every((conjunct) => conjunctSatisfied(conjuncts, conjunct));
 }
 
 function conditionRequiresTrustedTrigger(
@@ -691,24 +703,41 @@ function conditionHasTextAgentTrigger(condition) {
   return /['"]@droid['"]/u.test(condition);
 }
 
-const TRUSTED_AUTHOR_ASSOCIATIONS = '["OWNER","MEMBER","COLLABORATOR"]';
+const TRUSTED_AUTHOR_ASSOCIATION_VALUES = ["OWNER", "MEMBER", "COLLABORATOR"];
+
+// Accept any non-empty subset of the trusted associations: a workflow that
+// narrows the set is strictly safer than the baseline, so the gate must not
+// force it back open. Untrusted values (CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR,
+// NONE, ...) never appear in any generated literal, so admitting one still
+// fails.
+function trustedAuthorAssociationConjuncts(associationExpression) {
+  const values = TRUSTED_AUTHOR_ASSOCIATION_VALUES;
+  const literals = [];
+  for (let mask = 1; mask < 1 << values.length; mask += 1) {
+    const subset = values.filter((_value, index) => mask & (1 << index));
+    literals.push(
+      `contains(fromJSON('${JSON.stringify(subset)}'), ${associationExpression})`,
+    );
+  }
+  return literals;
+}
 const TRUSTED_AGENT_TRIGGER_CONJUNCTS = [
   {
     workflowEvent: "issue_comment:",
     eventConjunct: "github.event_name == 'issue_comment'",
-    requiredConjunct: `contains(fromJSON('${TRUSTED_AUTHOR_ASSOCIATIONS}'), github.event.comment.author_association)`,
+    requiredConjunct: [trustedAuthorAssociationConjuncts("github.event.comment.author_association")],
     label: "issue-comment agent trigger",
   },
   {
     workflowEvent: "pull_request_review_comment:",
     eventConjunct: "github.event_name == 'pull_request_review_comment'",
-    requiredConjunct: `contains(fromJSON('${TRUSTED_AUTHOR_ASSOCIATIONS}'), github.event.comment.author_association)`,
+    requiredConjunct: [trustedAuthorAssociationConjuncts("github.event.comment.author_association")],
     label: "PR review-comment agent trigger",
   },
   {
     workflowEvent: "pull_request_review:",
     eventConjunct: "github.event_name == 'pull_request_review'",
-    requiredConjunct: `contains(fromJSON('${TRUSTED_AUTHOR_ASSOCIATIONS}'), github.event.review.author_association)`,
+    requiredConjunct: [trustedAuthorAssociationConjuncts("github.event.review.author_association")],
     label: "PR review agent trigger",
   },
   {
@@ -716,14 +745,14 @@ const TRUSTED_AGENT_TRIGGER_CONJUNCTS = [
     eventConjunct: "github.event_name == 'issues'",
     requiredConjuncts: [
       "github.event.issue.pull_request == null",
-      `contains(fromJSON('${TRUSTED_AUTHOR_ASSOCIATIONS}'), github.event.issue.author_association)`,
+      trustedAuthorAssociationConjuncts("github.event.issue.author_association"),
     ],
     label: "issue agent trigger",
   },
   {
     workflowEvent: "pull_request:",
     eventConjunct: "github.event_name == 'pull_request'",
-    requiredConjunct: `contains(fromJSON('${TRUSTED_AUTHOR_ASSOCIATIONS}'), github.event.pull_request.author_association)`,
+    requiredConjunct: [trustedAuthorAssociationConjuncts("github.event.pull_request.author_association")],
     label: "pull-request agent trigger",
   },
 ];

@@ -3,6 +3,7 @@ using System.Buffers;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -91,12 +92,13 @@ public sealed class CompanionCliClient : ICompanionCliClient
                 "Authentication must come from protected storage, not request JSON.");
         }
 
-        string? accessToken = null;
+        byte[]? accessToken = null;
         if (_options.RequireAuthentication)
         {
+            string? protectedToken;
             try
             {
-                accessToken = _accessTokenProvider()?.Trim();
+                protectedToken = _accessTokenProvider()?.Trim();
             }
             catch (Exception exception) when (exception is not CompanionCliClientException)
             {
@@ -106,14 +108,14 @@ public sealed class CompanionCliClient : ICompanionCliClient
                     exception);
             }
 
-            if (string.IsNullOrWhiteSpace(accessToken))
+            if (string.IsNullOrWhiteSpace(protectedToken))
             {
                 throw new CompanionCliClientException(
                     "protected_token_missing",
                     "No protected companion access token exists. Start OpenBurnBar once or configure the Model Proxy token.");
             }
 
-            root["authToken"] = accessToken;
+            accessToken = Encoding.UTF8.GetBytes(protectedToken);
         }
 
         byte[]? payload = null;
@@ -130,9 +132,48 @@ public sealed class CompanionCliClient : ICompanionCliClient
             using var client = new TcpClient(AddressFamily.InterNetwork);
             await client.ConnectAsync(IPAddress.Loopback, _options.Port, timeout.Token).ConfigureAwait(false);
             await using NetworkStream stream = client.GetStream();
-            await stream.WriteAsync(payload, timeout.Token).ConfigureAwait(false);
-            await stream.WriteAsync("\n"u8.ToArray(), timeout.Token).ConfigureAwait(false);
-            await stream.FlushAsync(timeout.Token).ConfigureAwait(false);
+            if (accessToken is not null)
+            {
+                string clientNonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+                byte[] challenge = JsonSerializer.SerializeToUtf8Bytes(new
+                {
+                    op = "auth.challenge.v1",
+                    clientNonce,
+                });
+                await WriteLineAsync(stream, challenge, timeout.Token).ConfigureAwait(false);
+                string challengeLine = await ReadBoundedLineAsync(stream, timeout.Token).ConfigureAwait(false);
+                using JsonDocument challengeDocument = JsonDocument.Parse(challengeLine);
+                JsonElement challengeRoot = challengeDocument.RootElement;
+                string serverNonce = challengeRoot.GetProperty("serverNonce").GetString() ?? string.Empty;
+                string serverProof = challengeRoot.GetProperty("serverProof").GetString() ?? string.Empty;
+                if (!CompanionCliAuthentication.VerifyServerProof(
+                        serverProof,
+                        clientNonce,
+                        serverNonce,
+                        accessToken))
+                {
+                    throw new CompanionCliClientException(
+                        "server_identity_failed",
+                        "The loopback listener could not prove possession of the protected OpenBurnBar token.");
+                }
+                root["authProof"] = new JsonObject
+                {
+                    ["clientNonce"] = clientNonce,
+                    ["serverNonce"] = serverNonce,
+                    ["proof"] = CompanionCliAuthentication.CreateClientProof(
+                        root,
+                        clientNonce,
+                        serverNonce,
+                        accessToken),
+                };
+            }
+
+            payload = JsonSerializer.SerializeToUtf8Bytes(root);
+            if (payload.Length > CompanionCliServer.MaxLineBytes)
+            {
+                throw new CompanionCliClientException("request_too_large", "The companion request exceeds the 512 KiB protocol limit.");
+            }
+            await WriteLineAsync(stream, payload, timeout.Token).ConfigureAwait(false);
 
             string response = await ReadBoundedLineAsync(stream, timeout.Token).ConfigureAwait(false);
             response = response.TrimStart('\uFEFF');
@@ -168,15 +209,26 @@ public sealed class CompanionCliClient : ICompanionCliClient
         }
         finally
         {
-            if (!string.IsNullOrEmpty(accessToken))
+            if (accessToken is not null)
             {
-                root.Remove("authToken");
+                root.Remove("authProof");
+                CryptographicOperations.ZeroMemory(accessToken);
                 if (payload is not null)
                 {
                     Array.Clear(payload);
                 }
             }
         }
+    }
+
+    private static async Task WriteLineAsync(
+        Stream stream,
+        byte[] payload,
+        CancellationToken cancellationToken)
+    {
+        await stream.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
+        await stream.WriteAsync("\n"u8.ToArray(), cancellationToken).ConfigureAwait(false);
+        await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<string> ReadBoundedLineAsync(Stream stream, CancellationToken cancellationToken)

@@ -27,7 +27,23 @@ Windows-only). This document closes that gap on real hardware.
 | **.NET SDK 10.0+** | `winget install Microsoft.DotNet.SDK.10`. The app target is `net8.0-windows10.0.19041.0`, but shared Windows libraries multi-target `net10.0`, so the repo build/test graph needs a .NET 10 SDK. |
 | **Windows App SDK / WinUI workload** | Visual Studio 2022 17.11+ with the **"Windows App SDK C# Templates"** component, **or** SDK-only: the `Microsoft.WindowsAppSDK` NuGet (restored automatically) + the **Windows App Runtime** installed so an *unpackaged* app can launch. `winget install Microsoft.WindowsAppRuntime.1.8` (match the package version in `OpenBurnBar.App.csproj`). |
 | **Windows 10 SDK 10.0.19041+** | Ships with the VS "Desktop development with C++"/"WinUI" workloads; the `Microsoft.Windows.SDK.BuildTools` NuGet (pulled transitively) covers the build. |
+| **Node.js 20.18+** | Required for the **SharedUi shell bundle** (next section). |
 | **Git** | To clone the branch under test. |
+
+### 1a. Build the SharedUi shell bundle (the Linux-parity UI)
+
+The app's primary window is the **SharedUi host** — the same React bundle the Linux app renders,
+hosted in WebView2 (see `docs/windows-port/SHARED_UI_HOST.md`). Build it before the app:
+
+```powershell
+cd apps\linux-desktop
+npm ci
+node_modules\.bin\vite build --mode windows   # → apps\linux-desktop\dist-windows\
+```
+
+The app project copies `dist-windows\**` to `Resources\SharedUi\` beside the exe. When the
+bundle is missing the app still builds and runs — it just fails over to the legacy XAML window
+(`shared-ui.unavailable` diagnostics event). `dotnet publish` **fails closed** without it.
 
 Confirm the toolchain:
 

@@ -48,15 +48,18 @@ extension ChatSessionController {
         let memoryQuestion = looksLikeConversationMemoryQuestion(queryText, plan: plan)
         guard memoryQuestion else { return .llmOnly }
 
+        // Credential-shaped exact lookups are local-only even when the wording
+        // also asks for synthesis. This check must precede the hybrid route or
+        // transcript snippets can cross a model/provider boundary.
+        if SearchService.looksLikeSensitiveExactLookup(queryText) {
+            return .localOracle
+        }
+
         if requiresLLMSynthesis(queryText) {
             return .hybridIndexThenLLM
         }
 
         if plan.analysisIntent != .none || plan.aggregatePatterns.isEmpty == false {
-            return .localOracle
-        }
-
-        if SearchService.looksLikeSensitiveExactLookup(queryText) {
             return .localOracle
         }
 

@@ -1,8 +1,18 @@
 {
-  "attributeCondition": "assertion.repository=='Imagine-That-Ai/BurnBar'",
+  "captureStatus": "PRE_LANDING_SNAPSHOT",
+  "postLandingAttributeCondition": "assertion.repository=='Imagine-That-Ai/BurnBar' && assertion.environment=='staging' && assertion.job_workflow_ref=='Imagine-That-Ai/BurnBar/.github/workflows/deploy-staging-trusted.yml@refs/heads/main'",
+  "postLandingAttributeMapping": {
+    "attribute.environment": "assertion.environment",
+    "attribute.job_workflow_ref": "assertion.job_workflow_ref",
+    "attribute.repository": "assertion.repository",
+    "google.subject": "assertion.sub"
+  },
+  "attributeCondition": "assertion.repository=='Imagine-That-Ai/BurnBar' && assertion.ref=='refs/heads/main' && assertion.environment=='staging' && assertion.workflow_ref=='Imagine-That-Ai/BurnBar/.github/workflows/deploy-staging.yml@refs/heads/main'",
   "attributeMapping": {
+    "attribute.environment": "assertion.environment",
     "attribute.ref": "assertion.ref",
     "attribute.repository": "assertion.repository",
+    "attribute.workflow_ref": "assertion.workflow_ref",
     "google.subject": "assertion.sub"
   },
   "displayName": "GitHub OIDC",

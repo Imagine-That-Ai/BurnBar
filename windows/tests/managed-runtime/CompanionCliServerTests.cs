@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using OpenBurnBar.App.ManagedAgentRuntime.Run;
 using System.Threading.Tasks;
@@ -70,10 +71,11 @@ public sealed class CompanionCliServerTests
             await using NetworkStream stream = client.GetStream();
             using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
             using var reader = new StreamReader(stream, Encoding.UTF8);
-            await writer.WriteLineAsync(
-                "{\"op\":\"run.submit\",\"authToken\":\"integration-token\",\"runId\":\"tcp-run\",\"steps\":[{\"id\":\"health\",\"kind\":\"health\"}]}");
-
-            string? line = await reader.ReadLineAsync();
+            string? line = await ExchangeAuthenticatedAsync(
+                writer,
+                reader,
+                "{\"op\":\"run.submit\",\"runId\":\"tcp-run\",\"steps\":[{\"id\":\"health\",\"kind\":\"health\"}]}",
+                "integration-token");
             Assert.NotNull(line);
             Assert.Contains("Succeeded", line, System.StringComparison.Ordinal);
             Assert.DoesNotContain("integration-token", line, System.StringComparison.Ordinal);
@@ -140,11 +142,22 @@ public sealed class CompanionCliServerTests
             await using NetworkStream stream = client.GetStream();
             using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
             using var reader = new StreamReader(stream, Encoding.UTF8);
+            var authenticated = false;
 
             async Task<JsonElement> ExchangeAsync(object request)
             {
-                await writer.WriteLineAsync(JsonSerializer.Serialize(request));
-                string line = Assert.IsType<string>(await reader.ReadLineAsync());
+                string serialized = JsonSerializer.Serialize(request);
+                string line;
+                if (!authenticated)
+                {
+                    line = await ExchangeAuthenticatedAsync(writer, reader, serialized, "agent-token");
+                    authenticated = true;
+                }
+                else
+                {
+                    await writer.WriteLineAsync(serialized);
+                    line = Assert.IsType<string>(await reader.ReadLineAsync());
+                }
                 Assert.DoesNotContain("agent-token", line, StringComparison.Ordinal);
                 using JsonDocument document = JsonDocument.Parse(line);
                 Assert.True(document.RootElement.GetProperty("ok").GetBoolean(), line);
@@ -154,7 +167,6 @@ public sealed class CompanionCliServerTests
             await ExchangeAsync(new
             {
                 op = "run.submit",
-                authToken = "agent-token",
                 runId = "agent-tcp",
                 clientId = "companion",
                 sessionId = "desktop-session",
@@ -177,7 +189,6 @@ public sealed class CompanionCliServerTests
                 detail = await ExchangeAsync(new
                 {
                     op = "run.get",
-                    authToken = "agent-token",
                     runId = "agent-tcp",
                     clientId = "companion",
                 });
@@ -190,7 +201,6 @@ public sealed class CompanionCliServerTests
             await ExchangeAsync(new
             {
                 op = "approval.respond",
-                authToken = "agent-token",
                 runId = "agent-tcp",
                 clientId = "companion",
                 approvalId,
@@ -199,7 +209,6 @@ public sealed class CompanionCliServerTests
             JsonElement claim = await ExchangeAsync(new
             {
                 op = "workspace.executeTool",
-                authToken = "agent-token",
                 runId = "agent-tcp",
                 clientId = "companion",
                 sessionId = "desktop-session",
@@ -210,7 +219,6 @@ public sealed class CompanionCliServerTests
             await ExchangeAsync(new
             {
                 op = "workspace.toolResult",
-                authToken = "agent-token",
                 runId = "agent-tcp",
                 clientId = "companion",
                 sessionId = "desktop-session",
@@ -223,7 +231,6 @@ public sealed class CompanionCliServerTests
                 detail = await ExchangeAsync(new
                 {
                     op = "run.get",
-                    authToken = "agent-token",
                     runId = "agent-tcp",
                     clientId = "companion",
                 });
@@ -262,10 +269,11 @@ public sealed class CompanionCliServerTests
             await using NetworkStream stream = client.GetStream();
             using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
             using var reader = new StreamReader(stream, Encoding.UTF8);
-            await writer.WriteLineAsync(
-                "{\"op\":\"mission.submit\",\"authToken\":\"mission-token\",\"missionId\":\"mission-tcp\",\"nodes\":[{\"id\":\"ready\",\"kind\":\"health\"},{\"id\":\"done\",\"kind\":\"noop\",\"dependsOn\":[\"ready\"]}]}");
-
-            string? line = await reader.ReadLineAsync();
+            string? line = await ExchangeAuthenticatedAsync(
+                writer,
+                reader,
+                "{\"op\":\"mission.submit\",\"missionId\":\"mission-tcp\",\"nodes\":[{\"id\":\"ready\",\"kind\":\"health\"},{\"id\":\"done\",\"kind\":\"noop\",\"dependsOn\":[\"ready\"]}]}",
+                "mission-token");
             Assert.NotNull(line);
             Assert.Contains("mission-tcp", line, StringComparison.Ordinal);
             Assert.Contains("Succeeded", line, StringComparison.Ordinal);
@@ -274,6 +282,54 @@ public sealed class CompanionCliServerTests
         finally
         {
             File.Delete(path);
+        }
+    }
+
+    private static async Task<string> ExchangeAuthenticatedAsync(
+        StreamWriter writer,
+        StreamReader reader,
+        string request,
+        string token)
+    {
+        byte[] key = Encoding.UTF8.GetBytes(token);
+        try
+        {
+            string clientNonce = Convert.ToBase64String(
+                System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+            await writer.WriteLineAsync(JsonSerializer.Serialize(new
+            {
+                op = "auth.challenge.v1",
+                clientNonce,
+            }));
+            string challengeLine = Assert.IsType<string>(await reader.ReadLineAsync());
+            using JsonDocument challenge = JsonDocument.Parse(challengeLine);
+            string serverNonce = Assert.IsType<string>(
+                challenge.RootElement.GetProperty("serverNonce").GetString());
+            string serverProof = Assert.IsType<string>(
+                challenge.RootElement.GetProperty("serverProof").GetString());
+            Assert.True(CompanionCliAuthentication.VerifyServerProof(
+                serverProof,
+                clientNonce,
+                serverNonce,
+                key));
+
+            JsonObject root = Assert.IsType<JsonObject>(JsonNode.Parse(request));
+            root["authProof"] = new JsonObject
+            {
+                ["clientNonce"] = clientNonce,
+                ["serverNonce"] = serverNonce,
+                ["proof"] = CompanionCliAuthentication.CreateClientProof(
+                    root,
+                    clientNonce,
+                    serverNonce,
+                    key),
+            };
+            await writer.WriteLineAsync(root.ToJsonString());
+            return Assert.IsType<string>(await reader.ReadLineAsync());
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(key);
         }
     }
 
