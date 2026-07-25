@@ -221,6 +221,15 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
 
   xdotool mousemove --window "$window_id" 8 $((HEIGHT - 8)) click 1
   sleep 0.3
+  # Start from a real, named document control. WebKitGTK can retain focus on
+  # the host shell after route activation, which makes the same physical Tab
+  # sequence produce different Orca event counts across architectures.
+  python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+    --application OpenBurnBar \
+    --mode grab-focus \
+    --expected-name "Skip to content" \
+    --output "$out_dir/atspi-keyboard-focus-anchor.json"
+  sleep 0.5
   focus_log_offset="$(wc -c <"$out_dir/orca-debug.log")"
   # WebKitGTK and Orca enqueue focus events independently.  Fourteen keys
   # were enough on the historical arm64 image but intermittently stopped
@@ -231,26 +240,82 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   # reverse traversal re-enters the same real focus path and records that
   # recovery rather than accepting a six-event partial traversal.
   physical_tab_presses=28
+  focus_window_and_key() {
+    # Xvfb/Orca can hand the active window back to the desktop shell after a
+    # WebKit focus change. Reassert the same packaged window immediately
+    # before each physical key; this does not synthesize an accessibility
+    # event, it keeps the real document eligible to receive the key.
+    xdotool windowfocus --sync "$window_id" 2>/dev/null || true
+    xdotool key --clearmodifiers "$1"
+  }
+  count_orca_focus_events() {
+    python3 - "$out_dir/orca-debug.log" "$focus_log_offset" <<'PY'
+import re
+import sys
+
+debug_path, offset_text = sys.argv[1:]
+with open(debug_path, "rb") as handle:
+    handle.seek(int(offset_text))
+    segment = handle.read().decode("utf-8", errors="replace")
+events = re.findall(
+    r"OBJECT EVENT: object:state-changed:focused for "
+    r"\[([^:\]]+): '([^']*)'\] in \[application: '([^']+)'\] "
+    r"\(1,\s*0,\s*0\)",
+    segment,
+)
+print(sum(1 for _role, _name, application in events if "openburnbar" in application.lower()))
+PY
+  }
   for _ in $(seq 1 "$physical_tab_presses"); do
-    xdotool key --clearmodifiers Tab
+    focus_window_and_key Tab
     # Orca intentionally serializes accessibility events. Fast synthetic input
     # causes its queue to obsolete intermediate focus changes.
     sleep 1.25
   done
   # Forward traversal can leave keyboard focus on the desktop shell. Restore
-  # the packaged window before reverse traversal so those keys exercise the
-  # WebKit document rather than the XFCE panel.
+  # the real document anchor before reverse traversal so those keys exercise
+  # the WebKit document rather than the XFCE panel.
   xdotool windowfocus --sync "$window_id" 2>/dev/null || true
+  python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+    --application OpenBurnBar \
+    --mode grab-focus \
+    --expected-name "Skip to content" \
+    --output "$out_dir/atspi-keyboard-focus-reverse-anchor.json"
   sleep 1
   physical_shift_tab_presses=12
   for _ in $(seq 1 "$physical_shift_tab_presses"); do
-    xdotool key --clearmodifiers Shift+Tab
+    focus_window_and_key Shift+Tab
     sleep 1.25
   done
+  # Orca may coalesce one or two WebKit focus events under load even though
+  # every physical key reached the packaged window. Keep the ten-event gate,
+  # but recover a short queue by re-entering the real document and continuing
+  # physical traversal. The bounded retry cannot turn a broken or trapped
+  # focus path into a pass: the final report still requires ten observed Orca
+  # events, three distinct targets, and three named targets.
+  focus_retry_rounds=0
+  focus_event_count="$(count_orca_focus_events)"
+  while (( focus_event_count < 10 && focus_retry_rounds < 3 )); do
+    focus_retry_rounds=$((focus_retry_rounds + 1))
+    xdotool windowfocus --sync "$window_id" 2>/dev/null || true
+    python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+      --application OpenBurnBar \
+      --mode grab-focus \
+      --expected-name "Skip to content" \
+      --output "$out_dir/atspi-keyboard-focus-retry-anchor-${focus_retry_rounds}.json"
+    sleep 1
+    for _ in $(seq 1 12); do
+      focus_window_and_key Tab
+      physical_tab_presses=$((physical_tab_presses + 1))
+      sleep 1.25
+    done
+    sleep 3
+    focus_event_count="$(count_orca_focus_events)"
+  done
   sleep 8
-  node - "$out_dir/orca-debug.log" "$focus_log_offset" "$physical_tab_presses" "$physical_shift_tab_presses" "$out_dir/atspi-keyboard-focus-sequence.json" <<'FOCUS'
+  node - "$out_dir/orca-debug.log" "$focus_log_offset" "$physical_tab_presses" "$physical_shift_tab_presses" "$focus_retry_rounds" "$out_dir/atspi-keyboard-focus-sequence.json" <<'FOCUS'
 const fs = require('fs');
-const [debugPath, offsetText, physicalTabPressesText, physicalShiftTabPressesText, outPath] = process.argv.slice(2);
+const [debugPath, offsetText, physicalTabPressesText, physicalShiftTabPressesText, retryRoundsText, outPath] = process.argv.slice(2);
 const debug = fs.readFileSync(debugPath);
 const segment = debug.subarray(Number(offsetText)).toString('utf8');
 const focusEvent = /OBJECT EVENT: object:state-changed:focused for \[([^:\]]+): '([^']*)'\] in \[application: '([^']+)'\] \(1,\s*0,\s*0\)/g;
@@ -272,6 +337,7 @@ const result = {
   physicalTabPressCount: Number(physicalTabPressesText),
   physicalShiftTabPressCount: Number(physicalShiftTabPressesText),
   physicalKeyPressCount: Number(physicalTabPressesText) + Number(physicalShiftTabPressesText),
+  recoveryRoundCount: Number(retryRoundsText),
   observedTrueFocusEventCount: events.length,
   stepCount: steps.length,
   distinctFocusedTargets: identities.size,

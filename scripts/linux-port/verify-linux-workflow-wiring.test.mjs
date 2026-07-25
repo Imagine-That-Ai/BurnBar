@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
+import { repoRoot } from "./lib/linux-release-common.mjs";
 import { verifyLinuxWorkflowWiring } from "./verify-linux-workflow-wiring.mjs";
+
+const releaseWorkflow = fs.readFileSync(
+  path.join(repoRoot, ".github/workflows/linux-release.yml"),
+  "utf8",
+);
 
 function valid() {
   return {
@@ -84,6 +92,13 @@ function valid() {
       "resolve-product-receipt-artifacts.test.mjs",
       "linux-toolchain-node-runtime.test.mjs",
       "macos-matched-performance",
+      "EVENT_NAME: ${{ github.event_name }}",
+      "INPUT_CHANNEL: ${{ inputs.channel }}",
+      'if [[ "$GITHUB_REF" == refs/tags/linux-v* || "$channel" == "stable" ]]',
+      'git merge-base --is-ancestor "$GITHUB_SHA" origin/main',
+      "Linux %s candidate may run from branch ref %s at %s.",
+      "Resolve signed Domain Core profile for Linux artifact",
+      "Download signed text-expansion trust",
       "run-matched-performance.mjs",
       "--profile pr",
       "matched-performance-contract.test.mjs",
@@ -182,7 +197,10 @@ function valid() {
       "capture-failure.json",
       "capture.log",
       '2>&1 | tee "$capture_log"',
+      "run-p31-live-accessibility-session.mjs",
       "capture-p31-accessibility.mjs",
+      "Provision P-31 live GNOME accessibility prerequisites",
+      "python3-pyatspi",
       "if: inputs.requirement == 'P-31'",
       "id: p31_capture",
       '--session-report "$session_report"',
@@ -247,7 +265,7 @@ function valid() {
       ].join("\n"),
       [
         "      - name: Install signed candidate for installed feature proofs",
-        "        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-13' || inputs.requirement == 'P-14' || inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-17' || inputs.requirement == 'P-18' || inputs.requirement == 'P-19' || inputs.requirement == 'P-20' || inputs.requirement == 'P-21' || inputs.requirement == 'P-22' || inputs.requirement == 'P-23' || inputs.requirement == 'P-24' || inputs.requirement == 'P-25' || inputs.requirement == 'P-26' || inputs.requirement == 'P-27' || inputs.requirement == 'P-28' || inputs.requirement == 'P-29' || inputs.requirement == 'P-30' || inputs.requirement == 'P-32' || inputs.requirement == 'P-33' || inputs.requirement == 'P-35' || inputs.requirement == 'P-36'",
+        "        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-13' || inputs.requirement == 'P-14' || inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-17' || inputs.requirement == 'P-18' || inputs.requirement == 'P-19' || inputs.requirement == 'P-20' || inputs.requirement == 'P-21' || inputs.requirement == 'P-22' || inputs.requirement == 'P-23' || inputs.requirement == 'P-24' || inputs.requirement == 'P-25' || inputs.requirement == 'P-26' || inputs.requirement == 'P-27' || inputs.requirement == 'P-28' || inputs.requirement == 'P-29' || inputs.requirement == 'P-30' || inputs.requirement == 'P-31' || inputs.requirement == 'P-32' || inputs.requirement == 'P-33' || inputs.requirement == 'P-35' || inputs.requirement == 'P-36'",
         "        run: |",
         "          set -euo pipefail",
         '          sudo apt-get install -y --reinstall "$package"',
@@ -259,10 +277,28 @@ function valid() {
       ].join("\n"),
       [
         "      - name: Provision native Tauri WebDriver prerequisites",
-        "        if: inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-27' || inputs.requirement == 'P-36'",
+        "        if: inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-27' || inputs.requirement == 'P-31' || inputs.requirement == 'P-36'",
         "        run: |",
         "          set -euo pipefail",
         "          bash scripts/linux-port/install-tauri-webdriver-prerequisites.sh",
+      ].join("\n"),
+      [
+        "      - name: Provision P-31 live GNOME accessibility prerequisites",
+        "        if: inputs.requirement == 'P-31'",
+        "        run: |",
+        "          set -euo pipefail",
+        "          test \"$ENVIRONMENT_ID\" = 'ubuntu-24.04-gnome-x11-aarch64'",
+        "          sudo apt-get update",
+        "          sudo apt-get install -y --no-install-recommends \\",
+        "            at-spi2-core \\",
+        "            libglib2.0-bin \\",
+        "            orca \\",
+        "            python3-pyatspi \\",
+        "            scrot \\",
+        "            wmctrl \\",
+        "            x11-utils \\",
+        "            x11-xserver-utils \\",
+        "            xdotool",
       ].join("\n"),
       [
         "      - name: Capture P-09 installed navigation shell proof",
@@ -917,7 +953,47 @@ function valid() {
         "          PREVIOUS_TAG: ${{ steps.p25_previous.outputs.tag }}",
         "        run: bash scripts/linux-port/run-p25-installed-update-proof-workflow.sh",
       ].join("\n"),
-      "Capture P-31 installed accessibility matrix evidence",
+      [
+        "      - name: Capture P-31 installed accessibility matrix evidence",
+        "        id: p31_capture",
+        "        if: inputs.requirement == 'P-31'",
+        "        run: |",
+        "          set -euo pipefail",
+        '          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"',
+        "          test \"$ENVIRONMENT_ID\" = 'ubuntu-24.04-gnome-x11-aarch64' \\",
+        "            || { exit 1; }",
+        '          state_home="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p31-home.XXXXXX")"',
+        "          cleanup_p31() {",
+        "            status=$?",
+        '            rm -rf "$state_home" || status=1',
+        '            exit "$status"',
+        "          }",
+        "          trap cleanup_p31 EXIT",
+        '          chmod 700 "$state_home"',
+        '          rm -rf "$input_root/p31-live" "$input_root/p31-live-session.json"',
+        '          install -d -m 700 "$input_root/p31-live"',
+        "          node scripts/linux-port/run-p31-live-accessibility-session.mjs \\",
+        '            --output-root "$input_root" \\',
+        '            --raw-output-dir "$input_root/p31-live" \\',
+        '            --state-home "$state_home" \\',
+        '            --environment "$ENVIRONMENT_ID" \\',
+        '            --target-head "$TARGET_HEAD" \\',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID" \\',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \\',
+        '            --package-version "$PACKAGE_VERSION" \\',
+        '            --manifest-sha256 "$MANIFEST_SHA256" \\',
+        '            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256" \\',
+        "            --compositor Mutter",
+        '          session_report="$input_root/p31-live-session.json"',
+        '          test -f "$session_report"',
+        "          node scripts/linux-port/capture-p31-accessibility.mjs \\",
+        '            --input-root "$input_root" \\',
+        '            --session-report "$session_report" \\',
+        '            --environment "$ENVIRONMENT_ID" \\',
+        '            --target-head "$TARGET_HEAD" \\',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID" \\',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+      ].join("\n"),
       "Capture P-34 credential security proof",
       [
         "      - name: Capture P-39 Linux candidate-bound platform evidence",
@@ -1118,6 +1194,10 @@ function valid() {
       "Resolve and validate Linux release version",
       "Validate public Linux release configuration",
       "Assert native runner architecture",
+      "Resolve signed Domain Core profile for Linux artifact",
+      "Download signed text-expansion trust",
+      "path: .linux-shard/text-expansion-trust",
+      "OPENBURNBAR_LINUX_TEXT_EXPANSION_SIGNED_MANIFEST=/workspace/.linux-shard/text-expansion-trust/text-expansion-engine.json",
       "Prepare unsigned native architecture artifacts",
       "Prepare unsigned Arch installed-manifest request",
       "Materialize exact-commit isolated signer",
@@ -1218,6 +1298,26 @@ test("complete fail-closed workflow wiring passes", () => {
     passed: true,
     failures: [],
   });
+});
+
+test("Linux release reclaims hosted-runner disk before native Docker builds", () => {
+  const reclaim = releaseWorkflow.indexOf(
+    "      - name: Reclaim hosted-runner build disk",
+  );
+  const toolchainBuild = releaseWorkflow.indexOf(
+    "      - name: Build mission Linux toolchain image",
+  );
+  assert.ok(reclaim >= 0, "release must reclaim hosted-runner disk");
+  assert.ok(
+    toolchainBuild > reclaim,
+    "disk reclamation must precede toolchain image build",
+  );
+  const reclaimStep = releaseWorkflow.slice(reclaim, toolchainBuild);
+  assert.match(
+    reclaimStep,
+    /docker system prune --all --volumes --force/u,
+  );
+  assert.match(reclaimStep, /test "\$available_kb" -ge 20000000/u);
 });
 
 test("P-38 workflow step cannot be removed or weakened", () => {
@@ -1689,7 +1789,7 @@ test("shared installed proof package and WebDriver prerequisites fail closed", (
   for (const [stepName, marker] of [
     [
       "Install signed candidate for installed feature proofs",
-      "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-13' || inputs.requirement == 'P-14' || inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-17' || inputs.requirement == 'P-18' || inputs.requirement == 'P-19' || inputs.requirement == 'P-20' || inputs.requirement == 'P-21' || inputs.requirement == 'P-22' || inputs.requirement == 'P-23' || inputs.requirement == 'P-24' || inputs.requirement == 'P-25' || inputs.requirement == 'P-26' || inputs.requirement == 'P-27' || inputs.requirement == 'P-28' || inputs.requirement == 'P-29' || inputs.requirement == 'P-30' || inputs.requirement == 'P-32' || inputs.requirement == 'P-33' || inputs.requirement == 'P-35' || inputs.requirement == 'P-36'",
+      "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-13' || inputs.requirement == 'P-14' || inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-17' || inputs.requirement == 'P-18' || inputs.requirement == 'P-19' || inputs.requirement == 'P-20' || inputs.requirement == 'P-21' || inputs.requirement == 'P-22' || inputs.requirement == 'P-23' || inputs.requirement == 'P-24' || inputs.requirement == 'P-25' || inputs.requirement == 'P-26' || inputs.requirement == 'P-27' || inputs.requirement == 'P-28' || inputs.requirement == 'P-29' || inputs.requirement == 'P-30' || inputs.requirement == 'P-31' || inputs.requirement == 'P-32' || inputs.requirement == 'P-33' || inputs.requirement == 'P-35' || inputs.requirement == 'P-36'",
     ],
     [
       "Install signed candidate for installed feature proofs",
@@ -1721,7 +1821,7 @@ test("shared installed proof package and WebDriver prerequisites fail closed", (
     ],
     [
       "Provision native Tauri WebDriver prerequisites",
-      "if: inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-27' || inputs.requirement == 'P-36'",
+      "if: inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-27' || inputs.requirement == 'P-31' || inputs.requirement == 'P-36'",
     ],
     ["Provision native Tauri WebDriver prerequisites", "set -euo pipefail"],
     [
@@ -1753,6 +1853,76 @@ test("shared installed proof package and WebDriver prerequisites fail closed", (
     assert.equal(result.passed, false, marker);
     assert.ok(
       result.failures.some((failure) => failure.includes(stepName)),
+      marker,
+    );
+  }
+});
+
+test("P-31 live GNOME accessibility workflow fails closed on contract drift", () => {
+  for (const marker of [
+    "test \"$ENVIRONMENT_ID\" = 'ubuntu-24.04-gnome-x11-aarch64'",
+    'state_home="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p31-home.XXXXXX")"',
+    'rm -rf "$input_root/p31-live" "$input_root/p31-live-session.json"',
+    'install -d -m 700 "$input_root/p31-live"',
+    "node scripts/linux-port/run-p31-live-accessibility-session.mjs",
+    '--raw-output-dir "$input_root/p31-live"',
+    '--state-home "$state_home"',
+    '--target-head "$TARGET_HEAD"',
+    '--candidate-run-id "$CANDIDATE_RUN_ID"',
+    '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+    '--package-version "$PACKAGE_VERSION"',
+    '--manifest-sha256 "$MANIFEST_SHA256"',
+    '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+    "--compositor Mutter",
+    'test -f "$session_report"',
+    "node scripts/linux-port/capture-p31-accessibility.mjs",
+  ]) {
+    const input = valid();
+    const stepName = "Capture P-31 installed accessibility matrix evidence";
+    const start = input.productParityWorkflow.indexOf(`      - name: ${stepName}`);
+    const end = input.productParityWorkflow.indexOf("\n      - name:", start + 1);
+    assert.ok(start >= 0 && end > start, marker);
+    const original = input.productParityWorkflow.slice(start, end);
+    const mutated = original.replace(marker, "removed-p31-live-contract");
+    assert.notEqual(mutated, original, marker);
+    input.productParityWorkflow = `${input.productParityWorkflow.slice(0, start)}${mutated}${input.productParityWorkflow.slice(end)}`;
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(
+      result.failures.some((failure) => failure.includes("P-31")),
+      marker,
+    );
+  }
+});
+
+test("P-31 live GNOME prerequisite packages fail closed on contract drift", () => {
+  for (const marker of [
+    "test \"$ENVIRONMENT_ID\" = 'ubuntu-24.04-gnome-x11-aarch64'",
+    "sudo apt-get update",
+    "sudo apt-get install -y --no-install-recommends",
+    "at-spi2-core",
+    "libglib2.0-bin",
+    "orca",
+    "python3-pyatspi",
+    "scrot",
+    "wmctrl",
+    "x11-utils",
+    "x11-xserver-utils",
+    "xdotool",
+  ]) {
+    const input = valid();
+    const stepName = "Provision P-31 live GNOME accessibility prerequisites";
+    const start = input.productParityWorkflow.indexOf(`      - name: ${stepName}`);
+    const end = input.productParityWorkflow.indexOf("\n      - name:", start + 1);
+    assert.ok(start >= 0 && end > start, marker);
+    const original = input.productParityWorkflow.slice(start, end);
+    const mutated = original.replace(marker, "removed-p31-prerequisite");
+    assert.notEqual(mutated, original, marker);
+    input.productParityWorkflow = `${input.productParityWorkflow.slice(0, start)}${mutated}${input.productParityWorkflow.slice(end)}`;
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(
+      result.failures.some((failure) => failure.includes("P-31")),
       marker,
     );
   }

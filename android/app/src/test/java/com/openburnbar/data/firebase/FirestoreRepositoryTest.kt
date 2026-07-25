@@ -43,6 +43,24 @@ class FirestoreRepositoryTest {
         assertNull(FirestoreValueParsers.string(mapOf("projectName" to 7), "projectName"))
     }
 
+    @Test
+    fun `toTokenUsage preserves execution source attribution`() {
+        val snapshot = mockk<DocumentSnapshot>()
+        every { snapshot.id } returns "usage-1"
+        every { snapshot.data } returns mapOf(
+            "executionSourceID" to "cursor",
+            "executionSourceName" to "Cursor",
+            "executionSourceKind" to "ide",
+            "executionSourceConfidence" to "exact",
+        )
+
+        val usage = requireNotNull(snapshot.toTokenUsage())
+        assertEquals("cursor", usage.executionSourceId)
+        assertEquals("Cursor", usage.executionSourceName)
+        assertEquals("ide", usage.executionSourceKind)
+        assertEquals("exact", usage.executionSourceConfidence)
+    }
+
     // ── BudgetEvent codec ──
 
     @Test

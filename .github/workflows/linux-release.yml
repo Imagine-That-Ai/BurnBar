@@ -52,11 +52,20 @@ jobs:
           fetch-tags: true
 
       - name: Verify official Linux release history
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_CHANNEL: ${{ inputs.channel }}
         run: |
           set -euo pipefail
           git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          channel="${INPUT_CHANNEL:-prerelease}"
+          if [[ "$EVENT_NAME" != "workflow_dispatch" ]]; then channel="prerelease"; fi
+          if [[ "$GITHUB_REF" == refs/tags/linux-v* || "$channel" == "stable" ]]; then
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          else
+            printf 'Linux %s candidate may run from branch ref %s at %s.\n' "$channel" "$GITHUB_REF" "$GITHUB_SHA"
+          fi
           if [[ "$GITHUB_REF" == refs/tags/linux-v* ]]; then
             test "$(git rev-list -n 1 "${GITHUB_REF}^{commit}")" = "$GITHUB_SHA"
           fi
@@ -180,11 +189,6 @@ jobs:
           cache: npm
           cache-dependency-path: apps/linux-desktop/package-lock.json
 
-      - uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v5.0.0
-        with:
-          name: linux-text-expansion-trust
-          path: .linux-trust
-
       - name: Assert native runner architecture
         env:
           EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
@@ -199,6 +203,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_COMMIT: ${{ github.sha }}
         run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$CANDIDATE_COMMIT" --expected-release-commit "$RELEASE_COMMIT" --format github-env >> "$GITHUB_ENV"
+
+      - name: Download signed text-expansion trust
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v5.0.0
+        with:
+          name: linux-text-expansion-trust
+          # Keep generated trust input inside the canonical shard output so
+          # release checkout cleanliness remains fail-closed.
+          path: .linux-shard/text-expansion-trust
+
+      - name: Reclaim hosted-runner build disk
+        run: |
+          set -euo pipefail
+          # Swift/Cargo and the architecture package images are both large;
+          # hosted runner language/tool caches are not part of the release
+          # subject and must not be allowed to starve the native build.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo apt-get clean
+          docker system prune --all --volumes --force
+          available_kb="$(df --output=avail / | tail -n 1 | tr -d ' ')"
+          test "$available_kb" -ge 20000000
+          df -h /
 
       - name: Build mission Linux toolchain image
         run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
@@ -217,6 +242,7 @@ jobs:
           -e OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID
           -e OPENBURNBAR_FIREBASE_API_KEY
           -e OPENBURNBAR_LINUX_APP_CHECK_APP_ID
+          -e OPENBURNBAR_LINUX_TEXT_EXPANSION_SIGNED_MANIFEST=/workspace/.linux-shard/text-expansion-trust/text-expansion-engine.json
           -v "$PWD:/workspace"
           -w /workspace
           openburnbar-linux-toolchain:mission-001
@@ -281,6 +307,7 @@ jobs:
             scripts/linux-port/sign-linux-release-requests.mjs \
             scripts/linux-port/lib/linux-installed-manifest.mjs \
             scripts/linux-port/lib/linux-appimage-peer-manifest.mjs \
+            scripts/linux-port/lib/stable-file.mjs \
             packaging/linux/openburnbar-linux-ed25519.pub.pem \
             | tar -x -C "$SIGNER_ROOT"
           test "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" = "$GITHUB_SHA"
@@ -337,6 +364,7 @@ jobs:
           -e OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID
           -e OPENBURNBAR_FIREBASE_API_KEY
           -e OPENBURNBAR_LINUX_APP_CHECK_APP_ID
+          -e OPENBURNBAR_LINUX_TEXT_EXPANSION_SIGNED_MANIFEST=/workspace/.linux-shard/text-expansion-trust/text-expansion-engine.json
           -v "$PWD:/workspace"
           -w /workspace
           openburnbar-linux-toolchain:mission-001
@@ -534,6 +562,16 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+
+      - name: Isolate generated release output from source cleanliness gates
+        run: |
+          set -euo pipefail
+          exclude_file="$(git rev-parse --git-path info/exclude)"
+          printf '%s\n' \
+            '/.linux-evidence/' \
+            '/.linux-release/' \
+            '/.linux-shards/' >> "$exclude_file"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
 
       - name: Verify candidate-to-activation history is complete
         env:

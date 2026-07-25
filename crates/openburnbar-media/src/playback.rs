@@ -132,19 +132,19 @@ impl AudioPlaybackPipeline {
         }
         let mut buffer = gst::Buffer::with_size(payload.len())
             .map_err(|error| MediaError::pipeline(error.to_string()))?;
+        let buffer_mut = buffer
+            .get_mut()
+            .ok_or_else(|| MediaError::pipeline("new audio buffer was not mutable"))?;
         {
-            let buffer_mut = buffer
-                .get_mut()
-                .ok_or_else(|| MediaError::pipeline("new audio buffer was not mutable"))?;
             let mut map = buffer_mut
                 .map_writable()
                 .map_err(|error| MediaError::pipeline(error.to_string()))?;
             map.as_mut_slice().copy_from_slice(payload);
-            buffer_mut.set_pts(gst::ClockTime::from_mseconds(pts_ms));
-            // A complete packet is one access unit. This flag is meaningful
-            // to downstream queues and keeps packet boundaries explicit.
-            buffer_mut.set_duration(gst::ClockTime::from_mseconds(20));
         }
+        buffer_mut.set_pts(gst::ClockTime::from_mseconds(pts_ms));
+        // A complete packet is one access unit. This flag is meaningful
+        // to downstream queues and keeps packet boundaries explicit.
+        buffer_mut.set_duration(gst::ClockTime::from_mseconds(20));
         self.appsrc
             .push_buffer(buffer)
             .map(|_| ())

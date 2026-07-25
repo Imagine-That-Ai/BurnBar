@@ -4605,6 +4605,13 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let slots = try XCTUnwrap(snapshot.providerSettings(id: "anthropic")?.credentialSlots)
         XCTAssertEqual(slots.first(where: { $0.slotID == "primary" })?.status, .exhausted, clientName)
         XCTAssertEqual(slots.first(where: { $0.slotID == "backup" })?.status, .ready, clientName)
+
+        let usage = try await harness.usageRecorder.recentUsage(limit: 1)
+        let event = try XCTUnwrap(usage.first)
+        XCTAssertEqual(event.executionSourceID, "claude-code", clientName)
+        XCTAssertEqual(event.executionSourceName, "Claude Code", clientName)
+        XCTAssertEqual(event.executionSourceKind, .cli, clientName)
+        XCTAssertEqual(event.executionSourceConfidence, .exact, clientName)
     }
 
     func testGatewayResolvesCapabilityClassFromCatalogBeforeRouting() async throws {

@@ -34,7 +34,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tree-text")
     parser.add_argument("--expected-name")
     parser.add_argument("--route")
-    parser.add_argument("--mode", choices=("tree", "summary", "focus", "activate"), default="tree")
+    parser.add_argument(
+        "--mode",
+        choices=("tree", "summary", "focus", "grab-focus", "activate"),
+        default="tree",
+    )
     parser.add_argument("--within-role")
     parser.add_argument("--timeout-seconds", type=float, default=20.0)
     parser.add_argument("--max-depth", type=int, default=48)
@@ -240,6 +244,17 @@ def activate_node(node: Any) -> dict[str, Any]:
     }
 
 
+def grab_focus(node: Any) -> dict[str, Any]:
+    """Put keyboard focus on a real AT-SPI component before traversal."""
+    component = node.queryComponent()
+    grabbed = bool(component.grabFocus())
+    return {
+        "role": role_name(node),
+        "name": node_name(node),
+        "grabbed": grabbed,
+    }
+
+
 def activate_with_retry(
     pyatspi: Any,
     application_name: str,
@@ -357,26 +372,41 @@ def main() -> int:
     try:
         import pyatspi  # type: ignore
 
-        if args.mode == "activate":
+        if args.mode in ("activate", "grab-focus"):
             if not args.expected_name:
-                raise RuntimeError("--expected-name is required in activate mode")
-            activation = activate_with_retry(
-                pyatspi,
-                args.application,
-                args.expected_name,
-                args.within_role,
-                args.timeout_seconds,
-            )
-            result = {
-                "schemaVersion": 1,
-                "capturedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "application": args.application,
-                "expectedName": args.expected_name,
-                "withinRole": args.within_role,
-                "activation": activation,
-                "pass": activation["activated"],
-                "failures": [] if activation["activated"] else ["action_returned_false"],
-            }
+                raise RuntimeError(f"--expected-name is required in {args.mode} mode")
+            if args.mode == "activate":
+                activation = activate_with_retry(
+                    pyatspi,
+                    args.application,
+                    args.expected_name,
+                    args.within_role,
+                    args.timeout_seconds,
+                )
+                result = {
+                    "schemaVersion": 1,
+                    "capturedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "application": args.application,
+                    "expectedName": args.expected_name,
+                    "withinRole": args.within_role,
+                    "activation": activation,
+                    "pass": activation["activated"],
+                    "failures": [] if activation["activated"] else ["action_returned_false"],
+                }
+            else:
+                application = find_application(pyatspi, args.application, args.timeout_seconds)
+                node = find_actionable_node(application, args.expected_name, args.within_role)
+                focus = grab_focus(node)
+                result = {
+                    "schemaVersion": 1,
+                    "capturedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "application": args.application,
+                    "expectedName": args.expected_name,
+                    "withinRole": args.within_role,
+                    "focus": focus,
+                    "pass": focus["grabbed"],
+                    "failures": [] if focus["grabbed"] else ["focus_grab_returned_false"],
+                }
             Path(args.output).write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
             print(json.dumps(result, separators=(",", ":")))
             return 0 if result["pass"] else 1

@@ -119,7 +119,11 @@ const mainLive = scanTarget(mainTarget);
 // Kernel IS a decomposition destination (P-02/P-03/P-04a/P-04b/P-11 move ~35
 // files + several thousand LOC into it); its marker-era measured ceiling
 // (133 files / 35955 LOC) has ZERO headroom for those moves, so it is seeded
-// from the ~37k end-state (1.25x = 46250 LOC) with file headroom.
+// from the ~37k end-state with file headroom. Operation 10 adds the generalized
+// execution-source usage contract to Kernel and the evidence-backed Codex
+// history/cache attribution to LogParsers. Those are the owning modules, so the
+// planned ceilings include the measured 272/302-LOC feature growth plus less
+// than 160 lines of bounded headroom instead of creating artificial leaf targets.
 const PLANNED_CEILINGS = {
   // Shared-Rust rollout authority stays a narrow Foundation-only leaf. The
   // ceiling covers profiles, candidate identity, evidence comparison, and the
@@ -133,11 +137,11 @@ const PLANNED_CEILINGS = {
   // after the assistant-model extraction. Keep the ceiling below the next
   // monolith while accounting for those cross-platform authority surfaces.
   OpenBurnBarKernel: { maxFiles: 185, maxLines: 47000 },
-  OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1000 },
+  OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1200 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
   // The final local-parser catalog adds bounded corpus parsers for the Linux
   // provider matrix; the ceiling remains below a general-purpose god target.
-  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 13000 },
+  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 13200 },
   OpenBurnBarQuota: { maxFiles: 55, maxLines: 13000 },
   // VectorKit gains OpenBurnBarSearchContracts.swift (P-03 re-slice / FIX 4) on
   // top of the vector indexes + SearchPlanner + Pensieve, so its ceiling covers

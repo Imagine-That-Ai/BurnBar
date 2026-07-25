@@ -55,6 +55,12 @@ test('Linux toolchain does not reintroduce Noble Node 18 packages', () => {
   assert.match(toolchain, /arm64\) node_arch=arm64/u);
 });
 
+test('Linux toolchain includes runtime dependencies required by Debian package smoke', () => {
+  const aptPackages = toolchain.match(/apt-get[\s\S]*?install -y --no-install-recommends([\s\S]*?)&& rm -rf \/var\/lib\/apt\/lists\//u)?.[1];
+  assert.ok(aptPackages, 'could not locate toolchain apt package list');
+  assert.match(aptPackages, /\n\s+ibus \\\n/u, 'Debian package smoke requires the declared IBus runtime');
+});
+
 test('Linux toolchain normalizes Ubuntu package mirrors to HTTPS', () => {
   for (const host of ['ports.ubuntu.com', 'archive.ubuntu.com', 'security.ubuntu.com']) {
     assert.ok(

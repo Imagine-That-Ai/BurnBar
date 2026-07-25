@@ -237,7 +237,7 @@ export function verifyLinuxWorkflowWiring(input) {
       .filter((line) => line && !line.startsWith('#'));
     const required = [
       [installStep, install, [
-        "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-13' || inputs.requirement == 'P-14' || inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-17' || inputs.requirement == 'P-18' || inputs.requirement == 'P-19' || inputs.requirement == 'P-20' || inputs.requirement == 'P-21' || inputs.requirement == 'P-22' || inputs.requirement == 'P-23' || inputs.requirement == 'P-24' || inputs.requirement == 'P-25' || inputs.requirement == 'P-26' || inputs.requirement == 'P-27' || inputs.requirement == 'P-28' || inputs.requirement == 'P-29' || inputs.requirement == 'P-30' || inputs.requirement == 'P-32' || inputs.requirement == 'P-33' || inputs.requirement == 'P-35' || inputs.requirement == 'P-36'",
+        "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-13' || inputs.requirement == 'P-14' || inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-17' || inputs.requirement == 'P-18' || inputs.requirement == 'P-19' || inputs.requirement == 'P-20' || inputs.requirement == 'P-21' || inputs.requirement == 'P-22' || inputs.requirement == 'P-23' || inputs.requirement == 'P-24' || inputs.requirement == 'P-25' || inputs.requirement == 'P-26' || inputs.requirement == 'P-27' || inputs.requirement == 'P-28' || inputs.requirement == 'P-29' || inputs.requirement == 'P-30' || inputs.requirement == 'P-31' || inputs.requirement == 'P-32' || inputs.requirement == 'P-33' || inputs.requirement == 'P-35' || inputs.requirement == 'P-36'",
         'set -euo pipefail',
         'sudo apt-get install -y --reinstall "$package"',
         'sudo dnf install -y "$package"',
@@ -278,6 +278,126 @@ export function verifyLinuxWorkflowWiring(input) {
       failures.push(`product parity evidence workflow ${captureStep} must run native probe, materializer, then capture in order`);
     }
   };
+  const requireP31LiveAccessibilityContract = (body) => {
+    const prerequisiteStep = 'Provision P-31 live GNOME accessibility prerequisites';
+    const prerequisiteStart = body.indexOf(`- name: ${prerequisiteStep}`);
+    const prerequisiteEnd = prerequisiteStart < 0 ? -1
+      : body.indexOf('\n      - name:', prerequisiteStart + 1);
+    const prerequisiteBlock = prerequisiteStart < 0 ? ''
+      : body.slice(prerequisiteStart, prerequisiteEnd < 0 ? body.length : prerequisiteEnd);
+    if (!prerequisiteBlock) {
+      failures.push(`product parity evidence workflow is missing executable step: ${prerequisiteStep}`);
+    } else {
+      const prerequisiteLines = prerequisiteBlock.split('\n').map((line) => line.trim())
+        .filter((line) => line && !line.startsWith('#'));
+      for (const line of [
+        "if: inputs.requirement == 'P-31'",
+        'set -euo pipefail',
+        "test \"$ENVIRONMENT_ID\" = 'ubuntu-24.04-gnome-x11-aarch64'",
+        'sudo apt-get update',
+        'sudo apt-get install -y --no-install-recommends',
+        'at-spi2-core',
+        'libglib2.0-bin',
+        'orca',
+        'python3-pyatspi',
+        'scrot',
+        'wmctrl',
+        'x11-utils',
+        'x11-xserver-utils',
+        'xdotool'
+      ]) {
+        if (!prerequisiteLines.includes(line) && !prerequisiteLines.includes(`${line} \\`)) {
+          failures.push(`product parity evidence workflow ${prerequisiteStep} is missing: ${line}`);
+        }
+      }
+      for (const forbidden of ['continue-on-error: true', 'set +e', '|| true', '; true']) {
+        if (prerequisiteLines.some((line) => line.includes(forbidden))) {
+          failures.push(`product parity evidence workflow ${prerequisiteStep} permits failure: ${forbidden}`);
+        }
+      }
+    }
+    const stepName = 'Capture P-31 installed accessibility matrix evidence';
+    const start = body.indexOf(`- name: ${stepName}`);
+    const end = start < 0 ? -1 : body.indexOf('\n      - name:', start + 1);
+    const block = start < 0 ? '' : body.slice(start, end < 0 ? body.length : end);
+    if (!block) {
+      failures.push(`product parity evidence workflow is missing executable step: ${stepName}`);
+      return;
+    }
+    const activeLines = (value) => value.split('\n').map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'));
+    const active = activeLines(block);
+    for (const line of [
+      "if: inputs.requirement == 'P-31'",
+      'set -euo pipefail',
+      "test \"$ENVIRONMENT_ID\" = 'ubuntu-24.04-gnome-x11-aarch64'",
+      'state_home="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p31-home.XXXXXX")"',
+      'trap cleanup_p31 EXIT',
+      'chmod 700 "$state_home"',
+      'rm -rf "$input_root/p31-live" "$input_root/p31-live-session.json"',
+      'install -d -m 700 "$input_root/p31-live"',
+      'node scripts/linux-port/run-p31-live-accessibility-session.mjs',
+      '--raw-output-dir "$input_root/p31-live"',
+      '--state-home "$state_home"',
+      '--environment "$ENVIRONMENT_ID"',
+      '--target-head "$TARGET_HEAD"',
+      '--candidate-run-id "$CANDIDATE_RUN_ID"',
+      '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+      '--package-version "$PACKAGE_VERSION"',
+      '--manifest-sha256 "$MANIFEST_SHA256"',
+      '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+      '--compositor Mutter',
+      'session_report="$input_root/p31-live-session.json"',
+      'test -f "$session_report"',
+      'node scripts/linux-port/capture-p31-accessibility.mjs',
+      '--session-report "$session_report"'
+    ]) {
+      if (!active.includes(line) && !active.includes(`${line} \\`)) {
+        failures.push(`product parity evidence workflow ${stepName} is missing: ${line}`);
+      }
+    }
+    for (const forbidden of ['continue-on-error: true', 'set +e', '|| true', '; true']) {
+      if (active.some((line) => line.includes(forbidden))) {
+        failures.push(`product parity evidence workflow ${stepName} permits failure: ${forbidden}`);
+      }
+    }
+    const producer = block.indexOf('node scripts/linux-port/run-p31-live-accessibility-session.mjs');
+    const reportCheck = block.indexOf('test -f "$session_report"');
+    const capture = block.indexOf('node scripts/linux-port/capture-p31-accessibility.mjs');
+    if (!(producer >= 0 && producer < reportCheck && reportCheck < capture)) {
+      failures.push(`product parity evidence workflow ${stepName} must run the live producer, verify its report, then capture in order`);
+      return;
+    }
+    const producerLines = activeLines(block.slice(producer, reportCheck));
+    for (const line of [
+      '--raw-output-dir "$input_root/p31-live"',
+      '--state-home "$state_home"',
+      '--environment "$ENVIRONMENT_ID"',
+      '--target-head "$TARGET_HEAD"',
+      '--candidate-run-id "$CANDIDATE_RUN_ID"',
+      '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+      '--package-version "$PACKAGE_VERSION"',
+      '--manifest-sha256 "$MANIFEST_SHA256"',
+      '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+      '--compositor Mutter'
+    ]) {
+      if (!producerLines.includes(line) && !producerLines.includes(`${line} \\`)) {
+        failures.push(`product parity evidence workflow ${stepName} live producer is missing: ${line}`);
+      }
+    }
+    const captureLines = activeLines(block.slice(capture));
+    for (const line of [
+      '--session-report "$session_report"',
+      '--environment "$ENVIRONMENT_ID"',
+      '--target-head "$TARGET_HEAD"',
+      '--candidate-run-id "$CANDIDATE_RUN_ID"',
+      '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+    ]) {
+      if (!captureLines.includes(line) && !captureLines.includes(`${line} \\`)) {
+        failures.push(`product parity evidence workflow ${stepName} proof capture is missing: ${line}`);
+      }
+    }
+  };
   const requireNativeWebDriverProvisioning = (body) => {
     const stepName = 'Provision native Tauri WebDriver prerequisites';
     const start = body.indexOf(`- name: ${stepName}`);
@@ -290,7 +410,7 @@ export function verifyLinuxWorkflowWiring(input) {
     const active = block.split('\n').map((line) => line.trim())
       .filter((line) => line && !line.startsWith('#'));
     for (const line of [
-      "if: inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-27' || inputs.requirement == 'P-36'",
+      "if: inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-27' || inputs.requirement == 'P-31' || inputs.requirement == 'P-36'",
       'set -euo pipefail',
       'bash scripts/linux-port/install-tauri-webdriver-prerequisites.sh'
     ]) {
@@ -846,6 +966,8 @@ export function verifyLinuxWorkflowWiring(input) {
     "if: inputs.requirement == 'P-36'",
     'Provision native Tauri WebDriver prerequisites',
     'install-tauri-webdriver-prerequisites.sh',
+    'Provision P-31 live GNOME accessibility prerequisites',
+    'python3-pyatspi',
     'capture-parity-certification-preflight.mjs',
     'capture-p34-credential-security-proof.mjs',
     'run-p40-privacy-rpc-session.mjs',
@@ -863,6 +985,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'capture-failure.json',
     'capture.log',
     '2>&1 | tee "$capture_log"',
+    'run-p31-live-accessibility-session.mjs',
     'capture-p31-accessibility.mjs',
     "if: inputs.requirement == 'P-31'",
     'id: p31_capture',
@@ -884,6 +1007,7 @@ export function verifyLinuxWorkflowWiring(input) {
   requireP08CaptureContract(input.productParityWorkflow);
   requireP06ArchPackageContract(input.productParityWorkflow);
   requireNativeWebDriverProvisioning(input.productParityWorkflow);
+  requireP31LiveAccessibilityContract(input.productParityWorkflow);
   requireP16PhysicalIPadProducer(input.productParityWorkflow);
   requireInstalledUiCaptureContract(input.productParityWorkflow, 'P-09', {
     step: 'Capture P-09 installed navigation shell proof',
@@ -1599,11 +1723,23 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.fixturePolicy, 'DAEMON_FIXTURE_AVAILABLE', 'production fixture policy');
   requireText(input.fixturePolicy, "enabled && DAEMON_FIXTURE_AVAILABLE", 'fixture state guard');
   requireText(input.desktopPackage, 'verify-linux-production-bundle.mjs', 'production bundle gate');
+  requireText(
+    input.release,
+    'path: .linux-shard/text-expansion-trust',
+    'generated text-expansion trust output path'
+  );
+  requireText(
+    input.release,
+    'OPENBURNBAR_LINUX_TEXT_EXPANSION_SIGNED_MANIFEST=/workspace/.linux-shard/text-expansion-trust/text-expansion-engine.json',
+    'container text-expansion trust path'
+  );
 
   requireOrder(input.release, [
     'Resolve and validate Linux release version',
     'Validate public Linux release configuration',
     'Assert native runner architecture',
+    'Resolve signed Domain Core profile for Linux artifact',
+    'Download signed text-expansion trust',
     'Prepare unsigned native architecture artifacts',
     'Prepare unsigned Arch installed-manifest request',
     'Materialize exact-commit isolated signer',

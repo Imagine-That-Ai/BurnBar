@@ -80,6 +80,25 @@ known platform divergences.
 > parser gap; installed OpenClaude scans, account credentials, and signed
 > cross-environment receipts remain release gates.
 
+> **Release-candidate checkpoint (2026-07-24):** `222556ab34` preserves
+> telemetry focus during hydration; `fd0c3d3338` and `7173af3625` anchor
+> forward and reverse Orca traversal; and integration commit `f2c1299c00`
+> retains the trusted manifest and window-focus fix. Linux Release Candidate
+> run `30109002594` passed both architecture shards, including **12 aarch64**
+> and **14 x86_64 true-focus events**, but final assembly failed when generated
+> release outputs tripped the signed source-checkout cleanliness gate.
+> `4a057f7627` isolates those generated outputs without masking other drift,
+> with the focused local release/control-plane contract suites green at
+> **77/77**. Replacement run `30134090049` proved the x86_64 shard and all
+> aarch64 build, packaging, signing, install, lifecycle, and daemon gates, but
+> the final aarch64 accessibility session observed **9** package-owned Orca
+> focus events against the unchanged **10-event** minimum; assembly was
+> therefore skipped. The follow-up keeps the 10-event, 3-distinct-target, and
+> 3-named-target gates intact while adding at most three paced, physically
+> keyed recovery traversals from the real AT-SPI document anchor. Strict
+> certification remains **0/40 product requirements and 0/7 environments**
+> until a replacement candidate and live environment receipts pass.
+
 > **Continuation update (2026-07-21, integration closeout):** `2df8b03a5a`
 > hardens the Linux Iroh directory client so bearer/App Check credentials are
 > sent only to an explicitly allowlisted HTTPS host, with rejection tests for

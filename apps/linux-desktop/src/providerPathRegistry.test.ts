@@ -145,7 +145,7 @@ describe('providerPathRegistry', () => {
       gemini: '/home/alice/.gemini/tmp',
       antigravity: '/home/alice/.gemini/antigravity-cli',
       openclaw: '/home/alice/.openclaw/sessions',
-      openclaude: '/home/alice/.openclaude/sessions',
+      openclaude: '/home/alice/.openclaude/projects',
       omp: '/home/alice/.omp/agent/sessions',
       ollama: '/home/alice/.ollama/logs',
       windsurf: '/xdg/config/Windsurf - Next/User/globalStorage',

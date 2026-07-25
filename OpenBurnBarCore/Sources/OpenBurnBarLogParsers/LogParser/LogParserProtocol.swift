@@ -6,45 +6,16 @@ import OpenBurnBarKernel
 public struct ParseResult: Sendable {
     public let usages: [TokenUsage]
     public let conversations: [ConversationRecord]
-
-    public init(usages: [TokenUsage], conversations: [ConversationRecord]) {
-        self.usages = usages
-        self.conversations = conversations
-    }
-}
-
-public struct LogParseOptions: Sendable {
-    public var includeConversationBodies: Bool
-    /// When set, parsers may return cached older rows but should not parse
-    /// uncached files whose modification date is before this boundary.
-    public var minimumFileModificationDate: Date?
-    /// Per-pass manifest of file identities already observed by a successful
-    /// indexing checkpoint. Parsers use it to admit newly discovered files
-    /// even when their preserved modification date predates the watermark.
-    public var fileDiscoveryTracker: ParserFileDiscoveryTracker?
-    /// Shared per-pass resource accounting: byte budget for new file content
-    /// and a process memory ceiling. `nil` leaves direct, non-registry calls
-    /// ungoverned. Production registry entries install an unlimited governor
-    /// when their caller does not supply stricter limits.
-    public var resourceGovernor: ParserResourceGovernor?
-    /// Per-parser, path-free scan telemetry. Production registry entries
-    /// install a fresh recorder for every parse pass.
-    public var metrics: ParserPassMetrics?
-
-    public static let `default` = LogParseOptions(includeConversationBodies: true)
+    public let usageSessionIDsToDelete: [String]
 
     public init(
-        includeConversationBodies: Bool,
-        minimumFileModificationDate: Date? = nil,
-        fileDiscoveryTracker: ParserFileDiscoveryTracker? = nil,
-        resourceGovernor: ParserResourceGovernor? = nil,
-        metrics: ParserPassMetrics? = nil
+        usages: [TokenUsage],
+        conversations: [ConversationRecord],
+        usageSessionIDsToDelete: [String] = []
     ) {
-        self.includeConversationBodies = includeConversationBodies
-        self.minimumFileModificationDate = minimumFileModificationDate
-        self.fileDiscoveryTracker = fileDiscoveryTracker
-        self.resourceGovernor = resourceGovernor
-        self.metrics = metrics
+        self.usages = usages
+        self.conversations = conversations
+        self.usageSessionIDsToDelete = usageSessionIDsToDelete
     }
 }
 

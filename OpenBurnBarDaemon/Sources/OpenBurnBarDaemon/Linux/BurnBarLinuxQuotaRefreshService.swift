@@ -2,28 +2,32 @@
 
 import Foundation
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
 
-private final class BurnBarLinuxQuotaOutputBuffer: @unchecked Sendable {
-    private let lock = NSLock()
-    private var data = Data()
-    private var didExceedLimit = false
+private final class BurnBarLinuxQuotaOutputBuffer: Sendable {
+    private struct State: Sendable {
+        var data = Data()
+        var didExceedLimit = false
+    }
+
+    private let state = Locked(State())
 
     func append(_ chunk: Data, limit: Int) {
-        lock.withLock {
-            guard !didExceedLimit else { return }
-            guard data.count + chunk.count <= limit else {
-                didExceedLimit = true
+        state.withLock { state in
+            guard !state.didExceedLimit else { return }
+            guard state.data.count + chunk.count <= limit else {
+                state.didExceedLimit = true
                 return
             }
-            data.append(chunk)
+            state.data.append(chunk)
         }
     }
 
     func snapshot() -> (data: Data, didExceedLimit: Bool) {
-        lock.withLock { (data, didExceedLimit) }
+        state.withLock { ($0.data, $0.didExceedLimit) }
     }
 }
 
@@ -152,27 +156,33 @@ struct BurnBarLinuxQuotaCLIExecutor: CLIExecutor {
     }
 }
 
-final class BurnBarLinuxQuotaSnapshotCache: @unchecked Sendable, ProviderQuotaSnapshotPersisting {
+final class BurnBarLinuxQuotaSnapshotCache: Sendable, ProviderQuotaSnapshotPersisting {
     private struct DiskPayload: Codable {
         let schemaVersion: Int
         let snapshots: [ProviderQuotaSnapshot]
     }
 
-    private let fileURL: URL
-    private let lock = NSLock()
-    private var snapshotsByProvider: [String: ProviderQuotaSnapshot]
-    private var scratch: [String: String]
+    private struct State: Sendable {
+        var snapshotsByProvider: [String: ProviderQuotaSnapshot] = [:]
+        var scratch: [String: String] = [:]
+    }
 
-    init(fileURL: URL = OpenBurnBarAppPaths.live().providerQuotaSnapshotsURL) {
+    private let fileURL: URL
+    private let logger: BurnBarDaemonLogger
+    private let state: Locked<State>
+
+    init(
+        fileURL: URL = OpenBurnBarAppPaths.live().providerQuotaSnapshotsURL,
+        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "linux-quota-cache")
+    ) {
         self.fileURL = fileURL
-        self.snapshotsByProvider = [:]
-        self.scratch = [:]
-        load()
+        self.logger = logger
+        self.state = Locked(Self.loadInitialState(fileURL: fileURL))
     }
 
     func snapshots() -> [ProviderQuotaSnapshot] {
-        lock.withLock {
-            snapshotsByProvider.values.sorted { $0.providerID.rawValue < $1.providerID.rawValue }
+        state.withLock {
+            $0.snapshotsByProvider.values.sorted { $0.providerID.rawValue < $1.providerID.rawValue }
         }
     }
 
@@ -180,19 +190,19 @@ final class BurnBarLinuxQuotaSnapshotCache: @unchecked Sendable, ProviderQuotaSn
         let normalized = Dictionary(
             uniqueKeysWithValues: snapshots.map { ($0.providerID.rawValue, $0) }
         )
-        lock.withLock {
-            snapshotsByProvider = normalized
-            persistLocked()
+        state.withLock { state in
+            state.snapshotsByProvider = normalized
+            persist(snapshotsByProvider: normalized)
         }
     }
 
     func loadScratchString(forKey key: String) -> String? {
-        lock.withLock { scratch[key] }
+        state.withLock { $0.scratch[key] }
     }
 
     func saveScratchString(_ value: String, forKey key: String) {
-        lock.withLock {
-            scratch[key] = value
+        state.withLock {
+            $0.scratch[key] = value
         }
     }
 
@@ -201,17 +211,19 @@ final class BurnBarLinuxQuotaSnapshotCache: @unchecked Sendable, ProviderQuotaSn
         return try JSONSerialization.jsonObject(with: data) as? [String: Any]
     }
 
-    private func load() {
+    private static func loadInitialState(fileURL: URL) -> State {
         guard let data = try? Data(contentsOf: fileURL),
               let payload = try? JSONDecoder().decode(DiskPayload.self, from: data) else {
-            return
+            return State()
         }
-        snapshotsByProvider = Dictionary(
+        return State(snapshotsByProvider: Dictionary(
             uniqueKeysWithValues: payload.snapshots.map { ($0.providerID.rawValue, $0) }
-        )
+        ))
     }
 
-    private func persistLocked() {
+    /// Called only from within `state.withLock`, so disk writes stay serialized
+    /// behind the same lock that guards the in-memory snapshots.
+    private func persist(snapshotsByProvider: [String: ProviderQuotaSnapshot]) {
         do {
             let directory = fileURL.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -231,15 +243,8 @@ final class BurnBarLinuxQuotaSnapshotCache: @unchecked Sendable, ProviderQuotaSn
         } catch {
             // Quota cache loss must never make provider routing or the daemon
             // unavailable; the next refresh can rebuild it from the adapters.
+            logger.silentFailure("linux_quota_snapshot_persist", error: error)
         }
-    }
-}
-
-private extension NSLock {
-    func withLock<T>(_ body: () throws -> T) rethrows -> T {
-        lock()
-        defer { unlock() }
-        return try body()
     }
 }
 

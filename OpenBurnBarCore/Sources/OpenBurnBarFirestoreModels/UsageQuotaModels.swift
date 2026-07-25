@@ -14,6 +14,10 @@ public struct FirestoreUsageEventDoc: Codable, Sendable, Equatable {
     public var sessionId: String?
     public var deviceId: String?
     public var sourceDeviceId: String?
+    public var executionSourceID: String?
+    public var executionSourceName: String?
+    public var executionSourceKind: String?
+    public var executionSourceConfidence: String?
     public var inputTokens: Int?
     public var outputTokens: Int?
     public var cacheReadTokens: Int?

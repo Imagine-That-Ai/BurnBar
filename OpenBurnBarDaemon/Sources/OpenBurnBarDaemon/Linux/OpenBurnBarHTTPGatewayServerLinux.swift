@@ -2,6 +2,7 @@
 import Foundation
 import Glibc
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 
 public enum BurnBarHTTPGatewayError: Error, LocalizedError {
     case invalidConfiguration(String)
@@ -456,6 +457,12 @@ public actor BurnBarHTTPGatewayServer {
         corsHeaders: [String: String]
     ) async -> LinuxGatewayResponse {
         let startedAt = Date()
+        let executionSource = UsageExecutionSourceResolver.fromClientMarker(
+            request.headers["x-openburnbar-client"],
+            allowCustom: true
+        ) ?? UsageExecutionSourceResolver.fromClientMarker(
+            request.headers["user-agent"]
+        ) ?? .unknown
         guard !request.body.isEmpty else {
             return .buffered(jsonResponse(status: 400, message: "request body required"))
         }
@@ -512,6 +519,7 @@ public actor BurnBarHTTPGatewayServer {
                                     usageFormat: streamPlan.usageFormat,
                                     route: route,
                                     accountingRequestID: accountingRequestID,
+                                    executionSource: executionSource,
                                     streamCommit: streamCommit,
                                     fileDescriptor: fileDescriptor,
                                     corsHeaders: corsHeaders
@@ -578,7 +586,8 @@ public actor BurnBarHTTPGatewayServer {
                         await recordUsageIfAvailable(
                             response.usage,
                             route: route,
-                            idempotencyKey: usageIdempotencyKey(accountingRequestID: accountingRequestID, route: route)
+                            idempotencyKey: usageIdempotencyKey(accountingRequestID: accountingRequestID, route: route),
+                            executionSource: executionSource
                         )
                         attempts.append(routeAttempt(
                             sequence: attempts.count + 1,
@@ -1108,6 +1117,7 @@ public actor BurnBarHTTPGatewayServer {
         usageFormat: GatewayStreamUsageFormat,
         route: BurnBarProviderRoute,
         accountingRequestID: String,
+        executionSource: UsageExecutionSource,
         streamCommit: LinuxGatewayStreamCommit,
         fileDescriptor: Int32,
         corsHeaders: [String: String]
@@ -1132,7 +1142,8 @@ public actor BurnBarHTTPGatewayServer {
         await recordUsageIfAvailable(
             usage,
             route: route,
-            idempotencyKey: usageIdempotencyKey(accountingRequestID: accountingRequestID, route: route)
+            idempotencyKey: usageIdempotencyKey(accountingRequestID: accountingRequestID, route: route),
+            executionSource: executionSource
         )
         return usage
     }
@@ -1190,7 +1201,8 @@ public actor BurnBarHTTPGatewayServer {
     private func recordUsageIfAvailable(
         _ usage: BurnBarProviderProxyUsage?,
         route: BurnBarProviderRoute,
-        idempotencyKey: String
+        idempotencyKey: String,
+        executionSource: UsageExecutionSource
     ) async {
         guard let usage, let usageRecorder else { return }
         let event = BurnBarUsageEvent(
@@ -1209,6 +1221,10 @@ public actor BurnBarHTTPGatewayServer {
             ),
             recordedAt: Date(),
             projectName: "OpenBurnBar Gateway",
+            executionSourceID: executionSource.id == "unknown" ? nil : executionSource.id,
+            executionSourceName: executionSource.id == "unknown" ? nil : executionSource.name,
+            executionSourceKind: executionSource.kind == .unknown ? nil : executionSource.kind,
+            executionSourceConfidence: executionSource.id == "unknown" ? nil : .exact,
             confidence: usage.confidence
         )
         do {

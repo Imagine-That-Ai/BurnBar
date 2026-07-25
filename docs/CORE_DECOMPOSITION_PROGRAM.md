@@ -555,6 +555,24 @@ another domain cluster. The canonical baseline refresh also records the
 measured 1.25x ceilings for the non-destination targets that received the same
 Linux source wave; it does not raise any main-target or file-count budget.
 
+**Linux-parity integration ceiling adjustment (2026-07-24):** merging the
+parity integration atop the ParserSupport module-move (#1928) and the
+execution-source additions measures `OpenBurnBarParserSupport` at 1,123 LOC
+(the read-gate cluster moved INTO it from `OpenBurnBarLogParsers`, net-zero
+across the pair) and `OpenBurnBarLogParsers` at 13,064 LOC. Ceilings move to
+1,200 and 13,200 respectively (77/136 LOC of bounded headroom); file ceilings
+unchanged. The shrink-only ratchet reclaims surplus automatically.
+
+**Operation 10 execution-source ceiling adjustment (2026-07-21):** generalized
+execution-source attribution adds the cross-platform usage/wire contract to
+`OpenBurnBarKernel` and evidence-backed Codex history/cache attribution to
+`OpenBurnBarLogParsers`. These responsibilities belong in the existing owning modules;
+splitting them into dependency-only leaf targets would obscure the usage contract and
+parser state boundaries. No source files were added to either target. Their planned LOC
+ceilings move from 46,250 to 46,600 and from 11,800 to 12,200 respectively, covering the
+measured 272/302-LOC growth with less than 160 LOC of bounded headroom per target. File
+ceilings remain unchanged.
+
 ### Whole-program composition proof (verbatim results)
 
 Run on macOS (Apple Swift 6.4, Xcode 27.0 beta, arch arm64) from the isolated

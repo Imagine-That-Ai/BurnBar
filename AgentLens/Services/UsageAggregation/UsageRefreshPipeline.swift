@@ -24,6 +24,7 @@ struct UsageRefreshPipeline: Sendable {
         var errors: [AgentProvider: String] = [:]
         var allUsages: [TokenUsage] = []
         var allConversations: [OpenBurnBarCore.ConversationRecord] = []
+        var usageSessionIDsToDeleteByProvider: [AgentProvider: Set<String>] = [:]
         var duration: TimeInterval = 0
     }
 
@@ -72,6 +73,10 @@ struct UsageRefreshPipeline: Sendable {
                     ? .empty
                     : .healthy(sessionCount: usages.count)
                 result.allUsages.append(contentsOf: usages)
+                if !parseResult.usageSessionIDsToDelete.isEmpty {
+                    result.usageSessionIDsToDeleteByProvider[provider, default: []]
+                        .formUnion(parseResult.usageSessionIDsToDelete)
+                }
                 if includeConversationBodies {
                     result.allConversations.append(contentsOf: parseResult.conversations)
                 }
@@ -108,6 +113,14 @@ struct UsageRefreshPipeline: Sendable {
         let startedAt = Date()
 
         do {
+            for provider in parsed.usageSessionIDsToDeleteByProvider.keys.sorted(by: {
+                $0.rawValue < $1.rawValue
+            }) {
+                try await dataStore.deleteUsage(
+                    provider: provider,
+                    sessionIDs: Array(parsed.usageSessionIDsToDeleteByProvider[provider] ?? [])
+                )
+            }
             if !parsed.allUsages.isEmpty {
                 try await dataStore.insertChunked(parsed.allUsages, chunkSize: 500)
             }

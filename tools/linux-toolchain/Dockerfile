@@ -51,6 +51,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         gstreamer1.0-plugins-good \
         gstreamer1.0-pipewire \
         gstreamer1.0-tools \
+        ibus \
         libgstreamer1.0-dev \
         libgstreamer-plugins-base1.0-dev \
         git \

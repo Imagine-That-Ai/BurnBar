@@ -21,7 +21,7 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
             port: harness.port,
             path: "/v1/chat/completions",
             body: body,
-            headers: ["Origin": "http://localhost:3000"]
+            headers: ["Origin": "http://localhost:3000", "X-OpenBurnBar-Client": "cursor/1.0"]
         )
 
         XCTAssertEqual(response.statusCode, 200)
@@ -45,6 +45,10 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         XCTAssertEqual(event.cacheReadTokens, 2)
         XCTAssertEqual(event.cacheCreationTokens, 3)
         XCTAssertEqual(event.reasoningTokens, 1)
+        XCTAssertEqual(event.executionSourceID, "cursor")
+        XCTAssertEqual(event.executionSourceName, "Cursor")
+        XCTAssertEqual(event.executionSourceKind, .ide)
+        XCTAssertEqual(event.executionSourceConfidence, .exact)
 
         let routeLog = try await harness.proxyRouteLogStore.recent(limit: 1)
         let entry = try XCTUnwrap(routeLog.first)

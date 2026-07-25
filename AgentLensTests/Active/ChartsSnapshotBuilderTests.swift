@@ -140,10 +140,13 @@ final class ChartsSnapshotBuilderTests: XCTestCase {
 
     func test_build_todayRange_usesHourlyBuckets() {
         let calendar = Calendar.current
-        // Keep the fixture past the first hour so the range contains at least
-        // two hourly buckets on every runner, including UTC just after midnight.
-        let anchor = Date(timeIntervalSince1970: 1_735_689_600) // 2025-01-01 00:00 UTC
-        let now = calendar.date(bySettingHour: 12, minute: 0, second: 0, of: anchor) ?? anchor
+        // Pin "now" to midday: with a wall-clock Date() this test detonates in
+        // the first hour after midnight, when "today" spans less than one full
+        // hour and hourly bucketing legitimately yields a single bucket (seen
+        // failing a merge-queue candidate at 00:30 UTC). Same pattern as
+        // test_build_sessionCrossingRangeBoundary below.
+        let now = calendar.date(bySettingHour: 12, minute: 0, second: 0, of: Date()) ?? Date()
+        // Start of day is always in the past no matter when the test runs.
         let morning = calendar.startOfDay(for: now)
         let row = TokenUsage(
             provider: .claudeCode, sessionId: "s", projectName: "p",

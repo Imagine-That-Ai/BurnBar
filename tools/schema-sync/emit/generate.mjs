@@ -28,6 +28,10 @@ const domains = {
   sessionId?: string;
   deviceId?: string;
   sourceDeviceId?: string;
+  executionSourceID?: string;
+  executionSourceName?: string;
+  executionSourceKind?: string;
+  executionSourceConfidence?: string;
   inputTokens?: number;
   outputTokens?: number;
   cacheReadTokens?: number;
@@ -50,6 +54,10 @@ public struct FirestoreUsageEventDoc: Codable, Sendable, Equatable {
     public var sessionId: String?
     public var deviceId: String?
     public var sourceDeviceId: String?
+    public var executionSourceID: String?
+    public var executionSourceName: String?
+    public var executionSourceKind: String?
+    public var executionSourceConfidence: String?
     public var inputTokens: Int?
     public var outputTokens: Int?
     public var cacheReadTokens: Int?
@@ -75,6 +83,11 @@ data class FirestoreUsageEventDoc(
     val sessionId: String? = null,
     val deviceId: String? = null,
     val sourceDeviceId: String? = null,
+    @get:PropertyName("executionSourceID") @set:PropertyName("executionSourceID")
+    var executionSourceId: String? = null,
+    val executionSourceName: String? = null,
+    val executionSourceKind: String? = null,
+    val executionSourceConfidence: String? = null,
     val inputTokens: Long? = null,
     val outputTokens: Long? = null,
     val cacheReadTokens: Long? = null,
