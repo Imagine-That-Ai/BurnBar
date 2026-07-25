@@ -40,6 +40,9 @@ public struct InsightQuotaPulseView: View {
             RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md)
                 .fill(UnifiedDesignSystem.Colors.surface)
         )
+        // Each bucket reads as one element: provider, bucket, usage, reset.
+        .accessibilityElement(children: .combine)
+        .accessibilityValue("\(Int((bucket.fraction * 100).rounded())) percent used")
     }
 
     private func color(for fraction: Double) -> Color {

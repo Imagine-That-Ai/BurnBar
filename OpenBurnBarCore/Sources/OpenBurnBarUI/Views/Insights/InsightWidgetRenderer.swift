@@ -118,6 +118,9 @@ struct InsightSkeletonBodyView: View {
             RoundedRectangle(cornerRadius: 6).fill(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.6)).frame(height: 14)
         }
         .opacity(0.6)
+        // Loading skeleton says why nothing is readable yet.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Loading insight data")
     }
 }
 

@@ -1,7 +1,11 @@
 name: BurnBar CI Gate
 
 on:
+  # Bootstrap compatibility: remove after the trusted default-branch trigger lands.
   pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+  pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
   merge_group:
@@ -15,25 +19,31 @@ permissions:
   statuses: read
 
 concurrency:
-  group: burnbar-ci-gate-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: burnbar-ci-gate-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 jobs:
   burnbar-ci-gate:
     name: BurnBar CI Gate
     runs-on: ubuntu-latest
     timeout-minutes: 155
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    if: (github.event_name != 'pull_request' && github.event_name != 'pull_request_target') || github.event.pull_request.draft == false
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - name: Check out trusted default-branch evaluator
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
-          # The umbrella gate is a branch-protection control, so its evaluator
-          # and policy must come from the protected base, never the candidate
-          # PR/merge-group tree that it is judging.
           ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
           persist-credentials: false
-      - name: Verify every component context on this exact head
+      - name: Verify trusted evaluator and exact candidate
         env:
+          BURNBAR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
+          BURNBAR_CI_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+          BURNBAR_BASE_REF: ${{ github.event.pull_request.base.ref || github.event.merge_group.base_ref || github.ref }}
           GITHUB_TOKEN: ${{ github.token }}
-          BURNBAR_CI_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: node scripts/ci/await-burnbar-ci-gate.mjs governance/burnbar-ci-gate.json
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == "Imagine-That-Ai/BurnBar" ]]
+          [[ "$BURNBAR_BASE_REF" == "main" || "$BURNBAR_BASE_REF" == "refs/heads/main" ]]
+          [[ "$(git rev-parse HEAD)" == "$BURNBAR_BASE_SHA" ]]
+          [[ "$BURNBAR_CI_SHA" =~ ^[0-9a-f]{40}$ ]]
+          node scripts/ci/await-burnbar-ci-gate.mjs governance/burnbar-ci-gate.json

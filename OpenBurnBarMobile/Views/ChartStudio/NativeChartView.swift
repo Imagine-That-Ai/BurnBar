@@ -28,13 +28,37 @@ struct NativeChartView: View {
             if displayMode == .full {
                 header
             }
-            chartContent
-                .frame(height: chartHeight)
-                .background(chartBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .accessibilityChartDescriptor(self)
-            legend
+            if ChartSpecAccessibility.isEmpty(spec) {
+                emptyState
+            } else {
+                chartContent
+                    .frame(height: chartHeight)
+                    .background(chartBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .accessibilityChartDescriptor(self)
+                    .accessibilityLabel(ChartSpecAccessibility.summaryLabel(for: spec))
+                legend
+            }
         }
+    }
+
+    /// Meaningful empty state — a spec with zero points renders a labeled
+    /// placeholder instead of a blank plot, and VoiceOver says why.
+    private var emptyState: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "chart.xyaxis.line")
+                .font(.system(size: 22, weight: .light))
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+            Text("No data to chart yet")
+                .font(MobileTheme.Typography.caption)
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: chartHeight)
+        .background(chartBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(ChartSpecAccessibility.emptyStateLabel(for: spec))
     }
 
     var chartHeightForTesting: CGFloat {
@@ -74,7 +98,9 @@ struct NativeChartView: View {
 
     @ViewBuilder
     private var legend: some View {
-        if displayMode == .full && spec.series.count > 1 {
+        if displayMode == .full && spec.kind == .donut {
+            donutBreakdown
+        } else if displayMode == .full && spec.series.count > 1 {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(Array(spec.series.enumerated()), id: \.offset) { index, series in
@@ -82,14 +108,13 @@ struct NativeChartView: View {
                     }
                 }
             }
+            .accessibilityElement(children: .combine)
         }
     }
 
     private func legendChip(series: ChartSpec.Series, index: Int) -> some View {
         HStack(spacing: 6) {
-            Circle()
-                .fill(palette[index % palette.count])
-                .frame(width: 8, height: 8)
+            legendMarker(index: index)
             Text(series.name)
                 .font(MobileTheme.Typography.tiny)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
@@ -98,6 +123,77 @@ struct NativeChartView: View {
         .padding(.vertical, 3)
         .background(Capsule().fill(MobileTheme.Colors.surface.opacity(0.5)))
     }
+
+    /// Legend swatch that mirrors the chart's non-color series encoding:
+    /// line-family kinds show the per-series dash pattern, scatter shows
+    /// the per-series marker shape, everything else keeps the color dot.
+    @ViewBuilder
+    private func legendMarker(index: Int) -> some View {
+        let color = palette[index % palette.count]
+        switch spec.kind {
+        case .line, .area, .stackedArea, .stream, .rule:
+            LegendDashSwatch(
+                color: color,
+                dash: spec.series.count > 1
+                    ? ChartSpecAccessibility.dashPattern(forSeriesIndex: index)
+                    : []
+            )
+        case .scatter:
+            ChartSpecAccessibility.marker(forSeriesIndex: index)
+                .chartSymbolShape
+                .fill(color)
+                .frame(width: 9, height: 9)
+        default:
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+        }
+    }
+
+    /// Textual slice breakdown under donut charts so slice identity never
+    /// relies on hue alone.
+    private var donutBreakdown: some View {
+        let slices = ChartSpecAccessibility.donutBreakdown(for: spec)
+        let total = slices.reduce(0) { $0 + $1.value }
+        return VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(slices.prefix(6).enumerated()), id: \.offset) { index, slice in
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Self.donutWarmPalette[index % Self.donutWarmPalette.count])
+                        .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
+                    Text(slice.label)
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(donutValueText(slice.value, total: total))
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .monospacedDigit()
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func donutValueText(_ value: Double, total: Double) -> String {
+        let formatted = ChartSpecAccessibility.formattedValue(value, format: spec.valueFormat)
+        guard total > 0 else { return formatted }
+        let pct = Int((value / total * 100).rounded())
+        return "\(formatted) · \(pct)%"
+    }
+
+    /// Aurora-warm donut palette shared by the sector chart and the
+    /// breakdown rows so colors always agree.
+    static let donutWarmPalette: [Color] = [
+        MobileTheme.ember,
+        MobileTheme.whimsy,
+        MobileTheme.amber,
+        MobileTheme.hermesMercury,
+        MobileTheme.blaze,
+        MobileTheme.hermesAureate
+    ]
 
     /// Subtle warm wash behind the plot area.
     private var chartBackground: some View {
@@ -164,24 +260,10 @@ struct NativeChartView: View {
 
     // MARK: - Inferred X kind
 
-    private enum InferredXKind { case time, number, category }
-
-    private var xKind: InferredXKind {
-        switch spec.xAxis?.kind?.lowercased() {
-        case "time":     return .time
-        case "linear":   return .number
-        case "category": return .category
-        default: break
-        }
-        for series in spec.series {
-            for point in series.points {
-                if point.x.asDate != nil { return .time }
-                if case .double = point.x { return .number }
-                if case .int = point.x { return .number }
-                if case .string = point.x { return .category }
-            }
-        }
-        return .category
+    /// Delegates to the accessibility engine so the plotted interpretation
+    /// and the VoiceOver descriptor can never disagree.
+    private var xKind: ChartSpecAccessibility.XKind {
+        ChartSpecAccessibility.inferredXKind(for: spec)
     }
 
     // MARK: - Palette
@@ -249,6 +331,12 @@ private struct TimeLineChart: View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
                 let color = palette[idx % palette.count]
+                // Non-color encoding: multi-series lines carry a per-series
+                // dash pattern (index 0 stays solid) so hue is never the
+                // only series signal.
+                let dash = spec.series.count > 1
+                    ? ChartSpecAccessibility.dashPattern(forSeriesIndex: idx)
+                    : []
                 ForEach(series.points, id: \.self) { point in
                     let date = point.x.asDate ?? Date()
                     if fillArea {
@@ -259,7 +347,7 @@ private struct TimeLineChart: View {
                     LineMark(x: .value("Date", date, unit: .day), y: .value("Y", point.y))
                         .foregroundStyle(color)
                         .interpolationMethod(.catmullRom)
-                        .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                        .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round, dash: dash))
                         .shadow(color: color.opacity(0.25), radius: 5, x: 0, y: 2)
                 }
             }
@@ -336,10 +424,14 @@ private struct TimeScatterChart: View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
                 let color = palette[idx % palette.count]
+                // Non-color encoding: each series gets a distinct marker
+                // shape (circle, square, triangle, …).
+                let shape = ChartSpecAccessibility.marker(forSeriesIndex: idx).chartSymbolShape
                 ForEach(series.points, id: \.self) { point in
                     let date = point.x.asDate ?? Date()
                     PointMark(x: .value("Date", date, unit: .day), y: .value("Y", point.y))
                         .foregroundStyle(color)
+                        .symbol(shape)
                         .symbolSize(90)
                         .shadow(color: color.opacity(0.30), radius: 6, x: 0, y: 2)
                 }
@@ -359,10 +451,12 @@ private struct NumericScatterChart: View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
                 let color = palette[idx % palette.count]
+                let shape = ChartSpecAccessibility.marker(forSeriesIndex: idx).chartSymbolShape
                 ForEach(series.points, id: \.self) { point in
                     let x = point.x.asDouble ?? 0
                     PointMark(x: .value("X", x), y: .value("Y", point.y))
                         .foregroundStyle(color)
+                        .symbol(shape)
                         .symbolSize(90)
                         .shadow(color: color.opacity(0.30), radius: 6, x: 0, y: 2)
                 }
@@ -407,6 +501,9 @@ private struct NumericLineChart: View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
                 let color = palette[idx % palette.count]
+                let dash = spec.series.count > 1
+                    ? ChartSpecAccessibility.dashPattern(forSeriesIndex: idx)
+                    : []
                 ForEach(series.points, id: \.self) { point in
                     let x = point.x.asDouble ?? 0
                     AreaMark(x: .value("X", x), y: .value("Y", point.y))
@@ -416,7 +513,7 @@ private struct NumericLineChart: View {
                     LineMark(x: .value("X", x), y: .value("Y", point.y))
                         .foregroundStyle(color)
                         .interpolationMethod(.catmullRom)
-                        .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                        .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round, dash: dash))
                         .shadow(color: color.opacity(0.25), radius: 5, x: 0, y: 2)
                 }
             }
@@ -514,15 +611,9 @@ private struct DonutChart: View {
     }
 
     /// Aurora-warm donut palette: ember → whimsy → amber → mercury → blaze → aureate.
+    /// Shared with the textual breakdown rows so colors always agree.
     private var donutPalette: [Color] {
-        let warm: [Color] = [
-            MobileTheme.ember,
-            MobileTheme.whimsy,
-            MobileTheme.amber,
-            MobileTheme.hermesMercury,
-            MobileTheme.blaze,
-            MobileTheme.hermesAureate
-        ]
+        let warm = NativeChartView.donutWarmPalette
         return zip(sliceLabels, 0...).map { _, idx in warm[idx % warm.count] }
     }
 
@@ -630,44 +721,41 @@ private struct StudioChartChrome: ViewModifier {
 // MARK: - Accessibility
 
 extension NativeChartView: @preconcurrency AXChartDescriptorRepresentable {
+    /// VoiceOver audio-graph descriptor. The mapping lives in
+    /// `ChartSpecAccessibility` so it is unit-testable without a view.
     func makeChartDescriptor() -> AXChartDescriptor {
-        let allPoints = spec.series.flatMap { series -> [(String, Double, String)] in
-            series.points.map { (series.name, $0.y, $0.x.asString ?? "—") }
-        }
-        let yMax = allPoints.map(\.1).max() ?? 1
-        let xCategories = (Array(NSOrderedSet(array: allPoints.map(\.2))) as? [String]) ?? []
-        let xAxis = AXCategoricalDataAxisDescriptor(
-            title: spec.xAxis?.title ?? "X",
-            categoryOrder: xCategories
-        )
-        let yAxis = AXNumericDataAxisDescriptor(
-            title: spec.yAxis?.title ?? "Y",
-            range: 0...yMax,
-            gridlinePositions: []
-        ) { v in String(v) }
+        ChartSpecAccessibility.makeChartDescriptor(for: spec)
+    }
+}
 
-        let series = spec.series.map { s in
-            AXDataSeriesDescriptor(
-                name: s.name,
-                isContinuous: false,
-                dataPoints: s.points.map { p in
-                    AXDataPoint(
-                        x: p.x.asString ?? "—",
-                        y: p.y,
-                        additionalValues: [],
-                        label: p.label
-                    )
-                }
-            )
+extension ChartSpecAccessibility.SeriesMarker {
+    /// Swift Charts symbol shape matching this marker — used by scatter
+    /// marks and by the legend swatches so they always agree.
+    var chartSymbolShape: BasicChartSymbolShape {
+        switch self {
+        case .circle: return .circle
+        case .square: return .square
+        case .triangle: return .triangle
+        case .diamond: return .diamond
+        case .pentagon: return .pentagon
+        case .plus: return .plus
+        case .asterisk: return .asterisk
+        case .cross: return .cross
         }
+    }
+}
 
-        return AXChartDescriptor(
-            title: spec.title,
-            summary: spec.subtitle,
-            xAxis: xAxis,
-            yAxis: yAxis,
-            additionalAxes: [],
-            series: series
-        )
+/// Small legend swatch showing a series' line dash pattern.
+private struct LegendDashSwatch: View {
+    let color: Color
+    let dash: [CGFloat]
+
+    var body: some View {
+        Path { path in
+            path.move(to: CGPoint(x: 0, y: 3))
+            path.addLine(to: CGPoint(x: 16, y: 3))
+        }
+        .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: dash))
+        .frame(width: 16, height: 6)
     }
 }
