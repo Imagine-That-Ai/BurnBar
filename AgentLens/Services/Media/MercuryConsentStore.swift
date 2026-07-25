@@ -40,14 +40,17 @@ final class MercuryConsentStore: ObservableObject {
 
     private let defaults: UserDefaults
     private let encodeGrants: ([MirrorAutoAcceptGrant]) throws -> Data
+    private let clock: () -> Date
     private var defaultsObserver: AnyCancellable?
 
     init(
         defaults: UserDefaults = .standard,
-        encodeGrants: @escaping ([MirrorAutoAcceptGrant]) throws -> Data = { try JSONEncoder().encode($0) }
+        encodeGrants: @escaping ([MirrorAutoAcceptGrant]) throws -> Data = { try JSONEncoder().encode($0) },
+        clock: @escaping () -> Date = Date.init
     ) {
         self.defaults = defaults
         self.encodeGrants = encodeGrants
+        self.clock = clock
         if defaults.object(forKey: Self.rememberAcceptedPeersKey) == nil {
             self.rememberAcceptedMirrorPeers = false
         } else {
@@ -89,13 +92,22 @@ final class MercuryConsentStore: ObservableObject {
         if grantsMutated {
             persist()
         }
-        pruneExpired()
+        pruneExpired(now: clock())
         defaultsObserver = NotificationCenter.default
             .publisher(for: UserDefaults.didChangeNotification, object: defaults)
-            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.synchronizeFromDefaults()
+                // UserDefaults posts this on whichever thread mutated the
+                // defaults. Main-thread posts (this store's own persists, the
+                // Settings surface toggling the opt-in) synchronize inline so
+                // callers never observe a window where the defaults write has
+                // landed but the store still reports stale consent; off-main
+                // posts hop onto the main actor first.
+                if Thread.isMainThread {
+                    MainActor.assumeIsolated { self?.synchronizeFromDefaults() }
+                } else {
+                    Task { @MainActor [weak self] in
+                        self?.synchronizeFromDefaults()
+                    }
                 }
             }
     }
@@ -185,7 +197,12 @@ final class MercuryConsentStore: ObservableObject {
         persist()
     }
 
-    private func synchronizeFromDefaults(now: Date = Date()) {
+    private func synchronizeFromDefaults() {
+        // Prune against the injected clock, never the wall clock: callers that
+        // drive this store with a fixed test clock persist grants whose
+        // expiry is anchored to that clock, and a wall-clock prune here would
+        // silently revoke them the moment any defaults write lands.
+        let now = clock()
         let remembered = defaults.bool(forKey: Self.rememberAcceptedPeersKey)
         if rememberAcceptedMirrorPeers != remembered {
             rememberAcceptedMirrorPeers = remembered
