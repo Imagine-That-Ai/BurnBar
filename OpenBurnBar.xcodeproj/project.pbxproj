@@ -616,6 +616,7 @@
 		3C23ACE63BA33B4B2DB9DEEA /* PetCompanionFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B30BD6EC1D0201E4187A931 /* PetCompanionFeature.swift */; };
 		3C3BAACE8AEC36CE3EC17287 /* DeterministicEmbeddingProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F043566936750728A8A885 /* DeterministicEmbeddingProviders.swift */; };
 		3C3D3A9AAE4F7D6BBF06DE43 /* MissionControlNotificationSecretStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29592AEA9EE57AD65E0E2680 /* MissionControlNotificationSecretStoreTests.swift */; };
+		69CF937A287E70F4D32721BA /* MissionRemoteAuthorizationParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55252C648F9CDA96243C32E2 /* MissionRemoteAuthorizationParityTests.swift */; };
 		3C484F411E153C3ED74D21C7 /* DashboardChatOverlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72150B0FCBBA4E46C1D9C1F1 /* DashboardChatOverlayTests.swift */; };
 		3C58D3AA6FC20391CC81ABAD /* UsageSyncRoundTripTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2A01BCBF27918660142EC62 /* UsageSyncRoundTripTests.swift */; };
 		3C59BF9D9C516A7C6A46AF67 /* BurnBarLinuxQuotaRefreshService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9FA0108A61A27C80C746031 /* BurnBarLinuxQuotaRefreshService.swift */; };
@@ -2428,6 +2429,7 @@
 		FE3F48633946AF1F59953DE1 /* AppCommandRouterLinkCliTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47C19410C7B06E587492CFDD /* AppCommandRouterLinkCliTests.swift */; };
 		FE4A5670790C32AE505811DD /* CLIAgentMissionDispatcher+Sealing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12F8251025E1FFF060AD109B /* CLIAgentMissionDispatcher+Sealing.swift */; };
 		FE5CF3D4D23D416E07A10183 /* BurnBarDaemonSocketRPCCoverage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 933DE1ECF6DC4E9B5E8895E7 /* BurnBarDaemonSocketRPCCoverage.swift */; };
+		FE7D9C9AB8D61718D7AB4146 /* MissionRemoteAuthorizationEnforcement.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0CF21CBBA52E5F93A539A4 /* MissionRemoteAuthorizationEnforcement.swift */; };
 		FE6C14C017FB3509FD25B524 /* ChartsDataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FB92C88F9A9B18778A5275F /* ChartsDataService.swift */; };
 		FE818C450B53E05B5B6AD955 /* PetChatProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB07086AE37C00F365739576 /* PetChatProvider.swift */; };
 		FE9EE263EFFD5AF7F129BBE3 /* SmartHubBridgeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 314E142270F2C6038B43E7D1 /* SmartHubBridgeController.swift */; };
@@ -2952,6 +2954,7 @@
 		29423024CE2F6B3C319E7A63 /* MediaAttachmentManifestStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaAttachmentManifestStore.swift; sourceTree = "<group>"; };
 		29479E7EB85AC31C9EE20395 /* ComposerQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerQueue.swift; sourceTree = "<group>"; };
 		29592AEA9EE57AD65E0E2680 /* MissionControlNotificationSecretStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlNotificationSecretStoreTests.swift; sourceTree = "<group>"; };
+		55252C648F9CDA96243C32E2 /* MissionRemoteAuthorizationParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionRemoteAuthorizationParityTests.swift; sourceTree = "<group>"; };
 		29713590F6836F8D91778753 /* test_miniSparkline_flat.miniSparkline-flat-dark.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "test_miniSparkline_flat.miniSparkline-flat-dark.png"; sourceTree = "<group>"; };
 		297C69B291531A5385C66D70 /* MercuryLiveStatusStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryLiveStatusStrip.swift; sourceTree = "<group>"; };
 		299ACA905DDAD0BB8E0CF360 /* SettingsRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRouter.swift; sourceTree = "<group>"; };
@@ -4763,6 +4766,7 @@
 		EBB0C9D18B36867A7CB11124 /* TokenAccountingPrecedenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenAccountingPrecedenceTests.swift; sourceTree = "<group>"; };
 		EBF1271B6C9A7FF24DFB6AB2 /* MobileDataProtectionBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileDataProtectionBootstrap.swift; sourceTree = "<group>"; };
 		EBFDD2C9221F15ED4FACAB70 /* DataStoreTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStoreTypes.swift; sourceTree = "<group>"; };
+		EC0CF21CBBA52E5F93A539A4 /* MissionRemoteAuthorizationEnforcement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionRemoteAuthorizationEnforcement.swift; sourceTree = "<group>"; };
 		EC119374685D015C19BE99B0 /* PulseHeroBurnCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulseHeroBurnCard.swift; sourceTree = "<group>"; };
 		EC31F1B44D169BD9C9511F41 /* RemoteSyncWatermarkStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSyncWatermarkStore.swift; sourceTree = "<group>"; };
 		EC66E12A1C3385DF88194A6F /* ChatEngineModelMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatEngineModelMenu.swift; sourceTree = "<group>"; };
@@ -5395,6 +5399,7 @@
 				57F78D75C5E22708F89015DD /* MacEscrowCredentialProducer.swift */,
 				4C152CA1B660D8AC9F42EF55 /* MacWandMissionDispatcher.swift */,
 				5564C8C2A22E67F25B80A7BF /* MemoryCloudSyncDomain.swift */,
+				EC0CF21CBBA52E5F93A539A4 /* MissionRemoteAuthorizationEnforcement.swift */,
 				1D19B558CBF66046B80CC6F9 /* MissionRemoteAuthorizationShadow.swift */,
 				34D3C4F43CCD78CEF098AA0C /* PiAgentCloudRelayHostService.swift */,
 				4E5D6579947FFCD8B548DD03 /* ProviderAccountDeviceLinksObserver.swift */,
@@ -7056,6 +7061,7 @@
 				B2FE0B3B52A5DAB034AAD317 /* GatewayModelCatalogSourceTests.swift */,
 				C644AAC130BCB1E21C36698E /* GatewayUpstreamURLProtocol.swift */,
 				29592AEA9EE57AD65E0E2680 /* MissionControlNotificationSecretStoreTests.swift */,
+				55252C648F9CDA96243C32E2 /* MissionRemoteAuthorizationParityTests.swift */,
 				4F9D42A94ACDEB81E01429C3 /* OllamaCloudDynamicRoutingGatewayTests.swift */,
 				F91AB499EAAA5A7846667802 /* OpenBurnBarAgentStackTests.swift */,
 				87D6F2CBA328C9E4E86BB0C8 /* OpenBurnBarAnthropicProviderExecutorStreamTests.swift */,
@@ -10526,6 +10532,7 @@
 				AF7E936B48F5FC89090EFBF4 /* GatewayModelCatalogSourceTests.swift in Sources */,
 				B8658F02089DF39354382381 /* GatewayUpstreamURLProtocol.swift in Sources */,
 				3C3D3A9AAE4F7D6BBF06DE43 /* MissionControlNotificationSecretStoreTests.swift in Sources */,
+				69CF937A287E70F4D32721BA /* MissionRemoteAuthorizationParityTests.swift in Sources */,
 				CEFE1E4043BAF22DB6B0F089 /* OllamaCloudDynamicRoutingGatewayTests.swift in Sources */,
 				B9B6A94F182B59ED76B45A85 /* OpenBurnBarAgentStackTests.swift in Sources */,
 				C2DFA81C4AB55D7A934D3B10 /* OpenBurnBarAnthropicProviderExecutorStreamTests.swift in Sources */,
@@ -12075,6 +12082,7 @@
 				4D632AE1E8F19E4086490619 /* MissionConsoleMacHost.swift in Sources */,
 				1F49311B8F2BD8FAD2E679FF /* MissionConsoleWindowController.swift in Sources */,
 				0742FFE547114DFA3E9A8365 /* MissionFAB.swift in Sources */,
+				FE7D9C9AB8D61718D7AB4146 /* MissionRemoteAuthorizationEnforcement.swift in Sources */,
 				B560A693CDA93E3A9E137FCF /* MissionRemoteAuthorizationShadow.swift in Sources */,
 				8084346C43C89A1E6A695066 /* MissionsLaneView.swift in Sources */,
 				B123DD00F6DB6176E7DC989A /* MobileAssistantChatReader.swift in Sources */,
