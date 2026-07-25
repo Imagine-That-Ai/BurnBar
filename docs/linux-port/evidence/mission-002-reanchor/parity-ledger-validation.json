@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-07-10T01:48:25.757Z",
-  "targetHead": "1188e23299e841169fb7573d5c6369279838a77a",
-  "allowBlocked": true,
+  "generatedAt": "2026-07-12T19:35:19.964Z",
+  "targetHead": "836ddd1892890d32b928ef17e6122980a7b55dae",
+  "allowBlocked": false,
   "git": {
-    "commit": "1188e23299e841169fb7573d5c6369279838a77a",
+    "commit": "836ddd1892890d32b928ef17e6122980a7b55dae",
     "dirtyEntries": []
   },
   "semantics": {
@@ -15,10 +15,392 @@
   },
   "productParityClaim": false,
   "requirementsManifest": "openburnbar-linux-macos-parity-v1",
-  "passed": true,
+  "evidencePolicyManifest": "openburnbar-linux-product-parity-evidence-policies-v1",
+  "passed": false,
   "structuralPassed": true,
   "promotionPassed": false,
-  "failures": [],
+  "failures": [
+    {
+      "message": "evidence path does not exist",
+      "row": "P-01"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-02"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-03"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-04"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-05"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-06"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-07"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-08"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-09"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-10"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-11"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-12"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-13"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-14"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-15"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-16"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-17"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-18"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-19"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-20"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-21"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-22"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-23"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-24"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-25"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-26"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-27"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-28"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-29"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-30"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-31"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-32"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-33"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-34"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-35"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-36"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-37"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-38"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-39"
+    },
+    {
+      "message": "evidence path does not exist",
+      "row": "P-40"
+    },
+    {
+      "message": "required product capability P-01 is blocked.",
+      "row": "P-01"
+    },
+    {
+      "message": "required product capability P-02 is blocked.",
+      "row": "P-02"
+    },
+    {
+      "message": "required product capability P-03 is blocked.",
+      "row": "P-03"
+    },
+    {
+      "message": "required product capability P-04 is blocked.",
+      "row": "P-04"
+    },
+    {
+      "message": "required product capability P-05 is blocked.",
+      "row": "P-05"
+    },
+    {
+      "message": "required product capability P-06 is blocked.",
+      "row": "P-06"
+    },
+    {
+      "message": "required product capability P-07 is blocked.",
+      "row": "P-07"
+    },
+    {
+      "message": "required product capability P-08 is blocked.",
+      "row": "P-08"
+    },
+    {
+      "message": "required product capability P-09 is blocked.",
+      "row": "P-09"
+    },
+    {
+      "message": "required product capability P-10 is blocked.",
+      "row": "P-10"
+    },
+    {
+      "message": "required product capability P-11 is blocked.",
+      "row": "P-11"
+    },
+    {
+      "message": "required product capability P-12 is blocked.",
+      "row": "P-12"
+    },
+    {
+      "message": "required product capability P-13 is blocked.",
+      "row": "P-13"
+    },
+    {
+      "message": "required product capability P-14 is blocked.",
+      "row": "P-14"
+    },
+    {
+      "message": "required product capability P-15 is blocked.",
+      "row": "P-15"
+    },
+    {
+      "message": "required product capability P-16 is blocked.",
+      "row": "P-16"
+    },
+    {
+      "message": "required product capability P-17 is blocked.",
+      "row": "P-17"
+    },
+    {
+      "message": "required product capability P-18 is blocked.",
+      "row": "P-18"
+    },
+    {
+      "message": "required product capability P-19 is blocked.",
+      "row": "P-19"
+    },
+    {
+      "message": "required product capability P-20 is blocked.",
+      "row": "P-20"
+    },
+    {
+      "message": "required product capability P-21 is blocked.",
+      "row": "P-21"
+    },
+    {
+      "message": "required product capability P-22 is blocked.",
+      "row": "P-22"
+    },
+    {
+      "message": "required product capability P-23 is blocked.",
+      "row": "P-23"
+    },
+    {
+      "message": "required product capability P-24 is blocked.",
+      "row": "P-24"
+    },
+    {
+      "message": "required product capability P-25 is blocked.",
+      "row": "P-25"
+    },
+    {
+      "message": "required product capability P-26 is blocked.",
+      "row": "P-26"
+    },
+    {
+      "message": "required product capability P-27 is blocked.",
+      "row": "P-27"
+    },
+    {
+      "message": "required product capability P-28 is blocked.",
+      "row": "P-28"
+    },
+    {
+      "message": "required product capability P-29 is blocked.",
+      "row": "P-29"
+    },
+    {
+      "message": "required product capability P-30 is blocked.",
+      "row": "P-30"
+    },
+    {
+      "message": "required product capability P-31 is blocked.",
+      "row": "P-31"
+    },
+    {
+      "message": "required product capability P-32 is blocked.",
+      "row": "P-32"
+    },
+    {
+      "message": "required product capability P-33 is blocked.",
+      "row": "P-33"
+    },
+    {
+      "message": "required product capability P-34 is blocked.",
+      "row": "P-34"
+    },
+    {
+      "message": "required product capability P-35 is blocked.",
+      "row": "P-35"
+    },
+    {
+      "message": "required product capability P-36 is blocked.",
+      "row": "P-36"
+    },
+    {
+      "message": "required product capability P-37 is blocked.",
+      "row": "P-37"
+    },
+    {
+      "message": "required product capability P-38 is blocked.",
+      "row": "P-38"
+    },
+    {
+      "message": "required product capability P-39 is blocked.",
+      "row": "P-39"
+    },
+    {
+      "message": "required product capability P-40 is blocked.",
+      "row": "P-40"
+    },
+    {
+      "message": "minimum support environment ubuntu-24.04-gnome-x11-x86_64 evidence path is missing.",
+      "row": null
+    },
+    {
+      "message": "minimum support environment ubuntu-24.04-gnome-x11-x86_64 is blocked.",
+      "row": null
+    },
+    {
+      "message": "minimum support environment ubuntu-24.04-gnome-x11-aarch64 evidence path is missing.",
+      "row": null
+    },
+    {
+      "message": "minimum support environment ubuntu-24.04-gnome-x11-aarch64 is blocked.",
+      "row": null
+    },
+    {
+      "message": "minimum support environment ubuntu-24.04-gnome-wayland-x86_64 evidence path is missing.",
+      "row": null
+    },
+    {
+      "message": "minimum support environment ubuntu-24.04-gnome-wayland-x86_64 is blocked.",
+      "row": null
+    },
+    {
+      "message": "minimum support environment ubuntu-24.04-gnome-wayland-aarch64 evidence path is missing.",
+      "row": null
+    },
+    {
+      "message": "minimum support environment ubuntu-24.04-gnome-wayland-aarch64 is blocked.",
+      "row": null
+    },
+    {
+      "message": "minimum support environment fedora-kde-wayland-x86_64 evidence path is missing.",
+      "row": null
+    },
+    {
+      "message": "minimum support environment fedora-kde-wayland-x86_64 is blocked.",
+      "row": null
+    },
+    {
+      "message": "minimum support environment fedora-kde-wayland-aarch64 evidence path is missing.",
+      "row": null
+    },
+    {
+      "message": "minimum support environment fedora-kde-wayland-aarch64 is blocked.",
+      "row": null
+    },
+    {
+      "message": "minimum support environment arch-sway-wayland-x86_64 evidence path is missing.",
+      "row": null
+    },
+    {
+      "message": "minimum support environment arch-sway-wayland-x86_64 is blocked.",
+      "row": null
+    },
+    {
+      "message": "product parity claim is false.",
+      "row": null
+    }
+  ],
   "structuralFailures": [],
   "promotionFailures": [
     {
@@ -563,5 +945,6 @@
       "message": "blocked row evidence has not been generated",
       "row": "P-40"
     }
-  ]
+  ],
+  "validatedAttestations": []
 }
