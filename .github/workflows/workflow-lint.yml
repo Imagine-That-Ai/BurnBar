@@ -12,6 +12,7 @@ on:
       - ".github/actions/ops-failure-issue/**"
       - ".jscpd.json"
       - "scripts/ci/verify-github-action-pins.mjs"
+      - "scripts/ci/verify-github-action-pins.test.mjs"
       - "scripts/ci/verify-agent-repair-loop-prompts.mjs"
       - "scripts/ci/verify-agent-repair-loop-provenance.mjs"
       - "scripts/ci/verify-agent-repair-loop-provenance.test.mjs"
@@ -110,6 +111,7 @@ on:
       - ".github/actions/ops-failure-issue/**"
       - ".jscpd.json"
       - "scripts/ci/verify-github-action-pins.mjs"
+      - "scripts/ci/verify-github-action-pins.test.mjs"
       - "scripts/ci/verify-agent-repair-loop-prompts.mjs"
       - "scripts/ci/verify-agent-repair-loop-provenance.mjs"
       - "scripts/ci/verify-agent-repair-loop-provenance.test.mjs"
@@ -233,7 +235,9 @@ jobs:
           node scripts/ci/verify-libsignal-toolchain-preflight.test.mjs
 
       - name: Verify GitHub Actions pins
-        run: node scripts/ci/verify-github-action-pins.mjs
+        run: |
+          node scripts/ci/verify-github-action-pins.mjs
+          node scripts/ci/verify-github-action-pins.test.mjs
 
       - name: Self-test Firebase CI config generation
         run: node scripts/ci/write-firebase-hosting-ci-config.test.mjs

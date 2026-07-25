@@ -9,11 +9,26 @@
 // seam keeps that host swappable and keeps the pin authority in the core either
 // way.
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenBurnBar.Updater.Core.Verification;
 
 namespace OpenBurnBar.Updater.Core.Host;
+
+/// <summary>The verified outcome of a non-interactive update check.</summary>
+public sealed record BackgroundUpdateCheckResult(
+    bool CandidateAvailable,
+    string? CandidateVersion)
+{
+    public static BackgroundUpdateCheckResult UpToDate { get; } = new(false, null);
+
+    public static BackgroundUpdateCheckResult Available(string version)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(version);
+        return new BackgroundUpdateCheckResult(true, version);
+    }
+}
 
 /// <summary>An OS-native updater host driven by the portable core's config.</summary>
 public interface IUpdaterHost
@@ -26,8 +41,12 @@ public interface IUpdaterHost
     /// check-update-with-ui / Squirrel equivalent).</summary>
     Task CheckForUpdatesWithUiAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Kicks off a silent background update check.</summary>
-    Task CheckForUpdatesInBackgroundAsync(CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Performs a silent background check and returns a verified candidate
+    /// without downloading or installing it.
+    /// </summary>
+    Task<BackgroundUpdateCheckResult> CheckForUpdatesInBackgroundAsync(
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The final gate every host MUST call on the downloaded artifact bytes

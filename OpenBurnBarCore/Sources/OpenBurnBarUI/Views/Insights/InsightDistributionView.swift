@@ -39,6 +39,8 @@ public struct InsightDistributionView: View {
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 140)
+            .accessibilityChartDescriptor(self)
+            .accessibilityLabel(InsightChartAccessibility.distributionSummary(data))
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(data.slices.prefix(6)) { slice in
                     HStack(spacing: 6) {
@@ -46,6 +48,7 @@ public struct InsightDistributionView: View {
                             .fill(InsightFormatting.color(forHex: slice.colorHex)
                                   ?? InsightFormatting.color(forSeriesID: slice.id))
                             .frame(width: 8, height: 8)
+                            .accessibilityHidden(true)
                         Text(slice.label)
                             .font(UnifiedDesignSystem.Typography.caption)
                             .lineLimit(1)
@@ -54,10 +57,22 @@ public struct InsightDistributionView: View {
                             .font(UnifiedDesignSystem.Typography.tiny)
                             .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                     }
+                    .accessibilityElement(children: .combine)
                 }
             }
             .frame(minWidth: 110, alignment: .leading)
         }
+    }
+}
+
+// MARK: - Accessibility
+
+extension InsightDistributionView: @preconcurrency AXChartDescriptorRepresentable {
+    /// VoiceOver audio-graph descriptor for the donut/pie form. Mapping
+    /// lives in `InsightChartAccessibility` so it is unit-testable
+    /// without a view.
+    public func makeChartDescriptor() -> AXChartDescriptor {
+        InsightChartAccessibility.distributionDescriptor(data)
     }
 }
 

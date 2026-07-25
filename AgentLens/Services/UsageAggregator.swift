@@ -159,7 +159,6 @@ final class UsageAggregator {
             : .characterRatio
 
         // Snapshot main-actor state before entering background.
-        let existingUsages = dataStore.usages
         let settings = RefreshSettingsSnapshot(
             conversationIndexingEnabled: settingsManager.conversationIndexingEnabled,
             snapshotAPIs: usageAPIService?.snapshotAPIs() ?? []
@@ -182,7 +181,6 @@ final class UsageAggregator {
                 parsers: parsers,
                 dataStore: dataStore,
                 orchestrator: orchestrator,
-                existingUsages: existingUsages,
                 settings: settings
             )
         } catch is CancellationError {
@@ -196,11 +194,13 @@ final class UsageAggregator {
         parserHealth = result.parserHealth
         errors = result.errors
 
-        // Reload from the database worker so the main actor only applies the
-        // bounded dashboard snapshot. Replacing the full refreshed row set here
-        // synchronously sorted and rebuilt every aggregate on the main actor,
-        // which made active users pay an unbounded UI pause after a refresh.
-        await dataStore.refresh()
+        // Reload from DB so the in-memory array stays canonical — but ONLY
+        // when the usage table content actually changed (write marker) or a
+        // rendered time-window boundary passed. An idle tick previously
+        // refetched + re-sorted + re-aggregated the entire usage history
+        // here before the fingerprint gate could discard it; now it costs
+        // one actor hop. See docs/architecture/macos-performance.md §18.
+        await dataStore.reloadUsagesIfChanged()
         lastRefresh = Date()
 
         persistenceErrorMessage = result.persistenceErrorMessage
@@ -401,7 +401,9 @@ final class UsageAggregator {
             errors.removeValue(forKey: provider)
         }
 
-        await dataStore.refresh()
+        // Same marker-gated reload as refreshAll(): skips the full refetch
+        // when this provider's parse changed nothing.
+        await dataStore.reloadUsagesIfChanged()
 
         do {
             try await upsertParserImportHealth(

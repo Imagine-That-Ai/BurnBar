@@ -57,7 +57,14 @@ def test_domain_core_trusted_guard_is_required_and_pr_gate_is_pending() -> None:
     required = governance["required_status_checks"]["contexts"]
     pending = governance["_pending_required_status_checks"]["contexts"]
 
-    assert required == ["BurnBar CI Gate"]
+    assert required == [
+        "BurnBar CI Gate",
+        "Dependency Review (CVE check)",
+        "Firestore Security Rules Tests",
+        "Functions (security vitest)",
+        "OSV Scanner (open source vulnerabilities)",
+        "Secret Detection (gitleaks)",
+    ]
     assert "Domain Core Trusted Deletion Guard" in gate["required_contexts"]
     assert "Domain Core Trusted Deletion Guard" not in pending
     assert "Domain Core PR Gate" in gate["required_contexts"]

@@ -49,5 +49,17 @@ public struct InsightScatterView: View {
         }
         .chartLegend(.hidden)
         .frame(maxWidth: .infinity, minHeight: 200)
+        .accessibilityChartDescriptor(self)
+        .accessibilityLabel(InsightChartAccessibility.scatterSummary(data))
+    }
+}
+
+// MARK: - Accessibility
+
+extension InsightScatterView: @preconcurrency AXChartDescriptorRepresentable {
+    /// VoiceOver audio-graph descriptor. Mapping lives in
+    /// `InsightChartAccessibility` so it is unit-testable without a view.
+    public func makeChartDescriptor() -> AXChartDescriptor {
+        InsightChartAccessibility.scatterDescriptor(data)
     }
 }

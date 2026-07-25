@@ -227,8 +227,6 @@ targets:
         SWIFT_ENABLE_EXPLICIT_MODULES: NO
         GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) SQLITE_HAS_CODEC=1"
         OTHER_CFLAGS: "$(inherited) -DSQLITE_HAS_CODEC"
-        INFOPLIST_KEY_OpenBurnBarUseDebugAppCheck: "$(OPENBURNBAR_USE_DEBUG_APP_CHECK)"
-        OPENBURNBAR_USE_DEBUG_APP_CHECK: "NO"
     postBuildScripts:
       - name: Configure Firebase Auth Resources
         # GoogleService-Info.plist is gitignored and may be absent on fresh
@@ -271,50 +269,6 @@ targets:
         inputFiles:
           - $(PROJECT_DIR)/AgentLens/Resources/GoogleService-Info.plist
           - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
-      - name: Inject Internal Mac App Check Debug Token
-        script: |
-          set -euo pipefail
-
-          STAMP="${SCRIPT_OUTPUT_FILE_0:-}"
-          finish() {
-            if [[ -n "${STAMP}" ]]; then
-              mkdir -p "$(dirname "${STAMP}")"
-              touch "${STAMP}"
-            fi
-          }
-          trap finish EXIT
-
-          if [[ "${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}" != "YES" ]]; then
-            exit 0
-          fi
-
-          if [[ -z "${FIREBASE_APP_CHECK_DEBUG_TOKEN:-}" ]]; then
-            echo "error: FIREBASE_APP_CHECK_DEBUG_TOKEN is required when OPENBURNBAR_USE_DEBUG_APP_CHECK=YES."
-            exit 1
-          fi
-
-          BUILT_GOOGLE_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
-          BUILT_INFO_PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
-          if [[ ! -f "${BUILT_GOOGLE_PLIST}" ]]; then
-            echo "error: Built GoogleService-Info.plist not found at ${BUILT_GOOGLE_PLIST}."
-            exit 1
-          fi
-          if [[ ! -f "${BUILT_INFO_PLIST}" ]]; then
-            echo "error: Built Info.plist not found at ${BUILT_INFO_PLIST}."
-            exit 1
-          fi
-
-          /usr/libexec/PlistBuddy -c "Delete :FirebaseAppCheckDebugToken" "${BUILT_GOOGLE_PLIST}" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Add :FirebaseAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}" "${BUILT_GOOGLE_PLIST}"
-          /usr/libexec/PlistBuddy -c "Delete :FIRAAppCheckDebugToken" "${BUILT_GOOGLE_PLIST}" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Add :FIRAAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}" "${BUILT_GOOGLE_PLIST}"
-          /usr/libexec/PlistBuddy -c "Delete :OpenBurnBarUseDebugAppCheck" "${BUILT_INFO_PLIST}" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Add :OpenBurnBarUseDebugAppCheck string YES" "${BUILT_INFO_PLIST}"
-        inputFiles:
-          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist
-          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
-        outputFiles:
-          - $(DERIVED_FILE_DIR)/InjectInternalMacAppCheckDebugToken.stamp
       - name: Block Mac App Check Debug Token In Release
         script: |
           set -euo pipefail
@@ -328,7 +282,7 @@ targets:
           }
           trap finish EXIT
 
-          if [[ "${CONFIGURATION:-}" == "Debug" ]] || [[ "${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}" == "YES" ]]; then
+          if [[ "${CONFIGURATION:-}" == "Debug" ]]; then
             exit 0
           fi
 
@@ -903,8 +857,6 @@ targets:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
         INFOPLIST_KEY_UILaunchScreen_Generation: true
-        INFOPLIST_KEY_OpenBurnBarUseDebugAppCheck: "$(OPENBURNBAR_USE_DEBUG_APP_CHECK)"
-        OPENBURNBAR_USE_DEBUG_APP_CHECK: "NO"
         # Opt-in Amplitude analytics key. Empty in clean checkouts (COMMIT ZERO
         # KEYS): the recorder reads `amplitude.apiKey` from Info.plist and stays
         # dark when it is empty/placeholder. CI provides a real value via the
@@ -958,50 +910,6 @@ targets:
           - $(PROJECT_DIR)/OpenBurnBarMobile/Resources/GoogleService-Info.plist
         outputFiles:
           - $(DERIVED_FILE_DIR)/CopyFirebaseConfigIfPresent.stamp
-      - name: Inject Internal App Check Debug Token
-        script: |
-          set -euo pipefail
-
-          STAMP="${SCRIPT_OUTPUT_FILE_0:-}"
-          finish() {
-            if [[ -n "${STAMP}" ]]; then
-              mkdir -p "$(dirname "${STAMP}")"
-              touch "${STAMP}"
-            fi
-          }
-          trap finish EXIT
-
-          if [[ "${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}" != "YES" ]]; then
-            exit 0
-          fi
-
-          if [[ -z "${FIREBASE_APP_CHECK_DEBUG_TOKEN:-}" ]]; then
-            echo "error: FIREBASE_APP_CHECK_DEBUG_TOKEN is required when OPENBURNBAR_USE_DEBUG_APP_CHECK=YES."
-            exit 1
-          fi
-
-          BUILT_GOOGLE_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
-          BUILT_INFO_PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
-          if [[ ! -f "${BUILT_GOOGLE_PLIST}" ]]; then
-            echo "error: Built GoogleService-Info.plist not found at ${BUILT_GOOGLE_PLIST}."
-            exit 1
-          fi
-          if [[ ! -f "${BUILT_INFO_PLIST}" ]]; then
-            echo "error: Built Info.plist not found at ${BUILT_INFO_PLIST}."
-            exit 1
-          fi
-
-          /usr/libexec/PlistBuddy -c "Delete :FirebaseAppCheckDebugToken" "${BUILT_GOOGLE_PLIST}" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Add :FirebaseAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}" "${BUILT_GOOGLE_PLIST}"
-          /usr/libexec/PlistBuddy -c "Delete :FIRAAppCheckDebugToken" "${BUILT_GOOGLE_PLIST}" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Add :FIRAAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}" "${BUILT_GOOGLE_PLIST}"
-          /usr/libexec/PlistBuddy -c "Delete :OpenBurnBarUseDebugAppCheck" "${BUILT_INFO_PLIST}" >/dev/null 2>&1 || true
-          /usr/libexec/PlistBuddy -c "Add :OpenBurnBarUseDebugAppCheck string YES" "${BUILT_INFO_PLIST}"
-        inputFiles:
-          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist
-          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
-        outputFiles:
-          - $(DERIVED_FILE_DIR)/InjectInternalAppCheckDebugToken.stamp
       - name: Block App Check Debug Token In Release
         script: |
           set -euo pipefail
@@ -1015,7 +923,7 @@ targets:
           }
           trap finish EXIT
 
-          if [[ "${CONFIGURATION:-}" == "Debug" ]] || [[ "${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}" == "YES" ]]; then
+          if [[ "${CONFIGURATION:-}" == "Debug" ]]; then
             exit 0
           fi
 

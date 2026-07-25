@@ -549,21 +549,13 @@ public final class PhoneControlAuthorityValidator: Sendable {
         guard capabilities.count == grantRequest.capabilities.count else {
             throw ValidationError.localAuthProofInvalid(reason: "unsupported_capability")
         }
-        // F2 step-up: a biometry-gated Secure-Enclave signature is itself the
-        // user-presence proof (the OS will not sign without a live biometric
-        // match), so SE-signed grants never demand the explicit proof. Legacy
-        // software keys keep the exact pre-F2 rule, which already covers every
-        // sensitive class in `PhoneControlStepUpPolicy` and is stricter.
-        let requiresProof: Bool
-        switch PhoneControlStepUpPolicy().stepUpEvidence(for: publicKey.kind) {
-        case .enforcedBySecureEnclaveSignature:
-            requiresProof = false
-        case .requiresExplicitLocalAuthProof:
-            requiresProof = AgentDesktopCapability.requiresLocalAuthentication(
-                capabilities: Set(capabilities),
-                trustMode: trustMode
-            )
-        }
+        // A client-provided key-kind label is not hardware attestation. Require
+        // the explicit, single-use local-auth proof for every key kind whenever
+        // the requested capability/trust mode is sensitive.
+        let requiresProof = AgentDesktopCapability.requiresLocalAuthentication(
+            capabilities: Set(capabilities),
+            trustMode: trustMode
+        )
         guard requiresProof || grantRequest.localAuthProof != nil else { return }
         guard grantRequest.localAuthenticationSatisfied else {
             throw ValidationError.localAuthProofRequired

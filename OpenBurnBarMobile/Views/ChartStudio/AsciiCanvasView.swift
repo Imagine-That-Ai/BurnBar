@@ -56,6 +56,12 @@ struct AsciiCanvasView: View {
             }
         }
         .onAppear { animateCaret() }
+        // Raw box-drawing art is noise for VoiceOver. Collapse the canvas
+        // into a single element whose label carries the title, variant,
+        // block labels, and whatever textual data survives stripping the
+        // art glyphs (values, axis text).
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(ChartSpecAccessibility.asciiSummary(for: spec))
     }
 
     // MARK: - Terminal chrome

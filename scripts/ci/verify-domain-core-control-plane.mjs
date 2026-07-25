@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const SCRIPT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const DEFAULT_MANIFEST = "config/domain-core-control-plane-manifest.json";
 const TRUSTED_WORKFLOWS = Object.freeze([
+  ".github/workflows/burnbar-ci-gate.yml",
   ".github/workflows/domain-core.yml",
   ".github/workflows/domain-core-deletion-guard.yml",
   ".github/workflows/domain-core-promotion-proof.yml",
@@ -43,6 +44,7 @@ const SEED_PATHS = Object.freeze([
   "config/domain-core-functions-relevant-targets.json",
   "config/domain-core-deterministic-candidate-bundle.schema.json",
   "config/domain-core-promotion-policy.json",
+  "governance/burnbar-ci-gate.json",
   "config/domain-core-release-predicate.schema.json",
   "crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs",
   "crates/openburnbar-domain-core/union-abi-manifest.json",
