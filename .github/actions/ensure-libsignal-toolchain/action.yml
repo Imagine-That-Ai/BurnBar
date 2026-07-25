@@ -1,0 +1,116 @@
+name: Ensure libsignal native toolchain
+description: >
+  Idempotently guarantee the host tools the libsignal Swift FFI build needs
+  (protoc + cmake) are installed and on PATH before any Swift/Rust build step.
+
+  Why this exists: boring-sys (BoringSSL, pulled in by Vendor/libsignal) shells
+  out to `cmake` from its build script. GitHub-hosted macos-* images ship cmake,
+  but the self-hosted `burnbar-swift` fleet is not uniformly provisioned -- some
+  machines have never had it, and runners started from launchd frequently do not
+  inherit Homebrew's bin directory. When cmake is missing the failure surfaces
+  deep inside cargo as:
+
+      failed to execute command: No such file or directory (os error 2)
+      is `cmake` not installed?
+
+  which reads like a Rust problem and cost real merge-queue throughput. This
+  action turns that into an explicit, self-healing preflight so the free fleet
+  and the hosted pool behave identically.
+
+runs:
+  using: composite
+  steps:
+    # Self-hosted runners launched as a launchd agent inherit a minimal PATH that
+    # usually omits Homebrew. Put it back before probing for tools, otherwise an
+    # installed cmake still looks missing.
+    #
+    # Iteration order matters on Apple Silicon hosts that also carry a legacy
+    # Intel /usr/local prefix: the runner prepends $GITHUB_PATH entries so the
+    # LAST line written gets the highest PATH precedence. Writing /usr/local
+    # first and /opt/homebrew last keeps the ARM-native toolchain ahead of any
+    # stale or Rosetta-dependent /usr/local/bin/brew.
+    - name: Ensure Homebrew is on PATH
+      shell: bash
+      run: |
+        set -euo pipefail
+        for prefix in /usr/local /opt/homebrew; do
+          if [[ -x "${prefix}/bin/brew" ]]; then
+            case ":${PATH}:" in
+              *":${prefix}/bin:"*) ;;
+              *)
+                echo "${prefix}/bin" >> "$GITHUB_PATH"
+                echo "Added ${prefix}/bin to PATH for subsequent steps."
+                ;;
+            esac
+          fi
+        done
+
+    - name: Ensure protoc + cmake are installed
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # $GITHUB_PATH only affects *later* steps, so mirror it into this shell.
+        # Same ordering rule as above: each iteration prepends, so /opt/homebrew
+        # goes last to end up first on PATH, ahead of a legacy Intel /usr/local.
+        for prefix in /usr/local /opt/homebrew; do
+          if [[ -x "${prefix}/bin/brew" ]]; then
+            case ":${PATH}:" in
+              *":${prefix}/bin:"*) ;;
+              *) PATH="${prefix}/bin:${PATH}" ;;
+            esac
+          fi
+        done
+        export PATH
+
+        # protoc -> protobuf, cmake -> cmake. Keep the mapping explicit so a
+        # missing binary never silently installs the wrong formula.
+        missing=()
+        command -v protoc >/dev/null 2>&1 || missing+=("protobuf")
+        command -v cmake  >/dev/null 2>&1 || missing+=("cmake")
+
+        if [[ ${#missing[@]} -gt 0 ]]; then
+          if ! command -v brew >/dev/null 2>&1; then
+            echo "::error::Missing native build tools (${missing[*]}) and Homebrew is unavailable on $(hostname). Install cmake + protobuf on this runner, or take it out of the burnbar-swift pool."
+            exit 1
+          fi
+          echo "Installing missing native build tools: ${missing[*]}"
+          # Self-hosted machines are long-lived, so this cost is paid once per
+          # machine rather than once per run.
+          brew install "${missing[@]}"
+        fi
+
+        # Fail loudly and specifically rather than letting cargo report a bare
+        # "No such file or directory" from inside boring-sys.
+        for tool in protoc cmake; do
+          if ! command -v "$tool" >/dev/null 2>&1; then
+            echo "::error::${tool} is still not on PATH after install on $(hostname). The libsignal FFI build (boring-sys/BoringSSL) cannot proceed."
+            exit 1
+          fi
+        done
+
+        echo "protoc: $(command -v protoc) -> $(protoc --version)"
+        echo "cmake:  $(command -v cmake)  -> $(cmake --version | head -1)"
+
+    # Separate failure mode, same fleet: cargo/SwiftPM fetch libsignal's git
+    # dependencies over https, and on a self-hosted Mac with no unlocked login
+    # keychain git's osxkeychain helper answers
+    #
+    #   error: Failed to find credentials for 'https://github.com' in keychain: status -25308
+    #
+    # (-25308 = errSecInteractionNotAllowed) and the build dies. The deps are
+    # public, so the helper has nothing useful to contribute -- it just needs to
+    # stop being consulted. Scope that through GIT_CONFIG_* in the job env rather
+    # than `git config --global`, so a long-lived runner's own config is untouched.
+    - name: Keep git off the locked login keychain (self-hosted macOS)
+      if: runner.os == 'macOS' && runner.environment == 'self-hosted'
+      shell: bash
+      run: |
+        set -euo pipefail
+        {
+          echo "GIT_CONFIG_COUNT=1"
+          echo "GIT_CONFIG_KEY_0=credential.helper"
+          echo "GIT_CONFIG_VALUE_0="
+          echo "GIT_TERMINAL_PROMPT=0"
+        } >> "$GITHUB_ENV"
+        echo "Cleared git credential helpers for this job; public deps fetch anonymously."
