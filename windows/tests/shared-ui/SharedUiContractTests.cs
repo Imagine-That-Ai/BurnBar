@@ -234,23 +234,32 @@ public sealed class SharedUiContractTests
             new SharedUiCapabilityStatus { StorageReady = true, SessionLogsReady = true, GatewayRunning = true });
         Assert.Equal("available", StateOf(healthy, "usage.read"));
         Assert.Equal("available", StateOf(healthy, "sessions.read"));
-        // chat.gateway stays degraded even with the gateway up: the dispatcher
-        // streams chat but does not implement the thread persistence RPCs
-        // (chat_thread_list / chat_thread_get / chat_message_append).
-        Assert.Equal("degraded", StateOf(healthy, "chat.gateway"));
+        // chat.gateway stays UNAVAILABLE even with the gateway up. "degraded"
+        // would not gate the surface — capabilityBlocksSurface() blocks only on
+        // "unavailable"/"blocked" — and a mounted Chat route immediately calls
+        // chatThreadList, which Windows does not serve. Flip this to available
+        // only once chat_thread_list / chat_thread_get / chat_message_append are
+        // backed by the dispatcher.
+        Assert.Equal("unavailable", StateOf(healthy, "chat.gateway"));
+        Assert.False(string.IsNullOrWhiteSpace(SubstituteOf(healthy, "chat.gateway")));
 
         var degraded = SharedUiRuntimeCapabilities.BuildManifest(
             "1.0.0",
             new SharedUiCapabilityStatus { StorageReady = false, SessionLogsReady = false, GatewayRunning = false });
         Assert.Equal("unavailable", StateOf(degraded, "usage.read"));
         Assert.Equal("unavailable", StateOf(degraded, "sessions.read"));
-        Assert.Equal("degraded", StateOf(degraded, "chat.gateway"));
+        Assert.Equal("unavailable", StateOf(degraded, "chat.gateway"));
     }
 
     private static string StateOf(JsonObject manifest, string id) =>
         manifest["capabilities"]!.AsArray()
             .Select(node => node!)
             .Single(entry => entry["id"]!.GetValue<string>() == id)["state"]!.GetValue<string>();
+
+    private static string? SubstituteOf(JsonObject manifest, string id) =>
+        manifest["capabilities"]!.AsArray()
+            .Select(node => node!)
+            .Single(entry => entry["id"]!.GetValue<string>() == id)["substitute"]?.GetValue<string>();
 
     private sealed class FakeOnboardingStore : ISharedUiOnboardingStateStore
     {

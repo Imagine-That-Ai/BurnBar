@@ -67,6 +67,39 @@ public sealed class SharedUiDispatcherTests
         Assert.Contains("not implemented on Windows", reply["error"]!.GetValue<string>());
     }
 
+    /// <summary>
+    /// main.tsx awaits initialDeepLinkRoute() right after onboardingSnapshot()
+    /// inside a single try/catch, and App.tsx drains forwardedDeepLinkRoute()
+    /// until it returns null. If these probes rejected with the capability-absent
+    /// error, the boot catch would log linux_onboarding_authority_unavailable and
+    /// force the onboarding route even for a completed Windows snapshot. They must
+    /// resolve — null / null / [] — not reject.
+    /// </summary>
+    [Theory]
+    [InlineData("initial_deep_link_route")]
+    [InlineData("forwarded_deep_link_route")]
+    public async Task BootDeepLinkProbesResolveNullInsteadOfRejecting(string command)
+    {
+        var collector = new Collector();
+        await CreateDispatcher().HandleMessageAsync(Invoke(11, command), collector.Emit);
+
+        var reply = collector.Last.Message;
+        Assert.True(reply["ok"]!.GetValue<bool>());
+        Assert.Null(reply["value"]);
+    }
+
+    [Fact]
+    public async Task InitialNotificationActionsResolvesEmptyArrayInsteadOfRejecting()
+    {
+        var collector = new Collector();
+        await CreateDispatcher().HandleMessageAsync(
+            Invoke(12, "initial_notification_actions"), collector.Emit);
+
+        var reply = collector.Last.Message;
+        Assert.True(reply["ok"]!.GetValue<bool>());
+        Assert.Empty(reply["value"]!.AsArray());
+    }
+
     [Fact]
     public async Task MalformedMessageProducesNoReply()
     {

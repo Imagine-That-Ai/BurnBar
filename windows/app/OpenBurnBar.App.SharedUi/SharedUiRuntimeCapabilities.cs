@@ -84,15 +84,24 @@ public static class SharedUiRuntimeCapabilities
             "sessions.read" => status.SessionLogsReady
                 ? Product(id, "available", "Session logs are read from the shared SQLCipher FTS index.", "windows-storage")
                 : Product(id, "unavailable", "The session-log index is unavailable until storage provisioning completes.", "windows-storage"),
-            // Stays degraded even with the gateway up: the dispatcher streams
-            // chat (gateway_probe/gateway_chat_stream/gateway_chat_cancel) but
-            // does not back the thread persistence RPCs the chat surface uses
-            // (chat_thread_list / chat_thread_get / chat_message_append), so
-            // advertising "available" would unblock a surface that cannot load
-            // or persist threads.
+            // Unavailable regardless of the gateway, because "degraded" does NOT
+            // gate the surface: capabilityBlocksSurface (runtimeCapabilities.ts)
+            // blocks only on "unavailable"/"blocked", and SurfaceRouter renders a
+            // degraded surface behind a banner. The Chat surface's first action is
+            // chatStore.loadThreads -> bridge.chatThreadList, which is invoked with
+            // no isCapabilityAbsentError fallback, so a mounted Chat route would
+            // reject outright. The dispatcher backs only the streaming trio
+            // (gateway_probe / gateway_chat_stream / gateway_chat_cancel); until
+            // chat_thread_list / chat_thread_get / chat_message_append are served,
+            // the honest answer is to keep the surface closed and name the
+            // native substitute.
             "chat.gateway" => status.GatewayRunning
-                ? Product(id, "degraded", "The loopback gateway streams chat, but thread persistence (chat_thread_list/get, chat_message_append) is not implemented on Windows yet.", "windows-gateway")
-                : Product(id, "degraded", "The local model proxy is not running; chat stays unavailable until it starts.", "windows-gateway"),
+                ? Unavailable(id,
+                    "The loopback gateway streams chat, but the shared Chat surface also requires thread persistence (chat_thread_list, chat_thread_get, chat_message_append), which is not served on Windows yet.",
+                    "Use the native Chat window from the legacy window.")
+                : Unavailable(id,
+                    "The local model proxy is not running, and thread persistence (chat_thread_list, chat_thread_get, chat_message_append) is not served on Windows yet.",
+                    "Use the native Chat window from the legacy window."),
             "memory.review" => Unavailable(id,
                 "Memory review is daemon-backed (daemon.memory.*); the Windows E2EE inbox is not wired into this shell yet.",
                 "Use the native Memory page from the legacy window."),
