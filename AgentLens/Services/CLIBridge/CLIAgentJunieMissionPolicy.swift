@@ -11,6 +11,14 @@ enum CLIAgentJunieMissionPolicy {
         grant.capabilities.contains(.shell) && grant.capabilities.contains(.workspaceWrite)
     }
 
+    /// Fail-closed launch gate for the relay/local chat path: Junie may only
+    /// be spawned when an active grant carries the full desktop capability
+    /// set, mirroring the mission-launch guard.
+    static func chatLaunchPermitted(_ grant: AgentCapabilityGrant?, now: Date = Date()) -> Bool {
+        guard let grant else { return false }
+        return grant.isActive(now: now) && hasFullDesktopCapabilities(grant)
+    }
+
     /// Fail-closed refusal for Junie missions that lack the full desktop
     /// grant. Returns `nil` for non-Junie backends and fully-granted
     /// Junie missions.

@@ -12,6 +12,10 @@ enum PetAuthStatus: String, Sendable, Equatable {
     case needsLogin = "needs-login"
     /// The provider is unreachable or errored while probing.
     case error
+    /// The provider is installed but this surface cannot satisfy its launch
+    /// requirements (e.g. Junie refuses to run without a full desktop grant,
+    /// which the pet surface never holds).
+    case unavailable
     /// Not yet probed.
     case unknown
 
@@ -21,6 +25,7 @@ enum PetAuthStatus: String, Sendable, Equatable {
         case .ready: return "Ready"
         case .needsLogin: return "Needs login"
         case .error: return "Error"
+        case .unavailable: return "Unavailable"
         case .unknown: return "Checking…"
         }
     }
@@ -149,7 +154,11 @@ final class CLIBridgeChatProvider: AgentChatProvider {
         case .openClaude:
             return await bridge.isExecutableAvailable(named: "openclaude") ? .ready : .needsLogin
         case .junie:
-            return await bridge.isExecutableAvailable(named: "junie") ? .ready : .needsLogin
+            // Junie fails closed without a full desktop capability grant
+            // (CLIBridgeError.junieRequiresFullGrant), and the pet surface
+            // never plumbs one — advertising "Ready" here would offer a pet
+            // that silently answers from the local fallback instead of Junie.
+            return .unavailable
         case .omp:
             return await bridge.isExecutableAvailable(named: "omp") ? .ready : .needsLogin
         }
