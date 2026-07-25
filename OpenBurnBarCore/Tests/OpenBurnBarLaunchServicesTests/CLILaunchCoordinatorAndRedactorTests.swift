@@ -1,15 +1,17 @@
 #if os(macOS)
 import XCTest
-@testable import OpenBurnBarCore
 // Core-decomposition follow-up: the CLI-launch coordinator and the launch-failure
 // redactor moved out of the app-visible Core into package-only modules
-// (OpenBurnBarLaunchServices / OpenBurnBarKernel). Their behavioral tests, however,
-// live in AgentLensTests and only run in the app XCTest lane — so the PACKAGE
+// (OpenBurnBarLaunchServices / OpenBurnBarKernelPlatform). Their behavioral tests,
+// however, live in AgentLensTests and only run in the app XCTest lane — so the PACKAGE
 // coverage lane (swift test --enable-code-coverage over OpenBurnBarCore) saw the
 // relocated coordinator accessors and `redactEnvironment` as executed-nowhere and
 // charged them as uncovered diff lines. These tests exercise that exact surface in
 // the package lane so its line evidence records the hits at the module's new home.
-@testable import OpenBurnBarKernel
+// `CLILaunchRedactor.redactEnvironment` is public, so a plain (non-@testable) import
+// of its home sub-target OpenBurnBarKernelPlatform reaches it; CLILaunchCoordinator is
+// a public actor in OpenBurnBarLaunchServices (kept @testable to match the file's peers).
+import OpenBurnBarKernelPlatform
 @testable import OpenBurnBarLaunchServices
 
 final class CLILaunchCoordinatorAndRedactorTests: XCTestCase {

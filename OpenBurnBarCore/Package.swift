@@ -719,11 +719,13 @@ let openBurnBarCoreTestExcludes = [
     // OpenBurnBarUIModuleTests (an Apple-pruned test target that off-Apple graphs never
     // see): AgentProviderLogoBackdrop, SmartHubDisplaySettingsModel, SwarmLogoShape,
     // SwarmSubstrateContract, SwarmSubstratePreviewRender, UnifiedQuotaSignalCurrency,
-    // UnifiedToolCallAccordion (the P-16f comment block moved with the last two). The two
-    // remaining entries stay in OpenBurnBarCoreTests: MissionConsoleTests is INTEGRATION
-    // (KernelModels+Insights+UI), SwitcherCLIPostLaunchFallbackTests is B7's future move.
-    "MissionConsoleTests.swift",
-    "SwitcherCLIPostLaunchFallbackTests.swift"
+    // UnifiedToolCallAccordion (the P-16f comment block moved with the last two). WS-B B7
+    // (plans/core-decomposition2/packets/B7-launchservices-tests.md) then carried
+    // SwitcherCLIPostLaunchFallbackTests out to OpenBurnBarLaunchServicesTests (the module is
+    // Apple-pruned, so that Apple-only test target is never compiled off-Apple — no seam needed).
+    // The one remaining entry stays in OpenBurnBarCoreTests: MissionConsoleTests is INTEGRATION
+    // (KernelModels+Insights+UI).
+    "MissionConsoleTests.swift"
 ]
 let computerUseCoreTestExcludes = [
     "ComputerUseOpenTimestampsClientTests.swift",
@@ -946,7 +948,17 @@ let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTar
         name: "OpenBurnBarLaunchServicesTests",
         dependencies: [
             "OpenBurnBarLaunchServices",
-            "OpenBurnBarKernel"
+            "OpenBurnBarKernel",
+            // WS-B B7: per-module @testable/import needs the sub-target as a DIRECT dep.
+            // KernelModels: CLIAuthDiscoveryTests + CLILaunchAdapterExecutableResolutionTests
+            // reach CLILaunchAdapter's INTERNAL seams (environmentProvider/homeDirectoryProvider/
+            // ...) via `@testable import OpenBurnBarKernelModels`; SwitcherCLIPostLaunchFallbackTests
+            // imports its public SwitcherProfile* models + the executableResolver seam from there.
+            // KernelPlatform: CLILaunchCoordinatorAndRedactorTests uses the public
+            // CLILaunchRedactor.redactEnvironment, whose home is OpenBurnBarKernelPlatform
+            // (the @_exported Kernel umbrella carries public surface but not sub-target internals).
+            "OpenBurnBarKernelModels",
+            "OpenBurnBarKernelPlatform"
         ] + swiftTestingAppleDependencies,
         swiftSettings: [.swiftLanguageMode(.v5)]
     ),

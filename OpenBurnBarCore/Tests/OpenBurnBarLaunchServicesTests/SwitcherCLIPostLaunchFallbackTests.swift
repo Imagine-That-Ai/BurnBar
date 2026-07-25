@@ -1,5 +1,10 @@
 import XCTest
-@testable import OpenBurnBarCore
+// SwitcherProfileRecord / SwitcherCLIProfileMetadata / SwitcherCLIProfileType and the
+// public CLILaunchAdapter.executableResolver seam live in OpenBurnBarKernelModels; the
+// launch-service halves (CLILaunchInvoker/SwitcherCLILaunchService/CLIFallbackPlanning/
+// CLIFallbackEligibility/CLILaunchServiceEvent) are public in OpenBurnBarLaunchServices.
+// All touched symbols are public, so a plain import of KernelModels reaches them.
+import OpenBurnBarKernelModels
 @testable import OpenBurnBarLaunchServices
 
 private struct PackageTestCLIFallbackPlanner: CLIFallbackPlanning {

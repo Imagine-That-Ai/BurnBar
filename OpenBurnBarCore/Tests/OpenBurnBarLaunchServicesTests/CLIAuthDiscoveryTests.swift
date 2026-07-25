@@ -1,5 +1,4 @@
 import XCTest
-@testable import OpenBurnBarCore
 // P-15b / K2: CLILaunchAdapter's internal test seams (environmentProvider/
 // homeDirectoryProvider) live in OpenBurnBarKernelModels (Phase-2 WS-K packet K2
 // carried the adapter out of OpenBurnBarKernel). `@testable import
