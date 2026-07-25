@@ -81,7 +81,7 @@ public sealed record GatewayRouteConfiguration(
             || !(IsEndpointAllowed(endpoint) || IsCliEndpointAllowed(endpoint, Vendor)))
         {
             throw new ArgumentException(
-                "Route endpoint must be HTTPS, HTTP on loopback, or a matching cli://codex or cli://factory endpoint, without credentials or a fragment.",
+                "Route endpoint must be HTTPS, HTTP on loopback, or a matching cli://factory endpoint, without credentials or a fragment.",
                 nameof(Endpoint));
         }
 
@@ -108,7 +108,6 @@ public sealed record GatewayRouteConfiguration(
         string normalizedVendor = vendor?.Trim().ToLowerInvariant() ?? string.Empty;
         string expectedHost = normalizedVendor switch
         {
-            "codex" => "codex",
             "factory" or "factory-droid" => "factory",
             _ => string.Empty,
         };

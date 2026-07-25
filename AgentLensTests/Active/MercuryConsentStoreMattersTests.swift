@@ -284,6 +284,32 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
         ), "turning the preference off must immediately stop auto-accepts")
     }
 
+    func test_externalSettingsOptOutImmediatelyUpdatesLiveStoreAndClearsGrants() async {
+        let liveStore = MercuryConsentStore(defaults: defaults)
+        liveStore.rememberAcceptedMirrorPeers = true
+        liveStore.rememberAcceptedPeer(
+            connectionId: "conn-1",
+            viewerDeviceId: "device-1",
+            controlAuthorityPeerNodeId: "peer-1",
+            remotePeerNodeId: "peer-1",
+            requesterName: "iPhone"
+        )
+        XCTAssertEqual(liveStore.grants.count, 1)
+
+        defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
+        NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: defaults)
+        await Task.yield()
+
+        XCTAssertFalse(liveStore.rememberAcceptedMirrorPeers)
+        XCTAssertTrue(liveStore.grants.isEmpty)
+        XCTAssertFalse(liveStore.canAutoAccept(
+            connectionId: "conn-1",
+            viewerDeviceId: "device-1",
+            controlAuthorityPeerNodeId: "peer-1",
+            remotePeerNodeId: "peer-1"
+        ))
+    }
+
     /// Grants serialized by the prior 365-day sliding implementation must not
     /// keep auto-accepting for up to a year: on load each grant is capped to
     /// `grantedAt + 30 days`.

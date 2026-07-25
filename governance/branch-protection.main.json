@@ -1,10 +1,17 @@
 {
-  "_about": "Canonical desired protection for main. BurnBar CI Gate is the single always-emitted required context; it fails closed over the component contexts in governance/burnbar-ci-gate.json. Native merge queue rules are layered separately. Conversation resolution, no force pushes, no deletion, and exact-current-base checks remain hard gates.",
-  "_derivation": "Reconciled for the solo-maintainer native merge queue and path-aware umbrella gate on 2026-07-21. Component checks remain mandatory through BurnBar CI Gate while expensive product suites may report skipped only when the deterministic classifier proves their paths are unaffected.",
+  "_about": "Canonical desired protection for main. BurnBar CI Gate evaluates trusted-base policy, while independently required security contexts remain immutable even if candidate code tampers with the umbrella workflow. Conversation resolution, reviews, no force pushes, no deletion, and exact-current-base checks remain hard gates.",
+  "_derivation": "Hardened on 2026-07-24 after validating that candidate-controlled evaluator code and a zero-review policy could bypass component checks. Expensive product suites may report skipped only when the deterministic classifier proves their paths are unaffected.",
   "branch": "main",
   "required_status_checks": {
     "strict": true,
-    "contexts": ["BurnBar CI Gate"]
+    "contexts": [
+      "BurnBar CI Gate",
+      "Dependency Review (CVE check)",
+      "Firestore Security Rules Tests",
+      "Functions (security vitest)",
+      "OSV Scanner (open source vulnerabilities)",
+      "Secret Detection (gitleaks)"
+    ]
   },
   "_pending_required_status_checks": {
     "_comment": "Component contexts are enforced by governance/burnbar-ci-gate.json, not classic branch protection. These remain informational or path-scoped.",
@@ -12,10 +19,10 @@
   },
   "enforce_admins": true,
   "required_pull_request_reviews": {
-    "required_approving_review_count": 0,
-    "require_code_owner_reviews": false,
-    "dismiss_stale_reviews": false,
-    "require_last_push_approval": false,
+    "required_approving_review_count": 1,
+    "require_code_owner_reviews": true,
+    "dismiss_stale_reviews": true,
+    "require_last_push_approval": true,
     "bypass_pull_request_allowances": {
       "users": [],
       "teams": [],

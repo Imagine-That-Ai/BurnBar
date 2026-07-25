@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{self, BufRead, BufReader, Write};
-use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Mutex, OnceLock};
@@ -568,95 +567,15 @@ fn validate_lsp_command(
     parts: Vec<String>,
     explicit_allowlist: Vec<String>,
 ) -> Option<Vec<String>> {
-    if !matches!(
-        language,
-        "csharp"
-            | "go"
-            | "java"
-            | "javascript"
-            | "kotlin"
-            | "python"
-            | "rust"
-            | "swift"
-            | "typescript"
-            | "tsx"
-    ) {
-        return None;
-    }
-    if parts.is_empty() || parts.len() > 16 {
-        return None;
-    }
-    if parts
-        .iter()
-        .any(|part| part.is_empty() || part.len() > 4096 || part.contains('\0'))
-    {
-        return None;
-    }
-    let executable = parts.first()?;
-    let basename = Path::new(executable)
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or(executable);
-    if basename == "env" {
-        let wrapped = parts.get(1)?;
-        if wrapped.starts_with('-') || wrapped.contains('=') {
-            return None;
-        }
-        validate_lsp_command(language, parts[1..].to_vec(), explicit_allowlist)?;
-        return Some(parts);
-    }
-    let mut allowlist = builtin_lsp_executable_allowlist();
-    allowlist.extend(
-        std::env::var("OPENBURNBAR_CODE_LSP_EXECUTABLE_ALLOWLIST")
-            .ok()
-            .into_iter()
-            .flat_map(|raw| {
-                raw.split(',')
-                    .map(|part| part.trim().to_string())
-                    .collect::<Vec<_>>()
-            }),
-    );
-    allowlist.extend(explicit_allowlist);
-    if !allowlist
-        .iter()
-        .any(|allowed| executable_name_matches(basename, allowed))
-    {
-        return None;
-    }
-    if matches!(basename, "sh" | "bash" | "zsh" | "fish" | "osascript") {
-        return None;
-    }
-    if basename.starts_with("python") && parts.iter().any(|part| part == "-c") {
-        return None;
-    }
-    Some(parts)
-}
-
-fn builtin_lsp_executable_allowlist() -> Vec<String> {
-    vec![
-        "csharp-ls".to_string(),
-        "gopls".to_string(),
-        "jdtls".to_string(),
-        "kotlin-language-server".to_string(),
-        "omnisharp".to_string(),
-        "rust-analyzer".to_string(),
-        "sourcekit-lsp".to_string(),
-        "typescript-language-server".to_string(),
-        "pyright-langserver".to_string(),
-        "pylsp".to_string(),
-        "ruff-lsp".to_string(),
-        "python".to_string(),
-        "python3".to_string(),
-        "node".to_string(),
-        "env".to_string(),
-    ]
-}
-
-fn executable_name_matches(actual: &str, allowed: &str) -> bool {
-    if actual == allowed {
-        return true;
-    }
-    allowed == "python3" && actual.starts_with("python3")
+    // `daemon.code.*` is a read capability. Language servers routinely
+    // evaluate workspace-controlled Cargo build scripts, proc macros, MSBuild
+    // projects, plugins, or Node/Python entrypoints during initialization, so
+    // no configurable child process can be admitted through this boundary.
+    // Tree-sitter remains the deterministic in-process parser; references
+    // report unavailable until a separately approval-gated, sandboxed
+    // execution capability exists.
+    let _ = (language, parts, explicit_allowlist);
+    None
 }
 
 fn lsp_timeout() -> Duration {
@@ -1607,13 +1526,13 @@ mod tests {
     }
 
     #[test]
-    fn lsp_command_validation_rejects_shells_and_accepts_allowlisted_python() {
+    fn lsp_command_validation_rejects_all_workspace_processes_on_code_read_boundary() {
         assert!(validate_lsp_command(
             "python",
             vec!["python3".to_string(), "/tmp/fake_lsp.py".to_string()],
             Vec::new()
         )
-        .is_some());
+        .is_none());
         assert!(validate_lsp_command(
             "python",
             vec![
@@ -1623,7 +1542,7 @@ mod tests {
             ],
             Vec::new()
         )
-        .is_some());
+        .is_none());
         assert!(validate_lsp_command(
             "python",
             vec![
@@ -1651,6 +1570,21 @@ mod tests {
                 "python3".to_string(),
                 "-c".to_string(),
                 "print('nope')".to_string()
+            ],
+            Vec::new()
+        )
+        .is_none());
+        assert!(
+            validate_lsp_command("rust", vec!["rust-analyzer".to_string()], Vec::new()).is_none()
+        );
+        assert!(
+            validate_lsp_command("csharp", vec!["csharp-ls".to_string()], Vec::new()).is_none()
+        );
+        assert!(validate_lsp_command(
+            "typescript",
+            vec![
+                "typescript-language-server".to_string(),
+                "--stdio".to_string()
             ],
             Vec::new()
         )

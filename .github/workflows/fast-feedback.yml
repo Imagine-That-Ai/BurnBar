@@ -919,7 +919,6 @@ jobs:
   functions-security-fast:
     name: Functions (security vitest)
     needs: classify
-    if: needs.classify.outputs.functions == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -1401,7 +1400,7 @@ jobs:
           rust_changed = os.environ.get('RUST_CHANGED', '')
           selected = {
               'functions-fast': os.environ.get('FUNCTIONS_REQUIRED') == 'true',
-              'functions-security-fast': os.environ.get('FUNCTIONS_REQUIRED') == 'true',
+              'functions-security-fast': True,
               'functions-correctness': os.environ.get('FUNCTIONS_REQUIRED') == 'true',
               'extension-fast': os.environ.get('WEB_REQUIRED') == 'true',
               'website-fast': os.environ.get('WEB_REQUIRED') == 'true',

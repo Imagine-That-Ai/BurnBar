@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -129,6 +130,46 @@ public sealed class CompanionCliClientTests
 
             Assert.Equal("response_too_large", exception.Code);
             await server;
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    [Fact]
+    public async Task ExchangeAsync_DoesNotRevealTokenToPortSquattingListener()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        string? captured = null;
+        Task peerTask = Task.Run(async () =>
+        {
+            using TcpClient peer = await listener.AcceptTcpClientAsync();
+            await using NetworkStream stream = peer.GetStream();
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            using var writer = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true };
+            captured = await reader.ReadLineAsync();
+            await writer.WriteLineAsync(
+                "{\"ok\":true,\"op\":\"auth.challenge.v1\",\"serverNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\",\"serverProof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\"}");
+        });
+
+        try
+        {
+            var client = new CompanionCliClient(
+                new CompanionCliClientOptions(port),
+                () => "never-send-this-token");
+            using JsonDocument request = JsonDocument.Parse("{\"op\":\"health\"}");
+
+            CompanionCliClientException exception = await Assert.ThrowsAsync<CompanionCliClientException>(
+                () => client.ExchangeAsync(request.RootElement));
+
+            Assert.Equal("server_identity_failed", exception.Code);
+            await peerTask;
+            Assert.NotNull(captured);
+            Assert.DoesNotContain("never-send-this-token", captured, StringComparison.Ordinal);
+            Assert.Contains("auth.challenge.v1", captured, StringComparison.Ordinal);
         }
         finally
         {
