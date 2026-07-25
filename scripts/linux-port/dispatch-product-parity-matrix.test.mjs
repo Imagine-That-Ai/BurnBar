@@ -924,6 +924,30 @@ test('state lock excludes live writers and reclaims a dead-process lock', () => 
     assert.equal(fs.existsSync(`${stateFile}.lock`), true);
     releaseRecovered();
     assert.equal(fs.existsSync(`${stateFile}.lock`), false);
+
+    // A lock released between the exclusive-create failure and the owner
+    // read is re-acquired instead of reported as unreadable.
+    let openAttempts = 0;
+    const releaseRaced = acquireStateLock(stateFile, {
+      openSync: (...args) => {
+        openAttempts += 1;
+        if (openAttempts === 1) {
+          const error = new Error('already exists');
+          error.code = 'EEXIST';
+          throw error;
+        }
+        return fs.openSync(...args);
+      },
+      readFileSync: () => {
+        const error = new Error('vanished');
+        error.code = 'ENOENT';
+        throw error;
+      }
+    });
+    assert.equal(openAttempts, 2);
+    assert.equal(fs.existsSync(`${stateFile}.lock`), true);
+    releaseRaced();
+    assert.equal(fs.existsSync(`${stateFile}.lock`), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

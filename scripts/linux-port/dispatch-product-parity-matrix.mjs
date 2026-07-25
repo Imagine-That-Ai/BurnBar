@@ -614,6 +614,10 @@ export function acquireStateLock(stateFile, dependencies = {}) {
       try {
         owner = JSON.parse(readFileSyncImpl(lockFile, 'utf8'));
       } catch (readError) {
+        // The lock can legitimately vanish between the exclusive-create
+        // failure and this read (the owner released it); retry the atomic
+        // acquisition instead of assuming the checked state still holds.
+        if (readError?.code === 'ENOENT') continue;
         throw new Error(`dispatcher state lock is unreadable: ${readError.message}`);
       }
       if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0) {
