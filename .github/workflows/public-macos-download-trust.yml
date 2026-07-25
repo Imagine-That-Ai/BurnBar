@@ -1,5 +1,11 @@
 name: Public macOS Download Trust
 
+concurrency:
+  group: public-macos-download-trust-${{ github.event_name }}-${{ github.ref }}
+  # Only pull_request runs are safe to cancel: merge_group runs are the
+  # merge-queue's own proof and push runs are the post-merge record.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
