@@ -285,7 +285,9 @@
     "diff": "^8.0.4",
     "vite": "^7.3.2",
     "postcss": "^8.5.10",
-    "esbuild": "0.28.1"
+    "esbuild": "0.28.1",
+    "brace-expansion": "^5.0.8",
+    "minimatch": "^10.0.3"
   },
   "size-limit": [
     {
