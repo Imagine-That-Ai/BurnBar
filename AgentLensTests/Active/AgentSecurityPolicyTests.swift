@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import OpenBurnBarComputerUseCore
 import XCTest
 @testable import OpenBurnBar
@@ -240,6 +241,121 @@ final class AgentSecurityPolicyTests: XCTestCase {
         XCTAssertEqual(value(after: "--task", in: trustedArgs), "Ship it")
     }
 
+    func test_junieChatLaunch_failsClosedWithoutFullActiveGrant() {
+        XCTAssertFalse(
+            CLIAgentJunieMissionPolicy.chatLaunchPermitted(nil),
+            "a relay chat with no grant must not spawn Junie"
+        )
+
+        let readOnly = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .junie,
+            threadID: "t",
+            capabilities: [.workspaceRead],
+            trustMode: .step,
+            now: Date(),
+            duration: 60
+        )
+        XCTAssertFalse(
+            CLIAgentJunieMissionPolicy.chatLaunchPermitted(readOnly),
+            "a read-only grant must not spawn Junie"
+        )
+
+        let now = Date()
+        let expired = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .junie,
+            threadID: "t",
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .trusted,
+            now: now.addingTimeInterval(-120),
+            duration: 60
+        )
+        XCTAssertFalse(
+            CLIAgentJunieMissionPolicy.chatLaunchPermitted(expired, now: now),
+            "an expired grant must not spawn Junie"
+        )
+
+        let full = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .junie,
+            threadID: "t",
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .trusted,
+            now: now,
+            duration: 60
+        )
+        XCTAssertTrue(
+            CLIAgentJunieMissionPolicy.chatLaunchPermitted(full, now: now),
+            "an active full grant permits Junie"
+        )
+
+        let revoked = full.revoked()
+        XCTAssertFalse(
+            CLIAgentJunieMissionPolicy.chatLaunchPermitted(revoked, now: now),
+            "a revoked grant must not spawn Junie"
+        )
+    }
+
+    @MainActor
+    func test_junieChatStream_failsClosedBeforeResolvingExecutable() async {
+        let bridge = CLIBridge()
+        var receivedError: Error?
+
+        do {
+            for try await _ in bridge.chatJunieStream(
+                systemPrompt: "system",
+                userMessage: "user"
+            ) {}
+        } catch {
+            receivedError = error
+        }
+
+        guard let bridgeError = receivedError as? CLIBridgeError else {
+            XCTFail("expected Junie grant error, got \(String(describing: receivedError))")
+            return
+        }
+        guard case .junieRequiresFullGrant = bridgeError else {
+            XCTFail("expected Junie full-grant refusal, got \(bridgeError)")
+            return
+        }
+        XCTAssertTrue(
+            bridgeError.localizedDescription.contains("read-only mode"),
+            "the refusal should explain why Junie cannot run without the full grant"
+        )
+    }
+
+    @MainActor
+    func test_junieChatStream_refusesWhenLiveStoreGrantWasRevoked() async {
+        let bridge = CLIBridge()
+        let threadID = "junie-live-revoke-\(UUID().uuidString)"
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .junie,
+            threadID: threadID,
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .trusted,
+            now: Date(),
+            duration: 600
+        )
+        AgentCapabilityGrantStore.shared.activate(grant)
+        // A phone-side revoke updates the live store while the caller's
+        // captured grant value still looks active.
+        AgentCapabilityGrantStore.shared.revoke(runtimeID: .junie, threadID: threadID)
+
+        var receivedError: Error?
+        do {
+            for try await _ in bridge.chatJunieStream(
+                systemPrompt: "system",
+                userMessage: "user",
+                capabilityGrant: grant
+            ) {}
+        } catch {
+            receivedError = error
+        }
+
+        guard case .junieRequiresFullGrant? = receivedError as? CLIBridgeError else {
+            XCTFail("a store-revoked grant must refuse the Junie launch, got \(String(describing: receivedError))")
+            return
+        }
+    }
+
     // MARK: - T-TOOL-10: restricted shell home-data deny
 
     func test_restrictedShellProfile_deniesHomeDataByDefaultWithExplicitWorkspaceAndToolchainReads() {
@@ -276,4 +392,46 @@ final class AgentSecurityPolicyTests: XCTestCase {
         guard valueIndex < arguments.endIndex else { return nil }
         return arguments[valueIndex]
     }
+
+    // MARK: - Pet Junie surface must advertise "unavailable", never "ready"
+
+    /// Junie fails closed without a full desktop capability grant
+    /// (`CLIBridgeError.junieRequiresFullGrant`) and the pet surface never
+    /// plumbs one. Advertising `.ready` would offer a pet that silently answers
+    /// from the local fallback instead of Junie, so the probe must report
+    /// `.unavailable` regardless of whether the `junie` executable is present.
+    @MainActor
+    func test_petJunieProvider_advertisesUnavailableRatherThanReady() async {
+        let provider = CLIBridgeChatProvider(
+            id: .junie,
+            bridge: CLIBridge(),
+            keychain: PetKeychainStore(),
+            workspace: nil
+        )
+        let status = await provider.checkAuth()
+        XCTAssertEqual(
+            status, .unavailable,
+            "pet Junie must fail closed as .unavailable, never .ready"
+        )
+        XCTAssertNotEqual(status, .ready, "advertising ready would promise a grant the pet never holds")
+    }
+
+    /// The chip copy is user-facing: `.unavailable` must read as a distinct,
+    /// honest state rather than borrowing another status' wording.
+    func test_petAuthStatus_unavailableHasItsOwnLabel() {
+        XCTAssertEqual(PetAuthStatus.unavailable.label, "Unavailable")
+        XCTAssertNotEqual(PetAuthStatus.unavailable.label, PetAuthStatus.error.label)
+        XCTAssertNotEqual(PetAuthStatus.unavailable.label, PetAuthStatus.needsLogin.label)
+    }
+
+    /// `.unavailable` is "cannot run on this surface", not a fault: it must be
+    /// muted like `.unknown`, never coloured as `.error`.
+    func test_petAuthStatus_unavailableChipReadsAsMutedNotError() {
+        XCTAssertEqual(PetAuthStatus.unavailable.chipColor, DesignSystem.Colors.textMuted)
+        XCTAssertEqual(PetAuthStatus.unavailable.chipColor, PetAuthStatus.unknown.chipColor)
+        XCTAssertNotEqual(PetAuthStatus.unavailable.chipColor, PetAuthStatus.error.chipColor)
+        XCTAssertEqual(PetAuthStatus.ready.chipColor, DesignSystem.Colors.success)
+        XCTAssertEqual(PetAuthStatus.needsLogin.chipColor, DesignSystem.Colors.warning)
+    }
+
 }
