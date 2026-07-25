@@ -102,6 +102,33 @@ function canonicalRequirements() {
   );
 }
 
+function parseSelectorList(value, label, pattern) {
+  requiredString(value, label);
+  const entries = value.split(',');
+  if (entries.some((entry) => entry.length === 0 || !pattern.test(entry))) {
+    throw new Error(`${label} must be a comma-separated list of canonical values`);
+  }
+  if (new Set(entries).size !== entries.length) {
+    throw new Error(`${label} must not contain duplicates`);
+  }
+  return entries;
+}
+
+function selectCanonical(values, canonical, label) {
+  if (values === undefined) return canonical;
+  if (!Array.isArray(values) || values.length === 0) {
+    throw new Error(`${label} must contain at least one canonical value`);
+  }
+  for (const value of values) requiredString(value, label);
+  if (new Set(values).size !== values.length) {
+    throw new Error(`${label} must not contain duplicates`);
+  }
+  if (values.some((value) => !canonical.includes(value))) {
+    throw new Error(`${label} contains a value outside the canonical matrix`);
+  }
+  return values;
+}
+
 export function validateCanonicalMatrix(requirementsManifest, evidencePolicies) {
   requiredObject(requirementsManifest, 'requirements manifest');
   requiredObject(evidencePolicies, 'evidence policies');
@@ -214,6 +241,8 @@ export function parseArguments(argv) {
     rateLimitMs: DISPATCH_POLICY.defaultRateLimitMs,
     pollAttempts: DISPATCH_POLICY.defaultPollAttempts,
     pollIntervalMs: DISPATCH_POLICY.defaultPollIntervalMs,
+    requirements: undefined,
+    environments: undefined,
     stateFile: undefined
   };
   const seen = new Set();
@@ -232,6 +261,8 @@ export function parseArguments(argv) {
       '--rate-ms',
       '--poll-attempts',
       '--poll-ms',
+      '--requirements',
+      '--environments',
       '--state-file'
     ]
       .includes(flag)) {
@@ -244,6 +275,12 @@ export function parseArguments(argv) {
     index += 1;
     if (flag === '--ref') options.targetRef = value;
     if (flag === '--candidate-run-id') options.candidateRunId = value;
+    if (flag === '--requirements') {
+      options.requirements = parseSelectorList(value, '--requirements', REQUIREMENT_PATTERN);
+    }
+    if (flag === '--environments') {
+      options.environments = parseSelectorList(value, '--environments', ENVIRONMENT_PATTERN);
+    }
     if (flag === '--state-file') options.stateFile = value;
     if (flag === '--max-concurrency') options.maxConcurrency = Number(value);
     if (flag === '--rate-ms') options.rateLimitMs = Number(value);
@@ -884,6 +921,20 @@ export async function runDispatcher(options, dependencies = {}) {
   const evidencePolicies = dependencies.evidencePolicies
     ?? readJson(path.join(repoRoot, DISPATCH_POLICY.evidencePolicies));
   const matrix = validateCanonicalMatrix(requirementsManifest, evidencePolicies);
+  const selectedRequirements = selectCanonical(
+    options.requirements,
+    matrix.requirements,
+    '--requirements'
+  );
+  const selectedEnvironments = selectCanonical(
+    options.environments,
+    matrix.environments,
+    '--environments'
+  );
+  const selectedPair = (pair) => (
+    selectedRequirements.includes(pair.requirement)
+      && selectedEnvironments.includes(pair.environment)
+  );
   const target = resolveTargetRef(api, options.targetRef);
   const workflow = validateWorkflow(api(
     `repos/${DISPATCH_POLICY.repository}/actions/workflows/linux-product-parity.yml`
@@ -940,7 +991,8 @@ export async function runDispatcher(options, dependencies = {}) {
     const observedRunIds = new Set(status.records.map((record) => record.runId));
     const activeCount = status.running.length + status.queued.length;
     const available = Math.max(0, options.maxConcurrency - activeCount);
-    const toDispatch = options.execute ? status.plan.slice(0, available) : [];
+    const selectedPlan = status.plan.filter(selectedPair);
+    const toDispatch = options.execute ? selectedPlan.slice(0, available) : [];
     const dispatched = [];
 
     if (options.execute) {
@@ -1030,6 +1082,7 @@ export async function runDispatcher(options, dependencies = {}) {
         state: stateDocument(context, persisted)
       })
       : status;
+    const finalSelectedPlan = finalStatus.plan.filter(selectedPair);
 
     return {
       schemaVersion: 1,
@@ -1042,6 +1095,11 @@ export async function runDispatcher(options, dependencies = {}) {
         requirements: matrix.requirements.length,
         environments: matrix.environments.length,
         total: matrix.pairs.length
+      },
+      selection: {
+        requirements: selectedRequirements,
+        environments: selectedEnvironments,
+        total: selectedRequirements.length * selectedEnvironments.length
       },
       counts: {
         completed: finalStatus.completed.length,
@@ -1056,7 +1114,7 @@ export async function runDispatcher(options, dependencies = {}) {
         queued: finalStatus.queued,
         failed: finalStatus.failed
       },
-      plan: finalStatus.plan,
+      plan: finalSelectedPlan,
       execution: {
         requested: options.execute,
         maxConcurrency: options.maxConcurrency,
@@ -1064,7 +1122,7 @@ export async function runDispatcher(options, dependencies = {}) {
         capacity: available,
         recovered,
         dispatched,
-        remainingAfterPass: finalStatus.plan.length,
+        remainingAfterPass: finalSelectedPlan.length,
         stateFile
       }
     };

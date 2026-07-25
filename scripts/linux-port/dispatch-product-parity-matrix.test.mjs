@@ -281,16 +281,23 @@ test('arguments are dry-run by default and reject unsafe or unbounded values', (
       rateLimitMs: DISPATCH_POLICY.defaultRateLimitMs,
       pollAttempts: DISPATCH_POLICY.defaultPollAttempts,
       pollIntervalMs: DISPATCH_POLICY.defaultPollIntervalMs,
+      requirements: undefined,
+      environments: undefined,
       stateFile: undefined
     }
   );
-  assert.equal(parseArguments([
+  const selected = parseArguments([
     '--execute',
     '--ref', TARGET_REF,
     '--candidate-run-id', CANDIDATE_RUN_ID,
     '--max-concurrency', '2',
-    '--rate-ms', '250'
-  ]).execute, true);
+    '--rate-ms', '250',
+    '--requirements', 'P-01,P-40',
+    '--environments', 'ubuntu-24.04-gnome-x11-aarch64'
+  ]);
+  assert.equal(selected.execute, true);
+  assert.deepEqual(selected.requirements, ['P-01', 'P-40']);
+  assert.deepEqual(selected.environments, ['ubuntu-24.04-gnome-x11-aarch64']);
   for (const argv of [
     [],
     ['--ref', 'main', '--candidate-run-id', CANDIDATE_RUN_ID],
@@ -299,6 +306,10 @@ test('arguments are dry-run by default and reject unsafe or unbounded values', (
     ['--ref', TARGET_REF, '--candidate-run-id', CANDIDATE_RUN_ID, '--execute', '--execute'],
     ['--ref', TARGET_REF, '--candidate-run-id', CANDIDATE_RUN_ID, '--max-concurrency', '0'],
     ['--ref', TARGET_REF, '--candidate-run-id', CANDIDATE_RUN_ID, '--rate-ms', '-1'],
+    ['--ref', TARGET_REF, '--candidate-run-id', CANDIDATE_RUN_ID, '--requirements', 'P-01,P-01'],
+    ['--ref', TARGET_REF, '--candidate-run-id', CANDIDATE_RUN_ID, '--requirements', 'P-41'],
+    ['--ref', TARGET_REF, '--candidate-run-id', CANDIDATE_RUN_ID, '--environments', 'ubuntu-24.04-gnome-x11-aarch64,'],
+    ['--ref', TARGET_REF, '--candidate-run-id', CANDIDATE_RUN_ID, '--environments', 'Ubuntu'],
     ['--ref', TARGET_REF, '--candidate-run-id', CANDIDATE_RUN_ID, '--unknown', 'x']
   ]) assert.throws(() => parseArguments(argv));
 });
@@ -362,6 +373,57 @@ test('dry run queries status and artifacts but never dispatches', async () => {
   assert.equal(result.plan[0].reason, 'previous-run-failed');
   assert.equal(result.execution.dispatched.length, 0);
   assert.equal(calls.some((call) => call.request.method === 'POST'), false);
+});
+
+test('canonical selectors preserve full status while planning only requested pairs', async () => {
+  const successful = parityRun({
+    id: 150,
+    requirement: 'P-01',
+    environment: 'ubuntu-24.04-gnome-x11-aarch64'
+  });
+  const { api, calls } = baseApi({ runs: [successful] });
+  const result = await runDispatcher(options({
+    requirements: ['P-01', 'P-02'],
+    environments: ['ubuntu-24.04-gnome-x11-aarch64']
+  }), dependencies(api));
+  assert.deepEqual(result.counts, {
+    completed: 1,
+    running: 0,
+    queued: 0,
+    failed: 0,
+    missing: 279
+  });
+  assert.deepEqual(result.selection, {
+    requirements: ['P-01', 'P-02'],
+    environments: ['ubuntu-24.04-gnome-x11-aarch64'],
+    total: 2
+  });
+  assert.deepEqual(result.plan, [{
+    requirement: 'P-02',
+    environment: 'ubuntu-24.04-gnome-x11-aarch64',
+    reason: 'never-dispatched'
+  }]);
+  assert.equal(calls.some((call) => call.request.method === 'POST'), false);
+
+  await assert.rejects(
+    () => runDispatcher(options({ requirements: ['P-41'] }), dependencies(api)),
+    /outside the canonical matrix/u
+  );
+  await assert.rejects(
+    () => runDispatcher(options({ environments: ['attacker-linux'] }), dependencies(api)),
+    /outside the canonical matrix/u
+  );
+  await assert.rejects(
+    () => runDispatcher(options({ requirements: [] }), dependencies(api)),
+    /at least one canonical value/u
+  );
+  await assert.rejects(
+    () => runDispatcher(options({ environments: [
+      'ubuntu-24.04-gnome-x11-aarch64',
+      'ubuntu-24.04-gnome-x11-aarch64'
+    ] }), dependencies(api)),
+    /must not contain duplicates/u
+  );
 });
 
 test('wrong repo, workflow, ref, candidate, attempt, artifact, and pair mutations reject', async () => {
@@ -539,6 +601,55 @@ test('execute dispatches only available missing rows, rate limits, and persists 
       environment: 'ubuntu-24.04-gnome-x11-aarch64',
       candidate_run_id: CANDIDATE_RUN_ID
     }
+  });
+});
+
+test('execute selector bypasses unavailable earlier environments without hiding global activity', async () => {
+  const running = parityRun({
+    id: 550,
+    requirement: 'P-35',
+    environment: 'fedora-kde-wayland-x86_64',
+    status: 'in_progress',
+    conclusion: null
+  });
+  const state = {
+    schemaVersion: 1,
+    repository: DISPATCH_POLICY.repository,
+    workflowPath: DISPATCH_POLICY.workflowPath,
+    targetRef: TARGET_REF,
+    targetSha: TARGET_SHA,
+    candidateRunId: CANDIDATE_RUN_ID,
+    dispatches: [{
+      runId: running.id,
+      requirement: running.__pair.requirement,
+      environment: running.__pair.environment,
+      dispatchedAt: '2026-07-24T12:00:00.000Z'
+    }]
+  };
+  const { api, calls } = baseApi({ runs: [running] });
+  const result = await runDispatcher(options({
+    execute: true,
+    maxConcurrency: 2,
+    requirements: ['P-01'],
+    environments: ['ubuntu-24.04-gnome-x11-aarch64'],
+    stateFile: '/tmp/mock-selected-parity-state.json'
+  }), dependencies(api, {
+    state,
+    now: () => Date.parse('2026-07-24T13:00:00Z'),
+    randomUUID: () => 'nonce-selected-0001',
+    mkdirSync: () => {},
+    writeFileSync: () => {},
+    renameSync: () => {}
+  }));
+  assert.equal(result.counts.running, 1);
+  assert.equal(result.counts.queued, 1);
+  assert.equal(result.execution.dispatched.length, 1);
+  assert.equal(result.execution.remainingAfterPass, 0);
+  const posts = calls.filter((call) => call.request.method === 'POST');
+  assert.deepEqual(posts[0].request.body.inputs, {
+    requirement: 'P-01',
+    environment: 'ubuntu-24.04-gnome-x11-aarch64',
+    candidate_run_id: CANDIDATE_RUN_ID
   });
 });
 
