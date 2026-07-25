@@ -221,6 +221,57 @@ export function verifyLinuxWorkflowWiring(input) {
     }
   };
 
+  const requireP40InstalledPrivacyContract = (body) => {
+    const stepName = "Capture P-40 installed privacy proof";
+    const start = body.indexOf(`- name: ${stepName}`);
+    const end =
+      start < 0 ? -1 : body.indexOf("\n      - name:", start + 1);
+    const block =
+      start < 0 ? "" : body.slice(start, end < 0 ? body.length : end);
+    if (!block) {
+      failures.push(
+        `product parity evidence workflow is missing executable step: ${stepName}`,
+      );
+      return;
+    }
+    const activeLines = block
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"));
+    for (const line of [
+      "if: inputs.requirement == 'P-40'",
+      "set -euo pipefail",
+      "bash scripts/linux-port/run-p40-installed-privacy-proof.sh",
+      'session_report="$input_root/p40-live-session.json"',
+      'test -f "$session_report"',
+      "node scripts/linux-port/capture-p40-privacy-proof.mjs",
+      '--session-report "$session_report"',
+      '--environment "$ENVIRONMENT_ID"',
+      '--target-head "$TARGET_HEAD"',
+      '--candidate-run-id "$CANDIDATE_RUN_ID"',
+      '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+    ]) {
+      if (!activeLines.includes(line) && !activeLines.includes(`${line} \\`)) {
+        failures.push(
+          `product parity evidence workflow ${stepName} is missing: ${line}`,
+        );
+      }
+    }
+    for (const forbidden of [
+      "continue-on-error: true",
+      "set +e",
+      "|| true",
+      "; true",
+      "run-p40-privacy-rpc-session.mjs",
+    ]) {
+      if (activeLines.some((line) => line.includes(forbidden))) {
+        failures.push(
+          `product parity evidence workflow ${stepName} permits an unsafe path: ${forbidden}`,
+        );
+      }
+    }
+  };
+
   const requireInstalledUiCaptureContract = (body, requirementId, config) => {
     const blockFor = (stepName) => {
       const start = body.indexOf(`- name: ${stepName}`);
@@ -1032,7 +1083,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'python3-pyatspi',
     'capture-parity-certification-preflight.mjs',
     'capture-p34-credential-security-proof.mjs',
-    'run-p40-privacy-rpc-session.mjs',
+    'run-p40-installed-privacy-proof.sh',
     'Capture P-40 installed privacy proof',
     "if: inputs.requirement == 'P-02'",
     "if: inputs.requirement == 'P-34'",
@@ -1071,6 +1122,7 @@ export function verifyLinuxWorkflowWiring(input) {
   requireNativeWebDriverProvisioning(input.productParityWorkflow);
   requireP31LiveAccessibilityContract(input.productParityWorkflow);
   requireP16PhysicalIPadProducer(input.productParityWorkflow);
+  requireP40InstalledPrivacyContract(input.productParityWorkflow);
   requireInstalledUiCaptureContract(input.productParityWorkflow, 'P-09', {
     step: 'Capture P-09 installed navigation shell proof',
     runner: 'scripts/linux-port/run-p09-native-navigation-probes.mjs',

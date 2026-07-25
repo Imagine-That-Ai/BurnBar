@@ -2976,63 +2976,7 @@ jobs:
         run: |
           set -euo pipefail
           input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
-          test "$ENVIRONMENT_ID" = 'ubuntu-24.04-gnome-x11-aarch64' \
-            || { echo 'P-40 installed RPC producer currently targets the Ubuntu 24.04 aarch64 UTM session.' >&2; exit 1; }
-          deb=""
-          while IFS= read -r candidate; do
-            architecture="$(dpkg-deb -f "$candidate" Architecture)"
-            package_name="$(dpkg-deb -f "$candidate" Package)"
-            if test "$architecture" = arm64 && test "$package_name" = open-burn-bar; then
-              deb="$candidate"
-              break
-            fi
-          done < <(find "$input_root" -type f -name '*.deb' -print | sort)
-          test -n "$deb" || { echo 'P-40 requires an installed open-burn-bar arm64 Debian package.' >&2; exit 1; }
-          sudo apt-get install -y --reinstall "$deb"
-
-          candidate_root="$RUNNER_TEMP/openburnbar-p40-${CANDIDATE_RUN_ID}"
-          rm -rf "$candidate_root"
-          install -d -m 700 "$candidate_root/support" "$candidate_root/runtime/openburnbar" "$candidate_root/evidence"
-          socket="$candidate_root/runtime/openburnbar/daemon.sock"
-          support="$candidate_root/support"
-          OPENBURNBAR_DAEMON_SUPPORT_DIR="$support" \
-          OPENBURNBAR_DAEMON_SOCKET_PATH="$socket" \
-          XDG_DATA_HOME="$candidate_root/data" \
-          XDG_RUNTIME_DIR="$candidate_root/runtime" \
-          /usr/libexec/openburnbar-daemon-launch >"$candidate_root/daemon.log" 2>&1 &
-          daemon_pid=$!
-          cleanup_p40() {
-            kill "$daemon_pid" 2>/dev/null || true
-            wait "$daemon_pid" 2>/dev/null || true
-            rm -rf "$candidate_root"
-          }
-          trap cleanup_p40 EXIT
-          for _ in $(seq 1 60); do test -S "$socket" && break; sleep 0.5; done
-          test -S "$socket"
-          token_file="$support/daemon-socket-auth-token"
-          test -f "$token_file"
-          manifest_sha256="$(sha256sum /usr/share/openburnbar/attestation/installed-manifest.json | awk '{print $1}')"
-          package_version="$(dpkg-deb -f "$deb" Version)"
-          # The trusted launcher exports this path for the daemon. The producer
-          # also invokes the installed Swift CLI peer, so bind the same
-          # package-owned runtime explicitly for its child process.
-          export LD_LIBRARY_PATH="/usr/lib/openburnbar/swift:/usr/lib/openburnbar/native${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-          node scripts/linux-port/run-p40-privacy-rpc-session.mjs \
-            --socket "$socket" \
-            --token-file "$token_file" \
-            --output-root "$candidate_root/evidence" \
-            --environment "$ENVIRONMENT_ID" \
-            --target-head "$TARGET_HEAD" \
-            --candidate-run-id "$CANDIDATE_RUN_ID" \
-            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
-            --package-version "$package_version" \
-            --manifest-sha256 "$manifest_sha256"
-          cp -f "$candidate_root/evidence/p40-live-session.json" "$input_root/p40-live-session.json"
-          install -d -m 700 "$input_root/privacy"
-          cp -f "$candidate_root/evidence/privacy/inventory.json" "$input_root/privacy/inventory.json"
-          cp -f "$candidate_root/evidence/privacy/deletion.json" "$input_root/privacy/deletion.json"
-          cp -f "$candidate_root/evidence/privacy/export.json" "$input_root/privacy/export.json"
-          cp -f "$candidate_root/evidence/privacy/retention.json" "$input_root/privacy/retention.json"
+          bash scripts/linux-port/run-p40-installed-privacy-proof.sh
           session_report="$input_root/p40-live-session.json"
           test -f "$session_report"
           node scripts/linux-port/capture-p40-privacy-proof.mjs \

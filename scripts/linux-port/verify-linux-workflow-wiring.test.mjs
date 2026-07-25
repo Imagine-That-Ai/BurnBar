@@ -185,8 +185,24 @@ function valid() {
       "capture-p34-credential-security-proof.mjs",
       "resolve-p39-platform-evidence.mjs",
       "capture-p39-differential.mjs",
-      "run-p40-privacy-rpc-session.mjs",
-      "Capture P-40 installed privacy proof",
+      [
+        "      - name: Capture P-40 installed privacy proof",
+        "        if: inputs.requirement == 'P-40'",
+        "        run: |",
+        "          set -euo pipefail",
+        '          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"',
+        "          bash scripts/linux-port/run-p40-installed-privacy-proof.sh",
+        '          session_report="$input_root/p40-live-session.json"',
+        '          test -f "$session_report"',
+        "          node scripts/linux-port/capture-p40-privacy-proof.mjs \\",
+        '            --input-root "$input_root" \\',
+        '            --session-report "$session_report" \\',
+        '            --environment "$ENVIRONMENT_ID" \\',
+        '            --target-head "$TARGET_HEAD" \\',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID" \\',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+      ].join("\n"),
+      "      - name: P-40 fixture boundary",
       "if: inputs.requirement == 'P-02'",
       "if: inputs.requirement == 'P-34'",
       "if: always() && inputs.requirement == 'P-02'",
@@ -1980,6 +1996,50 @@ test("P-31 distro-specific live prerequisite packages fail closed on contract dr
       marker,
     );
   }
+});
+
+test("P-40 installed privacy workflow cannot bypass its portable package runner", () => {
+  for (const marker of [
+    "bash scripts/linux-port/run-p40-installed-privacy-proof.sh",
+    'session_report="$input_root/p40-live-session.json"',
+    'test -f "$session_report"',
+    "node scripts/linux-port/capture-p40-privacy-proof.mjs",
+    '--session-report "$session_report"',
+    '--environment "$ENVIRONMENT_ID"',
+    '--target-head "$TARGET_HEAD"',
+    '--candidate-run-id "$CANDIDATE_RUN_ID"',
+    '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+  ]) {
+    const input = valid();
+    const stepName = "Capture P-40 installed privacy proof";
+    const start = input.productParityWorkflow.indexOf(
+      `      - name: ${stepName}`,
+    );
+    const end = input.productParityWorkflow.indexOf(
+      "\n      - name:",
+      start + 1,
+    );
+    assert.ok(start >= 0 && end > start, marker);
+    const original = input.productParityWorkflow.slice(start, end);
+    const mutated = original.replace(marker, "removed-p40-contract");
+    assert.notEqual(mutated, original, marker);
+    input.productParityWorkflow = `${input.productParityWorkflow.slice(0, start)}${mutated}${input.productParityWorkflow.slice(end)}`;
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(
+      result.failures.some((failure) => failure.includes("P-40")),
+      marker,
+    );
+  }
+
+  const input = valid();
+  input.productParityWorkflow = input.productParityWorkflow.replace(
+    "bash scripts/linux-port/run-p40-installed-privacy-proof.sh",
+    "node scripts/linux-port/run-p40-privacy-rpc-session.mjs",
+  );
+  const result = verifyLinuxWorkflowWiring(input);
+  assert.equal(result.passed, false);
+  assert.ok(result.failures.some((failure) => failure.includes("P-40")));
 });
 
 test("P-24 installed Settings workflow preserves isolated daemon, home, and process cleanup fail closed", () => {
