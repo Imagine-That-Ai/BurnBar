@@ -367,9 +367,12 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
     }
 
     func test_autoAcceptDoesNotSlideGrantExpiryForward() {
-        let store = MercuryConsentStore(defaults: defaults)
-        store.rememberAcceptedMirrorPeers = true
+        // Pin the store's clock to the test epoch: the defaults observer
+        // prunes grants against that clock on every persist, and this test's
+        // timeline lives years away from the wall clock.
         let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let store = MercuryConsentStore(defaults: defaults, clock: { t0 })
+        store.rememberAcceptedMirrorPeers = true
         store.rememberAcceptedPeer(
             connectionId: "conn-1",
             viewerDeviceId: "device-1",
