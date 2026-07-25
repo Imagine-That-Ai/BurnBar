@@ -1337,6 +1337,12 @@ jobs:
       - name: Windows tree budget (per-tree shrink-only ratchet)
         run: ./scripts/debt/check-windows-tree-budget.sh
 
+      # Refresh-tick perf ratchet: no new unbounded fetchAllUsage() call
+      # sites (O(total-history) tick work) and no raw token_usage writers
+      # outside the UsageTableWriteMarker-aware stores.
+      - name: Usage refresh-tick budget (shrink-only ratchet)
+        run: ./scripts/debt/check-usage-refresh-tick-budget.sh
+
       - name: BurnBarRPC IPC canon is current
         run: node tools/ipc/generate-burnbarrpc-canon.mjs --check
 

@@ -41,6 +41,10 @@ public struct InsightSankeyView: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: 200)
+        // The flow drawing is color/position only — collapse to a single
+        // element that reads the largest flows.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(InsightChartAccessibility.sankeySummary(data))
     }
 
     private struct ColumnPosition: Identifiable {

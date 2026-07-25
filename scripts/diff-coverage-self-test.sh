@@ -3,14 +3,16 @@
 # scripts/extract-package-coverage-lines.sh).
 #
 # Builds a hermetic fixture: a throwaway git repo with a package-partition
-# Swift file (OpenBurnBarCore/Sources/…) and an app-partition Swift file
-# (AgentLens/…), plus an LCOV trace standing in for `llvm-cov export
+# Swift file (OpenBurnBarCore/Sources/…), an Apple-only UI source under
+# OpenBurnBarCore/Sources/OpenBurnBarUI/ (app coverage), and an app-partition
+# Swift file (AgentLens/…), plus an LCOV trace standing in for `llvm-cov export
 # -format=lcov` output. Then asserts the gate's actual contract:
 #
 #   1. Measured percent: changed-line ∩ per-line evidence yields the exact
 #      expected percentage, and the threshold pass/fail flips accordingly.
-#   2. Scope partition: app-partition files are out of scope for the
-#      packages lane (reported, never silently dropped).
+#   2. Scope partition: app-partition files—including Apple-only OpenBurnBarUI
+#      presentation code—are out of scope for the packages lane (reported,
+#      never silently dropped).
 #   3. No evidence ⇒ fail for executable changed lines. Plain Swift
 #      declaration-only changes and conditional-compilation directives are
 #      excluded because they do not emit LLVM line counters.
@@ -83,7 +85,9 @@ EOF
 make_repo() {
   # $1 = repo dir, $2 = suffix for line 11, $3 = suffix for line 12
   local repo="$1"
-  mkdir -p "$repo/OpenBurnBarCore/Sources/DemoKit" "$repo/AgentLens/Services/Demo"
+  mkdir -p "$repo/OpenBurnBarCore/Sources/DemoKit" \
+    "$repo/OpenBurnBarCore/Sources/OpenBurnBarUI/Views" \
+    "$repo/AgentLens/Services/Demo"
   git -C "$repo" init -q -b main
   git -C "$repo" config user.email selftest@openburnbar.invalid
   git -C "$repo" config user.name "Diff Coverage Self-Test"
@@ -95,6 +99,10 @@ public enum Widget {
     }
 }
 EOF
+  cat > "$repo/OpenBurnBarCore/Sources/OpenBurnBarUI/Views/Demo.swift" <<'EOF'
+public enum DemoView {
+}
+EOF
   cat > "$repo/AgentLens/Services/Demo/Orphan.swift" <<'EOF'
 final class Orphan {
 }
@@ -103,6 +111,13 @@ EOF
   git -C "$repo" commit -qm base
 
   write_widget "$repo" "$2" "$3"
+  cat > "$repo/OpenBurnBarCore/Sources/OpenBurnBarUI/Views/Demo.swift" <<'EOF'
+public enum DemoView {
+    public static func changed() -> Int {
+        return 2
+    }
+}
+EOF
   cat > "$repo/AgentLens/Services/Demo/Orphan.swift" <<'EOF'
 final class Orphan {
     func grow() -> Int {
@@ -218,6 +233,9 @@ check "per-file method is package line evidence" \
 check "app-partition file is out of scope for the packages lane" \
   "AgentLens/Services/Demo/Orphan.swift" \
   "$(json_get "$verdict" 'v["outOfScope"][0]["file"]')"
+check "Apple-only OpenBurnBarUI is out of scope for the packages lane" \
+  "True" \
+  "$(json_get "$verdict" 'any(d["file"] == "OpenBurnBarCore/Sources/OpenBurnBarUI/Views/Demo.swift" for d in v["outOfScope"])')"
 
 verdict="$tmp_root/verdict-pass.json"
 rc="$(run_gate "$repo" "$base_sha" packages 60 "$pkg_lines" "$verdict" "$tmp_root/err-pass.log")"

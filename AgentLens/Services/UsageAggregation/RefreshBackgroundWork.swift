@@ -77,7 +77,6 @@ enum RefreshBackgroundWork {
         parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
         dataStore: DataStore,
         orchestrator: RefreshOrchestrator,
-        existingUsages: [TokenUsage],
         settings: RefreshSettingsSnapshot
     ) async throws -> FullRefreshResult {
         var result = FullRefreshResult(
@@ -88,7 +87,6 @@ enum RefreshBackgroundWork {
             parsers: parsers,
             dataStore: dataStore,
             orchestrator: orchestrator,
-            existingUsages: existingUsages,
             settings: settings
         )
 
