@@ -107,11 +107,19 @@ export function releaseCandidates({ releases, currentVersion, requestedVersion =
   return { candidates: ordered, failures };
 }
 
+// A payload check has three outcomes, not two.  "Incompatible" is an
+// authoritative verdict about a release; "indeterminate" means the release
+// could not be inspected at all (the download or dpkg-deb failed).  Callers
+// that treat "no compatible baseline" as authorization must never be handed
+// an indeterminate result dressed up as a verdict, so the distinction is
+// carried explicitly instead of being collapsed into `passed: false`.
 export function assertDebianLifecyclePayload({ packagePath, version, architecture, run = defaultRun }) {
   const fields = [];
   for (const field of ['Package', 'Version', 'Architecture']) {
     const result = run('dpkg-deb', ['-f', packagePath, field]);
-    if (result.exitCode !== 0) return { passed: false, reason: `${architecture}: dpkg-deb metadata inspection failed` };
+    if (result.exitCode !== 0) {
+      return { passed: false, indeterminate: true, reason: `${architecture}: dpkg-deb metadata inspection failed` };
+    }
     fields.push(result.stdout.trim());
   }
   const expectedArchitecture = architecture === 'aarch64' ? 'arm64' : 'amd64';
@@ -119,7 +127,10 @@ export function assertDebianLifecyclePayload({ packagePath, version, architectur
     return { passed: false, reason: `${architecture}: Debian package identity is not open-burn-bar ${version} ${expectedArchitecture}` };
   }
   const contents = run('dpkg-deb', ['-c', packagePath]);
-  if (contents.exitCode !== 0 || !contents.stdout.split(/\n/u).some((line) => /(?:^|\s)\.\/usr\/libexec\/openburnbar-daemon-launch$/u.test(line.trim()))) {
+  if (contents.exitCode !== 0) {
+    return { passed: false, indeterminate: true, reason: `${architecture}: dpkg-deb content inspection failed` };
+  }
+  if (!contents.stdout.split(/\n/u).some((line) => /(?:^|\s)\.\/usr\/libexec\/openburnbar-daemon-launch$/u.test(line.trim()))) {
     return { passed: false, reason: `${architecture}: Debian package is missing /usr/libexec/openburnbar-daemon-launch` };
   }
   return { passed: true };
@@ -187,14 +198,24 @@ function main() {
         ]);
         const packagePath = path.join(packageDir, assetName);
         if (download.exitCode !== 0 || !fs.existsSync(packagePath)) {
-          packageChecks.push({ passed: false, reason: `${architecture}: failed to download ${assetName} for payload inspection` });
+          // A failed download proves nothing about the release; it is a
+          // discovery failure, not evidence that no baseline exists.
+          packageChecks.push({
+            passed: false,
+            indeterminate: true,
+            reason: `${architecture}: failed to download ${assetName} for payload inspection`
+          });
           continue;
         }
         packageChecks.push(assertDebianLifecyclePayload({ packagePath, version: candidate.version, architecture }));
       }
-      const packageFailures = packageChecks.filter((check) => !check.passed).map((check) => check.reason);
-      if (packageFailures.length > 0) {
-        reasons.push(`${candidate.tag}: ${packageFailures.join('; ')}`);
+      const failedChecks = packageChecks.filter((check) => !check.passed);
+      const indeterminate = failedChecks.filter((check) => check.indeterminate === true);
+      if (indeterminate.length > 0) {
+        throw new Error(`${candidate.tag}: ${indeterminate.map((check) => check.reason).join('; ')}`);
+      }
+      if (failedChecks.length > 0) {
+        reasons.push(`${candidate.tag}: ${failedChecks.map((check) => check.reason).join('; ')}`);
         continue;
       }
       selected = candidate;

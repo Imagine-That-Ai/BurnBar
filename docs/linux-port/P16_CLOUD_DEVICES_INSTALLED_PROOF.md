@@ -78,7 +78,11 @@ prerequisites are not ready. It verifies the exact
 UUID, and current status; both coordination-root repository variables; a
 canonical, real, current-user-owned `0700` macOS root; one available physical
 non-Simulator iPad; and an online, non-busy organization runner carrying
-`self-hosted`, `macOS`, `ARM64`, `m5max`, and `ios`.
+`self-hosted`, `macOS`, `ARM64`, `m5max`, and `ios`. A labelled runner counts
+only when its runner group actually grants this repository access — the group
+is visible to all repositories, or `Imagine-That-Ai/BurnBar` appears in its
+selected list. Otherwise the P-16 workflow would queue indefinitely against a
+runner it can never use, so unmappable or unreadable groups fail closed.
 
 The preflight is strictly read-only. It does not start, resume, pause, or stop
 UTM; register a runner; change GitHub variables; create coordination

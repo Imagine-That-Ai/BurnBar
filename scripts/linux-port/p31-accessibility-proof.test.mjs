@@ -21,6 +21,7 @@ import {
   buildP31LiveSession,
   detectYdotoolDialect,
   discoverP31GraphicalSessionId,
+  excludeAnchorWindows,
   openP31OrcaLog,
   P31_LIVE_ENVIRONMENTS,
   parseP31LiveArguments,
@@ -689,6 +690,34 @@ test('P-31 discovers exactly one active local graphical session when XDG_SESSION
       listSessions: () => ' evil;id 1000 runner seat0 tty1'
     }),
     /unsafe session identifier/u
+  );
+});
+
+test('P-31 excludes programmatic grab-focus anchors from physical-key focus counting', () => {
+  const event = (name) => "OBJECT EVENT: object:state-changed:focused for [push button: "
+    + `'${name}'] in [application: 'openburnbar'] (1, 0, 0)\n`;
+  const preamble = 'ORCA STARTUP NOISE\n';
+  const offset = Buffer.byteLength(preamble);
+  const beforeAnchor = `${event('Overview')}${event('Insights')}`;
+  const anchorStart = offset + Buffer.byteLength(beforeAnchor);
+  const anchorEvent = event('Skip to content');
+  const anchorEnd = anchorStart + Buffer.byteLength(anchorEvent);
+  const afterAnchor = `${event('Projects')}${event('Missions')}`;
+  const bytes = Buffer.from(`${preamble}${beforeAnchor}${anchorEvent}${afterAnchor}`, 'utf8');
+  const focusEvent = /object:state-changed:focused/gu;
+
+  const counted = excludeAnchorWindows(bytes, offset, [[anchorStart, anchorEnd]]);
+  assert.equal(counted.match(focusEvent)?.length, 4);
+  assert.ok(!counted.includes('Skip to content'));
+
+  // Without the exclusion window the anchor inflates the physical-key count,
+  // which is precisely what the ten-event release gate must not accept.
+  assert.equal(excludeAnchorWindows(bytes, offset, []).match(focusEvent)?.length, 5);
+  // Overlapping and unsorted windows must not double-count or reorder.
+  assert.equal(
+    excludeAnchorWindows(bytes, offset, [[anchorStart, anchorEnd], [offset, anchorStart]])
+      .match(focusEvent)?.length,
+    2
   );
 });
 

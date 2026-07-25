@@ -439,6 +439,21 @@ export function openP31OrcaLog(file) {
   }
 }
 
+// Concatenate the Orca debug log from `offset` onward while skipping the byte
+// windows written by programmatic grab-focus anchors, so focus-event counting
+// only ever credits focus changes caused by physical key presses.
+export function excludeAnchorWindows(bytes, offset, exclusions = []) {
+  const segments = [];
+  let cursor = offset;
+  for (const [start, end] of [...exclusions].sort((left, right) => left[0] - right[0])) {
+    const clampedStart = Math.max(start, cursor);
+    if (clampedStart > cursor) segments.push(bytes.subarray(cursor, clampedStart).toString('utf8'));
+    cursor = Math.max(cursor, end);
+  }
+  segments.push(bytes.subarray(cursor).toString('utf8'));
+  return segments.join('');
+}
+
 function atomicJson(file, value) {
   const temporary = `${file}.tmp-${process.pid}-${Date.now()}`;
   fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
@@ -1181,19 +1196,30 @@ async function captureKeyboardAndOrca(
       ], `P-31 focused AT-SPI step ${index + 1}`);
       observations.push(JSON.parse(fs.readFileSync(focused, 'utf8')));
     }
+    // The reverse anchor is a programmatic grabFocus(): it emits an
+    // object:state-changed:focused event indistinguishable from a
+    // physical-key focus change. Record the byte window it writes into the
+    // Orca log (measured on the same verified descriptor) so the ten-event
+    // release gate can only be satisfied by the physical key sequence. The
+    // forward anchor needs no window: it lands before focusLogOffset.
+    const anchorExclusions = [];
+    const anchorStart = orcaLog.read().length;
     const reverseAnchor = path.join(rawDir, 'p31-focus-reverse-anchor.json');
     required('python3', [
       ATSPI, '--application', 'OpenBurnBar', '--mode', 'grab-focus',
       '--expected-name', 'Skip to content', '--output', reverseAnchor
     ], 'P-31 reverse keyboard focus anchor');
-    await wait(1_000);
+    // Let Orca flush the anchor-generated event before the window closes and
+    // the next physical key follows.
+    await wait(2_000);
+    anchorExclusions.push([anchorStart, orcaLog.read().length]);
     for (let index = 0; index < physicalShiftTabPresses; index += 1) {
       pressKey(true);
       await wait(1_250);
     }
     await wait(8_000);
     const debugBytes = orcaLog.read();
-    const focusDebug = debugBytes.subarray(focusLogOffset).toString('utf8');
+    const focusDebug = excludeAnchorWindows(debugBytes, focusLogOffset, anchorExclusions);
     const fullDebug = debugBytes.toString('utf8');
     const focusEvents = [...focusDebug.matchAll(
       /OBJECT EVENT: object:state-changed:focused for \[([^:\]]+): '([^']*)'\] in \[application: '([^']+)'\] \(1,\s*0,\s*0\)/gu
@@ -1216,6 +1242,7 @@ async function captureKeyboardAndOrca(
       stepCount: focusedNodes.length,
       distinctFocusedTargets: identities.size,
       namedFocusedTargets: named.length,
+      anchorExclusionWindowCount: anchorExclusions.length,
       trueFocusEventCount: focusEvents.length,
       announcementEventCount: announcementEvents.length,
       focusTrap,
