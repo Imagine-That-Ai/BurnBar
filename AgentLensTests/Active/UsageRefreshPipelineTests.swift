@@ -265,6 +265,48 @@ final class UsageRefreshPipelineTests: XCTestCase {
         )
     }
 
+    /// Pins the failure half of the ordering contract: when usage publication
+    /// fails, conversation indexing must not run at all.
+    ///
+    /// `persist` commits the invalidation deletes and the chunked inserts in
+    /// separate transactions, so a mid-flight failure can leave the usage table
+    /// partially published: some superseded rows deleted, some replacements
+    /// missing. Indexing against that state would enqueue projection jobs that
+    /// materialize incomplete totals. The pipeline must skip reconciliation and
+    /// surface the persistence error instead.
+    func test_publishUsageSkipsIndexingWhenPersistenceFails() async throws {
+        let queue = try DatabaseQueue()
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let probe = UsageVisibilityProbe(dataStore: store)
+        let pipeline = UsageRefreshPipeline(
+            parsers: [:],
+            dataStore: store,
+            orchestrator: probe,
+            existingUsages: [],
+            settings: RefreshSettingsSnapshot(conversationIndexingEnabled: true, snapshotAPIs: [])
+        )
+
+        var parsed = UsageRefreshPipeline.ParsedBatch()
+        parsed.allUsages = [
+            ViewTestFixtures.makeUsage(provider: .codex, sessionId: "parent#day-200")
+        ]
+        parsed.usageSessionIDsToDeleteByProvider = [.codex: ["parent"]]
+        parsed.allConversations = [makeConversationRecord(id: "Codex:persist-failure-probe")]
+
+        // Close the database so every write in `persist` fails.
+        try queue.close()
+
+        let published = await pipeline.publishUsageThenIndexConversations(parsed: parsed)
+
+        XCTAssertNotNil(published.persist.persistenceErrorMessage)
+        XCTAssertEqual(published.reconcile.indexedConversationChanges, 0)
+        let observed = await probe.observedUsageSessionIDs
+        XCTAssertNil(
+            observed,
+            "Conversation indexing must not run when usage publication failed"
+        )
+    }
+
     /// The background indexing pass reads with a checkpoint watermark and a byte
     /// budget, so its usage view is partial. It must never write usage rows —
     /// re-persisting them would let a background tick overwrite the totals the

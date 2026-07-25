@@ -62,7 +62,9 @@ struct UsageRefreshPipeline: Sendable {
     }
 
     /// Result of the ordered publish-then-index operation. Holding one is proof
-    /// that usage rows were committed before conversation indexing ran.
+    /// that usage rows were committed before conversation indexing ran, or,
+    /// when persistence failed, that indexing was deliberately skipped rather
+    /// than run against a partially published usage table.
     struct PublishResult: Sendable {
         var persist: PersistResult
         var reconcile: ReconcileResult
@@ -144,18 +146,29 @@ struct UsageRefreshPipeline: Sendable {
     /// already being read by projection jobs the indexer just enqueued — so
     /// totals computed in that window double-count. Persisting first closes it:
     /// by the time anything indexes, the tick's accounting has committed.
+    ///
+    /// When persistence fails the ordering contract cannot be satisfied at all:
+    /// the deletions and chunked inserts commit in separate transactions, so a
+    /// mid-flight failure can leave only some invalidations or replacements
+    /// applied. Indexing against that partially published state would enqueue
+    /// projection jobs that materialize incomplete totals, so reconciliation is
+    /// skipped and the persistence error is surfaced via `PublishResult.persist`.
     func publishUsageThenIndexConversations(parsed: ParsedBatch) async -> PublishResult {
         let persisted = await persist(parsed: parsed)
+        guard persisted.persistenceErrorMessage == nil else {
+            return PublishResult(persist: persisted, reconcile: ReconcileResult())
+        }
         let reconciled = await reconcile(parsed: parsed, afterPublishing: persisted)
         return PublishResult(persist: persisted, reconcile: reconciled)
     }
 
     /// Indexes conversation bodies.
     ///
-    /// `published` is an ordering token, not data: the only way to obtain a
-    /// `PersistResult` is to have run `persist`, so indexing cannot be scheduled
-    /// ahead of usage publication without the compiler noticing.
-    func reconcile(
+    /// `private` on purpose: `publishUsageThenIndexConversations` is the only
+    /// entry point to conversation indexing, so a caller cannot schedule
+    /// indexing ahead of (or instead of) usage publication. `published` keeps
+    /// the ordering explicit at the single call site inside this file.
+    private func reconcile(
         parsed: ParsedBatch,
         afterPublishing published: PersistResult
     ) async -> ReconcileResult {
