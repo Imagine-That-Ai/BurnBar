@@ -60,6 +60,9 @@ test('packaged session provisions and exercises the Linux accessibility stack', 
     'physical_tab_presses=28',
     'physical_shift_tab_presses=12',
     'focus_window_and_key',
+    'count_orca_focus_events',
+    'focus_retry_rounds < 3',
+    'events.length >= 10',
     'screenshot-linux-desktop-zoom-200-requested.png',
     'zoom-accessibility-evidence.json'
   ]) assert.ok(session.includes(marker), marker);
