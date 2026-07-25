@@ -959,7 +959,6 @@
 		6333ABE5A3238C1F69C92945 /* UpdaterLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ABDAF6C1F41A93B8F4F7963 /* UpdaterLogicTests.swift */; };
 		635F716A3D28B0B70E586F2D /* DatabaseWorkspaceView+AtlasMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53A11E00F24447CC8238787A /* DatabaseWorkspaceView+AtlasMode.swift */; };
 		6383BF72FD3FB4A3ECEE4067 /* ChartsReorderableGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2693AC969FE0927D8D2F5E93 /* ChartsReorderableGrid.swift */; };
-		638A9F86F4893416F50F515C /* KeyboardShortcutModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98EFFF4B8B8453D54D0CF833 /* KeyboardShortcutModifier.swift */; };
 		63AF507B79D62FED61F89BD8 /* ProviderPlanWizardView+SaveDelete.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87A5954682E0C8C338A70F99 /* ProviderPlanWizardView+SaveDelete.swift */; };
 		63C4461CC288512FF3734D38 /* HermesThinkingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 621714C8C1B72C08B9DBADC5 /* HermesThinkingView.swift */; };
 		63D64FD6AD1360EA4FFCF12B /* OrgRollupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACE96538BCDAB0CC4D2F435E /* OrgRollupView.swift */; };
@@ -2228,7 +2227,6 @@
 		E8A521DADE07CDB3D3733F9E /* CLIAgentSessionCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3F2671D55C0C3F0AE2D464B /* CLIAgentSessionCodecTests.swift */; };
 		E8AEDBF1B7134F10A72FD64B /* MediaFileTransferServiceFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE8A65F3FFA9A6C27C591F7B /* MediaFileTransferServiceFactory.swift */; };
 		E992BE14B4D42C58D062E741 /* FakeProviderConnectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7B8ECAC45F688E1CC07DE0 /* FakeProviderConnectionStore.swift */; };
-		E9981657A2BB3656DA9B104F /* AppearanceModePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C6DF0552835A8915F863E07 /* AppearanceModePickerView.swift */; };
 		E9A293ACB648F47E93AACF4A /* MacAppCheckAttestationReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53738B5DE4E7C80DF422D9F3 /* MacAppCheckAttestationReader.swift */; };
 		E9BD27265E936B766EA33D74 /* WindowManagerProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDF15866940B03A01BB77543 /* WindowManagerProtocol.swift */; };
 		EA0388FD961FFC9BAA57AEBB /* BudgetStatusChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47352011F283638AD9B842D8 /* BudgetStatusChip.swift */; };
@@ -2681,7 +2679,6 @@
 		0C25557AE303BC43C2190EAF /* QuotaDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaDetailSheet.swift; sourceTree = "<group>"; };
 		0C405D4A2571DBE2A1858A71 /* AuroraNavigationTrayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraNavigationTrayTests.swift; sourceTree = "<group>"; };
 		0C606B545F14DA75F0FC530D /* OpenClawService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawService.swift; sourceTree = "<group>"; };
-		0C6DF0552835A8915F863E07 /* AppearanceModePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceModePickerView.swift; sourceTree = "<group>"; };
 		0C73A865B0B3EF5D04D19AAC /* DatabaseEncryptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseEncryptionService.swift; sourceTree = "<group>"; };
 		0C8769865DEC19C242E09B86 /* HomeAssistantTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAssistantTokenStore.swift; sourceTree = "<group>"; };
 		0C891EF33130BE882923EE61 /* AgentWatchOverlayCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWatchOverlayCoordinator.swift; sourceTree = "<group>"; };
@@ -3982,7 +3979,6 @@
 		98A71431465B597389A908E4 /* CloudSyncSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncSettings.swift; sourceTree = "<group>"; };
 		98BE461D3783A71CD846FBF4 /* ChatSessionController+SearchHistoryNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatSessionController+SearchHistoryNavigation.swift"; sourceTree = "<group>"; };
 		98DF246A29C869F8230417F3 /* iPadNavigationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iPadNavigationUITests.swift; sourceTree = "<group>"; };
-		98EFFF4B8B8453D54D0CF833 /* KeyboardShortcutModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcutModifier.swift; sourceTree = "<group>"; };
 		98FA483858D036A27353D21C /* MediaFileTransferServiceFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaFileTransferServiceFactory.swift; sourceTree = "<group>"; };
 		99265E54D83E047023F0BF8D /* AppCustomization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCustomization.swift; sourceTree = "<group>"; };
 		994135AA874524D283195AE3 /* test_insightBriefCard.insightBriefCard-dark.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "test_insightBriefCard.insightBriefCard-dark.png"; sourceTree = "<group>"; };
@@ -5214,7 +5210,6 @@
 				D55C56DBED0079D80FA695F5 /* AgentsSettingsView.swift */,
 				340B74D7A132D7590AAA8EBA /* AlertsAndNotificationsViews.swift */,
 				0500AD8EAC28B3F3EC72BC39 /* AppearanceCorkboardSection.swift */,
-				0C6DF0552835A8915F863E07 /* AppearanceModePickerView.swift */,
 				EB449321F597484BAFFEEED7 /* AppearancePreviewCard.swift */,
 				D831AC1B07F53EEF02E2BD7E /* BudgetSettingsView.swift */,
 				CA1E34836ADB475D8A76353C /* ChatGatewaySettingsView.swift */,
@@ -6314,7 +6309,6 @@
 				3C8AC6887DC07E04FFF37CDB /* ChatAttachmentTray.swift */,
 				DB818CC1053F1EB776E992EB /* DashboardView.swift */,
 				94436F8B6A95D68EEAD42E77 /* iPadDevicesSettingsView.swift */,
-				98EFFF4B8B8453D54D0CF833 /* KeyboardShortcutModifier.swift */,
 				7B1AC994C633BFAD9F7FCC1D /* MobileProviderWizardView.swift */,
 				2E91EF1E420B345B6A666328 /* MobileWizardComponents.swift */,
 				02389211AEA157E320B3E95B /* ProviderConnectionsView.swift */,
@@ -10939,7 +10933,6 @@
 				1479493E185E0BE200D9AFFC /* IrohBlobKeyStore.swift in Sources */,
 				7B36E04A2EAAB1078DB45CCE /* IrohRelayKeyStore.swift in Sources */,
 				68429544D36ECB3909A68A9E /* IrohTransportAuditLogger.swift in Sources */,
-				638A9F86F4893416F50F515C /* KeyboardShortcutModifier.swift in Sources */,
 				E681332D13158F7734E94BDD /* LiquidGlass.swift in Sources */,
 				F7E77E9F9DA6A533352B32FB /* LiquidGlassButtonStyle.swift in Sources */,
 				DB1EF1CF3EEC0A6E9AA873A6 /* LiquidGlassFallback.swift in Sources */,
@@ -11649,7 +11642,6 @@
 				022C7662767DAA13D3AB3080 /* AppLogoView.swift in Sources */,
 				6C91E691DBAC08107A960049 /* AppearanceCorkboardSection.swift in Sources */,
 				DF0058DAE22D1FF1BA73C774 /* AppearanceMode.swift in Sources */,
-				E9981657A2BB3656DA9B104F /* AppearanceModePickerView.swift in Sources */,
 				2991E394CA9B2B6A6A565FF4 /* AppearancePreviewCard.swift in Sources */,
 				0281EB42CD63E74FEBEA8A63 /* AppearanceSettings.swift in Sources */,
 				E1881EBDE032114364492125 /* AppleRemoteDesktopRFBClient.swift in Sources */,
