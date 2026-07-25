@@ -897,9 +897,13 @@ test('crash after empty POST resumes pending discovery without a duplicate dispa
   assert.equal(base.calls.filter((call) => call.request.method === 'POST').length, 1);
 });
 
-test('state lock excludes live writers and reclaims a dead-process lock', () => {
+test('state lock excludes live writers and ignores only descriptor-validated dead owners', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'parity-dispatch-lock-'));
   const stateFile = path.join(root, 'state.json');
+  const lockDirectory = `${stateFile}.locks`;
+  const deadNonce = 'a'.repeat(32);
+  const deadName = `2147483647-${deadNonce}.lock`;
+  const deadFile = path.join(lockDirectory, deadName);
   try {
     const release = acquireStateLock(stateFile);
     assert.throws(
@@ -908,12 +912,14 @@ test('state lock excludes live writers and reclaims a dead-process lock', () => 
     );
     release();
     release();
+    assert.deepEqual(fs.readdirSync(lockDirectory), []);
 
-    fs.writeFileSync(`${stateFile}.lock`, JSON.stringify({
+    fs.writeFileSync(deadFile, JSON.stringify({
       schemaVersion: 1,
       pid: 2_147_483_647,
+      nonce: deadNonce,
       acquiredAt: '2026-07-24T13:00:00.000Z'
-    }));
+    }), { mode: 0o600 });
     const releaseRecovered = acquireStateLock(stateFile, {
       kill: () => {
         const error = new Error('no such process');
@@ -921,33 +927,60 @@ test('state lock excludes live writers and reclaims a dead-process lock', () => 
         throw error;
       }
     });
-    assert.equal(fs.existsSync(`${stateFile}.lock`), true);
+    assert.equal(fs.existsSync(deadFile), true);
+    assert.equal(fs.readdirSync(lockDirectory).length, 2);
     releaseRecovered();
-    assert.equal(fs.existsSync(`${stateFile}.lock`), false);
+    assert.deepEqual(fs.readdirSync(lockDirectory), [deadName]);
+    fs.unlinkSync(deadFile);
 
-    // A lock released between the exclusive-create failure and the owner
-    // read is re-acquired instead of reported as unreadable.
+    // An owner that releases after the directory scan is ignored by its
+    // descriptor open; the caller still retains its independently named lock.
+    fs.writeFileSync(deadFile, JSON.stringify({
+      schemaVersion: 1,
+      pid: 2_147_483_647,
+      nonce: deadNonce,
+      acquiredAt: '2026-07-24T13:00:00.000Z'
+    }), { mode: 0o600 });
     let openAttempts = 0;
     const releaseRaced = acquireStateLock(stateFile, {
       openSync: (...args) => {
         openAttempts += 1;
-        if (openAttempts === 1) {
-          const error = new Error('already exists');
-          error.code = 'EEXIST';
+        if (args[0] === deadFile) {
+          fs.unlinkSync(deadFile);
+          const error = new Error('vanished');
+          error.code = 'ENOENT';
           throw error;
         }
         return fs.openSync(...args);
-      },
-      readFileSync: () => {
-        const error = new Error('vanished');
-        error.code = 'ENOENT';
-        throw error;
       }
     });
     assert.equal(openAttempts, 2);
-    assert.equal(fs.existsSync(`${stateFile}.lock`), true);
+    assert.equal(fs.readdirSync(lockDirectory).length, 1);
     releaseRaced();
-    assert.equal(fs.existsSync(`${stateFile}.lock`), false);
+    assert.deepEqual(fs.readdirSync(lockDirectory), []);
+
+    const target = path.join(root, 'outside-lock');
+    fs.writeFileSync(target, '{}', { mode: 0o600 });
+    fs.symlinkSync(target, deadFile);
+    assert.throws(
+      () => acquireStateLock(stateFile),
+      /unreadable|symlink|ELOOP/u
+    );
+    fs.unlinkSync(deadFile);
+    assert.deepEqual(fs.readdirSync(lockDirectory), []);
+
+    fs.writeFileSync(deadFile, JSON.stringify({
+      schemaVersion: 1,
+      pid: 2_147_483_647,
+      nonce: deadNonce,
+      acquiredAt: '2026-07-24T13:00:00.000Z'
+    }), { mode: 0o644 });
+    assert.throws(
+      () => acquireStateLock(stateFile),
+      /owner-only bounded regular file/u
+    );
+    fs.unlinkSync(deadFile);
+    assert.deepEqual(fs.readdirSync(lockDirectory), []);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
