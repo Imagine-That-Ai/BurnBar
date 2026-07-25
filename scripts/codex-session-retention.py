@@ -95,17 +95,23 @@ def growth_rate_gb_per_day(root: Path, window_days: int = 7) -> float:
     This is the number that decides whether a policy actually bounds the
     corpus: retention only helps if the steady state it implies is smaller
     than what the fleet generates.
+
+    Archives written by an earlier sweep count too, at their estimated
+    pre-compression size — once compression is running, most of the window
+    is `*.jsonl.gz`, and measuring only the raw tail would under-report the
+    generation rate and over-promise the steady state.
     """
     now = time.time()
     cutoff = now - window_days * 86400
-    total = 0
-    for path in root.rglob("*.jsonl"):
-        try:
-            st = path.stat()
-        except OSError:
-            continue
-        if st.st_mtime >= cutoff:
-            total += st.st_size
+    total = 0.0
+    for pattern, scale in (("*.jsonl", 1.0), ("*.jsonl.gz", ASSUMED_GZIP_RATIO)):
+        for path in root.rglob(pattern):
+            try:
+                st = path.stat()
+            except OSError:
+                continue
+            if st.st_mtime >= cutoff:
+                total += st.st_size * scale
     return total / window_days / 2**30
 
 
@@ -120,9 +126,11 @@ def open_files(paths: list[Path]) -> set[Path]:
     """Paths currently held open by some process, via a single lsof batch.
 
     Fails closed: any probe that does not provably complete marks the whole
-    chunk as held. lsof exits 0 when it lists open files and 1 when none of
-    the named files are open; any other exit status, or diagnostics on
-    stderr, means the check itself failed rather than "nothing is open".
+    chunk as held. lsof's exit status alone cannot be trusted — it exits 1
+    both when none of the named files are open and when it listed some of
+    them but could not resolve the rest — so the *listing* decides what is
+    held, while an unexpected exit status or any diagnostic on stderr means
+    the check itself failed rather than "nothing is open".
     """
     if not paths:
         return set()
@@ -141,7 +149,7 @@ def open_files(paths: list[Path]) -> set[Path]:
             # Fail closed: if we cannot prove a file is unused, skip the chunk.
             held.update(paths[i : i + 400])
             continue
-        if proc.returncode not in (0, 1) or (proc.returncode == 1 and proc.stderr.strip()):
+        if proc.returncode not in (0, 1) or proc.stderr.strip():
             held.update(paths[i : i + 400])
             continue
         for line in proc.stdout.splitlines():

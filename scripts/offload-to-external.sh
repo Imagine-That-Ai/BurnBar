@@ -45,21 +45,31 @@ if [[ -e "$SRC/.git" ]]; then
 fi
 
 # Open-handle probe fails closed: an answer lsof could not produce is not
-# "no open files". lsof exits 0 when it lists open files and 1 when it finds
-# none; any other status, or diagnostics on stderr, means the probe itself
-# failed and the offload must not proceed.
+# "no open files". Note that lsof's *exit status* is not a usable signal here:
+# `lsof +D` exits 1 both when it finds nothing and when it successfully lists
+# open files (verified on macOS lsof 4.91 — exit status 1 only means "something
+# in the request could not be listed"). So the listing decides whether anything is
+# open, and the status/stderr only decide whether the probe itself completed:
+# an unexpected status or any diagnostic on stderr aborts the offload.
 command -v lsof >/dev/null 2>&1 \
   || { echo "error: lsof not found — cannot prove nothing has $SRC open"; exit 2; }
 LSOF_ERR_FILE="$(mktemp)"
 LSOF_RC=0
-LSOF_OUT="$(lsof +D "$SRC" 2>"$LSOF_ERR_FILE")" || LSOF_RC=$?
+# -Fn: one `n<absolute path>` line per open file, no header to skip.
+LSOF_OUT="$(lsof -Fn +D "$SRC" 2>"$LSOF_ERR_FILE")" || LSOF_RC=$?
 LSOF_DIAG="$(cat "$LSOF_ERR_FILE")"
 rm -f "$LSOF_ERR_FILE"
-if (( LSOF_RC == 0 )); then
-  OPEN=$(print -r -- "$LSOF_OUT" | tail -n +2 | wc -l | tr -d ' ')
-  echo "error: $OPEN open file handles under $SRC — close them first"
+typeset -a LSOF_OPEN
+LSOF_OPEN=()
+for LSOF_LINE in ${(f)LSOF_OUT}; do
+  [[ "$LSOF_LINE" == n/* ]] && LSOF_OPEN+=("${LSOF_LINE#n}")
+done
+if (( ${#LSOF_OPEN} > 0 )); then
+  echo "error: ${#LSOF_OPEN} open file handles under $SRC — close them first"
+  print -rl -- ${LSOF_OPEN[1,5]}
   exit 2
-elif (( LSOF_RC != 1 )) || [[ -n "$LSOF_DIAG" ]]; then
+fi
+if (( LSOF_RC != 0 && LSOF_RC != 1 )) || [[ -n "$LSOF_DIAG" ]]; then
   echo "error: lsof could not inspect $SRC (rc=$LSOF_RC)${LSOF_DIAG:+: $LSOF_DIAG}"
   exit 2
 fi
