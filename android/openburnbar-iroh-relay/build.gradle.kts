@@ -120,7 +120,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
-    testImplementation("io.mockk:mockk:1.13.13")
+    testImplementation("io.mockk:mockk:1.14.11")
     testImplementation("org.json:json:20240303")
     // Ed25519 signer for tests only — production code is verify-only.
     testImplementation("net.i2p.crypto:eddsa:0.3.0")

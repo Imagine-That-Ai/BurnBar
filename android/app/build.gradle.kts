@@ -736,7 +736,7 @@ dependencies {
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
-    testImplementation("io.mockk:mockk:1.13.13")
+    testImplementation("io.mockk:mockk:1.14.11")
     testImplementation("org.signal:libsignal-client:0.94.4")
     // Android's JNA AAR supplies only device JNI slices. Activated Rust-mode
     // JVM contracts need the desktop JAR's host libjnidispatch resource.
@@ -758,7 +758,7 @@ dependencies {
     // Mockk on-device flavor — pure-JVM `io.mockk:mockk` brings in
     // bytebuddy classes the ART runtime can't load, so the instrumented
     // suites use `mockk-android` instead.
-    androidTestImplementation("io.mockk:mockk-android:1.13.13")
+    androidTestImplementation("io.mockk:mockk-android:1.14.11")
 }
 
 detekt {
