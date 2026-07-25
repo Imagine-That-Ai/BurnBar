@@ -1,0 +1,1 @@
+﻿{"at":"2026-07-10T02:46:59.660446+00:00","eventName":"recovery-AccessDenied","databasePath":"C:\\WINDOWS\\SystemTemp\\obb-storage-d4ed31c7496e4ca393dbcb1f9b396d96\\openburnbar.sqlite","keyProvenance":"redacted","schemaEndpoint":null,"migrationCount":null,"pathOwner":null,"errorType":"UnauthorizedAccessException","errorMessage":"Injected access denied fault."}

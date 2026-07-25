@@ -1,0 +1,1 @@
+﻿{"at":"2026-07-10T02:46:59.6901415+00:00","eventName":"recovery-LockedFile","databasePath":"C:\\WINDOWS\\SystemTemp\\obb-storage-eae2601abc0142069ae7236acf97b543\\openburnbar.sqlite","keyProvenance":"redacted","schemaEndpoint":null,"migrationCount":null,"pathOwner":null,"errorType":"IOException","errorMessage":"Injected locked file fault."}
