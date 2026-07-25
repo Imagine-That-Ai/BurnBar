@@ -119,6 +119,54 @@ def test_present_root_manifests_must_declare_agpl_even_at_graft_root(tmp_path, m
     assert not posture.check_package_lock_license().ok
 
 
+def test_package_lock_mirrors_present_manifest_without_workspaces(tmp_path, monkeypatch) -> None:
+    # The live shape: a root manifest exists for Dependabot ownership and
+    # deliberately declares no workspaces (a root `workspaces` field hijacks
+    # `npm ci` inside packages/*). The lockfile must mirror it.
+    root = _graft_root(tmp_path, boundary_line=True)
+    (root / "package.json").write_text(
+        _json.dumps({"name": "BurnBar", "private": True, "license": "AGPL-3.0-only"}), encoding="utf-8"
+    )
+    (root / "package-lock.json").write_text(
+        _json.dumps({"packages": {"": {"name": "BurnBar", "license": "AGPL-3.0-only"}}}), encoding="utf-8"
+    )
+    monkeypatch.setattr(posture, "ROOT", root)
+
+    assert posture.check_package_license().ok
+    assert posture.check_package_lock_license().ok
+
+
+def test_package_lock_workspaces_must_not_diverge_from_manifest(tmp_path, monkeypatch) -> None:
+    # A lockfile smuggling a workspaces index the manifest does not declare
+    # (or vice versa) is a divergent root shape and must fail.
+    root = _graft_root(tmp_path, boundary_line=True)
+    (root / "package.json").write_text(
+        _json.dumps({"name": "BurnBar", "private": True, "license": "AGPL-3.0-only"}), encoding="utf-8"
+    )
+    (root / "package-lock.json").write_text(
+        _json.dumps(
+            {"packages": {"": {"name": "BurnBar", "license": "AGPL-3.0-only", "workspaces": ["packages/*"]}}}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(posture, "ROOT", root)
+
+    check = posture.check_package_lock_license()
+    assert not check.ok
+    assert "disagree" in check.details
+
+
+def test_lockfile_only_root_still_requires_workspaces_index(tmp_path, monkeypatch) -> None:
+    # The historical shape (no root manifest) keeps its original requirement.
+    root = _graft_root(tmp_path, boundary_line=True)
+    (root / "package-lock.json").write_text(
+        _json.dumps({"packages": {"": {"name": "BurnBar", "license": "AGPL-3.0-only"}}}), encoding="utf-8"
+    )
+    monkeypatch.setattr(posture, "ROOT", root)
+
+    assert not posture.check_package_lock_license().ok
+
+
 def test_app_legal_surface_skips_only_when_surface_tree_is_absent(tmp_path, monkeypatch) -> None:
     root = _graft_root(tmp_path, boundary_line=True)
     monkeypatch.setattr(posture, "ROOT", root)
