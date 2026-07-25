@@ -680,7 +680,10 @@ final class MercuryRouterTests: XCTestCase {
     }
 
     func testExistingPeerGrantAutoAcceptDoesNotRenewGrant() async throws {
-        var now = Date(timeIntervalSince1970: 1_700_000_000)
+        // Keep this grant on the live calendar because the production
+        // UserDefaults observer independently prunes expired persisted grants.
+        // The test advances only the injected router clock below.
+        var now = Date()
         let (router, sink, consentStore) = makeRouterWithConsentStore(
             startScreenShare: { _, _, _, _, _, _, _, _ in },
             clock: { now }

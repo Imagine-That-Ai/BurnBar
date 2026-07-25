@@ -596,32 +596,84 @@ export function acquireStateLock(stateFile, dependencies = {}) {
   const openSyncImpl = dependencies.openSync ?? fs.openSync;
   const writeFileSyncImpl = dependencies.writeFileSync ?? fs.writeFileSync;
   const readFileSyncImpl = dependencies.readFileSync ?? fs.readFileSync;
+  const fstatSyncImpl = dependencies.fstatSync ?? fs.fstatSync;
   const closeSyncImpl = dependencies.closeSync ?? fs.closeSync;
+  const readdirSyncImpl = dependencies.readdirSync ?? fs.readdirSync;
+  const lstatSyncImpl = dependencies.lstatSync ?? fs.lstatSync;
+  const statSyncImpl = dependencies.statSync ?? fs.statSync;
   const unlinkSyncImpl = dependencies.unlinkSync ?? fs.unlinkSync;
   const killImpl = dependencies.kill ?? process.kill.bind(process);
+  const uid = dependencies.uid ?? process.getuid?.();
   const pid = dependencies.pid ?? process.pid;
-  const lockFile = `${stateFile}.lock`;
-  mkdirSyncImpl(path.dirname(lockFile), { recursive: true });
+  const nonce = dependencies.nonce ?? crypto.randomBytes(16).toString('hex');
+  if (!Number.isSafeInteger(pid) || pid <= 0 || !/^[a-f0-9]{32}$/u.test(nonce)) {
+    throw new Error('dispatcher state lock identity is invalid');
+  }
+  const lockDirectory = `${stateFile}.locks`;
+  mkdirSyncImpl(lockDirectory, { recursive: true, mode: 0o700 });
+  const directoryLink = lstatSyncImpl(lockDirectory);
+  const directoryStat = statSyncImpl(lockDirectory);
+  if (!directoryLink.isDirectory() || directoryLink.isSymbolicLink()
+    || (uid !== undefined && directoryStat.uid !== uid) || (directoryStat.mode & 0o077) !== 0) {
+    throw new Error('dispatcher state lock directory must be owner-only and non-symlinked');
+  }
+  const lockName = `${pid}-${nonce}.lock`;
+  const lockFile = path.join(lockDirectory, lockName);
+  const descriptor = openSyncImpl(lockFile, 'wx', 0o600);
+  try {
+    writeFileSyncImpl(descriptor, `${JSON.stringify({
+      schemaVersion: 1,
+      pid,
+      nonce,
+      acquiredAt: new Date(dependencies.now?.() ?? Date.now()).toISOString()
+    })}\n`, { encoding: 'utf8' });
+  } catch (error) {
+    closeSyncImpl(descriptor);
+    unlinkSyncImpl(lockFile);
+    throw error;
+  }
+  closeSyncImpl(descriptor);
 
-  let descriptor;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
     try {
-      descriptor = openSyncImpl(lockFile, 'wx', 0o600);
-      break;
+      unlinkSyncImpl(lockFile);
     } catch (error) {
-      if (error?.code !== 'EEXIST' || attempt > 0) throw error;
+      if (error?.code !== 'ENOENT') throw error;
+    }
+  };
+  try {
+    const entries = readdirSyncImpl(lockDirectory).sort();
+    for (const entry of entries) {
+      if (entry === lockName) continue;
+      const identity = entry.match(/^([1-9][0-9]*)-([a-f0-9]{32})\.lock$/u);
+      if (!identity) throw new Error(`dispatcher state lock directory contains invalid entry ${entry}`);
+      const otherFile = path.join(lockDirectory, entry);
+      let otherDescriptor;
       let owner;
       try {
-        owner = JSON.parse(readFileSyncImpl(lockFile, 'utf8'));
+        otherDescriptor = openSyncImpl(
+          otherFile,
+          fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0),
+          0o600
+        );
+        const ownerStat = fstatSyncImpl(otherDescriptor);
+        if (!ownerStat.isFile() || (uid !== undefined && ownerStat.uid !== uid)
+          || (ownerStat.mode & 0o077) !== 0 || ownerStat.size <= 0 || ownerStat.size > 4096) {
+          throw new Error('dispatcher state lock is not an owner-only bounded regular file');
+        }
+        owner = JSON.parse(readFileSyncImpl(otherDescriptor, 'utf8'));
       } catch (readError) {
-        // The lock can legitimately vanish between the exclusive-create
-        // failure and this read (the owner released it); retry the atomic
-        // acquisition instead of assuming the checked state still holds.
         if (readError?.code === 'ENOENT') continue;
         throw new Error(`dispatcher state lock is unreadable: ${readError.message}`);
+      } finally {
+        if (otherDescriptor !== undefined) closeSyncImpl(otherDescriptor);
       }
-      if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0) {
-        throw new Error('dispatcher state lock has an invalid owner');
+      if (owner?.schemaVersion !== 1 || owner.pid !== Number(identity[1])
+        || owner.nonce !== identity[2]) {
+        throw new Error('dispatcher state lock has an invalid owner identity');
       }
       let ownerAlive = true;
       try {
@@ -633,29 +685,15 @@ export function acquireStateLock(stateFile, dependencies = {}) {
       if (ownerAlive) {
         throw new Error(`dispatcher state is locked by active process ${owner.pid}`);
       }
-      unlinkSyncImpl(lockFile);
+      // Dead nonce-bound owners are ignored but never deleted automatically.
+      // Avoiding a pathname mutation after descriptor validation keeps stale
+      // recovery race-free; a later trusted maintenance pass may prune them.
     }
-  }
-  if (descriptor === undefined) throw new Error('could not acquire dispatcher state lock');
-  try {
-    writeFileSyncImpl(descriptor, `${JSON.stringify({
-      schemaVersion: 1,
-      pid,
-      acquiredAt: new Date(dependencies.now?.() ?? Date.now()).toISOString()
-    })}\n`, { encoding: 'utf8' });
+    return release;
   } catch (error) {
-    closeSyncImpl(descriptor);
-    unlinkSyncImpl(lockFile);
+    release();
     throw error;
   }
-
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    closeSyncImpl(descriptor);
-    unlinkSyncImpl(lockFile);
-  };
 }
 
 function stateDocument(context, dispatches) {

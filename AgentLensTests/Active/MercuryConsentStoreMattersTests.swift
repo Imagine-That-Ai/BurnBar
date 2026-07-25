@@ -296,9 +296,16 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
         )
         XCTAssertEqual(liveStore.grants.count, 1)
 
+        let grantsCleared = expectation(description: "external opt-out clears the live grant ledger")
+        let grantsObservation = liveStore.$grants
+            .dropFirst()
+            .filter(\.isEmpty)
+            .prefix(1)
+            .sink { _ in grantsCleared.fulfill() }
         defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
         NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: defaults)
-        await Task.yield()
+        await fulfillment(of: [grantsCleared], timeout: 1.0)
+        withExtendedLifetime(grantsObservation) {}
 
         XCTAssertFalse(liveStore.rememberAcceptedMirrorPeers)
         XCTAssertTrue(liveStore.grants.isEmpty)

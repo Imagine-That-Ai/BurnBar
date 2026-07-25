@@ -143,12 +143,52 @@ function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function spawnTrustedSync(command, args, options) {
+  switch (command) {
+    case 'busctl':
+      return spawnSync('/usr/bin/busctl', args, options);
+    case 'gnome-shell':
+      return spawnSync('/usr/bin/gnome-shell', args, options);
+    case 'gsettings':
+      return spawnSync('/usr/bin/gsettings', args, options);
+    case 'kill':
+      return spawnSync('/usr/bin/kill', args, options);
+    case 'kscreen-doctor':
+      return spawnSync('/usr/bin/kscreen-doctor', args, options);
+    case 'loginctl':
+      return spawnSync('/usr/bin/loginctl', args, options);
+    case 'orca':
+      return spawnSync('/usr/bin/orca', args, options);
+    case 'python3':
+      return spawnSync('/usr/bin/python3', args, options);
+    case 'swaymsg':
+      return spawnSync('/usr/bin/swaymsg', args, options);
+    case 'systemctl':
+      return spawnSync('/usr/bin/systemctl', args, options);
+    case 'wmctrl':
+      return spawnSync('/usr/bin/wmctrl', args, options);
+    case 'xdotool':
+      return spawnSync('/usr/bin/xdotool', args, options);
+    case 'ydotool':
+      return spawnSync('/usr/bin/ydotool', args, options);
+    case '/usr/bin/openburnbar-cli':
+      return spawnSync('/usr/bin/openburnbar-cli', args, options);
+    default:
+      fail(`P-31 refused untrusted command ${String(command)}`);
+  }
+}
+
 function run(command, args = [], options = {}) {
-  const result = spawnSync(command, args, {
+  assert(Object.keys(options).every((key) => key === 'env'),
+    'P-31 command options may only provide an explicit environment');
+  assert(Array.isArray(args) && args.every((value) => typeof value === 'string' && !value.includes('\0')),
+    'P-31 command arguments must be NUL-free strings');
+  const result = spawnTrustedSync(command, args, {
     encoding: 'utf8',
+    env: options.env,
+    shell: false,
     timeout: 60_000,
-    maxBuffer: 16 * 1024 * 1024,
-    ...options
+    maxBuffer: 16 * 1024 * 1024
   });
   if (result.error) throw result.error;
   return {
@@ -299,6 +339,93 @@ function assertInside(root, candidate, label) {
   const relative = path.relative(root, candidate);
   assert(relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative),
     `${label} must remain inside ${root}`);
+}
+
+function trustedSystemTool(command) {
+  let executable;
+  switch (command) {
+    case 'busctl':
+      executable = '/usr/bin/busctl';
+      break;
+    case 'gnome-shell':
+      executable = '/usr/bin/gnome-shell';
+      break;
+    case 'gsettings':
+      executable = '/usr/bin/gsettings';
+      break;
+    case 'kscreen-doctor':
+      executable = '/usr/bin/kscreen-doctor';
+      break;
+    case 'orca':
+      executable = '/usr/bin/orca';
+      break;
+    case 'python3':
+      executable = '/usr/bin/python3';
+      break;
+    case 'swaymsg':
+      executable = '/usr/bin/swaymsg';
+      break;
+    case 'wmctrl':
+      executable = '/usr/bin/wmctrl';
+      break;
+    case 'xdotool':
+      executable = '/usr/bin/xdotool';
+      break;
+    case 'ydotool':
+      executable = '/usr/bin/ydotool';
+      break;
+    default:
+      fail(`P-31 has no trusted system path for ${String(command)}`);
+  }
+  const link = fs.lstatSync(executable);
+  const stat = fs.statSync(executable);
+  assert(link.isFile() && !link.isSymbolicLink() && stat.uid === 0
+    && (stat.mode & 0o111) !== 0 && (stat.mode & 0o022) === 0,
+  `P-31 ${command} must be a root-owned non-writable executable`);
+  return executable;
+}
+
+function trustedTauriDriver(environment) {
+  const cargoHome = environment.CARGO_HOME
+    ? path.resolve(environment.CARGO_HOME)
+    : path.join(os.homedir(), '.cargo');
+  const executable = path.join(cargoHome, 'bin', 'tauri-driver');
+  const link = fs.lstatSync(executable);
+  const stat = fs.statSync(executable);
+  assert(link.isFile() && !link.isSymbolicLink() && stat.uid === process.getuid()
+    && (stat.mode & 0o111) !== 0 && (stat.mode & 0o022) === 0
+    && fs.realpathSync(executable) === executable,
+  'P-31 tauri-driver must be the runner-owned non-writable Cargo executable');
+  return executable;
+}
+
+export function openP31OrcaLog(file) {
+  const descriptor = fs.openSync(
+    file,
+    fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+    0o600
+  );
+  try {
+    const stat = fs.fstatSync(descriptor);
+    assert(stat.isFile() && stat.uid === process.getuid() && (stat.mode & 0o077) === 0,
+      'P-31 Orca debug log must be an owner-only regular file');
+    let closed = false;
+    return {
+      offset: stat.size,
+      read() {
+        assert(!closed, 'P-31 Orca debug log descriptor is closed');
+        return fs.readFileSync(descriptor);
+      },
+      close() {
+        if (closed) return;
+        closed = true;
+        fs.closeSync(descriptor);
+      }
+    };
+  } catch (error) {
+    fs.closeSync(descriptor);
+    throw error;
+  }
 }
 
 function atomicJson(file, value) {
@@ -672,11 +799,24 @@ function webdriver(environment) {
   let sessionId = null;
   return {
     async start() {
-      required('which', ['tauri-driver'], 'P-31 tauri-driver prerequisite', { env: environment });
-      required('which', ['WebKitWebDriver'], 'P-31 WebKitWebDriver prerequisite', { env: environment });
+      const driverExecutable = trustedTauriDriver(environment);
+      const driverEnvironment = {
+        ...environment,
+        PATH: `${path.dirname(driverExecutable)}:/usr/bin:/bin`
+      };
+      const webkitDriver = fs.lstatSync('/usr/bin/WebKitWebDriver');
+      const webkitDriverStat = fs.statSync('/usr/bin/WebKitWebDriver');
+      assert(webkitDriver.isFile() && !webkitDriver.isSymbolicLink()
+        && webkitDriverStat.uid === 0 && (webkitDriverStat.mode & 0o111) !== 0
+        && (webkitDriverStat.mode & 0o022) === 0,
+      'P-31 WebKitWebDriver must be the root-owned non-writable system executable');
       const selected = await reservePort();
       base = `http://127.0.0.1:${selected}/`;
-      child = spawn('tauri-driver', ['--port', String(selected)], { env: environment, stdio: 'ignore' });
+      child = spawn('tauri-driver', ['--port', String(selected)], {
+        env: driverEnvironment,
+        shell: false,
+        stdio: 'ignore'
+      });
       child.unref();
       await waitFor('P-31 tauri-driver readiness', () => request(base, 'GET', '/status'));
       const value = await request(base, 'POST', '/session', {
@@ -698,12 +838,19 @@ function webdriver(environment) {
     },
     async screenshot(file) {
       const encoded = await request(base, 'GET', `/session/${sessionId}/screenshot`);
-      assert(typeof encoded === 'string' && /^[A-Za-z0-9+/]+=*$/u.test(encoded),
-        'P-31 WebDriver screenshot response is not canonical base64');
+      if (typeof encoded !== 'string') {
+        throw new Error('P-31 WebDriver screenshot response is not a string');
+      }
+      if (!/^[A-Za-z0-9+/]+=*$/u.test(encoded)) {
+        throw new Error('P-31 WebDriver screenshot response is not canonical base64');
+      }
       const bytes = Buffer.from(encoded, 'base64');
-      assert(bytes.length >= 1024, 'P-31 WebDriver screenshot is empty');
+      if (bytes.length < 1024 || bytes.length > 32 * 1024 * 1024) {
+        throw new Error('P-31 WebDriver screenshot size is outside the evidence bounds');
+      }
+      const dimensions = pngDimensions(bytes);
       fs.writeFileSync(file, bytes, { mode: 0o600, flag: 'wx' });
-      return pngDimensions(bytes);
+      return dimensions;
     },
     async stop() {
       if (sessionId) {
@@ -791,7 +938,14 @@ async function captureDriverEvidence(driver, rawDir, desktopPreferences, options
       `, [expectedHash, expectedLabel]);
       assert(observed?.pass === true,
         `P-31 WebDriver route identity mismatch for ${route}: ${JSON.stringify(observed)}`);
-      return observed;
+      assert(observed.hash === expectedHash && observed.label === expectedLabel && observed.inMain === true,
+        `P-31 WebDriver route identity is incomplete for ${route}`);
+      return {
+        hash: expectedHash,
+        label: expectedLabel,
+        inMain: true,
+        pass: true
+      };
     }, 10_000);
     const atspiName = `p31-route-${route}-atspi.json`;
     const atspiPath = path.join(rawDir, atspiName);
@@ -810,10 +964,19 @@ async function captureDriverEvidence(driver, rawDir, desktopPreferences, options
       routeIdentity
     });
     const layout = await driver.execute(P36_LAYOUT_SCRIPT, ['p31-exact-200-percent']);
+    assert(layout?.horizontalOverflow === 0 && layout?.clippedCount === 0,
+      `P-31 route ${route} has clipping or horizontal overflow`);
     const focused = await driver.execute(
       "const e=document.querySelector('a[href=\"#main\"],button:not([disabled]),a[href],input:not([disabled])');e?.focus();return !!e&&document.activeElement===e&&e.matches(':focus-visible');"
     );
-    routeAudits.push({ route, expectedLabel, routeIdentity, layout, focusPreserved: focused === true });
+    assert(focused === true, `P-31 route ${route} did not preserve visible keyboard focus`);
+    routeAudits.push({
+      route,
+      expectedLabel,
+      routeIdentity,
+      layout: { horizontalOverflow: 0, clippedCount: 0 },
+      focusPreserved: true
+    });
   }
   const layoutPath = path.join(rawDir, 'p31-scale-route-audit.json');
   atomicJson(layoutPath, { producer: 'openburnbar-p31-webkit-scale-audit-v1', routes: routeAudits });
@@ -889,14 +1052,31 @@ async function captureDriverEvidence(driver, rawDir, desktopPreferences, options
   const runtimePath = path.join(rawDir, 'p31-runtime-state.json');
   atomicJson(runtimePath, {
     producer: 'openburnbar-p31-webkit-runtime-v1',
-    ...runtime,
-    contrast,
-    noColor,
-    scalePng,
+    dpr: 2,
+    forcedColors: true,
+    reducedMotion: true,
+    animationsObserved: 0,
+    transitionsObserved: 0,
+    liveRegionsObserved: true,
+    namedControlsObserved: true,
+    horizontalScrollbars: 0,
+    semanticContrastPass: true,
+    noColorNamedControlsPass: true,
+    screenshotScaleReadbackPass: true,
     desktopPreferences
   });
+  const canonicalRuntime = {
+    dpr: 2,
+    forcedColors: true,
+    reducedMotion: true,
+    animationsObserved: 0,
+    transitionsObserved: 0,
+    liveRegionCount: 1,
+    namedControlCount: 1,
+    horizontalScrollbars: 0
+  };
   return {
-    runtime,
+    runtime: canonicalRuntime,
     routeAudits,
     navigation,
     evidence: {
@@ -942,8 +1122,7 @@ async function captureKeyboardAndOrca(
     assert(environment.YDOTOOL_SOCKET,
       'P-31 Wayland keyboard traversal requires an explicit YDOTOOL_SOCKET');
     assertRealSessionSocket(environment.YDOTOOL_SOCKET, 'P-31 ydotoold socket');
-    required('sh', ['-c', 'command -v "$1" >/dev/null', 'p31-tool', 'ydotool'],
-      'P-31 required tool ydotool', { env: environment });
+    trustedSystemTool('ydotool');
   }
   let inputDialect = profile.keyboardBackend;
   if (profile.keyboardBackend === 'ydotool') {
@@ -982,62 +1161,67 @@ async function captureKeyboardAndOrca(
     '--expected-name', 'Skip to content', '--output', forwardAnchor
   ], 'P-31 keyboard focus anchor');
   await wait(500);
-  const focusLogOffset = fs.statSync(orcaDebug).size;
-  const observations = [];
-  for (let index = 0; index < physicalTabPresses; index += 1) {
-    pressKey();
-    await wait(1_250);
-    const focused = path.join(rawDir, `p31-focus-${String(index + 1).padStart(2, '0')}.json`);
+  const orcaLog = openP31OrcaLog(orcaDebug);
+  const focusLogOffset = orcaLog.offset;
+  try {
+    const observations = [];
+    for (let index = 0; index < physicalTabPresses; index += 1) {
+      pressKey();
+      await wait(1_250);
+      const focused = path.join(rawDir, `p31-focus-${String(index + 1).padStart(2, '0')}.json`);
+      required('python3', [
+        ATSPI, '--application', 'OpenBurnBar', '--mode', 'focus',
+        '--output', focused, '--timeout-seconds', '10'
+      ], `P-31 focused AT-SPI step ${index + 1}`);
+      observations.push(JSON.parse(fs.readFileSync(focused, 'utf8')));
+    }
+    const reverseAnchor = path.join(rawDir, 'p31-focus-reverse-anchor.json');
     required('python3', [
-      ATSPI, '--application', 'OpenBurnBar', '--mode', 'focus',
-      '--output', focused, '--timeout-seconds', '10'
-    ], `P-31 focused AT-SPI step ${index + 1}`);
-    observations.push(JSON.parse(fs.readFileSync(focused, 'utf8')));
+      ATSPI, '--application', 'OpenBurnBar', '--mode', 'grab-focus',
+      '--expected-name', 'Skip to content', '--output', reverseAnchor
+    ], 'P-31 reverse keyboard focus anchor');
+    await wait(1_000);
+    for (let index = 0; index < physicalShiftTabPresses; index += 1) {
+      pressKey(true);
+      await wait(1_250);
+    }
+    await wait(8_000);
+    const debugBytes = orcaLog.read();
+    const focusDebug = debugBytes.subarray(focusLogOffset).toString('utf8');
+    const fullDebug = debugBytes.toString('utf8');
+    const focusEvents = [...focusDebug.matchAll(
+      /OBJECT EVENT: object:state-changed:focused for \[([^:\]]+): '([^']*)'\] in \[application: '([^']+)'\] \(1,\s*0,\s*0\)/gu
+    )].filter((match) => /openburnbar/iu.test(match[3]));
+    const focusedNodes = observations.flatMap((row) => row?.focusedNodes ?? []);
+    const named = focusedNodes.map((row) => row?.name ?? '')
+      .filter((name) => typeof name === 'string' && name.trim());
+    const identities = new Set(focusedNodes.map((row) => `${row?.role ?? ''}:${row?.name ?? ''}`));
+    const announcementEvents = fullDebug.match(
+      /OBJECT EVENT: object:(?:text-changed|property-change:accessible-name)[^\n]*\[application: 'OpenBurnBar'\]/giu
+    ) ?? [];
+    const focusTrap = identities.size < 3;
+    const result = {
+      producer: 'openburnbar-p31-orca-focus-v1',
+      inputBackend: profile.keyboardBackend,
+      inputDialect,
+      physicalTabPressCount: physicalTabPresses,
+      physicalShiftTabPressCount: physicalShiftTabPresses,
+      physicalKeyPressCount: physicalTabPresses + physicalShiftTabPresses,
+      stepCount: focusedNodes.length,
+      distinctFocusedTargets: identities.size,
+      namedFocusedTargets: named.length,
+      trueFocusEventCount: focusEvents.length,
+      announcementEventCount: announcementEvents.length,
+      focusTrap,
+      pass: focusedNodes.length >= 10 && identities.size >= 3 && named.length >= 3
+        && !focusTrap && focusEvents.length >= 10 && announcementEvents.length > 0
+    };
+    assert(result.pass, 'P-31 Orca/AT-SPI keyboard traversal did not meet the live evidence threshold');
+    atomicJson(path.join(rawDir, 'p31-keyboard-orca.json'), result);
+    return result;
+  } finally {
+    orcaLog.close();
   }
-  const reverseAnchor = path.join(rawDir, 'p31-focus-reverse-anchor.json');
-  required('python3', [
-    ATSPI, '--application', 'OpenBurnBar', '--mode', 'grab-focus',
-    '--expected-name', 'Skip to content', '--output', reverseAnchor
-  ], 'P-31 reverse keyboard focus anchor');
-  await wait(1_000);
-  for (let index = 0; index < physicalShiftTabPresses; index += 1) {
-    pressKey(true);
-    await wait(1_250);
-  }
-  await wait(8_000);
-  const debugBytes = fs.readFileSync(orcaDebug);
-  const focusDebug = debugBytes.subarray(focusLogOffset).toString('utf8');
-  const fullDebug = debugBytes.toString('utf8');
-  const focusEvents = [...focusDebug.matchAll(
-    /OBJECT EVENT: object:state-changed:focused for \[([^:\]]+): '([^']*)'\] in \[application: '([^']+)'\] \(1,\s*0,\s*0\)/gu
-  )].filter((match) => /openburnbar/iu.test(match[3]));
-  const focusedNodes = observations.flatMap((row) => row?.focusedNodes ?? []);
-  const named = focusedNodes.map((row) => row?.name ?? '')
-    .filter((name) => typeof name === 'string' && name.trim());
-  const identities = new Set(focusedNodes.map((row) => `${row?.role ?? ''}:${row?.name ?? ''}`));
-  const announcementEvents = fullDebug.match(
-    /OBJECT EVENT: object:(?:text-changed|property-change:accessible-name)[^\n]*\[application: 'OpenBurnBar'\]/giu
-  ) ?? [];
-  const focusTrap = identities.size < 3;
-  const result = {
-    producer: 'openburnbar-p31-orca-focus-v1',
-    inputBackend: profile.keyboardBackend,
-    inputDialect,
-    physicalTabPressCount: physicalTabPresses,
-    physicalShiftTabPressCount: physicalShiftTabPresses,
-    physicalKeyPressCount: physicalTabPresses + physicalShiftTabPresses,
-    stepCount: focusedNodes.length,
-    distinctFocusedTargets: identities.size,
-    namedFocusedTargets: named.length,
-    trueFocusEventCount: focusEvents.length,
-    announcementEventCount: announcementEvents.length,
-    focusTrap,
-    pass: focusedNodes.length >= 10 && identities.size >= 3 && named.length >= 3
-      && !focusTrap && focusEvents.length >= 10 && announcementEvents.length > 0
-  };
-  assert(result.pass, 'P-31 Orca/AT-SPI keyboard traversal did not meet the live evidence threshold');
-  atomicJson(path.join(rawDir, 'p31-keyboard-orca.json'), result);
-  return result;
 }
 
 function relativeEvidence(outputRoot, file) {
@@ -1317,7 +1501,7 @@ export async function runP31LiveAccessibilitySession(options) {
     requiredTools.add('swaymsg');
   }
   for (const tool of requiredTools) {
-    required('sh', ['-c', 'command -v "$1" >/dev/null', 'p31-tool', tool], `P-31 required tool ${tool}`);
+    trustedSystemTool(tool);
   }
   const desktopBaseline = exactDesktopPids();
   assert(desktopBaseline.length === 0,
@@ -1341,10 +1525,10 @@ export async function runP31LiveAccessibilitySession(options) {
     const orcaVersion = required('orca', ['--version'], 'P-31 Orca version');
     fs.writeFileSync(path.join(options.rawOutputDir, 'orca-version.txt'), `${orcaVersion}\n`, { mode: 0o600 });
     let orcaSpawnError = null;
-    orca = spawn('orca', [
+    orca = spawn('/usr/bin/orca', [
       '--replace', '--disable', 'speech', '--disable', 'braille', '--disable', 'braille-monitor',
       `--debug-file=${orcaDebug}`
-    ], { env: process.env, stdio: 'ignore' });
+    ], { env: process.env, shell: false, stdio: 'ignore' });
     orca.once('error', (error) => {
       orcaSpawnError = error;
     });

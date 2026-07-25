@@ -21,6 +21,7 @@ import {
   buildP31LiveSession,
   detectYdotoolDialect,
   discoverP31GraphicalSessionId,
+  openP31OrcaLog,
   P31_LIVE_ENVIRONMENTS,
   parseP31LiveArguments,
   parseKScreenOutputs,
@@ -418,6 +419,35 @@ test('P-31 live producer binds every canonical invocation and rejects unsupporte
   assert.throws(() => parseP31LiveArguments(approximate), /candidate binding/u);
 });
 
+test('P-31 Orca log snapshot remains descriptor-bound across path replacement', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-p31-orca-log-'));
+  const log = path.join(root, 'orca-debug.log');
+  const moved = path.join(root, 'orca-debug.original.log');
+  const outside = path.join(root, 'outside.log');
+  try {
+    fs.writeFileSync(log, 'baseline\n', { mode: 0o600 });
+    const snapshot = openP31OrcaLog(log);
+    assert.equal(snapshot.offset, Buffer.byteLength('baseline\n'));
+    fs.renameSync(log, moved);
+    fs.appendFileSync(moved, 'focused\n');
+    fs.writeFileSync(log, 'replacement\n', { mode: 0o600 });
+    assert.equal(snapshot.read().toString('utf8'), 'baseline\nfocused\n');
+    snapshot.close();
+    snapshot.close();
+    assert.throws(() => snapshot.read(), /descriptor is closed/u);
+
+    fs.writeFileSync(outside, 'outside\n', { mode: 0o600 });
+    fs.rmSync(log);
+    fs.symlinkSync(outside, log);
+    assert.throws(() => openP31OrcaLog(log), /ELOOP|symbolic link|symlink/u);
+    fs.rmSync(log);
+    fs.writeFileSync(log, 'broad\n', { mode: 0o644 });
+    assert.throws(() => openP31OrcaLog(log), /owner-only regular file/u);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 function liveProducerFixture(environmentId = X11_ARM_ENVIRONMENT) {
   const profile = P31_LIVE_ENVIRONMENTS[environmentId];
   const outputRoot = '/repo/input';
@@ -598,13 +628,15 @@ test('P-31 live producer applies real compositor settings and paced Orca travers
     'XDG_CONFIG_HOME: path.join(options.stateHome',
     "await wait(1_250)",
     "await wait(8_000)",
-    "const focusLogOffset = fs.statSync(orcaDebug).size",
+    "const focusLogOffset = orcaLog.offset",
+    "const debugBytes = orcaLog.read()",
     "'--mode', 'grab-focus'",
     "OPENBURNBAR_LINUX_FIXTURE_MODE: '0'",
     "openburnbar-p31-webdriver-atspi-navigation-v1",
     "fs.readdirSync(options.rawOutputDir).length === 0"
   ]) assert.ok(source.includes(marker), marker);
-  assert.doesNotMatch(source, /spawn\(['"]Xvfb['"]|GDK_SCALE:|GTK_THEME:|GTK_ENABLE_ANIMATIONS:/u);
+  assert.doesNotMatch(source,
+    /spawn\(['"]Xvfb['"]|GDK_SCALE:|GTK_THEME:|GTK_ENABLE_ANIMATIONS:|spawnSync\(command|required\('sh'/u);
   assert.ok(
     source.lastIndexOf("preferences.restore()")
       < source.lastIndexOf("atomicJson(path.join(options.outputRoot, 'p31-live-session.json'), report)"),
