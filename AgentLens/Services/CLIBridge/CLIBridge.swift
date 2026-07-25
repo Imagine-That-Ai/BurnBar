@@ -682,6 +682,23 @@ final class CLIBridge: ObservableObject {
                     continuation.finish()
                     return
                 }
+                // Junie has no enforceable read-only/no-shell flags: require the
+                // full interactive grant, matching the mission-launch planner.
+                guard CLIAgentJunieMissionPolicy.chatLaunchPermitted(capabilityGrant) else {
+                    continuation.finish(throwing: CLIBridgeError.junieRequiresFullGrant)
+                    return
+                }
+                // A phone-side revoke or downgrade updates the live grant store
+                // but not this caller's captured grant value, so re-check the
+                // store (same T-TOOL-03 poll the runner uses mid-flight) before
+                // spawning: a just-revoked approval must refuse the launch, not
+                // rely on the post-launch poll to kill the unsandboxed process.
+                if let grantStillActive = Self.spawnedCLIGrantPoll(for: capabilityGrant) {
+                    guard await grantStillActive() else {
+                        continuation.finish(throwing: CLIBridgeError.junieRequiresFullGrant)
+                        return
+                    }
+                }
                 guard let executable = await self.resolveExecutable(named: "junie") else {
                     continuation.finish(throwing: CLIBridgeError.noCLI)
                     return
