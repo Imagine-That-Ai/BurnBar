@@ -860,7 +860,16 @@ struct MenuBarPopoverView: View {
                     value: settingsManager.formatUsageMetric(cost: dataStore.totalCostThisMonth, tokens: dataStore.totalTokensThisMonth)
                 )
                 .popoverTooltip("Rolling 30-day total")
+            }
+
+            HStack {
                 Spacer()
+                MiniSparkline(
+                    data: menuBarSparklineSeries,
+                    accessibilityTitle: "7-day spending trend",
+                    accessibilityValueFormatter: { String(format: "$%.2f", $0) }
+                )
+                .popoverTooltip("7-day spending trend")
             }
         }
         .padding(DesignSystem.Spacing.lg)
