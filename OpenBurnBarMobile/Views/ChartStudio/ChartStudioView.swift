@@ -374,6 +374,10 @@ struct ChartStudioView: View {
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
             }
+            // Loading state reads as one element instead of an unlabeled
+            // spinner + text fragment.
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.updatesFrequently)
             if !streamingText.isEmpty {
                 ScrollView {
                     Text(streamingText)
@@ -381,6 +385,8 @@ struct ChartStudioView: View {
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                // Raw streaming JSON is noise for VoiceOver.
+                .accessibilityHidden(true)
                 .frame(maxHeight: 120)
                 .padding(MobileTheme.Spacing.sm)
                 .background(

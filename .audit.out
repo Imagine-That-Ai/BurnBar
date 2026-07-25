@@ -1,0 +1,38 @@
+==> npm audit: .
+No high/critical vulnerabilities in ..
+==> npm audit: apps/console
+No high/critical vulnerabilities in apps/console.
+==> npm audit: apps/linux-desktop
+No high/critical vulnerabilities in apps/linux-desktop.
+==> npm audit: extensions/openburnbar
+No high/critical vulnerabilities in extensions/openburnbar.
+==> npm audit: firestore-rules-tests
+No high/critical vulnerabilities in firestore-rules-tests.
+==> npm audit: functions
+No high/critical vulnerabilities in functions.
+==> npm audit: packages/design-tokens
+No high/critical vulnerabilities in packages/design-tokens.
+==> npm audit: packages/entitlements
+No high/critical vulnerabilities in packages/entitlements.
+==> npm audit: packages/libsignal-bridge
+No high/critical vulnerabilities in packages/libsignal-bridge.
+==> npm audit: packages/libsignal-protocol
+No high/critical vulnerabilities in packages/libsignal-protocol.
+==> npm audit: packages/signal-envelope-contracts
+No high/critical vulnerabilities in packages/signal-envelope-contracts.
+==> npm audit: quota-runner
+No high/critical vulnerabilities in quota-runner.
+==> npm audit: scripts/linux-port
+No high/critical vulnerabilities in scripts/linux-port.
+==> npm audit: services/hermes-realtime-relay
+No high/critical vulnerabilities in services/hermes-realtime-relay.
+==> npm audit: services/hosted-mcp
+No high/critical vulnerabilities in services/hosted-mcp.
+==> npm audit: tools/app-store-connect
+No high/critical vulnerabilities in tools/app-store-connect.
+==> npm audit: tools/openburnbar-mcp-remote
+No high/critical vulnerabilities in tools/openburnbar-mcp-remote.
+==> npm audit: tools/schema-sync
+No high/critical vulnerabilities in tools/schema-sync.
+==> npm audit: website
+No high/critical vulnerabilities in website.

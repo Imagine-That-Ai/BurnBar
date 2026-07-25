@@ -544,9 +544,17 @@ def allowlist_reason(rel_path):
 
 
 PACKAGE_PREFIXES = ("OpenBurnBarCore/Sources/", "OpenBurnBarDaemon/Sources/")
+# OpenBurnBarUI is an Apple-only presentation target.  Its SwiftUI/Charts and
+# Accessibility line evidence is emitted by the app XCTest lane, not the
+# cross-platform SwiftPM package lane.  Keep the physical source location
+# under OpenBurnBarCore from accidentally forcing UI code through package
+# coverage (the package target is pruned on Linux/Windows).
+APP_ONLY_PACKAGE_PREFIXES = ("OpenBurnBarCore/Sources/OpenBurnBarUI/",)
 
 
 def partition(rel_path):
+    if rel_path.startswith(APP_ONLY_PACKAGE_PREFIXES):
+        return "app"
     return "packages" if rel_path.startswith(PACKAGE_PREFIXES) else "app"
 
 

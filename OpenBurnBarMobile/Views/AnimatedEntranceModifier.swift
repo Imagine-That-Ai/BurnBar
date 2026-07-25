@@ -5,12 +5,17 @@ import SwiftUI
 struct StaggeredEntrance: ViewModifier {
     let delay: Double
     @State private var appeared = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
             .opacity(appeared ? 1 : 0)
-            .offset(y: appeared ? 0 : 12)
+            .offset(y: appeared || reduceMotion ? 0 : 12)
             .onAppear {
+                guard !reduceMotion else {
+                    appeared = true
+                    return
+                }
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85).delay(delay)) {
                     appeared = true
                 }
@@ -82,13 +87,20 @@ extension View {
 
 struct ChartEntrance: ViewModifier {
     @State private var appeared = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
             .opacity(appeared ? 1 : 0)
-            .scaleEffect(appeared ? 1 : 0.92, anchor: .bottom)
-            .offset(y: appeared ? 0 : 16)
+            .scaleEffect(appeared || reduceMotion ? 1 : 0.92, anchor: .bottom)
+            .offset(y: appeared || reduceMotion ? 0 : 16)
             .onAppear {
+                guard !reduceMotion else {
+                    // Reduce Motion: charts appear in place without the
+                    // scale/slide spring.
+                    appeared = true
+                    return
+                }
                 withAnimation(.spring(response: 0.55, dampingFraction: 0.75).delay(0.08)) {
                     appeared = true
                 }
@@ -108,6 +120,7 @@ struct PushTransition: ViewModifier {
     let direction: Edge
     @State private var offset: CGFloat = 100
     @State private var opacity: Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
@@ -115,6 +128,11 @@ struct PushTransition: ViewModifier {
                     y: direction == .top || direction == .bottom ? offset : 0)
             .opacity(opacity)
             .onAppear {
+                guard !reduceMotion else {
+                    offset = 0
+                    opacity = 1
+                    return
+                }
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     offset = 0
                     opacity = 1
