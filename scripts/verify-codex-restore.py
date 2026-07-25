@@ -52,10 +52,10 @@ def key_of(p: str) -> str:
     parts = Path(p).parts
     for i in range(len(parts) - 1, 0, -1):
         if parts[i] == "sessions" and parts[i - 1] == ".codex":
-            return "/".join(parts[i + 1:])
+            return "/".join(parts[i + 1 :])
     for i in range(len(parts) - 1, -1, -1):
         if parts[i] == "sessions":
-            return "/".join(parts[i + 1:])
+            return "/".join(parts[i + 1 :])
     return Path(p).name
 
 
@@ -69,22 +69,21 @@ def parse_manifest_line(line: str) -> tuple[str, int | None]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--restored", type=Path, required=True,
-                    help="root the restore was extracted into")
+    ap.add_argument("--restored", type=Path, required=True, help="root the restore was extracted into")
     ap.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
-    ap.add_argument("--list-missing", action="store_true",
-                    help="print every missing path, not just the count")
-    ap.add_argument("--presence-only", action="store_true",
-                    help="accept a manifest without sizes and verify only "
-                         "existence/non-emptiness (cannot detect truncation)")
+    ap.add_argument("--list-missing", action="store_true", help="print every missing path, not just the count")
+    ap.add_argument(
+        "--presence-only",
+        action="store_true",
+        help="accept a manifest without sizes and verify only existence/non-emptiness (cannot detect truncation)",
+    )
     args = ap.parse_args()
 
     if not args.manifest.is_file():
         print(f"error: manifest not found at {args.manifest}", file=sys.stderr)
         return 2
     if not args.restored.is_dir():
-        print(f"error: {args.restored} is not a directory "
-              "(is the volume mounted and accessible?)", file=sys.stderr)
+        print(f"error: {args.restored} is not a directory (is the volume mounted and accessible?)", file=sys.stderr)
         return 2
 
     expected: dict[str, tuple[str, int | None]] = {}
@@ -100,11 +99,14 @@ def main() -> int:
 
     sized = sum(1 for _, size in expected.values() if size is not None)
     if sized < len(expected) and not args.presence_only:
-        print(f"error: manifest carries sizes for only {sized:,}/"
-              f"{len(expected):,} entries; existence checks alone cannot "
-              "detect a truncated restore. Regenerate it with "
-              "'<path>\\t<bytes>' lines, or pass --presence-only to "
-              "explicitly accept the weaker check.", file=sys.stderr)
+        print(
+            f"error: manifest carries sizes for only {sized:,}/"
+            f"{len(expected):,} entries; existence checks alone cannot "
+            "detect a truncated restore. Regenerate it with "
+            "'<path>\\t<bytes>' lines, or pass --presence-only to "
+            "explicitly accept the weaker check.",
+            file=sys.stderr,
+        )
         return 2
 
     found: dict[str, Path] = {}
@@ -128,12 +130,12 @@ def main() -> int:
     missing = sorted(set(expected) - set(found))
     unexpected = sorted(set(found) - set(expected))
     truncated = sorted(
-        k for k in set(found) & set(expected)
-        if expected[k][1] is not None and fsize.get(k) != expected[k][1]
+        k for k in set(found) & set(expected) if expected[k][1] is not None and fsize.get(k) != expected[k][1]
     )
 
-    print(f"manifest expects   {len(expected):,} files"
-          + ("" if sized == len(expected) else f"  ({sized:,} with sizes)"))
+    print(
+        f"manifest expects   {len(expected):,} files" + ("" if sized == len(expected) else f"  ({sized:,} with sizes)")
+    )
     print(f"restore contains   {len(found):,} files  ({human(total)})")
     print(f"  present          {len(expected) - len(missing):,}")
     print(f"  MISSING          {len(missing):,}")
@@ -164,10 +166,11 @@ def main() -> int:
 
     ok = not missing and not empty and not truncated
     if ok:
-        detail = ("every manifest file present with the expected size"
-                  if sized == len(expected)
-                  else "every manifest file present and non-empty "
-                       "(sizes NOT verified — presence-only mode)")
+        detail = (
+            "every manifest file present with the expected size"
+            if sized == len(expected)
+            else "every manifest file present and non-empty (sizes NOT verified — presence-only mode)"
+        )
         print(f"\nRESTORE COMPLETE — {detail}")
     else:
         print("\nRESTORE INCOMPLETE — see above")

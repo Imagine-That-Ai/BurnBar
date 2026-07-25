@@ -141,9 +141,7 @@ def open_files(paths: list[Path]) -> set[Path]:
             # Fail closed: if we cannot prove a file is unused, skip the chunk.
             held.update(paths[i : i + 400])
             continue
-        if proc.returncode not in (0, 1) or (
-            proc.returncode == 1 and proc.stderr.strip()
-        ):
+        if proc.returncode not in (0, 1) or (proc.returncode == 1 and proc.stderr.strip()):
             held.update(paths[i : i + 400])
             continue
         for line in proc.stdout.splitlines():
@@ -152,9 +150,7 @@ def open_files(paths: list[Path]) -> set[Path]:
     return held
 
 
-def collect(
-    root: Path, keep_raw_days: int, compress_days: int, min_age_hours: int
-) -> list[Candidate]:
+def collect(root: Path, keep_raw_days: int, compress_days: int, min_age_hours: int) -> list[Candidate]:
     now = time.time()
     min_age = min_age_hours * 3600
     out: list[Candidate] = []
@@ -239,14 +235,19 @@ def main() -> int:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     ap.add_argument("--root", type=Path, default=DEFAULT_ROOT)
-    ap.add_argument("--keep-raw-days", type=int, default=DEFAULT_KEEP_RAW_DAYS,
-                    help="newer than this: untouched and resumable")
-    ap.add_argument("--compress-days", type=int, default=DEFAULT_COMPRESS_DAYS,
-                    help="between keep-raw and this: gzip; older: delete")
-    ap.add_argument("--min-age-hours", type=int, default=DEFAULT_MIN_AGE_HOURS,
-                    help="never touch anything younger than this")
-    ap.add_argument("--apply", action="store_true",
-                    help="actually modify files (default is a dry run)")
+    ap.add_argument(
+        "--keep-raw-days", type=int, default=DEFAULT_KEEP_RAW_DAYS, help="newer than this: untouched and resumable"
+    )
+    ap.add_argument(
+        "--compress-days",
+        type=int,
+        default=DEFAULT_COMPRESS_DAYS,
+        help="between keep-raw and this: gzip; older: delete",
+    )
+    ap.add_argument(
+        "--min-age-hours", type=int, default=DEFAULT_MIN_AGE_HOURS, help="never touch anything younger than this"
+    )
+    ap.add_argument("--apply", action="store_true", help="actually modify files (default is a dry run)")
     ap.add_argument("--quiet", action="store_true", help="summary only")
     args = ap.parse_args()
 
@@ -255,16 +256,13 @@ def main() -> int:
         print(f"error: {root} is not a directory", file=sys.stderr)
         return 2
     if min(args.keep_raw_days, args.compress_days, args.min_age_hours) < 0:
-        print("error: --keep-raw-days, --compress-days and --min-age-hours "
-              "must all be >= 0", file=sys.stderr)
+        print("error: --keep-raw-days, --compress-days and --min-age-hours must all be >= 0", file=sys.stderr)
         return 2
     if args.keep_raw_days > args.compress_days:
         print("error: --keep-raw-days must be <= --compress-days", file=sys.stderr)
         return 2
 
-    total_before = sum(
-        p.stat().st_size for p in root.rglob("*") if p.is_file()
-    )
+    total_before = sum(p.stat().st_size for p in root.rglob("*") if p.is_file())
 
     cands = collect(root, args.keep_raw_days, args.compress_days, args.min_age_hours)
     if not cands:
@@ -283,13 +281,15 @@ def main() -> int:
     print(f"[{mode}] {root}")
     print(f"  corpus now          {human(total_before)}")
     print(f"  keep raw  <= {args.keep_raw_days:>3}d   {len(cands) and ''}untouched")
-    print(f"  compress  <= {args.compress_days:>3}d   {len(to_compress):>5} files  "
-          f"{human(sum(c.size for c in to_compress))}")
-    print(f"  delete     > {args.compress_days:>3}d   {len(to_delete):>5} files  "
-          f"{human(sum(c.size for c in to_delete))}")
+    print(
+        f"  compress  <= {args.compress_days:>3}d   {len(to_compress):>5} files  "
+        f"{human(sum(c.size for c in to_compress))}"
+    )
+    print(
+        f"  delete     > {args.compress_days:>3}d   {len(to_delete):>5} files  {human(sum(c.size for c in to_delete))}"
+    )
     if skipped:
-        print(f"  skipped (open)      {len(skipped):>5} files  "
-              f"{human(sum(c.size for c in skipped))}")
+        print(f"  skipped (open)      {len(skipped):>5} files  {human(sum(c.size for c in skipped))}")
     print(f"  projected reclaim   {human(projected)}")
     print(f"  corpus after        ~{human(total_before - projected)}")
 
@@ -298,8 +298,7 @@ def main() -> int:
     print(f"\n  observed growth     {rate:,.1f} GB/day (trailing 7d)")
     print(f"  STEADY STATE        ~{steady:,.1f} GB under this policy")
     if steady > total_before / 2**30:
-        print("  !! this policy converges ABOVE the current size — tighten "
-              "--keep-raw-days / --compress-days")
+        print("  !! this policy converges ABOVE the current size — tighten --keep-raw-days / --compress-days")
 
     if not args.apply:
         print("\n(dry run — re-run with --apply to execute)")
@@ -327,9 +326,11 @@ def main() -> int:
             failures += 1
             print(f"  FAILED   {c.path}: {exc}", file=sys.stderr)
 
-    print(f"\nreclaimed {human(reclaimed)}"
-          + (f"  ({became_active} skipped as active)" if became_active else "")
-          + (f"  ({failures} failures)" if failures else ""))
+    print(
+        f"\nreclaimed {human(reclaimed)}"
+        + (f"  ({became_active} skipped as active)" if became_active else "")
+        + (f"  ({failures} failures)" if failures else "")
+    )
     return 1 if failures else 0
 
 
