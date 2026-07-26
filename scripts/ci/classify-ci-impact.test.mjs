@@ -95,15 +95,18 @@ test("push uses the exact before and after commits", () => {
   for (const lane of LANES) assert.equal(result[lane], false);
 });
 
-test("shallow push checkout falls back to its first parent and exact head", () => {
+test("push with an unavailable exact range fails closed to a full run", () => {
   const event = { before: "unavailable-base", after: "unavailable-head" };
+  const attempted = [];
   const result = classifyEvent(event, "push", (base, head) => {
-    if (base === "HEAD^" && head === "HEAD")
-      return ["functions/src/domainCorePricing.ts"];
+    attempted.push([base, head]);
     throw new Error("event commits are outside the shallow checkout");
   });
+  // Only the exact before..after range is acceptable proof input; a partial
+  // range such as HEAD^..HEAD would under-classify multi-commit pushes.
+  assert.deepEqual(attempted, [["unavailable-base", "unavailable-head"]]);
+  assert.equal(result.full, true);
   assert.equal(result.rust, true);
-  assert.equal(result.full, false);
 });
 
 test("push with an unresolved all-zero boundary fails closed", () => {

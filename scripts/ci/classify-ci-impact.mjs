@@ -201,10 +201,14 @@ export function classifyEvent(event, eventName, diff = gitDiff) {
   try {
     return classifyPaths(diff(base, head), { eventName, labels });
   } catch {
+    // A push run is the authoritative deploy proof for its exact after
+    // commit. When the exact before..after range is unavailable (for
+    // example a multi-commit push beyond the shallow checkout), any
+    // partial fallback like HEAD^..HEAD would under-classify earlier
+    // commits in the push, so pushes fail closed to a full run.
+    if (eventName === "push") return classifyPaths([], { eventName, labels });
     try {
-      const fallback =
-        eventName === "push" ? ["HEAD^", "HEAD"] : ["HEAD^1", "HEAD^2"];
-      return classifyPaths(diff(...fallback), { eventName, labels });
+      return classifyPaths(diff("HEAD^1", "HEAD^2"), { eventName, labels });
     } catch {
       return classifyPaths([], { eventName, labels });
     }
