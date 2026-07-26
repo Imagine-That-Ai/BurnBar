@@ -103,12 +103,8 @@ export {
   requireConfiguredStripe,
   requireConfiguredStripeWebhookSecret,
   getOrCreateStripeCustomer,
-  googlePlayLineItemForProduct,
-  googlePlayExpiryMillis,
   applyStripeCheckoutSession,
   applyStripeSubscription,
-  reconcileStripeSubscription,
-  reconcileStripeCustomerSubscriptions,
   reconcileStripeInvoice,
   reconcileStripeCharge,
   reconcileStripeRefund,
@@ -119,11 +115,7 @@ export {
   findReusableStripeSubscriptionCheckoutSession,
 } from "./shared/stripe.js";
 
-export {
-  GOOGLE_PLAY_ACTIVE_STATES,
-  googlePlaySubscriptionEntitlement,
-  selectGooglePlaySubscriptionLineItem,
-} from "./shared/googlePlay.js";
+export { GOOGLE_PLAY_ACTIVE_STATES, selectGooglePlaySubscriptionLineItem } from "./shared/googlePlay.js";
 
 export {
   normalizeCloudConnectAuthMethodID,

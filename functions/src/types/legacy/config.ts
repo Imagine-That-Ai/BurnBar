@@ -193,12 +193,6 @@ export interface EnvConfig {
   /** Stripe price id for BurnBar Cloud Pro annual checkout. */
   stripeBurnBarCloudProAnnualPriceID: string;
 
-  /** Stripe price id for BurnBar Ultra monthly checkout. */
-  stripeBurnBarUltraMonthlyPriceID: string;
-
-  /** Stripe price id for BurnBar Ultra annual checkout. */
-  stripeBurnBarUltraAnnualPriceID: string;
-
   /** Stripe price id for 100 hosted Agent Control action top-up. */
   stripeAgentControl100ActionsPriceID: string;
 
@@ -210,9 +204,6 @@ export interface EnvConfig {
 
   /** Stripe price id for 500 hosted Elder Wand Fusion searches. */
   stripeElderWandSearches500PriceID: string;
-
-  /** Exact non-loopback hostname[:port] values allowed for Stripe browser redirects. */
-  stripeRedirectURLAllowlist: string[];
 
   /** Stripe secret key for macOS/web BurnBar Pro checkout and webhook reads. */
   stripeSecretKey: string;
@@ -323,17 +314,7 @@ export interface HostedQuotaEntitlementDoc {
   updatedAt: string;
 }
 
-export interface EntitlementBindingDoc {
-  id: string;
-  uid: string;
-  /** StoreKit 2 app account token minted at purchase time (schema-sync canon). */
-  appAccountToken: string;
-  productID: string;
-  clientPlatform?: "ios" | "ipados" | "macos";
-  consumedAt?: string;
-  createdAt: string;
-  schemaVersion: number;
-}
+export type EntitlementBindingDoc = import("../generated/hosted-quota.js").EntitlementBindingDoc;
 
 export interface EntitlementEventDoc {
   id: string;

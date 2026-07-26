@@ -41,7 +41,7 @@ interface StripeSubscriptionCheckoutSelection {
   cadence: "monthly" | "annual";
 }
 
-export interface StripeEventContext {
+interface StripeEventContext {
   eventID?: string;
   eventCreatedMillis?: number;
 }
@@ -229,25 +229,6 @@ export async function findReusableStripeSubscriptionCheckoutSession(
   }
 }
 
-export function googlePlayLineItemForProduct(
-  purchase: Record<string, unknown>,
-  productID: string,
-): Record<string, unknown> | undefined {
-  const lineItems = Array.isArray(purchase.lineItems)
-    ? purchase.lineItems.filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
-    : [];
-  return lineItems.find((item) => item.productId === productID);
-}
-
-export function googlePlayExpiryMillis(lineItem: Record<string, unknown> | undefined): number {
-  const expiryTime = lineItem?.expiryTime;
-  if (typeof expiryTime === "string") {
-    const parsed = Date.parse(expiryTime);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  throw new HttpsError("failed-precondition", "Google Play did not return an expiry for this subscription.");
-}
-
 export async function applyStripeCheckoutSession(
   stripe: Stripe,
   session: Stripe.Checkout.Session,
@@ -346,7 +327,7 @@ export async function applyStripeSubscription(
  * Re-fetches and applies one subscription so non-subscription webhook events
  * never write a stale point-in-time snapshot.
  */
-export async function reconcileStripeSubscription(
+async function reconcileStripeSubscription(
   stripe: Stripe,
   subscriptionID: string,
   eventContext: StripeEventContext = {},
@@ -365,7 +346,7 @@ export async function reconcileStripeSubscription(
  * explicit pagination prevents a large customer history from silently
  * truncating reconciliation at Stripe's first page.
  */
-export async function reconcileStripeCustomerSubscriptions(
+async function reconcileStripeCustomerSubscriptions(
   stripe: Stripe,
   customerID: string,
   eventContext: StripeEventContext = {},

@@ -3,7 +3,12 @@
 // Regenerate: npm --prefix tools/schema-sync run emit
 
 export interface EntitlementBindingDoc {
+  id: string;
   appAccountToken: string;
   uid: string;
+  productID: string;
+  clientPlatform?: "ios" | "ipados" | "macos";
+  consumedAt?: string;
   createdAt: string;
+  schemaVersion: number;
 }

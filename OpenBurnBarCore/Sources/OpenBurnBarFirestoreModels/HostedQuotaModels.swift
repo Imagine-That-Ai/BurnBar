@@ -4,7 +4,12 @@
 import Foundation
 
 public struct FirestoreEntitlementBindingDoc: Codable, Sendable, Equatable {
+    public var id: String
     public var appAccountToken: String
     public var uid: String
+    public var productID: String
+    public var clientPlatform: String?
+    public var consumedAt: String?
     public var createdAt: String
+    public var schemaVersion: Int
 }

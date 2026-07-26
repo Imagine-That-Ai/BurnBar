@@ -10,6 +10,14 @@ import { readFirebaseFunctionsConfig } from "./firebaseRuntime.js";
 import { isRecord, stringValue } from "./guards.js";
 import { logWarn } from "./logging.js";
 
+interface CommercialRuntimeConfig {
+  stripeBurnBarUltraMonthlyPriceID: string;
+  stripeBurnBarUltraAnnualPriceID: string;
+  stripeRedirectURLAllowlist: string[];
+}
+
+type RuntimeEnvConfig = EnvConfig & CommercialRuntimeConfig;
+
 function configBucket(cfg: Record<string, unknown>, key: string): Record<string, unknown> {
   const value = cfg[key];
   return isRecord(value) ? value : {};
@@ -195,7 +203,7 @@ export function isAppCheckAppIdAllowed(
 }
 
 /** Cached config object computed once per function instance. */
-let cached: EnvConfig | undefined;
+let cached: RuntimeEnvConfig | undefined;
 
 /** Buckets and resolved identity/security fields shared across config sub-builders. */
 type ConfigContext = {
@@ -354,7 +362,7 @@ function stripeSetting(
 function buildStripeSettings(
   stripe: Record<string, unknown>,
 ): Pick<
-  EnvConfig,
+  RuntimeEnvConfig,
   | "stripeBurnBarProPriceID"
   | "stripeBurnBarCloudMonthlyPriceID"
   | "stripeBurnBarCloudAnnualPriceID"
@@ -610,7 +618,7 @@ function resolveRequireHighRiskNonce(
  * Build the runtime configuration from Firebase Functions config and
  * environment variables.  Falls back to safe defaults for local emulation.
  */
-function buildConfig(): EnvConfig {
+function buildConfig(): RuntimeEnvConfig {
   // firebase-functions config is injected at runtime via functions.config().
   // For local dev use FIREBASE_CONFIG or plain env vars.
   const cfg = readFirebaseFunctionsConfig();
@@ -659,7 +667,7 @@ function buildConfig(): EnvConfig {
  *
  * @returns Validated EnvConfig object.
  */
-export function getConfig(): EnvConfig {
+export function getConfig(): RuntimeEnvConfig {
   if (!cached) {
     cached = buildConfig();
   }

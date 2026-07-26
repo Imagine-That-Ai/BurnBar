@@ -26,17 +26,18 @@ import { assertCloudFeatureNotSuspended } from "../../cloudFeatureSuspensions.js
 import {
   disputeTopUpReversalUnits,
   proportionalTopUpReversalUnits,
+  STRIPE_TOP_UP_DISPUTE_STATUSES,
   stripeTopUpAmount,
   stripeTopUpIncrementField,
   stripeTopUpReceiptState,
   stripeTopUpReversalState,
-  type StripeTopUpDisputeStatus,
 } from "./stripeTopUpReversal.js";
 import { nowISO, requiredIdentifier } from "./validators.js";
 
 export const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
 export const BURNBAR_PRO_MAX_ENTITLEMENT_ID = "burnbar_pro_max";
 export const BURNBAR_ULTRA_ENTITLEMENT_ID = "burnbar_ultra";
+type StripeTopUpDisputeStatus = (typeof STRIPE_TOP_UP_DISPUTE_STATUSES)[number];
 
 export async function assertActiveHostedQuotaEntitlement(uid: string): Promise<void> {
   await assertCloudFeatureNotSuspended(db, uid, "hosted_quota");

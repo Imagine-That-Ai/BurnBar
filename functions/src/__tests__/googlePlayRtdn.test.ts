@@ -59,11 +59,7 @@ vi.mock("../adminRuntime.js", () => ({
           get: (field: string) => unknown;
           data: () => Record<string, unknown> | undefined;
         }>;
-        set: (
-          ref: { path: string },
-          data: Record<string, unknown>,
-          options?: { merge?: boolean },
-        ) => void;
+        set: (ref: { path: string }, data: Record<string, unknown>, options?: { merge?: boolean }) => void;
       }) => Promise<T>,
     ): Promise<T> => {
       const previous = state.transactionTail;

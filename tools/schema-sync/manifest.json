@@ -247,14 +247,6 @@
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HostedQuotaModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/HostedQuotaModels.kt"
       },
-      "tsHandMirror": [
-        {
-          "path": "functions/src/types/legacy/config.ts",
-          "interfaces": [
-            "EntitlementBindingDoc"
-          ]
-        }
-      ],
       "tspOnlyModels": [
         "EntitlementEventDoc"
       ],

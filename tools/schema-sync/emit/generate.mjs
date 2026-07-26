@@ -1372,21 +1372,38 @@ data class FirestoreAgentGrantAuthorityDoc(
     models: {
       EntitlementBindingDoc: {
         ts: `export interface EntitlementBindingDoc {
+  id: string;
   appAccountToken: string;
   uid: string;
+  productID: string;
+  clientPlatform?: "ios" | "ipados" | "macos";
+  consumedAt?: string;
   createdAt: string;
+  schemaVersion: number;
 }`,
         swift: `public struct FirestoreEntitlementBindingDoc: Codable, Sendable, Equatable {
+    public var id: String
     public var appAccountToken: String
     public var uid: String
+    public var productID: String
+    public var clientPlatform: String?
+    public var consumedAt: String?
     public var createdAt: String
+    public var schemaVersion: Int
 }`,
         kotlin: `@Keep
 @IgnoreExtraProperties
 data class FirestoreEntitlementBindingDoc(
+    val id: String = "",
     val appAccountToken: String = "",
     val uid: String = "",
+    @get:PropertyName("productID")
+    @set:PropertyName("productID")
+    var productId: String = "",
+    val clientPlatform: String? = null,
+    val consumedAt: String? = null,
     val createdAt: String = "",
+    val schemaVersion: Long = 0,
 )`,
       },
     },

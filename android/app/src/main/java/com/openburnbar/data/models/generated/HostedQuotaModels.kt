@@ -10,7 +10,14 @@ import com.google.firebase.firestore.PropertyName
 @Keep
 @IgnoreExtraProperties
 data class FirestoreEntitlementBindingDoc(
+    val id: String = "",
     val appAccountToken: String = "",
     val uid: String = "",
+    @get:PropertyName("productID")
+    @set:PropertyName("productID")
+    var productId: String = "",
+    val clientPlatform: String? = null,
+    val consumedAt: String? = null,
     val createdAt: String = "",
+    val schemaVersion: Long = 0,
 )

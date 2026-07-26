@@ -24,11 +24,7 @@ vi.mock("../callables/shared/entitlements.js", () => ({
   BURNBAR_ULTRA_ENTITLEMENT_ID: "burnbar_ultra",
 }));
 
-import {
-  GOOGLE_PLAY_ACTIVE_STATES,
-  googlePlaySubscriptionEntitlement,
-  selectGooglePlaySubscriptionLineItem,
-} from "../callables/shared/googlePlay.js";
+import { GOOGLE_PLAY_ACTIVE_STATES, selectGooglePlaySubscriptionLineItem } from "../callables/shared/googlePlay.js";
 
 describe("Google Play subscription catalog", () => {
   it("keeps canceled subscriptions entitled until their paid-through expiry", () => {
@@ -36,15 +32,20 @@ describe("Google Play subscription catalog", () => {
   });
 
   it("maps every commercial tier to its entitlement family", () => {
-    expect(googlePlaySubscriptionEntitlement("cloud-annual")).toMatchObject({
+    const selectionFor = (productId: string) =>
+      selectGooglePlaySubscriptionLineItem({
+        lineItems: [{ productId, expiryTime: "2030-01-01T00:00:00.000Z" }],
+      }).target;
+
+    expect(selectionFor("cloud-annual")).toMatchObject({
       entitlementID: "burnbar_pro",
       tierRank: 1,
     });
-    expect(googlePlaySubscriptionEntitlement("pro-monthly")).toMatchObject({
+    expect(selectionFor("pro-monthly")).toMatchObject({
       entitlementID: "burnbar_pro_max",
       tierRank: 2,
     });
-    expect(googlePlaySubscriptionEntitlement("ultra-annual")).toMatchObject({
+    expect(selectionFor("ultra-annual")).toMatchObject({
       entitlementID: "burnbar_ultra",
       tierRank: 3,
     });

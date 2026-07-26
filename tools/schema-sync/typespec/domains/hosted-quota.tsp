@@ -2,9 +2,14 @@
 namespace OpenBurnBar.Firestore.HostedQuota;
 
 model EntitlementBindingDoc {
+  id: string;
   appAccountToken: string;
   uid: string;
+  productID: string;
+  clientPlatform?: "ios" | "ipados" | "macos";
+  consumedAt?: string;
   createdAt: string;
+  schemaVersion: int32;
 }
 
 model EntitlementEventDoc {

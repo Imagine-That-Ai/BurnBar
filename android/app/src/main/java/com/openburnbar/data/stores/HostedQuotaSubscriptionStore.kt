@@ -212,37 +212,33 @@ class HostedQuotaSubscriptionStore(
             }
         }
 
-        internal fun selectSubscriptionReplacement(
-            newProductID: String,
-            purchases: List<Purchase>,
-        ): HostedQuotaSubscriptionReplacement? =
-            purchases
-                .asSequence()
-                .filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
-                .flatMap { purchase ->
-                    purchase.products
-                        .filter { existingProductID ->
-                            existingProductID in SUBSCRIPTION_PRODUCT_IDS &&
-                                existingProductID != newProductID &&
-                                purchase.purchaseToken.isNotBlank()
-                        }
-                        .map { existingProductID -> existingProductID to purchase }
-                }
-                .sortedBy { (existingProductID, _) ->
-                    hostedQuotaSubscriptionProductPriority(
-                        productID = existingProductID,
-                        productsById = STORE_PRODUCT_BY_ID,
-                        fallbackPriority = FALLBACK_SUBSCRIPTION_PRODUCT_PRIORITY,
-                    )
-                }
-                .map { (existingProductID, purchase) ->
-                    HostedQuotaSubscriptionReplacement(
-                        oldProductID = existingProductID,
-                        oldPurchaseToken = purchase.purchaseToken,
-                        replacementMode = subscriptionReplacementMode(existingProductID, newProductID),
-                    )
-                }
-                .firstOrNull()
+        internal fun selectSubscriptionReplacement(newProductID: String, purchases: List<Purchase>): HostedQuotaSubscriptionReplacement? = purchases
+            .asSequence()
+            .filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
+            .flatMap { purchase ->
+                purchase.products
+                    .filter { existingProductID ->
+                        existingProductID in SUBSCRIPTION_PRODUCT_IDS &&
+                            existingProductID != newProductID &&
+                            purchase.purchaseToken.isNotBlank()
+                    }
+                    .map { existingProductID -> existingProductID to purchase }
+            }
+            .sortedBy { (existingProductID, _) ->
+                hostedQuotaSubscriptionProductPriority(
+                    productID = existingProductID,
+                    productsById = STORE_PRODUCT_BY_ID,
+                    fallbackPriority = FALLBACK_SUBSCRIPTION_PRODUCT_PRIORITY,
+                )
+            }
+            .map { (existingProductID, purchase) ->
+                HostedQuotaSubscriptionReplacement(
+                    oldProductID = existingProductID,
+                    oldPurchaseToken = purchase.purchaseToken,
+                    replacementMode = subscriptionReplacementMode(existingProductID, newProductID),
+                )
+            }
+            .firstOrNull()
 
         private fun tierForProductID(id: String): CloudTier = STORE_PRODUCT_BY_ID[id]?.role?.subscriptionTier()
             ?: fallbackTierForProductID(id)
@@ -512,10 +508,7 @@ class HostedQuotaSubscriptionStore(
         }
     }
 
-    private suspend fun subscriptionReplacement(
-        productID: String,
-        storeProduct: HostedQuotaStoreProduct,
-    ): HostedQuotaSubscriptionReplacement? {
+    private suspend fun subscriptionReplacement(productID: String, storeProduct: HostedQuotaStoreProduct): HostedQuotaSubscriptionReplacement? {
         if (storeProduct.productType != BillingClient.ProductType.SUBS) return null
         return selectSubscriptionReplacement(
             newProductID = productID,

@@ -6,17 +6,20 @@ import { HttpsError } from "firebase-functions/v2/https";
 
 import { type CloudProAllowanceMeter } from "../../cloudProAllowanceCore.js";
 
-export type StripeTopUpDisputeStatus =
-  | "warning_needs_response"
-  | "warning_under_review"
-  | "warning_closed"
-  | "needs_response"
-  | "under_review"
-  | "won"
-  | "lost"
-  | "prevented";
+export const STRIPE_TOP_UP_DISPUTE_STATUSES = [
+  "warning_needs_response",
+  "warning_under_review",
+  "warning_closed",
+  "needs_response",
+  "under_review",
+  "won",
+  "lost",
+  "prevented",
+] as const;
 
-export interface StripeTopUpReceiptState {
+type StripeTopUpDisputeStatus = (typeof STRIPE_TOP_UP_DISPUTE_STATUSES)[number];
+
+interface StripeTopUpReceiptState {
   monthKey: string;
   units: number;
   meter: CloudProAllowanceMeter;
