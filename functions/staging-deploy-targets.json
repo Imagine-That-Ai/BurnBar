@@ -17,6 +17,22 @@
       "module": "./callables/domainCoreShadowEvidence.js",
       "export": "submitDomainCoreShadowSamples"
     },
+    "burnBarHermesGateway": {
+      "module": "./callables/hermesGateway.js",
+      "export": "burnBarHermesGateway"
+    },
+    "latestRouterRundown": {
+      "module": "./routerRundown.js",
+      "export": "latestRouterRundown"
+    },
+    "startCliLink": {
+      "module": "./callables/cliLink.js",
+      "export": "startCliLink"
+    },
+    "pollCliLink": {
+      "module": "./callables/cliLink.js",
+      "export": "pollCliLink"
+    },
     "createStripeBurnBarProCheckoutSession": {
       "module": "./callables/stripe.js",
       "export": "createStripeBurnBarProCheckoutSession"

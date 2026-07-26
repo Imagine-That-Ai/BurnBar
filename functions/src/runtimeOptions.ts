@@ -12,6 +12,8 @@
  * rationale live in `docs/ARCHITECTURE/region-strategy.md`.
  */
 
+import { defineInt } from "firebase-functions/params";
+
 /**
  * The Cloud Functions deployment region. Defaults to `us-central1` and is
  * overridable via the `FUNCTIONS_REGION` environment variable so emulator/CI
@@ -32,18 +34,24 @@ export const GOOGLE_PLAY_RTDN_TOPIC: string = process.env.GOOGLE_PLAY_RTDN_TOPIC
  * the CLI-link entry point, and the Hermes gateway.
  *
  * `minInstances` keeps at least one warm instance pinned so these endpoints
- * never pay full cold start on the first request. It defaults to `1` and is
- * overridable per-environment via `HOT_MIN_INSTANCES` (set to `0` to disable
- * the warm pool — e.g. in preview/CI projects where the idle-instance cost is
- * not worth it). `concurrency: 40` lets each warm instance absorb bursts
- * without immediately scaling out.
+ * never pay full cold start on the first request. Firebase deployment
+ * parameters resolve `HOT_MIN_INSTANCES` before the function options are
+ * finalized; raw `process.env` is intentionally not used because `.env`
+ * deployment files are loaded after module discovery. The parameter defaults
+ * to `1`; staging sets it to `0`. `concurrency: 40` lets each warm instance
+ * absorb bursts without immediately scaling out.
  *
  * Cost tradeoff: each pinned instance bills for idle CPU/memory 24/7. With the
  * current 6-function allowlist that is ~6 always-on instances at the default.
  * Scheduled rollups deliberately stay at `minInstances 0`. See the cold-start
  * SLO note in `docs/runbooks/slos.md`.
  */
+export const HOT_MIN_INSTANCES = defineInt("HOT_MIN_INSTANCES", {
+  default: 1,
+  description: "Warm instances for latency-sensitive revenue and control Functions.",
+});
+
 export const HOT_PATH_OPTIONS = {
-  minInstances: Number(process.env.HOT_MIN_INSTANCES ?? 1),
+  minInstances: HOT_MIN_INSTANCES,
   concurrency: 40,
 } as const;

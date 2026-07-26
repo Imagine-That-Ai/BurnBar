@@ -87,9 +87,17 @@ if (packageJson.main !== "lib/index.js") {
   );
 }
 
+// Candidate source is built and tested before artifact packaging. The trusted
+// deploy artifact contains compiled lib/ plus locked local packages only, so no
+// npm lifecycle/build/test script is valid inside Cloud Build. Removing every
+// script also prevents candidate-controlled lifecycle code from executing
+// after the trusted workflow has authenticated.
+packageJson.scripts = {};
+
 if (!targets) {
+  writeAtomic(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
   console.log(
-    "Scoped staging Functions entrypoint: all-functions mode; package entrypoint unchanged.",
+    "Scoped staging Functions entrypoint: all-functions mode; package entrypoint unchanged and scripts stripped.",
   );
   process.exit(0);
 }

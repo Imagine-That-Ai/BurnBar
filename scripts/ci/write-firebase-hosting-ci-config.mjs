@@ -24,7 +24,7 @@ function usage() {
       "  --output <path>     CI config to write (default: firebase-hosting.ci.json)",
       "  --manifest <path>   Public-dir manifest path for hosting mode",
       "  --storage-bucket <name>  Explicit bucket for firestore mode",
-      "  --mode <mode>       hosting | functions | firestore (default: hosting)",
+      "  --mode <mode>       hosting | staging-hosting | functions | firestore (default: hosting)",
       '  --portable-functions-source  Emit artifact-relative functions.source="functions"',
       "  --check             Verify the generated config contains no predeploy hooks",
     ].join("\n"),
@@ -55,7 +55,12 @@ for (let index = 0; index < args.length; index += 1) {
   }
 }
 
-const supportedModes = new Set(["hosting", "functions", "firestore"]);
+const supportedModes = new Set([
+  "hosting",
+  "staging-hosting",
+  "functions",
+  "firestore",
+]);
 if (!supportedModes.has(mode)) {
   throw new Error(
     `Unsupported mode ${mode}; expected one of ${[...supportedModes].join(", ")}`,
@@ -73,7 +78,9 @@ if (storageBucket) {
     storageBucket.length > 222 ||
     !/^[a-z0-9][a-z0-9._-]*[a-z0-9]$/.test(storageBucket)
   ) {
-    throw new Error("--storage-bucket must be a valid lowercase Cloud Storage bucket name");
+    throw new Error(
+      "--storage-bucket must be a valid lowercase Cloud Storage bucket name",
+    );
   }
 }
 
@@ -232,6 +239,46 @@ function buildHostingConfig(firebaseJson) {
   };
 }
 
+function buildStagingHostingConfig(firebaseJson) {
+  const generated = buildHostingConfig(firebaseJson);
+  const productionMarketing = generated.config.hosting.find(
+    (entry) => entry.target === "marketing",
+  );
+  if (!productionMarketing) {
+    throw new Error(
+      "production hosting config is missing the marketing target",
+    );
+  }
+
+  const marketing = structuredClone(productionMarketing);
+  const globalHeaders = marketing.headers?.find(
+    (entry) => entry.source === "**",
+  );
+  if (!globalHeaders || !Array.isArray(globalHeaders.headers)) {
+    throw new Error(
+      "marketing hosting config must contain a global headers entry",
+    );
+  }
+  globalHeaders.headers = globalHeaders.headers.filter(
+    (header) => header.key.toLowerCase() !== "x-robots-tag",
+  );
+  globalHeaders.headers.push({
+    key: "X-Robots-Tag",
+    value: "noindex, nofollow, noarchive",
+  });
+
+  const config = { hosting: [marketing] };
+  assertNoPredeploy(config, "firebase-hosting.staging.json");
+  return {
+    config,
+    manifest: {
+      hostingPublicDirs: { marketing: "website/dist" },
+      project: "burnbar-staging",
+      noindex: true,
+    },
+  };
+}
+
 function buildFunctionsConfig(firebaseJson) {
   const functions = requirePlainObject(
     firebaseJson.functions,
@@ -305,15 +352,23 @@ function buildFirestoreConfig(firebaseJson) {
     }
   }
   if (firebaseJson.storage !== undefined) {
-    const storage = requirePlainObject(firebaseJson.storage, "firebase.json storage");
+    const storage = requirePlainObject(
+      firebaseJson.storage,
+      "firebase.json storage",
+    );
     const storageConfig = { ...storage };
     if (storageConfig.rules !== undefined) {
-      storageConfig.rules = resolveRepoFilePath(storageConfig.rules, "storage.rules");
+      storageConfig.rules = resolveRepoFilePath(
+        storageConfig.rules,
+        "storage.rules",
+      );
     }
     // Firebase CLI looks up a project's default bucket only for object-form
     // storage config. Staging binds the already-provisioned bucket explicitly
     // so deploys do not depend on eventually-consistent control-plane discovery.
-    config.storage = storageBucket ? [{ ...storageConfig, bucket: storageBucket }] : storageConfig;
+    config.storage = storageBucket
+      ? [{ ...storageConfig, bucket: storageBucket }]
+      : storageConfig;
   }
   if (!config.firestore && !config.storage) {
     throw new Error(
@@ -321,7 +376,9 @@ function buildFirestoreConfig(firebaseJson) {
     );
   }
   assertNoPredeploy(config, "firebase-firestore.ci.json");
-  const generatedStorage = Array.isArray(config.storage) ? config.storage[0] : config.storage;
+  const generatedStorage = Array.isArray(config.storage)
+    ? config.storage[0]
+    : config.storage;
   return {
     config,
     manifest: {
@@ -336,6 +393,7 @@ function buildFirestoreConfig(firebaseJson) {
 const firebaseJson = readJson(sourcePath);
 const builders = {
   hosting: buildHostingConfig,
+  "staging-hosting": buildStagingHostingConfig,
   functions: buildFunctionsConfig,
   firestore: buildFirestoreConfig,
 };

@@ -80,6 +80,8 @@ try {
   );
   if (packageJson.main !== "lib/staging-scoped-index.cjs")
     throw new Error("package main was not scoped");
+  if (Object.keys(packageJson.scripts ?? {}).length !== 0)
+    throw new Error("scoped package retained executable scripts");
   const require = createRequire(import.meta.url);
   const exports = require(join(libDir, "staging-scoped-index.cjs"));
   if (
@@ -123,6 +125,14 @@ try {
   ) {
     throw new Error("all-functions mode changed package main");
   }
+  if (
+    Object.keys(
+      JSON.parse(readFileSync(join(functionsDir, "package.json"), "utf8"))
+        .scripts ?? {},
+    ).length !== 0
+  ) {
+    throw new Error("all-functions mode retained executable scripts");
+  }
 
   const productionManifest = JSON.parse(
     readFileSync(
@@ -131,6 +141,10 @@ try {
     ),
   );
   const requiredCommercialTargets = [
+    "burnBarHermesGateway",
+    "latestRouterRundown",
+    "startCliLink",
+    "pollCliLink",
     "createStripeBurnBarProCheckoutSession",
     "createStripeBurnBarProPortalSession",
     "verifyGooglePlayBurnBarProSubscription",

@@ -16,15 +16,14 @@ import { spawnSync } from "node:child_process";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(scriptDir, "..", "..");
 const gate = join(scriptDir, "verify-staging-functions-deploy-boundary.mjs");
-const fixtureRoot = mkdtempSync(join(tmpdir(), "openburnbar-staging-boundary-"));
+const fixtureRoot = mkdtempSync(
+  join(tmpdir(), "openburnbar-staging-boundary-"),
+);
 const workflowDir = join(fixtureRoot, ".github", "workflows");
 mkdirSync(workflowDir, { recursive: true });
 
 for (const name of ["deploy-staging.yml", "deploy-staging-trusted.yml"]) {
-  cpSync(
-    join(repoRoot, ".github", "workflows", name),
-    join(workflowDir, name),
-  );
+  cpSync(join(repoRoot, ".github", "workflows", name), join(workflowDir, name));
 }
 const callerPath = join(workflowDir, "deploy-staging.yml");
 const trustedPath = join(workflowDir, "deploy-staging-trusted.yml");
@@ -41,7 +40,9 @@ function runGate() {
 function expectPass(label) {
   const result = runGate();
   if (result.status !== 0) {
-    throw new Error(`${label}: expected PASS\n${result.stdout}${result.stderr}`);
+    throw new Error(
+      `${label}: expected PASS\n${result.stdout}${result.stderr}`,
+    );
   }
 }
 
@@ -71,13 +72,35 @@ try {
   expectFailure(
     "candidate scripts enabled",
     trustedPath,
-    pristineTrusted.replace(" --ignore-scripts", ""),
+    pristineTrusted.replace(
+      "Functions deployment package retains executable npm scripts.",
+      "Functions package scripts are accepted.",
+    ),
+  );
+  expectFailure(
+    "missing staging Hosting build",
+    callerPath,
+    pristineCaller.replace(
+      "npm run build:staging --prefix website",
+      "npm run build --prefix website",
+    ),
+  );
+  expectFailure(
+    "missing local Functions packages",
+    callerPath,
+    pristineCaller.replace(
+      'cp -R functions/vendor "$destination/vendor"',
+      'echo "vendor omitted"',
+    ),
   );
   expectFailure(
     "verification after auth",
     trustedPath,
     pristineTrusted
-      .replace("Verify bounded candidate artifacts before authentication", "TEMP")
+      .replace(
+        "Verify bounded candidate artifacts before authentication",
+        "TEMP",
+      )
       .replace(
         "Authenticate to Google Cloud through trusted-main WIF",
         "Verify bounded candidate artifacts before authentication",
@@ -88,6 +111,62 @@ try {
     "unquoted deploy scope",
     trustedPath,
     pristineTrusted.replace('--only "$deploy_scope"', "--only $deploy_scope"),
+  );
+  expectFailure(
+    "unscoped Hosting deploy",
+    trustedPath,
+    pristineTrusted.replace("--only hosting:marketing", "--only hosting"),
+  );
+  expectFailure(
+    "missing Hosting rewrite preflight",
+    trustedPath,
+    pristineTrusted.replace("grep -qx ACTIVE", "cat >/dev/null"),
+  );
+  expectFailure(
+    "unreviewed public rewrite allowlist",
+    trustedPath,
+    pristineTrusted.replace(
+      "[pollCliLink]=us-central1",
+      "[unreviewedFunction]=us-central1",
+    ),
+  );
+  expectFailure(
+    "overbroad public rewrite IAM role",
+    trustedPath,
+    pristineTrusted.replace("--role=roles/run.invoker", "--role=roles/editor"),
+  );
+  expectFailure(
+    "missing exact public rewrite count",
+    trustedPath,
+    pristineTrusted.replace(
+      '[[ "$rewrite_count" -eq 4 && "${#reviewed_rewrites[@]}" -eq 0 ]]',
+      '[[ "$rewrite_count" -gt 0 ]]',
+    ),
+  );
+  expectFailure(
+    "public rewrite IAM after Hosting deploy",
+    trustedPath,
+    pristineTrusted
+      .replace(
+        "Grant public invocation only to reviewed Hosting rewrite services",
+        "TEMP",
+      )
+      .replace(
+        "Deploy reviewed Hosting artifact",
+        "Grant public invocation only to reviewed Hosting rewrite services",
+      )
+      .replace("TEMP", "Deploy reviewed Hosting artifact"),
+  );
+  expectFailure(
+    "live Hosting verification before deploy",
+    trustedPath,
+    pristineTrusted
+      .replace("Deploy reviewed Hosting artifact", "TEMP")
+      .replace(
+        "Verify exact staging website deployment",
+        "Deploy reviewed Hosting artifact",
+      )
+      .replace("TEMP", "Verify exact staging website deployment"),
   );
   console.log("PASS: staging deployment boundary self-test.");
 } finally {
