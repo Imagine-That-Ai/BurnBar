@@ -745,19 +745,6 @@ function workflowTrigger(source, name) {
     : source.slice(start, start + 2 + next);
 }
 
-function workflowTriggerPaths(source, name) {
-  const trigger = workflowTrigger(source, name);
-  const lines = trigger.split("\n");
-  const start = lines.indexOf("    paths:");
-  assert.notEqual(start, -1, `missing paths for ${name} trigger`);
-  const paths = [];
-  for (const line of lines.slice(start + 1)) {
-    if (!line.startsWith('      - "')) break;
-    paths.push(JSON.parse(line.slice("      - ".length)));
-  }
-  return paths;
-}
-
 test("pull_request trigger is unfiltered and the classifier owns the Hermes adapter", () => {
   const trigger = workflowTrigger(core, "pull_request");
   assert.doesNotMatch(trigger, /^    paths:/mu);
@@ -772,16 +759,8 @@ test("pull_request trigger cannot omit branch-control inputs", () => {
   assert.doesNotMatch(workflowTrigger(core, "pull_request"), /^    paths:/mu);
 });
 
-test("main push trigger covers exact-main control-plane changes", () => {
-  const paths = new Set(workflowTriggerPaths(core, "push"));
-  assert.ok(
-    paths.has("config/domain-core-control-plane-manifest.json"),
-    "domain-core main pushes must run when the trusted control-plane manifest changes",
-  );
-  assert.ok(
-    paths.has(".github/workflows/domain-core.yml"),
-    "domain-core main pushes must run when their own authoritative workflow changes",
-  );
+test("main push trigger is unfiltered so every exact-main commit gets a source proof", () => {
+  assert.doesNotMatch(workflowTrigger(core, "push"), /^    paths:/mu);
 });
 
 test("domain-core-pr-gate needs both python contract jobs before the aggregate count", () => {

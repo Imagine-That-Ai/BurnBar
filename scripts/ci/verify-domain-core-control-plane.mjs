@@ -57,10 +57,22 @@ const SEED_PATHS = Object.freeze([
   "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core.js",
   "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm",
   "functions/vendor/openburnbar/domain-core-wasm/package.json",
+  // These decision and mutation helpers were historically discovered through
+  // the workflow's push.paths text. Keep them explicit now that exact-main
+  // proof runs on every main commit without a path filter.
+  "scripts/ci/evaluate-domain-core-promotion.mjs",
   "scripts/ci/verify-domain-core-control-plane.mjs",
+  "scripts/ci/verify-domain-core-legacy-absence.py",
   "scripts/ci/verify-domain-core-protected-attestation.mjs",
   "scripts/ci/write_burnbar_source_provenance.py",
   "scripts/ci/check_agpl_legal_release_review.py",
+  "scripts/lib/branch-protection-drift.mjs",
+  "scripts/ops/create-domain-core-deletion-plan.py",
+  "scripts/ops/create-domain-core-promotion-receipt.py",
+  "scripts/ops/create-domain-core-rollback-receipt.py",
+  "scripts/ops/create-domain-core-stable-receipt.py",
+  "scripts/ops/export-domain-core-promotion-evidence.mjs",
+  "scripts/ops/manage-domain-core-shadow-enrollment.mjs",
   "tests/test_domain_core_console_release_evidence_workflow.py",
   "tests/test_domain_core_functions_release_workflow.py",
   "tests/test_domain_core_python_hermes.py",
