@@ -18,9 +18,12 @@ on:
   # Manual runs are diagnostic; protected promotion accepts only successful main pushes.
   workflow_dispatch:
 
+# Push runs are the exact-main deploy proof: key them by commit and never
+# cancel them, so a rapid follow-up main push cannot cancel the previous
+# commit's proof run and leave that commit undeployable.
 concurrency:
-  group: domain-core-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: domain-core-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   classify:

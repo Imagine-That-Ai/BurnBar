@@ -113,10 +113,14 @@ test("deterministic workflow implements every exact policy job and a fail-closed
   );
 });
 
-test("authoritative push proofs cannot be cancelled by merge-queue validation", () => {
+test("authoritative push proofs cannot be cancelled by merge-queue validation or later main pushes", () => {
+  // Push runs are keyed by commit SHA and exempt from cancel-in-progress:
+  // a second main push landing before the first run's candidate bundle
+  // completes must not cancel it, or that first commit loses the exact-main
+  // source proof deploy-production.yml requires and becomes undeployable.
   assert.match(
     core,
-    /concurrency:\n  group: domain-core-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\n  cancel-in-progress: true/u,
+    /concurrency:\n  group: domain-core-\$\{\{ github\.event_name \}\}-\$\{\{ github\.event_name == 'push' && github\.sha \|\| github\.ref \}\}\n  cancel-in-progress: \$\{\{ github\.event_name != 'push' \}\}/u,
   );
 });
 
