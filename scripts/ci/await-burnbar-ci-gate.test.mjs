@@ -69,7 +69,10 @@ test("explicit observed SHA wins over GitHub's immutable merge-ref SHA", () => {
     }),
     "pull-request-head",
   );
-  assert.equal(resolveObservedSha({ GITHUB_SHA: "merge-group" }), "merge-group");
+  assert.equal(
+    resolveObservedSha({ GITHUB_SHA: "merge-group" }),
+    "merge-group",
+  );
 });
 
 test("gate accepts successful, neutral, and intentionally skipped contexts", () => {
@@ -93,6 +96,57 @@ test("gate fails closed on terminal failures", () => {
   assert.equal(state.ready, false);
   assert.deepEqual(state.failed, [
     { context: "build", conclusion: "timed_out", url: "run" },
+  ]);
+});
+
+test("gate briefly waits for a replacement after a superseded run is cancelled", () => {
+  const nowMs = Date.parse("2026-07-26T21:45:36Z");
+  const state = evaluateGate(
+    ["build"],
+    new Map([
+      [
+        "build",
+        {
+          conclusion: "cancelled",
+          completedAt: "2026-07-26T21:45:08Z",
+          url: "superseded-run",
+        },
+      ],
+    ]),
+    { nowMs, cancelledGraceMs: 120_000 },
+  );
+  assert.equal(state.failed.length, 0);
+  assert.deepEqual(state.pending, [
+    {
+      context: "build",
+      status: "replacement_pending",
+      url: "superseded-run",
+    },
+  ]);
+});
+
+test("gate fails closed when no replacement appears before the cancellation grace expires", () => {
+  const nowMs = Date.parse("2026-07-26T21:48:00Z");
+  const state = evaluateGate(
+    ["build"],
+    new Map([
+      [
+        "build",
+        {
+          conclusion: "cancelled",
+          completedAt: "2026-07-26T21:45:08Z",
+          url: "cancelled-run",
+        },
+      ],
+    ]),
+    { nowMs, cancelledGraceMs: 120_000 },
+  );
+  assert.deepEqual(state.failed, [
+    {
+      context: "build",
+      conclusion: "cancelled",
+      url: "cancelled-run",
+    },
   ]);
 });
 
@@ -123,6 +177,7 @@ test("collector paginates repositories with more than 100 checks", async () => {
                   name: `check-${index + 1}`,
                   status: "completed",
                   conclusion: "success",
+                  completed_at: "2026-07-26T21:45:00Z",
                 }))
               : [
                   {
@@ -130,6 +185,7 @@ test("collector paginates repositories with more than 100 checks", async () => {
                     name: "late-check",
                     status: "completed",
                     conclusion: "success",
+                    completed_at: "2026-07-26T21:45:01Z",
                   },
                 ],
         }
@@ -143,6 +199,10 @@ test("collector paginates repositories with more than 100 checks", async () => {
       "token",
     );
     assert.equal(observations.get("late-check").conclusion, "success");
+    assert.equal(
+      observations.get("late-check").completedAt,
+      "2026-07-26T21:45:01Z",
+    );
     assert.ok(
       calls.some((url) => url.includes("check-runs") && url.includes("page=2")),
     );
