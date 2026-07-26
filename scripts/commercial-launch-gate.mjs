@@ -214,6 +214,7 @@ const REQUIRED_FIREBASE_FUNCTIONS = [
   "onUsageWritten",
   "performElderWandHostedSearch",
   "rebuildRollups",
+  "reconcileGooglePlayVoidedPurchasesDaily",
   "reconcileHostedEntitlementsDaily",
   "recomputeComputerUseQuotaUsage",
   "recomputeMediaQuotaUsage",
@@ -1677,6 +1678,11 @@ function checkCommercialBillingRuntime() {
   );
   const appStoreTopUp = deployedFunctionEnvironment("verifyCloudProTopUp");
   const webhook = deployedFunctionEnvironment("stripeBurnBarProWebhook");
+  // RTDN backstop: the daily voided-purchase sweep must be deployed so a
+  // missed Google Play refund/chargeback notification still revokes access.
+  const googlePlayVoidedSweep = deployedFunctionEnvironment(
+    "reconcileGooglePlayVoidedPurchasesDaily",
+  );
 
   const envSources = [
     checkout,
@@ -1713,6 +1719,7 @@ function checkCommercialBillingRuntime() {
       googlePlayTopUp.ok &&
       appStoreTopUp.ok &&
       webhook.ok &&
+      googlePlayVoidedSweep.ok &&
       envRequirements.ok &&
       stripeSecrets.ok,
     functions: {
@@ -1721,6 +1728,7 @@ function checkCommercialBillingRuntime() {
       googlePlayTopUp,
       appStoreTopUp,
       webhook,
+      googlePlayVoidedSweep,
     },
     envRequirements,
     stripeSecrets,

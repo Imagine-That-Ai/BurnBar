@@ -41,6 +41,10 @@
       "module": "./googlePlayRtdn.js",
       "export": "googlePlayDeveloperNotifications"
     },
+    "reconcileGooglePlayVoidedPurchasesDaily": {
+      "module": "./googlePlayVoidedPurchaseReconciler.js",
+      "export": "reconcileGooglePlayVoidedPurchasesDaily"
+    },
     "beginEntitlementBinding": {
       "module": "./appstore/index.js",
       "export": "beginEntitlementBinding"

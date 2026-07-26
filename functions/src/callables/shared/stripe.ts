@@ -27,6 +27,12 @@ import {
   stripeSubscriptionProductID,
 } from "./stripeSubscriptionTiers.js";
 import { applyStripeTopUpCheckoutSession, reconcileStripeTopUpCharge } from "./stripeTopUps.js";
+import {
+  recordStripeSubscriptionPaymentReversal,
+  stripeInvoiceSubscriptionID,
+  stripeObjectID,
+  stripePaymentReversalDocPath,
+} from "./stripePaymentReversal.js";
 import { sha256Hex } from "./validators.js";
 
 const STRIPE_SECRET_KEY = defineSecret("STRIPE_SECRET_KEY");
@@ -236,6 +242,52 @@ export async function findReusableStripeSubscriptionCheckoutSession(
   }
 }
 
+/**
+ * Expires every open subscription-mode Checkout Session for a customer.
+ *
+ * Called when the reuse lookup misses (the user changed tier, cadence, or
+ * redirect URLs), so previously issued checkout URLs stop being completable
+ * and the customer cannot pay through two different selections in parallel.
+ * A session completing inside the tiny list -> expire race window is still
+ * contained: Stripe rejects expiring a completed session (swallowed below),
+ * and the subscription checkout guard plus webhook reconciliation keep the
+ * account converged on whichever subscription actually got created.
+ */
+export async function expireOpenStripeSubscriptionCheckoutSessions(
+  stripe: Stripe,
+  customerID: string,
+): Promise<void> {
+  let startingAfter: string | undefined;
+  for (;;) {
+    const page = await stripeWithResilience("checkout.sessions.list.expire_superseded", () =>
+      stripe.checkout.sessions.list({
+        customer: customerID,
+        limit: 100,
+        status: "open",
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      }),
+    );
+    for (const session of page.data) {
+      if (session.mode !== "subscription") continue;
+      try {
+        await stripeWithResilience("checkout.sessions.expire.superseded", () =>
+          stripe.checkout.sessions.expire(session.id),
+        );
+      } catch (error) {
+        // The session may have completed or expired between list and expire;
+        // either way it is no longer open, which is what this sweep wants.
+        logWarn({
+          event: "stripe_checkout_session_expire_failed",
+          error: error instanceof Error ? error.name : "unknown",
+        });
+      }
+    }
+    const last = page.data.at(-1);
+    if (!page.has_more || !last) return;
+    startingAfter = last.id;
+  }
+}
+
 export async function applyStripeCheckoutSession(
   stripe: Stripe,
   session: Stripe.Checkout.Session,
@@ -276,8 +328,20 @@ export async function applyStripeSubscription(
 
   const customerID = stripeCustomerID(subscription.customer);
   const expiresAtMillis = stripeSubscriptionPeriodEndMillis(subscription);
-  const status = String(subscription.status ?? "unknown");
-  const active = STRIPE_ACTIVE_STATES.has(status) && expiresAtMillis > Date.now();
+  let status = String(subscription.status ?? "unknown");
+  let active = STRIPE_ACTIVE_STATES.has(status) && expiresAtMillis > Date.now();
+  // A full refund or an open/lost dispute reverses the payment without moving
+  // the subscription out of `active`, so subscription state alone would keep
+  // the entitlement alive. The reversal marker written by
+  // reconcileStripeCharge is the durable record of that money-state and wins
+  // over the point-in-time subscription status.
+  if (active) {
+    const reversalSnap = await db.doc(stripePaymentReversalDocPath(subscription.id)).get();
+    if (reversalSnap.get("reversed") === true) {
+      active = false;
+      status = `${status}:payment_reversed`;
+    }
+  }
   const entitlementID = stripeSubscriptionEntitlementID(subscription);
   const productID = stripeSubscriptionProductID(subscription, entitlementID);
 
@@ -418,6 +482,10 @@ export async function reconcileStripeCharge(
     stripe.charges.retrieve(charge.id),
   );
   await reconcileStripeTopUpCharge(stripe, currentCharge, eventContext, disputeStatus);
+  // Record the money-state BEFORE reconciling subscriptions so the customer
+  // sweep below observes the marker and deactivates the entitlement in the
+  // same pass.
+  await recordStripeSubscriptionPaymentReversal(stripe, currentCharge, eventContext, disputeStatus);
 
   let customerID = stripeCustomerID(currentCharge.customer);
   if (!customerID) {
@@ -563,23 +631,6 @@ export async function deactivateStripeCustomerEntitlements(
     },
     { merge: true },
   );
-}
-
-function stripeInvoiceSubscriptionID(invoice: Stripe.Invoice): string | undefined {
-  const parentSubscription = invoice.parent?.subscription_details?.subscription;
-  const parentID = stripeObjectID(parentSubscription);
-  if (parentID) return parentID;
-
-  // Compatibility for invoices created under older Stripe API versions.
-  return stripeObjectID(jsonObject(invoice).subscription);
-}
-
-function stripeObjectID(value: unknown): string | undefined {
-  if (typeof value === "string" && value.length > 0) return value;
-  if (value && typeof value === "object" && "id" in value && typeof value.id === "string") {
-    return value.id;
-  }
-  return undefined;
 }
 
 async function uidForStripeSubscription(subscription: Stripe.Subscription): Promise<string | undefined> {

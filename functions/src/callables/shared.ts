@@ -113,6 +113,7 @@ export {
   deactivateStripeCustomerEntitlements,
   assertStripeCustomerCanStartSubscriptionCheckout,
   findReusableStripeSubscriptionCheckoutSession,
+  expireOpenStripeSubscriptionCheckoutSessions,
 } from "./shared/stripe.js";
 
 export { GOOGLE_PLAY_ACTIVE_STATES, selectGooglePlaySubscriptionLineItem } from "./shared/googlePlay.js";

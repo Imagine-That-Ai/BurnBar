@@ -92,6 +92,27 @@ export async function assertActiveBurnBarCloudProEntitlement(uid: string): Promi
 }
 
 /**
+ * Resolves the allowance tier for fulfilling an already-captured Cloud Pro
+ * top-up payment. Unlike {@link activeBurnBarCloudProEntitlementTier} this
+ * never throws: eligibility is asserted at purchase time (checkout-session or
+ * Play-purchase creation), and by the time the asynchronous payment webhook
+ * lands the entitlement may have lapsed or the account may be suspended — the
+ * customer's money is captured either way, so the credit must still land
+ * instead of failing the webhook forever. The tier only shapes fusion
+ * allowance defaults; with no active entitlement, fall back to the tier whose
+ * entitlement doc exists (Ultra wins), defaulting to cloud_pro.
+ */
+async function cloudProTopUpFulfillmentTier(uid: string): Promise<BurnBarCloudProEntitlementTier> {
+  const [ultraSnap, proMaxSnap] = await Promise.all([
+    db.doc(`users/${uid}/entitlements/${BURNBAR_ULTRA_ENTITLEMENT_ID}`).get(),
+    db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`).get(),
+  ]);
+  if (isActiveBurnBarUltraEntitlement(ultraSnap.data())) return "ultra";
+  if (isActiveBurnBarCloudProEntitlement(proMaxSnap.data())) return "cloud_pro";
+  return ultraSnap.exists ? "ultra" : "cloud_pro";
+}
+
+/**
  * Builds the {@link EntitlementCatalog} the shared predicate matches against from
  * this backend's resolved config. The product IDs are env / remote-config overridable
  * (see `functions/src/config.ts`), so the catalog is resolved per call rather than
@@ -361,11 +382,42 @@ function paidEntitlementWriteWouldRewindSourceEvent(
 
   // Stripe's event.created has second granularity, so distinct transitions can
   // share one timestamp. Resolve that tie by terminal-state dominance:
-  // deletion/cancellation may replace an active write, while an active replay
-  // may never resurrect an entitlement that is already inactive. Same-event
-  // redeliveries remain idempotent through the early return above.
-  const existingActive = existing.active === true;
-  return !existingActive || incoming.active;
+  // deletion/cancellation may replace an active write, and an active write may
+  // never resurrect an entitlement whose inactive state is terminal
+  // (cancelled/expired/revoked). Transient billing states (e.g. incomplete,
+  // past_due, on-hold) are legitimately followed by activation in the same
+  // second — incomplete -> active is Stripe's normal first-payment sequence —
+  // so an active write may replace those. Unknown or missing rawStatus is
+  // treated as terminal (fail closed). Same-event redeliveries remain
+  // idempotent through the early return above.
+  if (existing.active === true) return incoming.active;
+  return !(incoming.active && isTransientInactiveEntitlementStatus(existing.rawStatus));
+}
+
+/**
+ * Inactive entitlement states that a same-second active write may legitimately
+ * supersede: they precede activation in the provider's own lifecycle rather
+ * than terminating it. Anything else (canceled, expired, revoked, unknown,
+ * missing) is treated as terminal so a stale active replay cannot resurrect a
+ * cancelled entitlement.
+ */
+function isTransientInactiveEntitlementStatus(rawStatus: unknown): boolean {
+  if (typeof rawStatus !== "string") return false;
+  switch (rawStatus) {
+    // Stripe subscription statuses that are inactive but recoverable.
+    case "incomplete":
+    case "past_due":
+    case "paused":
+    case "unpaid":
+    // Google Play subscription states that are inactive but recoverable.
+    case "SUBSCRIPTION_STATE_ON_HOLD":
+    case "SUBSCRIPTION_STATE_PAUSED":
+    case "SUBSCRIPTION_STATE_PENDING":
+    case "SUBSCRIPTION_STATE_IN_GRACE_PERIOD":
+      return true;
+    default:
+      return false;
+  }
 }
 
 function cloudProAllowanceTierForEntitlement(entitlementID: string, productID: string): BurnBarCloudProEntitlementTier {
@@ -433,7 +485,10 @@ export async function creditCloudProTopUp(args: {
   externalCurrency?: string;
   quantity?: number;
 }): Promise<{ credited: boolean; monthKey: string; units: number; kind: CloudProTopUpKind }> {
-  const tier = await activeBurnBarCloudProEntitlementTier(args.uid);
+  // Fulfillment must not re-assert entitlement/suspension state: payment is
+  // already captured, so a lapsed subscription between checkout and webhook
+  // would otherwise permanently strand a paid top-up.
+  const tier = await cloudProTopUpFulfillmentTier(args.uid);
   const monthKey = monthKeyForDate(new Date());
   const allowanceRef = db.doc(allowanceDocPath(args.uid, monthKey));
   const receiptID = requiredIdentifier(`${args.source}_${args.externalPaymentID}`, "externalPaymentID");

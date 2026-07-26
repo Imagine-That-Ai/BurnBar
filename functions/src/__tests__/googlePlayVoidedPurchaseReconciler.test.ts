@@ -112,6 +112,9 @@ describe("Google Play voided-purchase scheduled reconciliation", () => {
       endTime: String(Date.now()),
       maxResults: 1_000,
       includeQuantityBasedPartialRefund: false,
+      // type=1 includes voided subscription purchases; the endpoint default
+      // (type=0) silently returns only voided in-app purchases.
+      type: 1,
     });
     expect(state.list).toHaveBeenNthCalledWith(
       2,

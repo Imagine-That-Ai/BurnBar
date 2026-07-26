@@ -66,9 +66,11 @@ async function runGooglePlayVoidedPurchaseSweep(nowMillis = Date.now()): Promise
         maxResults: GOOGLE_PLAY_VOIDED_PAGE_SIZE,
         // OpenBurnBar currently issues one unit per Play top-up purchase, so
         // quantity-based partial-refund rows are not actionable and remain
-        // excluded. Subscriptions and one-time purchases are both included by
-        // the v3 endpoint default.
+        // excluded. The v3 endpoint defaults to type=0 (in-app purchases
+        // only); type=1 explicitly includes voided subscription purchases
+        // alongside voided one-time purchases.
         includeQuantityBasedPartialRefund: false,
+        type: 1,
         ...(pageToken ? { token: pageToken } : {}),
       }),
     );

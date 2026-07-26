@@ -42,6 +42,7 @@ vi.mock("../logging.js", () => ({
 
 import {
   assertStripeCustomerCanStartSubscriptionCheckout,
+  expireOpenStripeSubscriptionCheckoutSessions,
   findReusableStripeSubscriptionCheckoutSession,
   getOrCreateStripeCustomer,
 } from "../callables/shared/stripe.js";
@@ -132,6 +133,48 @@ describe("Stripe subscription checkout guards", () => {
         "production-redirects",
       ),
     ).resolves.toBeUndefined();
+  });
+
+  it("expires every open subscription-mode session so parallel selections cannot both be paid", async () => {
+    const openSessions = [
+      { id: "cs_open_cloud_monthly", mode: "subscription" },
+      { id: "cs_open_ultra_annual", mode: "subscription" },
+      { id: "cs_open_topup", mode: "payment" },
+    ];
+    const sessionList = vi.fn(async () => ({ data: openSessions, has_more: false }));
+    const expire = vi.fn(async (id: string) => ({ id, status: "expired" }));
+    const stripe = stripeClient({
+      checkout: { sessions: { list: sessionList, expire } },
+    });
+
+    await expireOpenStripeSubscriptionCheckoutSessions(stripe, "cus_parallel_1");
+
+    expect(sessionList).toHaveBeenCalledWith({
+      customer: "cus_parallel_1",
+      limit: 100,
+      status: "open",
+    });
+    expect(expire.mock.calls.map((call) => call[0])).toEqual(["cs_open_cloud_monthly", "cs_open_ultra_annual"]);
+  });
+
+  it("swallows an expire race when a listed session already completed", async () => {
+    const sessionList = vi.fn(async () => ({
+      data: [
+        { id: "cs_completed_in_race", mode: "subscription" },
+        { id: "cs_still_open", mode: "subscription" },
+      ],
+      has_more: false,
+    }));
+    const expire = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("This Checkout Session is already complete."))
+      .mockResolvedValueOnce({ id: "cs_still_open", status: "expired" });
+    const stripe = stripeClient({
+      checkout: { sessions: { list: sessionList, expire } },
+    });
+
+    await expect(expireOpenStripeSubscriptionCheckoutSessions(stripe, "cus_race_1")).resolves.toBeUndefined();
+    expect(expire).toHaveBeenCalledTimes(2);
   });
 
   it("recovers a metadata-matched Stripe customer before creating another", async () => {

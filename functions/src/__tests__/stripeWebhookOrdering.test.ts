@@ -408,6 +408,7 @@ describe("Stripe lifecycle reconciliation", () => {
       subscriptions: { list },
       charges: { retrieve: chargeRetrieve },
       checkout: { sessions: { list: checkoutList } },
+      invoicePayments: { list: vi.fn(async () => ({ data: [], has_more: false })) },
     });
 
     await reconcileStripeCharge(
@@ -462,6 +463,7 @@ describe("Stripe lifecycle reconciliation", () => {
     const stripe = {
       paymentIntents: { retrieve: paymentIntentRetrieve },
       charges: { retrieve: chargeRetrieve },
+      invoicePayments: { list: vi.fn(async () => ({ data: [], has_more: false })) },
     };
     const session = {
       id: "cs_topup_1",
@@ -553,6 +555,7 @@ describe("Stripe lifecycle reconciliation", () => {
       charges: { retrieve: chargeRetrieve },
       disputes: { retrieve: disputeRetrieve },
       paymentIntents: { retrieve: paymentIntentRetrieve },
+      invoicePayments: { list: vi.fn(async () => ({ data: [], has_more: false })) },
     };
     const dispute = { id: "dp_topup_1", charge, status: "under_review" };
 

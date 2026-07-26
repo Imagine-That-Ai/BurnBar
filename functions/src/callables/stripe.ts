@@ -27,6 +27,7 @@ import {
   selectGooglePlaySubscriptionLineItem,
   assertStripeCustomerCanStartSubscriptionCheckout,
   findReusableStripeSubscriptionCheckoutSession,
+  expireOpenStripeSubscriptionCheckoutSessions,
   creditCloudProTopUp,
   writeBurnBarProEntitlement,
 } from "./shared.js";
@@ -277,6 +278,10 @@ export const createStripeBurnBarProCheckoutSession = onCall(
       if (reusable) {
         return { sessionId: reusable.id, url: reusable.url, reused: true };
       }
+      // A reuse miss means the user changed tier, cadence, or redirect URLs.
+      // Expire the superseded open sessions before creating the new one so a
+      // stale checkout URL for a different selection cannot still be paid.
+      await expireOpenStripeSubscriptionCheckoutSessions(stripe, customerID);
       const idempotencyBucket = Math.floor(Date.now() / (10 * 60 * 1000));
       const idempotencyKey = sha256Hex(
         `burnbar_subscription_checkout:${uid}:${selection.tier}:${selection.cadence}:${redirectFingerprint}:${idempotencyBucket}`,

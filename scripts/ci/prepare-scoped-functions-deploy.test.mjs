@@ -137,6 +137,7 @@ try {
     "verifyGooglePlayCloudProTopUp",
     "stripeBurnBarProWebhook",
     "googlePlayDeveloperNotifications",
+    "reconcileGooglePlayVoidedPurchasesDaily",
     "beginEntitlementBinding",
     "verifyHostedQuotaEntitlement",
     "verifyCloudProTopUp",
