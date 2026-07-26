@@ -92,6 +92,7 @@ export const PLATFORM_TRIGGER_ENDPOINTS = [
   "latestRouterRundown",
   "reconcileAccountErasures",
   "reconcileHostedEntitlementsDaily",
+  "reconcileGooglePlayVoidedPurchasesDaily",
   "backfillPrivacyPlaintextScheduled",
   "reapHermesGatewayApprovals",
   "onCliSessionAgentReplyNotification",

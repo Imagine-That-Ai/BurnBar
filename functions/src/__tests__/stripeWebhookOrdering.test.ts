@@ -145,36 +145,27 @@ function activeSubscriptionWrite(overrides: Partial<Parameters<typeof writeBurnB
   });
 }
 
+function inactiveSubscriptionWrite(overrides: Partial<Parameters<typeof writeBurnBarProEntitlement>[0]> = {}) {
+  return activeSubscriptionWrite({
+    expiresAtMillis: Date.parse("2026-06-10T00:00:00.000Z"),
+    rawStatus: "canceled",
+    activeOverride: false,
+    ...overrides,
+  });
+}
+
 beforeEach(() => {
   firestoreState.docs.clear();
 });
 
 describe("Stripe webhook entitlement ordering", () => {
   it("keeps a cancellation when a stale active subscription update replays later", async () => {
-    await writeBurnBarProEntitlement({
-      uid: UID,
-      productID: "com.openburnbar.pro.monthly",
-      expiresAtMillis: Date.parse("2026-06-10T00:00:00.000Z"),
-      source: "stripe_webhook_verified",
-      platform: "stripe",
-      externalSubscriptionID: SUBSCRIPTION_ID,
-      rawStatus: "canceled",
-      environment: "Production",
-      activeOverride: false,
+    await inactiveSubscriptionWrite({
       sourceEventID: "evt_deleted",
       sourceEventCreatedMillis: 2_000,
     });
 
-    await writeBurnBarProEntitlement({
-      uid: UID,
-      productID: "com.openburnbar.pro.monthly",
-      expiresAtMillis: Date.parse("2026-07-10T00:00:00.000Z"),
-      source: "stripe_webhook_verified",
-      platform: "stripe",
-      externalSubscriptionID: SUBSCRIPTION_ID,
-      rawStatus: "active",
-      environment: "Production",
-      activeOverride: true,
+    await activeSubscriptionWrite({
       sourceEventID: "evt_stale_update",
       sourceEventCreatedMillis: 1_000,
     });
@@ -213,17 +204,25 @@ describe("Stripe webhook entitlement ordering", () => {
     expect(firestoreState.docs.get(ENTITLEMENT_PATH)?.rawStatus).toBe("active_renewed");
   });
 
-  it("rejects a same-second write from a DIFFERENT event (second-granularity tie-break)", async () => {
-    await writeBurnBarProEntitlement({
-      uid: UID,
-      productID: "com.openburnbar.pro.monthly",
-      expiresAtMillis: Date.parse("2026-06-10T00:00:00.000Z"),
-      source: "stripe_webhook_verified",
-      platform: "stripe",
-      externalSubscriptionID: SUBSCRIPTION_ID,
-      rawStatus: "canceled",
-      environment: "Production",
-      activeOverride: false,
+  it("allows a same-second terminal transition to replace an active entitlement", async () => {
+    await activeSubscriptionWrite({
+      sourceEventID: "evt_active",
+      sourceEventCreatedMillis: 2_000,
+    });
+
+    await inactiveSubscriptionWrite({
+      sourceEventID: "evt_deleted",
+      sourceEventCreatedMillis: 2_000,
+    });
+
+    const entitlement = firestoreState.docs.get(ENTITLEMENT_PATH);
+    expect(entitlement?.active).toBe(false);
+    expect(entitlement?.rawStatus).toBe("canceled");
+    expect(entitlement?.sourceEventID).toBe("evt_deleted");
+  });
+
+  it("rejects a same-second active resurrection after a terminal transition", async () => {
+    await inactiveSubscriptionWrite({
       sourceEventID: "evt_deleted",
       sourceEventCreatedMillis: 2_000,
     });

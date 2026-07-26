@@ -950,6 +950,15 @@ targets:
           - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
         outputFiles:
           - $(DERIVED_FILE_DIR)/BlockAppCheckDebugTokenInRelease.stamp
+      - name: Block iOS QA Bridge In Release
+        script: |
+          set -euo pipefail
+          if [[ "${CONFIGURATION:-}" != "Release" ]]; then
+            exit 0
+          fi
+          /bin/bash "${SRCROOT}/scripts/ci/verify-ios-debug-bridge-release.sh" \
+            "${TARGET_BUILD_DIR}/${WRAPPER_NAME}"
+        basedOnDependencyAnalysis: false
     info:
       path: OpenBurnBarMobile/Info.plist
       properties:

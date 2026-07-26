@@ -9385,6 +9385,7 @@
 				68093FD2CB89FFF33810DF23 /* Embed Foundation Extensions */,
 				28EBBA77E00C3687E1B9DAD1 /* Copy Firebase Config If Present */,
 				2FF71114694A1CECACA080FE /* Block App Check Debug Token In Release */,
+				D1C37B4ACBAC3EB09550F19E /* Block iOS QA Bridge In Release */,
 			);
 			buildRules = (
 			);
@@ -10089,6 +10090,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "ditto \"${SCRIPT_INPUT_FILE_0}\" \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+		};
+		D1C37B4ACBAC3EB09550F19E /* Block iOS QA Bridge In Release */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Block iOS QA Bridge In Release";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nif [[ \"${CONFIGURATION:-}\" != \"Release\" ]]; then\n  exit 0\nfi\n/bin/bash \"${SRCROOT}/scripts/ci/verify-ios-debug-bridge-release.sh\" \\\n  \"${TARGET_BUILD_DIR}/${WRAPPER_NAME}\"\n";
 		};
 		F19F6F508537047AB82F67A8 /* Configure Firebase Auth Resources */ = {
 			isa = PBXShellScriptBuildPhase;

@@ -240,6 +240,7 @@ export async function writeBurnBarProEntitlement(args: {
       }) ||
       paidEntitlementWriteWouldRewindSourceEvent(existingData, {
         source: args.source,
+        active,
         externalSubscriptionID: args.externalSubscriptionID,
         purchaseTokenHash: args.purchaseTokenHash,
         sourceEventID: args.sourceEventID,
@@ -337,6 +338,7 @@ function paidEntitlementWriteWouldRewindSourceEvent(
   existing: Record<string, unknown> | undefined,
   incoming: {
     source: string;
+    active: boolean;
     externalSubscriptionID?: string;
     purchaseTokenHash?: string;
     sourceEventID?: string;
@@ -348,23 +350,22 @@ function paidEntitlementWriteWouldRewindSourceEvent(
   if (typeof existingEventCreatedMillis !== "number") return false;
   if (!sameEntitlementWriteSource(existing, incoming)) return false;
   if (existingEventCreatedMillis > incoming.sourceEventCreatedMillis) return true;
-  // Same-second tie-break: Stripe's event.created has second granularity, so
-  // two DIFFERENT events in the same second cannot be ordered by timestamp —
-  // a stale subscription.updated delivered in the .deleted's second used to
-  // slip past the strict > check above. Equal-timestamp writes from a
-  // different event are rejected. This is safe because the webhook writes
-  // Stripe's CURRENT subscription state, not the event's snapshot: the
-  // checkout and subscription.created/updated paths re-fetch the
-  // subscription before writing, and subscription.deleted's snapshot is the
-  // terminal state — so whichever tied event applied first already carried
-  // the authoritative state and the rejected write adds nothing. Identical
-  // event ids (redeliveries) stay idempotent and re-apply.
-  return (
-    existingEventCreatedMillis === incoming.sourceEventCreatedMillis &&
-    typeof existing.sourceEventID === "string" &&
-    typeof incoming.sourceEventID === "string" &&
-    existing.sourceEventID !== incoming.sourceEventID
-  );
+  if (
+    existingEventCreatedMillis !== incoming.sourceEventCreatedMillis ||
+    typeof existing.sourceEventID !== "string" ||
+    typeof incoming.sourceEventID !== "string" ||
+    existing.sourceEventID === incoming.sourceEventID
+  ) {
+    return false;
+  }
+
+  // Stripe's event.created has second granularity, so distinct transitions can
+  // share one timestamp. Resolve that tie by terminal-state dominance:
+  // deletion/cancellation may replace an active write, while an active replay
+  // may never resurrect an entitlement that is already inactive. Same-event
+  // redeliveries remain idempotent through the early return above.
+  const existingActive = existing.active === true;
+  return !existingActive || incoming.active;
 }
 
 function cloudProAllowanceTierForEntitlement(entitlementID: string, productID: string): BurnBarCloudProEntitlementTier {
