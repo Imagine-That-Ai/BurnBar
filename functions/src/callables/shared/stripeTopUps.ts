@@ -49,12 +49,13 @@ async function stripePaymentIntentForCheckoutSession(
   stripe: Stripe,
   session: Stripe.Checkout.Session,
 ): Promise<Stripe.PaymentIntent | undefined> {
-  if (session.payment_intent && typeof session.payment_intent === "object") {
-    return session.payment_intent;
+  const sessionPaymentIntent = session.payment_intent;
+  if (sessionPaymentIntent && typeof sessionPaymentIntent === "object") {
+    return sessionPaymentIntent;
   }
-  if (typeof session.payment_intent !== "string") return undefined;
+  if (typeof sessionPaymentIntent !== "string") return undefined;
   return stripeWithResilience("payment_intents.retrieve.checkout_topup", () =>
-    stripe.paymentIntents.retrieve(session.payment_intent as string, {
+    stripe.paymentIntents.retrieve(sessionPaymentIntent, {
       expand: ["latest_charge"],
     }),
   );

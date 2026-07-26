@@ -456,12 +456,13 @@ export async function reconcileStripeDispute(
   const currentDispute = await stripeWithResilience("disputes.retrieve.webhook_reconcile", () =>
     stripe.disputes.retrieve(dispute.id),
   );
+  const disputeCharge = currentDispute.charge;
   const charge =
-    typeof currentDispute.charge === "string"
+    typeof disputeCharge === "string"
       ? await stripeWithResilience("charges.retrieve.dispute_reconcile", () =>
-          stripe.charges.retrieve(currentDispute.charge as string),
+          stripe.charges.retrieve(disputeCharge),
         )
-      : currentDispute.charge;
+      : disputeCharge;
   await reconcileStripeCharge(stripe, charge, eventContext, currentDispute.status);
 }
 
@@ -475,13 +476,14 @@ export async function reconcileStripeRefund(
     stripe.refunds.retrieve(refund.id),
   );
   let charge = currentRefund.charge;
-  if (!charge && currentRefund.payment_intent) {
+  const refundPaymentIntent = currentRefund.payment_intent;
+  if (!charge && refundPaymentIntent) {
     const paymentIntent =
-      typeof currentRefund.payment_intent === "string"
+      typeof refundPaymentIntent === "string"
         ? await stripeWithResilience("payment_intents.retrieve.refund_reconcile", () =>
-            stripe.paymentIntents.retrieve(currentRefund.payment_intent as string),
+            stripe.paymentIntents.retrieve(refundPaymentIntent),
           )
-        : currentRefund.payment_intent;
+        : refundPaymentIntent;
     charge = paymentIntent.latest_charge;
   }
   if (!charge) return;

@@ -628,13 +628,7 @@ const subscriptionCatalog = Object.fromEntries(
     type User
   } from "firebase/auth";
   import { httpsCallable } from "firebase/functions";
-  import {
-    auth,
-    functions,
-    googleProvider,
-    appleProvider,
-    appCheck
-  } from "../lib/firebaseClient";
+  import { auth, functions, googleProvider, appleProvider, appCheck } from "../lib/firebaseClient";
 
   type TierID = "cloud" | "cloud_pro" | "ultra";
   type Cadence = "monthly" | "annual";
@@ -658,7 +652,15 @@ const subscriptionCatalog = Object.fromEntries(
   let currentUser: User | null = null;
   let portalRecommended = false;
 
-  const stateNames = ["checking", "signed-out", "ready", "loading", "success", "cancelled", "error"];
+  const stateNames = [
+    "checking",
+    "signed-out",
+    "ready",
+    "loading",
+    "success",
+    "cancelled",
+    "error"
+  ];
   const planName = document.querySelector<HTMLElement>("#plan-name");
   const planSummary = document.querySelector<HTMLElement>("#plan-summary");
   const planPrice = document.querySelector<HTMLElement>("#plan-price");
@@ -668,15 +670,11 @@ const subscriptionCatalog = Object.fromEntries(
   const errorTitle = document.querySelector<HTMLElement>("#error-title");
   const errorMessage = document.querySelector<HTMLElement>("#error-message");
   const errorPortal = document.querySelector<HTMLButtonElement>("#btn-error-portal");
-  const cadenceButtons = Array.from(
-    document.querySelectorAll<HTMLButtonElement>("[data-cadence]")
-  );
+  const cadenceButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-cadence]"));
 
   function showState(name: string) {
     for (const stateName of stateNames) {
-      document
-        .querySelector(`#state-${stateName}`)
-        ?.classList.toggle("hidden", stateName !== name);
+      document.querySelector(`#state-${stateName}`)?.classList.toggle("hidden", stateName !== name);
     }
   }
 
@@ -742,7 +740,10 @@ const subscriptionCatalog = Object.fromEntries(
       await signInWithPopup(auth, provider);
     } catch (error: unknown) {
       const { code } = callableError(error);
-      if (code.includes("popup-blocked") || code.includes("operation-not-supported-in-this-environment")) {
+      if (
+        code.includes("popup-blocked") ||
+        code.includes("operation-not-supported-in-this-environment")
+      ) {
         await signInWithRedirect(auth, provider);
         return;
       }

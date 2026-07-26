@@ -120,6 +120,12 @@ import {
   reserveStripeWebhookEvent,
 } from "../callables/stripe.js";
 
+// Focused Stripe test doubles: each stub covers only the client/object surface its test exercises.
+function stripeStub<T>(stub: object = {}): T {
+  // @ts-expect-error reason: the stub implements the Stripe surface these ordering tests exercise
+  return stub;
+}
+
 const UID = "stripe-user-1";
 const SUBSCRIPTION_ID = "sub_ordering_1";
 const ENTITLEMENT_PATH = `users/${UID}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`;
@@ -331,7 +337,7 @@ describe("Stripe lifecycle reconciliation", () => {
       items: { data: [{ price: { id: ultraMonthlyPriceID } }] },
     };
 
-    await applyStripeSubscription({} as Stripe, ultra as unknown as Stripe.Subscription, UID, {
+    await applyStripeSubscription(stripeStub<Stripe>(), stripeStub<Stripe.Subscription>(ultra), UID, {
       eventID: "evt_ultra_1",
       eventCreatedMillis: 4_500,
     });
@@ -399,11 +405,11 @@ describe("Stripe lifecycle reconciliation", () => {
     };
     const chargeRetrieve = vi.fn(async () => charge);
     const checkoutList = vi.fn(async () => ({ data: [], has_more: false }));
-    const stripe = {
+    const stripe = stripeStub<Stripe>({
       subscriptions: { list },
       charges: { retrieve: chargeRetrieve },
       checkout: { sessions: { list: checkoutList } },
-    } as unknown as Stripe;
+    });
 
     await reconcileStripeCharge(
       stripe,
@@ -468,7 +474,7 @@ describe("Stripe lifecycle reconciliation", () => {
       currency: "usd",
     };
 
-    await applyStripeCheckoutSession(stripe as unknown as Stripe, session as unknown as Stripe.Checkout.Session, {
+    await applyStripeCheckoutSession(stripeStub<Stripe>(stripe), stripeStub<Stripe.Checkout.Session>(session), {
       eventID: "evt_topup_paid",
       eventCreatedMillis: 8_000,
     });
@@ -490,7 +496,7 @@ describe("Stripe lifecycle reconciliation", () => {
     });
 
     paidCharge.amount_refunded = 1_000;
-    await reconcileStripeCharge(stripe as unknown as Stripe, paidCharge as unknown as Stripe.Charge, {
+    await reconcileStripeCharge(stripeStub<Stripe>(stripe), stripeStub<Stripe.Charge>(paidCharge), {
       eventID: "evt_topup_refund",
       eventCreatedMillis: 9_000,
     });
@@ -551,7 +557,7 @@ describe("Stripe lifecycle reconciliation", () => {
     };
     const dispute = { id: "dp_topup_1", charge, status: "under_review" };
 
-    await reconcileStripeDispute(stripe as unknown as Stripe, dispute as unknown as Stripe.Dispute, {
+    await reconcileStripeDispute(stripeStub<Stripe>(stripe), stripeStub<Stripe.Dispute>(dispute), {
       eventID: "evt_dispute_open",
       eventCreatedMillis: 10_000,
     });
@@ -563,7 +569,7 @@ describe("Stripe lifecycle reconciliation", () => {
       reversalState: "reversed",
     });
 
-    await reconcileStripeDispute(stripe as unknown as Stripe, dispute as unknown as Stripe.Dispute, {
+    await reconcileStripeDispute(stripeStub<Stripe>(stripe), stripeStub<Stripe.Dispute>(dispute), {
       eventID: "evt_dispute_won",
       eventCreatedMillis: 11_000,
     });

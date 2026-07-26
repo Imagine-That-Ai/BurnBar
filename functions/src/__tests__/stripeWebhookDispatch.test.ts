@@ -30,12 +30,20 @@ vi.mock("../callables/shared.js", () => ({
 import { processStripeWebhookEvent } from "../callables/stripeWebhookDispatch.js";
 
 function webhookEvent(type: string, object: Record<string, unknown>, id = "evt_dispatch_1"): Stripe.Event {
-  return {
+  const value = {
     id,
     type,
     created: 1_700_000_000,
     data: { object },
-  } as unknown as Stripe.Event;
+  };
+  // @ts-expect-error reason: the literal covers the Stripe.Event surface the dispatcher reads (id, type, created, data.object)
+  return value;
+}
+
+// processStripeWebhookEvent takes a Stripe client; the stub covers the client surface each test exercises.
+function stripeClient(stub: object = {}): Stripe {
+  // @ts-expect-error reason: the stub implements the Stripe client surface these dispatch tests exercise
+  return stub;
 }
 
 beforeEach(() => {
@@ -47,7 +55,7 @@ describe("processStripeWebhookEvent", () => {
     const session = { id: "cs_1", object: "checkout.session" };
     const event = webhookEvent("checkout.session.completed", session);
 
-    await processStripeWebhookEvent({} as Stripe, event);
+    await processStripeWebhookEvent(stripeClient(), event);
 
     expect(state.applyCheckout).toHaveBeenCalledWith(
       {},
@@ -63,7 +71,7 @@ describe("processStripeWebhookEvent", () => {
     const snapshot = { id: "sub_1", object: "subscription" };
     const current = { ...snapshot, status: "active" };
     const retrieve = vi.fn(async () => current);
-    const stripe = { subscriptions: { retrieve } } as unknown as Stripe;
+    const stripe = stripeClient({ subscriptions: { retrieve } });
     const event = webhookEvent("customer.subscription.updated", snapshot);
 
     await processStripeWebhookEvent(stripe, event);
@@ -81,7 +89,7 @@ describe("processStripeWebhookEvent", () => {
     const snapshot = { id: "sub_deleted_1", object: "subscription", status: "canceled" };
     const event = webhookEvent("customer.subscription.deleted", snapshot);
 
-    await processStripeWebhookEvent({} as Stripe, event);
+    await processStripeWebhookEvent(stripeClient(), event);
 
     expect(state.applySubscription).toHaveBeenCalledWith(
       {},
@@ -92,15 +100,15 @@ describe("processStripeWebhookEvent", () => {
   });
 
   it.each([
-    ["invoice.payment_failed", "reconcileInvoice", { id: "in_1" }],
-    ["charge.refunded", "reconcileCharge", { id: "ch_1" }],
-    ["refund.updated", "reconcileRefund", { id: "re_1" }],
-    ["charge.dispute.closed", "reconcileDispute", { id: "dp_1" }],
-    ["credit_note.voided", "reconcileCreditNote", { id: "cn_1" }],
+    ["invoice.payment_failed", "reconcileInvoice", { id: "in_1", object: "invoice" }],
+    ["charge.refunded", "reconcileCharge", { id: "ch_1", object: "charge" }],
+    ["refund.updated", "reconcileRefund", { id: "re_1", object: "refund" }],
+    ["charge.dispute.closed", "reconcileDispute", { id: "dp_1", object: "dispute" }],
+    ["credit_note.voided", "reconcileCreditNote", { id: "cn_1", object: "credit_note" }],
   ] as const)("routes %s to %s", async (type, stateKey, object) => {
     const event = webhookEvent(type, object);
 
-    await processStripeWebhookEvent({} as Stripe, event);
+    await processStripeWebhookEvent(stripeClient(), event);
 
     expect(state[stateKey]).toHaveBeenCalledWith(
       {},
@@ -110,10 +118,10 @@ describe("processStripeWebhookEvent", () => {
   });
 
   it("deactivates a deleted customer's Stripe entitlements", async () => {
-    const customer = { id: "cus_deleted_1", metadata: { firebaseUID: "uid_1" } };
+    const customer = { id: "cus_deleted_1", object: "customer", metadata: { firebaseUID: "uid_1" } };
     const event = webhookEvent("customer.deleted", customer);
 
-    await processStripeWebhookEvent({} as Stripe, event);
+    await processStripeWebhookEvent(stripeClient(), event);
 
     expect(state.deactivateCustomer).toHaveBeenCalledWith(
       customer.id,
@@ -123,7 +131,7 @@ describe("processStripeWebhookEvent", () => {
   });
 
   it("ignores unrelated Stripe events", async () => {
-    await processStripeWebhookEvent({} as Stripe, webhookEvent("payment_intent.created", { id: "pi_1" }));
+    await processStripeWebhookEvent(stripeClient(), webhookEvent("payment_intent.created", { id: "pi_1" }));
 
     for (const handler of Object.values(state)) {
       expect(handler).not.toHaveBeenCalled();

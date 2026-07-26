@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type Stripe from "stripe";
 
-const state = vi.hoisted(() => ({
-  documents: new Map<string, Record<string, unknown>>(),
-  writes: [] as Array<{ path: string; data: Record<string, unknown> }>,
-}));
+const state = vi.hoisted(() => {
+  const writes: Array<{ path: string; data: Record<string, unknown> }> = [];
+  return {
+    documents: new Map<string, Record<string, unknown>>(),
+    writes,
+  };
+});
 
 vi.mock("../adminRuntime.js", () => ({
   auth: {
@@ -43,13 +46,19 @@ import {
   getOrCreateStripeCustomer,
 } from "../callables/shared/stripe.js";
 
+// The guards under test take a Stripe client; each stub covers the client surface its test exercises.
+function stripeClient(stub: object): Stripe {
+  // @ts-expect-error reason: the stub implements the Stripe client surface these checkout guard tests exercise
+  return stub;
+}
+
 describe("Stripe subscription checkout guards", () => {
   it("rejects checkout when a non-terminal subscription already exists", async () => {
     const list = vi.fn(async () => ({
       data: [{ id: "sub_existing_1", status: "past_due" }],
       has_more: false,
     }));
-    const stripe = { subscriptions: { list } } as unknown as Stripe;
+    const stripe = stripeClient({ subscriptions: { list } });
 
     await expect(assertStripeCustomerCanStartSubscriptionCheckout(stripe, "cus_existing_1")).rejects.toMatchObject({
       code: "already-exists",
@@ -80,10 +89,10 @@ describe("Stripe subscription checkout guards", () => {
       },
     };
     const sessionList = vi.fn(async () => ({ data: [openSession], has_more: false }));
-    const stripe = {
+    const stripe = stripeClient({
       subscriptions: { list: subscriptionList },
       checkout: { sessions: { list: sessionList } },
-    } as unknown as Stripe;
+    });
 
     await expect(assertStripeCustomerCanStartSubscriptionCheckout(stripe, "cus_terminal_1")).resolves.toBeUndefined();
     await expect(
@@ -111,9 +120,9 @@ describe("Stripe subscription checkout guards", () => {
       },
     };
     const sessionList = vi.fn(async () => ({ data: [stagingSession], has_more: false }));
-    const stripe = {
+    const stripe = stripeClient({
       checkout: { sessions: { list: sessionList } },
-    } as unknown as Stripe;
+    });
 
     await expect(
       findReusableStripeSubscriptionCheckoutSession(
@@ -138,7 +147,7 @@ describe("Stripe subscription checkout guards", () => {
       ],
     }));
     const create = vi.fn();
-    const stripe = { customers: { search, create } } as unknown as Stripe;
+    const stripe = stripeClient({ customers: { search, create } });
 
     await expect(getOrCreateStripeCustomer("firebase-user-1", stripe)).resolves.toBe("cus_recovered_1");
     expect(create).not.toHaveBeenCalled();
@@ -158,7 +167,7 @@ describe("Stripe subscription checkout guards", () => {
       metadata: { firebaseUID: "firebase-user-race" },
       options,
     }));
-    const stripe = { customers: { search, create } } as unknown as Stripe;
+    const stripe = stripeClient({ customers: { search, create } });
 
     const [first, second] = await Promise.all([
       getOrCreateStripeCustomer("firebase-user-race", stripe),

@@ -577,6 +577,30 @@ export function isStripeCheckoutSession(value: unknown): value is import("stripe
   return isRecord(value) && value.object === "checkout.session" && typeof value.id === "string";
 }
 
+export function isStripeInvoice(value: unknown): value is import("stripe").Stripe.Invoice {
+  return isRecord(value) && value.object === "invoice" && typeof value.id === "string";
+}
+
+export function isStripeCharge(value: unknown): value is import("stripe").Stripe.Charge {
+  return isRecord(value) && value.object === "charge" && typeof value.id === "string";
+}
+
+export function isStripeRefund(value: unknown): value is import("stripe").Stripe.Refund {
+  return isRecord(value) && value.object === "refund" && typeof value.id === "string";
+}
+
+export function isStripeDispute(value: unknown): value is import("stripe").Stripe.Dispute {
+  return isRecord(value) && value.object === "dispute" && typeof value.id === "string";
+}
+
+export function isStripeCreditNote(value: unknown): value is import("stripe").Stripe.CreditNote {
+  return isRecord(value) && value.object === "credit_note" && typeof value.id === "string";
+}
+
+export function isStripeCustomer(value: unknown): value is import("stripe").Stripe.Customer {
+  return isRecord(value) && value.object === "customer" && typeof value.id === "string";
+}
+
 export function stripUndefinedObject(value: object): DocumentData {
   const out: DocumentData = {};
   for (const [key, item] of Object.entries(value)) {
