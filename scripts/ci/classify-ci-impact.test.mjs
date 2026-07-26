@@ -84,6 +84,42 @@ test("merge-group uses its exact base and synthetic head", () => {
   assert.equal(result.macos, false);
 });
 
+test("push uses the exact before and after commits", () => {
+  const event = { before: "base", after: "head" };
+  const result = classifyEvent(event, "push", (base, head) => {
+    assert.equal(base, "base");
+    assert.equal(head, "head");
+    return ["docs/README.md"];
+  });
+  assert.equal(result.full, false);
+  for (const lane of LANES) assert.equal(result[lane], false);
+});
+
+test("shallow push checkout falls back to its first parent and exact head", () => {
+  const event = { before: "unavailable-base", after: "unavailable-head" };
+  const result = classifyEvent(event, "push", (base, head) => {
+    if (base === "HEAD^" && head === "HEAD")
+      return ["functions/src/domainCorePricing.ts"];
+    throw new Error("event commits are outside the shallow checkout");
+  });
+  assert.equal(result.rust, true);
+  assert.equal(result.full, false);
+});
+
+test("push with an unresolved all-zero boundary fails closed", () => {
+  let diffCalled = false;
+  const result = classifyEvent(
+    { before: "0".repeat(40), after: "a".repeat(40) },
+    "push",
+    () => {
+      diffCalled = true;
+      return [];
+    },
+  );
+  assert.equal(diffCalled, false);
+  assert.equal(result.full, true);
+});
+
 test("unresolvable event diff fails closed", () => {
   const event = {
     pull_request: { base: { sha: "base" }, head: { sha: "head" }, labels: [] },

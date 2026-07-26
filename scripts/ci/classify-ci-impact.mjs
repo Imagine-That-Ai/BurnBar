@@ -186,17 +186,25 @@ export function classifyEvent(event, eventName, diff = gitDiff) {
   const base =
     eventName === "merge_group"
       ? event.merge_group?.base_sha
-      : event.pull_request?.base?.sha;
+      : eventName === "push"
+        ? event.before
+        : event.pull_request?.base?.sha;
   const head =
     eventName === "merge_group"
       ? event.merge_group?.head_sha
-      : event.pull_request?.head?.sha;
-  if (!base || !head) return classifyPaths([], { eventName, labels });
+      : eventName === "push"
+        ? event.after
+        : event.pull_request?.head?.sha;
+  if (!base || !head || /^0{40}$/u.test(base) || /^0{40}$/u.test(head)) {
+    return classifyPaths([], { eventName, labels });
+  }
   try {
     return classifyPaths(diff(base, head), { eventName, labels });
   } catch {
     try {
-      return classifyPaths(diff("HEAD^1", "HEAD^2"), { eventName, labels });
+      const fallback =
+        eventName === "push" ? ["HEAD^", "HEAD"] : ["HEAD^1", "HEAD^2"];
+      return classifyPaths(diff(...fallback), { eventName, labels });
     } catch {
       return classifyPaths([], { eventName, labels });
     }
