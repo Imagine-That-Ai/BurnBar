@@ -62,17 +62,6 @@ internal suspend fun MercuryFcmService.buildAgentReplyNotification(data: Map<Str
             replyIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
         )
-    val remoteInput =
-        RemoteInput.Builder(AgentReplyNotificationReceiver.KEY_TEXT_REPLY)
-            .setLabel("Reply to agent")
-            .build()
-    val replyAction =
-        NotificationCompat.Action.Builder(
-            com.openburnbar.R.drawable.ic_mercury_call,
-            "Reply",
-            replyPending,
-        ).addRemoteInput(remoteInput).setAllowGeneratedReplies(true).build()
-
     return NotificationCompat.Builder(this, MercuryFcmService.AGENT_REPLY_CHANNEL_ID)
         .setSmallIcon(com.openburnbar.R.drawable.ic_mercury_call)
         .setContentTitle(title)
@@ -83,8 +72,20 @@ internal suspend fun MercuryFcmService.buildAgentReplyNotification(data: Map<Str
         .setCategory(NotificationCompat.CATEGORY_MESSAGE)
         .setPriority(NotificationCompat.PRIORITY_HIGH)
         .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-        .addAction(replyAction)
+        .addAction(buildAgentReplyAction(replyPending))
         .build()
+}
+
+private fun buildAgentReplyAction(replyPending: PendingIntent): NotificationCompat.Action {
+    val remoteInput =
+        RemoteInput.Builder(AgentReplyNotificationReceiver.KEY_TEXT_REPLY)
+            .setLabel("Reply to agent")
+            .build()
+    return NotificationCompat.Action.Builder(
+        com.openburnbar.R.drawable.ic_mercury_call,
+        "Reply",
+        replyPending,
+    ).addRemoteInput(remoteInput).setAllowGeneratedReplies(true).build()
 }
 
 internal suspend fun MercuryFcmService.postAgentReplyNotification(data: Map<String, String>) {

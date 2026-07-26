@@ -212,37 +212,33 @@ class HostedQuotaSubscriptionStore(
             }
         }
 
-        internal fun selectSubscriptionReplacement(
-            newProductID: String,
-            purchases: List<Purchase>,
-        ): HostedQuotaSubscriptionReplacement? =
-            purchases
-                .asSequence()
-                .filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
-                .flatMap { purchase ->
-                    purchase.products
-                        .filter { existingProductID ->
-                            existingProductID in SUBSCRIPTION_PRODUCT_IDS &&
-                                existingProductID != newProductID &&
-                                purchase.purchaseToken.isNotBlank()
-                        }
-                        .map { existingProductID -> existingProductID to purchase }
-                }
-                .sortedBy { (existingProductID, _) ->
-                    hostedQuotaSubscriptionProductPriority(
-                        productID = existingProductID,
-                        productsById = STORE_PRODUCT_BY_ID,
-                        fallbackPriority = FALLBACK_SUBSCRIPTION_PRODUCT_PRIORITY,
-                    )
-                }
-                .map { (existingProductID, purchase) ->
-                    HostedQuotaSubscriptionReplacement(
-                        oldProductID = existingProductID,
-                        oldPurchaseToken = purchase.purchaseToken,
-                        replacementMode = subscriptionReplacementMode(existingProductID, newProductID),
-                    )
-                }
-                .firstOrNull()
+        internal fun selectSubscriptionReplacement(newProductID: String, purchases: List<Purchase>): HostedQuotaSubscriptionReplacement? = purchases
+            .asSequence()
+            .filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
+            .flatMap { purchase ->
+                purchase.products
+                    .filter { existingProductID ->
+                        existingProductID in SUBSCRIPTION_PRODUCT_IDS &&
+                            existingProductID != newProductID &&
+                            purchase.purchaseToken.isNotBlank()
+                    }
+                    .map { existingProductID -> existingProductID to purchase }
+            }
+            .sortedBy { (existingProductID, _) ->
+                hostedQuotaSubscriptionProductPriority(
+                    productID = existingProductID,
+                    productsById = STORE_PRODUCT_BY_ID,
+                    fallbackPriority = FALLBACK_SUBSCRIPTION_PRODUCT_PRIORITY,
+                )
+            }
+            .map { (existingProductID, purchase) ->
+                HostedQuotaSubscriptionReplacement(
+                    oldProductID = existingProductID,
+                    oldPurchaseToken = purchase.purchaseToken,
+                    replacementMode = subscriptionReplacementMode(existingProductID, newProductID),
+                )
+            }
+            .firstOrNull()
 
         private fun tierForProductID(id: String): CloudTier = STORE_PRODUCT_BY_ID[id]?.role?.subscriptionTier()
             ?: fallbackTierForProductID(id)
@@ -458,46 +454,7 @@ class HostedQuotaSubscriptionStore(
                 val details =
                     rawProductDetailsByID[productID] ?: loadProductsInternal()[productID]
                         ?: error("BurnBar product is not configured in Google Play.")
-                val productDetailsBuilder =
-                    BillingFlowParams.ProductDetailsParams.newBuilder()
-                        .setProductDetails(details)
-                var selectedReplacement: HostedQuotaSubscriptionReplacement? = null
-                if (storeProduct.productType == BillingClient.ProductType.SUBS) {
-                    val offerToken =
-                        HostedQuotaBillingSupport.subscriptionOffer(details, storeProduct)?.offerToken
-                            ?: error(
-                                "Google Play base plan ${storeProduct.basePlanID} " +
-                                    "is unavailable for ${storeProduct.id}.",
-                            )
-                    productDetailsBuilder.setOfferToken(offerToken)
-                    subscriptionReplacement(productID, storeProduct)?.let { replacement ->
-                        productDetailsBuilder.setSubscriptionProductReplacementParams(
-                            BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams.newBuilder()
-                                .setOldProductId(replacement.oldProductID)
-                                .setReplacementMode(replacement.replacementMode)
-                                .build(),
-                        )
-                        selectedReplacement = replacement
-                    }
-                }
-                val flowBuilder =
-                    BillingFlowParams.newBuilder()
-                        .setProductDetailsParamsList(
-                            listOf(
-                                productDetailsBuilder.build(),
-                            ),
-                        )
-                selectedReplacement?.let { replacement ->
-                    flowBuilder.setSubscriptionUpdateParams(
-                        BillingFlowParams.SubscriptionUpdateParams.newBuilder()
-                            .setOldPurchaseToken(replacement.oldPurchaseToken)
-                            .build(),
-                    )
-                }
-                firebaseAuth.currentUser?.uid?.let { uid ->
-                    flowBuilder.setObfuscatedAccountId(HostedQuotaBillingSupport.sha256Hex(uid))
-                }
-                val result = client.launchBillingFlow(activity, flowBuilder.build())
+                val result = client.launchBillingFlow(activity, billingFlowParams(productID, storeProduct, details))
                 if (result.responseCode != BillingClient.BillingResponseCode.OK) {
                     error(result.debugMessage.ifBlank { "Google Play Billing did not start." })
                 }
@@ -512,10 +469,50 @@ class HostedQuotaSubscriptionStore(
         }
     }
 
-    private suspend fun subscriptionReplacement(
-        productID: String,
-        storeProduct: HostedQuotaStoreProduct,
-    ): HostedQuotaSubscriptionReplacement? {
+    private suspend fun billingFlowParams(productID: String, storeProduct: HostedQuotaStoreProduct, details: ProductDetails): BillingFlowParams {
+        val productDetailsBuilder =
+            BillingFlowParams.ProductDetailsParams.newBuilder()
+                .setProductDetails(details)
+        var selectedReplacement: HostedQuotaSubscriptionReplacement? = null
+        if (storeProduct.productType == BillingClient.ProductType.SUBS) {
+            val offerToken =
+                HostedQuotaBillingSupport.subscriptionOffer(details, storeProduct)?.offerToken
+                    ?: error(
+                        "Google Play base plan ${storeProduct.basePlanID} " +
+                            "is unavailable for ${storeProduct.id}.",
+                    )
+            productDetailsBuilder.setOfferToken(offerToken)
+            subscriptionReplacement(productID, storeProduct)?.let { replacement ->
+                productDetailsBuilder.setSubscriptionProductReplacementParams(
+                    BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams.newBuilder()
+                        .setOldProductId(replacement.oldProductID)
+                        .setReplacementMode(replacement.replacementMode)
+                        .build(),
+                )
+                selectedReplacement = replacement
+            }
+        }
+        val flowBuilder =
+            BillingFlowParams.newBuilder()
+                .setProductDetailsParamsList(
+                    listOf(
+                        productDetailsBuilder.build(),
+                    ),
+                )
+        selectedReplacement?.let { replacement ->
+            flowBuilder.setSubscriptionUpdateParams(
+                BillingFlowParams.SubscriptionUpdateParams.newBuilder()
+                    .setOldPurchaseToken(replacement.oldPurchaseToken)
+                    .build(),
+            )
+        }
+        firebaseAuth.currentUser?.uid?.let { uid ->
+            flowBuilder.setObfuscatedAccountId(HostedQuotaBillingSupport.sha256Hex(uid))
+        }
+        return flowBuilder.build()
+    }
+
+    private suspend fun subscriptionReplacement(productID: String, storeProduct: HostedQuotaStoreProduct): HostedQuotaSubscriptionReplacement? {
         if (storeProduct.productType != BillingClient.ProductType.SUBS) return null
         return selectSubscriptionReplacement(
             newProductID = productID,

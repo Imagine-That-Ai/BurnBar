@@ -311,7 +311,14 @@ export async function processGooglePlayDeveloperNotification(
 ): Promise<void> {
   const ref = rtdnEventRef(meta.eventID);
   const reservation = await reserveGooglePlayRtdnEvent(payload, meta);
-  if (reservation !== "reserved") return;
+  if (reservation === "terminal") return;
+  if (reservation === "processing") {
+    // Another worker holds an unexpired lease. Returning here would ack the
+    // Pub/Sub message; if that worker then crashes before finishing, the event
+    // would be lost forever. Throw instead so Pub/Sub redelivers after the
+    // lease expires and a later attempt can take over the reservation.
+    throw new Error(`google_play_rtdn_event ${meta.eventID} is being processed by another worker`);
+  }
 
   const cfg = getConfig();
   const kind = notificationKind(payload);

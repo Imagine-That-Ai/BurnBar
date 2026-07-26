@@ -156,7 +156,7 @@ assert.match(
 for (const tier of ["cloud", "cloud_pro", "ultra"]) {
   assert.match(
     plans,
-    new RegExp(`href="/subscribe\\?tier=${tier}&amp;cadence=monthly"`),
+    new RegExp(`href="/subscribe\\?tier=${tier}&(?:amp;)?cadence=monthly"`),
     `${tier} CTA must enter the web subscription flow`
   );
   assert.match(

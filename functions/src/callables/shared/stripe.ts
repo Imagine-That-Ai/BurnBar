@@ -19,6 +19,13 @@ import {
   BURNBAR_ULTRA_ENTITLEMENT_ID,
   writeBurnBarProEntitlement,
 } from "./entitlements.js";
+import {
+  deactivateReplacedStripeTierEntitlements,
+  stripeEntitlementExpiryMillis,
+  stripeEntitlementProductID,
+  stripeSubscriptionEntitlementID,
+  stripeSubscriptionProductID,
+} from "./stripeSubscriptionTiers.js";
 import { applyStripeTopUpCheckoutSession, reconcileStripeTopUpCharge } from "./stripeTopUps.js";
 import { sha256Hex } from "./validators.js";
 
@@ -229,25 +236,6 @@ export async function findReusableStripeSubscriptionCheckoutSession(
   }
 }
 
-export function googlePlayLineItemForProduct(
-  purchase: Record<string, unknown>,
-  productID: string,
-): Record<string, unknown> | undefined {
-  const lineItems = Array.isArray(purchase.lineItems)
-    ? purchase.lineItems.filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
-    : [];
-  return lineItems.find((item) => item.productId === productID);
-}
-
-export function googlePlayExpiryMillis(lineItem: Record<string, unknown> | undefined): number {
-  const expiryTime = lineItem?.expiryTime;
-  if (typeof expiryTime === "string") {
-    const parsed = Date.parse(expiryTime);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  throw new HttpsError("failed-precondition", "Google Play did not return an expiry for this subscription.");
-}
-
 export async function applyStripeCheckoutSession(
   stripe: Stripe,
   session: Stripe.Checkout.Session,
@@ -290,14 +278,15 @@ export async function applyStripeSubscription(
   const expiresAtMillis = stripeSubscriptionPeriodEndMillis(subscription);
   const status = String(subscription.status ?? "unknown");
   const active = STRIPE_ACTIVE_STATES.has(status) && expiresAtMillis > Date.now();
-  const metadataEntitlementID = subscription.metadata?.entitlementID;
-  const entitlementID =
-    metadataEntitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID
-      ? BURNBAR_ULTRA_ENTITLEMENT_ID
-      : metadataEntitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID
-        ? BURNBAR_PRO_MAX_ENTITLEMENT_ID
-        : BURNBAR_PRO_ENTITLEMENT_ID;
+  const entitlementID = stripeSubscriptionEntitlementID(subscription);
   const productID = stripeSubscriptionProductID(subscription, entitlementID);
+
+  // A Billing Portal plan change moves the subscription to another tier's
+  // price while the previous tier's entitlement doc stays active until its
+  // paid-through date. Deactivate the replaced tier docs backed by this same
+  // subscription BEFORE writing the current tier, so an Ultra deactivation's
+  // burnbar_pro_max mirror can never clobber a fresh pro_max write.
+  await deactivateReplacedStripeTierEntitlements(uid, subscription, entitlementID, customerID, eventContext);
 
   await writeBurnBarProEntitlement({
     uid,
@@ -346,7 +335,7 @@ export async function applyStripeSubscription(
  * Re-fetches and applies one subscription so non-subscription webhook events
  * never write a stale point-in-time snapshot.
  */
-export async function reconcileStripeSubscription(
+async function reconcileStripeSubscription(
   stripe: Stripe,
   subscriptionID: string,
   eventContext: StripeEventContext = {},
@@ -365,7 +354,7 @@ export async function reconcileStripeSubscription(
  * explicit pagination prevents a large customer history from silently
  * truncating reconciliation at Stripe's first page.
  */
-export async function reconcileStripeCustomerSubscriptions(
+async function reconcileStripeCustomerSubscriptions(
   stripe: Stripe,
   customerID: string,
   eventContext: StripeEventContext = {},
@@ -576,32 +565,6 @@ export async function deactivateStripeCustomerEntitlements(
   );
 }
 
-function stripeSubscriptionProductID(subscription: Stripe.Subscription, entitlementID: string): string {
-  const cfg = getConfig();
-  const priceIDs = new Set(
-    subscription.items?.data
-      ?.map((item) => item.price?.id)
-      .filter((priceID): priceID is string => typeof priceID === "string") || [],
-  );
-  if (cfg.stripeBurnBarCloudAnnualPriceID && priceIDs.has(cfg.stripeBurnBarCloudAnnualPriceID)) {
-    return cfg.burnBarProAnnualProductID;
-  }
-  if (cfg.stripeBurnBarCloudProMonthlyPriceID && priceIDs.has(cfg.stripeBurnBarCloudProMonthlyPriceID)) {
-    return cfg.burnBarProMaxProductID;
-  }
-  if (cfg.stripeBurnBarCloudProAnnualPriceID && priceIDs.has(cfg.stripeBurnBarCloudProAnnualPriceID)) {
-    return cfg.burnBarProMaxAnnualProductID;
-  }
-  if (cfg.stripeBurnBarUltraMonthlyPriceID && priceIDs.has(cfg.stripeBurnBarUltraMonthlyPriceID)) {
-    return cfg.burnBarUltraProductID;
-  }
-  if (cfg.stripeBurnBarUltraAnnualPriceID && priceIDs.has(cfg.stripeBurnBarUltraAnnualPriceID)) {
-    return cfg.burnBarUltraAnnualProductID;
-  }
-  if (entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID) return cfg.burnBarUltraProductID;
-  return entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID ? cfg.burnBarProMaxProductID : cfg.burnBarProProductID;
-}
-
 function stripeInvoiceSubscriptionID(invoice: Stripe.Invoice): string | undefined {
   const parentSubscription = invoice.parent?.subscription_details?.subscription;
   const parentID = stripeObjectID(parentSubscription);
@@ -652,25 +615,3 @@ function isStripeBackedEntitlementForCustomer(entitlement: Record<string, unknow
   return typeof externalCustomerID !== "string" || externalCustomerID === customerID;
 }
 
-function stripeEntitlementProductID(entitlement: Record<string, unknown>, entitlementID: string): string {
-  if (typeof entitlement.productID === "string" && entitlement.productID.length > 0) {
-    return entitlement.productID;
-  }
-  const cfg = getConfig();
-  if (entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID) return cfg.burnBarUltraProductID;
-  if (entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID) return cfg.burnBarProMaxProductID;
-  return cfg.burnBarProProductID;
-}
-
-function stripeEntitlementExpiryMillis(entitlement: Record<string, unknown>): number {
-  const expireAt = entitlement.expireAt;
-  if (expireAt && typeof expireAt === "object" && "toMillis" in expireAt && typeof expireAt.toMillis === "function") {
-    const millis = expireAt.toMillis();
-    if (Number.isFinite(millis)) return millis;
-  }
-  if (typeof entitlement.expiresAt === "string") {
-    const millis = Date.parse(entitlement.expiresAt);
-    if (Number.isFinite(millis)) return millis;
-  }
-  return Date.now() - 1;
-}

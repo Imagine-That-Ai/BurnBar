@@ -250,6 +250,25 @@ export async function writeBurnBarProEntitlement(args: {
     }
 
     transaction.set(ref, writeDoc, { merge: true });
+    // Ultra mirrors into burnbar_pro_max, matching the App Store reconciler's
+    // dual-write: firestore.rules hosted-quota gates only inspect the
+    // hosted_quota_sync / burnbar_pro / burnbar_pro_max docs, so a Google Play
+    // or Stripe Ultra purchase without this mirror would be denied session
+    // backup and every other Cloud Pro Max client capability. The mirror is
+    // written in the same transaction (and skipped when the source write is
+    // rejected by the downgrade/rewind guards) so the pair stays consistent.
+    if (entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID) {
+      transaction.set(
+        db.doc(`users/${args.uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`),
+        {
+          ...writeDoc,
+          id: BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+          entitlementFamily: BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+          sourceEntitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID,
+        },
+        { merge: true },
+      );
+    }
     return doc;
   });
   if ((entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID || entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID) && active) {

@@ -387,7 +387,12 @@ describe("Google Play RTDN", () => {
 
     const first = processGooglePlayDeveloperNotification(payload, { eventID: "event-concurrent" });
     await developerAPIStarted;
-    await processGooglePlayDeveloperNotification(payload, { eventID: "event-concurrent" });
+    // The concurrent delivery must NOT be silently acked while another worker
+    // holds the lease: if that worker crashed, an ack would lose the event.
+    // Throwing makes Pub/Sub redeliver after the lease expires.
+    await expect(
+      processGooglePlayDeveloperNotification(payload, { eventID: "event-concurrent" }),
+    ).rejects.toThrow(/being processed by another worker/);
 
     expect(state.subscriptionsGet).toHaveBeenCalledTimes(1);
     expect(state.documents.get(eventPath("event-concurrent"))).toMatchObject({

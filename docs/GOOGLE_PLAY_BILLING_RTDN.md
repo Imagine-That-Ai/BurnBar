@@ -93,5 +93,11 @@ also proves the external Play Console topic configuration.
 - Invalid packages, notification shapes, and claim-kind mismatches are rejected.
 - Notifications that arrive before a client token claim are safely recorded as
   ignored without persisting the raw purchase token.
-- The daily entitlement reconciliation remains the backstop for missed or
-  delayed RTDN delivery.
+- There is no server-side Play reconciliation sweep: raw purchase tokens are
+  never persisted (privacy invariant), so the backend cannot re-query Google
+  Play on a schedule. Exposure from a missed or delayed RTDN is still bounded
+  because entitlements carry `expireAt` set to the verified paid-through date —
+  an entitlement never outlives its last verified period, and renewals only
+  extend it through a fresh verified signal (an RTDN redelivery or the client's
+  next `verifyGooglePlayPurchase` call, which re-submits the token and repairs
+  the entitlement).
