@@ -248,25 +248,31 @@ export async function writeBurnBarProEntitlement(args: {
     purchaseTokenHash: args.purchaseTokenHash ?? FieldValue.delete(),
   };
 
+  // Shared shape for both conflict guards, evaluated against the primary doc
+  // AND (for Ultra writes) the burnbar_pro_max mirror doc.
+  const incomingGuardWrite = {
+    source: args.source,
+    expiresAtMillis: args.expiresAtMillis,
+    active,
+    externalSubscriptionID: args.externalSubscriptionID,
+    purchaseTokenHash: args.purchaseTokenHash,
+    sourceEventID: args.sourceEventID,
+    sourceEventCreatedMillis: args.sourceEventCreatedMillis,
+  };
+
   const written = await db.runTransaction(async (transaction) => {
+    const mirrorRef =
+      entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID
+        ? db.doc(`users/${args.uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`)
+        : undefined;
     const existing = await transaction.get(ref);
+    // Firestore transactions require every read to happen before any write,
+    // so the mirror doc is read up front even though its guard runs later.
+    const existingMirrorData = mirrorRef ? (await transaction.get(mirrorRef)).data() : undefined;
     const existingData = existing.data();
     if (
-      paidEntitlementWriteWouldDowngrade(existingData, {
-        source: args.source,
-        expiresAtMillis: args.expiresAtMillis,
-        active,
-        externalSubscriptionID: args.externalSubscriptionID,
-        purchaseTokenHash: args.purchaseTokenHash,
-      }) ||
-      paidEntitlementWriteWouldRewindSourceEvent(existingData, {
-        source: args.source,
-        active,
-        externalSubscriptionID: args.externalSubscriptionID,
-        purchaseTokenHash: args.purchaseTokenHash,
-        sourceEventID: args.sourceEventID,
-        sourceEventCreatedMillis: args.sourceEventCreatedMillis,
-      })
+      paidEntitlementWriteWouldDowngrade(existingData, incomingGuardWrite) ||
+      paidEntitlementWriteWouldRewindSourceEvent(existingData, incomingGuardWrite)
     ) {
       return existingData || doc;
     }
@@ -277,11 +283,20 @@ export async function writeBurnBarProEntitlement(args: {
     // hosted_quota_sync / burnbar_pro / burnbar_pro_max docs, so a Google Play
     // or Stripe Ultra purchase without this mirror would be denied session
     // backup and every other Cloud Pro Max client capability. The mirror is
-    // written in the same transaction (and skipped when the source write is
-    // rejected by the downgrade/rewind guards) so the pair stays consistent.
-    if (entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID) {
+    // written in the same transaction so the pair stays consistent, and it is
+    // guarded against the MIRROR doc's own state: when burnbar_pro_max is an
+    // independently paid entitlement (different source/subscription/token),
+    // an expiring or voided Ultra write must not clobber it. A true mirror
+    // (written by this dual-write) carries the same source and subscription
+    // identifiers, so its guards evaluate exactly like the primary's and
+    // legitimate mirror updates — including cancellations — still land.
+    if (
+      mirrorRef &&
+      !paidEntitlementWriteWouldDowngrade(existingMirrorData, incomingGuardWrite) &&
+      !paidEntitlementWriteWouldRewindSourceEvent(existingMirrorData, incomingGuardWrite)
+    ) {
       transaction.set(
-        db.doc(`users/${args.uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`),
+        mirrorRef,
         {
           ...writeDoc,
           id: BURNBAR_PRO_MAX_ENTITLEMENT_ID,

@@ -1,11 +1,15 @@
 /**
- * Covers the two review-hardening behaviors around Stripe money-state:
+ * Covers the review-hardening behaviors around Stripe money-state:
  * 1. A fully refunded / disputed subscription charge deactivates the
  *    entitlement via the stripe_payment_reversals marker (and a recovery of
  *    the SAME charge restores it).
  * 2. The same-second webhook tie-break lets an activation supersede a
  *    transient inactive state (incomplete -> active) while still failing
  *    closed for terminal or unknown inactive states.
+ * 3. The Ultra -> burnbar_pro_max mirror write applies the same
+ *    downgrade/rewind guards against the MIRROR doc, so an expiring Ultra
+ *    cannot clobber an independently paid pro_max entitlement while a true
+ *    mirror still tracks Ultra lifecycle changes (including cancellation).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -103,7 +107,13 @@ vi.mock("../resilienceHelpers.js", () => ({
 
 import type Stripe from "stripe";
 
-import { BURNBAR_PRO_ENTITLEMENT_ID, reconcileStripeCharge, writeBurnBarProEntitlement } from "../callables/shared.js";
+import {
+  BURNBAR_PRO_ENTITLEMENT_ID,
+  BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+  BURNBAR_ULTRA_ENTITLEMENT_ID,
+  reconcileStripeCharge,
+  writeBurnBarProEntitlement,
+} from "../callables/shared.js";
 
 function stripeStub<T>(stub: object = {}): T {
   // @ts-expect-error reason: the stub implements the Stripe surface these reversal tests exercise
@@ -252,5 +262,89 @@ describe("same-second tie-break vs transient inactive states", () => {
     expect(entitlement?.active).toBe(false);
     expect(entitlement?.rawStatus).toBe("some_future_status");
     expect(entitlement?.sourceEventID).toBe("evt_unknown_status");
+  });
+});
+
+const PRO_MAX_PATH = `users/${UID}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`;
+const ULTRA_PATH = `users/${UID}/entitlements/${BURNBAR_ULTRA_ENTITLEMENT_ID}`;
+const ULTRA_SUBSCRIPTION_ID = "sub_ultra_1";
+
+function ultraSubscriptionWrite(overrides: Partial<Parameters<typeof writeBurnBarProEntitlement>[0]> = {}) {
+  return activeSubscriptionWrite({
+    entitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID,
+    productID: "com.openburnbar.ultra.monthly",
+    externalSubscriptionID: ULTRA_SUBSCRIPTION_ID,
+    ...overrides,
+  });
+}
+
+describe("Ultra -> burnbar_pro_max mirror guards", () => {
+  it("does not clobber an independently paid pro_max entitlement when Ultra deactivates", async () => {
+    // Independently purchased Cloud Pro Max (App Store), active until 2030.
+    await writeBurnBarProEntitlement({
+      uid: UID,
+      productID: "com.openburnbar.promax.yearly",
+      expiresAtMillis: Date.parse("2030-01-01T00:00:00.000Z"),
+      source: "app_store_verified",
+      platform: "ios",
+      entitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+      purchaseTokenHash: "apple-token-1",
+      rawStatus: "active",
+      environment: "Production",
+      activeOverride: true,
+    });
+
+    // A Stripe Ultra subscription for the same user is cancelled: the Ultra
+    // doc must deactivate, but the mirror write must NOT overwrite the
+    // independent pro_max entitlement (different source and subscription).
+    await ultraSubscriptionWrite({
+      rawStatus: "canceled",
+      activeOverride: false,
+      sourceEventID: "evt_ultra_canceled",
+      sourceEventCreatedMillis: 3_000,
+    });
+
+    expect(firestoreState.docs.get(ULTRA_PATH)).toMatchObject({
+      active: false,
+      rawStatus: "canceled",
+    });
+    const proMax = firestoreState.docs.get(PRO_MAX_PATH);
+    expect(proMax).toMatchObject({
+      active: true,
+      source: "app_store_verified",
+      purchaseTokenHash: "apple-token-1",
+    });
+    expect(proMax?.sourceEntitlementID).toBeUndefined();
+  });
+
+  it("keeps a true mirror in sync through the Ultra lifecycle, including cancellation", async () => {
+    await ultraSubscriptionWrite({
+      expiresAtMillis: Date.parse("2030-01-01T00:00:00.000Z"),
+      sourceEventID: "evt_ultra_active",
+      sourceEventCreatedMillis: 1_000,
+    });
+
+    expect(firestoreState.docs.get(PRO_MAX_PATH)).toMatchObject({
+      active: true,
+      sourceEntitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID,
+      externalSubscriptionID: ULTRA_SUBSCRIPTION_ID,
+    });
+
+    // Same subscription cancels later: the mirror carries the same source and
+    // subscription id, so its guards evaluate like the primary's and the
+    // deactivation propagates.
+    await ultraSubscriptionWrite({
+      rawStatus: "canceled",
+      activeOverride: false,
+      sourceEventID: "evt_ultra_canceled",
+      sourceEventCreatedMillis: 2_000,
+    });
+
+    expect(firestoreState.docs.get(ULTRA_PATH)).toMatchObject({ active: false, rawStatus: "canceled" });
+    expect(firestoreState.docs.get(PRO_MAX_PATH)).toMatchObject({
+      active: false,
+      rawStatus: "canceled",
+      sourceEntitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID,
+    });
   });
 });
