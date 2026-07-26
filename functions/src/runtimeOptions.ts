@@ -46,7 +46,7 @@ export const GOOGLE_PLAY_RTDN_TOPIC: string = process.env.GOOGLE_PLAY_RTDN_TOPIC
  * Scheduled rollups deliberately stay at `minInstances 0`. See the cold-start
  * SLO note in `docs/runbooks/slos.md`.
  */
-export const HOT_MIN_INSTANCES = defineInt("HOT_MIN_INSTANCES", {
+const HOT_MIN_INSTANCES = defineInt("HOT_MIN_INSTANCES", {
   default: 1,
   description: "Warm instances for latency-sensitive revenue and control Functions.",
 });
