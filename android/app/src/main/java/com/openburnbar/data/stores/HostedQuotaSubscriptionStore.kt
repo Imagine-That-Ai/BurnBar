@@ -454,7 +454,14 @@ class HostedQuotaSubscriptionStore(
                 val details =
                     rawProductDetailsByID[productID] ?: loadProductsInternal()[productID]
                         ?: error("BurnBar product is not configured in Google Play.")
-                val result = client.launchBillingFlow(activity, billingFlowParams(productID, storeProduct, details))
+                val flowParams =
+                    billingFlowParams(
+                        storeProduct = storeProduct,
+                        details = details,
+                        replacement = subscriptionReplacement(productID, storeProduct),
+                        accountUID = firebaseAuth.currentUser?.uid,
+                    )
+                val result = client.launchBillingFlow(activity, flowParams)
                 if (result.responseCode != BillingClient.BillingResponseCode.OK) {
                     error(result.debugMessage.ifBlank { "Google Play Billing did not start." })
                 }
@@ -467,49 +474,6 @@ class HostedQuotaSubscriptionStore(
                 _isLoading.value = false
             }
         }
-    }
-
-    private suspend fun billingFlowParams(productID: String, storeProduct: HostedQuotaStoreProduct, details: ProductDetails): BillingFlowParams {
-        val productDetailsBuilder =
-            BillingFlowParams.ProductDetailsParams.newBuilder()
-                .setProductDetails(details)
-        var selectedReplacement: HostedQuotaSubscriptionReplacement? = null
-        if (storeProduct.productType == BillingClient.ProductType.SUBS) {
-            val offerToken =
-                HostedQuotaBillingSupport.subscriptionOffer(details, storeProduct)?.offerToken
-                    ?: error(
-                        "Google Play base plan ${storeProduct.basePlanID} " +
-                            "is unavailable for ${storeProduct.id}.",
-                    )
-            productDetailsBuilder.setOfferToken(offerToken)
-            subscriptionReplacement(productID, storeProduct)?.let { replacement ->
-                productDetailsBuilder.setSubscriptionProductReplacementParams(
-                    BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams.newBuilder()
-                        .setOldProductId(replacement.oldProductID)
-                        .setReplacementMode(replacement.replacementMode)
-                        .build(),
-                )
-                selectedReplacement = replacement
-            }
-        }
-        val flowBuilder =
-            BillingFlowParams.newBuilder()
-                .setProductDetailsParamsList(
-                    listOf(
-                        productDetailsBuilder.build(),
-                    ),
-                )
-        selectedReplacement?.let { replacement ->
-            flowBuilder.setSubscriptionUpdateParams(
-                BillingFlowParams.SubscriptionUpdateParams.newBuilder()
-                    .setOldPurchaseToken(replacement.oldPurchaseToken)
-                    .build(),
-            )
-        }
-        firebaseAuth.currentUser?.uid?.let { uid ->
-            flowBuilder.setObfuscatedAccountId(HostedQuotaBillingSupport.sha256Hex(uid))
-        }
-        return flowBuilder.build()
     }
 
     private suspend fun subscriptionReplacement(productID: String, storeProduct: HostedQuotaStoreProduct): HostedQuotaSubscriptionReplacement? {
@@ -852,6 +816,54 @@ private suspend fun verifyHostedQuotaTopUpPurchases(
                 }
         }
     return credits
+}
+
+private fun billingFlowParams(
+    storeProduct: HostedQuotaStoreProduct,
+    details: ProductDetails,
+    replacement: HostedQuotaSubscriptionReplacement?,
+    accountUID: String?,
+): BillingFlowParams {
+    val productDetailsBuilder =
+        BillingFlowParams.ProductDetailsParams.newBuilder()
+            .setProductDetails(details)
+    if (storeProduct.productType == BillingClient.ProductType.SUBS) {
+        val offerToken =
+            HostedQuotaBillingSupport.subscriptionOffer(details, storeProduct)?.offerToken
+                ?: error(
+                    "Google Play base plan ${storeProduct.basePlanID} " +
+                        "is unavailable for ${storeProduct.id}.",
+                )
+        productDetailsBuilder.setOfferToken(offerToken)
+        replacement?.let {
+            productDetailsBuilder.setSubscriptionProductReplacementParams(
+                BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams.newBuilder()
+                    .setOldProductId(it.oldProductID)
+                    .setReplacementMode(it.replacementMode)
+                    .build(),
+            )
+        }
+    }
+    val flowBuilder =
+        BillingFlowParams.newBuilder()
+            .setProductDetailsParamsList(
+                listOf(
+                    productDetailsBuilder.build(),
+                ),
+            )
+    if (storeProduct.productType == BillingClient.ProductType.SUBS) {
+        replacement?.let {
+            flowBuilder.setSubscriptionUpdateParams(
+                BillingFlowParams.SubscriptionUpdateParams.newBuilder()
+                    .setOldPurchaseToken(it.oldPurchaseToken)
+                    .build(),
+            )
+        }
+    }
+    accountUID?.let { uid ->
+        flowBuilder.setObfuscatedAccountId(HostedQuotaBillingSupport.sha256Hex(uid))
+    }
+    return flowBuilder.build()
 }
 
 private fun purchaseProductSummary(purchases: List<Purchase>): List<String> {
