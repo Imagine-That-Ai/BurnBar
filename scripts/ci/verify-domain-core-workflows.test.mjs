@@ -772,6 +772,18 @@ test("pull_request trigger cannot omit branch-control inputs", () => {
   assert.doesNotMatch(workflowTrigger(core, "pull_request"), /^    paths:/mu);
 });
 
+test("main push trigger covers exact-main control-plane changes", () => {
+  const paths = new Set(workflowTriggerPaths(core, "push"));
+  assert.ok(
+    paths.has("config/domain-core-control-plane-manifest.json"),
+    "domain-core main pushes must run when the trusted control-plane manifest changes",
+  );
+  assert.ok(
+    paths.has(".github/workflows/domain-core.yml"),
+    "domain-core main pushes must run when their own authoritative workflow changes",
+  );
+});
+
 test("domain-core-pr-gate needs both python contract jobs before the aggregate count", () => {
   // Regression: the pr-gate aggregate omitted python-mcp-cloudvault-contracts and
   // python-hermes-contracts, so their failures could not block the gate.

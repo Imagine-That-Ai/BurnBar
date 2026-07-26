@@ -166,6 +166,7 @@ on:
       - "tests/test_domain_core_*deletion*.py"
       - "docs/runbooks/shared-rust-legacy-deletion.md"
       - "config/domain-core-build-profiles.json"
+      - "config/domain-core-control-plane-manifest.json"
       - "config/domain-core-functions-relevant-targets.json"
       - "config/domain-core-release-predicate.schema.json"
       - "config/domain-core-deployment-receipt.schema.json"
