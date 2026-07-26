@@ -19,6 +19,9 @@
  */
 export const FUNCTIONS_REGION: string = process.env.FUNCTIONS_REGION ?? "us-central1";
 
+/** Pub/Sub topic configured in Google Play Console for billing RTDN delivery. */
+export const GOOGLE_PLAY_RTDN_TOPIC: string = process.env.GOOGLE_PLAY_RTDN_TOPIC ?? "play-billing-notifications";
+
 /**
  * Cold-start mitigation for hot revenue/control paths (A4).
  *

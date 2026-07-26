@@ -82,23 +82,21 @@ class MercuryFcmService : FirebaseMessagingService() {
         MediaSessionForegroundService.ensureNotificationChannel(this)
 
         val acceptIntent =
-            Intent().apply {
-                setClass(this@MercuryFcmService, IncomingCallActivity::class.java)
+            Intent(this, IncomingCallActivity::class.java).apply {
                 action = IncomingCallActivity.ACTION_ACCEPT
-                setPackage(packageName)
                 putExtra(IncomingCallActivity.EXTRA_CONNECTION_ID, connectionId)
                 putExtra(IncomingCallActivity.EXTRA_CALLER_NAME, callerName)
                 putExtra(IncomingCallActivity.EXTRA_CALLER_INITIAL, callerInitial)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
+        acceptIntent.setPackage(packageName)
         val declineIntent =
-            Intent().apply {
-                setClass(this@MercuryFcmService, IncomingCallActivity::class.java)
+            Intent(this, IncomingCallActivity::class.java).apply {
                 action = IncomingCallActivity.ACTION_DECLINE
-                setPackage(packageName)
                 putExtra(IncomingCallActivity.EXTRA_CONNECTION_ID, connectionId)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
+        declineIntent.setPackage(packageName)
         val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val acceptPending = PendingIntent.getActivity(this, 1, acceptIntent, pendingFlags)
         val declinePending = PendingIntent.getActivity(this, 2, declineIntent, pendingFlags)

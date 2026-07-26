@@ -50,6 +50,17 @@ const ALERT_DELIVERY_EVIDENCE_PATH =
 const ALERT_DELIVERY_TTL_HOURS = Number(
   process.env.OPENBURNBAR_ALERT_DELIVERY_TTL_HOURS || "168",
 );
+const GOOGLE_PLAY_RTDN_TOPIC_ID =
+  process.env.OPENBURNBAR_GOOGLE_PLAY_RTDN_TOPIC ||
+  "play-billing-notifications";
+const GOOGLE_PLAY_RTDN_TOPIC_NAME =
+  `projects/${PROJECT}/topics/${GOOGLE_PLAY_RTDN_TOPIC_ID}`;
+const GOOGLE_PLAY_RTDN_FUNCTION = "googlePlayDeveloperNotifications";
+const GOOGLE_PLAY_RTDN_PUBLISHER =
+  "serviceAccount:google-play-developer-notifications@system.gserviceaccount.com";
+const GOOGLE_PLAY_RTDN_TTL_FIELD =
+  `projects/${PROJECT}/databases/(default)/collectionGroups/` +
+  "google_play_rtdn_events/fields/expireAt";
 const LEGACY_HOSTED_QUOTA_PRODUCT_ID =
   "com.openburnbar.hostedQuotaSync.cloud.monthly";
 export const COMMERCIAL_PRODUCTS = Object.freeze({
@@ -199,6 +210,7 @@ const REQUIRED_FIREBASE_FUNCTIONS = [
   "evaluateComputerUseBudget",
   "evaluateMediaBudget",
   "computeTierCogsDaily",
+  GOOGLE_PLAY_RTDN_FUNCTION,
   "onUsageWritten",
   "performElderWandHostedSearch",
   "rebuildRollups",
@@ -316,6 +328,8 @@ export function evaluateHostedQuotaRunnerEndpoint({
 }
 const REQUIRED_COMMERCIAL_ENV_VALUES = {
   STRIPE_BURNBAR_PRO_PRICE_ID: "alias:STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
+  STRIPE_REDIRECT_URL_ALLOWLIST:
+    "burnbar.ai,www.burnbar.ai,burnbar.web.app,burnbar.firebaseapp.com",
   BURNBAR_PRO_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudMonthly,
   BURNBAR_PRO_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudAnnual,
   BURNBAR_PRO_MAX_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProMonthly,
@@ -349,6 +363,8 @@ const REQUIRED_COMMERCIAL_ENV_PRESENT = [
   "STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID",
   "STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID",
   "STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID",
+  "STRIPE_BURNBAR_ULTRA_MONTHLY_PRICE_ID",
+  "STRIPE_BURNBAR_ULTRA_ANNUAL_PRICE_ID",
   "STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID",
   "STRIPE_FLOO_RELAY_50GB_PRICE_ID",
   "STRIPE_ELDER_WAND_SEARCHES_100_PRICE_ID",
@@ -1756,7 +1772,18 @@ function checkRemoteConfigCaps() {
   const result = run(
     "firebase",
     ["remoteconfig:get", "--project", PROJECT, "--output", tempFile],
-    { timeout: 60_000 },
+    {
+      timeout: 60_000,
+      // Firebase CLI authenticates this request with local ADC in operator
+      // environments. Google requires an explicit quota project for the
+      // Remote Config API, even when the access token already belongs to a
+      // principal that can read the target project.
+      env: {
+        ...process.env,
+        GOOGLE_CLOUD_QUOTA_PROJECT:
+          process.env.GOOGLE_CLOUD_QUOTA_PROJECT || PROJECT,
+      },
+    },
   );
   try {
     if (!result.ok) {
@@ -1773,6 +1800,157 @@ function checkRemoteConfigCaps() {
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
+}
+
+function normalizedPubSubTopicName(value, project = PROJECT) {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const topic = value.trim();
+  return topic.startsWith("projects/")
+    ? topic
+    : `projects/${project}/topics/${topic}`;
+}
+
+export function evaluateGooglePlayRtdnReadiness(
+  {
+    topic,
+    iamPolicy,
+    functionDetails,
+    ttlFields,
+  },
+  options = {},
+) {
+  const project = options.project || PROJECT;
+  const topicID = options.topicID || GOOGLE_PLAY_RTDN_TOPIC_ID;
+  const expectedTopicName = `projects/${project}/topics/${topicID}`;
+  const expectedPublisher =
+    options.publisher || GOOGLE_PLAY_RTDN_PUBLISHER;
+  const expectedTtlField =
+    options.ttlField ||
+    `projects/${project}/databases/(default)/collectionGroups/` +
+      "google_play_rtdn_events/fields/expireAt";
+
+  const publisherBinding = (iamPolicy?.bindings || []).find(
+    (binding) =>
+      binding?.role === "roles/pubsub.publisher" &&
+      Array.isArray(binding.members) &&
+      binding.members.includes(expectedPublisher),
+  );
+  const triggerTopic = normalizedPubSubTopicName(
+    functionDetails?.eventTrigger?.eventFilters?.topic ||
+      functionDetails?.eventTrigger?.pubsubTopic,
+    project,
+  );
+  const configuredTopic =
+    functionDetails?.serviceConfig?.environmentVariables
+      ?.GOOGLE_PLAY_RTDN_TOPIC ?? null;
+  const ttlField = (Array.isArray(ttlFields) ? ttlFields : []).find(
+    (field) => field?.name === expectedTtlField,
+  );
+
+  const topicCheck = {
+    ok: topic?.name === expectedTopicName,
+    expected: expectedTopicName,
+    actual: topic?.name ?? null,
+  };
+  const publisherCheck = {
+    ok: Boolean(publisherBinding),
+    expected: expectedPublisher,
+    role: "roles/pubsub.publisher",
+  };
+  const functionCheck = {
+    ok:
+      functionDetails?.state === "ACTIVE" &&
+      triggerTopic === expectedTopicName &&
+      configuredTopic === topicID,
+    name: GOOGLE_PLAY_RTDN_FUNCTION,
+    state: functionDetails?.state ?? null,
+    triggerTopic,
+    expectedTriggerTopic: expectedTopicName,
+    configuredTopic,
+    expectedConfiguredTopic: topicID,
+  };
+  const ttlCheck = {
+    ok: ttlField?.ttlConfig?.state === "ACTIVE",
+    field: expectedTtlField,
+    state: ttlField?.ttlConfig?.state ?? "MISSING",
+  };
+
+  return {
+    ok:
+      topicCheck.ok &&
+      publisherCheck.ok &&
+      functionCheck.ok &&
+      ttlCheck.ok,
+    topic: topicCheck,
+    publisher: publisherCheck,
+    function: functionCheck,
+    ttl: ttlCheck,
+  };
+}
+
+function checkGooglePlayRtdnReadiness() {
+  const commands = {
+    topic: run("gcloud", [
+      "pubsub",
+      "topics",
+      "describe",
+      GOOGLE_PLAY_RTDN_TOPIC_NAME,
+      "--project",
+      PROJECT,
+      "--format=json",
+    ]),
+    iamPolicy: run("gcloud", [
+      "pubsub",
+      "topics",
+      "get-iam-policy",
+      GOOGLE_PLAY_RTDN_TOPIC_NAME,
+      "--project",
+      PROJECT,
+      "--format=json",
+    ]),
+    functionDetails: run("gcloud", [
+      "functions",
+      "describe",
+      GOOGLE_PLAY_RTDN_FUNCTION,
+      "--gen2",
+      "--region",
+      REGION,
+      "--project",
+      PROJECT,
+      "--format=json",
+    ]),
+    ttlFields: run("gcloud", [
+      "firestore",
+      "fields",
+      "ttls",
+      "list",
+      "--project",
+      PROJECT,
+      "--format=json",
+    ]),
+  };
+  const commandErrors = {};
+  const parsed = {};
+  for (const [name, result] of Object.entries(commands)) {
+    if (!result.ok) {
+      commandErrors[name] = compactCommandOutput(
+        result.stderr || result.stdout || result.error,
+      );
+      continue;
+    }
+    try {
+      parsed[name] = JSON.parse(result.stdout);
+    } catch (error) {
+      commandErrors[name] = `invalid JSON: ${error.message}`;
+    }
+  }
+
+  const evaluated = evaluateGooglePlayRtdnReadiness(parsed);
+  return {
+    ...evaluated,
+    ok: Object.keys(commandErrors).length === 0 && evaluated.ok,
+    commandErrors,
+  };
 }
 
 function checkFirebaseFunctionsInventory() {
@@ -1930,6 +2108,7 @@ async function main() {
     billingAlerts,
     alertDeliverability: checkAlertDeliverabilityEvidence([opsAlerts, billingAlerts]),
     firestoreDisasterRecovery: checkFirestoreDisasterRecovery(),
+    googlePlayRtdn: checkGooglePlayRtdnReadiness(),
     firebaseFunctionsInventory: checkFirebaseFunctionsInventory(),
     launchEvidence: checkLaunchEvidence(),
   };

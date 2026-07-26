@@ -77,6 +77,9 @@ enum OpenBurnBarProductCatalog {
     static let cloudProAnnualProductID = "com.openburnbar.proMax.annual"
     static let cloudUltraMonthlyProductID = "com.openburnbar.ultra.monthly"
     static let cloudUltraAnnualProductID = "com.openburnbar.ultra.annual.v2"
+    static let googlePlayCloudProMonthlyProductID = "com.openburnbar.promax.v2.monthly"
+    static let googlePlayCloudProAnnualProductID = "com.openburnbar.promax.annual"
+    static let googlePlayCloudUltraAnnualProductID = "com.openburnbar.ultra.annual"
     static let agentControl100ActionsProductID = "com.openburnbar.agentControl.actions100"
     static let flooRelay50GBProductID = "com.openburnbar.floo.relay50gb"
     static let elderWandSearches100ProductID = "com.openburnbar.elderWand.searches100"
@@ -97,7 +100,7 @@ enum OpenBurnBarProductCatalog {
             entitlementID: "burnbar_pro",
             role: .subscription,
             included: "Sync, encrypted session backup, cloud search, Intelligence Brief fallback, remote relay, and Hosted Remote MCP.",
-            disclosure: "1 month, auto-renews monthly after a 14-day free trial for new subscribers.",
+            disclosure: "1 month, auto-renews monthly. Apple shows any eligible introductory offer before purchase.",
             topUpKind: nil
         ),
         OpenBurnBarStoreProduct(
@@ -108,7 +111,7 @@ enum OpenBurnBarProductCatalog {
             entitlementID: "burnbar_pro",
             role: .subscription,
             included: "Everything in BurnBar Cloud monthly with annual billing.",
-            disclosure: "1 year, auto-renews annually after a 14-day free trial for new subscribers.",
+            disclosure: "1 year, auto-renews annually. Apple shows any eligible introductory offer before purchase.",
             topUpKind: nil
         ),
         OpenBurnBarStoreProduct(
@@ -119,7 +122,7 @@ enum OpenBurnBarProductCatalog {
             entitlementID: "burnbar_pro_max",
             role: .subscription,
             included: "BurnBar Cloud plus Floo live phone-to-Mac control, file transfer, calls, shared clipboard, supervised Agent Control, 500 hosted actions, and 50 relay GB.",
-            disclosure: "1 month, auto-renews monthly. No introductory trial.",
+            disclosure: "1 month, auto-renews monthly.",
             topUpKind: nil
         ),
         OpenBurnBarStoreProduct(
@@ -130,7 +133,7 @@ enum OpenBurnBarProductCatalog {
             entitlementID: "burnbar_pro_max",
             role: .subscription,
             included: "Everything in BurnBar Cloud Pro monthly with annual billing.",
-            disclosure: "1 year, auto-renews annually. No introductory trial.",
+            disclosure: "1 year, auto-renews annually.",
             topUpKind: nil
         ),
         OpenBurnBarStoreProduct(
@@ -140,8 +143,8 @@ enum OpenBurnBarProductCatalog {
             fallbackDisplayPrice: "$59.99",
             entitlementID: "burnbar_ultra",
             role: .subscription,
-            included: "Everything in BurnBar Cloud Pro plus 10x agent memory — 15 sources, 50,000 chunks, 250 MB. Memory text is sealed on-device; hosted recall is opt-in and the cloaked structures still reveal patterns. Same hosted Agent Control and relay allowance as Pro.",
-            disclosure: "1 month, auto-renews monthly. No introductory trial.",
+            included: "Everything in BurnBar Cloud Pro plus 10x agent memory — 100 sources, 500,000 chunks, 10 GB. Memory text is sealed on-device; hosted recall is opt-in and the cloaked structures still reveal patterns. Same hosted Agent Control and relay allowance as Pro.",
+            disclosure: "1 month, auto-renews monthly.",
             topUpKind: nil
         ),
         OpenBurnBarStoreProduct(
@@ -152,7 +155,7 @@ enum OpenBurnBarProductCatalog {
             entitlementID: "burnbar_ultra",
             role: .subscription,
             included: "Everything in BurnBar Cloud Ultra monthly with annual billing.",
-            disclosure: "1 year, auto-renews annually. No introductory trial.",
+            disclosure: "1 year, auto-renews annually.",
             topUpKind: nil
         )
     ]
@@ -165,8 +168,8 @@ enum OpenBurnBarProductCatalog {
             fallbackDisplayPrice: "$4.99",
             entitlementID: nil,
             role: .topUp,
-            included: "Adds 100 prepaid hosted Agent Control actions to the current Cloud Pro month.",
-            disclosure: "Consumable top-up. Requires an active BurnBar Cloud Pro subscription.",
+            included: "Adds 100 prepaid hosted Agent Control actions to the current Cloud Pro or Ultra month.",
+            disclosure: "Consumable top-up. Requires an active BurnBar Cloud Pro or Ultra subscription.",
             topUpKind: "agent_control_actions_100"
         ),
         OpenBurnBarStoreProduct(
@@ -176,8 +179,8 @@ enum OpenBurnBarProductCatalog {
             fallbackDisplayPrice: "$4.99",
             entitlementID: nil,
             role: .topUp,
-            included: "Adds 50 prepaid Floo relay GB to the current Cloud Pro month.",
-            disclosure: "Consumable top-up. Requires an active BurnBar Cloud Pro subscription.",
+            included: "Adds 50 prepaid Floo relay GB to the current Cloud Pro or Ultra month.",
+            disclosure: "Consumable top-up. Requires an active BurnBar Cloud Pro or Ultra subscription.",
             topUpKind: "floo_relay_50gb"
         ),
         OpenBurnBarStoreProduct(
@@ -207,6 +210,9 @@ enum OpenBurnBarProductCatalog {
     static let visibleProducts = subscriptions + topUps
     static let visibleProductIDs = visibleProducts.map(\.id)
     static let entitlementProductIDs: Set<String> = Set(subscriptions.map(\.id)).union([
+        googlePlayCloudProMonthlyProductID,
+        googlePlayCloudProAnnualProductID,
+        googlePlayCloudUltraAnnualProductID,
         legacyHostedQuotaProductID,
         legacyHostedQuotaOriginalProductID,
         legacyComputerUseProductID,
@@ -252,11 +258,12 @@ typealias HostedQuotaEntitlementEnvironmentFilter = @MainActor (String?) -> Bool
 struct HostedQuotaCurrentEntitlement: Sendable {
     let productID: String
     let signedTransactionJWS: String
+    let expirationDate: Date?
     let purchaseDate: Date?
     let transactionID: UInt64?
 }
 
-typealias HostedQuotaCurrentEntitlementReader = @MainActor () async -> HostedQuotaCurrentEntitlement?
+typealias HostedQuotaCurrentEntitlementReader = @MainActor () async -> [HostedQuotaCurrentEntitlement]
 
 /// StoreKit 2 surface for the Apple-verified hosted-quota entitlement.
 ///
@@ -340,7 +347,7 @@ final class HostedQuotaSubscriptionStore {
     /// `purchase()`-emitted `verifyOnServer` against a near-simultaneous
     /// `Transaction.updates` event for the same JWS. We coalesce on the
     /// JWS representation so the second call awaits the first.
-    private var inFlightVerifyByJWS: [String: Task<Void, Error>] = [:]
+    private var inFlightVerifyByJWS: [String: Task<HostedQuotaEntitlementResponse, Error>] = [:]
 
     init(
         functions: any HostedQuotaEntitlementServicing = FunctionsRepository.shared,
@@ -353,7 +360,7 @@ final class HostedQuotaSubscriptionStore {
         acceptsEntitlementEnvironment: @escaping HostedQuotaEntitlementEnvironmentFilter =
             HostedQuotaSubscriptionStore.acceptsCurrentRuntimeEntitlementEnvironment,
         currentEntitlementReader: @escaping HostedQuotaCurrentEntitlementReader =
-            HostedQuotaSubscriptionStore.currentStoreKitEntitlement,
+            HostedQuotaSubscriptionStore.currentStoreKitEntitlements,
         observeTransactionUpdates: Bool = true
     ) {
         self.functions = functions
@@ -372,6 +379,15 @@ final class HostedQuotaSubscriptionStore {
         transactionUpdatesTask?.cancel()
     }
 
+    private func clearEntitlementState() {
+        isActive = false
+        activeProductID = nil
+        expirationDate = nil
+        purchaseDate = nil
+        latestTransactionID = nil
+        UltraTierBridge.shared.tier = nil
+    }
+
     func load() async {
         isLoading = true
         error = nil
@@ -380,11 +396,7 @@ final class HostedQuotaSubscriptionStore {
             startObservingTransactionUpdates()
         }
         guard isSignedIn() else {
-            isActive = false
-            activeProductID = nil
-            expirationDate = nil
-            purchaseDate = nil
-            latestTransactionID = nil
+            clearEntitlementState()
             await loadProductMetadataIfAvailable()
             return
         }
@@ -526,20 +538,27 @@ final class HostedQuotaSubscriptionStore {
     /// Sync any active StoreKit entitlement up to the server, or fall
     /// back to the server's view when no local transaction exists.
     func refreshEntitlement() async throws {
+        try await refreshEntitlement(preverifiedResponse: nil)
+    }
+
+    private func refreshEntitlement(
+        preverifiedResponse: (jws: String, response: HostedQuotaEntitlementResponse)?
+    ) async throws {
         guard isSignedIn() else {
-            isActive = false
-            activeProductID = nil
-            expirationDate = nil
-            purchaseDate = nil
-            latestTransactionID = nil
+            clearEntitlementState()
             return
         }
 
         if let matchedEntitlement = await findCurrentEntitlement() {
-            try await verifyOnServer(
-                jws: matchedEntitlement.signedTransactionJWS,
-                productID: matchedEntitlement.productID
-            )
+            if preverifiedResponse?.jws == matchedEntitlement.signedTransactionJWS,
+               let response = preverifiedResponse?.response {
+                apply(response: response)
+            } else {
+                try await verifyOnServer(
+                    jws: matchedEntitlement.signedTransactionJWS,
+                    productID: matchedEntitlement.productID
+                )
+            }
             if !isActive {
                 await applyDirectReadIfActive()
             }
@@ -578,9 +597,7 @@ final class HostedQuotaSubscriptionStore {
                 let directReadRecovered = await applyDirectReadIfActive()
                 let serverTierRecovered = directReadRecovered ? false : await applyServerResolvedTierIfActive()
                 if !directReadRecovered && !serverTierRecovered {
-                    isActive = false
-                    activeProductID = nil
-                    expirationDate = nil
+                    clearEntitlementState()
                 }
             }
         }
@@ -644,7 +661,7 @@ final class HostedQuotaSubscriptionStore {
         case "cloud", "premium":
             productID = Self.productID
         default:
-            UltraTierBridge.shared.tier = tier == "free" ? nil : tier
+            clearEntitlementState()
             return false
         }
         UltraTierBridge.shared.tier = tier
@@ -654,22 +671,58 @@ final class HostedQuotaSubscriptionStore {
         return true
     }
 
-    /// Walk `Transaction.currentEntitlements` and return the JWS of the
-    /// first verified, non-revoked, non-expired transaction matching
-    /// our productID. Returns `nil` when no qualifying entitlement is
-    /// present locally. As a side-effect, captures `purchaseDate` and
-    /// `latestTransactionID` from the matched transaction for display in
-    /// the member card.
+    /// Resolve all verified StoreKit entitlements to one deterministic
+    /// membership authority. Tier always wins before dates
+    /// (Ultra → Pro → Cloud); within a tier, the later expiration, purchase,
+    /// and transaction id win in that order. StoreKit sequence order is never
+    /// treated as entitlement authority.
     private func findCurrentEntitlement() async -> HostedQuotaCurrentEntitlement? {
-        guard let entitlement = await currentEntitlementReader(),
-              Self.entitlementProductIDs.contains(entitlement.productID)
-        else { return nil }
+        guard let entitlement = Self.preferredCurrentEntitlement(
+            from: await currentEntitlementReader()
+        ) else { return nil }
         purchaseDate = entitlement.purchaseDate
         latestTransactionID = entitlement.transactionID
         return entitlement
     }
 
-    private static func currentStoreKitEntitlement() async -> HostedQuotaCurrentEntitlement? {
+    static func preferredCurrentEntitlement(
+        from entitlements: [HostedQuotaCurrentEntitlement]
+    ) -> HostedQuotaCurrentEntitlement? {
+        entitlements
+            .filter { entitlementProductIDs.contains($0.productID) }
+            .max { lhs, rhs in
+                let lhsTier = entitlementTierRank(for: lhs.productID)
+                let rhsTier = entitlementTierRank(for: rhs.productID)
+                if lhsTier != rhsTier { return lhsTier < rhsTier }
+
+                let lhsExpiration = lhs.expirationDate ?? .distantFuture
+                let rhsExpiration = rhs.expirationDate ?? .distantFuture
+                if lhsExpiration != rhsExpiration { return lhsExpiration < rhsExpiration }
+
+                let lhsPurchase = lhs.purchaseDate ?? .distantPast
+                let rhsPurchase = rhs.purchaseDate ?? .distantPast
+                if lhsPurchase != rhsPurchase { return lhsPurchase < rhsPurchase }
+
+                let lhsTransactionID = lhs.transactionID ?? 0
+                let rhsTransactionID = rhs.transactionID ?? 0
+                if lhsTransactionID != rhsTransactionID {
+                    return lhsTransactionID < rhsTransactionID
+                }
+                return lhs.productID < rhs.productID
+            }
+    }
+
+    private static func entitlementTierRank(for productID: String) -> Int {
+        switch resolvedTierName(for: productID) {
+        case "ultra": return 3
+        case "pro": return 2
+        case "cloud": return 1
+        default: return 0
+        }
+    }
+
+    private static func currentStoreKitEntitlements() async -> [HostedQuotaCurrentEntitlement] {
+        var entitlements: [HostedQuotaCurrentEntitlement] = []
         for await result in Transaction.currentEntitlements {
             do {
                 let transaction = try Self.checked(result)
@@ -678,11 +731,14 @@ final class HostedQuotaSubscriptionStore {
                 if let expires = transaction.expirationDate, expires <= Date() {
                     continue
                 }
-                return HostedQuotaCurrentEntitlement(
-                    productID: transaction.productID,
-                    signedTransactionJWS: result.jwsRepresentation,
-                    purchaseDate: transaction.originalPurchaseDate,
-                    transactionID: transaction.id
+                entitlements.append(
+                    HostedQuotaCurrentEntitlement(
+                        productID: transaction.productID,
+                        signedTransactionJWS: result.jwsRepresentation,
+                        expirationDate: transaction.expirationDate,
+                        purchaseDate: transaction.originalPurchaseDate,
+                        transactionID: transaction.id
+                    )
                 )
             } catch {
                 // Skip unverified entitlements — the server is the
@@ -691,7 +747,7 @@ final class HostedQuotaSubscriptionStore {
                 continue
             }
         }
-        return nil
+        return entitlements
     }
 
     // MARK: Internals
@@ -710,16 +766,48 @@ final class HostedQuotaSubscriptionStore {
         do {
             let transaction = try Self.checked(update)
             guard Self.entitlementProductIDs.contains(transaction.productID) else { return }
+            await reconcileTransactionUpdate(
+                signedTransactionJWS: update.jwsRepresentation,
+                productID: transaction.productID,
+                finish: { await transaction.finish() }
+            )
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// Reconcile the updated transaction server-side without applying its tier
+    /// directly, then atomically resolve the complete current-entitlement set.
+    /// This prevents a lower-tier renewal/update from visually downgrading an
+    /// active Ultra or Pro membership while multiple StoreKit entitlements
+    /// overlap.
+    func reconcileTransactionUpdate(
+        signedTransactionJWS: String,
+        productID: String,
+        finish: @MainActor () async -> Void
+    ) async {
+        guard Self.entitlementProductIDs.contains(productID) else { return }
+        do {
+            let reconciledResponse: HostedQuotaEntitlementResponse
             do {
-                try await verifyOnServer(jws: update.jwsRepresentation, productID: transaction.productID)
-                await transaction.finish()
+                reconciledResponse = try await verifyOnServer(
+                    jws: signedTransactionJWS,
+                    productID: productID,
+                    applyResponse: false
+                )
             } catch {
-                if await recoverEntitlementAfterVerificationFailure(jws: update.jwsRepresentation, productID: transaction.productID) {
-                    await transaction.finish()
-                } else {
-                    throw error
-                }
+                reconciledResponse = try await functions.restoreHostedQuotaEntitlement(
+                    productID: productID,
+                    signedTransactionJWS: signedTransactionJWS
+                )
             }
+            try await refreshEntitlement(
+                preverifiedResponse: (
+                    jws: signedTransactionJWS,
+                    response: reconciledResponse
+                )
+            )
+            await finish()
         } catch {
             self.error = error.localizedDescription
         }
@@ -740,23 +828,36 @@ final class HostedQuotaSubscriptionStore {
     /// JWS share a single in-flight Task, so a `purchase()` outcome
     /// racing a `Transaction.updates` event won't double-call the
     /// callable nor cause UI flicker on the entitlement state.
-    private func verifyOnServer(jws: String, productID: String = HostedQuotaSubscriptionStore.productID) async throws {
+    @discardableResult
+    private func verifyOnServer(
+        jws: String,
+        productID: String = HostedQuotaSubscriptionStore.productID,
+        applyResponse: Bool = true
+    ) async throws -> HostedQuotaEntitlementResponse {
         if let existing = inFlightVerifyByJWS[jws] {
-            try await existing.value
-            return
+            let response = try await existing.value
+            if applyResponse {
+                apply(response: response)
+            }
+            return response
         }
-        let task = Task<Void, Error> { [weak self] in
-            guard let self else { return }
-            let response = try await self.functions.verifyHostedQuotaEntitlement(
+        let task = Task<HostedQuotaEntitlementResponse, Error> { [weak self] in
+            guard let self else {
+                throw HostedQuotaSubscriptionError.entitlementStoreReleased
+            }
+            return try await self.functions.verifyHostedQuotaEntitlement(
                 signedTransactionJWS: jws,
                 signedRenewalInfoJWS: nil,
                 productID: productID
             )
-            await MainActor.run { self.apply(response: response) }
         }
         inFlightVerifyByJWS[jws] = task
         defer { inFlightVerifyByJWS.removeValue(forKey: jws) }
-        try await task.value
+        let response = try await task.value
+        if applyResponse {
+            apply(response: response)
+        }
+        return response
     }
 
     @discardableResult
@@ -806,18 +907,26 @@ final class HostedQuotaSubscriptionStore {
         let active = response.active &&
             Self.entitlementProductIDs.contains(response.productID) &&
             acceptsEntitlementEnvironment(response.environment)
-        isActive = active
-        activeProductID = active ? response.productID : nil
-        expirationDate = active ? response.expiresAt : nil
-        UltraTierBridge.shared.tier = active ? Self.resolvedTierName(for: response.productID) : nil
+        guard active else {
+            clearEntitlementState()
+            return
+        }
+        isActive = true
+        activeProductID = response.productID
+        expirationDate = response.expiresAt
+        UltraTierBridge.shared.tier = Self.resolvedTierName(for: response.productID)
     }
 
     private static func resolvedTierName(for productID: String) -> String? {
-        if productID == Self.cloudUltraMonthlyProductID || productID == Self.cloudUltraAnnualProductID {
+        if productID == Self.cloudUltraMonthlyProductID ||
+            productID == Self.cloudUltraAnnualProductID ||
+            productID == OpenBurnBarProductCatalog.googlePlayCloudUltraAnnualProductID {
             return "ultra"
         }
         if productID == Self.cloudProMonthlyProductID ||
             productID == Self.cloudProAnnualProductID ||
+            productID == OpenBurnBarProductCatalog.googlePlayCloudProMonthlyProductID ||
+            productID == OpenBurnBarProductCatalog.googlePlayCloudProAnnualProductID ||
             productID == Self.legacyProMaxProductID ||
             productID == Self.proMaxProductID ||
             productID == Self.legacyHostedComputerUseProductID ||
@@ -841,6 +950,9 @@ final class HostedQuotaSubscriptionStore {
             // Floo, Agent Control) without re-plumbing each gate.
             activeProductID == Self.cloudUltraMonthlyProductID ||
             activeProductID == Self.cloudUltraAnnualProductID ||
+            activeProductID == OpenBurnBarProductCatalog.googlePlayCloudUltraAnnualProductID ||
+            activeProductID == OpenBurnBarProductCatalog.googlePlayCloudProMonthlyProductID ||
+            activeProductID == OpenBurnBarProductCatalog.googlePlayCloudProAnnualProductID ||
             activeProductID == Self.legacyProMaxProductID ||
             activeProductID == Self.proMaxProductID ||
             activeProductID == Self.legacyHostedComputerUseProductID ||
@@ -852,7 +964,8 @@ final class HostedQuotaSubscriptionStore {
     /// reads that return the server-resolved `burnbar_ultra` document.
     var hasActiveUltraStoreKitProduct: Bool {
         activeProductID == Self.cloudUltraMonthlyProductID ||
-            activeProductID == Self.cloudUltraAnnualProductID
+            activeProductID == Self.cloudUltraAnnualProductID ||
+            activeProductID == OpenBurnBarProductCatalog.googlePlayCloudUltraAnnualProductID
     }
 
     /// The user's resolved membership tier, derived from the same canonical
@@ -862,9 +975,9 @@ final class HostedQuotaSubscriptionStore {
     ///
     /// Resolution order mirrors the gating spec §4.2 (Ultra ⇒ Pro ⇒ Cloud):
     ///   ultra → .ultra; else pro → .pro; else active → .cloud; else .none.
-    /// Ultra is the union of the server-resolved data tier (`isActiveUltra`,
-    /// the authority — Ultra has no Apple product id) and a freshly-purchased
-    /// Ultra StoreKit subscription.
+    /// Ultra is the union of the server-resolved data tier and a current Apple
+    /// StoreKit Ultra subscription. Server-resolved state also covers purchases
+    /// made on Android or granted administratively.
     var cloudTier: CloudTier {
         if isActiveUltra || hasActiveUltraStoreKitProduct { return .ultra }
         if isActivePro { return .pro }
@@ -1091,6 +1204,7 @@ enum HostedQuotaSubscriptionError: Error, LocalizedError {
     case purchasePresentationUnavailable
     case signedOutConsumablePurchase
     case signedOutSubscriptionPurchase
+    case entitlementStoreReleased
 
     var errorDescription: String? {
         switch self {
@@ -1104,6 +1218,8 @@ enum HostedQuotaSubscriptionError: Error, LocalizedError {
             return "Sign in to OpenBurnBar before buying Cloud Pro top-ups so the prepaid allowance can be credited to your account."
         case .signedOutSubscriptionPurchase:
             return "Sign in to OpenBurnBar before subscribing so Apple can link OpenBurnBar Cloud to your account."
+        case .entitlementStoreReleased:
+            return "The Cloud membership store closed before Apple verification completed. Please try again."
         }
     }
 }

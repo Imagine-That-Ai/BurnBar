@@ -1052,6 +1052,12 @@ jobs:
       - name: Check privacy invariants (run-09)
         run: node scripts/ci/check-privacy-invariants.mjs
 
+      - name: Self-test explicit Android PendingIntent gate
+        run: node --test scripts/ci/verify-android-explicit-pending-intents.test.mjs
+
+      - name: Verify explicit Android PendingIntents
+        run: node scripts/ci/verify-android-explicit-pending-intents.mjs
+
       - name: Verify credential-transfer secret boundary
         run: bash scripts/ci/verify-credential-transfer-secret-boundary.sh
 

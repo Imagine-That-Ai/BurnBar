@@ -174,6 +174,117 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertTrue(MacCloudStoreKitProductCatalog.entitlementProductIDs.contains("com.openburnbar.ultra.annual"))
     }
 
+    func testMacCloudPricingTierMapsEveryPaidMonthlyAndAnnualProduct() {
+        XCTAssertNil(MacCloudPricingTier.local.productID(for: .monthly))
+        XCTAssertNil(MacCloudPricingTier.local.productID(for: .annual))
+        XCTAssertEqual(
+            MacCloudPricingTier.cloud.productID(for: .monthly),
+            MacCloudStoreKitProductCatalog.cloudMonthlyProductID
+        )
+        XCTAssertEqual(
+            MacCloudPricingTier.cloud.productID(for: .annual),
+            MacCloudStoreKitProductCatalog.cloudAnnualProductID
+        )
+        XCTAssertEqual(
+            MacCloudPricingTier.pro.productID(for: .monthly),
+            MacCloudStoreKitProductCatalog.cloudProMonthlyProductID
+        )
+        XCTAssertEqual(
+            MacCloudPricingTier.pro.productID(for: .annual),
+            MacCloudStoreKitProductCatalog.cloudProAnnualProductID
+        )
+        XCTAssertEqual(
+            MacCloudPricingTier.ultra.productID(for: .monthly),
+            MacCloudStoreKitProductCatalog.cloudUltraMonthlyProductID
+        )
+        XCTAssertEqual(
+            MacCloudPricingTier.ultra.productID(for: .annual),
+            MacCloudStoreKitProductCatalog.cloudUltraAnnualProductID
+        )
+        XCTAssertEqual(MacHostedQuotaPurchaseStore.tierProductIDs.count, 3)
+        XCTAssertEqual(
+            Set(MacHostedQuotaPurchaseStore.tierProductIDs.values.flatMap(\.values)).count,
+            6
+        )
+    }
+
+    func testMacHostedQuotaRestorePrefersUltraAcrossMultipleCurrentEntitlements() throws {
+        let now = Date()
+        let selected = try XCTUnwrap(
+            MacHostedQuotaPurchaseStore.preferredCurrentEntitlement(
+                from: [
+                    MacHostedQuotaCurrentEntitlement(
+                        productID: MacCloudStoreKitProductCatalog.cloudMonthlyProductID,
+                        signedTransactionJWS: "cloud-jws",
+                        expirationDate: now.addingTimeInterval(86_400),
+                        purchaseDate: now.addingTimeInterval(-100),
+                        transactionID: 30
+                    ),
+                    MacHostedQuotaCurrentEntitlement(
+                        productID: MacCloudStoreKitProductCatalog.cloudUltraMonthlyProductID,
+                        signedTransactionJWS: "ultra-jws",
+                        expirationDate: now.addingTimeInterval(3_600),
+                        purchaseDate: now.addingTimeInterval(-300),
+                        transactionID: 10
+                    ),
+                    MacHostedQuotaCurrentEntitlement(
+                        productID: MacCloudStoreKitProductCatalog.cloudProAnnualProductID,
+                        signedTransactionJWS: "pro-jws",
+                        expirationDate: now.addingTimeInterval(172_800),
+                        purchaseDate: now.addingTimeInterval(-200),
+                        transactionID: 20
+                    )
+                ]
+            )
+        )
+
+        XCTAssertEqual(selected.productID, MacCloudStoreKitProductCatalog.cloudUltraMonthlyProductID)
+        XCTAssertEqual(selected.signedTransactionJWS, "ultra-jws")
+    }
+
+    func testMacHostedQuotaRestoreUsesExpirationWithinSameTier() throws {
+        let now = Date()
+        let selected = try XCTUnwrap(
+            MacHostedQuotaPurchaseStore.preferredCurrentEntitlement(
+                from: [
+                    MacHostedQuotaCurrentEntitlement(
+                        productID: MacCloudStoreKitProductCatalog.cloudUltraMonthlyProductID,
+                        signedTransactionJWS: "ultra-monthly-jws",
+                        expirationDate: now.addingTimeInterval(3_600),
+                        purchaseDate: now,
+                        transactionID: 2
+                    ),
+                    MacHostedQuotaCurrentEntitlement(
+                        productID: MacCloudStoreKitProductCatalog.cloudUltraAnnualProductID,
+                        signedTransactionJWS: "ultra-annual-jws",
+                        expirationDate: now.addingTimeInterval(172_800),
+                        purchaseDate: now.addingTimeInterval(-86_400),
+                        transactionID: 1
+                    )
+                ]
+            )
+        )
+
+        XCTAssertEqual(selected.productID, MacCloudStoreKitProductCatalog.cloudUltraAnnualProductID)
+        XCTAssertEqual(selected.signedTransactionJWS, "ultra-annual-jws")
+    }
+
+    func testMacPricingCopyAvoidsStaticTrialPromiseAndMatchesUltraLimits() throws {
+        let cloud = try XCTUnwrap(MacPricingTierModel.all.first { $0.tier == .cloud })
+        let ultra = try XCTUnwrap(MacPricingTierModel.all.first { $0.tier == .ultra })
+
+        XCTAssertFalse(
+            cloud.includedNote?.lines.contains {
+                $0.localizedCaseInsensitiveContains("14-day")
+            } ?? false
+        )
+        XCTAssertTrue(
+            ultra.bullets.contains {
+                $0.contains("100 sources · 500,000 chunks · 10 GB")
+            }
+        )
+    }
+
     func testMacCloudEntitlementStoreResolvesLocalStoreKitProEntitlement() async {
         let expires = Date(timeIntervalSinceNow: 3_600)
         let purchase = Date(timeIntervalSinceNow: -86_400)

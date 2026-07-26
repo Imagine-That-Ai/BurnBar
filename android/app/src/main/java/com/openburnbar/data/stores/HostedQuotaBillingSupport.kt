@@ -12,12 +12,20 @@ import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 internal object HostedQuotaBillingSupport {
-    fun formattedPrice(details: ProductDetails): String? {
+    fun subscriptionOffer(details: ProductDetails, storeProduct: HostedQuotaStoreProduct): ProductDetails.SubscriptionOfferDetails? {
+        val basePlanID = storeProduct.basePlanID ?: return null
         return details.subscriptionOfferDetails
-            ?.firstOrNull()
+            .orEmpty()
+            .singleOrNull { offer ->
+                offer.basePlanId == basePlanID && offer.offerId == storeProduct.offerID
+            }
+    }
+
+    fun formattedPrice(details: ProductDetails, storeProduct: HostedQuotaStoreProduct): String? {
+        return subscriptionOffer(details, storeProduct)
             ?.pricingPhases
             ?.pricingPhaseList
-            ?.firstOrNull()
+            ?.lastOrNull()
             ?.formattedPrice
             ?: details.oneTimePurchaseOfferDetails?.formattedPrice
     }

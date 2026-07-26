@@ -99,6 +99,7 @@ export const PLATFORM_TRIGGER_ENDPOINTS = [
   "onKnowledgeRepoPush",
   "sendFcmOutbound",
   "sendVoIPOutbound",
+  "googlePlayDeveloperNotifications",
   "stripeBurnBarProWebhook",
   "appStoreServerNotificationsV2",
 ] as const;

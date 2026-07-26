@@ -529,6 +529,31 @@ for (const name of [
 }
 
 const rules = readFileSync(new URL("../../firestore.rules", import.meta.url), "utf8");
+const consolidatedUserCollectionStart = rules.indexOf(
+  "match /users/{userId}/{collectionId}/{documentId} {",
+);
+assert.notEqual(
+  consolidatedUserCollectionStart,
+  -1,
+  "consolidated user-collection rules block must exist",
+);
+const consolidatedUserCollectionBlock = rules.slice(
+  consolidatedUserCollectionStart,
+  rules.indexOf("\n    }\n", consolidatedUserCollectionStart) + 7,
+);
+const consolidatedReadAllowlist =
+  consolidatedUserCollectionBlock.match(
+    /allow read: if[\s\S]*?collectionId in \[([\s\S]*?)\];/,
+  )?.[1] ?? "";
+const consolidatedDeleteAllowlist =
+  consolidatedUserCollectionBlock.match(
+    /allow delete: if[\s\S]*?collectionId in \[([\s\S]*?)\];/,
+  )?.[1] ?? "";
+const consolidatedWriteAllowlists = [
+  ...consolidatedUserCollectionBlock.matchAll(
+    /allow create, update: if collectionId in \[([\s\S]*?)\]/g,
+  ),
+].map((match) => match[1]);
 for (const collection of [
   "hermes_gateway_clients",
   "hermes_gateway_destinations",
@@ -540,14 +565,39 @@ for (const collection of [
   "hermes_gateway_approvals",
 ]) {
   const start = rules.indexOf(`match /users/{userId}/${collection}/`);
-  assert.notEqual(start, -1, `${collection} rules block must exist`);
-  const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
-  assert.match(block, /allow write: if false;/, `${collection} writes must stay server-owned`);
+  if (start !== -1) {
+    const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
+    assert.match(block, /allow write: if false;/, `${collection} writes must stay server-owned`);
+    continue;
+  }
+
+  // firestore.rules consolidates direct-child reads into one compiler-budget
+  // block. A server-owned Hermes Gateway collection is safe there only when it
+  // is readable by its owner and omitted from every client write allowlist.
+  assert.match(
+    consolidatedReadAllowlist,
+    new RegExp(`"${collection}"`),
+    `${collection} owner read access must exist`,
+  );
+  assert.ok(
+    !consolidatedDeleteAllowlist.includes(`"${collection}"`) &&
+      consolidatedWriteAllowlists.every(
+        (allowlist) => !allowlist.includes(`"${collection}"`),
+      ),
+    `${collection} writes must stay server-owned`,
+  );
 }
-assert.match(rules, /match \/users\/\{userId\}\/hermes_gateway_destinations\/\{destinationId\}/);
 assert.match(rules, /hasActiveHostedQuotaEntitlement\(userId\)/);
-assert.match(rules, /match \/hermes_gateway_device_sessions\/\{sessionId\}/);
-assert.match(rules, /match \/hermes_gateway_token_index\/\{tokenHash\}/);
+// Root token/session indexes are Admin-SDK-only. The consolidated ruleset keeps
+// them server-owned by omitting client match blocks entirely (default deny).
+assert.doesNotMatch(
+  rules,
+  /match \/hermes_gateway_device_sessions\/\{sessionId\}/,
+);
+assert.doesNotMatch(
+  rules,
+  /match \/hermes_gateway_token_index\/\{tokenHash\}/,
+);
 
 const firebaseConfig = JSON.parse(readFileSync(new URL("../../firebase.json", import.meta.url), "utf8"));
 const hostingEntries = Array.isArray(firebaseConfig.hosting)

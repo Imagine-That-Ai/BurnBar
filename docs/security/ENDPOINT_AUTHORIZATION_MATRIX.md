@@ -4,7 +4,7 @@ The machine-readable source of truth is `functions/src/security/endpointAuthoriz
 
 Each exported Cloud Function declares:
 
-- trigger type (`callable`, `http`, `firestore-trigger`, `scheduled`, `provider-webhook`, `task-queue`)
+- trigger type (`callable`, `http`, `firestore-trigger`, `pubsub-trigger`, `scheduled`, `provider-webhook`, `task-queue`)
 - authentication method
 - App Check posture
 - tenant source

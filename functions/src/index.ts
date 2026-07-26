@@ -88,6 +88,7 @@ export {
   verifyGooglePlayCloudProTopUp,
   stripeBurnBarProWebhook,
 } from "./callables/stripe.js";
+export { googlePlayDeveloperNotifications } from "./googlePlayRtdn.js";
 
 export {
   beginEncryptedSessionBlobUpload,

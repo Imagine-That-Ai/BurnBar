@@ -146,5 +146,6 @@ Re-check every item immediately before changing repository visibility.
   artifact.
 - [ ] Re-review unexpected local source changes and any mid-audit edits to confirm they are intentional to ship
 - [ ] Naming and trademark clearance for broader public distribution under the name `OpenBurnBar`
+  (requires explicit counsel/owner sign-off; repository and automated search evidence cannot establish legal clearance)
 - [ ] Consider reserving npm package name `openburnbar` if not already taken
 - [ ] Consider setting up a GitHub Pages site for documentation if wiki is disabled

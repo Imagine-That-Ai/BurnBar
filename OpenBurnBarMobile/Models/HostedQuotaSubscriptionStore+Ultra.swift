@@ -2,13 +2,14 @@ import Foundation
 
 // MARK: - Ultra tier bridge
 //
-// Pensieve's higher caps (15 sources / 50k chunks / 250 MB) are gated on the
-// BurnBar Ultra entitlement, which is server-reconciled and has NO Apple
-// product id (so StoreKit alone cannot see it). The authoritative tier comes
-// from `getDataDomainUsage().tier` (resolved server-side from the
-// `burnbar_ultra` entitlement doc). This extension lets the membership store
-// carry that resolved tier so the Control Center and any gated surface can ask
-// `subscriptionStore.isActiveUltra` without re-plumbing the callable.
+// Pensieve's higher caps (100 sources / 500k chunks / 10 GB) are gated on the
+// BurnBar Ultra entitlement. Ultra has monthly and annual Apple product IDs,
+// while the server-resolved tier also covers Android purchases and
+// administrative grants. The authoritative cross-platform tier comes from
+// `getDataDomainUsage().tier` (resolved server-side from the `burnbar_ultra`
+// entitlement doc). This extension lets the membership store carry that tier
+// so gated surfaces can ask `subscriptionStore.isActiveUltra` without
+// re-plumbing the callable.
 //
 // `isActivePro` already exists on the store for the Cloud Pro (proMax) tier;
 // Ultra is strictly above it (Ultra ⇒ Pro), so the convenience predicates here

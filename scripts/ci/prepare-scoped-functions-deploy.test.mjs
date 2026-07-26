@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const preparer = join(scriptDir, "prepare-scoped-functions-deploy.mjs");
+const repoRoot = join(scriptDir, "..", "..");
 const root = mkdtempSync(join(tmpdir(), "openburnbar-scoped-functions-"));
 const functionsDir = join(root, "functions");
 const libDir = join(functionsDir, "lib");
@@ -121,6 +122,39 @@ try {
       .main !== "lib/index.js"
   ) {
     throw new Error("all-functions mode changed package main");
+  }
+
+  const productionManifest = JSON.parse(
+    readFileSync(
+      join(repoRoot, "functions", "staging-deploy-targets.json"),
+      "utf8",
+    ),
+  );
+  const requiredCommercialTargets = [
+    "createStripeBurnBarProCheckoutSession",
+    "createStripeBurnBarProPortalSession",
+    "verifyGooglePlayBurnBarProSubscription",
+    "verifyGooglePlayCloudProTopUp",
+    "stripeBurnBarProWebhook",
+    "googlePlayDeveloperNotifications",
+    "beginEntitlementBinding",
+    "verifyHostedQuotaEntitlement",
+    "verifyCloudProTopUp",
+    "restoreHostedQuotaEntitlement",
+    "appStoreServerNotificationsV2",
+    "reconcileHostedEntitlementsDaily",
+  ];
+  for (const target of requiredCommercialTargets) {
+    const entry = productionManifest.targets?.[target];
+    if (
+      !entry ||
+      typeof entry.module !== "string" ||
+      typeof entry.export !== "string"
+    ) {
+      throw new Error(
+        `commercial staging target ${target} is missing a valid manifest binding`,
+      );
+    }
   }
 
   console.log(

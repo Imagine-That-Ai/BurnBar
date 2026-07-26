@@ -195,9 +195,10 @@
   // consent is granted, so nothing leaks pre-opt-in.
   installDelegatedTracking();
 
+  const suppressInitialPrompt = document.body.hasAttribute("data-transactional-page");
   if (analyticsConsent.hasDecided) {
     boot(); // resumes + emits page view if granted; stays dark if declined
-  } else {
+  } else if (!suppressInitialPrompt) {
     show();
   }
 

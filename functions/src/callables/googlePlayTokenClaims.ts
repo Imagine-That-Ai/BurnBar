@@ -43,5 +43,20 @@ export async function claimGooglePlayPurchaseToken(args: {
         "This Google Play purchase is already linked to another BurnBar account.",
       );
     }
+    const existingKind = snap.get("kind");
+    if (typeof existingKind === "string" && existingKind !== args.kind) {
+      throw new HttpsError(
+        "failed-precondition",
+        "This Google Play purchase is already linked as a different billing product type.",
+      );
+    }
+    await ref.set(
+      {
+        productID: args.productID,
+        kind: args.kind,
+        updatedAt: nowISO(),
+      },
+      { merge: true },
+    );
   }
 }

@@ -23,6 +23,15 @@ import {
 } from "../../cloudProAllowanceCore.js";
 import { loadCloudProAllowanceConfig } from "../../cloudProAllowanceRemoteConfig.js";
 import { assertCloudFeatureNotSuspended } from "../../cloudFeatureSuspensions.js";
+import {
+  disputeTopUpReversalUnits,
+  proportionalTopUpReversalUnits,
+  stripeTopUpAmount,
+  stripeTopUpIncrementField,
+  stripeTopUpReceiptState,
+  stripeTopUpReversalState,
+  type StripeTopUpDisputeStatus,
+} from "./stripeTopUpReversal.js";
 import { nowISO, requiredIdentifier } from "./validators.js";
 
 export const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
@@ -183,7 +192,10 @@ export async function writeBurnBarProEntitlement(args: {
     active,
     productID: args.productID,
     entitlementFamily: entitlementID,
-    features: entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID ? burnBarProMaxFeatures() : burnBarProFeatures(),
+    features:
+      entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID || entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID
+        ? burnBarProMaxFeatures()
+        : burnBarProFeatures(),
     expiresAt,
     expireAt: Timestamp.fromMillis(args.expiresAtMillis),
     source: args.source,
@@ -395,6 +407,10 @@ export async function creditCloudProTopUp(args: {
   kind: CloudProTopUpKind;
   source: string;
   externalPaymentID: string;
+  externalPaymentIntentID?: string;
+  externalChargeID?: string;
+  externalAmountMinor?: number;
+  externalCurrency?: string;
   quantity?: number;
 }): Promise<{ credited: boolean; monthKey: string; units: number; kind: CloudProTopUpKind }> {
   const tier = await activeBurnBarCloudProEntitlementTier(args.uid);
@@ -413,8 +429,8 @@ export async function creditCloudProTopUp(args: {
       transaction.get(topUpRef),
     ]);
     if (existingReceipt.exists || existingMonthlyTopUp.exists) {
+      const now = Timestamp.now();
       if (!existingReceipt.exists) {
-        const now = Timestamp.now();
         const existing = existingMonthlyTopUp.data();
         transaction.set(
           receiptRef,
@@ -427,11 +443,41 @@ export async function creditCloudProTopUp(args: {
             units: typeof existing?.units === "number" ? existing.units : topUp.units,
             source: args.source,
             externalPaymentID: args.externalPaymentID,
+            externalPaymentIntentID: args.externalPaymentIntentID,
+            externalChargeID: args.externalChargeID,
+            externalAmountMinor: args.externalAmountMinor,
+            externalCurrency: args.externalCurrency,
             quantity: typeof existing?.quantity === "number" ? existing.quantity : (args.quantity ?? 1),
             creditedAt: existing?.creditedAt,
             receiptBackfilledAt: now,
             updatedAt: now,
             schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
+          }),
+          { merge: true },
+        );
+      } else {
+        transaction.set(
+          receiptRef,
+          stripUndefinedObject({
+            latestMonthKey: monthKey,
+            externalPaymentIntentID: args.externalPaymentIntentID,
+            externalChargeID: args.externalChargeID,
+            externalAmountMinor: args.externalAmountMinor,
+            externalCurrency: args.externalCurrency,
+            updatedAt: now,
+          }),
+          { merge: true },
+        );
+      }
+      if (existingMonthlyTopUp.exists) {
+        transaction.set(
+          topUpRef,
+          stripUndefinedObject({
+            externalPaymentIntentID: args.externalPaymentIntentID,
+            externalChargeID: args.externalChargeID,
+            externalAmountMinor: args.externalAmountMinor,
+            externalCurrency: args.externalCurrency,
+            updatedAt: now,
           }),
           { merge: true },
         );
@@ -469,6 +515,10 @@ export async function creditCloudProTopUp(args: {
       units: topUp.units,
       source: args.source,
       externalPaymentID: args.externalPaymentID,
+      externalPaymentIntentID: args.externalPaymentIntentID,
+      externalChargeID: args.externalChargeID,
+      externalAmountMinor: args.externalAmountMinor,
+      externalCurrency: args.externalCurrency,
       quantity: args.quantity ?? 1,
       creditedAt: now,
       schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
@@ -482,11 +532,109 @@ export async function creditCloudProTopUp(args: {
       units: topUp.units,
       source: args.source,
       externalPaymentID: args.externalPaymentID,
+      externalPaymentIntentID: args.externalPaymentIntentID,
+      externalChargeID: args.externalChargeID,
+      externalAmountMinor: args.externalAmountMinor,
+      externalCurrency: args.externalCurrency,
       quantity: args.quantity ?? 1,
       creditedAt: now,
       updatedAt: now,
       schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
     });
     return { credited: true, monthKey, units: topUp.units, kind: args.kind };
+  });
+}
+
+/**
+ * Reconciles the reversible portion of one credited Cloud Pro top-up.
+ *
+ * Refunds reverse a proportional number of units (rounded up so a partial
+ * refund never leaves more paid allowance than the retained payment covers).
+ * Open or lost disputes suspend the full top-up. A won/closed/prevented
+ * dispute restores units unless a successful refund independently keeps them
+ * reversed. Store-provider voids may force a full reversal independently of
+ * refund/dispute amount metadata. Used units remain immutable audit history, so the live allowance
+ * may become negative until future included/top-up allowance covers it.
+ */
+export async function reconcileCloudProTopUpReversal(args: {
+  uid: string;
+  receiptID: string;
+  refundedAmountMinor?: number;
+  originalAmountMinor?: number;
+  disputeStatus?: StripeTopUpDisputeStatus;
+  fullReversalReason?: string;
+  sourceEventID?: string;
+  sourceEventCreatedMillis?: number;
+}): Promise<{
+  adjusted: boolean;
+  reversedUnits: number;
+  deltaUnits: number;
+  monthKey?: string;
+}> {
+  const receiptRef = db.doc(cloudProTopUpReceiptDocPath(args.uid, args.receiptID));
+
+  return db.runTransaction(async (transaction) => {
+    const receiptSnap = await transaction.get(receiptRef);
+    const receipt = receiptSnap.data();
+    if (!receiptSnap.exists || !receipt) {
+      return { adjusted: false, reversedUnits: 0, deltaUnits: 0 };
+    }
+
+    const { monthKey, units, meter, priorRefundUnits, priorDisputeUnits, priorReversedUnits } =
+      stripeTopUpReceiptState(receipt);
+    const originalAmountMinor = stripeTopUpAmount(args.originalAmountMinor, receipt.externalAmountMinor);
+    const refundedAmountMinor = stripeTopUpAmount(args.refundedAmountMinor, receipt.refundedAmountMinor);
+
+    const refundReversedUnits =
+      args.refundedAmountMinor === undefined
+        ? priorRefundUnits
+        : proportionalTopUpReversalUnits(units, refundedAmountMinor, originalAmountMinor);
+    const disputeReversedUnits = args.disputeStatus
+      ? disputeTopUpReversalUnits(units, args.disputeStatus)
+      : priorDisputeUnits;
+    const forcedReversalUnits = args.fullReversalReason ? units : 0;
+    const reversedUnits = Math.max(refundReversedUnits, disputeReversedUnits, forcedReversalUnits);
+    const deltaUnits = reversedUnits - priorReversedUnits;
+    const allowanceRef = db.doc(allowanceDocPath(args.uid, monthKey));
+    const topUpRef = allowanceRef.collection("topups").doc(args.receiptID);
+    const incrementField = stripeTopUpIncrementField(meter);
+    const now = Timestamp.now();
+
+    if (deltaUnits !== 0) {
+      transaction.set(
+        allowanceRef,
+        {
+          [incrementField]: FieldValue.increment(-deltaUnits),
+          updatedAt: now,
+          schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
+        },
+        { merge: true },
+      );
+    }
+
+    const adjustment = stripUndefinedObject({
+      refundedAmountMinor,
+      originalAmountMinor,
+      refundReversedUnits,
+      disputeStatus: args.disputeStatus,
+      disputeReversedUnits,
+      fullReversalReason: args.fullReversalReason,
+      forcedReversalUnits,
+      reversedUnits,
+      reversalState: stripeTopUpReversalState(reversedUnits, units),
+      sourceEventID: args.sourceEventID,
+      sourceEventCreatedMillis: args.sourceEventCreatedMillis,
+      updatedAt: now,
+      schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
+    });
+    transaction.set(receiptRef, adjustment, { merge: true });
+    transaction.set(topUpRef, adjustment, { merge: true });
+
+    return {
+      adjusted: deltaUnits !== 0,
+      reversedUnits,
+      deltaUnits,
+      monthKey,
+    };
   });
 }

@@ -164,7 +164,7 @@ struct MacPricingTierModel: Identifiable {
                 label: "Included",
                 lines: [
                     "Everything in Local, local-first",
-                    "14-day introductory free trial for new subscribers"
+                    "Any eligible introductory offer is shown by Apple before purchase"
                 ]
             ),
             crestAsset: "CloudTierCrest",
@@ -218,7 +218,7 @@ struct MacPricingTierModel: Identifiable {
             summary: "Everything in Cloud Pro, plus 10× agent memory.",
             bullets: [
                 "Everything in BurnBar Cloud Pro",
-                "10× agent memory: 15 sources · 50,000 chunks · 250 MB",
+                "10× agent memory: 100 sources · 500,000 chunks · 10 GB",
                 "Sealed on-device — search runs over encrypted structures (some patterns stay visible)",
                 "Same hosted Agent Control & relay allowance as Pro"
             ],
@@ -303,6 +303,27 @@ struct TierHolographicAccent: View {
 /// The four marketing tiers mirrored on the macOS pricing pane. `local` is the
 /// free, account-less product; the other three are App Store subscriptions whose
 /// live price comes from StoreKit (`displayPrice`).
+enum MacCloudBillingPeriod: String, CaseIterable, Identifiable {
+    case monthly
+    case annual
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .monthly: return "Monthly"
+        case .annual: return "Annual"
+        }
+    }
+
+    var priceSuffix: String {
+        switch self {
+        case .monthly: return "/ month"
+        case .annual: return "/ year"
+        }
+    }
+}
+
 enum MacCloudPricingTier: String, CaseIterable, Identifiable {
     case local
     case cloud
@@ -322,6 +343,22 @@ enum MacCloudPricingTier: String, CaseIterable, Identifiable {
         }
     }
 
+    var annualProductID: String? {
+        switch self {
+        case .local: return nil
+        case .cloud:  return MacCloudStoreKitProductCatalog.cloudAnnualProductID
+        case .pro:    return MacCloudStoreKitProductCatalog.cloudProAnnualProductID
+        case .ultra:  return MacCloudStoreKitProductCatalog.cloudUltraAnnualProductID
+        }
+    }
+
+    func productID(for billingPeriod: MacCloudBillingPeriod) -> String? {
+        switch billingPeriod {
+        case .monthly: return monthlyProductID
+        case .annual: return annualProductID
+        }
+    }
+
     /// The entitlement tier this purchase resolves to once the server reconciles.
     var entitlementTier: MacCloudTier {
         switch self {
@@ -333,17 +370,33 @@ enum MacCloudPricingTier: String, CaseIterable, Identifiable {
     }
 }
 
+struct MacHostedQuotaCurrentEntitlement: Equatable {
+    let productID: String
+    let signedTransactionJWS: String
+    let expirationDate: Date?
+    let purchaseDate: Date?
+    let transactionID: UInt64?
+}
+
 @MainActor
 final class MacHostedQuotaPurchaseStore: ObservableObject {
     static let productID = MacCloudStoreKitProductCatalog.cloudMonthlyProductID
 
-    /// The monthly subscription product for each paid tier. Live prices are
-    /// fetched from StoreKit; the documented fallback amount renders only when
-    /// the App Store has not returned the product yet.
-    static let tierProductIDs: [MacCloudPricingTier: String] = {
-        var map: [MacCloudPricingTier: String] = [:]
+    /// Monthly and annual subscription products for every paid tier. The
+    /// selected cadence always resolves to a real StoreKit product; annual
+    /// pricing is never a decorative fallback beside a monthly purchase.
+    static let tierProductIDs: [MacCloudPricingTier: [MacCloudBillingPeriod: String]] = {
+        var map: [MacCloudPricingTier: [MacCloudBillingPeriod: String]] = [:]
         for tier in MacCloudPricingTier.allCases {
-            if let id = tier.monthlyProductID { map[tier] = id }
+            var products: [MacCloudBillingPeriod: String] = [:]
+            for period in MacCloudBillingPeriod.allCases {
+                if let id = tier.productID(for: period) {
+                    products[period] = id
+                }
+            }
+            if !products.isEmpty {
+                map[tier] = products
+            }
         }
         return map
     }()
@@ -365,13 +418,13 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
 
     /// The primary (Cloud) product, kept for the legacy single-tier call sites.
     @Published private(set) var product: Product?
-    /// Live StoreKit products keyed by tier, so each tier card can show its own
-    /// `displayPrice`. Populated by `load()`.
-    @Published private(set) var tierProducts: [MacCloudPricingTier: Product] = [:]
+    /// Live StoreKit products keyed by product id, covering all six paid
+    /// tier/cadence combinations.
+    @Published private(set) var productsByID: [String: Product] = [:]
     @Published private(set) var isLoading = false
     @Published private(set) var isPurchasing = false
-    /// The tier whose purchase sheet is currently opening (drives per-card spinners).
-    @Published private(set) var purchasingTier: MacCloudPricingTier?
+    /// The exact StoreKit product whose purchase sheet is currently opening.
+    @Published private(set) var purchasingProductID: String?
     @Published private(set) var error: String?
 
     private var transactionUpdatesTask: Task<Void, Never>?
@@ -385,37 +438,50 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         await loadProductMetadata()
     }
 
-    /// Live `displayPrice` for a tier, or the documented fallback while the
-    /// App Store catalogue is still loading.
-    func displayPrice(for tier: MacCloudPricingTier) -> String? {
-        if let product = tierProducts[tier] { return product.displayPrice }
-        return Self.fallbackMonthlyPrice[tier]
+    /// Live `displayPrice` for a tier and cadence, or the documented fallback
+    /// while the App Store catalogue is still loading.
+    func displayPrice(
+        for tier: MacCloudPricingTier,
+        billingPeriod: MacCloudBillingPeriod
+    ) -> String? {
+        guard let productID = tier.productID(for: billingPeriod) else { return nil }
+        if let product = productsByID[productID] {
+            return product.displayPrice
+        }
+        switch billingPeriod {
+        case .monthly: return Self.fallbackMonthlyPrice[tier]
+        case .annual: return Self.fallbackAnnualPrice[tier]
+        }
     }
 
     func purchase() async {
-        await purchase(tier: .cloud)
+        await purchase(tier: .cloud, billingPeriod: .monthly)
     }
 
-    func purchase(tier: MacCloudPricingTier) async {
-        guard let productID = tier.monthlyProductID else { return }
+    func purchase(
+        tier: MacCloudPricingTier,
+        billingPeriod: MacCloudBillingPeriod = .monthly
+    ) async {
+        guard let productID = tier.productID(for: billingPeriod) else { return }
         guard !isPurchasing else { return }
         isPurchasing = true
-        purchasingTier = tier
+        purchasingProductID = productID
         error = nil
         defer {
             isPurchasing = false
-            purchasingTier = nil
+            purchasingProductID = nil
         }
 
         do {
             guard FirebaseApp.app() != nil else {
                 throw MacHostedQuotaPurchaseError.cloudUnavailable
             }
-            let resolved = tierProducts[tier] ?? product
-            var purchaseTarget = resolved?.id == productID ? resolved : nil
+            var purchaseTarget = productsByID[productID]
             if purchaseTarget == nil {
                 purchaseTarget = try await Product.products(for: [productID]).first
-                if let purchaseTarget { tierProducts[tier] = purchaseTarget }
+                if let purchaseTarget {
+                    productsByID[productID] = purchaseTarget
+                }
             }
             guard let purchaseTarget else {
                 throw MacHostedQuotaPurchaseError.productUnavailable
@@ -476,7 +542,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
             if let entitlement = await findCurrentEntitlement() {
                 try await restoreHostedQuotaEntitlement(
                     productID: entitlement.productID,
-                    signedTransactionJWS: entitlement.jws
+                    signedTransactionJWS: entitlement.signedTransactionJWS
                 )
             } else {
                 try await restoreHostedQuotaEntitlement(
@@ -493,15 +559,10 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            let ids = Array(Set(Self.tierProductIDs.values))
+            let ids = Array(Set(Self.tierProductIDs.values.flatMap(\.values)))
             let products = try await Product.products(for: ids)
-            let byID = Dictionary(uniqueKeysWithValues: products.map { ($0.id, $0) })
-            var resolved: [MacCloudPricingTier: Product] = [:]
-            for (tier, id) in Self.tierProductIDs {
-                if let match = byID[id] { resolved[tier] = match }
-            }
-            tierProducts = resolved
-            product = resolved[.cloud] ?? byID[Self.productID]
+            productsByID = Dictionary(uniqueKeysWithValues: products.map { ($0.id, $0) })
+            product = productsByID[Self.productID]
         } catch {
             if self.error == nil {
                 self.error = error.localizedDescription
@@ -535,7 +596,8 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         }
     }
 
-    private func findCurrentEntitlement() async -> (productID: String, jws: String)? {
+    private func findCurrentEntitlement() async -> MacHostedQuotaCurrentEntitlement? {
+        var entitlements: [MacHostedQuotaCurrentEntitlement] = []
         for await result in StoreKit.Transaction.currentEntitlements {
             do {
                 let transaction = try checked(result)
@@ -544,12 +606,47 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
                 if let expirationDate = transaction.expirationDate, expirationDate <= Date() {
                     continue
                 }
-                return (transaction.productID, result.jwsRepresentation)
+                entitlements.append(
+                    MacHostedQuotaCurrentEntitlement(
+                        productID: transaction.productID,
+                        signedTransactionJWS: result.jwsRepresentation,
+                        expirationDate: transaction.expirationDate,
+                        purchaseDate: transaction.originalPurchaseDate,
+                        transactionID: transaction.id
+                    )
+                )
             } catch {
                 continue
             }
         }
-        return nil
+        return Self.preferredCurrentEntitlement(from: entitlements)
+    }
+
+    static func preferredCurrentEntitlement(
+        from entitlements: [MacHostedQuotaCurrentEntitlement]
+    ) -> MacHostedQuotaCurrentEntitlement? {
+        entitlements
+            .filter { entitlementProductIDs.contains($0.productID) }
+            .max { lhs, rhs in
+                let lhsTier = MacCloudStoreKitProductCatalog.tier(for: lhs.productID)?.rawValue ?? 0
+                let rhsTier = MacCloudStoreKitProductCatalog.tier(for: rhs.productID)?.rawValue ?? 0
+                if lhsTier != rhsTier { return lhsTier < rhsTier }
+
+                let lhsExpiration = lhs.expirationDate ?? .distantFuture
+                let rhsExpiration = rhs.expirationDate ?? .distantFuture
+                if lhsExpiration != rhsExpiration { return lhsExpiration < rhsExpiration }
+
+                let lhsPurchase = lhs.purchaseDate ?? .distantPast
+                let rhsPurchase = rhs.purchaseDate ?? .distantPast
+                if lhsPurchase != rhsPurchase { return lhsPurchase < rhsPurchase }
+
+                let lhsTransactionID = lhs.transactionID ?? 0
+                let rhsTransactionID = rhs.transactionID ?? 0
+                if lhsTransactionID != rhsTransactionID {
+                    return lhsTransactionID < rhsTransactionID
+                }
+                return lhs.productID < rhs.productID
+            }
     }
 
     private func mintAppAccountToken(productID: String = MacHostedQuotaPurchaseStore.productID) async throws -> UUID {

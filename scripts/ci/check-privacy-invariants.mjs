@@ -64,6 +64,11 @@ const EPHEMERAL_PII_COLLECTIONS = [
     field: "expiresAt",
     finding: "credential-transfer-secret-boundary",
   },
+  {
+    collection: "google_play_rtdn_events",
+    field: "expireAt",
+    finding: "google-play-rtdn-retention",
+  },
 ];
 
 /** Keys that must never appear in an outbound APNs/FCM push payload (F-RR09-008). */
