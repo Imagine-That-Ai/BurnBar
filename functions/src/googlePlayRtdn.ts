@@ -50,7 +50,7 @@ interface GooglePlayVoidedPurchaseNotification {
   refundType?: unknown;
 }
 
-export interface GooglePlayDeveloperNotification {
+interface GooglePlayDeveloperNotification {
   version?: unknown;
   packageName?: unknown;
   eventTimeMillis?: unknown;

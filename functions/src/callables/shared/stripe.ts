@@ -41,7 +41,7 @@ interface StripeSubscriptionCheckoutSelection {
   cadence: "monthly" | "annual";
 }
 
-export interface StripeEventContext {
+interface StripeEventContext {
   eventID?: string;
   eventCreatedMillis?: number;
 }
