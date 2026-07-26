@@ -157,7 +157,7 @@ describe("Stripe subscription checkout guards", () => {
     expect(expire.mock.calls.map((call) => call[0])).toEqual(["cs_open_cloud_monthly", "cs_open_ultra_annual"]);
   });
 
-  it("swallows an expire race when a listed session already completed", async () => {
+  it("swallows an expire race only after verifying the session is terminal", async () => {
     const sessionList = vi.fn(async () => ({
       data: [
         { id: "cs_completed_in_race", mode: "subscription" },
@@ -169,12 +169,34 @@ describe("Stripe subscription checkout guards", () => {
       .fn()
       .mockRejectedValueOnce(new Error("This Checkout Session is already complete."))
       .mockResolvedValueOnce({ id: "cs_still_open", status: "expired" });
+    const retrieve = vi.fn(async () => ({ id: "cs_completed_in_race", status: "complete" }));
     const stripe = stripeClient({
-      checkout: { sessions: { list: sessionList, expire } },
+      checkout: { sessions: { list: sessionList, expire, retrieve } },
     });
 
     await expect(expireOpenStripeSubscriptionCheckoutSessions(stripe, "cus_race_1")).resolves.toBeUndefined();
     expect(expire).toHaveBeenCalledTimes(2);
+    expect(retrieve).toHaveBeenCalledWith("cs_completed_in_race");
+  });
+
+  it("propagates a transient expire failure while the session is still open", async () => {
+    // A rate-limit/auth/transient Stripe error is NOT a completed-session
+    // race: the URL is still payable, so checkout creation must fail closed
+    // instead of issuing a second parallel payable session.
+    const sessionList = vi.fn(async () => ({
+      data: [{ id: "cs_transient_failure", mode: "subscription" }],
+      has_more: false,
+    }));
+    const expire = vi.fn().mockRejectedValue(new Error("Rate limit exceeded."));
+    const retrieve = vi.fn(async () => ({ id: "cs_transient_failure", status: "open" }));
+    const stripe = stripeClient({
+      checkout: { sessions: { list: sessionList, expire, retrieve } },
+    });
+
+    await expect(expireOpenStripeSubscriptionCheckoutSessions(stripe, "cus_transient_1")).rejects.toThrow(
+      /Rate limit/,
+    );
+    expect(retrieve).toHaveBeenCalledWith("cs_transient_failure");
   });
 
   it("recovers a metadata-matched Stripe customer before creating another", async () => {

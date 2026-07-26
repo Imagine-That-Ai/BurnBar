@@ -74,7 +74,7 @@ describe("Google Play voided-purchase scheduled reconciliation", () => {
     state.process.mockResolvedValue(undefined);
   });
 
-  it("paginates the 30-day window and routes every valid token through the RTDN reconciler", async () => {
+  it("paginates the lookback window and routes every valid token through the RTDN reconciler", async () => {
     state.list
       .mockResolvedValueOnce({
         data: {
@@ -108,7 +108,9 @@ describe("Google Play voided-purchase scheduled reconciliation", () => {
 
     expect(state.list).toHaveBeenNthCalledWith(1, {
       packageName: "com.openburnbar",
-      startTime: String(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      // 29 days, not 30: headroom below the Android Publisher API's 30-day
+      // startTime cutoff so setup latency cannot invalidate the request.
+      startTime: String(Date.now() - 29 * 24 * 60 * 60 * 1000),
       endTime: String(Date.now()),
       maxResults: 1_000,
       includeQuantityBasedPartialRefund: false,

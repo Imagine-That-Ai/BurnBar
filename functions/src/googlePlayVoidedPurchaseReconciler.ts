@@ -18,7 +18,11 @@ import { externalApiWithResilience } from "./resilienceHelpers.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 import { runScheduledJob } from "./scheduledOps.js";
 
-const GOOGLE_PLAY_VOIDED_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
+// The Android Publisher API rejects a startTime older than 30 days. Sweep 29
+// days so credential loading, scheduler jitter, and pagination latency can
+// never push the request past the cutoff; the daily cadence still overlaps
+// consecutive windows by 28 days.
+const GOOGLE_PLAY_VOIDED_LOOKBACK_MS = 29 * 24 * 60 * 60 * 1000;
 const GOOGLE_PLAY_VOIDED_PAGE_SIZE = 1_000;
 
 function boundedPurchaseToken(value: unknown): string | undefined {
@@ -41,13 +45,17 @@ function voidedSweepEventID(purchaseToken: string, orderID: unknown, voidedTimeM
   return `google-play-voided-sweep-${digest}`;
 }
 
-async function runGooglePlayVoidedPurchaseSweep(nowMillis = Date.now()): Promise<void> {
+async function runGooglePlayVoidedPurchaseSweep(): Promise<void> {
   const cfg = getConfig();
   const { google } = await import("googleapis");
   const authClient = await google.auth.getClient({
     scopes: ["https://www.googleapis.com/auth/androidpublisher"],
   });
   const androidpublisher = google.androidpublisher({ version: "v3", auth: authClient });
+
+  // Compute the request window only after credentials and the client are
+  // ready, so setup latency cannot age startTime past Google's 30-day cap.
+  const nowMillis = Date.now();
 
   let pageToken: string | undefined;
   const seenPageTokens = new Set<string>();

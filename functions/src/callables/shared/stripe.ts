@@ -274,11 +274,22 @@ export async function expireOpenStripeSubscriptionCheckoutSessions(
           stripe.checkout.sessions.expire(session.id),
         );
       } catch (error) {
-        // The session may have completed or expired between list and expire;
-        // either way it is no longer open, which is what this sweep wants.
+        // Only a session verified to be terminal may be skipped: the session
+        // may have completed or expired between list and expire, and Stripe
+        // rejects expiring it, which is what this sweep wants anyway. But a
+        // transient Stripe/auth/permission/rate-limit failure must propagate;
+        // swallowing it would leave a payable checkout URL open alongside the
+        // one the caller is about to create, letting the customer pay two
+        // parallel subscription selections. The re-fetch failing (or the
+        // session still being open) fails checkout creation closed.
+        const refreshed = await stripeWithResilience("checkout.sessions.retrieve.expire_verify", () =>
+          stripe.checkout.sessions.retrieve(session.id),
+        );
+        if (refreshed.status === "open") throw error;
         logWarn({
           event: "stripe_checkout_session_expire_failed",
           error: error instanceof Error ? error.name : "unknown",
+          sessionStatus: refreshed.status ?? "unknown",
         });
       }
     }

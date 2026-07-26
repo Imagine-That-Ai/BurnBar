@@ -265,11 +265,10 @@ export async function writeBurnBarProEntitlement(args: {
       entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID
         ? db.doc(`users/${args.uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`)
         : undefined;
-    const existing = await transaction.get(ref);
+    const existingData = (await transaction.get(ref)).data();
     // Firestore transactions require every read to happen before any write,
     // so the mirror doc is read up front even though its guard runs later.
     const existingMirrorData = mirrorRef ? (await transaction.get(mirrorRef)).data() : undefined;
-    const existingData = existing.data();
     if (
       paidEntitlementWriteWouldDowngrade(existingData, incomingGuardWrite) ||
       paidEntitlementWriteWouldRewindSourceEvent(existingData, incomingGuardWrite)
@@ -660,6 +659,7 @@ export async function reconcileCloudProTopUpReversal(args: {
   reversedUnits: number;
   deltaUnits: number;
   monthKey?: string;
+  receiptMissing?: boolean;
 }> {
   const receiptRef = db.doc(cloudProTopUpReceiptDocPath(args.uid, args.receiptID));
 
@@ -667,7 +667,10 @@ export async function reconcileCloudProTopUpReversal(args: {
     const receiptSnap = await transaction.get(receiptRef);
     const receipt = receiptSnap.data();
     if (!receiptSnap.exists || !receipt) {
-      return { adjusted: false, reversedUnits: 0, deltaUnits: 0 };
+      // Webhook delivery is unordered: a refund/dispute can arrive while the
+      // paid Checkout event is still creating this receipt. Surface the miss
+      // so the caller can retry instead of silently dropping the reversal.
+      return { adjusted: false, reversedUnits: 0, deltaUnits: 0, receiptMissing: true };
     }
 
     const { monthKey, units, meter, priorRefundUnits, priorDisputeUnits, priorReversedUnits } =

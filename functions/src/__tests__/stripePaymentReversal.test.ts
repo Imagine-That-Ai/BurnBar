@@ -10,6 +10,9 @@
  *    downgrade/rewind guards against the MIRROR doc, so an expiring Ultra
  *    cannot clobber an independently paid pro_max entitlement while a true
  *    mirror still tracks Ultra lifecycle changes (including cancellation).
+ * 4. A top-up refund/dispute that arrives before fulfillment created the
+ *    receipt fails the webhook (so Stripe redelivers) instead of silently
+ *    dropping the reversal.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -114,6 +117,7 @@ import {
   reconcileStripeCharge,
   writeBurnBarProEntitlement,
 } from "../callables/shared.js";
+import { reconcileStripeTopUpCharge } from "../callables/shared/stripeTopUps.js";
 
 function stripeStub<T>(stub: object = {}): T {
   // @ts-expect-error reason: the stub implements the Stripe surface these reversal tests exercise
@@ -345,6 +349,61 @@ describe("Ultra -> burnbar_pro_max mirror guards", () => {
       active: false,
       rawStatus: "canceled",
       sourceEntitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID,
+    });
+  });
+});
+
+describe("top-up reversal arriving before fulfillment", () => {
+  const CHARGE_ID = "ch_pending_topup_1";
+  const RECEIPT_ID = "stripe_checkout_cs_pending_topup_1";
+  const RECEIPT_PATH = `users/${UID}/billing/cloud_pro_topups/receipts/${RECEIPT_ID}`;
+  const refundedCharge = {
+    id: CHARGE_ID,
+    amount: 2_000,
+    amount_refunded: 2_000,
+    currency: "usd",
+    customer: null,
+    payment_intent: "pi_pending_topup_1",
+  };
+
+  it("fails the webhook while the receipt is absent and applies the reversal once fulfillment lands", async () => {
+    // The charge->receipt mapping resolves (fulfillment WILL create the
+    // receipt), but the paid Checkout event has not credited it yet.
+    firestoreState.docs.set(`stripe_topup_payments/charge_${CHARGE_ID}`, {
+      uid: UID,
+      receiptID: RECEIPT_ID,
+      checkoutSessionID: "cs_pending_topup_1",
+      paymentIntentID: "pi_pending_topup_1",
+      chargeID: CHARGE_ID,
+    });
+
+    await expect(
+      reconcileStripeTopUpCharge(stripeStub<Stripe>(), stripeStub<Stripe.Charge>(refundedCharge), {
+        eventID: "evt_early_refund",
+        eventCreatedMillis: 7_000,
+      }),
+    ).rejects.toThrow(/before fulfillment created the receipt/);
+
+    // Fulfillment creates the receipt; the redelivered event now reverses it.
+    firestoreState.docs.set(RECEIPT_PATH, {
+      uid: UID,
+      firstMonthKey: "2026-07",
+      latestMonthKey: "2026-07",
+      meter: "hosted_actions",
+      units: 100,
+      externalAmountMinor: 2_000,
+    });
+
+    await expect(
+      reconcileStripeTopUpCharge(stripeStub<Stripe>(), stripeStub<Stripe.Charge>(refundedCharge), {
+        eventID: "evt_early_refund",
+        eventCreatedMillis: 7_000,
+      }),
+    ).resolves.toBeUndefined();
+    expect(firestoreState.docs.get(RECEIPT_PATH)).toMatchObject({
+      refundReversedUnits: 100,
+      reversedUnits: 100,
+      reversalState: "reversed",
     });
   });
 });
