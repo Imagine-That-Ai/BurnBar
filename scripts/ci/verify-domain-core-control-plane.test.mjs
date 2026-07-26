@@ -49,6 +49,13 @@ test("control-plane manifest exhaustively covers workflow executables and local 
   assert.ok(
     discovered.includes("scripts/ci/check_agpl_legal_release_review.py"),
   );
+  for (const path of [
+    ".github/workflows/ci-impact.yml",
+    "scripts/ci/classify-ci-impact.mjs",
+    "config/domain-core-ci-paths.json",
+  ]) {
+    assert.ok(discovered.includes(path), path);
+  }
 });
 
 test("control-plane manifest rejects malformed digests", () => {

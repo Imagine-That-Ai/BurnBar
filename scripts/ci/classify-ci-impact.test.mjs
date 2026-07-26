@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
-import { classifyEvent, classifyPaths, LANES } from "./classify-ci-impact.mjs";
+import {
+  classifyEvent,
+  classifyPaths,
+  DOMAIN_CORE_OWNED_PATH_GLOBS,
+  gitDiff,
+  LANES,
+} from "./classify-ci-impact.mjs";
 
 test("documentation and ordinary workflow changes skip product suites", () => {
   const result = classifyPaths(["docs/CI.md", ".github/workflows/triage.yml"]);
@@ -38,6 +48,23 @@ test("domain-core transitive consumers select the Rust lane", () => {
     "windows/tests/quota/ProviderQuotaTests.cs",
     "apps/console/lib/escrow.ts",
     "functions/src/health.ts",
+  ]) {
+    assert.equal(classifyPaths([path]).rust, true, path);
+  }
+});
+
+test("the migrated Domain Core trigger policy routes every governed glob", () => {
+  assert.equal(DOMAIN_CORE_OWNED_PATH_GLOBS.length, 184);
+  for (const glob of DOMAIN_CORE_OWNED_PATH_GLOBS) {
+    const representative = glob
+      .replaceAll("**", "nested/owned.txt")
+      .replaceAll("*", "owned")
+      .replaceAll("?", "x");
+    assert.equal(classifyPaths([representative]).rust, true, glob);
+  }
+  for (const path of [
+    "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift",
+    "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift",
   ]) {
     assert.equal(classifyPaths([path]).rust, true, path);
   }
@@ -93,6 +120,51 @@ test("push uses the exact before and after commits", () => {
   });
   assert.equal(result.full, false);
   for (const lane of LANES) assert.equal(result[lane], false);
+});
+
+test("push diffs retain governed deletions alongside safe changes", (context) => {
+  const repo = mkdtempSync(join(tmpdir(), "burnbar-ci-impact-"));
+  context.after(() => rmSync(repo, { recursive: true, force: true }));
+  execFileSync("git", ["init", "-q"], { cwd: repo });
+  execFileSync("git", ["config", "user.name", "CI Test"], { cwd: repo });
+  execFileSync("git", ["config", "user.email", "ci@example.invalid"], {
+    cwd: repo,
+  });
+  const governed =
+    "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift";
+  mkdirSync(
+    join(repo, "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels"),
+    {
+      recursive: true,
+    },
+  );
+  writeFileSync(join(repo, governed), "governed\n");
+  execFileSync("git", ["add", "."], { cwd: repo });
+  execFileSync("git", ["commit", "-q", "-m", "base"], { cwd: repo });
+  const base = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: repo,
+    encoding: "utf8",
+  }).trim();
+  rmSync(join(repo, governed));
+  mkdirSync(join(repo, "docs"), { recursive: true });
+  writeFileSync(join(repo, "docs/README.md"), "safe\n");
+  execFileSync("git", ["add", "-A"], { cwd: repo });
+  execFileSync("git", ["commit", "-q", "-m", "delete governed file"], {
+    cwd: repo,
+  });
+  const head = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: repo,
+    encoding: "utf8",
+  }).trim();
+  const paths = gitDiff(base, head, repo);
+  assert.deepEqual(paths.sort(), [governed, "docs/README.md"].sort());
+  const result = classifyEvent(
+    { before: base, after: head },
+    "push",
+    (from, to) => gitDiff(from, to, repo),
+  );
+  assert.equal(result.rust, true);
+  assert.equal(result.full, false);
 });
 
 test("push with an unavailable exact range fails closed to a full run", () => {
