@@ -168,7 +168,12 @@ class DomainCoreUnionGateTests(unittest.TestCase):
         self.assertNotIn(
             "    paths:",
             push,
-            "main pushes must stay unfiltered so canonical toolchain changes (like the NDK pin) always produce the exact-main proof run",
+            "every main commit must receive an exact-main source proof before the classifier selects expensive jobs",
+        )
+        self.assertEqual(
+            workflow.count("config/domain-core-android-ndk-version.txt"),
+            1,
+            "the Android proof job must consume the canonical NDK pin",
         )
         pull_request = workflow.split("  pull_request:\n", 1)[1].split("  merge_group:\n", 1)[0]
         self.assertNotIn("    paths:", pull_request, "pull requests must run the classifier without a workflow-level path filter")
