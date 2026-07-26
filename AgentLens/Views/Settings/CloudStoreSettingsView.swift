@@ -1119,12 +1119,7 @@ struct CloudStoreSettingsView: View {
             .padding(.top, 4)
         } else {
             Button {
-                Task {
-                    await purchaseStore.purchase(
-                        tier: model.tier,
-                        billingPeriod: billingPeriod
-                    )
-                }
+                subscribeToSelectedCadence(model.tier) // cov:ignore -- button chrome; the action is unit-tested via subscribeToSelectedCadence(_:)
             } label: {
                 Group {
                     if isBusy {
@@ -1146,6 +1141,19 @@ struct CloudStoreSettingsView: View {
             .disabled(purchaseStore.isPurchasing)
             .padding(.top, 4)
             .accessibilityIdentifier("macCloudStore.subscribe.\(model.tier.rawValue)")
+        }
+    }
+
+    /// Starts the StoreKit purchase for `tier` at the billing cadence the
+    /// pane's segmented picker currently selects. Internal (not private) so
+    /// unit tests can drive the exact action the subscribe button performs.
+    @discardableResult
+    func subscribeToSelectedCadence(_ tier: MacCloudPricingTier) -> Task<Void, Never> {
+        Task {
+            await purchaseStore.purchase(
+                tier: tier,
+                billingPeriod: billingPeriod
+            )
         }
     }
 

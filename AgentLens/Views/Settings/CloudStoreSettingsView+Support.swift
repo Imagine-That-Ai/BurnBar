@@ -446,7 +446,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
     ) -> String? {
         guard let productID = tier.productID(for: billingPeriod) else { return nil }
         if let product = productsByID[productID] {
-            return product.displayPrice
+            return product.displayPrice // cov:ignore -- needs a live App Store catalogue entry; the per-cadence fallback paths below are unit-tested
         }
         switch billingPeriod {
         case .monthly: return Self.fallbackMonthlyPrice[tier]
@@ -476,6 +476,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
             guard FirebaseApp.app() != nil else {
                 throw MacHostedQuotaPurchaseError.cloudUnavailable
             }
+            // cov:ignore-start -- resolves the live StoreKit purchase target; unreachable in unit tests, which fail closed on the FirebaseApp guard above
             var purchaseTarget = productsByID[productID]
             if purchaseTarget == nil {
                 purchaseTarget = try await Product.products(for: [productID]).first
@@ -483,6 +484,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
                     productsByID[productID] = purchaseTarget
                 }
             }
+            // cov:ignore-end
             guard let purchaseTarget else {
                 throw MacHostedQuotaPurchaseError.productUnavailable
             }
@@ -542,7 +544,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
             if let entitlement = await findCurrentEntitlement() {
                 try await restoreHostedQuotaEntitlement(
                     productID: entitlement.productID,
-                    signedTransactionJWS: entitlement.signedTransactionJWS
+                    signedTransactionJWS: entitlement.signedTransactionJWS // cov:ignore -- needs a live verified StoreKit entitlement; the selection policy is unit-tested via preferredCurrentEntitlement(from:)
                 )
             } else {
                 try await restoreHostedQuotaEntitlement(
@@ -559,10 +561,12 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
+            // cov:ignore-start -- fetches the live App Store catalogue; the tier/cadence id mapping is locked by testMacCloudPricingTierMapsEveryPaidMonthlyAndAnnualProduct
             let ids = Array(Set(Self.tierProductIDs.values.flatMap(\.values)))
             let products = try await Product.products(for: ids)
             productsByID = Dictionary(uniqueKeysWithValues: products.map { ($0.id, $0) })
             product = productsByID[Self.productID]
+            // cov:ignore-end
         } catch {
             if self.error == nil {
                 self.error = error.localizedDescription
@@ -596,6 +600,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         }
     }
 
+    // cov:ignore-start -- iterates the live StoreKit entitlement sequence, which unit tests cannot seed; the selection policy is unit-tested via preferredCurrentEntitlement(from:)
     private func findCurrentEntitlement() async -> MacHostedQuotaCurrentEntitlement? {
         var entitlements: [MacHostedQuotaCurrentEntitlement] = []
         for await result in StoreKit.Transaction.currentEntitlements {
@@ -621,6 +626,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         }
         return Self.preferredCurrentEntitlement(from: entitlements)
     }
+    // cov:ignore-end
 
     static func preferredCurrentEntitlement(
         from entitlements: [MacHostedQuotaCurrentEntitlement]
