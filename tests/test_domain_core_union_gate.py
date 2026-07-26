@@ -164,10 +164,11 @@ CARGO_OFFLINE_AVAILABLE = _cargo_offline_available()
 class DomainCoreUnionGateTests(unittest.TestCase):
     def test_workflow_routes_canonical_android_toolchain_changes(self) -> None:
         workflow = (ROOT / ".github/workflows/domain-core.yml").read_text(encoding="utf-8")
-        self.assertEqual(
-            workflow.count('"config/domain-core-android-ndk-version.txt"'),
-            1,
-            "the main-push path filter must cover the canonical NDK pin",
+        push = workflow.split("  push:\n", 1)[1].split("  pull_request:\n", 1)[0]
+        self.assertNotIn(
+            "    paths:",
+            push,
+            "main pushes must stay unfiltered so canonical toolchain changes (like the NDK pin) always produce the exact-main proof run",
         )
         pull_request = workflow.split("  pull_request:\n", 1)[1].split("  merge_group:\n", 1)[0]
         self.assertNotIn("    paths:", pull_request, "pull requests must run the classifier without a workflow-level path filter")
