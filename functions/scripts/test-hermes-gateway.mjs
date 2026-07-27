@@ -529,6 +529,26 @@ for (const name of [
 }
 
 const rules = readFileSync(new URL("../../firestore.rules", import.meta.url), "utf8");
+
+// The gateway collections no longer own a `match` block each. The
+// compiler-budget consolidation folded direct children of `users/{userId}`
+// into one shared `match /users/{userId}/{collectionId}/{documentId}` whose
+// allowlists reproduce the previous path-by-path permissions -- reads are
+// granted by name, and writes stay server-owned by OMISSION from every
+// create/update allowlist rather than by an explicit `allow write: if false`.
+//
+// So assert the property that still exists in the source: each collection is
+// readable by its owner and appears in no client-write allowlist. The
+// behavioural proof lives in firestore-rules-tests/rules-consolidation-parity
+// .test.js, which drives a real emulator and `assertFails` a client write to
+// every one of these collections -- a stronger check than text matching.
+const ownerReadAllowlist = rules.slice(
+  rules.indexOf("match /users/{userId}/{collectionId}/{documentId}"),
+);
+const clientWriteAllowlists = ownerReadAllowlist
+  .split(/allow create, update: if collectionId in \[/)
+  .slice(1)
+  .map((chunk) => chunk.slice(0, chunk.indexOf("]")));
 for (const collection of [
   "hermes_gateway_clients",
   "hermes_gateway_destinations",
@@ -539,15 +559,35 @@ for (const collection of [
   "hermes_gateway_state",
   "hermes_gateway_approvals",
 ]) {
-  const start = rules.indexOf(`match /users/{userId}/${collection}/`);
-  assert.notEqual(start, -1, `${collection} rules block must exist`);
-  const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
-  assert.match(block, /allow write: if false;/, `${collection} writes must stay server-owned`);
+  assert.match(
+    ownerReadAllowlist,
+    new RegExp(`"${collection}"`),
+    `${collection} must stay in the consolidated user-scoped rules block`,
+  );
+  for (const allowlist of clientWriteAllowlists) {
+    assert.ok(
+      !allowlist.includes(`"${collection}"`),
+      `${collection} writes must stay server-owned (found in a client create/update allowlist)`,
+    );
+  }
 }
-assert.match(rules, /match \/users\/\{userId\}\/hermes_gateway_destinations\/\{destinationId\}/);
 assert.match(rules, /hasActiveHostedQuotaEntitlement\(userId\)/);
-assert.match(rules, /match \/hermes_gateway_device_sessions\/\{sessionId\}/);
-assert.match(rules, /match \/hermes_gateway_token_index\/\{tokenHash\}/);
+
+// `hermes_gateway_device_sessions` and `hermes_gateway_token_index` are ROOT
+// collections that deliberately have no client match block at all: they are
+// callable/Admin-SDK only, and Firestore's default deny covers them. Asserting
+// a `match` block existed was asserting the WEAKER state -- adding one back
+// would grant client access. Assert the absence instead, so a future edit that
+// exposes them to clients fails here.
+for (const rootCollection of [
+  "hermes_gateway_device_sessions",
+  "hermes_gateway_token_index",
+]) {
+  assert.ok(
+    !new RegExp(`match /${rootCollection}/`).test(rules),
+    `${rootCollection} must stay server-only (no client match block; default deny applies)`,
+  );
+}
 
 const firebaseConfig = JSON.parse(readFileSync(new URL("../../firebase.json", import.meta.url), "utf8"));
 const hostingEntries = Array.isArray(firebaseConfig.hosting)
