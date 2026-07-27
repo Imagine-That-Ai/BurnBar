@@ -109,6 +109,7 @@ final class PerfAuditScreenshotTests: XCTestCase {
         let halo = PulseHeroGlow.providerHaloStops(primary: .red, accent: .orange)
         let depthDark = PulseHeroGlow.depthGlowStops(accent: .red, amber: .orange, darkMode: true)
         let depthLight = PulseHeroGlow.depthGlowStops(accent: .red, amber: .orange, darkMode: false)
+        let depthEdgeMask = PulseHeroGlow.depthGlowEdgeMaskStops()
 
         for stops in [halo, depthDark, depthLight] {
             XCTAssertGreaterThanOrEqual(stops.count, 4, "Smooth falloff needs enough stops to mimic a Gaussian tail")
@@ -118,6 +119,12 @@ final class PerfAuditScreenshotTests: XCTestCase {
             XCTAssertEqual(stops.first?.location, 0.0)
             XCTAssertEqual(stops.last?.color, .clear, "Terminal stop must be fully clear — no hard boundary")
         }
+
+        XCTAssertEqual(depthEdgeMask.first?.location, 0.0)
+        XCTAssertEqual(depthEdgeMask.first?.color, .clear)
+        XCTAssertEqual(depthEdgeMask.last?.location, 1.0)
+        XCTAssertEqual(depthEdgeMask.last?.color, .clear)
+        XCTAssertEqual(depthEdgeMask.map(\.location), depthEdgeMask.map(\.location).sorted())
     }
 
     // MARK: - ios-014: verdict hero session-trace strip

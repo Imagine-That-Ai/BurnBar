@@ -292,10 +292,10 @@ private struct PulseHeroBurnCardContent: View {
     /// Pre-shaped depth glow: a top-biased elliptical gradient replaces the
     /// old LinearGradient + `.blur(26)` full-card pass while keeping the
     /// glow's top-down directional character. The negative padding covers
-    /// the blur's former ~26pt edge bleed (plus the old -14pt inset) and
-    /// the gradient fades to clear before its own edges, so there are no
-    /// hard lines — only the slight edge-crisping the hierarchy pass
-    /// intends.
+    /// the blur's former ~26pt edge bleed (plus the old -14pt inset). The
+    /// vertical alpha mask is load-bearing: the top-biased ellipse is still
+    /// luminous at the expanded shape's top edge, which otherwise paints a
+    /// full-width horizontal seam exactly 40pt above the hero.
     private var heroDepthGlow: some View {
         RoundedRectangle(cornerRadius: AuroraDesign.Shape.heroCorner + 8, style: .continuous)
             .fill(
@@ -311,6 +311,13 @@ private struct PulseHeroBurnCardContent: View {
                 )
             )
             .padding(-40)
+            .mask {
+                LinearGradient(
+                    gradient: Gradient(stops: PulseHeroGlow.depthGlowEdgeMaskStops()),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
     }
 
     // MARK: - Derived
@@ -404,6 +411,15 @@ enum PulseHeroGlow {
             .init(color: amber.opacity(darkMode ? 0.10 : 0.06), location: 0.45),
             .init(color: amber.opacity(darkMode ? 0.04 : 0.02), location: 0.75),
             .init(color: .clear, location: 0.97)
+        ]
+    }
+
+    static func depthGlowEdgeMaskStops() -> [Gradient.Stop] {
+        [
+            .init(color: .clear, location: 0.0),
+            .init(color: .white, location: 0.14),
+            .init(color: .white, location: 0.86),
+            .init(color: .clear, location: 1.0)
         ]
     }
 }
