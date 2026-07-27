@@ -37,6 +37,7 @@ export const BRANCH_PROTECTION_SOURCE_OF_TRUTH = join(
  */
 export function canonicalizeDesired(desired) {
   const reviews = desired.required_pull_request_reviews || null;
+  const mergeQueue = desired.merge_queue || null;
   return {
     requiredStatusCheckContexts: sortedUnique(
       desired.required_status_checks?.contexts || [],
@@ -53,6 +54,8 @@ export function canonicalizeDesired(desired) {
       desired.required_conversation_resolution === true,
     allowForcePushes: desired.allow_force_pushes === true,
     allowDeletions: desired.allow_deletions === true,
+    mergeQueuePresent: mergeQueue !== null,
+    mergeQueueParameters: canonicalMergeQueueParameters(mergeQueue),
   };
 }
 
@@ -95,6 +98,7 @@ export function canonicalizeLive({ classic = null, ruleset = null } = {}) {
     rulesetPresent: rulesetView.present,
     rulesetPullRequestRules: rulesetView.pullRequestRules,
     rulesetRequiredStatusCheckRules: rulesetView.requiredStatusCheckRules,
+    rulesetMergeQueueRules: rulesetView.mergeQueueRules,
     requiredStatusCheckContexts: contexts,
     strictRequiredStatusChecks: statusView.strictRequiredStatusChecks,
     // Classic `enforce_admins` maps to zero bypass actors. If a ruleset is present,
@@ -122,6 +126,11 @@ export function canonicalizeLive({ classic = null, ruleset = null } = {}) {
     allowDeletions:
       classicView.allowDeletions
       && !(rulesetActive && rulesetView.forbidsDeletion),
+    mergeQueuePresent: rulesetActive && rulesetView.mergeQueueRules.length > 0,
+    mergeQueueParameters:
+      rulesetActive && rulesetView.mergeQueueRules.length === 1
+        ? rulesetView.mergeQueueRules[0]
+        : null,
   };
 }
 
@@ -186,6 +195,7 @@ function normalizeRuleset(ruleset) {
     forbidsDeletion: false,
     pullRequestRules: [],
     requiredStatusCheckRules: [],
+    mergeQueueRules: [],
   };
   if (!ruleset) return empty;
 
@@ -218,6 +228,9 @@ function normalizeRuleset(ruleset) {
   const requiredStatusCheckRules = (byType.get("required_status_checks") || []).map(
     canonicalRulesetRequiredStatusRule,
   );
+  const mergeQueueRules = (byType.get("merge_queue") || []).map(
+    (rule) => canonicalMergeQueueParameters(rule?.parameters),
+  );
   const checks = requiredStatusCheckRules.flatMap((rule) => rule.contexts);
   const pr = aggregatePullRequestRules(pullRequestRules);
   const checksRule = aggregateStatusRules(requiredStatusCheckRules);
@@ -244,6 +257,7 @@ function normalizeRuleset(ruleset) {
     forbidsDeletion: byType.has("deletion"),
     pullRequestRules,
     requiredStatusCheckRules,
+    mergeQueueRules,
   };
 }
 
@@ -268,6 +282,21 @@ function canonicalRulesetRequiredStatusRule(rule) {
         .map((check) => check.context)
         .filter(Boolean),
     ),
+  };
+}
+
+function canonicalMergeQueueParameters(parameters) {
+  if (!parameters || typeof parameters !== "object") return null;
+  return {
+    mergeMethod: parameters.merge_method ?? null,
+    groupingStrategy: parameters.grouping_strategy ?? null,
+    checkResponseTimeoutMinutes:
+      parameters.check_response_timeout_minutes ?? null,
+    maxEntriesToBuild: parameters.max_entries_to_build ?? null,
+    minEntriesToMerge: parameters.min_entries_to_merge ?? null,
+    maxEntriesToMerge: parameters.max_entries_to_merge ?? null,
+    minEntriesToMergeWaitMinutes:
+      parameters.min_entries_to_merge_wait_minutes ?? null,
   };
 }
 
@@ -369,6 +398,21 @@ export function diffBranchProtection(live, desired) {
   // allow_force_pushes / allow_deletions must both be false. Live=true is drift.
   cmpBool("allowForcePushes", "high");
   cmpBool("allowDeletions", "high");
+  cmpBool("mergeQueuePresent", "critical");
+
+  if (
+    live.mergeQueuePresent
+    && desired.mergeQueuePresent
+    && JSON.stringify(live.mergeQueueParameters)
+      !== JSON.stringify(desired.mergeQueueParameters)
+  ) {
+    differences.push({
+      field: "mergeQueueParameters",
+      desired: desired.mergeQueueParameters,
+      live: live.mergeQueueParameters,
+      severity: "high",
+    });
+  }
 
   if (live.rulesetPresent) {
     const expectedPullRequestRule = {
@@ -421,6 +465,18 @@ export function diffBranchProtection(live, desired) {
         },
         live: mismatchedStatusRules,
         severity: "high",
+      });
+    }
+
+    if (
+      desired.mergeQueuePresent
+      && (live.rulesetMergeQueueRules || []).length !== 1
+    ) {
+      differences.push({
+        field: "rulesetMergeQueueRules",
+        desired: [desired.mergeQueueParameters],
+        live: live.rulesetMergeQueueRules || [],
+        severity: "critical",
       });
     }
   }
@@ -485,6 +541,16 @@ export function loadDesired(sourcePath = BRANCH_PROTECTION_SOURCE_OF_TRUTH) {
       `${sourcePath} has no required_status_checks.contexts; refusing to run the drift check against an empty required-check set`,
     );
   }
+  const mergeQueue = parsed?.merge_queue;
+  if (
+    !mergeQueue
+    || !Number.isInteger(mergeQueue.check_response_timeout_minutes)
+    || mergeQueue.check_response_timeout_minutes <= 0
+  ) {
+    throw new Error(
+      `${sourcePath} has no positive merge_queue.check_response_timeout_minutes; refusing to leave merge-queue completion ungoverned`,
+    );
+  }
   return parsed;
 }
 
@@ -519,6 +585,10 @@ export function formatDifferences(result) {
     } else if (diff.field === "rulesetRequiredStatusCheckRules") {
       lines.push(
         `  ${tag} ruleset required_status_checks rule drift: desired=${JSON.stringify(diff.desired)} live=${JSON.stringify(diff.live)}`,
+      );
+    } else if (diff.field === "rulesetMergeQueueRules") {
+      lines.push(
+        `  ${tag} ruleset merge_queue rule drift: desired=${JSON.stringify(diff.desired)} live=${JSON.stringify(diff.live)}`,
       );
     } else {
       lines.push(`  ${tag} ${diff.field}: desired=${JSON.stringify(diff.desired)} live=${JSON.stringify(diff.live)}`);

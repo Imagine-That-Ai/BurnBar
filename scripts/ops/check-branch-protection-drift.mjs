@@ -204,6 +204,11 @@ function selfTest() {
           { type: "required_conversation_resolution", ruleset_id: 111 },
           { type: "non_fast_forward", ruleset_id: 111 },
           { type: "deletion", ruleset_id: 111 },
+          {
+            type: "merge_queue",
+            ruleset_id: 222,
+            parameters: { ...desiredJson.merge_queue },
+          },
         ],
       },
     };
@@ -221,10 +226,11 @@ function selfTest() {
   // 1. Positive control: faithful mirror MUST report MATCH.
   expect("identical-ruleset", matchingLive(), true);
 
-  // 1b. Classic-protection mirror MUST also report MATCH (defense in depth).
+  // 1b. Classic governance plus the separately-owned merge queue MUST also
+  // report MATCH (defense in depth).
   const contexts = desiredJson.required_status_checks.contexts;
   expect(
-    "identical-classic",
+    "identical-classic-plus-merge-queue",
     {
       classic: {
         required_status_checks: {
@@ -247,7 +253,17 @@ function selfTest() {
         allow_force_pushes: { enabled: false },
         allow_deletions: { enabled: false },
       },
-      ruleset: null,
+      ruleset: {
+        enforcement: "active",
+        bypass_actors: [],
+        rules: [
+          {
+            type: "merge_queue",
+            ruleset_id: 222,
+            parameters: { ...desiredJson.merge_queue },
+          },
+        ],
+      },
     },
     true,
   );
@@ -299,6 +315,16 @@ function selfTest() {
       const rule = live.ruleset.rules.find((r) => r.type === "required_status_checks");
       rule.parameters.strict_required_status_checks_policy =
         !desiredJson.required_status_checks.strict === true;
+    },
+    "merge-queue-timeout-changed": (live) => {
+      live.ruleset.rules.find((r) => r.type === "merge_queue").parameters
+        .check_response_timeout_minutes =
+        desiredJson.merge_queue.check_response_timeout_minutes - 1;
+    },
+    "merge-queue-removed": (live) => {
+      live.ruleset.rules = live.ruleset.rules.filter(
+        (r) => r.type !== "merge_queue",
+      );
     },
   };
   for (const [label, mutate] of Object.entries(mutations)) {

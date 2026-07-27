@@ -17,7 +17,9 @@ export function resolveObservedSha(environment = process.env) {
   return environment.BURNBAR_CI_SHA || environment.GITHUB_SHA;
 }
 
-export function evaluateGate(required, observations) {
+export function evaluateGate(required, observations, options = {}) {
+  const nowMs = options.nowMs ?? Date.now();
+  const cancelledGraceMs = options.cancelledGraceMs ?? 0;
   const missing = [];
   const pending = [];
   const failed = [];
@@ -26,7 +28,18 @@ export function evaluateGate(required, observations) {
     const item = observations.get(context);
     if (!item) missing.push(context);
     else if (PASSING.has(item.conclusion)) passed.push(context);
-    else if (FAILING.has(item.conclusion))
+    else if (
+      item.conclusion === "cancelled" &&
+      item.completedAt &&
+      Number.isFinite(Date.parse(item.completedAt)) &&
+      nowMs - Date.parse(item.completedAt) < cancelledGraceMs
+    ) {
+      pending.push({
+        context,
+        status: "replacement_pending",
+        url: item.url,
+      });
+    } else if (FAILING.has(item.conclusion))
       failed.push({ context, conclusion: item.conclusion, url: item.url });
     else pending.push({ context, status: item.status, url: item.url });
   }
@@ -84,6 +97,7 @@ export async function collectObservations(repository, sha, token) {
     observations.set(check.name, {
       status: check.status,
       conclusion: check.conclusion,
+      completedAt: check.completed_at,
       url: check.html_url,
     });
   }
@@ -125,6 +139,9 @@ async function main() {
     const state = evaluateGate(
       config.required_contexts,
       await collectObservations(repository, sha, token),
+      {
+        cancelledGraceMs: Number(config.cancelled_grace_seconds ?? 0) * 1000,
+      },
     );
     if (state.failed.length > 0) {
       console.error(JSON.stringify(state, null, 2));

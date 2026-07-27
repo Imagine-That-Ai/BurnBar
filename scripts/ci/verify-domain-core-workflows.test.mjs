@@ -113,10 +113,14 @@ test("deterministic workflow implements every exact policy job and a fail-closed
   );
 });
 
-test("authoritative push proofs cannot be cancelled by merge-queue validation", () => {
+test("authoritative push proofs cannot be cancelled by merge-queue validation or later main pushes", () => {
+  // Push runs are keyed by commit SHA and exempt from cancel-in-progress:
+  // a second main push landing before the first run's candidate bundle
+  // completes must not cancel it, or that first commit loses the exact-main
+  // source proof deploy-production.yml requires and becomes undeployable.
   assert.match(
     core,
-    /concurrency:\n  group: domain-core-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\n  cancel-in-progress: true/u,
+    /concurrency:\n  group: domain-core-\$\{\{ github\.event_name \}\}-\$\{\{ github\.event_name == 'push' && github\.sha \|\| github\.ref \}\}\n  cancel-in-progress: \$\{\{ github\.event_name != 'push' \}\}/u,
   );
 });
 
@@ -745,19 +749,6 @@ function workflowTrigger(source, name) {
     : source.slice(start, start + 2 + next);
 }
 
-function workflowTriggerPaths(source, name) {
-  const trigger = workflowTrigger(source, name);
-  const lines = trigger.split("\n");
-  const start = lines.indexOf("    paths:");
-  assert.notEqual(start, -1, `missing paths for ${name} trigger`);
-  const paths = [];
-  for (const line of lines.slice(start + 1)) {
-    if (!line.startsWith('      - "')) break;
-    paths.push(JSON.parse(line.slice("      - ".length)));
-  }
-  return paths;
-}
-
 test("pull_request trigger is unfiltered and the classifier owns the Hermes adapter", () => {
   const trigger = workflowTrigger(core, "pull_request");
   assert.doesNotMatch(trigger, /^    paths:/mu);
@@ -770,6 +761,10 @@ test("pull_request trigger is unfiltered and the classifier owns the Hermes adap
 
 test("pull_request trigger cannot omit branch-control inputs", () => {
   assert.doesNotMatch(workflowTrigger(core, "pull_request"), /^    paths:/mu);
+});
+
+test("main push trigger is unfiltered so every exact-main commit gets a source proof", () => {
+  assert.doesNotMatch(workflowTrigger(core, "push"), /^    paths:/mu);
 });
 
 test("domain-core-pr-gate needs both python contract jobs before the aggregate count", () => {

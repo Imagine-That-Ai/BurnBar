@@ -23,6 +23,8 @@ BurnBar's hard merge gates are:
 - required conversation resolution;
 - no force pushes;
 - no branch deletion;
+- a squash-only, all-green merge queue whose 300-minute response timeout
+  outlives the longest required workflow;
 - exact-head merge discipline in the automation lane.
 
 **Security-governance decision (2026-07-24):** the stale-base and scanner
@@ -33,11 +35,13 @@ latest pusher cannot approve their own update. The repository has two named
 CODEOWNERS, so this closes both the protected-file two-PR bypass and the
 post-approval push bypass.
 
-Strict checks were chosen over a merge queue because they do not require every
-required context to support `merge_group`. `Domain Core Trusted Deletion Guard`
-runs on every PR and is globally required. `Domain Core PR Gate` remains
-path-scoped evidence for domain-core changes; promoting it as a classic global
-context would leave every unrelated PR permanently pending.
+Strict current-base checks and the merge queue now work together. Every required
+workflow supports `merge_group`, and the queue's response timeout is governed
+here so a valid cold macOS build cannot be ejected merely because the queue
+stopped waiting first. `Domain Core Trusted Deletion Guard` runs on every PR and
+is globally required. `Domain Core PR Gate` remains path-scoped evidence for
+domain-core changes; promoting it as a classic global context would leave every
+unrelated PR permanently pending.
 
 The drift checker verifies this complete contract. Apply the same values to live
 classic branch protection in the same change, then
@@ -51,9 +55,10 @@ The drift checker reads both GitHub surfaces:
   org/repo ruleset details for `bypass_actors` and `enforcement`;
 - classic branch protection from `GET /repos/{owner}/{repo}/branches/main/protection`.
 
-Current live protection is classic branch protection with no effective ruleset rules. If an org or
-repo ruleset is later added, the checker verifies ruleset-owned governance fields on the ruleset
-surface itself instead of letting classic protection hide a downgraded ruleset.
+Current live protection combines classic branch protection with a repository
+merge-queue ruleset. The checker verifies both surfaces, including every
+merge-queue parameter, instead of letting classic protection hide a missing or
+shortened queue timeout.
 
 The checker fails closed when referenced ruleset details cannot be read. An unread ruleset means the
 automation did not verify bypass actors or enforcement.
@@ -118,6 +123,11 @@ The PR lane runs the same drift logic's offline self-tests through the required 
 aggregate gate, so edits to the checker are merge-blocking even though live GitHub/GCP credentials are
 not exposed to PRs.
 
+Workflow lint also runs
+[`scripts/ci/verify-merge-queue-workflows.mjs`](../scripts/ci/verify-merge-queue-workflows.mjs),
+which fails if the committed queue response timeout does not exceed the longest
+job timeout in any workflow that handles `merge_group`.
+
 The drift check fails closed on:
 
 - required-check set differences in either direction;
@@ -128,6 +138,8 @@ The drift check fails closed on:
 - conversation resolution disabled;
 - admin enforcement disabled;
 - force pushes or branch deletion enabled;
+- a missing merge queue or any merge-queue parameter differing from the
+  committed contract;
 - any classic bypass allowance or ruleset `bypass_actors` entry;
 - unreadable or unparseable referenced ruleset details.
 
