@@ -676,4 +676,3 @@ function isStripeBackedEntitlementForCustomer(entitlement: Record<string, unknow
   const externalCustomerID = entitlement.externalCustomerID;
   return typeof externalCustomerID !== "string" || externalCustomerID === customerID;
 }
-
