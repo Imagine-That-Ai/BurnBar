@@ -108,13 +108,17 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus \
     --method org.a11y.Bus.GetAddress >"$out_dir/atspi-bus-address.txt"
   orca --list-apps >"$out_dir/orca-applications.txt" 2>"$out_dir/orca-list-apps.err"
-  if ! python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
-    --application OpenBurnBar \
-    --wait-for-meaningful-seconds "${OB_ATSPI_READY_TIMEOUT_SECONDS:-45}" \
-    --output "$out_dir/atspi-tree-linux-desktop.json" \
-    --tree-text "$out_dir/accessibility-tree-linux-desktop.txt" \
-    --expected-name OpenBurnBar; then
-    echo "Initial AT-SPI tree did not become meaningful before the readiness deadline" >&2
+
+  capture_initial_atspi_tree() {
+    python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+      --application OpenBurnBar \
+      --wait-for-meaningful-seconds "${OB_ATSPI_READY_TIMEOUT_SECONDS:-45}" \
+      --output "$out_dir/atspi-tree-linux-desktop.json" \
+      --tree-text "$out_dir/accessibility-tree-linux-desktop.txt" \
+      --expected-name OpenBurnBar
+  }
+
+  dump_initial_atspi_diagnostics() {
     for diagnostic in \
       "$out_dir/openburnbar-linux-desktop.stdout.log" \
       "$out_dir/openburnbar-linux-desktop.stderr.log" \
@@ -126,7 +130,140 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
         tail -200 "$diagnostic" >&2 || true
       fi
     done
-    exit 1
+  }
+
+  initial_app_pid="$app_pid"
+  initial_window_id="$window_id"
+  initial_app_start_ms="$app_start_ms"
+  if ! capture_initial_atspi_tree; then
+    echo "Initial AT-SPI tree did not become meaningful before the readiness deadline" >&2
+    if ! node - "$out_dir/atspi-tree-linux-desktop.json" <<'NODE'
+const fs = require('fs');
+const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const allowedFailures = new Set([
+  'node_count_below_20',
+  'named_node_count_below_8',
+  'actionable_node_count_below_5'
+]);
+const defunctInitialAtspiSubtree =
+  report?.pass === false &&
+  Array.isArray(report?.failures) &&
+  report.failures.length > 0 &&
+  report.failures.every((failure) => allowedFailures.has(failure)) &&
+  Array.isArray(report?.nodes) &&
+  report.nodes.some((node) => Array.isArray(node?.states) && node.states.includes('defunct'));
+if (!defunctInitialAtspiSubtree) process.exit(1);
+NODE
+    then
+      dump_initial_atspi_diagnostics
+      exit 1
+    fi
+
+    echo "Recovering once from a defunct initial AT-SPI subtree" >&2
+    mv "$out_dir/atspi-tree-linux-desktop.json" \
+      "$out_dir/atspi-tree-linux-desktop-attempt-1.json"
+    mv "$out_dir/accessibility-tree-linux-desktop.txt" \
+      "$out_dir/accessibility-tree-linux-desktop-attempt-1.txt"
+    cp "$out_dir/screenshot-linux-desktop-first-run.png" \
+      "$out_dir/screenshot-linux-desktop-first-run-attempt-1.png"
+    cp "$out_dir/window-initial-xwininfo.txt" \
+      "$out_dir/window-initial-xwininfo-attempt-1.txt"
+    cp "$out_dir/window-initial-xprop.txt" \
+      "$out_dir/window-initial-xprop-attempt-1.txt"
+
+    kill "$app_pid" 2>/dev/null || true
+    for _ in $(seq 1 40); do
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.1
+    done
+    if kill -0 "$app_pid" 2>/dev/null; then
+      kill -KILL "$app_pid" 2>/dev/null || true
+    fi
+    wait "$app_pid" 2>/dev/null || true
+    for _ in $(seq 1 40); do
+      if ! xdotool search --onlyvisible --name OpenBurnBar >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.1
+    done
+
+    recovery_start_ms="$(date +%s%3N)"
+    "$installed_bin" >>"$out_dir/openburnbar-linux-desktop.stdout.log" \
+      2>>"$out_dir/openburnbar-linux-desktop.stderr.log" &
+    app_pid="$!"
+    echo "$app_pid" >"$out_dir/openburnbar-linux-desktop.pid"
+    window_id=""
+    for _ in $(seq 1 120); do
+      window_id="$(xdotool search --onlyvisible --name OpenBurnBar 2>/dev/null | head -n 1 || true)"
+      if [[ -n "$window_id" ]]; then
+        break
+      fi
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        echo "OpenBurnBar exited during the bounded AT-SPI recovery launch" >&2
+        dump_initial_atspi_diagnostics
+        exit 1
+      fi
+      sleep 0.25
+    done
+    if [[ -z "$window_id" ]]; then
+      echo "Bounded AT-SPI recovery launch never produced a visible window" >&2
+      dump_initial_atspi_diagnostics
+      exit 1
+    fi
+
+    recovered_app_start_ms="$(( $(date +%s%3N) - recovery_start_ms ))"
+    app_start_samples[0]="$recovered_app_start_ms"
+    echo "$window_id" >"$out_dir/openburnbar-window-id.txt"
+    xwininfo -id "$window_id" >"$out_dir/window-initial-xwininfo.txt"
+    xprop -id "$window_id" >"$out_dir/window-initial-xprop.txt"
+    scrot "$out_dir/screenshot-linux-desktop-first-run.png"
+
+    if ! capture_initial_atspi_tree; then
+      echo "AT-SPI tree remained non-meaningful after the bounded recovery launch" >&2
+      dump_initial_atspi_diagnostics
+      exit 1
+    fi
+
+    INITIAL_APP_PID="$initial_app_pid" \
+    RECOVERED_APP_PID="$app_pid" \
+    INITIAL_WINDOW_ID="$initial_window_id" \
+    RECOVERED_WINDOW_ID="$window_id" \
+    INITIAL_APP_START_MS="$initial_app_start_ms" \
+    RECOVERED_APP_START_MS="$recovered_app_start_ms" \
+    node - "$out_dir/atspi-readiness-recovery.json" <<'NODE'
+const fs = require('fs');
+const output = process.argv[2];
+const evidence = {
+  schemaVersion: 1,
+  reason: 'defunct_initial_atspi_subtree',
+  boundedRecoveryAttempts: 1,
+  initial: {
+    appPid: Number(process.env.INITIAL_APP_PID),
+    windowId: process.env.INITIAL_WINDOW_ID,
+    appStartMs: Number(process.env.INITIAL_APP_START_MS),
+    atspi: 'atspi-tree-linux-desktop-attempt-1.json',
+    treeText: 'accessibility-tree-linux-desktop-attempt-1.txt',
+    screenshot: 'screenshot-linux-desktop-first-run-attempt-1.png',
+    xwininfo: 'window-initial-xwininfo-attempt-1.txt',
+    xprop: 'window-initial-xprop-attempt-1.txt'
+  },
+  recovered: {
+    appPid: Number(process.env.RECOVERED_APP_PID),
+    windowId: process.env.RECOVERED_WINDOW_ID,
+    appStartMs: Number(process.env.RECOVERED_APP_START_MS),
+    atspi: 'atspi-tree-linux-desktop.json',
+    treeText: 'accessibility-tree-linux-desktop.txt',
+    screenshot: 'screenshot-linux-desktop-first-run.png',
+    xwininfo: 'window-initial-xwininfo.txt',
+    xprop: 'window-initial-xprop.txt'
+  },
+  pass: true
+};
+fs.writeFileSync(output, JSON.stringify(evidence, null, 2) + '\n');
+console.log(JSON.stringify(evidence, null, 2));
+NODE
   fi
 
   route_tsv="$work_dir/packaged-route-session.tsv"
@@ -1043,6 +1180,9 @@ const report = {
     runtimePerfSamples: 'runtime-perf-samples.jsonl',
     daemonSocketLog: fs.existsSync(outDir + '/daemon-shell-session.log') ? 'daemon-shell-session.log' : 'daemon-socket-gui-session.log',
     trayMenuLayout: 'tray-menu-layout.txt',
+    atspiReadinessRecovery: fs.existsSync(outDir + '/atspi-readiness-recovery.json')
+      ? 'atspi-readiness-recovery.json'
+      : null,
     trayReconnectHandlerAcks: 'tray-reconnect-handler-acks.jsonl',
     trayReconnectDaemonHealthLog: 'tray-reconnect-daemon-health.log',
     trayReconnectReceipts: 'tray-reconnect-receipts.jsonl',
@@ -1071,12 +1211,15 @@ exec > >(tee "$transcript") 2>&1
 
 rm -f \
   "$out_dir"/accessibility-tree-linux-desktop.txt \
+  "$out_dir"/accessibility-tree-linux-desktop-attempt-1.txt \
   "$out_dir"/atspi-bus-address.txt \
   "$out_dir"/atspi-command-open-*.json \
   "$out_dir"/atspi-command-route-*.json \
   "$out_dir"/atspi-keyboard-focus-sequence.json \
+  "$out_dir"/atspi-readiness-recovery.json \
   "$out_dir"/atspi-route-*.json \
   "$out_dir"/atspi-tree-linux-desktop.json \
+  "$out_dir"/atspi-tree-linux-desktop-attempt-1.json \
   "$out_dir"/atspi-zoom-200-requested.json \
   "$out_dir"/daemon-socket-gui-session.log \
   "$out_dir"/daemon-session-oracle.json \
@@ -1125,7 +1268,9 @@ rm -f \
   "$out_dir"/tray-status-notifier-introspection.txt \
   "$out_dir"/window-after-tray-open-xwininfo.txt \
   "$out_dir"/window-initial-xprop.txt \
+  "$out_dir"/window-initial-xprop-attempt-1.txt \
   "$out_dir"/window-initial-xwininfo.txt \
+  "$out_dir"/window-initial-xwininfo-attempt-1.txt \
   "$out_dir"/window-route-*-xwininfo.txt \
   "$out_dir"/x11-display-info.txt \
   "$out_dir"/xfce4-panel.log \
