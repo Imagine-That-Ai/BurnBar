@@ -26,9 +26,11 @@ struct CloudStoreSettingsView: View {
     var dataStore: DataStore?
 
     /// `onAppear` starts live services (StoreKit catalogue load, backup
-    /// catch-up, analytics). Headless test renders set this to `false`:
-    /// on CI the leftover StoreKit/backup work from a snapshot render wedges
-    /// the shared test process and hangs later suites (App PR Gate timeout).
+    /// catch-up, analytics, remote-MCP Firestore listener) and the
+    /// `repeatForever` tier-crest shimmer. Headless test renders set this to
+    /// `false`: an off-window `NSHostingView` never fires `onDisappear`, so
+    /// on CI the leftover work/animation from a snapshot render wedges the
+    /// shared test process and hangs later suites (App PR Gate timeout).
     var startsLiveServicesOnAppear: Bool = true
 
     @State private var isBackingUp = false
@@ -967,7 +969,8 @@ struct CloudStoreSettingsView: View {
                     TierHolographicAccent(
                         crestAsset: crestAsset,
                         palette: model.holoPalette,
-                        reduceMotion: reduceMotion
+                        reduceMotion: reduceMotion,
+                        animates: startsLiveServicesOnAppear
                     )
                     .allowsHitTesting(false)
                 }
@@ -1406,7 +1409,10 @@ struct CloudStoreSettingsView: View {
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onAppear { remoteMCPClients.startListening() }
+        .onAppear {
+            guard startsLiveServicesOnAppear else { return }
+            remoteMCPClients.startListening()
+        }
         .onDisappear { remoteMCPClients.stopListening() }
         .sheet(isPresented: $showingHostedMCPUnlock) {
             FeatureUnlockSheet(feature: GatedFeature.gatedFeature(.hostedMCP))

@@ -257,6 +257,11 @@ struct TierHolographicAccent: View {
     let crestAsset: String
     let palette: [Color]
     let reduceMotion: Bool
+    /// Headless test renders set this to `false`: the `repeatForever` shimmer
+    /// started in `onAppear` outlives an off-window `NSHostingView` (its
+    /// `onDisappear` never fires), leaving a display link ticking in the
+    /// shared XCTest process that wedges later async-heavy suites on CI.
+    var animates: Bool = true
 
     @State private var phase: CGFloat = 0
 
@@ -277,7 +282,7 @@ struct TierHolographicAccent: View {
                 .offset(x: geo.size.width * 0.18, y: -geo.size.height * 0.04)
         }
         .onAppear {
-            guard !reduceMotion else { return }
+            guard animates, !reduceMotion else { return }
             withAnimation(.linear(duration: 11).repeatForever(autoreverses: false)) {
                 phase = 1
             }
