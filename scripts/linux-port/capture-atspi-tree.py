@@ -8,6 +8,7 @@ import json
 import sys
 import time
 from collections import Counter, deque
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -172,21 +173,50 @@ def contains_name(root: Any, expected: str, limit: int = 500) -> bool:
     return False
 
 
-def find_application(pyatspi: Any, application_name: str, timeout_seconds: float) -> Any:
+def application_candidates(pyatspi: Any, application_name: str) -> list[Any]:
+    desktop = pyatspi.Registry.getDesktop(0)
+    applications = [child_at(desktop, index) for index in range(child_count(desktop))]
+    needle = application_name.casefold()
+    direct = [
+        application
+        for application in applications
+        if application is not None and needle in node_name(application).casefold() and child_count(application) > 0
+    ]
+    if direct:
+        return direct
+    # The nested scan walks every desktop application tree over synchronous
+    # cross-process AT-SPI calls, so it only runs when no direct root exists.
+    return [
+        application
+        for application in applications
+        if application is not None and child_count(application) > 0 and contains_name(application, application_name)
+    ]
+
+
+def find_application(
+    pyatspi: Any,
+    application_name: str,
+    timeout_seconds: float,
+    expected_name: str | None = None,
+) -> Any:
     deadline = time.monotonic() + timeout_seconds
+    last_error: Exception | None = None
     while time.monotonic() < deadline:
-        desktop = pyatspi.Registry.getDesktop(0)
-        applications = [child_at(desktop, index) for index in range(child_count(desktop))]
-        for application in applications:
-            if application is None:
-                continue
-            if application_name.casefold() in node_name(application).casefold() and child_count(application) > 0:
-                return application
-        for application in applications:
-            if application is not None and contains_name(application, application_name):
-                return application
+        try:
+            applications = application_candidates(pyatspi, application_name)
+        except Exception as error:
+            last_error = error
+            time.sleep(0.25)
+            continue
+        if expected_name:
+            for application in applications:
+                if contains_name(application, expected_name):
+                    return application
+        if applications:
+            return applications[0]
         time.sleep(0.25)
-    raise RuntimeError(f"AT-SPI application not found: {application_name}")
+    suffix = f" ({last_error})" if last_error else ""
+    raise RuntimeError(f"AT-SPI application not found: {application_name}{suffix}")
 
 
 def find_actionable_node(root: Any, expected_name: str, within_role: str | None) -> Any:
@@ -255,6 +285,51 @@ def grab_focus(node: Any) -> dict[str, Any]:
     }
 
 
+def probe_with_retry(
+    pyatspi: Any,
+    application_name: str,
+    expected_name: str,
+    within_role: str | None,
+    timeout_seconds: float,
+    probe: Callable[[Any], dict[str, Any]],
+    succeeded: Callable[[dict[str, Any]], bool],
+    label: str,
+) -> dict[str, Any]:
+    """Try every live registration until one succeeds, retrying transient AT-SPI errors.
+
+    A stale registration can fail at any stage (enumeration, lookup, or the probe
+    itself returning an unsuccessful receipt), so every stage stays inside the retry
+    boundary and only a successful probe leaves the candidate loop early.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    last_error: Exception | None = None
+    last_result: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        try:
+            applications = application_candidates(pyatspi, application_name)
+        except Exception as error:
+            last_error = error
+            time.sleep(0.25)
+            continue
+        if not applications:
+            last_error = RuntimeError(f"AT-SPI application not found: {application_name}")
+        for application in applications:
+            try:
+                node = find_actionable_node(application, expected_name, within_role)
+                result = probe(node)
+            except Exception as error:
+                last_error = error
+                continue
+            if succeeded(result):
+                return result
+            last_result = result
+            last_error = RuntimeError(f"AT-SPI {label} was rejected by a candidate root for {expected_name}")
+        time.sleep(0.25)
+    if last_result is not None:
+        return last_result
+    raise RuntimeError(f"AT-SPI {label} timed out for {expected_name}: {last_error}")
+
+
 def activate_with_retry(
     pyatspi: Any,
     application_name: str,
@@ -262,17 +337,35 @@ def activate_with_retry(
     within_role: str | None,
     timeout_seconds: float,
 ) -> dict[str, Any]:
-    deadline = time.monotonic() + timeout_seconds
-    last_error: Exception | None = None
-    while time.monotonic() < deadline:
-        try:
-            application = find_application(pyatspi, application_name, 1.0)
-            node = find_actionable_node(application, expected_name, within_role)
-            return activate_node(node)
-        except Exception as error:
-            last_error = error
-            time.sleep(0.25)
-    raise RuntimeError(f"AT-SPI action timed out for {expected_name}: {last_error}")
+    return probe_with_retry(
+        pyatspi,
+        application_name,
+        expected_name,
+        within_role,
+        timeout_seconds,
+        activate_node,
+        lambda result: bool(result["activated"]),
+        "action",
+    )
+
+
+def grab_focus_with_retry(
+    pyatspi: Any,
+    application_name: str,
+    expected_name: str,
+    within_role: str | None,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    return probe_with_retry(
+        pyatspi,
+        application_name,
+        expected_name,
+        within_role,
+        timeout_seconds,
+        grab_focus,
+        lambda result: bool(result["grabbed"]),
+        "focus",
+    )
 
 
 def summarize(
@@ -358,7 +451,134 @@ def self_test() -> int:
     if not result["pass"] or result["actionableNodeCount"] != 6:
         print(json.dumps(result, indent=2), file=sys.stderr)
         return 1
-    print(json.dumps({"selfTest": "pass", "summary": result}, indent=2))
+
+    class FakeAction:
+        def __init__(self, result: bool = True) -> None:
+            self.nActions = 1
+            self.activated = False
+            self.result = result
+
+        def getName(self, _index: int) -> str:
+            return "press"
+
+        def doAction(self, _index: int) -> bool:
+            self.activated = True
+            return self.result
+
+    class FakeComponent:
+        def __init__(self, result: bool) -> None:
+            self.attempted = False
+            self.result = result
+
+        def grabFocus(self) -> bool:
+            self.attempted = True
+            return self.result
+
+    class FakeNode:
+        def __init__(
+            self,
+            name: str,
+            children: list[Any] | None = None,
+            action: Any | None = None,
+            component: Any | None = None,
+        ) -> None:
+            self.name = name
+            self.children = children or []
+            self.action = action
+            self.component = component
+
+        @property
+        def childCount(self) -> int:
+            return len(self.children)
+
+        def getChildAtIndex(self, index: int) -> Any:
+            return self.children[index]
+
+        def getRoleName(self) -> str:
+            return "push button" if self.action else "application"
+
+        def queryAction(self) -> Any:
+            if self.action is None:
+                raise RuntimeError("not actionable")
+            return self.action
+
+        def queryComponent(self) -> Any:
+            if self.component is None:
+                raise RuntimeError("no component")
+            return self.component
+
+    def fake_pyatspi(desktop: Any) -> Any:
+        class FakeRegistry:
+            @staticmethod
+            def getDesktop(_index: int) -> Any:
+                return desktop
+
+        class FakePyAtSpi:
+            Registry = FakeRegistry
+
+        return FakePyAtSpi()
+
+    rejecting_action = FakeAction(result=False)
+    healthy_action = FakeAction()
+    stale_application = FakeNode("openburnbar-linux-desktop", [FakeNode("Memory")])
+    rejecting_application = FakeNode(
+        "openburnbar-linux-desktop",
+        [FakeNode("Open command palette", action=rejecting_action)],
+    )
+    healthy_application = FakeNode(
+        "openburnbar-linux-desktop",
+        [FakeNode("Open command palette", action=healthy_action)],
+    )
+    desktop = FakeNode("desktop", [stale_application, rejecting_application, healthy_application])
+
+    activation = activate_with_retry(
+        fake_pyatspi(desktop),
+        "OpenBurnBar",
+        "Open command palette",
+        None,
+        0.1,
+    )
+    if not activation["activated"] or not healthy_action.activated or not rejecting_action.activated:
+        print(json.dumps({"staleRegistrationRecovery": activation}, indent=2), file=sys.stderr)
+        return 1
+
+    stale_component = FakeComponent(result=False)
+    healthy_component = FakeComponent(result=True)
+    focus_desktop = FakeNode(
+        "desktop",
+        [
+            FakeNode(
+                "openburnbar-linux-desktop",
+                [FakeNode("Skip to content", action=FakeAction(), component=stale_component)],
+            ),
+            FakeNode(
+                "openburnbar-linux-desktop",
+                [FakeNode("Skip to content", action=FakeAction(), component=healthy_component)],
+            ),
+        ],
+    )
+    focus = grab_focus_with_retry(
+        fake_pyatspi(focus_desktop),
+        "OpenBurnBar",
+        "Skip to content",
+        None,
+        0.1,
+    )
+    if not focus["grabbed"] or not stale_component.attempted or not healthy_component.attempted:
+        print(json.dumps({"staleFocusRecovery": focus}, indent=2), file=sys.stderr)
+        return 1
+
+    print(
+        json.dumps(
+            {
+                "selfTest": "pass",
+                "summary": result,
+                "staleRegistrationRecovery": activation,
+                "staleFocusRecovery": focus,
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -394,9 +614,13 @@ def main() -> int:
                     "failures": [] if activation["activated"] else ["action_returned_false"],
                 }
             else:
-                application = find_application(pyatspi, args.application, args.timeout_seconds)
-                node = find_actionable_node(application, args.expected_name, args.within_role)
-                focus = grab_focus(node)
+                focus = grab_focus_with_retry(
+                    pyatspi,
+                    args.application,
+                    args.expected_name,
+                    args.within_role,
+                    args.timeout_seconds,
+                )
                 result = {
                     "schemaVersion": 1,
                     "capturedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -410,7 +634,12 @@ def main() -> int:
             Path(args.output).write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
             print(json.dumps(result, separators=(",", ":")))
             return 0 if result["pass"] else 1
-        application = find_application(pyatspi, args.application, args.timeout_seconds)
+        application = find_application(
+            pyatspi,
+            args.application,
+            args.timeout_seconds,
+            args.expected_name,
+        )
         deadline = time.monotonic() + max(0.0, args.wait_for_meaningful_seconds)
         attempts = 0
         while True:
