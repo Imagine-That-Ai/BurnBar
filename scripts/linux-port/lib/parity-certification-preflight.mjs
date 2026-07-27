@@ -1347,7 +1347,7 @@ const CANONICAL_WORKFLOW_OWNERSHIP = Object.freeze({
       '}',
       'trap cleanup EXIT',
       'chmod 700 "$raw_input" "$evidence_root"',
-      'for report in linux-desktop-session-report.json runtime-perf-samples.jsonl tray-reconnect-receipts.jsonl packaged-route-session-transcript.json matched-performance-macos.json; do',
+      'for report in linux-desktop-session-report.json runtime-perf-samples.jsonl tray-reconnect-handler-acks.jsonl tray-reconnect-daemon-health.log tray-reconnect-receipts.jsonl packaged-route-session-transcript.json matched-performance-macos.json; do',
       '  test -f "$input_root/$report"',
       '  install -m 600 "$input_root/$report" "$raw_input/$report"',
       'done',

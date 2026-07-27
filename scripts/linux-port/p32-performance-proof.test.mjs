@@ -238,27 +238,63 @@ function generateReports(directory) {
     path.join(directory, "runtime-perf-samples.jsonl"),
     `${routes.join("\n")}\n`,
   );
+  const handlerAcks = [];
+  const daemonHealthLog = [];
   const receipts = desktop.performance.ipcHealthRoundTripSamples.map(
     (elapsedMs, index) => {
       const clickEpochMs =
         Date.parse("2026-07-20T11:55:10.000Z") + index * 20_000;
-      const clickNs = BigInt(clickEpochMs) * 1_000_000n;
+      const handlerStartedEpochMs = clickEpochMs + 1;
+      const handlerCompletedEpochMs = clickEpochMs + 50;
+      const handlerEventId = `tray-health-${(index + 1)
+        .toString(16)
+        .padStart(32, "0")}`;
+      const daemonHealthRequestId = `health-${
+        BigInt(handlerStartedEpochMs) * 1_000_000n + 1n
+      }`;
+      handlerAcks.push(
+        JSON.stringify({
+          schemaVersion: 1,
+          action: "reconnect-daemon",
+          handlerEventId,
+          daemonHealthRequestId,
+          statusItemLogicalId: "status",
+          handlerStartedEpochMs,
+          handlerCompletedEpochMs,
+          daemonConnected: true,
+          statusUpdateSucceeded: true,
+          statusLabel: "Daemon: connected - 1.2.3",
+        }),
+      );
+      daemonHealthLog.push(
+        `event=rpc_request_received method=daemon.health request_id=${daemonHealthRequestId} protocol_version=1`,
+      );
       return JSON.stringify({
         sample: index + 1,
         menuId: 3,
         menuRevisionBefore: 12 + index * 2,
         menuRevisionAfter: 13 + index * 2,
-        daemonHealthRequestsBefore: 4 + index * 2,
-        daemonHealthRequestsAfter: 6 + index * 2,
         daemonConnected: true,
         clickEpochMs,
-        healthRequestIds: [
-          `health-${clickNs + 1n}`,
-          `health-${clickNs + 5_000_000n}`,
-        ],
+        handlerEventId,
+        handlerStartedEpochMs,
+        handlerCompletedEpochMs,
+        daemonHealthRequestId,
+        statusItemLogicalId: "status",
+        statusMenuId: 7,
+        observedStatusLabel: "Daemon: connected - 1.2.3",
+        observedEpochMs: clickEpochMs + elapsedMs,
         elapsedMs,
       });
     },
+  );
+  write(
+    path.join(directory, "tray-reconnect-handler-acks.jsonl"),
+    `${handlerAcks.join("\n")}\n`,
+  );
+  write(
+    path.join(directory, "tray-reconnect-daemon-health.log"),
+    `${daemonHealthLog.join("\n")}\n`,
   );
   write(
     path.join(directory, "tray-reconnect-receipts.jsonl"),
@@ -496,31 +532,63 @@ test("P-32 reconnect samples resolve live tray actions and require exact healthy
     path.join(WORKTREE, "scripts/linux-port/linux-desktop-session.sh"),
     "utf8",
   );
+  const trayRuntime = fs.readFileSync(
+    path.join(
+      WORKTREE,
+      "apps/linux-desktop/src-tauri/src/desktop/tray_runtime.rs",
+    ),
+    "utf8",
+  );
+  const gateway = fs.readFileSync(
+    path.join(WORKTREE, "apps/linux-desktop/src-tauri/src/desktop/gateway.rs"),
+    "utf8",
+  );
   assert.match(
     source,
     /resolve_menu_action "Reconnect daemon" "\$out_dir\/tray-reconnect-menu-layout-\$\{sample_index\}\.txt"/u,
   );
-  assert.match(source, /event=rpc_request_received method=daemon\.health /u);
-  assert.match(source, /printf '%s\\n' "\$\{count:-0\}"/u);
+  assert.match(source, /daemon_health_request_occurrences/u);
   assert.match(
     source,
     /\[\[ "\$after_reconnect_revision" -gt "\$before_reconnect_revision" \]\]/u,
   );
-  assert.match(source, /\[\[ "\$daemon_connected" == 1 \]\]/u);
-  assert.match(source, /wait_for_tray_menu_quiescence/u);
-  assert.match(source, /request_id=health-\[0-9\]\+/u);
+  assert.match(source, /\[\[ "\$status_update_succeeded" == 1 \]\]/u);
+  assert.match(source, /\[\[ "\$request_log_occurrences" == 1 \]\]/u);
   assert.match(
     source,
-    /correlated_health_request_ids "\$before_health_request_ids" "\$click_epoch_ms"/u,
+    /\[\[ "\$observed_status_label" == "\$ack_status_label" \]\]/u,
   );
-  assert.match(source, /\[\[ "\$correlated_request_count" -ge 2 \]\]/u);
+  assert.match(source, /tray-reconnect-handler-acks\.jsonl/u);
+  assert.match(source, /read_tray_reconnect_handler_ack/u);
+  assert.match(source, /handler_started_epoch_ms/u);
+  assert.match(source, /daemon_health_request_id/u);
+  assert.match(
+    source,
+    /observedEpochMs: Number\(process\.env\.OBSERVED_EPOCH_MS\)/u,
+  );
+  assert.ok(
+    source.indexOf(
+      'read_menu_state "$out_dir/tray-reconnect-menu-layout-after-${sample_index}.txt"',
+    ) < source.indexOf('candidate_observed_epoch_ms="$(date +%s%3N)"'),
+  );
   assert.match(source, /clickEpochMs: Number\(process\.env\.CLICK_EPOCH_MS\)/u);
-  assert.match(
-    source,
-    /healthRequestIds: process\.env\.HEALTH_REQUEST_IDS\.split\('\\n'\)\.filter\(Boolean\)/u,
-  );
+  assert.match(source, /tray-reconnect-daemon-health\.log/u);
   assert.match(source, /tray-reconnect-receipts\.jsonl/u);
-  assert.doesNotMatch(source, /before_reconnect_lines/u);
+  assert.match(trayRuntime, /TrayReconnectHandlerAck/u);
+  assert.match(trayRuntime, /record_tray_reconnect_handler_ack/u);
+  assert.match(trayRuntime, /status_update_succeeded/u);
+  assert.match(trayRuntime, /Daemon: reconnecting\.\.\./u);
+  const healthHandler = trayRuntime.slice(
+    trayRuntime.indexOf('"health" => {'),
+    trayRuntime.indexOf('"quit" =>'),
+  );
+  assert.match(healthHandler, /set_text\(status_label\.clone\(\)\)/u);
+  assert.doesNotMatch(healthHandler, /refresh_tray_status_items/u);
+  assert.match(gateway, /probe_daemon_health_with_receipt/u);
+  assert.match(gateway, /validated_daemon_health_result/u);
+  assert.match(gateway, /Health response id mismatch/u);
+  assert.doesNotMatch(source, /correlated_health_request_ids/u);
+  assert.doesNotMatch(source, /wait_for_tray_menu_quiescence/u);
   assert.doesNotMatch(
     source,
     /wc -l <"\$daemon_log"/u,
@@ -573,11 +641,34 @@ test("P-32 raw validation rejects shortened soak, architecture, checksum, source
         text.replace('"menuRevisionAfter":13', '"menuRevisionAfter":12'),
     ],
     [
+      // Increasing revisions are still invalid when either value is negative.
+      "tray-reconnect-receipts.jsonl",
+      (text) => {
+        const lines = text.split("\n").filter(Boolean);
+        const first = JSON.parse(lines[0]);
+        first.menuRevisionBefore = -2;
+        first.menuRevisionAfter = -1;
+        lines[0] = JSON.stringify(first);
+        return `${lines.join("\n")}\n`;
+      },
+    ],
+    [
+      // DBusMenu action IDs are sent as signed int32 values.
+      "tray-reconnect-receipts.jsonl",
+      (text) => text.replace('"menuId":3', '"menuId":2147483648'),
+    ],
+    [
+      // DBusMenu item zero is the root node, never the reconnect action.
+      "tray-reconnect-receipts.jsonl",
+      (text) => text.replace('"menuId":3', '"menuId":0'),
+    ],
+    [
+      // DBusMenu revisions are unsigned 32-bit values.
       "tray-reconnect-receipts.jsonl",
       (text) =>
         text.replace(
-          '"daemonHealthRequestsAfter":6,',
-          '"daemonHealthRequestsAfter":5,',
+          '"menuRevisionAfter":13',
+          '"menuRevisionAfter":4294967296',
         ),
     ],
     [
@@ -585,26 +676,40 @@ test("P-32 raw validation rejects shortened soak, architecture, checksum, source
       (text) => text.replace('"elapsedMs":100', '"elapsedMs":101'),
     ],
     [
-      // Dropping to a single correlated request id must fail: the click
-      // handler always produces its direct RPC plus a triggered refresh.
-      "tray-reconnect-receipts.jsonl",
-      (text) => text.replace(/,"health-\d+"\]/u, "]"),
+      "tray-reconnect-handler-acks.jsonl",
+      (text) => `${text.split("\n").filter(Boolean).slice(0, 9).join("\n")}\n`,
     ],
     [
-      // A request id stamped before the click is uncorrelated traffic.
-      "tray-reconnect-receipts.jsonl",
-      (text) => text.replace(/"health-\d+"/u, '"health-1"'),
+      "tray-reconnect-handler-acks.jsonl",
+      (text) =>
+        text.replace('"daemonConnected":true', '"daemonConnected":false'),
     ],
     [
-      // The same request id can never satisfy two different samples.
-      "tray-reconnect-receipts.jsonl",
+      "tray-reconnect-handler-acks.jsonl",
+      (text) =>
+        text.replace(
+          '"statusUpdateSucceeded":true',
+          '"statusUpdateSucceeded":false',
+        ),
+    ],
+    [
+      "tray-reconnect-handler-acks.jsonl",
+      (text) =>
+        text.replace(
+          '"action":"reconnect-daemon"',
+          '"action":"background-refresh"',
+        ),
+    ],
+    [
+      // Every handler-scoped request must occur exactly once in the daemon log.
+      "tray-reconnect-daemon-health.log",
+      (text) => `${text.split("\n").filter(Boolean).slice(1).join("\n")}\n`,
+    ],
+    [
+      "tray-reconnect-daemon-health.log",
       (text) => {
         const lines = text.split("\n").filter(Boolean);
-        const first = JSON.parse(lines[0]);
-        const second = JSON.parse(lines[1]);
-        second.healthRequestIds[0] = first.healthRequestIds[0];
-        lines[1] = JSON.stringify(second);
-        return `${lines.join("\n")}\n`;
+        return `${lines[0]}\n${lines.join("\n")}\n`;
       },
     ],
     [
@@ -618,12 +723,45 @@ test("P-32 raw validation rejects shortened soak, architecture, checksum, source
         return `${lines.join("\n")}\n`;
       },
     ],
+    [
+      // The live DBusMenu label must be the exact label directly applied by
+      // the handler, not a later background refresh.
+      "tray-reconnect-receipts.jsonl",
+      (text) =>
+        text.replace(
+          '"observedStatusLabel":"Daemon: connected - 1.2.3"',
+          '"observedStatusLabel":"Daemon: connected - background"',
+        ),
+    ],
+    [
+      // The click-to-observation sample must end after the live menu and log
+      // reads, not at handler completion.
+      "tray-reconnect-receipts.jsonl",
+      (text) => {
+        const lines = text.split("\n").filter(Boolean);
+        const first = JSON.parse(lines[0]);
+        first.observedEpochMs -= 1;
+        lines[0] = JSON.stringify(first);
+        return `${lines.join("\n")}\n`;
+      },
+    ],
+    [
+      // Every sample must observe the same logical status menu item.
+      "tray-reconnect-receipts.jsonl",
+      (text) => {
+        const lines = text.split("\n").filter(Boolean);
+        const second = JSON.parse(lines[1]);
+        second.statusMenuId += 1;
+        lines[1] = JSON.stringify(second);
+        return `${lines.join("\n")}\n`;
+      },
+    ],
   ];
   for (const [name, mutate] of mutations) {
     const value = fixture();
     try {
       const file = path.join(value.input, name);
-      if (name.endsWith(".jsonl")) {
+      if (name.endsWith(".jsonl") || name.endsWith(".log")) {
         const original = fs.readFileSync(file, "utf8");
         const mutated = mutate(original);
         assert.notEqual(
@@ -649,6 +787,165 @@ test("P-32 raw validation rejects shortened soak, architecture, checksum, source
     } finally {
       fs.rmSync(value.root, { recursive: true, force: true });
     }
+  }
+});
+
+test("P-32 reconnect validation rejects forged causal and sequencing evidence", () => {
+  const mutations = [
+    (rows) => {
+      const oldId = rows.receipts[0].daemonHealthRequestId;
+      const forgedId = `health-${
+        BigInt(rows.receipts[0].handlerStartedEpochMs) * 1_000_000n + 2n
+      }`;
+      rows.receipts[0].daemonHealthRequestId = forgedId;
+      rows.acks[0].daemonHealthRequestId = forgedId;
+      assert.ok(rows.logs[0].includes(oldId));
+    },
+    (rows) => {
+      const forgedId = `health-${
+        BigInt(rows.receipts[0].handlerStartedEpochMs) * 1_000_000n - 1n
+      }`;
+      const oldId = rows.receipts[0].daemonHealthRequestId;
+      rows.receipts[0].daemonHealthRequestId = forgedId;
+      rows.acks[0].daemonHealthRequestId = forgedId;
+      rows.logs[0] = rows.logs[0].replace(oldId, forgedId);
+    },
+    (rows) => {
+      rows.receipts[1].handlerEventId = rows.receipts[0].handlerEventId;
+      rows.acks[1].handlerEventId = rows.acks[0].handlerEventId;
+    },
+    (rows) => {
+      rows.receipts[1].sample = 3;
+    },
+    (rows) => {
+      rows.receipts[1].menuRevisionBefore =
+        rows.receipts[0].menuRevisionAfter - 1;
+      rows.receipts[1].menuRevisionAfter =
+        rows.receipts[0].menuRevisionAfter + 1;
+    },
+    (rows) => {
+      rows.receipts[0].handlerCompletedEpochMs =
+        rows.receipts[0].clickEpochMs + rows.receipts[0].elapsedMs + 1;
+      rows.acks[0].handlerCompletedEpochMs =
+        rows.receipts[0].handlerCompletedEpochMs;
+    },
+    (rows) => {
+      const previous = rows.receipts[0];
+      const receipt = rows.receipts[1];
+      const ack = rows.acks[1];
+      const oldId = receipt.daemonHealthRequestId;
+      receipt.clickEpochMs = previous.clickEpochMs + previous.elapsedMs - 1;
+      receipt.handlerStartedEpochMs = receipt.clickEpochMs + 1;
+      receipt.handlerCompletedEpochMs = receipt.clickEpochMs + 50;
+      ack.handlerStartedEpochMs = receipt.handlerStartedEpochMs;
+      ack.handlerCompletedEpochMs = receipt.handlerCompletedEpochMs;
+      const requestId = `health-${
+        BigInt(receipt.handlerStartedEpochMs) * 1_000_000n + 1n
+      }`;
+      receipt.daemonHealthRequestId = requestId;
+      ack.daemonHealthRequestId = requestId;
+      rows.logs[1] = rows.logs[1].replace(oldId, requestId);
+    },
+    (rows) => {
+      const receipt = rows.receipts[0];
+      const ack = rows.acks[0];
+      const oldId = receipt.daemonHealthRequestId;
+      receipt.clickEpochMs = Date.parse("2026-07-20T11:54:59.000Z");
+      receipt.handlerStartedEpochMs = receipt.clickEpochMs + 1;
+      receipt.handlerCompletedEpochMs = receipt.clickEpochMs + 50;
+      ack.handlerStartedEpochMs = receipt.handlerStartedEpochMs;
+      ack.handlerCompletedEpochMs = receipt.handlerCompletedEpochMs;
+      const requestId = `health-${
+        BigInt(receipt.handlerStartedEpochMs) * 1_000_000n + 1n
+      }`;
+      receipt.daemonHealthRequestId = requestId;
+      ack.daemonHealthRequestId = requestId;
+      rows.logs[0] = rows.logs[0].replace(oldId, requestId);
+    },
+    (rows) => {
+      rows.acks[0].unexpected = true;
+    },
+  ];
+
+  for (const mutate of mutations) {
+    const value = fixture();
+    try {
+      const receiptsPath = path.join(
+        value.input,
+        "tray-reconnect-receipts.jsonl",
+      );
+      const acksPath = path.join(
+        value.input,
+        "tray-reconnect-handler-acks.jsonl",
+      );
+      const logPath = path.join(
+        value.input,
+        "tray-reconnect-daemon-health.log",
+      );
+      const rows = {
+        receipts: fs
+          .readFileSync(receiptsPath, "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line)),
+        acks: fs
+          .readFileSync(acksPath, "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line)),
+        logs: fs.readFileSync(logPath, "utf8").split("\n").filter(Boolean),
+      };
+      mutate(rows);
+      write(
+        receiptsPath,
+        `${rows.receipts.map((row) => JSON.stringify(row)).join("\n")}\n`,
+      );
+      write(
+        acksPath,
+        `${rows.acks.map((row) => JSON.stringify(row)).join("\n")}\n`,
+      );
+      write(logPath, `${rows.logs.join("\n")}\n`);
+      const reports = Object.fromEntries(
+        P32_REPORT_FILES.map((entry) => [
+          entry,
+          fs.readFileSync(path.join(value.input, entry)),
+        ]),
+      );
+      assert.throws(() =>
+        validateP32RawReports(reports, BUDGET, binding(value)),
+      );
+    } finally {
+      fs.rmSync(value.root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("P-32 reconnect validation accepts the zero DBusMenu revision boundary", () => {
+  const value = fixture();
+  try {
+    const receiptPath = path.join(value.input, "tray-reconnect-receipts.jsonl");
+    const receipts = fs
+      .readFileSync(receiptPath, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    receipts[0].menuRevisionBefore = 0;
+    receipts[0].menuRevisionAfter = 1;
+    write(
+      receiptPath,
+      `${receipts.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    );
+    const reports = Object.fromEntries(
+      P32_REPORT_FILES.map((entry) => [
+        entry,
+        fs.readFileSync(path.join(value.input, entry)),
+      ]),
+    );
+    assert.doesNotThrow(() =>
+      validateP32RawReports(reports, BUDGET, binding(value)),
+    );
+  } finally {
+    fs.rmSync(value.root, { recursive: true, force: true });
   }
 });
 

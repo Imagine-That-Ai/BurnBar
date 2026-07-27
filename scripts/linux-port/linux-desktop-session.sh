@@ -651,66 +651,88 @@ if (!Number.isSafeInteger(revision) || revision < 0) {
   console.error('Invalid tray menu revision');
   process.exit(1);
 }
-const connected = /'label': <'Daemon: connected(?: - [^']+)?'>/.test(layout);
-console.log(`${revision} ${connected ? 1 : 0}`);
+const matches = [...layout.matchAll(/<\((\d+), \{[^)]*?'label': <'([^']+)'>/g)];
+const statusItems = matches
+  .map((match) => ({ id: Number(match[1]), label: match[2] }))
+  .filter((item) => item.label.startsWith('Daemon: '));
+if (
+  statusItems.length !== 1 ||
+  !Number.isSafeInteger(statusItems[0].id) ||
+  statusItems[0].id <= 0
+) {
+  console.error('Expected exactly one valid daemon status menu item');
+  process.exit(1);
+}
+console.log([revision, statusItems[0].id, statusItems[0].label].join('\t'));
 NODE
   }
 
-  daemon_health_request_count() {
-    local count
-    count="$(grep -cF 'event=rpc_request_received method=daemon.health ' "$daemon_log" 2>/dev/null || true)"
-    printf '%s\n' "${count:-0}"
+  daemon_health_request_occurrences() {
+    local request_id="$1"
+    awk -v token="request_id=$request_id" '
+      /event=rpc_request_received method=daemon\.health / {
+        for (index = 1; index <= NF; index += 1) {
+          if ($index == token) count += 1
+        }
+      }
+      END { print count + 0 }
+    ' "$daemon_log"
   }
 
-  daemon_health_request_ids() {
-    # The desktop gateway stamps every daemon.health request id with the
-    # client-side send time in unix nanoseconds (health-<nanos>), and the
-    # daemon logs it verbatim. These ids let each reconnect sample bind its
-    # observed requests to the exact click instead of a global counter.
-    grep -F 'event=rpc_request_received method=daemon.health ' "$daemon_log" 2>/dev/null \
-      | grep -oE 'request_id=health-[0-9]+' \
-      | sed 's/^request_id=//' \
-      | sort -u \
-      || true
+  tray_reconnect_handler_ack_count() {
+    local ack_file="$out_dir/tray-reconnect-handler-acks.jsonl"
+    if [[ ! -f "$ack_file" ]]; then
+      printf '0\n'
+      return
+    fi
+    grep -cve '^[[:space:]]*$' "$ack_file" 2>/dev/null || true
   }
 
-  correlated_health_request_ids() {
-    # Print only the daemon.health request ids that are new relative to the
-    # pre-click snapshot AND whose embedded nanosecond stamp is at or after
-    # the click. Unrelated earlier traffic can never satisfy this predicate.
-    local before_ids="$1"
-    local click_epoch_ms="$2"
-    local min_stamp_ns id stamp_ns
-    min_stamp_ns="$((click_epoch_ms * 1000000))"
-    while IFS= read -r id; do
-      [[ -n "$id" ]] || continue
-      if [[ -n "$before_ids" ]] && grep -qxF "$id" <<<"$before_ids"; then
-        continue
-      fi
-      stamp_ns="${id#health-}"
-      if [[ "$stamp_ns" =~ ^[0-9]+$ ]] && [[ "$stamp_ns" -ge "$min_stamp_ns" ]]; then
-        printf '%s\n' "$id"
-      fi
-    done < <(daemon_health_request_ids)
-  }
-
-  wait_for_tray_menu_quiescence() {
-    # The tray refreshes itself every 30 seconds and each refresh advances the
-    # DBusMenu revision while it issues its own daemon.health request. Require
-    # a stable revision across a two-second window before clicking so the
-    # click-triggered refresh cannot collide with an in-flight periodic one.
-    local layout_file="$1"
-    local attempt revision_before revision_after
-    for attempt in $(seq 1 15); do
-      read -r revision_before _ < <(read_menu_state "$layout_file")
-      sleep 2
-      read -r revision_after _ < <(read_menu_state "$layout_file")
-      if [[ "$revision_after" == "$revision_before" ]]; then
-        return 0
-      fi
-    done
-    echo "Tray menu revision never went quiescent before the reconnect click" >&2
-    return 1
+  read_tray_reconnect_handler_ack() {
+    local one_based_index="$1"
+    node - "$out_dir/tray-reconnect-handler-acks.jsonl" "$one_based_index" <<'NODE'
+const fs = require('fs');
+const lines = fs.readFileSync(process.argv[2], 'utf8').split('\n').filter(Boolean);
+const index = Number(process.argv[3]) - 1;
+if (!Number.isSafeInteger(index) || index < 0 || index >= lines.length) process.exit(1);
+const ack = JSON.parse(lines[index]);
+const keys = [
+  'schemaVersion',
+  'action',
+  'handlerEventId',
+  'daemonHealthRequestId',
+  'statusItemLogicalId',
+  'handlerStartedEpochMs',
+  'handlerCompletedEpochMs',
+  'daemonConnected',
+  'statusUpdateSucceeded',
+  'statusLabel'
+];
+if (JSON.stringify(Object.keys(ack).sort()) !== JSON.stringify(keys.sort())) process.exit(1);
+if (
+  ack.schemaVersion !== 1 ||
+  ack.action !== 'reconnect-daemon' ||
+  !/^tray-health-[0-9a-f]{32}$/.test(ack.handlerEventId) ||
+  !/^health-[1-9][0-9]*$/.test(ack.daemonHealthRequestId) ||
+  ack.statusItemLogicalId !== 'status' ||
+  !Number.isSafeInteger(ack.handlerStartedEpochMs) ||
+  !Number.isSafeInteger(ack.handlerCompletedEpochMs) ||
+  ack.handlerStartedEpochMs < 0 ||
+  ack.handlerCompletedEpochMs < ack.handlerStartedEpochMs ||
+  ack.daemonConnected !== true ||
+  ack.statusUpdateSucceeded !== true ||
+  !/^Daemon: connected(?: - .+)?$/.test(ack.statusLabel)
+) process.exit(1);
+console.log([
+  ack.handlerEventId,
+  ack.daemonHealthRequestId,
+  ack.statusItemLogicalId,
+  ack.handlerStartedEpochMs,
+  ack.handlerCompletedEpochMs,
+  ack.statusUpdateSucceeded ? 1 : 0,
+  ack.statusLabel
+].join('\t'));
+NODE
   }
 
   send_menu_event() {
@@ -773,71 +795,96 @@ NODE
   ipc_health_roundtrip_samples=()
   : >"$out_dir/tray-reconnect-menu-event.txt"
   : >"$out_dir/tray-reconnect-receipts.jsonl"
+  rm -f "$out_dir/tray-reconnect-handler-acks.jsonl"
   for sample_index in $(seq 1 10); do
-    if ! wait_for_tray_menu_quiescence "$out_dir/tray-reconnect-quiesce-layout.txt"; then
-      exit 1
-    fi
     read -r reconnect_menu_id before_reconnect_revision < <(
       resolve_menu_action "Reconnect daemon" "$out_dir/tray-reconnect-menu-layout-${sample_index}.txt"
     )
-    before_health_request_ids="$(daemon_health_request_ids)"
-    before_health_requests="$(daemon_health_request_count)"
+    before_handler_ack_count="$(tray_reconnect_handler_ack_count)"
     click_epoch_ms="$(date +%s%3N)"
     reconnect_start_ms="$click_epoch_ms"
     {
       echo "== sample $sample_index =="
-      echo "menu_id=$reconnect_menu_id menu_revision=$before_reconnect_revision health_requests=$before_health_requests click_epoch_ms=$click_epoch_ms"
+      echo "menu_id=$reconnect_menu_id menu_revision=$before_reconnect_revision handler_acks=$before_handler_ack_count click_epoch_ms=$click_epoch_ms"
       send_menu_event "$reconnect_menu_id"
     } >>"$out_dir/tray-reconnect-menu-event.txt" 2>&1
     reconnect_observed=false
-    after_health_requests="$before_health_requests"
+    after_handler_ack_count="$before_handler_ack_count"
     after_reconnect_revision="$before_reconnect_revision"
-    daemon_connected=0
-    correlated_request_ids=""
-    correlated_request_count=0
+    handler_event_id=""
+    daemon_health_request_id=""
+    status_item_logical_id=""
+    handler_started_epoch_ms=0
+    handler_completed_epoch_ms=0
+    status_update_succeeded=0
+    ack_status_label=""
+    observed_status_menu_id=0
+    observed_status_label=""
+    request_log_occurrences=0
+    observed_epoch_ms="$click_epoch_ms"
     for _ in $(seq 1 80); do
-      after_health_requests="$(daemon_health_request_count)"
-      correlated_request_ids="$(correlated_health_request_ids "$before_health_request_ids" "$click_epoch_ms")"
-      correlated_request_count=0
-      if [[ -n "$correlated_request_ids" ]]; then
-        correlated_request_count="$(wc -l <<<"$correlated_request_ids")"
-      fi
-      read -r after_reconnect_revision daemon_connected < <(
-        read_menu_state "$out_dir/tray-reconnect-menu-layout-after-${sample_index}.txt"
-      )
-      # A quiesced Reconnect click always yields at least two click-correlated
-      # requests: the handler's direct daemon_health RPC plus the refresh it
-      # spawns. A single stray periodic refresh can never reach two.
-      if [[ "$correlated_request_count" -ge 2 ]] \
-        && [[ "$after_reconnect_revision" -gt "$before_reconnect_revision" ]] \
-        && [[ "$daemon_connected" == 1 ]]; then
-        reconnect_observed=true
+      after_handler_ack_count="$(tray_reconnect_handler_ack_count)"
+      if [[ "$after_handler_ack_count" -gt "$((before_handler_ack_count + 1))" ]]; then
+        echo "Tray Reconnect daemon action emitted multiple handler acknowledgements for sample $sample_index" >&2
         break
+      fi
+      if [[ "$after_handler_ack_count" -eq "$((before_handler_ack_count + 1))" ]]; then
+        ack_fields="$(
+          read_tray_reconnect_handler_ack "$after_handler_ack_count" 2>/dev/null || true
+        )"
+        if [[ -n "$ack_fields" ]]; then
+          IFS=$'\t' read -r handler_event_id daemon_health_request_id status_item_logical_id handler_started_epoch_ms handler_completed_epoch_ms status_update_succeeded ack_status_label <<<"$ack_fields"
+          IFS=$'\t' read -r after_reconnect_revision observed_status_menu_id observed_status_label < <(
+            read_menu_state "$out_dir/tray-reconnect-menu-layout-after-${sample_index}.txt"
+          )
+          request_log_occurrences="$(daemon_health_request_occurrences "$daemon_health_request_id")"
+          candidate_observed_epoch_ms="$(date +%s%3N)"
+          if [[ "$handler_started_epoch_ms" -ge "$click_epoch_ms" ]] \
+            && [[ "$handler_completed_epoch_ms" -ge "$handler_started_epoch_ms" ]] \
+            && [[ "$handler_completed_epoch_ms" -le "$candidate_observed_epoch_ms" ]] \
+            && [[ "$status_item_logical_id" == "status" ]] \
+            && [[ "$status_update_succeeded" == 1 ]] \
+            && [[ "$request_log_occurrences" == 1 ]] \
+            && [[ "$after_reconnect_revision" -gt "$before_reconnect_revision" ]] \
+            && [[ "$observed_status_menu_id" -gt 0 ]] \
+            && [[ "$observed_status_label" == "$ack_status_label" ]]; then
+            observed_epoch_ms="$candidate_observed_epoch_ms"
+            reconnect_observed=true
+            break
+          fi
+        fi
       fi
       sleep 0.1
     done
     if [[ "$reconnect_observed" != true ]]; then
       echo "Tray Reconnect daemon action did not produce an exact healthy round-trip for sample $sample_index" >&2
       echo "menu_revision_before=$before_reconnect_revision menu_revision_after=$after_reconnect_revision" >&2
-      echo "health_requests_before=$before_health_requests health_requests_after=$after_health_requests" >&2
-      echo "click_epoch_ms=$click_epoch_ms correlated_request_count=$correlated_request_count" >&2
-      echo "correlated_request_ids=${correlated_request_ids//$'\n'/,}" >&2
-      echo "daemon_connected=$daemon_connected" >&2
+      echo "handler_acks_before=$before_handler_ack_count handler_acks_after=$after_handler_ack_count" >&2
+      echo "click_epoch_ms=$click_epoch_ms handler_started_epoch_ms=$handler_started_epoch_ms handler_completed_epoch_ms=$handler_completed_epoch_ms" >&2
+      echo "handler_event_id=$handler_event_id daemon_health_request_id=$daemon_health_request_id" >&2
+      echo "status_item_logical_id=$status_item_logical_id status_update_succeeded=$status_update_succeeded" >&2
+      echo "observed_status_menu_id=$observed_status_menu_id ack_status_label=$ack_status_label observed_status_label=$observed_status_label" >&2
+      echo "request_log_occurrences=$request_log_occurrences" >&2
       tail -200 "$daemon_log" >&2 || true
       tail -200 "$out_dir/openburnbar-linux-desktop.stderr.log" >&2 || true
       cat "$out_dir/tray-reconnect-menu-layout-after-${sample_index}.txt" >&2 || true
       exit 1
     fi
-    reconnect_elapsed_ms="$(( $(date +%s%3N) - reconnect_start_ms ))"
+    reconnect_elapsed_ms="$((observed_epoch_ms - reconnect_start_ms))"
     ipc_health_roundtrip_samples+=("$reconnect_elapsed_ms")
     SAMPLE_INDEX="$sample_index" \
     MENU_ID="$reconnect_menu_id" \
     REVISION_BEFORE="$before_reconnect_revision" \
     REVISION_AFTER="$after_reconnect_revision" \
-    HEALTH_REQUESTS_BEFORE="$before_health_requests" \
-    HEALTH_REQUESTS_AFTER="$after_health_requests" \
     CLICK_EPOCH_MS="$click_epoch_ms" \
-    HEALTH_REQUEST_IDS="$correlated_request_ids" \
+    HANDLER_EVENT_ID="$handler_event_id" \
+    HANDLER_STARTED_EPOCH_MS="$handler_started_epoch_ms" \
+    HANDLER_COMPLETED_EPOCH_MS="$handler_completed_epoch_ms" \
+    DAEMON_HEALTH_REQUEST_ID="$daemon_health_request_id" \
+    STATUS_ITEM_LOGICAL_ID="$status_item_logical_id" \
+    STATUS_MENU_ID="$observed_status_menu_id" \
+    OBSERVED_STATUS_LABEL="$observed_status_label" \
+    OBSERVED_EPOCH_MS="$observed_epoch_ms" \
     ELAPSED_MS="$reconnect_elapsed_ms" \
     node <<'NODE' >>"$out_dir/tray-reconnect-receipts.jsonl"
 console.log(JSON.stringify({
@@ -845,15 +892,21 @@ console.log(JSON.stringify({
   menuId: Number(process.env.MENU_ID),
   menuRevisionBefore: Number(process.env.REVISION_BEFORE),
   menuRevisionAfter: Number(process.env.REVISION_AFTER),
-  daemonHealthRequestsBefore: Number(process.env.HEALTH_REQUESTS_BEFORE),
-  daemonHealthRequestsAfter: Number(process.env.HEALTH_REQUESTS_AFTER),
   daemonConnected: true,
   clickEpochMs: Number(process.env.CLICK_EPOCH_MS),
-  healthRequestIds: process.env.HEALTH_REQUEST_IDS.split('\n').filter(Boolean),
+  handlerEventId: process.env.HANDLER_EVENT_ID,
+  handlerStartedEpochMs: Number(process.env.HANDLER_STARTED_EPOCH_MS),
+  handlerCompletedEpochMs: Number(process.env.HANDLER_COMPLETED_EPOCH_MS),
+  daemonHealthRequestId: process.env.DAEMON_HEALTH_REQUEST_ID,
+  statusItemLogicalId: process.env.STATUS_ITEM_LOGICAL_ID,
+  statusMenuId: Number(process.env.STATUS_MENU_ID),
+  observedStatusLabel: process.env.OBSERVED_STATUS_LABEL,
+  observedEpochMs: Number(process.env.OBSERVED_EPOCH_MS),
   elapsedMs: Number(process.env.ELAPSED_MS)
 }));
 NODE
   done
+  install -m 600 "$daemon_log" "$out_dir/tray-reconnect-daemon-health.log"
 
   quit_start_ms="$(date +%s%3N)"
   {
@@ -990,6 +1043,8 @@ const report = {
     runtimePerfSamples: 'runtime-perf-samples.jsonl',
     daemonSocketLog: fs.existsSync(outDir + '/daemon-shell-session.log') ? 'daemon-shell-session.log' : 'daemon-socket-gui-session.log',
     trayMenuLayout: 'tray-menu-layout.txt',
+    trayReconnectHandlerAcks: 'tray-reconnect-handler-acks.jsonl',
+    trayReconnectDaemonHealthLog: 'tray-reconnect-daemon-health.log',
     trayReconnectReceipts: 'tray-reconnect-receipts.jsonl',
     accessibilitySnapshot: 'accessibility-tree-linux-desktop.txt',
     atspiTree: 'atspi-tree-linux-desktop.json',
@@ -1061,7 +1116,8 @@ rm -f \
   "$out_dir"/tray-quit-menu-event.txt \
   "$out_dir"/tray-reconnect-menu-layout-*.txt \
   "$out_dir"/tray-reconnect-menu-layout-after-*.txt \
-  "$out_dir"/tray-reconnect-quiesce-layout.txt \
+  "$out_dir"/tray-reconnect-handler-acks.jsonl \
+  "$out_dir"/tray-reconnect-daemon-health.log \
   "$out_dir"/tray-reconnect-menu-event.txt \
   "$out_dir"/tray-reconnect-receipts.jsonl \
   "$out_dir"/tray-registered-items.err \

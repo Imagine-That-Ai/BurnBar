@@ -29,6 +29,8 @@ export const P32_SESSION_FILENAME = "p32-installed-performance-session.json";
 export const P32_REPORT_FILES = Object.freeze([
   "linux-desktop-session-report.json",
   "runtime-perf-samples.jsonl",
+  "tray-reconnect-handler-acks.jsonl",
+  "tray-reconnect-daemon-health.log",
   "tray-reconnect-receipts.jsonl",
   "packaged-route-session-transcript.json",
   "matched-performance-macos.json",
@@ -50,6 +52,8 @@ const EXPECTED_METRICS = Object.freeze([
   "tray.click.open",
 ]);
 export const NATIVE_PERFORMANCE_SOURCE_FILES = Object.freeze([
+  "apps/linux-desktop/src-tauri/src/desktop/gateway.rs",
+  "apps/linux-desktop/src-tauri/src/desktop/tray_runtime.rs",
   "budgets/linux-desktop.perf.json",
   "scripts/linux-port/linux-desktop-session.sh",
   "scripts/linux-port/lib/p32-performance-proof.mjs",
@@ -186,6 +190,18 @@ export function validateP32RawReports(reports, budget, binding) {
     reports["tray-reconnect-receipts.jsonl"],
     "P-32 tray reconnect receipts",
   );
+  const reconnectHandlerAcks = parseJsonLines(
+    reports["tray-reconnect-handler-acks.jsonl"],
+    "P-32 tray reconnect handler acknowledgements",
+  );
+  const daemonHealthLines = Buffer.from(
+    reports["tray-reconnect-daemon-health.log"],
+  )
+    .toString("utf8")
+    .split(/\n/u)
+    .filter((line) =>
+      line.includes("event=rpc_request_received method=daemon.health "),
+    );
   const perf = parseJson(
     reports["perf-budget.json"],
     "P-32 performance report",
@@ -316,14 +332,18 @@ export function validateP32RawReports(reports, budget, binding) {
   const ipcSamples = rawMetrics["ipc.health.roundtrip"];
   if (
     !Array.isArray(ipcSamples) ||
-    reconnectReceipts.length !== ipcSamples.length
+    reconnectReceipts.length !== ipcSamples.length ||
+    reconnectHandlerAcks.length !== ipcSamples.length
   )
     fail(
-      "P-32 tray reconnect receipts do not cover every reported round-trip sample",
+      "P-32 tray reconnect receipts and handler acknowledgements do not cover every reported round-trip sample",
     );
   const seenHealthRequestIds = new Set();
+  const seenHandlerEventIds = new Set();
   reconnectReceipts.forEach((receipt, index) => {
     const label = `P-32 tray reconnect receipt ${index + 1}`;
+    const ackLabel = `P-32 tray reconnect handler acknowledgement ${index + 1}`;
+    const ack = reconnectHandlerAcks[index];
     exactKeys(
       receipt,
       [
@@ -331,64 +351,117 @@ export function validateP32RawReports(reports, budget, binding) {
         "menuId",
         "menuRevisionBefore",
         "menuRevisionAfter",
-        "daemonHealthRequestsBefore",
-        "daemonHealthRequestsAfter",
         "daemonConnected",
         "clickEpochMs",
-        "healthRequestIds",
+        "handlerEventId",
+        "handlerStartedEpochMs",
+        "handlerCompletedEpochMs",
+        "daemonHealthRequestId",
+        "statusItemLogicalId",
+        "statusMenuId",
+        "observedStatusLabel",
+        "observedEpochMs",
         "elapsedMs",
       ],
       label,
     );
+    exactKeys(
+      ack,
+      [
+        "schemaVersion",
+        "action",
+        "handlerEventId",
+        "daemonHealthRequestId",
+        "statusItemLogicalId",
+        "handlerStartedEpochMs",
+        "handlerCompletedEpochMs",
+        "daemonConnected",
+        "statusUpdateSucceeded",
+        "statusLabel",
+      ],
+      ackLabel,
+    );
     const previous = reconnectReceipts[index - 1];
-    const requestIds = Array.isArray(receipt.healthRequestIds)
-      ? receipt.healthRequestIds
-      : [];
-    // Request-id stamps are unix nanoseconds and exceed
-    // Number.MAX_SAFE_INTEGER, so the correlation window is checked in BigInt.
+    const requestId = receipt.daemonHealthRequestId;
+    const handlerEventId = receipt.handlerEventId;
     const clickNs = Number.isSafeInteger(receipt.clickEpochMs)
       ? BigInt(receipt.clickEpochMs) * 1_000_000n
       : null;
-    const observedEndNs =
-      clickNs !== null && Number.isSafeInteger(receipt.elapsedMs)
-        ? clickNs + BigInt(receipt.elapsedMs) * 1_000_000n
+    const handlerStartNs = Number.isSafeInteger(receipt.handlerStartedEpochMs)
+      ? BigInt(receipt.handlerStartedEpochMs) * 1_000_000n
+      : null;
+    const handlerEndNs = Number.isSafeInteger(receipt.handlerCompletedEpochMs)
+      ? (BigInt(receipt.handlerCompletedEpochMs) + 1n) * 1_000_000n
+      : null;
+    const requestStampNs =
+      typeof requestId === "string" && /^health-[1-9][0-9]*$/u.test(requestId)
+        ? BigInt(requestId.slice("health-".length))
         : null;
+    const requestLogToken = `request_id=${requestId}`;
+    const requestLogOccurrences = daemonHealthLines.filter((line) =>
+      line.split(/\s+/u).includes(requestLogToken),
+    ).length;
+    const observedEpochMs = Number.isSafeInteger(receipt.observedEpochMs)
+      ? receipt.observedEpochMs
+      : null;
     if (
       receipt.sample !== index + 1 ||
       receipt.daemonConnected !== true ||
       !Number.isSafeInteger(receipt.menuId) ||
-      receipt.menuId < 0 ||
+      receipt.menuId <= 0 ||
+      receipt.menuId > 2_147_483_647 ||
       !Number.isSafeInteger(receipt.menuRevisionBefore) ||
+      receipt.menuRevisionBefore < 0 ||
+      receipt.menuRevisionBefore > 4_294_967_295 ||
       !Number.isSafeInteger(receipt.menuRevisionAfter) ||
+      receipt.menuRevisionAfter < 0 ||
+      receipt.menuRevisionAfter > 4_294_967_295 ||
       receipt.menuRevisionAfter <= receipt.menuRevisionBefore ||
-      !Number.isSafeInteger(receipt.daemonHealthRequestsBefore) ||
-      !Number.isSafeInteger(receipt.daemonHealthRequestsAfter) ||
-      !Array.isArray(receipt.healthRequestIds) ||
-      requestIds.length < 2 ||
-      requestIds.some(
-        (id) => typeof id !== "string" || !/^health-[1-9][0-9]*$/u.test(id),
-      ) ||
-      requestIds.some((id) => seenHealthRequestIds.has(id)) ||
-      new Set(requestIds).size !== requestIds.length ||
+      typeof handlerEventId !== "string" ||
+      !/^tray-health-[0-9a-f]{32}$/u.test(handlerEventId) ||
+      seenHandlerEventIds.has(handlerEventId) ||
+      typeof requestId !== "string" ||
+      !/^health-[1-9][0-9]*$/u.test(requestId) ||
+      seenHealthRequestIds.has(requestId) ||
       clickNs === null ||
-      observedEndNs === null ||
-      requestIds.some((id) => {
-        const stampNs = BigInt(id.slice("health-".length));
-        return stampNs < clickNs || stampNs > observedEndNs;
-      }) ||
-      receipt.daemonHealthRequestsAfter - receipt.daemonHealthRequestsBefore <
-        requestIds.length ||
+      handlerStartNs === null ||
+      handlerEndNs === null ||
+      requestStampNs === null ||
+      handlerStartNs < clickNs ||
+      handlerEndNs < handlerStartNs ||
+      requestStampNs < handlerStartNs ||
+      requestStampNs >= handlerEndNs ||
+      requestLogOccurrences !== 1 ||
+      ack.schemaVersion !== 1 ||
+      ack.action !== "reconnect-daemon" ||
+      ack.handlerEventId !== handlerEventId ||
+      ack.daemonHealthRequestId !== requestId ||
+      ack.statusItemLogicalId !== "status" ||
+      ack.handlerStartedEpochMs !== receipt.handlerStartedEpochMs ||
+      ack.handlerCompletedEpochMs !== receipt.handlerCompletedEpochMs ||
+      ack.daemonConnected !== true ||
+      ack.statusUpdateSucceeded !== true ||
+      typeof ack.statusLabel !== "string" ||
+      !/^Daemon: connected(?: - .+)?$/u.test(ack.statusLabel) ||
+      receipt.statusItemLogicalId !== ack.statusItemLogicalId ||
+      !Number.isSafeInteger(receipt.statusMenuId) ||
+      receipt.statusMenuId <= 0 ||
+      receipt.statusMenuId > 2_147_483_647 ||
+      receipt.observedStatusLabel !== ack.statusLabel ||
+      observedEpochMs === null ||
+      observedEpochMs < receipt.handlerCompletedEpochMs ||
+      observedEpochMs !== receipt.clickEpochMs + receipt.elapsedMs ||
       receipt.clickEpochMs < nativeStart ||
-      receipt.clickEpochMs + receipt.elapsedMs > nativeEnd ||
+      observedEpochMs > nativeEnd ||
       (previous &&
         (receipt.menuRevisionBefore < previous.menuRevisionAfter ||
-          receipt.daemonHealthRequestsBefore <
-            previous.daemonHealthRequestsAfter ||
-          receipt.clickEpochMs < previous.clickEpochMs + previous.elapsedMs)) ||
+          receipt.statusMenuId !== previous.statusMenuId ||
+          receipt.clickEpochMs < previous.observedEpochMs)) ||
       finite(receipt.elapsedMs, `${label} elapsedMs`) !== ipcSamples[index]
     )
       fail(`${label} does not match the reported reconnect sample`);
-    for (const id of requestIds) seenHealthRequestIds.add(id);
+    seenHandlerEventIds.add(handlerEventId);
+    seenHealthRequestIds.add(requestId);
   });
   const verdicts = EXPECTED_METRICS.map((name) => {
     const samples = rawMetrics[name];
