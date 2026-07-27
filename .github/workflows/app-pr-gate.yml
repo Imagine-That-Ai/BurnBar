@@ -49,9 +49,11 @@ jobs:
     # billed fast burst.
     runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
     # Cold cache + libsignal FFI + full xcodebuild of the app target on a hosted
-    # runner needs headroom; observed cold macos-26 runs can approach 120
-    # minutes before the 1,920-test suite and coverage upload finish.
-    timeout-minutes: 150
+    # runner needs headroom. The commercial-readiness suite was still actively
+    # passing tests when the former 150-minute ceiling cancelled the job, so
+    # keep a finite cap that covers the cold build, 1,920-test suite, and
+    # coverage extraction without converting runner slowness into a false red.
+    timeout-minutes: 210
     needs: classify
     if: needs.classify.outputs.macos == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
