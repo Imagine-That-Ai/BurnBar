@@ -65,6 +65,11 @@ function matchingRuleset() {
       { type: "required_conversation_resolution", ruleset_id: 42 },
       { type: "non_fast_forward", ruleset_id: 42 },
       { type: "deletion", ruleset_id: 42 },
+      {
+        type: "merge_queue",
+        ruleset_id: 99,
+        parameters: { ...desiredJson.merge_queue },
+      },
     ],
   };
 }
@@ -100,8 +105,21 @@ test("ruleset mirror of the file reports MATCH", () => {
   assert.equal(result.ok, true, JSON.stringify(result.differences, null, 2));
 });
 
-test("classic mirror of the file reports MATCH", () => {
-  const live = canonicalizeLive({ classic: matchingClassic() });
+test("classic governance plus merge queue reports MATCH", () => {
+  const live = canonicalizeLive({
+    classic: matchingClassic(),
+    ruleset: {
+      enforcement: "active",
+      bypass_actors: [],
+      rules: [
+        {
+          type: "merge_queue",
+          ruleset_id: 99,
+          parameters: { ...desiredJson.merge_queue },
+        },
+      ],
+    },
+  });
   const result = diffBranchProtection(live, desired);
   assert.equal(result.ok, true, JSON.stringify(result.differences, null, 2));
 });
@@ -112,7 +130,13 @@ test("merge-queue-only ruleset layers over classic governance", () => {
     ruleset: {
       enforcement: "active",
       bypass_actors: [],
-      rules: [{ type: "merge_queue", ruleset_id: 99, parameters: { merge_method: "squash" } }],
+      rules: [
+        {
+          type: "merge_queue",
+          ruleset_id: 99,
+          parameters: { ...desiredJson.merge_queue },
+        },
+      ],
     },
   });
   const result = diffBranchProtection(live, desired);
@@ -179,6 +203,14 @@ test("each dangerous mutation reports DRIFT", () => {
       const rule = r.rules.find((x) => x.type === "required_status_checks");
       rule.parameters.strict_required_status_checks_policy =
         !desiredJson.required_status_checks.strict;
+    },
+    mergeQueueTimeoutChanged: (r) => {
+      r.rules.find((x) => x.type === "merge_queue").parameters
+        .check_response_timeout_minutes =
+        desiredJson.merge_queue.check_response_timeout_minutes - 1;
+    },
+    mergeQueueRemoved: (r) => {
+      r.rules = r.rules.filter((x) => x.type !== "merge_queue");
     },
   };
   for (const [label, mutate] of Object.entries(mutations)) {

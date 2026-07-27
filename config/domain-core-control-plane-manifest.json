@@ -193,7 +193,7 @@
     "scripts/generate-macos-appcast.mjs": ["723942761d0f97b8","6e004219c76b3416","f6735a70e28c4c85","6ac3943c51811ddd"],
     "scripts/generate-sbom.py": ["3c6f3dab78d13ff7","83bc2e03a1da7dbe","5e635fc26c378069","eee4898792c6d6f2"],
     "scripts/lib/atomic-regular-file.mjs": ["d8e2a4bc8d331da9","ef5ed02c8e534ea7","2d600d4bc9f8630d","750cdb1250d33ca2"],
-    "scripts/lib/branch-protection-drift.mjs": ["6ea1dd6f7beedeed","8320c05aaf0577c8","54c21ef93258ec6d","c857dd132e9661e1"],
+    "scripts/lib/branch-protection-drift.mjs": ["19d3737d14cc9c5d","978b5b0f6113e4a8","619a33b6e0dfd519","18256af12bf6ddc5"],
     "scripts/lib/curl-bearer.sh": ["8f75dd66be14129b","5c2d39ca21231f2f","8448cc892af799a9","bdba5b39b1307230"],
     "scripts/lib/domain-core-activation.mjs": ["b1194b71e0d8aba0","495c8bc90486412c","922080df471c14c3","3c52cdd91a06088d"],
     "scripts/lib/domain-core-artifact-profile.mjs": ["a40109b9641951a5","e1c2daedbed39e60","d16fb9c080511543","ff8be40ffa40756b"],
