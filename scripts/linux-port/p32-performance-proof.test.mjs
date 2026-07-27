@@ -465,6 +465,34 @@ test("P-32 native packaged-session producer emits candidate provenance before co
   );
 });
 
+test("P-32 reconnect samples resolve live tray actions and require exact healthy receipts", () => {
+  const source = fs.readFileSync(
+    path.join(WORKTREE, "scripts/linux-port/linux-desktop-session.sh"),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /resolve_menu_action "Reconnect daemon" "\$out_dir\/tray-reconnect-menu-layout-\$\{sample_index\}\.txt"/u,
+  );
+  assert.match(
+    source,
+    /event=rpc_request_received method=daemon\.health /u,
+  );
+  assert.match(source, /printf '%s\\n' "\$\{count:-0\}"/u);
+  assert.match(
+    source,
+    /\[\[ "\$after_reconnect_revision" -gt "\$before_reconnect_revision" \]\]/u,
+  );
+  assert.match(source, /\[\[ "\$daemon_connected" == 1 \]\]/u);
+  assert.match(source, /tray-reconnect-receipts\.jsonl/u);
+  assert.doesNotMatch(source, /before_reconnect_lines/u);
+  assert.doesNotMatch(
+    source,
+    /wc -l <"\$daemon_log"/u,
+    "unrelated daemon log traffic must not satisfy the reconnect proof",
+  );
+});
+
 test("P-32 raw validation rejects shortened soak, architecture, checksum, source, and sample mutations", () => {
   const mutations = [
     [

@@ -575,7 +575,7 @@ ZOOM
     --method com.canonical.dbusmenu.GetLayout 0 100 "[]" \
     >"$out_dir/tray-menu-layout.txt"
 
-  node - "$out_dir/tray-menu-layout.txt" "$out_dir/tray-menu-actions.json" "$work_dir/tray-menu.env" <<'NODE'
+  node - "$out_dir/tray-menu-layout.txt" "$out_dir/tray-menu-actions.json" <<'NODE'
 const fs = require('fs');
 const layout = fs.readFileSync(process.argv[2], 'utf8');
 const actions = [];
@@ -584,23 +584,83 @@ let match;
 while ((match = re.exec(layout))) {
   actions.push({ id: Number(match[1]), label: match[2] });
 }
-const byLabel = (needle) => actions.find((action) => action.label.toLowerCase().includes(needle))?.id;
-const env = {
-  OPEN_ID: byLabel('open dashboard'),
-  RECONNECT_ID: byLabel('reconnect daemon'),
-  QUIT_ID: byLabel('quit openburnbar')
-};
-fs.writeFileSync(process.argv[3], JSON.stringify({ actions, selected: env }, null, 2) + '\n');
-for (const [key, value] of Object.entries(env)) {
-  if (typeof value !== 'number') {
-    console.error(`Missing tray menu item ${key}`);
+const required = ['Open dashboard', 'Reconnect daemon', 'Quit OpenBurnBar'];
+for (const label of required) {
+  if (!actions.some((action) => action.label === label)) {
+    console.error(`Missing tray menu item ${label}`);
     process.exit(1);
   }
 }
-fs.writeFileSync(process.argv[4], Object.entries(env).map(([key, value]) => `${key}=${value}`).join('\n') + '\n');
+const revision = Number(layout.match(/^\(uint32\s+(\d+),/)?.[1]);
+if (!Number.isSafeInteger(revision) || revision < 0) {
+  console.error('Invalid tray menu revision');
+  process.exit(1);
+}
+fs.writeFileSync(process.argv[3], JSON.stringify({ revision, actions }, null, 2) + '\n');
 NODE
-  # shellcheck disable=SC1091
-  source "$work_dir/tray-menu.env"
+
+  capture_menu_layout() {
+    local layout_file="$1"
+    gdbus call --session \
+      --dest "$item_service" \
+      --object-path "$menu_path" \
+      --method com.canonical.dbusmenu.GetLayout 0 100 "[]" \
+      >"$layout_file"
+  }
+
+  resolve_menu_action() {
+    local label="$1"
+    local layout_file="$2"
+    capture_menu_layout "$layout_file"
+    node - "$layout_file" "$label" <<'NODE'
+const fs = require('fs');
+const layout = fs.readFileSync(process.argv[2], 'utf8');
+const label = process.argv[3];
+const revision = Number(layout.match(/^\(uint32\s+(\d+),/)?.[1]);
+if (!Number.isSafeInteger(revision) || revision < 0) {
+  console.error('Invalid tray menu revision');
+  process.exit(1);
+}
+const matches = [...layout.matchAll(/<\((\d+), \{[^)]*?'label': <'([^']+)'>/g)];
+const actions = matches.map((match, index) => {
+  const end = matches[index + 1]?.index ?? layout.length;
+  const segment = layout.slice(match.index, end);
+  return {
+    id: Number(match[1]),
+    label: match[2],
+    enabled: !/'enabled': <false>/.test(segment)
+  };
+});
+const action = actions.find((candidate) => candidate.label === label);
+if (!action || !Number.isSafeInteger(action.id) || !action.enabled) {
+  console.error(`Tray menu action is missing or disabled: ${label}`);
+  process.exit(1);
+}
+console.log(`${action.id} ${revision}`);
+NODE
+  }
+
+  read_menu_state() {
+    local layout_file="$1"
+    capture_menu_layout "$layout_file"
+    node - "$layout_file" <<'NODE'
+const fs = require('fs');
+const layout = fs.readFileSync(process.argv[2], 'utf8');
+const revision = Number(layout.match(/^\(uint32\s+(\d+),/)?.[1]);
+if (!Number.isSafeInteger(revision) || revision < 0) {
+  console.error('Invalid tray menu revision');
+  process.exit(1);
+}
+const connected = /'label': <'Daemon: connected(?: - [^']+)?'>/.test(layout);
+console.log(`${revision} ${connected ? 1 : 0}`);
+NODE
+  }
+
+  daemon_health_request_count() {
+    local count
+    count="$(grep -cF 'event=rpc_request_received method=daemon.health ' "$daemon_log" 2>/dev/null || true)"
+    printf '%s\n' "${count:-0}"
+  }
 
   send_menu_event() {
     local menu_id="$1"
@@ -630,7 +690,11 @@ NODE
     tray_open_start_ms="$(date +%s%3N)"
     {
       echo "== sample $sample_index =="
-      send_menu_event "$OPEN_ID"
+      read -r open_menu_id open_menu_revision < <(
+        resolve_menu_action "Open dashboard" "$out_dir/tray-open-menu-layout-${sample_index}.txt"
+      )
+      echo "menu_id=$open_menu_id menu_revision=$open_menu_revision"
+      send_menu_event "$open_menu_id"
     } >>"$out_dir/tray-open-menu-event.txt" 2>&1
     reopened_window_id=""
     for _ in $(seq 1 80); do
@@ -655,31 +719,76 @@ NODE
   fi
   ipc_health_roundtrip_samples=()
   : >"$out_dir/tray-reconnect-menu-event.txt"
+  : >"$out_dir/tray-reconnect-receipts.jsonl"
   for sample_index in $(seq 1 10); do
-    before_reconnect_lines="$(wc -l <"$daemon_log" 2>/dev/null || echo 0)"
+    read -r reconnect_menu_id before_reconnect_revision < <(
+      resolve_menu_action "Reconnect daemon" "$out_dir/tray-reconnect-menu-layout-${sample_index}.txt"
+    )
+    before_health_requests="$(daemon_health_request_count)"
     reconnect_start_ms="$(date +%s%3N)"
     {
       echo "== sample $sample_index =="
-      send_menu_event "$RECONNECT_ID"
+      echo "menu_id=$reconnect_menu_id menu_revision=$before_reconnect_revision health_requests=$before_health_requests"
+      send_menu_event "$reconnect_menu_id"
     } >>"$out_dir/tray-reconnect-menu-event.txt" 2>&1
     reconnect_observed=false
+    after_health_requests="$before_health_requests"
+    after_reconnect_revision="$before_reconnect_revision"
+    daemon_connected=0
     for _ in $(seq 1 80); do
-      current_lines="$(wc -l <"$daemon_log" 2>/dev/null || echo 0)"
-      if [[ "$current_lines" -gt "$before_reconnect_lines" ]]; then
+      after_health_requests="$(daemon_health_request_count)"
+      read -r after_reconnect_revision daemon_connected < <(
+        read_menu_state "$out_dir/tray-reconnect-menu-layout-after-${sample_index}.txt"
+      )
+      if [[ "$after_health_requests" -gt "$before_health_requests" ]] \
+        && [[ "$after_reconnect_revision" -gt "$before_reconnect_revision" ]] \
+        && [[ "$daemon_connected" == 1 ]]; then
         reconnect_observed=true
         break
       fi
       sleep 0.1
     done
     if [[ "$reconnect_observed" != true ]]; then
-      echo "Tray Reconnect daemon action produced no daemon activity for sample $sample_index" >&2
+      echo "Tray Reconnect daemon action did not produce an exact healthy round-trip for sample $sample_index" >&2
+      echo "menu_revision_before=$before_reconnect_revision menu_revision_after=$after_reconnect_revision" >&2
+      echo "health_requests_before=$before_health_requests health_requests_after=$after_health_requests" >&2
+      echo "daemon_connected=$daemon_connected" >&2
+      tail -200 "$daemon_log" >&2 || true
+      tail -200 "$out_dir/openburnbar-linux-desktop.stderr.log" >&2 || true
+      cat "$out_dir/tray-reconnect-menu-layout-after-${sample_index}.txt" >&2 || true
       exit 1
     fi
-    ipc_health_roundtrip_samples+=("$(( $(date +%s%3N) - reconnect_start_ms ))")
+    reconnect_elapsed_ms="$(( $(date +%s%3N) - reconnect_start_ms ))"
+    ipc_health_roundtrip_samples+=("$reconnect_elapsed_ms")
+    SAMPLE_INDEX="$sample_index" \
+    MENU_ID="$reconnect_menu_id" \
+    REVISION_BEFORE="$before_reconnect_revision" \
+    REVISION_AFTER="$after_reconnect_revision" \
+    HEALTH_REQUESTS_BEFORE="$before_health_requests" \
+    HEALTH_REQUESTS_AFTER="$after_health_requests" \
+    ELAPSED_MS="$reconnect_elapsed_ms" \
+    node <<'NODE' >>"$out_dir/tray-reconnect-receipts.jsonl"
+console.log(JSON.stringify({
+  sample: Number(process.env.SAMPLE_INDEX),
+  menuId: Number(process.env.MENU_ID),
+  menuRevisionBefore: Number(process.env.REVISION_BEFORE),
+  menuRevisionAfter: Number(process.env.REVISION_AFTER),
+  daemonHealthRequestsBefore: Number(process.env.HEALTH_REQUESTS_BEFORE),
+  daemonHealthRequestsAfter: Number(process.env.HEALTH_REQUESTS_AFTER),
+  daemonConnected: true,
+  elapsedMs: Number(process.env.ELAPSED_MS)
+}));
+NODE
   done
 
   quit_start_ms="$(date +%s%3N)"
-  send_menu_event "$QUIT_ID" >"$out_dir/tray-quit-menu-event.txt" 2>&1
+  {
+    read -r quit_menu_id quit_menu_revision < <(
+      resolve_menu_action "Quit OpenBurnBar" "$out_dir/tray-quit-menu-layout.txt"
+    )
+    echo "menu_id=$quit_menu_id menu_revision=$quit_menu_revision"
+    send_menu_event "$quit_menu_id"
+  } >"$out_dir/tray-quit-menu-event.txt" 2>&1
   for _ in $(seq 1 80); do
     if ! kill -0 "$app_pid" 2>/dev/null; then
       break
@@ -807,6 +916,7 @@ const report = {
     runtimePerfSamples: 'runtime-perf-samples.jsonl',
     daemonSocketLog: fs.existsSync(outDir + '/daemon-shell-session.log') ? 'daemon-shell-session.log' : 'daemon-socket-gui-session.log',
     trayMenuLayout: 'tray-menu-layout.txt',
+    trayReconnectReceipts: 'tray-reconnect-receipts.jsonl',
     accessibilitySnapshot: 'accessibility-tree-linux-desktop.txt',
     atspiTree: 'atspi-tree-linux-desktop.json',
     atspiFocusSequence: 'atspi-keyboard-focus-sequence.json',
@@ -871,9 +981,14 @@ rm -f \
   "$out_dir"/tray-menu-actions.json \
   "$out_dir"/tray-menu-layout.txt \
   "$out_dir"/tray-menu-property.txt \
+  "$out_dir"/tray-open-menu-layout-*.txt \
   "$out_dir"/tray-open-menu-event.txt \
+  "$out_dir"/tray-quit-menu-layout.txt \
   "$out_dir"/tray-quit-menu-event.txt \
+  "$out_dir"/tray-reconnect-menu-layout-*.txt \
+  "$out_dir"/tray-reconnect-menu-layout-after-*.txt \
   "$out_dir"/tray-reconnect-menu-event.txt \
+  "$out_dir"/tray-reconnect-receipts.jsonl \
   "$out_dir"/tray-registered-items.err \
   "$out_dir"/tray-registered-items.txt \
   "$out_dir"/tray-status-notifier-introspection.txt \
