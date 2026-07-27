@@ -29,6 +29,28 @@ The proof is accepted only when all of the following are true:
   samples; reported summary values are not trusted.
 - Every route sample comes from `packaged-ui-route-after-paint:*`. Pre-paint,
   placeholder, synthetic, or source-only measurements fail closed.
+- Every `ipc.health.roundtrip` sample carries a matching receipt in
+  `tray-reconnect-receipts.jsonl`: sequential sample indices, a DBusMenu
+  revision that never regresses (the handler's status update is a label-only
+  DBusMenu property update, which does not advance the `GetLayout` revision),
+  a connected daemon, and an elapsed time equal
+  to the reported sample. Every receipt cross-links one owner-only structured
+  acknowledgement written by the actual `Reconnect daemon` tray handler in
+  `tray-reconnect-handler-acks.jsonl`. The acknowledgement carries a unique
+  handler event id, the exact `health-<unix-nanos>` request id issued by that
+  handler, handler start/completion timestamps inside the click-to-observation
+  window, and proof that the direct update of the logical `status` menu item
+  succeeded. The runtime rejects a daemon response unless its envelope id
+  matches that exact request id and its protocol version is supported. The
+  receipt then captures the stable numeric DBusMenu status-item id, the exact
+  connected label observed through `GetLayout`, and an observation timestamp
+  taken only after both the live menu and daemon log have been read. The
+  observed label must equal the handler acknowledgement, and the observation
+  timestamp must equal click time plus the reported sample. That request id
+  must occur exactly once in
+  `tray-reconnect-daemon-health.log`. Missing, duplicate, background-only,
+  truncated, or edited evidence fails closed. Periodic health polling cannot
+  emit a handler acknowledgement and therefore cannot satisfy a sample.
 - The comparison, packaged budget, threshold report, macOS cross-link, raw
   reports, raw samples, and installed candidate receipt cross-link exactly by
   content hash.
@@ -74,6 +96,9 @@ the same source directory before `run-perf-budget.mjs` runs:
 
 - `linux-desktop-session-report.json`
 - `runtime-perf-samples.jsonl`
+- `tray-reconnect-handler-acks.jsonl`
+- `tray-reconnect-daemon-health.log`
+- `tray-reconnect-receipts.jsonl`
 - `packaged-route-session-transcript.json`
 
 Create fresh owner-only input and output directories. The output directory must
