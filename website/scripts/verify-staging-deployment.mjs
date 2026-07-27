@@ -81,7 +81,7 @@ await retry("staging /subscribe verification", async () => {
   assert.equal(subscribe.status, 200, `staging /subscribe returned ${subscribe.status}`);
   assert.match(
     subscribe.headers.get("content-security-policy") ?? "",
-    /firebaseappcheck\.googleapis\.com/u,
+    /(?:^|[\s])https:\/\/firebaseappcheck\.googleapis\.com(?:[\s;]|$)/u,
     "staging /subscribe CSP must allow Firebase App Check"
   );
   assert.match(
