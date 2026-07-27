@@ -4,7 +4,7 @@
     ".firebaserc": ["f37cd50ee6664116","5689e7440ae609ce","3452c9887b13fb11","791e49744a60b649"],
     ".github/workflows/burnbar-ci-gate.yml": ["a3e94131bf6ccfe3","f064eb36e539bb20","34fc74db1770f666","3da1574b88648a26"],
     ".github/workflows/ci-impact.yml": ["837a7b55de0ce3df","41d4851e2cb1d2e1","75962bf07787f3b4","50c346d98c379c37"],
-    ".github/workflows/deploy-hosting.yml": ["e3d1db58411b1cf7","95083b27b5363afc","1fcb33263a3f8fa9","b75baec6658b45ba"],
+    ".github/workflows/deploy-hosting.yml": ["3f0ffaea3a4b6a90","fb47d1393218d4cb","64429aacc32be916","d84a20a7540df834"],
     ".github/workflows/deploy-production.yml": ["3171c8ceacfb62b9","513d9af869ce1f18","d469e656a0549462","5834f6b5958bbd5b"],
     ".github/workflows/domain-core-console-release-evidence.yml": ["86a9a8075ab1e588","433cad860078c203","6e8229b70fead6a2","789d04e32336f94f"],
     ".github/workflows/domain-core-deletion-guard.yml": ["1deec4cc3121da84","a788c359369e162a","003419a4f3969957","a7a7f0d1746e4245"],
