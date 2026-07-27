@@ -485,12 +485,16 @@ def capture_tree_with_retry(
                 -len(result["failures"]),
             )
             best_quality = (
-                int(best_result["expectedNamePresent"]),
-                best_result["nodeCount"],
-                best_result["namedNodeCount"],
-                best_result["actionableNodeCount"],
-                -len(best_result["failures"]),
-            ) if best_result is not None else None
+                (
+                    int(best_result["expectedNamePresent"]),
+                    best_result["nodeCount"],
+                    best_result["namedNodeCount"],
+                    best_result["actionableNodeCount"],
+                    -len(best_result["failures"]),
+                )
+                if best_result is not None
+                else None
+            )
             if best_quality is None or quality > best_quality:
                 best_result = result
                 best_rows = rows
