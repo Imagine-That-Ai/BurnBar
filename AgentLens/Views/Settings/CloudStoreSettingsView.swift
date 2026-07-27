@@ -25,6 +25,12 @@ struct CloudStoreSettingsView: View {
     var accountManager: AccountManager = .shared
     var dataStore: DataStore?
 
+    /// `onAppear` starts live services (StoreKit catalogue load, backup
+    /// catch-up, analytics). Headless test renders set this to `false`:
+    /// on CI the leftover StoreKit/backup work from a snapshot render wedges
+    /// the shared test process and hangs later suites (App PR Gate timeout).
+    var startsLiveServicesOnAppear: Bool = true
+
     @State private var isBackingUp = false
     @State private var backupNoticeError: String?
     @State private var lastManualBackupAt: Date?
@@ -91,6 +97,7 @@ struct CloudStoreSettingsView: View {
             CloudBadgePicker()
         }
         .onAppear {
+            guard startsLiveServicesOnAppear else { return }
             Analytics.shared.track(.screenViewed, ["surface": "cloud_sync"])
             entitlement.start()
             Task { await purchaseStore.load() }

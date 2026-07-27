@@ -1460,11 +1460,18 @@ private final class FakeMacStoreKitAppAccountTokenBindingProvider: MacStoreKitAp
 /// tier lineup (segmented billing-period picker, per-cadence prices, and
 /// per-card busy state) actually executes, and drives the subscribe action
 /// directly to lock in its fail-closed behavior when Firebase is absent.
+///
+/// Both tests construct the pane with `startsLiveServicesOnAppear: false`:
+/// rendering must not start the live `onAppear` work (StoreKit catalogue
+/// load, transaction-updates listener, backup catch-up). On CI that leftover
+/// work wedged the shared test process and deterministically hung the next
+/// async-heavy suite (`MemoryActivationEndToEndTests`) until the App PR Gate
+/// job timed out.
 @MainActor
 final class CloudStoreSettingsViewBillingTests: XCTestCase {
     func testCloudStorePaneRendersTierLineupWithPerCadencePricing() {
         let image = renderViewSnapshot(
-            CloudStoreSettingsView(),
+            CloudStoreSettingsView(startsLiveServicesOnAppear: false),
             size: CGSize(width: 980, height: 1600),
             colorScheme: .dark
         )
@@ -1476,7 +1483,7 @@ final class CloudStoreSettingsViewBillingTests: XCTestCase {
         guard FirebaseApp.app() == nil else {
             return
         }
-        let view = CloudStoreSettingsView()
+        let view = CloudStoreSettingsView(startsLiveServicesOnAppear: false)
 
         // Paid tier: the purchase runs and fails closed on the FirebaseApp
         // guard without ever reaching StoreKit.
