@@ -80,7 +80,13 @@ private struct PulseHeroBurnCardContent: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(heroDepthGlow.allowsHitTesting(false))
+        .background {
+            PulseHeroDepthGlow(
+                accent: accentColor,
+                darkMode: colorScheme == .dark
+            )
+            .allowsHitTesting(false)
+        }
         .overlay(alignment: .topTrailing) {
             providerHalo
         }
@@ -287,39 +293,6 @@ private struct PulseHeroBurnCardContent: View {
         }
     }
 
-    // MARK: - Hero Depth Glow
-
-    /// Pre-shaped depth glow: a top-biased elliptical gradient replaces the
-    /// old LinearGradient + `.blur(26)` full-card pass while keeping the
-    /// glow's top-down directional character. The negative padding covers
-    /// the blur's former ~26pt edge bleed (plus the old -14pt inset). The
-    /// vertical alpha mask is load-bearing: the top-biased ellipse is still
-    /// luminous at the expanded shape's top edge, which otherwise paints a
-    /// full-width horizontal seam exactly 40pt above the hero.
-    private var heroDepthGlow: some View {
-        RoundedRectangle(cornerRadius: AuroraDesign.Shape.heroCorner + 8, style: .continuous)
-            .fill(
-                EllipticalGradient(
-                    gradient: Gradient(stops: PulseHeroGlow.depthGlowStops(
-                        accent: accentColor,
-                        amber: MobileTheme.amber,
-                        darkMode: colorScheme == .dark
-                    )),
-                    center: UnitPoint(x: 0.5, y: 0.15),
-                    startRadiusFraction: 0,
-                    endRadiusFraction: 1.0
-                )
-            )
-            .padding(-40)
-            .mask {
-                LinearGradient(
-                    gradient: Gradient(stops: PulseHeroGlow.depthGlowEdgeMaskStops()),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
-    }
-
     // MARK: - Derived
 
     private var accentColor: Color {
@@ -359,6 +332,32 @@ private struct PulseHeroBurnCardContent: View {
         case .currency: return "\(total.tokens.formatAsTokenVolume()) tokens · \(total.requests) requests"
         case .tokens:   return "\(total.costUsd.formatAsCost()) · \(total.requests) requests"
         }
+    }
+}
+
+// MARK: - Hero Depth Glow
+
+/// The hero's depth gradient is decorative and must remain inside the card's
+/// proposed bounds. Extending it with negative padding paints into adjacent
+/// Pulse controls and creates a visible horizontal color seam.
+struct PulseHeroDepthGlow: View {
+    let accent: Color
+    let darkMode: Bool
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: AuroraDesign.Shape.heroCorner, style: .continuous)
+            .fill(
+                EllipticalGradient(
+                    gradient: Gradient(stops: PulseHeroGlow.depthGlowStops(
+                        accent: accent,
+                        amber: MobileTheme.amber,
+                        darkMode: darkMode
+                    )),
+                    center: UnitPoint(x: 0.5, y: 0.15),
+                    startRadiusFraction: 0,
+                    endRadiusFraction: 1.0
+                )
+            )
     }
 }
 
@@ -414,14 +413,6 @@ enum PulseHeroGlow {
         ]
     }
 
-    static func depthGlowEdgeMaskStops() -> [Gradient.Stop] {
-        [
-            .init(color: .clear, location: 0.0),
-            .init(color: .white, location: 0.14),
-            .init(color: .white, location: 0.86),
-            .init(color: .clear, location: 1.0)
-        ]
-    }
 }
 
 // MARK: - Burn Velocity Pill
