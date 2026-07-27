@@ -149,6 +149,7 @@ test('AT-SPI crawler self-test and session shell syntax pass', () => {
   ], { encoding: 'utf8' });
   assert.equal(python.status, 0, `${python.stdout}\n${python.stderr}`);
   assert.match(python.stdout, /"selfTest": "pass"/);
+  assert.match(python.stdout, /"staleRegistrationRecovery"/);
 
   const shell = spawnSync('bash', [
     '-n',
