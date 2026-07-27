@@ -671,8 +671,8 @@ NODE
     local request_id="$1"
     awk -v token="request_id=$request_id" '
       /event=rpc_request_received method=daemon\.health / {
-        for (index = 1; index <= NF; index += 1) {
-          if ($index == token) count += 1
+        for (field_index = 1; field_index <= NF; field_index += 1) {
+          if ($field_index == token) count += 1
         }
       }
       END { print count + 0 }
