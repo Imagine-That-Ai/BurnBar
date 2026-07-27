@@ -265,7 +265,7 @@ gh secret set STAGING_GCP_DEPLOY_SERVICE_ACCOUNT     --env staging --repo Imagin
 gh variable set STAGING_ENABLED --env staging --body true --repo Imagine-That-Ai/BurnBar
 firebase apps:sdkconfig WEB 1:1079930549647:web:85beff426331ab42e407fa \
   --project burnbar-staging \
-  | gh variable set STAGING_FIREBASE_PUBLIC_CONFIG_JSON --body-file - \
+  | gh variable set STAGING_FIREBASE_PUBLIC_CONFIG_JSON \
       --repo Imagine-That-Ai/BurnBar
 ```
 
