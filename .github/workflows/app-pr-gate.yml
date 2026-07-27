@@ -49,9 +49,10 @@ jobs:
     # billed fast burst.
     runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
     # Cold cache + libsignal FFI + full xcodebuild of the app target on a hosted
-    # runner needs headroom; observed cold macos-26 runs can approach 120
-    # minutes before the 1,920-test suite and coverage upload finish.
-    timeout-minutes: 150
+    # runner needs headroom. Merge-group run 30228456168 reached the former
+    # 150-minute cap while the 1,920-test suite was still making progress, so
+    # keep enough room for the suite plus coverage upload on a cold runner.
+    timeout-minutes: 240
     needs: classify
     if: needs.classify.outputs.macos == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
