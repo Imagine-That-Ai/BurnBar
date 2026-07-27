@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,6 +29,50 @@ for (const name of requiredWorkflows) {
   const source = readFileSync(path, "utf8");
   if (!/^  merge_group:\s*$/mu.test(source)) {
     failures.push(`${name}: required check does not run for merge_group`);
+  }
+}
+
+const governancePath = join(root, "governance", "branch-protection.main.json");
+if (!existsSync(governancePath)) {
+  failures.push("governance/branch-protection.main.json: source of truth is missing");
+} else {
+  let governance;
+  try {
+    governance = JSON.parse(readFileSync(governancePath, "utf8"));
+  } catch (error) {
+    failures.push(
+      `governance/branch-protection.main.json: invalid JSON (${error.message})`,
+    );
+  }
+
+  const queueTimeout = governance?.merge_queue?.check_response_timeout_minutes;
+  if (!Number.isInteger(queueTimeout) || queueTimeout <= 0) {
+    failures.push(
+      "governance/branch-protection.main.json: merge queue timeout must be a positive integer",
+    );
+  } else {
+    const workflowDir = join(root, ".github", "workflows");
+    const mergeGroupTimeouts = [];
+    for (const name of readdirSync(workflowDir)) {
+      if (!/\.ya?ml$/u.test(name)) continue;
+      const source = readFileSync(join(workflowDir, name), "utf8");
+      if (!/^  merge_group:\s*$/mu.test(source)) continue;
+      for (const match of source.matchAll(
+        /^\s*timeout-minutes:\s*(\d+)\s*$/gmu,
+      )) {
+        mergeGroupTimeouts.push({ name, minutes: Number(match[1]) });
+      }
+    }
+    const longest = mergeGroupTimeouts.reduce(
+      (current, candidate) =>
+        candidate.minutes > current.minutes ? candidate : current,
+      { name: "<none>", minutes: 0 },
+    );
+    if (queueTimeout <= longest.minutes) {
+      failures.push(
+        `merge queue timeout ${queueTimeout}m must exceed longest merge_group workflow timeout ${longest.minutes}m (${longest.name})`,
+      );
+    }
   }
 }
 
