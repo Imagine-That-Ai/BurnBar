@@ -550,7 +550,7 @@ test("P-32 reconnect samples resolve live tray actions and require exact healthy
   assert.match(source, /daemon_health_request_occurrences/u);
   assert.match(
     source,
-    /\[\[ "\$after_reconnect_revision" -gt "\$before_reconnect_revision" \]\]/u,
+    /\[\[ "\$after_reconnect_revision" -ge "\$before_reconnect_revision" \]\]/u,
   );
   assert.match(source, /\[\[ "\$status_update_succeeded" == 1 \]\]/u);
   assert.match(source, /\[\[ "\$request_log_occurrences" == 1 \]\]/u);
@@ -636,9 +636,10 @@ test("P-32 raw validation rejects shortened soak, architecture, checksum, source
         text.replace('"daemonConnected":true', '"daemonConnected":false'),
     ],
     [
+      // A revision that regresses across the click window is forged evidence.
       "tray-reconnect-receipts.jsonl",
       (text) =>
-        text.replace('"menuRevisionAfter":13', '"menuRevisionAfter":12'),
+        text.replace('"menuRevisionAfter":13', '"menuRevisionAfter":11'),
     ],
     [
       // Increasing revisions are still invalid when either value is negative.
@@ -917,6 +918,38 @@ test("P-32 reconnect validation rejects forged causal and sequencing evidence", 
     } finally {
       fs.rmSync(value.root, { recursive: true, force: true });
     }
+  }
+});
+
+test("P-32 reconnect validation accepts an unchanged DBusMenu revision for a label-only status update", () => {
+  const value = fixture();
+  try {
+    const receiptPath = path.join(value.input, "tray-reconnect-receipts.jsonl");
+    const receipts = fs
+      .readFileSync(receiptPath, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    // set_text on the status item is a DBusMenu property update
+    // (ItemsPropertiesUpdated) and does not advance the GetLayout revision.
+    for (const receipt of receipts) {
+      receipt.menuRevisionAfter = receipt.menuRevisionBefore;
+    }
+    write(
+      receiptPath,
+      `${receipts.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    );
+    const reports = Object.fromEntries(
+      P32_REPORT_FILES.map((entry) => [
+        entry,
+        fs.readFileSync(path.join(value.input, entry)),
+      ]),
+    );
+    assert.doesNotThrow(() =>
+      validateP32RawReports(reports, BUDGET, binding(value)),
+    );
+  } finally {
+    fs.rmSync(value.root, { recursive: true, force: true });
   }
 });
 

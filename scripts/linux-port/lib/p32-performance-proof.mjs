@@ -416,7 +416,10 @@ export function validateP32RawReports(reports, budget, binding) {
       !Number.isSafeInteger(receipt.menuRevisionAfter) ||
       receipt.menuRevisionAfter < 0 ||
       receipt.menuRevisionAfter > 4_294_967_295 ||
-      receipt.menuRevisionAfter <= receipt.menuRevisionBefore ||
+      // Label-only status updates are DBusMenu property updates and do not
+      // advance the GetLayout revision, so the revision must only never
+      // regress across the click-to-observation window.
+      receipt.menuRevisionAfter < receipt.menuRevisionBefore ||
       typeof handlerEventId !== "string" ||
       !/^tray-health-[0-9a-f]{32}$/u.test(handlerEventId) ||
       seenHandlerEventIds.has(handlerEventId) ||

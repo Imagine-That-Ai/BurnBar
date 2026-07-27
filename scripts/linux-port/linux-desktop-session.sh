@@ -976,13 +976,19 @@ NODE
           )
           request_log_occurrences="$(daemon_health_request_occurrences "$daemon_health_request_id")"
           candidate_observed_epoch_ms="$(date +%s%3N)"
+          # The DBusMenu GetLayout revision only advances on structural layout
+          # changes; the handler's set_text is a label-only property update
+          # (ItemsPropertiesUpdated), which leaves the revision unchanged. The
+          # revision may therefore only be required to never regress, while the
+          # live-state binding comes from the observed status label matching
+          # the handler acknowledgement exactly.
           if [[ "$handler_started_epoch_ms" -ge "$click_epoch_ms" ]] \
             && [[ "$handler_completed_epoch_ms" -ge "$handler_started_epoch_ms" ]] \
             && [[ "$handler_completed_epoch_ms" -le "$candidate_observed_epoch_ms" ]] \
             && [[ "$status_item_logical_id" == "status" ]] \
             && [[ "$status_update_succeeded" == 1 ]] \
             && [[ "$request_log_occurrences" == 1 ]] \
-            && [[ "$after_reconnect_revision" -gt "$before_reconnect_revision" ]] \
+            && [[ "$after_reconnect_revision" -ge "$before_reconnect_revision" ]] \
             && [[ "$observed_status_menu_id" -gt 0 ]] \
             && [[ "$observed_status_label" == "$ack_status_label" ]]; then
             observed_epoch_ms="$candidate_observed_epoch_ms"

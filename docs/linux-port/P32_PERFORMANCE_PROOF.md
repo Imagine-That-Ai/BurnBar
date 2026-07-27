@@ -30,8 +30,10 @@ The proof is accepted only when all of the following are true:
 - Every route sample comes from `packaged-ui-route-after-paint:*`. Pre-paint,
   placeholder, synthetic, or source-only measurements fail closed.
 - Every `ipc.health.roundtrip` sample carries a matching receipt in
-  `tray-reconnect-receipts.jsonl`: sequential sample indices, a strictly
-  advancing DBusMenu revision, a connected daemon, and an elapsed time equal
+  `tray-reconnect-receipts.jsonl`: sequential sample indices, a DBusMenu
+  revision that never regresses (the handler's status update is a label-only
+  DBusMenu property update, which does not advance the `GetLayout` revision),
+  a connected daemon, and an elapsed time equal
   to the reported sample. Every receipt cross-links one owner-only structured
   acknowledgement written by the actual `Reconnect daemon` tray handler in
   `tray-reconnect-handler-acks.jsonl`. The acknowledgement carries a unique
