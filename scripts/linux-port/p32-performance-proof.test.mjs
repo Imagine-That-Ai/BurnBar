@@ -239,17 +239,26 @@ function generateReports(directory) {
     `${routes.join("\n")}\n`,
   );
   const receipts = desktop.performance.ipcHealthRoundTripSamples.map(
-    (elapsedMs, index) =>
-      JSON.stringify({
+    (elapsedMs, index) => {
+      const clickEpochMs =
+        Date.parse("2026-07-20T11:55:10.000Z") + index * 20_000;
+      const clickNs = BigInt(clickEpochMs) * 1_000_000n;
+      return JSON.stringify({
         sample: index + 1,
         menuId: 3,
         menuRevisionBefore: 12 + index * 2,
         menuRevisionAfter: 13 + index * 2,
-        daemonHealthRequestsBefore: 4 + index,
-        daemonHealthRequestsAfter: 5 + index,
+        daemonHealthRequestsBefore: 4 + index * 2,
+        daemonHealthRequestsAfter: 6 + index * 2,
         daemonConnected: true,
+        clickEpochMs,
+        healthRequestIds: [
+          `health-${clickNs + 1n}`,
+          `health-${clickNs + 5_000_000n}`,
+        ],
         elapsedMs,
-      }),
+      });
+    },
   );
   write(
     path.join(directory, "tray-reconnect-receipts.jsonl"),
@@ -491,16 +500,25 @@ test("P-32 reconnect samples resolve live tray actions and require exact healthy
     source,
     /resolve_menu_action "Reconnect daemon" "\$out_dir\/tray-reconnect-menu-layout-\$\{sample_index\}\.txt"/u,
   );
-  assert.match(
-    source,
-    /event=rpc_request_received method=daemon\.health /u,
-  );
+  assert.match(source, /event=rpc_request_received method=daemon\.health /u);
   assert.match(source, /printf '%s\\n' "\$\{count:-0\}"/u);
   assert.match(
     source,
     /\[\[ "\$after_reconnect_revision" -gt "\$before_reconnect_revision" \]\]/u,
   );
   assert.match(source, /\[\[ "\$daemon_connected" == 1 \]\]/u);
+  assert.match(source, /wait_for_tray_menu_quiescence/u);
+  assert.match(source, /request_id=health-\[0-9\]\+/u);
+  assert.match(
+    source,
+    /correlated_health_request_ids "\$before_health_request_ids" "\$click_epoch_ms"/u,
+  );
+  assert.match(source, /\[\[ "\$correlated_request_count" -ge 2 \]\]/u);
+  assert.match(source, /clickEpochMs: Number\(process\.env\.CLICK_EPOCH_MS\)/u);
+  assert.match(
+    source,
+    /healthRequestIds: process\.env\.HEALTH_REQUEST_IDS\.split\('\\n'\)\.filter\(Boolean\)/u,
+  );
   assert.match(source, /tray-reconnect-receipts\.jsonl/u);
   assert.doesNotMatch(source, /before_reconnect_lines/u);
   assert.doesNotMatch(
@@ -558,13 +576,47 @@ test("P-32 raw validation rejects shortened soak, architecture, checksum, source
       "tray-reconnect-receipts.jsonl",
       (text) =>
         text.replace(
+          '"daemonHealthRequestsAfter":6,',
           '"daemonHealthRequestsAfter":5,',
-          '"daemonHealthRequestsAfter":4,',
         ),
     ],
     [
       "tray-reconnect-receipts.jsonl",
       (text) => text.replace('"elapsedMs":100', '"elapsedMs":101'),
+    ],
+    [
+      // Dropping to a single correlated request id must fail: the click
+      // handler always produces its direct RPC plus a triggered refresh.
+      "tray-reconnect-receipts.jsonl",
+      (text) => text.replace(/,"health-\d+"\]/u, "]"),
+    ],
+    [
+      // A request id stamped before the click is uncorrelated traffic.
+      "tray-reconnect-receipts.jsonl",
+      (text) => text.replace(/"health-\d+"/u, '"health-1"'),
+    ],
+    [
+      // The same request id can never satisfy two different samples.
+      "tray-reconnect-receipts.jsonl",
+      (text) => {
+        const lines = text.split("\n").filter(Boolean);
+        const first = JSON.parse(lines[0]);
+        const second = JSON.parse(lines[1]);
+        second.healthRequestIds[0] = first.healthRequestIds[0];
+        lines[1] = JSON.stringify(second);
+        return `${lines.join("\n")}\n`;
+      },
+    ],
+    [
+      // A click stamped outside the native capture window is not this run's.
+      "tray-reconnect-receipts.jsonl",
+      (text) => {
+        const lines = text.split("\n").filter(Boolean);
+        const first = JSON.parse(lines[0]);
+        first.clickEpochMs = Date.parse("2026-07-20T11:54:00.000Z");
+        lines[0] = JSON.stringify(first);
+        return `${lines.join("\n")}\n`;
+      },
     ],
   ];
   for (const [name, mutate] of mutations) {

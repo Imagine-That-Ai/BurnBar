@@ -662,6 +662,57 @@ NODE
     printf '%s\n' "${count:-0}"
   }
 
+  daemon_health_request_ids() {
+    # The desktop gateway stamps every daemon.health request id with the
+    # client-side send time in unix nanoseconds (health-<nanos>), and the
+    # daemon logs it verbatim. These ids let each reconnect sample bind its
+    # observed requests to the exact click instead of a global counter.
+    grep -F 'event=rpc_request_received method=daemon.health ' "$daemon_log" 2>/dev/null \
+      | grep -oE 'request_id=health-[0-9]+' \
+      | sed 's/^request_id=//' \
+      | sort -u \
+      || true
+  }
+
+  correlated_health_request_ids() {
+    # Print only the daemon.health request ids that are new relative to the
+    # pre-click snapshot AND whose embedded nanosecond stamp is at or after
+    # the click. Unrelated earlier traffic can never satisfy this predicate.
+    local before_ids="$1"
+    local click_epoch_ms="$2"
+    local min_stamp_ns id stamp_ns
+    min_stamp_ns="$((click_epoch_ms * 1000000))"
+    while IFS= read -r id; do
+      [[ -n "$id" ]] || continue
+      if [[ -n "$before_ids" ]] && grep -qxF "$id" <<<"$before_ids"; then
+        continue
+      fi
+      stamp_ns="${id#health-}"
+      if [[ "$stamp_ns" =~ ^[0-9]+$ ]] && [[ "$stamp_ns" -ge "$min_stamp_ns" ]]; then
+        printf '%s\n' "$id"
+      fi
+    done < <(daemon_health_request_ids)
+  }
+
+  wait_for_tray_menu_quiescence() {
+    # The tray refreshes itself every 30 seconds and each refresh advances the
+    # DBusMenu revision while it issues its own daemon.health request. Require
+    # a stable revision across a two-second window before clicking so the
+    # click-triggered refresh cannot collide with an in-flight periodic one.
+    local layout_file="$1"
+    local attempt revision_before revision_after
+    for attempt in $(seq 1 15); do
+      read -r revision_before _ < <(read_menu_state "$layout_file")
+      sleep 2
+      read -r revision_after _ < <(read_menu_state "$layout_file")
+      if [[ "$revision_after" == "$revision_before" ]]; then
+        return 0
+      fi
+    done
+    echo "Tray menu revision never went quiescent before the reconnect click" >&2
+    return 1
+  }
+
   send_menu_event() {
     local menu_id="$1"
     dbus-send --session \
@@ -687,15 +738,17 @@ NODE
       fi
       sleep 0.1
     done
-    tray_open_start_ms="$(date +%s%3N)"
     {
       echo "== sample $sample_index =="
       read -r open_menu_id open_menu_revision < <(
         resolve_menu_action "Open dashboard" "$out_dir/tray-open-menu-layout-${sample_index}.txt"
       )
       echo "menu_id=$open_menu_id menu_revision=$open_menu_revision"
-      send_menu_event "$open_menu_id"
     } >>"$out_dir/tray-open-menu-event.txt" 2>&1
+    # Start the tray-open timer only after the live menu ID is resolved so the
+    # budgeted sample measures click-to-window latency, not GetLayout parsing.
+    tray_open_start_ms="$(date +%s%3N)"
+    send_menu_event "$open_menu_id" >>"$out_dir/tray-open-menu-event.txt" 2>&1
     reopened_window_id=""
     for _ in $(seq 1 80); do
       reopened_window_id="$(xdotool search --onlyvisible --name OpenBurnBar 2>/dev/null | head -n 1 || true)"
@@ -721,26 +774,41 @@ NODE
   : >"$out_dir/tray-reconnect-menu-event.txt"
   : >"$out_dir/tray-reconnect-receipts.jsonl"
   for sample_index in $(seq 1 10); do
+    if ! wait_for_tray_menu_quiescence "$out_dir/tray-reconnect-quiesce-layout.txt"; then
+      exit 1
+    fi
     read -r reconnect_menu_id before_reconnect_revision < <(
       resolve_menu_action "Reconnect daemon" "$out_dir/tray-reconnect-menu-layout-${sample_index}.txt"
     )
+    before_health_request_ids="$(daemon_health_request_ids)"
     before_health_requests="$(daemon_health_request_count)"
-    reconnect_start_ms="$(date +%s%3N)"
+    click_epoch_ms="$(date +%s%3N)"
+    reconnect_start_ms="$click_epoch_ms"
     {
       echo "== sample $sample_index =="
-      echo "menu_id=$reconnect_menu_id menu_revision=$before_reconnect_revision health_requests=$before_health_requests"
+      echo "menu_id=$reconnect_menu_id menu_revision=$before_reconnect_revision health_requests=$before_health_requests click_epoch_ms=$click_epoch_ms"
       send_menu_event "$reconnect_menu_id"
     } >>"$out_dir/tray-reconnect-menu-event.txt" 2>&1
     reconnect_observed=false
     after_health_requests="$before_health_requests"
     after_reconnect_revision="$before_reconnect_revision"
     daemon_connected=0
+    correlated_request_ids=""
+    correlated_request_count=0
     for _ in $(seq 1 80); do
       after_health_requests="$(daemon_health_request_count)"
+      correlated_request_ids="$(correlated_health_request_ids "$before_health_request_ids" "$click_epoch_ms")"
+      correlated_request_count=0
+      if [[ -n "$correlated_request_ids" ]]; then
+        correlated_request_count="$(wc -l <<<"$correlated_request_ids")"
+      fi
       read -r after_reconnect_revision daemon_connected < <(
         read_menu_state "$out_dir/tray-reconnect-menu-layout-after-${sample_index}.txt"
       )
-      if [[ "$after_health_requests" -gt "$before_health_requests" ]] \
+      # A quiesced Reconnect click always yields at least two click-correlated
+      # requests: the handler's direct daemon_health RPC plus the refresh it
+      # spawns. A single stray periodic refresh can never reach two.
+      if [[ "$correlated_request_count" -ge 2 ]] \
         && [[ "$after_reconnect_revision" -gt "$before_reconnect_revision" ]] \
         && [[ "$daemon_connected" == 1 ]]; then
         reconnect_observed=true
@@ -752,6 +820,8 @@ NODE
       echo "Tray Reconnect daemon action did not produce an exact healthy round-trip for sample $sample_index" >&2
       echo "menu_revision_before=$before_reconnect_revision menu_revision_after=$after_reconnect_revision" >&2
       echo "health_requests_before=$before_health_requests health_requests_after=$after_health_requests" >&2
+      echo "click_epoch_ms=$click_epoch_ms correlated_request_count=$correlated_request_count" >&2
+      echo "correlated_request_ids=${correlated_request_ids//$'\n'/,}" >&2
       echo "daemon_connected=$daemon_connected" >&2
       tail -200 "$daemon_log" >&2 || true
       tail -200 "$out_dir/openburnbar-linux-desktop.stderr.log" >&2 || true
@@ -766,6 +836,8 @@ NODE
     REVISION_AFTER="$after_reconnect_revision" \
     HEALTH_REQUESTS_BEFORE="$before_health_requests" \
     HEALTH_REQUESTS_AFTER="$after_health_requests" \
+    CLICK_EPOCH_MS="$click_epoch_ms" \
+    HEALTH_REQUEST_IDS="$correlated_request_ids" \
     ELAPSED_MS="$reconnect_elapsed_ms" \
     node <<'NODE' >>"$out_dir/tray-reconnect-receipts.jsonl"
 console.log(JSON.stringify({
@@ -776,6 +848,8 @@ console.log(JSON.stringify({
   daemonHealthRequestsBefore: Number(process.env.HEALTH_REQUESTS_BEFORE),
   daemonHealthRequestsAfter: Number(process.env.HEALTH_REQUESTS_AFTER),
   daemonConnected: true,
+  clickEpochMs: Number(process.env.CLICK_EPOCH_MS),
+  healthRequestIds: process.env.HEALTH_REQUEST_IDS.split('\n').filter(Boolean),
   elapsedMs: Number(process.env.ELAPSED_MS)
 }));
 NODE
@@ -987,6 +1061,7 @@ rm -f \
   "$out_dir"/tray-quit-menu-event.txt \
   "$out_dir"/tray-reconnect-menu-layout-*.txt \
   "$out_dir"/tray-reconnect-menu-layout-after-*.txt \
+  "$out_dir"/tray-reconnect-quiesce-layout.txt \
   "$out_dir"/tray-reconnect-menu-event.txt \
   "$out_dir"/tray-reconnect-receipts.jsonl \
   "$out_dir"/tray-registered-items.err \

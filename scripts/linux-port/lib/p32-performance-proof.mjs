@@ -321,6 +321,7 @@ export function validateP32RawReports(reports, budget, binding) {
     fail(
       "P-32 tray reconnect receipts do not cover every reported round-trip sample",
     );
+  const seenHealthRequestIds = new Set();
   reconnectReceipts.forEach((receipt, index) => {
     const label = `P-32 tray reconnect receipt ${index + 1}`;
     exactKeys(
@@ -333,11 +334,25 @@ export function validateP32RawReports(reports, budget, binding) {
         "daemonHealthRequestsBefore",
         "daemonHealthRequestsAfter",
         "daemonConnected",
+        "clickEpochMs",
+        "healthRequestIds",
         "elapsedMs",
       ],
       label,
     );
     const previous = reconnectReceipts[index - 1];
+    const requestIds = Array.isArray(receipt.healthRequestIds)
+      ? receipt.healthRequestIds
+      : [];
+    // Request-id stamps are unix nanoseconds and exceed
+    // Number.MAX_SAFE_INTEGER, so the correlation window is checked in BigInt.
+    const clickNs = Number.isSafeInteger(receipt.clickEpochMs)
+      ? BigInt(receipt.clickEpochMs) * 1_000_000n
+      : null;
+    const observedEndNs =
+      clickNs !== null && Number.isSafeInteger(receipt.elapsedMs)
+        ? clickNs + BigInt(receipt.elapsedMs) * 1_000_000n
+        : null;
     if (
       receipt.sample !== index + 1 ||
       receipt.daemonConnected !== true ||
@@ -348,14 +363,32 @@ export function validateP32RawReports(reports, budget, binding) {
       receipt.menuRevisionAfter <= receipt.menuRevisionBefore ||
       !Number.isSafeInteger(receipt.daemonHealthRequestsBefore) ||
       !Number.isSafeInteger(receipt.daemonHealthRequestsAfter) ||
-      receipt.daemonHealthRequestsAfter <= receipt.daemonHealthRequestsBefore ||
+      !Array.isArray(receipt.healthRequestIds) ||
+      requestIds.length < 2 ||
+      requestIds.some(
+        (id) => typeof id !== "string" || !/^health-[1-9][0-9]*$/u.test(id),
+      ) ||
+      requestIds.some((id) => seenHealthRequestIds.has(id)) ||
+      new Set(requestIds).size !== requestIds.length ||
+      clickNs === null ||
+      observedEndNs === null ||
+      requestIds.some((id) => {
+        const stampNs = BigInt(id.slice("health-".length));
+        return stampNs < clickNs || stampNs > observedEndNs;
+      }) ||
+      receipt.daemonHealthRequestsAfter - receipt.daemonHealthRequestsBefore <
+        requestIds.length ||
+      receipt.clickEpochMs < nativeStart ||
+      receipt.clickEpochMs + receipt.elapsedMs > nativeEnd ||
       (previous &&
         (receipt.menuRevisionBefore < previous.menuRevisionAfter ||
           receipt.daemonHealthRequestsBefore <
-            previous.daemonHealthRequestsAfter)) ||
+            previous.daemonHealthRequestsAfter ||
+          receipt.clickEpochMs < previous.clickEpochMs + previous.elapsedMs)) ||
       finite(receipt.elapsedMs, `${label} elapsedMs`) !== ipcSamples[index]
     )
       fail(`${label} does not match the reported reconnect sample`);
+    for (const id of requestIds) seenHealthRequestIds.add(id);
   });
   const verdicts = EXPECTED_METRICS.map((name) => {
     const samples = rawMetrics[name];
