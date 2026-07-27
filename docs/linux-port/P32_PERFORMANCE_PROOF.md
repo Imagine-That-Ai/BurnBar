@@ -29,6 +29,11 @@ The proof is accepted only when all of the following are true:
   samples; reported summary values are not trusted.
 - Every route sample comes from `packaged-ui-route-after-paint:*`. Pre-paint,
   placeholder, synthetic, or source-only measurements fail closed.
+- Every `ipc.health.roundtrip` sample carries a matching receipt in
+  `tray-reconnect-receipts.jsonl`: sequential sample indices, a strictly
+  advancing DBusMenu revision and `daemon.health` request count, a connected
+  daemon, and an elapsed time equal to the reported sample. Missing, truncated,
+  or edited receipts fail closed.
 - The comparison, packaged budget, threshold report, macOS cross-link, raw
   reports, raw samples, and installed candidate receipt cross-link exactly by
   content hash.
@@ -74,6 +79,7 @@ the same source directory before `run-perf-budget.mjs` runs:
 
 - `linux-desktop-session-report.json`
 - `runtime-perf-samples.jsonl`
+- `tray-reconnect-receipts.jsonl`
 - `packaged-route-session-transcript.json`
 
 Create fresh owner-only input and output directories. The output directory must

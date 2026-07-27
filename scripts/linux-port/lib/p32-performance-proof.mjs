@@ -29,6 +29,7 @@ export const P32_SESSION_FILENAME = "p32-installed-performance-session.json";
 export const P32_REPORT_FILES = Object.freeze([
   "linux-desktop-session-report.json",
   "runtime-perf-samples.jsonl",
+  "tray-reconnect-receipts.jsonl",
   "packaged-route-session-transcript.json",
   "matched-performance-macos.json",
   "matched-performance-linux.json",
@@ -181,6 +182,10 @@ export function validateP32RawReports(reports, budget, binding) {
     reports["runtime-perf-samples.jsonl"],
     "P-32 runtime samples",
   );
+  const reconnectReceipts = parseJsonLines(
+    reports["tray-reconnect-receipts.jsonl"],
+    "P-32 tray reconnect receipts",
+  );
   const perf = parseJson(
     reports["perf-budget.json"],
     "P-32 performance report",
@@ -308,6 +313,50 @@ export function validateP32RawReports(reports, budget, binding) {
         .digest("hex")
   )
     fail("P-32 native desktop report provenance is invalid or relabeled");
+  const ipcSamples = rawMetrics["ipc.health.roundtrip"];
+  if (
+    !Array.isArray(ipcSamples) ||
+    reconnectReceipts.length !== ipcSamples.length
+  )
+    fail(
+      "P-32 tray reconnect receipts do not cover every reported round-trip sample",
+    );
+  reconnectReceipts.forEach((receipt, index) => {
+    const label = `P-32 tray reconnect receipt ${index + 1}`;
+    exactKeys(
+      receipt,
+      [
+        "sample",
+        "menuId",
+        "menuRevisionBefore",
+        "menuRevisionAfter",
+        "daemonHealthRequestsBefore",
+        "daemonHealthRequestsAfter",
+        "daemonConnected",
+        "elapsedMs",
+      ],
+      label,
+    );
+    const previous = reconnectReceipts[index - 1];
+    if (
+      receipt.sample !== index + 1 ||
+      receipt.daemonConnected !== true ||
+      !Number.isSafeInteger(receipt.menuId) ||
+      receipt.menuId < 0 ||
+      !Number.isSafeInteger(receipt.menuRevisionBefore) ||
+      !Number.isSafeInteger(receipt.menuRevisionAfter) ||
+      receipt.menuRevisionAfter <= receipt.menuRevisionBefore ||
+      !Number.isSafeInteger(receipt.daemonHealthRequestsBefore) ||
+      !Number.isSafeInteger(receipt.daemonHealthRequestsAfter) ||
+      receipt.daemonHealthRequestsAfter <= receipt.daemonHealthRequestsBefore ||
+      (previous &&
+        (receipt.menuRevisionBefore < previous.menuRevisionAfter ||
+          receipt.daemonHealthRequestsBefore <
+            previous.daemonHealthRequestsAfter)) ||
+      finite(receipt.elapsedMs, `${label} elapsedMs`) !== ipcSamples[index]
+    )
+      fail(`${label} does not match the reported reconnect sample`);
+  });
   const verdicts = EXPECTED_METRICS.map((name) => {
     const samples = rawMetrics[name];
     const minimumSamples = budget.nativeShell.minimumSamples?.[name];

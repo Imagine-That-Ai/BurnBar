@@ -238,6 +238,23 @@ function generateReports(directory) {
     path.join(directory, "runtime-perf-samples.jsonl"),
     `${routes.join("\n")}\n`,
   );
+  const receipts = desktop.performance.ipcHealthRoundTripSamples.map(
+    (elapsedMs, index) =>
+      JSON.stringify({
+        sample: index + 1,
+        menuId: 3,
+        menuRevisionBefore: 12 + index * 2,
+        menuRevisionAfter: 13 + index * 2,
+        daemonHealthRequestsBefore: 4 + index,
+        daemonHealthRequestsAfter: 5 + index,
+        daemonConnected: true,
+        elapsedMs,
+      }),
+  );
+  write(
+    path.join(directory, "tray-reconnect-receipts.jsonl"),
+    `${receipts.join("\n")}\n`,
+  );
   json(path.join(directory, "packaged-route-session-transcript.json"), {
     routeCount: 19,
   });
@@ -513,26 +530,57 @@ test("P-32 raw validation rejects shortened soak, architecture, checksum, source
         row.workloads[0].checksum += 1;
       },
     ],
-    ["runtime-perf-samples.jsonl", null],
+    [
+      "runtime-perf-samples.jsonl",
+      (text) => text.replace("packaged-ui-route-after-paint", "route-render"),
+    ],
     [
       "linux-desktop-session-report.json",
       (row) => {
         row.performance.appStartSamples[0] = 5000;
       },
     ],
+    [
+      "tray-reconnect-receipts.jsonl",
+      (text) => `${text.split("\n").filter(Boolean).slice(0, 9).join("\n")}\n`,
+    ],
+    [
+      "tray-reconnect-receipts.jsonl",
+      (text) =>
+        text.replace('"daemonConnected":true', '"daemonConnected":false'),
+    ],
+    [
+      "tray-reconnect-receipts.jsonl",
+      (text) =>
+        text.replace('"menuRevisionAfter":13', '"menuRevisionAfter":12'),
+    ],
+    [
+      "tray-reconnect-receipts.jsonl",
+      (text) =>
+        text.replace(
+          '"daemonHealthRequestsAfter":5,',
+          '"daemonHealthRequestsAfter":4,',
+        ),
+    ],
+    [
+      "tray-reconnect-receipts.jsonl",
+      (text) => text.replace('"elapsedMs":100', '"elapsedMs":101'),
+    ],
   ];
   for (const [name, mutate] of mutations) {
     const value = fixture();
     try {
       const file = path.join(value.input, name);
-      if (name.endsWith(".jsonl"))
-        write(
-          file,
-          fs
-            .readFileSync(file, "utf8")
-            .replace("packaged-ui-route-after-paint", "route-render"),
+      if (name.endsWith(".jsonl")) {
+        const original = fs.readFileSync(file, "utf8");
+        const mutated = mutate(original);
+        assert.notEqual(
+          mutated,
+          original,
+          `${name} mutation must change bytes`,
         );
-      else {
+        write(file, mutated);
+      } else {
         const row = JSON.parse(fs.readFileSync(file));
         mutate(row);
         json(file, row);
