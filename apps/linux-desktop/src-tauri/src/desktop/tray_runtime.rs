@@ -65,6 +65,80 @@ fn tray_update_text(status: &update_feed::LinuxUpdateStatus) -> String {
     }
 }
 
+fn tray_daemon_status_text(health: &DaemonHealth) -> String {
+    if health.ok {
+        format!(
+            "Daemon: connected{}",
+            health
+                .daemon_version
+                .as_deref()
+                .map(|version| format!(" - {version}"))
+                .unwrap_or_default()
+        )
+    } else {
+        "Daemon: offline".to_string()
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TrayReconnectHandlerAck {
+    schema_version: u32,
+    action: &'static str,
+    handler_event_id: String,
+    daemon_health_request_id: String,
+    status_item_logical_id: &'static str,
+    handler_started_epoch_ms: u64,
+    handler_completed_epoch_ms: u64,
+    daemon_connected: bool,
+    status_update_succeeded: bool,
+    status_label: String,
+}
+
+fn unix_epoch_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or(0)
+}
+
+fn append_tray_reconnect_handler_ack(
+    output_dir: &Path,
+    ack: &TrayReconnectHandlerAck,
+) -> Result<(), String> {
+    fs::create_dir_all(output_dir).map_err(|error| error.to_string())?;
+    let path = output_dir.join("tray-reconnect-handler-acks.jsonl");
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(&path)
+        .map_err(|error| error.to_string())?;
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
+        .map_err(|error| error.to_string())?;
+    let mut line = serde_json::to_vec(ack).map_err(|error| error.to_string())?;
+    line.push(b'\n');
+    file.write_all(&line).map_err(|error| error.to_string())?;
+    file.sync_data().map_err(|error| error.to_string())
+}
+
+fn record_tray_reconnect_handler_ack(ack: &TrayReconnectHandlerAck) {
+    let Some(output_dir) = std::env::var_os("OPENBURNBAR_EVIDENCE_OUT")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+    else {
+        return;
+    };
+    if let Err(error) = append_tray_reconnect_handler_ack(&output_dir, ack) {
+        tracing::error!(
+            event = "tray_reconnect_handler_ack_failed",
+            %error,
+            path = %output_dir.display()
+        );
+    }
+}
+
 fn emit_tray_route(app: &AppHandle, route: &str) {
     let _ = open_dashboard(app.clone());
     let _ = app.emit("tray-route", route.to_string());
@@ -112,19 +186,7 @@ async fn refresh_tray_status_items_async(
     let health = tauri::async_runtime::spawn_blocking(probe_daemon_health)
         .await
         .unwrap_or_default();
-    let status_text = if health.ok {
-        format!(
-            "Daemon: connected{}",
-            health
-                .daemon_version
-                .as_deref()
-                .map(|version| format!(" - {version}"))
-                .unwrap_or_default()
-        )
-    } else {
-        "Daemon: offline".to_string()
-    };
-    let _ = status_item.set_text(status_text);
+    let _ = status_item.set_text(tray_daemon_status_text(&health));
 
     let usage = tauri::async_runtime::spawn_blocking(|| usage_summary().ok())
         .await
@@ -247,14 +309,43 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 gate_for_events.clone(),
             ),
             "health" => {
-                let health = daemon_health();
+                let handler_started_epoch_ms = unix_epoch_millis();
+                let handler_event_id =
+                    format!("tray-health-{}", uuid::Uuid::new_v4().simple());
+                if let Err(error) = status_for_events.set_text("Daemon: reconnecting...") {
+                    tracing::warn!(
+                        event = "tray_reconnect_pending_status_update_failed",
+                        %error
+                    );
+                }
+                let (health, daemon_health_request_id) =
+                    probe_daemon_health_with_receipt(Duration::from_secs(5), false);
+                let status_label = tray_daemon_status_text(&health);
+                let status_update_succeeded =
+                    match status_for_events.set_text(status_label.clone()) {
+                        Ok(()) => true,
+                        Err(error) => {
+                            tracing::error!(
+                                event = "tray_reconnect_final_status_update_failed",
+                                %error
+                            );
+                            false
+                        }
+                    };
+                let handler_completed_epoch_ms = unix_epoch_millis();
+                record_tray_reconnect_handler_ack(&TrayReconnectHandlerAck {
+                    schema_version: 1,
+                    action: "reconnect-daemon",
+                    handler_event_id,
+                    daemon_health_request_id,
+                    status_item_logical_id: "status",
+                    handler_started_epoch_ms,
+                    handler_completed_epoch_ms,
+                    daemon_connected: health.ok,
+                    status_update_succeeded,
+                    status_label,
+                });
                 let _ = app.emit("daemon-health", health);
-                refresh_tray_status_items(
-                    status_for_events.clone(),
-                    usage_for_events.clone(),
-                    update_for_events.clone(),
-                    gate_for_events.clone(),
-                );
             }
             "quit" => quit_app(app.clone()),
             _ => {}

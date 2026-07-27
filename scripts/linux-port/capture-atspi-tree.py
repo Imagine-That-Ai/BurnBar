@@ -422,6 +422,96 @@ def summarize(
     }
 
 
+def capture_tree_with_retry(
+    pyatspi: Any,
+    initial_application: Any,
+    application_name: str,
+    route: str | None,
+    expected_name: str | None,
+    max_depth: int,
+    max_nodes: int,
+    minimums: tuple[int, int, int],
+    wait_for_meaningful_seconds: float,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Capture the best live registration, preferring the first meaningful tree.
+
+    Desktop AT-SPI can briefly retain a defunct application root after a prior
+    process exits. Re-enumerating every matching root on each readiness attempt
+    prevents that stale registration from masking a healthy replacement.
+    """
+    deadline = time.monotonic() + max(0.0, wait_for_meaningful_seconds)
+    attempts = 0
+    best_result: dict[str, Any] | None = None
+    best_rows: list[dict[str, Any]] = []
+    last_error: Exception | None = None
+
+    while True:
+        try:
+            applications = application_candidates(pyatspi, application_name)
+        except Exception as error:
+            applications = [initial_application]
+            last_error = error
+
+        if expected_name:
+            expected_applications = [
+                application for application in applications if contains_name(application, expected_name)
+            ]
+            if expected_applications:
+                applications = expected_applications
+        if not applications:
+            applications = [initial_application]
+
+        for application in applications:
+            try:
+                rows, truncated = collect_nodes(application, pyatspi, max_depth, max_nodes)
+                result = summarize(
+                    rows,
+                    application_name,
+                    route,
+                    expected_name,
+                    truncated,
+                    minimums,
+                )
+            except Exception as error:
+                last_error = error
+                continue
+
+            attempts += 1
+            quality = (
+                int(result["expectedNamePresent"]),
+                result["nodeCount"],
+                result["namedNodeCount"],
+                result["actionableNodeCount"],
+                -len(result["failures"]),
+            )
+            best_quality = (
+                (
+                    int(best_result["expectedNamePresent"]),
+                    best_result["nodeCount"],
+                    best_result["namedNodeCount"],
+                    best_result["actionableNodeCount"],
+                    -len(best_result["failures"]),
+                )
+                if best_result is not None
+                else None
+            )
+            if best_quality is None or quality > best_quality:
+                best_result = result
+                best_rows = rows
+            if result["pass"]:
+                result["readinessAttempts"] = attempts
+                return result, rows
+
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.25)
+
+    if best_result is None:
+        raise RuntimeError(f"AT-SPI tree capture failed for every live registration: {last_error}")
+    best_result["readinessAttempts"] = attempts
+    return best_result, best_rows
+
+
 def write_tree_text(path: str, rows: list[dict[str, Any]]) -> None:
     lines = []
     for row in rows:
@@ -568,6 +658,29 @@ def self_test() -> int:
         print(json.dumps({"staleFocusRecovery": focus}, indent=2), file=sys.stderr)
         return 1
 
+    healthy_tree_application = FakeNode(
+        "OpenBurnBar",
+        [
+            *[FakeNode(f"Action {index}", action=FakeAction()) for index in range(6)],
+            *[FakeNode(f"Label {index}") for index in range(14)],
+        ],
+    )
+    tree_desktop = FakeNode("desktop", [stale_application, healthy_tree_application])
+    tree_result, _ = capture_tree_with_retry(
+        fake_pyatspi(tree_desktop),
+        stale_application,
+        "OpenBurnBar",
+        "overview",
+        "OpenBurnBar",
+        48,
+        5000,
+        (20, 8, 5),
+        0.0,
+    )
+    if not tree_result["pass"] or tree_result["readinessAttempts"] < 2:
+        print(json.dumps({"staleTreeRecovery": tree_result}, indent=2), file=sys.stderr)
+        return 1
+
     print(
         json.dumps(
             {
@@ -575,6 +688,7 @@ def self_test() -> int:
                 "summary": result,
                 "staleRegistrationRecovery": activation,
                 "staleFocusRecovery": focus,
+                "staleTreeRecovery": tree_result,
             },
             indent=2,
         )
@@ -640,28 +754,22 @@ def main() -> int:
             args.timeout_seconds,
             args.expected_name,
         )
-        deadline = time.monotonic() + max(0.0, args.wait_for_meaningful_seconds)
-        attempts = 0
-        while True:
-            rows, truncated = collect_nodes(application, pyatspi, args.max_depth, args.max_nodes)
-            attempts += 1
-            minimums = (
-                0 if args.mode == "focus" else args.min_nodes,
-                0 if args.mode == "focus" else args.min_named,
-                0 if args.mode == "focus" else args.min_actionable,
-            )
-            result = summarize(
-                rows,
-                args.application,
-                args.route,
-                args.expected_name,
-                truncated,
-                minimums,
-            )
-            if args.mode == "focus" or result["pass"] or time.monotonic() >= deadline:
-                break
-            time.sleep(0.25)
-        result["readinessAttempts"] = attempts
+        minimums = (
+            0 if args.mode == "focus" else args.min_nodes,
+            0 if args.mode == "focus" else args.min_named,
+            0 if args.mode == "focus" else args.min_actionable,
+        )
+        result, rows = capture_tree_with_retry(
+            pyatspi,
+            application,
+            args.application,
+            args.route,
+            args.expected_name,
+            args.max_depth,
+            args.max_nodes,
+            minimums,
+            0.0 if args.mode == "focus" else args.wait_for_meaningful_seconds,
+        )
         if args.mode == "tree":
             result["nodes"] = rows
         if args.mode == "focus":
