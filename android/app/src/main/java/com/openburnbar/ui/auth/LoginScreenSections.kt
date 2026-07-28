@@ -1,8 +1,6 @@
 package com.openburnbar.ui.auth
 
 import android.app.Activity
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.LinearEasing
@@ -61,7 +59,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -671,26 +668,8 @@ internal fun LoginScreenRoot(userStore: UserStore, isSigningIn: Boolean, authErr
     var password by remember { mutableStateOf("") }
     var inFlightProvider by remember { mutableStateOf<LoginProvider?>(null) }
     var appeared by remember { mutableStateOf(false) }
-    val needsLegacyGoogleFallback by userStore.needsLegacyGoogleFallback.collectAsState()
-    val legacyGoogleLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            inFlightProvider = LoginProvider.Google
-            userStore.handleGoogleSignInResult(result.data)
-        }
 
     LaunchedEffect(Unit) { appeared = true }
-
-    LaunchedEffect(needsLegacyGoogleFallback) {
-        if (!needsLegacyGoogleFallback) return@LaunchedEffect
-        val fallbackIntent = userStore.getGoogleSignInIntent(context)
-        userStore.consumeLegacyGoogleFallback()
-        if (fallbackIntent == null) {
-            inFlightProvider = null
-        } else {
-            inFlightProvider = LoginProvider.Google
-            legacyGoogleLauncher.launch(fallbackIntent)
-        }
-    }
 
     LoginScreenGoogleAuthEffects(
         isSigningIn = isSigningIn,
@@ -1030,6 +1009,7 @@ private fun GitHubButton(isLoading: Boolean, enabled: Boolean, onClick: () -> Un
             Image(
                 painter = painterResource(id = R.drawable.github_logo),
                 contentDescription = null,
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(textPrimary),
                 modifier = Modifier.size(20.dp),
             )
             Spacer(modifier = Modifier.width(10.dp))

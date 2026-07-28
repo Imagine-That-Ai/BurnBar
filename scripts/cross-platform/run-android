@@ -45,7 +45,7 @@ if [ -z "${JAVA_HOME}" ] || [ ! -x "${JAVA_HOME}/bin/java" ]; then
     exit 1
 fi
 export JAVA_HOME
-export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android}"
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
 
 ( cd "$ANDROID_DIR" && ./gradlew assembleDebug --no-daemon --quiet )
