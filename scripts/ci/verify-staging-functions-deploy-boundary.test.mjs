@@ -78,6 +78,19 @@ try {
     ),
   );
   expectFailure(
+    "implicit default Storage bucket lookup",
+    trustedPath,
+    pristineTrusted.replace(
+      `          jq -nc \\
+            --arg bucket "\${FIREBASE_PROJECT}.firebasestorage.app" \\
+            '{firestore:{rules:"firestore.rules",indexes:"firestore.indexes.json"},storage:[{bucket:$bucket,rules:"storage.rules"}]}' \\
+            > "$deploy_root/firebase-rules.json"`,
+      `          cat > "$deploy_root/firebase-rules.json" <<'JSON'
+          {"firestore":{"rules":"firestore.rules","indexes":"firestore.indexes.json"},"storage":{"rules":"storage.rules"}}
+          JSON`,
+    ),
+  );
+  expectFailure(
     "hook-free config scan returns failure",
     trustedPath,
     pristineTrusted.replace(

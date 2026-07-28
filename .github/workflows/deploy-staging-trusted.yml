@@ -170,9 +170,10 @@ jobs:
              "$RUNNER_TEMP/candidate-rules/firestore.indexes.json" \
              "$RUNNER_TEMP/candidate-rules/storage.rules" \
              "$deploy_root/"
-          cat > "$deploy_root/firebase-rules.json" <<'JSON'
-          {"firestore":{"rules":"firestore.rules","indexes":"firestore.indexes.json"},"storage":{"rules":"storage.rules"}}
-          JSON
+          jq -nc \
+            --arg bucket "${FIREBASE_PROJECT}.firebasestorage.app" \
+            '{firestore:{rules:"firestore.rules",indexes:"firestore.indexes.json"},storage:[{bucket:$bucket,rules:"storage.rules"}]}' \
+            > "$deploy_root/firebase-rules.json"
           if [[ "$DEPLOY_HOSTING" == "true" ]]; then
             cp -R "$RUNNER_TEMP/candidate-hosting/website" "$deploy_root/website"
             node scripts/ci/write-firebase-hosting-ci-config.mjs \
