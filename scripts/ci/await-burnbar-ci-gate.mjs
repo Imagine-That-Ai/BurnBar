@@ -39,9 +39,15 @@ export function evaluateGate(required, observations, options = {}) {
         status: "replacement_pending",
         url: item.url,
       });
-    } else if (FAILING.has(item.conclusion))
+    }     else if (FAILING.has(item.conclusion))
       failed.push({ context, conclusion: item.conclusion, url: item.url });
-    else pending.push({ context, status: item.status, url: item.url });
+    else
+      pending.push({
+        context,
+        status: item.status,
+        url: item.url,
+        ...(item.startedAt ? { startedAt: item.startedAt } : {}),
+      });
   }
   return {
     ready: missing.length === 0 && pending.length === 0 && failed.length === 0,
@@ -50,6 +56,28 @@ export function evaluateGate(required, observations, options = {}) {
     failed,
     passed,
   };
+}
+
+// Workflow timeout clocks start independently: this evaluator's deadline is
+// anchored to the umbrella's start, while a component such as the AgentLens
+// app suite may spend a long time behind its dependency jobs and hosted macOS
+// runner queueing before its own timeout clock even begins. Comparing static
+// execution caps therefore cannot guarantee the umbrella outlives the
+// component. Once every remaining required context is an observed, started
+// run, the wait is re-anchored to the latest observed component start plus the
+// configured per-component runtime budget and polling headroom.
+export function pendingComponentAllowanceMs(pending, options = {}) {
+  const componentBudgetMs = options.componentBudgetMs ?? 0;
+  const headroomMs = options.headroomMs ?? 0;
+  if (componentBudgetMs <= 0 || pending.length === 0) return null;
+  let latest = null;
+  for (const item of pending) {
+    if (!item.startedAt) return null;
+    const startedMs = Date.parse(item.startedAt);
+    if (!Number.isFinite(startedMs)) return null;
+    latest = Math.max(latest ?? 0, startedMs + componentBudgetMs + headroomMs);
+  }
+  return latest;
 }
 
 async function githubJson(url, token) {
@@ -97,6 +125,7 @@ export async function collectObservations(repository, sha, token) {
     observations.set(check.name, {
       status: check.status,
       conclusion: check.conclusion,
+      startedAt: check.started_at,
       completedAt: check.completed_at,
       url: check.html_url,
     });
@@ -135,6 +164,9 @@ async function main() {
       "GITHUB_REPOSITORY, BURNBAR_CI_SHA (or GITHUB_SHA), and GITHUB_TOKEN are required",
     );
   const deadline = Date.now() + Number(config.timeout_minutes) * 60_000;
+  const componentBudgetMs =
+    Number(config.component_runtime_budget_minutes ?? 0) * 60_000;
+  const componentHeadroomMs = 5 * 60_000;
   while (true) {
     const state = evaluateGate(
       config.required_contexts,
@@ -155,11 +187,23 @@ async function main() {
       return;
     }
     if (Date.now() >= deadline) {
-      console.error(
-        JSON.stringify({ error: "CI gate timed out", ...state }, null, 2),
+      const allowanceMs =
+        state.missing.length === 0
+          ? pendingComponentAllowanceMs(state.pending, {
+              componentBudgetMs,
+              headroomMs: componentHeadroomMs,
+            })
+          : null;
+      if (allowanceMs === null || Date.now() >= allowanceMs) {
+        console.error(
+          JSON.stringify({ error: "CI gate timed out", ...state }, null, 2),
+        );
+        process.exitCode = 1;
+        return;
+      }
+      console.log(
+        `Deadline passed but every pending component has started; waiting until ${new Date(allowanceMs).toISOString()}.`,
       );
-      process.exitCode = 1;
-      return;
     }
     console.log(
       `Waiting: ${state.missing.length} missing, ${state.pending.length} pending, ${state.passed.length} passed.`,

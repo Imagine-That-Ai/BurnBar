@@ -27,10 +27,13 @@ jobs:
     name: BurnBar CI Gate
     runs-on: ubuntu-latest
     # The required AgentLens suite is allowed 240 minutes on a cold hosted
-    # runner. Keep the umbrella alive longer than that component plus the
-    # evaluator's polling headroom, while remaining below the 300-minute merge
-    # queue response timeout.
-    timeout-minutes: 275
+    # runner, and its timeout clock starts only when the job leaves the runner
+    # queue, which can lag this umbrella's start under dependency and macOS
+    # runner contention. The evaluator re-anchors its deadline to the observed
+    # component start (component_runtime_budget_minutes in
+    # governance/burnbar-ci-gate.json), so this job cap funds that queueing
+    # skew while remaining below the 300-minute merge queue response timeout.
+    timeout-minutes: 295
     if: (github.event_name != 'pull_request' && github.event_name != 'pull_request_target') || github.event.pull_request.draft == false
     steps:
       - name: Check out trusted default-branch evaluator

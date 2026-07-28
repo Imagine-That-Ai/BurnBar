@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   collectObservations,
   evaluateGate,
+  pendingComponentAllowanceMs,
   resolveObservedSha,
 } from "./await-burnbar-ci-gate.mjs";
 
@@ -63,6 +64,92 @@ test("umbrella timeout outlives the longest required component", () => {
     umbrellaTimeout >= config.timeout_minutes + 5,
     "workflow timeout must outlive the evaluator deadline",
   );
+  assert.ok(
+    config.component_runtime_budget_minutes >= appTimeout,
+    "started-component budget must cover the longest component's runtime cap",
+  );
+  assert.ok(
+    umbrellaTimeout > config.timeout_minutes + 15,
+    "workflow timeout must fund queueing skew beyond the base deadline",
+  );
+  assert.ok(umbrellaTimeout < 300, "workflow must stay below the merge-queue response timeout");
+});
+
+test("deadline re-anchors to the observed component start, never to unstarted work", () => {
+  const componentBudgetMs = 240 * 60_000;
+  const headroomMs = 5 * 60_000;
+  // An app job that left the runner queue an hour after the umbrella started
+  // is allowed its full runtime budget from its own observed start.
+  assert.equal(
+    pendingComponentAllowanceMs(
+      [
+        {
+          context: "App build + test (AgentLens)",
+          status: "in_progress",
+          startedAt: "2026-07-28T13:00:00Z",
+        },
+      ],
+      { componentBudgetMs, headroomMs },
+    ),
+    Date.parse("2026-07-28T13:00:00Z") + componentBudgetMs + headroomMs,
+  );
+  // The latest observed start bounds the wait when several components run.
+  assert.equal(
+    pendingComponentAllowanceMs(
+      [
+        { context: "early", status: "in_progress", startedAt: "2026-07-28T12:00:00Z" },
+        { context: "late", status: "in_progress", startedAt: "2026-07-28T13:30:00Z" },
+      ],
+      { componentBudgetMs, headroomMs },
+    ),
+    Date.parse("2026-07-28T13:30:00Z") + componentBudgetMs + headroomMs,
+  );
+  // A pending context without an observed start gets no extension, so the
+  // base deadline still fails closed for never-started or missing work.
+  assert.equal(
+    pendingComponentAllowanceMs(
+      [
+        { context: "started", status: "in_progress", startedAt: "2026-07-28T13:00:00Z" },
+        { context: "unstarted", status: "replacement_pending" },
+      ],
+      { componentBudgetMs, headroomMs },
+    ),
+    null,
+  );
+  assert.equal(pendingComponentAllowanceMs([], { componentBudgetMs, headroomMs }), null);
+  // Without a configured budget the evaluator keeps its fixed deadline.
+  assert.equal(
+    pendingComponentAllowanceMs(
+      [{ context: "started", status: "in_progress", startedAt: "2026-07-28T13:00:00Z" }],
+      { componentBudgetMs: 0, headroomMs },
+    ),
+    null,
+  );
+});
+
+test("evaluator surfaces observed component starts on pending contexts", () => {
+  const state = evaluateGate(
+    ["running"],
+    new Map([
+      [
+        "running",
+        {
+          conclusion: null,
+          status: "in_progress",
+          startedAt: "2026-07-28T13:00:00Z",
+          url: "run",
+        },
+      ],
+    ]),
+  );
+  assert.deepEqual(state.pending, [
+    {
+      context: "running",
+      status: "in_progress",
+      url: "run",
+      startedAt: "2026-07-28T13:00:00Z",
+    },
+  ]);
 });
 
 test("pull_request_target gate stays read-only and secret-free", () => {
