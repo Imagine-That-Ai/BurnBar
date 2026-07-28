@@ -37,8 +37,10 @@ Read-only inspection produced this fail-closed state:
 Do not recreate the project, service account, OIDC pool/provider, GitHub
 Environment, Firebase resources, or environment secrets. Deploy only explicit
 Functions targets until each target's Secret Manager dependencies point to a
-non-production or sandbox account. An empty `function_targets` input still means
-"all Functions" and therefore requires the complete staging secret inventory.
+non-production or sandbox account. An empty `function_targets` input resolves
+to every reviewed target in `functions/staging-deploy-targets.json` and
+therefore requires the staging secret inventory for that whole manifest; the
+full production Functions export graph is never deployed to staging.
 
 ## Why this exists
 
@@ -377,7 +379,10 @@ gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
   -f deploy_functions=true \
   -f function_targets='functions:issueWindowsAppCheckChallenge,functions:mintWindowsAppCheckToken'
 
-# Deliberately deploy every Function only after every staging secret exists:
+# Deliberately deploy the complete reviewed staging manifest only after every
+# manifest target's staging secrets exist. The blank input resolves to explicit
+# functions:<name> selectors for functions/staging-deploy-targets.json, so the
+# trusted deploy never touches Functions outside the reviewed manifest:
 gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
   --ref "$FEATURE_BRANCH" \
   -f dry_run=false -f deploy_functions=true -f function_targets=''
