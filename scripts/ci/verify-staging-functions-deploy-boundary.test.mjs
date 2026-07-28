@@ -91,6 +91,15 @@ try {
     ),
   );
   expectFailure(
+    "uncompacted Firestore rules deployment",
+    trustedPath,
+    pristineTrusted.replace(
+      `          node scripts/ci/compact-firestore-rules-inplace.mjs \\
+            "$deploy_root/firestore.rules"`,
+      "          echo firestore-rules-compaction-skipped",
+    ),
+  );
+  expectFailure(
     "hook-free config scan returns failure",
     trustedPath,
     pristineTrusted.replace(
