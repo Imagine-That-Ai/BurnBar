@@ -363,7 +363,9 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   }
   .billing {
     position: relative;
-    display: inline-flex;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: min(100%, 19rem);
     padding: 5px;
     border-radius: var(--r-pill);
     border: 1px solid var(--ink-line);
@@ -377,8 +379,9 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     z-index: 1;
     display: inline-flex;
     align-items: center;
-    gap: var(--s-2);
-    padding: 0.5rem 1.25rem;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.5rem 0.75rem;
     border-radius: var(--r-pill);
     font-size: 0.92rem;
     font-weight: 600;
@@ -424,6 +427,29 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     border-color: rgba(7, 6, 10, 0.3);
     background: rgba(7, 6, 10, 0.16);
   }
+  /* Narrow phones: compact the annual savings badge so both equal-width
+     billing tracks fit inside a 320px viewport without overlapping the
+     slider or each other. */
+  @media (max-width: 400px) {
+    .billing__opt {
+      gap: 0.3rem;
+      padding: 0.5rem 0.4rem;
+      font-size: 0.88rem;
+    }
+    .billing__save {
+      font-size: 0.6rem;
+      letter-spacing: 0;
+      padding: 2px 4px;
+    }
+  }
+  /* Ultra-narrow viewports (e.g. 280px folding-phone cover screens): the
+     badge cannot fit legibly, so drop it; each paid plan card still states
+     its own annual savings line. */
+  @media (max-width: 340px) {
+    .billing__save {
+      display: none;
+    }
+  }
 
   /* ---------- plans grid ---------- */
   .plans__grid {
@@ -443,6 +469,15 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   }
 
   .plan {
+    /* Dim is the smallest copy on the card (.plan__inc-label, .plan__per-dim,
+       .plan__specs-code), so together with the 0.92-alpha card backdrop below
+       it must clear WCAG AA small-text contrast (4.5:1) even when the light
+       paper canvas sits behind the translucent card. */
+    --plan-text-bright: rgba(255, 255, 255, 0.96);
+    --plan-text-base: rgba(255, 255, 255, 0.86);
+    --plan-text-mute: rgba(255, 255, 255, 0.68);
+    --plan-text-dim: rgba(255, 255, 255, 0.62);
+    --plan-line: rgba(255, 255, 255, 0.12);
     position: relative;
     overflow: hidden;
     isolation: isolate;
@@ -453,7 +488,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     border-radius: var(--r-4);
     background:
       radial-gradient(120% 80% at 50% -10%, rgba(255, 255, 255, 0.05), transparent 60%),
-      rgba(10, 10, 15, 0.72);
+      rgba(10, 10, 15, 0.92);
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
     display: grid;
@@ -496,7 +531,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     border-top-color: color-mix(in oklab, var(--core-fire) 45%, rgba(255, 255, 255, 0.16));
     background:
       radial-gradient(120% 80% at 50% -10%, rgba(250, 107, 6, 0.14), transparent 60%),
-      rgba(20, 12, 10, 0.82);
+      rgba(20, 12, 10, 0.92);
     box-shadow:
       0 0 70px -24px rgba(250, 107, 6, 0.4),
       0 32px 70px -18px rgba(0, 0, 0, 0.78);
@@ -508,7 +543,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     border-top-color: color-mix(in oklab, var(--status-exact) 40%, rgba(255, 255, 255, 0.16));
     background:
       radial-gradient(120% 80% at 50% -10%, rgba(60, 214, 192, 0.1), transparent 60%),
-      rgba(8, 18, 18, 0.82);
+      rgba(8, 18, 18, 0.92);
   }
   /* Ultra — the top tier wears a regal gold accent (distinct from Pro's teal). */
   .plan--ultra {
@@ -518,7 +553,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     border-top-color: color-mix(in oklab, var(--core-amber) 46%, rgba(255, 255, 255, 0.16));
     background:
       radial-gradient(120% 80% at 50% -10%, rgba(253, 196, 44, 0.12), transparent 60%),
-      rgba(20, 16, 8, 0.82);
+      rgba(20, 16, 8, 0.92);
     box-shadow:
       0 0 70px -24px rgba(253, 196, 44, 0.32),
       0 32px 70px -18px rgba(0, 0, 0, 0.78);
@@ -696,7 +731,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     padding: 0.32rem 0.7rem;
     border-radius: var(--r-pill);
     color: var(--bb-accent);
-    border: 1px solid color-mix(in oklab, var(--bb-accent) 32%, var(--ink-line));
+    border: 1px solid color-mix(in oklab, var(--bb-accent) 32%, var(--plan-line));
     background: color-mix(in oklab, var(--bb-accent) 8%, transparent);
   }
   /* the highlighted tier wears a filled badge for instant hierarchy */
@@ -752,7 +787,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     height: 36px;
     border-radius: var(--r-2);
     color: var(--bb-accent);
-    border: 1px solid color-mix(in oklab, var(--bb-accent) 24%, var(--ink-line));
+    border: 1px solid color-mix(in oklab, var(--bb-accent) 24%, var(--plan-line));
     background: color-mix(in oklab, var(--bb-accent) 9%, rgba(255, 255, 255, 0.02));
     overflow: hidden;
     flex-shrink: 0;
@@ -763,7 +798,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   }
   .plan__name {
     font-family: var(--font-display);
-    color: var(--text-bright);
+    color: var(--plan-text-bright);
     font-size: clamp(1.5rem, 1.2rem + 1vw, 1.9rem);
     font-variation-settings:
       "opsz" 80,
@@ -781,7 +816,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   .plan__amount {
     font-family: var(--font-display);
     font-size: clamp(2.6rem, 2rem + 2.2vw, 3.7rem);
-    color: var(--text-bright);
+    color: var(--plan-text-bright);
     line-height: 0.95;
     font-variation-settings:
       "opsz" 144,
@@ -798,26 +833,26 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   .plan__unit {
     font-size: 0.9rem;
     letter-spacing: 0;
-    color: var(--text-mute);
+    color: var(--plan-text-mute);
     margin-left: 0.25rem;
-    -webkit-text-fill-color: var(--text-mute);
+    -webkit-text-fill-color: var(--plan-text-mute);
   }
   .plan__per {
     display: grid;
     gap: 2px;
     font-size: 0.84rem;
-    color: var(--text-mute);
+    color: var(--plan-text-mute);
     line-height: 1.3;
   }
   .plan__per-dim {
-    color: var(--text-dim);
+    color: var(--plan-text-dim);
   }
   .plan__save {
     color: var(--status-exact);
     font-size: 0.78rem;
   }
   .plan__sub {
-    color: var(--text-mute);
+    color: var(--plan-text-mute);
     font-size: 0.95rem;
     margin-top: var(--s-1);
   }
@@ -833,7 +868,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   .plan__list li {
     position: relative;
     padding-left: 1.85rem;
-    color: var(--text-base);
+    color: var(--plan-text-base);
     font-size: 0.94rem;
     line-height: 1.45;
   }
@@ -845,7 +880,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     width: 1.2rem;
     height: 1.2rem;
     border-radius: 50%;
-    border: 1px solid color-mix(in oklab, var(--bb-accent) 45%, var(--ink-line));
+    border: 1px solid color-mix(in oklab, var(--bb-accent) 45%, var(--plan-line));
     background: color-mix(in oklab, var(--bb-accent) 12%, transparent);
   }
   .plan__list li::after {
@@ -864,7 +899,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     display: grid;
     gap: var(--s-3);
     padding-top: var(--s-4);
-    border-top: 1px solid var(--ink-line);
+    border-top: 1px solid var(--plan-line);
     position: relative;
     z-index: 1;
   }
@@ -872,13 +907,13 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     font-size: 0.66rem;
     letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: var(--text-dim);
+    color: var(--plan-text-dim);
   }
   .plan__specs {
     display: grid;
     gap: var(--s-2);
     font-size: 0.88rem;
-    color: var(--text-mute);
+    color: var(--plan-text-mute);
   }
   .plan__specs li {
     padding-left: 1rem;
@@ -892,7 +927,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   }
   .plan__specs-code {
     font-size: 0.72rem;
-    color: var(--text-dim);
+    color: var(--plan-text-dim);
     letter-spacing: 0.02em;
     overflow-wrap: anywhere;
   }
