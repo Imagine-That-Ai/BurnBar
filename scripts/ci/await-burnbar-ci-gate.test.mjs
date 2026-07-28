@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   collectObservations,
   evaluateGate,
+  githubJson,
+  isTransientGithubStatus,
   pendingComponentAllowanceMs,
   resolveObservedSha,
 } from "./await-burnbar-ci-gate.mjs";
@@ -331,6 +333,88 @@ test("collector paginates repositories with more than 100 checks", async () => {
     );
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("transient API failures retry with backoff instead of killing the wait", async () => {
+  // PR #2080's gate run died at minute 79 of an otherwise healthy wait when a
+  // single poll hit a GitHub 502. Transient server errors, rate limits, and
+  // dropped connections must be retried, not turned into a gate failure.
+  const originalFetch = globalThis.fetch;
+  const delays = [];
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) return { ok: false, status: 502, text: async () => "Server Error" };
+    if (calls === 2) throw new TypeError("fetch failed");
+    return { ok: true, json: async () => ({ value: "recovered" }) };
+  };
+  try {
+    const payload = await githubJson("https://api.github.com/poll", "token", {
+      attempts: 5,
+      baseBackoffMs: 1_000,
+      sleep: async (ms) => delays.push(ms),
+    });
+    assert.deepEqual(payload, { value: "recovered" });
+    assert.equal(calls, 3);
+    assert.deepEqual(delays, [1_000, 2_000], "backoff must grow between retries");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("exhausted transient retries surface the last failure", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return { ok: false, status: 502, text: async () => "Server Error" };
+  };
+  try {
+    await assert.rejects(
+      githubJson("https://api.github.com/poll", "token", {
+        attempts: 3,
+        baseBackoffMs: 0,
+        sleep: async () => {},
+      }),
+      /GitHub API 502/,
+    );
+    assert.equal(calls, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("non-transient API errors fail fast so misconfiguration stays loud", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return { ok: false, status: 401, text: async () => "Bad credentials" };
+  };
+  try {
+    await assert.rejects(
+      githubJson("https://api.github.com/poll", "token", {
+        attempts: 5,
+        baseBackoffMs: 0,
+        sleep: async () => {
+          throw new Error("must not retry a non-transient error");
+        },
+      }),
+      /GitHub API 401/,
+    );
+    assert.equal(calls, 1, "a bad token must not be retried");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("transient status classification covers rate limits and server errors", () => {
+  for (const status of [429, 500, 502, 503, 504]) {
+    assert.equal(isTransientGithubStatus(status), true, String(status));
+  }
+  for (const status of [200, 301, 401, 403, 404, 422]) {
+    assert.equal(isTransientGithubStatus(status), false, String(status));
   }
 });
 

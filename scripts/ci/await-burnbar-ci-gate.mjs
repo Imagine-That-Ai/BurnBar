@@ -80,17 +80,51 @@ export function pendingComponentAllowanceMs(pending, options = {}) {
   return latest;
 }
 
-async function githubJson(url, token) {
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
-  });
-  if (!response.ok)
-    throw new Error(`GitHub API ${response.status}: ${await response.text()}`);
-  return response.json();
+const sleep = (milliseconds) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+// A single transient GitHub API hiccup (a mid-poll 502, a rate-limit burst, a
+// dropped connection) must not burn hours of otherwise healthy waiting, so
+// transient failures are retried with exponential backoff before the poll
+// gives up. Non-transient responses (bad token, missing repo) still fail
+// immediately: retrying cannot fix them and would only hide a real
+// misconfiguration until the deadline.
+export function isTransientGithubStatus(status) {
+  return status === 429 || status >= 500;
+}
+
+export async function githubJson(url, token, options = {}) {
+  const attempts = options.attempts ?? 5;
+  const baseBackoffMs = options.baseBackoffMs ?? 5_000;
+  const wait = options.sleep ?? sleep;
+  for (let attempt = 1; ; attempt += 1) {
+    let response = null;
+    let failure = null;
+    try {
+      response = await fetch(url, {
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${token}`,
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      });
+    } catch (error) {
+      failure = new Error(`GitHub API request failed: ${error.message}`);
+    }
+    if (response) {
+      if (response.ok) return response.json();
+      failure = new Error(
+        `GitHub API ${response.status}: ${await response.text()}`,
+      );
+      if (!isTransientGithubStatus(response.status)) throw failure;
+    }
+    if (attempt >= attempts) throw failure;
+    const delayMs = baseBackoffMs * 2 ** (attempt - 1);
+    console.log(
+      `Transient GitHub API failure (attempt ${attempt}/${attempts}), retrying in ${delayMs / 1000}s: ${failure.message}`,
+    );
+    await wait(delayMs);
+  }
 }
 
 async function githubPages(url, key, token) {
@@ -148,9 +182,6 @@ export async function collectObservations(repository, sha, token) {
   }
   return observations;
 }
-
-const sleep = (milliseconds) =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 async function main() {
   const config = JSON.parse(
