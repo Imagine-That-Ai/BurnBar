@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "files": {
     ".firebaserc": ["f37cd50ee6664116","5689e7440ae609ce","3452c9887b13fb11","791e49744a60b649"],
-    ".github/workflows/burnbar-ci-gate.yml": ["a3e94131bf6ccfe3","f064eb36e539bb20","34fc74db1770f666","3da1574b88648a26"],
+    ".github/workflows/burnbar-ci-gate.yml": ["d53a4b83bebfa734","b8f149688219b445","32f1269c8f9ea56a","8a36a574f873d7d0"],
     ".github/workflows/ci-impact.yml": ["837a7b55de0ce3df","41d4851e2cb1d2e1","75962bf07787f3b4","50c346d98c379c37"],
     ".github/workflows/deploy-hosting.yml": ["3f0ffaea3a4b6a90","fb47d1393218d4cb","64429aacc32be916","d84a20a7540df834"],
     ".github/workflows/deploy-production.yml": ["3171c8ceacfb62b9","513d9af869ce1f18","d469e656a0549462","5834f6b5958bbd5b"],
@@ -50,7 +50,7 @@
     "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core.js": ["9984c524f5554e4f","58448a75aa960351","082442530a2f7af2","7e9e109d7ee4efaa"],
     "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm": ["0c136652d78c0e9d","18f66eaf5802a7f8","3581b0c744c4d836","8e646f5959b61d6b"],
     "functions/vendor/openburnbar/domain-core-wasm/package.json": ["80ef14a211db1c24","d2299c739c5e4d4c","f4a0001f1ef20825","4ab102a89739a966"],
-    "governance/burnbar-ci-gate.json": ["b05c8b9e9a93e497","65f0531fe652d961","3b3e5bbe38fbee3c","f5579be72ef67de3"],
+    "governance/burnbar-ci-gate.json": ["a34582cf26d119a4","161982ed3b8eb083","fec25cbe4e4613dd","fd2b1c9651a260af"],
     "scripts/build-domain-core-android-aar.sh": ["86f81c77867597ac","3686a837cf7f4849","0c7e821d831f7a2a","4f0252c2b425fb23"],
     "scripts/build-domain-core-python.sh": ["c754e97e3db79524","9c43640783c337b2","59caeb3a4242a324","b5ab8a96a61b4ba0"],
     "scripts/build-domain-core-wasm.sh": ["b56722d24572873c","d41d44ac731929cd","50b304534341ee0a","8612d60f0d1935cd"],
