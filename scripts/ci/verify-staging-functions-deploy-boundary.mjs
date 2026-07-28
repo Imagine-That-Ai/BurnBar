@@ -183,6 +183,21 @@ requireText(
 );
 requireText(
   trusted,
+  `          env_temp="$(mktemp "$RUNNER_TEMP/staging-functions-env.XXXXXX")"
+          trap 'rm -f "$env_temp"' EXIT
+          {
+            cat "$functions_dir/.env.burnbar-staging"`,
+  "trusted Functions deployment must stage the reviewed dotenv through a temporary file before replacing the project dotenv",
+);
+requireText(
+  trusted,
+  `          } > "$env_temp"
+          mv "$env_temp" "$env_file"
+          trap - EXIT`,
+  "trusted Functions deployment must atomically replace the project dotenv without truncating its reviewed source",
+);
+requireText(
+  trusted,
   "--only hosting:marketing",
   "trusted Hosting deployment must remain scoped to the marketing target",
 );

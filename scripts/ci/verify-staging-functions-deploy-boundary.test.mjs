@@ -193,6 +193,18 @@ try {
     pristineTrusted.replace('--only "$deploy_scope"', "--only $deploy_scope"),
   );
   expectFailure(
+    "staging dotenv self-truncation",
+    trustedPath,
+    pristineTrusted.replace(
+      `          } > "$env_temp"
+          mv "$env_temp" "$env_file"
+          trap - EXIT`,
+      `          } > "$env_file"
+          rm -f "$env_temp"
+          trap - EXIT`,
+    ),
+  );
+  expectFailure(
     "unscoped Hosting deploy",
     trustedPath,
     pristineTrusted.replace("--only hosting:marketing", "--only hosting"),
