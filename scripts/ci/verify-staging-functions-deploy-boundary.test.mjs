@@ -70,11 +70,28 @@ try {
     `${pristineCaller}\n# google-github-actions/auth\n`,
   );
   expectFailure(
-    "candidate scripts enabled",
+    "missing trusted Functions artifact verifier",
     trustedPath,
     pristineTrusted.replace(
-      "Functions deployment package retains executable npm scripts.",
-      "Functions package scripts are accepted.",
+      "node trusted/scripts/ci/verify-staging-functions-artifact.mjs",
+      "echo verifier-omitted",
+    ),
+  );
+  expectFailure(
+    "TypeScript declarations retained",
+    callerPath,
+    pristineCaller.replace(
+      `          find "$destination/lib" -type f \\
+            \\( -name '*.d.ts' -o -name '*.d.ts.map' \\) -delete`,
+      "          echo declarations-retained",
+    ),
+  );
+  expectFailure(
+    "certificate documentation retained",
+    callerPath,
+    pristineCaller.replace(
+      '          rm -f "$destination/lib/appstore/certs/README.md"',
+      "          echo certificate-documentation-retained",
     ),
   );
   expectFailure(

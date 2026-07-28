@@ -104,14 +104,22 @@ requireText(
   "candidate Functions artifact must preserve hidden runtime files",
 );
 requireText(
-  trusted,
-  "lib/*.js|lib/*.js.map|lib/*.cjs",
-  "trusted Functions artifact must permit the generated scoped CommonJS entrypoint",
+  caller,
+  `          find "$destination/lib" -type f \\
+            \\( -name '*.d.ts' -o -name '*.d.ts.map' \\) -delete`,
+  "candidate Functions artifact must remove non-runtime TypeScript declarations",
+);
+requireText(
+  caller,
+  '          rm -f "$destination/lib/appstore/certs/README.md"',
+  "candidate Functions artifact must remove non-runtime certificate documentation",
 );
 requireText(
   trusted,
-  "Functions deployment package retains executable npm scripts.",
-  "trusted Functions artifact must reject executable npm scripts before authentication",
+  `            node trusted/scripts/ci/verify-staging-functions-artifact.mjs \\
+              --artifact-root "$functions" \\
+              --candidate-sha "$CANDIDATE_SHA"`,
+  "trusted workflow must run the tested Functions artifact verifier before authentication",
 );
 reject(
   caller,
