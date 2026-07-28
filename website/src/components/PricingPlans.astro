@@ -363,7 +363,9 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   }
   .billing {
     position: relative;
-    display: inline-flex;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: min(100%, 19rem);
     padding: 5px;
     border-radius: var(--r-pill);
     border: 1px solid var(--ink-line);
@@ -377,8 +379,9 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     z-index: 1;
     display: inline-flex;
     align-items: center;
-    gap: var(--s-2);
-    padding: 0.5rem 1.25rem;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.5rem 0.75rem;
     border-radius: var(--r-pill);
     font-size: 0.92rem;
     font-weight: 600;
@@ -443,6 +446,11 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   }
 
   .plan {
+    --plan-text-bright: rgba(255, 255, 255, 0.96);
+    --plan-text-base: rgba(255, 255, 255, 0.86);
+    --plan-text-mute: rgba(255, 255, 255, 0.68);
+    --plan-text-dim: rgba(255, 255, 255, 0.5);
+    --plan-line: rgba(255, 255, 255, 0.12);
     position: relative;
     overflow: hidden;
     isolation: isolate;
@@ -696,7 +704,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     padding: 0.32rem 0.7rem;
     border-radius: var(--r-pill);
     color: var(--bb-accent);
-    border: 1px solid color-mix(in oklab, var(--bb-accent) 32%, var(--ink-line));
+    border: 1px solid color-mix(in oklab, var(--bb-accent) 32%, var(--plan-line));
     background: color-mix(in oklab, var(--bb-accent) 8%, transparent);
   }
   /* the highlighted tier wears a filled badge for instant hierarchy */
@@ -752,7 +760,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     height: 36px;
     border-radius: var(--r-2);
     color: var(--bb-accent);
-    border: 1px solid color-mix(in oklab, var(--bb-accent) 24%, var(--ink-line));
+    border: 1px solid color-mix(in oklab, var(--bb-accent) 24%, var(--plan-line));
     background: color-mix(in oklab, var(--bb-accent) 9%, rgba(255, 255, 255, 0.02));
     overflow: hidden;
     flex-shrink: 0;
@@ -763,7 +771,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   }
   .plan__name {
     font-family: var(--font-display);
-    color: var(--text-bright);
+    color: var(--plan-text-bright);
     font-size: clamp(1.5rem, 1.2rem + 1vw, 1.9rem);
     font-variation-settings:
       "opsz" 80,
@@ -781,7 +789,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   .plan__amount {
     font-family: var(--font-display);
     font-size: clamp(2.6rem, 2rem + 2.2vw, 3.7rem);
-    color: var(--text-bright);
+    color: var(--plan-text-bright);
     line-height: 0.95;
     font-variation-settings:
       "opsz" 144,
@@ -798,26 +806,26 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   .plan__unit {
     font-size: 0.9rem;
     letter-spacing: 0;
-    color: var(--text-mute);
+    color: var(--plan-text-mute);
     margin-left: 0.25rem;
-    -webkit-text-fill-color: var(--text-mute);
+    -webkit-text-fill-color: var(--plan-text-mute);
   }
   .plan__per {
     display: grid;
     gap: 2px;
     font-size: 0.84rem;
-    color: var(--text-mute);
+    color: var(--plan-text-mute);
     line-height: 1.3;
   }
   .plan__per-dim {
-    color: var(--text-dim);
+    color: var(--plan-text-dim);
   }
   .plan__save {
     color: var(--status-exact);
     font-size: 0.78rem;
   }
   .plan__sub {
-    color: var(--text-mute);
+    color: var(--plan-text-mute);
     font-size: 0.95rem;
     margin-top: var(--s-1);
   }
@@ -833,7 +841,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   .plan__list li {
     position: relative;
     padding-left: 1.85rem;
-    color: var(--text-base);
+    color: var(--plan-text-base);
     font-size: 0.94rem;
     line-height: 1.45;
   }
@@ -845,7 +853,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     width: 1.2rem;
     height: 1.2rem;
     border-radius: 50%;
-    border: 1px solid color-mix(in oklab, var(--bb-accent) 45%, var(--ink-line));
+    border: 1px solid color-mix(in oklab, var(--bb-accent) 45%, var(--plan-line));
     background: color-mix(in oklab, var(--bb-accent) 12%, transparent);
   }
   .plan__list li::after {
@@ -864,7 +872,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     display: grid;
     gap: var(--s-3);
     padding-top: var(--s-4);
-    border-top: 1px solid var(--ink-line);
+    border-top: 1px solid var(--plan-line);
     position: relative;
     z-index: 1;
   }
@@ -872,13 +880,13 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     font-size: 0.66rem;
     letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: var(--text-dim);
+    color: var(--plan-text-dim);
   }
   .plan__specs {
     display: grid;
     gap: var(--s-2);
     font-size: 0.88rem;
-    color: var(--text-mute);
+    color: var(--plan-text-mute);
   }
   .plan__specs li {
     padding-left: 1rem;
@@ -892,7 +900,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   }
   .plan__specs-code {
     font-size: 0.72rem;
-    color: var(--text-dim);
+    color: var(--plan-text-dim);
     letter-spacing: 0.02em;
     overflow-wrap: anywhere;
   }

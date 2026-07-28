@@ -171,6 +171,35 @@ assert.match(
   "billing toggle must update paid subscription CTAs to annual cadence"
 );
 assert.match(
+  plans,
+  /\.billing \{[\s\S]*display: grid;[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[\s\S]*width: min\(100%, 19rem\);/,
+  "billing toggle must reserve equal, mobile-safe space for monthly and annual options"
+);
+for (const token of [
+  "--plan-text-bright",
+  "--plan-text-base",
+  "--plan-text-mute",
+  "--plan-text-dim",
+  "--plan-line"
+]) {
+  assert.match(plans, new RegExp(token), `${token} must be defined for dark pricing cards`);
+}
+assert.match(
+  plans,
+  /\.plan__name \{[\s\S]*color: var\(--plan-text-bright\)/,
+  "plan headings must use explicit dark-card text"
+);
+assert.match(
+  plans,
+  /\.plan__list li \{[\s\S]*color: var\(--plan-text-base\)/,
+  "plan feature copy must use explicit dark-card text"
+);
+assert.match(
+  plans,
+  /\.plan__sub \{[\s\S]*color: var\(--plan-text-mute\)/,
+  "plan summaries must use explicit dark-card text"
+);
+assert.match(
   publicPricingCopy,
   /grandfathered/i,
   "legacy subscription must be framed as grandfathered"
