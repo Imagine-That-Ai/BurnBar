@@ -11,7 +11,7 @@ readonly DEFAULT_SSH_HOST="192.168.64.5"
 readonly DEFAULT_SSH_USER="burnbar"
 readonly DEFAULT_SSH_KEY="$HOME/.ssh/openburnbar_linux_vm"
 readonly DEFAULT_KNOWN_HOSTS="$HOME/.ssh/known_hosts"
-readonly GUEST_SCRIPT_SHA256="08dd09e7b9291a1b2076854edf9752cec1c2d500031254a04a15118c14b00e87"
+readonly GUEST_SCRIPT_SHA256="cc29dceac54115f1db08487630c03e9ef5ad7a4f47688b806ce2ad9f3aa899c3"
 readonly REMOTE_HELPER_PATH="\$HOME/.cache/openburnbar-utm-runner/guest.sh"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
