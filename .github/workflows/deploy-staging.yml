@@ -26,7 +26,7 @@ on:
         type: boolean
         default: false
       function_targets:
-        description: "Optional comma-separated Firebase Functions targets"
+        description: "Optional reviewed subset; blank deploys every target in the staging manifest"
         required: false
         type: string
         default: ""
