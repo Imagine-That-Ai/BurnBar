@@ -30,6 +30,11 @@ const EXPECTED_JOB_NAMES = Object.freeze([
   "windows-native-win-arm64",
   "candidate-bundle",
   "Domain Core PR Gate",
+  // The path-aware CI gate (#1933) made every domain-core job depend on a
+  // reusable classifier. GitHub reports it as "<caller job id> / <reusable job
+  // name>", so the exact string is required here: without it the strict
+  // allowlist below rejects the run and no candidate can be promoted.
+  "classify / Deterministic changed-path classification",
 ]);
 
 function readJson(path, label) {

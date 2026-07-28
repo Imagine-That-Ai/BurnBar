@@ -45,6 +45,7 @@ const EXPECTED_JOB_NAMES = [
   "windows-native-win-arm64",
   "candidate-bundle",
   "Domain Core PR Gate",
+  "classify / Deterministic changed-path classification",
 ];
 
 function digest(value) {
@@ -185,7 +186,7 @@ function verify(value = bundle(), run = githubRun(), jobs = jobsResponse()) {
 }
 
 test("protected verifier independently accepts only an exact successful main push proof", () => {
-  assert.equal(EXPECTED_JOB_NAMES.length, 17);
+  assert.equal(EXPECTED_JOB_NAMES.length, 18);
   const result = verify();
   assert.equal(result.schemaVersion, 2);
   assert.equal(result.promotionAuthorized, false);
