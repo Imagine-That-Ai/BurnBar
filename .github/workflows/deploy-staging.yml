@@ -192,6 +192,7 @@ jobs:
         with:
           name: staging-functions-${{ github.sha }}
           path: ${{ runner.temp }}/staging-functions
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 3
 
