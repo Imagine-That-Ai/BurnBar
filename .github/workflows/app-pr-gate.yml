@@ -84,7 +84,12 @@ jobs:
             ~/.cache/org.swift.swiftpm
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-app-spm-${{ hashFiles('**/Package.resolved') }}
+          # Anchored manifest list instead of '**/Package.resolved': the unanchored
+          # glob rescans the whole workspace when the post-job save step re-evaluates
+          # the key, and by then .spm-cache-new/.derived-data hold enough files to
+          # blow hashFiles' 120s budget (and dependency checkouts carry their own
+          # Package.resolved copies, drifting the key between restore and save).
+          key: ${{ runner.os }}-app-spm-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarCore/Package.resolved', 'OpenBurnBarDaemon/Package.resolved', 'Vendor/GRDB-SQLCipher/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-app-spm-
             ${{ runner.os }}-spm-
@@ -228,7 +233,9 @@ jobs:
             ~/.cache/org.swift.swiftpm
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-mobile-spm-${{ hashFiles('**/Package.resolved') }}
+          # Anchored manifest list instead of '**/Package.resolved': see the app job's
+          # SPM cache key comment (post-job hashFiles timeout + key drift).
+          key: ${{ runner.os }}-mobile-spm-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarCore/Package.resolved', 'OpenBurnBarDaemon/Package.resolved', 'Vendor/GRDB-SQLCipher/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-mobile-spm-
 
