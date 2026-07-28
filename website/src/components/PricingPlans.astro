@@ -427,6 +427,29 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     border-color: rgba(7, 6, 10, 0.3);
     background: rgba(7, 6, 10, 0.16);
   }
+  /* Narrow phones: compact the annual savings badge so both equal-width
+     billing tracks fit inside a 320px viewport without overlapping the
+     slider or each other. */
+  @media (max-width: 400px) {
+    .billing__opt {
+      gap: 0.3rem;
+      padding: 0.5rem 0.4rem;
+      font-size: 0.88rem;
+    }
+    .billing__save {
+      font-size: 0.6rem;
+      letter-spacing: 0;
+      padding: 2px 4px;
+    }
+  }
+  /* Ultra-narrow viewports (e.g. 280px folding-phone cover screens): the
+     badge cannot fit legibly, so drop it; each paid plan card still states
+     its own annual savings line. */
+  @media (max-width: 340px) {
+    .billing__save {
+      display: none;
+    }
+  }
 
   /* ---------- plans grid ---------- */
   .plans__grid {
@@ -446,10 +469,14 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   }
 
   .plan {
+    /* Dim is the smallest copy on the card (.plan__inc-label, .plan__per-dim,
+       .plan__specs-code), so together with the 0.92-alpha card backdrop below
+       it must clear WCAG AA small-text contrast (4.5:1) even when the light
+       paper canvas sits behind the translucent card. */
     --plan-text-bright: rgba(255, 255, 255, 0.96);
     --plan-text-base: rgba(255, 255, 255, 0.86);
     --plan-text-mute: rgba(255, 255, 255, 0.68);
-    --plan-text-dim: rgba(255, 255, 255, 0.5);
+    --plan-text-dim: rgba(255, 255, 255, 0.62);
     --plan-line: rgba(255, 255, 255, 0.12);
     position: relative;
     overflow: hidden;
@@ -461,7 +488,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     border-radius: var(--r-4);
     background:
       radial-gradient(120% 80% at 50% -10%, rgba(255, 255, 255, 0.05), transparent 60%),
-      rgba(10, 10, 15, 0.72);
+      rgba(10, 10, 15, 0.92);
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
     display: grid;
@@ -504,7 +531,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     border-top-color: color-mix(in oklab, var(--core-fire) 45%, rgba(255, 255, 255, 0.16));
     background:
       radial-gradient(120% 80% at 50% -10%, rgba(250, 107, 6, 0.14), transparent 60%),
-      rgba(20, 12, 10, 0.82);
+      rgba(20, 12, 10, 0.92);
     box-shadow:
       0 0 70px -24px rgba(250, 107, 6, 0.4),
       0 32px 70px -18px rgba(0, 0, 0, 0.78);
@@ -516,7 +543,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     border-top-color: color-mix(in oklab, var(--status-exact) 40%, rgba(255, 255, 255, 0.16));
     background:
       radial-gradient(120% 80% at 50% -10%, rgba(60, 214, 192, 0.1), transparent 60%),
-      rgba(8, 18, 18, 0.82);
+      rgba(8, 18, 18, 0.92);
   }
   /* Ultra — the top tier wears a regal gold accent (distinct from Pro's teal). */
   .plan--ultra {
@@ -526,7 +553,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     border-top-color: color-mix(in oklab, var(--core-amber) 46%, rgba(255, 255, 255, 0.16));
     background:
       radial-gradient(120% 80% at 50% -10%, rgba(253, 196, 44, 0.12), transparent 60%),
-      rgba(20, 16, 8, 0.82);
+      rgba(20, 16, 8, 0.92);
     box-shadow:
       0 0 70px -24px rgba(253, 196, 44, 0.32),
       0 32px 70px -18px rgba(0, 0, 0, 0.78);
