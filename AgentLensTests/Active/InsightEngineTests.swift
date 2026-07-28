@@ -226,7 +226,8 @@ final class InsightEngineTests: XCTestCase {
 
     private var pastDayUsage: TokenUsage {
         let cal = Calendar.current
-        let day = cal.date(byAdding: .day, value: -1, to: Date())!
+        let today = cal.startOfDay(for: Date())
+        let day = cal.date(byAdding: .day, value: -1, to: today)!
         return TokenUsage(
             provider: .factory,
             sessionId: "past",
