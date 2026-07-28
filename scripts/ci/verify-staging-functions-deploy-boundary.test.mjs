@@ -86,6 +86,14 @@ try {
     ),
   );
   expectFailure(
+    "staging Hosting artifact omits hidden files",
+    callerPath,
+    pristineCaller.replace(
+      "          include-hidden-files: true",
+      "          include-hidden-files: false",
+    ),
+  );
+  expectFailure(
     "missing local Functions packages",
     callerPath,
     pristineCaller.replace(
