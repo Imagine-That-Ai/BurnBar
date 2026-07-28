@@ -189,9 +189,10 @@ jobs:
           JSON
           fi
           for config in "$deploy_root"/firebase-*.json; do
-            grep -q '"predeploy"' "$config" && {
-              echo "::error::Trusted deployment config contains a predeploy hook."; exit 1;
-            }
+            if grep -q '"predeploy"' "$config"; then
+              echo "::error::Trusted deployment config contains a predeploy hook."
+              exit 1
+            fi
           done
 
       - name: Authenticate to Google Cloud through trusted-main WIF

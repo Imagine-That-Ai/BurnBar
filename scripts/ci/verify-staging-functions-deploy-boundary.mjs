@@ -149,6 +149,16 @@ requireText(
 );
 requireText(
   trusted,
+  `          for config in "$deploy_root"/firebase-*.json; do
+            if grep -q '"predeploy"' "$config"; then
+              echo "::error::Trusted deployment config contains a predeploy hook."
+              exit 1
+            fi
+          done`,
+  "trusted inert-workspace validation must succeed when every generated Firebase config is hook-free",
+);
+requireText(
+  trusted,
   "Authenticate to Google Cloud through trusted-main WIF",
   "trusted reusable workflow must own WIF authentication",
 );

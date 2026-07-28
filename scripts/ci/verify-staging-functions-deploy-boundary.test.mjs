@@ -78,6 +78,23 @@ try {
     ),
   );
   expectFailure(
+    "hook-free config scan returns failure",
+    trustedPath,
+    pristineTrusted.replace(
+      `          for config in "$deploy_root"/firebase-*.json; do
+            if grep -q '"predeploy"' "$config"; then
+              echo "::error::Trusted deployment config contains a predeploy hook."
+              exit 1
+            fi
+          done`,
+      `          for config in "$deploy_root"/firebase-*.json; do
+            grep -q '"predeploy"' "$config" && {
+              echo "::error::Trusted deployment config contains a predeploy hook."; exit 1;
+            }
+          done`,
+    ),
+  );
+  expectFailure(
     "TypeScript declarations retained",
     callerPath,
     pristineCaller.replace(
