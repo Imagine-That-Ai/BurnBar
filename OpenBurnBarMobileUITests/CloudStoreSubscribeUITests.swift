@@ -12,13 +12,24 @@ final class CloudStoreSubscribeUITests: XCTestCase {
         app.launchEnvironment["OPENBURNBAR_E2E_CLOUD_STORE_GUEST"] = "1"
         app.launch()
 
-        let subscribeButton = app.buttons["cloudStore.subscribe"].firstMatch
+        let storeScrollView = app.scrollViews["cloudStore.scrollView"].firstMatch
         XCTAssertTrue(
-            waitForExistence(subscribeButton, timeout: 45, scrollingIn: app),
-            "Cloud Store Subscribe button did not appear. \(app.debugDescription)"
+            storeScrollView.waitForExistence(timeout: 45),
+            "Cloud Store scroll view did not appear. \(app.debugDescription)"
         )
-        scrollUntilHittable(subscribeButton, in: app)
-        XCTAssertTrue(subscribeButton.isHittable, "Cloud Store Subscribe button was visible but not hittable.")
+
+        let subscribeButton = app.buttons[
+            "cloudStore.tier.com.openburnbar.pro.monthly.subscribe"
+        ].firstMatch
+        XCTAssertTrue(
+            waitForExistence(subscribeButton, timeout: 45, scrollingIn: storeScrollView),
+            "BurnBar Cloud monthly Subscribe button did not appear. \(app.debugDescription)"
+        )
+        scrollUntilHittable(subscribeButton, in: storeScrollView)
+        XCTAssertTrue(
+            subscribeButton.isHittable,
+            "BurnBar Cloud monthly Subscribe button was visible but not hittable."
+        )
 
         subscribeButton.tap()
 
@@ -72,25 +83,23 @@ final class CloudStoreSubscribeUITests: XCTestCase {
         return subscribeButtons.count > 1
     }
 
-    private func scrollUntilHittable(_ element: XCUIElement, in app: XCUIApplication) {
+    private func scrollUntilHittable(_ element: XCUIElement, in scrollView: XCUIElement) {
         for _ in 0..<8 where !element.isHittable {
-            dragUp(in: app)
+            scrollView.swipeUp()
         }
     }
 
-    private func waitForExistence(_ element: XCUIElement, timeout: TimeInterval, scrollingIn app: XCUIApplication) -> Bool {
+    private func waitForExistence(
+        _ element: XCUIElement,
+        timeout: TimeInterval,
+        scrollingIn scrollView: XCUIElement
+    ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if element.exists { return true }
-            dragUp(in: app)
+            scrollView.swipeUp()
             RunLoop.current.run(until: Date().addingTimeInterval(0.35))
         }
         return element.exists
-    }
-
-    private func dragUp(in app: XCUIApplication) {
-        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.82))
-        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.28))
-        start.press(forDuration: 0.02, thenDragTo: end)
     }
 }

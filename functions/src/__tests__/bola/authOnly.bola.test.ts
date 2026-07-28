@@ -92,6 +92,7 @@ export const PLATFORM_TRIGGER_ENDPOINTS = [
   "latestRouterRundown",
   "reconcileAccountErasures",
   "reconcileHostedEntitlementsDaily",
+  "reconcileGooglePlayVoidedPurchasesDaily",
   "backfillPrivacyPlaintextScheduled",
   "reapHermesGatewayApprovals",
   "onCliSessionAgentReplyNotification",
@@ -99,6 +100,7 @@ export const PLATFORM_TRIGGER_ENDPOINTS = [
   "onKnowledgeRepoPush",
   "sendFcmOutbound",
   "sendVoIPOutbound",
+  "googlePlayDeveloperNotifications",
   "stripeBurnBarProWebhook",
   "appStoreServerNotificationsV2",
 ] as const;

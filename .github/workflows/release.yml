@@ -1290,7 +1290,7 @@ jobs:
             exit 1
           fi
           cd android
-          ./gradlew :app:bundleRelease --no-daemon -PopenBurnBarAppVersionName="${{ needs.release-preflight.outputs.version }}"
+          ./gradlew :app:bundleRelease :app:assembleRelease --no-daemon -PopenBurnBarAppVersionName="${{ needs.release-preflight.outputs.version }}"
           source_path="$(pwd)/app/build/outputs/bundle/release/app-release.aab"
           release_name="OpenBurnBar-${{ needs.release-preflight.outputs.version }}-Android.aab"
           release_path="$RUNNER_TEMP/$release_name"
@@ -1312,7 +1312,9 @@ jobs:
           target: google_apis
           disk-size: 4G
           heap-size: 768M
-          script: bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" "$RUNNER_TEMP/domain-core-android-observed-identity.json"
+          script: |
+            bash scripts/ci/run-android-release-startup-smoke.sh android/app/build/outputs/apk/release/app-release.apk
+            bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" "$RUNNER_TEMP/domain-core-android-observed-identity.json"
 
       - name: Verify loaded Android Rust identity
         run: |

@@ -160,14 +160,14 @@ export const FAQ: FAQItem[] = [
     category: "billing",
     question: "What is BurnBar Cloud?",
     answer:
-      "BurnBar Cloud is the entry paid tier. It adds hosted quota refresh, encrypted conversation backup and resume, full session-log sync, cloud search, and synced agent memory to the free local product.\n\nIt costs $7.99/month or $79/year. Monthly and annual plans are available on web, App Store, and Google Play. Purchases are verified server-side before hosted features turn on."
+      "BurnBar Cloud is the entry paid tier. It adds hosted quota refresh, encrypted conversation backup and resume, full session-log sync, cloud search, and synced agent memory to the free local product.\n\nIt costs $7.99/month or $79/year. Monthly and annual plans are available on the web and App Store. Android purchasing arrives with the public Play Store listing. Purchases are verified server-side before hosted features turn on."
   },
   {
     id: "burnbar-cloud-pro",
     category: "billing",
     question: "What is BurnBar Cloud Pro?",
     answer:
-      "BurnBar Cloud Pro is the second paid tier. It includes everything in BurnBar Cloud, plus Floo phone-to-Mac workflows and Agent Control under your grant.\n\nIt costs $24.99/month or $249/year. Monthly and annual plans are available on web, App Store, and Google Play. Cloud Pro unlocks the Pro feature group after server-side purchase verification."
+      "BurnBar Cloud Pro is the second paid tier. It includes everything in BurnBar Cloud, plus Floo phone-to-Mac workflows and Agent Control under your grant.\n\nIt costs $24.99/month or $249/year. Monthly and annual plans are available on the web and App Store. Android purchasing arrives with the public Play Store listing. Cloud Pro unlocks the Pro feature group after server-side purchase verification."
   },
   {
     id: "cloud-pro-allowance",
@@ -181,7 +181,7 @@ export const FAQ: FAQItem[] = [
     category: "billing",
     question: "What is BurnBar Ultra?",
     answer:
-      "BurnBar Ultra is the top paid tier. It includes everything in BurnBar Cloud Pro — Floo, Agent Control, and the same hosted action and relay allowance — plus 10× private agent memory.\n\nAgent memory is the repo docs, notes, and chat-derived memories your agents recall while they work. Cloud Pro gives your agents 10 knowledge sources, 50,000 memory chunks, and 1 GB. BurnBar Ultra raises that to 100 sources, 500,000 chunks, and 10 GB. The text is sealed on your device; hosted nearest-neighbor recall is opt-in and runs over cloaked vectors and opaque keyed hashes, which still reveal structural patterns such as recurrence, counts, and access timing.\n\nIt costs $59.99/month or $599/year. Monthly and annual plans are available on web, App Store, and Google Play. BurnBar Ultra unlocks the higher memory limits after server-side purchase verification."
+      "BurnBar Ultra is the top paid tier. It includes everything in BurnBar Cloud Pro — Floo, Agent Control, and the same hosted action and relay allowance — plus 10× private agent memory.\n\nAgent memory is the repo docs, notes, and chat-derived memories your agents recall while they work. Cloud Pro gives your agents 10 knowledge sources, 50,000 memory chunks, and 1 GB. BurnBar Ultra raises that to 100 sources, 500,000 chunks, and 10 GB. The text is sealed on your device; hosted nearest-neighbor recall is opt-in and runs over cloaked vectors and opaque keyed hashes, which still reveal structural patterns such as recurrence, counts, and access timing.\n\nIt costs $59.99/month or $599/year. Monthly and annual plans are available on the web and App Store. Android purchasing arrives with the public Play Store listing. BurnBar Ultra unlocks the higher memory limits after server-side purchase verification."
   },
   {
     id: "grandfathered-hosted-quota",
@@ -195,7 +195,7 @@ export const FAQ: FAQItem[] = [
     category: "billing",
     question: "How do cancellation and refunds work?",
     answer:
-      "Cancel from the platform where you purchased: Apple App Store, Google Play, or Stripe. Access remains until the paid period expires unless the platform reports a refund, chargeback, or revocation.\n\nApple and Google refunds follow store policy. Stripe purchases can be handled through support. Consumed top-ups are non-refundable except where store policy or law requires it."
+      "Cancel from the platform where you purchased: Apple App Store or Stripe today, and Google Play after the public Android listing opens. Access remains until the paid period expires unless the platform reports a refund, chargeback, or revocation.\n\nStore refunds follow store policy. Stripe purchases can be handled through support. Consumed top-ups are non-refundable except where store policy or law requires it."
   },
   {
     id: "claude-code-self-hosted",

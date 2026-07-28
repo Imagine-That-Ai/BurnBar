@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const preparer = join(scriptDir, "prepare-scoped-functions-deploy.mjs");
+const repoRoot = join(scriptDir, "..", "..");
 const root = mkdtempSync(join(tmpdir(), "openburnbar-scoped-functions-"));
 const functionsDir = join(root, "functions");
 const libDir = join(functionsDir, "lib");
@@ -79,6 +80,8 @@ try {
   );
   if (packageJson.main !== "lib/staging-scoped-index.cjs")
     throw new Error("package main was not scoped");
+  if (Object.keys(packageJson.scripts ?? {}).length !== 0)
+    throw new Error("scoped package retained executable scripts");
   const require = createRequire(import.meta.url);
   const exports = require(join(libDir, "staging-scoped-index.cjs"));
   if (
@@ -121,6 +124,52 @@ try {
       .main !== "lib/index.js"
   ) {
     throw new Error("all-functions mode changed package main");
+  }
+  if (
+    Object.keys(
+      JSON.parse(readFileSync(join(functionsDir, "package.json"), "utf8"))
+        .scripts ?? {},
+    ).length !== 0
+  ) {
+    throw new Error("all-functions mode retained executable scripts");
+  }
+
+  const productionManifest = JSON.parse(
+    readFileSync(
+      join(repoRoot, "functions", "staging-deploy-targets.json"),
+      "utf8",
+    ),
+  );
+  const requiredCommercialTargets = [
+    "burnBarHermesGateway",
+    "latestRouterRundown",
+    "startCliLink",
+    "pollCliLink",
+    "createStripeBurnBarProCheckoutSession",
+    "createStripeBurnBarProPortalSession",
+    "verifyGooglePlayBurnBarProSubscription",
+    "verifyGooglePlayCloudProTopUp",
+    "stripeBurnBarProWebhook",
+    "googlePlayDeveloperNotifications",
+    "reconcileGooglePlayVoidedPurchasesDaily",
+    "beginEntitlementBinding",
+    "verifyHostedQuotaEntitlement",
+    "verifyCloudProTopUp",
+    "restoreHostedQuotaEntitlement",
+    "appStoreServerNotificationsV2",
+    "reconcileHostedEntitlementsDaily",
+  ];
+  for (const target of requiredCommercialTargets) {
+    const entry = productionManifest.targets?.[target];
+    if (
+      !entry ||
+      typeof entry.module !== "string" ||
+      typeof entry.export !== "string"
+    ) {
+      throw new Error(
+        `commercial staging target ${target} is missing a valid manifest binding`,
+      );
+    }
   }
 
   console.log(

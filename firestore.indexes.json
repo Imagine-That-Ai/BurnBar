@@ -2041,6 +2041,12 @@
       ]
     },
     {
+      "collectionGroup": "google_play_rtdn_events",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
       "collectionGroup": "pop_nonces",
       "fieldPath": "expireAt",
       "ttl": true,

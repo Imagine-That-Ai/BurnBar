@@ -205,6 +205,16 @@ requireIncludes(
   "hosting deploy must support stable release tags",
 );
 requireIncludes(
+  deployJob,
+  "if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}",
+  "hosting deploy must run on push/tag events and skip only manual dry-runs",
+);
+requireNoPattern(
+  deployJob,
+  /github\.event\.inputs\.dry_run/u,
+  "hosting deploy must not depend on workflow_dispatch-only event input paths",
+);
+requireIncludes(
   verifyStep,
   "EVENT_NAME: ${{ github.event_name }}",
   "verify step must read event name through env",

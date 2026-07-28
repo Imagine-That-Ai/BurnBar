@@ -837,7 +837,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarMobile
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 82
+        CURRENT_PROJECT_VERSION: 83
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: YES
@@ -950,6 +950,15 @@ targets:
           - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
         outputFiles:
           - $(DERIVED_FILE_DIR)/BlockAppCheckDebugTokenInRelease.stamp
+      - name: Block iOS QA Bridge In Release
+        script: |
+          set -euo pipefail
+          if [[ "${CONFIGURATION:-}" != "Release" ]]; then
+            exit 0
+          fi
+          /bin/bash "${SRCROOT}/scripts/ci/verify-ios-debug-bridge-release.sh" \
+            "${TARGET_BUILD_DIR}/${WRAPPER_NAME}"
+        basedOnDependencyAnalysis: false
     info:
       path: OpenBurnBarMobile/Info.plist
       properties:
@@ -1111,7 +1120,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarWidget
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.widget
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 82
+        CURRENT_PROJECT_VERSION: 83
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements
@@ -1163,7 +1172,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarKeyboard
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.keyboard
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 82
+        CURRENT_PROJECT_VERSION: 83
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarKeyboard/Resources/OpenBurnBarKeyboard.entitlements

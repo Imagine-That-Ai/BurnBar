@@ -16,6 +16,7 @@ struct CloudStoreSettingsView: View {
     @StateObject private var entitlement = MacCloudEntitlementStore.shared
     @StateObject private var purchaseStore = MacHostedQuotaPurchaseStore()
     @State private var showBadgePicker = false
+    @State private var billingPeriod: MacCloudBillingPeriod = .monthly
 
     /// Injected so the Backup & Sync card can read/write the live cloud toggles
     /// and trigger an on-demand session-log backup. Defaulted to the shared
@@ -23,6 +24,14 @@ struct CloudStoreSettingsView: View {
     var settingsManager: SettingsManager = .shared
     var accountManager: AccountManager = .shared
     var dataStore: DataStore?
+
+    /// `onAppear` starts live services (StoreKit catalogue load, backup
+    /// catch-up, analytics, remote-MCP Firestore listener) and the
+    /// `repeatForever` tier-crest shimmer. Headless test renders set this to
+    /// `false`: an off-window `NSHostingView` never fires `onDisappear`, so
+    /// on CI the leftover work/animation from a snapshot render wedges the
+    /// shared test process and hangs later suites (App PR Gate timeout).
+    var startsLiveServicesOnAppear: Bool = true
 
     @State private var isBackingUp = false
     @State private var backupNoticeError: String?
@@ -90,6 +99,7 @@ struct CloudStoreSettingsView: View {
             CloudBadgePicker()
         }
         .onAppear {
+            guard startsLiveServicesOnAppear else { return }
             Analytics.shared.track(.screenViewed, ["surface": "cloud_sync"])
             entitlement.start()
             Task { await purchaseStore.load() }
@@ -905,6 +915,15 @@ struct CloudStoreSettingsView: View {
                 }
             }
 
+            Picker("Billing period", selection: $billingPeriod) {
+                ForEach(MacCloudBillingPeriod.allCases) { period in
+                    Text(period.title).tag(period)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 360)
+            .accessibilityIdentifier("macCloudStore.billingPeriod")
+
             VStack(spacing: 16) {
                 ForEach(MacPricingTierModel.all) { model in
                     tierCard(model)
@@ -940,7 +959,7 @@ struct CloudStoreSettingsView: View {
         let currentTier = entitlement.currentTier
         let isCurrent = currentTier == model.entitlementTier && model.entitlementTier != .free
         let isOwned = model.entitlementTier != .free && currentTier >= model.entitlementTier
-        let isBusy = purchaseStore.purchasingTier == tier
+        let isBusy = purchaseStore.purchasingProductID == tier.productID(for: billingPeriod)
 
         AuroraGlassCardMac {
             ZStack(alignment: .topTrailing) {
@@ -950,7 +969,8 @@ struct CloudStoreSettingsView: View {
                     TierHolographicAccent(
                         crestAsset: crestAsset,
                         palette: model.holoPalette,
-                        reduceMotion: reduceMotion
+                        reduceMotion: reduceMotion,
+                        animates: startsLiveServicesOnAppear
                     )
                     .allowsHitTesting(false)
                 }
@@ -1025,18 +1045,18 @@ struct CloudStoreSettingsView: View {
                     .font(.system(size: 13))
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             } else {
-                Text(purchaseStore.displayPrice(for: model.tier) ?? "—")
+                Text(
+                    purchaseStore.displayPrice(
+                        for: model.tier,
+                        billingPeriod: billingPeriod
+                    ) ?? "—"
+                )
                     .font(.system(size: 32, weight: .bold, design: .rounded))
                     .foregroundStyle(DesignSystem.Colors.primaryGradient)
                     .accessibilityIdentifier("macCloudStore.price.\(model.tier.rawValue)")
-                Text("/ month")
+                Text(billingPeriod.priceSuffix)
                     .font(.system(size: 13))
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
-                if let annual = MacHostedQuotaPurchaseStore.fallbackAnnualPrice[model.tier] {
-                    Text("· \(annual)/yr")
-                        .font(.system(size: 11))
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
             }
         }
     }
@@ -1109,7 +1129,7 @@ struct CloudStoreSettingsView: View {
             .padding(.top, 4)
         } else {
             Button {
-                Task { await purchaseStore.purchase(tier: model.tier) }
+                subscribeToSelectedCadence(model.tier) // cov:ignore -- button chrome; the action is unit-tested via subscribeToSelectedCadence(_:)
             } label: {
                 Group {
                     if isBusy {
@@ -1131,6 +1151,19 @@ struct CloudStoreSettingsView: View {
             .disabled(purchaseStore.isPurchasing)
             .padding(.top, 4)
             .accessibilityIdentifier("macCloudStore.subscribe.\(model.tier.rawValue)")
+        }
+    }
+
+    /// Starts the StoreKit purchase for `tier` at the billing cadence the
+    /// pane's segmented picker currently selects. Internal (not private) so
+    /// unit tests can drive the exact action the subscribe button performs.
+    @discardableResult
+    func subscribeToSelectedCadence(_ tier: MacCloudPricingTier) -> Task<Void, Never> {
+        Task {
+            await purchaseStore.purchase(
+                tier: tier,
+                billingPeriod: billingPeriod
+            )
         }
     }
 
@@ -1376,7 +1409,10 @@ struct CloudStoreSettingsView: View {
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onAppear { remoteMCPClients.startListening() }
+        .onAppear {
+            guard startsLiveServicesOnAppear else { return }
+            remoteMCPClients.startListening()
+        }
         .onDisappear { remoteMCPClients.stopListening() }
         .sheet(isPresented: $showingHostedMCPUnlock) {
             FeatureUnlockSheet(feature: GatedFeature.gatedFeature(.hostedMCP))

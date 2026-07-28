@@ -24,16 +24,16 @@ import {
   boundedHttpsURL,
   assertActiveBurnBarCloudProEntitlement,
   getOrCreateStripeCustomer,
-  googlePlayLineItemForProduct,
-  googlePlayExpiryMillis,
-  applyStripeCheckoutSession,
-  applyStripeSubscription,
+  selectGooglePlaySubscriptionLineItem,
+  assertStripeCustomerCanStartSubscriptionCheckout,
+  findReusableStripeSubscriptionCheckoutSession,
+  expireOpenStripeSubscriptionCheckoutSessions,
   creditCloudProTopUp,
   writeBurnBarProEntitlement,
 } from "./shared.js";
 import Stripe from "stripe";
 import { parseGooglePlayProSubscriptionInput, parseGooglePlayTopUpInput } from "./stripeInputSchemas.js";
-import { isStripeCheckoutSession, isStripeSubscription, jsonObject, stripUndefinedObject } from "../guards.js";
+import { jsonObject, stripUndefinedObject } from "../guards.js";
 import {
   allowanceDocPath,
   cloudProTopUpReceiptDocPath,
@@ -43,6 +43,7 @@ import {
 import { googlePlayBillingRecordPath } from "./googlePlayBillingPaths.js";
 import { claimGooglePlayPurchaseToken } from "./googlePlayTokenClaims.js";
 import { googlePlayTopUpKind, STRIPE_TOP_UP_KINDS, topUpCheckoutSelection } from "./stripeTopUps.js";
+import { STRIPE_CHECKOUT_CUSTOMER_AND_TAX_SETTINGS } from "./stripeCheckoutPolicy.js";
 import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 import {
   ANALYTICS_SECRETS,
@@ -51,12 +52,13 @@ import {
   entitlementFamilyOf,
   boundedAnalyticsDeviceId,
 } from "../analytics/index.js";
+import { processStripeWebhookEvent } from "./stripeWebhookDispatch.js";
 
 // ---------------------------------------------------------------------------
 // Callable / HTTP: BurnBar Pro billing bridges
 // ---------------------------------------------------------------------------
 
-type StripeCheckoutTier = "cloud" | "cloud_pro";
+type StripeCheckoutTier = "cloud" | "cloud_pro" | "ultra";
 type StripeCheckoutCadence = "monthly" | "annual";
 type StripeWebhookReservation = "reserved" | "processed" | "processing";
 
@@ -107,8 +109,17 @@ function subscriptionCheckoutSelection(data: { tier?: unknown; cadence?: unknown
   cadence: StripeCheckoutCadence;
 } {
   const cfg = getConfig();
-  const tier = optionalChoice(data.tier, ["cloud", "cloud_pro"] as const, "tier") ?? "cloud";
+  const tier = optionalChoice(data.tier, ["cloud", "cloud_pro", "ultra"] as const, "tier") ?? "cloud";
   const cadence = optionalChoice(data.cadence, ["monthly", "annual"] as const, "cadence") ?? "monthly";
+  if (tier === "ultra") {
+    const priceID = cadence === "annual" ? cfg.stripeBurnBarUltraAnnualPriceID : cfg.stripeBurnBarUltraMonthlyPriceID;
+    return {
+      priceID: requireConfiguredPriceID(priceID, `BurnBar Ultra ${cadence}`),
+      entitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID,
+      tier,
+      cadence,
+    };
+  }
   if (tier === "cloud_pro") {
     const priceID =
       cadence === "annual" ? cfg.stripeBurnBarCloudProAnnualPriceID : cfg.stripeBurnBarCloudProMonthlyPriceID;
@@ -129,39 +140,6 @@ function subscriptionCheckoutSelection(data: { tier?: unknown; cadence?: unknown
     tier,
     cadence,
   };
-}
-
-function googlePlaySubscriptionEntitlement(productID: string): { entitlementID: string; canonicalProductID: string } {
-  const cfg = getConfig();
-  const cloudProductIDs = new Set([
-    cfg.googlePlaySubscriptionProductID,
-    cfg.googlePlayCloudMonthlyProductID,
-    cfg.googlePlayCloudAnnualProductID,
-    cfg.burnBarProProductID,
-    cfg.burnBarProAnnualProductID,
-  ]);
-  const cloudProProductIDs = new Set([
-    cfg.googlePlayCloudProMonthlyProductID,
-    cfg.googlePlayCloudProAnnualProductID,
-    cfg.burnBarProMaxProductID,
-    cfg.burnBarProMaxAnnualProductID,
-  ]);
-  const ultraProductIDs = new Set([
-    cfg.googlePlayUltraMonthlyProductID,
-    cfg.googlePlayUltraAnnualProductID,
-    cfg.burnBarUltraProductID,
-    cfg.burnBarUltraAnnualProductID,
-  ]);
-  if (cloudProductIDs.has(productID)) {
-    return { entitlementID: BURNBAR_PRO_ENTITLEMENT_ID, canonicalProductID: productID };
-  }
-  if (cloudProProductIDs.has(productID)) {
-    return { entitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID, canonicalProductID: productID };
-  }
-  if (ultraProductIDs.has(productID)) {
-    return { entitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID, canonicalProductID: productID };
-  }
-  throw new HttpsError("invalid-argument", "Unsupported Google Play subscription product.");
 }
 
 function stripeWebhookEventRef(eventID: string) {
@@ -260,9 +238,10 @@ export const createStripeBurnBarProCheckoutSession = onCall(
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before starting checkout.");
       enforceAuthAndAppCheck(request, uid);
 
+      const cfg = getConfig();
       const stripe = requireConfiguredStripe();
-      const successUrl = boundedHttpsURL(request.data.successUrl, "successUrl");
-      const cancelUrl = boundedHttpsURL(request.data.cancelUrl, "cancelUrl");
+      const successUrl = boundedHttpsURL(request.data.successUrl, "successUrl", cfg.stripeRedirectURLAllowlist);
+      const cancelUrl = boundedHttpsURL(request.data.cancelUrl, "cancelUrl", cfg.stripeRedirectURLAllowlist);
       const customerID = await getOrCreateStripeCustomer(uid, stripe);
       const topUpKind = optionalChoice(request.data.topUpKind, STRIPE_TOP_UP_KINDS, "topUpKind");
 
@@ -273,6 +252,7 @@ export const createStripeBurnBarProCheckoutSession = onCall(
           stripe.checkout.sessions.create({
             mode: "payment",
             customer: customerID,
+            ...STRIPE_CHECKOUT_CUSTOMER_AND_TAX_SETTINGS,
             client_reference_id: uid,
             success_url: successUrl,
             cancel_url: cancelUrl,
@@ -287,34 +267,58 @@ export const createStripeBurnBarProCheckoutSession = onCall(
       }
 
       const selection = subscriptionCheckoutSelection(request.data);
+      await assertStripeCustomerCanStartSubscriptionCheckout(stripe, customerID);
+      const redirectFingerprint = sha256Hex(`checkout_redirect_v1\n${successUrl}\n${cancelUrl}`);
+      const reusable = await findReusableStripeSubscriptionCheckoutSession(
+        stripe,
+        customerID,
+        selection,
+        redirectFingerprint,
+      );
+      if (reusable) {
+        return { sessionId: reusable.id, url: reusable.url, reused: true };
+      }
+      // A reuse miss means the user changed tier, cadence, or redirect URLs.
+      // Expire the superseded open sessions before creating the new one so a
+      // stale checkout URL for a different selection cannot still be paid.
+      await expireOpenStripeSubscriptionCheckoutSessions(stripe, customerID);
+      const idempotencyBucket = Math.floor(Date.now() / (10 * 60 * 1000));
+      const idempotencyKey = sha256Hex(
+        `burnbar_subscription_checkout:${uid}:${selection.tier}:${selection.cadence}:${redirectFingerprint}:${idempotencyBucket}`,
+      );
 
       const session = await stripeWithResilience("checkout.sessions.create.subscription", () =>
-        stripe.checkout.sessions.create({
-          mode: "subscription",
-          customer: customerID,
-          client_reference_id: uid,
-          success_url: successUrl,
-          cancel_url: cancelUrl,
-          allow_promotion_codes: true,
-          line_items: [{ price: selection.priceID, quantity: 1 }],
-          metadata: {
-            firebaseUID: uid,
-            entitlementID: selection.entitlementID,
-            tier: selection.tier,
-            cadence: selection.cadence,
-          },
-          subscription_data: {
+        stripe.checkout.sessions.create(
+          {
+            mode: "subscription",
+            customer: customerID,
+            ...STRIPE_CHECKOUT_CUSTOMER_AND_TAX_SETTINGS,
+            client_reference_id: uid,
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+            allow_promotion_codes: true,
+            line_items: [{ price: selection.priceID, quantity: 1 }],
             metadata: {
               firebaseUID: uid,
               entitlementID: selection.entitlementID,
               tier: selection.tier,
               cadence: selection.cadence,
+              redirectFingerprint,
+            },
+            subscription_data: {
+              metadata: {
+                firebaseUID: uid,
+                entitlementID: selection.entitlementID,
+                tier: selection.tier,
+                cadence: selection.cadence,
+              },
             },
           },
-        }),
+          { idempotencyKey },
+        ),
       );
 
-      return { sessionId: session.id, url: session.url };
+      return { sessionId: session.id, url: session.url, reused: false };
     },
   ),
 );
@@ -337,8 +341,9 @@ export const createStripeBurnBarProPortalSession = onCall(
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before opening the billing portal.");
       enforceAuthAndAppCheck(request, uid);
 
+      const cfg = getConfig();
       const stripe = requireConfiguredStripe();
-      const returnUrl = boundedHttpsURL(request.data.returnUrl, "returnUrl");
+      const returnUrl = boundedHttpsURL(request.data.returnUrl, "returnUrl", cfg.stripeRedirectURLAllowlist);
       const customerID = await getOrCreateStripeCustomer(uid, stripe);
       const session = await stripeWithResilience("billingPortal.sessions.create", () =>
         stripe.billingPortal.sessions.create({
@@ -380,7 +385,6 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
       const cfg = getConfig();
       const { purchaseToken, productID: requestedProductID } = parseGooglePlayProSubscriptionInput(request.data);
       const productID = requestedProductID ?? cfg.googlePlaySubscriptionProductID;
-      const entitlementTarget = googlePlaySubscriptionEntitlement(productID);
 
       // Lazy-load googleapis (~500ms) so every other function skips it on cold start.
       const { google } = await import("googleapis");
@@ -398,8 +402,11 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
       const purchase = jsonObject(response.data);
       const subscriptionState =
         typeof purchase.subscriptionState === "string" ? purchase.subscriptionState : "SUBSCRIPTION_STATE_UNSPECIFIED";
-      const lineItem = googlePlayLineItemForProduct(purchase, productID);
-      const expiresAtMillis = googlePlayExpiryMillis(lineItem);
+      const {
+        lineItem,
+        target: entitlementTarget,
+        expiresAtMillis,
+      } = selectGooglePlaySubscriptionLineItem(purchase, [productID]);
       const active = GOOGLE_PLAY_ACTIVE_STATES.has(subscriptionState) && expiresAtMillis > Date.now();
       const tokenHash = sha256Hex(purchaseToken);
       await claimGooglePlayPurchaseToken({
@@ -628,55 +635,7 @@ export const stripeBurnBarProWebhook = onRequest(
     }
 
     try {
-      switch (event.type) {
-        case "checkout.session.completed":
-        case "checkout.session.async_payment_succeeded":
-          if (isStripeCheckoutSession(event.data.object)) {
-            // The event context sets the entitlement's ordering watermark
-            // (LB-5): the checkout path re-fetches the subscription fresh,
-            // so the written state is at least as new as event.created.
-            await applyStripeCheckoutSession(stripe, event.data.object, {
-              eventID: event.id,
-              eventCreatedMillis: event.created * 1000,
-            });
-          }
-          break;
-        case "customer.subscription.created":
-        case "customer.subscription.updated":
-          if (isStripeSubscription(event.data.object)) {
-            // Re-fetch instead of writing the event's point-in-time snapshot
-            // (LB-5): event.created has only second granularity, so two
-            // different subscription events landing in the same second
-            // cannot be ordered by timestamp. Writing Stripe's CURRENT state
-            // makes whichever tied event applies first authoritative, and
-            // the sourceEventID tie-break in
-            // paidEntitlementWriteWouldRewindSourceEvent safely rejects the
-            // other. A failed retrieve fails the webhook so Stripe
-            // redelivers rather than letting a stale snapshot through.
-            const snapshotID = event.data.object.id;
-            const subscription = await stripeWithResilience("subscriptions.retrieve.webhook", () =>
-              stripe.subscriptions.retrieve(snapshotID),
-            );
-            await applyStripeSubscription(stripe, subscription, undefined, {
-              eventID: event.id,
-              eventCreatedMillis: event.created * 1000,
-            });
-          }
-          break;
-        case "customer.subscription.deleted":
-          if (isStripeSubscription(event.data.object)) {
-            // No re-fetch here: `canceled` is terminal, so the deletion
-            // snapshot IS the current state (and a retrieve can fail after
-            // the Stripe customer itself is deleted).
-            await applyStripeSubscription(stripe, event.data.object, undefined, {
-              eventID: event.id,
-              eventCreatedMillis: event.created * 1000,
-            });
-          }
-          break;
-        default:
-          break;
-      }
+      await processStripeWebhookEvent(stripe, event);
       await markStripeWebhookEventProcessed(event);
       res.json({ received: true });
     } catch (err) {

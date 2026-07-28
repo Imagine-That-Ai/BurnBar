@@ -29,10 +29,14 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 const DIST = join(ROOT, "dist");
 
-// The real public apiKey for the "burnbar" Firebase project, mirrored from
-// website/src/lib/firebaseClient.ts (and apps/console/lib/firebaseClient.ts).
-// Sign-in is dead in production if this string is absent from the built bundle.
-const PRODUCTION_API_KEY = "AIzaSyBiAIHwf1MKZ6LN5HrsaPYsAR3UTe8hyw4";
+// CI/deploy environments can override these public identifiers when building
+// the isolated staging site. A normal production build intentionally falls
+// back to the reviewed "burnbar" values mirrored in firebaseClient.ts.
+const EXPECTED_PROJECT_ID = process.env.PUBLIC_FIREBASE_PROJECT_ID || "burnbar";
+const EXPECTED_API_KEY =
+  process.env.PUBLIC_FIREBASE_API_KEY || "AIzaSyBiAIHwf1MKZ6LN5HrsaPYsAR3UTe8hyw4";
+const EXPECTED_RECAPTCHA_ENTERPRISE_SITE_KEY =
+  process.env.PUBLIC_RECAPTCHA_ENTERPRISE_KEY || "6Ld3bAktAAAAAABiZujpMLmUcvSMUPiJk6qENbOg";
 
 // Fragments that must NEVER appear in a shipped asset. Any one of these means a
 // fake placeholder fallback was re-inlined and the build would deploy broken auth.
@@ -68,15 +72,34 @@ for (const file of files) {
   }
 }
 
-// Check 2: the real production apiKey must actually be present in the bundle.
-const apiKeyPresent = files.some((file) => readFileSync(file, "utf8").includes(PRODUCTION_API_KEY));
+// Check 2: the selected environment's real public identifiers must actually be
+// present in the bundle. This prevents a staging deploy from silently shipping
+// a production Firebase client (and vice versa).
+const projectIdPresent = files.some((file) =>
+  readFileSync(file, "utf8").includes(EXPECTED_PROJECT_ID)
+);
+assert.ok(
+  projectIdPresent,
+  `the expected Firebase project id ("${EXPECTED_PROJECT_ID}") is missing from every built asset in dist/.`
+);
+
+const apiKeyPresent = files.some((file) => readFileSync(file, "utf8").includes(EXPECTED_API_KEY));
 assert.ok(
   apiKeyPresent,
-  `the production Firebase apiKey ("${PRODUCTION_API_KEY}") is missing from every built asset in dist/. ` +
+  `the expected Firebase apiKey ("${EXPECTED_API_KEY}") is missing from every built asset in dist/. ` +
     `Without it, signInWithPopup fails and /link + /hermes/connect cannot authenticate. ` +
-    `Verify src/lib/firebaseClient.ts ships the real public "burnbar" project config as its fallback.`
+    `Verify the build environment selects the intended Firebase project.`
+);
+
+const appCheckSiteKeyPresent = files.some((file) =>
+  readFileSync(file, "utf8").includes(EXPECTED_RECAPTCHA_ENTERPRISE_SITE_KEY)
+);
+assert.ok(
+  appCheckSiteKeyPresent,
+  `the expected reCAPTCHA Enterprise site key for "${EXPECTED_PROJECT_ID}" is missing from every built asset in dist/. ` +
+    "Without it, App Check-enforced billing and account callables fail from the website."
 );
 
 console.log(
-  `✓ Firebase config: scanned ${files.length} built asset(s); no placeholder present and the production apiKey is bundled.`
+  `✓ Firebase config: scanned ${files.length} built asset(s); no placeholder present and ${EXPECTED_PROJECT_ID} Auth + App Check config is bundled.`
 );

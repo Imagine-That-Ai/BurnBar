@@ -67,6 +67,12 @@ const GOOD_INDEXES = {
       ttl: true,
       indexes: [],
     },
+    {
+      collectionGroup: "google_play_rtdn_events",
+      fieldPath: "expireAt",
+      ttl: true,
+      indexes: [],
+    },
   ],
 };
 // Inline-typed signatures mirror the real voipPush.ts: the param destructure
@@ -110,6 +116,8 @@ export function buildFcmMessage(args: { event: { id: string; runtime: string; pr
 }`;
 const GOOD_CREDENTIAL_TRANSFER =
   "const ref = db.doc(`credential_transfers/${id}`); const doc = { expiresAt: Timestamp.fromMillis(Date.now() + 86400000) };";
+const GOOD_GOOGLE_PLAY_RTDN =
+  'const ref = db.collection("google_play_rtdn_events").doc(messageId); const doc = { expireAt: Timestamp.fromMillis(Date.now() + 30 * 86400000) };';
 const GOOD_UID_REDACTOR = `function redactUidPaths(v){
   let result = v;
   result = result.replace(/\\busers\\/([A-Za-z0-9_-]{9,})/g, (_m, id) => "users/" + id.slice(0, 8) + "...");
@@ -127,6 +135,7 @@ function buildTree(mut = (f) => f) {
     "functions/src/voipPush.ts": GOOD_VOIPPUSH,
     "functions/src/agentNotifications.ts": GOOD_AGENTNOTIF,
     "functions/src/credentialTransfer.ts": GOOD_CREDENTIAL_TRANSFER,
+    "functions/src/googlePlayRtdn.ts": GOOD_GOOGLE_PLAY_RTDN,
     "functions/src/logging.ts": GOOD_LOGGING,
   });
   for (const [rel, content] of Object.entries(files)) {

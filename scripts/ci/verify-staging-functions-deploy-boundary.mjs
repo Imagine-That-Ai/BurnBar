@@ -64,6 +64,16 @@ requireText(
 );
 requireText(
   caller,
+  "npm run build:staging --prefix website",
+  "candidate Hosting must use the staging-isolated website build",
+);
+requireText(
+  caller,
+  "staging-hosting-${{ github.sha }}",
+  "candidate Hosting artifact identity must be bound to the candidate SHA",
+);
+requireText(
+  caller,
   "^functions:[A-Za-z][A-Za-z0-9_-]*(,functions:[A-Za-z][A-Za-z0-9_-]*)*$",
   "function_targets must be constrained to explicit Firebase Functions selectors",
 );
@@ -73,6 +83,21 @@ requireText(
             --targets "$FUNCTION_TARGETS" \\
             --functions-dir functions`,
   "scoped targets must replace the all-functions module graph before artifact upload",
+);
+requireText(
+  caller,
+  'cp -R functions/vendor "$destination/vendor"',
+  "candidate Functions artifact must include its locked local package dependencies",
+);
+requireText(
+  trusted,
+  "lib/*.js|lib/*.js.map|lib/*.cjs",
+  "trusted Functions artifact must permit the generated scoped CommonJS entrypoint",
+);
+requireText(
+  trusted,
+  "Functions deployment package retains executable npm scripts.",
+  "trusted Functions artifact must reject executable npm scripts before authentication",
 );
 reject(
   caller,
@@ -97,7 +122,7 @@ requireText(
 );
 requireText(
   trusted,
-  "npm ci --prefix \"$deploy_root/functions\" --omit=dev --ignore-scripts",
+  'npm ci --prefix "$deploy_root/functions" --omit=dev --ignore-scripts',
   "candidate package lifecycle scripts must remain disabled",
 );
 requireText(
@@ -109,6 +134,63 @@ requireText(
   trusted,
   '--only "$deploy_scope"',
   "validated Functions deployment scope must remain one quoted argument",
+);
+requireText(
+  trusted,
+  "--only hosting:marketing",
+  "trusted Hosting deployment must remain scoped to the marketing target",
+);
+requireText(
+  trusted,
+  "node website/scripts/verify-staging-deployment.mjs",
+  "trusted Hosting deployment must run the live staging verifier",
+);
+requireText(
+  trusted,
+  'gcloud functions describe "$function_id"',
+  "trusted Hosting deployment must fail closed unless every rewrite Function is active",
+);
+requireText(
+  trusted,
+  "grep -qx ACTIVE",
+  "trusted Hosting rewrite preflight must require the ACTIVE state",
+);
+requireText(
+  trusted,
+  "Grant public invocation only to reviewed Hosting rewrite services",
+  "trusted Hosting deployment must install the reviewed public-invoker bindings",
+);
+for (const functionId of [
+  "burnBarHermesGateway",
+  "latestRouterRundown",
+  "startCliLink",
+  "pollCliLink",
+]) {
+  requireText(
+    trusted,
+    `[${functionId}]=us-central1`,
+    `trusted Hosting deployment must review ${functionId} in us-central1`,
+  );
+}
+requireText(
+  trusted,
+  'gcloud run services add-iam-policy-binding "$service_name"',
+  "trusted Hosting deployment must bind the resolved Cloud Run rewrite service",
+);
+requireText(
+  trusted,
+  "--member=allUsers",
+  "trusted Hosting rewrite services must be publicly invokable through Hosting",
+);
+requireText(
+  trusted,
+  "--role=roles/run.invoker",
+  "trusted Hosting rewrite services must receive only the Cloud Run invoker role",
+);
+requireText(
+  trusted,
+  '[[ "$rewrite_count" -eq 4 && "${#reviewed_rewrites[@]}" -eq 0 ]]',
+  "trusted Hosting deployment must require the exact reviewed rewrite set",
 );
 reject(
   trusted,
@@ -123,15 +205,33 @@ const authIndex = trusted.indexOf(
   "Authenticate to Google Cloud through trusted-main WIF",
 );
 const deployIndex = trusted.indexOf("Deploy reviewed Functions artifact");
+const hostingRewriteIndex = trusted.indexOf(
+  "Verify every Hosting rewrite target exists",
+);
+const hostingIamIndex = trusted.indexOf(
+  "Grant public invocation only to reviewed Hosting rewrite services",
+);
+const hostingDeployIndex = trusted.indexOf("Deploy reviewed Hosting artifact");
+const hostingVerifyIndex = trusted.indexOf(
+  "Verify exact staging website deployment",
+);
 if (
   verificationIndex === -1 ||
   authIndex === -1 ||
   deployIndex === -1 ||
+  hostingRewriteIndex === -1 ||
+  hostingIamIndex === -1 ||
+  hostingDeployIndex === -1 ||
+  hostingVerifyIndex === -1 ||
   verificationIndex > authIndex ||
-  authIndex > deployIndex
+  authIndex > deployIndex ||
+  deployIndex > hostingRewriteIndex ||
+  hostingRewriteIndex > hostingIamIndex ||
+  hostingIamIndex > hostingDeployIndex ||
+  hostingDeployIndex > hostingVerifyIndex
 ) {
   failures.push(
-    "artifact verification must precede WIF authentication and credentialed deployment",
+    "artifact verification must precede WIF authentication, narrow rewrite IAM, deployment, and live Hosting verification",
   );
 }
 
@@ -142,5 +242,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "PASS: untrusted candidates produce bounded data for the trusted-main staging deploy workflow.",
+  "PASS: untrusted candidates produce bounded rules, Hosting, and Functions data for the trusted-main staging deploy workflow.",
 );

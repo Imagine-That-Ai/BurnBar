@@ -16,6 +16,7 @@ interface Props {
   ogImage?: string;
   pathname?: string;
   noindex?: boolean;
+  transactional?: boolean;
 }
 
 const {
@@ -23,7 +24,8 @@ const {
   description = SITE.description,
   ogImage = "/og/default.png",
   pathname,
-  noindex = false
+  noindex = false,
+  transactional = false
 } = Astro.props;
 
 // Firebase Hosting serves these pages without a trailing slash
@@ -134,7 +136,7 @@ const fullTitle =
       )
     }
   </head>
-  <body>
+  <body data-transactional-page={transactional ? "" : undefined}>
     <!-- Interactive Token Ember Swarm Canvas Background (DARK theme) -->
     <canvas
       id="bgCanvas"

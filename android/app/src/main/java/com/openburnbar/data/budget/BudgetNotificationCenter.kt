@@ -89,12 +89,12 @@ class BudgetNotificationCenter(private val context: Context) {
         ensureChannel(context)
 
         val intent =
-            Intent(Intent.ACTION_VIEW).apply {
-                setClass(context, MainActivity::class.java)
+            Intent(context, MainActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
                 data = Uri.parse("burnbar://settings/budget")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                setPackage(context.packageName)
             }
+        intent.setPackage(context.packageName)
         val content = budgetNotificationContent()
 
         val pendingIntent =

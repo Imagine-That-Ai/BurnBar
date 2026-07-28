@@ -9,7 +9,7 @@ export const SUPPORT_MACROS: SupportMacro[] = [
     id: "refund",
     title: "Refund request",
     summary:
-      "Tell us where you bought. App Store and Google Play purchases follow the store's refund policy; Stripe Checkout purchases are refunded by support when eligible."
+      "Tell us where you bought. App Store purchases follow Apple's refund policy; future Google Play purchases follow Play policy; Stripe Checkout purchases are refunded by support when eligible."
   },
   {
     id: "chargeback",
@@ -21,7 +21,7 @@ export const SUPPORT_MACROS: SupportMacro[] = [
     id: "cancellation",
     title: "Cancel a subscription",
     summary:
-      "Cancel anytime in your Apple subscriptions, Google Play, or Stripe billing portal. Cancelling stops renewal; access continues until the paid period ends."
+      "Cancel anytime in your Apple subscriptions or Stripe billing portal. Google Play management arrives with the public Android listing. Cancelling stops renewal; access continues until the paid period ends."
   },
   {
     id: "top-up-exhausted",
@@ -42,9 +42,9 @@ export const SUPPORT_MACROS: SupportMacro[] = [
       "Legacy $4.99 Hosted Quota Sync subscribers keep BurnBar Cloud's core sync features. That plan is no longer sold and does not unlock Cloud Pro."
   },
   {
-    id: "trial-conversion",
-    title: "Trial or introductory offer",
+    id: "checkout-total",
+    title: "Checkout price or renewal",
     summary:
-      "BurnBar Cloud monthly and annual include a 14-day introductory free trial for new subscribers. BurnBar Cloud Pro and top-ups do not include an introductory trial."
+      "No introductory offer is promised. Stripe Checkout or the App Store shows the exact price, cadence, tax, and renewal terms before confirmation."
   }
 ];

@@ -10,28 +10,29 @@ The scoped App Check Functions deployment, CloudVault exercise, and complete
 Windows client protocol remain fail-closed until their evidence passes. Nothing
 here touches production (`burnbar`).
 
-## Live provisioning snapshot - 2026-07-18
+## Live provisioning snapshot - 2026-07-26
 
 Read-only inspection produced this fail-closed state:
 
-| Surface | Status |
-| --- | --- |
-| GCP project `burnbar-staging` | Active; Firebase APIs are attached |
-| Deploy service account | `burnbar-staging-deployer` exists with all nine documented project roles; secret metadata access is granted only per deployed staging secret |
-| GitHub OIDC | `github-pool/github-provider` is active and repository-scoped |
-| GitHub Environment | `staging` requires review; candidate branches may enter only through the reusable deployment workflow pinned to `main` |
-| Billing | Enabled through the approved company billing account |
-| Firestore database | Native-mode `(default)` database active in `us-central1` |
-| Firebase Storage bucket | `burnbar-staging.firebasestorage.app` active in `us-central1`; uniform bucket-level access and public-access prevention enforced |
-| Firebase Authentication | Identity Platform initialized; only the staging Firebase domains are authorized |
-| Registered Firebase apps | Active Web app `OpenBurnBar Windows Staging` |
-| Deploy APIs | All APIs required by `deploy-staging.yml` are enabled |
-| GitHub staging secrets | WIF provider, deploy service account, and Windows Firebase Web API key are set in the protected `staging` environment |
-| GitHub staging variables | Windows App Check app id and `STAGING_ENABLED=true` are set in the protected `staging` environment; the project id override remains a repository variable |
-| Rules deployment | Protected live run `29670689658` passed rules emulator tests, deployed Firestore/indexes/Storage rules, passed drift checks, and verified every declared TTL policy |
-| Windows Desktop OAuth | Staging-only Desktop client active in Google Auth Platform External/Testing; the approved test user is configured |
-| Windows App Check | TPM/CNG client and Functions mint path exist; the isolated Azure `NCryptVerifyClaim` service is live and fail-closed; end-to-end hardware mint remains pending |
-| Functions runtime config | Reviewed `functions/.env.burnbar-staging` contains public staging identifiers and fail-closed empty provider mappings; secrets remain in Secret Manager |
+| Surface                       | Status                                                                                                                                                                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GCP project `burnbar-staging` | Active; Firebase APIs are attached                                                                                                                                                                                             |
+| Deploy service account        | `burnbar-staging-deployer` exists with all nine documented project roles; secret metadata access is granted only per deployed staging secret                                                                                   |
+| GitHub OIDC                   | `github-pool/github-provider` is active and repository-scoped                                                                                                                                                                  |
+| GitHub Environment            | `staging` requires review; candidate branches may enter only through the reusable deployment workflow pinned to `main`                                                                                                         |
+| Billing                       | Enabled through the approved company billing account                                                                                                                                                                           |
+| Firestore database            | Native-mode `(default)` database active in `us-central1`                                                                                                                                                                       |
+| Firebase Storage bucket       | `burnbar-staging.firebasestorage.app` active in `us-central1`; uniform bucket-level access and public-access prevention enforced                                                                                               |
+| Firebase Authentication       | Identity Platform initialized; only the staging Firebase domains are authorized                                                                                                                                                |
+| Registered Firebase apps      | Active Web apps for Windows staging, Linux staging, and the staging marketing site                                                                                                                                             |
+| Marketing Hosting             | `burnbar-staging.web.app` is deployed with staging-only Firebase/Auth/App Check identifiers; the trusted candidate-artifact promotion lane verifies exact deployed bytes and adds `X-Robots-Tag: noindex, nofollow, noarchive` |
+| Deploy APIs                   | All APIs required by `deploy-staging.yml` are enabled                                                                                                                                                                          |
+| GitHub staging secrets        | WIF provider, deploy service account, and Windows Firebase Web API key are set in the protected `staging` environment                                                                                                          |
+| GitHub staging variables      | Windows App Check app id and `STAGING_ENABLED=true` are set in the protected `staging` environment; the project id override remains a repository variable                                                                      |
+| Rules deployment              | Protected live run `29670689658` passed rules emulator tests, deployed Firestore/indexes/Storage rules, passed drift checks, and verified every declared TTL policy                                                            |
+| Windows Desktop OAuth         | Staging-only Desktop client active in Google Auth Platform External/Testing; the approved test user is configured                                                                                                              |
+| Windows App Check             | TPM/CNG client and Functions mint path exist; the isolated Azure `NCryptVerifyClaim` service is live and fail-closed; end-to-end hardware mint remains pending                                                                 |
+| Functions runtime config      | Reviewed `functions/.env.burnbar-staging` contains public staging identifiers and fail-closed empty provider mappings; secrets remain in Secret Manager                                                                        |
 
 Do not recreate the project, service account, OIDC pool/provider, GitHub
 Environment, Firebase resources, or environment secrets. Deploy only explicit
@@ -68,9 +69,10 @@ the staging project and gated behind a `staging` GitHub Environment.
    (`npm --prefix functions run test:firestore-rules`, emulators for functions).
    `FIREBASE_PROJECT_ID=openburnbar-dev` in `functions/.env.example` is the local
    dev handle; no cloud project is required for emulator work.
-2. **staging** — run `Deploy Staging (Firestore + Functions)` (this workflow) to
-   rehearse the *exact* files against `burnbar-staging`. Rules emulator tests and
-   the post-deploy drift check must be green.
+2. **staging** — run `Build Staging Candidate` (`deploy-staging.yml`) to rehearse
+   the _exact_ rules, optional marketing Hosting, and optional scoped Functions
+   artifacts against `burnbar-staging`. Rules emulator tests, post-deploy drift,
+   and any selected live website verification must be green.
 3. **prod** — only after staging is green, land the same files on `main`
    (`deploy-firestore.yml` deploys rules/indexes/storage on push) and cut a `v*`
    release tag (`deploy-production.yml` deploys functions).
@@ -230,6 +232,7 @@ echo "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/
 ### 4. Create the `staging` GitHub Environment
 
 `Settings → Environments → New environment → staging`.
+
 - Add yourself as a **required reviewer** (matches production's approval gate).
 - Optionally restrict deployment branches to `main`.
 
@@ -237,29 +240,38 @@ echo "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/
 
 **Environment secrets** (scope: protected `staging` environment):
 
-| Secret | Value |
-| --- | --- |
-| `STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER` | the provider resource name printed in step 3 |
-| `STAGING_GCP_DEPLOY_SERVICE_ACCOUNT` | `burnbar-staging-deployer@burnbar-staging.iam.gserviceaccount.com` |
-| `STAGING_SENTRY_DSN_FUNCTIONS` | *(optional)* staging functions Sentry DSN |
+| Secret                                   | Value                                                              |
+| ---------------------------------------- | ------------------------------------------------------------------ |
+| `STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER` | the provider resource name printed in step 3                       |
+| `STAGING_GCP_DEPLOY_SERVICE_ACCOUNT`     | `burnbar-staging-deployer@burnbar-staging.iam.gserviceaccount.com` |
+| `STAGING_SENTRY_DSN_FUNCTIONS`           | _(optional)_ staging functions Sentry DSN                          |
 
 **Environment variables** (scope: protected `staging` environment):
 
-| Variable | Value | Effect |
-| --- | --- | --- |
+| Variable          | Value  | Effect                                                                                                                        |
+| ----------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------- |
 | `STAGING_ENABLED` | `true` | **Flips the workflow on.** Until this is `true`, the preflight job reports "not provisioned" and every deploy job is skipped. |
 
-**Repository variable:**
+**Repository variables:**
 
-| Variable | Value | Effect |
-| --- | --- | --- |
-| `STAGING_FIREBASE_PROJECT` | *(optional)* staging project id | Overrides the `burnbar-staging` default if you named the project differently. |
+| Variable                              | Value                                    | Effect                                                                                                 |
+| ------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `STAGING_FIREBASE_PROJECT`            | _(optional)_ staging project id          | Overrides the `burnbar-staging` default if you named the project differently.                          |
+| `STAGING_FIREBASE_PUBLIC_CONFIG_JSON` | Firebase web SDK config JSON for staging | Supplies public Auth and App Check identifiers to credential-free candidate builds and trusted checks. |
 
 ```bash
 gh secret set STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER --env staging --repo Imagine-That-Ai/BurnBar
 gh secret set STAGING_GCP_DEPLOY_SERVICE_ACCOUNT     --env staging --repo Imagine-That-Ai/BurnBar
 gh variable set STAGING_ENABLED --env staging --body true --repo Imagine-That-Ai/BurnBar
+firebase apps:sdkconfig WEB 1:1079930549647:web:85beff426331ab42e407fa \
+  --project burnbar-staging \
+  | gh variable set STAGING_FIREBASE_PUBLIC_CONFIG_JSON \
+      --repo Imagine-That-Ai/BurnBar
 ```
+
+The Firebase web SDK config and reCAPTCHA Enterprise site key are public client
+identifiers, but keeping them in a repository variable avoids secret-shaped
+literals in Git history while preserving credential-free candidate builds.
 
 The GitHub deploy workflow does not launch the Windows app, so do not invent
 `STAGING_WINDOWS_*` aliases there. For a physical staging certification session,
@@ -292,6 +304,26 @@ they are never stored in the committed `.env`. Grant the deploy service account
 secret metadata access and the Gen 2 runtime service account payload access only
 for the exact secret each selected Function declares. For example:
 
+The committed staging runtime config keeps `HOT_MIN_INSTANCES=0`; staging
+rehearses the same handlers without paying for production's always-warm
+revenue/control pool.
+
+The Stripe and Google Play exports currently share one compiled module. Firebase
+therefore requires an `AMPLITUDE_API_KEY` Secret Manager version to exist while
+analyzing a scoped Stripe deploy even though the three Stripe handlers do not
+bind that secret. To keep staging analytics disabled, create a staging-only
+whitespace sentinel (the analytics loader trims it to empty); do not copy the
+production Amplitude key:
+
+```bash
+gcloud secrets create AMPLITUDE_API_KEY \
+  --project=burnbar-staging \
+  --replication-policy=automatic
+printf ' ' | gcloud secrets versions add AMPLITUDE_API_KEY \
+  --project=burnbar-staging \
+  --data-file=-
+```
+
 ```bash
 PROJECT_NUMBER="$(gcloud projects describe burnbar-staging --format='value(projectNumber)')"
 
@@ -306,7 +338,7 @@ gcloud secrets add-iam-policy-binding WINDOWS_TPM_VERIFIER_TOKEN \
   --role='roles/secretmanager.secretAccessor'
 ```
 
-### 7. First deploy (rules/indexes/storage), then functions
+### 7. First deploy (rules/indexes/storage), then Hosting and Functions
 
 ```bash
 # Dry run first (default): rules emulator tests + bounded artifact builds, no deploy.
@@ -318,6 +350,21 @@ gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
 # pinned to main and consumes the artifact only as bounded data.
 gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
   --ref "$FEATURE_BRANCH" -f dry_run=false
+
+# Deploy the reviewed staging marketing build. The candidate artifact is built
+# with the burnbar-staging Firebase/Auth/App Check identifiers. Trusted main
+# first requires exactly the four reviewed marketing rewrite Functions to be
+# ACTIVE, grants allUsers only roles/run.invoker on their resolved Cloud Run
+# services, deploys only hosting:marketing, then compares the live
+# Firebase-bearing assets byte-for-byte with the reviewed artifact and verifies
+# CSP + noindex headers. On the first run, deploy the four rewrite targets in
+# the same invocation:
+gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
+  --ref "$FEATURE_BRANCH" \
+  -f dry_run=false \
+  -f deploy_hosting=true \
+  -f deploy_functions=true \
+  -f function_targets='functions:burnBarHermesGateway,functions:latestRouterRundown,functions:startCliLink,functions:pollCliLink'
 
 # Deploy only the reviewed Windows App Check bootstrap targets. The selector is
 # validated as a comma-separated functions:<exportName> allowlist before auth.
@@ -334,8 +381,42 @@ gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
 ```
 
 Approve the `staging` environment when prompted. Confirm the run's summary shows
-the rules emulator tests, post-deploy drift check, and live TTL verification
-green.
+the rules emulator tests, post-deploy drift check, live TTL verification, and
+any selected exact website deployment verification green.
+
+### 8. Exercise the complete Stripe test lifecycle
+
+After the three Stripe Functions and the staging test-mode webhook are deployed,
+run the guarded lifecycle proof from an authenticated operator workstation:
+
+```bash
+node scripts/e2e/staging-stripe-lifecycle.mjs \
+  --confirm burnbar-staging-commercial-lifecycle
+```
+
+The runner refuses every project/account except `burnbar-staging` and
+`acct_1REg6cCFamvUJU7y`. It temporarily enables anonymous sign-in for one
+synthetic staging user while keeping App Check enforcement on, registers a
+short-lived App Check debug token, and then verifies:
+
+1. the deployed checkout callable creates a test-mode subscription Checkout
+   Session;
+2. Stripe completes payment with its test card path;
+3. the registered remote webhook records a processed event and writes an active
+   `burnbar_pro` Firestore entitlement;
+4. the deployed portal callable creates a billing-portal session;
+5. a full refund is delivered, writes a durable
+   `stripe_payment_reversals/{subscriptionID}` marker, and immediately makes
+   the entitlement inactive with `rawStatus: active:payment_reversed`;
+6. cancellation is delivered and keeps the entitlement inactive with
+   `rawStatus: canceled`; and
+7. the synthetic Auth user, App Check debug token, Stripe customer, and
+   Firestore customer/user records are deleted, with the original anonymous
+   sign-in setting restored in `finally`.
+
+The runner uses Stripe **test mode only** and requires the already paired
+`openburnbar` Stripe CLI profile. A failed assertion still runs the reversible
+cleanup path; inspect and clean any reported provider artifact before retrying.
 
 ---
 
@@ -366,17 +447,34 @@ green.
   `staging` environment and the `job_workflow_ref` claim for
   `deploy-staging-trusted.yml@refs/heads/main`; a candidate cannot replace the
   credentialed job definition.
-- **Predeploy stripped:** reuses `scripts/ci/write-firebase-hosting-ci-config.mjs
-  --check` and the `grep -q '"predeploy"'` guard, so no repo-controlled predeploy
-  hook runs under staging deploy credentials.
+- **Predeploy stripped:** trusted main generates rules, Hosting, and Functions
+  configs without `predeploy` hooks and rechecks every generated Firebase config
+  before authentication, so candidate-controlled lifecycle code never runs
+  under staging deploy credentials.
 - **Environment-gated:** the `staging` GitHub Environment provides an approval
   gate. Its deployment branch policy must allow reviewed rehearsal branches;
   reusable-workflow identity, not the caller ref, is the immutable code boundary.
 - **Candidate code stays uncredentialed:** candidate jobs run tests/builds,
   validate explicit function targets, and upload short-lived bounded artifacts.
-  The trusted workflow verifies path, size, SHA-256, and candidate-SHA bindings
-  before authentication and installs production dependencies with npm lifecycle
-  scripts disabled.
+  The trusted workflow verifies path, size, file count, SHA-256, and
+  candidate-SHA bindings before authentication, deploys only
+  `hosting:marketing`, and installs Functions production dependencies with npm
+  lifecycle scripts disabled. Scoped Functions artifacts include the reviewed,
+  locked `functions/vendor/openburnbar/*` packages required by their
+  `file:` dependencies. Their deployment-only `package.json` has every npm
+  script removed before upload, so Cloud Build cannot execute repo-only
+  `postinstall`, build, test, or release hooks.
+- **Exact website receipt:** after Hosting deploy, the trusted workflow retries
+  through CDN propagation, verifies `/subscribe` security/noindex headers, and
+  requires every Firebase-bearing asset to match the reviewed candidate's
+  SHA-256 exactly. It also probes the router rundown, CLI link start/poll, and
+  Hermes Gateway rewrites through the staging Hosting origin and requires their
+  expected application statuses (404, 400, 400, and 404 respectively).
+- **No dangling rewrites:** Hosting promotion fails unless every Function named
+  by a marketing rewrite is already ACTIVE in staging (or is deployed earlier
+  in the same trusted run). The trusted workflow rejects any rewrite outside the
+  four reviewed Functions and grants public invocation only as
+  `allUsers -> roles/run.invoker` on their resolved Cloud Run services.
 - **Isolated blast radius:** every credentialed step targets the staging project
   via `--project`; production (`burnbar`) is never referenced by this workflow.
 

@@ -14,6 +14,9 @@ const TOUCHED = [
   "FIRESTORE_EMULATOR_HOST",
   "FIREBASE_CONFIG",
   "LINUX_APP_CHECK_APP_ID",
+  "FUNCTIONS_CONTROL_API",
+  "K_SERVICE",
+  "FUNCTION_TARGET",
 ] as const;
 const VALID_LINUX_APP_CHECK_APP_ID = "1:246956661961:web:ab19bc3a6f6d4580480118";
 
@@ -75,6 +78,25 @@ describe("L-3 App Check production fail-closed", () => {
   it("REFUSES to start production when the Linux App Check app id is not a real Web app id", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.LINUX_APP_CHECK_APP_ID = "1:000000000000:linux:placeholder";
+    const { getConfig } = await import("../config.js");
+    expect(() => getConfig()).toThrow(/Linux App Check app id is missing or malformed/);
+  });
+
+  it("allows Firebase's local trigger discovery before dotenv is loaded", async () => {
+    process.env.GCLOUD_PROJECT = "openburnbar-prod";
+    process.env.FUNCTIONS_CONTROL_API = "true";
+    delete process.env.LINUX_APP_CHECK_APP_ID;
+    const { getConfig, PLACEHOLDER_LINUX_APP_CHECK_APP_ID } = await import("../config.js");
+    expect(() => getConfig()).not.toThrow();
+    expect(getConfig().enforceAppCheck).toBe(true);
+    expect(getConfig().linuxAppCheckAppID).toBe(PLACEHOLDER_LINUX_APP_CHECK_APP_ID);
+  });
+
+  it("does not allow FUNCTIONS_CONTROL_API to bypass a deployed production runtime", async () => {
+    process.env.GCLOUD_PROJECT = "openburnbar-prod";
+    process.env.FUNCTIONS_CONTROL_API = "true";
+    process.env.K_SERVICE = "refreshprovideraccountquota";
+    delete process.env.LINUX_APP_CHECK_APP_ID;
     const { getConfig } = await import("../config.js");
     expect(() => getConfig()).toThrow(/Linux App Check app id is missing or malformed/);
   });

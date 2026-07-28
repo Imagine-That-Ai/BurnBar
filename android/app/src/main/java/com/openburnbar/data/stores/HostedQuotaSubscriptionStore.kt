@@ -47,6 +47,14 @@ data class HostedQuotaStoreProduct(
     val productType: String,
     val role: HostedQuotaStoreProductRole,
     val fallbackPrice: String,
+    val basePlanID: String? = null,
+    val offerID: String? = null,
+)
+
+internal data class HostedQuotaSubscriptionReplacement(
+    val oldProductID: String,
+    val oldPurchaseToken: String,
+    val replacementMode: Int,
 )
 
 /**
@@ -87,31 +95,47 @@ class HostedQuotaSubscriptionStore(
 
         val STORE_PRODUCTS =
             listOf(
-                HostedQuotaStoreProduct(PRODUCT_ID, BillingClient.ProductType.SUBS, HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION, "$7.99"),
-                HostedQuotaStoreProduct(CLOUD_ANNUAL_PRODUCT_ID, BillingClient.ProductType.SUBS, HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION, "$79"),
+                HostedQuotaStoreProduct(
+                    PRODUCT_ID,
+                    BillingClient.ProductType.SUBS,
+                    HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION,
+                    "$7.99",
+                    basePlanID = "monthly",
+                ),
+                HostedQuotaStoreProduct(
+                    CLOUD_ANNUAL_PRODUCT_ID,
+                    BillingClient.ProductType.SUBS,
+                    HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION,
+                    "$79",
+                    basePlanID = "annual",
+                ),
                 HostedQuotaStoreProduct(
                     CLOUD_PRO_MONTHLY_PRODUCT_ID,
                     BillingClient.ProductType.SUBS,
                     HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION,
                     "$24.99",
+                    basePlanID = "monthly",
                 ),
                 HostedQuotaStoreProduct(
                     CLOUD_PRO_ANNUAL_PRODUCT_ID,
                     BillingClient.ProductType.SUBS,
                     HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION,
                     "$249",
+                    basePlanID = "annual",
                 ),
                 HostedQuotaStoreProduct(
                     CLOUD_ULTRA_MONTHLY_PRODUCT_ID,
                     BillingClient.ProductType.SUBS,
                     HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION,
                     "$59.99",
+                    basePlanID = "p1m",
                 ),
                 HostedQuotaStoreProduct(
                     CLOUD_ULTRA_ANNUAL_PRODUCT_ID,
                     BillingClient.ProductType.SUBS,
                     HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION,
                     "$599",
+                    basePlanID = "p1y",
                 ),
                 HostedQuotaStoreProduct(
                     AGENT_CONTROL_TOP_UP_PRODUCT_ID,
@@ -144,6 +168,13 @@ class HostedQuotaSubscriptionStore(
                 .filter { it.productType == BillingClient.ProductType.INAPP }
                 .map { it.id }
                 .toSet()
+        internal val CANONICAL_ENTITLEMENT_DOCUMENTS =
+            listOf(
+                CanonicalEntitlementDocument("burnbar_ultra", CLOUD_ULTRA_MONTHLY_PRODUCT_ID),
+                CanonicalEntitlementDocument("burnbar_pro_max", CLOUD_PRO_MONTHLY_PRODUCT_ID),
+                CanonicalEntitlementDocument("burnbar_pro", PRODUCT_ID),
+                CanonicalEntitlementDocument("hosted_quota_sync", "com.openburnbar.hostedQuotaSync.cloud.monthly"),
+            )
 
         // ── Tier resolution (spec §4.2) ──
         //
@@ -164,6 +195,50 @@ class HostedQuotaSubscriptionStore(
          */
         internal fun tierForActiveProduct(active: Boolean, productID: String?): CloudTier =
             if (active) tierForProductID(productID?.trim().orEmpty()) else CloudTier.NONE
+
+        internal fun subscriptionReplacementMode(oldProductID: String, newProductID: String): Int {
+            val oldTier = tierForProductID(oldProductID)
+            val newTier = tierForProductID(newProductID)
+            return if (newTier.rank > oldTier.rank) {
+                BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams
+                    .ReplacementMode.CHARGE_PRORATED_PRICE
+            } else {
+                // Downgrades and same-tier cadence changes take effect at the
+                // next renewal. This preserves already-paid access and avoids
+                // invalid immediate-proration combinations (for example,
+                // switching from monthly to a lower per-month annual price).
+                BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams
+                    .ReplacementMode.DEFERRED
+            }
+        }
+
+        internal fun selectSubscriptionReplacement(newProductID: String, purchases: List<Purchase>): HostedQuotaSubscriptionReplacement? = purchases
+            .asSequence()
+            .filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
+            .flatMap { purchase ->
+                purchase.products
+                    .filter { existingProductID ->
+                        existingProductID in SUBSCRIPTION_PRODUCT_IDS &&
+                            existingProductID != newProductID &&
+                            purchase.purchaseToken.isNotBlank()
+                    }
+                    .map { existingProductID -> existingProductID to purchase }
+            }
+            .sortedBy { (existingProductID, _) ->
+                hostedQuotaSubscriptionProductPriority(
+                    productID = existingProductID,
+                    productsById = STORE_PRODUCT_BY_ID,
+                    fallbackPriority = FALLBACK_SUBSCRIPTION_PRODUCT_PRIORITY,
+                )
+            }
+            .map { (existingProductID, purchase) ->
+                HostedQuotaSubscriptionReplacement(
+                    oldProductID = existingProductID,
+                    oldPurchaseToken = purchase.purchaseToken,
+                    replacementMode = subscriptionReplacementMode(existingProductID, newProductID),
+                )
+            }
+            .firstOrNull()
 
         private fun tierForProductID(id: String): CloudTier = STORE_PRODUCT_BY_ID[id]?.role?.subscriptionTier()
             ?: fallbackTierForProductID(id)
@@ -240,14 +315,11 @@ class HostedQuotaSubscriptionStore(
 
     // ── Cloud entitlement listener (cross-platform fallback) ──
     //
-    // Cloud Members who buy on iOS (Apple subscription
-    // `com.openburnbar.hostedQuotaSync.cloud.monthly`) have no Google Play
-    // purchase locally. The Cloud Functions verify the Apple JWS and write
-    // the canonical entitlement doc to Firestore at
-    // `users/{uid}/entitlements/hosted_quota_sync`. We listen to that doc
-    // here so the membership UI flips on for users who paid on another
-    // platform. Firestore is the server's authoritative view; Play Billing
-    // remains the local fast-path for users who purchased on Android.
+    // Members who buy on Apple or the web have no Google Play purchase locally.
+    // Cloud Functions reconcile every paid tier into one of the canonical
+    // Firestore docs below. Listen to the collection as one atomic snapshot so
+    // a missing legacy doc can never erase an active Pro or Ultra entitlement.
+    // Firestore is authoritative; Play Billing remains the Android fast-path.
 
     private val firestore: FirebaseFirestore by lazy { initialFirestore ?: FirebaseFirestore.getInstance() }
     private val firebaseAuth: FirebaseAuth by lazy { initialFirebaseAuth ?: FirebaseAuth.getInstance() }
@@ -291,56 +363,40 @@ class HostedQuotaSubscriptionStore(
                     firestore.collection("users")
                         .document(uid)
                         .collection("entitlements")
-                        .document("hosted_quota_sync")
                         .addSnapshotListener { snap, error ->
                             if (error != null) {
                                 Log.w(LOG_TAG, "cloud entitlement listener failed: ${error.localizedMessage}")
                                 return@addSnapshotListener
                             }
-                            if (snap == null || !snap.exists()) {
-                                firestoreEntitlementActive = false
-                                clearSubscriptionState()
+                            if (snap == null) {
+                                Log.w(LOG_TAG, "cloud entitlement listener returned no snapshot")
                                 return@addSnapshotListener
                             }
-                            applyEntitlementDoc(snap.data ?: emptyMap())
+                            applyEntitlementDocs(
+                                snap.documents.associate { document ->
+                                    document.id to (document.data ?: emptyMap())
+                                },
+                            )
                         }
             }
         firebaseAuth.addAuthStateListener(listener)
         authListener = listener
     }
 
-    // / Apply a Firestore entitlement payload to local state. Server is the
-    // / authoritative source — if it says `active = false`, we flip to false
-    // / even if Play Billing previously showed a Pro purchase (revocation /
-    // / refund / chargeback flows).
-    private fun applyEntitlementDoc(data: Map<String, Any?>) {
-        val active = data["active"] as? Boolean ?: false
-        val expiresAtMs =
-            parseTimestampMs(data["expiresAt"])
-                ?: parseTimestampMs(data["expirationDate"])
-        val purchaseMs =
-            parseTimestampMs(data["originalPurchaseDate"])
-                ?: parseTimestampMs(data["purchaseDate"])
-
-        val notExpired = expiresAtMs == null || expiresAtMs > System.currentTimeMillis()
-        val isActive = active && notExpired
-        firestoreEntitlementActive = isActive
-        _isActive.value = isActive
-        if (_isActive.value) {
-            _activeProductID.value = data["productID"] as? String ?: data["productId"] as? String ?: _activeProductID.value
-        } else {
-            _activeProductID.value = null
+    // / Resolve all canonical Firestore entitlement documents highest-tier
+    // / first. Server state remains authoritative for refund, revocation, and
+    // / cross-platform restore flows.
+    private fun applyEntitlementDocs(documentsByID: Map<String, Map<String, Any?>>) {
+        val entitlement = resolveCanonicalEntitlement(documentsByID)
+        firestoreEntitlementActive = entitlement?.active ?: false
+        if (entitlement == null) {
+            clearSubscriptionState()
+            return
         }
-        if (expiresAtMs != null) {
-            _expirationDate.value = expiresAtMs
-        } else if (!isActive) {
-            _expirationDate.value = null
-        }
-        if (purchaseMs != null) {
-            _purchaseDate.value = purchaseMs
-        } else if (!isActive) {
-            _purchaseDate.value = null
-        }
+        _isActive.value = entitlement.active
+        _activeProductID.value = entitlement.productID.takeIf { entitlement.active }
+        _expirationDate.value = entitlement.expiresAtMs
+        _purchaseDate.value = entitlement.purchaseAtMs
     }
 
     private fun clearSubscriptionState() {
@@ -398,38 +454,14 @@ class HostedQuotaSubscriptionStore(
                 val details =
                     rawProductDetailsByID[productID] ?: loadProductsInternal()[productID]
                         ?: error("BurnBar product is not configured in Google Play.")
-                val productDetailsBuilder =
-                    BillingFlowParams.ProductDetailsParams.newBuilder()
-                        .setProductDetails(details)
-                if (storeProduct.productType == BillingClient.ProductType.SUBS) {
-                    val offerToken =
-                        details.subscriptionOfferDetails?.firstOrNull()?.offerToken
-                            ?: error("No subscription offer is available.")
-                    productDetailsBuilder.setOfferToken(offerToken)
-                    subscriptionReplacementProductID(productID, storeProduct)?.let { oldProductID ->
-                        productDetailsBuilder.setSubscriptionProductReplacementParams(
-                            BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams.newBuilder()
-                                .setOldProductId(oldProductID)
-                                .setReplacementMode(
-                                    BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams
-                                        .ReplacementMode.CHARGE_FULL_PRICE,
-                                )
-                                .build(),
-                        )
-                    }
-                }
-                val flowBuilder =
-                    BillingFlowParams.newBuilder()
-                        .setProductDetailsParamsList(
-                            listOf(
-                                productDetailsBuilder.build(),
-                            ),
-                        )
-                firebaseAuth.currentUser?.uid?.let { uid ->
-                    flowBuilder.setObfuscatedAccountId(HostedQuotaBillingSupport.sha256Hex(uid))
-                }
-                val params = flowBuilder.build()
-                val result = client.launchBillingFlow(activity, params)
+                val flowParams =
+                    billingFlowParams(
+                        storeProduct = storeProduct,
+                        details = details,
+                        replacement = subscriptionReplacement(productID, storeProduct),
+                        accountUID = firebaseAuth.currentUser?.uid,
+                    )
+                val result = client.launchBillingFlow(activity, flowParams)
                 if (result.responseCode != BillingClient.BillingResponseCode.OK) {
                     error(result.debugMessage.ifBlank { "Google Play Billing did not start." })
                 }
@@ -444,25 +476,12 @@ class HostedQuotaSubscriptionStore(
         }
     }
 
-    private suspend fun subscriptionReplacementProductID(productID: String, storeProduct: HostedQuotaStoreProduct): String? {
+    private suspend fun subscriptionReplacement(productID: String, storeProduct: HostedQuotaStoreProduct): HostedQuotaSubscriptionReplacement? {
         if (storeProduct.productType != BillingClient.ProductType.SUBS) return null
-        return HostedQuotaBillingSupport.queryPurchases(requireBillingClient(), BillingClient.ProductType.SUBS)
-            .asSequence()
-            .filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
-            .flatMap { purchase ->
-                purchase.products
-                    .filter { existingProductID -> existingProductID in SUBSCRIPTION_PRODUCT_IDS && existingProductID != productID }
-                    .map { existingProductID -> existingProductID to purchase }
-            }
-            .sortedBy { (existingProductID, _) ->
-                hostedQuotaSubscriptionProductPriority(
-                    productID = existingProductID,
-                    productsById = STORE_PRODUCT_BY_ID,
-                    fallbackPriority = FALLBACK_SUBSCRIPTION_PRODUCT_PRIORITY,
-                )
-            }
-            .map { (existingProductID, _) -> existingProductID }
-            .firstOrNull()
+        return selectSubscriptionReplacement(
+            newProductID = productID,
+            purchases = HostedQuotaBillingSupport.queryPurchases(requireBillingClient(), BillingClient.ProductType.SUBS),
+        )
     }
 
     fun restorePurchases() {
@@ -557,7 +576,10 @@ class HostedQuotaSubscriptionStore(
         rawProductDetailsByID = detailsByID
         _productDetailsByID.value =
             STORE_PRODUCTS.associate { storeProduct ->
-                val formattedPrice = detailsByID[storeProduct.id]?.let { HostedQuotaBillingSupport.formattedPrice(it) } ?: storeProduct.fallbackPrice
+                val formattedPrice =
+                    detailsByID[storeProduct.id]?.let {
+                        HostedQuotaBillingSupport.formattedPrice(it, storeProduct)
+                    } ?: storeProduct.fallbackPrice
                 storeProduct.id to HostedQuotaProductDetails(formattedPrice = formattedPrice)
             }
         _productDetails.value = _productDetailsByID.value[PRODUCT_ID]
@@ -722,6 +744,55 @@ private fun parseTimestampMs(value: Any?): Long? = when (value) {
     else -> null
 }
 
+internal data class CanonicalEntitlementDocument(
+    val id: String,
+    val fallbackProductID: String,
+)
+
+private data class ResolvedCanonicalEntitlement(
+    val active: Boolean,
+    val productID: String,
+    val expiresAtMs: Long?,
+    val purchaseAtMs: Long?,
+)
+
+private fun resolveCanonicalEntitlement(
+    documentsByID: Map<String, Map<String, Any?>>,
+    nowMillis: Long = System.currentTimeMillis(),
+): ResolvedCanonicalEntitlement? {
+    var highestPriorityInactive: ResolvedCanonicalEntitlement? = null
+    for (source in HostedQuotaSubscriptionStore.CANONICAL_ENTITLEMENT_DOCUMENTS) {
+        val data = documentsByID[source.id] ?: continue
+        val expiresAtMs =
+            parseTimestampMs(data["expireAt"])
+                ?: parseTimestampMs(data["expiresAt"])
+                ?: parseTimestampMs(data["expirationDate"])
+        val purchaseAtMs =
+            parseTimestampMs(data["originalPurchaseDate"])
+                ?: parseTimestampMs(data["purchaseDate"])
+        val active =
+            (data["active"] as? Boolean ?: false) &&
+                (expiresAtMs == null || expiresAtMs > nowMillis)
+        val productID =
+            ((data["productID"] as? String) ?: (data["productId"] as? String))
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: source.fallbackProductID
+        val resolved =
+            ResolvedCanonicalEntitlement(
+                active = active,
+                productID = productID,
+                expiresAtMs = expiresAtMs,
+                purchaseAtMs = purchaseAtMs,
+            )
+        if (active) return resolved
+        if (highestPriorityInactive == null) {
+            highestPriorityInactive = resolved
+        }
+    }
+    return highestPriorityInactive
+}
+
 private suspend fun verifyHostedQuotaTopUpPurchases(
     purchases: List<Purchase>,
     topUpProductIds: Set<String>,
@@ -745,6 +816,54 @@ private suspend fun verifyHostedQuotaTopUpPurchases(
                 }
         }
     return credits
+}
+
+private fun billingFlowParams(
+    storeProduct: HostedQuotaStoreProduct,
+    details: ProductDetails,
+    replacement: HostedQuotaSubscriptionReplacement?,
+    accountUID: String?,
+): BillingFlowParams {
+    val productDetailsBuilder =
+        BillingFlowParams.ProductDetailsParams.newBuilder()
+            .setProductDetails(details)
+    if (storeProduct.productType == BillingClient.ProductType.SUBS) {
+        val offerToken =
+            HostedQuotaBillingSupport.subscriptionOffer(details, storeProduct)?.offerToken
+                ?: error(
+                    "Google Play base plan ${storeProduct.basePlanID} " +
+                        "is unavailable for ${storeProduct.id}.",
+                )
+        productDetailsBuilder.setOfferToken(offerToken)
+        replacement?.let {
+            productDetailsBuilder.setSubscriptionProductReplacementParams(
+                BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams.newBuilder()
+                    .setOldProductId(it.oldProductID)
+                    .setReplacementMode(it.replacementMode)
+                    .build(),
+            )
+        }
+    }
+    val flowBuilder =
+        BillingFlowParams.newBuilder()
+            .setProductDetailsParamsList(
+                listOf(
+                    productDetailsBuilder.build(),
+                ),
+            )
+    if (storeProduct.productType == BillingClient.ProductType.SUBS) {
+        replacement?.let {
+            flowBuilder.setSubscriptionUpdateParams(
+                BillingFlowParams.SubscriptionUpdateParams.newBuilder()
+                    .setOldPurchaseToken(it.oldPurchaseToken)
+                    .build(),
+            )
+        }
+    }
+    accountUID?.let { uid ->
+        flowBuilder.setObfuscatedAccountId(HostedQuotaBillingSupport.sha256Hex(uid))
+    }
+    return flowBuilder.build()
 }
 
 private fun purchaseProductSummary(purchases: List<Purchase>): List<String> {

@@ -115,6 +115,11 @@ test("Apple and Android signing consumes the exact protected gate first", () => 
   assert.match(build, /--binary "\$packaged_library"/u);
   assert.match(build, /verify-domain-core-android-universal-artifact\.mjs/u);
   assert.match(build, /run-domain-core-android-native-load\.sh/u);
+  assert.match(build, /run-android-release-startup-smoke\.sh/u);
+  assert.match(
+    build,
+    /\.\/gradlew :app:bundleRelease :app:assembleRelease --no-daemon/u,
+  );
   assert.doesNotMatch(build, /run-as com\.openburnbar\.domaincore\.test/u);
   assert.match(build, /--candidate-aar Vendor\/openburnbar-domain-core\.aar/u);
   const checkedInAar = build.indexOf(
