@@ -149,6 +149,14 @@ requireText(
 );
 requireText(
   trusted,
+  `          jq -nc \\
+            --arg bucket "\${FIREBASE_PROJECT}.firebasestorage.app" \\
+            '{firestore:{rules:"firestore.rules",indexes:"firestore.indexes.json"},storage:[{bucket:$bucket,rules:"storage.rules"}]}' \\
+            > "$deploy_root/firebase-rules.json"`,
+  "trusted rules deployment must bind Storage rules to the explicit staging bucket without a default-bucket lookup",
+);
+requireText(
+  trusted,
   `          for config in "$deploy_root"/firebase-*.json; do
             if grep -q '"predeploy"' "$config"; then
               echo "::error::Trusted deployment config contains a predeploy hook."
