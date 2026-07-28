@@ -685,7 +685,6 @@ dependencies {
     // googleid bridge returns the ID token that Firebase Auth exchanges.
     implementation("androidx.credentials:credentials:1.6.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
-    implementation("com.google.android.gms:play-services-auth:21.6.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.2.0")
 
     // Google Play Billing for BurnBar Pro (Hosted Quota + hosted LLM + encrypted cloud search).
