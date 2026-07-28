@@ -89,8 +89,24 @@ try {
     "staging Hosting artifact omits hidden files",
     callerPath,
     pristineCaller.replace(
-      "          include-hidden-files: true",
-      "          include-hidden-files: false",
+      `          name: staging-hosting-\${{ github.sha }}
+          path: \${{ runner.temp }}/staging-hosting
+          include-hidden-files: true`,
+      `          name: staging-hosting-\${{ github.sha }}
+          path: \${{ runner.temp }}/staging-hosting
+          include-hidden-files: false`,
+    ),
+  );
+  expectFailure(
+    "staging Functions artifact omits hidden files",
+    callerPath,
+    pristineCaller.replace(
+      `          name: staging-functions-\${{ github.sha }}
+          path: \${{ runner.temp }}/staging-functions
+          include-hidden-files: true`,
+      `          name: staging-functions-\${{ github.sha }}
+          path: \${{ runner.temp }}/staging-functions
+          include-hidden-files: false`,
     ),
   );
   expectFailure(

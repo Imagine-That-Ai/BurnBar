@@ -97,6 +97,13 @@ requireText(
   "candidate Functions artifact must include its locked local package dependencies",
 );
 requireText(
+  caller,
+  `          name: staging-functions-\${{ github.sha }}
+          path: \${{ runner.temp }}/staging-functions
+          include-hidden-files: true`,
+  "candidate Functions artifact must preserve hidden runtime files",
+);
+requireText(
   trusted,
   "lib/*.js|lib/*.js.map|lib/*.cjs",
   "trusted Functions artifact must permit the generated scoped CommonJS entrypoint",
