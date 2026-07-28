@@ -32,6 +32,14 @@ const EXPECTED_JOB_NAMES = Object.freeze([
   "Domain Core PR Gate",
 ]);
 
+// Reusable workflow children that domain-core now emits on main (e.g. ci-impact
+// classify). Required proof jobs remain exact; these may appear zero or one
+// times and must succeed when present so protected revalidation does not reject
+// otherwise-complete exact-main candidate runs.
+const ALLOWED_OPTIONAL_JOB_NAMES = Object.freeze([
+  "classify / Deterministic changed-path classification",
+]);
+
 function readJson(path, label) {
   try {
     return JSON.parse(readFileSync(resolve(path), "utf8"));
@@ -348,8 +356,18 @@ export function verifyProtectedAttestationInputs({
       );
     }
   }
+  for (const name of ALLOWED_OPTIONAL_JOB_NAMES) {
+    if ((jobsByName.get(name) ?? []).length > 1) {
+      throw new Error(
+        `GitHub API must report at most one successful ${name} job`,
+      );
+    }
+  }
   for (const name of jobsByName.keys()) {
-    if (!EXPECTED_JOB_NAMES.includes(name)) {
+    if (
+      !EXPECTED_JOB_NAMES.includes(name) &&
+      !ALLOWED_OPTIONAL_JOB_NAMES.includes(name)
+    ) {
       throw new Error(`GitHub API reported unexpected job ${name}`);
     }
   }
