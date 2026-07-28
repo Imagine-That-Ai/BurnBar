@@ -74,6 +74,13 @@ requireText(
 );
 requireText(
   caller,
+  `          name: staging-hosting-\${{ github.sha }}
+          path: \${{ runner.temp }}/staging-hosting
+          include-hidden-files: true`,
+  "candidate Hosting artifact must preserve hidden website files",
+);
+requireText(
+  caller,
   "^functions:[A-Za-z][A-Za-z0-9_-]*(,functions:[A-Za-z][A-Za-z0-9_-]*)*$",
   "function_targets must be constrained to explicit Firebase Functions selectors",
 );
