@@ -29,6 +29,42 @@ test("workflow executes trusted base code and observes the exact candidate", () 
   );
 });
 
+test("umbrella timeout outlives the longest required component", () => {
+  const workflow = readFileSync(
+    new URL("../../.github/workflows/burnbar-ci-gate.yml", import.meta.url),
+    "utf8",
+  );
+  const appWorkflow = readFileSync(
+    new URL("../../.github/workflows/app-pr-gate.yml", import.meta.url),
+    "utf8",
+  );
+  const config = JSON.parse(
+    readFileSync(
+      new URL("../../governance/burnbar-ci-gate.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const umbrellaTimeout = Number(
+    workflow.match(/^\s{4}timeout-minutes:\s*(\d+)\s*$/mu)?.[1],
+  );
+  const appJob = appWorkflow.match(
+    /^\s{2}app-build-test:\n([\s\S]*?)^\s{2}mobile-build-gate:/mu,
+  )?.[1];
+  const appTimeout = Number(
+    appJob?.match(/^\s{4}timeout-minutes:\s*(\d+)\s*$/mu)?.[1],
+  );
+
+  assert.ok(Number.isSafeInteger(appTimeout) && appTimeout > 0);
+  assert.ok(
+    config.timeout_minutes >= appTimeout + 15,
+    "evaluator must outlive the longest component with polling headroom",
+  );
+  assert.ok(
+    umbrellaTimeout >= config.timeout_minutes + 5,
+    "workflow timeout must outlive the evaluator deadline",
+  );
+});
+
 test("pull_request_target gate stays read-only and secret-free", () => {
   // This workflow runs on `pull_request_target`, which executes in the base
   // repository's context. The only reason that is safe is that it grants no
