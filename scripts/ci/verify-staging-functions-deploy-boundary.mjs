@@ -157,6 +157,12 @@ requireText(
 );
 requireText(
   trusted,
+  `          node scripts/ci/compact-firestore-rules-inplace.mjs \\
+            "$deploy_root/firestore.rules"`,
+  "trusted staging deployment must compact Firestore rules before release so deployed bytes match the drift readback",
+);
+requireText(
+  trusted,
   `          for config in "$deploy_root"/firebase-*.json; do
             if grep -q '"predeploy"' "$config"; then
               echo "::error::Trusted deployment config contains a predeploy hook."
