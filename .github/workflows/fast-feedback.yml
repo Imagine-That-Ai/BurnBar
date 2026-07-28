@@ -481,6 +481,7 @@ jobs:
             exit 1
           fi
           echo "All shell scripts pass syntax validation."
+          node scripts/ci/verify-cross-platform-ios-runner.test.mjs
 
       - name: Release config injection safety tests
         run: |
