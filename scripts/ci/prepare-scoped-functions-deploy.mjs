@@ -94,14 +94,7 @@ if (packageJson.main !== "lib/index.js") {
 // after the trusted workflow has authenticated.
 packageJson.scripts = {};
 
-if (!targets) {
-  writeAtomic(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
-  console.log(
-    "Scoped staging Functions entrypoint: all-functions mode; package entrypoint unchanged and scripts stripped.",
-  );
-  process.exit(0);
-}
-if (!TARGETS_RE.test(targets))
+if (targets && !TARGETS_RE.test(targets))
   fail(
     "targets must be a comma-separated list of explicit Firebase Functions selectors",
   );
@@ -118,8 +111,11 @@ if (
 }
 
 const requestedNames = targets
-  .split(",")
-  .map((target) => target.slice("functions:".length));
+  ? targets.split(",").map((target) => target.slice("functions:".length))
+  : Object.keys(manifest.targets);
+if (requestedNames.length === 0) {
+  fail("staging target manifest must approve at least one Function");
+}
 if (new Set(requestedNames).size !== requestedNames.length)
   fail("targets must not contain duplicates");
 
@@ -171,5 +167,5 @@ writeAtomic(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
 
 const digest = createHash("sha256").update(generated).digest("hex");
 console.log(
-  `Scoped staging Functions entrypoint: ${requestedNames.length} target(s), sha256=${digest}`,
+  `Scoped staging Functions entrypoint: ${requestedNames.length} reviewed target(s), sha256=${digest}`,
 );

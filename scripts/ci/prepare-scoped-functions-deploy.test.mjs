@@ -116,14 +116,20 @@ try {
   expectFailure("missing compiled module", "functions:missing");
 
   resetFixture();
-  const allFunctions = run("");
-  if (allFunctions.status !== 0)
-    throw new Error(`all-functions mode failed:\n${allFunctions.stderr}`);
+  writeFileSync(
+    join(libDir, "callables", "unrelated.js"),
+    "exports.unrelated = () => 'unrelated';\n",
+  );
+  const reviewedDefaults = run("");
+  if (reviewedDefaults.status !== 0)
+    throw new Error(
+      `reviewed-default mode failed:\n${reviewedDefaults.stderr}`,
+    );
   if (
     JSON.parse(readFileSync(join(functionsDir, "package.json"), "utf8"))
-      .main !== "lib/index.js"
+      .main !== "lib/staging-scoped-index.cjs"
   ) {
-    throw new Error("all-functions mode changed package main");
+    throw new Error("reviewed-default mode did not scope package main");
   }
   if (
     Object.keys(
@@ -131,7 +137,19 @@ try {
         .scripts ?? {},
     ).length !== 0
   ) {
-    throw new Error("all-functions mode retained executable scripts");
+    throw new Error("reviewed-default mode retained executable scripts");
+  }
+  const reviewedEntrypoint = join(libDir, "staging-scoped-index.cjs");
+  delete require.cache[require.resolve(reviewedEntrypoint)];
+  const reviewedExports = require(reviewedEntrypoint);
+  if (
+    reviewedExports.selected() !== "selected" ||
+    reviewedExports.unrelated() !== "unrelated" ||
+    Object.keys(reviewedExports).sort().join(",") !== "selected,unrelated"
+  ) {
+    throw new Error(
+      "blank target input did not export exactly the reviewed staging manifest",
+    );
   }
 
   const productionManifest = JSON.parse(

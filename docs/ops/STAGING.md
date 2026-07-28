@@ -368,6 +368,9 @@ gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
 
 # Deploy only the reviewed Windows App Check bootstrap targets. The selector is
 # validated as a comma-separated functions:<exportName> allowlist before auth.
+# When deploy_functions=true and function_targets is blank, the candidate is
+# scoped to every reviewed target in functions/staging-deploy-targets.json;
+# blank never falls back to the full production Functions export graph.
 gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
   --ref "$FEATURE_BRANCH" \
   -f dry_run=false \
