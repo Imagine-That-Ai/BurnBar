@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Z.ai cloud quota refresh
+
+- **Restored Z.ai quota refresh for both Coding Plan and standard API
+  accounts**: Coding Plan monitor requests now use Z.ai's required raw-token
+  authorization while standard API validation keeps Bearer authentication.
+  Valid accounts without a Coding Plan now return an honest empty quota
+  snapshot instead of a server error or a fabricated balance.
+
 ### Added - Execution-source attribution
 
 - **Split model usage by the product that executed each request** with a
