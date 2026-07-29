@@ -473,6 +473,12 @@ internal fun ScreenShareViewerActivity.reconnectMirror() {
                     ?.takeIf { it.isNotBlank() }
                     ?: Build.MODEL.orEmpty().ifBlank { "Android" }
             val requestID = coordinator.requestMirror(name)
+            // Track the retry as the active request so its acknowledgements
+            // are honored and control/stop frames stop using the stale ID.
+            reconnectedMirrorRequestID = requestID
+            mirrorSessionID = null
+            mirrorViewerRole = null
+            mirrorStopSent = false
             controlStatus.value = "Mirror requested"
             Log.i(ScreenShareViewerActivity.TAG, "Android screen-share reconnect requested requestID=$requestID")
         }.onFailure { error ->

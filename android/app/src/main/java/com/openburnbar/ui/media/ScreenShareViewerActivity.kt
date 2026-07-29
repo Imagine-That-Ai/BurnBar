@@ -49,8 +49,15 @@ class ScreenShareViewerActivity : FragmentActivity() {
             },
         )
 
+    /**
+     * Request ID minted by [reconnectMirror]. It supersedes the launch
+     * intent's extra so acknowledgements and control/stop frames for the
+     * retried request are not dropped as stale.
+     */
+    internal var reconnectedMirrorRequestID: String? = null
+
     internal val mirrorRequestID: String?
-        get() = intent?.getStringExtra(EXTRA_MIRROR_REQUEST_ID)
+        get() = reconnectedMirrorRequestID ?: intent?.getStringExtra(EXTRA_MIRROR_REQUEST_ID)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,6 +71,9 @@ class ScreenShareViewerActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // A fresh launch intent carries the authoritative request ID; any
+        // earlier in-activity reconnect is superseded by it.
+        reconnectedMirrorRequestID = null
         bindCoordinatorHandlers()
     }
 

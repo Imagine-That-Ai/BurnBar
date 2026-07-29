@@ -532,6 +532,11 @@ final class MacCloudEntitlementStore: ObservableObject {
                 let snapshot = try await entitlements
                     .document(documentID)
                     .getDocument(source: .server)
+                // Each await suspends on the main actor, so an auth-state
+                // change can restart the listener mid-refresh. Discard
+                // results fetched for the previous user instead of applying
+                // them to the newly signed-in account.
+                guard signedInUID == uid else { return }
                 guard !snapshot.metadata.isFromCache else { continue }
                 applyServerMembershipSnapshot(
                     documentID: documentID,
@@ -544,6 +549,7 @@ final class MacCloudEntitlementStore: ObservableObject {
             let mediaSnapshot = try await entitlements
                 .document("hosted_media_sync")
                 .getDocument(source: .server)
+            guard signedInUID == uid else { return }
             if mediaSnapshot.metadata.isFromCache == false,
                mediaSnapshot.exists,
                let data = mediaSnapshot.data() {
@@ -557,6 +563,9 @@ final class MacCloudEntitlementStore: ObservableObject {
             error = nil
             await refreshStoreKitEntitlements()
         } catch {
+            // A failed fetch for a previous user must not clobber the state
+            // restartListener already reset for the current identity.
+            guard signedInUID == uid else { return }
             hasCompletedMediaServerResolution = false
             lastMediaServerResolutionAt = nil
             self.error = error.localizedDescription
