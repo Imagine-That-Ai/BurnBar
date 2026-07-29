@@ -27,6 +27,8 @@ data class DeviceRecord(
     val trustState: DeviceTrustState = DeviceTrustState.PENDING,
     val lastSeen: Date? = null,
     val isCurrentDevice: Boolean = false,
+    /** Escrow trust identity (`android-<public-key-hash>`) when known for this physical device. */
+    val escrowDeviceId: String? = null,
 )
 
 class DevicesStore(
@@ -90,11 +92,11 @@ class DevicesStore(
                         .collection("devices")
                         .get().await()
 
-                val currentDeviceId = appContext?.let { currentAndroidDeviceID(it) }
+                val currentDeviceIds = currentDeviceIDs(appContext)
                 val generalDevices =
                     deviceSnapshot.documents.mapNotNull { doc ->
                         val data = doc.data ?: return@mapNotNull null
-                        generalDeviceRecord(doc.id, data, currentDeviceId)
+                        generalDeviceRecord(doc.id, data, currentDeviceIds)
                     }
                 val escrowDevices =
                     try {
@@ -104,7 +106,7 @@ class DevicesStore(
                             .documents
                             .mapNotNull { doc ->
                                 val data = doc.data ?: return@mapNotNull null
-                                escrowDeviceRecord(doc.id, data, currentDeviceId)
+                                escrowDeviceRecord(doc.id, data, currentDeviceIds)
                             }
                     } catch (e: FirebaseException) {
                         Log.w("BurnBar", "Escrow devices load failed; showing presence devices as pending", e)
@@ -178,7 +180,13 @@ class DevicesStore(
                 // survivors, rotateCloudVaultKey, document rewrap) instead of being discarded.
                 val rotatingDeviceId =
                     runCatching { com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId }.getOrNull()
-                val result = securityClient.revokeEscrowDeviceTrust(device.id, rotatingDeviceId = rotatingDeviceId)
+                // Merged presence+escrow records keep the presence document id; the escrow trust
+                // API needs the escrow identity, so prefer it when the record carries one.
+                val result =
+                    securityClient.revokeEscrowDeviceTrust(
+                        device.escrowDeviceId ?: device.id,
+                        rotatingDeviceId = rotatingDeviceId,
+                    )
                 if (result.cloudVaultRotationRequired && !result.cloudVaultRotationCompleted) {
                     _lastError.value =
                         result.cloudVaultRotationFailureMessage
@@ -221,9 +229,8 @@ class DevicesStore(
     }
 
     companion object {
-        private const val CURRENT_DEVICE_PRIORITY = 4
-        private const val TRUSTED_DEVICE_PRIORITY = 3
-        private const val PENDING_DEVICE_PRIORITY = 2
+        private const val CURRENT_DEVICE_PRIORITY = 3
+        private const val ACTIVE_DEVICE_PRIORITY = 2
         private const val REVOKED_DEVICE_PRIORITY = 1
 
         internal fun currentAndroidDeviceID(context: Context?): String? = runCatching {
@@ -233,7 +240,28 @@ class DevicesStore(
             )
         }.getOrNull()
 
-        internal fun generalDeviceRecord(documentID: String, data: Map<String, Any?>, currentDeviceID: String?): DeviceRecord {
+        /**
+         * Every identity this installation is known by: the raw `ANDROID_ID`, the presence
+         * document id (`AgentReplyNotificationState.stableDeviceId`, a SHA-256 of `ANDROID_ID`),
+         * and the escrow trust id (`android-<public-key-hash>`). Presence and escrow use
+         * different id schemes, so matching on the whole set is what lets the current phone's
+         * two records reconcile into one.
+         */
+        internal fun currentDeviceIDs(context: Context?): Set<String> {
+            val ids = mutableSetOf<String>()
+            currentAndroidDeviceID(context)?.let { ids += it }
+            context?.let { ctx ->
+                runCatching {
+                    com.openburnbar.services.media.AgentReplyNotificationState.stableDeviceId(ctx)
+                }.getOrNull()?.let { ids += it }
+            }
+            runCatching {
+                com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
+            }.getOrNull()?.let { ids += it }
+            return ids
+        }
+
+        internal fun generalDeviceRecord(documentID: String, data: Map<String, Any?>, currentDeviceIDs: Set<String>): DeviceRecord {
             val id = deviceID(documentID, data)
             return DeviceRecord(
                 id = id,
@@ -241,11 +269,15 @@ class DevicesStore(
                 platform = devicePlatform(data),
                 trustState = deviceTrustState(data),
                 lastSeen = deviceActivityDate(data),
-                isCurrentDevice = id == currentDeviceID,
+                isCurrentDevice = id in currentDeviceIDs,
+                escrowDeviceId =
+                (data["escrowDeviceId"] as? String)
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() },
             )
         }
 
-        internal fun escrowDeviceRecord(documentID: String, data: Map<String, Any?>, currentDeviceID: String?): DeviceRecord {
+        internal fun escrowDeviceRecord(documentID: String, data: Map<String, Any?>, currentDeviceIDs: Set<String>): DeviceRecord {
             val id = deviceID(documentID, data)
             return DeviceRecord(
                 id = id,
@@ -253,28 +285,61 @@ class DevicesStore(
                 platform = devicePlatform(data),
                 trustState = deviceTrustState(data),
                 lastSeen = deviceActivityDate(data),
-                isCurrentDevice = id == currentDeviceID,
+                isCurrentDevice = id in currentDeviceIDs,
+                escrowDeviceId = id,
             )
         }
 
         internal fun mergeDeviceRecords(generalDevices: List<DeviceRecord>, escrowDevices: List<DeviceRecord>): List<DeviceRecord> {
             val records = generalDevices.associateByTo(linkedMapOf()) { it.id }
             for (escrow in escrowDevices) {
-                val existing = records[escrow.id]
-                records[escrow.id] =
-                    if (existing == null) {
-                        escrow
-                    } else {
+                // Presence documents key on a SHA-256 of ANDROID_ID while escrow documents key on
+                // the public-key hash, so a direct id join only matches same-scheme records. The
+                // presence document's published escrowDeviceId cross-reference joins the two
+                // identity schemes for the same physical device.
+                val matchKey =
+                    when {
+                        records.containsKey(escrow.id) -> escrow.id
+                        else -> records.entries.firstOrNull { it.value.escrowDeviceId == escrow.id }?.key
+                    }
+                if (matchKey == null) {
+                    records[escrow.id] = escrow
+                } else {
+                    val existing = records.getValue(matchKey)
+                    records[matchKey] =
                         existing.copy(
                             displayName = preferredDeviceName(existing.displayName, escrow.displayName),
                             platform = preferredPlatform(existing.platform, escrow.platform),
                             trustState = escrow.trustState,
                             lastSeen = latestDate(existing.lastSeen, escrow.lastSeen),
                             isCurrentDevice = existing.isCurrentDevice || escrow.isCurrentDevice,
+                            escrowDeviceId = escrow.escrowDeviceId ?: existing.escrowDeviceId,
                         )
-                    }
+                }
             }
-            return records.values.toList()
+            return coalesceCurrentDevice(records.values.toList())
+        }
+
+        /**
+         * The current installation can still surface as two records (presence + escrow) when the
+         * presence document predates the escrowDeviceId cross-reference. Both are identified as
+         * the current device via [currentDeviceIDs], so fold them into a single record instead of
+         * reporting one phone as one trusted and one pending device.
+         */
+        private fun coalesceCurrentDevice(records: List<DeviceRecord>): List<DeviceRecord> {
+            val currentRecords = records.filter { it.isCurrentDevice }
+            if (currentRecords.size <= 1) return records
+            val merged =
+                currentRecords.reduce { accumulated, record ->
+                    accumulated.copy(
+                        displayName = preferredDeviceName(accumulated.displayName, record.displayName),
+                        platform = preferredPlatform(accumulated.platform, record.platform),
+                        trustState = preferredTrustState(accumulated.trustState, record.trustState),
+                        lastSeen = latestDate(accumulated.lastSeen, record.lastSeen),
+                        escrowDeviceId = accumulated.escrowDeviceId ?: record.escrowDeviceId,
+                    )
+                }
+            return listOf(merged) + records.filter { !it.isCurrentDevice }
         }
 
         internal fun deduplicated(records: List<DeviceRecord>): List<DeviceRecord> {
@@ -338,17 +403,29 @@ class DevicesStore(
 
         private fun latestDate(first: Date?, second: Date?): Date? = listOfNotNull(first, second).maxOrNull()
 
+        private fun preferredTrustState(first: DeviceTrustState, second: DeviceTrustState): DeviceTrustState = when {
+            first == DeviceTrustState.REVOKED || second == DeviceTrustState.REVOKED -> DeviceTrustState.REVOKED
+            first == DeviceTrustState.TRUSTED || second == DeviceTrustState.TRUSTED -> DeviceTrustState.TRUSTED
+            else -> DeviceTrustState.PENDING
+        }
+
+        /**
+         * Trusted and pending records share the same priority tier so the freshest installation
+         * wins the deduplication bucket. A reinstall starts pending while the abandoned identity
+         * can remain trusted; preferring trust over recency would present the stale installation
+         * and let [revokeStaleDuplicates] revoke the active one. Revoked records stay below both
+         * so an explicit revocation never masks an active record.
+         */
         private fun compareDevicePriority(first: DeviceRecord, second: DeviceRecord): Int {
-            val trustComparison = devicePriority(first).compareTo(devicePriority(second))
-            if (trustComparison != 0) return trustComparison
+            val tierComparison = devicePriority(first).compareTo(devicePriority(second))
+            if (tierComparison != 0) return tierComparison
             return (first.lastSeen ?: Date(0)).compareTo(second.lastSeen ?: Date(0))
         }
 
         private fun devicePriority(device: DeviceRecord): Int = when {
             device.isCurrentDevice -> CURRENT_DEVICE_PRIORITY
-            device.trustState == DeviceTrustState.TRUSTED -> TRUSTED_DEVICE_PRIORITY
-            device.trustState == DeviceTrustState.PENDING -> PENDING_DEVICE_PRIORITY
-            else -> REVOKED_DEVICE_PRIORITY
+            device.trustState == DeviceTrustState.REVOKED -> REVOKED_DEVICE_PRIORITY
+            else -> ACTIVE_DEVICE_PRIORITY
         }
     }
 }

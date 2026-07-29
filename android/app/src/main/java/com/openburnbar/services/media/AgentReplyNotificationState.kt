@@ -177,6 +177,13 @@ object AgentReplyNotificationState {
                 "lastSeenAtMillis" to now,
                 "updated_at_millis" to now,
             )
+        // Cross-reference the escrow trust identity (`android-<public-key-hash>`) so device
+        // surfaces can reconcile this presence document with the matching escrow_devices record
+        // for the same physical phone. Best-effort: presence heartbeats never depend on the
+        // Cloud Vault keypair being available.
+        runCatching { com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId }
+            .getOrNull()
+            ?.let { payload["escrowDeviceId"] = it }
         fcmToken?.let { payload["fcm_token"] = it }
         activeRuntime?.let { payload["activeRuntime"] = it }
         activeThreadId?.let { payload["activeThreadId"] = it }

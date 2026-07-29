@@ -62,9 +62,12 @@ fun ConnectedDevicesRow(devices: List<DeviceRecord>, onClick: () -> Unit = {}) {
 
 internal fun connectedDevicesSubtitle(devices: List<DeviceRecord>): String {
     if (devices.isEmpty()) return "Tap to register this device"
+    // An explicit REVOKED state takes precedence over current-device status: a revoked current
+    // device must count as revoked, never as trusted.
     val trusted =
         devices.count {
-            it.isCurrentDevice || it.trustState == DeviceTrustState.TRUSTED
+            it.trustState == DeviceTrustState.TRUSTED ||
+                (it.isCurrentDevice && it.trustState != DeviceTrustState.REVOKED)
         }
     val pending =
         devices.count {
