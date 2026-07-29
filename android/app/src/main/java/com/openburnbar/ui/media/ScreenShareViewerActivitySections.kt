@@ -108,20 +108,19 @@ internal fun ScreenShareViewerActivity.applyMirrorAck(ack: HermesRealtimeRelayMi
     }
 }
 
-internal fun mirrorAckFailureMessage(ack: HermesRealtimeRelayMirrorAck): String =
-    ack.detail?.trim()?.takeIf { it.isNotEmpty() }
-        ?: when (ack.decision) {
-            HermesRealtimeRelayMirrorAck.Decision.DENIED ->
-                "The Mac declined screen sharing."
-            HermesRealtimeRelayMirrorAck.Decision.COOLING_DOWN ->
-                "The Mac is cooling down before another screen-sharing request."
-            HermesRealtimeRelayMirrorAck.Decision.UNSUPPORTED ->
-                "The Mac could not start screen sharing."
-            HermesRealtimeRelayMirrorAck.Decision.BUSY ->
-                "The Mac is already handling another screen-sharing request."
-            HermesRealtimeRelayMirrorAck.Decision.ACCEPTED ->
-                "Screen sharing approved."
-        }
+internal fun mirrorAckFailureMessage(ack: HermesRealtimeRelayMirrorAck): String = ack.detail?.trim()?.takeIf { it.isNotEmpty() }
+    ?: when (ack.decision) {
+        HermesRealtimeRelayMirrorAck.Decision.DENIED ->
+            "The Mac declined screen sharing."
+        HermesRealtimeRelayMirrorAck.Decision.COOLING_DOWN ->
+            "The Mac is cooling down before another screen-sharing request."
+        HermesRealtimeRelayMirrorAck.Decision.UNSUPPORTED ->
+            "The Mac could not start screen sharing."
+        HermesRealtimeRelayMirrorAck.Decision.BUSY ->
+            "The Mac is already handling another screen-sharing request."
+        HermesRealtimeRelayMirrorAck.Decision.ACCEPTED ->
+            "Screen sharing approved."
+    }
 
 internal fun ScreenShareViewerActivity.applyControlDenied(denied: HermesRealtimeRelayControlDenied) {
     controlStatus.value = controlDeniedMessage(denied)
