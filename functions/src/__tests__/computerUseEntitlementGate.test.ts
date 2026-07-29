@@ -83,8 +83,10 @@ vi.mock("../appCheckAttestation.js", async () => {
   };
 });
 
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../callables/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../callables/shared/entitlements.js")>(
+    "../callables/shared/entitlements.js",
+  );
   const { HttpsError } = await import("firebase-functions/v2/https");
   return {
     ...actual,

@@ -85,8 +85,10 @@ vi.mock("../appCheckAttestation.js", () => ({
   enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
   readAppIdFromCallableRequest: (request: { app?: { appId?: string } }) => request.app?.appId,
 }));
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../callables/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../callables/shared/entitlements.js")>(
+    "../callables/shared/entitlements.js",
+  );
   return { ...actual, assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined) };
 });
 vi.mock("../logging.js", async () => {
