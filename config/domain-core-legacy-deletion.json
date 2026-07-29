@@ -21,10 +21,11 @@
   "rows": [
     {
       "id": "quota.claude_statusline",
-      "state": "promotion_approved",
+      "state": "activation_annulled",
       "authorityGeneration": 1,
       "receipts": {
-        "promotion": "config/domain-core-legacy-deletion-receipts/quota.claude_statusline/1/promotion.json"
+        "promotion": "config/domain-core-legacy-deletion-receipts/quota.claude_statusline/1/promotion.json",
+        "activationAnnulment": "config/domain-core-legacy-deletion-receipts/quota.claude_statusline/1/annulment.json"
       },
       "targets": [
         { "kind": "path", "role": "legacy_implementation", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/Legacy/ClaudeQuotaLegacy.swift" },
@@ -37,10 +38,11 @@
     },
     {
       "id": "quota.codex_usage",
-      "state": "promotion_approved",
+      "state": "activation_annulled",
       "authorityGeneration": 1,
       "receipts": {
-        "promotion": "config/domain-core-legacy-deletion-receipts/quota.codex_usage/1/promotion.json"
+        "promotion": "config/domain-core-legacy-deletion-receipts/quota.codex_usage/1/promotion.json",
+        "activationAnnulment": "config/domain-core-legacy-deletion-receipts/quota.codex_usage/1/annulment.json"
       },
       "targets": [
         { "kind": "path", "role": "legacy_implementation", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/Legacy/CodexQuotaLegacy.swift" },
@@ -52,10 +54,11 @@
     },
     {
       "id": "quota.cursor_usage",
-      "state": "promotion_approved",
+      "state": "activation_annulled",
       "authorityGeneration": 1,
       "receipts": {
-        "promotion": "config/domain-core-legacy-deletion-receipts/quota.cursor_usage/1/promotion.json"
+        "promotion": "config/domain-core-legacy-deletion-receipts/quota.cursor_usage/1/promotion.json",
+        "activationAnnulment": "config/domain-core-legacy-deletion-receipts/quota.cursor_usage/1/annulment.json"
       },
       "targets": [
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/CursorQuotaAdapter.swift", "symbol": "buildExactSnapshot" },
@@ -66,10 +69,11 @@
     },
     {
       "id": "quota.anthropic_headers",
-      "state": "promotion_approved",
+      "state": "activation_annulled",
       "authorityGeneration": 1,
       "receipts": {
-        "promotion": "config/domain-core-legacy-deletion-receipts/quota.anthropic_headers/1/promotion.json"
+        "promotion": "config/domain-core-legacy-deletion-receipts/quota.anthropic_headers/1/promotion.json",
+        "activationAnnulment": "config/domain-core-legacy-deletion-receipts/quota.anthropic_headers/1/annulment.json"
       },
       "targets": [
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/ClaudeQuotaAdapter.swift", "symbol": "legacyHeaderProbeSnapshot" },
@@ -81,10 +85,11 @@
     },
     {
       "id": "cloudvault.portable_primitives",
-      "state": "promotion_approved",
+      "state": "activation_annulled",
       "authorityGeneration": 1,
       "receipts": {
-        "promotion": "config/domain-core-legacy-deletion-receipts/cloudvault.portable_primitives/1/promotion.json"
+        "promotion": "config/domain-core-legacy-deletion-receipts/cloudvault.portable_primitives/1/promotion.json",
+        "activationAnnulment": "config/domain-core-legacy-deletion-receipts/cloudvault.portable_primitives/1/annulment.json"
       },
       "targets": [
         { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacyCrypto.swift" },
@@ -117,10 +122,11 @@
     },
     {
       "id": "cloudvault.document_rewrap",
-      "state": "promotion_approved",
+      "state": "activation_annulled",
       "authorityGeneration": 1,
       "receipts": {
-        "promotion": "config/domain-core-legacy-deletion-receipts/cloudvault.document_rewrap/1/promotion.json"
+        "promotion": "config/domain-core-legacy-deletion-receipts/cloudvault.document_rewrap/1/promotion.json",
+        "activationAnnulment": "config/domain-core-legacy-deletion-receipts/cloudvault.document_rewrap/1/annulment.json"
       },
       "targets": [
         { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacyDocumentRewrap.swift" },
@@ -133,10 +139,11 @@
     },
     {
       "id": "cloudvault.search",
-      "state": "promotion_approved",
+      "state": "activation_annulled",
       "authorityGeneration": 1,
       "receipts": {
-        "promotion": "config/domain-core-legacy-deletion-receipts/cloudvault.search/1/promotion.json"
+        "promotion": "config/domain-core-legacy-deletion-receipts/cloudvault.search/1/promotion.json",
+        "activationAnnulment": "config/domain-core-legacy-deletion-receipts/cloudvault.search/1/annulment.json"
       },
       "targets": [
         { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacySearch.swift" },
@@ -150,10 +157,11 @@
     },
     {
       "id": "hermes.relay_crypto",
-      "state": "promotion_approved",
+      "state": "activation_annulled",
       "authorityGeneration": 1,
       "receipts": {
-        "promotion": "config/domain-core-legacy-deletion-receipts/hermes.relay_crypto/1/promotion.json"
+        "promotion": "config/domain-core-legacy-deletion-receipts/hermes.relay_crypto/1/promotion.json",
+        "activationAnnulment": "config/domain-core-legacy-deletion-receipts/hermes.relay_crypto/1/annulment.json"
       },
       "targets": [
         { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/HermesRelayLegacyCrypto.swift" },
@@ -164,10 +172,11 @@
     },
     {
       "id": "hermes.ratchet_transforms",
-      "state": "promotion_approved",
+      "state": "activation_annulled",
       "authorityGeneration": 1,
       "receipts": {
-        "promotion": "config/domain-core-legacy-deletion-receipts/hermes.ratchet_transforms/1/promotion.json"
+        "promotion": "config/domain-core-legacy-deletion-receipts/hermes.ratchet_transforms/1/promotion.json",
+        "activationAnnulment": "config/domain-core-legacy-deletion-receipts/hermes.ratchet_transforms/1/annulment.json"
       },
       "targets": [
         { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/HermesRatchetLegacyCrypto.swift" },
@@ -178,10 +187,11 @@
     },
     {
       "id": "pricing.token_cost",
-      "state": "promotion_approved",
+      "state": "activation_annulled",
       "authorityGeneration": 1,
       "receipts": {
-        "promotion": "config/domain-core-legacy-deletion-receipts/pricing.token_cost/1/promotion.json"
+        "promotion": "config/domain-core-legacy-deletion-receipts/pricing.token_cost/1/promotion.json",
+        "activationAnnulment": "config/domain-core-legacy-deletion-receipts/pricing.token_cost/1/annulment.json"
       },
       "targets": [
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-pricing", "path": "OpenBurnBarCore/Sources/OpenBurnBarLogParsers/LogParser/ModelPricing.swift", "symbol": "cost" },
@@ -191,10 +201,11 @@
     },
     {
       "id": "pricing.kimi_historical",
-      "state": "promotion_approved",
+      "state": "activation_annulled",
       "authorityGeneration": 1,
       "receipts": {
-        "promotion": "config/domain-core-legacy-deletion-receipts/pricing.kimi_historical/1/promotion.json"
+        "promotion": "config/domain-core-legacy-deletion-receipts/pricing.kimi_historical/1/promotion.json",
+        "activationAnnulment": "config/domain-core-legacy-deletion-receipts/pricing.kimi_historical/1/annulment.json"
       },
       "targets": [
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "functions-pricing", "path": "functions/src/pricing.ts", "symbol": "priceLegacyKimiEvent" },
