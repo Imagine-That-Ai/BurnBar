@@ -162,6 +162,23 @@ object AgentReplyNotificationState {
         persist(context.applicationContext)
     }
 
+    /**
+     * Cross-references the escrow trust identity (`android-<public-key-hash>`) so device
+     * surfaces can reconcile this presence document with the matching escrow_devices record
+     * for the same physical phone. Best-effort: presence heartbeats never depend on the
+     * Cloud Vault keypair being available, so any loader failure leaves the payload untouched.
+     */
+    internal fun applyEscrowCrossReference(
+        payload: MutableMap<String, Any>,
+        loadEscrowDeviceId: () -> String = {
+            com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
+        },
+    ) {
+        runCatching(loadEscrowDeviceId)
+            .getOrNull()
+            ?.let { payload["escrowDeviceId"] = it }
+    }
+
     private fun persist(context: Context) {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
         val now = System.currentTimeMillis()
@@ -177,6 +194,7 @@ object AgentReplyNotificationState {
                 "lastSeenAtMillis" to now,
                 "updated_at_millis" to now,
             )
+        applyEscrowCrossReference(payload)
         fcmToken?.let { payload["fcm_token"] = it }
         activeRuntime?.let { payload["activeRuntime"] = it }
         activeThreadId?.let { payload["activeThreadId"] = it }
