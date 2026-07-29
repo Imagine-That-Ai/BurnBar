@@ -319,10 +319,28 @@ async function deleteEditQuietly(androidpublisher, packageName, editId) {
   }
 }
 
-function bundleVersionCodes(bundles) {
-  return new Set(
-    (bundles ?? []).map((bundle) => parseVersionCode(bundle.versionCode)),
+function findExpectedBundle(bundles, expectedVersionCode) {
+  const expected = parseVersionCode(expectedVersionCode);
+  return (
+    (bundles ?? []).find(
+      (bundle) => parseVersionCode(bundle.versionCode) === expected,
+    ) ?? null
   );
+}
+
+function assertExistingBundleBytes(bundle, expectedVersionCode, aabSha256) {
+  const expected = parseVersionCode(expectedVersionCode);
+  const reported = String(bundle?.sha256 ?? "").toLowerCase();
+  if (!/^[0-9a-f]{64}$/u.test(reported)) {
+    throw new Error(
+      `Google Play did not report a SHA-256 for existing bundle ${expected}; refusing to reuse it`,
+    );
+  }
+  if (reported !== aabSha256) {
+    throw new Error(
+      `Google Play bundle ${expected} SHA-256 ${reported} does not match local AAB SHA-256 ${aabSha256}; refusing to reuse different bytes`,
+    );
+  }
 }
 
 function assertCommittedTrack(track, expectedVersionCode) {
@@ -377,9 +395,12 @@ export async function publishInternalRelease({
       androidpublisher.edits.bundles.list({ packageName, editId }),
       getTrack(androidpublisher, packageName, editId, track),
     ]);
-    const existingBundle = bundleVersionCodes(bundleList.data?.bundles).has(
+    const existingBundle = findExpectedBundle(
+      bundleList.data?.bundles,
       expected,
     );
+    if (existingBundle)
+      assertExistingBundleBytes(existingBundle, expected, aabSha256);
     const plan = planTrackUpdate(currentTrack, expected, releaseName);
 
     let uploaded = false;

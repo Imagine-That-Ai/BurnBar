@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,10 +14,15 @@ import {
   versionCodesFromTrack,
 } from "./publish-internal-release.mjs";
 
+const FIXTURE_AAB_BYTES = "signed-aab-fixture";
+const FIXTURE_AAB_SHA256 = createHash("sha256")
+  .update(FIXTURE_AAB_BYTES)
+  .digest("hex");
+
 function fixtureAab() {
   const directory = mkdtempSync(join(tmpdir(), "openburnbar-play-publish-"));
   const path = join(directory, "OpenBurnBar.aab");
-  writeFileSync(path, "signed-aab-fixture");
+  writeFileSync(path, FIXTURE_AAB_BYTES);
   return path;
 }
 
@@ -163,7 +169,7 @@ test("new AAB is uploaded, committed, and read back at the exact expected versio
 
 test("existing bundle is promoted without re-upload and exact current version is a no-op", async () => {
   const promotable = fakePublisher({
-    bundles: [{ versionCode: 41 }],
+    bundles: [{ versionCode: 41, sha256: FIXTURE_AAB_SHA256 }],
     initialTrack: {
       track: "internal",
       releases: [{ status: "completed", versionCodes: ["40"] }],
@@ -183,7 +189,7 @@ test("existing bundle is promoted without re-upload and exact current version is
   assert.ok(!promotable.calls.some(([name]) => name === "bundles.upload"));
 
   const current = fakePublisher({
-    bundles: [{ versionCode: 41 }],
+    bundles: [{ versionCode: 41, sha256: FIXTURE_AAB_SHA256 }],
     initialTrack: {
       track: "internal",
       releases: [
@@ -209,6 +215,57 @@ test("existing bundle is promoted without re-upload and exact current version is
   assert.ok(!current.calls.some(([name]) => name === "tracks.update"));
   assert.ok(!current.calls.some(([name]) => name === "commit"));
   assert.ok(current.calls.some(([name]) => name === "delete"));
+});
+
+test("existing bundle with different bytes fails closed before any store mutation", async () => {
+  const mismatched = fakePublisher({
+    bundles: [{ versionCode: 41, sha256: "ab".repeat(32) }],
+    initialTrack: {
+      track: "internal",
+      releases: [{ status: "completed", versionCodes: ["40"] }],
+    },
+  });
+  await assert.rejects(
+    publishInternalRelease({
+      androidpublisher: mismatched,
+      aabPath: fixtureAab(),
+      packageName: "com.openburnbar",
+      track: "internal",
+      expectedVersionCode: 41,
+      versionName: "1.0.31",
+      releaseName: "OpenBurnBar 1.0.31",
+    }),
+    /does not match local AAB SHA-256/u,
+  );
+  assert.ok(!mismatched.calls.some(([name]) => name === "bundles.upload"));
+  assert.ok(!mismatched.calls.some(([name]) => name === "tracks.update"));
+  assert.ok(!mismatched.calls.some(([name]) => name === "commit"));
+  assert.ok(
+    mismatched.calls.some(
+      ([name, editId]) => name === "delete" && editId === "edit-1",
+    ),
+  );
+
+  const unreported = fakePublisher({
+    bundles: [{ versionCode: 41 }],
+    initialTrack: {
+      track: "internal",
+      releases: [{ status: "completed", versionCodes: ["41"] }],
+    },
+  });
+  await assert.rejects(
+    publishInternalRelease({
+      androidpublisher: unreported,
+      aabPath: fixtureAab(),
+      packageName: "com.openburnbar",
+      track: "internal",
+      expectedVersionCode: 41,
+      versionName: "1.0.31",
+      releaseName: "OpenBurnBar 1.0.31",
+    }),
+    /did not report a SHA-256 for existing bundle 41/u,
+  );
+  assert.ok(!unreported.calls.some(([name]) => name === "commit"));
 });
 
 test("mismatched upload response fails closed and deletes the uncommitted edit", async () => {
