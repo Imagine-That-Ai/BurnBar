@@ -14,10 +14,13 @@
  * `/v4/user/info` route. The mainland host is unreachable from many
  * production regions (and explicitly errors on coding-plan keys), so we
  * iterate the candidate hosts in order and fall back to whichever one
- * responds first. Validation always uses `/v4/models`, which is the stable
- * standard-API credential endpoint. Z.ai does not expose a documented,
- * reliable pay-as-you-go balance endpoint, so a valid standard-API account
- * without Coding Plan quota returns a successful empty snapshot.
+ * responds first. Validation first uses `/v4/models` (the stable standard-API
+ * credential endpoint) and falls back to the raw-token monitor endpoint so
+ * Coding Plan-only keys, which the standard API rejects, can still connect.
+ * Z.ai does not expose a documented, reliable pay-as-you-go balance endpoint,
+ * so a valid standard-API account without Coding Plan quota returns a
+ * successful empty snapshot. Transient monitor failures (network errors,
+ * 5xx) propagate as errors instead of masquerading as "no Coding Plan".
  *
  * Z.ai responses use a mix of `{ error: { code, message } }` (paas/v4) and
  * `{ code, msg, data }` (monitor/*) envelopes; both are handled here.
@@ -180,21 +183,34 @@ export const zaiAdapter: ProviderAdapter = {
       };
     }
 
-    const result = await tryEachHost(VALIDATE_PATH, trimmed);
-    if (!result.ok) {
+    const standard = await tryEachHost(VALIDATE_PATH, trimmed);
+    if (standard.ok) {
       return {
-        valid: false,
+        valid: true,
         redactedLabel: redact(trimmed),
         credentialKind: "bearer",
-        errorCode: result.errorCode ?? "validation_failed",
-        errorMessage: result.error || "Z.ai validation request failed.",
+      };
+    }
+
+    // Coding Plan-only keys are rejected by the standard paas/v4 API but
+    // authenticate against the monitor endpoint with raw-token authorization.
+    // Accept them here so connection validation does not block keys that
+    // fetchQuota can serve.
+    const monitor = await tryEachHost(QUOTA_PATH, trimmed);
+    if (monitor.ok) {
+      return {
+        valid: true,
+        redactedLabel: redact(trimmed),
+        credentialKind: "bearer",
       };
     }
 
     return {
-      valid: true,
+      valid: false,
       redactedLabel: redact(trimmed),
       credentialKind: "bearer",
+      errorCode: standard.errorCode ?? "validation_failed",
+      errorMessage: standard.error || "Z.ai validation request failed.",
     };
   },
 
@@ -216,6 +232,24 @@ export const zaiAdapter: ProviderAdapter = {
     }
 
     if (!coding.ok) {
+      // Transient monitor failures (network errors, timeouts, 5xx after
+      // retries) must not masquerade as "this account has no Coding Plan":
+      // publishing a successful empty snapshot would overwrite previously
+      // valid quota data. Only fall back when the monitor gave a definitive
+      // answer for this credential (rejected key, missing endpoint, or an
+      // explicit inline "no plan" envelope).
+      const definitiveMonitorOutcome =
+        coding.errorCode === "auth_failed" ||
+        coding.errorCode === "endpoint_not_found" ||
+        coding.errorCode === "zai_error";
+      if (!definitiveMonitorOutcome) {
+        return {
+          ok: false,
+          errorCode: coding.errorCode ?? "fetch_failed",
+          errorMessage: coding.error || "Z.ai quota request failed.",
+        };
+      }
+
       // Standard API tokens are valid Z.ai credentials even when the account
       // has no Coding Plan. Confirm them against the stable paas/v4 endpoint
       // and return an honest empty snapshot instead of fabricating a balance

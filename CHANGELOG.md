@@ -13,7 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   accounts**: Coding Plan monitor requests now use Z.ai's required raw-token
   authorization while standard API validation keeps Bearer authentication.
   Valid accounts without a Coding Plan now return an honest empty quota
-  snapshot instead of a server error or a fabricated balance.
+  snapshot instead of a server error or a fabricated balance. Coding
+  Plan-only keys that the standard API rejects now pass connection
+  validation via the monitor endpoint, and transient monitor failures
+  (network errors, 5xx) propagate as refresh errors instead of overwriting
+  valid quota with an empty snapshot.
 
 ### Added - Execution-source attribution
 

@@ -38,6 +38,24 @@ describe("Z.ai provider authentication", () => {
     expect(requestAuthorization(0)).toBe("Bearer standard-api-token");
   });
 
+  it("accepts a Coding Plan-only key that the standard API rejects", async () => {
+    mocks.providerFetch
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "Coding Plan keys cannot call this API" } }, 401))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: { quotaList: [{ used: 5, limit: 100, remaining: 95, window: "monthly" }] },
+        }),
+      );
+
+    const result = await zaiAdapter.testCredential("coding-plan-only-token");
+
+    expect(result.valid).toBe(true);
+    expect(mocks.providerFetch.mock.calls[0]?.[2]).toBe("https://api.z.ai/api/paas/v4/models");
+    expect(requestAuthorization(0)).toBe("Bearer coding-plan-only-token");
+    expect(mocks.providerFetch.mock.calls[1]?.[2]).toBe("https://api.z.ai/api/monitor/usage/quota/limit");
+    expect(requestAuthorization(1)).toBe("coding-plan-only-token");
+  });
+
   it("sends the raw token to the Coding Plan monitor endpoint", async () => {
     mocks.providerFetch.mockResolvedValueOnce(
       jsonResponse({
@@ -89,6 +107,22 @@ describe("Z.ai provider authentication", () => {
     expect(requestAuthorization(2)).toBe("Bearer standard-api-token");
     const requestedURLs = mocks.providerFetch.mock.calls.map((call) => String(call[2]));
     expect(requestedURLs.some((url) => url.includes("/user/balance"))).toBe(false);
+  });
+
+  it("propagates transient monitor failures instead of publishing an empty snapshot", async () => {
+    mocks.providerFetch
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "Upstream timeout" } }, 504))
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "Upstream timeout" } }, 504));
+
+    const result = await zaiAdapter.fetchQuota("coding-plan-token", "zai_default");
+
+    expect(result).toMatchObject({
+      ok: false,
+      errorCode: "fetch_failed",
+      errorMessage: "Upstream timeout",
+    });
+    const requestedURLs = mocks.providerFetch.mock.calls.map((call) => String(call[2]));
+    expect(requestedURLs.every((url) => url.includes("/api/monitor/"))).toBe(true);
   });
 
   it("still rejects a token that fails both monitor and standard API authentication", async () => {
