@@ -420,6 +420,80 @@ final class FirestoreNormalizationTests: XCTestCase {
         XCTAssertEqual(snap?.buckets.count, 1)
     }
 
+    func testProviderAccountRefreshDecodesProductionZaiResponseWithoutEmbeddedID() throws {
+        let response: [String: Any] = [
+            "provider": "zai",
+            "providerID": "zai",
+            "accountID": "zai_default",
+            "accountLabel": "Z.AI",
+            "accountStorageScope": "cloud_refreshable",
+            "sourceKind": "provider",
+            "sourceId": "zai_default",
+            "fetchedAt": "2026-07-28T20:14:31.423Z",
+            "source": "Z.ai usage monitor",
+            "confidence": "high",
+            "statusMessage": "Fetched from Z.ai (Zhipu) account endpoint.",
+            "buckets": [
+                [
+                    "name": "5-hour window",
+                    "used": 17.0,
+                    "limit": 100.0,
+                    "remaining": 83.0,
+                    "window": "rollingHours"
+                ]
+            ],
+            "schemaVersion": 2,
+            "updatedAt": "2026-07-28T20:14:31.423Z"
+        ]
+
+        XCTAssertNil(response["id"], "Callable responses mirror Firestore document data, not its separate document ID")
+
+        let snapshot = try ProviderAccountsAPI.decodeRefreshProviderAccountQuotaResponse(
+            response,
+            accountID: "zai_default"
+        )
+
+        XCTAssertEqual(snapshot.id, "zai_zai_default_zai_default")
+        XCTAssertEqual(snapshot.providerID, ProviderID(rawValue: "zai"))
+        XCTAssertEqual(snapshot.accountID, "zai_default")
+        XCTAssertEqual(snapshot.sourceId, "zai_default")
+        XCTAssertEqual(snapshot.source, "Z.ai usage monitor")
+        XCTAssertEqual(snapshot.buckets.first?.name, "5-hour window")
+        XCTAssertEqual(snapshot.buckets.first?.remaining, 83)
+    }
+
+    func testProviderAccountRefreshDecodesBridgedZaiResponseWithoutQuotaBuckets() throws {
+        let response = NSDictionary(dictionary: [
+            "sourceId": "zai_default",
+            "schemaVersion": 2,
+            "accountID": "zai_default",
+            "accountStorageScope": "cloud_refreshable",
+            "sourceKind": "provider",
+            "provider": "zai",
+            "providerID": "zai",
+            "accountLabel": "Zai Max",
+            "buckets": NSArray(),
+            "confidence": "low",
+            "source": "Z.ai standard API",
+            "statusMessage": "Z.ai credentials are valid, but this account does not expose Coding Plan quota.",
+            "fetchedAt": "2026-07-29T03:25:49.482Z",
+            "updatedAt": "2026-07-29T03:25:49.482Z"
+        ])
+
+        let snapshot = try ProviderAccountsAPI.decodeRefreshProviderAccountQuotaResponse(
+            response,
+            accountID: "zai_default"
+        )
+
+        XCTAssertEqual(snapshot.id, "zai_zai_default_zai_default")
+        XCTAssertEqual(snapshot.providerID, ProviderID(rawValue: "zai"))
+        XCTAssertEqual(snapshot.accountID, "zai_default")
+        XCTAssertEqual(snapshot.sourceId, "zai_default")
+        XCTAssertEqual(snapshot.source, "Z.ai standard API")
+        XCTAssertEqual(snapshot.confidence, .low)
+        XCTAssertTrue(snapshot.buckets.isEmpty)
+    }
+
     func testDesktopSyncedQuotaSnapshotDecodesThroughProductionNormalizer() throws {
         let snap = repo.decodeQuotaSnapshot(
             from: Self.desktopSyncedQuotaDoc,
@@ -872,6 +946,91 @@ final class FirestoreNormalizationTests: XCTestCase {
         let display = QuotaStore.displayReadyQuotaSnapshots([oldBucketed, staleMarker])
 
         XCTAssertTrue(display.isEmpty)
+    }
+
+    func testQuotaStoreFreshEmptySnapshotShadowsOldBucketedSnapshot() {
+        let newer = Date()
+        let older = newer.addingTimeInterval(-13 * 60 * 60)
+        let oldBucketed = quotaSnapshot(
+            id: "zai-old-coding-plan",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "zai_default",
+            accountLabel: "Z.ai Coding Plan",
+            bucketName: "5-hour window",
+            used: 17,
+            remaining: 83,
+            fetchedAt: older,
+            updatedAt: older
+        )
+        let freshEmpty = ProviderQuotaSnapshot(
+            id: "zai_zai_default_zai_default",
+            provider: "zai",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "zai_default",
+            accountLabel: "Zai Max",
+            accountStorageScope: .cloudRefreshable,
+            sourceKind: .provider,
+            sourceId: "zai_default",
+            fetchedAt: newer,
+            source: "Z.ai standard API",
+            confidence: .low,
+            statusMessage: "Z.ai credentials are valid, but this account does not expose Coding Plan quota.",
+            buckets: [],
+            updatedAt: newer
+        )
+
+        let display = QuotaStore.displayReadyQuotaSnapshots([oldBucketed, freshEmpty])
+
+        XCTAssertTrue(display.isEmpty)
+    }
+
+    func testQuotaStoreFreshEmptySnapshotShadowsLegacySeparatorVariantAccount() {
+        let newer = Date()
+        let older = newer.addingTimeInterval(-13 * 60 * 60)
+        let legacyBucketed = quotaSnapshot(
+            id: "zai_zai-default_daemon-slot:zai:default",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "zai-default",
+            accountLabel: "Z.ai Coding Plan",
+            bucketName: "Zai Token Usage 5 Hour Limits",
+            used: 17,
+            remaining: 83,
+            fetchedAt: older,
+            updatedAt: older
+        )
+        let freshEmpty = ProviderQuotaSnapshot(
+            id: "zai_zai_default_zai_default",
+            provider: "zai",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "zai_default",
+            accountLabel: "Zai Max",
+            accountStorageScope: .cloudRefreshable,
+            sourceKind: .provider,
+            sourceId: "zai_default",
+            fetchedAt: newer,
+            source: "Z.ai standard API",
+            confidence: .low,
+            statusMessage: "Z.ai credentials are valid, but this account does not expose Coding Plan quota.",
+            buckets: [],
+            updatedAt: newer
+        )
+
+        let display = QuotaStore.displayReadyQuotaSnapshots([legacyBucketed, freshEmpty])
+
+        XCTAssertTrue(display.isEmpty)
+    }
+
+    func testProviderQuotaRefreshGateSharesInFlightAndCooldownAcrossStores() {
+        let gate = ProviderQuotaRefreshGate(minimumInterval: 60)
+        let providerID = ProviderID(rawValue: "zai")
+        let startedAt = Date(timeIntervalSince1970: 1_780_000_000)
+
+        XCTAssertTrue(gate.acquire(providerID: providerID, now: startedAt))
+        XCTAssertFalse(gate.acquire(providerID: providerID, now: startedAt))
+
+        gate.release(providerID: providerID)
+        XCTAssertFalse(gate.acquire(providerID: providerID, now: startedAt.addingTimeInterval(59)))
+        XCTAssertTrue(gate.acquire(providerID: providerID, now: startedAt.addingTimeInterval(60)))
     }
 
     func testQuotaStoreDisplaySnapshotsDropsProviderLevelSnapshotWhenAccountSnapshotsExist() {

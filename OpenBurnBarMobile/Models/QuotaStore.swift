@@ -5,6 +5,41 @@ import OSLog
 
 private let quotaStoreLogger = Logger(subsystem: "com.openburnbar.mobile", category: "QuotaStore")
 
+/// Process-wide guard for provider quota refreshes.
+///
+/// Pulse and Burn intentionally own separate `QuotaStore` instances, but the
+/// backend rate limit is shared per user + provider. Without a shared gate,
+/// both stores can refresh the same stale provider at launch: the first call
+/// succeeds and the second immediately receives a rate-limit error.
+@MainActor
+final class ProviderQuotaRefreshGate {
+    static let shared = ProviderQuotaRefreshGate()
+
+    private let minimumInterval: TimeInterval
+    private var inFlightProviders = Set<String>()
+    private var lastAttemptAt: [String: Date] = [:]
+
+    init(minimumInterval: TimeInterval = 60) {
+        self.minimumInterval = minimumInterval
+    }
+
+    func acquire(providerID: ProviderID, now: Date = Date()) -> Bool {
+        let key = providerID.rawValue
+        guard !inFlightProviders.contains(key) else { return false }
+        if let lastAttempt = lastAttemptAt[key],
+           now.timeIntervalSince(lastAttempt) < minimumInterval {
+            return false
+        }
+        inFlightProviders.insert(key)
+        lastAttemptAt[key] = now
+        return true
+    }
+
+    func release(providerID: ProviderID) {
+        inFlightProviders.remove(providerID.rawValue)
+    }
+}
+
 @Observable
 @MainActor
 final class QuotaStore {
@@ -25,7 +60,6 @@ final class QuotaStore {
     private(set) var hasLoadedOnce = false
     private var listener: ListenerRegistration?
     private var lastAccountRefreshAt: Date?
-    private var staleRefreshInFlight: Set<String> = []
     private var automaticRefreshTask: Task<Void, Never>?
     private let settingsStore = QuotaSettingsStore()
 
@@ -124,11 +158,22 @@ final class QuotaStore {
             $0.providerID == providerID && $0.status != .deleted
         }
         for account in eligibleAccounts {
+            let isSelfHostedLocalAccount = account.storageScope == .localOnly
+                && (account.providerID == .claudeCode || account.providerID == .codex)
+            let isCloudAccount = account.storageScope == .cloudRefreshable
+                || account.storageScope == .serverPrivate
+            guard isSelfHostedLocalAccount || isCloudAccount else { continue }
+            guard ProviderQuotaRefreshGate.shared.acquire(providerID: account.providerID) else {
+                quotaStoreLogger.info(
+                    "Skipped duplicate quota refresh for \(account.providerID.rawValue, privacy: .public); another refresh is active or the provider cooldown has not elapsed."
+                )
+                continue
+            }
+            defer { ProviderQuotaRefreshGate.shared.release(providerID: account.providerID) }
             do {
-                if account.storageScope == .localOnly,
-                   account.providerID == .claudeCode || account.providerID == .codex {
+                if isSelfHostedLocalAccount {
                     _ = try await SelfHostedQuotaRunnerStore.shared.refresh(account: account)
-                } else if account.storageScope == .cloudRefreshable || account.storageScope == .serverPrivate {
+                } else {
                     _ = try await refreshAccountQuota(accountID: account.id)
                 }
             } catch {
@@ -214,9 +259,14 @@ final class QuotaStore {
     }
 
     nonisolated static func displayReadyQuotaSnapshots(_ snapshots: [ProviderQuotaSnapshot]) -> [ProviderQuotaSnapshot] {
-        let displayable = snapshots.compactMap { $0.filteringToDisplayableQuotaSignal() }
+        // Deduplicate raw snapshots first. A fresh provider response can
+        // legitimately contain zero buckets (valid credentials, but no quota
+        // exposed). Filtering first would discard that fresh response and
+        // leave an older bucketed snapshot visible indefinitely.
+        let displayable = deduplicateQuotaSnapshotsByProviderAccount(snapshots)
+            .compactMap { $0.filteringToDisplayableQuotaSignal() }
         return dropShadowedProviderLevelSnapshots(
-            deduplicateQuotaSnapshotsByProviderAccount(displayable)
+            displayable
         )
         .filter(\.hasDisplayableQuotaSignal)
     }
@@ -259,7 +309,13 @@ final class QuotaStore {
 
     nonisolated private static func quotaSnapshotDedupKey(_ snapshot: ProviderQuotaSnapshot) -> String {
         let providerKey = snapshot.providerID.rawValue.lowercased()
-        let accountKey = snapshot.accountID.nilIfBlank
+        // Legacy writers used both `provider-default` and
+        // `provider_default` for the same logical account. Firestore keeps
+        // those as distinct document IDs, so compare account IDs using the
+        // same separator-insensitive token we use for quota bucket identity.
+        // Otherwise a fresh empty response cannot retire an old bucketed
+        // snapshot and the UI can keep showing expired quota indefinitely.
+        let accountKey = snapshot.accountID.nilIfBlank.map(normalizedQuotaAccountIDToken)
             ?? snapshot.accountLabel.nilIfBlank?.lowercased()
             ?? "provider-level"
         return "\(providerKey)::\(accountKey)"
@@ -359,6 +415,12 @@ final class QuotaStore {
             .filter { $0.isLetter || $0.isNumber }
     }
 
+    nonisolated private static func normalizedQuotaAccountIDToken(_ raw: String) -> String {
+        raw
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber }
+    }
+
     nonisolated private static func confidenceRank(_ confidence: ProviderQuotaConfidence) -> Int {
         switch confidence {
         case .high: return 3
@@ -411,7 +473,6 @@ final class QuotaStore {
                         && (account.providerID == .claudeCode || account.providerID == .codex))
             }
             .filter { account in
-                guard !staleRefreshInFlight.contains(account.id) else { return false }
                 guard let accountSnapshots = byAccount[account.id], !accountSnapshots.isEmpty else { return true }
                 return accountSnapshots.contains { $0.isStale() }
             }
@@ -420,8 +481,10 @@ final class QuotaStore {
         guard !refreshable.isEmpty else { return }
 
         for account in refreshable {
-            staleRefreshInFlight.insert(account.id)
-            defer { staleRefreshInFlight.remove(account.id) }
+            guard ProviderQuotaRefreshGate.shared.acquire(providerID: account.providerID) else {
+                continue
+            }
+            defer { ProviderQuotaRefreshGate.shared.release(providerID: account.providerID) }
             do {
                 if account.storageScope == .localOnly,
                    account.providerID == .claudeCode || account.providerID == .codex {
