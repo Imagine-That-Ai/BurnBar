@@ -226,8 +226,12 @@ capture_graphical_environment() {
     desktop="$(loginctl show-session "$candidate" -p Desktop --value)"
     if [[ "$name" == "$current_user" && "$type" == "x11" && "$active" == "yes" \
       && "$remote" == "no" && "$class" == "user" ]]; then
-      [[ "$desktop" == "GNOME" || "$desktop" == "ubuntu" || "$desktop" == "ubuntu:GNOME" ]] \
-        || die "active X11 session is not GNOME"
+      # Ubuntu 24.04 GNOME/logind often leaves Desktop empty; require GNOME via
+      # XDG_CURRENT_DESKTOP below when the property is unset.
+      if [[ -n "$desktop" ]]; then
+        [[ "$desktop" == "GNOME" || "$desktop" == "ubuntu" || "$desktop" == "ubuntu:GNOME" ]] \
+          || die "active X11 session is not GNOME"
+      fi
       session_count=$((session_count + 1))
     fi
   done
@@ -299,12 +303,21 @@ validate_archive_entries() {
   local entry normalized
 
   while IFS= read -r entry; do
+    # Package root "./" is a normal tar directory entry.
+    [[ "$entry" == "./" || "$entry" == "." ]] && continue
     normalized="${entry#./}"
     [[ -n "$normalized" && "$normalized" != /* ]] || die "runner archive contains an unsafe path"
     [[ "/$normalized/" != *"/../"* ]] || die "runner archive contains path traversal"
   done < <(tar -tzf "$archive")
-  if tar -tvzf "$archive" | grep -Eq '^[lh]'; then
-    die "runner archive contains links"
+
+  # Modern actions/runner packages ship relative Node package-manager stubs.
+  # Reject hardlinks and absolute symlink targets; relative targets (including
+  # ".." components that stay inside the package) are re-checked after extract.
+  if tar -tvzf "$archive" | grep -Eq '^h'; then
+    die "runner archive contains hardlinks"
+  fi
+  if tar -tvzf "$archive" | grep -E '^l' | grep -Eq ' -> /'; then
+    die "runner archive contains an absolute symlink"
   fi
 }
 
@@ -345,9 +358,13 @@ verify_metadata() {
     || die "pinned runner executable is missing or linked"
   [[ -x "$runner_dir/config.sh" && ! -L "$runner_dir/config.sh" ]] \
     || die "runner config script is missing or linked"
-  if find "$runner_dir" -type l -print -quit | grep -q .; then
-    die "runner installation contains symlinks"
-  fi
+  while IFS= read -r -d "" link; do
+    target="$(readlink "$link")"
+    [[ "$target" != /* ]] || die "runner installation contains an absolute symlink: $link"
+    resolved="$(readlink -f "$link")"
+    [[ -n "$resolved" && "$resolved" == "$runner_dir"/* ]] \
+      || die "runner installation symlink escapes the install tree: $link"
+  done < <(find "$runner_dir" -type l -print0)
   if find "$runner_dir" ! -user "$current_user" -print -quit | grep -q .; then
     die "runner installation contains files owned by another user"
   fi
@@ -371,9 +388,15 @@ install_runner() {
   validate_archive_entries "$archive"
   install -d -m 700 "$extracted"
   tar -xzf "$archive" -C "$extracted" --no-same-owner --no-same-permissions
-  if find "$extracted" -type l -print -quit | grep -q .; then
-    die "extracted runner contains symlinks"
-  fi
+  # Keep only relative in-tree symlinks (Node package-manager stubs). Reject
+  # absolute or out-of-tree link targets.
+  while IFS= read -r -d "" link; do
+    target="$(readlink "$link")"
+    [[ "$target" != /* ]] || die "extracted runner contains an absolute symlink: $link"
+    resolved="$(readlink -f "$link")"
+    [[ -n "$resolved" && "$resolved" == "$extracted"/* ]] \
+      || die "extracted runner symlink escapes the install tree: $link"
+  done < <(find "$extracted" -type l -print0)
   installed_version="$("$extracted/bin/Runner.Listener" --version)"
   [[ "$installed_version" == "$RUNNER_VERSION" ]] \
     || die "extracted runner version does not match the pinned release"
