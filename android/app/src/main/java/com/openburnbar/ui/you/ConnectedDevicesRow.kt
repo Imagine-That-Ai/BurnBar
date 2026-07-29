@@ -22,13 +22,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.stores.DeviceRecord
+import com.openburnbar.data.stores.DeviceTrustState
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraTypography
 
 @Composable
 fun ConnectedDevicesRow(devices: List<DeviceRecord>, onClick: () -> Unit = {}) {
-    val deviceCount = devices.size
     AuroraGlassCard {
         Row(
             modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
@@ -44,7 +44,7 @@ fun ConnectedDevicesRow(devices: List<DeviceRecord>, onClick: () -> Unit = {}) {
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    "$deviceCount device${if (deviceCount != 1) "s" else ""} connected",
+                    connectedDevicesSubtitle(devices),
                     fontSize = AuroraTypography.caption.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -58,4 +58,22 @@ fun ConnectedDevicesRow(devices: List<DeviceRecord>, onClick: () -> Unit = {}) {
             )
         }
     }
+}
+
+internal fun connectedDevicesSubtitle(devices: List<DeviceRecord>): String {
+    if (devices.isEmpty()) return "Tap to register this device"
+    val trusted =
+        devices.count {
+            it.isCurrentDevice || it.trustState == DeviceTrustState.TRUSTED
+        }
+    val pending =
+        devices.count {
+            !it.isCurrentDevice && it.trustState == DeviceTrustState.PENDING
+        }
+    val revoked = devices.count { it.trustState == DeviceTrustState.REVOKED }
+    return buildList {
+        add("$trusted trusted")
+        add("$pending pending")
+        if (revoked > 0) add("$revoked revoked")
+    }.joinToString(" · ")
 }
