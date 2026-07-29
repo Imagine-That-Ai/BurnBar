@@ -184,6 +184,34 @@ test("every loaded-identity observer, harness, binding, and union contract are t
   );
 });
 
+test("Firebase CLI shim selection, archive, and rebuild inputs are trusted bytes", (context) => {
+  const shimPaths = [
+    "functions/package.json",
+    "functions/package-lock.json",
+    "functions/vendor/openburnbar/brace-expansion-cjs.tgz",
+    "functions/vendor/openburnbar/brace-expansion-cjs/README.md",
+    "functions/vendor/openburnbar/brace-expansion-cjs/index.js",
+    "functions/vendor/openburnbar/brace-expansion-cjs/package.json",
+  ];
+  for (const path of shimPaths)
+    assert.equal(MANIFEST.files[path]?.length, 4, path);
+
+  const candidateRoot = candidateCopy(context);
+  writeFileSync(
+    resolve(candidateRoot, "functions/package.json"),
+    '{"overrides":{"brace-expansion":"untrusted"}}\n',
+  );
+  assert.throws(
+    () =>
+      verifyDomainCoreControlPlane({
+        trustedRoot: ROOT,
+        candidateRoot,
+        manifest: MANIFEST,
+      }),
+    /differs from trusted main/u,
+  );
+});
+
 test("candidate control-plane files and parent directories cannot be symlink escapes", (context) => {
   const path = "scripts/ci/domain-core-proof-fragment.mjs";
   const linkedFileRoot = candidateCopy(context);

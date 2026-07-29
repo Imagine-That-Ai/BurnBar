@@ -45,20 +45,14 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
  * suppression rot. Keep entries in sync with the osv-scanner.toml ignore list
  * (same id, same expiry) and the rationale in docs/LINT_RATIONALE.md.
  */
-export const ADVISORY_ALLOWLIST = {
-  "GHSA-mh99-v99m-4gvg": {
-    // reason: brace-expansion DoS. Only unfixable transitive 1.x/2.x copies
-    // remain: minimatch 3/5/6/9 pin ^1/^2 and upstream published no patched
-    // 1.x/2.x release; the only fixed version (5.0.8) exports a named-only CJS
-    // surface that breaks those majors' require-and-call / __importDefault
-    // interop, so overriding would crash eslint/glob/firebase-tools at
-    // runtime. All in-range 5.0.x copies are bumped to 5.0.8. Re-evaluate for
-    // upstream backports before expiry.
-    reason:
-      "brace-expansion DoS: no patched 1.x/2.x release exists for minimatch 3/5/6/9 pins; forcing 5.0.8 breaks their CJS interop. Fixable 5.0.x copies updated to 5.0.8.",
-    expires: "2026-08-21",
-  },
-};
+// No advisories are currently tolerated. Every entry must be time-boxed
+// ({ reason, expires: "YYYY-MM-DD" }, keyed by GHSA id) and kept in sync with
+// the paired osv-scanner.toml ignore (same id, same expiry) plus the rationale
+// in docs/LINT_RATIONALE.md. The last entry (GHSA-mh99-v99m-4gvg,
+// brace-expansion DoS) was retired when the vendored callable shim in
+// functions/vendor/openburnbar/brace-expansion-cjs removed the final
+// vulnerable 1.x copies from the dependency tree.
+export const ADVISORY_ALLOWLIST = {};
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -76,9 +70,10 @@ function severeVulnerabilities(report) {
   );
 }
 
-const GHSA_RE = /GHSA-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}/i;
+const GHSA_RE =
+  /GHSA-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}/i;
 
-function activeAllowlistEntry(ghsaId, allowlist, now) {
+export function activeAllowlistEntry(ghsaId, allowlist, now) {
   const entry = allowlist[ghsaId];
   if (!isObject(entry)) return null;
   // An unparseable expiry is treated as already expired: fail closed.
@@ -94,17 +89,28 @@ function activeAllowlistEntry(ghsaId, allowlist, now) {
  * tolerated. Anything unresolvable (missing package, cycle, advisory without a
  * GHSA id) fails closed.
  */
-function isTolerated(name, vulnerabilities, allowlist, now, visiting = new Set()) {
+function isTolerated(
+  name,
+  vulnerabilities,
+  allowlist,
+  now,
+  visiting = new Set(),
+) {
   if (visiting.has(name)) return false;
   const vulnerability = vulnerabilities[name];
-  if (!isObject(vulnerability) || !Array.isArray(vulnerability.via) || vulnerability.via.length === 0) {
+  if (
+    !isObject(vulnerability) ||
+    !Array.isArray(vulnerability.via) ||
+    vulnerability.via.length === 0
+  ) {
     return false;
   }
   visiting.add(name);
   try {
     for (const via of vulnerability.via) {
       if (typeof via === "string") {
-        if (!isTolerated(via, vulnerabilities, allowlist, now, visiting)) return false;
+        if (!isTolerated(via, vulnerabilities, allowlist, now, visiting))
+          return false;
         continue;
       }
       if (!isObject(via)) return false;
@@ -233,7 +239,12 @@ function sleepSeconds(seconds) {
  */
 export function runWithRetries(
   attempt,
-  { attempts = AUDIT_ATTEMPTS, sleep = sleepSeconds, log = console.log, label = "npm audit" } = {},
+  {
+    attempts = AUDIT_ATTEMPTS,
+    sleep = sleepSeconds,
+    log = console.log,
+    label = "npm audit",
+  } = {},
 ) {
   let result = attempt();
   for (let index = 1; index < attempts && result.retryable; index += 1) {
@@ -273,7 +284,9 @@ function auditDirectory(repoRoot, dir) {
     return {
       ok: false,
       retryable: false,
-      messages: [`Configured npm audit directory is missing package-lock.json: ${dir}`],
+      messages: [
+        `Configured npm audit directory is missing package-lock.json: ${dir}`,
+      ],
     };
   }
 

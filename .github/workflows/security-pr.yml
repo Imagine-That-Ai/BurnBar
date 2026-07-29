@@ -131,6 +131,14 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0 (node24-native)
         with:
           fail-on-severity: high
+          # Deliberately no allow-ghsas: the action's vulnerability allowlist
+          # is advisory-ID-wide, so any exception would also suppress the same
+          # GHSA for every newly introduced dependency, not just the reviewed
+          # package/version that justified it. This gate reviews only the PR's
+          # dependency diff, so an unchanged base-pinned dependency covered by
+          # the paired time-boxed npm/OSV policy never trips it, while a PR
+          # that adds or downgrades into a vulnerable version always fails
+          # closed here and gets explicit human review.
           # Allow known-safe license exceptions. BlueOak-1.0.0 is a permissive
           # npm ecosystem license used by tar and related transitive packages;
           # allow it so patched releases can land without vulnerable downgrades.
