@@ -43,6 +43,15 @@ final class FirestoreRepository {
         return "…\(uid.suffix(5))"
     }
 
+    /// Stable per-user token for in-process refresh gating. Unlike
+    /// `currentUserDisplayID()` this is deliberately not redacted: the value
+    /// never leaves the process, and a redacted suffix could collide across
+    /// users, letting one user's refresh cooldown block the next sign-in.
+    nonisolated func currentUserScopeID() -> String? {
+        guard FirebaseApp.app() != nil else { return nil }
+        return Auth.auth().currentUser?.uid
+    }
+
     /// Synchronously loads the locally-escrowed Cloud Vault key for the signed-in
     /// user, used to open sealed fields (e.g. `sealedProjectName`) during decode.
     /// Returns `nil` when Firebase is unavailable, no user is signed in, or the key
