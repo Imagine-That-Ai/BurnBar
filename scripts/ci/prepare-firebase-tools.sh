@@ -16,6 +16,9 @@ if [[ ! -x "$FIREBASE_TOOLS_BIN" ]]; then
   exit 1
 fi
 
+node scripts/ci/verify-firebase-tools-runtime.mjs \
+  "$PWD/functions/node_modules/firebase-tools/package.json"
+
 FIREBASE_TOOLS_VERSION="$("$FIREBASE_TOOLS_BIN" --version)"
 if [[ -z "$FIREBASE_TOOLS_VERSION" ]]; then
   echo "::error::Pinned Firebase CLI did not report a version." >&2
