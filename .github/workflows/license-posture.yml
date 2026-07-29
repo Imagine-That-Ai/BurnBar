@@ -31,7 +31,11 @@ jobs:
   burnbar-product-license:
     name: BurnBar AGPL product posture
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # This fail-closed lane checks out full history plus recursive submodules
+    # before building the shared domain-core consumers and running the complete
+    # compliance suite. GitHub-hosted checkout degradation can exceed 15
+    # minutes by itself, so keep enough headroom for the checks to actually run.
+    timeout-minutes: 60
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
