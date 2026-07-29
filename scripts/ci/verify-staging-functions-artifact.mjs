@@ -1,25 +1,19 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import {
-  lstatSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-} from "node:fs";
+import { lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 
 const MAX_ARTIFACT_BYTES = 128 * 1024 * 1024;
 const MAX_ARTIFACT_FILES = 10_000;
-const REQUIRED_TOP_LEVEL_ENTRIES = [
-  "CANDIDATE_SHA",
-  "SHA256SUMS",
-  "functions",
-];
+const REQUIRED_TOP_LEVEL_ENTRIES = ["CANDIDATE_SHA", "SHA256SUMS", "functions"];
 const ALLOWED_APP_STORE_CERTIFICATES = new Set([
   "lib/appstore/certs/AppleIncRootCertificate.cer",
   "lib/appstore/certs/AppleRootCA-G2.cer",
   "lib/appstore/certs/AppleRootCA-G3.cer",
+]);
+const ALLOWED_VENDOR_FILES = new Set([
+  "vendor/openburnbar/brace-expansion-cjs.tgz",
 ]);
 const ALLOWED_VENDOR_PREFIXES = [
   "vendor/openburnbar/domain-core-wasm/",
@@ -94,12 +88,11 @@ function isAllowedFunctionsPath(path) {
   if (ALLOWED_APP_STORE_CERTIFICATES.has(path)) return true;
   if (
     path.startsWith("lib/") &&
-    (path.endsWith(".js") ||
-      path.endsWith(".js.map") ||
-      path.endsWith(".cjs"))
+    (path.endsWith(".js") || path.endsWith(".js.map") || path.endsWith(".cjs"))
   ) {
     return true;
   }
+  if (ALLOWED_VENDOR_FILES.has(path)) return true;
   return ALLOWED_VENDOR_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
@@ -138,7 +131,9 @@ function verify() {
     process.exit(2);
   }
   if (!/^[a-f0-9]{40}$/u.test(candidateSha)) {
-    throw new Error("candidate SHA must be exactly 40 lowercase hex characters");
+    throw new Error(
+      "candidate SHA must be exactly 40 lowercase hex characters",
+    );
   }
 
   const artifactRoot = resolve(artifactRootArg);
@@ -200,9 +195,7 @@ function verify() {
   const manifest = parseManifest(
     readFileSync(join(artifactRoot, "SHA256SUMS"), "utf8"),
   );
-  const expectedPaths = functionsFiles
-    .map((file) => file.artifactPath)
-    .sort();
+  const expectedPaths = functionsFiles.map((file) => file.artifactPath).sort();
   const manifestPaths = [...manifest.keys()].sort();
   if (JSON.stringify(manifestPaths) !== JSON.stringify(expectedPaths)) {
     throw new Error(

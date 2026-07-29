@@ -89,6 +89,10 @@ function createFixture(label) {
     ),
     "export {};\n",
   );
+  write(
+    join(root, "functions", "vendor", "openburnbar", "brace-expansion-cjs.tgz"),
+    "reviewed package archive\n",
+  );
   writeManifest(root);
   return root;
 }
@@ -96,13 +100,7 @@ function createFixture(label) {
 function run(root) {
   return spawnSync(
     process.execPath,
-    [
-      verifier,
-      "--artifact-root",
-      root,
-      "--candidate-sha",
-      candidateSha,
-    ],
+    [verifier, "--artifact-root", root, "--candidate-sha", candidateSha],
     { encoding: "utf8" },
   );
 }
@@ -159,6 +157,31 @@ try {
         "index.js",
       ),
       "export {};\n",
+    );
+  });
+  expectFailure("vendored-package-source", (root) => {
+    write(
+      join(
+        root,
+        "functions",
+        "vendor",
+        "openburnbar",
+        "brace-expansion-cjs",
+        "index.js",
+      ),
+      "module.exports = {};\n",
+    );
+  });
+  expectFailure("vendored-package-archive-sibling", (root) => {
+    write(
+      join(
+        root,
+        "functions",
+        "vendor",
+        "openburnbar",
+        "brace-expansion-cjs.tgz.sha256",
+      ),
+      "unreviewed sibling\n",
     );
   });
   expectFailure("executable-package-script", (root) => {
