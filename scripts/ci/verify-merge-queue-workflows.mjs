@@ -20,6 +20,18 @@ const requiredWorkflows = [
 ];
 
 const failures = [];
+
+function jobBlock(source, jobName) {
+  const marker = `  ${jobName}:\n`;
+  const start = source.indexOf(marker);
+  if (start < 0) return null;
+  const remainder = source.slice(start + marker.length);
+  const nextJob = remainder.search(/^  [a-z0-9_-]+:\s*$/mu);
+  return nextJob < 0
+    ? source.slice(start)
+    : source.slice(start, start + marker.length + nextJob);
+}
+
 for (const name of requiredWorkflows) {
   const path = join(root, ".github", "workflows", name);
   if (!existsSync(path)) {
@@ -29,6 +41,36 @@ for (const name of requiredWorkflows) {
   const source = readFileSync(path, "utf8");
   if (!/^  merge_group:\s*$/mu.test(source)) {
     failures.push(`${name}: required check does not run for merge_group`);
+  }
+}
+
+const publicDownloadDetectors = [
+  ["public-macos-download-trust.yml", "detect-public-macos-download-change"],
+  ["public-linux-download-trust.yml", "detect-public-linux-download-change"],
+];
+
+for (const [name, jobName] of publicDownloadDetectors) {
+  const source = readFileSync(join(root, ".github", "workflows", name), "utf8");
+  const job = jobBlock(source, jobName);
+  if (job === null) {
+    failures.push(`${name}: ${jobName} job is missing`);
+    continue;
+  }
+
+  const timeout = job.match(/^    timeout-minutes:\s*(\d+)\s*$/mu);
+  if (timeout === null || Number.parseInt(timeout[1], 10) < 60) {
+    failures.push(
+      `${name}: ${jobName} must budget at least 60 minutes for degraded full-history checkout`,
+    );
+  }
+  if (!/^\s+fetch-depth:\s*0\s*$/mu.test(job)) {
+    failures.push(`${name}: ${jobName} must fetch complete history for exact base comparison`);
+  }
+  if (!/^\s+filter:\s*blob:none\s*$/mu.test(job)) {
+    failures.push(`${name}: ${jobName} must use a blobless partial clone`);
+  }
+  if (!/^\s+persist-credentials:\s*false\s*$/mu.test(job)) {
+    failures.push(`${name}: ${jobName} must not persist checkout credentials`);
   }
 }
 

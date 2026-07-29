@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Full-history CI checkout reliability
+
+- **Kept fail-closed compliance, secret-scanning, and public-download gates
+  alive through slow GitHub checkouts**: the recursive-submodule
+  product-license lane and full-history gitleaks scan now have enough runtime
+  headroom to execute, while the macOS and Linux public-download change
+  detectors use blobless full-history clones plus a bounded 60-minute ceiling.
+  All four lanes now reach their security logic instead of being canceled
+  during checkout.
+
 ### Fixed - Z.ai cloud quota refresh
 
 - **Restored Z.ai quota refresh for both Coding Plan and standard API

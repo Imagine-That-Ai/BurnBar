@@ -67,6 +67,9 @@ const cases = [
   ["missing merge_group", (root) => mutate(root, "codeql-pr.yml", "  merge_group:\n", "  disabled_merge_group:\n"), 1],
   ["missing queue PR identity", (root) => mutate(root, "domain-core-deletion-guard.yml", "gh-readonly-queue/main/pr-([0-9]+)-", "queue/main/change-([0-9]+)-"), 1],
   ["missing merge base", (root) => mutate(root, "public-macos-download-trust.yml", "github.event.pull_request.base.sha || github.event.merge_group.base_sha", "github.event.pull_request.base.sha"), 1],
+  ["macOS detector checkout timeout regresses", (root) => mutate(root, "public-macos-download-trust.yml", "timeout-minutes: 60", "timeout-minutes: 15"), 1],
+  ["Linux detector clone downloads blobs", (root) => mutate(root, "public-linux-download-trust.yml", "filter: blob:none", "filter: blob:limit=1"), 1],
+  ["Linux detector persists credentials", (root) => mutate(root, "public-linux-download-trust.yml", "persist-credentials: false", "persist-credentials: true"), 1],
   ["queue timeout shorter than workflow", (root) => mutateGovernance(root, (governance) => {
     governance.merge_queue.check_response_timeout_minutes = 240;
   }), 1],
