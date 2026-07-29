@@ -2,7 +2,6 @@ package com.openburnbar.data.media
 
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 private const val MILLIS = 42
@@ -74,10 +73,7 @@ class VideoReceivePipelineStatsTest {
         pipeline.fail("The Mac could not start screen sharing.")
 
         val phase = pipeline.phase.value
-        assertTrue(phase is VideoReceivePipeline.Phase.Failed)
-        assertEquals(
-            "The Mac could not start screen sharing.",
-            (phase as VideoReceivePipeline.Phase.Failed).reason,
-        )
+        check(phase is VideoReceivePipeline.Phase.Failed) { "Expected Failed phase but was $phase" }
+        assertEquals("The Mac could not start screen sharing.", phase.reason)
     }
 }
