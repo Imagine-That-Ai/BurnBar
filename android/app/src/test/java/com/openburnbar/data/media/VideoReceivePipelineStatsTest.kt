@@ -76,4 +76,14 @@ class VideoReceivePipelineStatsTest {
         check(phase is VideoReceivePipeline.Phase.Failed) { "Expected Failed phase but was $phase" }
         assertEquals("The Mac could not start screen sharing.", phase.reason)
     }
+
+    @Test
+    fun stopReleasesDecoderResourcesAndEntersStoppedPhase() = runTest {
+        val pipeline = VideoReceivePipeline()
+        pipeline.noteAcceptedFrame(wireByteCount = 500_000, nowMillis = 1_800_000_000_000L)
+
+        pipeline.stop()
+
+        assertEquals(VideoReceivePipeline.Phase.Stopped, pipeline.phase.value)
+    }
 }
