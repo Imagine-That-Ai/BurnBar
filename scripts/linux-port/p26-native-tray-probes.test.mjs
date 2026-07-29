@@ -167,10 +167,10 @@ function dependencies(options, failRoute = null) {
     marker: "p26-fedcba0987654321",
     autostart: {
       path: "/etc/xdg/autostart/openburnbar.desktop",
-      exec: "openburnbar-linux-desktop --background",
+      exec: "/usr/bin/openburnbar-linux-desktop --background",
       packageOwned: true,
       manager: "dpkg",
-      packageName: "openburnbar",
+      packageName: "open-burn-bar",
       sha256: "e".repeat(64),
     },
     clock: () => new Date((time += 10)),
@@ -308,16 +308,16 @@ test("P-26 accepts only the canonical package owner on every native manager", ()
   assert.deepEqual(
     parseP26PackageOwner(
       "ubuntu-24.04-gnome-x11-aarch64",
-      "openburnbar: /etc/xdg/autostart/openburnbar.desktop",
+      "open-burn-bar: /etc/xdg/autostart/openburnbar.desktop",
     ),
-    { manager: "dpkg", packageName: "openburnbar" },
+    { manager: "dpkg", packageName: "open-burn-bar" },
   );
   assert.deepEqual(
     parseP26PackageOwner(
       "fedora-42-gnome-wayland-x86_64",
-      "openburnbar-1.2.3-1.x86_64",
+      "open-burn-bar-1.2.3-1.x86_64",
     ),
-    { manager: "rpm", packageName: "openburnbar" },
+    { manager: "rpm", packageName: "open-burn-bar" },
   );
   assert.deepEqual(
     parseP26PackageOwner(

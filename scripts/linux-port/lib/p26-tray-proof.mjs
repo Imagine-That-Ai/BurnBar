@@ -102,6 +102,8 @@ function validateMarker(value, environmentId) {
     : environmentId.includes("fedora")
       ? "rpm"
       : "pacman";
+  const expectedPackageName =
+    expectedManager === "pacman" ? "openburnbar" : "open-burn-bar";
   if (
     !MARKER.test(value.marker ?? "") ||
     value.installedExecutable !== "/usr/bin/openburnbar-linux-desktop"
@@ -114,9 +116,9 @@ function validateMarker(value, environmentId) {
   );
   if (
     value.autostart.path !== "/etc/xdg/autostart/openburnbar.desktop" ||
-    value.autostart.exec !== "openburnbar-linux-desktop --background" ||
+    value.autostart.exec !== "/usr/bin/openburnbar-linux-desktop --background" ||
     value.autostart.manager !== expectedManager ||
-    value.autostart.packageName !== "openburnbar" ||
+    value.autostart.packageName !== expectedPackageName ||
     value.autostart.packageOwned !== true ||
     !SHA256.test(value.autostart.sha256 ?? "")
   )
