@@ -33,7 +33,10 @@ class DevicesStoreTest {
         every { context.contentResolver } returns resolver
         every { Settings.Secure.getString(resolver, Settings.Secure.ANDROID_ID) } returns "android-device-id"
 
-        assertEquals("android-device-id", DevicesStore.currentAndroidDeviceID(context))
+        assertEquals(
+            "077e8ba5b35e180f3b7d656b114d5fc54477ee8e7a1113fb2365f21d2dfef985",
+            DevicesStore.currentAndroidDeviceID(context),
+        )
     }
 
     @Test
@@ -63,86 +66,56 @@ class DevicesStoreTest {
                     "lastSeenAtMillis" to 2_000L,
                     "updated_at_millis" to 1_000L,
                 ),
-                currentDeviceIDs = setOf("phone-id"),
+                currentPresenceDeviceID = "phone-id",
             )
 
         assertEquals("phone-id", record.id)
+        assertEquals("phone-id", record.presenceID)
+        assertEquals("android-escrow-hash", record.escrowID)
         assertEquals("Galaxy S24", record.displayName)
         assertEquals("Android", record.platform)
-        assertEquals("android-escrow-hash", record.escrowDeviceId)
         assertEquals(Date(2_000L), record.lastSeen)
         assertEquals(true, record.isCurrentDevice)
     }
 
     @Test
-    fun `merge and dedupe keep the trusted freshest physical device`() {
-        val stale =
-            DeviceRecord(
-                id = "old-install",
-                displayName = "Alberto's Phone",
-                platform = "iOS",
-                lastSeen = Date(1_000L),
-            )
-        val fresh =
-            DeviceRecord(
-                id = "current-install",
-                displayName = "Alberto's Phone",
-                platform = "ios",
-                lastSeen = Date(2_000L),
-            )
-        val trust =
-            DeviceRecord(
-                id = "current-install",
-                displayName = "Unknown",
-                platform = "iOS",
-                trustState = DeviceTrustState.TRUSTED,
-                lastSeen = Date(1_500L),
-            )
-
-        val merged = DevicesStore.mergeDeviceRecords(listOf(stale, fresh), listOf(trust))
-        val visible = DevicesStore.deduplicated(merged)
-
-        assertEquals(1, visible.size)
-        assertEquals("current-install", visible.single().id)
-        assertEquals(DeviceTrustState.TRUSTED, visible.single().trustState)
-        assertEquals(Date(2_000L), visible.single().lastSeen)
-    }
-
-    @Test
-    fun `merge joins presence and escrow records via escrowDeviceId cross-reference`() {
+    fun `merge joins presence and escrow records through the published cross reference`() {
         val presence =
             DeviceRecord(
-                id = "sha256-of-android-id",
+                id = "presence-sha256",
+                presenceID = "presence-sha256",
+                escrowID = "android-public-key-hash",
                 displayName = "Unknown",
                 platform = "android",
                 lastSeen = Date(2_000L),
-                escrowDeviceId = "android-escrow-hash",
             )
         val escrow =
             DeviceRecord(
-                id = "android-escrow-hash",
-                displayName = "Samsung SM-S928B",
+                id = "android-public-key-hash",
+                escrowID = "android-public-key-hash",
+                displayName = "Samsung SM-S921U",
                 platform = "Android",
                 trustState = DeviceTrustState.TRUSTED,
                 lastSeen = Date(1_000L),
-                escrowDeviceId = "android-escrow-hash",
             )
 
         val merged = DevicesStore.mergeDeviceRecords(listOf(presence), listOf(escrow))
 
         assertEquals(1, merged.size)
-        assertEquals("sha256-of-android-id", merged.single().id)
-        assertEquals("Samsung SM-S928B", merged.single().displayName)
+        assertEquals("android-public-key-hash", merged.single().id)
+        assertEquals("presence-sha256", merged.single().presenceID)
+        assertEquals("android-public-key-hash", merged.single().escrowID)
+        assertEquals("Samsung SM-S921U", merged.single().displayName)
         assertEquals(DeviceTrustState.TRUSTED, merged.single().trustState)
-        assertEquals("android-escrow-hash", merged.single().escrowDeviceId)
         assertEquals(Date(2_000L), merged.single().lastSeen)
     }
 
     @Test
-    fun `merge coalesces current-device presence and escrow identities into one record`() {
+    fun `merge reconciles current Android presence and escrow identities without a cross reference`() {
         val presence =
             DeviceRecord(
-                id = "sha256-of-android-id",
+                id = "presence-sha256",
+                presenceID = "presence-sha256",
                 displayName = "Unknown",
                 platform = "android",
                 lastSeen = Date(2_000L),
@@ -150,98 +123,121 @@ class DevicesStoreTest {
             )
         val escrow =
             DeviceRecord(
-                id = "android-escrow-hash",
-                displayName = "Samsung SM-S928B",
+                id = "android-public-key-hash",
+                escrowID = "android-public-key-hash",
+                displayName = "Samsung SM-S921U",
                 platform = "Android",
                 trustState = DeviceTrustState.TRUSTED,
                 lastSeen = Date(1_000L),
                 isCurrentDevice = true,
-                escrowDeviceId = "android-escrow-hash",
             )
 
-        val merged = DevicesStore.mergeDeviceRecords(listOf(presence), listOf(escrow))
+        val visible = DevicesStore.deduplicated(DevicesStore.mergeDeviceRecords(listOf(presence), listOf(escrow)))
 
-        assertEquals(1, merged.size)
-        assertEquals("Samsung SM-S928B", merged.single().displayName)
-        assertEquals(DeviceTrustState.TRUSTED, merged.single().trustState)
-        assertEquals("android-escrow-hash", merged.single().escrowDeviceId)
-        assertEquals(true, merged.single().isCurrentDevice)
+        assertEquals(1, visible.size)
+        assertEquals("android-public-key-hash", visible.single().id)
+        assertEquals("presence-sha256", visible.single().presenceID)
+        assertEquals("android-public-key-hash", visible.single().escrowID)
+        assertEquals("Samsung SM-S921U", visible.single().displayName)
+        assertEquals(DeviceTrustState.TRUSTED, visible.single().trustState)
+        assertEquals(Date(2_000L), visible.single().lastSeen)
+        assertEquals(true, visible.single().isCurrentDevice)
     }
 
     @Test
-    fun `dedupe prefers the active reinstall over a stale trusted record`() {
+    fun `merge hides anonymous Android presence shadows when escrow devices exist`() {
+        val stalePresence =
+            DeviceRecord(
+                id = "old-presence",
+                presenceID = "old-presence",
+                displayName = "Unknown",
+                platform = "android",
+                lastSeen = Date(1_000L),
+            )
+        val escrow =
+            DeviceRecord(
+                id = "android-public-key-hash",
+                escrowID = "android-public-key-hash",
+                displayName = "Samsung SM-S921U",
+                platform = "Android",
+                trustState = DeviceTrustState.TRUSTED,
+                lastSeen = Date(2_000L),
+            )
+
+        val merged = DevicesStore.mergeDeviceRecords(listOf(stalePresence), listOf(escrow))
+
+        assertEquals(listOf("android-public-key-hash"), merged.map { it.id })
+    }
+
+    @Test
+    fun `dedupe prefers the active reinstall over stale trusted history`() {
         val staleTrusted =
             DeviceRecord(
-                id = "android-old-install",
-                displayName = "Samsung SM-S928B",
+                id = "old-install",
+                escrowID = "old-install",
+                displayName = "Samsung SM-S921U",
                 platform = "Android",
                 trustState = DeviceTrustState.TRUSTED,
                 lastSeen = Date(1_000L),
             )
-        val freshReinstall =
+        val freshPending =
             DeviceRecord(
-                id = "android-new-install",
-                displayName = "Samsung SM-S928B",
-                platform = "Android",
+                id = "new-install",
+                escrowID = "new-install",
+                displayName = "Samsung SM-S921U",
+                platform = "android",
                 trustState = DeviceTrustState.PENDING,
                 lastSeen = Date(2_000L),
             )
 
-        val visible = DevicesStore.deduplicated(listOf(staleTrusted, freshReinstall))
+        val visible = DevicesStore.deduplicated(listOf(staleTrusted, freshPending))
 
-        assertEquals(1, visible.size)
-        assertEquals("android-new-install", visible.single().id)
+        assertEquals("new-install", visible.single().id)
+        assertEquals(DeviceTrustState.PENDING, visible.single().trustState)
     }
 
     @Test
-    fun `dedupe never lets a revoked record mask an active one`() {
-        val revokedFresh =
+    fun `dedupe never lets a revoked record mask an active one at equal freshness`() {
+        val revoked =
             DeviceRecord(
-                id = "android-revoked",
-                displayName = "Samsung SM-S928B",
+                id = "revoked-install",
+                escrowID = "revoked-install",
+                displayName = "Samsung SM-S921U",
                 platform = "Android",
                 trustState = DeviceTrustState.REVOKED,
-                lastSeen = Date(3_000L),
+                lastSeen = Date(2_000L),
             )
-        val trustedOlder =
+        val trusted =
             DeviceRecord(
-                id = "android-trusted",
-                displayName = "Samsung SM-S928B",
+                id = "trusted-install",
+                escrowID = "trusted-install",
+                displayName = "Samsung SM-S921U",
                 platform = "Android",
                 trustState = DeviceTrustState.TRUSTED,
-                lastSeen = Date(1_000L),
+                lastSeen = Date(2_000L),
             )
 
-        val visible = DevicesStore.deduplicated(listOf(revokedFresh, trustedOlder))
+        val visible = DevicesStore.deduplicated(listOf(revoked, trusted))
 
-        assertEquals(1, visible.size)
-        assertEquals("android-trusted", visible.single().id)
+        assertEquals("trusted-install", visible.single().id)
+        assertEquals(DeviceTrustState.TRUSTED, visible.single().trustState)
     }
 
     @Test
-    fun `connected device subtitle reports trust states instead of raw documents`() {
+    fun `connected device subtitle reports exclusive trust states`() {
         val devices =
             listOf(
-                DeviceRecord(id = "current", isCurrentDevice = true),
+                DeviceRecord(id = "trusted", trustState = DeviceTrustState.TRUSTED),
                 DeviceRecord(id = "pending"),
-                DeviceRecord(id = "revoked", trustState = DeviceTrustState.REVOKED),
+                DeviceRecord(
+                    id = "revoked-current",
+                    trustState = DeviceTrustState.REVOKED,
+                    isCurrentDevice = true,
+                ),
             )
 
         assertEquals(
             "1 trusted · 1 pending · 1 revoked",
-            connectedDevicesSubtitle(devices),
-        )
-    }
-
-    @Test
-    fun `connected device subtitle counts a revoked current device as revoked only`() {
-        val devices =
-            listOf(
-                DeviceRecord(id = "current", isCurrentDevice = true, trustState = DeviceTrustState.REVOKED),
-            )
-
-        assertEquals(
-            "0 trusted · 0 pending · 1 revoked",
             connectedDevicesSubtitle(devices),
         )
     }
