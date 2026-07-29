@@ -262,17 +262,17 @@ export function parseP26PackageOwner(environmentId, output) {
       /^([^:\s]+)(?::[^:\s]+)?:\s+\/etc\/xdg\/autostart\/openburnbar\.desktop$/u,
     )?.[1];
     assert(
-      owner === "openburnbar",
+      owner === "open-burn-bar",
       "P-26 Debian package owner is not canonical",
     );
     return { manager: "dpkg", packageName: owner };
   }
   if (environmentId.includes("fedora")) {
-    const canonical = /^openburnbar-[^\s]+\.(?:aarch64|noarch|x86_64)$/u.test(
+    const canonical = /^open-burn-bar-[^\s]+\.(?:aarch64|noarch|x86_64)$/u.test(
       receipt,
     );
     assert(canonical, "P-26 RPM package owner is not canonical");
-    return { manager: "rpm", packageName: "openburnbar" };
+    return { manager: "rpm", packageName: "open-burn-bar" };
   }
   const packageName = receipt.match(
     /^\/etc\/xdg\/autostart\/openburnbar\.desktop is owned by ([^\s]+)\s+[^\s]+$/u,
@@ -303,7 +303,7 @@ function packagedAutostart(runner, environmentId) {
     .match(/^Exec=(.+)$/mu)?.[1]
     ?.trim();
   assert(
-    exec === "openburnbar-linux-desktop --background",
+    exec === "/usr/bin/openburnbar-linux-desktop --background",
     "P-26 packaged autostart does not use tray-first startup",
   );
   const command = environmentId.includes("ubuntu")
