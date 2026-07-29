@@ -88,7 +88,7 @@ without durable source evidence stay `unknown`.
 | **Warp** | API key | `wk-...` | `Authorization: Bearer {key}` | Created at warp.dev |
 | **MiniMax** | Coding Plan API key | `sk-cp-...` | `Authorization: Bearer {key}` | Standard API keys are rejected |
 | **MiMo (Xiaomi)** | Token Plan API key | `tp-...` | `Authorization: Bearer {key}` | Configured by cluster (`cn`, `sgp`, `ams`) |
-| **Z.ai** | API key | Custom | `Authorization: Bearer {key}` | From BigModel monitor console |
+| **Z.ai** | API key | Custom | `Authorization: {key}` (raw) for `/api/monitor/*`; `Authorization: Bearer {key}` for `/api/paas/v4/*` | From BigModel monitor console; Coding Plan quota uses raw-token monitor auth, standard-API validation keeps Bearer |
 | **Ollama** | None for local; key for Cloud | Ollama API key | `Authorization: Bearer {key}` for Cloud | Local models do not require credentials |
 | **Kimi** | Browser cookie / JWT | KIMI_AUTH_TOKEN | `Authorization: Bearer {token}` | Custom bearer token from kimi.com session |
 | **Hermes** | None | N/A (local file) | N/A | Offline JSONL telemetry scraper |
