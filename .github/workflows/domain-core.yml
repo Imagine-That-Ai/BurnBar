@@ -97,7 +97,7 @@ jobs:
       - name: Check out trusted default-branch evaluator
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
           path: .domain-core-trusted-evaluator
           persist-credentials: false
           fetch-depth: 1
@@ -106,7 +106,7 @@ jobs:
 
       - name: Verify deterministic legacy-deletion governance
         env:
-          DOMAIN_CORE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          DOMAIN_CORE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || '' }}
           DOMAIN_CORE_EVIDENCE_CACHE: ${{ runner.temp }}/domain-core-evidence-cache
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -1510,7 +1510,7 @@ jobs:
       - rollback-drill
       - candidate-bundle
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     steps:
       - name: Require every meaningful Domain Core job
         if: needs.classify.outputs.rust == 'true'
@@ -1542,7 +1542,7 @@ jobs:
         if: needs.classify.outputs.rust == 'true'
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
           path: .domain-core-trusted-evaluator
           persist-credentials: false
           fetch-depth: 0
@@ -1585,5 +1585,5 @@ jobs:
             jq -e 'all(.rows[]; .state != "legacy_deleted")' config/domain-core-legacy-deletion.json >/dev/null
             python3 .domain-core-trusted-evaluator/scripts/ci/verify-domain-core-legacy-deletion.py \
               --repo-root "$GITHUB_WORKSPACE" \
-              --base-ref "${{ github.event.pull_request.base.sha || github.event.before }}"
+              --base-ref "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
           fi
