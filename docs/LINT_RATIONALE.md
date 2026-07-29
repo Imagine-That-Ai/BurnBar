@@ -151,12 +151,17 @@ The PR security gates keep a **paired, expiring** ignore list for dependency
 advisories that have **no actionable fix**: [`osv-scanner.toml`](../osv-scanner.toml)
 (OSV Scanner job, `ignoreUntil`) and `ADVISORY_ALLOWLIST` in
 [`scripts/ci/check-npm-audit-fail-closed.mjs`](../scripts/ci/check-npm-audit-fail-closed.mjs)
-(npm audit job, `expires`). Dependency Review and the known-vulnerability floor
-derive their temporary exception from that paired policy through
+(npm audit job, `expires`). The known-vulnerability floor derives its
+temporary exception from the same npm allowlist, and Workflow Lint validates
+the checked-in pair on every PR through
 [`scripts/ci/export-active-advisory-allowlist.mjs`](../scripts/ci/export-active-advisory-allowlist.mjs).
-Entries must stay in sync (same GHSA id, same expiry) and each carries a
-`reason:`; any drift fails closed, and past the expiry all gates reject the
-advisory again instead of letting the ignore rot.
+Dependency Review deliberately stays unallowlisted: its `allow-ghsas` input is
+advisory-ID-wide, so an exception there would also suppress the same GHSA for
+every newly introduced dependency instead of only the reviewed package that
+justified it, and unchanged base-pinned dependencies never trip its diff-based
+check anyway. Entries must stay in sync (same GHSA id, same expiry) and each
+carries a `reason:`; any drift fails closed, and past the expiry all gates
+reject the advisory again instead of letting the ignore rot.
 
 Current entries: none. The last entry (GHSA-mh99-v99m-4gvg, brace-expansion
 DoS, previously expiring 2026-08-21) was retired when the vendored callable

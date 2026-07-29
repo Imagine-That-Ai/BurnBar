@@ -127,50 +127,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      # The advisory exception policy MUST come from the trusted base commit,
-      # not the PR's merged contents: otherwise a PR that introduces a
-      # high-severity dependency could add its GHSA to both policy files
-      # (check-npm-audit-fail-closed.mjs + osv-scanner.toml) with a future
-      # expiry and have the resolver below hand that self-approved GHSA to
-      # Dependency Review, suppressing the very finding this gate exists to
-      # catch. Same trusted-base principle as the gitleaks config handling
-      # above. Cone-mode sparse checkout of scripts/ci also brings along the
-      # root-level osv-scanner.toml the resolver reads.
-      - name: Checkout trusted base advisory policy
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
-        with:
-          ref: ${{ github.event.pull_request.base.sha }}
-          path: trusted-base-advisory-policy
-          filter: blob:none
-          sparse-checkout: |
-            scripts/ci
-
-      - name: Resolve active time-boxed advisory policy (trusted base)
-        id: advisory-policy
-        run: |
-          resolver="trusted-base-advisory-policy/scripts/ci/export-active-advisory-allowlist.mjs"
-          if [[ -f "${resolver}" ]]; then
-            node "${resolver}"
-          else
-            # Bootstrap: the trusted base predates the shared advisory policy
-            # resolver (it lands with the PR that adds this step). No approved
-            # base policy means no exceptions, so emit the empty allowlist —
-            # the strictest posture — rather than fall back to any
-            # PR-controlled copy of the resolver.
-            echo "allow-ghsas=" >> "${GITHUB_OUTPUT}"
-            echo "Trusted base has no advisory policy resolver; no dependency-review exceptions allowed."
-          fi
-
       - name: GitHub Dependency Review
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0 (node24-native)
         with:
           fail-on-severity: high
-          # Derived from the same paired, expiring npm/OSV policy used by the
-          # other Node vulnerability gates, resolved from the trusted base SHA
-          # (see the checkout above) so the reviewed change cannot define its
-          # own allowlist. The resolver fails closed on set or expiry drift,
-          # and emits no advisory after the deadline.
-          allow-ghsas: ${{ steps.advisory-policy.outputs.allow-ghsas }}
+          # Deliberately no allow-ghsas: the action's vulnerability allowlist
+          # is advisory-ID-wide, so any exception would also suppress the same
+          # GHSA for every newly introduced dependency, not just the reviewed
+          # package/version that justified it. This gate reviews only the PR's
+          # dependency diff, so an unchanged base-pinned dependency covered by
+          # the paired time-boxed npm/OSV policy never trips it, while a PR
+          # that adds or downgrades into a vulnerable version always fails
+          # closed here and gets explicit human review.
           # Allow known-safe license exceptions. BlueOak-1.0.0 is a permissive
           # npm ecosystem license used by tar and related transitive packages;
           # allow it so patched releases can land without vulnerable downgrades.

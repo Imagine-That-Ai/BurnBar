@@ -436,6 +436,16 @@ jobs:
       - name: Self-test active advisory policy export
         run: node --test scripts/ci/export-active-advisory-allowlist.test.mjs
 
+      # Non-authoritative head-policy validation: resolve the checked-in
+      # advisory policy pair (ADVISORY_ALLOWLIST in
+      # check-npm-audit-fail-closed.mjs + osv-scanner.toml) at the PR head so
+      # a mismatched, malformed, or expiry-drifted policy fails on the PR that
+      # introduces it, instead of merging silently and breaking every later PR
+      # that resolves the broken policy from its trusted base. No security
+      # gate consumes this output; the run only validates and prints.
+      - name: Validate checked-in advisory policy (head, non-authoritative)
+        run: node scripts/ci/export-active-advisory-allowlist.mjs
+
       # Nothing else in CI reads dependabot.yml, so a bad edit there is silent:
       # updates just stop arriving. These two steps make it loud instead.
       - name: Self-test Dependabot config gate
