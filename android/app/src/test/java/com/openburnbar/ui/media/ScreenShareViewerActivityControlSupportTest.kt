@@ -92,6 +92,19 @@ class ScreenShareViewerActivityControlSupportTest {
     }
 
     @Test
+    fun `accepted mirror acknowledgement has fallback copy`() {
+        assertEquals(
+            "Screen sharing approved.",
+            mirrorAckFailureMessage(
+                HermesRealtimeRelayMirrorAck(
+                    requestId = "mirror-1",
+                    decision = HermesRealtimeRelayMirrorAck.Decision.ACCEPTED,
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun `terminal mirror acknowledgements have useful fallback copy`() {
         val expected =
             mapOf(
