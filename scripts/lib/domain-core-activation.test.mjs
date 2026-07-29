@@ -432,6 +432,8 @@ test("release resolver recognizes only the fail-closed activation-annulment supe
     '"replacementCandidateRequired"',
     "previous activation annulment closure is invalid",
     "previous activation annulment main advance is invalid",
+    "promotion after annulment must attest a fresh replacement candidate",
+    "promotion after annulment must descend from the advanced main commit",
   ]) {
     assert.match(source, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
   }
