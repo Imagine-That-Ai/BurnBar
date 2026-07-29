@@ -32,6 +32,11 @@ STABLE = load(
     ROOT / "scripts/ops/create-domain-core-stable-receipt.py",
 )
 
+ANNULMENT = load(
+    "domain_core_activation_annulment_receipt_writer",
+    ROOT / "scripts/ops/create-domain-core-activation-annulment-receipt.py",
+)
+
 ROLLBACK = load(
     "domain_core_rollback_receipt_writer",
     ROOT / "scripts/ops/create-domain-core-rollback-receipt.py",
@@ -39,8 +44,9 @@ ROLLBACK = load(
 
 
 class LifecycleReceiptWriterTests(unittest.TestCase):
-    def test_both_writers_expose_bounded_required_cli(self) -> None:
+    def test_lifecycle_writers_expose_bounded_required_cli(self) -> None:
         for script in (
+            "scripts/ops/create-domain-core-activation-annulment-receipt.py",
             "scripts/ops/create-domain-core-stable-receipt.py",
             "scripts/ops/create-domain-core-rollback-receipt.py",
         ):
@@ -71,11 +77,94 @@ class LifecycleReceiptWriterTests(unittest.TestCase):
             )
 
     def test_writers_use_create_only_append_semantics(self) -> None:
+        annulment = (
+            ROOT / "scripts/ops/create-domain-core-activation-annulment-receipt.py"
+        ).read_text()
         stable = (ROOT / "scripts/ops/create-domain-core-stable-receipt.py").read_text()
         rollback = (ROOT / "scripts/ops/create-domain-core-rollback-receipt.py").read_text()
-        for source in (stable, rollback):
+        for source in (annulment, stable, rollback):
             self.assertIn("WRITER.append_only", source)
             self.assertIn("WRITER.serialized", source)
+
+    def test_annulment_writer_binds_promotion_activation_and_advanced_main(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory).resolve()
+            row_id = "quota.claude_statusline"
+            promotion_relative = f"{ANNULMENT.GATE.RECEIPT_ROOT}/{row_id}/1/promotion.json"
+            attestation_relative = f"{ANNULMENT.GATE.ATTESTATION_ROOT}/quota/1.json"
+            promotion_path = repo / promotion_relative
+            attestation_path = repo / attestation_relative
+            promotion_path.parent.mkdir(parents=True)
+            attestation_path.parent.mkdir(parents=True)
+            candidate = {
+                "candidateCommit": "1" * 40,
+                "coreVersion": "0.1.0",
+                "abiVersion": 3,
+                "sourceSha256": "2" * 64,
+            }
+            activation = {
+                **candidate,
+                "activationCommit": "3" * 40,
+                "changedPathsSha256": "4" * 64,
+            }
+            promotion_path.write_text(
+                json.dumps({"promotionAttestation": {"path": attestation_relative}})
+            )
+            attestation_path.write_text(json.dumps({"candidate": candidate}))
+            promotion = ANNULMENT.GATE.Receipt(
+                path=promotion_relative,
+                transition="promotion",
+                generation=1,
+                approved_at=ANNULMENT.GATE.parse_rfc3339_utc(
+                    "2026-07-27T00:00:00Z",
+                    "approved",
+                ),
+                commit=candidate["candidateCommit"],
+                digest="5" * 64,
+                evidence=("https://github.com/Imagine-That-Ai/BurnBar/attestations/1",),
+                payload={},
+            )
+            with (
+                mock.patch.object(ANNULMENT.GATE, "validate_receipt", return_value=promotion),
+                mock.patch.object(
+                    ANNULMENT.GATE,
+                    "require_commit",
+                    side_effect=lambda _repo, value, _label: value,
+                ),
+                mock.patch.object(
+                    ANNULMENT.GATE,
+                    "validate_activation_closure",
+                    return_value=activation,
+                ),
+                mock.patch.object(
+                    ANNULMENT.GATE,
+                    "public_production_profile",
+                    return_value=({"quota": "legacy"}, {"quota": "6" * 64}),
+                ),
+                mock.patch.object(
+                    ANNULMENT.GATE,
+                    "validate_activation_annulment_receipt",
+                ) as validate_annulment,
+            ):
+                receipt = ANNULMENT.create_receipt(
+                    repo,
+                    row_id=row_id,
+                    generation=1,
+                    activation_commit=activation["activationCommit"],
+                    advanced_main_commit="7" * 40,
+                    evidence=["https://github.com/Imagine-That-Ai/BurnBar/pull/2097"],
+                    approved_by="@release-owner",
+                    approved_at="2026-07-28T00:00:00Z",
+                )
+            self.assertEqual(receipt["transition"], "annulment")
+            self.assertEqual(
+                receipt["activationAnnulment"]["promotionReceiptSha256"],
+                promotion.digest,
+            )
+            self.assertTrue(
+                receipt["activationAnnulment"]["replacementCandidateRequired"]
+            )
+            validate_annulment.assert_called_once()
 
     def test_stable_writer_reuses_full_gate_before_immutable_append(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

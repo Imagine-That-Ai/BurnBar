@@ -20,7 +20,7 @@
     "rowId": { "$ref": "#/$defs/rowId" },
     "authorityGeneration": { "type": "integer", "minimum": 1 },
     "transition": {
-      "enum": ["promotion", "stable_release", "rollback", "deletion_review"]
+      "enum": ["promotion", "annulment", "stable_release", "rollback", "deletion_review"]
     },
     "status": { "const": "active" },
     "evidence": {
@@ -36,6 +36,7 @@
     "approvedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
     "commit": { "$ref": "#/$defs/commit" },
     "promotionAttestation": { "$ref": "#/$defs/promotionAttestation" },
+    "activationAnnulment": { "$ref": "#/$defs/activationAnnulment" },
     "release": { "$ref": "#/$defs/release" },
     "rollback": { "$ref": "#/$defs/rollback" },
     "deletionReview": { "$ref": "#/$defs/deletionReview" }
@@ -50,6 +51,24 @@
         "required": ["promotionAttestation"],
         "not": {
           "anyOf": [
+            { "required": ["activationAnnulment"] },
+            { "required": ["release"] },
+            { "required": ["rollback"] },
+            { "required": ["deletionReview"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "transition": { "const": "annulment" } },
+        "required": ["transition"]
+      },
+      "then": {
+        "required": ["activationAnnulment"],
+        "not": {
+          "anyOf": [
+            { "required": ["promotionAttestation"] },
             { "required": ["release"] },
             { "required": ["rollback"] },
             { "required": ["deletionReview"] }
@@ -67,6 +86,7 @@
         "not": {
           "anyOf": [
             { "required": ["promotionAttestation"] },
+            { "required": ["activationAnnulment"] },
             { "required": ["rollback"] },
             { "required": ["deletionReview"] }
           ]
@@ -83,6 +103,7 @@
         "not": {
           "anyOf": [
             { "required": ["promotionAttestation"] },
+            { "required": ["activationAnnulment"] },
             { "required": ["release"] },
             { "required": ["deletionReview"] }
           ]
@@ -99,6 +120,7 @@
         "not": {
           "anyOf": [
             { "required": ["promotionAttestation"] },
+            { "required": ["activationAnnulment"] },
             { "required": ["release"] },
             { "required": ["rollback"] }
           ]
@@ -151,16 +173,38 @@
               "additionalProperties": false,
               "required": ["transition", "path", "sha256"],
               "properties": {
-                "transition": { "enum": ["rollback", "stable_release"] },
+                "transition": { "enum": ["annulment", "rollback", "stable_release"] },
                 "path": {
                   "type": "string",
-                  "pattern": "^config/domain-core-legacy-deletion-receipts/[a-z][a-z0-9_.]*/[1-9][0-9]*/(?:rollback|stable_release)\\.json$"
+                  "pattern": "^config/domain-core-legacy-deletion-receipts/[a-z][a-z0-9_.]*/[1-9][0-9]*/(?:annulment|rollback|stable_release)\\.json$"
                 },
                 "sha256": { "$ref": "#/$defs/digest" }
               }
             }
           ]
         }
+      }
+    },
+    "activationAnnulment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "promotionReceiptSha256",
+        "candidate",
+        "activation",
+        "advancedMainCommit",
+        "reason",
+        "replacementCandidateRequired"
+      ],
+      "properties": {
+        "promotionReceiptSha256": { "$ref": "#/$defs/digest" },
+        "candidate": { "$ref": "#/$defs/candidate" },
+        "activation": { "$ref": "#/$defs/activation" },
+        "advancedMainCommit": { "$ref": "#/$defs/commit" },
+        "reason": {
+          "const": "release_train_advanced_before_stable_receipt"
+        },
+        "replacementCandidateRequired": { "const": true }
       }
     },
     "release": {

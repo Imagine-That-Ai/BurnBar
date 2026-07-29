@@ -6,16 +6,17 @@ Legacy implementations are removed row by row only after deterministic promotion
 
 [`config/domain-core-legacy-deletion.json`](../../config/domain-core-legacy-deletion.json) is the exact 11-row source ledger. Each target is either a legacy implementation or a rollback control. Public-profile groups (`quota`, `hermes`, and `pricing`) move atomically.
 
-The six states are:
+The seven states are:
 
 1. `rollout`: legacy is authoritative and no receipt exists.
 2. `promotion_approved`: the protected deterministic proof authorizes the exact Rust candidate.
-3. `rust_authoritative_with_rollback`: one stable public release of that exact candidate exists and rollback remains available.
-4. `deletion_approved`: a qualified independent reviewer approved deleting the exact inventoried targets.
-5. `rollback_active`: the stable release was rolled back; legacy remains and the generation is closed.
-6. `legacy_deleted`: approved targets are absent and Rust-only platform builds remain green.
+3. `activation_annulled`: activation reached `main`, but the release train advanced before any stable receipt or release tag existed; legacy is restored and that generation is closed.
+4. `rust_authoritative_with_rollback`: one stable public release of that exact candidate exists and rollback remains available.
+5. `deletion_approved`: a qualified independent reviewer approved deleting the exact inventoried targets.
+6. `rollback_active`: the stable release was rolled back; legacy remains and the generation is closed.
+7. `legacy_deleted`: approved targets are absent and Rust-only platform builds remain green.
 
-Rows never skip states. Every release that activates another shared domain starts a new authority epoch for domains that are already Rust-authoritative. Those rows move back to `promotion_approved`, advance their generation, and re-attest the new candidate closure before the activation commit can ship. The new promotion receipt hashes the previous active `stable_release.json`; after an operational rollback it instead hashes `rollback.json`. This keeps all Rust-active domains on one candidate identity without forcing an all-at-once migration.
+Rows never skip states. Every release that activates another shared domain starts a new authority epoch for domains that are already Rust-authoritative. Those rows move back to `promotion_approved`, advance their generation, and re-attest the new candidate closure before the activation commit can ship. The new promotion receipt hashes the previous active `stable_release.json`; after an operational rollback it hashes `rollback.json`; after an unshipped activation is annulled it hashes `annulment.json`. This keeps all Rust-active domains on one candidate identity without deleting or rewriting prior authority.
 
 ## Promotion authority
 
@@ -93,6 +94,21 @@ Promotion uses two commits so the authority chain is not circular:
 
 Before attesting `C`, serialize the release train: record and temporarily dequeue unrelated `main` merge-queue entries, merge the candidate, and keep the queue clear until activation `P` completes. If the unrelated queue has already drained naturally, record that empty state and do not invent a dequeue/re-enqueue cycle. Re-enqueue any recorded pull requests in their original order after `P` lands. This preserves every required check; it prevents unrelated commits from entering the restricted `C..P` path set. If `main` advances after `C`, abandon that attestation and produce a new exact-main candidate rather than allowlisting incidental paths. The replacement candidate must modify a governed `domain-core.yml` push path so GitHub produces a fresh authoritative push run; a manual dispatch or empty commit is diagnostic only and cannot replace that proof.
 
+If `P` reaches `main` but unrelated commits land before any stable receipt or stable release tag exists, do not delete promotion evidence and do not pretend an operational rollback occurred. Create append-only `annulment.json` receipts, move the affected rows to `activation_annulled`, and restore the public profile to legacy in one commit. The annulment gate requires the exact old candidate and activation closure, the promotion receipt digest, an incidental `main` advance outside the activation path set, no stable/rollback/deletion receipt, no stable tag at `P`, and an explicit replacement-candidate requirement:
+
+```bash
+python3 scripts/ops/create-domain-core-activation-annulment-receipt.py \
+  --row-id quota.claude_statusline \
+  --authority-generation 1 \
+  --activation-commit <40-char-stale-activation-sha> \
+  --advanced-main-commit <40-char-main-sha-after-incidental-merges> \
+  --evidence https://github.com/Imagine-That-Ai/BurnBar/pull/<annulment-pr> \
+  --approved-by @release-owner \
+  --approved-at <past-or-current-rfc3339-utc>
+```
+
+The merged annulment commit is the new legacy-safe candidate `C2` only after its authoritative `domain-core.yml` push run succeeds and the protected signer attests it. Activation `P2` then advances the rows to the next generation, adds fresh promotion artifacts whose `supersedes` pointer hashes `annulment.json`, and switches the public profile back to Rust. Keep the release train frozen from `C2` through the stable tag at `P2`.
+
 Every applicable consumer release predicate must bind the same candidate `C`, activation `P`, exact Rust closure, and exact public Rust profile. Apple, Linux, Android, Windows, Console, and Functions are covered where the governed row applies. iOS is additionally required for the five mobile runtime rows: CloudVault portable primitives, document rewrap, encrypted search, Hermes relay crypto, and Hermes ratchet transforms; it is not a quota-parser or pricing-arithmetic consumer.
 
 The stable-release receipt must also bind a dedicated `legacy-rollback-bundle`:
@@ -112,6 +128,7 @@ An operational rollback creates `rollback.json`, restores the public profile to 
 Use the append-only writers rather than hand-authoring lifecycle receipts:
 
 ```bash
+python3 scripts/ops/create-domain-core-activation-annulment-receipt.py --help
 python3 scripts/ops/create-domain-core-stable-receipt.py --help
 python3 scripts/ops/create-domain-core-rollback-receipt.py --help
 ```
