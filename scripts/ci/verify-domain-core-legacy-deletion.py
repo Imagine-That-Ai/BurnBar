@@ -1975,6 +1975,7 @@ def validate_superseded_authority(
     generation: int,
     value: Any,
     approved_at: datetime,
+    candidate: str,
 ) -> datetime:
     link = require_object(value, "promotionAttestation.supersedes")
     exact_keys(
@@ -2016,6 +2017,32 @@ def validate_superseded_authority(
     previous_approved = parse_rfc3339_utc(previous.get("approvedAt"), "previous authority receipt.approvedAt")
     if previous_approved >= approved_at:
         raise GateError("promotion approval must be later than the superseded authority")
+    if transition == "annulment":
+        annulment_payload = require_object(
+            previous.get("activationAnnulment"),
+            "previous annulment receipt.activationAnnulment",
+        )
+        annulled_candidate = require_commit(
+            repo_root,
+            require_object(
+                annulment_payload.get("candidate"),
+                "previous annulment receipt.activationAnnulment.candidate",
+            ).get("candidateCommit"),
+            "previous annulment receipt annulled candidate",
+        )
+        advanced_main = require_commit(
+            repo_root,
+            annulment_payload.get("advancedMainCommit"),
+            "previous annulment receipt.activationAnnulment.advancedMainCommit",
+        )
+        if candidate == annulled_candidate:
+            raise GateError("promotion after annulment must attest a fresh replacement candidate")
+        require_ancestor(
+            repo_root,
+            advanced_main,
+            candidate,
+            "promotion after annulment replacement candidate",
+        )
     if transition == "rollback":
         activated_at = parse_rfc3339_utc(
             require_object(previous.get("rollback"), "previous rollback receipt.rollback").get("activatedAt"),
@@ -2337,6 +2364,7 @@ def validate_promotion_attestation(
             generation,
             pointer["supersedes"],
             promotion.approved_at,
+            candidate,
         )
     return candidate, bundle_digest, expected_identity["coreVersion"]
 
@@ -2766,6 +2794,7 @@ def validate_activation_annulment_receipt(
     generation: int,
     annulment: Receipt,
     promotion: Receipt,
+    base_ref: str | None = None,
 ) -> None:
     payload = annulment.payload
     fields = {
@@ -2833,6 +2862,22 @@ def validate_activation_annulment_receipt(
         "activation annulment checkout",
     )
     require_ancestor(repo_root, advanced_main, head, f"row {row_id} activation annulment checkout")
+    if base_ref is None:
+        trusted_main_tip = head
+    else:
+        trusted_main_tip = git_output(
+            repo_root,
+            ["rev-parse", f"{base_ref}^{{commit}}"],
+            f"row {row_id} activation annulment protected main",
+        ).strip()
+        if not COMMIT_RE.fullmatch(trusted_main_tip):
+            raise GateError(f"row {row_id}: activation annulment cannot resolve the protected main base")
+    require_ancestor(
+        repo_root,
+        advanced_main,
+        trusted_main_tip,
+        f"row {row_id} activation annulment protected main",
+    )
     if advanced_main == activation_commit:
         raise GateError(f"row {row_id}: activation annulment requires main to advance beyond activation P")
 
@@ -2892,6 +2937,7 @@ def validate_receipt_chain(
     evidence_verifier: SignedEvidenceVerifier | Any | None = None,
     targets: list[Target] | None = None,
     deletion_reviewers: dict[str, set[str]] | None = None,
+    base_ref: str | None = None,
 ) -> tuple[str, str, str] | None:
     if state == "rollout":
         if generation != 0:
@@ -2913,6 +2959,7 @@ def validate_receipt_chain(
             generation,
             annulment,
             promotion,
+            base_ref,
         )
 
     stable = receipts.get("stableRelease")
@@ -4151,6 +4198,23 @@ def validate_public_profile_transitions(
             }
             if len(rollback_bindings) != 1:
                 raise GateError(f"public-production {domain}: mapped rows must share one rollback event")
+        annulment_receipts = [rows[row_id].receipts.get("activationAnnulment") for row_id in row_ids]
+        if any(receipt is not None for receipt in annulment_receipts):
+            if any(receipt is None for receipt in annulment_receipts):
+                raise GateError(f"public-production {domain}: mapped rows must be annulled atomically")
+            annulment_bindings = {
+                canonical_json_sha256(
+                    {
+                        "candidate": receipt.payload["candidate"],
+                        "activation": receipt.payload["activation"],
+                        "advancedMainCommit": receipt.payload["advancedMainCommit"],
+                    }
+                )
+                for receipt in annulment_receipts
+                if receipt is not None
+            }
+            if len(annulment_bindings) != 1:
+                raise GateError(f"public-production {domain}: mapped rows must share one annulment event")
         if mode == "rust":
             unapproved = sorted(
                 row_id
@@ -4347,6 +4411,7 @@ def run_gate(
             evidence_verifier,
             row.targets,
             trusted_deletion_reviewers,
+            base_ref,
         )
         for row_id, row in rows.items()
     }
