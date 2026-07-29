@@ -180,7 +180,7 @@
     #[test]
     fn launch_at_login_rejects_arbitrary_exec_and_unsafe_paths() {
         let arbitrary = PACKAGED_AUTOSTART_TEMPLATE.replace(
-            "Exec=openburnbar-linux-desktop --background",
+            "Exec=/usr/bin/openburnbar-linux-desktop --background",
             "Exec=/tmp/attacker --shell",
         );
         assert!(render_autostart_entry(&arbitrary, true).is_err());

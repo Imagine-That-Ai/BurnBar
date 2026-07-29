@@ -245,7 +245,7 @@ fn linux_support_dir() -> PathBuf {
 }
 
 const PACKAGED_AUTOSTART_PATH: &str = "/etc/xdg/autostart/openburnbar.desktop";
-const PACKAGED_AUTOSTART_EXEC: &str = "openburnbar-linux-desktop --background";
+const PACKAGED_AUTOSTART_EXEC: &str = "/usr/bin/openburnbar-linux-desktop --background";
 const AUTOSTART_MAX_BYTES: u64 = 64 * 1024;
 
 /// The packaged desktop entry is the only executable template the renderer is
