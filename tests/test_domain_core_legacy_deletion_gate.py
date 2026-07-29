@@ -221,6 +221,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             {
                 "rollout",
                 "promotion_approved",
+                "activation_annulled",
                 "rust_authoritative_with_rollback",
                 "deletion_approved",
                 "rollback_active",
@@ -323,6 +324,10 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         self.assertEqual(GATE.required_receipts("rollout"), set())
         self.assertEqual(GATE.required_receipts("promotion_approved"), {"promotion"})
         self.assertEqual(
+            GATE.required_receipts("activation_annulled"),
+            {"promotion", "activationAnnulment"},
+        )
+        self.assertEqual(
             GATE.required_receipts("rust_authoritative_with_rollback"),
             {"promotion", "stableRelease"},
         )
@@ -339,11 +344,17 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             {"promotion", "stableRelease", "deletionReview"},
         )
 
-    def test_second_authority_epoch_supersedes_stable_or_rollback_receipt(self) -> None:
+    def test_second_authority_epoch_supersedes_annulment_stable_or_rollback_receipt(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             receipt_root = root / GATE.RECEIPT_ROOT / GATE.ROW_IDS[0] / "1"
             receipt_root.mkdir(parents=True)
+            annulment = receipt_root / "annulment.json"
+            annulment.write_text('{"transition":"annulment"}\n')
+            pointer = RECEIPT.superseded_authority_pointer(root, GATE.ROW_IDS[0], 2)
+            self.assertEqual(pointer["transition"], "annulment")
+            self.assertEqual(pointer["sha256"], hashlib.sha256(annulment.read_bytes()).hexdigest())
+            annulment.unlink()
             stable = receipt_root / "stable_release.json"
             stable.write_text('{"transition":"stable_release"}\n')
             pointer = RECEIPT.superseded_authority_pointer(root, GATE.ROW_IDS[0], 2)
@@ -355,6 +366,131 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             self.assertEqual(pointer["transition"], "rollback")
             with self.assertRaisesRegex(RECEIPT.GATE.GateError, "must supersede"):
                 RECEIPT.superseded_authority_pointer(root, GATE.ROW_IDS[0], 3)
+
+    def test_unshipped_activation_can_be_annulled_then_reattested_in_next_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo, manifest = self.make_minimal_rollout_repo(Path(directory).resolve())
+            subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.email", "test@openburnbar.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "OpenBurnBar Test"], cwd=repo, check=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "rollout"], cwd=repo, check=True)
+
+            promoted = copy.deepcopy(manifest)
+            promoted["rows"][0]["state"] = "promotion_approved"
+            promoted["rows"][0]["authorityGeneration"] = 1
+            promoted["rows"][0]["receipts"] = {"promotion": "receipts/promotion-1.json"}
+            (repo / "config/domain-core-legacy-deletion.json").write_text(json.dumps(promoted))
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "promotion"], cwd=repo, check=True)
+            promoted_base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+
+            annulled = copy.deepcopy(promoted)
+            annulled["rows"][0]["state"] = "activation_annulled"
+            annulled["rows"][0]["receipts"]["activationAnnulment"] = "receipts/annulment-1.json"
+            GATE.validate_ledger_transition(repo, promoted_base, annulled)
+            (repo / "config/domain-core-legacy-deletion.json").write_text(json.dumps(annulled))
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "annul activation"], cwd=repo, check=True)
+            annulled_base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+
+            generation_two = copy.deepcopy(annulled)
+            generation_two["rows"][0]["state"] = "promotion_approved"
+            generation_two["rows"][0]["authorityGeneration"] = 2
+            generation_two["rows"][0]["receipts"] = {"promotion": "receipts/promotion-2.json"}
+            GATE.validate_ledger_transition(repo, annulled_base, generation_two)
+            stale = copy.deepcopy(generation_two)
+            stale["rows"][0]["authorityGeneration"] = 1
+            with self.assertRaisesRegex(GATE.GateError, "requires authority generation 2"):
+                GATE.validate_ledger_transition(repo, annulled_base, stale)
+
+    def test_activation_annulment_binds_stale_activation_and_incidental_main_advance(self) -> None:
+        candidate = {
+            "candidateCommit": "1" * 40,
+            "coreVersion": "0.1.0",
+            "abiVersion": 3,
+            "sourceSha256": "2" * 64,
+        }
+        activation = {
+            **candidate,
+            "activationCommit": "3" * 40,
+            "changedPathsSha256": "4" * 64,
+        }
+        promotion = GATE.Receipt(
+            path="promotion.json",
+            transition="promotion",
+            generation=1,
+            approved_at=datetime(2026, 7, 27, tzinfo=UTC),
+            commit=candidate["candidateCommit"],
+            digest="5" * 64,
+            evidence=("https://github.com/Imagine-That-Ai/BurnBar/attestations/1",),
+            payload={},
+        )
+        payload = {
+            "promotionReceiptSha256": promotion.digest,
+            "candidate": candidate,
+            "activation": activation,
+            "advancedMainCommit": "6" * 40,
+            "reason": "release_train_advanced_before_stable_receipt",
+            "replacementCandidateRequired": True,
+        }
+        annulment = GATE.Receipt(
+            path="annulment.json",
+            transition="annulment",
+            generation=1,
+            approved_at=datetime(2026, 7, 28, tzinfo=UTC),
+            commit=payload["advancedMainCommit"],
+            digest="7" * 64,
+            evidence=("https://github.com/Imagine-That-Ai/BurnBar/pull/2097",),
+            payload=payload,
+        )
+
+        def git_output(_repo: Path, args: list[str], _label: str) -> str:
+            if args[:2] == ["rev-parse", "HEAD"]:
+                return "8" * 40
+            if args[0] == "diff":
+                return "OpenBurnBarMobile/App/OpenBurnBarMobileApp.swift\n"
+            if args[:2] == ["tag", "--points-at"]:
+                return ""
+            raise AssertionError(args)
+
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory).resolve()
+            (repo / GATE.RECEIPT_ROOT / GATE.ROW_IDS[0] / "1").mkdir(parents=True)
+            with (
+                mock.patch.object(GATE, "require_commit", side_effect=lambda _repo, value, _label: value),
+                mock.patch.object(GATE, "candidate_identity_at_commit", return_value=candidate),
+                mock.patch.object(GATE, "validate_activation_closure", return_value=activation),
+                mock.patch.object(GATE, "require_ancestor"),
+                mock.patch.object(GATE, "git_output", side_effect=git_output),
+                mock.patch.object(
+                    GATE,
+                    "public_production_profile_at_commit",
+                    return_value=({"quota": "rust"}, {"quota": "9" * 64}),
+                ),
+            ):
+                GATE.validate_activation_annulment_receipt(
+                    repo,
+                    GATE.ROW_IDS[0],
+                    1,
+                    annulment,
+                    promotion,
+                )
+                invalid = copy.deepcopy(payload)
+                invalid["replacementCandidateRequired"] = False
+                with self.assertRaisesRegex(GATE.GateError, "replacement exact-main candidate"):
+                    GATE.validate_activation_annulment_receipt(
+                        repo,
+                        GATE.ROW_IDS[0],
+                        1,
+                        GATE.Receipt(
+                            **{
+                                **annulment.__dict__,
+                                "payload": invalid,
+                            }
+                        ),
+                        promotion,
+                    )
 
     def test_premature_legacy_deleted_state_is_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
