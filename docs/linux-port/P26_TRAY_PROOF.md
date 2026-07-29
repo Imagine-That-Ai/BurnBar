@@ -14,7 +14,7 @@ It must prove, in order:
 
 1. `/etc/xdg/autostart/openburnbar.desktop` is owned by the canonical
    `openburnbar` package according to dpkg, RPM, or pacman and executes the
-   canonical `openburnbar-linux-desktop --background` command.
+   canonical `/usr/bin/openburnbar-linux-desktop --background` command.
 2. Background startup leaves the process alive without a visible window and
    registers a real StatusNotifierItem/AppIndicator with the canonical tooltip.
 3. The D-Bus menu exposes Dashboard, Chat, Usage, Updates, and Settings routes;
