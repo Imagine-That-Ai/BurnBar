@@ -979,6 +979,7 @@ targets:
         OpenBurnBarDomainCoreModeCloudVaultSearch: "$(DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE)"
         OpenBurnBarDomainCoreModeHermes: "$(DOMAIN_CORE_HERMES_MODE)"
         OpenBurnBarDomainCoreModePricing: "$(DOMAIN_CORE_PRICING_MODE)"
+        NSSupportsLiveActivities: true
         ITSAppUsesNonExemptEncryption: false
         # Resolved from the BURNBAR_AMPLITUDE_API_KEY build setting (empty by
         # default). AnalyticsConfig reads this; empty/placeholder → analytics dark.

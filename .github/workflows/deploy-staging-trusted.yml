@@ -231,6 +231,8 @@ jobs:
           set -euo pipefail
           functions_dir="$RUNNER_TEMP/staging-deploy/functions"
           env_file="$functions_dir/.env.${FIREBASE_PROJECT}"
+          env_temp="$(mktemp "$RUNNER_TEMP/staging-functions-env.XXXXXX")"
+          trap 'rm -f "$env_temp"' EXIT
           {
             cat "$functions_dir/.env.burnbar-staging"
             printf '\nFUNCTION_VERSION=staging-%s\n' "$CANDIDATE_SHA"
@@ -238,7 +240,9 @@ jobs:
             if [[ -n "${SENTRY_DSN:-}" ]]; then
               printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=staging\n' "$SENTRY_DSN"
             fi
-          } > "$env_file"
+          } > "$env_temp"
+          mv "$env_temp" "$env_file"
+          trap - EXIT
           deploy_scope="functions"
           if [[ -n "${FUNCTION_TARGETS:-}" ]]; then
             deploy_scope="$FUNCTION_TARGETS"
