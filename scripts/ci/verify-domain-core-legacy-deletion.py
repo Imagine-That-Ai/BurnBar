@@ -1988,9 +1988,7 @@ def validate_superseded_authority(
         "stable_release": "stable_release.json",
     }
     if transition not in names:
-        raise GateError(
-            "promotionAttestation.supersedes.transition must be annulment, rollback, or stable_release"
-        )
+        raise GateError("promotionAttestation.supersedes.transition must be annulment, rollback, or stable_release")
     expected_path = f"{RECEIPT_ROOT}/{row_id}/{generation - 1}/{names[transition]}"
     path_value = repository_path(link["path"], "promotionAttestation.supersedes.path")
     if path_value != expected_path:
@@ -2785,15 +2783,11 @@ def validate_activation_annulment_receipt(
         payload["reason"] != "release_train_advanced_before_stable_receipt"
         or payload["replacementCandidateRequired"] is not True
     ):
-        raise GateError(
-            f"row {row_id}: activation annulment must require a replacement exact-main candidate"
-        )
+        raise GateError(f"row {row_id}: activation annulment must require a replacement exact-main candidate")
 
     candidate = require_commit(
         repo_root,
-        require_object(payload["candidate"], f"row {row_id} activationAnnulment.candidate").get(
-            "candidateCommit"
-        ),
+        require_object(payload["candidate"], f"row {row_id} activationAnnulment.candidate").get("candidateCommit"),
         f"row {row_id} activationAnnulment.candidate",
     )
     expected_candidate = candidate_identity_at_commit(repo_root, candidate)
@@ -2849,14 +2843,11 @@ def validate_activation_annulment_receipt(
         ).splitlines()
         if line
     ]
-    allowed_exact = ACTIVATION_ALLOWED_EXACT_PATHS | {
-        "config/domain-core-control-plane-manifest.json"
-    }
+    allowed_exact = ACTIVATION_ALLOWED_EXACT_PATHS | {"config/domain-core-control-plane-manifest.json"}
     incidental = sorted(
         path
         for path in changed
-        if path not in allowed_exact
-        and not any(path.startswith(prefix) for prefix in ACTIVATION_ALLOWED_PREFIXES)
+        if path not in allowed_exact and not any(path.startswith(prefix) for prefix in ACTIVATION_ALLOWED_PREFIXES)
     )
     if not incidental:
         raise GateError(
@@ -2887,9 +2878,7 @@ def validate_activation_annulment_receipt(
             f"row {row_id} activation annulment {transition}",
             must_exist=False,
         ).exists():
-            raise GateError(
-                f"row {row_id}: activation cannot be annulled after {transition} authority exists"
-            )
+            raise GateError(f"row {row_id}: activation cannot be annulled after {transition} authority exists")
 
 
 def validate_receipt_chain(
@@ -3817,7 +3806,8 @@ def validate_ledger_transition(repo_root: Path, base_ref: str | None, current_ma
         if not isinstance(base_generation, int) or isinstance(base_generation, bool):
             raise GateError(f"row {row_id}: base authority generation is invalid")
         starts_new_generation = (
-            base_state in {
+            base_state
+            in {
                 "activation_annulled",
                 "rollback_active",
                 "rust_authoritative_with_rollback",
