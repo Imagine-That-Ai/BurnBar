@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  providerFetch: vi.fn(),
+  providerFetch: vi.fn<
+    (provider: string, operation: string, url: string | URL, init?: RequestInit) => Promise<Response>
+  >(),
 }));
 
 vi.mock("../providers/httpClient.js", () => ({
@@ -18,8 +20,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function requestAuthorization(callIndex: number): string | undefined {
-  const options = mocks.providerFetch.mock.calls[callIndex]?.[3] as RequestInit | undefined;
-  return (options?.headers as Record<string, string> | undefined)?.Authorization;
+  const options = mocks.providerFetch.mock.calls[callIndex]?.[3];
+  return new Headers(options?.headers).get("Authorization") ?? undefined;
 }
 
 describe("Z.ai provider authentication", () => {
