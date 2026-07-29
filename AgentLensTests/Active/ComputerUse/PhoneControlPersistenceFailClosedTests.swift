@@ -1,4 +1,5 @@
 #if canImport(AppKit)
+import AppKit
 import CryptoKit
 import Foundation
 import OpenBurnBarCore
@@ -38,6 +39,50 @@ final class PhoneControlPersistenceFailClosedTests: XCTestCase {
     func test_approvalPanelWindowCloseDoesNotRecursivelyClosePanel() {
         XCTAssertFalse(ComputerUseApprovalPanelResolutionSource.windowClose.shouldClosePanel)
         XCTAssertTrue(ComputerUseApprovalPanelResolutionSource.decision.shouldClosePanel)
+    }
+
+    /// Presents a live approval panel and closes it from the window chrome:
+    /// the session must resolve exactly once as a reject with the "closed
+    /// before a decision" note, and must NOT re-close the already-closing
+    /// panel (the recursion this PR fixes).
+    @MainActor
+    func test_liveApprovalPanelResolvesRejectWhenUserClosesTheWindow() async {
+        let request = HermesRealtimeRelayApprovalRequest(
+            approvalId: "panel-close-\(UUID().uuidString)",
+            runId: "run-panel-close",
+            sessionId: "session-panel-close",
+            toolKind: "browser.click",
+            title: "Approve click",
+            message: "Approve the pending browser click.",
+            actionSummary: "Click the submit button",
+            requestedAt: Date()
+        )
+
+        let responseTask = Task { @MainActor in
+            await ComputerUseRuntimeController.presentApproval(request, screenshot: nil)
+        }
+
+        var panel: NSWindow?
+        for _ in 0..<400 where panel == nil {
+            await Task.yield()
+            panel = NSApplication.shared.windows.first { $0.title == "Computer Use Approval" }
+            if panel == nil {
+                try? await Task.sleep(nanoseconds: 5_000_000)
+            }
+        }
+        guard let panel else {
+            XCTFail("The approval panel never appeared")
+            return
+        }
+
+        panel.close()
+
+        let response = await responseTask.value
+        XCTAssertEqual(response.approvalId, request.approvalId)
+        XCTAssertEqual(response.decision, .reject)
+        XCTAssertEqual(response.respondedBy, "mac")
+        XCTAssertEqual(response.note, "Approval panel was closed before a decision was made.")
+        XCTAssertFalse(panel.isVisible)
     }
 
     // MARK: - PhoneControlReplayCounterStore.loadOutcome (F6)

@@ -38,9 +38,11 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
                     tier: MacCloudEntitlementStore.shared.currentTier
                 )
             },
+            // cov:ignore-start -- live Firebase singleton wiring; the refresh-before-admission behavior is unit-tested through the injected entitlementRefreshProvider in MacMediaCapabilityGateTests
             entitlementRefreshProvider: {
                 await MacCloudEntitlementStore.shared.refreshMediaAuthorityIfNeeded()
             },
+            // cov:ignore-end
             usageProvider: {
                 quotaUsageStore.currentSnapshot
             },
