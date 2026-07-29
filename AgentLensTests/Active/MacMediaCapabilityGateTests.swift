@@ -98,10 +98,19 @@ final class MacMediaCapabilityGateTests: XCTestCase {
     }
 
     func testMediaSessionErrorsProvideActionableDescriptions() {
-        XCTAssertEqual(
-            MediaSessionError.denied(reason: .entitlementMissing).localizedDescription,
-            "Screen sharing requires an active Cloud Pro or Ultra subscription."
-        )
+        let denialDescriptions: [(MediaCapabilityDenialReason, String)] = [
+            (.entitlementMissing, "Screen sharing requires an active Cloud Pro or Ultra subscription."),
+            (.entitlementExpired, "The screen-sharing subscription has expired."),
+            (.dailyCapReached, "The daily screen-sharing limit has been reached."),
+            (.sessionCapReached, "This screen-sharing session reached its limit."),
+            (.concurrentSessionCapReached, "Too many screen-sharing sessions are already active."),
+            (.budgetSoftCapReached, "Screen sharing is temporarily limited by the service budget."),
+            (.budgetHardCapReached, "Screen sharing is temporarily unavailable because the service budget was reached."),
+            (.killSwitchActive, "Screen sharing is temporarily disabled.")
+        ]
+        for (reason, description) in denialDescriptions {
+            XCTAssertEqual(MediaSessionError.denied(reason: reason).localizedDescription, description)
+        }
         XCTAssertEqual(
             MediaSessionError.captureFailed.localizedDescription,
             "The Mac could not start screen capture."

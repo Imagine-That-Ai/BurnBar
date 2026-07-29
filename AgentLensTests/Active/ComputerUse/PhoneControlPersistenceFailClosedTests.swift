@@ -1,4 +1,5 @@
 #if canImport(AppKit)
+import AppKit
 import CryptoKit
 import Foundation
 import OpenBurnBarCore
@@ -38,6 +39,49 @@ final class PhoneControlPersistenceFailClosedTests: XCTestCase {
     func test_approvalPanelWindowCloseDoesNotRecursivelyClosePanel() {
         XCTAssertFalse(ComputerUseApprovalPanelResolutionSource.windowClose.shouldClosePanel)
         XCTAssertTrue(ComputerUseApprovalPanelResolutionSource.decision.shouldClosePanel)
+    }
+
+    @MainActor
+    func test_approvalPanelWindowCloseRejectsPendingRequest() async {
+        let approvalID = "approval-window-close-\(UUID().uuidString)"
+        let request = HermesRealtimeRelayApprovalRequest(
+            approvalId: approvalID,
+            runId: "run-1",
+            sessionId: "session-1",
+            toolKind: "computer_use",
+            title: "Approve action",
+            message: "Approve the pending action",
+            actionSummary: "Approve action",
+            requestedAt: Date(),
+            trustMode: "manual"
+        )
+        let responseTask = Task {
+            await ComputerUseRuntimeController.presentApproval(request, screenshot: nil)
+        }
+
+        var approvalPanel: NSPanel?
+        for _ in 0..<100 {
+            approvalPanel = NSApplication.shared.windows
+                .compactMap { $0 as? NSPanel }
+                .first { $0.title == "Computer Use Approval" }
+            if approvalPanel != nil { break }
+            try? await ContinuousClock().sleep(for: .milliseconds(20))
+        }
+
+        guard let approvalPanel else {
+            responseTask.cancel()
+            XCTFail("Expected the Computer Use approval panel to appear")
+            return
+        }
+
+        approvalPanel.close()
+        let response = await responseTask.value
+
+        XCTAssertEqual(response.approvalId, approvalID)
+        XCTAssertEqual(response.decision, .reject)
+        XCTAssertEqual(response.respondedBy, "mac")
+        XCTAssertEqual(response.note, "Approval panel was closed before a decision was made.")
+        XCTAssertFalse(approvalPanel.isVisible)
     }
 
     // MARK: - PhoneControlReplayCounterStore.loadOutcome (F6)
