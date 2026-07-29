@@ -34,39 +34,35 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
 
       <!-- At-a-glance platform grid so Linux isn't buried mid-page -->
       <div class="platgrid" aria-label="Platform availability">
-        <a class="platcard platcard--live" href="#macos" aria-label="macOS download">
+        <a class="platcard platcard--live" href="#macos">
           <DownloadPlatformIcon platform="macos" />
           <span class="sr-only">macOS</span>
           <span class="platcard__ver mono">v{SITE.macReleaseLatest}</span>
           <span class="platcard__status">Available now</span>
           <span class="platcard__cta">Download DMG →</span>
         </a>
-        <a class="platcard platcard--live" href="#linux" aria-label="Linux downloads">
+        <a class="platcard platcard--live" href="#linux">
           <DownloadPlatformIcon platform="linux" />
           <span class="sr-only">Linux</span>
           <span class="platcard__ver mono">v{SITE.linuxReleaseLatest} · ARM64</span>
           <span class="platcard__status">Available now</span>
           <span class="platcard__cta">AppImage · deb · rpm →</span>
         </a>
-        <a class="platcard platcard--live" href="#ios" aria-label="iPhone and iPad app">
+        <a class="platcard platcard--live" href="#ios">
           <DownloadPlatformIcon platform="ios" />
           <span class="sr-only">iOS and iPadOS</span>
           <span class="platcard__ver mono">App Store</span>
           <span class="platcard__status">Available now</span>
           <span class="platcard__cta">Get the app →</span>
         </a>
-        <a
-          class="platcard platcard--pending"
-          href="#editor"
-          aria-label="Cursor and VS Code extension"
-        >
+        <a class="platcard platcard--pending" href="#editor">
           <DownloadPlatformIcon platform="editor" />
           <span class="sr-only">Cursor and VS Code</span>
           <span class="platcard__ver mono">source</span>
           <span class="platcard__status">Build locally</span>
           <span class="platcard__cta">Setup guide →</span>
         </a>
-        <a class="platcard platcard--pending" href="#android" aria-label="Android app">
+        <a class="platcard platcard--pending" href="#android">
           <DownloadPlatformIcon platform="android" />
           <span class="sr-only">Android</span>
           <span class="platcard__ver mono">source</span>
