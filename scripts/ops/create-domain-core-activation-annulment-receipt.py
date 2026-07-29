@@ -100,9 +100,7 @@ def create_receipt(
     modes, _ = GATE.public_production_profile(repo_root)
     domain = GATE.profile_domain_for_row(row_id)
     if modes[domain] != "legacy":
-        raise GATE.GateError(
-            f"public-production.{domain} must be legacy in the annulment candidate"
-        )
+        raise GATE.GateError(f"public-production.{domain} must be legacy in the annulment candidate")
 
     receipt = {
         "schemaVersion": 2,
@@ -168,13 +166,7 @@ def main(argv: list[str] | None = None) -> int:
             approved_by=args.approved_by,
             approved_at=args.approved_at,
         )
-        output = (
-            repo_root
-            / GATE.RECEIPT_ROOT
-            / args.row_id
-            / str(args.authority_generation)
-            / "annulment.json"
-        )
+        output = repo_root / GATE.RECEIPT_ROOT / args.row_id / str(args.authority_generation) / "annulment.json"
         WRITER.append_only(output, WRITER.serialized(receipt))
     except (GATE.GateError, OSError, KeyError, TypeError, ValueError) as error:
         print(f"ERROR: cannot create activation-annulment receipt: {error}", file=sys.stderr)
