@@ -147,7 +147,19 @@ jobs:
 
       - name: Resolve active time-boxed advisory policy (trusted base)
         id: advisory-policy
-        run: node trusted-base-advisory-policy/scripts/ci/export-active-advisory-allowlist.mjs
+        run: |
+          resolver="trusted-base-advisory-policy/scripts/ci/export-active-advisory-allowlist.mjs"
+          if [[ -f "${resolver}" ]]; then
+            node "${resolver}"
+          else
+            # Bootstrap: the trusted base predates the shared advisory policy
+            # resolver (it lands with the PR that adds this step). No approved
+            # base policy means no exceptions, so emit the empty allowlist —
+            # the strictest posture — rather than fall back to any
+            # PR-controlled copy of the resolver.
+            echo "allow-ghsas=" >> "${GITHUB_OUTPUT}"
+            echo "Trusted base has no advisory policy resolver; no dependency-review exceptions allowed."
+          fi
 
       - name: GitHub Dependency Review
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0 (node24-native)
