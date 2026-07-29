@@ -174,6 +174,12 @@ jobs:
       - name: Run supply chain audit
         run: ./scripts/supply-chain-audit.sh
 
+      - name: Verify Google Play publishing contracts
+        run: |
+          node --test \
+            tools/google-play/test-publish-internal-release.mjs \
+            scripts/ci/verify-google-play-publishing-workflow.test.mjs
+
   # Resolves and validates the release tag once; every downstream lane consumes
   # its outputs and re-verifies the checkout commit. Also owns the publishable
   # secrets scan, provenance preflights, and bypass-reason validation so a bad
@@ -3067,6 +3073,125 @@ jobs:
             ${{ runner.temp }}/domain-core-apple-prepublication-identity/
           if-no-files-found: error
           retention-days: 90
+
+  publish-google-play-internal:
+    name: Publish exact signed Android bundle to Google Play internal
+    needs:
+      - release-preflight
+      - build-and-release
+      - domain-core-native-release-evidence
+    if: ${{ needs.domain-core-native-release-evidence.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: release
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out exact release commit
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.release-preflight.outputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download exact signed Android artifact
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: ${{ needs.build-and-release.outputs.aab_name }}
+          path: ${{ runner.temp }}/google-play-publication
+
+      - name: Set up Java 21
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install pinned Google API client
+        run: npm ci --prefix functions --omit=dev --ignore-scripts
+
+      - name: Inspect and bind the exact Android bundle identity
+        id: bundle
+        env:
+          AAB_PATH: ${{ runner.temp }}/google-play-publication/${{ needs.build-and-release.outputs.aab_name }}
+          EXPECTED_VERSION_NAME: ${{ needs.release-preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -s "$AAB_PATH"
+          bundletool="$RUNNER_TEMP/bundletool-all-1.18.3.jar"
+          curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
+            --output "$bundletool" \
+            "https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar"
+          printf '%s  %s\n' \
+            a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29 \
+            "$bundletool" | sha256sum --check --strict
+          java -jar "$bundletool" validate --bundle="$AAB_PATH"
+          version_name="$(java -jar "$bundletool" dump manifest --bundle="$AAB_PATH" --xpath=/manifest/@android:versionName)"
+          version_code="$(java -jar "$bundletool" dump manifest --bundle="$AAB_PATH" --xpath=/manifest/@android:versionCode)"
+          if [[ "$version_name" != "$EXPECTED_VERSION_NAME" ]]; then
+            echo "::error::Android bundle versionName $version_name does not match release $EXPECTED_VERSION_NAME."
+            exit 1
+          fi
+          if [[ ! "$version_code" =~ ^[1-9][0-9]{0,9}$ ]] || ((version_code > 2100000000)); then
+            echo "::error::Android bundle versionCode is invalid for Google Play: $version_code"
+            exit 1
+          fi
+          sha256="$(sha256sum "$AAB_PATH" | awk '{print $1}')"
+          printf 'aab_path=%s\nversion_code=%s\nsha256=%s\n' \
+            "$AAB_PATH" "$version_code" "$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Publish idempotently and verify committed internal-track readback
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          AAB_PATH: ${{ steps.bundle.outputs.aab_path }}
+          VERSION_CODE: ${{ steps.bundle.outputs.version_code }}
+          VERSION_NAME: ${{ needs.release-preflight.outputs.version }}
+          EXPECTED_SHA256: ${{ steps.bundle.outputs.sha256 }}
+          RECEIPT_PATH: ${{ runner.temp }}/google-play-internal-release-receipt.json
+        run: |
+          set -euo pipefail
+          if [[ -z "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" ]]; then
+            echo "::error::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is required in the protected release environment."
+            exit 1
+          fi
+          node tools/google-play/publish-internal-release.mjs \
+            --aab "$AAB_PATH" \
+            --expected-version-code "$VERSION_CODE" \
+            --version-name "$VERSION_NAME" \
+            --release-name "OpenBurnBar $VERSION_NAME" \
+            --package-name com.openburnbar \
+            --track internal \
+            --receipt "$RECEIPT_PATH" \
+            --confirm-google-play-publish burnbar-google-play-internal
+          jq -e \
+            --arg packageName com.openburnbar \
+            --arg track internal \
+            --argjson versionCode "$VERSION_CODE" \
+            --arg sha256 "$EXPECTED_SHA256" \
+            '.schemaVersion == 1 and
+             .packageName == $packageName and
+             .track == $track and
+             .versionCode == $versionCode and
+             .readback.status == "completed" and
+             (.readback.versionCodes | index($versionCode)) != null and
+             .aab.sha256 == $sha256' \
+            "$RECEIPT_PATH" >/dev/null
+          cat "$RECEIPT_PATH" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain Google Play publication receipt
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: google-play-internal-release-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/google-play-internal-release-receipt.json
+          if-no-files-found: error
+          retention-days: 365
 
   # Fail-closed feed verification: after the release is published and marked
   # latest, fetch the LIVE feed exactly the way the in-app updater does and

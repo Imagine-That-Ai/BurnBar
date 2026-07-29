@@ -181,7 +181,7 @@ test("native release keeps protected candidate C distinct from activation P", ()
   const evidence = job(
     appleAndroid,
     "domain-core-native-release-evidence",
-    "verify-live-update-feed",
+    "publish-google-play-internal",
   );
   assert.match(
     gate,
@@ -283,7 +283,7 @@ test("failed-job reruns consume exact producer artifact names from attempt one",
   const evidence = job(
     appleAndroid,
     "domain-core-native-release-evidence",
-    "verify-live-update-feed",
+    "publish-google-play-internal",
   );
   const output = gate.match(/^\s+artifact_name: (.+)$/mu)?.[1];
   assert.ok(output);
@@ -367,7 +367,7 @@ test("all Apple and Android assets and v2 evidence publish through one draft sta
   const evidence = job(
     appleAndroid,
     "domain-core-native-release-evidence",
-    "verify-live-update-feed",
+    "publish-google-play-internal",
   );
   assert.match(evidence, /needs:[\s\S]*- prepare-release-publication/u);
   assert.doesNotMatch(evidence, /^    if: .*is_prerelease == 'false'/mu);
@@ -516,7 +516,7 @@ test("native evidence binds restored rollback profile bytes across raw and packa
   const appleAndroidEvidence = job(
     appleAndroid,
     "domain-core-native-release-evidence",
-    "verify-live-update-feed",
+    "publish-google-play-internal",
   );
   const ios = job(iosEvidence, "attest-ios-domain-core");
   const windowsSupplyChain = job(
