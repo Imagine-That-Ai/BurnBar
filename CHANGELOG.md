@@ -29,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   while the exact fresh-host result count rises from 126 to 128 so neither
   test can be skipped without failing the gate.
 
+### Fixed - Linux packaged launcher identity
+
+- **Pinned every DEB, RPM, and Arch desktop launcher to the package-owned
+  `/usr/bin/openburnbar-linux-desktop` executable**: login autostart, normal
+  launch, safe mode, and Tauri's generated menu entry can no longer be
+  shadowed by a stale `/usr/local/bin` or user `PATH` copy. Installed tray and
+  notification proof now verifies the absolute launcher and the canonical
+  `open-burn-bar` DEB/RPM package identity.
+
 ### Fixed - Z.ai cloud quota refresh
 
 - **Restored Z.ai quota refresh for both Coding Plan and standard API

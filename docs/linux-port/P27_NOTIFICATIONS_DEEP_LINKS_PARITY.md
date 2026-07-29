@@ -20,7 +20,7 @@ The native transcript must prove all of the following:
 - The installed shell began a real Google PKCE operation, launched its authorization URL through an isolated browser sink, rejected a wrong-state callback with HTTP 400, accepted the matching callback with HTTP 200, and refused a replay after cancellation.
 - OAuth callback, membership invite, and provider/model links were strictly accepted and retained one owner PID.
 - At least five hostile or malformed links were rejected by the single-instance/deep-link boundary.
-- The package-owned XDG entry launched `openburnbar-linux-desktop --background` at login.
+- The package-owned XDG entry launched `/usr/bin/openburnbar-linux-desktop --background` at login.
 - AT-SPI recorded the destination and focus outcome, with four distinct nonblank screenshots.
 - The exact daemon state, desktop PID set, autostart bytes, and single-instance runtime-directory contents were restored.
 
