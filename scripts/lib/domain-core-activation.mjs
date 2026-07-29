@@ -493,6 +493,7 @@ function verifySupersededAuthority({
   authorityGeneration,
   approvedAt,
   supersedes,
+  candidateCommit,
 }) {
   if (authorityGeneration === 1) {
     if (supersedes !== null) throw provenanceError();
@@ -599,6 +600,25 @@ function verifySupersededAuthority({
     } catch {
       throw new Error("previous activation annulment main advance is invalid");
     }
+    if (candidate.candidateCommit === candidateCommit) {
+      throw new Error(
+        "promotion after annulment must attest a fresh replacement candidate",
+      );
+    }
+    try {
+      execFileSync("git", [
+        "-C",
+        repoRoot,
+        "merge-base",
+        "--is-ancestor",
+        payload.advancedMainCommit,
+        candidateCommit,
+      ]);
+    } catch {
+      throw new Error(
+        "promotion after annulment must descend from the advanced main commit",
+      );
+    }
   }
 }
 function verifyPromotionReceipt({
@@ -683,6 +703,7 @@ function verifyPromotionReceipt({
     authorityGeneration,
     approvedAt: receipt.approvedAt,
     supersedes: attestationPointer.supersedes,
+    candidateCommit: receipt.commit,
   });
   if (
     sha256GitBlob(repoRoot, activationCommit, attestationPointer.path) !==
