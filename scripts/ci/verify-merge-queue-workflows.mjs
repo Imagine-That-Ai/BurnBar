@@ -120,6 +120,49 @@ for (const [name, jobName] of publicDownloadDetectors) {
       );
     }
   }
+
+  const contracts = jobBlock(source, "promotion-contracts");
+  if (contracts === null) {
+    failures.push(`${name}: promotion-contracts job is missing`);
+  } else {
+    const timeout = contracts.match(/^    timeout-minutes:\s*(\d+)\s*$/mu);
+    if (timeout === null || Number.parseInt(timeout[1], 10) < 60) {
+      failures.push(
+        `${name}: promotion-contracts must budget at least 60 minutes for degraded full-history checkout`,
+      );
+    }
+    if (!/^\s+fetch-depth:\s*0\s*$/mu.test(contracts)) {
+      failures.push(
+        `${name}: promotion-contracts must fetch the complete deletion candidate for ancestry proofs`,
+      );
+    }
+    if (/^\s+filter:/mu.test(contracts)) {
+      failures.push(
+        `${name}: promotion-contracts clones must keep blobs for historical-content evidence reads`,
+      );
+    }
+    if (!/^\s+fetch-depth:\s*1\s*$/mu.test(contracts)) {
+      failures.push(
+        `${name}: promotion-contracts trusted evaluator checkout must stay bounded at depth 1`,
+      );
+    }
+    if (
+      !/^\s+sparse-checkout:\s*scripts\/ci\/verify-domain-core-legacy-deletion\.py\s*$/mu.test(
+        contracts,
+      )
+    ) {
+      failures.push(
+        `${name}: promotion-contracts trusted evaluator sparse checkout must include scripts/ci/verify-domain-core-legacy-deletion.py`,
+      );
+    }
+    const credentialOptOuts =
+      contracts.match(/^\s+persist-credentials:\s*false\s*$/gmu) ?? [];
+    if (credentialOptOuts.length < 2) {
+      failures.push(
+        `${name}: both promotion-contracts checkouts must not persist credentials`,
+      );
+    }
+  }
 }
 
 const governancePath = join(root, "governance", "branch-protection.main.json");

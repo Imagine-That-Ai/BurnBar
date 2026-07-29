@@ -17,10 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   All four lanes now reach their security logic instead of being canceled
   during checkout.
 - **Kept the fail-closed Domain Core PR gate alive through slow checkouts**:
-  the required `Domain Core PR Gate` lane now budgets 60 minutes for its
-  full-history deletion-candidate clone (which must keep blobs for ancestry
-  and historical-content proofs), and its trusted default-branch evaluator
-  checkout is bounded to a depth-1 sparse fetch of the two evaluator scripts
+  the required `Domain Core PR Gate` lane and its `promotion-contracts`
+  prerequisite now budget 60 minutes for their full-history
+  deletion-candidate clones (which must keep blobs for ancestry and
+  historical-content proofs), and each trusted default-branch evaluator
+  checkout stays bounded to a depth-1 sparse fetch of the evaluator scripts
   instead of a second full-history clone.
 
 ### Fixed - Z.ai cloud quota refresh
