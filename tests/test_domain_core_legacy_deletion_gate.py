@@ -607,6 +607,15 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             with self.assertRaisesRegex(GATE.GateError, "only profile"):
                 GATE.validate_activation_closure(repo, candidate, drift)
 
+    def test_historical_activation_closure_accepts_trusted_manifest_refresh(self) -> None:
+        candidate = "3efe9feecb4bb10ca67b21109914b2f0f8e40601"
+        activation = "6d17960b8969d5eff8620fa21184b1a5b0958602"
+        changed_paths = GATE.activation_changed_paths(ROOT, candidate, activation)
+        self.assertIn(GATE.CONTROL_PLANE_MANIFEST_PATH, changed_paths)
+        proof = GATE.validate_activation_closure(ROOT, candidate, activation)
+        self.assertEqual(proof["candidateCommit"], candidate)
+        self.assertEqual(proof["activationCommit"], activation)
+
     def test_actual_deletion_head_requires_official_main_and_exact_approval(
         self,
     ) -> None:

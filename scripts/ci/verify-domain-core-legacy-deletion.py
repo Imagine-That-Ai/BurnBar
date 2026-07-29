@@ -183,6 +183,7 @@ RELEASE_PROVENANCE_ROOT = "config/domain-core-release-provenance"
 DELETION_PLAN_ROOT = "config/domain-core-deletion-plans"
 DELETION_REVIEWERS_PATH = "config/domain-core-deletion-reviewers.json"
 BUILD_PROFILE_PATH = "config/domain-core-build-profiles.json"
+CONTROL_PLANE_MANIFEST_PATH = "config/domain-core-control-plane-manifest.json"
 PROMOTION_SCOPES = {
     "quota": "quota",
     "cloudVault": "cloudvault",
@@ -255,6 +256,7 @@ RELEASE_ARTIFACT_IDENTITIES = {
 }
 ACTIVATION_ALLOWED_EXACT_PATHS = {
     BUILD_PROFILE_PATH,
+    CONTROL_PLANE_MANIFEST_PATH,
     "config/domain-core-legacy-deletion.json",
 }
 ACTIVATION_ALLOWED_PREFIXES = (
@@ -2843,11 +2845,11 @@ def validate_activation_annulment_receipt(
         ).splitlines()
         if line
     ]
-    allowed_exact = ACTIVATION_ALLOWED_EXACT_PATHS | {"config/domain-core-control-plane-manifest.json"}
     incidental = sorted(
         path
         for path in changed
-        if path not in allowed_exact and not any(path.startswith(prefix) for prefix in ACTIVATION_ALLOWED_PREFIXES)
+        if path not in ACTIVATION_ALLOWED_EXACT_PATHS
+        and not any(path.startswith(prefix) for prefix in ACTIVATION_ALLOWED_PREFIXES)
     )
     if not incidental:
         raise GateError(
@@ -3902,7 +3904,7 @@ def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_
     )
     if forbidden:
         raise GateError(
-            "domain-core activation may change only profile, append-only authority artifacts, and runbooks: "
+            "domain-core activation may change only profile, trusted manifest, append-only authority artifacts, and runbooks: "
             + ", ".join(forbidden)
         )
     if BUILD_PROFILE_PATH not in changed or "config/domain-core-legacy-deletion.json" not in changed:
