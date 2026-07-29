@@ -1,6 +1,6 @@
 {
   "name": "brace-expansion",
-  "version": "6.0.0+openburnbar.1",
+  "version": "6.0.0+openburnbar.2",
   "description": "First-party callable CommonJS facade over the patched brace-expansion algorithm for consumers pinned to minimatch 3 (Firebase CLI). The version sits above the upstream 5.0.8 security floor and deliberately outside the repository-wide ^5.0.8 override range so npm keeps the registry package for modern minimatch and this facade for the scoped Firebase CLI override.",
   "main": "index.js",
   "dependencies": {

@@ -20,7 +20,7 @@ subtree (`firebase-tools`, `glob@7`, `readdir-glob`, `superstatic`).
 
 ## Non-obvious mechanics
 
-- **Version `6.0.0+openburnbar.1`** sits above the `>= 5.0.8` security floor
+- **Version `6.0.0+openburnbar.2`** sits above the `>= 5.0.8` security floor
   enforced by `scripts/security/check-known-vulnerability-floors.mjs`, and
   deliberately **outside** the repository-wide `brace-expansion: "^5.0.8"`
   override range so npm keeps the registry package at the tree root for
@@ -30,12 +30,14 @@ subtree (`firebase-tools`, `glob@7`, `readdir-glob`, `superstatic`).
   targets by name; the dependency uses the fork's distinct name because a dep
   literally named `brace-expansion` would be rewritten again by the same
   override (infinite recursion).
-- **The override spec is `file:../../../../vendor/openburnbar/brace-expansion-cjs.tgz`**
-  (in `functions/package.json`) because npm resolves `file:` specs in
-  `overrides` relative to the _dependent package directory_
-  (`functions/node_modules/<pkg>/node_modules/minimatch`), four levels below
-  `functions/`. The lockfile records the root-relative
-  `file:vendor/openburnbar/brace-expansion-cjs.tgz` form.
+- **The tarball is a direct development dependency** named
+  `openburnbar-brace-expansion-cjs`, using the root-relative
+  `file:vendor/openburnbar/brace-expansion-cjs.tgz` spec. The
+  version-qualified override references that exact spec with
+  `$openburnbar-brace-expansion-cjs`. This keeps the installed dependency
+  edges portable and valid under `npm ls`; a raw nested `file:` override is
+  interpreted relative to each dependent package and can install successfully
+  while still leaving an invalid dependency tree.
 - **The override key is version-qualified** (`brace-expansion@^1.1.7`, the
   range minimatch 3 declares) because npm applies nested override rules to
   every package with a matching name; the qualifier keeps the shim away from
@@ -47,7 +49,7 @@ subtree (`firebase-tools`, `glob@7`, `readdir-glob`, `superstatic`).
   ```bash
   cd functions/vendor/openburnbar/brace-expansion-cjs
   npm pack --pack-destination ..
-  mv ../brace-expansion-6.0.0+openburnbar.1.tgz ../brace-expansion-cjs.tgz
+  mv ../brace-expansion-6.0.0+openburnbar.2.tgz ../brace-expansion-cjs.tgz
   ```
 
 - **Lock placement matters:** `npm ci` reproduces the tree only when the shim
