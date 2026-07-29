@@ -1510,7 +1510,11 @@ jobs:
       - rollback-drill
       - candidate-bundle
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The deletion-candidate checkout needs complete history and blobs for
+    # ancestry and historical-content proofs, so a degraded GitHub fetch can
+    # consume most of the job budget before the gate logic runs. Leave enough
+    # headroom without weakening the fail-closed gate.
+    timeout-minutes: 60
     steps:
       - name: Require every meaningful Domain Core job
         if: needs.classify.outputs.rust == 'true'
@@ -1538,6 +1542,9 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      # The evaluator checkout only supplies trusted script content at the base
+      # ref; every Git proof runs against the deletion-candidate workspace.
+      # Keep this fetch bounded so it cannot burn the gate's checkout headroom.
       - name: Check out trusted default-branch absence evaluator
         if: needs.classify.outputs.rust == 'true'
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -1545,7 +1552,11 @@ jobs:
           ref: ${{ github.event.pull_request.base.sha || github.sha }}
           path: .domain-core-trusted-evaluator
           persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts/ci/verify-domain-core-legacy-absence.py
+            scripts/ci/verify-domain-core-legacy-deletion.py
+          sparse-checkout-cone-mode: false
 
       - name: Download exact-attempt proof fragments
         if: needs.classify.outputs.rust == 'true'
