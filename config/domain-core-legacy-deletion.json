@@ -21,9 +21,11 @@
   "rows": [
     {
       "id": "quota.claude_statusline",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/quota.claude_statusline/1/promotion.json"
+      },
       "targets": [
         { "kind": "path", "role": "legacy_implementation", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/Legacy/ClaudeQuotaLegacy.swift" },
         { "kind": "path", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs" },
@@ -35,9 +37,11 @@
     },
     {
       "id": "quota.codex_usage",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/quota.codex_usage/1/promotion.json"
+      },
       "targets": [
         { "kind": "path", "role": "legacy_implementation", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/Legacy/CodexQuotaLegacy.swift" },
         { "kind": "path", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs" },
@@ -48,9 +52,11 @@
     },
     {
       "id": "quota.cursor_usage",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/quota.cursor_usage/1/promotion.json"
+      },
       "targets": [
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/CursorQuotaAdapter.swift", "symbol": "buildExactSnapshot" },
         { "kind": "path", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CursorUsageQuotaParser.cs" },
@@ -60,9 +66,11 @@
     },
     {
       "id": "quota.anthropic_headers",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/quota.anthropic_headers/1/promotion.json"
+      },
       "targets": [
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/ClaudeQuotaAdapter.swift", "symbol": "legacyHeaderProbeSnapshot" },
         { "kind": "path", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/AnthropicRateLimitHeaderParser.cs" },
@@ -73,9 +81,11 @@
     },
     {
       "id": "cloudvault.portable_primitives",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/cloudvault.portable_primitives/1/promotion.json"
+      },
       "targets": [
         { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacyCrypto.swift" },
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultDomainCoreAdapter.swift", "symbol": "CloudVaultDomainCoreMigrationMode" },
@@ -107,9 +117,11 @@
     },
     {
       "id": "cloudvault.document_rewrap",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/cloudvault.document_rewrap/1/promotion.json"
+      },
       "targets": [
         { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacyDocumentRewrap.swift" },
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultDocumentRewrapDomainCoreAdapter.swift", "symbol": "makeLegacyNoncePlan" },
@@ -121,9 +133,11 @@
     },
     {
       "id": "cloudvault.search",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/cloudvault.search/1/promotion.json"
+      },
       "targets": [
         { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacySearch.swift" },
         { "kind": "mode_literal", "role": "rollback_control", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultSearchDomainCoreAdapter.swift", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE" },
@@ -136,9 +150,11 @@
     },
     {
       "id": "hermes.relay_crypto",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/hermes.relay_crypto/1/promotion.json"
+      },
       "targets": [
         { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/HermesRelayLegacyCrypto.swift" },
         { "kind": "path", "role": "legacy_implementation", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRelayLegacyCrypto.kt" },
@@ -148,9 +164,11 @@
     },
     {
       "id": "hermes.ratchet_transforms",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/hermes.ratchet_transforms/1/promotion.json"
+      },
       "targets": [
         { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/HermesRatchetLegacyCrypto.swift" },
         { "kind": "path", "role": "legacy_implementation", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRatchetLegacyCrypto.kt" },
@@ -160,9 +178,11 @@
     },
     {
       "id": "pricing.token_cost",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/pricing.token_cost/1/promotion.json"
+      },
       "targets": [
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-pricing", "path": "OpenBurnBarCore/Sources/OpenBurnBarLogParsers/LogParser/ModelPricing.swift", "symbol": "cost" },
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-pricing", "path": "OpenBurnBarCore/Sources/OpenBurnBarLogParsers/LogParser/DomainCorePricingAdapter.swift", "symbol": "DomainCorePricingMigrationMode" },
@@ -171,9 +191,11 @@
     },
     {
       "id": "pricing.kimi_historical",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/pricing.kimi_historical/1/promotion.json"
+      },
       "targets": [
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "functions-pricing", "path": "functions/src/pricing.ts", "symbol": "priceLegacyKimiEvent" },
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "functions-pricing", "path": "functions/src/pricing.ts", "symbol": "LEGACY_KIMI_WIRE_PRICING" },
