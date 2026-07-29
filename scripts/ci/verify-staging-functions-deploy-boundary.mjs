@@ -98,6 +98,16 @@ requireText(
 );
 requireText(
   caller,
+  'test -f "$destination/vendor/openburnbar/brace-expansion-cjs.tgz"',
+  "candidate Functions artifact must retain the reviewed Firebase CLI compatibility archive",
+);
+requireText(
+  caller,
+  'rm -rf "$destination/vendor/openburnbar/brace-expansion-cjs"',
+  "candidate Functions artifact must remove the non-runtime Firebase CLI compatibility source",
+);
+requireText(
+  caller,
   `          name: staging-functions-\${{ github.sha }}
           path: \${{ runner.temp }}/staging-functions
           include-hidden-files: true`,

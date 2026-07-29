@@ -184,6 +184,8 @@ jobs:
             \( -name '*.d.ts' -o -name '*.d.ts.map' \) -delete
           rm -f "$destination/lib/appstore/certs/README.md"
           cp -R functions/vendor "$destination/vendor"
+          test -f "$destination/vendor/openburnbar/brace-expansion-cjs.tgz"
+          rm -rf "$destination/vendor/openburnbar/brace-expansion-cjs"
           cp functions/package.json functions/package-lock.json functions/.env.burnbar-staging "$destination/"
           (
             cd "$RUNNER_TEMP/staging-functions"
