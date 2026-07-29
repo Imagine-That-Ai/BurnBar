@@ -131,7 +131,7 @@
     "scripts/ci/release-dry-run-attestation.mjs": ["6fff2e94522ea2d0","62a56433b4e00acb","a7a3db366cf8d8ae","66bc080d804414e1"],
     "scripts/ci/resolve-domain-core-activation.mjs": ["cacbd0887e2d0a5c","2ad7cd11cadcaf0d","0aa2ffbc20cad282","0b5fef2a6e8a5656"],
     "scripts/ci/resolve-domain-core-build-profile.mjs": ["2c27173aafc3a26e","6ec57130b29c827d","da76a74e4b25f51f","02718afebcf5f08e"],
-    "scripts/ci/resolve-domain-core-build-profile.test.mjs": ["7f95f3da63a59be1","466dc38f7e6eb3ee","b1b437e4692e9e5e","612cca00c9a975db"],
+    "scripts/ci/resolve-domain-core-build-profile.test.mjs": ["bef5d676c59bce49","d84b9d944ef9fe8b","013ed22033e623e2","14afbee599dc6603"],
     "scripts/ci/rollout_hermes_gateway_signal_required.js": ["71af21bc37b01ba3","98811e0ab156fdfc","598282860266ef7f","f489581e2cff505b"],
     "scripts/ci/run-android-release-startup-smoke.sh": ["32ec614bac8ae192","fed687f11b702076","ce97e26cfbe64fa5","6868b7db5321e0d4"],
     "scripts/ci/run-domain-core-android-native-load.sh": ["9bfcacbf20612f77","40281854238e6ec3","8d1a747867e11ab0","148413fdc1bb2a64"],
