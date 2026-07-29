@@ -78,7 +78,7 @@ function severeVulnerabilities(report) {
 
 const GHSA_RE = /GHSA-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}/i;
 
-function activeAllowlistEntry(ghsaId, allowlist, now) {
+export function activeAllowlistEntry(ghsaId, allowlist, now) {
   const entry = allowlist[ghsaId];
   if (!isObject(entry)) return null;
   // An unparseable expiry is treated as already expired: fail closed.

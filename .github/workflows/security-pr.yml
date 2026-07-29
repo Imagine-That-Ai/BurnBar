@@ -127,10 +127,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
+      - name: Resolve active time-boxed advisory policy
+        id: advisory-policy
+        run: node scripts/ci/export-active-advisory-allowlist.mjs
+
       - name: GitHub Dependency Review
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0 (node24-native)
         with:
           fail-on-severity: high
+          # Derived from the same paired, expiring npm/OSV policy used by the
+          # other Node vulnerability gates. The resolver fails closed on set
+          # or expiry drift, and emits no advisory after the deadline.
+          allow-ghsas: ${{ steps.advisory-policy.outputs.allow-ghsas }}
           # Allow known-safe license exceptions. BlueOak-1.0.0 is a permissive
           # npm ecosystem license used by tar and related transitive packages;
           # allow it so patched releases can land without vulnerable downgrades.

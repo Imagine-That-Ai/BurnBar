@@ -79,6 +79,8 @@ on:
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
+      - "scripts/ci/export-active-advisory-allowlist.mjs"
+      - "scripts/ci/export-active-advisory-allowlist.test.mjs"
       - "scripts/ci/verify-dependabot-config.mjs"
       - "scripts/ci/verify-dependabot-config.test.mjs"
       # A new package-lock.json is exactly the change that can reopen the
@@ -184,6 +186,8 @@ on:
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
+      - "scripts/ci/export-active-advisory-allowlist.mjs"
+      - "scripts/ci/export-active-advisory-allowlist.test.mjs"
       - "scripts/ci/verify-dependabot-config.mjs"
       - "scripts/ci/verify-dependabot-config.test.mjs"
       # A new package-lock.json is exactly the change that can reopen the
@@ -428,6 +432,9 @@ jobs:
 
       - name: Self-test npm audit fail-closed gate
         run: node scripts/ci/check-npm-audit-fail-closed.test.mjs
+
+      - name: Self-test active advisory policy export
+        run: node --test scripts/ci/export-active-advisory-allowlist.test.mjs
 
       # Nothing else in CI reads dependabot.yml, so a bad edit there is silent:
       # updates just stop arriving. These two steps make it loud instead.

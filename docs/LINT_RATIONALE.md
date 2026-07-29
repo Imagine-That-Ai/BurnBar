@@ -147,9 +147,12 @@ The PR security gates keep a **paired, expiring** ignore list for dependency
 advisories that have **no actionable fix**: [`osv-scanner.toml`](../osv-scanner.toml)
 (OSV Scanner job, `ignoreUntil`) and `ADVISORY_ALLOWLIST` in
 [`scripts/ci/check-npm-audit-fail-closed.mjs`](../scripts/ci/check-npm-audit-fail-closed.mjs)
-(npm audit job, `expires`). Entries must stay in sync (same GHSA id, same expiry)
-and each carries a `reason:`; past the expiry date both gates fail closed again,
-forcing re-evaluation instead of letting the ignore rot.
+(npm audit job, `expires`). Dependency Review and the known-vulnerability floor
+derive their temporary exception from that paired policy through
+[`scripts/ci/export-active-advisory-allowlist.mjs`](../scripts/ci/export-active-advisory-allowlist.mjs).
+Entries must stay in sync (same GHSA id, same expiry) and each carries a
+`reason:`; any drift fails closed, and past the expiry all gates reject the
+advisory again instead of letting the ignore rot.
 
 Current entries:
 
