@@ -1020,17 +1020,134 @@ final class FirestoreNormalizationTests: XCTestCase {
         XCTAssertTrue(display.isEmpty)
     }
 
+    func testQuotaStoreFreshEmptySnapshotShadowsRecentBucketedSnapshot() {
+        let newer = Date()
+        // Two hours old: well inside the 12-hour freshness window, so the
+        // merge cannot rely on staleness filtering to retire these buckets.
+        let older = newer.addingTimeInterval(-2 * 60 * 60)
+        let recentBucketed = quotaSnapshot(
+            id: "zai-recent-coding-plan",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "zai_default",
+            accountLabel: "Z.ai Coding Plan",
+            bucketName: "5-hour window",
+            used: 17,
+            remaining: 83,
+            fetchedAt: older,
+            updatedAt: older
+        )
+        let freshEmpty = ProviderQuotaSnapshot(
+            id: "zai_zai_default_zai_default",
+            provider: "zai",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "zai_default",
+            accountLabel: "Zai Max",
+            accountStorageScope: .cloudRefreshable,
+            sourceKind: .provider,
+            sourceId: "zai_default",
+            fetchedAt: newer,
+            source: "Z.ai standard API",
+            confidence: .low,
+            statusMessage: "Z.ai credentials are valid, but this account does not expose Coding Plan quota.",
+            buckets: [],
+            updatedAt: newer
+        )
+
+        let display = QuotaStore.displayReadyQuotaSnapshots([recentBucketed, freshEmpty])
+
+        XCTAssertTrue(display.isEmpty)
+    }
+
+    func testQuotaStoreKeepsDistinctSeparatorBearingAccountIDs() {
+        let now = Date()
+        let dashAccount = quotaSnapshot(
+            id: "zai_team-a",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "team-a",
+            accountLabel: "Team A (dash)",
+            bucketName: "5-hour window",
+            used: 17,
+            remaining: 83,
+            fetchedAt: now,
+            updatedAt: now
+        )
+        let underscoreAccount = quotaSnapshot(
+            id: "zai_team_a",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "team_a",
+            accountLabel: "Team A (underscore)",
+            bucketName: "Weekly window",
+            used: 40,
+            remaining: 60,
+            fetchedAt: now,
+            updatedAt: now
+        )
+
+        // The backend accepts `team-a` and `team_a` as distinct accounts;
+        // only the legacy `<provider>-default` / `<provider>_default` alias
+        // is reconciled.
+        let display = QuotaStore.displayReadyQuotaSnapshots([dashAccount, underscoreAccount])
+
+        XCTAssertEqual(display.count, 2)
+        XCTAssertEqual(Set(display.compactMap(\.accountID)), ["team-a", "team_a"])
+    }
+
     func testProviderQuotaRefreshGateSharesInFlightAndCooldownAcrossStores() {
         let gate = ProviderQuotaRefreshGate(minimumInterval: 60)
-        let providerID = ProviderID(rawValue: "zai")
-        let startedAt = Date(timeIntervalSince1970: 1_780_000_000)
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let cloudAccount = providerAccount(
+            id: "zai_default",
+            providerID: ProviderID(rawValue: "zai"),
+            label: "Z.ai",
+            sortKey: 0,
+            now: now
+        )
+        let scopeKey = QuotaStore.refreshGateScopeKey(userID: "user-a", account: cloudAccount)
 
-        XCTAssertTrue(gate.acquire(providerID: providerID, now: startedAt))
-        XCTAssertFalse(gate.acquire(providerID: providerID, now: startedAt))
+        XCTAssertTrue(gate.acquire(scopeKey: scopeKey, now: now))
+        XCTAssertFalse(gate.acquire(scopeKey: scopeKey, now: now))
 
-        gate.release(providerID: providerID)
-        XCTAssertFalse(gate.acquire(providerID: providerID, now: startedAt.addingTimeInterval(59)))
-        XCTAssertTrue(gate.acquire(providerID: providerID, now: startedAt.addingTimeInterval(60)))
+        gate.release(scopeKey: scopeKey)
+        XCTAssertFalse(gate.acquire(scopeKey: scopeKey, now: now.addingTimeInterval(59)))
+        XCTAssertTrue(gate.acquire(scopeKey: scopeKey, now: now.addingTimeInterval(60)))
+    }
+
+    func testProviderQuotaRefreshGateScopesCooldownToSignedInUser() {
+        let gate = ProviderQuotaRefreshGate(minimumInterval: 60)
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let cloudAccount = providerAccount(
+            id: "zai_default",
+            providerID: ProviderID(rawValue: "zai"),
+            label: "Z.ai",
+            sortKey: 0,
+            now: now
+        )
+        let firstUserKey = QuotaStore.refreshGateScopeKey(userID: "user-a", account: cloudAccount)
+        let secondUserKey = QuotaStore.refreshGateScopeKey(userID: "user-b", account: cloudAccount)
+        XCTAssertNotEqual(firstUserKey, secondUserKey)
+
+        XCTAssertTrue(gate.acquire(scopeKey: firstUserKey, now: now))
+        gate.release(scopeKey: firstUserKey)
+
+        // A user switch within the cooldown window must not inherit the
+        // previous user's cooldown; the backend limit is per user + provider.
+        XCTAssertFalse(gate.acquire(scopeKey: firstUserKey, now: now.addingTimeInterval(1)))
+        XCTAssertTrue(gate.acquire(scopeKey: secondUserKey, now: now.addingTimeInterval(1)))
+    }
+
+    func testRefreshGateScopeKeyGatesSelfHostedLocalAccountsIndividually() {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let firstLocal = localOnlyAccount(id: "claude-mac-1", providerID: .claudeCode, now: now)
+        let secondLocal = localOnlyAccount(id: "claude-mac-2", providerID: .claudeCode, now: now)
+        let firstKey = QuotaStore.refreshGateScopeKey(userID: "user-a", account: firstLocal)
+        let secondKey = QuotaStore.refreshGateScopeKey(userID: "user-a", account: secondLocal)
+        XCTAssertNotEqual(firstKey, secondKey)
+
+        // Local runner refreshes have no shared backend rate limit, so a
+        // "refresh all accounts" pass must reach every local account.
+        let gate = ProviderQuotaRefreshGate(minimumInterval: 60)
+        XCTAssertTrue(gate.acquire(scopeKey: firstKey, now: now))
+        XCTAssertTrue(gate.acquire(scopeKey: secondKey, now: now))
     }
 
     func testQuotaStoreDisplaySnapshotsDropsProviderLevelSnapshotWhenAccountSnapshotsExist() {
@@ -1351,6 +1468,20 @@ final class FirestoreNormalizationTests: XCTestCase {
             storageScope: .cloudRefreshable,
             redactedLabel: "redacted",
             sortKey: sortKey,
+            createdAt: now,
+            updatedAt: now
+        )
+    }
+
+    private func localOnlyAccount(id: String, providerID: ProviderID, now: Date) -> ProviderAccountDoc {
+        ProviderAccountDoc(
+            id: id,
+            providerID: providerID,
+            label: id,
+            status: .connected,
+            credentialKind: .token,
+            storageScope: .localOnly,
+            redactedLabel: "redacted",
             createdAt: now,
             updatedAt: now
         )
