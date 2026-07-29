@@ -475,10 +475,7 @@ internal fun ScreenShareViewerActivity.reconnectMirror() {
             val requestID = coordinator.requestMirror(name)
             // Track the retry as the active request so its acknowledgements
             // are honored and control/stop frames stop using the stale ID.
-            reconnectedMirrorRequestID = requestID
-            mirrorSessionID = null
-            mirrorViewerRole = null
-            mirrorStopSent = false
+            applyReconnectedMirrorRequest(requestID)
             controlStatus.value = "Mirror requested"
             Log.i(ScreenShareViewerActivity.TAG, "Android screen-share reconnect requested requestID=$requestID")
         }.onFailure { error ->
@@ -486,6 +483,13 @@ internal fun ScreenShareViewerActivity.reconnectMirror() {
             Log.w(ScreenShareViewerActivity.TAG, "Android screen-share reconnect failed error=${error.message}", error)
         }
     }
+}
+
+internal fun ScreenShareViewerActivity.applyReconnectedMirrorRequest(requestID: String) {
+    reconnectedMirrorRequestID = requestID
+    mirrorSessionID = null
+    mirrorViewerRole = null
+    mirrorStopSent = false
 }
 
 internal fun ScreenShareViewerActivity.trustThisAndroidForControl() {

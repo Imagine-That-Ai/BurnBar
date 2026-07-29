@@ -18,6 +18,8 @@ import kotlinx.coroutines.sync.Mutex
 
 internal fun shouldStopMirrorOnViewerDestroy(isFinishing: Boolean, isChangingConfigurations: Boolean): Boolean = isFinishing && !isChangingConfigurations
 
+internal fun activeMirrorRequestID(reconnectedRequestID: String?, launchedRequestID: String?): String? = reconnectedRequestID ?: launchedRequestID
+
 /**
  * Host activity for `ScreenShareViewerScreen`. Stays alive in
  * Picture-in-Picture so the user can keep glancing at the Mac while
@@ -57,7 +59,11 @@ class ScreenShareViewerActivity : FragmentActivity() {
     internal var reconnectedMirrorRequestID: String? = null
 
     internal val mirrorRequestID: String?
-        get() = reconnectedMirrorRequestID ?: intent?.getStringExtra(EXTRA_MIRROR_REQUEST_ID)
+        get() =
+            activeMirrorRequestID(
+                reconnectedRequestID = reconnectedMirrorRequestID,
+                launchedRequestID = intent?.getStringExtra(EXTRA_MIRROR_REQUEST_ID),
+            )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,7 +79,7 @@ class ScreenShareViewerActivity : FragmentActivity() {
         setIntent(intent)
         // A fresh launch intent carries the authoritative request ID; any
         // earlier in-activity reconnect is superseded by it.
-        reconnectedMirrorRequestID = null
+        acceptFreshMirrorIntent()
         bindCoordinatorHandlers()
     }
 
@@ -106,4 +112,8 @@ class ScreenShareViewerActivity : FragmentActivity() {
         internal const val REMOTE_CLIPBOARD_MAX_BYTES = 65_536
         internal const val REMOTE_UNLOCK_CREDENTIAL_TTL_SECONDS = 30L
     }
+}
+
+internal fun ScreenShareViewerActivity.acceptFreshMirrorIntent() {
+    reconnectedMirrorRequestID = null
 }

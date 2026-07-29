@@ -3,9 +3,14 @@ package com.openburnbar.ui.media
 
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
+import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -92,6 +97,19 @@ class ScreenShareViewerActivityControlSupportTest {
     }
 
     @Test
+    fun `accepted mirror acknowledgement has fallback copy`() {
+        assertEquals(
+            "Screen sharing approved.",
+            mirrorAckFailureMessage(
+                HermesRealtimeRelayMirrorAck(
+                    requestId = "mirror-1",
+                    decision = HermesRealtimeRelayMirrorAck.Decision.ACCEPTED,
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun `terminal mirror acknowledgements have useful fallback copy`() {
         val expected =
             mapOf(
@@ -115,5 +133,108 @@ class ScreenShareViewerActivityControlSupportTest {
                 ),
             )
         }
+    }
+
+    @Test
+    fun `active mirror request prefers reconnect over launch intent`() {
+        assertEquals("retry-2", activeMirrorRequestID("retry-2", "launch-1"))
+        assertEquals("launch-1", activeMirrorRequestID(null, "launch-1"))
+        assertNull(activeMirrorRequestID(null, null))
+    }
+
+    @Test
+    fun `fresh launch clears the reconnect request id`() {
+        val viewer = mockk<ScreenShareViewerActivity>(relaxed = true)
+
+        viewer.acceptFreshMirrorIntent()
+
+        verify { viewer.reconnectedMirrorRequestID = null }
+    }
+
+    @Test
+    fun `reconnect state adopts the new request and clears the old session`() {
+        val viewer = mockk<ScreenShareViewerActivity>(relaxed = true)
+
+        viewer.applyReconnectedMirrorRequest("retry-2")
+
+        verify {
+            viewer.reconnectedMirrorRequestID = "retry-2"
+            viewer.mirrorSessionID = null
+            viewer.mirrorViewerRole = null
+            viewer.mirrorStopSent = false
+        }
+    }
+
+    @Test
+    fun `stale mirror acknowledgement is ignored`() {
+        val viewer = mockk<ScreenShareViewerActivity>(relaxed = true)
+        every { viewer.mirrorRequestID } returns "retry-2"
+        val selectedDisplayID = androidx.compose.runtime.mutableStateOf<String?>(null)
+
+        viewer.applyMirrorAck(
+            HermesRealtimeRelayMirrorAck(
+                requestId = "launch-1",
+                decision = HermesRealtimeRelayMirrorAck.Decision.ACCEPTED,
+                sessionId = "stale-session",
+                selectedDisplayId = "display-2",
+            ),
+            selectedDisplayID,
+        )
+
+        verify(exactly = 0) { viewer.mirrorSessionID = any() }
+        assertNull(selectedDisplayID.value)
+    }
+
+    @Test
+    fun `accepted watcher acknowledgement applies the active session`() {
+        val viewer = mockk<ScreenShareViewerActivity>(relaxed = true)
+        val status = androidx.compose.runtime.mutableStateOf<String?>(null)
+        val selectedDisplayID = androidx.compose.runtime.mutableStateOf<String?>(null)
+        every { viewer.mirrorRequestID } returns "retry-2"
+        every { viewer.controlStatus } returns status
+
+        viewer.applyMirrorAck(
+            HermesRealtimeRelayMirrorAck(
+                requestId = "retry-2",
+                decision = HermesRealtimeRelayMirrorAck.Decision.ACCEPTED,
+                sessionId = "session-2",
+                viewerRole = "watcher",
+                selectedDisplayId = "display-2",
+            ),
+            selectedDisplayID,
+        )
+
+        verify {
+            viewer.mirrorSessionID = "session-2"
+            viewer.mirrorViewerRole = "watcher"
+        }
+        assertEquals("display-2", selectedDisplayID.value)
+        assertEquals("Watching only. Another device controls the Mac.", status.value)
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun `terminal acknowledgement fails the video pipeline`() = runTest {
+        val viewer = mockk<ScreenShareViewerActivity>(relaxed = true)
+        val pipeline = com.openburnbar.data.media.VideoReceivePipeline()
+        val status = androidx.compose.runtime.mutableStateOf<String?>(null)
+        every { viewer.mirrorRequestID } returns "retry-2"
+        every { viewer.controlStatus } returns status
+        every { viewer.controlScope } returns this
+        every { viewer.pipeline } returns pipeline
+
+        viewer.applyMirrorAck(
+            HermesRealtimeRelayMirrorAck(
+                requestId = "retry-2",
+                decision = HermesRealtimeRelayMirrorAck.Decision.BUSY,
+            ),
+            androidx.compose.runtime.mutableStateOf(null),
+        )
+        advanceUntilIdle()
+
+        val phase = pipeline.phase.value
+        check(phase is com.openburnbar.data.media.VideoReceivePipeline.Phase.Failed)
+        assertEquals("The Mac is already handling another screen-sharing request.", phase.reason)
+        assertEquals(phase.reason, status.value)
     }
 }
