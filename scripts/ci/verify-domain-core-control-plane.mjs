@@ -55,6 +55,16 @@ const SEED_PATHS = Object.freeze([
   "functions/src/__tests__/pricing.test.ts",
   "functions/src/generated/domainCoreCandidateReceipt.ts",
   "functions/src/health.ts",
+  // The vendored brace-expansion CJS shim executes inside the Firebase CLI
+  // during authenticated deploys (functions/package.json overrides resolve
+  // minimatch 3's brace-expansion to this local tarball). Pin the tarball,
+  // its source, and the lockfile that carries its integrity hash so a
+  // candidate cannot swap in modified shim code without the protected
+  // control-plane comparison noticing.
+  "functions/package-lock.json",
+  "functions/vendor/openburnbar/brace-expansion-cjs.tgz",
+  "functions/vendor/openburnbar/brace-expansion-cjs/index.js",
+  "functions/vendor/openburnbar/brace-expansion-cjs/package.json",
   "functions/vendor/openburnbar/domain-core-wasm/openburnbar-domain-core-source.sha256",
   "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core.js",
   "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm",
