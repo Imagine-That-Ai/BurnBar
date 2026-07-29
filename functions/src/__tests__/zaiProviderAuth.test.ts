@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  providerFetch: vi.fn<
-    (provider: string, operation: string, url: string | URL, init?: RequestInit) => Promise<Response>
-  >(),
+  providerFetch:
+    vi.fn<(provider: string, operation: string, url: string | URL, init?: RequestInit) => Promise<Response>>(),
 }));
 
 vi.mock("../providers/httpClient.js", () => ({
