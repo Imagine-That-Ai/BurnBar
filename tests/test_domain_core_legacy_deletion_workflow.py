@@ -180,7 +180,14 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
 
     def test_schemas_encode_exact_candidate_and_retained_rollback(self) -> None:
         promotion = json.loads((ROOT / "config/domain-core-promotion-attestation.schema.json").read_text())
+        ledger = json.loads((ROOT / "config/domain-core-legacy-deletion.schema.json").read_text())
         receipt = json.loads((ROOT / "config/domain-core-legacy-deletion-receipt.schema.json").read_text())
+        self.assertIn("activation_annulled", ledger["$defs"]["state"]["enum"])
+        self.assertIn("annulment", receipt["properties"]["transition"]["enum"])
+        self.assertEqual(
+            receipt["$defs"]["activationAnnulment"]["properties"]["replacementCandidateRequired"]["const"],
+            True,
+        )
         candidate = promotion["$defs"]["candidate"]
         self.assertEqual(
             candidate["required"],

@@ -500,6 +500,7 @@ function verifySupersededAuthority({
   }
   const link = requireExactKeys(supersedes, ["transition", "path", "sha256"]);
   const fileName = {
+    annulment: "annulment.json",
     rollback: "rollback.json",
     stable_release: "stable_release.json",
   }[link.transition];
@@ -536,6 +537,67 @@ function verifySupersededAuthority({
     const activatedAt = Date.parse(previous?.rollback?.activatedAt);
     if (!Number.isFinite(activatedAt) || activatedAt > previousApprovedAt) {
       throw new Error("previous rollback activation cannot follow rollback approval");
+    }
+  }
+  if (link.transition === "annulment") {
+    const payload = requireExactKeys(previous?.activationAnnulment, [
+      "promotionReceiptSha256",
+      "candidate",
+      "activation",
+      "advancedMainCommit",
+      "reason",
+      "replacementCandidateRequired",
+    ]);
+    const candidate = requireExactKeys(payload.candidate, [
+      "candidateCommit",
+      "coreVersion",
+      "abiVersion",
+      "sourceSha256",
+    ]);
+    const activation = requireExactKeys(payload.activation, [
+      "candidateCommit",
+      "activationCommit",
+      "coreVersion",
+      "abiVersion",
+      "sourceSha256",
+      "changedPathsSha256",
+    ]);
+    const previousPromotionPath =
+      `config/domain-core-legacy-deletion-receipts/${rowId}/${authorityGeneration - 1}/promotion.json`;
+    if (
+      payload.promotionReceiptSha256 !==
+        sha256GitBlob(repoRoot, activationCommit, previousPromotionPath) ||
+      payload.advancedMainCommit !== previous.commit ||
+      payload.reason !== "release_train_advanced_before_stable_receipt" ||
+      payload.replacementCandidateRequired !== true ||
+      candidate.candidateCommit !== activation.candidateCommit ||
+      !FULL_SHA.test(activation.activationCommit) ||
+      activation.activationCommit === payload.advancedMainCommit
+    ) {
+      throw new Error("previous activation annulment authority is invalid");
+    }
+    const expectedActivation = validateDomainCoreActivation({
+      repoRoot,
+      candidateCommit: candidate.candidateCommit,
+      activationCommit: activation.activationCommit,
+      requireHead: false,
+    });
+    if (
+      canonicalSha256(expectedActivation) !== canonicalSha256(activation)
+    ) {
+      throw new Error("previous activation annulment closure is invalid");
+    }
+    try {
+      execFileSync("git", [
+        "-C",
+        repoRoot,
+        "merge-base",
+        "--is-ancestor",
+        activation.activationCommit,
+        payload.advancedMainCommit,
+      ]);
+    } catch {
+      throw new Error("previous activation annulment main advance is invalid");
     }
   }
 }
