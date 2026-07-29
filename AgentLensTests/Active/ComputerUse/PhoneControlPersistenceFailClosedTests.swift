@@ -35,6 +35,11 @@ final class PhoneControlPersistenceFailClosedTests: XCTestCase {
         return url
     }
 
+    func test_approvalPanelWindowCloseDoesNotRecursivelyClosePanel() {
+        XCTAssertFalse(ComputerUseApprovalPanelResolutionSource.windowClose.shouldClosePanel)
+        XCTAssertTrue(ComputerUseApprovalPanelResolutionSource.decision.shouldClosePanel)
+    }
+
     // MARK: - PhoneControlReplayCounterStore.loadOutcome (F6)
 
     func test_loadOutcome_absentFileIsAbsentAndLoadIsEmpty() {
