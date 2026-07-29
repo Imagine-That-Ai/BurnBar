@@ -112,8 +112,6 @@ type ProviderAccountRequiredFields = Pick<
   | "isDefault"
   | "sortKey"
   | "schemaVersion"
-  | "createdAt"
-  | "updatedAt"
 >;
 
 function hasValidProviderAccountRequiredFields(
@@ -129,10 +127,20 @@ function hasValidProviderAccountRequiredFields(
     typeof raw.redactedLabel === "string" &&
     typeof raw.isDefault === "boolean" &&
     typeof raw.sortKey === "number" &&
-    typeof raw.schemaVersion === "number" &&
-    typeof raw.createdAt === "string" &&
-    typeof raw.updatedAt === "string"
+    typeof raw.schemaVersion === "number"
   );
+}
+
+/**
+ * Provider-account records predate the TypeSpec string-date contract. Older
+ * Apple clients wrote Firestore Timestamp values for these fields, while newer
+ * clients write ISO-8601 strings. Normalize both representations at the
+ * backend boundary so legacy accounts remain refreshable without weakening the
+ * generated public contract.
+ */
+function providerAccountDateString(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  return coerceFirestoreDate(value)?.toISOString();
 }
 
 function parseProviderAccountRegion(value: unknown): ProviderAccountDoc["region"] {
@@ -152,6 +160,11 @@ export function parseProviderAccountDoc(raw: unknown): ProviderAccountDoc | unde
   if (!hasValidProviderAccountRequiredFields(raw)) {
     return undefined;
   }
+  const createdAt = providerAccountDateString(raw.createdAt);
+  const updatedAt = providerAccountDateString(raw.updatedAt);
+  if (!createdAt || !updatedAt) {
+    return undefined;
+  }
   return {
     id: raw.id,
     providerID: raw.providerID,
@@ -163,13 +176,13 @@ export function parseProviderAccountDoc(raw: unknown): ProviderAccountDoc | unde
     isDefault: raw.isDefault,
     sortKey: raw.sortKey,
     schemaVersion: raw.schemaVersion,
-    createdAt: raw.createdAt,
-    updatedAt: raw.updatedAt,
+    createdAt,
+    updatedAt,
     identityHint: optionalStringField(raw.identityHint),
     sourceDeviceID: optionalStringField(raw.sourceDeviceID),
     linkedSwitcherProfileID: optionalStringField(raw.linkedSwitcherProfileID),
-    lastValidatedAt: optionalStringField(raw.lastValidatedAt),
-    lastRefreshAt: optionalStringField(raw.lastRefreshAt),
+    lastValidatedAt: providerAccountDateString(raw.lastValidatedAt),
+    lastRefreshAt: providerAccountDateString(raw.lastRefreshAt),
     lastErrorCode: optionalStringField(raw.lastErrorCode),
     endpointProfileID: optionalStringField(raw.endpointProfileID),
     region: parseProviderAccountRegion(raw.region),
