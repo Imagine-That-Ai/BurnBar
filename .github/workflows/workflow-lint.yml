@@ -57,6 +57,9 @@ on:
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.test.mjs"
+      - "scripts/ci/prepare-firebase-tools.sh"
+      - "scripts/ci/verify-firebase-tools-runtime.mjs"
+      - "scripts/ci/verify-firebase-tools-runtime.test.mjs"
       - "scripts/ci/verify-staging-functions-artifact.mjs"
       - "scripts/ci/verify-staging-functions-artifact.test.mjs"
       - "scripts/ci/prepare-scoped-functions-deploy.mjs"
@@ -76,6 +79,8 @@ on:
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
+      - "scripts/ci/export-active-advisory-allowlist.mjs"
+      - "scripts/ci/export-active-advisory-allowlist.test.mjs"
       - "scripts/ci/verify-dependabot-config.mjs"
       - "scripts/ci/verify-dependabot-config.test.mjs"
       # A new package-lock.json is exactly the change that can reopen the
@@ -159,6 +164,9 @@ on:
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.test.mjs"
+      - "scripts/ci/prepare-firebase-tools.sh"
+      - "scripts/ci/verify-firebase-tools-runtime.mjs"
+      - "scripts/ci/verify-firebase-tools-runtime.test.mjs"
       - "scripts/ci/verify-staging-functions-artifact.mjs"
       - "scripts/ci/verify-staging-functions-artifact.test.mjs"
       - "scripts/ci/prepare-scoped-functions-deploy.mjs"
@@ -178,6 +186,8 @@ on:
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
+      - "scripts/ci/export-active-advisory-allowlist.mjs"
+      - "scripts/ci/export-active-advisory-allowlist.test.mjs"
       - "scripts/ci/verify-dependabot-config.mjs"
       - "scripts/ci/verify-dependabot-config.test.mjs"
       # A new package-lock.json is exactly the change that can reopen the
@@ -372,6 +382,9 @@ jobs:
       - name: Verify staging Functions deploy boundary
         run: node scripts/ci/verify-staging-functions-deploy-boundary.mjs
 
+      - name: Self-test Firebase CLI runtime compatibility guard
+        run: node --test scripts/ci/verify-firebase-tools-runtime.test.mjs
+
       - name: Self-test staging Functions artifact verifier
         run: node scripts/ci/verify-staging-functions-artifact.test.mjs
 
@@ -419,6 +432,19 @@ jobs:
 
       - name: Self-test npm audit fail-closed gate
         run: node scripts/ci/check-npm-audit-fail-closed.test.mjs
+
+      - name: Self-test active advisory policy export
+        run: node --test scripts/ci/export-active-advisory-allowlist.test.mjs
+
+      # Non-authoritative head-policy validation: resolve the checked-in
+      # advisory policy pair (ADVISORY_ALLOWLIST in
+      # check-npm-audit-fail-closed.mjs + osv-scanner.toml) at the PR head so
+      # a mismatched, malformed, or expiry-drifted policy fails on the PR that
+      # introduces it, instead of merging silently and breaking every later PR
+      # that resolves the broken policy from its trusted base. No security
+      # gate consumes this output; the run only validates and prints.
+      - name: Validate checked-in advisory policy (head, non-authoritative)
+        run: node scripts/ci/export-active-advisory-allowlist.mjs
 
       # Nothing else in CI reads dependabot.yml, so a bad edit there is silent:
       # updates just stop arriving. These two steps make it loud instead.
