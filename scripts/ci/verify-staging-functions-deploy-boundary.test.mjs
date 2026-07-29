@@ -174,6 +174,22 @@ try {
     ),
   );
   expectFailure(
+    "missing Firebase CLI compatibility archive",
+    callerPath,
+    pristineCaller.replace(
+      'test -f "$destination/vendor/openburnbar/brace-expansion-cjs.tgz"',
+      'echo "compatibility archive unchecked"',
+    ),
+  );
+  expectFailure(
+    "Firebase CLI compatibility source retained",
+    callerPath,
+    pristineCaller.replace(
+      'rm -rf "$destination/vendor/openburnbar/brace-expansion-cjs"',
+      'echo "compatibility source retained"',
+    ),
+  );
+  expectFailure(
     "verification after auth",
     trustedPath,
     pristineTrusted
