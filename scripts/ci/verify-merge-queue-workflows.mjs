@@ -17,6 +17,7 @@ const requiredWorkflows = [
   "pr-review.yml",
   "droid-review.yml",
   "domain-core-deletion-guard.yml",
+  "domain-core.yml",
 ];
 
 const failures = [];
@@ -71,6 +72,53 @@ for (const [name, jobName] of publicDownloadDetectors) {
   }
   if (!/^\s+persist-credentials:\s*false\s*$/mu.test(job)) {
     failures.push(`${name}: ${jobName} must not persist checkout credentials`);
+  }
+}
+
+{
+  const name = "domain-core.yml";
+  const source = readFileSync(join(root, ".github", "workflows", name), "utf8");
+  const job = jobBlock(source, "domain-core-pr-gate");
+  if (job === null) {
+    failures.push(`${name}: domain-core-pr-gate job is missing`);
+  } else {
+    const timeout = job.match(/^    timeout-minutes:\s*(\d+)\s*$/mu);
+    if (timeout === null || Number.parseInt(timeout[1], 10) < 60) {
+      failures.push(
+        `${name}: domain-core-pr-gate must budget at least 60 minutes for degraded full-history checkout`,
+      );
+    }
+    if (!/^\s+fetch-depth:\s*0\s*$/mu.test(job)) {
+      failures.push(
+        `${name}: domain-core-pr-gate must fetch the complete deletion candidate for ancestry proofs`,
+      );
+    }
+    if (/^\s+filter:/mu.test(job)) {
+      failures.push(
+        `${name}: domain-core-pr-gate clones must keep blobs for historical-content evidence reads`,
+      );
+    }
+    if (!/^\s+fetch-depth:\s*1\s*$/mu.test(job)) {
+      failures.push(
+        `${name}: domain-core-pr-gate trusted evaluator checkout must stay bounded at depth 1`,
+      );
+    }
+    for (const script of [
+      "scripts/ci/verify-domain-core-legacy-absence.py",
+      "scripts/ci/verify-domain-core-legacy-deletion.py",
+    ]) {
+      if (!job.includes(`            ${script}\n`)) {
+        failures.push(
+          `${name}: domain-core-pr-gate trusted evaluator sparse checkout must include ${script}`,
+        );
+      }
+    }
+    const credentialOptOuts = job.match(/^\s+persist-credentials:\s*false\s*$/gmu) ?? [];
+    if (credentialOptOuts.length < 2) {
+      failures.push(
+        `${name}: both domain-core-pr-gate checkouts must not persist credentials`,
+      );
+    }
   }
 }
 
