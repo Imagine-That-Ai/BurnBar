@@ -55,6 +55,16 @@ const SEED_PATHS = Object.freeze([
   "functions/src/__tests__/pricing.test.ts",
   "functions/src/generated/domainCoreCandidateReceipt.ts",
   "functions/src/health.ts",
+  // Firebase deploy preparation executes this vendored package after the
+  // protected control-plane comparison and before credentialed deployment.
+  // Trust both the consumed archive and every checked-in input that rebuilds
+  // it, plus the npm manifests that select and integrity-bind its placement.
+  "functions/package.json",
+  "functions/package-lock.json",
+  "functions/vendor/openburnbar/brace-expansion-cjs.tgz",
+  "functions/vendor/openburnbar/brace-expansion-cjs/README.md",
+  "functions/vendor/openburnbar/brace-expansion-cjs/index.js",
+  "functions/vendor/openburnbar/brace-expansion-cjs/package.json",
   "functions/vendor/openburnbar/domain-core-wasm/openburnbar-domain-core-source.sha256",
   "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core.js",
   "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm",

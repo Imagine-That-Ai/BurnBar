@@ -127,9 +127,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
+      - name: Checkout trusted base advisory policy
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .trusted-advisory-policy
+          persist-credentials: false
+          sparse-checkout: |
+            osv-scanner.toml
+            scripts/ci/check-npm-audit-fail-closed.mjs
+          sparse-checkout-cone-mode: false
+
       - name: Resolve active time-boxed advisory policy
         id: advisory-policy
-        run: node scripts/ci/export-active-advisory-allowlist.mjs
+        run: >-
+          node scripts/ci/export-active-advisory-allowlist.mjs
+          --npm-policy-module
+          "$GITHUB_WORKSPACE/.trusted-advisory-policy/scripts/ci/check-npm-audit-fail-closed.mjs"
+          --osv-config
+          "$GITHUB_WORKSPACE/.trusted-advisory-policy/osv-scanner.toml"
 
       - name: GitHub Dependency Review
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0 (node24-native)

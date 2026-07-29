@@ -1,14 +1,9 @@
 #!/usr/bin/env node
 
 import { appendFileSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
-
-import {
-  ADVISORY_ALLOWLIST,
-  activeAllowlistEntry,
-} from "./check-npm-audit-fail-closed.mjs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const GHSA_PATTERN =
   /^GHSA-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}$/i;
@@ -44,10 +39,17 @@ export function parseOsvIgnoredVulnerabilities(content) {
 }
 
 export function resolveActiveAdvisoryAllowlist({
-  npmAllowlist = ADVISORY_ALLOWLIST,
+  npmAllowlist,
   osvEntries,
   now = new Date(),
 }) {
+  if (
+    !npmAllowlist ||
+    typeof npmAllowlist !== "object" ||
+    Array.isArray(npmAllowlist)
+  ) {
+    throw new Error("npm advisory allowlist must be an object");
+  }
   const osvById = new Map();
   for (const entry of osvEntries) {
     if (
@@ -88,7 +90,7 @@ export function resolveActiveAdvisoryAllowlist({
       );
     }
     if (
-      activeAllowlistEntry(id, npmAllowlist, now) &&
+      activeNpmAllowlistEntry(npmEntry, now) &&
       now.getTime() < Date.parse(osvEntry.ignoreUntil)
     ) {
       active.push(id);
@@ -97,12 +99,55 @@ export function resolveActiveAdvisoryAllowlist({
   return active;
 }
 
-function main() {
+function activeNpmAllowlistEntry(entry, now) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+  const expires = Date.parse(`${entry.expires}T23:59:59Z`);
+  return !Number.isNaN(expires) && now.getTime() <= expires;
+}
+
+function argument(argv, flag, fallback) {
+  const index = argv.indexOf(flag);
+  if (index === -1) return fallback;
+  const value = argv[index + 1];
+  if (!value || value.startsWith("--")) {
+    throw new Error(`${flag} requires a path`);
+  }
+  return value;
+}
+
+async function main() {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-  const osvEntries = parseOsvIgnoredVulnerabilities(
-    readFileSync(join(repoRoot, "osv-scanner.toml"), "utf8"),
+  const npmPolicyModulePath = resolve(
+    argument(
+      process.argv.slice(2),
+      "--npm-policy-module",
+      join(repoRoot, "scripts", "ci", "check-npm-audit-fail-closed.mjs"),
+    ),
   );
-  const active = resolveActiveAdvisoryAllowlist({ osvEntries });
+  const osvConfigPath = resolve(
+    argument(
+      process.argv.slice(2),
+      "--osv-config",
+      join(repoRoot, "osv-scanner.toml"),
+    ),
+  );
+  const npmPolicyModule = await import(pathToFileURL(npmPolicyModulePath).href);
+  if (
+    !npmPolicyModule.ADVISORY_ALLOWLIST ||
+    typeof npmPolicyModule.ADVISORY_ALLOWLIST !== "object" ||
+    Array.isArray(npmPolicyModule.ADVISORY_ALLOWLIST)
+  ) {
+    throw new Error(
+      `Trusted npm policy module does not export ADVISORY_ALLOWLIST: ${npmPolicyModulePath}`,
+    );
+  }
+  const osvEntries = parseOsvIgnoredVulnerabilities(
+    readFileSync(osvConfigPath, "utf8"),
+  );
+  const active = resolveActiveAdvisoryAllowlist({
+    npmAllowlist: npmPolicyModule.ADVISORY_ALLOWLIST,
+    osvEntries,
+  });
   const value = active.join(",");
 
   if (!process.env.GITHUB_OUTPUT) {
@@ -119,5 +164,5 @@ function main() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+  await main();
 }
