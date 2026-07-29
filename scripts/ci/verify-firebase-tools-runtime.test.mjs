@@ -6,7 +6,24 @@ import test from "node:test";
 
 import { verifyFirebaseToolsRuntime } from "./verify-firebase-tools-runtime.mjs";
 
-async function withFirebaseToolsFixture(minimatchSource, run) {
+const MODERN_CONSUMERS = ["glob", "readdir-glob", "superstatic"];
+const MODERN_MINIMATCH_SOURCE = `
+class Minimatch {
+  hasMagic() { return true; }
+}
+module.exports = {
+  minimatch: () => true,
+  Minimatch,
+  escape: (value) => value,
+  unescape: (value) => value,
+};
+`;
+
+async function withFirebaseToolsFixture(
+  directMinimatchSource,
+  run,
+  modernMinimatchSource = MODERN_MINIMATCH_SOURCE,
+) {
   const root = await mkdtemp(join(tmpdir(), "firebase-tools-runtime-"));
   try {
     const firebaseToolsDir = join(root, "node_modules", "firebase-tools");
@@ -20,7 +37,28 @@ async function withFirebaseToolsFixture(minimatchSource, run) {
       join(minimatchDir, "package.json"),
       '{"name":"minimatch","version":"0.0.0-test","main":"index.js"}\n',
     );
-    await writeFile(join(minimatchDir, "index.js"), minimatchSource);
+    await writeFile(join(minimatchDir, "index.js"), directMinimatchSource);
+    for (const packageName of MODERN_CONSUMERS) {
+      const packageDir = join(firebaseToolsDir, "node_modules", packageName);
+      const packageMinimatchDir = join(
+        packageDir,
+        "node_modules",
+        "minimatch",
+      );
+      await mkdir(packageMinimatchDir, { recursive: true });
+      await writeFile(
+        join(packageDir, "package.json"),
+        `{"name":"${packageName}","version":"0.0.0-test"}\n`,
+      );
+      await writeFile(
+        join(packageMinimatchDir, "package.json"),
+        '{"name":"minimatch","version":"0.0.0-test","main":"index.js"}\n',
+      );
+      await writeFile(
+        join(packageMinimatchDir, "index.js"),
+        modernMinimatchSource,
+      );
+    }
     await run(join(firebaseToolsDir, "package.json"));
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -45,5 +83,18 @@ test("rejects the incompatible object export that breaks Functions packaging", a
         /expected a callable CommonJS function/u,
       );
     },
+  );
+});
+
+test("rejects downgrading modern Firebase CLI consumers to minimatch v3", async () => {
+  await withFirebaseToolsFixture(
+    "module.exports = () => true;\n",
+    async (packagePath) => {
+      assert.throws(
+        () => verifyFirebaseToolsRuntime(packagePath),
+        /glob resolved an incompatible minimatch export/u,
+      );
+    },
+    "module.exports = () => true;\n",
   );
 });

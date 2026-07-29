@@ -3,6 +3,30 @@
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 
+const MODERN_MINIMATCH_CONSUMERS = ["glob", "readdir-glob", "superstatic"];
+
+function verifyModernMinimatchConsumer(requireFromFirebaseTools, packageName) {
+  const packagePath = requireFromFirebaseTools.resolve(
+    `${packageName}/package.json`,
+  );
+  const requireFromPackage = createRequire(packagePath);
+  const minimatch = requireFromPackage("minimatch");
+  const requiredFunctions = [
+    ["minimatch", minimatch.minimatch],
+    ["Minimatch", minimatch.Minimatch],
+    ["Minimatch.prototype.hasMagic", minimatch.Minimatch?.prototype?.hasMagic],
+    ["escape", minimatch.escape],
+    ["unescape", minimatch.unescape],
+  ];
+  for (const [member, value] of requiredFunctions) {
+    if (typeof value !== "function") {
+      throw new Error(
+        `${packageName} resolved an incompatible minimatch export; expected ${member} to be a function.`,
+      );
+    }
+  }
+}
+
 export function verifyFirebaseToolsRuntime(firebaseToolsPackagePath) {
   if (!firebaseToolsPackagePath) {
     throw new Error("Firebase CLI package.json path is required.");
@@ -19,6 +43,9 @@ export function verifyFirebaseToolsRuntime(firebaseToolsPackagePath) {
     throw new Error(
       "Firebase CLI minimatch smoke check did not match a known-good pattern.",
     );
+  }
+  for (const packageName of MODERN_MINIMATCH_CONSUMERS) {
+    verifyModernMinimatchConsumer(requireFromFirebaseTools, packageName);
   }
 }
 

@@ -173,7 +173,7 @@
     "scripts/ci/verify-domain-core-workflows.test.mjs": ["fb62fb3b3df6dcba","59575238a9d73488","79e72183a89bc3c7","eb17fc288acb1801"],
     "scripts/ci/verify-existing-domain-core-deployment.mjs": ["c5c2af08ab60a801","89fc73486a6b8be3","04b102bfc624810f","a4dab3f71a8f4aa1"],
     "scripts/ci/verify-existing-domain-core-deployment.test.mjs": ["7fa36cbe06433185","c71541f960857d1e","7b41b3c49d6c317e","93be7c72ae0a9834"],
-    "scripts/ci/verify-firebase-tools-runtime.mjs": ["1c7abc444de475ef","0f61deb758555a01","1da560b2e05a73ac","a320d3f114c9072f"],
+    "scripts/ci/verify-firebase-tools-runtime.mjs": ["5f315c332dce70e7","998e0b47c2eba848","275a48d55eaa0882","7c36aa2f50160fd3"],
     "scripts/ci/verify-firestore-ttl-state.mjs": ["9d29723665555bf2","cd2c4978144abb06","a9ce3dad94ebea9f","c2f0d3001bb17921"],
     "scripts/ci/verify-libsignal-pin.sh": ["d76c28b7ac846112","8de9b8338c2a4331","d0dcc1122a94d5d2","976bfafbe9a75121"],
     "scripts/ci/verify-libsignal-runtime-readiness.sh": ["d933d12034238e45","c6a9d1516f6d9031","8751643d68c88f77","886572460dd98f16"],
