@@ -104,14 +104,22 @@ requireText(
   "candidate Functions artifact must preserve hidden runtime files",
 );
 requireText(
-  trusted,
-  "lib/*.js|lib/*.js.map|lib/*.cjs",
-  "trusted Functions artifact must permit the generated scoped CommonJS entrypoint",
+  caller,
+  `          find "$destination/lib" -type f \\
+            \\( -name '*.d.ts' -o -name '*.d.ts.map' \\) -delete`,
+  "candidate Functions artifact must remove non-runtime TypeScript declarations",
+);
+requireText(
+  caller,
+  '          rm -f "$destination/lib/appstore/certs/README.md"',
+  "candidate Functions artifact must remove non-runtime certificate documentation",
 );
 requireText(
   trusted,
-  "Functions deployment package retains executable npm scripts.",
-  "trusted Functions artifact must reject executable npm scripts before authentication",
+  `            node trusted/scripts/ci/verify-staging-functions-artifact.mjs \\
+              --artifact-root "$functions" \\
+              --candidate-sha "$CANDIDATE_SHA"`,
+  "trusted workflow must run the tested Functions artifact verifier before authentication",
 );
 reject(
   caller,
@@ -141,6 +149,30 @@ requireText(
 );
 requireText(
   trusted,
+  `          jq -nc \\
+            --arg bucket "\${FIREBASE_PROJECT}.firebasestorage.app" \\
+            '{firestore:{rules:"firestore.rules",indexes:"firestore.indexes.json"},storage:[{bucket:$bucket,rules:"storage.rules"}]}' \\
+            > "$deploy_root/firebase-rules.json"`,
+  "trusted rules deployment must bind Storage rules to the explicit staging bucket without a default-bucket lookup",
+);
+requireText(
+  trusted,
+  `          node scripts/ci/compact-firestore-rules-inplace.mjs \\
+            "$deploy_root/firestore.rules"`,
+  "trusted staging deployment must compact Firestore rules before release so deployed bytes match the drift readback",
+);
+requireText(
+  trusted,
+  `          for config in "$deploy_root"/firebase-*.json; do
+            if grep -q '"predeploy"' "$config"; then
+              echo "::error::Trusted deployment config contains a predeploy hook."
+              exit 1
+            fi
+          done`,
+  "trusted inert-workspace validation must succeed when every generated Firebase config is hook-free",
+);
+requireText(
+  trusted,
   "Authenticate to Google Cloud through trusted-main WIF",
   "trusted reusable workflow must own WIF authentication",
 );
@@ -148,6 +180,21 @@ requireText(
   trusted,
   '--only "$deploy_scope"',
   "validated Functions deployment scope must remain one quoted argument",
+);
+requireText(
+  trusted,
+  `          env_temp="$(mktemp "$RUNNER_TEMP/staging-functions-env.XXXXXX")"
+          trap 'rm -f "$env_temp"' EXIT
+          {
+            cat "$functions_dir/.env.burnbar-staging"`,
+  "trusted Functions deployment must stage the reviewed dotenv through a temporary file before replacing the project dotenv",
+);
+requireText(
+  trusted,
+  `          } > "$env_temp"
+          mv "$env_temp" "$env_file"
+          trap - EXIT`,
+  "trusted Functions deployment must atomically replace the project dotenv without truncating its reviewed source",
 );
 requireText(
   trusted,

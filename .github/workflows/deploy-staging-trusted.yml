@@ -150,24 +150,9 @@ jobs:
 
           if [[ "$DEPLOY_FUNCTIONS" == "true" ]]; then
             functions="$RUNNER_TEMP/candidate-functions"
-            test "$(cat "$functions/CANDIDATE_SHA")" = "$CANDIDATE_SHA"
-            test "$(du -sk "$functions" | cut -f1)" -le 131072
-            (cd "$functions" && sha256sum --check SHA256SUMS)
-            find "$functions" -type l -exec false {} +
-            jq -e '(.scripts // {}) | length == 0' \
-              "$functions/functions/package.json" >/dev/null || {
-                echo "::error::Functions deployment package retains executable npm scripts."
-                exit 1
-              }
-            find "$functions/functions" -type f | while IFS= read -r path; do
-              case "${path#"$functions/functions/"}" in
-                lib/*.js|lib/*.js.map|lib/*.cjs|package.json|package-lock.json|.env.burnbar-staging) ;;
-                vendor/openburnbar/entitlements/*) ;;
-                vendor/openburnbar/domain-core-wasm/*) ;;
-                vendor/openburnbar/signal-envelope-contracts/*) ;;
-                *) echo "::error::Unexpected Functions artifact path: $path"; exit 1 ;;
-              esac
-            done
+            node trusted/scripts/ci/verify-staging-functions-artifact.mjs \
+              --artifact-root "$functions" \
+              --candidate-sha "$CANDIDATE_SHA"
           fi
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -185,9 +170,12 @@ jobs:
              "$RUNNER_TEMP/candidate-rules/firestore.indexes.json" \
              "$RUNNER_TEMP/candidate-rules/storage.rules" \
              "$deploy_root/"
-          cat > "$deploy_root/firebase-rules.json" <<'JSON'
-          {"firestore":{"rules":"firestore.rules","indexes":"firestore.indexes.json"},"storage":{"rules":"storage.rules"}}
-          JSON
+          jq -nc \
+            --arg bucket "${FIREBASE_PROJECT}.firebasestorage.app" \
+            '{firestore:{rules:"firestore.rules",indexes:"firestore.indexes.json"},storage:[{bucket:$bucket,rules:"storage.rules"}]}' \
+            > "$deploy_root/firebase-rules.json"
+          node scripts/ci/compact-firestore-rules-inplace.mjs \
+            "$deploy_root/firestore.rules"
           if [[ "$DEPLOY_HOSTING" == "true" ]]; then
             cp -R "$RUNNER_TEMP/candidate-hosting/website" "$deploy_root/website"
             node scripts/ci/write-firebase-hosting-ci-config.mjs \
@@ -204,9 +192,10 @@ jobs:
           JSON
           fi
           for config in "$deploy_root"/firebase-*.json; do
-            grep -q '"predeploy"' "$config" && {
-              echo "::error::Trusted deployment config contains a predeploy hook."; exit 1;
-            }
+            if grep -q '"predeploy"' "$config"; then
+              echo "::error::Trusted deployment config contains a predeploy hook."
+              exit 1
+            fi
           done
 
       - name: Authenticate to Google Cloud through trusted-main WIF
@@ -242,6 +231,8 @@ jobs:
           set -euo pipefail
           functions_dir="$RUNNER_TEMP/staging-deploy/functions"
           env_file="$functions_dir/.env.${FIREBASE_PROJECT}"
+          env_temp="$(mktemp "$RUNNER_TEMP/staging-functions-env.XXXXXX")"
+          trap 'rm -f "$env_temp"' EXIT
           {
             cat "$functions_dir/.env.burnbar-staging"
             printf '\nFUNCTION_VERSION=staging-%s\n' "$CANDIDATE_SHA"
@@ -249,7 +240,9 @@ jobs:
             if [[ -n "${SENTRY_DSN:-}" ]]; then
               printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=staging\n' "$SENTRY_DSN"
             fi
-          } > "$env_file"
+          } > "$env_temp"
+          mv "$env_temp" "$env_file"
+          trap - EXIT
           deploy_scope="functions"
           if [[ -n "${FUNCTION_TARGETS:-}" ]]; then
             deploy_scope="$FUNCTION_TARGETS"

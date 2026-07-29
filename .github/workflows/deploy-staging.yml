@@ -26,7 +26,7 @@ on:
         type: boolean
         default: false
       function_targets:
-        description: "Optional comma-separated Firebase Functions targets"
+        description: "Optional reviewed subset; blank deploys every target in the staging manifest"
         required: false
         type: string
         default: ""
@@ -180,6 +180,9 @@ jobs:
           destination="$RUNNER_TEMP/staging-functions/functions"
           mkdir -p "$destination"
           cp -R functions/lib "$destination/lib"
+          find "$destination/lib" -type f \
+            \( -name '*.d.ts' -o -name '*.d.ts.map' \) -delete
+          rm -f "$destination/lib/appstore/certs/README.md"
           cp -R functions/vendor "$destination/vendor"
           cp functions/package.json functions/package-lock.json functions/.env.burnbar-staging "$destination/"
           (

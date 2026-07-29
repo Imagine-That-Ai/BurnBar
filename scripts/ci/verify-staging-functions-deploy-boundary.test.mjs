@@ -70,11 +70,67 @@ try {
     `${pristineCaller}\n# google-github-actions/auth\n`,
   );
   expectFailure(
-    "candidate scripts enabled",
+    "missing trusted Functions artifact verifier",
     trustedPath,
     pristineTrusted.replace(
-      "Functions deployment package retains executable npm scripts.",
-      "Functions package scripts are accepted.",
+      "node trusted/scripts/ci/verify-staging-functions-artifact.mjs",
+      "echo verifier-omitted",
+    ),
+  );
+  expectFailure(
+    "implicit default Storage bucket lookup",
+    trustedPath,
+    pristineTrusted.replace(
+      `          jq -nc \\
+            --arg bucket "\${FIREBASE_PROJECT}.firebasestorage.app" \\
+            '{firestore:{rules:"firestore.rules",indexes:"firestore.indexes.json"},storage:[{bucket:$bucket,rules:"storage.rules"}]}' \\
+            > "$deploy_root/firebase-rules.json"`,
+      `          cat > "$deploy_root/firebase-rules.json" <<'JSON'
+          {"firestore":{"rules":"firestore.rules","indexes":"firestore.indexes.json"},"storage":{"rules":"storage.rules"}}
+          JSON`,
+    ),
+  );
+  expectFailure(
+    "uncompacted Firestore rules deployment",
+    trustedPath,
+    pristineTrusted.replace(
+      `          node scripts/ci/compact-firestore-rules-inplace.mjs \\
+            "$deploy_root/firestore.rules"`,
+      "          echo firestore-rules-compaction-skipped",
+    ),
+  );
+  expectFailure(
+    "hook-free config scan returns failure",
+    trustedPath,
+    pristineTrusted.replace(
+      `          for config in "$deploy_root"/firebase-*.json; do
+            if grep -q '"predeploy"' "$config"; then
+              echo "::error::Trusted deployment config contains a predeploy hook."
+              exit 1
+            fi
+          done`,
+      `          for config in "$deploy_root"/firebase-*.json; do
+            grep -q '"predeploy"' "$config" && {
+              echo "::error::Trusted deployment config contains a predeploy hook."; exit 1;
+            }
+          done`,
+    ),
+  );
+  expectFailure(
+    "TypeScript declarations retained",
+    callerPath,
+    pristineCaller.replace(
+      `          find "$destination/lib" -type f \\
+            \\( -name '*.d.ts' -o -name '*.d.ts.map' \\) -delete`,
+      "          echo declarations-retained",
+    ),
+  );
+  expectFailure(
+    "certificate documentation retained",
+    callerPath,
+    pristineCaller.replace(
+      '          rm -f "$destination/lib/appstore/certs/README.md"',
+      "          echo certificate-documentation-retained",
     ),
   );
   expectFailure(
@@ -135,6 +191,18 @@ try {
     "unquoted deploy scope",
     trustedPath,
     pristineTrusted.replace('--only "$deploy_scope"', "--only $deploy_scope"),
+  );
+  expectFailure(
+    "staging dotenv self-truncation",
+    trustedPath,
+    pristineTrusted.replace(
+      `          } > "$env_temp"
+          mv "$env_temp" "$env_file"
+          trap - EXIT`,
+      `          } > "$env_file"
+          rm -f "$env_temp"
+          trap - EXIT`,
+    ),
   );
   expectFailure(
     "unscoped Hosting deploy",

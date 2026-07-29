@@ -57,6 +57,8 @@ on:
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.test.mjs"
+      - "scripts/ci/verify-staging-functions-artifact.mjs"
+      - "scripts/ci/verify-staging-functions-artifact.test.mjs"
       - "scripts/ci/prepare-scoped-functions-deploy.mjs"
       - "scripts/ci/prepare-scoped-functions-deploy.test.mjs"
       - "functions/staging-deploy-targets.json"
@@ -157,6 +159,8 @@ on:
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.test.mjs"
+      - "scripts/ci/verify-staging-functions-artifact.mjs"
+      - "scripts/ci/verify-staging-functions-artifact.test.mjs"
       - "scripts/ci/prepare-scoped-functions-deploy.mjs"
       - "scripts/ci/prepare-scoped-functions-deploy.test.mjs"
       - "functions/staging-deploy-targets.json"
@@ -367,6 +371,9 @@ jobs:
 
       - name: Verify staging Functions deploy boundary
         run: node scripts/ci/verify-staging-functions-deploy-boundary.mjs
+
+      - name: Self-test staging Functions artifact verifier
+        run: node scripts/ci/verify-staging-functions-artifact.test.mjs
 
       - name: Self-test scoped staging Functions entrypoint
         run: node scripts/ci/prepare-scoped-functions-deploy.test.mjs
