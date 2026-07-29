@@ -31,14 +31,14 @@
       "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)[^/]+(?:/[^/]+)*$"
     },
     "state": {
-      "enum": ["rollout", "promotion_approved", "rust_authoritative_with_rollback", "rollback_active", "deletion_approved", "legacy_deleted"]
+      "enum": ["rollout", "promotion_approved", "activation_annulled", "rust_authoritative_with_rollback", "rollback_active", "deletion_approved", "legacy_deleted"]
     },
     "receiptPath": {
       "allOf": [
         { "$ref": "#/$defs/repositoryPath" },
         {
           "type": "string",
-          "pattern": "^config/domain-core-legacy-deletion-receipts/[a-z][a-z0-9_.]*/[1-9][0-9]*/(?:promotion|stable_release|rollback|deletion_review)\\.json$"
+          "pattern": "^config/domain-core-legacy-deletion-receipts/[a-z][a-z0-9_.]*/[1-9][0-9]*/(?:promotion|annulment|stable_release|rollback|deletion_review)\\.json$"
         }
       ]
     },
@@ -47,6 +47,7 @@
       "additionalProperties": false,
       "properties": {
         "promotion": { "$ref": "#/$defs/receiptPath" },
+        "activationAnnulment": { "$ref": "#/$defs/receiptPath" },
         "stableRelease": { "$ref": "#/$defs/receiptPath" },
         "rollback": { "$ref": "#/$defs/receiptPath" },
         "deletionReview": { "$ref": "#/$defs/receiptPath" }
@@ -145,6 +146,19 @@
                 "required": ["promotion"],
                 "minProperties": 1,
                 "maxProperties": 1
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "const": "activation_annulled" } }, "required": ["state"] },
+          "then": {
+            "properties": {
+              "authorityGeneration": { "minimum": 1 },
+              "receipts": {
+                "required": ["promotion", "activationAnnulment"],
+                "minProperties": 2,
+                "maxProperties": 2
               }
             }
           }
