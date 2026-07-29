@@ -47,6 +47,7 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
             "Domain Core PR Gate",
             "verify-domain-core-legacy-absence.py",
             "Check out trusted default-branch evaluator",
+            "github.event.merge_group.base_sha",
             '--base-ref "$DOMAIN_CORE_BASE_REF"',
             "--verify-signed-evidence",
             "fetch-depth: 0",
