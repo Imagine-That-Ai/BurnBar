@@ -155,8 +155,10 @@ installFetch(({ url }) => {
 // ---------------------------------------------------------------------------
 
 zaiCallCount = 0;
+const zaiAuthFailureURLs = [];
 installFetch(({ url }) => {
   zaiCallCount += 1;
+  zaiAuthFailureURLs.push(url);
   assert.match(url, /api\.z\.ai/);
   return jsonResponse({ error: { code: "401", message: "token expired or incorrect" } }, { status: 401 });
 });
@@ -164,7 +166,11 @@ installFetch(({ url }) => {
   const result = await zaiAdapter.testCredential("invalid-key-xxxxxxxx");
   assert.equal(result.valid, false);
   assert.equal(result.errorCode, "auth_failed");
-  assert.equal(zaiCallCount, 1, "Auth failures should not roll over to the second host");
+  assert.deepEqual(
+    zaiAuthFailureURLs,
+    ["https://api.z.ai/api/paas/v4/models", "https://api.z.ai/api/monitor/usage/quota/limit"],
+    "Auth failures may probe both supported credential formats but must not roll over to the second host",
+  );
   assert.match(result.errorMessage, /token expired/);
 }
 

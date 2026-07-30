@@ -45,7 +45,14 @@ fun HermesRichBubble(
     codeBackground: Color = MaterialTheme.colorScheme.surfaceVariant,
     onAtomTap: ((HermesAtom) -> Unit)? = null,
 ) {
-    val runs = remember(text) { HermesAtomParser.parse(text) }
+    val runs =
+        remember(text, isStreaming) {
+            if (isStreaming) {
+                listOf(HermesAtomRun.Text(text))
+            } else {
+                HermesAtomParser.parse(text)
+            }
+        }
     val inlineContent =
         remember(text, baseSize, onAtomTap) {
             buildInlineContentMap(runs, baseSize, onAtomTap)
