@@ -1,11 +1,15 @@
 package com.openburnbar.data.projects
 
+import android.text.TextUtils
 import com.google.firebase.FirebaseException
 import com.openburnbar.MainDispatcherRule
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.ProjectSummary
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -26,6 +30,21 @@ class ProjectsStoreTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
 
+    /**
+     * Builds a real [FirebaseException]: its constructor validates the
+     * message through `android.text.TextUtils`, which is unmocked on the
+     * pure JVM, so just that static call is bridged for the construction.
+     */
+    private fun firestoreDenial(message: String): FirebaseException {
+        mockkStatic(TextUtils::class)
+        try {
+            every { TextUtils.isEmpty(any()) } answers { firstArg<CharSequence?>().isNullOrEmpty() }
+            return FirebaseException(message)
+        } finally {
+            unmockkStatic(TextUtils::class)
+        }
+    }
+
     @Test
     fun `load surfaces signed-out state as an error instead of crashing`() = runTest {
         val mockRepo = mockk<FirestoreRepository>()
@@ -43,7 +62,7 @@ class ProjectsStoreTest {
     @Test
     fun `load surfaces Firebase errors and clears loading`() = runTest {
         val mockRepo = mockk<FirestoreRepository>()
-        coEvery { mockRepo.fetchProjects() } throws FirebaseException("PERMISSION_DENIED: request denied")
+        coEvery { mockRepo.fetchProjects() } throws firestoreDenial("PERMISSION_DENIED: request denied")
 
         val store = ProjectsStore(repo = mockRepo)
         store.load()
