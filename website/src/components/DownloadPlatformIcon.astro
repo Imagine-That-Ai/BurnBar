@@ -1,0 +1,93 @@
+---
+import PlatformGlyph from "./PlatformGlyph.astro";
+import type { PlatformGlyphId } from "./PlatformGlyph.astro";
+
+type Platform = "macos" | "linux" | "ios" | "editor" | "android";
+
+interface Props {
+  platform: Platform;
+  compact?: boolean;
+}
+
+const { platform, compact = false } = Astro.props;
+
+// Glyph shapes are shared with SurfaceIcon via PlatformGlyph; only the
+// download-page tile treatment (theme tokens, sizing) lives here.
+const glyphId: PlatformGlyphId = platform === "editor" ? "cursor" : platform;
+---
+
+<span
+  class:list={[
+    "download-platform-icon",
+    `download-platform-icon--${platform}`,
+    { "is-compact": compact }
+  ]}
+  aria-hidden="true"
+>
+  <PlatformGlyph id={glyphId} />
+</span>
+
+<style>
+  .download-platform-icon {
+    --icon-size: 3.25rem;
+    --icon-color: var(--text-bright);
+    width: var(--icon-size);
+    height: var(--icon-size);
+    display: inline-grid;
+    place-items: center;
+    color: var(--icon-color);
+    border-radius: 1rem;
+    background: color-mix(in oklab, var(--icon-color) 8%, var(--glass-bg-elevated));
+    border: 1px solid color-mix(in oklab, var(--icon-color) 20%, var(--ink-line));
+    box-shadow: 0 12px 28px -20px color-mix(in oklab, var(--icon-color) 48%, transparent);
+  }
+
+  /* Size the shared glyph classes for the tile context (markup lives in
+     PlatformGlyph.astro, hence the :global() escapes). */
+  .download-platform-icon :global(.icon) {
+    width: 62%;
+    height: 62%;
+    color: var(--icon-color);
+  }
+
+  .download-platform-icon :global(.icon-dual) {
+    width: 68%;
+    height: 68%;
+  }
+
+  /* Keep the dual glyph's 18/32 inner ratio when the tile scales. */
+  .download-platform-icon :global(.icon-dual__vscode),
+  .download-platform-icon :global(.icon-dual__cursor) {
+    width: 56%;
+    height: 56%;
+  }
+
+  .download-platform-icon--linux {
+    --icon-color: #b47b00;
+  }
+
+  .download-platform-icon--ios {
+    --icon-color: var(--ember-core);
+  }
+
+  .download-platform-icon--android {
+    --icon-color: #178d55;
+  }
+
+  .download-platform-icon--editor {
+    --icon-color: #178bbf;
+  }
+
+  .download-platform-icon.is-compact {
+    --icon-size: 2.35rem;
+    border-radius: 0.78rem;
+  }
+
+  :global(:root:not([data-theme="light"])) .download-platform-icon--linux {
+    --icon-color: #f3bd45;
+  }
+
+  :global(:root:not([data-theme="light"])) .download-platform-icon--android {
+    --icon-color: #52df95;
+  }
+</style>
