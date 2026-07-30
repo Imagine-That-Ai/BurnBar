@@ -483,6 +483,9 @@ jobs:
           echo "All shell scripts pass syntax validation."
           node scripts/ci/verify-cross-platform-ios-runner.test.mjs
 
+      - name: Test SwiftPM lock retry isolation
+        run: bash scripts/ci/check-openburnbar-app-swiftpm-lock.test.sh
+
       - name: Release config injection safety tests
         run: |
           set -euo pipefail
