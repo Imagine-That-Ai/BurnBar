@@ -592,8 +592,8 @@ test("promotion-contracts executes native release workflow contract tests", () =
   const timeout = job.match(/^    timeout-minutes: (\d+)$/mu);
   assert.ok(timeout, "promotion-contracts must declare a timeout");
   assert.ok(
-    Number.parseInt(timeout[1], 10) >= 15,
-    "promotion-contracts timeout must tolerate both full-history checkouts",
+    Number.parseInt(timeout[1], 10) >= 60,
+    "promotion-contracts timeout must tolerate a degraded full-history checkout",
   );
   assert.match(
     job,
@@ -629,7 +629,7 @@ test("promotion-contracts cleanup removes trusted evaluator after final use and 
 
 test("promotion-contracts gives its trusted evaluator a bounded shallow checkout", () => {
   const job = workflowJob(core, "promotion-contracts");
-  assert.match(job, /timeout-minutes: 15/u);
+  assert.match(job, /timeout-minutes: 60/u);
   assert.match(
     job,
     /Check out repository[\s\S]*?ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/u,
