@@ -77,6 +77,8 @@ internal data class PairedMacControlsEffectsBinding(
     val connectionID: String?,
     val app: BurnBarApplication?,
     val coordinator: MediaControlStreamCoordinator?,
+    val phase: MediaControlStreamCoordinator.Phase,
+    val statusMessage: String?,
     val pendingRequestID: String?,
     val ack: HermesRealtimeRelayMirrorAck?,
     val pendingCallRequestID: String?,
@@ -517,6 +519,16 @@ internal fun MediaControlStreamCoordinator.Phase.requiresTrustedDeviceApproval()
 
 internal fun MediaControlStreamCoordinator.Phase.actionRequiredMessage(): String? = TRUSTED_DEVICE_APPROVAL_MESSAGE
     .takeIf { requiresTrustedDeviceApproval() }
+
+/**
+ * The approval banner is sticky local state once Check Mercury (or Call Mac)
+ * stores it; clear it as soon as the coordinator recovers so a live Mercury
+ * never keeps showing "Approval needed".
+ */
+internal fun shouldClearTrustedDeviceApprovalStatus(
+    statusMessage: String?,
+    phase: MediaControlStreamCoordinator.Phase,
+): Boolean = statusMessage == TRUSTED_DEVICE_APPROVAL_MESSAGE && !phase.requiresTrustedDeviceApproval()
 
 internal fun MediaControlStreamCoordinator.Phase.userMessage(): String {
     actionRequiredMessage()?.let { return it }

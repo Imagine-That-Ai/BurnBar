@@ -184,6 +184,8 @@ private fun buildPairedMacEffectsBinding(
     connectionID = connectionID,
     app = app,
     coordinator = streams.coordinator,
+    phase = streams.phase,
+    statusMessage = local.statusMessage,
     pendingRequestID = local.pendingRequestID,
     ack = streams.ack,
     pendingCallRequestID = local.pendingCallRequestID,
@@ -477,9 +479,19 @@ private fun PairedMacControlsScreenLayout(state: PairedMacControlsUiState, actio
 @Composable
 internal fun PairedMacControlsScreenEffects(binding: PairedMacControlsEffectsBinding) {
     PairedMacControlsConnectionEffect(binding)
+    PairedMacControlsApprovalRecoveryEffect(binding)
     PairedMacControlsMirrorAckEffect(binding)
     PairedMacControlsMirrorTimeoutEffect(binding)
     PairedMacControlsCallEffects(binding)
+}
+
+@Composable
+private fun PairedMacControlsApprovalRecoveryEffect(binding: PairedMacControlsEffectsBinding) {
+    LaunchedEffect(binding.phase, binding.statusMessage) {
+        if (shouldClearTrustedDeviceApprovalStatus(binding.statusMessage, binding.phase)) {
+            binding.onStatusMessageChange(null)
+        }
+    }
 }
 
 @Composable

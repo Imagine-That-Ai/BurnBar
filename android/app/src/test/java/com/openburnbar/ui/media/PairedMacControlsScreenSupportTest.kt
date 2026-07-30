@@ -126,6 +126,24 @@ class PairedMacControlsScreenSupportTest {
     }
 
     @Test
+    fun `approval banner clears once mercury recovers and only then`() {
+        val approvalPhase =
+            MediaControlStreamCoordinator.Phase.Reconnecting(
+                nextAttemptInMillis = 2_000L,
+                lastFailureReason = TRUSTED_DEVICE_APPROVAL_REQUIRED,
+            )
+
+        // While approval is still pending, the stored banner stays put.
+        assertFalse(shouldClearTrustedDeviceApprovalStatus(TRUSTED_DEVICE_APPROVAL_MESSAGE, approvalPhase))
+        // The Mac approved the device and Mercury went live: drop the sticky
+        // approval copy so the screen stops claiming approval is needed.
+        assertTrue(shouldClearTrustedDeviceApprovalStatus(TRUSTED_DEVICE_APPROVAL_MESSAGE, MediaControlStreamCoordinator.Phase.Live))
+        // Other status copy is never cleared by the recovery effect.
+        assertFalse(shouldClearTrustedDeviceApprovalStatus("Mercury retry started.", MediaControlStreamCoordinator.Phase.Live))
+        assertFalse(shouldClearTrustedDeviceApprovalStatus(null, MediaControlStreamCoordinator.Phase.Live))
+    }
+
+    @Test
     fun `a live coordinator reports ready and never restarts`() {
         val result = evaluateCheckMercury(
             PairedMacControlsCheckMercuryInput(
