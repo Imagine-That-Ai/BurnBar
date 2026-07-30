@@ -97,7 +97,10 @@ class MediaControlStreamCoordinator(
         object Idle : Phase()
         object Dialing : Phase()
         object Live : Phase()
-        data class Reconnecting(val nextAttemptInMillis: Long) : Phase()
+        data class Reconnecting(
+            val nextAttemptInMillis: Long,
+            val lastFailureReason: String? = null,
+        ) : Phase()
         object Stopped : Phase()
         data class Failed(val reason: String) : Phase()
     }
@@ -454,9 +457,18 @@ class MediaControlStreamCoordinator(
 
     private suspend fun runSupervisor(uid: String, connectionID: String) {
         var attempt = 0
+        var lastFailureReason: String? = null
         while (scope.isActive && supervisorJob?.isActive == true) {
             try {
-                _phase.value = Phase.Dialing
+                _phase.value =
+                    if (lastFailureReason == null) {
+                        Phase.Dialing
+                    } else {
+                        Phase.Reconnecting(
+                            nextAttemptInMillis = 0,
+                            lastFailureReason = lastFailureReason,
+                        )
+                    }
                 logInfo("Mercury control dial attempt=${attempt + 1} connectionID=$connectionID")
                 val stream = dialer.dial(uid, connectionID)
                 val classifyFrame = HermesRealtimeRelayFrame(
@@ -469,6 +481,7 @@ class MediaControlStreamCoordinator(
                 mutex.withLock { currentStream = stream }
                 _consecutiveDialFailures.value = 0
                 attempt = 0
+                lastFailureReason = null
                 _phase.value = Phase.Live
                 logInfo("Mercury control live connectionID=$connectionID")
                 analytics?.controlStreamConnected()
@@ -492,15 +505,12 @@ class MediaControlStreamCoordinator(
             } catch (_: CancellationException) {
                 return@runSupervisor
             } catch (t: Throwable) {
-                _consecutiveDialFailures.value = _consecutiveDialFailures.value + 1
-                _phase.value = Phase.Failed(t.message ?: t.javaClass.simpleName)
-                logWarning("Mercury control dial failed connectionID=$connectionID error=${t.message}", t)
-                analytics?.controlStreamLost(t.message ?: t.javaClass.simpleName)
+                lastFailureReason = recordDialFailure(connectionID = connectionID, error = t)
             }
 
             val backoff = nextBackoff(attempt)
             attempt += 1
-            _phase.value = Phase.Reconnecting(nextAttemptInMillis = backoff)
+            _phase.value = Phase.Reconnecting(backoff, lastFailureReason)
             logInfo("Mercury control reconnect scheduled connectionID=$connectionID backoffMs=$backoff")
             try {
                 delay(backoff)
@@ -513,6 +523,15 @@ class MediaControlStreamCoordinator(
         activeUID = null
         activeConnectionID = null
         _activePair.value = null
+    }
+
+    private suspend fun recordDialFailure(connectionID: String, error: Throwable): String {
+        val reason = error.message ?: error.javaClass.simpleName
+        _consecutiveDialFailures.value = _consecutiveDialFailures.value + 1
+        _phase.value = Phase.Failed(reason)
+        logWarning("Mercury control dial failed connectionID=$connectionID error=${error.message}", error)
+        analytics?.controlStreamLost(reason)
+        return reason
     }
 
     private fun swiftReferenceDateSecondsNow(): Double = System.currentTimeMillis() / 1_000.0 - SWIFT_REFERENCE_DATE_UNIX_SECONDS

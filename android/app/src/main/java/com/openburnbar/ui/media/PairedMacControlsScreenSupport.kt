@@ -44,6 +44,11 @@ internal const val MIRROR_LOCAL_NOT_READY_MESSAGE =
     "Mercury could not open a control stream to the Mac."
 internal const val MIRROR_PEER_NOT_READY_MESSAGE =
     "The Mac did not finish opening Mercury. Keep BurnBar open on the Mac, then try again."
+internal const val TRUSTED_DEVICE_APPROVAL_REQUIRED =
+    "This mutation requires a trusted device for the requested trust root."
+internal const val TRUSTED_DEVICE_APPROVAL_MESSAGE =
+    "Approval needed. On your Mac, open OpenBurnBar → Settings → Devices & Sync → Trusted Devices, " +
+        "then approve this Android. Mercury reconnects automatically after approval."
 
 internal data class PairedMacControlsUiState(
     val phase: MediaControlStreamCoordinator.Phase,
@@ -276,6 +281,11 @@ internal fun evaluateCheckMercury(input: PairedMacControlsCheckMercuryInput): Pa
             "Mercury is not started yet. Open BurnBar on the Mac and wait for the paired Mac tile to show online.",
             shouldRestartMercury = false,
         )
+    input.phase.requiresTrustedDeviceApproval() ->
+        PairedMacControlsCheckMercuryResult(
+            immediateStatusMessage = TRUSTED_DEVICE_APPROVAL_MESSAGE,
+            shouldRestartMercury = false,
+        )
     input.phase !is MediaControlStreamCoordinator.Phase.Live -> {
         val connection = resolveRequestedConnectionID(input.connectionID, input.activePair)
         val canRestart = connection != null && input.app != null
@@ -495,13 +505,29 @@ private suspend fun signRemoteUnlockSession(
     )
 }
 
-internal fun MediaControlStreamCoordinator.Phase.userMessage(): String = when (this) {
-    MediaControlStreamCoordinator.Phase.Idle -> "Mercury is idle. Waiting for a paired Mac."
-    MediaControlStreamCoordinator.Phase.Dialing -> "Mercury is connecting to your Mac..."
-    MediaControlStreamCoordinator.Phase.Live -> "Mercury is live. You can ask the Mac to mirror."
-    is MediaControlStreamCoordinator.Phase.Reconnecting -> "Mercury is reconnecting to your Mac..."
-    MediaControlStreamCoordinator.Phase.Stopped -> "Mercury is stopped. Open BurnBar on the Mac."
-    is MediaControlStreamCoordinator.Phase.Failed -> "Mercury unavailable: $reason"
+internal fun MediaControlStreamCoordinator.Phase.requiresTrustedDeviceApproval(): Boolean {
+    val reason =
+        when (this) {
+            is MediaControlStreamCoordinator.Phase.Failed -> reason
+            is MediaControlStreamCoordinator.Phase.Reconnecting -> lastFailureReason
+            else -> null
+        }
+    return reason?.contains("requires a trusted device", ignoreCase = true) == true
+}
+
+internal fun MediaControlStreamCoordinator.Phase.actionRequiredMessage(): String? = TRUSTED_DEVICE_APPROVAL_MESSAGE
+    .takeIf { requiresTrustedDeviceApproval() }
+
+internal fun MediaControlStreamCoordinator.Phase.userMessage(): String {
+    actionRequiredMessage()?.let { return it }
+    return when (this) {
+        MediaControlStreamCoordinator.Phase.Idle -> "Mercury is idle. Waiting for a paired Mac."
+        MediaControlStreamCoordinator.Phase.Dialing -> "Mercury is connecting to your Mac..."
+        MediaControlStreamCoordinator.Phase.Live -> "Mercury is live. You can ask the Mac to mirror."
+        is MediaControlStreamCoordinator.Phase.Reconnecting -> "Mercury is reconnecting to your Mac..."
+        MediaControlStreamCoordinator.Phase.Stopped -> "Mercury is stopped. Open BurnBar on the Mac."
+        is MediaControlStreamCoordinator.Phase.Failed -> "Mercury unavailable: $reason"
+    }
 }
 
 internal fun HermesRealtimeRelayMirrorAck.userMessage(): String = when (decision) {
