@@ -20,7 +20,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import type { DocumentData, WriteBatch } from "firebase-admin/firestore";
 
 import { db } from "./adminRuntime.js";
-import { commitBatchedWrites } from "./callables/shared.js";
+import { commitBatchedWrites } from "./callables/shared/firestoreWrites.js";
 
 /** Pure: does this session-directory doc involve the given device (owner or peer)? */
 export function sessionInvolvesDevice(data: DocumentData, deviceId: string): boolean {
