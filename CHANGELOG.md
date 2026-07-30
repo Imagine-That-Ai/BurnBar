@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   historical-content proofs), and each trusted default-branch evaluator
   checkout stays bounded to a depth-1 sparse fetch of the evaluator scripts
   instead of a second full-history clone.
+- **Removed a monolithic macOS test-host deadlock from the required app gate**:
+  the two cross-thread memory-citation database tests now run in the existing
+  fresh-host phase, where their focused suite completes deterministically,
+  while the exact fresh-host result count rises from 126 to 128 so neither
+  test can be skipped without failing the gate.
 
 ### Fixed - Z.ai cloud quota refresh
 
