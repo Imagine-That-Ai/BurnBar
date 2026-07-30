@@ -255,7 +255,7 @@ test('Arch extraction includes only the canonical autostart exception beside /us
   fs.writeFileSync(path.join(payload, 'usr/bin/openburnbar'), 'binary\n');
   fs.writeFileSync(
     path.join(payload, 'etc/xdg/autostart/openburnbar.desktop'),
-    '[Desktop Entry]\nType=Application\nExec=openburnbar-linux-desktop --background\n'
+    '[Desktop Entry]\nType=Application\nExec=/usr/bin/openburnbar-linux-desktop --background\n'
   );
   const archive = path.join(root, 'autostart.pkg.tar');
   const packed = spawnSync('bsdtar', ['-cf', archive, '-C', payload, '.'], { encoding: 'utf8' });
