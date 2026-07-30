@@ -369,6 +369,48 @@ test("rollback receipt schema requires exact completion paths and signed health 
   assert.equal(validate(extraAuthority), false);
 });
 
+test("activation-annulment receipt schema preserves history and requires a replacement candidate", () => {
+  const ajv = new Ajv2020({
+    allErrors: true,
+    strict: true,
+    strictRequired: false,
+    formats: { "date-time": true },
+  });
+  const validate = ajv.compile(rollbackReceiptSchema);
+  const activation = {
+    ...candidate,
+    activationCommit: "3".repeat(40),
+    changedPathsSha256: "4".repeat(64),
+  };
+  const receipt = {
+    schemaVersion: 2,
+    rowId: "quota.claude_statusline",
+    authorityGeneration: 1,
+    transition: "annulment",
+    status: "active",
+    evidence: ["https://github.com/Imagine-That-Ai/BurnBar/pull/2097"],
+    approvedBy: "@release-owner",
+    approvedAt: "2026-07-28T00:00:00Z",
+    commit: "5".repeat(40),
+    activationAnnulment: {
+      promotionReceiptSha256: "6".repeat(64),
+      candidate,
+      activation,
+      advancedMainCommit: "5".repeat(40),
+      reason: "release_train_advanced_before_stable_receipt",
+      replacementCandidateRequired: true,
+    },
+  };
+  assert.equal(validate(receipt), true, JSON.stringify(validate.errors));
+
+  const weakened = structuredClone(receipt);
+  weakened.activationAnnulment.replacementCandidateRequired = false;
+  assert.equal(validate(weakened), false);
+  const mixed = structuredClone(receipt);
+  mixed.release = {};
+  assert.equal(validate(mixed), false);
+});
+
 test("compiled schemas reject missing provider coordinates, mixed consumer shape, and unknown fields", () => {
   const ajv = new Ajv2020({ allErrors: true, strict: true });
   ajv.addSchema(releaseSchema);

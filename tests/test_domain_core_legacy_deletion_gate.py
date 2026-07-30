@@ -175,11 +175,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         )
 
     def test_ios_release_consumers_match_mobile_runtime_ownership(self) -> None:
-        ios_rows = {
-            row_id
-            for row_id, consumers in GATE.ROW_RELEASE_CONSUMERS.items()
-            if "ios" in consumers
-        }
+        ios_rows = {row_id for row_id, consumers in GATE.ROW_RELEASE_CONSUMERS.items() if "ios" in consumers}
         self.assertEqual(
             ios_rows,
             {
@@ -221,6 +217,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             {
                 "rollout",
                 "promotion_approved",
+                "activation_annulled",
                 "rust_authoritative_with_rollback",
                 "deletion_approved",
                 "rollback_active",
@@ -323,6 +320,10 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         self.assertEqual(GATE.required_receipts("rollout"), set())
         self.assertEqual(GATE.required_receipts("promotion_approved"), {"promotion"})
         self.assertEqual(
+            GATE.required_receipts("activation_annulled"),
+            {"promotion", "activationAnnulment"},
+        )
+        self.assertEqual(
             GATE.required_receipts("rust_authoritative_with_rollback"),
             {"promotion", "stableRelease"},
         )
@@ -339,11 +340,17 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             {"promotion", "stableRelease", "deletionReview"},
         )
 
-    def test_second_authority_epoch_supersedes_stable_or_rollback_receipt(self) -> None:
+    def test_second_authority_epoch_supersedes_annulment_stable_or_rollback_receipt(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             receipt_root = root / GATE.RECEIPT_ROOT / GATE.ROW_IDS[0] / "1"
             receipt_root.mkdir(parents=True)
+            annulment = receipt_root / "annulment.json"
+            annulment.write_text('{"transition":"annulment"}\n')
+            pointer = RECEIPT.superseded_authority_pointer(root, GATE.ROW_IDS[0], 2)
+            self.assertEqual(pointer["transition"], "annulment")
+            self.assertEqual(pointer["sha256"], hashlib.sha256(annulment.read_bytes()).hexdigest())
+            annulment.unlink()
             stable = receipt_root / "stable_release.json"
             stable.write_text('{"transition":"stable_release"}\n')
             pointer = RECEIPT.superseded_authority_pointer(root, GATE.ROW_IDS[0], 2)
@@ -355,6 +362,299 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             self.assertEqual(pointer["transition"], "rollback")
             with self.assertRaisesRegex(RECEIPT.GATE.GateError, "must supersede"):
                 RECEIPT.superseded_authority_pointer(root, GATE.ROW_IDS[0], 3)
+
+    def test_unshipped_activation_can_be_annulled_then_reattested_in_next_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo, manifest = self.make_minimal_rollout_repo(Path(directory).resolve())
+            subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.email", "test@openburnbar.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "OpenBurnBar Test"], cwd=repo, check=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "rollout"], cwd=repo, check=True)
+
+            promoted = copy.deepcopy(manifest)
+            promoted["rows"][0]["state"] = "promotion_approved"
+            promoted["rows"][0]["authorityGeneration"] = 1
+            promoted["rows"][0]["receipts"] = {"promotion": "receipts/promotion-1.json"}
+            (repo / "config/domain-core-legacy-deletion.json").write_text(json.dumps(promoted))
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "promotion"], cwd=repo, check=True)
+            promoted_base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+
+            annulled = copy.deepcopy(promoted)
+            annulled["rows"][0]["state"] = "activation_annulled"
+            annulled["rows"][0]["receipts"]["activationAnnulment"] = "receipts/annulment-1.json"
+            GATE.validate_ledger_transition(repo, promoted_base, annulled)
+            (repo / "config/domain-core-legacy-deletion.json").write_text(json.dumps(annulled))
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "annul activation"], cwd=repo, check=True)
+            annulled_base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+
+            generation_two = copy.deepcopy(annulled)
+            generation_two["rows"][0]["state"] = "promotion_approved"
+            generation_two["rows"][0]["authorityGeneration"] = 2
+            generation_two["rows"][0]["receipts"] = {"promotion": "receipts/promotion-2.json"}
+            GATE.validate_ledger_transition(repo, annulled_base, generation_two)
+            stale = copy.deepcopy(generation_two)
+            stale["rows"][0]["authorityGeneration"] = 1
+            with self.assertRaisesRegex(GATE.GateError, "requires authority generation 2"):
+                GATE.validate_ledger_transition(repo, annulled_base, stale)
+
+    def test_activation_annulment_binds_stale_activation_and_incidental_main_advance(self) -> None:
+        candidate = {
+            "candidateCommit": "1" * 40,
+            "coreVersion": "0.1.0",
+            "abiVersion": 3,
+            "sourceSha256": "2" * 64,
+        }
+        activation = {
+            **candidate,
+            "activationCommit": "3" * 40,
+            "changedPathsSha256": "4" * 64,
+        }
+        promotion = GATE.Receipt(
+            path="promotion.json",
+            transition="promotion",
+            generation=1,
+            approved_at=datetime(2026, 7, 27, tzinfo=UTC),
+            commit=candidate["candidateCommit"],
+            digest="5" * 64,
+            evidence=("https://github.com/Imagine-That-Ai/BurnBar/attestations/1",),
+            payload={},
+        )
+        payload = {
+            "promotionReceiptSha256": promotion.digest,
+            "candidate": candidate,
+            "activation": activation,
+            "advancedMainCommit": "6" * 40,
+            "reason": "release_train_advanced_before_stable_receipt",
+            "replacementCandidateRequired": True,
+        }
+        annulment = GATE.Receipt(
+            path="annulment.json",
+            transition="annulment",
+            generation=1,
+            approved_at=datetime(2026, 7, 28, tzinfo=UTC),
+            commit=payload["advancedMainCommit"],
+            digest="7" * 64,
+            evidence=("https://github.com/Imagine-That-Ai/BurnBar/pull/2097",),
+            payload=payload,
+        )
+
+        def git_output(_repo: Path, args: list[str], _label: str) -> str:
+            if args[:2] == ["rev-parse", "HEAD"]:
+                return "8" * 40
+            if args[0] == "rev-parse" and args[1].endswith("^{commit}"):
+                return args[1][:40] + "\n"
+            if args[0] == "diff":
+                return "OpenBurnBarMobile/App/OpenBurnBarMobileApp.swift\n"
+            if args[:2] == ["tag", "--points-at"]:
+                return ""
+            raise AssertionError(args)
+
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory).resolve()
+            (repo / GATE.RECEIPT_ROOT / GATE.ROW_IDS[0] / "1").mkdir(parents=True)
+            with (
+                mock.patch.object(GATE, "require_commit", side_effect=lambda _repo, value, _label: value),
+                mock.patch.object(GATE, "candidate_identity_at_commit", return_value=candidate),
+                mock.patch.object(GATE, "validate_activation_closure", return_value=activation),
+                mock.patch.object(GATE, "require_ancestor") as require_ancestor_mock,
+                mock.patch.object(GATE, "git_output", side_effect=git_output),
+                mock.patch.object(
+                    GATE,
+                    "public_production_profile_at_commit",
+                    return_value=({"quota": "rust"}, {"quota": "9" * 64}),
+                ),
+            ):
+                GATE.validate_activation_annulment_receipt(
+                    repo,
+                    GATE.ROW_IDS[0],
+                    1,
+                    annulment,
+                    promotion,
+                )
+                self.assertIn(
+                    mock.call(
+                        repo,
+                        payload["advancedMainCommit"],
+                        "8" * 40,
+                        f"row {GATE.ROW_IDS[0]} activation annulment protected main",
+                    ),
+                    require_ancestor_mock.call_args_list,
+                )
+                require_ancestor_mock.reset_mock()
+                GATE.validate_activation_annulment_receipt(
+                    repo,
+                    GATE.ROW_IDS[0],
+                    1,
+                    annulment,
+                    promotion,
+                    "b" * 40,
+                )
+                self.assertIn(
+                    mock.call(
+                        repo,
+                        payload["advancedMainCommit"],
+                        "b" * 40,
+                        f"row {GATE.ROW_IDS[0]} activation annulment protected main",
+                    ),
+                    require_ancestor_mock.call_args_list,
+                )
+
+                def reject_protected_main(_repo: Path, _ancestor: str, _descendant: str, label: str) -> None:
+                    if "protected main" in label:
+                        raise GATE.GateError(f"{label}: not an ancestor of protected main")
+
+                require_ancestor_mock.side_effect = reject_protected_main
+                with self.assertRaisesRegex(GATE.GateError, "protected main"):
+                    GATE.validate_activation_annulment_receipt(
+                        repo,
+                        GATE.ROW_IDS[0],
+                        1,
+                        annulment,
+                        promotion,
+                        "b" * 40,
+                    )
+                require_ancestor_mock.side_effect = None
+                invalid = copy.deepcopy(payload)
+                invalid["replacementCandidateRequired"] = False
+                with self.assertRaisesRegex(GATE.GateError, "replacement exact-main candidate"):
+                    GATE.validate_activation_annulment_receipt(
+                        repo,
+                        GATE.ROW_IDS[0],
+                        1,
+                        GATE.Receipt(
+                            **{
+                                **annulment.__dict__,
+                                "payload": invalid,
+                            }
+                        ),
+                        promotion,
+                    )
+
+    def test_multi_row_domain_requires_one_shared_annulment_event(self) -> None:
+        candidate = {
+            "candidateCommit": "1" * 40,
+            "coreVersion": "0.1.0",
+            "abiVersion": 3,
+            "sourceSha256": "2" * 64,
+        }
+        activation = {
+            **candidate,
+            "activationCommit": "3" * 40,
+            "changedPathsSha256": "4" * 64,
+        }
+
+        def annulment_receipt(advanced_main: str) -> GATE.Receipt:
+            return GATE.Receipt(
+                path="annulment.json",
+                transition="annulment",
+                generation=1,
+                approved_at=datetime(2026, 7, 28, tzinfo=UTC),
+                commit=advanced_main,
+                digest="7" * 64,
+                evidence=("https://github.com/Imagine-That-Ai/BurnBar/pull/2097",),
+                payload={
+                    "promotionReceiptSha256": "5" * 64,
+                    "candidate": candidate,
+                    "activation": activation,
+                    "advancedMainCommit": advanced_main,
+                    "reason": "release_train_advanced_before_stable_receipt",
+                    "replacementCandidateRequired": True,
+                },
+            )
+
+        def build_rows(annulments: dict[str, GATE.Receipt | None]) -> dict[str, GATE.Row]:
+            rows: dict[str, GATE.Row] = {}
+            for domain, row_ids in GATE.PROFILE_DOMAIN_ROWS.items():
+                for row_id in row_ids:
+                    if domain == "quota":
+                        receipts: dict[str, GATE.Receipt] = {}
+                        receipt = annulments[row_id]
+                        if receipt is not None:
+                            receipts["activationAnnulment"] = receipt
+                        rows[row_id] = GATE.Row(
+                            state="activation_annulled",
+                            generation=1,
+                            receipts=receipts,
+                            targets=[],
+                        )
+                    else:
+                        rows[row_id] = GATE.Row(state="rollout", generation=0, receipts={}, targets=[])
+            return rows
+
+        modes = {domain: "legacy" for domain in GATE.PROFILE_DOMAIN_ROWS}
+        quota_rows = GATE.PROFILE_DOMAIN_ROWS["quota"]
+        bindings: dict[str, tuple[str, str, str] | None] = {
+            row_id: None for row_ids in GATE.PROFILE_DOMAIN_ROWS.values() for row_id in row_ids
+        }
+
+        shared: dict[str, GATE.Receipt | None] = {row_id: annulment_receipt("6" * 40) for row_id in quota_rows}
+        GATE.validate_public_profile_transitions(build_rows(shared), modes, bindings)
+
+        divergent = dict(shared)
+        divergent[quota_rows[0]] = annulment_receipt("a" * 40)
+        with self.assertRaisesRegex(GATE.GateError, "share one annulment event"):
+            GATE.validate_public_profile_transitions(build_rows(divergent), modes, bindings)
+
+        partial = dict(shared)
+        partial[quota_rows[0]] = None
+        with self.assertRaisesRegex(GATE.GateError, "annulled atomically"):
+            GATE.validate_public_profile_transitions(build_rows(partial), modes, bindings)
+
+    def test_promotion_after_annulment_requires_fresh_descendant_candidate(self) -> None:
+        row_id = GATE.ROW_IDS[0]
+        annulled_candidate = "1" * 40
+        advanced_main = "6" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory).resolve()
+            receipt_dir = repo / GATE.RECEIPT_ROOT / row_id / "1"
+            receipt_dir.mkdir(parents=True)
+            previous = {
+                "schemaVersion": 2,
+                "rowId": row_id,
+                "authorityGeneration": 1,
+                "transition": "annulment",
+                "status": "active",
+                "approvedAt": "2026-07-28T00:00:00Z",
+                "activationAnnulment": {
+                    "candidate": {"candidateCommit": annulled_candidate},
+                    "advancedMainCommit": advanced_main,
+                },
+            }
+            receipt_path = receipt_dir / "annulment.json"
+            receipt_path.write_text(json.dumps(previous))
+            link = {
+                "transition": "annulment",
+                "path": f"{GATE.RECEIPT_ROOT}/{row_id}/1/annulment.json",
+                "sha256": hashlib.sha256(receipt_path.read_bytes()).hexdigest(),
+            }
+            approved_at = datetime(2026, 7, 29, tzinfo=UTC)
+            with (
+                mock.patch.object(GATE, "require_commit", side_effect=lambda _repo, value, _label: value),
+                mock.patch.object(GATE, "require_ancestor") as require_ancestor_mock,
+            ):
+                GATE.validate_superseded_authority(repo, row_id, 2, link, approved_at, "c" * 40)
+                self.assertIn(
+                    mock.call(
+                        repo,
+                        advanced_main,
+                        "c" * 40,
+                        "promotion after annulment replacement candidate",
+                    ),
+                    require_ancestor_mock.call_args_list,
+                )
+                with self.assertRaisesRegex(GATE.GateError, "fresh replacement candidate"):
+                    GATE.validate_superseded_authority(repo, row_id, 2, link, approved_at, annulled_candidate)
+
+                def reject_replacement(_repo: Path, _ancestor: str, _descendant: str, label: str) -> None:
+                    if label == "promotion after annulment replacement candidate":
+                        raise GATE.GateError(f"{label}: not a descendant")
+
+                require_ancestor_mock.side_effect = reject_replacement
+                with self.assertRaisesRegex(GATE.GateError, "replacement candidate"):
+                    GATE.validate_superseded_authority(repo, row_id, 2, link, approved_at, "c" * 40)
 
     def test_premature_legacy_deleted_state_is_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -429,11 +729,11 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             (repo / "crates/openburnbar-domain-core/union-abi-manifest.json").write_text(
                 json.dumps({"coreVersion": "0.3.0", "abiVersion": 3, "sourceSha256": "2" * 64})
             )
-            (repo / "crates/openburnbar-domain-core/Cargo.toml").write_text('[workspace]\n[workspace.package]\nversion = "0.3.0"\n')
+            (repo / "crates/openburnbar-domain-core/Cargo.toml").write_text(
+                '[workspace]\n[workspace.package]\nversion = "0.3.0"\n'
+            )
             profiles = json.loads((ROOT / GATE.BUILD_PROFILE_PATH).read_text())
-            profiles["profiles"]["public-production"]["modes"] = {
-                domain: "legacy" for domain in profiles["domains"]
-            }
+            profiles["profiles"]["public-production"]["modes"] = {domain: "legacy" for domain in profiles["domains"]}
             (repo / GATE.BUILD_PROFILE_PATH).write_text(json.dumps(profiles))
             (repo / "config/domain-core-legacy-deletion.json").write_text('{"state":"rollout"}\n')
             subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
@@ -470,6 +770,15 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             drift = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
             with self.assertRaisesRegex(GATE.GateError, "only profile"):
                 GATE.validate_activation_closure(repo, candidate, drift)
+
+    def test_historical_activation_closure_accepts_trusted_manifest_refresh(self) -> None:
+        candidate = "3efe9feecb4bb10ca67b21109914b2f0f8e40601"
+        activation = "6d17960b8969d5eff8620fa21184b1a5b0958602"
+        changed_paths = GATE.activation_changed_paths(ROOT, candidate, activation)
+        self.assertIn(GATE.CONTROL_PLANE_MANIFEST_PATH, changed_paths)
+        proof = GATE.validate_activation_closure(ROOT, candidate, activation)
+        self.assertEqual(proof["candidateCommit"], candidate)
+        self.assertEqual(proof["activationCommit"], activation)
 
     def test_actual_deletion_head_requires_official_main_and_exact_approval(
         self,
@@ -985,9 +1294,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             (root / "config").mkdir()
-            (root / GATE.DELETION_REVIEWERS_PATH).write_text(
-                json.dumps({"schemaVersion": 1, "reviewers": []})
-            )
+            (root / GATE.DELETION_REVIEWERS_PATH).write_text(json.dumps({"schemaVersion": 1, "reviewers": []}))
             with self.assertRaisesRegex(GATE.GateError, "at least one qualified reviewer"):
                 GATE.load_deletion_reviewers(root)
             self.assertEqual(
@@ -1372,7 +1679,6 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                     domain="cloudVault",
                 )
 
-
     def test_rollback_receipt_rejects_substituted_authority_and_self_approval(self) -> None:
         candidate = {
             "candidateCommit": "1" * 40,
@@ -1420,8 +1726,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             "candidate": candidate,
             "activation": activation,
             "authority": {
-                key: copy.deepcopy(authority[key])
-                for key in ("candidateBundleSha256", "sourceRun", "promotionSigner")
+                key: copy.deepcopy(authority[key]) for key in ("candidateBundleSha256", "sourceRun", "promotionSigner")
             },
             "retainedRollbackArtifact": copy.deepcopy(authority["retainedRollbackArtifact"]),
             "approverAuthority": {
@@ -1458,7 +1763,12 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             ("source run", ("authority", "sourceRun", "runAttempt"), 99, "source and promotion authority"),
             ("signer run", ("authority", "promotionSigner", "runAttempt"), 99, "source and promotion authority"),
             ("artifact digest", ("retainedRollbackArtifact", "artifactSha256"), "c" * 64, "retained rollback artifact"),
-            ("provenance digest", ("retainedRollbackArtifact", "provenanceSha256"), "c" * 64, "retained rollback artifact"),
+            (
+                "provenance digest",
+                ("retainedRollbackArtifact", "provenanceSha256"),
+                "c" * 64,
+                "retained rollback artifact",
+            ),
             ("trusted main", ("approverAuthority", "trustedMainCommit"), "c" * 40, "protected trusted main"),
             ("catalog", ("approverAuthority", "catalogSha256"), "c" * 64, "catalog digest"),
         )
@@ -1608,8 +1918,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                             "runId": 30 + index,
                             "runAttempt": 2,
                             "runInvocationUri": (
-                                "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/"
-                                f"{30 + index}/attempts/2"
+                                f"https://github.com/Imagine-That-Ai/BurnBar/actions/runs/{30 + index}/attempts/2"
                             ),
                         },
                         "actionRun": {
@@ -1828,7 +2137,9 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             )
             + "\n"
         )
-        (repo / "crates/openburnbar-domain-core/Cargo.toml").write_text('[workspace]\n[workspace.package]\nversion = "0.3.0"\n')
+        (repo / "crates/openburnbar-domain-core/Cargo.toml").write_text(
+            '[workspace]\n[workspace.package]\nversion = "0.3.0"\n'
+        )
         (repo / GATE.PROMOTION_POLICY_PATH).write_text((ROOT / GATE.PROMOTION_POLICY_PATH).read_text())
         (repo / GATE.PROMOTION_EVALUATOR_PATH).write_text((ROOT / GATE.PROMOTION_EVALUATOR_PATH).read_text())
         subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
@@ -1886,9 +2197,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             destination.write_text((ROOT / relative).read_text())
         profile_path = repo / GATE.BUILD_PROFILE_PATH
         profiles = json.loads(profile_path.read_text())
-        profiles["profiles"]["public-production"]["modes"] = {
-            domain: "legacy" for domain in profiles["domains"]
-        }
+        profiles["profiles"]["public-production"]["modes"] = {domain: "legacy" for domain in profiles["domains"]}
         profile_path.write_text(json.dumps(profiles))
         return repo, manifest
 
