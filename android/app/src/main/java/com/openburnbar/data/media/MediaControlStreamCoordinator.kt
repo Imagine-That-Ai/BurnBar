@@ -460,7 +460,8 @@ class MediaControlStreamCoordinator(
         var lastFailureReason: String? = null
         while (scope.isActive && supervisorJob?.isActive == true) {
             try {
-                _phase.value = preDialPhase(lastFailureReason)
+                // Retries keep the last failure visible so the UI stays actionable.
+                _phase.value = if (lastFailureReason == null) Phase.Dialing else Phase.Reconnecting(0, lastFailureReason)
                 logInfo("Mercury control dial attempt=${attempt + 1} connectionID=$connectionID")
                 val stream = dialer.dial(uid, connectionID)
                 val classifyFrame = HermesRealtimeRelayFrame(
@@ -515,16 +516,6 @@ class MediaControlStreamCoordinator(
         activeUID = null
         activeConnectionID = null
         _activePair.value = null
-    }
-
-    /**
-     * The first dial presents as Dialing; every retry keeps the last failure
-     * visible so the UI can stay actionable (e.g. trusted-device approval).
-     */
-    private fun preDialPhase(lastFailureReason: String?): Phase = if (lastFailureReason == null) {
-        Phase.Dialing
-    } else {
-        Phase.Reconnecting(nextAttemptInMillis = 0, lastFailureReason = lastFailureReason)
     }
 
     private suspend fun recordDialFailure(connectionID: String, error: Throwable): String {
