@@ -67,6 +67,51 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertEqual(reason, .entitlementMissing)
     }
 
+    func testEntitlementRefreshCompletesBeforeAdmissionReadsState() async {
+        var entitlement = MacMediaCapabilityGate.EntitlementState(
+            active: false,
+            fileTransfer: false,
+            screenShare: false,
+            videoCall: false
+        )
+        var refreshCount = 0
+        let gate = MacMediaCapabilityGate(
+            entitlementProvider: { entitlement },
+            entitlementRefreshProvider: {
+                refreshCount += 1
+                entitlement = self.happyEntitlement
+            },
+            usageProvider: { self.zeroUsage },
+            budgetProvider: { self.normalBudget },
+            concurrentSessionsProvider: { _ in 0 },
+            killSwitchProvider: { false }
+        )
+
+        let result = await gate.check(
+            feature: .screenShare,
+            sessionDurationLimitSeconds: nil,
+            sessionByteBudget: nil
+        )
+
+        XCTAssertEqual(refreshCount, 1)
+        XCTAssertTrue(result.isAllowed)
+    }
+
+    func testMediaSessionErrorsProvideActionableDescriptions() {
+        XCTAssertEqual(
+            MediaSessionError.denied(reason: .entitlementMissing).localizedDescription,
+            "Screen sharing requires an active Cloud Pro or Ultra subscription."
+        )
+        XCTAssertEqual(
+            MediaSessionError.captureFailed.localizedDescription,
+            "The Mac could not start screen capture."
+        )
+        XCTAssertEqual(
+            MediaSessionError.encodeFailed.localizedDescription,
+            "The Mac could not start the video encoder."
+        )
+    }
+
     func testSharedMediaEntitlementMappingFailsClosedUntilMediaOrProMaxEntitlementIsActive() {
         let free = MacMediaCapabilityGate.entitlementState(hostedMediaIsActive: false, tier: .free)
         XCTAssertFalse(free.active)
