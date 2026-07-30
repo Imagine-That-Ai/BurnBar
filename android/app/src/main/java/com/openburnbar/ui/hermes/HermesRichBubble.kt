@@ -54,7 +54,7 @@ fun HermesRichBubble(
             }
         }
     val inlineContent =
-        remember(text, baseSize, onAtomTap) {
+        remember(runs, baseSize, onAtomTap) {
             buildInlineContentMap(runs, baseSize, onAtomTap)
         }
     val annotated =
