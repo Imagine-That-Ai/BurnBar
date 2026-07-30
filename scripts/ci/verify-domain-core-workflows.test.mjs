@@ -640,6 +640,16 @@ test("promotion-contracts gives its trusted evaluator a bounded shallow checkout
   );
   assert.match(
     job,
+    /ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.merge_group\.base_sha \|\| github\.sha \}\}/u,
+    "merge-group governance must execute the evaluator from the protected base commit",
+  );
+  assert.match(
+    job,
+    /DOMAIN_CORE_BASE_REF: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.merge_group\.base_sha \|\| github\.event\.before \|\| '' \}\}/u,
+    "merge-group governance must compare the candidate to the exact protected base",
+  );
+  assert.match(
+    job,
     /DOMAIN_CORE_CANDIDATE_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}[\s\S]*?--expected-candidate-commit "\$DOMAIN_CORE_CANDIDATE_SHA"/u,
   );
   assert.doesNotMatch(
@@ -792,6 +802,26 @@ test("domain-core-pr-gate aggregate count is 15 after adding both python contrac
     gate,
     /to_entries \| length == 15 and all\(\.value\.result == "success"\)/u,
     'domain-core-pr-gate must assert to_entries | length == 15 (was 13 before the two python contract jobs were added)',
+  );
+});
+
+test("domain-core-pr-gate trusts the merge-group base and budgets both full-history checkouts", () => {
+  const gate = workflowJob(core, "domain-core-pr-gate");
+  const timeout = gate.match(/^    timeout-minutes: (\d+)$/mu);
+  assert.ok(timeout, "domain-core-pr-gate must declare a timeout");
+  assert.ok(
+    Number.parseInt(timeout[1], 10) >= 60,
+    "domain-core-pr-gate must leave enough time for two degraded full-history checkouts and absence verification",
+  );
+  assert.match(
+    gate,
+    /Check out trusted default-branch absence evaluator[\s\S]*?ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.merge_group\.base_sha \|\| github\.sha \}\}/u,
+    "merge-group absence verification must run from the protected base evaluator",
+  );
+  assert.match(
+    gate,
+    /--base-ref "\$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.merge_group\.base_sha \|\| github\.event\.before \}\}"/u,
+    "the bootstrap fallback must receive the exact merge-group base",
   );
 });
 

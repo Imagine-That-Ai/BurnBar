@@ -419,6 +419,26 @@ test("re-attests every active domain across two incremental release epochs", () 
   );
 });
 
+test("release resolver recognizes only the fail-closed activation-annulment supersession contract", () => {
+  const source = readFileSync(
+    new URL("./domain-core-activation.mjs", import.meta.url),
+    "utf8",
+  );
+  for (const marker of [
+    'annulment: "annulment.json"',
+    '"promotionReceiptSha256"',
+    '"advancedMainCommit"',
+    '"release_train_advanced_before_stable_receipt"',
+    '"replacementCandidateRequired"',
+    "previous activation annulment closure is invalid",
+    "previous activation annulment main advance is invalid",
+    "promotion after annulment must attest a fresh replacement candidate",
+    "promotion after annulment must descend from the advanced main commit",
+  ]) {
+    assert.match(source, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Adversarial attestation-authority tests (PR #1820 review blockers).
 //

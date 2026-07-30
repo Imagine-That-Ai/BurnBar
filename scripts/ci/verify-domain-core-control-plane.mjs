@@ -80,6 +80,7 @@ const SEED_PATHS = Object.freeze([
   "scripts/ci/write_burnbar_source_provenance.py",
   "scripts/ci/check_agpl_legal_release_review.py",
   "scripts/lib/branch-protection-drift.mjs",
+  "scripts/ops/create-domain-core-activation-annulment-receipt.py",
   "scripts/ops/create-domain-core-deletion-plan.py",
   "scripts/ops/create-domain-core-promotion-receipt.py",
   "scripts/ops/create-domain-core-rollback-receipt.py",
