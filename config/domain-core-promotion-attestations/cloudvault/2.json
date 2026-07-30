@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 2,
+  "authorityScope": "cloudvault",
+  "authorityGeneration": 2,
+  "candidate": {
+    "candidateCommit": "b270370e2615a7b20e2979e62d696d3cee293972",
+    "coreVersion": "0.1.0",
+    "abiVersion": 3,
+    "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+  },
+  "unsignedBundle": {
+    "path": "config/domain-core-promotion-bundles/cloudvault/2.json",
+    "sha256": "1d0ba9f8387a9228850b79e6b439ef45bd064043ebc92455a7f9c931ab73330c",
+    "sourceRunId": 30554906920,
+    "sourceRunAttempt": 1
+  },
+  "provenance": {
+    "path": "config/domain-core-promotion-provenance/cloudvault/2.json",
+    "sha256": "7a45857a806784ffaee4ac4286a7ca1b2a6779c38f9cef056e5b013c1b632699",
+    "signerWorkflow": ".github/workflows/domain-core-promotion-proof.yml",
+    "signerRunId": 30559811743,
+    "signerRunAttempt": 3,
+    "trustedMainCommit": "b270370e2615a7b20e2979e62d696d3cee293972",
+    "policySha256": "4e5b800a20c5e3a3176430eb2b8baa75443a57a167966793024b59e67f3e82c8",
+    "evaluatorSha256": "609ad9b3ee25d4b660c221d80d7e68b6562830904484f7b8e684a4d83f8b8dec"
+  },
+  "status": "attested",
+  "generatedAt": "2026-07-30T16:24:39Z",
+  "evidenceUri": "https://github.com/Imagine-That-Ai/BurnBar/attestations/38001476"
+}
