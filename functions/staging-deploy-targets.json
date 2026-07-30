@@ -33,6 +33,18 @@
       "module": "./callables/cliLink.js",
       "export": "pollCliLink"
     },
+    "bindAppCheckAttestation": {
+      "module": "./callables/escrowDeviceCallables.js",
+      "export": "bindAppCheckAttestation"
+    },
+    "issueHighRiskActionNonce": {
+      "module": "./callables/escrowDeviceCallables.js",
+      "export": "issueHighRiskActionNonce"
+    },
+    "publishPhoneControlAuthority": {
+      "module": "./callables/phoneControlCallables.js",
+      "export": "publishPhoneControlAuthority"
+    },
     "createStripeBurnBarProCheckoutSession": {
       "module": "./callables/stripe.js",
       "export": "createStripeBurnBarProCheckoutSession"

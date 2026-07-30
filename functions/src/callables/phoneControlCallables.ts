@@ -21,7 +21,8 @@ import {
 } from "../appCheckAttestation.js";
 import { db } from "../adminRuntime.js";
 import { logInfo, onCallProduction } from "../logging.js";
-import { assertActiveBurnBarCloudProEntitlement, boundedTrimmedString } from "./shared.js";
+import { assertActiveBurnBarCloudProEntitlement } from "./shared/entitlements.js";
+import { boundedTrimmedString } from "./shared/validators.js";
 import { recordOrUndefined } from "../guards.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import {

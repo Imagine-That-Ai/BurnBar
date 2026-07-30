@@ -45,9 +45,9 @@ fun HermesRichBubble(
     codeBackground: Color = MaterialTheme.colorScheme.surfaceVariant,
     onAtomTap: ((HermesAtom) -> Unit)? = null,
 ) {
-    val runs = remember(text) { HermesAtomParser.parse(text) }
+    val runs = remember(text, isStreaming) { hermesRichRuns(text, isStreaming) }
     val inlineContent =
-        remember(text, baseSize, onAtomTap) {
+        remember(runs, baseSize, onAtomTap) {
             buildInlineContentMap(runs, baseSize, onAtomTap)
         }
     val annotated =
@@ -62,6 +62,17 @@ fun HermesRichBubble(
         inlineContent = inlineContent,
         modifier = modifier,
     )
+}
+
+internal fun hermesRichRuns(text: String, isStreaming: Boolean): List<HermesAtomRun> {
+    val contentIsComplete = !isStreaming
+    val runs =
+        if (contentIsComplete) {
+            HermesAtomParser.parse(text)
+        } else {
+            listOf(HermesAtomRun.Text(text))
+        }
+    return runs
 }
 
 /**

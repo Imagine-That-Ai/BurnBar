@@ -9,7 +9,7 @@ import { createHash, createPublicKey, verify as verifySignature } from "node:cry
 import { HttpsError } from "firebase-functions/v2/https";
 
 import { boundedInteger, requireBase64Like } from "./computerUseSecurityCodecs.js";
-import { boundedTrimmedString } from "./shared.js";
+import { boundedTrimmedString } from "./shared/validators.js";
 
 export const LINUX_APP_CHECK_ATTESTATION_KIND = "device-key-v1" as const;
 export const LINUX_APP_CHECK_ENROLLMENT_DOMAIN = "openburnbar.linux.appcheck.enroll.v1" as const;

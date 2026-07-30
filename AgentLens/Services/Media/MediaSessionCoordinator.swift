@@ -477,10 +477,38 @@ protocol MediaStreamSink: Sendable {
     func close() async
 }
 
-enum MediaSessionError: Error, Equatable {
+enum MediaSessionError: Error, Equatable, LocalizedError {
     case denied(reason: MediaCapabilityDenialReason)
     case captureFailed
     case encodeFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .denied(let reason):
+            switch reason {
+            case .entitlementMissing:
+                return "Screen sharing requires an active Cloud Pro or Ultra subscription."
+            case .entitlementExpired:
+                return "The screen-sharing subscription has expired."
+            case .dailyCapReached:
+                return "The daily screen-sharing limit has been reached."
+            case .sessionCapReached:
+                return "This screen-sharing session reached its limit."
+            case .concurrentSessionCapReached:
+                return "Too many screen-sharing sessions are already active."
+            case .budgetSoftCapReached:
+                return "Screen sharing is temporarily limited by the service budget."
+            case .budgetHardCapReached:
+                return "Screen sharing is temporarily unavailable because the service budget was reached."
+            case .killSwitchActive:
+                return "Screen sharing is temporarily disabled."
+            }
+        case .captureFailed:
+            return "The Mac could not start screen capture."
+        case .encodeFailed:
+            return "The Mac could not start the video encoder."
+        }
+    }
 }
 
 private extension MediaCapabilityDenialReason {

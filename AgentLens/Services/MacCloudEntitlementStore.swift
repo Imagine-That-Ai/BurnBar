@@ -388,6 +388,8 @@ final class MacCloudEntitlementStore: ObservableObject {
     private var storeKitProvenance: ComputerUseAuthorityProvenance?
     private(set) var computerUseAuthorityProvenance: ComputerUseAuthorityProvenance?
     private var hasCompletedComputerUseServerResolution = false
+    private var hasCompletedMediaServerResolution = false
+    private var lastMediaServerResolutionAt: Date?
 
     var hasAuthoritativeComputerUseEntitlementSnapshot: Bool {
         computerUseAuthorityProvenance != nil
@@ -500,6 +502,80 @@ final class MacCloudEntitlementStore: ObservableObject {
         }
     }
 
+    /// Resolve media admission from the server before the first screen-share,
+    /// call, or file-transfer request. Firestore snapshot listeners are
+    /// intentionally asynchronous, so consulting their default state during
+    /// app startup can briefly misclassify an active cross-platform subscriber
+    /// as Free. This bounded refresh closes that race while retaining the
+    /// listener for subsequent live updates.
+    func refreshMediaAuthorityIfNeeded(now: Date = Date()) async {
+        if hasCompletedMediaServerResolution,
+           let lastMediaServerResolutionAt,
+           now.timeIntervalSince(lastMediaServerResolutionAt)
+            < ComputerUseCapabilityFreshness.maximumSourceObservationAge / 2 {
+            return
+        }
+        guard FirebaseApp.app() != nil,
+              let uid = signedInUID,
+              !uid.isEmpty else { return }
+
+        let entitlements = Firestore.firestore()
+            .collection("users").document(uid)
+            .collection("entitlements")
+        do {
+            for documentID in [
+                "hosted_quota_sync",
+                "hosted_computer_use_sync",
+                "burnbar_pro_max",
+                "burnbar_ultra"
+            ] {
+                let snapshot = try await entitlements
+                    .document(documentID)
+                    .getDocument(source: .server)
+                // Each await suspends on the main actor, so an auth-state
+                // change can restart the listener mid-refresh. Discard
+                // results fetched for the previous user instead of applying
+                // them to the newly signed-in account.
+                guard signedInUID == uid else { return }
+                guard !snapshot.metadata.isFromCache else { continue }
+                applyServerMembershipSnapshot(
+                    documentID: documentID,
+                    data: snapshot.data().map(MacCloudEntitlementDocument.init),
+                    exists: snapshot.exists,
+                    observedAt: now
+                )
+            }
+
+            let mediaSnapshot = try await entitlements
+                .document("hosted_media_sync")
+                .getDocument(source: .server)
+            guard signedInUID == uid else { return }
+            if mediaSnapshot.metadata.isFromCache == false,
+               mediaSnapshot.exists,
+               let data = mediaSnapshot.data() {
+                applyHostedMedia(data: MacCloudEntitlementDocument(data))
+            } else if mediaSnapshot.metadata.isFromCache == false {
+                clearHostedMediaEntitlement()
+            }
+
+            hasCompletedMediaServerResolution = true
+            lastMediaServerResolutionAt = now
+            error = nil
+            await refreshStoreKitEntitlements()
+        } catch {
+            // A failed fetch for a previous user must not clobber the state
+            // restartListener already reset for the current identity.
+            guard signedInUID == uid else { return }
+            hasCompletedMediaServerResolution = false
+            lastMediaServerResolutionAt = nil
+            self.error = error.localizedDescription
+            AppLogger.sync.error(
+                "mac_media_entitlement_server_refresh_failed",
+                metadata: ["error": error.localizedDescription]
+            )
+        }
+    }
+
     private func restartListener(uid: String?) {
         let uidChanged = signedInUID != uid
         signedInUID = uid
@@ -518,6 +594,8 @@ final class MacCloudEntitlementStore: ObservableObject {
         hostedQuotaProvenance = nil
         hostedComputerUseProvenance = nil
         hasCompletedComputerUseServerResolution = false
+        hasCompletedMediaServerResolution = false
+        lastMediaServerResolutionAt = nil
         proMaxSourceState = .missing
         ultraSourceState = .missing
         proMaxProvenance = nil

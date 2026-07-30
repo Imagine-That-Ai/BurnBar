@@ -40,6 +40,7 @@ def test_license_posture_workflow_runs_all_release_gates() -> None:
     # detection silently skips every gate) and must actually run the
     # compliance test suite.
     assert "submodules: recursive" in workflow
+    assert "timeout-minutes: 60" in workflow
     assert "python -m pip install pytest cryptography" in workflow
     assert "./scripts/build-domain-core-python.sh" in workflow
     assert "python -m pytest tests/ -q" in workflow

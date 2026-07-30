@@ -12,7 +12,7 @@ import { createHash, createPublicKey, verify as verifySignature } from "node:cry
 import { HttpsError } from "firebase-functions/v2/https";
 
 import { recordOrUndefined } from "../guards.js";
-import { boundedTrimmedString } from "./shared.js";
+import { boundedTrimmedString } from "./shared/validators.js";
 
 export const ESCROW_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android", "Linux"]);
 export const ESCROW_WEB_PLATFORM = "Web";

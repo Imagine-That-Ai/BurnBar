@@ -14,14 +14,20 @@ on:
 jobs:
   detect-public-macos-download-change:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # This detector needs every commit/tree to compare PR and merge-group
+    # candidates against their exact base, but it never reads repository file
+    # contents. Avoid downloading the large blob pack and leave enough time for
+    # GitHub-hosted checkout degradation without weakening the fail-closed gate.
+    timeout-minutes: 60
     outputs:
       changed: ${{ steps.detect.outputs.changed }}
       gate_changed: ${{ steps.detect.outputs.gate_changed }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
+          persist-credentials: false
           fetch-depth: 0
+          filter: blob:none
 
       - id: detect
         name: Detect public macOS download config changes

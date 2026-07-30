@@ -30,6 +30,12 @@ console.log("Self-test: verify-gitleaks-workflow-boundary.mjs\n");
 expect("current security-pr workflow passes", currentWorkflow, true);
 
 expect(
+  "regressed full-history timeout fails",
+  currentWorkflow.replace("timeout-minutes: 60", "timeout-minutes: 15"),
+  false,
+);
+
+expect(
   "direct head-branch config fails",
   currentWorkflow.replaceAll(
     '--config "${GITLEAKS_CONFIG_PATH}"',
