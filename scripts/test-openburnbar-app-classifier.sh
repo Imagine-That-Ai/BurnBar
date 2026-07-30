@@ -329,6 +329,7 @@ assert_false "unknown failure is not a SwiftPM dependency transient" is_swiftpm_
 media_admission_isolated_filter="OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
 media_retry_isolated_filter="OpenBurnBarTests/MediaSessionCoordinatorTests/testStartScreenShareRollsBackAfterCaptureStartFailureAndCanRetry"
 memory_activation_isolated_filter="OpenBurnBarTests/MemoryActivationEndToEndTests"
+memory_citation_jump_isolated_filter="OpenBurnBarTests/MemoryCitationJumpThreadResolutionTests"
 projection_chunker_isolated_filter="OpenBurnBarTests/ProjectionChunkerTests"
 projection_service_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceTests"
 projection_matters_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceMattersTests"
@@ -338,7 +339,7 @@ default_plan="$(
         "$repo_root/scripts/test-openburnbar-app.sh" --print-xcodebuild-plan
 )"
 assert_equals "default app test plan preserves all sensitive tests in a fresh host" \
-    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_admission_isolated_filter"$'\nmain-skip\t'"$media_retry_isolated_filter"$'\nmain-skip\t'"$memory_activation_isolated_filter"$'\nmain-skip\t'"$projection_chunker_isolated_filter"$'\nmain-skip\t'"$projection_service_isolated_filter"$'\nmain-skip\t'"$projection_matters_isolated_filter"$'\nmain-skip\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-only\t'"$media_admission_isolated_filter"$'\nfresh-host-only\t'"$media_retry_isolated_filter"$'\nfresh-host-only\t'"$memory_activation_isolated_filter"$'\nfresh-host-only\t'"$projection_chunker_isolated_filter"$'\nfresh-host-only\t'"$projection_service_isolated_filter"$'\nfresh-host-only\t'"$projection_matters_isolated_filter"$'\nfresh-host-only\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-expected-count\t126' \
+    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_admission_isolated_filter"$'\nmain-skip\t'"$media_retry_isolated_filter"$'\nmain-skip\t'"$memory_activation_isolated_filter"$'\nmain-skip\t'"$memory_citation_jump_isolated_filter"$'\nmain-skip\t'"$projection_chunker_isolated_filter"$'\nmain-skip\t'"$projection_service_isolated_filter"$'\nmain-skip\t'"$projection_matters_isolated_filter"$'\nmain-skip\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-only\t'"$media_admission_isolated_filter"$'\nfresh-host-only\t'"$media_retry_isolated_filter"$'\nfresh-host-only\t'"$memory_activation_isolated_filter"$'\nfresh-host-only\t'"$memory_citation_jump_isolated_filter"$'\nfresh-host-only\t'"$projection_chunker_isolated_filter"$'\nfresh-host-only\t'"$projection_service_isolated_filter"$'\nfresh-host-only\t'"$projection_matters_isolated_filter"$'\nfresh-host-only\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-expected-count\t128' \
     "$default_plan"
 
 memory_activation_test_count="$(
@@ -347,6 +348,13 @@ memory_activation_test_count="$(
 )"
 assert_true "memory activation suite stays in the fresh-host plan" \
     grep -Fqx $'fresh-host-only\t'"$memory_activation_isolated_filter" <<<"$default_plan"
+
+memory_citation_jump_test_count="$(
+    grep -Ec '^    func test[^ (]*\(' \
+        "$repo_root/AgentLensTests/Active/MemoryCitationJumpThreadResolutionTests.swift"
+)"
+assert_true "memory citation jump suite stays in the fresh-host plan" \
+    grep -Fqx $'fresh-host-only\t'"$memory_citation_jump_isolated_filter" <<<"$default_plan"
 
 projection_test_count=0
 for projection_test_file in "$repo_root"/AgentLensTests/Active/Projection*Tests.swift; do
@@ -364,8 +372,8 @@ for projection_test_file in "$repo_root"/AgentLensTests/Active/Projection*Tests.
     ))
 done
 declared_fresh_host_count="$(awk -F '\t' '$1 == "fresh-host-expected-count" { print $2 }' <<<"$default_plan")"
-assert_equals "fresh-host count covers memory, projection, and isolated media tests" \
-    "$((memory_activation_test_count + projection_test_count + 2))" \
+assert_equals "fresh-host count covers memory, citation jump, projection, and isolated media tests" \
+    "$((memory_activation_test_count + memory_citation_jump_test_count + projection_test_count + 2))" \
     "$declared_fresh_host_count"
 
 custom_plan="$(
