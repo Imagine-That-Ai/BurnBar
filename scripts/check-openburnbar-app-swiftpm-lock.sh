@@ -15,11 +15,53 @@ fi
 mkdir -p "$repo_root/.derived-data"
 mkdir -p "$cache_dir"
 
-lockfile_snapshot="$(mktemp "$repo_root/.derived-data/openburnbar-lock-check.Package.resolved.XXXXXX")"
-cp "$lockfile_path" "$lockfile_snapshot"
+# Package.resolved is shared mutable state for every invocation running in this
+# checkout. Without whole-check mutual exclusion, a failing invocation can
+# restore its clean snapshot while a concurrently succeeding invocation is
+# between writing legitimate resolver drift and diffing it, masking real drift
+# as a clean exit. Serialize the entire snapshot/resolve/restore/diff sequence
+# behind a directory lock so concurrent validator reruns queue instead of
+# interleaving.
+lock_dir="$repo_root/.derived-data/openburnbar-lock-check.lock"
+lock_wait_seconds="${OPENBURNBAR_LOCK_CHECK_LOCK_WAIT_SECONDS:-1800}"
+lock_acquired=0
+lockfile_snapshot=""
+
+acquire_lock() {
+  local deadline=$(( SECONDS + lock_wait_seconds ))
+  while ! mkdir "$lock_dir" 2>/dev/null; do
+    local holder_pid=""
+    if [[ -f "$lock_dir/pid" ]]; then
+      holder_pid="$(cat "$lock_dir/pid" 2>/dev/null || true)"
+    fi
+    if [[ -n "$holder_pid" ]] && ! kill -0 "$holder_pid" 2>/dev/null; then
+      # The previous holder died without releasing (e.g. SIGKILL). Reclaim the
+      # lock; if several waiters race here, exactly one wins the next mkdir.
+      rm -rf "$lock_dir"
+      continue
+    fi
+    if (( SECONDS >= deadline )); then
+      echo "Timed out after ${lock_wait_seconds}s waiting for the SwiftPM lockfile check lock at ${lock_dir} (held by pid ${holder_pid:-unknown})." >&2
+      exit 1
+    fi
+    sleep 0.2
+  done
+  printf '%s\n' "$$" >"$lock_dir/pid"
+  lock_acquired=1
+}
+
+release_lock() {
+  if (( lock_acquired )); then
+    rm -rf "$lock_dir"
+    lock_acquired=0
+  fi
+}
 
 cleanup() {
-  rm -f "$lockfile_snapshot"
+  if [[ -n "$lockfile_snapshot" ]]; then
+    rm -f "$lockfile_snapshot"
+  fi
+  release_lock
 }
 
 restore_lockfile() {
@@ -27,6 +69,11 @@ restore_lockfile() {
 }
 
 trap cleanup EXIT
+
+acquire_lock
+
+lockfile_snapshot="$(mktemp "$repo_root/.derived-data/openburnbar-lock-check.Package.resolved.XXXXXX")"
+cp "$lockfile_path" "$lockfile_snapshot"
 
 # xcodebuild's IDE project-model layer (IDEFoundation/DVTFoundation) intermittently
 # aborts while loading the OpenBurnBar.xcodeproj group tree during

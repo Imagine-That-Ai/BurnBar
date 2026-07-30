@@ -58,6 +58,26 @@ case "$FAKE_MODE" in
     printf 'partial-hard-failure-lockfile\n' >"$FAKE_LOCKFILE_PATH"
     exit 42
     ;;
+  drift-then-wait-for-peer)
+    printf 'legitimate-resolver-drift\n' >"$FAKE_LOCKFILE_PATH"
+    touch "$FAKE_DRIFT_WRITTEN_FLAG"
+    for _ in $(seq 1 50); do
+      if [[ -f "$FAKE_PEER_DONE_FLAG" ]]; then
+        break
+      fi
+      sleep 0.1
+    done
+    ;;
+  hard-failure-after-peer-drift)
+    for _ in $(seq 1 50); do
+      if [[ -f "$FAKE_DRIFT_WRITTEN_FLAG" ]]; then
+        break
+      fi
+      sleep 0.1
+    done
+    printf 'partial-hard-failure-lockfile\n' >"$FAKE_LOCKFILE_PATH"
+    exit 42
+    ;;
   *)
     echo "Unknown FAKE_MODE: $FAKE_MODE" >&2
     exit 2
@@ -123,5 +143,59 @@ fi
 cmp -s \
   "$failure_root/expected.Package.resolved" \
   "$failure_root/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+
+# Regression: concurrent invocations in the same checkout must serialize on the
+# whole-check lock. Without it, the hard-failure invocation restores its clean
+# snapshot after the drifting invocation has written legitimate resolver drift
+# but before that invocation diffs, so real drift would be masked as exit 0.
+concurrent_root="$(make_fixture concurrent)"
+concurrent_lockfile="$concurrent_root/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+printf 'committed-lockfile\n' >"$concurrent_root/expected.Package.resolved"
+drift_written_flag="$concurrent_root/drift-written"
+peer_done_flag="$concurrent_root/peer-done"
+
+PATH="$concurrent_root/fake-bin:$PATH" \
+  FAKE_MODE="hard-failure-after-peer-drift" \
+  FAKE_LOCKFILE_PATH="$concurrent_lockfile" \
+  FAKE_EXPECTED_LOCKFILE_PATH="$concurrent_root/expected.Package.resolved" \
+  FAKE_ATTEMPT_FILE="$concurrent_root/attempts-hard-failure" \
+  FAKE_DRIFT_WRITTEN_FLAG="$drift_written_flag" \
+  FAKE_PEER_DONE_FLAG="$peer_done_flag" \
+  OPENBURNBAR_LOCK_CHECK_MAX_ATTEMPTS=2 \
+  bash "$concurrent_root/scripts/check-openburnbar-app-swiftpm-lock.sh" \
+  >/dev/null 2>&1 &
+hard_failure_pid=$!
+
+PATH="$concurrent_root/fake-bin:$PATH" \
+  FAKE_MODE="drift-then-wait-for-peer" \
+  FAKE_LOCKFILE_PATH="$concurrent_lockfile" \
+  FAKE_EXPECTED_LOCKFILE_PATH="$concurrent_root/expected.Package.resolved" \
+  FAKE_ATTEMPT_FILE="$concurrent_root/attempts-drift" \
+  FAKE_DRIFT_WRITTEN_FLAG="$drift_written_flag" \
+  FAKE_PEER_DONE_FLAG="$peer_done_flag" \
+  OPENBURNBAR_LOCK_CHECK_MAX_ATTEMPTS=2 \
+  bash "$concurrent_root/scripts/check-openburnbar-app-swiftpm-lock.sh" \
+  >/dev/null 2>&1 &
+concurrent_drift_pid=$!
+
+set +e
+wait "$hard_failure_pid"
+concurrent_hard_failure_status=$?
+set -e
+if (( concurrent_hard_failure_status != 42 )); then
+  echo "Expected concurrent hard resolution failure status 42, got ${concurrent_hard_failure_status}" >&2
+  exit 1
+fi
+touch "$peer_done_flag"
+set +e
+wait "$concurrent_drift_pid"
+concurrent_drift_status=$?
+set -e
+if (( concurrent_drift_status == 0 )); then
+  echo "Expected the concurrent drift check to fail; a hard-failure peer's snapshot restore masked legitimate resolver drift" >&2
+  exit 1
+fi
+printf 'legitimate-resolver-drift\n' >"$concurrent_root/expected-drift.Package.resolved"
+cmp -s "$concurrent_root/expected-drift.Package.resolved" "$concurrent_lockfile"
 
 echo "SwiftPM lock retry isolation tests passed."
