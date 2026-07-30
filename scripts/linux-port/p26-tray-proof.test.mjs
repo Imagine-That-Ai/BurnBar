@@ -203,10 +203,10 @@ function fixture() {
     installedExecutable: "/usr/bin/openburnbar-linux-desktop",
     autostart: {
       path: "/etc/xdg/autostart/openburnbar.desktop",
-      exec: "openburnbar-linux-desktop --background",
+      exec: "/usr/bin/openburnbar-linux-desktop --background",
       packageOwned: true,
       manager: "dpkg",
-      packageName: "openburnbar",
+      packageName: "open-burn-bar",
       sha256: "a".repeat(64),
     },
     safety: {

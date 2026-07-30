@@ -46,7 +46,7 @@ function createFixture({ includeAutostart = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-live-install-'));
   const daemonBytes = Buffer.from('daemon-binary\n');
   const desktopBytes = Buffer.from('desktop-binary\n');
-  const autostartBytes = Buffer.from('[Desktop Entry]\nExec=openburnbar-linux-desktop --background\n');
+  const autostartBytes = Buffer.from('[Desktop Entry]\nExec=/usr/bin/openburnbar-linux-desktop --background\n');
   writeInstalled(root, '/usr/bin/openburnbar-daemon', daemonBytes);
   writeInstalled(root, '/usr/bin/openburnbar-linux-desktop', desktopBytes);
   if (includeAutostart) {
