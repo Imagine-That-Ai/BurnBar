@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "rowId": "pricing.kimi_historical",
+  "authorityGeneration": 2,
+  "transition": "promotion",
+  "status": "active",
+  "evidence": [
+    "https://github.com/Imagine-That-Ai/BurnBar/attestations/38001476"
+  ],
+  "approvedBy": "@Ajnunezg",
+  "approvedAt": "2026-07-30T16:26:09Z",
+  "commit": "b270370e2615a7b20e2979e62d696d3cee293972",
+  "promotionAttestation": {
+    "path": "config/domain-core-promotion-attestations/pricing/2.json",
+    "sha256": "8633eeedcc701c0b930db78dc5c1bb014a63165d23ebf200f247afd935583268",
+    "supersedes": {
+      "transition": "annulment",
+      "path": "config/domain-core-legacy-deletion-receipts/pricing.kimi_historical/1/annulment.json",
+      "sha256": "65931f0e19a98ebe9eb8a660acf6432ef59eeabe74c9f7490f053384fd60e0bf"
+    }
+  }
+}
