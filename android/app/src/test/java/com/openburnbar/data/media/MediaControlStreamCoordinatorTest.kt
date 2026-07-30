@@ -22,6 +22,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -50,9 +51,9 @@ class MediaControlStreamCoordinatorTest {
         coordinator.start(uid = "uid-1", connectionID = "conn-1")
 
         val phase =
-            coordinator.phase.first {
-                it is MediaControlStreamCoordinator.Phase.Reconnecting
-            } as MediaControlStreamCoordinator.Phase.Reconnecting
+            coordinator.phase
+                .filterIsInstance<MediaControlStreamCoordinator.Phase.Reconnecting>()
+                .first()
         assertEquals(failure, phase.lastFailureReason)
     }
 
