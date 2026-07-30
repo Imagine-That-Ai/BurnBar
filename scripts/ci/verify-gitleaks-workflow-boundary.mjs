@@ -10,6 +10,23 @@ const DEFAULT_WORKFLOW = ".github/workflows/security-pr.yml";
 
 export function findGitleaksWorkflowBoundaryViolations(workflowText) {
   const failures = [];
+  const secretDetectionJob = extractJob(workflowText, "secret-detection");
+  if (!secretDetectionJob) {
+    return ["security-pr.yml is missing the secret-detection job"];
+  }
+  requireIncludes(
+    failures,
+    secretDetectionJob,
+    "timeout-minutes: 60",
+    "Secret Detection must budget 60 minutes for degraded full-history checkout and scan",
+  );
+  requireIncludes(
+    failures,
+    secretDetectionJob,
+    "fetch-depth: 0",
+    "Secret Detection must fetch complete history",
+  );
+
   const runGitleaksStep = extractNamedStep(workflowText, "Run gitleaks");
   if (!runGitleaksStep) {
     return ["security-pr.yml is missing the Run gitleaks step"];
@@ -155,6 +172,25 @@ function extractNamedStep(source, stepName) {
     const line = lines[index];
     if (isBlank(line)) continue;
     if (indentOf(line) === 6 && /^      - (?:name|uses|run):/u.test(line)) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join("\n");
+}
+
+function extractJob(source, jobName) {
+  const lines = stripYamlComments(source).split("\n");
+  const start = lines.findIndex((line) =>
+    line.match(new RegExp(`^  ${escapeRegex(jobName)}:\\s*$`, "u")),
+  );
+  if (start === -1) return "";
+
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (isBlank(line)) continue;
+    if (indentOf(line) === 2 && /^  [a-z0-9_-]+:\s*$/u.test(line)) {
       end = index;
       break;
     }

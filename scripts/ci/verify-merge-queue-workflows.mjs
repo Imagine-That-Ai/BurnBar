@@ -17,9 +17,22 @@ const requiredWorkflows = [
   "pr-review.yml",
   "droid-review.yml",
   "domain-core-deletion-guard.yml",
+  "domain-core.yml",
 ];
 
 const failures = [];
+
+function jobBlock(source, jobName) {
+  const marker = `  ${jobName}:\n`;
+  const start = source.indexOf(marker);
+  if (start < 0) return null;
+  const remainder = source.slice(start + marker.length);
+  const nextJob = remainder.search(/^  [a-z0-9_-]+:\s*$/mu);
+  return nextJob < 0
+    ? source.slice(start)
+    : source.slice(start, start + marker.length + nextJob);
+}
+
 for (const name of requiredWorkflows) {
   const path = join(root, ".github", "workflows", name);
   if (!existsSync(path)) {
@@ -29,6 +42,126 @@ for (const name of requiredWorkflows) {
   const source = readFileSync(path, "utf8");
   if (!/^  merge_group:\s*$/mu.test(source)) {
     failures.push(`${name}: required check does not run for merge_group`);
+  }
+}
+
+const publicDownloadDetectors = [
+  ["public-macos-download-trust.yml", "detect-public-macos-download-change"],
+  ["public-linux-download-trust.yml", "detect-public-linux-download-change"],
+];
+
+for (const [name, jobName] of publicDownloadDetectors) {
+  const source = readFileSync(join(root, ".github", "workflows", name), "utf8");
+  const job = jobBlock(source, jobName);
+  if (job === null) {
+    failures.push(`${name}: ${jobName} job is missing`);
+    continue;
+  }
+
+  const timeout = job.match(/^    timeout-minutes:\s*(\d+)\s*$/mu);
+  if (timeout === null || Number.parseInt(timeout[1], 10) < 60) {
+    failures.push(
+      `${name}: ${jobName} must budget at least 60 minutes for degraded full-history checkout`,
+    );
+  }
+  if (!/^\s+fetch-depth:\s*0\s*$/mu.test(job)) {
+    failures.push(`${name}: ${jobName} must fetch complete history for exact base comparison`);
+  }
+  if (!/^\s+filter:\s*blob:none\s*$/mu.test(job)) {
+    failures.push(`${name}: ${jobName} must use a blobless partial clone`);
+  }
+  if (!/^\s+persist-credentials:\s*false\s*$/mu.test(job)) {
+    failures.push(`${name}: ${jobName} must not persist checkout credentials`);
+  }
+}
+
+{
+  const name = "domain-core.yml";
+  const source = readFileSync(join(root, ".github", "workflows", name), "utf8");
+  const job = jobBlock(source, "domain-core-pr-gate");
+  if (job === null) {
+    failures.push(`${name}: domain-core-pr-gate job is missing`);
+  } else {
+    const timeout = job.match(/^    timeout-minutes:\s*(\d+)\s*$/mu);
+    if (timeout === null || Number.parseInt(timeout[1], 10) < 60) {
+      failures.push(
+        `${name}: domain-core-pr-gate must budget at least 60 minutes for degraded full-history checkout`,
+      );
+    }
+    if (!/^\s+fetch-depth:\s*0\s*$/mu.test(job)) {
+      failures.push(
+        `${name}: domain-core-pr-gate must fetch the complete deletion candidate for ancestry proofs`,
+      );
+    }
+    if (/^\s+filter:/mu.test(job)) {
+      failures.push(
+        `${name}: domain-core-pr-gate clones must keep blobs for historical-content evidence reads`,
+      );
+    }
+    if (!/^\s+fetch-depth:\s*1\s*$/mu.test(job)) {
+      failures.push(
+        `${name}: domain-core-pr-gate trusted evaluator checkout must stay bounded at depth 1`,
+      );
+    }
+    for (const script of [
+      "scripts/ci/verify-domain-core-legacy-absence.py",
+      "scripts/ci/verify-domain-core-legacy-deletion.py",
+    ]) {
+      if (!job.includes(`            ${script}\n`)) {
+        failures.push(
+          `${name}: domain-core-pr-gate trusted evaluator sparse checkout must include ${script}`,
+        );
+      }
+    }
+    const credentialOptOuts = job.match(/^\s+persist-credentials:\s*false\s*$/gmu) ?? [];
+    if (credentialOptOuts.length < 2) {
+      failures.push(
+        `${name}: both domain-core-pr-gate checkouts must not persist credentials`,
+      );
+    }
+  }
+
+  const contracts = jobBlock(source, "promotion-contracts");
+  if (contracts === null) {
+    failures.push(`${name}: promotion-contracts job is missing`);
+  } else {
+    const timeout = contracts.match(/^    timeout-minutes:\s*(\d+)\s*$/mu);
+    if (timeout === null || Number.parseInt(timeout[1], 10) < 60) {
+      failures.push(
+        `${name}: promotion-contracts must budget at least 60 minutes for degraded full-history checkout`,
+      );
+    }
+    if (!/^\s+fetch-depth:\s*0\s*$/mu.test(contracts)) {
+      failures.push(
+        `${name}: promotion-contracts must fetch the complete deletion candidate for ancestry proofs`,
+      );
+    }
+    if (/^\s+filter:/mu.test(contracts)) {
+      failures.push(
+        `${name}: promotion-contracts clones must keep blobs for historical-content evidence reads`,
+      );
+    }
+    if (!/^\s+fetch-depth:\s*1\s*$/mu.test(contracts)) {
+      failures.push(
+        `${name}: promotion-contracts trusted evaluator checkout must stay bounded at depth 1`,
+      );
+    }
+    if (
+      !/^\s+sparse-checkout:\s*scripts\/ci\/verify-domain-core-legacy-deletion\.py\s*$/mu.test(
+        contracts,
+      )
+    ) {
+      failures.push(
+        `${name}: promotion-contracts trusted evaluator sparse checkout must include scripts/ci/verify-domain-core-legacy-deletion.py`,
+      );
+    }
+    const credentialOptOuts =
+      contracts.match(/^\s+persist-credentials:\s*false\s*$/gmu) ?? [];
+    if (credentialOptOuts.length < 2) {
+      failures.push(
+        `${name}: both promotion-contracts checkouts must not persist credentials`,
+      );
+    }
   }
 }
 
