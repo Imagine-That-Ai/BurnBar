@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Android Mercury trust recovery
+
+- **Made Android screen mirroring recover cleanly after a reinstall changes the
+  phone's trusted-device identity**: Mercury now preserves the actionable
+  approval failure throughout automatic reconnect attempts, directs the user
+  to the exact Trusted Devices screen on the Mac, disables misleading mirror
+  retries until approval is granted, and resumes automatically afterward.
+
 ### Fixed - Linux packaged launcher identity
 
 - **Pinned every DEB, RPM, and Arch desktop launcher to the package-owned

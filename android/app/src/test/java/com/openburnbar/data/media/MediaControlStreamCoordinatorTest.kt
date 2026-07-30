@@ -22,6 +22,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -35,6 +36,26 @@ private const val MILLIS_3 = 1024
 private const val MILLIS_4 = 0x61
 private const val UNCOMPRESSED_POINT_PREFIX = 0x04
 class MediaControlStreamCoordinatorTest {
+    @Test
+    fun reconnectingPhase_preservesLastDialFailureForActionableUi() = runTest {
+        val failure = "This mutation requires a trusted device for the requested trust root."
+        val coordinator =
+            MediaControlStreamCoordinator(
+                dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> error(failure) },
+                scope = backgroundScope,
+                initialBackoffMillis = 60_000L,
+                maxBackoffMillis = 60_000L,
+            )
+
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+
+        val phase =
+            coordinator.phase.first {
+                it is MediaControlStreamCoordinator.Phase.Reconnecting
+            } as MediaControlStreamCoordinator.Phase.Reconnecting
+        assertEquals(failure, phase.lastFailureReason)
+    }
+
     @Test
     fun requestMirror_sendsSwiftCompatibleMirrorRequestFrameAfterClassify() = runTest {
         val stream = RecordingStream()

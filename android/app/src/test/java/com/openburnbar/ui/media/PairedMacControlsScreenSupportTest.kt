@@ -85,6 +85,44 @@ class PairedMacControlsScreenSupportTest {
     }
 
     @Test
+    fun `trusted device approval failure stays actionable and does not restart`() {
+        val coordinator = mockk<MediaControlStreamCoordinator>()
+        val phase =
+            MediaControlStreamCoordinator.Phase.Reconnecting(
+                nextAttemptInMillis = 2_000L,
+                lastFailureReason = TRUSTED_DEVICE_APPROVAL_REQUIRED,
+            )
+
+        val result =
+            evaluateCheckMercury(
+                PairedMacControlsCheckMercuryInput(
+                    coordinator = coordinator,
+                    phase = phase,
+                    connectionID = "conn-7",
+                    activePair = activePair,
+                    app = mockk(),
+                ),
+            )
+
+        assertTrue(phase.requiresTrustedDeviceApproval())
+        assertEquals(TRUSTED_DEVICE_APPROVAL_MESSAGE, phase.userMessage())
+        assertTrue(phase.userMessage().contains("reconnects automatically"))
+        assertEquals(TRUSTED_DEVICE_APPROVAL_MESSAGE, result.immediateStatusMessage)
+        assertFalse(result.shouldRestartMercury)
+    }
+
+    @Test
+    fun `trusted device approval detection tolerates callable error decoration`() {
+        val phase =
+            MediaControlStreamCoordinator.Phase.Failed(
+                "PERMISSION_DENIED: Request requires a trusted device before publishing this trust root.",
+            )
+
+        assertTrue(phase.requiresTrustedDeviceApproval())
+        assertEquals(TRUSTED_DEVICE_APPROVAL_MESSAGE, phase.actionRequiredMessage())
+    }
+
+    @Test
     fun `a live coordinator reports ready and never restarts`() {
         val result = evaluateCheckMercury(
             PairedMacControlsCheckMercuryInput(
