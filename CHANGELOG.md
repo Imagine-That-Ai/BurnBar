@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Full-history CI checkout reliability
+
+- **Kept fail-closed compliance, secret-scanning, and public-download gates
+  alive through slow GitHub checkouts**: the recursive-submodule
+  product-license lane and full-history gitleaks scan now have enough runtime
+  headroom to execute, while the macOS and Linux public-download change
+  detectors use blobless full-history clones plus a bounded 60-minute ceiling.
+  All four lanes now reach their security logic instead of being canceled
+  during checkout.
+- **Kept the fail-closed Domain Core PR gate alive through slow checkouts**:
+  the required `Domain Core PR Gate` lane and its `promotion-contracts`
+  prerequisite now budget 60 minutes for their full-history
+  deletion-candidate clones (which must keep blobs for ancestry and
+  historical-content proofs), and each trusted default-branch evaluator
+  checkout stays bounded to a depth-1 sparse fetch of the evaluator scripts
+  instead of a second full-history clone.
+- **Removed a monolithic macOS test-host deadlock from the required app gate**:
+  the two cross-thread memory-citation database tests now run in the existing
+  fresh-host phase, where their focused suite completes deterministically,
+  while the exact fresh-host result count rises from 126 to 128 so neither
+  test can be skipped without failing the gate.
+
 ### Fixed - Z.ai cloud quota refresh
 
 - **Restored Z.ai quota refresh for both Coding Plan and standard API
