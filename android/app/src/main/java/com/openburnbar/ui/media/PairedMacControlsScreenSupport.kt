@@ -525,10 +525,8 @@ internal fun MediaControlStreamCoordinator.Phase.actionRequiredMessage(): String
  * stores it; clear it as soon as the coordinator recovers so a live Mercury
  * never keeps showing "Approval needed".
  */
-internal fun shouldClearTrustedDeviceApprovalStatus(
-    statusMessage: String?,
-    phase: MediaControlStreamCoordinator.Phase,
-): Boolean = statusMessage == TRUSTED_DEVICE_APPROVAL_MESSAGE && !phase.requiresTrustedDeviceApproval()
+internal fun shouldClearTrustedDeviceApprovalStatus(statusMessage: String?, phase: MediaControlStreamCoordinator.Phase): Boolean =
+    statusMessage == TRUSTED_DEVICE_APPROVAL_MESSAGE && !phase.requiresTrustedDeviceApproval()
 
 internal fun MediaControlStreamCoordinator.Phase.userMessage(): String {
     actionRequiredMessage()?.let { return it }
