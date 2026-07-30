@@ -421,7 +421,7 @@ function validateTranscript(
   );
   if (
     value.autostart.path !== "/etc/xdg/autostart/openburnbar.desktop" ||
-    value.autostart.exec !== "openburnbar-linux-desktop --background" ||
+    value.autostart.exec !== "/usr/bin/openburnbar-linux-desktop --background" ||
     value.autostart.enabled !== true ||
     value.autostart.ownedByPackage !== true ||
     value.autostart.loginStartObserved !== true ||
