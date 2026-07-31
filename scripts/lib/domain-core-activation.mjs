@@ -8,6 +8,14 @@ import { DOMAIN_CORE_PROTECTED_SIGNER_WORKFLOW } from "./domain-core-release-evi
 
 const FULL_SHA = /^[0-9a-f]{40}$/u;
 const DIGEST_RE = /^[0-9a-f]{64}$/u;
+const ACTIVATION_RECEIPT_KEYS = Object.freeze([
+  "candidateCommit",
+  "activationCommit",
+  "coreVersion",
+  "abiVersion",
+  "sourceSha256",
+  "changedPathsSha256",
+]);
 const REQUIRED_EXACT = new Set([
   "config/domain-core-build-profiles.json",
   "config/domain-core-legacy-deletion.json",
@@ -170,6 +178,19 @@ function canonicalSha256(value) {
     return JSON.stringify(item);
   };
   return createHash("sha256").update(canonical(value)).digest("hex");
+}
+
+export function domainCoreActivationReceiptClosure(value) {
+  const activation = requireExactKeys(value, [
+    "active",
+    ...ACTIVATION_RECEIPT_KEYS,
+  ]);
+  if (activation.active !== true) {
+    throw new Error("previous activation annulment closure is not active");
+  }
+  return Object.fromEntries(
+    ACTIVATION_RECEIPT_KEYS.map((key) => [key, activation[key]]),
+  );
 }
 
 export function activationChangedPaths(
@@ -584,7 +605,9 @@ function verifySupersededAuthority({
       requireHead: false,
     });
     if (
-      canonicalSha256(expectedActivation) !== canonicalSha256(activation)
+      canonicalSha256(
+        domainCoreActivationReceiptClosure(expectedActivation),
+      ) !== canonicalSha256(activation)
     ) {
       throw new Error("previous activation annulment closure is invalid");
     }
