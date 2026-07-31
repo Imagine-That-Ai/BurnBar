@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "files": {
     ".firebaserc": ["f37cd50ee6664116","5689e7440ae609ce","3452c9887b13fb11","791e49744a60b649"],
-    ".github/workflows/burnbar-ci-gate.yml": ["d0241336364f9a63","8b5a37e17d9d64af","856f5a513a59d57f","6537c8048acd9e53"],
+    ".github/workflows/burnbar-ci-gate.yml": ["32087be973dea8df","286d596347660830","187a70030c8e6077","b1a4006e90764e3a"],
     ".github/workflows/ci-impact.yml": ["837a7b55de0ce3df","41d4851e2cb1d2e1","75962bf07787f3b4","50c346d98c379c37"],
     ".github/workflows/deploy-hosting.yml": ["3f0ffaea3a4b6a90","fb47d1393218d4cb","64429aacc32be916","d84a20a7540df834"],
     ".github/workflows/deploy-production.yml": ["3171c8ceacfb62b9","513d9af869ce1f18","d469e656a0549462","5834f6b5958bbd5b"],
