@@ -174,18 +174,23 @@ assert.match(
 // so a match can never leak into a later, unrelated rule.
 assert.match(
   plans,
-  /\.billing \{[^}]*display: grid;[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[^}]*width: min\(100%, 19rem\);/,
+  /\.billing \{[^}]*display: grid;[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[^}]*width: min\(100%, 20rem\);/,
   "billing toggle must reserve equal, mobile-safe space for monthly and annual options"
 );
 assert.match(
   plans,
-  /@media \(max-width: 400px\) \{\s*\.billing__opt \{[^}]*padding: 0\.5rem 0\.4rem;/,
-  "billing options must compact on narrow phones so both tracks fit at 320px"
+  /<span class="billing__note mono">\s*<strong>Save ~\{headlineSave\}%<\/strong> with annual billing/,
+  "annual savings must be secondary copy outside the two equal billing controls"
+);
+assert.doesNotMatch(
+  plans,
+  /<button[^>]*data-billing-set="annual"[^>]*>[\s\S]*?billing__save[\s\S]*?<\/button>/,
+  "annual savings must not crowd the annual option inside the segmented control"
 );
 assert.match(
   plans,
-  /@media \(max-width: 340px\) \{\s*\.billing__save \{[^}]*display: none;/,
-  "billing savings badge must drop on ultra-narrow viewports"
+  /@media \(max-width: 400px\) \{\s*\.billing__opt \{[^}]*padding: 0\.5rem 0\.55rem;/,
+  "billing options must compact on narrow phones so both tracks fit at 320px"
 );
 for (const token of [
   "--plan-text-bright",

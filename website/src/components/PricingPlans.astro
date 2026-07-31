@@ -52,9 +52,11 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
         </button>
         <button class="billing__opt" data-billing-set="annual" aria-pressed="false">
           Annual
-          <span class="billing__save mono">save&nbsp;~{headlineSave}%</span>
         </button>
       </div>
+      <span class="billing__note mono">
+        <strong>Save ~{headlineSave}%</strong> with annual billing
+      </span>
     </div>
   )
 }
@@ -358,21 +360,26 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   /* ---------- billing toggle ---------- */
   .plans__billing {
     display: flex;
+    flex-direction: column;
+    align-items: center;
     justify-content: center;
+    gap: 0.7rem;
     margin-bottom: var(--s-6);
   }
   .billing {
     position: relative;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: min(100%, 19rem);
-    padding: 5px;
+    width: min(100%, 20rem);
+    padding: 0.35rem;
     border-radius: var(--r-pill);
     border: 1px solid var(--ink-line);
-    background: rgba(8, 8, 12, 0.6);
+    background: color-mix(in oklab, var(--glass-bg-elevated) 84%, var(--ink-base));
     backdrop-filter: blur(20px) saturate(160%);
     -webkit-backdrop-filter: blur(20px) saturate(160%);
-    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+    box-shadow:
+      var(--shadow-glass-soft),
+      inset 0 1px 0 color-mix(in oklab, var(--text-bright) 10%, transparent);
   }
   .billing__opt {
     position: relative;
@@ -380,74 +387,86 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.45rem;
-    padding: 0.5rem 0.75rem;
+    min-height: 2.7rem;
+    padding: 0.6rem 1rem;
     border-radius: var(--r-pill);
     font-size: 0.92rem;
-    font-weight: 600;
-    color: var(--text-mute);
-    transition: color var(--dur-base) var(--ease);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    color: var(--text-base);
+    transition:
+      color var(--dur-base) var(--ease),
+      transform var(--dur-fast) var(--ease);
     white-space: nowrap;
   }
+  .billing__opt:hover {
+    color: var(--text-bright);
+  }
   .billing__opt.is-active {
-    color: var(--ink-void);
+    color: #fff;
+    text-shadow: 0 1px 1px rgba(7, 6, 10, 0.25);
+  }
+  .billing__opt:active {
+    transform: scale(0.98);
+  }
+  .billing__opt:focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--core-amber) 72%, white);
+    outline-offset: -3px;
   }
   .billing__slider {
     position: absolute;
     z-index: 0;
-    top: 5px;
-    left: 5px;
-    bottom: 5px;
-    width: calc(50% - 5px);
+    top: 0.35rem;
+    left: 0.35rem;
+    bottom: 0.35rem;
+    width: calc(50% - 0.35rem);
     border-radius: var(--r-pill);
-    background: linear-gradient(135deg, var(--core-amber), var(--core-fire));
+    background: linear-gradient(135deg, var(--core-fire), var(--core-amber));
     box-shadow:
-      0 6px 18px -4px rgba(250, 107, 6, 0.5),
+      0 10px 24px -12px var(--core-glow),
       inset 0 1px 0 0 rgba(255, 255, 255, 0.4);
     transition: transform var(--dur-base) var(--ease);
   }
   .billing.is-annual .billing__slider {
     transform: translateX(100%);
   }
-  .billing__save {
-    font-size: 0.66rem;
-    letter-spacing: 0.02em;
-    padding: 2px 6px;
-    border-radius: var(--r-pill);
-    color: var(--status-exact);
-    border: 1px solid color-mix(in oklab, var(--status-exact) 40%, transparent);
-    background: color-mix(in oklab, var(--status-exact) 12%, transparent);
+  .billing__note {
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
     transition:
       color var(--dur-base) var(--ease),
-      border-color var(--dur-base) var(--ease),
-      background var(--dur-base) var(--ease);
+      transform var(--dur-base) var(--ease);
   }
-  .billing__opt.is-active .billing__save {
-    color: var(--ink-void);
-    border-color: rgba(7, 6, 10, 0.3);
-    background: rgba(7, 6, 10, 0.16);
+  .billing__note strong {
+    color: var(--status-exact);
+    font-weight: 700;
   }
-  /* Narrow phones: compact the annual savings badge so both equal-width
-     billing tracks fit inside a 320px viewport without overlapping the
-     slider or each other. */
+  .billing.is-annual + .billing__note {
+    color: var(--text-base);
+    transform: translateY(-1px);
+  }
+  .billing.is-annual + .billing__note strong {
+    color: var(--core-fire);
+  }
+  :root[data-theme="light"] .billing {
+    border-color: color-mix(in oklab, var(--core-fire) 18%, var(--ink-line));
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow:
+      0 16px 34px -26px rgba(22, 19, 14, 0.46),
+      inset 0 1px 0 rgba(255, 255, 255, 0.96);
+  }
+  /* Narrow phones keep the same balanced two-segment composition. */
   @media (max-width: 400px) {
     .billing__opt {
-      gap: 0.3rem;
-      padding: 0.5rem 0.4rem;
+      min-height: 2.55rem;
+      padding: 0.5rem 0.55rem;
       font-size: 0.88rem;
     }
-    .billing__save {
-      font-size: 0.6rem;
-      letter-spacing: 0;
-      padding: 2px 4px;
-    }
-  }
-  /* Ultra-narrow viewports (e.g. 280px folding-phone cover screens): the
-     badge cannot fit legibly, so drop it; each paid plan card still states
-     its own annual savings line. */
-  @media (max-width: 340px) {
-    .billing__save {
-      display: none;
+    .billing__note {
+      font-size: 0.62rem;
+      letter-spacing: 0.05em;
     }
   }
 
