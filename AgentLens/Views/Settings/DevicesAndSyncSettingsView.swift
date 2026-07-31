@@ -402,6 +402,10 @@ struct TrustedDevicesDetailView: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .accessibilityIdentifier("trusted-device.approve.\(device.id)")
+                    .accessibilityLabel(deviceActionAccessibilityLabel(
+                        action: device.isCurrentDevice ? "Approve This Mac" : MacCopy.approveDevice,
+                        device: device
+                    ))
                 }
 
                 if !device.isCurrentDevice {
@@ -412,6 +416,10 @@ struct TrustedDevicesDetailView: View {
                     .tint(.red)
                     .controlSize(.small)
                     .accessibilityIdentifier("trusted-device.revoke.\(device.id)")
+                    .accessibilityLabel(deviceActionAccessibilityLabel(
+                        action: MacCopy.revokeDevice,
+                        device: device
+                    ))
                 } else if device.trustState == .trusted {
                     Text("This Mac")
                         .font(DesignSystem.Typography.tiny)
@@ -451,6 +459,13 @@ struct TrustedDevicesDetailView: View {
     private func deviceIdentityLabel(_ device: MacTrustedDevice) -> String {
         let suffix = device.id.suffix(8)
         return "ID …\(suffix)"
+    }
+
+    /// VoiceOver users navigating by button need each action to name the exact
+    /// identity it mutates: retained same-name registrations otherwise produce
+    /// multiple indistinguishable "Revoke device" / "Approve device" controls.
+    private func deviceActionAccessibilityLabel(action: String, device: MacTrustedDevice) -> String {
+        "\(action), \(device.displayName), ID ending \(device.id.suffix(8))"
     }
 }
 
