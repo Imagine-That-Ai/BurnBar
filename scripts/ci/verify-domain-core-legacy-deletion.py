@@ -4006,11 +4006,7 @@ def _first_parent_activation_changed_paths(
                     f"domain-core {incidental_label} protected-main commit {commit} "
                     "must not change attested Rust source"
                 )
-            if any(
-                path.startswith(prefix)
-                for path in commit_paths
-                for prefix in DEPLOYED_ARTIFACT_PREFIXES
-            ):
+            if any(path.startswith(prefix) for path in commit_paths for prefix in DEPLOYED_ARTIFACT_PREFIXES):
                 raise GateError(
                     f"domain-core {incidental_label} protected-main commit {commit} "
                     "must not change deployed domain-core artifacts"
@@ -4039,9 +4035,7 @@ def _first_parent_activation_changed_paths(
         if line and line not in incidental_paths
     ]
     if not changed:
-        raise GateError(
-            f"domain-core {label} commit must change the committed authority profile and receipts"
-        )
+        raise GateError(f"domain-core {label} commit must change the committed authority profile and receipts")
     forbidden = sorted(
         path
         for path in changed
@@ -4054,9 +4048,7 @@ def _first_parent_activation_changed_paths(
             + ", ".join(forbidden)
         )
     if BUILD_PROFILE_PATH not in changed or "config/domain-core-legacy-deletion.json" not in changed:
-        raise GateError(
-            f"domain-core {label} must atomically change the public profile and authority ledger"
-        )
+        raise GateError(f"domain-core {label} must atomically change the public profile and authority ledger")
     return sorted(changed)
 
 
