@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Trusted device identity control
+
+- **Kept every distinct trusted-device registration visible and independently
+  revocable**: a phone reinstall or identity rotation can no longer hide a stale
+  trusted registration behind the replacement device's matching name and
+  platform. Trusted Devices now shows a short identity suffix for precise,
+  accessible revocation.
+
 ### Fixed - Audited GitHub release promotion
 
 - **Made stable release promotion a verified second phase**: tag publication
