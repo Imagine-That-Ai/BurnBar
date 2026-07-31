@@ -3,6 +3,7 @@ package com.openburnbar.data.square
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.google.firebase.FirebaseException
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
@@ -14,12 +15,26 @@ import com.openburnbar.data.cloud.CloudVaultAADContext
 import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.missions.MobileMissionConsoleHost
-import java.lang.IllegalStateException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.tasks.await
 
 // Raw numeric timestamps below this are epoch seconds (true through year 2286); at or above, already millis.
 private const val EPOCH_SECONDS_CUTOFF = 10_000_000_000L
 private const val CLI_SESSION_FETCH_LIMIT = 200
+
+// Bounded retry for transient Firebase failures (App Check refresh windows):
+// the bootstrap effect calls refreshFromCloud() exactly once per process, so a
+// single failed initial load would otherwise leave the inbox empty until the
+// screen is recreated. Three retries with doubling backoff (2s, 4s, 8s) cover
+// the short refresh window without turning the refresh into an unbounded loop.
+internal const val INBOX_REFRESH_MAX_RETRIES = 3
+internal const val INBOX_REFRESH_RETRY_BASE_DELAY_MS = 2_000L
+
+internal fun inboxRefreshRetryDelayMillis(failureCount: Int): Long {
+    val boundedFailures = failureCount.coerceIn(1, INBOX_REFRESH_MAX_RETRIES)
+    return INBOX_REFRESH_RETRY_BASE_DELAY_MS shl (boundedFailures - 1)
+}
 
 data class CLIAgentToolUse(
     val id: String,
@@ -92,7 +107,7 @@ data class CLIAgentSessionRecord(
 // timestamp. Reads the same `cli_sessions` mirror used by iOS so Codex,
 // Claude Code, and OpenClaw sessions appear in Android Hermes Square.
 
-class ThreadInboxStore private constructor(
+class ThreadInboxStore internal constructor(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
 ) {
@@ -131,42 +146,66 @@ class ThreadInboxStore private constructor(
         isLoading = true
         refreshError = null
         try {
-            val uid = auth.currentUser?.uid
-            if (uid.isNullOrBlank()) {
-                items = emptyList()
-                lastRefreshedAtEpoch = null
-                return
+            var failures = 0
+            while (true) {
+                try {
+                    refreshFromCloudOnce()
+                    refreshError = null
+                    return
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: FirebaseException) {
+                    // Firestore can reject a signed-in request while App Check is
+                    // refreshing or temporarily unavailable. This refresh runs from a
+                    // Compose LaunchedEffect, so letting that exception escape kills
+                    // MainActivity and can create a restart/ANR loop. Preserve the last
+                    // usable inbox, surface the bounded error state, and retry a
+                    // bounded number of times so a fresh process is not stuck with an
+                    // empty inbox after Firebase recovers (the bootstrap effect only
+                    // invokes this refresh once).
+                    refreshError = e.message ?: e::class.java.simpleName
+                    failures += 1
+                    if (failures > INBOX_REFRESH_MAX_RETRIES) return
+                    delay(inboxRefreshRetryDelayMillis(failures))
+                }
             }
-
-            // 1. Fetch CLI mirrored sessions
-            val snapshot =
-                firestore.collection("users")
-                    .document(uid)
-                    .collection("cli_sessions")
-                    .orderBy("updatedAt", Query.Direction.DESCENDING)
-                    .limit(CLI_SESSION_FETCH_LIMIT.toLong())
-                    .get()
-                    .await()
-
-            // Resolve the Cloud Vault key so sealed sessions (Mac writes the whole
-            // record sealed — transcript + customTitle inside `sealedPayload`) can be
-            // opened on-device. A missing key (vault not yet active here) leaves
-            // sealed docs unrenderable; legacy plaintext docs still parse without it.
-            val vaultKey =
-                runCatching {
-                    AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
-                }.getOrNull()
-
-            val parsed = snapshot.documents.mapNotNull { document -> parseCLISession(document.data.orEmpty(), document.id, uid, vaultKey) }
-            val parts = buildThreadInboxRefreshParts(parsed, historyStore, missionHost)
-            cliSessionsByItemID = parts.cliSessionsByItemID
-            items = parts.items
-            lastRefreshedAtEpoch = System.currentTimeMillis()
-        } catch (e: IllegalStateException) {
-            refreshError = e.message ?: e::class.java.simpleName
         } finally {
             isLoading = false
         }
+    }
+
+    private suspend fun refreshFromCloudOnce() {
+        val uid = auth.currentUser?.uid
+        if (uid.isNullOrBlank()) {
+            items = emptyList()
+            lastRefreshedAtEpoch = null
+            return
+        }
+
+        // 1. Fetch CLI mirrored sessions
+        val snapshot =
+            firestore.collection("users")
+                .document(uid)
+                .collection("cli_sessions")
+                .orderBy("updatedAt", Query.Direction.DESCENDING)
+                .limit(CLI_SESSION_FETCH_LIMIT.toLong())
+                .get()
+                .await()
+
+        // Resolve the Cloud Vault key so sealed sessions (Mac writes the whole
+        // record sealed — transcript + customTitle inside `sealedPayload`) can be
+        // opened on-device. A missing key (vault not yet active here) leaves
+        // sealed docs unrenderable; legacy plaintext docs still parse without it.
+        val vaultKey =
+            runCatching {
+                AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
+            }.getOrNull()
+
+        val parsed = snapshot.documents.mapNotNull { document -> parseCLISession(document.data.orEmpty(), document.id, uid, vaultKey) }
+        val parts = buildThreadInboxRefreshParts(parsed, historyStore, missionHost)
+        cliSessionsByItemID = parts.cliSessionsByItemID
+        items = parts.items
+        lastRefreshedAtEpoch = System.currentTimeMillis()
     }
 
     suspend fun updateSessionMetadata(

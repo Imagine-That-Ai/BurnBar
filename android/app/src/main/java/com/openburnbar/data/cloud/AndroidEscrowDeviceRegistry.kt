@@ -138,28 +138,51 @@ class AndroidEscrowDeviceRegistry(
         val publicKeyDataBase64 = CloudVaultCryptoSupport.encodeBase64(keypair.publicKeyData)
         val publicKeyRef = userRef.collection("escrow_public_keys")
             .document("${keypair.deviceId}_${keypair.keyVersion}")
-        val existing = publicKeyRef.get().await()
-        if (existing.exists()) {
-            val data = existing.data ?: emptyMap()
+
+        // Fast path: an ordinary get() can be served from the local cache when
+        // the device is offline, while client transactions always require the
+        // server. An already-registered device must keep resolving its vault key
+        // without connectivity (keyForReading registers before returning the
+        // locally stored key), so a readable matching document short-circuits
+        // here instead of forcing every startup through a transaction.
+        val cached = runCatching { publicKeyRef.get().await() }.getOrNull()
+        if (cached?.exists() == true) {
+            val data = cached.data ?: emptyMap()
             require(publicKeyDocumentMatches(data, keypair, publicKeyDataBase64)) {
                 "Escrow public key conflict for ${keypair.deviceId}_${keypair.keyVersion}."
             }
             return
         }
 
-        publicKeyRef
-            .set(
-                mapOf(
-                    "deviceId" to keypair.deviceId,
-                    "publicKeyData" to publicKeyDataBase64,
-                    "publicKeyFingerprint" to keypair.publicKeyFingerprint,
-                    "keyVersion" to keypair.keyVersion,
-                    "algorithm" to ESCROW_PUBLIC_KEY_ALGORITHM,
-                    "createdAt" to FieldValue.serverTimestamp(),
-                ),
-                SetOptions.merge(),
-            )
-            .await()
+        // Registration is reached by several account-scoped services during
+        // startup. A read-then-set race lets two callers both observe a missing
+        // document: the first create succeeds, while the second identical set is
+        // evaluated as an update and is correctly rejected by the immutable-key
+        // Firestore rule. A transaction retries against the winning create and
+        // validates it instead of issuing that forbidden duplicate update.
+        firestore.runTransaction { transaction ->
+            val existing = transaction.get(publicKeyRef)
+            if (existing.exists()) {
+                val data = existing.data ?: emptyMap()
+                require(publicKeyDocumentMatches(data, keypair, publicKeyDataBase64)) {
+                    "Escrow public key conflict for ${keypair.deviceId}_${keypair.keyVersion}."
+                }
+            } else {
+                transaction.set(
+                    publicKeyRef,
+                    mapOf(
+                        "deviceId" to keypair.deviceId,
+                        "publicKeyData" to publicKeyDataBase64,
+                        "publicKeyFingerprint" to keypair.publicKeyFingerprint,
+                        "keyVersion" to keypair.keyVersion,
+                        "algorithm" to ESCROW_PUBLIC_KEY_ALGORITHM,
+                        "createdAt" to FieldValue.serverTimestamp(),
+                    ),
+                    SetOptions.merge(),
+                )
+            }
+            Unit
+        }.await()
     }
 
     private suspend fun buildTrustChainProof(
