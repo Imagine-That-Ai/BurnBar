@@ -104,6 +104,7 @@ import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -858,11 +859,9 @@ internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (
     var captureState by remember { mutableStateOf(RemoteKeyboardCaptureState()) }
     var hasFocused by remember { mutableStateOf(false) }
     var hasShownKeyboard by remember { mutableStateOf(false) }
-    var keyboardOpenRequestId by remember { mutableStateOf(0) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val isKeyboardVisible = WindowInsets.isImeVisible
-    val lifecycleOwner = LocalLifecycleOwner.current
 
     DisposableEffect(Unit) {
         onDispose {
@@ -870,29 +869,11 @@ internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (
         }
     }
 
-    DisposableEffect(lifecycleOwner) {
-        // Android hides the IME when the viewer is backgrounded or enters
-        // Picture-in-Picture even though the Mac's text focus is unchanged.
-        // Stop tracking the hide as a user dismissal on pause and reopen the
-        // keyboard once the viewer becomes interactive again.
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_PAUSE -> hasShownKeyboard = false
-                Lifecycle.Event.ON_RESUME -> keyboardOpenRequestId += 1
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    LaunchedEffect(keyboardOpenRequestId) {
-        listOf(80L, 220L, 420L).forEach { delayMillis ->
-            delay(delayMillis)
-            focusRequester.requestFocus()
-            keyboardController?.show()
-        }
-    }
+    RemoteKeyboardOpenEffects(
+        focusRequester = focusRequester,
+        keyboardController = keyboardController,
+        onSystemHide = { hasShownKeyboard = false },
+    )
 
     LaunchedEffect(isKeyboardVisible) {
         when {
@@ -935,6 +916,36 @@ internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (
             }
         },
     )
+}
+
+@Composable
+private fun RemoteKeyboardOpenEffects(focusRequester: FocusRequester, keyboardController: SoftwareKeyboardController?, onSystemHide: () -> Unit) {
+    var keyboardOpenRequestId by remember { mutableStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        // Android hides the IME when the viewer is backgrounded or enters
+        // Picture-in-Picture even though the Mac's text focus is unchanged.
+        // Stop tracking the hide as a user dismissal on pause and reopen the
+        // keyboard once the viewer becomes interactive again.
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> onSystemHide()
+                Lifecycle.Event.ON_RESUME -> keyboardOpenRequestId += 1
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(keyboardOpenRequestId) {
+        listOf(80L, 220L, 420L).forEach { delayMillis ->
+            delay(delayMillis)
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
 }
 
 @Composable
