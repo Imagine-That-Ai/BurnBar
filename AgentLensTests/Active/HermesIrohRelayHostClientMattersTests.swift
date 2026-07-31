@@ -351,6 +351,7 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
     /// evidence alive: their serve task is released while the live stream is
     /// retained, so an active mirror or call must count even when `serveTasks`
     /// is empty and the last accept is older than the evidence window.
+    @MainActor
     func test_healthEvidence_countsRetainedTransferredStreams() {
         let now = Date()
         let staleAccept = now.addingTimeInterval(-60)
