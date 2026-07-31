@@ -249,26 +249,14 @@ private fun ScreenShareViewerAutoTypeEffect(params: ScreenShareViewerAutoTypePar
             manualDismissUntilMillis = autoTypeManualDismissUntilMillis,
             nowMillis = now,
         )
-        when {
-            ScreenShareAutoTypeFollowPolicy.shouldOpen(autoTypeInput) -> {
-                openedAutomatically = true
-                onTypingOpenChange(true)
-                if (controlMode == ScreenMirrorControlMode.VIEW) {
-                    onControlModeNameChange(ScreenMirrorControlMode.TOUCH.name)
-                }
-            }
-            typingOpen && !standardControlEnabled -> {
-                openedAutomatically = false
-                onTypingOpenChange(false)
-            }
-            ScreenShareAutoTypeFollowPolicy.shouldCloseAutomatically(
-                input = autoTypeInput,
-                openedAutomatically = openedAutomatically,
-            ) -> {
-                openedAutomatically = false
-                onTypingOpenChange(false)
-            }
-            !typingOpen -> openedAutomatically = false
+        val transition = ScreenShareAutoTypeFollowPolicy.transition(
+            input = autoTypeInput,
+            openedAutomatically = openedAutomatically,
+        )
+        openedAutomatically = transition.openedAutomatically
+        transition.typingOpen?.let(onTypingOpenChange)
+        if (transition.promoteControlModeToTouch) {
+            onControlModeNameChange(ScreenMirrorControlMode.TOUCH.name)
         }
     }
 }
