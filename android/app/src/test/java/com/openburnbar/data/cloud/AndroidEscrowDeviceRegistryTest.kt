@@ -5,6 +5,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
