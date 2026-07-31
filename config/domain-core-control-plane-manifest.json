@@ -41,7 +41,7 @@
     "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/generated/openburnbar_domain_ffi.cs": ["158031de1fe842f3","f5c338d5aad990e8","72233b3af0f94902","ac58399f6b3cd2c6"],
     "crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs": ["e39b66bbbcf1cb45","1500ae1c46599f69","226cb1ddcf13e5b5","4a2d9aa7ef05d0c4"],
     "crates/openburnbar-domain-core/union-abi-manifest.json": ["dc8432ac0306800d","a4c3884a5887997d","e0e015b8c8637f6b","9444eb27c8103509"],
-    "functions/package-lock.json": ["66b8056a959357af","a8320844889cdb34","3793d226f2f523f9","448997ccd683eb93"],
+    "functions/package-lock.json": ["1e83f23b909b3d61","2f16a06924a9c288","c0faf08fcbc53bd2","2e961c2fe4f0a2ff"],
     "functions/package.json": ["614bfaa2d0d2a30a","5da9e5b93ed73df3","cc77c97a389730b5","915c092b1fceca47"],
     "functions/src/__tests__/pricing.test.ts": ["eae593b02a6f4c02","1b1f0f15cd953fb4","469e396bdebb85b7","525e141f60321c07"],
     "functions/src/domainCoreBuildProfile.ts": ["347deeb959da35cc","f600f6b7951ee1af","76e255627b439f77","5ed3d5e06acf95f4"],
