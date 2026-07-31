@@ -110,11 +110,11 @@ export const SITE = {
   },
   // Public macOS download. Use GitHub Releases while downloads.burnbar.ai DNS/R2 is offline.
   // Do not point this at downloads.burnbar.ai unless DNS/R2 and the matching DMG are live.
-  macReleaseLatest: "1.0.26",
-  macReleaseFile: "OpenBurnBar-1.0.26-macOS.dmg",
+  macReleaseLatest: "1.0.29",
+  macReleaseFile: "OpenBurnBar-1.0.29-macOS.dmg",
   macAppcastFile: "appcast.xml",
   macUpdateFeedFile: "latest-macos.json",
-  macDownloadBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.26",
+  macDownloadBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.29",
   macUpdateBaseUrl: "",
   macMin: "macOS 14 Sonoma",
   // Public Linux download. First release ships aarch64/ARM64 artifacts from the
@@ -127,15 +127,24 @@ export const SITE = {
   linuxPubKeyFile: "openburnbar-linux-ed25519.pub.pem",
   linuxDownloadBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v0.1.0",
   linuxArch: "aarch64 (ARM64)",
-  // Shown on download cards and jump pills — lead with Available so it doesn't
-  // read like a blocked/pending platform next to macOS.
-  linuxStatus: "Available · 0.1.0 · ARM64",
-  linuxStatusDetail: "Signed prerelease — AppImage, deb, and rpm on GitHub Releases",
+  // Early public beta only — not a certified x86_64 peer of the macOS app.
+  linuxStatus: "Early beta · 0.1.0 · ARM64",
+  linuxStatusDetail: "Signed ARM64 prerelease — AppImage, deb, and rpm on GitHub Releases",
   iosMin: "iOS 17",
   iosStatus: "on the App Store",
   iosAppStoreUrl: "https://apps.apple.com/us/app/openburnbar/id6766366964",
   androidStatus: "feature-complete, Play Store pending",
-  cursorExtStatus: "source-only beta"
+  cursorExtStatus: "source-only beta",
+  // Public beta feedback surfaces (local Core stays free; we watch bugs with you).
+  publicBeta: {
+    label: "Public beta",
+    shortBlurb:
+      "Free local Mac + iOS Core. We are bug-watching with early users — Windows and Linux stay early/private until certified.",
+    feedbackFormUrl: "",
+    discussionsUrl: "https://github.com/Imagine-That-Ai/BurnBar/discussions",
+    issuesUrl: "https://github.com/Imagine-That-Ai/BurnBar/issues/new/choose",
+    mailtoSubject: "OpenBurnBar public beta feedback"
+  }
 };
 
 export const NAV_PRIMARY = [
