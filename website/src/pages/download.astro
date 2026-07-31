@@ -32,9 +32,9 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
         <span class="pagehead__product">OpenBurnBar</span>
       </h1>
       <p class="lead pagehead__lead">
-        <strong>macOS</strong> and <strong>iOS</strong> are the public-beta Core. Linux is an early
-        ARM64 prerelease. Android and the editor extension are buildable from source. Windows stays
-        private until certification clears.
+        <strong>macOS</strong> and <strong>iOS</strong> are the public-beta Core. Linux is an early ARM64
+        prerelease. Android and the editor extension are buildable from source. Windows stays private
+        until certification clears.
       </p>
 
       <!-- At-a-glance platform grid so Linux isn't buried mid-page -->
@@ -200,8 +200,8 @@ make install</code></pre>
           <span class="tag tag--exact tag--plain mono">{SITE.linuxStatus}</span>
           <h2>Linux desktop app</h2>
           <p class="lead">
-            Early public beta. Tauri + WebView shell over the native OpenBurnBar daemon. First public
-            release ships <strong>{SITE.linuxArch}</strong> artifacts only — the AppImage is portable
+            Early public beta. Tauri + WebView shell over the native OpenBurnBar daemon. First
+            public release ships <strong>{SITE.linuxArch}</strong> artifacts only — the AppImage is portable
             across ARM64 distros, with deb and rpm for Debian/Ubuntu and Fedora/RHEL on the same architecture.
             Every artifact is Ed25519-signed with a keyless Sigstore/cosign attestation. x86_64 and full
             certification are still in progress — expect rough edges.
