@@ -136,4 +136,15 @@ class PairedMacControlsScreenSupportTest {
         assertEquals("remote_unlock_session_required", REMOTE_UNLOCK_SESSION_REQUIRED)
         assertEquals(20_000L, MIRROR_REQUEST_TIMEOUT_MS)
     }
+
+    @Test
+    fun `ready and timeout copy describe Mercury accurately`() {
+        assertEquals("MERCURY READY", MERCURY_READY_PREVIEW_LABEL)
+        assertFalse(MERCURY_READY_PREVIEW_LABEL.contains("MIRRORING"))
+
+        assertEquals("No response from the Mac. Open BurnBar on the Mac, then try again.", MIRROR_NO_RESPONSE_MESSAGE)
+        assertEquals("No call response from the Mac. Open BurnBar on the Mac, then try again.", CALL_NO_RESPONSE_MESSAGE)
+        assertFalse(MIRROR_NO_RESPONSE_MESSAGE.contains("Local Network"))
+        assertFalse(CALL_NO_RESPONSE_MESSAGE.contains("Local Network"))
+    }
 }

@@ -559,7 +559,7 @@ private fun PairedMacControlsMirrorTimeoutEffect(binding: PairedMacControlsEffec
         delay(15_000)
         if (binding.pendingRequestID == requestID) {
             binding.onPendingRequestIDChange(null)
-            binding.onStatusMessageChange("No response from the Mac. Open BurnBar on the Mac, enable Local Network, then try again.")
+            binding.onStatusMessageChange(MIRROR_NO_RESPONSE_MESSAGE)
         }
     }
 }
@@ -580,7 +580,7 @@ private fun PairedMacControlsCallEffects(binding: PairedMacControlsEffectsBindin
         delay(15_000)
         if (binding.pendingCallRequestID == requestID) {
             binding.onPendingCallRequestIDChange(null)
-            binding.onStatusMessageChange("No call response from the Mac. Open BurnBar on the Mac, enable Local Network, then try again.")
+            binding.onStatusMessageChange(CALL_NO_RESPONSE_MESSAGE)
         }
     }
 }
