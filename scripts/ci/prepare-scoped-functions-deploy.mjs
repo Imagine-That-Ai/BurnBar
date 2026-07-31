@@ -4,6 +4,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
+import { prepareFunctionsRuntimePackage } from "./prepare-functions-runtime-package.mjs";
+
 const SCHEMA_VERSION = "openburnbar.staging-function-targets.v1";
 const TARGETS_RE =
   /^functions:[A-Za-z][A-Za-z0-9_-]*(,functions:[A-Za-z][A-Za-z0-9_-]*)*$/u;
@@ -164,6 +166,7 @@ writeAtomic(outputPath, generated);
 
 packageJson.main = "lib/staging-scoped-index.cjs";
 writeAtomic(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+prepareFunctionsRuntimePackage(functionsDir);
 
 const digest = createHash("sha256").update(generated).digest("hex");
 console.log(

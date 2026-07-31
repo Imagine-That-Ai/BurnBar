@@ -64,6 +64,8 @@ on:
       - "scripts/ci/verify-staging-functions-artifact.test.mjs"
       - "scripts/ci/prepare-scoped-functions-deploy.mjs"
       - "scripts/ci/prepare-scoped-functions-deploy.test.mjs"
+      - "scripts/ci/prepare-functions-runtime-package.mjs"
+      - "scripts/ci/prepare-functions-runtime-package.test.mjs"
       - "functions/staging-deploy-targets.json"
       - "scripts/ci/write-firebase-hosting-ci-config.mjs"
       - "scripts/ci/write-firebase-hosting-ci-config.test.mjs"
@@ -171,6 +173,8 @@ on:
       - "scripts/ci/verify-staging-functions-artifact.test.mjs"
       - "scripts/ci/prepare-scoped-functions-deploy.mjs"
       - "scripts/ci/prepare-scoped-functions-deploy.test.mjs"
+      - "scripts/ci/prepare-functions-runtime-package.mjs"
+      - "scripts/ci/prepare-functions-runtime-package.test.mjs"
       - "functions/staging-deploy-targets.json"
       - "scripts/ci/write-firebase-hosting-ci-config.mjs"
       - "scripts/ci/write-firebase-hosting-ci-config.test.mjs"
@@ -390,6 +394,9 @@ jobs:
 
       - name: Self-test scoped staging Functions entrypoint
         run: node scripts/ci/prepare-scoped-functions-deploy.test.mjs
+
+      - name: Self-test production-only Functions runtime package
+        run: node scripts/ci/prepare-functions-runtime-package.test.mjs
 
       - name: Self-test native build workflow secret boundary
         run: node scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs

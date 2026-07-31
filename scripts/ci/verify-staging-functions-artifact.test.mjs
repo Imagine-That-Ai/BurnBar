@@ -61,7 +61,14 @@ function createFixture(label) {
   );
   write(
     join(root, "functions", "package-lock.json"),
-    `${JSON.stringify({ lockfileVersion: 3 }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        lockfileVersion: 3,
+        packages: { "": {} },
+      },
+      null,
+      2,
+    )}\n`,
   );
   write(join(root, "functions", ".env.burnbar-staging"), "STAGING=true\n");
   write(join(root, "functions", "lib", "index.js"), "export {};\n");
@@ -188,6 +195,94 @@ try {
     write(
       join(root, "functions", "package.json"),
       `${JSON.stringify({ main: "lib/index.js", scripts: { postinstall: "echo no" } }, null, 2)}\n`,
+    );
+  });
+  expectFailure("development-dependency", (root) => {
+    write(
+      join(root, "functions", "package.json"),
+      `${JSON.stringify(
+        {
+          main: "lib/index.js",
+          scripts: {},
+          devDependencies: { "firebase-tools": "15.23.0" },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  });
+  expectFailure("dependency-alias-override", (root) => {
+    write(
+      join(root, "functions", "package.json"),
+      `${JSON.stringify(
+        {
+          main: "lib/index.js",
+          scripts: {},
+          overrides: { brace: "$candidate-alias" },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  });
+  expectFailure("lockfile-development-dependency", (root) => {
+    write(
+      join(root, "functions", "package-lock.json"),
+      `${JSON.stringify(
+        {
+          lockfileVersion: 3,
+          packages: {
+            "": { devDependencies: { "firebase-tools": "15.23.0" } },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  });
+  expectFailure("lockfile-install-script", (root) => {
+    write(
+      join(root, "functions", "package-lock.json"),
+      `${JSON.stringify(
+        {
+          lockfileVersion: 3,
+          packages: { "": { hasInstallScript: true } },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  });
+  expectFailure("lockfile-dev-package", (root) => {
+    write(
+      join(root, "functions", "package-lock.json"),
+      `${JSON.stringify(
+        {
+          lockfileVersion: 3,
+          packages: {
+            "": {},
+            "node_modules/test-only": { version: "1.0.0", dev: true },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  });
+  expectFailure("lockfile-firebase-tools", (root) => {
+    write(
+      join(root, "functions", "package-lock.json"),
+      `${JSON.stringify(
+        {
+          lockfileVersion: 3,
+          packages: {
+            "": {},
+            "node_modules/firebase-tools": { version: "15.23.0" },
+          },
+        },
+        null,
+        2,
+      )}\n`,
     );
   });
   expectFailure("unexpected-top-level-entry", (root) => {

@@ -28,6 +28,10 @@ function resetFixture(manifestOverrides = {}) {
     '{"name":"fixture","main":"lib/index.js"}\n',
   );
   writeFileSync(
+    join(functionsDir, "package-lock.json"),
+    '{"name":"fixture","lockfileVersion":3,"requires":true,"packages":{"":{"name":"fixture"}}}\n',
+  );
+  writeFileSync(
     join(libDir, "callables", "selected.js"),
     "exports.selected = () => 'selected';\n",
   );
