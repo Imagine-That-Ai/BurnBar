@@ -7,16 +7,7 @@
  * `DownloadPlatformIcon.astro` (download page tiles); contexts control
  * sizing and `currentColor` tinting, glyph shapes live only here.
  */
-export type PlatformGlyphId =
-  | "macos"
-  | "ios"
-  | "cursor"
-  | "daemon"
-  | "cli"
-  | "widgets"
-  | "linux"
-  | "smart-display"
-  | "android";
+import type { PlatformGlyphId } from "../types/platform";
 
 interface Props {
   id: PlatformGlyphId;
@@ -27,7 +18,6 @@ const { id } = Astro.props;
 
 {
   id === "macos" && (
-    /* Official Apple Logo in clean 24x24 Vector */
     <svg
       class="icon icon-apple"
       viewBox="0 0 24 24"
@@ -41,7 +31,6 @@ const { id } = Astro.props;
 
 {
   id === "ios" && (
-    /* Official Apple Logo on iOS brand settings */
     <svg
       class="icon icon-apple icon-ios"
       viewBox="0 0 24 24"
@@ -78,7 +67,6 @@ const { id } = Astro.props;
 
 {
   id === "daemon" && (
-    /* Server daemon / service database structure with glowing lights */
     <svg
       class="icon icon-daemon"
       viewBox="0 0 24 24"
@@ -100,7 +88,6 @@ const { id } = Astro.props;
 
 {
   id === "cli" && (
-    /* Clean Terminal Command Shell Prompt */
     <svg
       class="icon icon-cli"
       viewBox="0 0 24 24"
@@ -118,7 +105,6 @@ const { id } = Astro.props;
 
 {
   id === "widgets" && (
-    /* iOS Widget screen structure with glowing sparkline chart */
     <svg
       class="icon icon-widgets"
       viewBox="0 0 24 24"
@@ -165,7 +151,6 @@ const { id } = Astro.props;
 
 {
   id === "smart-display" && (
-    /* Official Multi-color Google 'G' Logo SVG */
     <svg class="icon icon-google" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <path
         fill="#4285F4"
@@ -189,7 +174,6 @@ const { id } = Astro.props;
 
 {
   id === "android" && (
-    /* Official Android Mascot Head SVG in Android Green */
     <svg class="icon icon-android" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <path
         fill="#3DDC84"
