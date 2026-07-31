@@ -214,6 +214,41 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
         client.stop()
     }
 
+    /// Native iroh can report an individual peer closing as `connection lost`
+    /// from `accept`. One or two such failures are recoverable, but treating an
+    /// unlimited sequence as healthy wedges the host forever: the stale NodeId
+    /// remains published while no new stream can be accepted. A bounded burst
+    /// must therefore rebuild the endpoint and publish the replacement NodeId.
+    @MainActor
+    func test_repeatedRecoverablePeerAcceptFailures_rebuildEndpoint() async throws {
+        let directory = FlakyRevokeDirectory(failuresBeforeSuccess: 0)
+        let failing = StubIrohRelayTransport(
+            nodeId: "node-peer-closed",
+            acceptBehavior: .connectionLostRepeatedly
+        )
+        let parking = StubIrohRelayTransport(nodeId: "node-recovered", acceptBehavior: .park)
+        var transports: [StubIrohRelayTransport] = [failing, parking]
+        let client = makeClient(
+            directory: directory,
+            transportFactory: { _ in transports.removeFirst() }
+        )
+
+        let started = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(started)
+
+        try await waitUntil(timeout: 4) {
+            let record = try await directory.fetch(uid: self.uid, connectionId: self.connectionID)
+            return record?.nodeId == "node-recovered"
+        }
+        XCTAssertGreaterThanOrEqual(
+            failing.acceptCallCount,
+            3,
+            "The host should tolerate a bounded burst before rebuilding"
+        )
+
+        client.stop()
+    }
+
     // MARK: - Helpers
 
     @MainActor
@@ -531,10 +566,17 @@ private final class StubIrohRelayTransport: IrohRelayTransport, @unchecked Senda
     enum AcceptBehavior: Sendable {
         case park
         case shutdownImmediately
+        case connectionLostRepeatedly
     }
 
     private let identity: IrohEndpointIdentity
     private let acceptBehavior: AcceptBehavior
+    private let lock = NSLock()
+    private var _acceptCallCount = 0
+
+    var acceptCallCount: Int {
+        lock.withLock { _acceptCallCount }
+    }
 
     init(nodeId: String, acceptBehavior: AcceptBehavior = .park) {
         self.identity = IrohEndpointIdentity(
@@ -553,9 +595,12 @@ private final class StubIrohRelayTransport: IrohRelayTransport, @unchecked Senda
     }
 
     func accept(timeout: TimeInterval) async throws -> any IrohRelayStream {
+        lock.withLock { _acceptCallCount += 1 }
         switch acceptBehavior {
         case .shutdownImmediately:
             throw IrohRelayTransportError.shutdown
+        case .connectionLostRepeatedly:
+            throw IrohRelayTransportError.streamRejected("connection lost")
         case .park:
             while !Task.isCancelled {
                 try await Task.sleep(nanoseconds: 50_000_000)
