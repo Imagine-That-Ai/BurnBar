@@ -377,6 +377,13 @@ struct TrustedDevicesDetailView: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
+                    Text(deviceIdentityLabel(device))
+                        .font(DesignSystem.Typography.tiny.monospaced())
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(device.id)
+                        .accessibilityLabel("Device ID \(device.id)")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -439,6 +446,11 @@ struct TrustedDevicesDetailView: View {
         case .revoked:
             return DesignSystem.Colors.error
         }
+    }
+
+    private func deviceIdentityLabel(_ device: MacTrustedDevice) -> String {
+        let suffix = device.id.suffix(8)
+        return "ID …\(suffix)"
     }
 }
 
@@ -972,13 +984,11 @@ final class DeviceTrustViewModel {
             byId[device.id] = preferredDevice(current: byId[device.id], candidate: device)
         }
 
-        var byPhysicalDevice: [String: MacTrustedDevice] = [:]
-        for device in byId.values {
-            let key = physicalDeviceKey(for: device)
-            byPhysicalDevice[key] = preferredDevice(current: byPhysicalDevice[key], candidate: device)
-        }
-
-        return byPhysicalDevice.values.sorted { lhs, rhs in
+        // Every distinct server identity must remain visible and independently
+        // revocable. A reinstall can rotate the device ID while preserving the
+        // same generic name and platform, and the old trusted identity may still
+        // own security-sensitive pairing authority.
+        return byId.values.sorted { lhs, rhs in
             if lhs.isCurrentDevice != rhs.isCurrentDevice {
                 return lhs.isCurrentDevice
             }
@@ -996,21 +1006,6 @@ final class DeviceTrustViewModel {
 
     private static func countLabel(_ count: Int, singular: String, plural: String) -> String {
         "\(count) \(count == 1 ? singular : plural)"
-    }
-
-    private static func physicalDeviceKey(for device: MacTrustedDevice) -> String {
-        [
-            device.displayName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-            device.platform.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-            // Never collapse a PENDING registration into a trusted row (or vice
-            // versa). Device identities rotate (vendor-ID reset, reinstall), so a
-            // user's real phone re-registers as pending under the same generic
-            // name ("iPhone") as its old trusted identity — the old name+platform
-            // key hid the pending row entirely, leaving no way to approve the
-            // device from this screen. Duplicate registrations still collapse
-            // within the same trust state, which was the point of the dedupe.
-            device.trustState.rawValue
-        ].joined(separator: "\u{1F}")
     }
 
     private static func preferredDevice(current: MacTrustedDevice?, candidate: MacTrustedDevice) -> MacTrustedDevice {
