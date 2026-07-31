@@ -19,7 +19,6 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.core.view.ViewCompat
@@ -230,7 +229,6 @@ class ScreenShareViewerDockTest {
         )
     }
 
-    private fun isImeVisible(): Boolean =
-        ViewCompat.getRootWindowInsets(composeRule.activity.window.decorView)
-            ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+    private fun isImeVisible(): Boolean = ViewCompat.getRootWindowInsets(composeRule.activity.window.decorView)
+        ?.isVisible(WindowInsetsCompat.Type.ime()) == true
 }
