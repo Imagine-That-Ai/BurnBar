@@ -1,5 +1,6 @@
 package com.openburnbar.data.square
 
+import android.text.TextUtils
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseNetworkException
@@ -15,7 +16,9 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
+import io.mockk.mockkStatic
 import io.mockk.unmockkObject
+import io.mockk.unmockkStatic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -88,11 +91,22 @@ class ThreadInboxStoreRefreshTest {
         every { documents } returns emptyList()
     }
 
-    // FirebaseNetworkException carries no Android framework dependencies, while
-    // FirebaseFirestoreException.Code's static SparseArray table cannot
-    // initialize under the mockable android.jar. Production catches the shared
-    // FirebaseException supertype, so either models the App Check refresh window.
-    private fun transientFailure(): FirebaseNetworkException = FirebaseNetworkException("App Check token is temporarily unavailable.")
+    /**
+     * Builds a real [FirebaseNetworkException]: its [com.google.firebase.FirebaseException]
+     * constructor validates the message through `android.text.TextUtils`, which is
+     * unmocked on the JVM, so the static is stubbed only for construction. Production
+     * catches the shared FirebaseException supertype, so this models the App Check
+     * refresh window without FirebaseFirestoreException.Code's SparseArray statics.
+     */
+    private fun transientFailure(): FirebaseNetworkException {
+        mockkStatic(TextUtils::class)
+        try {
+            every { TextUtils.isEmpty(any()) } answers { firstArg<CharSequence?>().isNullOrEmpty() }
+            return FirebaseNetworkException("App Check token is temporarily unavailable.")
+        } finally {
+            unmockkStatic(TextUtils::class)
+        }
+    }
 
     @Test
     fun `refresh is a no-op while a load is already in flight`(): TestResult = runTest {
