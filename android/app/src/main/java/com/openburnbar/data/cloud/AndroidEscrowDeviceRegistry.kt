@@ -139,6 +139,21 @@ class AndroidEscrowDeviceRegistry(
         val publicKeyRef = userRef.collection("escrow_public_keys")
             .document("${keypair.deviceId}_${keypair.keyVersion}")
 
+        // Fast path: an ordinary get() can be served from the local cache when
+        // the device is offline, while client transactions always require the
+        // server. An already-registered device must keep resolving its vault key
+        // without connectivity (keyForReading registers before returning the
+        // locally stored key), so a readable matching document short-circuits
+        // here instead of forcing every startup through a transaction.
+        val cached = runCatching { publicKeyRef.get().await() }.getOrNull()
+        if (cached?.exists() == true) {
+            val data = cached.data ?: emptyMap()
+            require(publicKeyDocumentMatches(data, keypair, publicKeyDataBase64)) {
+                "Escrow public key conflict for ${keypair.deviceId}_${keypair.keyVersion}."
+            }
+            return
+        }
+
         // Registration is reached by several account-scoped services during
         // startup. A read-then-set race lets two callers both observe a missing
         // document: the first create succeeds, while the second identical set is
