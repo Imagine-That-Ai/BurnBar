@@ -60,10 +60,10 @@ struct iPadDevicesSettingsView: View {
             if hermesService != nil {
                 hermesRelaySection
             }
-            smartHubSection
             thisDeviceSection
             otherDevicesSection
             linuxAppCheckDevicesSection
+            smartHubSection
 
             if !store.staleDuplicates.isEmpty {
                 duplicatesSection
@@ -200,6 +200,7 @@ struct iPadDevicesSettingsView: View {
                         }
                     }
                     .foregroundStyle(MobileTheme.Colors.accent)
+                    .accessibilityIdentifier("devicesSync.approveThisDevice")
                 }
 
                 Button("Rename") {
