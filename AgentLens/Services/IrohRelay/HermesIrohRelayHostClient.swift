@@ -157,6 +157,11 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private var rejectedPeerLastSeen: [String: Date] = [:]
     private static let rejectedPeerCooldown: TimeInterval = 5
     private static let rejectedPeerTableCap = 1024
+    /// An isolated peer close can surface from `accept` while the endpoint is
+    /// still healthy, but an unbounded run of them means the native acceptor is
+    /// no longer making forward progress. Rebuild after a small bounded burst
+    /// instead of keeping a stale pairing record advertised forever.
+    private static let recoverablePeerAcceptFailureLimit = 3
 
     nonisolated static func shouldStopForAuthenticatedUserChange(
         readyUID: String?,
@@ -767,10 +772,21 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 return
             } catch {
                 if Self.isRecoverablePeerAcceptError(error) {
-                    consecutiveAcceptFailures = 0
+                    consecutiveAcceptFailures += 1
                     AppLogger.network.info(
-                        "hermes_iroh_relay_accept_peer_closed connectionID=\(connectionID) errorClass=\(Self.publicErrorClass(error))"
+                        "hermes_iroh_relay_accept_peer_closed connectionID=\(connectionID) consecutiveFailures=\(consecutiveAcceptFailures) errorClass=\(Self.publicErrorClass(error))"
                     )
+                    if consecutiveAcceptFailures >= Self.recoverablePeerAcceptFailureLimit {
+                        await handleAcceptLoopTerminated(
+                            transport: transport,
+                            uid: uid,
+                            connectionID: connectionID,
+                            owner: owner,
+                            reason: "peer_accept_failure_limit",
+                            shouldRestart: true
+                        )
+                        return
+                    }
                     try? await Task.sleep(nanoseconds: 200_000_000) // try?-ok(cancellation only)
                     continue
                 }
