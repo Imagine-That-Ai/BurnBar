@@ -7,6 +7,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  domainCoreActivationReceiptClosure,
   resolveActiveDomainCoreActivation,
   validateDomainCoreActivation,
 } from "./domain-core-activation.mjs";
@@ -70,6 +71,27 @@ test("accepts candidate C plus path-restricted activation P", () => {
   });
   assert.equal(proof.candidateCommit, value.candidate);
   assert.equal(proof.activationCommit, value.activation);
+});
+
+test("normalizes an active activation proof to the signed receipt closure", () => {
+  const value = fixture();
+  const proof = validateDomainCoreActivation({
+    repoRoot: value.root,
+    candidateCommit: value.candidate,
+    activationCommit: value.activation,
+  });
+  assert.deepEqual(domainCoreActivationReceiptClosure(proof), {
+    candidateCommit: proof.candidateCommit,
+    activationCommit: proof.activationCommit,
+    coreVersion: proof.coreVersion,
+    abiVersion: proof.abiVersion,
+    sourceSha256: proof.sourceSha256,
+    changedPathsSha256: proof.changedPathsSha256,
+  });
+  assert.throws(
+    () => domainCoreActivationReceiptClosure({ ...proof, active: false }),
+    /closure is not active/u,
+  );
 });
 
 test("rejects source changes between candidate and activation", () => {
@@ -430,6 +452,7 @@ test("release resolver recognizes only the fail-closed activation-annulment supe
     '"advancedMainCommit"',
     '"release_train_advanced_before_stable_receipt"',
     '"replacementCandidateRequired"',
+    "domainCoreActivationReceiptClosure(expectedActivation)",
     "previous activation annulment closure is invalid",
     "previous activation annulment main advance is invalid",
     "promotion after annulment must attest a fresh replacement candidate",
