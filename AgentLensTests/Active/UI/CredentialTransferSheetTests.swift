@@ -69,7 +69,9 @@ final class CredentialTransferSheetTests: XCTestCase {
         }
     }
 
-    func test_deviceTrustViewModelDeduplicatesRepeatedPhysicalDevices() async {
+    func test_deviceTrustViewModelKeepsDistinctDeviceIdentitiesVisible() async {
+        // Same name + platform but distinct IDs: a reinstall/identity rotation.
+        // Both identities must stay visible so the stale one remains revocable.
         let gateway = FakeMacDeviceTrustGateway(devices: [
             MacTrustedDevice(id: "iphone-old", displayName: "Alberto’s iPhone", platform: "iOS"),
             MacTrustedDevice(id: "iphone-new", displayName: "Alberto’s iPhone", platform: "iOS"),
@@ -79,8 +81,8 @@ final class CredentialTransferSheetTests: XCTestCase {
 
         await vm.load()
 
-        XCTAssertEqual(vm.trustedDevices.count, 2)
-        XCTAssertEqual(vm.trustedDevices.map(\.displayName), ["MacBook Pro", "Alberto’s iPhone"])
+        XCTAssertEqual(vm.trustedDevices.count, 3)
+        XCTAssertEqual(vm.trustedDevices.map(\.id), ["mac", "iphone-new", "iphone-old"])
     }
 
     func test_deviceTrustRevokeReportsCompletedCloudVaultRotation() async {

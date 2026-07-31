@@ -2,14 +2,9 @@ import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
 
-/// The Trusted Devices list collapses duplicate registrations of the same
-/// physical device (same display name + platform). That collapse must NEVER
-/// hide a pending registration behind a trusted one: device identities rotate
-/// (vendor-ID reset, app reinstall), so a user's real phone re-registers as a
-/// PENDING device under the same generic name ("iPhone") as its stale trusted
-/// identity — and with the old name+platform key there was no row left to
-/// approve, breaking mirroring/computer-control onboarding with no visible
-/// error. Regression pin for the 2026-07-03 incident.
+/// Device identities rotate after reinstalls and resets while preserving the
+/// same generic display metadata. Every distinct server identity must remain
+/// visible so stale trust and pairing authority can be revoked independently.
 @MainActor
 final class TrustedDeviceDedupeTests: XCTestCase {
 
@@ -40,15 +35,15 @@ final class TrustedDeviceDedupeTests: XCTestCase {
         XCTAssertTrue(rows.contains { $0.id == "AAAA-trusted-legacy" && $0.trustState == .trusted })
     }
 
-    func test_duplicateRegistrationsWithinSameTrustStateStillCollapse() {
+    func test_distinctRegistrationsWithinSameTrustStateRemainVisible() {
         let rows = DeviceTrustViewModel.deduplicatedDevices([
             device(id: "CCCC", trust: .pending),
             device(id: "DDDD", trust: .pending),
             device(id: "EEEE", trust: .trusted)
         ])
 
-        XCTAssertEqual(rows.count, 2, "same-state duplicates collapse; distinct states never merge")
-        XCTAssertEqual(rows.filter { $0.trustState == .pending }.count, 1)
+        XCTAssertEqual(rows.count, 3, "distinct device IDs must remain independently revocable")
+        XCTAssertEqual(rows.filter { $0.trustState == .pending }.count, 2)
         XCTAssertEqual(rows.filter { $0.trustState == .trusted }.count, 1)
     }
 
@@ -61,15 +56,16 @@ final class TrustedDeviceDedupeTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
     }
 
-    func test_duplicatePendingRegistrationsPreferNewestDevice() {
+    func test_repeatedSnapshotForSameDevicePrefersNewestRegistration() {
         let stale = Date(timeIntervalSince1970: 1_700_000_000)
         let attached = stale.addingTimeInterval(60)
         let rows = DeviceTrustViewModel.deduplicatedDevices([
-            device(id: "5B143-stale-ipad", name: "iPad", platform: "iPadOS", trust: .pending, updatedAt: stale),
+            device(id: "6566-attached-ipad", name: "iPad", platform: "iPadOS", trust: .pending, updatedAt: stale),
             device(id: "6566-attached-ipad", name: "iPad", platform: "iPadOS", trust: .pending, updatedAt: attached)
         ])
 
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows.first?.id, "6566-attached-ipad")
+        XCTAssertEqual(rows.first?.registrationUpdatedAt, attached)
     }
 }
