@@ -74,6 +74,9 @@ expect_failure() {
 sign_pair com.openburnbar.app
 "$verifier" "$app" >/dev/null
 
+codesign --force --sign - --identifier com.openburnbar.app "$app" >/dev/null
+expect_failure "an app without hardened runtime and library validation"
+
 sign_pair com.openburnbar.daemon
 expect_failure "a different daemon signing identifier"
 
