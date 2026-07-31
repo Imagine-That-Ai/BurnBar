@@ -11,6 +11,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,11 +22,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -846,12 +849,15 @@ private fun MirrorControlShelfScreenExtras(params: MirrorControlShelfParams) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (String) -> Unit, onKey: (String) -> Unit, onDismiss: () -> Unit) {
     var captureState by remember { mutableStateOf(RemoteKeyboardCaptureState()) }
     var hasFocused by remember { mutableStateOf(false) }
+    var hasShownKeyboard by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val isKeyboardVisible = WindowInsets.isImeVisible
 
     DisposableEffect(Unit) {
         onDispose {
@@ -864,6 +870,16 @@ internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (
             delay(delayMillis)
             focusRequester.requestFocus()
             keyboardController?.show()
+        }
+    }
+
+    LaunchedEffect(isKeyboardVisible) {
+        when {
+            isKeyboardVisible -> hasShownKeyboard = true
+            shouldDismissRemoteKeyboardCapture(
+                hasShownKeyboard = hasShownKeyboard,
+                isKeyboardVisible = isKeyboardVisible,
+            ) -> onDismiss()
         }
     }
 

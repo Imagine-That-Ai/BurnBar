@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Android Mercury keyboard reliability
+
+- **Made the screen-share keyboard reliably open and reopen on Android**:
+  manually tapping Type no longer closes the keyboard merely because the Mac
+  has not reported text-field focus, while keyboards opened automatically still
+  follow the remote focus lifecycle. Dismissing the Android IME now clears the
+  selected Type state so one tap reopens it, with JVM policy coverage and a
+  physical-Samsung open, dismiss, and reopen regression test.
+
 ### Fixed - Linux packaged launcher identity
 
 - **Pinned every DEB, RPM, and Arch desktop launcher to the package-owned
