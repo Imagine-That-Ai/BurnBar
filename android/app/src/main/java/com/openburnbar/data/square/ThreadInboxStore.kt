@@ -14,7 +14,7 @@ import com.openburnbar.data.cloud.CloudVaultAADContext
 import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.missions.MobileMissionConsoleHost
-import java.lang.IllegalStateException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
 
 // Raw numeric timestamps below this are epoch seconds (true through year 2286); at or above, already millis.
@@ -162,7 +162,14 @@ class ThreadInboxStore private constructor(
             cliSessionsByItemID = parts.cliSessionsByItemID
             items = parts.items
             lastRefreshedAtEpoch = System.currentTimeMillis()
-        } catch (e: IllegalStateException) {
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Firestore can reject a signed-in request while App Check is
+            // refreshing or temporarily unavailable. This refresh runs from a
+            // Compose LaunchedEffect, so letting that exception escape kills
+            // MainActivity and can create a restart/ANR loop. Preserve the last
+            // usable inbox and surface the bounded error state instead.
             refreshError = e.message ?: e::class.java.simpleName
         } finally {
             isLoading = false
