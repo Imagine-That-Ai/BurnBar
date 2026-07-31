@@ -4346,6 +4346,80 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: MobileDeviceIdentity.deviceIDKey), first)
     }
 
+    func testMobileDeviceIdentityMigratesAllZeroStoredIDToStableGeneratedID() throws {
+        let suiteName = "com.openburnbar.mobile.tests.zero-stored.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let allZeroID = "00000000-0000-0000-0000-000000000000"
+        let replacement = try XCTUnwrap(UUID(uuidString: "A24A2710-62B8-4316-BBF3-251843DE8E49"))
+        defaults.set(allZeroID, forKey: MobileDeviceIdentity.deviceIDKey)
+
+        var generationCount = 0
+        let first = MobileDeviceIdentity.loadOrCreateDeviceId(
+            defaults: defaults,
+            vendorIdentifierProvider: {
+                XCTFail("An invalid stored identity must migrate to a new per-install UUID")
+                return "9B032E6E-C7FD-40D7-A4F7-570A22E27624"
+            },
+            uuidGenerator: {
+                generationCount += 1
+                return replacement
+            }
+        )
+        let second = MobileDeviceIdentity.loadOrCreateDeviceId(
+            defaults: defaults,
+            vendorIdentifierProvider: {
+                XCTFail("A migrated identity must be loaded from persistent storage")
+                return nil
+            },
+            uuidGenerator: {
+                XCTFail("A migrated identity must not be regenerated")
+                return UUID()
+            }
+        )
+
+        XCTAssertEqual(first, replacement.uuidString)
+        XCTAssertEqual(second, replacement.uuidString)
+        XCTAssertEqual(generationCount, 1)
+        XCTAssertEqual(defaults.string(forKey: MobileDeviceIdentity.deviceIDKey), replacement.uuidString)
+    }
+
+    func testMobileDeviceIdentityMigratesMalformedStoredIDInsteadOfUsingVendorID() throws {
+        let suiteName = "com.openburnbar.mobile.tests.invalid-stored.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let replacement = try XCTUnwrap(UUID(uuidString: "73ED9617-87E4-42EC-865B-6773F6D3557C"))
+        defaults.set("not-a-valid-device-uuid", forKey: MobileDeviceIdentity.deviceIDKey)
+
+        let resolved = MobileDeviceIdentity.loadOrCreateDeviceId(
+            defaults: defaults,
+            vendorIdentifierProvider: { "9B032E6E-C7FD-40D7-A4F7-570A22E27624" },
+            uuidGenerator: { replacement }
+        )
+
+        XCTAssertEqual(resolved, replacement.uuidString)
+        XCTAssertEqual(defaults.string(forKey: MobileDeviceIdentity.deviceIDKey), replacement.uuidString)
+    }
+
+    func testMobileDeviceIdentityRejectsAllZeroVendorID() throws {
+        let suiteName = "com.openburnbar.mobile.tests.zero-vendor.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let replacement = try XCTUnwrap(UUID(uuidString: "6D1CF992-164B-4881-A2ED-F3DBF03C86BE"))
+        let resolved = MobileDeviceIdentity.loadOrCreateDeviceId(
+            defaults: defaults,
+            vendorIdentifierProvider: { "00000000-0000-0000-0000-000000000000" },
+            uuidGenerator: { replacement }
+        )
+
+        XCTAssertEqual(resolved, replacement.uuidString)
+        XCTAssertNotEqual(resolved, "00000000-0000-0000-0000-000000000000")
+        XCTAssertEqual(defaults.string(forKey: MobileDeviceIdentity.deviceIDKey), replacement.uuidString)
+    }
+
     // MARK: - Self-hosted Runner Delete Cleanup
 
     func testSelfHostedRunnerStoreDeleteRemovesURLAndSecret() throws {

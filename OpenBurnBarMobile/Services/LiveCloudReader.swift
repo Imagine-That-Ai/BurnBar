@@ -11,6 +11,7 @@ import UIKit
 @MainActor
 enum MobileDeviceIdentity {
     static let deviceIDKey = "com.openburnbar.mobile.deviceId"
+    private static let zeroUUID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
 
     /// Returns a stable per-install device id. We anchor on
     /// `UIDevice.identifierForVendor` so reinstalls of the **same** app
@@ -23,15 +24,59 @@ enum MobileDeviceIdentity {
     /// keep the doc stable across that edge case for the lifetime of this
     /// install. Generated UUIDs remain a last-resort fallback.
     static func loadOrCreateDeviceId(defaults: UserDefaults = .standard) -> String {
-        if let stored = defaults.string(forKey: deviceIDKey), !stored.isEmpty {
-            return stored
+        loadOrCreateDeviceId(
+            defaults: defaults,
+            vendorIdentifierProvider: { UIDevice.current.identifierForVendor?.uuidString },
+            uuidGenerator: UUID.init
+        )
+    }
+
+    /// Injectable implementation used by unit tests so identity validation
+    /// never depends on the simulator's UIKit hardware state.
+    static func loadOrCreateDeviceId(
+        defaults: UserDefaults,
+        vendorIdentifierProvider: () -> String?,
+        uuidGenerator: () -> UUID
+    ) -> String {
+        if let stored = defaults.string(forKey: deviceIDKey) {
+            if isValidDeviceID(stored) {
+                return stored
+            }
+
+            // A persisted invalid identity (including the all-zero simulator
+            // UUID) must be replaced instead of becoming a permanent trust
+            // principal. Generate once, persist it, and keep it stable for the
+            // remainder of this install.
+            return persistGeneratedDeviceID(defaults: defaults, uuidGenerator: uuidGenerator)
         }
-        let resolved: String
-        if let vendor = UIDevice.current.identifierForVendor?.uuidString, !vendor.isEmpty {
-            resolved = vendor
-        } else {
-            resolved = UUID().uuidString
+
+        if let vendor = vendorIdentifierProvider(), isValidDeviceID(vendor) {
+            defaults.set(vendor, forKey: deviceIDKey)
+            return vendor
         }
+
+        return persistGeneratedDeviceID(defaults: defaults, uuidGenerator: uuidGenerator)
+    }
+
+    private static func isValidDeviceID(_ candidate: String) -> Bool {
+        guard !candidate.isEmpty,
+              candidate == candidate.trimmingCharacters(in: .whitespacesAndNewlines),
+              let uuid = UUID(uuidString: candidate)
+        else {
+            return false
+        }
+        return uuid != zeroUUID
+    }
+
+    private static func persistGeneratedDeviceID(
+        defaults: UserDefaults,
+        uuidGenerator: () -> UUID
+    ) -> String {
+        var generated = uuidGenerator()
+        while generated == zeroUUID {
+            generated = UUID()
+        }
+        let resolved = generated.uuidString
         defaults.set(resolved, forKey: deviceIDKey)
         return resolved
     }
