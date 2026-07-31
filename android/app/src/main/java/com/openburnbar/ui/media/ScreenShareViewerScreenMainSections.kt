@@ -217,6 +217,9 @@ private fun ScreenShareViewerSmartZoomFollowEffect(params: ScreenShareViewerSmar
 
 @Composable
 private fun ScreenShareViewerAutoTypeEffect(params: ScreenShareViewerAutoTypeParams) {
+    // Saved alongside typingOpen so a restored automatic keyboard keeps its
+    // automatic-focus lifecycle after activity recreation.
+    var openedAutomatically by rememberSaveable { mutableStateOf(false) }
     val latestFocusContext = params.latestFocusContext
     val autoKeyboardOnTextFocus = params.autoKeyboardOnTextFocus
     val controlMode = params.controlMode
@@ -246,14 +249,14 @@ private fun ScreenShareViewerAutoTypeEffect(params: ScreenShareViewerAutoTypePar
             manualDismissUntilMillis = autoTypeManualDismissUntilMillis,
             nowMillis = now,
         )
-        when {
-            ScreenShareAutoTypeFollowPolicy.shouldOpen(autoTypeInput) -> {
-                onTypingOpenChange(true)
-                if (controlMode == ScreenMirrorControlMode.VIEW) {
-                    onControlModeNameChange(ScreenMirrorControlMode.TOUCH.name)
-                }
-            }
-            typingOpen && ScreenShareAutoTypeFollowPolicy.shouldClose(autoTypeInput) -> onTypingOpenChange(false)
+        val transition = ScreenShareAutoTypeFollowPolicy.transition(
+            input = autoTypeInput,
+            openedAutomatically = openedAutomatically,
+        )
+        openedAutomatically = transition.openedAutomatically
+        transition.typingOpen?.let(onTypingOpenChange)
+        if (transition.promoteControlModeToTouch) {
+            onControlModeNameChange(ScreenMirrorControlMode.TOUCH.name)
         }
     }
 }

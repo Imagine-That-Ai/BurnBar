@@ -424,6 +424,8 @@ internal data class RemoteKeyboardCaptureChange(
     val deletedCount: Int,
 )
 
+internal fun shouldDismissRemoteKeyboardCapture(hasShownKeyboard: Boolean, isKeyboardVisible: Boolean): Boolean = hasShownKeyboard && !isKeyboardVisible
+
 internal fun remoteKeyboardDiff(oldText: String, newText: String): RemoteKeyboardDiff {
     var prefix = 0
     val commonPrefixLimit = minOf(oldText.length, newText.length)

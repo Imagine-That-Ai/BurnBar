@@ -15,6 +15,9 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.messaging.FirebaseMessaging
 import com.openburnbar.data.budget.BudgetNotificationCenter
+import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
+import com.openburnbar.data.cloud.MercuryDeviceRegistrationPreflight
+import com.openburnbar.data.cloud.MercuryDeviceRegistrationState
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import com.openburnbar.data.computeruse.IrohControllerRouteRegistrarProvider
 import com.openburnbar.data.hermes.HermesAuthLifecycleRegistry
@@ -36,9 +39,13 @@ import com.openburnbar.irohrelay.OpenBurnBarIrohNativeContext
 import com.openburnbar.remote.BurnBarRemoteBridge
 import com.openburnbar.services.media.AgentReplyNotificationState
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -109,6 +116,11 @@ class BurnBarApplication : Application() {
         private const val LOG_NODE_ID_PREFIX_LENGTH = 12
 
         @Volatile internal var mediaControlCoordinator: MediaControlStreamCoordinator? = null
+
+        private val _mercuryDeviceRegistrationState =
+            MutableStateFlow<MercuryDeviceRegistrationState>(MercuryDeviceRegistrationState.Idle)
+        internal val mercuryDeviceRegistrationState: StateFlow<MercuryDeviceRegistrationState> =
+            _mercuryDeviceRegistrationState.asStateFlow()
 
         // RR-7b — the live PhoneControlSender for the currently paired Mac, published by the mirror
         // surfaces (ScreenShareViewer / InlineAgentMirror) when a control stream is established and
@@ -321,13 +333,13 @@ class BurnBarApplication : Application() {
                 if (!controllerAuthStateIsCurrent(uid = uid, epoch = epoch)) return@withLock
                 IrohControllerRouteRegistrarProvider.releaseAuthTransitionGate(gate)
                 if (uid == null) {
+                    _mercuryDeviceRegistrationState.value = MercuryDeviceRegistrationState.Idle
                     BurnBarWidgetSyncWorker.clearAndRefresh(applicationContext)
                     return@withLock
                 }
-                runCatching { ComputerUseSecurityCallableClient().bindAppCheckAttestation() }
-                    .onFailure { error ->
-                        Log.w("BurnBar", "App Check attestation bind failed: ${error.message}")
-                    }
+                if (!registerMercuryDeviceBeforePairing(uid = uid, epoch = epoch)) {
+                    return@withLock
+                }
                 if (controllerAuthStateIsCurrent(uid = uid, epoch = epoch)) {
                     restartPairingListener(uid = uid, epoch = epoch)
                 }
@@ -336,6 +348,32 @@ class BurnBarApplication : Application() {
             HermesAuthLifecycleRegistry.releaseAuthTransitionGate(hermesGate)
             IrohControllerRouteRegistrarProvider.releaseAuthTransitionGate(gate)
         }
+    }
+
+    private suspend fun registerMercuryDeviceBeforePairing(uid: String, epoch: Long): Boolean {
+        val securityClient = ComputerUseSecurityCallableClient()
+        val registrationPreflight =
+            MercuryDeviceRegistrationPreflight { expectedUid ->
+                securityClient.bindAppCheckAttestation(expectedUid)
+                AndroidEscrowDeviceRegistry(securityClient = securityClient)
+                    .registerSelf(uid = expectedUid)
+            }
+        val registrationFailure =
+            runCatching {
+                registrationPreflight.run(uid = uid) { state ->
+                    if (controllerAuthStateIsCurrent(uid = uid, epoch = epoch)) {
+                        _mercuryDeviceRegistrationState.value = state
+                    }
+                }
+            }.exceptionOrNull()
+        if (registrationFailure == null) return true
+        if (registrationFailure is CancellationException) throw registrationFailure
+        Log.w(
+            "BurnBar",
+            "Mercury Android registration preflight failed; pairing remains stopped: ${registrationFailure.message}",
+            registrationFailure,
+        )
+        return false
     }
 
     private fun restartPairingListener(uid: String, epoch: Long) {

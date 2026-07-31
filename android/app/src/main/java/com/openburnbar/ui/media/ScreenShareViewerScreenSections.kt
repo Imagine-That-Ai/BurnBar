@@ -19,13 +19,16 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -101,6 +104,7 @@ import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -109,6 +113,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.openburnbar.data.media.VideoReceivePipeline
 import com.openburnbar.irohrelay.HermesRealtimeRelayMacLockState
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockState
@@ -846,12 +853,15 @@ private fun MirrorControlShelfScreenExtras(params: MirrorControlShelfParams) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (String) -> Unit, onKey: (String) -> Unit, onDismiss: () -> Unit) {
     var captureState by remember { mutableStateOf(RemoteKeyboardCaptureState()) }
     var hasFocused by remember { mutableStateOf(false) }
+    var hasShownKeyboard by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val isKeyboardVisible = WindowInsets.isImeVisible
 
     DisposableEffect(Unit) {
         onDispose {
@@ -859,11 +869,19 @@ internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (
         }
     }
 
-    LaunchedEffect(Unit) {
-        listOf(80L, 220L, 420L).forEach { delayMillis ->
-            delay(delayMillis)
-            focusRequester.requestFocus()
-            keyboardController?.show()
+    RemoteKeyboardOpenEffects(
+        focusRequester = focusRequester,
+        keyboardController = keyboardController,
+        onSystemHide = { hasShownKeyboard = false },
+    )
+
+    LaunchedEffect(isKeyboardVisible) {
+        when {
+            isKeyboardVisible -> hasShownKeyboard = true
+            shouldDismissRemoteKeyboardCapture(
+                hasShownKeyboard = hasShownKeyboard,
+                isKeyboardVisible = isKeyboardVisible,
+            ) -> onDismiss()
         }
     }
 
@@ -898,6 +916,36 @@ internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (
             }
         },
     )
+}
+
+@Composable
+private fun RemoteKeyboardOpenEffects(focusRequester: FocusRequester, keyboardController: SoftwareKeyboardController?, onSystemHide: () -> Unit) {
+    var keyboardOpenRequestId by remember { mutableStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        // Android hides the IME when the viewer is backgrounded or enters
+        // Picture-in-Picture even though the Mac's text focus is unchanged.
+        // Stop tracking the hide as a user dismissal on pause and reopen the
+        // keyboard once the viewer becomes interactive again.
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> onSystemHide()
+                Lifecycle.Event.ON_RESUME -> keyboardOpenRequestId += 1
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(keyboardOpenRequestId) {
+        listOf(80L, 220L, 420L).forEach { delayMillis ->
+            delay(delayMillis)
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
 }
 
 @Composable

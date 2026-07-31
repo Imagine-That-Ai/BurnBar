@@ -21,6 +21,9 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.openburnbar.data.media.VideoReceivePipeline
 import org.junit.Assert.assertTrue
@@ -32,6 +35,85 @@ import org.junit.runner.RunWith
 class ScreenShareViewerDockTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    @Test
+    fun typeKeyReopensKeyboardWithOneTapAfterSystemDismissal() {
+        composeRule.setContent {
+            MaterialTheme {
+                var typingOpen by remember { mutableStateOf(false) }
+                var openGroup by remember { mutableStateOf<MirrorControlGroup?>(null) }
+                Box(
+                    modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black),
+                ) {
+                    ScreenMirrorToolsDock(
+                        state =
+                        MirrorDockUiState(
+                            collapsed = false,
+                            openGroup = openGroup,
+                            fit = ScreenMirrorFit.FIT,
+                            controlMode = ScreenMirrorControlMode.TOUCH,
+                            typingOpen = typingOpen,
+                            statsVisible = false,
+                            phaseLabel = "Live",
+                            trayScale = 1f,
+                            stats = VideoReceivePipeline.Stats(widthPx = 1920, heightPx = 1080),
+                            availableDisplays = emptyList(),
+                            activeDisplayId = null,
+                            smartZoomMode = SmartZoomMode.SMART,
+                            smartZoomAutoFollowing = false,
+                            autoKeyboardOnTextFocus = false,
+                            controlStatus = null,
+                        ),
+                        actions =
+                        MirrorDockActions(
+                            onSelectDisplay = {},
+                            onTrayScaleChange = {},
+                            onToggleCollapsed = {},
+                            onSelectGroup = { openGroup = it },
+                            onToggleStats = {},
+                            onCycleFit = {},
+                            onCycleControlMode = {},
+                            onSelectSmartZoomMode = {},
+                            onSelectControlMode = {},
+                            onAutoKeyboardOnTextFocusChange = {},
+                            onToggleTyping = { typingOpen = !typingOpen },
+                            onScrollUp = {},
+                            onScrollDown = {},
+                            onEscape = {},
+                            onCommandTab = {},
+                            onPasteClipboardToMac = {},
+                            onGrabClipboardFromMac = {},
+                            onPanic = {},
+                            onTrustControlDevice = {},
+                            onReconnect = {},
+                            onEnterPictureInPicture = {},
+                            onClose = {},
+                        ),
+                    )
+                    if (typingOpen) {
+                        RemoteKeyboardCaptureField(
+                            onText = {},
+                            onKey = {},
+                            onDismiss = { typingOpen = false },
+                        )
+                    }
+                }
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Keys").performClick()
+        composeRule.onNodeWithContentDescription("Type on Mac").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { isImeVisible() }
+
+        Espresso.pressBack()
+        composeRule.waitUntil(timeoutMillis = 5_000) { !isImeVisible() }
+
+        composeRule.onNodeWithContentDescription("Type on Mac").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { isImeVisible() }
+    }
 
     @Test
     fun expandedDockGroupsControlsIntoCascadingShelves() {
@@ -146,4 +228,7 @@ class ScreenShareViewerDockTest {
             accentPixels > 40,
         )
     }
+
+    private fun isImeVisible(): Boolean = ViewCompat.getRootWindowInsets(composeRule.activity.window.decorView)
+        ?.isVisible(WindowInsetsCompat.Type.ime()) == true
 }

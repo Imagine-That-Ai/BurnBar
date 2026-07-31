@@ -3,7 +3,9 @@ package com.openburnbar.ui.media
 
 import com.openburnbar.irohrelay.HermesRealtimeRelayFocusTargetKind
 import com.openburnbar.irohrelay.HermesRealtimeRelayNormalizedRect
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -265,6 +267,116 @@ class ScreenShareAutoTypeFollowPolicyTest {
                 ),
             ),
         )
+    }
+
+    @Test
+    fun manualTypingStaysOpenWithoutMacTextFocus() {
+        assertFalse(
+            ScreenShareAutoTypeFollowPolicy.shouldCloseAutomatically(
+                input =
+                baseInput(
+                    typingOpen = true,
+                    context = null,
+                ),
+                openedAutomatically = false,
+            ),
+        )
+    }
+
+    @Test
+    fun automaticallyOpenedTypingClosesWhenMacTextFocusDisappears() {
+        assertTrue(
+            ScreenShareAutoTypeFollowPolicy.shouldCloseAutomatically(
+                input =
+                baseInput(
+                    typingOpen = true,
+                    context = null,
+                ),
+                openedAutomatically = true,
+            ),
+        )
+    }
+
+    @Test
+    fun transitionOpensAndMarksAutomaticOnFreshTextFocus() {
+        val transition = ScreenShareAutoTypeFollowPolicy.transition(
+            input = baseInput(context = textContext(receivedAtMillis = nowMillis)),
+            openedAutomatically = false,
+        )
+        assertTrue(transition.openedAutomatically)
+        assertEquals(true, transition.typingOpen)
+        assertFalse(transition.promoteControlModeToTouch)
+    }
+
+    @Test
+    fun transitionPromotesViewModeToTouchWhenOpening() {
+        val transition = ScreenShareAutoTypeFollowPolicy.transition(
+            input = baseInput(
+                controlMode = ScreenMirrorControlMode.VIEW,
+                context = textContext(receivedAtMillis = nowMillis),
+            ),
+            openedAutomatically = false,
+        )
+        assertEquals(true, transition.typingOpen)
+        assertTrue(transition.promoteControlModeToTouch)
+    }
+
+    @Test
+    fun transitionClosesWhenStandardControlDisabledEvenIfManual() {
+        val transition = ScreenShareAutoTypeFollowPolicy.transition(
+            input = baseInput(
+                typingOpen = true,
+                standardControlEnabled = false,
+                context = textContext(receivedAtMillis = nowMillis),
+            ),
+            openedAutomatically = false,
+        )
+        assertFalse(transition.openedAutomatically)
+        assertEquals(false, transition.typingOpen)
+    }
+
+    @Test
+    fun transitionClosesAutomaticKeyboardWhenTextFocusDisappears() {
+        val transition = ScreenShareAutoTypeFollowPolicy.transition(
+            input = baseInput(typingOpen = true, context = null),
+            openedAutomatically = true,
+        )
+        assertFalse(transition.openedAutomatically)
+        assertEquals(false, transition.typingOpen)
+    }
+
+    @Test
+    fun transitionKeepsManualKeyboardOpenWithoutTextFocus() {
+        val transition = ScreenShareAutoTypeFollowPolicy.transition(
+            input = baseInput(typingOpen = true, context = null),
+            openedAutomatically = false,
+        )
+        assertFalse(transition.openedAutomatically)
+        assertNull(transition.typingOpen)
+        assertFalse(transition.promoteControlModeToTouch)
+    }
+
+    @Test
+    fun transitionResetsAutomaticMarkerOnceTypingCloses() {
+        val transition = ScreenShareAutoTypeFollowPolicy.transition(
+            input = baseInput(typingOpen = false, context = null),
+            openedAutomatically = true,
+        )
+        assertFalse(transition.openedAutomatically)
+        assertNull(transition.typingOpen)
+    }
+
+    @Test
+    fun transitionKeepsAutomaticMarkerWhileFreshTextFocusTyping() {
+        val transition = ScreenShareAutoTypeFollowPolicy.transition(
+            input = baseInput(
+                typingOpen = true,
+                context = textContext(receivedAtMillis = nowMillis),
+            ),
+            openedAutomatically = true,
+        )
+        assertTrue(transition.openedAutomatically)
+        assertNull(transition.typingOpen)
     }
 
     @Test

@@ -101,6 +101,12 @@ class AndroidEscrowDeviceRegistryTest {
     private fun makeFirestore(existingTrustState: String?): FirebaseFirestore {
         val deviceSnapshot = mockk<DocumentSnapshot> {
             every { getString("trustState") } returns existingTrustState
+            every { data } returns mapOf(
+                "trustState" to existingTrustState,
+                "platform" to "Android",
+                "publicKeyFingerprint" to testPublicKey.fingerprint,
+                "keyVersion" to TEST_KEY_VERSION.toLong(),
+            )
         }
         val deviceRef = mockk<DocumentReference> {
             every { get() } returns Tasks.forResult(deviceSnapshot)
@@ -134,6 +140,62 @@ class AndroidEscrowDeviceRegistryTest {
         return mockk<FirebaseFirestore> {
             every { collection("users") } returns usersCollection
         }
+    }
+
+    @Test
+    fun trustedDeviceMatcherAcceptsSameAndroidKey() {
+        assertTrue(
+            AndroidEscrowDeviceRegistry.trustedDeviceDocumentMatches(
+                data = mapOf(
+                    "trustState" to AndroidEscrowDeviceRegistry.TRUSTED,
+                    "platform" to "Android",
+                    "publicKeyFingerprint" to "fingerprint",
+                    "keyVersion" to 1L,
+                ),
+                publicKeyFingerprint = "fingerprint",
+                keyVersion = 1,
+            ),
+        )
+    }
+
+    @Test
+    fun trustedDeviceMatcherRejectsKeyOrTrustDrift() {
+        val baseline =
+            mapOf(
+                "trustState" to AndroidEscrowDeviceRegistry.TRUSTED,
+                "platform" to "Android",
+                "publicKeyFingerprint" to "fingerprint",
+                "keyVersion" to 1,
+            )
+
+        assertFalse(
+            AndroidEscrowDeviceRegistry.trustedDeviceDocumentMatches(
+                data = baseline + ("publicKeyFingerprint" to "different"),
+                publicKeyFingerprint = "fingerprint",
+                keyVersion = 1,
+            ),
+        )
+        assertFalse(
+            AndroidEscrowDeviceRegistry.trustedDeviceDocumentMatches(
+                data = baseline + ("keyVersion" to 2),
+                publicKeyFingerprint = "fingerprint",
+                keyVersion = 1,
+            ),
+        )
+        assertFalse(
+            AndroidEscrowDeviceRegistry.trustedDeviceDocumentMatches(
+                data = baseline + ("platform" to "iOS"),
+                publicKeyFingerprint = "fingerprint",
+                keyVersion = 1,
+            ),
+        )
+        assertFalse(
+            AndroidEscrowDeviceRegistry.trustedDeviceDocumentMatches(
+                data = baseline + ("trustState" to AndroidEscrowDeviceRegistry.PENDING),
+                publicKeyFingerprint = "fingerprint",
+                keyVersion = 1,
+            ),
+        )
     }
 
     @Test
