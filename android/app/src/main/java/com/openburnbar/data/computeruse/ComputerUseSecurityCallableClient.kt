@@ -4,6 +4,7 @@ import android.util.Base64
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.functions.FirebaseFunctions
+import com.google.firebase.functions.FirebaseFunctionsException
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
@@ -88,6 +89,27 @@ class ComputerUseSecurityCallableClient(
         return nonce
     }
 
+    /**
+     * Auth custom claims are account-level, so another signed-in platform can overwrite the
+     * `obb_app_check` binding between our bind and the nonce mint. Re-run the full
+     * bind -> claims refresh -> nonce sequence once when the mint is rejected at the
+     * App Check binding gate; rethrow every other failure unchanged.
+     */
+    private suspend fun reboundHighRiskActionNonce(bindingConflict: FirebaseFunctionsException): String {
+        if (!isAppCheckBindingConflict(bindingConflict)) throw bindingConflict
+        bindAppCheckAttestation()
+        return issueHighRiskActionNonce()
+    }
+
+    private fun isAppCheckBindingConflict(error: FirebaseFunctionsException): Boolean {
+        val bindingGateCode =
+            error.code == FirebaseFunctionsException.Code.PERMISSION_DENIED ||
+                error.code == FirebaseFunctionsException.Code.FAILED_PRECONDITION
+        if (!bindingGateCode) return false
+        val message = error.message.orEmpty()
+        return message.contains("App Check") || message.contains("bindAppCheckAttestation")
+    }
+
     suspend fun registerEscrowDevice(
         deviceId: String,
         deviceName: String,
@@ -98,7 +120,12 @@ class ComputerUseSecurityCallableClient(
     ) {
         requireAuthenticatedUser()
         bindAppCheckAttestation()
-        val nonce = issueHighRiskActionNonce()
+        val nonce =
+            try {
+                issueHighRiskActionNonce()
+            } catch (error: FirebaseFunctionsException) {
+                reboundHighRiskActionNonce(bindingConflict = error)
+            }
         val payload =
             linkedMapOf<String, Any>(
                 "deviceId" to deviceId,
@@ -116,7 +143,12 @@ class ComputerUseSecurityCallableClient(
     suspend fun approveEscrowDeviceTrust(deviceId: String, approverDeviceId: String? = null, trustChain: Map<String, Any>? = null) {
         requireAuthenticatedUser()
         bindAppCheckAttestation()
-        val nonce = issueHighRiskActionNonce()
+        val nonce =
+            try {
+                issueHighRiskActionNonce()
+            } catch (error: FirebaseFunctionsException) {
+                reboundHighRiskActionNonce(bindingConflict = error)
+            }
         val payload = mutableMapOf<String, Any>("deviceId" to deviceId, "nonce" to nonce)
         approverDeviceId?.takeIf { it.isNotBlank() }?.let { payload["approverDeviceId"] = it }
         trustChain?.let { payload["trustChain"] = it }

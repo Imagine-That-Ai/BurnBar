@@ -33,14 +33,20 @@ class AndroidEscrowDeviceRegistry(
                 .joinToString(" ")
                 .ifBlank { "Android" }
 
-        runCatching {
-            securityClient.registerEscrowDevice(
-                deviceId = keypair.deviceId,
-                deviceName = deviceName,
-                platform = "Android",
-                publicKeyFingerprint = keypair.publicKeyFingerprint,
-                keyVersion = keypair.keyVersion,
-            )
+        // The server rejects registration for an already-trusted device, so skip the
+        // callable (and its App Check re-bind, claim write, and forced token refresh)
+        // when the escrow document already reports this device as trusted. Routine
+        // vault reads route through registerSelf and must stay cheap for the no-op case.
+        if (trustState != TRUSTED) {
+            runCatching {
+                securityClient.registerEscrowDevice(
+                    deviceId = keypair.deviceId,
+                    deviceName = deviceName,
+                    platform = "Android",
+                    publicKeyFingerprint = keypair.publicKeyFingerprint,
+                    keyVersion = keypair.keyVersion,
+                )
+            }
         }
 
         publishPublicKeyIfNeeded(keypair = keypair, userRef = userRef)

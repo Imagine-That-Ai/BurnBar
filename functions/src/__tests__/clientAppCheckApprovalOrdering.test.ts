@@ -52,6 +52,14 @@ function expectBindBeforeNonce(body: string): void {
   expect(bind, "high-risk client action must re-bind App Check").toBeGreaterThanOrEqual(0);
   expect(nonce, "high-risk client action must mint a nonce").toBeGreaterThanOrEqual(0);
   expect(bind, "App Check bind must happen before nonce issuance").toBeLessThan(nonce);
+  // A concurrent bind from another signed-in platform can overwrite the
+  // account-level claim between our bind and the nonce mint. Each client must
+  // re-run the bind -> refresh -> nonce sequence when the mint is rejected at
+  // the App Check binding gate.
+  expect(
+    body.includes("reboundHighRiskActionNonce("),
+    "nonce mint must retry the bind -> refresh -> nonce sequence on a binding conflict",
+  ).toBe(true);
 }
 
 describe("cross-platform App Check binding order", () => {
