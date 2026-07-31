@@ -7,14 +7,57 @@ import {
   resolveObservedSha,
 } from "./await-burnbar-ci-gate.mjs";
 
-test("workflow observes the PR head and the merge-group candidate exactly", () => {
+test("workflow executes trusted base code and observes the exact candidate", () => {
   const workflow = readFileSync(
     new URL("../../.github/workflows/burnbar-ci-gate.yml", import.meta.url),
     "utf8",
   );
+  assert.match(workflow, /\n  pull_request:\n/);
+  assert.match(workflow, /\n  pull_request_target:\n/);
   assert.match(
     workflow,
-    /BURNBAR_CI_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/,
+    /ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.merge_group\.base_sha \|\| github\.sha \}\}/,
+  );
+  assert.match(
+    workflow,
+    /BURNBAR_CI_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.event\.merge_group\.head_sha \|\| github\.sha \}\}/,
+  );
+  assert.match(workflow, /persist-credentials: false/);
+  assert.match(
+    workflow,
+    /\[\[ "\$\(git rev-parse HEAD\)" == "\$BURNBAR_BASE_SHA" \]\]/,
+  );
+});
+
+test("pull_request_target gate stays read-only and secret-free", () => {
+  // This workflow runs on `pull_request_target`, which executes in the base
+  // repository's context. The only reason that is safe is that it grants no
+  // write scope and reads no secrets, so a malicious PR has nothing to reach:
+  // it checks out the trusted base commit and merely observes the candidate.
+  // Granting a write permission here (or wiring in a secret) would turn the
+  // required gate into a pwn-request vector, so both are pinned by this test.
+  const workflow = readFileSync(
+    new URL("../../.github/workflows/burnbar-ci-gate.yml", import.meta.url),
+    "utf8",
+  );
+  const permissions = workflow.match(/\npermissions:\n((?:  [^\n]*\n)+)/);
+  assert.ok(permissions, "workflow must declare an explicit permissions block");
+  const scopes = permissions[1]
+    .split("\n")
+    .filter((line) => line.trim())
+    .map((line) => line.trim());
+  assert.ok(scopes.length > 0, "permissions block must not be empty");
+  for (const scope of scopes) {
+    assert.doesNotMatch(
+      scope,
+      /:\s*(write|write-all)$/,
+      `pull_request_target gate must not grant write scope, found: ${scope}`,
+    );
+  }
+  assert.doesNotMatch(
+    workflow,
+    /\$\{\{\s*secrets\./,
+    "pull_request_target gate must not consume repository secrets",
   );
 });
 

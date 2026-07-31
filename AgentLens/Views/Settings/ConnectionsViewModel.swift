@@ -44,6 +44,12 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
     let sourceKind: String
     let formatFamily: String
     let servedEndpoints: [String]
+    /// Advertised context window in tokens from the gateway's
+    /// `model_capabilities`, when known. Nil for legacy rows.
+    let contextWindowTokens: Int?
+    /// Advertised input modalities from the gateway's `model_capabilities`.
+    /// Defaults to text-only for legacy rows.
+    let inputModalities: [String]
     let quotaState: String
     let advertisementEnabled: Bool
     let advertised: Bool
@@ -74,6 +80,8 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
         sourceKind: String,
         formatFamily: String = "openai_compat",
         servedEndpoints: [String] = [],
+        contextWindowTokens: Int? = nil,
+        inputModalities: [String] = ["text"],
         quotaState: String,
         advertisementEnabled: Bool = true,
         advertised: Bool = true,
@@ -95,6 +103,8 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
         self.sourceKind = sourceKind
         self.formatFamily = formatFamily
         self.servedEndpoints = servedEndpoints
+        self.contextWindowTokens = contextWindowTokens.flatMap { $0 > 0 ? $0 : nil }
+        self.inputModalities = inputModalities.isEmpty ? ["text"] : inputModalities
         self.quotaState = quotaState
         self.advertisementEnabled = advertisementEnabled
         self.advertised = advertised
@@ -891,6 +901,9 @@ final class ConnectionsViewModel {
             sourceKind: sourceKinds.count == 1 ? sourceKinds[0] : "gateway_failover_pool",
             formatFamily: formatFamilies.count == 1 ? formatFamilies[0] : representative.formatFamily,
             servedEndpoints: servedEndpoints.isEmpty ? representative.servedEndpoints : servedEndpoints,
+            contextWindowTokens: representative.contextWindowTokens
+                ?? rows.compactMap(\.contextWindowTokens).first,
+            inputModalities: uniqueNonEmpty(rows.flatMap(\.inputModalities)),
             quotaState: logicalQuotaState(from: rows),
             advertisementEnabled: rows.contains { $0.advertisementEnabled },
             advertised: rows.contains { $0.advertised },
@@ -986,6 +999,7 @@ private struct ProxyModelRow: Decodable {
     let servedEndpoints: [String]?
     let displayName: String?
     let capabilities: [String]?
+    let modelCapabilities: ModelCapabilities?
     let quotaState: String?
     let enabled: Bool?
     let advertisementEnabled: Bool?
@@ -1010,6 +1024,7 @@ private struct ProxyModelRow: Decodable {
         case servedEndpoints = "served_endpoints"
         case displayName = "display_name"
         case capabilities
+        case modelCapabilities = "model_capabilities"
         case quotaState = "quota_state"
         case enabled
         case advertisementEnabled = "advertisement_enabled"
@@ -1020,6 +1035,14 @@ private struct ProxyModelRow: Decodable {
         case thinkingLevel = "thinking_level"
         case hidesBaseModel = "hides_base_model"
         case displayNameIsCustom = "display_name_is_custom"
+    }
+
+    /// Nested `model_capabilities` object. The gateway emits camelCase keys
+    /// here (matching the snippet-probe parser), so the synthesized coding
+    /// keys already line up.
+    struct ModelCapabilities: Decodable {
+        let contextWindowTokens: Int?
+        let inputModalities: [String]?
     }
 }
 
@@ -1042,6 +1065,11 @@ private extension ProxyAdvertisedModel {
         self.servedEndpoints = row.servedEndpoints?.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             ?? Self.defaultServedEndpoints(formatFamily: formatFamily)
         self.quotaState = (row.quotaState?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "unknown"
+        self.contextWindowTokens = row.modelCapabilities?.contextWindowTokens.flatMap { $0 > 0 ? $0 : nil }
+        let modalities = row.modelCapabilities?.inputModalities?
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty } ?? []
+        self.inputModalities = modalities.isEmpty ? ["text"] : modalities
         self.advertisementEnabled = row.advertisementEnabled ?? true
         self.advertised = row.advertised ?? (self.advertisementEnabled && (row.routeEligible ?? (row.enabled == true)))
         self.routeEligible = row.routeEligible ?? (row.enabled == true)
@@ -1063,7 +1091,7 @@ private extension ProxyAdvertisedModel {
     }
 }
 
-private extension RoutingClientAdvertisedModel {
+extension RoutingClientAdvertisedModel {
     init(proxyModel: ProxyAdvertisedModel) {
         self.init(
             id: proxyModel.modelID,
@@ -1073,6 +1101,8 @@ private extension RoutingClientAdvertisedModel {
             formatFamily: proxyModel.formatFamily,
             servedEndpoints: proxyModel.servedEndpoints,
             capabilities: proxyModel.capabilities,
+            contextWindowTokens: proxyModel.contextWindowTokens,
+            inputModalities: proxyModel.inputModalities,
             routeEligible: proxyModel.routeEligible
         )
     }

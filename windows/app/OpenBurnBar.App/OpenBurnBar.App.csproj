@@ -170,6 +170,14 @@
     <ProjectReference Include="../OpenBurnBar.App.Settings/OpenBurnBar.App.Settings.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.Settings.ViewModels/OpenBurnBar.App.Settings.ViewModels.csproj" />
     <!--
+      Portable SharedUi shell bridge (net8.0, no WinUI): the WebView2 shim wire
+      protocol, command dispatcher + validation, capability manifest, onboarding
+      machine, and subscription contract serving the Linux React bundle. The
+      WebView2 transport + Windows backing planes live in this exe under
+      SharedUi/. Unit-tested on macOS (windows/tests/shared-ui/).
+    -->
+    <ProjectReference Include="../OpenBurnBar.App.SharedUi/OpenBurnBar.App.SharedUi.csproj" />
+    <!--
       Portable presentation layer (net8.0, no WinUI) for the SessionLogs + Memory
       surfaces (Phase 3 · W7): view-models, ported record types, grouping passes, and
       the transcript parser the XAML views under SessionLogs/ + Memory/ x:Bind to. It
@@ -397,6 +405,32 @@
              Link="Resources\KernelBackdrop\kernel-backdrop.js"
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!--
+    SharedUi shell bundle (apps/linux-desktop/dist-windows/) — the SAME React
+    build the Linux Tauri app renders (Vite `windows` mode), hosted in the
+    SharedUiHostWindow WebView2. When a fresh Vite build exists it overlays the
+    committed fallback bundle at Resources/SharedUi/ (included via the Content
+    globs above); when neither is present the app fails over to the legacy XAML
+    window (publish hard-fails instead, see RequireOpenBurnBarSharedUiBundle
+    below). Rebuild with:
+      cd apps/linux-desktop; node_modules/.bin/vite build -m windows
+  -->
+  <ItemGroup Condition="Exists('..\..\..\apps\linux-desktop\dist-windows\index.html')">
+    <Content Include="..\..\..\apps\linux-desktop\dist-windows\**\*"
+             Link="Resources\SharedUi\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- A publish must never silently omit the shared shell bundle. The
+       committed fallback at Resources/SharedUi/index.html satisfies this;
+       a fresh dist-windows build overlays it when present (CI publish jobs
+       do not run the Vite build). -->
+  <Target Name="RequireOpenBurnBarSharedUiBundle" BeforeTargets="Publish">
+    <Error Condition="!Exists('..\..\..\apps\linux-desktop\dist-windows\index.html') AND !Exists('Resources\SharedUi\index.html')"
+           Text="No SharedUi bundle found: apps/linux-desktop/dist-windows/index.html is missing and no committed fallback exists at Resources/SharedUi/index.html. Build the shared shell bundle first: cd apps/linux-desktop &amp;&amp; node_modules/.bin/vite build --mode windows" />
+  </Target>
 
   <!-- Brand + provider logos (macOS AppLogo / Linux openburnbar.png parity). -->
   <ItemGroup>

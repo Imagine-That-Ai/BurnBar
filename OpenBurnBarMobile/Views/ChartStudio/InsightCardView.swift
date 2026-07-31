@@ -22,11 +22,14 @@ struct InsightCardView: View {
                     Image(systemName: toneIcon)
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(toneColor)
+                        .accessibilityHidden(true)
                     Text("INSIGHT")
                         .font(MobileTheme.Typography.tiny)
                         .fontWeight(.semibold)
                         .tracking(1.6)
                         .foregroundStyle(toneColor)
+                        // Tone is otherwise color-only — speak it.
+                        .accessibilityLabel(toneAccessibilityLabel)
                     Spacer()
                 }
 
@@ -42,6 +45,10 @@ struct InsightCardView: View {
                 if let sparkline = spec.sparkline, sparkline.count > 1 {
                     EmberSparkline(values: sparkline)
                         .frame(height: 56)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(
+                            "Trend: \(ChartSpecAccessibility.sparklineSummary(values: sparkline))"
+                        )
                 }
 
                 if let onAskFollowUp {
@@ -60,6 +67,14 @@ struct InsightCardView: View {
                     .padding(.top, 4)
                 }
             }
+        }
+    }
+
+    private var toneAccessibilityLabel: String {
+        switch spec.tone?.lowercased() {
+        case "positive": return "Positive insight"
+        case "warning":  return "Warning insight"
+        default:         return "Insight"
         }
     }
 

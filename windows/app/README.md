@@ -9,6 +9,15 @@ registered into [`../OpenBurnBar.sln`](../OpenBurnBar.sln) (**WINUI-016**). It i
 built** — a WinUI 3 app compiles only on Windows; the interactive build/run/record pass is
 **WINUI-017**, driven by [`DEV_HOST_RUNBOOK.md`](DEV_HOST_RUNBOOK.md).
 
+### `OpenBurnBar.App/SharedUi/` + `OpenBurnBar.App.SharedUi/` — the Linux-parity shell
+
+The app's **primary window** is the `SharedUiHostWindow`: a WebView2 hosting the exact React
+bundle the Linux desktop renders (`apps/linux-desktop` → `dist-windows`), bridged to the
+portable `OpenBurnBar.App.SharedUi` dispatcher that serves the full `LinuxShellBridge` command
+surface from the in-process Windows stores. Full contract: [`../../docs/windows-port/SHARED_UI_HOST.md`](../../docs/windows-port/SHARED_UI_HOST.md).
+Rebuild the bundle with `node_modules/.bin/vite build --mode windows` in `apps/linux-desktop`;
+run the contract suite with `dotnet test ../tests/shared-ui`.
+
 ### `OpenBurnBar.App/` — the shell spike (0-b / W6)
 
 Unpackaged WinUI 3 (C#/.NET 8, `net8.0-windows10.0.19041.0`). What it demonstrates:

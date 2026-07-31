@@ -226,8 +226,8 @@ extension RoutingClientWiring {
             .map { codexProxyModelID(for: $0) }
             ?? "openburnbar/gateway-default"
         let catalogURL = codexModelCatalogURL().path
-        let fingerprint = modelCatalogFingerprint(
-            modelIDs: gatewayServedModelIDs(advertisedModels, target: .codex).map { "openburnbar/\($0)" },
+        let fingerprint = codexModelCatalogFingerprint(
+            advertisedModels: advertisedModels,
             gateway: gateway
         )
         let text = """
@@ -289,6 +289,57 @@ extension RoutingClientWiring {
         "openburnbar/\(model.id)"
     }
 
+    /// Fingerprint of everything the merged Codex catalog derives from the
+    /// live gateway catalog. Beyond the model-ID set this covers the
+    /// per-model capability metadata actually written to the catalog rows
+    /// (context window and filtered input modalities), so a metadata-only
+    /// catalog change flips `modelSyncStatus(.codex)` to `.stale` and the
+    /// sentry rewrites the sidecar instead of serving stale limits forever.
+    func codexModelCatalogFingerprint(
+        advertisedModels: [RoutingClientAdvertisedModel],
+        gateway: RoutingClientGateway
+    ) -> String {
+        let rowSignatures = gatewayServedModels(advertisedModels, target: .codex).map { model -> String in
+            let contextWindow = max(1, model.contextWindowTokens ?? 65_536)
+            let modalities = Self.codexInputModalities(model.inputModalities).joined(separator: ",")
+            return "\(codexProxyModelID(for: model))|\(contextWindow)|\(modalities)"
+        }
+        return modelCatalogFingerprint(modelIDs: rowSignatures, gateway: gateway)
+    }
+
+    /// The catalog fingerprint recorded in the OpenBurnBar-owned Codex
+    /// profile sidecar at the last wire, or nil when the profile is missing
+    /// or carries no fingerprint (pre-fingerprint wirings).
+    func installedCodexCatalogFingerprint() -> String? {
+        guard let text = readText(at: codexProfileURL()) else { return nil }
+        for line in text.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("openburnbar_model_catalog_fingerprint"),
+                  let equalsIndex = trimmed.firstIndex(of: "=") else {
+                continue
+            }
+            let value = trimmed[trimmed.index(after: equalsIndex)...]
+                .trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+            return value.isEmpty ? nil : value
+        }
+        return nil
+    }
+
+    /// Codex's model catalog only accepts `text` and `image` input
+    /// modalities. Passing any other advertised value (e.g. `audio`,
+    /// `video`, `pdf`) verbatim makes Codex reject the entire catalog file
+    /// (`unknown variant 'audio', expected 'text' or 'image'`), so filter to
+    /// the accepted enum before serialization and fall back to `text` when
+    /// nothing survives.
+    static func codexInputModalities(_ inputModalities: [String]) -> [String] {
+        let supported = inputModalities
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { $0 == "text" || $0 == "image" }
+            .uniquedPreservingOrder()
+        return supported.isEmpty ? ["text"] : supported
+    }
+
     private func codexModelCatalogRow(
         slug: String,
         displayName: String,
@@ -332,7 +383,7 @@ extension RoutingClientWiring {
             "auto_compact_token_limit": NSNull(),
             "effective_context_window_percent": 95,
             "experimental_supported_tools": [],
-            "input_modalities": inputModalities.isEmpty ? ["text"] : inputModalities,
+            "input_modalities": Self.codexInputModalities(inputModalities),
             "supports_search_tool": false
         ]
     }

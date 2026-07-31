@@ -196,14 +196,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// valid attestation token. Otherwise the project's App Check enforcement
     /// will block every read (`App Check blocked` in Sync diagnostics).
     ///
-    /// - Internal distribution builds: when `OpenBurnBarUseDebugAppCheck` is
-    ///   present in Info.plist, use the App Check debug provider with a
-    ///   pre-registered token. This keeps Firestore enforcement enabled for
-    ///   TestFlight/App Distribution channels while Apple/Play attestation is
-    ///   not available.
-    /// - Production builds: App Attest on supported OS versions with DeviceCheck
-    ///   fallback. Debug provider overrides and token-bearing plists are ignored
-    ///   unless the built internal flag above is present.
+    /// - All distributed builds: App Attest on supported OS versions with
+    ///   DeviceCheck fallback. Release artifacts never accept debug providers
+    ///   or reusable debug tokens.
     /// - Debug builds: the App Check debug provider so a registered debug
     ///   token from `firebase.console -> App Check -> iOS app` is accepted.
     private func configureFirebase() {
@@ -409,10 +404,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         environment: [String: String],
         isDebugBuild: Bool = AppCheckDebugTokenEnvironment.isDebugBuild
     ) -> AppCheckProviderStrategy {
-        let debugAllowed = AppCheckDebugTokenEnvironment.debugAppCheckAllowed(
-            infoDictionary: infoDictionary,
-            isDebugBuild: isDebugBuild
-        )
+        let debugAllowed = isDebugBuild
         if let override = normalizedAppCheckProviderOverride(
             environment["OPENBURNBAR_APP_CHECK_PROVIDER"],
             debugAppCheckAllowed: debugAllowed
@@ -420,15 +412,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             return override
         }
 
-        let debugRequested = debugAllowed && AppCheckDebugTokenEnvironment.availableToken(
-            firebasePlistPath: path,
-            infoDictionary: infoDictionary,
-            environment: environment
-        ) != nil
         if isDebugBuild {
             return .debug
         }
-        return debugAllowed && debugRequested ? .debug : .appAttest
+        return .appAttest
     }
 
     private static func normalizedAppCheckProviderOverride(

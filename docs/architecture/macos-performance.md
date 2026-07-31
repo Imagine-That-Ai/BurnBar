@@ -583,3 +583,67 @@ Validation: `CredentialExposureScanTests` (10 tests: OpenAI key, GitHub
 token, Google API key, generic key assignment, `PASSWORD=` / `TOKEN=`
 recall, clean conversation skipped, pre-filter selectivity, pre-filter
 false-positive rejection, placeholder filtering, limit enforcement).
+
+---
+
+## §18 — O(delta) refresh tick + bounded cloud-total fetch (July 2026)
+
+The July 2026 diligence review flagged the last O(total-history)-per-tick
+surfaces the §14 gate could not remove: the gate only skipped the APPLY,
+but every cadence tick still (a) fetched the ENTIRE `token_usage` table
+2–3× for the billing reconcile (`fetchAllUsage` for the baseline, again
+after `deleteAndReload`, again after `persistAndReload`), (b) handed the
+full row array back to the main actor to fingerprint-and-discard, and
+(c) `fetchCloudTotal` downloaded every 90-day usage document per sync
+cycle just to sum one field.
+
+**Write marker (`UsageTableWriteMarker`).** `UsageStore` (and the
+test-only `AtomicIngestionTransaction`) now bump a monotonic in-process
+counter whenever a committed transaction actually changed `token_usage`
+rows — measured with `db.totalChangesCount` deltas inside the write
+closure, so the value-diff `WHERE` gates on the upserts mean an idle
+re-parse of unchanged sessions does NOT advance it. `markSynced` is
+deliberately excluded (`syncedAt` is not part of decoded row content).
+
+**Marker-gated reload (`DataStoreCoordinator.reloadUsagesIfChanged`).**
+`UsageAggregator.refreshAll()` / `refresh(provider:)` end with this
+instead of an unconditional full reload: if the marker is unchanged since
+the last reload AND the clock has not crossed the §14 window boundary
+(midnight / rolling 7d/30d exits), the tick costs one actor hop and a
+`lastRefresh` touch. When content DID change, the exact same
+`fetchAllUsage → replaceUsages` full path runs, so steady-state displayed
+numbers are bit-identical to the old architecture. The §14 fingerprint
+gate remains as the second layer.
+
+**Bounded billing baseline.** `BillingRefreshCoordinator.reconcile` now
+takes `fetchReconciliationBaseline(cutoff)` — rows intersecting
+`[min(startOfDay(record.date)), ∞)` via the existing intersection
+predicate — instead of `fetchAllUsage`. Supplemental reconciliation only
+ever matches rows intersecting a record's day window, so any superset of
+the bounded set yields byte-identical output (`RefreshTickPerfTests`
+asserts bounded == full on a 120-day fixture with a long-running session
+straddling the window edge). Drift detection's per-credential all-time
+cost sums moved to one SQL `GROUP BY`
+(`UsageStore.driftCredentialCostTotals`), and the delete/persist steps
+return counts instead of re-fetching the whole table.
+
+**Cloud total via server aggregation.** `DownloadSyncService.
+fetchCloudTotal` issues a Firestore server-side `SUM(cost)` aggregation
+(`CloudSyncQueryGateway.aggregateSum`, Firebase SDK ≥ 10.13; repo pins
+12.x) — one aggregate result instead of O(doc-count) downloads per sync
+cycle. On aggregation failure (old emulator/backend) it falls back to the
+legacy document scan, preserving the exact displayed total either way.
+
+**Ratchet.** `scripts/debt/check-usage-refresh-tick-budget.sh`
+(baseline `budgets/usage-refresh-tick-baseline.json`) freezes production
+`fetchAllUsage()` call sites at 2 (the marker-gated reload + the actor
+forwarder) and asserts ZERO raw `token_usage` write statements outside
+the marker-aware stores — a new raw writer would silently stale the
+marker-gated dashboard until the next window boundary.
+
+Validation: `RefreshTickPerfTests` (`BillingReconcileBoundedBaselineTests`
+bounded==full supplemental equality + SQL/Swift drift-totals parity,
+`UsageTableWriteMarkerTests` bump/no-bump matrix incl. idle re-upsert and
+`markSynced`, `ReloadUsagesIfChangedTests` skip/reload/boundary matrix +
+tick-path-vs-legacy-full-recompute aggregate equality,
+`CloudTotalAggregationTests` aggregate==scan + fallback).

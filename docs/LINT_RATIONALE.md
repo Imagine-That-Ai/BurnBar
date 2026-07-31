@@ -85,6 +85,7 @@ budgets/mission-splitbrain-baseline.json
 budgets/core-target-membership-baseline.json
 budgets/core-umbrella-imports-baseline.json
 budgets/linux-desktop.perf.json
+budgets/usage-refresh-tick-baseline.json
 # macOS idle/occluded CPU regression tripwire (P-PERF-3): structural assertion
 # gate for the backdrop WebGL rAF pause on occlusion — no existing baseline raised.
 budgets/macos-idle-cpu.perf.json

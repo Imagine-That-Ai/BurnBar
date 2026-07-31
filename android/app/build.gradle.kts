@@ -54,13 +54,6 @@ plugins {
     jacoco
 }
 
-val openBurnBarUseDebugAppCheck =
-    providers.environmentVariable("OPENBURNBAR_USE_DEBUG_APP_CHECK")
-        .map { it.equals("true", ignoreCase = true) }
-        .orElse(false)
-val openBurnBarDebugAppCheckToken =
-    providers.environmentVariable("OPENBURNBAR_APP_CHECK_DEBUG_TOKEN")
-        .orElse("")
 val openBurnBarAppVersionName =
     providers.gradleProperty("openBurnBarAppVersionName")
         .orElse("1.0.30")
@@ -220,18 +213,6 @@ gradle.taskGraph.whenReady {
                 (artifactTask || distributionTask)
         }
     if (releaseTask != null) {
-        if (openBurnBarUseDebugAppCheck.get()) {
-            throw GradleException(
-                "OPENBURNBAR_USE_DEBUG_APP_CHECK=true is forbidden for Android release variant task ${releaseTask.path}. " +
-                    "Use a debug/internal build for Firebase App Distribution; production release artifacts must use Play Integrity App Check."
-            )
-        }
-        if (openBurnBarDebugAppCheckToken.get().isNotBlank()) {
-            throw GradleException(
-                "OPENBURNBAR_APP_CHECK_DEBUG_TOKEN is forbidden for Android release variant task ${releaseTask.path}. " +
-                    "Unset it before assembling, bundling, signing, or uploading a release artifact."
-            )
-        }
         if (domainCoreAuthority != "signed") {
             throw GradleException(
                 "Android release artifact task ${releaseTask.path} requires " +
@@ -276,17 +257,6 @@ android {
         versionName = openBurnBarAppVersionName.get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // App Check: when this build is meant for Firebase App Distribution
-        // (where Play Integrity attestation fails because the app isn't on
-        // Play Console yet), the BurnBarApplication wires the Debug
-        // provider seeded with the registered DEBUG_APP_CHECK_TOKEN below.
-        // Real Play Store production builds leave the env var unset, which
-        // keeps Play Integrity in place. Enforcement on the server side
-        // stays ON in both cases.
-        val useDebugAppCheck = openBurnBarUseDebugAppCheck.get()
-        buildConfigField("boolean", "USE_DEBUG_APP_CHECK", useDebugAppCheck.toString())
-        val debugAppCheckToken = openBurnBarDebugAppCheckToken.get()
-        buildConfigField("String", "APP_CHECK_DEBUG_TOKEN", "\"" + debugAppCheckToken + "\"")
         buildConfigField(
             "String",
             "CLOUDVAULT_SEARCH_DOMAIN_CORE_MODE",
@@ -678,13 +648,10 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-appcheck-playintegrity")
-    // Bundled in release as well: BurnBarApplication switches to the Debug
-    // provider when this APK is built for Firebase App Distribution (env
-    // var OPENBURNBAR_USE_DEBUG_APP_CHECK=true), so Play Integrity-rejected
-    // builds can still pass enforced App Check via a registered token.
-    // Real Play Store builds simply leave the env var unset and use Play
-    // Integrity exclusively.
-    implementation("com.google.firebase:firebase-appcheck-debug")
+    // The debug provider is compiled only into debuggable developer builds.
+    // Distributed artifacts always use Play Integrity and contain no reusable
+    // App Check debug credential or provider implementation.
+    debugImplementation("com.google.firebase:firebase-appcheck-debug")
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-functions-ktx")
     implementation("com.google.firebase:firebase-crashlytics-ktx")

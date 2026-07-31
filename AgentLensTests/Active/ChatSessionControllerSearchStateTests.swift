@@ -354,6 +354,20 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
         XCTAssertEqual(strategy, ChatSessionController.IndexedQueryResponseStrategy.hybridIndexThenLLM)
     }
 
+    func test_indexedQueryResponseStrategy_sensitiveSynthesisStaysLocal() {
+        let query = "summarize where I pasted an API key"
+        let plan = BurnBarSearchPlan.plan(userText: query)
+
+        let strategy = ChatSessionController.indexedQueryResponseStrategy(
+            queryText: query,
+            plan: plan,
+            hasJumpTargets: true,
+            retrievalResultCount: 3
+        )
+
+        XCTAssertEqual(strategy, ChatSessionController.IndexedQueryResponseStrategy.localOracle)
+    }
+
     func test_indexedQueryResponseStrategy_providerRankingPrompt_usesLocalOracle() {
         let query = "which agent do i curse at the most"
         let plan = BurnBarSearchPlan.plan(userText: query)

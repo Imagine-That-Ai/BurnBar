@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    SharedUi shell-bridge contract tests. Runs on the macOS authoring host
+    (`dotnet test windows/tests/shared-ui`) — the dispatcher, codec, URL
+    policy, gateway validator, onboarding machine, subscription hub, and
+    capability manifest are all portable net8.0 logic tested against fake
+    planes; the WebView2 transport + Windows adapters in the exe compile and
+    run on the Windows host per windows/app/DEV_HOST_RUNBOOK.md.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.SharedUi.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../app/OpenBurnBar.App.SharedUi/OpenBurnBar.App.SharedUi.csproj" />
+  </ItemGroup>
+
+</Project>
