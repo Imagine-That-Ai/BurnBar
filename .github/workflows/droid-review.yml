@@ -1,18 +1,32 @@
 name: Droid Auto Review
 
+# CI-cost hardening (2026-07-31): `synchronize` triggered a full high-effort
+# GLM-5.2 review + security review on EVERY commit pushed to every open PR
+# (~74 Factory-credit runs/48h). Review once when the PR becomes reviewable;
+# re-request by closing/reopening or ready_for_review if a re-review is needed.
+# `synchronize` stays in the trigger list only to feed the lightweight
+# droid-synchronize job below: governance/burnbar-ci-gate.json requires a
+# `droid-review` context on every evaluated head SHA, so a pushed commit with
+# no context would stall the umbrella gate until its 270-minute timeout.
 on:
   pull_request:
     types: [opened, ready_for_review, reopened, synchronize]
   merge_group:
     types: [checks_requested]
 
+# Keep synchronize receipts in a separate concurrency lane so a commit pushed
+# right after the PR opens cannot cancel the in-flight full review.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.action == 'synchronize' && 'sync' || 'review' }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   droid-review:
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action != 'synchronize' &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -52,6 +66,21 @@ jobs:
             echo
             echo "The Droid review action failed after preparing the review run. Treat this as an external review-service degradation, not a product build failure. The workflow uploaded its debug artifact and updated the PR review comment with the job link."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  droid-synchronize:
+    name: droid-review
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'synchronize' &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Emit droid-review context for the synchronized head
+        run: echo "Droid's advisory review already ran when this PR became reviewable; this lightweight check re-emits the required droid-review context for the new head SHA without spending Factory credits (CI-cost hardening 2026-07-31)."
 
   droid-merge-group:
     name: droid-review

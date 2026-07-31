@@ -30,11 +30,13 @@ permissions:
 
 concurrency:
   group: full-harness-${{ github.event_name }}-${{ github.ref }}
-  # Main push runs are the post-merge proof lane, so they must settle instead
-  # of cancelling each other during a fast merge train. Keep cancellation for
-  # ad-hoc/manual runs where replacing stale work is harmless.
-  cancel-in-progress: ${{ github.event_name != 'push' }}
+  cancel-in-progress: true
 
+# CI-cost hardening (owner directive 2026-07-31): the per-push trigger ran the
+# full ~300-macOS-minute harness on EVERY merge to main (~25 pushes/48h =
+# ~112K macOS minutes/month) while 9 of 16 runs were cancelled or failed
+# anyway. The daily cron below remains the authoritative full-confidence lane;
+# use workflow_dispatch for an on-demand post-merge proof of a specific SHA.
 on:
   workflow_dispatch:
     inputs:
@@ -47,9 +49,6 @@ on:
     # 08:37 UTC daily. Avoid the top of the hour; GitHub documents higher
     # scheduler contention there.
     - cron: "37 8 * * *"
-  push:
-    branches:
-      - main
 
 jobs:
   platform-misc:
@@ -790,6 +789,9 @@ jobs:
 
   path-filter:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     outputs:
       hermes_iroh: ${{ steps.filter.outputs.hermes_iroh }}
       hermes_gateway_e2ee: ${{ steps.filter.outputs.hermes_gateway_e2ee }}
@@ -803,13 +805,34 @@ jobs:
         id: filter
         env:
           FORCE_MERCURY_MEDIA_E2E: ${{ github.event_name == 'workflow_dispatch' && inputs.force_mercury_media_e2e == true }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             git fetch origin "${{ github.base_ref }}" --depth=1
             CHANGED="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
           else
-            CHANGED="$(git diff --name-only HEAD~1 HEAD || true)"
+            # Scheduled and dispatched runs must cover EVERY commit since the
+            # last completed harness run, not just HEAD~1: with the per-push
+            # trigger removed (CI-cost hardening 2026-07-31), several commits
+            # can land between daily runs and a HEAD~1 diff would silently
+            # skip targeted E2E lanes whose paths are absent from the final
+            # commit before the schedule fires.
+            BASELINE="$(gh run list \
+              --workflow openburnbar-pr-harness.yml \
+              --branch "${{ github.ref_name }}" \
+              --status completed \
+              --limit 1 \
+              --json headSha \
+              --jq '.[0].headSha // empty' 2>/dev/null || true)"
+            if [[ -n "$BASELINE" ]] && git cat-file -e "${BASELINE}^{commit}" 2>/dev/null; then
+              CHANGED="$(git diff --name-only "${BASELINE}..HEAD" || true)"
+            else
+              # Fail open: without a usable baseline (first run, force-pushed
+              # or expired SHA, API error) treat every tracked path as changed
+              # so no targeted E2E lane is silently skipped.
+              CHANGED="$(git ls-files)"
+            fi
           fi
           echo "$CHANGED" > /tmp/changed-paths.txt
           match() { grep -Eq "$1" /tmp/changed-paths.txt; }

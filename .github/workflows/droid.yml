@@ -1,16 +1,17 @@
 name: Droid Tag
 
+# CI-cost hardening (2026-07-31): this workflow spawned ~120 runs/48h with
+# nearly all skipped — every review, inline comment, and PR body edit created
+# a run just to evaluate the @droid gate. issue_comment already covers
+# conversation comments on both issues and PRs, which is the canonical
+# invocation path; `edited` fired on every title/body touch.
 on:
   issue_comment:
     types: [created]
-  pull_request_review_comment:
-    types: [created]
   issues:
     types: [opened]
-  pull_request_review:
-    types: [submitted]
   pull_request:
-    types: [opened, edited]
+    types: [opened]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.issue.number || github.event.pull_request.number || github.ref }}

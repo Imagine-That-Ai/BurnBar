@@ -32,15 +32,18 @@ Re-check every item immediately before changing repository visibility.
   `Confidentiality Guard / guard`, `BurnBar AGPL product posture`, and the
   PR security jobs from `security-pr.yml`.
 - The full macOS/iOS/Android/retrieval harness is no longer a PR merge
-  blocker. It runs on `push` to `main`, on a nightly schedule, and by manual
-  dispatch as `.github/workflows/openburnbar-pr-harness.yml`.
+  blocker. It runs on a nightly schedule and by manual dispatch as
+  `.github/workflows/openburnbar-pr-harness.yml` (the per-push `main` trigger
+  was removed in the 2026-07-31 CI-cost hardening).
 - `nightly-e2e.yml` remains the nightly launch-confidence lane and opens or
   closes a deduplicated failure issue through `.github/actions/ops-failure-issue`.
-- `cursor-nightly-ci-repair.yml` is the cloud repair loop: it runs nightly after
-  the monitored confidence lanes and, when those lanes are red, starts a Cursor
-  Cloud Agent repair through Cursor's API. If the marked Cursor repair PR later
-  fails CI, completed PR CI wakes the same workflow so Cursor continues that PR
-  until its checks are pending or green.
+- `codex-nightly-ci-repair.yml` is the cloud repair loop: it runs daily after
+  every monitored confidence lane's maximum runtime and, when the latest
+  completed runs are red, drives an OpenAI Codex repair through the official
+  Codex Action. Each daily sweep continues the marked Codex repair PR until
+  its checks are pending or green. The Cursor twin of this loop
+  (`cursor-nightly-ci-repair.yml`) was retired in the 2026-07-31 CI-cost
+  hardening.
 - After this change lands on `main`, branch protection should remove
   `openburnbar-pr` from the required PR checks and require the fast merge
   checks verified by `bash scripts/ops/verify-github-governance.sh`.
