@@ -217,6 +217,59 @@ export function activationChangedPaths(
       "candidate commit must be an ancestor of activation commit",
     );
   }
+  const paths = git(repoRoot, [
+    "diff",
+    "--name-only",
+    "--diff-filter=ACDMRTUXB",
+    `${candidate}..${activation}`,
+  ])
+    .split("\n")
+    .filter(Boolean)
+    .sort();
+  if (paths.length === 0) throw new Error("activation diff must not be empty");
+  const forbidden = paths.filter(
+    (path) =>
+      !REQUIRED_EXACT.has(path) &&
+      !OPTIONAL_EXACT.has(path) &&
+      !ALLOWED_PREFIXES.some((prefix) => path.startsWith(prefix)),
+  );
+  if (forbidden.length > 0) {
+    throw new Error(
+      `activation diff contains forbidden paths: ${forbidden.join(", ")}`,
+    );
+  }
+  for (const required of REQUIRED_EXACT) {
+    if (!paths.includes(required)) {
+      throw new Error(`activation diff must include ${required}`);
+    }
+  }
+  return paths;
+}
+
+export function annullableActivationChangedPaths(
+  repoRoot,
+  candidateCommit,
+  activationCommit,
+) {
+  const candidate = commit(candidateCommit, "candidate commit");
+  const activation = commit(activationCommit, "activation commit");
+  if (candidate === activation) {
+    throw new Error("annullable activation diff must not be empty");
+  }
+  try {
+    execFileSync("git", [
+      "-C",
+      repoRoot,
+      "merge-base",
+      "--is-ancestor",
+      candidate,
+      activation,
+    ]);
+  } catch {
+    throw new Error(
+      "candidate commit must be an ancestor of annullable activation commit",
+    );
+  }
   const activationCommits = git(repoRoot, [
     "rev-list",
     "--first-parent",
@@ -235,7 +288,7 @@ export function activationChangedPaths(
       revision,
     ]).split(/\s+/u);
     if (lineage.length < 2) {
-      throw new Error("activation commit must have a parent");
+      throw new Error("annullable activation commit must have a parent");
     }
     const commitPaths = git(repoRoot, [
       "diff",
@@ -255,25 +308,23 @@ export function activationChangedPaths(
     if (commitForbidden.length > 0) {
       if (revision === activation) {
         throw new Error(
-          `activation diff contains forbidden paths: ${commitForbidden.join(", ")}`,
+          `annullable activation final diff contains forbidden paths: ${commitForbidden.join(", ")}`,
         );
       }
       // A commit is incidental only when it changes no activation-authority
-      // path. A mixed commit would silently drop its authority changes from
-      // the validated candidate..activation closure, so fail closed.
+      // path. A mixed commit would silently drop authority changes from the
+      // annulment closure, so fail closed.
       if (commitForbidden.length !== commitPaths.length) {
         throw new Error(
-          `incidental protected-main commit ${revision} must not change activation authority paths`,
+          `annullable incidental protected-main commit ${revision} must not change activation authority paths`,
         );
       }
       for (const path of commitPaths) incidentalPaths.add(path);
     }
   }
-  // Protected merge queues may advance main before applying an activation
-  // squash. Bind the closure to the full candidate..activation diff, excluding
-  // only paths proven to come from incidental commits, so activation evidence
-  // written in several allowed commits stays in the closure even when an
-  // unrelated protected-main commit lands after some of that evidence.
+  // Annulment-only recovery binds the full candidate..activation diff while
+  // excluding paths proven to come solely from incidental protected-main
+  // commits. Normal release activation remains strict and never uses this path.
   const paths = git(repoRoot, [
     "diff",
     "--name-only",
@@ -283,7 +334,9 @@ export function activationChangedPaths(
     .split("\n")
     .filter((path) => path && !incidentalPaths.has(path))
     .sort();
-  if (paths.length === 0) throw new Error("activation diff must not be empty");
+  if (paths.length === 0) {
+    throw new Error("annullable activation diff must not be empty");
+  }
   const forbidden = paths.filter(
     (path) =>
       !REQUIRED_EXACT.has(path) &&
@@ -292,12 +345,12 @@ export function activationChangedPaths(
   );
   if (forbidden.length > 0) {
     throw new Error(
-      `activation diff contains forbidden paths: ${forbidden.join(", ")}`,
+      `annullable activation suffix contains forbidden paths: ${forbidden.join(", ")}`,
     );
   }
   for (const required of REQUIRED_EXACT) {
     if (!paths.includes(required)) {
-      throw new Error(`activation diff must include ${required}`);
+      throw new Error(`annullable activation diff must include ${required}`);
     }
   }
   return paths;
@@ -370,6 +423,45 @@ export function validateDomainCoreActivation({
     abiVersion: candidate.abiVersion,
     sourceSha256: candidate.sourceSha256,
     changedPathsSha256,
+  };
+}
+
+export function validateDomainCoreAnnullableActivation({
+  repoRoot,
+  candidateCommit,
+  activationCommit,
+}) {
+  requireCleanCheckout(repoRoot);
+  const candidate = candidateAt(
+    repoRoot,
+    commit(candidateCommit, "candidate commit"),
+  );
+  const activationSha = commit(activationCommit, "activation commit");
+  const activationIdentity = candidateAt(repoRoot, activationSha);
+  if (
+    activationIdentity.coreVersion !== candidate.coreVersion ||
+    activationIdentity.abiVersion !== candidate.abiVersion ||
+    activationIdentity.sourceSha256 !== candidate.sourceSha256
+  ) {
+    throw new Error(
+      "annullable activation changed the attested Rust core closure",
+    );
+  }
+  const paths = annullableActivationChangedPaths(
+    repoRoot,
+    candidate.candidateCommit,
+    activationSha,
+  );
+  return {
+    active: true,
+    candidateCommit: candidate.candidateCommit,
+    activationCommit: activationSha,
+    coreVersion: candidate.coreVersion,
+    abiVersion: candidate.abiVersion,
+    sourceSha256: candidate.sourceSha256,
+    changedPathsSha256: createHash("sha256")
+      .update(JSON.stringify(paths))
+      .digest("hex"),
   };
 }
 
@@ -658,11 +750,10 @@ function verifySupersededAuthority({
     ) {
       throw new Error("previous activation annulment authority is invalid");
     }
-    const expectedActivation = validateDomainCoreActivation({
+    const expectedActivation = validateDomainCoreAnnullableActivation({
       repoRoot,
       candidateCommit: candidate.candidateCommit,
       activationCommit: activation.activationCommit,
-      requireHead: false,
     });
     if (
       canonicalSha256(

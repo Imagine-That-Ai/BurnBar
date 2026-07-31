@@ -458,7 +458,11 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             with (
                 mock.patch.object(GATE, "require_commit", side_effect=lambda _repo, value, _label: value),
                 mock.patch.object(GATE, "candidate_identity_at_commit", return_value=candidate),
-                mock.patch.object(GATE, "validate_activation_closure", return_value=activation),
+                mock.patch.object(
+                    GATE,
+                    "validate_annullable_activation_closure",
+                    return_value=activation,
+                ),
                 mock.patch.object(GATE, "require_ancestor") as require_ancestor_mock,
                 mock.patch.object(GATE, "git_output", side_effect=git_output),
                 mock.patch.object(
@@ -721,7 +725,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         ):
             GATE.validate_build_profile_catalog(weakened)
 
-    def test_atomic_activation_ignores_intervening_main_changes_and_is_path_restricted(self) -> None:
+    def test_annullable_activation_handles_intervening_main_change_without_relaxing_release(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory).resolve()
             (repo / "crates/openburnbar-domain-core").mkdir(parents=True)
@@ -777,13 +781,15 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                 check=True,
             )
             activation = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
-            proof = GATE.validate_activation_closure(repo, candidate, activation)
+            with self.assertRaisesRegex(GATE.GateError, "only profile"):
+                GATE.validate_activation_closure(repo, candidate, activation)
+            proof = GATE.validate_annullable_activation_closure(repo, candidate, activation)
             self.assertEqual(proof["candidateCommit"], candidate)
             self.assertEqual(proof["activationCommit"], activation)
-            changed = GATE.activation_changed_paths(repo, candidate, activation)
+            changed = GATE.annullable_activation_changed_paths(repo, candidate, activation)
             self.assertNotIn("functions/.env.burnbar.production", changed)
             # Evidence committed before the unrelated protected-main advance
-            # must remain part of the validated activation closure.
+            # must remain part of the validated annulment closure.
             self.assertIn(evidence_path, changed)
 
             (repo / "functions/.env.burnbar.production").write_text("MIN_INSTANCES=2\n")
@@ -807,17 +813,17 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             ).strip()
             with self.assertRaisesRegex(
                 GATE.GateError,
-                "incidental protected-main commit .* must not change activation authority paths",
+                "annullable incidental protected-main commit .* must not change activation authority paths",
             ):
-                GATE.activation_changed_paths(repo, candidate, mixed_activation)
+                GATE.annullable_activation_changed_paths(repo, candidate, mixed_activation)
             subprocess.run(["git", "reset", "-q", "--hard", activation], cwd=repo, check=True)
 
             (repo / "crates/openburnbar-domain-core/src.rs").write_text("fn drift() {}\n")
             subprocess.run(["git", "add", "."], cwd=repo, check=True)
             subprocess.run(["git", "commit", "-qm", "forbidden drift"], cwd=repo, check=True)
             drift = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
-            with self.assertRaisesRegex(GATE.GateError, "only profile"):
-                GATE.validate_activation_closure(repo, candidate, drift)
+            with self.assertRaisesRegex(GATE.GateError, "may end only"):
+                GATE.validate_annullable_activation_closure(repo, candidate, drift)
 
     def test_historical_activation_closure_accepts_trusted_manifest_refresh(self) -> None:
         candidate = "3efe9feecb4bb10ca67b21109914b2f0f8e40601"

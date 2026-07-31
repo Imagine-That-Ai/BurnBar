@@ -7,9 +7,10 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
-  activationChangedPaths,
+  annullableActivationChangedPaths,
   domainCoreActivationReceiptClosure,
   resolveActiveDomainCoreActivation,
+  validateDomainCoreAnnullableActivation,
   validateDomainCoreActivation,
 } from "./domain-core-activation.mjs";
 
@@ -115,15 +116,50 @@ test("accepts candidate C plus path-restricted activation P", () => {
   assert.equal(proof.activationCommit, value.activation);
 });
 
-test("accepts an atomic activation after an unrelated protected-main advance", () => {
+test("annullable activation handles an unrelated protected-main advance without relaxing release validation", () => {
   const value = fixture({ interveningMainChange: true });
-  const proof = validateDomainCoreActivation({
+  assert.throws(
+    () =>
+      validateDomainCoreActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        activationCommit: value.activation,
+      }),
+    /forbidden paths/u,
+  );
+  const proof = validateDomainCoreAnnullableActivation({
     repoRoot: value.root,
     candidateCommit: value.candidate,
     activationCommit: value.activation,
   });
   assert.equal(proof.candidateCommit, value.candidate);
   assert.equal(proof.activationCommit, value.activation);
+  assert.ok(
+    !annullableActivationChangedPaths(
+      value.root,
+      value.candidate,
+      value.activation,
+    ).includes("functions/.env.burnbar.production"),
+  );
+});
+
+test("annullable activation rejects forbidden drift after the activation suffix", () => {
+  const value = fixture({ interveningMainChange: true });
+  writeFileSync(
+    join(value.root, "crates/openburnbar-domain-core/new.rs"),
+    "fn changed() {}\n",
+  );
+  git(value.root, "add", ".");
+  git(value.root, "commit", "-qm", "forbidden source drift");
+  assert.throws(
+    () =>
+      validateDomainCoreAnnullableActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        activationCommit: git(value.root, "rev-parse", "HEAD"),
+      }),
+    /final diff contains forbidden paths/u,
+  );
 });
 
 test("retains allowed evidence committed before a later unrelated protected-main advance", () => {
@@ -134,7 +170,7 @@ test("retains allowed evidence committed before a later unrelated protected-main
     evidenceBeforeMainChange: true,
     interveningMainChange: true,
   });
-  const paths = activationChangedPaths(
+  const paths = annullableActivationChangedPaths(
     value.root,
     value.candidate,
     value.activation,
@@ -145,7 +181,7 @@ test("retains allowed evidence committed before a later unrelated protected-main
     ),
   );
   assert.ok(!paths.includes("functions/.env.burnbar.production"));
-  const proof = validateDomainCoreActivation({
+  const proof = validateDomainCoreAnnullableActivation({
     repoRoot: value.root,
     candidateCommit: value.candidate,
     activationCommit: value.activation,
@@ -159,12 +195,12 @@ test("rejects an intervening protected-main commit that mixes unrelated and acti
   const value = fixture({ mixedInterveningMainChange: true });
   assert.throws(
     () =>
-      validateDomainCoreActivation({
+      validateDomainCoreAnnullableActivation({
         repoRoot: value.root,
         candidateCommit: value.candidate,
         activationCommit: value.activation,
       }),
-    /incidental protected-main commit .* must not change activation authority paths/u,
+    /annullable incidental protected-main commit .* must not change activation authority paths/u,
   );
 });
 
@@ -547,6 +583,7 @@ test("release resolver recognizes only the fail-closed activation-annulment supe
     '"advancedMainCommit"',
     '"release_train_advanced_before_stable_receipt"',
     '"replacementCandidateRequired"',
+    "validateDomainCoreAnnullableActivation",
     "domainCoreActivationReceiptClosure(expectedActivation)",
     "previous activation annulment closure is invalid",
     "previous activation annulment main advance is invalid",
