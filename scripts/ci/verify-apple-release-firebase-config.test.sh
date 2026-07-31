@@ -10,8 +10,15 @@ trap 'rm -rf "$tmpdir"' EXIT
 write_google_plist() {
   local app="$1"
   local reversed_client_id="${2:-com.googleusercontent.apps.246956661961-h48alif674cr67ojj4li9og8gbcjinbv}"
-  mkdir -p "$app/Contents/Resources"
-  cat >"$app/Contents/Resources/GoogleService-Info.plist" <<PLIST
+  local platform="${3:-macos}"
+  local resource_dir
+  if [[ "$platform" == "ios" ]]; then
+    resource_dir="$app"
+  else
+    resource_dir="$app/Contents/Resources"
+  fi
+  mkdir -p "$resource_dir"
+  cat >"$resource_dir/GoogleService-Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -34,6 +41,12 @@ PLIST
 valid_app="$tmpdir/valid/OpenBurnBar.app"
 write_google_plist "$valid_app"
 bash "$scanner" "$valid_app" >/dev/null
+
+valid_ios_app="$tmpdir/valid-ios/OpenBurnBarMobile.app"
+write_google_plist "$valid_ios_app" \
+  "com.googleusercontent.apps.246956661961-h48alif674cr67ojj4li9og8gbcjinbv" \
+  "ios"
+bash "$scanner" "$valid_ios_app" >/dev/null
 
 missing_app="$tmpdir/missing/OpenBurnBar.app"
 mkdir -p "$missing_app/Contents/Resources"
@@ -66,4 +79,11 @@ if bash "$scanner" "$debug_flag_app" >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "PASS: Apple Firebase release config scanner positive and negative controls"
+missing_ios_app="$tmpdir/missing-ios/OpenBurnBarMobile.app"
+mkdir -p "$missing_ios_app"
+if bash "$scanner" "$missing_ios_app" >/dev/null 2>&1; then
+  echo "expected missing iOS GoogleService-Info.plist to fail" >&2
+  exit 1
+fi
+
+echo "PASS: Apple Firebase release config scanner macOS/iOS positive and negative controls"
