@@ -161,7 +161,26 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     /// still healthy, but an unbounded run of them means the native acceptor is
     /// no longer making forward progress. Rebuild after a small bounded burst
     /// instead of keeping a stale pairing record advertised forever.
+    ///
+    /// The burst count alone is peer-controlled: the native path reports
+    /// `incoming.await` / `accept_bi` failures before Swift ever sees a peer
+    /// identity or applies `inboundPeerPolicy`, so any peer that can reach the
+    /// advertised endpoint can manufacture these errors by completing ALPN and
+    /// closing early. The rebuild therefore additionally requires the absence
+    /// of peer-independent endpoint-health evidence (active serve sessions or
+    /// a recently completed accept, see
+    /// `hasPeerIndependentEndpointHealthEvidence()`), so a hostile burst can
+    /// never tear down live chat/media sessions or force NodeId churn while
+    /// the acceptor is demonstrably serving traffic.
     private static let recoverablePeerAcceptFailureLimit = 3
+    /// How long a completed `accept` counts as proof the native acceptor is
+    /// making forward progress. A genuinely stalled endpoint stops producing
+    /// successful accepts, so recovery is delayed by at most this window.
+    private static let peerAcceptHealthEvidenceWindow: TimeInterval = 30
+    /// Set every time `transport.accept` returns a stream (even one that the
+    /// allowlist later rejects): a completed accept is acceptor-health
+    /// evidence regardless of admission. Cleared on endpoint teardown.
+    private var lastAcceptedStreamAt: Date?
 
     nonisolated static func shouldStopForAuthenticatedUserChange(
         readyUID: String?,
@@ -616,6 +635,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         while !Task.isCancelled, isCurrentRuntimeOwner(owner) {
             do {
                 let stream = try await transport.accept(timeout: 30)
+                lastAcceptedStreamAt = now()
                 guard isCurrentRuntimeOwner(owner), isCurrentTransport(transport) else {
                     await stream.close()
                     return
@@ -777,15 +797,28 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                         "hermes_iroh_relay_accept_peer_closed connectionID=\(connectionID) consecutiveFailures=\(consecutiveAcceptFailures) errorClass=\(Self.publicErrorClass(error))"
                     )
                     if consecutiveAcceptFailures >= Self.recoverablePeerAcceptFailureLimit {
-                        await handleAcceptLoopTerminated(
-                            transport: transport,
-                            uid: uid,
-                            connectionID: connectionID,
-                            owner: owner,
-                            reason: "peer_accept_failure_limit",
-                            shouldRestart: true
-                        )
-                        return
+                        // Peer-close accept errors surface before any identity
+                        // or allowlist check, so the counter alone is
+                        // peer-manufacturable. Only rebuild when there is no
+                        // peer-independent evidence that the acceptor is
+                        // healthy; otherwise a hostile dial-and-close burst
+                        // would cancel every live serve session and churn the
+                        // published NodeId.
+                        if hasPeerIndependentEndpointHealthEvidence() {
+                            AppLogger.network.info(
+                                "hermes_iroh_relay_accept_rebuild_suppressed connectionID=\(connectionID) consecutiveFailures=\(consecutiveAcceptFailures)"
+                            )
+                        } else {
+                            await handleAcceptLoopTerminated(
+                                transport: transport,
+                                uid: uid,
+                                connectionID: connectionID,
+                                owner: owner,
+                                reason: "peer_accept_failure_limit",
+                                shouldRestart: true
+                            )
+                            return
+                        }
                     }
                     try? await Task.sleep(nanoseconds: 200_000_000) // try?-ok(cancellation only)
                     continue
@@ -1224,6 +1257,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         lastAuthoritativePolicyLoadAt = nil
         lastAllowlistMissRefreshAt = nil
         publishedIdentity = nil
+        lastAcceptedStreamAt = nil
 
         if let transportToStop {
             await transportToStop.shutdown()
@@ -1283,6 +1317,22 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         case .backendUnavailable, .nodeIdUnreachable, .protocolMismatch, .timedOut:
             return false
         }
+    }
+
+    /// Endpoint-health evidence a remote peer cannot manufacture. Active serve
+    /// sessions only exist for allowlisted peers that completed admission, and
+    /// `lastAcceptedStreamAt` is only set when the native acceptor hands Swift
+    /// a fully accepted stream; an attacker that completes ALPN and closes
+    /// before opening a bidirectional stream produces neither. While either
+    /// signal is present, a run of pre-identity peer-close accept errors is
+    /// peer behavior, not a stalled endpoint, and must not tear the host down.
+    private func hasPeerIndependentEndpointHealthEvidence() -> Bool {
+        if !serveTasks.isEmpty { return true }
+        if let lastAcceptedStreamAt,
+           now().timeIntervalSince(lastAcceptedStreamAt) < Self.peerAcceptHealthEvidenceWindow {
+            return true
+        }
+        return false
     }
 
     static func isRecoverablePeerAcceptError(_ error: Error) -> Bool {
