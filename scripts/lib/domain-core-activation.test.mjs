@@ -18,7 +18,10 @@ function git(root, ...args) {
   }).trim();
 }
 
-function fixture({ interveningMainChange = false } = {}) {
+function fixture({
+  interveningMainChange = false,
+  mixedInterveningMainChange = false,
+} = {}) {
   const root = mkdtempSync(join(tmpdir(), "domain-core-activation-"));
   mkdirSync(join(root, "crates/openburnbar-domain-core"), { recursive: true });
   mkdirSync(join(root, "config"), { recursive: true });
@@ -57,6 +60,19 @@ function fixture({ interveningMainChange = false } = {}) {
     git(root, "add", ".");
     git(root, "commit", "-qm", "unrelated protected main advance");
   }
+  if (mixedInterveningMainChange) {
+    mkdirSync(join(root, "functions"), { recursive: true });
+    writeFileSync(
+      join(root, "functions/.env.burnbar.production"),
+      "MIN_INSTANCES=1\n",
+    );
+    writeFileSync(
+      join(root, "config/domain-core-legacy-deletion.json"),
+      "smuggled authority change\n",
+    );
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "mixed protected main advance");
+  }
   writeFileSync(join(root, "config/domain-core-build-profiles.json"), "rust\n");
   writeFileSync(
     join(root, "config/domain-core-legacy-deletion.json"),
@@ -91,6 +107,21 @@ test("accepts an atomic activation after an unrelated protected-main advance", (
   });
   assert.equal(proof.candidateCommit, value.candidate);
   assert.equal(proof.activationCommit, value.activation);
+});
+
+test("rejects an intervening protected-main commit that mixes unrelated and activation paths", () => {
+  // A mixed commit must not be treated as incidental: advancing the base past
+  // it would drop its authority-ledger change from the validated diff.
+  const value = fixture({ mixedInterveningMainChange: true });
+  assert.throws(
+    () =>
+      validateDomainCoreActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        activationCommit: value.activation,
+      }),
+    /incidental protected-main commit .* must not change activation authority paths/u,
+  );
 });
 
 test("normalizes an active activation proof to the signed receipt closure", () => {

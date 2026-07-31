@@ -258,13 +258,21 @@ export function activationChangedPaths(
           `activation diff contains forbidden paths: ${commitForbidden.join(", ")}`,
         );
       }
+      // A commit is incidental only when it changes no activation-authority
+      // path. A mixed commit would silently drop its authority changes from
+      // the validated activationBase..activation diff, so fail closed.
+      if (commitForbidden.length !== commitPaths.length) {
+        throw new Error(
+          `incidental protected-main commit ${revision} must not change activation authority paths`,
+        );
+      }
       activationBase = revision;
     }
   }
   // Protected merge queues may advance main before applying an activation
   // squash. Keep the contiguous allowed suffix after the latest incidental
-  // commit, while still supporting activation evidence written in several
-  // allowed commits.
+  // commit (one changing no activation-authority path), while still supporting
+  // activation evidence written in several allowed commits.
   const paths = git(repoRoot, [
     "diff",
     "--name-only",

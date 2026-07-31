@@ -776,6 +776,32 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                 GATE.activation_changed_paths(repo, candidate, activation),
             )
 
+            (repo / "functions/.env.burnbar.production").write_text("MIN_INSTANCES=2\n")
+            (repo / "config/domain-core-legacy-deletion.json").write_text('{"state":"smuggled"}\n')
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "commit", "-qm", "mixed protected main advance"],
+                cwd=repo,
+                check=True,
+            )
+            (repo / GATE.BUILD_PROFILE_PATH).write_text(json.dumps(profiles) + "\n")
+            (repo / "config/domain-core-legacy-deletion.json").write_text('{"state":"promotion_approved_again"}\n')
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "commit", "-qm", "activation after mixed advance"],
+                cwd=repo,
+                check=True,
+            )
+            mixed_activation = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=repo, text=True
+            ).strip()
+            with self.assertRaisesRegex(
+                GATE.GateError,
+                "incidental protected-main commit .* must not change activation authority paths",
+            ):
+                GATE.activation_changed_paths(repo, candidate, mixed_activation)
+            subprocess.run(["git", "reset", "-q", "--hard", activation], cwd=repo, check=True)
+
             (repo / "crates/openburnbar-domain-core/src.rs").write_text("fn drift() {}\n")
             subprocess.run(["git", "add", "."], cwd=repo, check=True)
             subprocess.run(["git", "commit", "-qm", "forbidden drift"], cwd=repo, check=True)

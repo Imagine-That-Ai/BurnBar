@@ -3973,11 +3973,18 @@ def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_
                     "domain-core activation may change only profile, trusted manifest, append-only authority artifacts, and runbooks: "
                     + ", ".join(commit_forbidden)
                 )
+            # A commit is incidental only when it changes no activation-authority
+            # path. A mixed commit would silently drop its authority changes from
+            # the validated activation_base..activation diff, so fail closed.
+            if len(commit_forbidden) != len(commit_paths):
+                raise GateError(
+                    f"domain-core incidental protected-main commit {commit} must not change activation authority paths"
+                )
             activation_base = commit
     # Protected merge queues may advance main before applying an activation
     # squash. Keep the contiguous allowed suffix after the latest incidental
-    # commit, while still supporting activation evidence written in several
-    # allowed commits.
+    # commit (one changing no activation-authority path), while still supporting
+    # activation evidence written in several allowed commits.
     changed = [
         line
         for line in git_output(
