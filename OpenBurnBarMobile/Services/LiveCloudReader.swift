@@ -11,7 +11,12 @@ import UIKit
 @MainActor
 enum MobileDeviceIdentity {
     static let deviceIDKey = "com.openburnbar.mobile.deviceId"
-    private static let zeroUUID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+    private static let zeroUUID = UUID(uuid: (
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0
+    ))
 
     /// Returns a stable per-install device id. We anchor on
     /// `UIDevice.identifierForVendor` so reinstalls of the **same** app
