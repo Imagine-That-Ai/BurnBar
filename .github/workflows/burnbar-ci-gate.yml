@@ -1,10 +1,11 @@
 name: BurnBar CI Gate
 
 on:
-  # Bootstrap compatibility: remove after the trusted default-branch trigger lands.
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
+  # The bootstrap-compatibility `pull_request` trigger was removed 2026-07-31:
+  # the trusted default-branch `pull_request_target` trigger has long since
+  # landed, and running both double-fired this 295-minute-budget umbrella on
+  # every PR event (138 runs/48h, two live "BurnBar CI Gate" check runs
+  # observed on the same head SHA).
   pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, labeled]

@@ -28,7 +28,10 @@ permissions:
 
 jobs:
   validate-agents-md:
-    runs-on: macos-26
+    # Plain bash + node + git — no macOS dependency. Moved off macos-26
+    # (2026-07-31) to stop occupying the scarce hosted-macOS concurrency pool
+    # that the Swift lanes contend for.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:

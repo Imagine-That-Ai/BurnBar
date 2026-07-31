@@ -15,19 +15,25 @@ Mac being awake.
 - `security-pr.yml`, `confidentiality-guard.yml`, and `license-posture.yml`
   run on PRs, merge groups, and pushes to `main`. Branch protection should
   require their fast safety checks.
-- `openburnbar-pr-harness.yml` runs on `push` to `main`, nightly at
-  `37 8 * * *` UTC, and manual dispatch. It is the full platform harness and
-  should not be a daily PR merge blocker.
+- `openburnbar-pr-harness.yml` runs nightly at `37 8 * * *` UTC and on manual
+  dispatch (the per-push `main` trigger was removed in the 2026-07-31 CI-cost
+  hardening). It is the full platform harness and should not be a daily PR
+  merge blocker.
 - `nightly-e2e.yml` runs nightly at `43 9 * * *` UTC and manual dispatch. It
   opens or closes a deduplicated failure issue via
   `.github/actions/ops-failure-issue`.
-- `cursor-nightly-ci-repair.yml` is the repair loop. It runs nightly at
-  `15 11 * * *` UTC, after the scheduled confidence lanes have had time to
-  finish. If those lanes are green, it exits. If they are red, it gathers the
-  latest failed logs and starts a Cursor Cloud Agent through Cursor's API.
-- Once a Cursor repair PR exists, completed CI on that marked PR wakes the same
-  workflow again. If the repair PR is red, Cursor continues that PR. If the PR
-  is pending or green, the workflow does not spawn another agent.
+- `codex-nightly-ci-repair.yml` is the repair loop. It runs daily at
+  `45 12 * * *` UTC, after every monitored confidence lane's maximum runtime.
+  If the latest completed runs are green, it exits. If they are red, it
+  gathers their failed logs and runs the official OpenAI Codex Action as the
+  repair operator.
+- Once a Codex repair PR exists, the next daily sweep (or a manual dispatch)
+  inspects that PR. If the repair PR is red, Codex continues it. If the PR is
+  pending or green, the workflow does not spawn another agent. The former
+  per-completion `workflow_run` fan-out was removed in the 2026-07-31 CI-cost
+  hardening because it self-cascaded hundreds of skipped runs per day; the
+  Cursor twin of this loop (`cursor-nightly-ci-repair.yml`) was retired at the
+  same time.
 
 After this workflow change lands on `main`, update branch protection so the
 required PR checks are:
@@ -55,94 +61,52 @@ Then verify the live GitHub policy:
 bash scripts/ops/verify-github-governance.sh
 ```
 
-## Cursor Setup
+## Codex Setup
 
-The implemented path is `.github/workflows/cursor-nightly-ci-repair.yml`.
-It runs a small GitHub Actions scheduler and calls the Cursor Cloud Agents API.
-It does not depend on the operator's Mac, the Cursor desktop app, or a local
-headless CLI install.
+The implemented path is `.github/workflows/codex-nightly-ci-repair.yml`.
+It runs a small GitHub Actions scheduler and the official OpenAI Codex Action
+(`openai/codex-action`) as the cloud worker. It does not depend on the
+operator's Mac or a local CLI install.
 
 One secret is required:
 
 ```bash
-gh secret set CURSOR_API_KEY --repo Imagine-That-Ai/BurnBar --body "$CURSOR_API_KEY"
+gh secret set OPENAI_API_KEY --repo Imagine-That-Ai/BurnBar --body "$OPENAI_API_KEY"
 ```
 
-Create the API key in Cursor Dashboard -> API Keys. Make sure the Cursor
-account or team has GitHub access to `Imagine-That-Ai/BurnBar`, because Cursor
-opens the repair PR from its own cloud agent. Without this secret, the workflow
-exits with a notice and does not run the repair agent.
+Without this secret, the workflow exits with a notice and does not run the
+repair operator.
 
-The workflow pins Cursor Cloud Agent runs to `composer-2.5`, the standard
-Composer 2.5 model. It does not use the fast variant or the account default.
+The workflow pins Codex runs to `gpt-5.5` with a workspace-write sandbox.
 
 The workflow uses a restricted-autonomy pattern:
 
 - GitHub Actions reads scheduled CI results and failed logs.
-- GitHub Actions sends only the summary and capped failed-log excerpt to Cursor.
-- Cursor starts from `main` when no repair PR exists, works in the cloud, and
-  may open a PR.
-- Cursor repair PRs must include the `cursor-nightly-ci-repair` marker. Future
-  loop iterations find that PR and continue it instead of opening duplicates.
-- Only the nightly or manual trigger can create the first repair PR. Random CI
-  finishing on unrelated PRs cannot start a new Cursor repair.
+- GitHub Actions sends only the summary and a capped, sanitized failed-log
+  excerpt to Codex.
+- Codex edits the prepared `codex/nightly-ci-repair` branch in the Actions
+  checkout; the workflow commits, pushes, and opens or updates the PR after
+  Codex exits.
+- The authoritative repair identity is the base-repository branch
+  `codex/nightly-ci-repair` after GitHub provenance validation. The
+  `codex-nightly-ci-repair` marker in the PR body is display-only and is not
+  an authority signal.
+- Only the daily or manual trigger can create the first repair PR.
 - If an existing repair PR is only waiting on pending checks or already green,
   the loop waits instead of spawning another agent.
-- Cursor is instructed not to edit branch protection, required checks, release
+- Codex is instructed not to edit branch protection, required checks, release
   gates, workflow definitions, or tests just to hide a failure.
 - If the failure is external infrastructure, credentials, GitHub outage,
-  Apple/Xcode runner outage, or missing secrets, Cursor should report the
-  operator action instead of changing code.
+  Apple/Xcode runner outage, or missing secrets, Codex reports the operator
+  action instead of changing code.
 
 This keeps the agent useful without giving it direct control over branch
 protection or publishing.
 
-## Native Cursor Automations
-
-Cursor also supports native Cloud Agent Automations at `cursor.com/automations`.
-Use that UI if you want Cursor to own the schedule directly instead of GitHub
-Actions.
-
-Recommended settings:
-
-```text
-Trigger: scheduled, daily after 11:00 UTC
-Repository: Imagine-That-Ai/BurnBar
-Branch: main
-Tools: GitHub pull request creation
-Permission scope: Team Owned if available, otherwise Private
-Prompt: use the operating rules below
-```
-
-Prompt:
-
-```text
-You are the OpenBurnBar nightly CI repair operator.
-
-Goal:
-Keep scheduled full-confidence CI lanes green without slowing daily PR
-development.
-
-Inspect these lanes:
-- OpenBurnBar Full Harness: .github/workflows/openburnbar-pr-harness.yml
-- OpenBurnBar Nightly E2E: .github/workflows/nightly-e2e.yml
-- CodeQL: .github/workflows/codeql.yml
-- Ops Confidence: .github/workflows/ops-confidence.yml
-- Ops Plane Verify: .github/workflows/ops-plane-verify.yml
-
-Rules:
-- Do not modify branch protection, required checks, release gates, or workflow
-  definitions to make a red run green.
-- Do not skip, delete, downgrade, or mark tests continue-on-error to hide a
-  failure.
-- If the failure is external infrastructure, credentials, device access, or a
-  human decision, report the exact operator action needed and do not change
-  code.
-- If the failure is code-owned, make the smallest durable fix.
-- Open a PR. Do not merge it.
-- Include failed workflow/run link, root cause, files changed, validations run,
-  and residual risk in the PR body.
-```
+The Cursor twin of this loop (`cursor-nightly-ci-repair.yml` plus the native
+Cursor Cloud Agent Automation) was retired in the 2026-07-31 CI-cost
+hardening. Do not configure `CURSOR_API_KEY` or recreate the Cursor
+automation; Codex is the only nightly repair plane.
 
 ## Manual Triage Commands
 
