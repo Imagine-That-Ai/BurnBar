@@ -17,7 +17,7 @@ import {
   resolveDomainCoreBuildProfile,
 } from "../lib/domain-core-build-profile.mjs";
 import { resolveDomainCoreCandidateIdentity } from "../lib/domain-core-candidate-receipt.mjs";
-import { validateDomainCoreActivation } from "../lib/domain-core-activation.mjs";
+import { validateDomainCoreReleaseActivation } from "../lib/domain-core-activation.mjs";
 
 const args = parseDomainCoreArtifactVerifierArgs(process.argv.slice(2));
 const profileName = args.get("--profile");
@@ -59,10 +59,14 @@ if (catalogProfile.artifactAuthority === "signed") {
         requireClean: false,
       });
     } else {
-      const activation = validateDomainCoreActivation({
+      // Mirror resolve-domain-core-build-profile.mjs: re-derive activation P
+      // from the committed authority files instead of treating the release
+      // commit R as the activation commit, so releases cut after unrelated
+      // protected-main advances still resolve the signed candidate identity.
+      const activation = validateDomainCoreReleaseActivation({
         repoRoot,
         candidateCommit: expectedCandidateCommit,
-        activationCommit: expectedReleaseCommit,
+        releaseCommit: expectedReleaseCommit,
       });
       candidateIdentity = {
         candidateCommit: activation.candidateCommit,

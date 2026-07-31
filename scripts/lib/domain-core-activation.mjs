@@ -24,11 +24,29 @@ const OPTIONAL_EXACT = new Set([
   "config/domain-core-control-plane-manifest.json",
 ]);
 const ATTESTED_SOURCE_PREFIX = "crates/openburnbar-domain-core/";
-const ALLOWED_PREFIXES = [
+// Deployed domain-core artifacts (vendored bindings, wasm packages, and the
+// prebuilt Android/Apple binaries) are what production actually executes. The
+// promotion sidecars pin the Rust *source* fingerprint, not the artifact
+// bytes, so an incidental protected-main commit that swaps one of these files
+// between candidate C and release R would ship unattested code while every
+// digest check still passes. Treat them like attested Rust source: fail
+// closed whenever a path-disjoint commit touches them.
+export const DEPLOYED_ARTIFACT_PREFIXES = Object.freeze([
+  "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/",
+  "Vendor/OpenBurnBarDomainCore.xcframework/",
+  "Vendor/openburnbar-domain-core.aar",
+  "android/openburnbar-domain-core/src/main/java/uniffi/",
+  "apps/console/vendor/openburnbar-domain-core-wasm/",
+  "functions/vendor/openburnbar/domain-core-wasm/",
+]);
+const AUTHORITY_EVIDENCE_PREFIXES = [
   "config/domain-core-legacy-deletion-receipts/",
   "config/domain-core-promotion-attestations/",
   "config/domain-core-promotion-bundles/",
   "config/domain-core-promotion-provenance/",
+];
+const ALLOWED_PREFIXES = [
+  ...AUTHORITY_EVIDENCE_PREFIXES,
   "docs/runbooks/shared-rust-",
   "docs/SHARED_RUST_DOMAIN_",
 ];
@@ -96,6 +114,7 @@ function requireNoAuthorityDriftAfterActivation({
   activationCommit,
   releaseCommit,
   paths,
+  prefixes = [],
 }) {
   if (activationCommit === releaseCommit) return;
   try {
@@ -114,6 +133,7 @@ function requireNoAuthorityDriftAfterActivation({
   }
   const protectedPaths = [...new Set(paths)].sort();
   const protectedSet = new Set(protectedPaths);
+  const protectedPrefixes = [...new Set(prefixes)].sort();
   const changed = new Set();
   const revisions = git(repoRoot, [
     "rev-list",
@@ -130,13 +150,16 @@ function requireNoAuthorityDriftAfterActivation({
       "--name-only",
       "--diff-filter=ACDMRTUXB",
       `${parent}..${revision}`,
-      "--",
-      ...protectedPaths,
     ])
       .split("\n")
       .filter(Boolean);
     for (const path of revisionPaths) {
-      if (protectedSet.has(path)) changed.add(path);
+      if (
+        protectedSet.has(path) ||
+        protectedPrefixes.some((prefix) => path.startsWith(prefix))
+      ) {
+        changed.add(path);
+      }
     }
   }
   if (changed.size > 0) {
@@ -361,6 +384,15 @@ function firstParentActivationChangedPaths({
           `${label} incidental protected-main commit ${revision} must not change attested Rust source`,
         );
       }
+      if (
+        commitPaths.some((path) =>
+          DEPLOYED_ARTIFACT_PREFIXES.some((prefix) => path.startsWith(prefix)),
+        )
+      ) {
+        throw new Error(
+          `${label} incidental protected-main commit ${revision} must not change deployed domain-core artifacts`,
+        );
+      }
       // A commit is incidental only when it changes no activation-authority
       // path. A mixed commit would silently drop authority changes from the
       // annulment closure, so fail closed.
@@ -488,6 +520,63 @@ export function validateDomainCoreActivation({
     sourceSha256: candidate.sourceSha256,
     changedPathsSha256,
   };
+}
+
+// Validate the activation closure against a release checkout R whose HEAD may
+// have advanced past activation P on protected main. The activation commit is
+// re-derived from the committed authority files (the same single-authority
+// resolution used by resolveActiveDomainCoreActivation), never trusted from
+// the release coordinates: a release commit R is release-authoritative but is
+// not itself the activation authority once path-disjoint protected-main
+// commits land after P. Post-activation drift of the activation closure paths
+// and the deployed domain-core artifacts stays fail-closed across P..R.
+export function validateDomainCoreReleaseActivation({
+  repoRoot,
+  candidateCommit,
+  releaseCommit,
+  requireHead = true,
+}) {
+  const release = commit(releaseCommit, "release commit");
+  if (requireHead && git(repoRoot, ["rev-parse", "HEAD"]) !== release) {
+    throw new Error(
+      "release commit must equal the exact release checkout HEAD",
+    );
+  }
+  const activationSha = resolveActivationAuthorityCommit(repoRoot, release);
+  const activation = validateDomainCoreActivation({
+    repoRoot,
+    candidateCommit,
+    activationCommit: activationSha,
+    requireHead: false,
+  });
+  // Post-activation drift protects the authority files and the activation's
+  // append-only evidence (receipts, attestations, bundles, provenance) — the
+  // same set resolveActiveDomainCoreActivation pins across P..R. The trusted
+  // control-plane manifest and runbook docs legitimately keep evolving with
+  // ordinary protected-main work after activation, so they stay unprotected.
+  const protectedPaths = new Set(REQUIRED_EXACT);
+  if (activation.active) {
+    for (const path of activationChangedPaths(
+      repoRoot,
+      activation.candidateCommit,
+      activationSha,
+    )) {
+      if (
+        REQUIRED_EXACT.has(path) ||
+        AUTHORITY_EVIDENCE_PREFIXES.some((prefix) => path.startsWith(prefix))
+      ) {
+        protectedPaths.add(path);
+      }
+    }
+  }
+  requireNoAuthorityDriftAfterActivation({
+    repoRoot,
+    activationCommit: activationSha,
+    releaseCommit: release,
+    paths: protectedPaths,
+    prefixes: activation.active ? DEPLOYED_ARTIFACT_PREFIXES : [],
+  });
+  return { ...activation, releaseCommit: release };
 }
 
 export function validateDomainCoreAnnullableActivation({
@@ -1058,6 +1147,7 @@ export function resolveActiveDomainCoreActivation({
     activationCommit: authorityActivationCommit,
     releaseCommit,
     paths: protectedAuthorityPaths,
+    prefixes: candidates.size > 0 ? DEPLOYED_ARTIFACT_PREFIXES : [],
   });
   if (candidates.size === 0) {
     return {

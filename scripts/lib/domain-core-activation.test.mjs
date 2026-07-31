@@ -20,6 +20,7 @@ import {
   resolveActiveDomainCoreActivation,
   validateDomainCoreAnnullableActivation,
   validateDomainCoreActivation,
+  validateDomainCoreReleaseActivation,
 } from "./domain-core-activation.mjs";
 
 function git(root, ...args) {
@@ -31,6 +32,7 @@ function git(root, ...args) {
 function fixture({
   interveningMainChange = false,
   interveningSourceChange = false,
+  interveningArtifactChange = false,
   mixedInterveningMainChange = false,
   evidenceBeforeMainChange = false,
 } = {}) {
@@ -101,6 +103,20 @@ function fixture({
     git(root, "add", ".");
     git(root, "commit", "-qm", "intervening source drift");
   }
+  if (interveningArtifactChange) {
+    mkdirSync(join(root, "functions/vendor/openburnbar/domain-core-wasm"), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(
+        root,
+        "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm",
+      ),
+      "swapped wasm bytes\n",
+    );
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "intervening deployed artifact swap");
+  }
   if (mixedInterveningMainChange) {
     mkdirSync(join(root, "functions"), { recursive: true });
     writeFileSync(
@@ -167,6 +183,142 @@ test("activation rejects an intervening protected-main commit that changes attes
         activationCommit: value.activation,
       }),
     /activation incidental protected-main commit .* must not change attested Rust source/u,
+  );
+});
+
+test("activation rejects an intervening protected-main commit that swaps deployed domain-core artifacts", () => {
+  // Promotion sidecars pin the Rust source fingerprint, not the deployed
+  // artifact bytes, so an incidental commit swapping a vendored artifact
+  // between C and P would ship unattested code and must fail closed.
+  const value = fixture({ interveningArtifactChange: true });
+  assert.throws(
+    () =>
+      validateDomainCoreActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        activationCommit: value.activation,
+      }),
+    /activation incidental protected-main commit .* must not change deployed domain-core artifacts/u,
+  );
+});
+
+test("release activation resolves activation P when protected main advances before the release is cut", () => {
+  // The ca605df1 shape: after activation P, protected main lands a commit
+  // that mixes an unrelated path with a trusted control-plane manifest
+  // refresh. The release commit R at HEAD is not the activation commit; the
+  // resolver must re-derive P from the authority files and accept R.
+  const value = fixture({ interveningMainChange: true });
+  writeFileSync(
+    join(value.root, "functions/.env.burnbar.production"),
+    "MIN_INSTANCES=2\n",
+  );
+  writeFileSync(
+    join(value.root, "config/domain-core-control-plane-manifest.json"),
+    "release control plane\n",
+  );
+  git(value.root, "add", ".");
+  git(value.root, "commit", "-qm", "post-activation mixed main advance");
+  const release = git(value.root, "rev-parse", "HEAD");
+  const proof = validateDomainCoreReleaseActivation({
+    repoRoot: value.root,
+    candidateCommit: value.candidate,
+    releaseCommit: release,
+  });
+  assert.equal(proof.active, true);
+  assert.equal(proof.candidateCommit, value.candidate);
+  assert.equal(proof.activationCommit, value.activation);
+  assert.equal(proof.releaseCommit, release);
+  const direct = validateDomainCoreActivation({
+    repoRoot: value.root,
+    candidateCommit: value.candidate,
+    activationCommit: value.activation,
+    requireHead: false,
+  });
+  assert.equal(proof.changedPathsSha256, direct.changedPathsSha256);
+});
+
+test("release activation requires the release commit to equal the checkout HEAD", () => {
+  const value = fixture({ interveningMainChange: true });
+  writeFileSync(
+    join(value.root, "functions/.env.burnbar.production"),
+    "MIN_INSTANCES=2\n",
+  );
+  git(value.root, "add", ".");
+  git(value.root, "commit", "-qm", "post-activation main advance");
+  assert.throws(
+    () =>
+      validateDomainCoreReleaseActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        releaseCommit: value.activation,
+      }),
+    /release commit must equal the exact release checkout HEAD/u,
+  );
+});
+
+test("release activation rejects post-activation drift of a single authority file", () => {
+  const value = fixture();
+  writeFileSync(
+    join(value.root, "config/domain-core-build-profiles.json"),
+    "rust drifted\n",
+  );
+  git(value.root, "add", ".");
+  git(value.root, "commit", "-qm", "post-activation authority drift");
+  assert.throws(
+    () =>
+      validateDomainCoreReleaseActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        releaseCommit: git(value.root, "rev-parse", "HEAD"),
+      }),
+    /activation authority files must resolve to the same first-parent commit/u,
+  );
+});
+
+test("release activation rejects post-activation drift of deployed domain-core artifacts", () => {
+  const value = fixture();
+  mkdirSync(join(value.root, "functions/vendor/openburnbar/domain-core-wasm"), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(
+      value.root,
+      "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm",
+    ),
+    "swapped wasm bytes\n",
+  );
+  git(value.root, "add", ".");
+  git(value.root, "commit", "-qm", "post-activation artifact swap");
+  assert.throws(
+    () =>
+      validateDomainCoreReleaseActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        releaseCommit: git(value.root, "rev-parse", "HEAD"),
+      }),
+    /domain-core activation authority drift after activation/u,
+  );
+});
+
+test("release activation rejects post-activation drift of activation evidence", () => {
+  const value = fixture({ evidenceBeforeMainChange: true });
+  writeFileSync(
+    join(
+      value.root,
+      "config/domain-core-legacy-deletion-receipts/quota.codex_usage/2/promotion.json",
+    ),
+    '{"tampered":true}\n',
+  );
+  git(value.root, "add", ".");
+  git(value.root, "commit", "-qm", "post-activation evidence tamper");
+  assert.throws(
+    () =>
+      validateDomainCoreReleaseActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        releaseCommit: git(value.root, "rev-parse", "HEAD"),
+      }),
+    /domain-core activation authority drift after activation/u,
   );
 });
 
