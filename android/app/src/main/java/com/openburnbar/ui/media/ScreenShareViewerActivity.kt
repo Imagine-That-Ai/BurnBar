@@ -29,6 +29,7 @@ class ScreenShareViewerActivity : FragmentActivity() {
     internal val controlScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     internal val controlMutex = Mutex()
     internal val counterStore = InMemoryPhoneControlCounterStore()
+    internal val connectionRecovery = ScreenShareViewerConnectionRecovery()
     internal var phoneControlSender: PhoneControlSender? = null
     internal var phoneControlConnectionID: String? = null
     internal var phoneControlSenderSealed: Boolean = false
@@ -80,7 +81,9 @@ class ScreenShareViewerActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         bindCoordinatorHandlers()
-        reinstallMirrorSurfaceAfterReturn()
+        if (connectionRecovery.shouldProbeOnResume()) {
+            reinstallMirrorSurfaceAfterReturn()
+        }
     }
 
     override fun onDestroy() {

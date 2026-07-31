@@ -33,7 +33,17 @@ class AndroidEscrowDeviceRegistry(
                 .joinToString(" ")
                 .ifBlank { "Android" }
 
-        runCatching {
+        if (trustState == TRUSTED) {
+            check(
+                trustedDeviceDocumentMatches(
+                    data = existing?.data.orEmpty(),
+                    publicKeyFingerprint = keypair.publicKeyFingerprint,
+                    keyVersion = keypair.keyVersion,
+                ),
+            ) {
+                "Trusted Android escrow registration does not match this device's key."
+            }
+        } else {
             securityClient.registerEscrowDevice(
                 deviceId = keypair.deviceId,
                 deviceName = deviceName,
@@ -132,6 +142,12 @@ class AndroidEscrowDeviceRegistry(
         internal fun publicKeyFingerprintForData(publicKeyDataBase64: String): String? = runCatching {
             CloudVaultCrypto.sha256Base64(CloudVaultCryptoSupport.decodeBase64(publicKeyDataBase64))
         }.getOrNull()
+
+        internal fun trustedDeviceDocumentMatches(data: Map<String, Any?>, publicKeyFingerprint: String, keyVersion: Int): Boolean =
+            data["trustState"] == TRUSTED &&
+                data["platform"] == "Android" &&
+                data["publicKeyFingerprint"] == publicKeyFingerprint &&
+                (data["keyVersion"] as? Number)?.toInt() == keyVersion
     }
 
     private suspend fun publishPublicKeyIfNeeded(keypair: AndroidCloudVaultDeviceKeypair, userRef: com.google.firebase.firestore.DocumentReference) {

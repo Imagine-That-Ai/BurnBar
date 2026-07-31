@@ -64,6 +64,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.BurnBarApplication
+import com.openburnbar.data.cloud.MercuryDeviceRegistrationState
+import com.openburnbar.data.cloud.userMessage
 import com.openburnbar.data.media.MediaControlStreamCoordinator
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
@@ -104,6 +106,7 @@ private fun rememberPairedMacControlsSession(connectionID: String?): PairedMacCo
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val app = context.applicationContext as? BurnBarApplication
+    val registrationState by BurnBarApplication.mercuryDeviceRegistrationState.collectAsState()
     val streams = rememberPairedMacCoordinatorStreams()
     val local = rememberPairedMacControlsLocalState()
     val premium = rememberPairedMacPremiumUi()
@@ -119,6 +122,7 @@ private fun rememberPairedMacControlsSession(connectionID: String?): PairedMacCo
             connectionID = connectionID,
             scope = scope,
             app = app,
+            registrationState = registrationState,
             streams = streams,
             local = local,
             premium = premium,
@@ -131,6 +135,7 @@ private data class PairedMacControlsSessionAssembly(
     val connectionID: String?,
     val scope: kotlinx.coroutines.CoroutineScope,
     val app: BurnBarApplication?,
+    val registrationState: MercuryDeviceRegistrationState,
     val streams: PairedMacCoordinatorStreams,
     val local: PairedMacControlsLocalState,
     val premium: PairedMacPremiumUi,
@@ -146,7 +151,13 @@ private fun assemblePairedMacControlsSession(assembly: PairedMacControlsSessionA
             assembly.local,
         )
     val writeCallbacks = buildPairedMacWriteCallbacks(assembly.streams, assembly.local)
-    val uiState = buildPairedMacUiState(assembly.streams, assembly.local, assembly.premium)
+    val uiState =
+        buildPairedMacUiState(
+            streams = assembly.streams,
+            local = assembly.local,
+            premium = assembly.premium,
+            registrationState = assembly.registrationState,
+        )
     val uiActions =
         buildPairedMacControlsUiActions(
             context =
@@ -198,9 +209,10 @@ private fun buildPairedMacUiState(
     streams: PairedMacCoordinatorStreams,
     local: PairedMacControlsLocalState,
     premium: PairedMacPremiumUi,
+    registrationState: MercuryDeviceRegistrationState,
 ): PairedMacControlsUiState = PairedMacControlsUiState(
     phase = streams.phase,
-    statusMessage = local.statusMessage,
+    statusMessage = local.statusMessage ?: registrationState.userMessage(),
     pendingRequestID = local.pendingRequestID,
     pendingCallRequestID = local.pendingCallRequestID,
     recoveringMercury = local.recoveringMercury,
