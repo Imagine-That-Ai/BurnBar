@@ -61,7 +61,7 @@
     "scripts/build-domain-core-python.sh": ["c754e97e3db79524","9c43640783c337b2","59caeb3a4242a324","b5ab8a96a61b4ba0"],
     "scripts/build-domain-core-wasm.sh": ["b56722d24572873c","d41d44ac731929cd","50b304534341ee0a","8612d60f0d1935cd"],
     "scripts/build-domain-core-xcframework.sh": ["6573fdca02a4b519","663cb51a1f9a2c49","904ff767036d100e","daa88ea4f6d8f094"],
-    "scripts/build-iroh-xcframework.sh": ["83ca5f08a31c686d","4c38dce327fa13bf","21417724072add5e","309e42a1e055d4ce"],
+    "scripts/build-iroh-xcframework.sh": ["6b2f0aa378306786","07c0b754f255148b","76f0780670946f10","d0e10704a834e116"],
     "scripts/build-macos-website-release.sh": ["6e268ca66fe41f2a","c476cb2396da8248","ab93b697c7b4f9d8","16bd52a252228401"],
     "scripts/check-openburnbar-app-swiftpm-lock.sh": ["adbdcb468faf7e27","c9cfe986a9691cee","a03f1e31430c3ae6","9a3b4b804d1321d1"],
     "scripts/ci/await-burnbar-ci-gate.mjs": ["5d80cb0189d92315","dbe5a35d43894c95","4ed4fe3f2cd5e2b9","697fe8e0d127bbde"],
