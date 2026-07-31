@@ -160,13 +160,13 @@ class AndroidEscrowDeviceRegistryPublishTest {
         val material = publicKeyMaterial(seed = 1)
         every { publicKeyRef.get() } returns Tasks.forException(RuntimeException("offline cache miss"))
         every { transaction.get(publicKeyRef) } returns snapshotWith(null)
-        val payload = slot<Any>()
+        val payload = slot<Map<String, Any>>()
         every { transaction.set(publicKeyRef, capture(payload), any<SetOptions>()) } returns transaction
 
         runBlocking { registry.registerSelf(uid = UID, keypair = keypair(seed = 1)) }
 
         verify(exactly = 1) { transaction.set(publicKeyRef, any(), any<SetOptions>()) }
-        val written = payload.captured as Map<*, *>
+        val written = payload.captured
         assertEquals(DEVICE_ID, written["deviceId"])
         assertEquals(material.dataBase64, written["publicKeyData"])
         assertEquals(material.fingerprint, written["publicKeyFingerprint"])
