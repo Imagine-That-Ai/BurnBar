@@ -26,13 +26,13 @@ final class PrivilegedTrustRealValidationTests: XCTestCase {
         }
     }
 
-    func test_staticCodeAndFlagPlumbing_executesAgainstAppleSignedHost() throws {
+    func test_dynamicCodeAndFlagPlumbing_executesAgainstAppleSignedHost() throws {
         // Relax only the requirement string (injectable for tests) so the
         // Apple-signed test host passes SecCodeCheckValidity and the
-        // static-code → signing-info → CodeDirectory-flag plumbing actually
-        // runs. The host is not hardened-runtime+library-validation signed
-        // the way first-party daemons are, so the only acceptable failure is
-        // the M-9 policy refusal — any other status means the plumbing broke.
+        // live-code signing-info → CodeDirectory-flag plumbing actually runs.
+        // The host is not hardened-runtime+library-validation signed the way
+        // first-party daemons are, so the only acceptable failure is the M-9
+        // policy refusal — any other status means the plumbing broke.
         var selfCode: SecCode?
         XCTAssertEqual(SecCodeCopySelf([], &selfCode), errSecSuccess)
         let code = try XCTUnwrap(selfCode)
