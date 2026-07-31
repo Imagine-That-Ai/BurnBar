@@ -133,7 +133,7 @@ class LifecycleReceiptWriterTests(unittest.TestCase):
                 ),
                 mock.patch.object(
                     ANNULMENT.GATE,
-                    "validate_activation_closure",
+                    "validate_annullable_activation_closure",
                     return_value=activation,
                 ),
                 mock.patch.object(

@@ -86,7 +86,7 @@ def create_receipt(
     candidate = GATE.require_object(attestation.get("candidate"), "promotion candidate")
     candidate_commit = candidate["candidateCommit"]
     activation_commit = GATE.require_commit(repo_root, activation_commit, "activation commit")
-    activation = GATE.validate_activation_closure(
+    activation = GATE.validate_annullable_activation_closure(
         repo_root,
         candidate_commit,
         activation_commit,

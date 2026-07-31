@@ -7,8 +7,10 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  annullableActivationChangedPaths,
   domainCoreActivationReceiptClosure,
   resolveActiveDomainCoreActivation,
+  validateDomainCoreAnnullableActivation,
   validateDomainCoreActivation,
 } from "./domain-core-activation.mjs";
 
@@ -18,7 +20,11 @@ function git(root, ...args) {
   }).trim();
 }
 
-function fixture() {
+function fixture({
+  interveningMainChange = false,
+  mixedInterveningMainChange = false,
+  evidenceBeforeMainChange = false,
+} = {}) {
   const root = mkdtempSync(join(tmpdir(), "domain-core-activation-"));
   mkdirSync(join(root, "crates/openburnbar-domain-core"), { recursive: true });
   mkdirSync(join(root, "config"), { recursive: true });
@@ -48,6 +54,43 @@ function fixture() {
   git(root, "add", ".");
   git(root, "commit", "-qm", "candidate C");
   const candidate = git(root, "rev-parse", "HEAD");
+  if (evidenceBeforeMainChange) {
+    mkdirSync(
+      join(root, "config/domain-core-legacy-deletion-receipts/quota.codex_usage/2"),
+      { recursive: true },
+    );
+    writeFileSync(
+      join(
+        root,
+        "config/domain-core-legacy-deletion-receipts/quota.codex_usage/2/promotion.json",
+      ),
+      "{}\n",
+    );
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "activation evidence before main advance");
+  }
+  if (interveningMainChange) {
+    mkdirSync(join(root, "functions"), { recursive: true });
+    writeFileSync(
+      join(root, "functions/.env.burnbar.production"),
+      "MIN_INSTANCES=1\n",
+    );
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "unrelated protected main advance");
+  }
+  if (mixedInterveningMainChange) {
+    mkdirSync(join(root, "functions"), { recursive: true });
+    writeFileSync(
+      join(root, "functions/.env.burnbar.production"),
+      "MIN_INSTANCES=1\n",
+    );
+    writeFileSync(
+      join(root, "config/domain-core-legacy-deletion.json"),
+      "smuggled authority change\n",
+    );
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "mixed protected main advance");
+  }
   writeFileSync(join(root, "config/domain-core-build-profiles.json"), "rust\n");
   writeFileSync(
     join(root, "config/domain-core-legacy-deletion.json"),
@@ -71,6 +114,94 @@ test("accepts candidate C plus path-restricted activation P", () => {
   });
   assert.equal(proof.candidateCommit, value.candidate);
   assert.equal(proof.activationCommit, value.activation);
+});
+
+test("annullable activation handles an unrelated protected-main advance without relaxing release validation", () => {
+  const value = fixture({ interveningMainChange: true });
+  assert.throws(
+    () =>
+      validateDomainCoreActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        activationCommit: value.activation,
+      }),
+    /forbidden paths/u,
+  );
+  const proof = validateDomainCoreAnnullableActivation({
+    repoRoot: value.root,
+    candidateCommit: value.candidate,
+    activationCommit: value.activation,
+  });
+  assert.equal(proof.candidateCommit, value.candidate);
+  assert.equal(proof.activationCommit, value.activation);
+  assert.ok(
+    !annullableActivationChangedPaths(
+      value.root,
+      value.candidate,
+      value.activation,
+    ).includes("functions/.env.burnbar.production"),
+  );
+});
+
+test("annullable activation rejects forbidden drift after the activation suffix", () => {
+  const value = fixture({ interveningMainChange: true });
+  writeFileSync(
+    join(value.root, "crates/openburnbar-domain-core/new.rs"),
+    "fn changed() {}\n",
+  );
+  git(value.root, "add", ".");
+  git(value.root, "commit", "-qm", "forbidden source drift");
+  assert.throws(
+    () =>
+      validateDomainCoreAnnullableActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        activationCommit: git(value.root, "rev-parse", "HEAD"),
+      }),
+    /final diff contains forbidden paths/u,
+  );
+});
+
+test("retains allowed evidence committed before a later unrelated protected-main advance", () => {
+  // Evidence written in an allowed commit after candidate C must stay in the
+  // closure even when an unrelated protected-main commit lands afterwards;
+  // only the incidental commit's own paths are excluded.
+  const value = fixture({
+    evidenceBeforeMainChange: true,
+    interveningMainChange: true,
+  });
+  const paths = annullableActivationChangedPaths(
+    value.root,
+    value.candidate,
+    value.activation,
+  );
+  assert.ok(
+    paths.includes(
+      "config/domain-core-legacy-deletion-receipts/quota.codex_usage/2/promotion.json",
+    ),
+  );
+  assert.ok(!paths.includes("functions/.env.burnbar.production"));
+  const proof = validateDomainCoreAnnullableActivation({
+    repoRoot: value.root,
+    candidateCommit: value.candidate,
+    activationCommit: value.activation,
+  });
+  assert.equal(proof.active, true);
+});
+
+test("rejects an intervening protected-main commit that mixes unrelated and activation paths", () => {
+  // A mixed commit must not be treated as incidental: advancing the base past
+  // it would drop its authority-ledger change from the validated diff.
+  const value = fixture({ mixedInterveningMainChange: true });
+  assert.throws(
+    () =>
+      validateDomainCoreAnnullableActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        activationCommit: value.activation,
+      }),
+    /annullable incidental protected-main commit .* must not change activation authority paths/u,
+  );
 });
 
 test("normalizes an active activation proof to the signed receipt closure", () => {
@@ -452,6 +583,7 @@ test("release resolver recognizes only the fail-closed activation-annulment supe
     '"advancedMainCommit"',
     '"release_train_advanced_before_stable_receipt"',
     '"replacementCandidateRequired"',
+    "validateDomainCoreAnnullableActivation",
     "domainCoreActivationReceiptClosure(expectedActivation)",
     "previous activation annulment closure is invalid",
     "previous activation annulment main advance is invalid",
