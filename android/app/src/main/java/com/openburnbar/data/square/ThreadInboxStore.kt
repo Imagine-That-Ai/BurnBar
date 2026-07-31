@@ -3,6 +3,7 @@ package com.openburnbar.data.square
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.google.firebase.FirebaseException
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
@@ -164,7 +165,7 @@ class ThreadInboxStore private constructor(
             lastRefreshedAtEpoch = System.currentTimeMillis()
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (e: FirebaseException) {
             // Firestore can reject a signed-in request while App Check is
             // refreshing or temporarily unavailable. This refresh runs from a
             // Compose LaunchedEffect, so letting that exception escape kills
