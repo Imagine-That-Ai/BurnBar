@@ -75,10 +75,7 @@ class AndroidEscrowDeviceRegistryTest {
         }
     }
 
-    private fun runRegisterSelf(
-        existingTrustState: String?,
-        securityClient: ComputerUseSecurityCallableClient,
-    ): AndroidEscrowDeviceRegistration {
+    private fun runRegisterSelf(existingTrustState: String?, securityClient: ComputerUseSecurityCallableClient): AndroidEscrowDeviceRegistration {
         val keypair = mockk<AndroidCloudVaultDeviceKeypair> {
             every { deviceId } returns TEST_DEVICE_ID
             every { publicKeyFingerprint } returns testPublicKey.fingerprint
