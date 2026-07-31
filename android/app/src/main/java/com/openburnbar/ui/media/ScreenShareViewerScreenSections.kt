@@ -885,16 +885,6 @@ internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (
         }
     }
 
-    LaunchedEffect(isKeyboardVisible) {
-        when {
-            isKeyboardVisible -> hasShownKeyboard = true
-            shouldDismissRemoteKeyboardCapture(
-                hasShownKeyboard = hasShownKeyboard,
-                isKeyboardVisible = isKeyboardVisible,
-            ) -> onDismiss()
-        }
-    }
-
     BasicTextField(
         value = captureState.retainedText,
         onValueChange = { newText ->
