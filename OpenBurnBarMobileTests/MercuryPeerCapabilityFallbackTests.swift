@@ -24,8 +24,8 @@ final class MercuryPeerCapabilityFallbackTests: XCTestCase {
             displayName: "Alberto's MacBook Pro Hermes Relay",
             mode: .relayLink,
             status: .online,
-            capabilities: capabilities,
             realtimeRelayStatus: realtimeRelayStatus,
+            capabilities: capabilities,
             updatedAt: referenceDate
         )
     }
