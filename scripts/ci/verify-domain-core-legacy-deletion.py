@@ -2845,7 +2845,7 @@ def validate_activation_annulment_receipt(
         activation["activationCommit"],
         f"row {row_id} activationAnnulment.activation.activationCommit",
     )
-    if activation != validate_activation_closure(repo_root, candidate, activation_commit):
+    if activation != validate_annullable_activation_closure(repo_root, candidate, activation_commit):
         raise GateError(f"row {row_id}: activation annulment does not bind the exact stale activation")
 
     advanced_main = require_commit(
@@ -3959,6 +3959,106 @@ def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_
     return sorted(changed)
 
 
+def annullable_activation_changed_paths(
+    repo_root: Path,
+    candidate_commit: str,
+    activation_commit: str,
+) -> list[str]:
+    require_ancestor(repo_root, candidate_commit, activation_commit, "domain-core annullable activation")
+    if candidate_commit == activation_commit:
+        raise GateError("domain-core annullable activation commit must be distinct from the candidate commit")
+    activation_commits = [
+        line
+        for line in git_output(
+            repo_root,
+            ["rev-list", "--first-parent", "--reverse", f"{candidate_commit}..{activation_commit}"],
+            "domain-core annullable activation first-parent history",
+        ).splitlines()
+        if line
+    ]
+    incidental_paths: set[str] = set()
+    for commit in activation_commits:
+        commit_lineage = git_output(
+            repo_root,
+            ["rev-list", "--parents", "-n", "1", commit],
+            "domain-core annullable activation parent",
+        ).split()
+        if len(commit_lineage) < 2:
+            raise GateError("domain-core annullable activation commit must have a parent")
+        commit_paths = [
+            line
+            for line in git_output(
+                repo_root,
+                [
+                    "diff",
+                    "--name-only",
+                    "--diff-filter=ACDMRTUXB",
+                    f"{commit_lineage[1]}..{commit}",
+                ],
+                "domain-core annullable activation commit diff",
+            ).splitlines()
+            if line
+        ]
+        commit_forbidden = sorted(
+            path
+            for path in commit_paths
+            if path not in ACTIVATION_ALLOWED_EXACT_PATHS
+            and not any(path.startswith(prefix) for prefix in ACTIVATION_ALLOWED_PREFIXES)
+        )
+        if commit_forbidden:
+            if commit == activation_commit:
+                raise GateError(
+                    "domain-core annullable activation may end only with profile, trusted manifest, append-only authority artifacts, and runbooks: "
+                    + ", ".join(commit_forbidden)
+                )
+            # A commit is incidental only when it changes no activation-authority
+            # path. A mixed commit would silently drop authority changes from the
+            # annulment closure, so fail closed.
+            if len(commit_forbidden) != len(commit_paths):
+                raise GateError(
+                    f"domain-core annullable incidental protected-main commit {commit} "
+                    "must not change activation authority paths"
+                )
+            incidental_paths.update(commit_paths)
+    # Annulment-only recovery binds the full candidate..activation diff while
+    # excluding paths proven to come solely from incidental protected-main
+    # commits. Normal release activation remains strict and never uses this path.
+    changed = [
+        line
+        for line in git_output(
+            repo_root,
+            [
+                "diff",
+                "--name-only",
+                "--diff-filter=ACDMRTUXB",
+                f"{candidate_commit}..{activation_commit}",
+            ],
+            "domain-core annullable activation diff",
+        ).splitlines()
+        if line and line not in incidental_paths
+    ]
+    if not changed:
+        raise GateError(
+            "domain-core annullable activation commit must change the committed authority profile and receipts"
+        )
+    forbidden = sorted(
+        path
+        for path in changed
+        if path not in ACTIVATION_ALLOWED_EXACT_PATHS
+        and not any(path.startswith(prefix) for prefix in ACTIVATION_ALLOWED_PREFIXES)
+    )
+    if forbidden:
+        raise GateError(
+            "domain-core annullable activation suffix may change only profile, trusted manifest, append-only authority artifacts, and runbooks: "
+            + ", ".join(forbidden)
+        )
+    if BUILD_PROFILE_PATH not in changed or "config/domain-core-legacy-deletion.json" not in changed:
+        raise GateError(
+            "domain-core annullable activation must atomically change the public profile and authority ledger"
+        )
+    return sorted(changed)
+
+
 def validate_activation_closure(
     repo_root: Path,
     candidate_commit: str,
@@ -3970,6 +4070,29 @@ def validate_activation_closure(
     if activation_identity != candidate:
         raise GateError("domain-core activation changed the attested core version, ABI, or source fingerprint")
     changed_paths = activation_changed_paths(repo_root, candidate_commit, activation_commit)
+    return {
+        "candidateCommit": candidate_commit,
+        "activationCommit": activation_commit,
+        "coreVersion": candidate["coreVersion"],
+        "abiVersion": candidate["abiVersion"],
+        "sourceSha256": candidate["sourceSha256"],
+        "changedPathsSha256": canonical_json_sha256(changed_paths),
+    }
+
+
+def validate_annullable_activation_closure(
+    repo_root: Path,
+    candidate_commit: str,
+    activation_commit: str,
+) -> dict[str, Any]:
+    candidate = candidate_identity_at_commit(repo_root, candidate_commit)
+    activation = candidate_identity_at_commit(repo_root, activation_commit)
+    activation_identity = {**activation, "candidateCommit": candidate_commit}
+    if activation_identity != candidate:
+        raise GateError(
+            "domain-core annullable activation changed the attested core version, ABI, or source fingerprint"
+        )
+    changed_paths = annullable_activation_changed_paths(repo_root, candidate_commit, activation_commit)
     return {
         "candidateCommit": candidate_commit,
         "activationCommit": activation_commit,
