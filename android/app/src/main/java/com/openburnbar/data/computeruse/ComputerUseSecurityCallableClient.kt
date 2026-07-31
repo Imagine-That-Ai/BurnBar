@@ -57,6 +57,15 @@ internal suspend fun <T> callBoundToExpectedUid(expectedUid: String, currentUidP
     return result
 }
 
+private fun isAppCheckBindingConflict(error: FirebaseFunctionsException): Boolean {
+    val bindingGateCode =
+        error.code == FirebaseFunctionsException.Code.PERMISSION_DENIED ||
+            error.code == FirebaseFunctionsException.Code.FAILED_PRECONDITION
+    if (!bindingGateCode) return false
+    val message = error.message.orEmpty()
+    return message.contains("App Check") || message.contains("bindAppCheckAttestation")
+}
+
 /**
  * WS4 Android client for App Check attestation binding and escrow device trust callables.
  */
@@ -99,15 +108,6 @@ class ComputerUseSecurityCallableClient(
         if (!isAppCheckBindingConflict(bindingConflict)) throw bindingConflict
         bindAppCheckAttestation()
         return issueHighRiskActionNonce()
-    }
-
-    private fun isAppCheckBindingConflict(error: FirebaseFunctionsException): Boolean {
-        val bindingGateCode =
-            error.code == FirebaseFunctionsException.Code.PERMISSION_DENIED ||
-                error.code == FirebaseFunctionsException.Code.FAILED_PRECONDITION
-        if (!bindingGateCode) return false
-        val message = error.message.orEmpty()
-        return message.contains("App Check") || message.contains("bindAppCheckAttestation")
     }
 
     suspend fun registerEscrowDevice(
