@@ -191,6 +191,48 @@ function verify() {
       "Functions deployment package retains executable npm scripts",
     );
   }
+  if (packageJson.devDependencies !== undefined) {
+    throw new Error(
+      "Functions deployment package retains development dependencies",
+    );
+  }
+  const overrideValues = JSON.stringify(packageJson.overrides ?? {});
+  if (overrideValues.includes('"$')) {
+    throw new Error(
+      "Functions deployment package retains an npm dependency alias override",
+    );
+  }
+
+  const lockfile = JSON.parse(
+    readFileSync(join(artifactRoot, "functions", "package-lock.json"), "utf8"),
+  );
+  if (lockfile.packages?.[""]?.devDependencies !== undefined) {
+    throw new Error(
+      "Functions deployment lockfile retains development dependencies",
+    );
+  }
+  if (lockfile.packages?.[""]?.hasInstallScript !== undefined) {
+    throw new Error(
+      "Functions deployment lockfile retains an install-script marker",
+    );
+  }
+  for (const [path, entry] of Object.entries(lockfile.packages ?? {})) {
+    if (entry?.dev === true) {
+      throw new Error(
+        `Functions deployment lockfile retains dev-only package ${path}`,
+      );
+    }
+  }
+  for (const path of [
+    "node_modules/firebase-tools",
+    "node_modules/openburnbar-brace-expansion-cjs",
+  ]) {
+    if (lockfile.packages?.[path] !== undefined) {
+      throw new Error(
+        `Functions deployment lockfile retains dev-only package ${path}`,
+      );
+    }
+  }
 
   const manifest = parseManifest(
     readFileSync(join(artifactRoot, "SHA256SUMS"), "utf8"),
