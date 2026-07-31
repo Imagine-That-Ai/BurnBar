@@ -814,6 +814,130 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
             }
         )
     }
+
+    // MARK: - High-risk nonce mint with App Check binding-conflict recovery
+
+    private func functionsError(code: FunctionsErrorCode, message: String) -> NSError {
+        NSError(
+            domain: FunctionsErrorDomain,
+            code: code.rawValue,
+            userInfo: [NSLocalizedDescriptionKey: message]
+        )
+    }
+
+    func testHighRiskNonceMintReturnsFirstNonceWithoutRebinding() async throws {
+        var mintCount = 0
+        var rebindCount = 0
+
+        let nonce = try await ComputerUseSecurityCallableClient.issueHighRiskActionNonceRecoveringBindingConflict(
+            issueNonce: {
+                mintCount += 1
+                return "nonce-first"
+            },
+            rebindAttestation: { rebindCount += 1 }
+        )
+
+        XCTAssertEqual(nonce, "nonce-first")
+        XCTAssertEqual(mintCount, 1)
+        XCTAssertEqual(rebindCount, 0)
+    }
+
+    func testHighRiskNonceMintRebindsOnceAfterAppCheckBindingConflict() async throws {
+        var mintCount = 0
+        var rebindCount = 0
+        let conflict = functionsError(
+            code: .permissionDenied,
+            message: "App Check binding mismatch for this app instance."
+        )
+
+        let nonce = try await ComputerUseSecurityCallableClient.issueHighRiskActionNonceRecoveringBindingConflict(
+            issueNonce: {
+                mintCount += 1
+                if mintCount == 1 { throw conflict }
+                return "nonce-after-rebind"
+            },
+            rebindAttestation: { rebindCount += 1 }
+        )
+
+        XCTAssertEqual(nonce, "nonce-after-rebind")
+        XCTAssertEqual(mintCount, 2)
+        XCTAssertEqual(rebindCount, 1)
+    }
+
+    func testHighRiskNonceMintRethrowsNonConflictErrorsWithoutRebinding() async {
+        var mintCount = 0
+        var rebindCount = 0
+        let unrelated = functionsError(code: .notFound, message: "App Check binding mismatch")
+
+        await XCTAssertThrowsErrorAsync({
+            try await ComputerUseSecurityCallableClient.issueHighRiskActionNonceRecoveringBindingConflict(
+                issueNonce: {
+                    mintCount += 1
+                    throw unrelated
+                },
+                rebindAttestation: { rebindCount += 1 }
+            )
+        }, { error in
+            XCTAssertEqual((error as NSError).code, FunctionsErrorCode.notFound.rawValue)
+        })
+
+        XCTAssertEqual(mintCount, 1)
+        XCTAssertEqual(rebindCount, 0)
+    }
+
+    func testHighRiskNonceMintRetriesOnlyOnceWhenConflictPersists() async {
+        var mintCount = 0
+        var rebindCount = 0
+        let conflict = functionsError(
+            code: .failedPrecondition,
+            message: "Call bindAppCheckAttestation before high-risk actions."
+        )
+
+        await XCTAssertThrowsErrorAsync({
+            try await ComputerUseSecurityCallableClient.issueHighRiskActionNonceRecoveringBindingConflict(
+                issueNonce: {
+                    mintCount += 1
+                    throw conflict
+                },
+                rebindAttestation: { rebindCount += 1 }
+            )
+        }, { error in
+            XCTAssertEqual((error as NSError).code, FunctionsErrorCode.failedPrecondition.rawValue)
+        })
+
+        XCTAssertEqual(mintCount, 2)
+        XCTAssertEqual(rebindCount, 1)
+    }
+
+    func testAppCheckBindingConflictErrorRequiresFunctionsBindingGateSignature() {
+        XCTAssertTrue(ComputerUseSecurityCallableClient.isAppCheckBindingConflictError(
+            functionsError(code: .permissionDenied, message: "App Check binding mismatch")
+        ))
+        XCTAssertTrue(ComputerUseSecurityCallableClient.isAppCheckBindingConflictError(
+            functionsError(code: .failedPrecondition, message: "Call bindAppCheckAttestation before this action.")
+        ))
+
+        // Right code, unrelated message: not a binding conflict.
+        XCTAssertFalse(ComputerUseSecurityCallableClient.isAppCheckBindingConflictError(
+            functionsError(code: .permissionDenied, message: "Caller lacks the owner role.")
+        ))
+        // Right message, non-gate code: not a binding conflict.
+        XCTAssertFalse(ComputerUseSecurityCallableClient.isAppCheckBindingConflictError(
+            functionsError(code: .notFound, message: "App Check binding mismatch")
+        ))
+        // Non-Functions domain: not a binding conflict.
+        XCTAssertFalse(ComputerUseSecurityCallableClient.isAppCheckBindingConflictError(
+            NSError(
+                domain: NSURLErrorDomain,
+                code: NSURLErrorTimedOut,
+                userInfo: [NSLocalizedDescriptionKey: "App Check timed out"]
+            )
+        ))
+        // Client-side error type: not a binding conflict.
+        XCTAssertFalse(ComputerUseSecurityCallableClient.isAppCheckBindingConflictError(
+            ComputerUseSecurityCallableClient.ClientError.invalidResponse("App Check")
+        ))
+    }
 }
 
 private final class RotationCapture {
