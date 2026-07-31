@@ -310,6 +310,13 @@ private actor HandlerRecordingIrohStream: IrohRelayStream {
 
 @MainActor
 final class HermesIrohRelayHostClientRuntimeTests: XCTestCase {
+    /// A run of recoverable peer-close accept failures must not tear down an
+    /// endpoint that holds peer-independent health evidence (here: a completed
+    /// `accept` immediately before the burst). Without such evidence the same
+    /// burst rebuilds the endpoint after the bounded limit, because a wedged
+    /// acceptor produces the identical failure signature; that direction is
+    /// covered by `test_repeatedRecoverablePeerAcceptFailures_rebuildEndpoint`
+    /// in `HermesIrohRelayHostClientMattersTests`.
     func testRecoverablePeerAcceptFailuresDoNotRebuildAndDropActiveEndpoint() async throws {
         let suiteName = "hermes.iroh.host.test.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -322,7 +329,7 @@ final class HermesIrohRelayHostClientRuntimeTests: XCTestCase {
         let auditLogger = RecordingIrohTransportAuditLogger()
         let first = TestIrohRelayTransport(
             nodeId: "node-first",
-            acceptBehavior: .failThenPark(
+            acceptBehavior: .acceptOneThenFailThenPark(
                 .streamRejected("iroh stream failed: connection lost"),
                 failures: 4
             )
@@ -350,8 +357,10 @@ final class HermesIrohRelayHostClientRuntimeTests: XCTestCase {
 
         let started = await client.start(uid: "uid-1", connectionID: "connection-1")
         XCTAssertTrue(started)
+        // 1 completed accept (health evidence) + 4 recoverable failures, which
+        // crosses the rebuild limit, + the parked accept that follows.
         try await waitUntil(timeout: 3) {
-            first.acceptCount >= 5
+            first.acceptCount >= 6
         }
 
         let record = try await directory.fetch(uid: "uid-1", connectionId: "connection-1")
@@ -445,6 +454,9 @@ private final class TestIrohRelayTransport: IrohRelayTransport, @unchecked Senda
     enum AcceptBehavior: Sendable {
         case fail(IrohRelayTransportError)
         case failThenPark(IrohRelayTransportError, failures: Int)
+        /// First `accept` hands back a stream (peer-independent acceptor-health
+        /// evidence), the next `failures` calls throw, then the loop parks.
+        case acceptOneThenFailThenPark(IrohRelayTransportError, failures: Int)
         case park
     }
 
@@ -480,6 +492,17 @@ private final class TestIrohRelayTransport: IrohRelayTransport, @unchecked Senda
             throw error
         case .failThenPark(let error, let failures):
             if acceptCount <= failures {
+                throw error
+            }
+            while !Task.isCancelled {
+                try await Task.sleep(nanoseconds: 100_000_000)
+            }
+            throw IrohRelayTransportError.shutdown
+        case .acceptOneThenFailThenPark(let error, let failures):
+            if acceptCount == 1 {
+                return HandlerRecordingIrohStream(frames: [])
+            }
+            if acceptCount <= failures + 1 {
                 throw error
             }
             while !Task.isCancelled {
