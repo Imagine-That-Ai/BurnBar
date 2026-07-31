@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Mercury release build reliability
+
+- **Made clean Mercury XCFramework release builds deterministic across current
+  Apple toolchains**: the cross-target builder keeps host proc-macro dylibs
+  intact, strips debug data only from the final packaged archives, isolates its
+  Cargo target directory, and serializes Cargo by default.
+
 ### Fixed - Trusted device identity control
 
 - **Kept every distinct trusted-device registration visible and independently
