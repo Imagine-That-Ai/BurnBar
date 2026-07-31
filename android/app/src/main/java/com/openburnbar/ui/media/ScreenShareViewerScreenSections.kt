@@ -112,6 +112,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.openburnbar.data.media.VideoReceivePipeline
 import com.openburnbar.irohrelay.HermesRealtimeRelayMacLockState
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockState
@@ -855,9 +858,11 @@ internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (
     var captureState by remember { mutableStateOf(RemoteKeyboardCaptureState()) }
     var hasFocused by remember { mutableStateOf(false) }
     var hasShownKeyboard by remember { mutableStateOf(false) }
+    var keyboardOpenRequestId by remember { mutableStateOf(0) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val isKeyboardVisible = WindowInsets.isImeVisible
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     DisposableEffect(Unit) {
         onDispose {
@@ -865,7 +870,23 @@ internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (
         }
     }
 
-    LaunchedEffect(Unit) {
+    DisposableEffect(lifecycleOwner) {
+        // Android hides the IME when the viewer is backgrounded or enters
+        // Picture-in-Picture even though the Mac's text focus is unchanged.
+        // Stop tracking the hide as a user dismissal on pause and reopen the
+        // keyboard once the viewer becomes interactive again.
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> hasShownKeyboard = false
+                Lifecycle.Event.ON_RESUME -> keyboardOpenRequestId += 1
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(keyboardOpenRequestId) {
         listOf(80L, 220L, 420L).forEach { delayMillis ->
             delay(delayMillis)
             focusRequester.requestFocus()

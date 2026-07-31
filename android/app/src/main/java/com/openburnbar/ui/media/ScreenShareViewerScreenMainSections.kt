@@ -217,7 +217,9 @@ private fun ScreenShareViewerSmartZoomFollowEffect(params: ScreenShareViewerSmar
 
 @Composable
 private fun ScreenShareViewerAutoTypeEffect(params: ScreenShareViewerAutoTypeParams) {
-    var openedAutomatically by remember { mutableStateOf(false) }
+    // Saved alongside typingOpen so a restored automatic keyboard keeps its
+    // automatic-focus lifecycle after activity recreation.
+    var openedAutomatically by rememberSaveable { mutableStateOf(false) }
     val latestFocusContext = params.latestFocusContext
     val autoKeyboardOnTextFocus = params.autoKeyboardOnTextFocus
     val controlMode = params.controlMode
