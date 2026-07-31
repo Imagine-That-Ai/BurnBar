@@ -112,6 +112,7 @@ build: bootstrap preflight
 	@echo "==> Built: $(APP_BUNDLE)"
 
 build-signed: bootstrap preflight
+	@bash scripts/ci/verify-iroh-release-artifact.sh
 	@mkdir -p "$(CACHE_DIR)" "$(DERIVED_DATA)"
 	@echo "==> Resolving packages…"
 	xcodebuild -resolvePackageDependencies \
