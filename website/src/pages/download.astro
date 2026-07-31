@@ -502,6 +502,8 @@ npm run build</code></pre>
   .pagehead__product {
     display: inline-block;
     white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: keep-all;
   }
   .pagehead .lead,
   .pagehead__lead {
@@ -609,6 +611,16 @@ npm run build</code></pre>
   }
   .jump a.jump--live {
     opacity: 1;
+  }
+
+  @media (min-width: 64rem) {
+    .pagehead__inner {
+      max-width: 68rem;
+    }
+    .platgrid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      max-width: 64rem;
+    }
   }
 
   /* ── Linux download tiles ── */
@@ -884,13 +896,17 @@ npm run build</code></pre>
     }
     .pagehead__h {
       max-width: 100%;
-      font-size: 2.75rem;
+      font-size: clamp(2.1rem, 9vw, 2.4rem);
       letter-spacing: 0;
       overflow-wrap: normal;
       word-break: normal;
     }
     .pagehead__h > span {
       display: block;
+    }
+    .pagehead__product {
+      overflow-wrap: normal;
+      word-break: keep-all;
     }
     .dlsec__head {
       flex-direction: column;
