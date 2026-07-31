@@ -18,7 +18,7 @@ function git(root, ...args) {
   }).trim();
 }
 
-function fixture() {
+function fixture({ interveningMainChange = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), "domain-core-activation-"));
   mkdirSync(join(root, "crates/openburnbar-domain-core"), { recursive: true });
   mkdirSync(join(root, "config"), { recursive: true });
@@ -48,6 +48,15 @@ function fixture() {
   git(root, "add", ".");
   git(root, "commit", "-qm", "candidate C");
   const candidate = git(root, "rev-parse", "HEAD");
+  if (interveningMainChange) {
+    mkdirSync(join(root, "functions"), { recursive: true });
+    writeFileSync(
+      join(root, "functions/.env.burnbar.production"),
+      "MIN_INSTANCES=1\n",
+    );
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "unrelated protected main advance");
+  }
   writeFileSync(join(root, "config/domain-core-build-profiles.json"), "rust\n");
   writeFileSync(
     join(root, "config/domain-core-legacy-deletion.json"),
@@ -64,6 +73,17 @@ function fixture() {
 
 test("accepts candidate C plus path-restricted activation P", () => {
   const value = fixture();
+  const proof = validateDomainCoreActivation({
+    repoRoot: value.root,
+    candidateCommit: value.candidate,
+    activationCommit: value.activation,
+  });
+  assert.equal(proof.candidateCommit, value.candidate);
+  assert.equal(proof.activationCommit, value.activation);
+});
+
+test("accepts an atomic activation after an unrelated protected-main advance", () => {
+  const value = fixture({ interveningMainChange: true });
   const proof = validateDomainCoreActivation({
     repoRoot: value.root,
     candidateCommit: value.candidate,

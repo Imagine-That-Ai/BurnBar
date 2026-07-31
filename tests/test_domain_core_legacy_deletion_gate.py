@@ -721,7 +721,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         ):
             GATE.validate_build_profile_catalog(weakened)
 
-    def test_two_commit_activation_is_non_circular_and_path_restricted(self) -> None:
+    def test_atomic_activation_ignores_intervening_main_changes_and_is_path_restricted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory).resolve()
             (repo / "crates/openburnbar-domain-core").mkdir(parents=True)
@@ -750,6 +750,14 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                 check=True,
             )
             candidate = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            (repo / "functions").mkdir()
+            (repo / "functions/.env.burnbar.production").write_text("MIN_INSTANCES=1\n")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "commit", "-qm", "unrelated protected main advance"],
+                cwd=repo,
+                check=True,
+            )
             profiles["profiles"]["public-production"]["modes"] = {domain: "rust" for domain in profiles["domains"]}
             (repo / GATE.BUILD_PROFILE_PATH).write_text(json.dumps(profiles))
             (repo / "config/domain-core-legacy-deletion.json").write_text('{"state":"promotion_approved"}\n')
@@ -763,6 +771,10 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             proof = GATE.validate_activation_closure(repo, candidate, activation)
             self.assertEqual(proof["candidateCommit"], candidate)
             self.assertEqual(proof["activationCommit"], activation)
+            self.assertNotIn(
+                "functions/.env.burnbar.production",
+                GATE.activation_changed_paths(repo, candidate, activation),
+            )
 
             (repo / "crates/openburnbar-domain-core/src.rs").write_text("fn drift() {}\n")
             subprocess.run(["git", "add", "."], cwd=repo, check=True)

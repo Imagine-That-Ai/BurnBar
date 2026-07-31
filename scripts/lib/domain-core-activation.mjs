@@ -200,6 +200,9 @@ export function activationChangedPaths(
 ) {
   const candidate = commit(candidateCommit, "candidate commit");
   const activation = commit(activationCommit, "activation commit");
+  if (candidate === activation) {
+    throw new Error("activation diff must not be empty");
+  }
   try {
     execFileSync("git", [
       "-C",
@@ -214,11 +217,59 @@ export function activationChangedPaths(
       "candidate commit must be an ancestor of activation commit",
     );
   }
+  const activationCommits = git(repoRoot, [
+    "rev-list",
+    "--first-parent",
+    "--reverse",
+    `${candidate}..${activation}`,
+  ])
+    .split("\n")
+    .filter(Boolean);
+  let activationBase = candidate;
+  for (const revision of activationCommits) {
+    const lineage = git(repoRoot, [
+      "rev-list",
+      "--parents",
+      "-n",
+      "1",
+      revision,
+    ]).split(/\s+/u);
+    if (lineage.length < 2) {
+      throw new Error("activation commit must have a parent");
+    }
+    const commitPaths = git(repoRoot, [
+      "diff",
+      "--name-only",
+      "--diff-filter=ACDMRTUXB",
+      `${lineage[1]}..${revision}`,
+    ])
+      .split("\n")
+      .filter(Boolean)
+      .sort();
+    const commitForbidden = commitPaths.filter(
+      (path) =>
+        !REQUIRED_EXACT.has(path) &&
+        !OPTIONAL_EXACT.has(path) &&
+        !ALLOWED_PREFIXES.some((prefix) => path.startsWith(prefix)),
+    );
+    if (commitForbidden.length > 0) {
+      if (revision === activation) {
+        throw new Error(
+          `activation diff contains forbidden paths: ${commitForbidden.join(", ")}`,
+        );
+      }
+      activationBase = revision;
+    }
+  }
+  // Protected merge queues may advance main before applying an activation
+  // squash. Keep the contiguous allowed suffix after the latest incidental
+  // commit, while still supporting activation evidence written in several
+  // allowed commits.
   const paths = git(repoRoot, [
     "diff",
     "--name-only",
     "--diff-filter=ACDMRTUXB",
-    `${candidate}..${activation}`,
+    `${activationBase}..${activation}`,
   ])
     .split("\n")
     .filter(Boolean)

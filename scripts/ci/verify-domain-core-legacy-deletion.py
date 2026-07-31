@@ -3927,6 +3927,57 @@ def core_version_at_commit(repo_root: Path, commit: str) -> str:
 
 def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_commit: str) -> list[str]:
     require_ancestor(repo_root, candidate_commit, activation_commit, "domain-core activation")
+    if candidate_commit == activation_commit:
+        raise GateError("domain-core activation commit must be distinct from the candidate commit")
+    activation_commits = [
+        line
+        for line in git_output(
+            repo_root,
+            ["rev-list", "--first-parent", "--reverse", f"{candidate_commit}..{activation_commit}"],
+            "domain-core activation first-parent history",
+        ).splitlines()
+        if line
+    ]
+    activation_base = candidate_commit
+    for commit in activation_commits:
+        commit_lineage = git_output(
+            repo_root,
+            ["rev-list", "--parents", "-n", "1", commit],
+            "domain-core activation parent",
+        ).split()
+        if len(commit_lineage) < 2:
+            raise GateError("domain-core activation commit must have a parent")
+        commit_paths = [
+            line
+            for line in git_output(
+                repo_root,
+                [
+                    "diff",
+                    "--name-only",
+                    "--diff-filter=ACDMRTUXB",
+                    f"{commit_lineage[1]}..{commit}",
+                ],
+                "domain-core activation commit diff",
+            ).splitlines()
+            if line
+        ]
+        commit_forbidden = sorted(
+            path
+            for path in commit_paths
+            if path not in ACTIVATION_ALLOWED_EXACT_PATHS
+            and not any(path.startswith(prefix) for prefix in ACTIVATION_ALLOWED_PREFIXES)
+        )
+        if commit_forbidden:
+            if commit == activation_commit:
+                raise GateError(
+                    "domain-core activation may change only profile, trusted manifest, append-only authority artifacts, and runbooks: "
+                    + ", ".join(commit_forbidden)
+                )
+            activation_base = commit
+    # Protected merge queues may advance main before applying an activation
+    # squash. Keep the contiguous allowed suffix after the latest incidental
+    # commit, while still supporting activation evidence written in several
+    # allowed commits.
     changed = [
         line
         for line in git_output(
@@ -3935,7 +3986,7 @@ def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_
                 "diff",
                 "--name-only",
                 "--diff-filter=ACDMRTUXB",
-                f"{candidate_commit}..{activation_commit}",
+                f"{activation_base}..{activation_commit}",
             ],
             "domain-core activation diff",
         ).splitlines()
