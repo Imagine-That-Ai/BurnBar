@@ -750,6 +750,15 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                 check=True,
             )
             candidate = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            evidence_path = "config/domain-core-legacy-deletion-receipts/quota.codex_usage/2/promotion.json"
+            (repo / evidence_path).parent.mkdir(parents=True)
+            (repo / evidence_path).write_text("{}\n")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "commit", "-qm", "activation evidence before main advance"],
+                cwd=repo,
+                check=True,
+            )
             (repo / "functions").mkdir()
             (repo / "functions/.env.burnbar.production").write_text("MIN_INSTANCES=1\n")
             subprocess.run(["git", "add", "."], cwd=repo, check=True)
@@ -771,10 +780,11 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             proof = GATE.validate_activation_closure(repo, candidate, activation)
             self.assertEqual(proof["candidateCommit"], candidate)
             self.assertEqual(proof["activationCommit"], activation)
-            self.assertNotIn(
-                "functions/.env.burnbar.production",
-                GATE.activation_changed_paths(repo, candidate, activation),
-            )
+            changed = GATE.activation_changed_paths(repo, candidate, activation)
+            self.assertNotIn("functions/.env.burnbar.production", changed)
+            # Evidence committed before the unrelated protected-main advance
+            # must remain part of the validated activation closure.
+            self.assertIn(evidence_path, changed)
 
             (repo / "functions/.env.burnbar.production").write_text("MIN_INSTANCES=2\n")
             (repo / "config/domain-core-legacy-deletion.json").write_text('{"state":"smuggled"}\n')

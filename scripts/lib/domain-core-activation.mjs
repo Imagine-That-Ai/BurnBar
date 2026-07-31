@@ -225,7 +225,7 @@ export function activationChangedPaths(
   ])
     .split("\n")
     .filter(Boolean);
-  let activationBase = candidate;
+  const incidentalPaths = new Set();
   for (const revision of activationCommits) {
     const lineage = git(repoRoot, [
       "rev-list",
@@ -260,27 +260,28 @@ export function activationChangedPaths(
       }
       // A commit is incidental only when it changes no activation-authority
       // path. A mixed commit would silently drop its authority changes from
-      // the validated activationBase..activation diff, so fail closed.
+      // the validated candidate..activation closure, so fail closed.
       if (commitForbidden.length !== commitPaths.length) {
         throw new Error(
           `incidental protected-main commit ${revision} must not change activation authority paths`,
         );
       }
-      activationBase = revision;
+      for (const path of commitPaths) incidentalPaths.add(path);
     }
   }
   // Protected merge queues may advance main before applying an activation
-  // squash. Keep the contiguous allowed suffix after the latest incidental
-  // commit (one changing no activation-authority path), while still supporting
-  // activation evidence written in several allowed commits.
+  // squash. Bind the closure to the full candidate..activation diff, excluding
+  // only paths proven to come from incidental commits, so activation evidence
+  // written in several allowed commits stays in the closure even when an
+  // unrelated protected-main commit lands after some of that evidence.
   const paths = git(repoRoot, [
     "diff",
     "--name-only",
     "--diff-filter=ACDMRTUXB",
-    `${activationBase}..${activation}`,
+    `${candidate}..${activation}`,
   ])
     .split("\n")
-    .filter(Boolean)
+    .filter((path) => path && !incidentalPaths.has(path))
     .sort();
   if (paths.length === 0) throw new Error("activation diff must not be empty");
   const forbidden = paths.filter(

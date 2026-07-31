@@ -7,6 +7,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  activationChangedPaths,
   domainCoreActivationReceiptClosure,
   resolveActiveDomainCoreActivation,
   validateDomainCoreActivation,
@@ -21,6 +22,7 @@ function git(root, ...args) {
 function fixture({
   interveningMainChange = false,
   mixedInterveningMainChange = false,
+  evidenceBeforeMainChange = false,
 } = {}) {
   const root = mkdtempSync(join(tmpdir(), "domain-core-activation-"));
   mkdirSync(join(root, "crates/openburnbar-domain-core"), { recursive: true });
@@ -51,6 +53,21 @@ function fixture({
   git(root, "add", ".");
   git(root, "commit", "-qm", "candidate C");
   const candidate = git(root, "rev-parse", "HEAD");
+  if (evidenceBeforeMainChange) {
+    mkdirSync(
+      join(root, "config/domain-core-legacy-deletion-receipts/quota.codex_usage/2"),
+      { recursive: true },
+    );
+    writeFileSync(
+      join(
+        root,
+        "config/domain-core-legacy-deletion-receipts/quota.codex_usage/2/promotion.json",
+      ),
+      "{}\n",
+    );
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "activation evidence before main advance");
+  }
   if (interveningMainChange) {
     mkdirSync(join(root, "functions"), { recursive: true });
     writeFileSync(
@@ -107,6 +124,33 @@ test("accepts an atomic activation after an unrelated protected-main advance", (
   });
   assert.equal(proof.candidateCommit, value.candidate);
   assert.equal(proof.activationCommit, value.activation);
+});
+
+test("retains allowed evidence committed before a later unrelated protected-main advance", () => {
+  // Evidence written in an allowed commit after candidate C must stay in the
+  // closure even when an unrelated protected-main commit lands afterwards;
+  // only the incidental commit's own paths are excluded.
+  const value = fixture({
+    evidenceBeforeMainChange: true,
+    interveningMainChange: true,
+  });
+  const paths = activationChangedPaths(
+    value.root,
+    value.candidate,
+    value.activation,
+  );
+  assert.ok(
+    paths.includes(
+      "config/domain-core-legacy-deletion-receipts/quota.codex_usage/2/promotion.json",
+    ),
+  );
+  assert.ok(!paths.includes("functions/.env.burnbar.production"));
+  const proof = validateDomainCoreActivation({
+    repoRoot: value.root,
+    candidateCommit: value.candidate,
+    activationCommit: value.activation,
+  });
+  assert.equal(proof.active, true);
 });
 
 test("rejects an intervening protected-main commit that mixes unrelated and activation paths", () => {

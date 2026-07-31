@@ -3938,7 +3938,7 @@ def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_
         ).splitlines()
         if line
     ]
-    activation_base = candidate_commit
+    incidental_paths: set[str] = set()
     for commit in activation_commits:
         commit_lineage = git_output(
             repo_root,
@@ -3975,16 +3975,17 @@ def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_
                 )
             # A commit is incidental only when it changes no activation-authority
             # path. A mixed commit would silently drop its authority changes from
-            # the validated activation_base..activation diff, so fail closed.
+            # the validated candidate..activation closure, so fail closed.
             if len(commit_forbidden) != len(commit_paths):
                 raise GateError(
                     f"domain-core incidental protected-main commit {commit} must not change activation authority paths"
                 )
-            activation_base = commit
+            incidental_paths.update(commit_paths)
     # Protected merge queues may advance main before applying an activation
-    # squash. Keep the contiguous allowed suffix after the latest incidental
-    # commit (one changing no activation-authority path), while still supporting
-    # activation evidence written in several allowed commits.
+    # squash. Bind the closure to the full candidate..activation diff, excluding
+    # only paths proven to come from incidental commits, so activation evidence
+    # written in several allowed commits stays in the closure even when an
+    # unrelated protected-main commit lands after some of that evidence.
     changed = [
         line
         for line in git_output(
@@ -3993,11 +3994,11 @@ def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_
                 "diff",
                 "--name-only",
                 "--diff-filter=ACDMRTUXB",
-                f"{activation_base}..{activation_commit}",
+                f"{candidate_commit}..{activation_commit}",
             ],
             "domain-core activation diff",
         ).splitlines()
-        if line
+        if line and line not in incidental_paths
     ]
     if not changed:
         raise GateError("domain-core activation commit must change the committed authority profile and receipts")
