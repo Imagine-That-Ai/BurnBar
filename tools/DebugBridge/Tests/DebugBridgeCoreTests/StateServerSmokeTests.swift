@@ -17,16 +17,16 @@ final class StateServerSmokeTests: XCTestCase {
 
     /// Build URL for a loopback call. Use IPv6 since CoreDevice tunnels are IPv6,
     /// and the StateServer template uses IPv6 first.
-    func loopbackURL(port: UInt16, path: String) -> URL {
+    private func loopbackURL(port: UInt16, path: String) -> URL {
         URL(string: "http://[::1]:\(port)\(path)")!
     }
 
     /// Issue an HTTP request and decode JSON. Returns (status, body).
-    func request(method: String, url: URL, headers: [String: String] = [:], body: Data? = nil) async throws -> (Int, [String: Any]) {
+    private func request(method: String, url: URL, headers: [String: String] = [:], body: Data? = nil) async throws -> (Int, [String: Any]) {
         var req = URLRequest(url: url)
         req.httpMethod = method
         for (k, v) in headers { req.setValue(v, forHTTPHeaderField: k) }
-        if let body = body { req.httpBody = body }
+        if let body { req.httpBody = body }
         let (data, response) = try await URLSession.shared.data(for: req)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
@@ -35,7 +35,7 @@ final class StateServerSmokeTests: XCTestCase {
 
     /// Spin up StateServer on a random port, wait briefly for binding to settle.
     /// Returns the port. Uses StateServer.shared since it's a singleton.
-    func spinUp() async throws -> UInt16 {
+    private func spinUp() async throws -> UInt16 {
         StateServer.shared.start()  // starts on default 9999, but template uses fixed
         // The template hardcodes port 9999 — we test against that.
         // Sleep briefly for binding to complete.

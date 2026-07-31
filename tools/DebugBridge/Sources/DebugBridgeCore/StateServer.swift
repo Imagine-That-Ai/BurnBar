@@ -222,7 +222,7 @@ public final class StateServer {
             guard let self else { return }
             Task { @MainActor in
                 var current = buffer
-                if let data = data { current.append(data) }
+                if let data { current.append(data) }
                 if current.count > Self.maxBodyBytes {
                     self.send(connection: connection, status: 413, body: ["error": "body_too_large"])
                     return
@@ -283,7 +283,7 @@ public final class StateServer {
             send(connection: connection, status: 200, body: [
                 "version": "1.0.0",
                 "build": appBuildId,
-                "accessor_hash": accessorHash,
+                "accessor_hash": accessorHash
             ])
             return
         }
@@ -394,7 +394,7 @@ public final class StateServer {
         activeSession = Session(id: id, lastMutationAt: Date())
         send(connection: connection, status: 200, body: [
             "session_id": id,
-            "ttl_seconds": Int(sessionTtlSeconds),
+            "ttl_seconds": Int(sessionTtlSeconds)
         ])
     }
 
@@ -452,7 +452,7 @@ public final class StateServer {
             "_schema_version": 1,
             "_app_build_id": appBuildId,
             "_accessor_hash": accessorHash,
-            "keys": keys,
+            "keys": keys
         ]
         send(connection: connection, status: 200, body: envelope)
     }
@@ -468,7 +468,7 @@ public final class StateServer {
             send(connection: connection, status: 409, body: [
                 "error": "schema_mismatch",
                 "expected_hash": accessorHash,
-                "got_hash": hash,
+                "got_hash": hash
             ])
             return
         }

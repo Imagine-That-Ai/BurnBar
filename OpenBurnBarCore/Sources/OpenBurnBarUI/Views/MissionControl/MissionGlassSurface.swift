@@ -27,8 +27,8 @@ enum MissionChrome {
 
 struct MissionSectionHeader: View {
     let title: String
-    var trailing: String? = nil
-    var trailingTint: Color? = nil
+    var trailing: String?
+    var trailingTint: Color?
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: UnifiedDesignSystem.Spacing.sm) {

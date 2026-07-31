@@ -203,7 +203,7 @@ public struct MissionApprovalLever: View {
                         id: MissionConsoleApprovalMode.requireApproval.id,
                         title: "Ask me first",
                         tint: UnifiedDesignSystem.Colors.warning
-                    ),
+                    )
                 ],
                 selectedID: mode.id,
                 onSelect: { id in
