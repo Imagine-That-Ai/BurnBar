@@ -635,6 +635,14 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         while !Task.isCancelled, isCurrentRuntimeOwner(owner) {
             do {
                 let stream = try await transport.accept(timeout: 30)
+                // A completed accept is acceptor progress no matter how
+                // admission turns out, so the recoverable-failure streak
+                // resets here rather than after the allowlist decision.
+                // Otherwise failures from before this accept survive an
+                // allowlist rejection and, once the health-evidence window
+                // lapses, combine with later peer-close errors to rebuild a
+                // healthy endpoint.
+                consecutiveAcceptFailures = 0
                 lastAcceptedStreamAt = now()
                 guard isCurrentRuntimeOwner(owner), isCurrentTransport(transport) else {
                     await stream.close()
@@ -696,7 +704,6 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     await stream.close()
                     continue
                 }
-                consecutiveAcceptFailures = 0
                 let handler = IrohRelayRequestHandler(
                     relayKeyStore: relayKeyStore,
                     urlSession: urlSession,
@@ -1326,10 +1333,33 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     /// before opening a bidirectional stream produces neither. While either
     /// signal is present, a run of pre-identity peer-close accept errors is
     /// peer behavior, not a stalled endpoint, and must not tear the host down.
+    ///
+    /// `serveStreams` counts alongside `serveTasks`: long-lived `media.control`
+    /// streams transfer ownership out of their serve task
+    /// (`transferredStreamOwnership`), after which `releaseServeTask` drops the
+    /// task but deliberately retains the live stream. An active mirror or call
+    /// therefore holds evidence only in `serveStreams`; ignoring it would let
+    /// any reachable peer manufacture pre-identity close errors that tear down
+    /// the retained stream mid-session. Retained entries are bounded: route
+    /// expiry, de-allowlist purges, and `stop()` all remove them.
     private func hasPeerIndependentEndpointHealthEvidence() -> Bool {
-        if !serveTasks.isEmpty { return true }
+        Self.hasPeerIndependentEndpointHealthEvidence(
+            activeServeTaskCount: serveTasks.count,
+            retainedServeStreamCount: serveStreams.count,
+            lastAcceptedStreamAt: lastAcceptedStreamAt,
+            now: now()
+        )
+    }
+
+    static func hasPeerIndependentEndpointHealthEvidence(
+        activeServeTaskCount: Int,
+        retainedServeStreamCount: Int,
+        lastAcceptedStreamAt: Date?,
+        now: Date
+    ) -> Bool {
+        if activeServeTaskCount > 0 || retainedServeStreamCount > 0 { return true }
         if let lastAcceptedStreamAt,
-           now().timeIntervalSince(lastAcceptedStreamAt) < Self.peerAcceptHealthEvidenceWindow {
+           now.timeIntervalSince(lastAcceptedStreamAt) < Self.peerAcceptHealthEvidenceWindow {
             return true
         }
         return false
