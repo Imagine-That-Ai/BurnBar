@@ -6,6 +6,8 @@
 import {
   externalApiPolicy,
   firestorePolicy,
+  googlePlayConsumePolicy,
+  isGooglePlayPurchaseNotOwnedError,
   providerApiPolicy,
   pushPolicy,
   stripePolicy,
@@ -32,6 +34,12 @@ export async function firestoreWithResilience<T>(label: string, fn: () => Promis
 
 export async function externalApiWithResilience<T>(label: string, fn: () => Promise<T>): Promise<T> {
   return withResilience(externalApiPolicy, `external:${label}`, fn);
+}
+
+export async function googlePlayConsumeWithResilience<T>(fn: () => Promise<T>): Promise<T> {
+  return withResilience(googlePlayConsumePolicy, "external:googleplay.products.consume", fn, {
+    expectedError: isGooglePlayPurchaseNotOwnedError,
+  });
 }
 
 async function providerApiWithResilience<T>(provider: string, label: string, fn: () => Promise<T>): Promise<T> {

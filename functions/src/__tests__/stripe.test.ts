@@ -96,6 +96,7 @@ vi.mock("../config.js", () => ({
 }));
 vi.mock("../resilienceHelpers.js", () => ({
   externalApiWithResilience: vi.fn(async <T>(_name: string, fn: () => Promise<T>) => fn()),
+  googlePlayConsumeWithResilience: vi.fn(async <T>(fn: () => Promise<T>) => fn()),
   stripeWithResilience: vi.fn(async <T>(_name: string, fn: () => Promise<T>) => fn()),
 }));
 vi.mock("../callables/googlePlayTokenClaims.js", () => ({ claimGooglePlayPurchaseToken: state.claimMock }));
@@ -376,6 +377,39 @@ describe("verifyGooglePlayCloudProTopUp", () => {
       kind: "elder_wand_searches_100",
       purchaseState: 0,
       consumed: true,
+    });
+  });
+
+  it("recovers when concurrent verification consumes the purchase first", async () => {
+    state.productsGet
+      .mockResolvedValueOnce({ data: { purchaseState: 0, consumptionState: 0, orderId: "GPA.concurrent" } })
+      .mockResolvedValueOnce({ data: { purchaseState: 0, consumptionState: 1, orderId: "GPA.concurrent" } });
+    state.productsConsume.mockRejectedValueOnce(new Error("purchase token is already consumed"));
+    state.creditMock.mockResolvedValueOnce({
+      credited: false,
+      monthKey: "2026-06",
+      units: 100,
+      kind: "agent_control_actions_100",
+    });
+
+    const res = await invokeCallable<{ credited: boolean; purchaseState: number; consumed: boolean }>(
+      verifyGooglePlayCloudProTopUp,
+      { purchaseToken: TOPUP_TOKEN, productID: "gp_agent_control_100" },
+    );
+
+    expect(state.creditMock).toHaveBeenCalledTimes(1);
+    expect(state.productsConsume).toHaveBeenCalledTimes(1);
+    expect(state.productsGet).toHaveBeenCalledTimes(2);
+    expect(res).toMatchObject({
+      credited: false,
+      purchaseState: 0,
+      consumed: true,
+    });
+    expect(state.docSets.at(-1)?.data).toMatchObject({
+      credited: true,
+      creditedByThisInvocation: false,
+      consumed: true,
+      consumptionConfirmedAfterError: true,
     });
   });
 

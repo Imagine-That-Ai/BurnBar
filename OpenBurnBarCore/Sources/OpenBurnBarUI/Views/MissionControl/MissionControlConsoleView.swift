@@ -3,9 +3,12 @@ import OpenBurnBarKernel
 
 // MARK: - Mission Control Console (Root View)
 //
-// Adaptive split layout:
-//   • Regular width (≥860pt): two columns — composer left, situation room right.
-//   • Compact width (<860pt): single column, composer on top, situation room below.
+// Layout:
+//   • A slim header bar (title + live status line) spans the top.
+//   • Regular width (≥860pt): two columns — composer left, live view right.
+//   • Compact width (<860pt): single scroll — pending approvals first (they're
+//     the most time-sensitive thing on the page), then the composer, then the
+//     live view.
 //
 // State management:
 //   • Host owns the live snapshot + dispatch / approval calls.
@@ -32,108 +35,92 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
     @State private var commandsAllowed: Bool = false
     @State private var fileEditsAllowed: Bool = false
     @State private var targetProject: String = ""
-    @State private var consoleAppeared = false
 
     public var body: some View {
         GeometryReader { proxy in
             let isRegular = proxy.size.width >= 860
-            ZStack {
-                backdrop
+            VStack(spacing: 0) {
+                headerBar
+
                 if isRegular {
-                    regularLayout
+                    regularColumns
                 } else {
-                    compactLayout
+                    compactScroll
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(UnifiedDesignSystem.Colors.background.ignoresSafeArea())
         }
-        .background(UnifiedDesignSystem.Colors.background.ignoresSafeArea())
         .task { await host.refresh() }
-        .onChange(of: kind) { _, newKind in
-            // When the user picks a new kind, auto-route AUTO to the first
-            // preferred runtime so the constellation hints land on the right
-            // tile without forcing the user to manually re-pick.
-            if runtimeID == "auto" {
-                // Keep AUTO selected — but pre-warm the forecast for the planner's
-                // first choice.
-                _ = newKind
-            }
-        }
-        .opacity(consoleAppeared ? 1 : 0)
-        .offset(y: consoleAppeared ? 0 : 6)
-        .animation(UnifiedDesignSystem.Animation.gentle, value: consoleAppeared)
-        .onAppear {
-            consoleAppeared = true
+    }
+
+    // MARK: Header
+
+    private var headerBar: some View {
+        MissionConsoleHeader(
+            health: host.snapshot.health,
+            activeMissionCount: host.snapshot.activeTiles.filter { $0.phase.isLive }.count,
+            approvalPendingCount: host.snapshot.approvalAsks.count,
+            blockedCount: host.snapshot.activeTiles.filter { $0.phase.isProblem }.count,
+            onDismiss: onDismiss
+        )
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(MissionChrome.hairlineColor)
+                .frame(height: MissionChrome.hairline)
         }
     }
 
     // MARK: Layouts
 
-    private var regularLayout: some View {
-        VStack(spacing: 0) {
-            heroStrip
-
-            HStack(alignment: .top, spacing: 0) {
-                ScrollView {
-                    composerColumn
-                        .padding(.horizontal, UnifiedDesignSystem.Spacing.xl)
-                        .padding(.vertical, UnifiedDesignSystem.Spacing.lg)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxWidth: .infinity, alignment: .top)
-
-                situationDivider
-
-                ScrollView {
-                    situationColumn
-                        .padding(.horizontal, UnifiedDesignSystem.Spacing.xl)
-                        .padding(.vertical, UnifiedDesignSystem.Spacing.lg)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(width: 380, alignment: .top)
-                .background(UnifiedDesignSystem.Colors.background)
+    private var regularColumns: some View {
+        HStack(alignment: .top, spacing: 0) {
+            ScrollView {
+                composerColumn
+                    .padding(.horizontal, UnifiedDesignSystem.Spacing.xl)
+                    .padding(.vertical, UnifiedDesignSystem.Spacing.lg)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxWidth: .infinity, alignment: .top)
+
+            Rectangle()
+                .fill(MissionChrome.hairlineColor)
+                .frame(width: MissionChrome.hairline)
+
+            ScrollView {
+                situationColumn(includeApprovals: true)
+                    .padding(.horizontal, UnifiedDesignSystem.Spacing.lg)
+                    .padding(.vertical, UnifiedDesignSystem.Spacing.lg)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(width: 380, alignment: .top)
         }
     }
 
-    private var compactLayout: some View {
+    private var compactScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xl) {
-                heroStrip
+                if !host.snapshot.approvalAsks.isEmpty {
+                    MissionApprovalsSection(
+                        approvalAsks: host.snapshot.approvalAsks,
+                        onApprove: { ask, approve in
+                            Task { await host.respond(to: ask, approve: approve) }
+                        }
+                    )
+                }
+
                 composerColumn
-                    .padding(.horizontal, UnifiedDesignSystem.Spacing.lg)
-                situationColumn
-                    .padding(.horizontal, UnifiedDesignSystem.Spacing.lg)
+                situationColumn(includeApprovals: false)
             }
-            .padding(.bottom, UnifiedDesignSystem.Spacing.xxl)
+            .padding(.horizontal, UnifiedDesignSystem.Spacing.lg)
+            .padding(.vertical, UnifiedDesignSystem.Spacing.lg)
+            .padding(.bottom, UnifiedDesignSystem.Spacing.xl)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollIndicators(.hidden)
     }
 
-    // MARK: Pieces
-
-    private var heroStrip: some View {
-        MissionConsoleHero(
-            health: host.snapshot.health,
-            activeMissionCount: host.snapshot.activeTiles.filter { $0.phase.isLive }.count,
-            approvalPendingCount: host.snapshot.approvalAsks.count,
-            blockedCount: host.snapshot.activeTiles.filter { $0.phase.isProblem }.count,
-            burnPerHourUSD: host.snapshot.health.burnPerHourUSD,
-            hasCompletedSinceLastOpen: host.snapshot.activeTiles.contains { $0.phase == .completed },
-            onDismiss: onDismiss
-        )
-        .background {
-            Rectangle()
-                .fill(UnifiedDesignSystem.Colors.surface.opacity(0.55))
-                .ignoresSafeArea(edges: .top)
-        }
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.6))
-                .frame(height: 1)
-        }
-    }
+    // MARK: Composer
 
     private var composerColumn: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xl) {
@@ -143,7 +130,7 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
                 onSelect: { kind = $0 }
             )
 
-            MissionRuntimeConstellation(
+            MissionRuntimePicker(
                 runtimes: host.snapshot.runtimes,
                 selectedRuntimeID: runtimeID,
                 selectedKind: kind,
@@ -152,30 +139,24 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
 
             MissionTitlePromptFields(title: $title, prompt: $prompt)
 
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
-                    MissionDepthDial(depth: $depth)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    MissionApprovalLever(mode: $approvalMode)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
-                    MissionDepthDial(depth: $depth)
-                    MissionApprovalLever(mode: $approvalMode)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
+                MissionDepthDial(depth: $depth)
+                MissionApprovalLever(mode: $approvalMode)
+                MissionPermissionsRow(
+                    commandsAllowed: $commandsAllowed,
+                    fileEditsAllowed: $fileEditsAllowed
+                )
+                MissionProjectField(
+                    project: $targetProject,
+                    knownProjects: host.snapshot.knownProjects,
+                    recentProjects: host.snapshot.recentProjects
+                )
             }
 
-            MissionPermissionsRow(
-                commandsAllowed: $commandsAllowed,
-                fileEditsAllowed: $fileEditsAllowed
-            )
-
-            MissionProjectField(
-                project: $targetProject,
-                knownProjects: host.snapshot.knownProjects,
-                recentProjects: host.snapshot.recentProjects
+            MissionBurnForecastStrip(
+                forecast: forecast,
+                runtimeName: resolvedRuntime.displayName,
+                runtimeAccent: runtimeAccent
             )
 
             if let error = host.inlineError {
@@ -193,7 +174,9 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var situationColumn: some View {
+    // MARK: Live view
+
+    private func situationColumn(includeApprovals: Bool) -> some View {
         MissionSituationRoom(
             activeTiles: host.snapshot.activeTiles,
             recentTicker: host.snapshot.recentTicker,
@@ -202,60 +185,19 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
             burnTodayUSD: host.snapshot.health.burnTodayUSD,
             lastDispatchedMissionID: host.lastDispatchedMissionID,
             macOnline: host.snapshot.health.daemonState != .macOffline,
+            includeApprovals: includeApprovals,
             onApprove: { ask, approve in
                 Task { await host.respond(to: ask, approve: approve) }
             }
         )
     }
 
-    private var situationDivider: some View {
-        Rectangle()
-            .fill(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.6))
-            .frame(width: 1)
-            .ignoresSafeArea(edges: .vertical)
-    }
-
-    // MARK: Backdrop
-
-    private var backdrop: some View {
-        ZStack {
-            UnifiedDesignSystem.Colors.background
-            // Soft ember glow in the top-left for atmosphere — does not compete
-            // with content, just keeps the canvas alive.
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [UnifiedDesignSystem.Colors.ember.opacity(0.10), Color.clear],
-                        center: .center, startRadius: 0, endRadius: 320
-                    )
-                )
-                .frame(width: 600, height: 600)
-                .offset(x: -180, y: -220)
-                .blur(radius: 30)
-                .blendMode(.plusLighter)
-
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [UnifiedDesignSystem.Colors.hermesAureate.opacity(0.10), Color.clear],
-                        center: .center, startRadius: 0, endRadius: 240
-                    )
-                )
-                .frame(width: 460, height: 460)
-                .offset(x: 220, y: 220)
-                .blur(radius: 24)
-                .blendMode(.plusLighter)
-        }
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
-    }
-
     // MARK: Derived state
 
     private var resolvedRuntime: MissionConsoleRuntime {
         if runtimeID == "auto" {
-            // Use AUTO's preview runtime — but base the forecast on the planner's
-            // first choice for this kind, so the user sees a realistic preview.
+            // Base the forecast on the planner's first choice for this kind, so
+            // the user sees a realistic preview.
             if let preferredID = kind.preferredRuntimes.first,
                let preferred = host.snapshot.runtimes.first(where: { $0.id == preferredID }) {
                 return preferred
@@ -293,6 +235,10 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
         )
     }
 
+    private var forecast: MissionConsoleForecast {
+        MissionConsoleForecastComputer.forecast(for: dispatchRequest, runtime: resolvedRuntime)
+    }
+
     private func dispatch() {
         Task {
             let outcome = await host.dispatch(dispatchRequest)
@@ -313,11 +259,11 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
     private func inlineErrorBanner(_ message: String) -> some View {
         HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.sm) {
             Image(systemName: "exclamationmark.octagon.fill")
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(UnifiedDesignSystem.Colors.error)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Dispatch failed")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(UnifiedDesignSystem.Colors.error)
                 Text(message)
                     .font(.system(size: 13, weight: .regular, design: .rounded))
@@ -327,19 +273,20 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
             Spacer(minLength: 0)
             Button { host.clearInlineError() } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss error")
         }
-        .padding(UnifiedDesignSystem.Spacing.sm)
+        .padding(UnifiedDesignSystem.Spacing.md)
         .background {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
+            RoundedRectangle(cornerRadius: MissionChrome.cardCorner, style: .continuous)
                 .fill(UnifiedDesignSystem.Colors.error.opacity(0.10))
         }
         .overlay {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                .strokeBorder(UnifiedDesignSystem.Colors.error.opacity(0.45), lineWidth: 0.6)
+            RoundedRectangle(cornerRadius: MissionChrome.cardCorner, style: .continuous)
+                .strokeBorder(UnifiedDesignSystem.Colors.error.opacity(0.4), lineWidth: MissionChrome.hairline)
         }
     }
 }

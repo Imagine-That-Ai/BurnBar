@@ -3,14 +3,14 @@ import OpenBurnBarKernel
 
 // MARK: - Mission Situation Room
 //
-// Right-column live view inside the Mission Control Console. Bundles:
-//   • MissionLiveBurnGauge — radial $/hr gauge with a needle
-//   • MissionApprovalCard — surfaces when there's a pending approval
-//   • MissionActiveTile — one row per active mission
-//   • MissionActivityTicker — terminal-style last-N events
+// The console's live view. Sections, in priority order:
+//   • Approvals — pending asks with Reject / Approve actions
+//   • Active — one tile per mission in flight
+//   • Activity — the last few events, terminal-style
 //
-// All pieces accept their data via plain value types so the room can be
-// previewed without the host.
+// All pieces accept plain value types so the room previews without the host.
+// `includeApprovals` lets the compact layout hoist the approvals section to
+// the top of the page while the regular layout keeps it here.
 
 public struct MissionSituationRoom: View {
     public let activeTiles: [MissionConsoleActiveTile]
@@ -20,6 +20,7 @@ public struct MissionSituationRoom: View {
     public let burnTodayUSD: Double
     public let lastDispatchedMissionID: String?
     public let macOnline: Bool
+    public let includeApprovals: Bool
     public let onApprove: (MissionConsoleApprovalAsk, Bool) -> Void
 
     public init(
@@ -30,6 +31,7 @@ public struct MissionSituationRoom: View {
         burnTodayUSD: Double,
         lastDispatchedMissionID: String?,
         macOnline: Bool,
+        includeApprovals: Bool = true,
         onApprove: @escaping (MissionConsoleApprovalAsk, Bool) -> Void
     ) {
         self.activeTiles = activeTiles
@@ -39,55 +41,24 @@ public struct MissionSituationRoom: View {
         self.burnTodayUSD = burnTodayUSD
         self.lastDispatchedMissionID = lastDispatchedMissionID
         self.macOnline = macOnline
+        self.includeApprovals = includeApprovals
         self.onApprove = onApprove
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
-            header
-
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xl) {
             if !macOnline {
                 macOfflineBanner
             }
 
-            MissionLiveBurnGauge(
-                burnPerHourUSD: burnPerHourUSD,
-                burnTodayUSD: burnTodayUSD
-            )
-
-            if !approvalAsks.isEmpty {
-                VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                    ForEach(approvalAsks) { ask in
-                        MissionApprovalCard(ask: ask, onApprove: { approve in onApprove(ask, approve) })
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if includeApprovals && !approvalAsks.isEmpty {
+                MissionApprovalsSection(approvalAsks: approvalAsks, onApprove: onApprove)
             }
 
-            activeMissionsSection
-            tickerSection
-
-            Spacer(minLength: 0)
+            activeSection
+            activitySection
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    // MARK: Header
-
-    private var header: some View {
-        HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-            Image(systemName: "dot.radiowaves.left.and.right")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate)
-            Text("SITUATION ROOM")
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .tracking(2.4)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-            Rectangle()
-                .fill(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.6))
-                .frame(height: 1)
-                .frame(maxWidth: .infinity)
-        }
     }
 
     // MARK: Mac offline banner
@@ -95,41 +66,53 @@ public struct MissionSituationRoom: View {
     private var macOfflineBanner: some View {
         HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
             Image(systemName: "wifi.exclamationmark")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(UnifiedDesignSystem.Colors.warning)
             VStack(alignment: .leading, spacing: 2) {
                 Text("No Mac claimed the queue")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                 Text("Open BurnBar on the paired Mac to start execution.")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .font(.system(size: 13, weight: .regular, design: .rounded))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
-        .padding(UnifiedDesignSystem.Spacing.sm)
+        .padding(UnifiedDesignSystem.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                .fill(UnifiedDesignSystem.Colors.warning.opacity(0.14))
+            RoundedRectangle(cornerRadius: MissionChrome.cardCorner, style: .continuous)
+                .fill(UnifiedDesignSystem.Colors.warning.opacity(0.10))
         }
         .overlay {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                .strokeBorder(UnifiedDesignSystem.Colors.warning.opacity(0.5), lineWidth: 0.6)
+            RoundedRectangle(cornerRadius: MissionChrome.cardCorner, style: .continuous)
+                .strokeBorder(UnifiedDesignSystem.Colors.warning.opacity(0.4), lineWidth: MissionChrome.hairline)
         }
     }
 
     // MARK: Active missions
 
-    private var activeMissionsSection: some View {
-        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-            sectionLabel(
-                "ACTIVE MISSIONS",
-                trailing: activeTiles.isEmpty ? "—" : "\(activeTiles.count) in flight"
+    private var activeSection: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+            MissionSectionHeader(
+                title: "Active",
+                trailing: activeTiles.isEmpty ? nil : "\(activeTiles.count) in flight"
             )
 
             if activeTiles.isEmpty {
-                emptyActive
+                MissionConsoleCard {
+                    HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                        Image(systemName: "moon.zzz")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                        Text("Nothing in flight. Dispatch a mission to fill the lane.")
+                            .font(.system(size: 13, weight: .regular, design: .rounded))
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(UnifiedDesignSystem.Spacing.md)
+                }
             } else {
                 VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                     ForEach(Array(activeTiles.prefix(4))) { tile in
@@ -143,166 +126,44 @@ public struct MissionSituationRoom: View {
         }
     }
 
-    private var emptyActive: some View {
-        HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-            Image(systemName: "moon.zzz.fill")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-            Text("Nothing flying. Compose a mission to fill the lane.")
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-            Spacer(minLength: 0)
-        }
-        .padding(UnifiedDesignSystem.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                .fill(UnifiedDesignSystem.Colors.surface.opacity(0.5))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                .strokeBorder(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.55), lineWidth: 0.5)
-        }
-    }
+    // MARK: Activity
 
-    // MARK: Ticker
-
-    private var tickerSection: some View {
-        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-            sectionLabel("LIVE FEED", trailing: recentTicker.isEmpty ? nil : "\(recentTicker.count) recent")
+    private var activitySection: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+            MissionSectionHeader(title: "Activity")
             MissionActivityTicker(entries: recentTicker)
-        }
-    }
-
-    private func sectionLabel(_ text: String, trailing: String? = nil) -> some View {
-        HStack {
-            Text(text)
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .tracking(1.6)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-            Rectangle()
-                .fill(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.5))
-                .frame(height: 1)
-                .frame(maxWidth: .infinity)
-            if let trailing {
-                Text(trailing)
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-            }
         }
     }
 }
 
-// MARK: - Live Burn Gauge
+// MARK: - Approvals Section
 
-public struct MissionLiveBurnGauge: View {
-    public let burnPerHourUSD: Double
-    public let burnTodayUSD: Double
+public struct MissionApprovalsSection: View {
+    public let approvalAsks: [MissionConsoleApprovalAsk]
+    public let onApprove: (MissionConsoleApprovalAsk, Bool) -> Void
 
-    @State private var animated: Double = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    public init(burnPerHourUSD: Double, burnTodayUSD: Double) {
-        self.burnPerHourUSD = burnPerHourUSD
-        self.burnTodayUSD = burnTodayUSD
-    }
-
-    private var fraction: Double {
-        min(1.0, burnPerHourUSD / 3.0)
+    public init(
+        approvalAsks: [MissionConsoleApprovalAsk],
+        onApprove: @escaping (MissionConsoleApprovalAsk, Bool) -> Void
+    ) {
+        self.approvalAsks = approvalAsks
+        self.onApprove = onApprove
     }
 
     public var body: some View {
-        HStack(alignment: .center, spacing: UnifiedDesignSystem.Spacing.lg) {
-            ZStack {
-                // Track
-                Circle()
-                    .trim(from: 0.05, to: 0.95)
-                    .stroke(
-                        UnifiedDesignSystem.Colors.borderSubtle.opacity(0.5),
-                        style: StrokeStyle(lineWidth: 8, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(135))
-
-                // Filled arc
-                Circle()
-                    .trim(from: 0.05, to: 0.05 + (0.9 * animated))
-                    .stroke(
-                        AngularGradient(
-                            colors: [
-                                UnifiedDesignSystem.Colors.success,
-                                UnifiedDesignSystem.Colors.amber,
-                                UnifiedDesignSystem.Colors.ember
-                            ],
-                            center: .center
-                        ),
-                        style: StrokeStyle(lineWidth: 8, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(135))
-                    .animation(UnifiedDesignSystem.Animation.gentle, value: animated)
-
-                VStack(spacing: 0) {
-                    Text(MissionConsoleFormatting.cost(burnPerHourUSD, precise: burnPerHourUSD < 1))
-                        .font(.system(size: 18, weight: .bold, design: .monospaced))
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                        .contentTransition(.numericText())
-                        .animation(UnifiedDesignSystem.Animation.gentle, value: burnPerHourUSD)
-                    Text("PER HOUR")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .tracking(1.2)
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+            MissionSectionHeader(
+                title: "Approvals",
+                trailing: approvalAsks.count == 1 ? "1 waiting" : "\(approvalAsks.count) waiting",
+                trailingTint: UnifiedDesignSystem.Colors.warning
+            )
+            VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                ForEach(approvalAsks) { ask in
+                    MissionApprovalCard(ask: ask, onApprove: { approve in onApprove(ask, approve) })
                 }
             }
-            .frame(width: 88, height: 88)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(MissionConsoleFormatting.cost(burnTodayUSD))
-                        .font(.system(size: 22, weight: .bold, design: .monospaced))
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                        .contentTransition(.numericText())
-                    Text("BURNED TODAY")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .tracking(1.4)
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                }
-
-                if burnPerHourUSD > 0 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.up.right")
-                            .font(.system(size: 12, weight: .bold))
-                        Text("at this pace, ~\(MissionConsoleFormatting.cost(burnPerHourUSD * 8)) over 8h")
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    }
-                    .foregroundStyle(burnPerHourUSD > 1.5 ? UnifiedDesignSystem.Colors.ember : UnifiedDesignSystem.Colors.textSecondary)
-                } else {
-                    Text("idle")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                }
-            }
-
-            Spacer(minLength: 0)
         }
-        .padding(UnifiedDesignSystem.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.lg, style: .continuous)
-                .fill(UnifiedDesignSystem.Colors.surfaceElevated.opacity(0.55))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.lg, style: .continuous)
-                .strokeBorder(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.6), lineWidth: 0.6)
-        }
-        .onAppear {
-            if reduceMotion {
-                animated = fraction
-            } else {
-                withAnimation(.easeOut(duration: 0.8)) { animated = fraction }
-            }
-        }
-        .onChange(of: fraction) { _, new in
-            withAnimation(UnifiedDesignSystem.Animation.gentle) { animated = new }
-        }
     }
 }
 
@@ -313,7 +174,6 @@ public struct MissionActiveTile: View {
     public let isFreshDispatch: Bool
 
     @State private var heartbeat = false
-    @State private var freshGlow = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(tile: MissionConsoleActiveTile, isFreshDispatch: Bool = false) {
@@ -322,12 +182,12 @@ public struct MissionActiveTile: View {
     }
 
     private var phaseColor: Color {
-        if tile.approvalPending { return UnifiedDesignSystem.Colors.hermesAureate }
+        if tile.approvalPending { return UnifiedDesignSystem.Colors.warning }
         switch tile.phase {
-        case .failed, .blocked, .cancelled: return UnifiedDesignSystem.Colors.ember
+        case .failed, .blocked, .cancelled: return UnifiedDesignSystem.Colors.error
         case .macOffline:                   return UnifiedDesignSystem.Colors.textMuted
         case .completed:                    return UnifiedDesignSystem.Colors.success
-        case .awaitingApproval:             return UnifiedDesignSystem.Colors.hermesAureate
+        case .awaitingApproval:             return UnifiedDesignSystem.Colors.warning
         case .queued, .starting:            return UnifiedDesignSystem.Colors.textSecondary
         case .tooling, .streaming:          return UnifiedDesignSystem.Colors.amber
         case .running, .completing:         return UnifiedDesignSystem.Colors.amber
@@ -340,119 +200,77 @@ public struct MissionActiveTile: View {
     }
 
     public var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            // Phase stripe (left edge)
-            Rectangle()
-                .fill(phaseColor)
-                .frame(width: 4)
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    phasePulse
-                    Text(tile.phase.displayLabel.uppercased())
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .tracking(1.0)
-                        .foregroundStyle(phaseColor)
-                    Spacer(minLength: 0)
-                    Text(tile.runtimeDisplayLabel)
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                        .lineLimit(1)
-                }
-
-                Text(tile.title)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let tool = tile.currentToolName {
-                    HStack(spacing: 4) {
-                        Image(systemName: "hammer.fill")
-                            .font(.system(size: 12, weight: .bold))
-                        Text(tool)
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    }
-                    .foregroundStyle(UnifiedDesignSystem.Colors.amber)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background {
-                        Capsule().fill(UnifiedDesignSystem.Colors.amber.opacity(0.14))
-                    }
-                }
-
-                if let snippet = tile.lastEventSnippet {
-                    Text(snippet)
-                        .font(.system(size: 12, weight: .regular, design: .monospaced))
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-
-                if let progress = tile.progressFraction {
-                    ProgressView(value: progress)
-                        .tint(phaseColor)
-                        .frame(height: 2)
-                }
-
-                HStack(spacing: UnifiedDesignSystem.Spacing.md) {
-                    metaPair(label: "Elapsed", value: MissionConsoleFormatting.duration(elapsed))
-                    metaPair(label: "Burn", value: MissionConsoleFormatting.cost(tile.burnSoFarUSD, precise: tile.burnSoFarUSD < 1))
-                    if tile.approvalPending {
-                        Text("APPROVAL")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .tracking(1.0)
-                            .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background {
-                                Capsule().fill(UnifiedDesignSystem.Colors.hermesAureate.opacity(0.16))
-                            }
-                            .overlay {
-                                Capsule().stroke(UnifiedDesignSystem.Colors.hermesAureate.opacity(0.5), lineWidth: 0.5)
-                            }
-                    }
-                    Spacer(minLength: 0)
-                }
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                phasePulse
+                Text(tile.phase.displayLabel)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(phaseColor)
+                Spacer(minLength: 0)
+                Text(tile.runtimeDisplayLabel)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                    .lineLimit(1)
             }
-            .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
-            .padding(.vertical, UnifiedDesignSystem.Spacing.sm)
+
+            Text(tile.title)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let tool = tile.currentToolName {
+                HStack(spacing: 4) {
+                    Image(systemName: "hammer.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text(tool)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                }
+                .foregroundStyle(UnifiedDesignSystem.Colors.amber)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background { Capsule().fill(UnifiedDesignSystem.Colors.amber.opacity(0.12)) }
+            }
+
+            if let snippet = tile.lastEventSnippet {
+                Text(snippet)
+                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
+            if let progress = tile.progressFraction {
+                ProgressView(value: progress)
+                    .tint(phaseColor)
+                    .frame(height: 2)
+            }
+
+            HStack(spacing: UnifiedDesignSystem.Spacing.md) {
+                Text("\(MissionConsoleFormatting.duration(elapsed)) elapsed")
+                Text(MissionConsoleFormatting.cost(tile.burnSoFarUSD, precise: tile.burnSoFarUSD < 1))
+                Spacer(minLength: 0)
+            }
+            .font(.system(size: 12, weight: .regular, design: .monospaced))
+            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
         }
+        .padding(UnifiedDesignSystem.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                .fill(UnifiedDesignSystem.Colors.surface.opacity(0.65))
+            RoundedRectangle(cornerRadius: MissionChrome.cardCorner, style: .continuous)
+                .fill(MissionChrome.cardFill)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
+            RoundedRectangle(cornerRadius: MissionChrome.cardCorner, style: .continuous)
                 .strokeBorder(
-                    isFreshDispatch
-                        ? phaseColor.opacity(0.75)
-                        : UnifiedDesignSystem.Colors.borderSubtle.opacity(0.6),
-                    lineWidth: isFreshDispatch ? 1.2 : 0.5
+                    isFreshDispatch ? phaseColor.opacity(0.7) : MissionChrome.hairlineColor,
+                    lineWidth: isFreshDispatch ? 1 : MissionChrome.hairline
                 )
         }
-        .overlay {
-            if freshGlow {
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                    .stroke(phaseColor.opacity(0.45), lineWidth: 3)
-                    .blur(radius: 8)
-                    .padding(-2)
-                    .allowsHitTesting(false)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous))
         .onAppear {
-            guard !reduceMotion else { return }
-            if tile.phase.isLive {
-                withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
-                    heartbeat = true
-                }
-            }
-            if isFreshDispatch {
-                freshGlow = true
-                withAnimation(.easeOut(duration: 1.6).delay(0.2)) {
-                    freshGlow = false
-                }
+            guard !reduceMotion, tile.phase.isLive else { return }
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                heartbeat = true
             }
         }
     }
@@ -462,23 +280,13 @@ public struct MissionActiveTile: View {
             .fill(phaseColor)
             .frame(width: 7, height: 7)
             .overlay {
-                Circle()
-                    .stroke(phaseColor.opacity(0.55), lineWidth: 2)
-                    .scaleEffect(heartbeat ? 2.4 : 1.0)
-                    .opacity(heartbeat ? 0.0 : 0.85)
+                if tile.phase.isLive {
+                    Circle()
+                        .stroke(phaseColor.opacity(0.5), lineWidth: 2)
+                        .scaleEffect(heartbeat ? 2.2 : 1.0)
+                        .opacity(heartbeat ? 0.0 : 0.8)
+                }
             }
-    }
-
-    private func metaPair(label: String, value: String) -> some View {
-        HStack(spacing: 3) {
-            Text(label.uppercased())
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .tracking(0.6)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-            Text(value)
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-        }
     }
 }
 
@@ -487,9 +295,6 @@ public struct MissionActiveTile: View {
 public struct MissionApprovalCard: View {
     public let ask: MissionConsoleApprovalAsk
     public let onApprove: (Bool) -> Void
-
-    @State private var pulse = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(ask: MissionConsoleApprovalAsk, onApprove: @escaping (Bool) -> Void) {
         self.ask = ask
@@ -500,81 +305,70 @@ public struct MissionApprovalCard: View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             HStack(spacing: 6) {
                 Image(systemName: "hand.raised.fill")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate)
-                Text("APPROVAL ASK")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .tracking(1.8)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate)
-                Spacer()
-                Text(MissionConsoleFormatting.relativeTime(ask.requestedAt).uppercased())
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(UnifiedDesignSystem.Colors.warning)
+                Text("Approval requested")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(UnifiedDesignSystem.Colors.warning)
+                Spacer(minLength: 0)
+                Text(MissionConsoleFormatting.relativeTime(ask.requestedAt))
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(ask.title)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                Text(ask.message)
-                    .font(.system(size: 13, weight: .regular, design: .rounded))
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
+            Text(ask.title)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
 
-                Text("Mission · \(ask.runtimeDisplayLabel)")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .tracking(0.8)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate.opacity(0.85))
-                    .padding(.top, 2)
-            }
+            Text(ask.message)
+                .font(.system(size: 13, weight: .regular, design: .rounded))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Mission · \(ask.runtimeDisplayLabel)")
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
 
             HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                 Button { onApprove(false) } label: {
-                    Label("Reject", systemImage: "xmark")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    Text("Reject")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(UnifiedDesignSystem.Colors.error)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 7)
+                        .padding(.vertical, 9)
                         .background {
-                            Capsule().fill(UnifiedDesignSystem.Colors.error.opacity(0.12))
-                        }
-                        .overlay {
-                            Capsule().strokeBorder(UnifiedDesignSystem.Colors.error.opacity(0.55), lineWidth: 0.6)
+                            RoundedRectangle(cornerRadius: MissionChrome.controlCorner, style: .continuous)
+                                .fill(UnifiedDesignSystem.Colors.error.opacity(0.10))
                         }
                 }
                 .buttonStyle(.plain)
 
                 Button { onApprove(true) } label: {
-                    Label("Approve", systemImage: "checkmark")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    Text("Approve")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 7)
+                        .padding(.vertical, 9)
                         .background {
-                            Capsule().fill(UnifiedDesignSystem.mercuryGradient)
-                        }
-                        .overlay {
-                            Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: MissionChrome.controlCorner, style: .continuous)
+                                .fill(UnifiedDesignSystem.Colors.success)
                         }
                 }
                 .buttonStyle(.plain)
             }
+            .padding(.top, 2)
         }
         .padding(UnifiedDesignSystem.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                .fill(UnifiedDesignSystem.Colors.hermesAureate.opacity(0.08))
+            RoundedRectangle(cornerRadius: MissionChrome.cardCorner, style: .continuous)
+                .fill(UnifiedDesignSystem.Colors.warning.opacity(0.06))
         }
         .overlay {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                .strokeBorder(UnifiedDesignSystem.Colors.hermesAureate.opacity(pulse ? 0.85 : 0.5), lineWidth: 1.0)
-        }
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
+            RoundedRectangle(cornerRadius: MissionChrome.cardCorner, style: .continuous)
+                .strokeBorder(UnifiedDesignSystem.Colors.warning.opacity(0.45), lineWidth: 1)
         }
     }
 }
@@ -589,75 +383,54 @@ public struct MissionActivityTicker: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if entries.isEmpty {
-                empty
-            } else {
-                ForEach(Array(entries.prefix(8).enumerated()), id: \.element.id) { index, entry in
-                    if index > 0 {
-                        Divider().overlay(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.4))
+        MissionConsoleCard {
+            VStack(alignment: .leading, spacing: 0) {
+                if entries.isEmpty {
+                    HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                        Image(systemName: "waveform.path.ecg")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                        Text("No events yet. They'll stream in here.")
+                            .font(.system(size: 13, weight: .regular, design: .rounded))
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                        Spacer(minLength: 0)
                     }
-                    entryRow(entry)
+                    .padding(UnifiedDesignSystem.Spacing.md)
+                } else {
+                    ForEach(Array(entries.prefix(8).enumerated()), id: \.element.id) { index, entry in
+                        if index > 0 {
+                            MissionRowDivider(indent: 34)
+                        }
+                        entryRow(entry)
+                    }
                 }
             }
         }
-        .background {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                .fill(UnifiedDesignSystem.Colors.surfaceElevated.opacity(0.45))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                .strokeBorder(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.6), lineWidth: 0.5)
-        }
-    }
-
-    private var empty: some View {
-        HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-            Image(systemName: "waveform.path.ecg")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-            Text("No events yet. Dispatch a mission and they'll stream in here.")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
-        .padding(.vertical, UnifiedDesignSystem.Spacing.sm)
     }
 
     private func entryRow(_ entry: MissionConsoleTickerEntry) -> some View {
         HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.sm) {
-            // Glyph for kind
             Image(systemName: glyph(for: entry.kind))
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(color(for: entry.kind, isError: entry.isError))
-                .frame(width: 12, alignment: .center)
+                .frame(width: 14, alignment: .center)
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     if let title = entry.title, !title.isEmpty {
                         Text(title)
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
                             .foregroundStyle(entry.isError ? UnifiedDesignSystem.Colors.error : UnifiedDesignSystem.Colors.textPrimary)
                             .lineLimit(1)
                     } else {
                         Text(entry.phase.replacingOccurrences(of: "_", with: " ").capitalized)
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
                             .foregroundStyle(entry.isError ? UnifiedDesignSystem.Colors.error : UnifiedDesignSystem.Colors.textPrimary)
-                    }
-                    if let tool = entry.toolName, !tool.isEmpty {
-                        Text(tool)
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .tracking(0.4)
-                            .foregroundStyle(UnifiedDesignSystem.Colors.amber)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background { Capsule().fill(UnifiedDesignSystem.Colors.amber.opacity(0.16)) }
                     }
                     Spacer(minLength: 0)
                     Text(MissionConsoleFormatting.relativeTime(entry.timestamp))
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 }
                 Text(entry.message)
@@ -666,27 +439,23 @@ public struct MissionActivityTicker: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                 if let path = entry.pathDetail, !path.isEmpty {
-                    HStack(spacing: 3) {
-                        Image(systemName: "doc.fill")
-                            .font(.system(size: 12))
-                        Text(path)
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate)
+                    Text(path)
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                 }
             }
         }
         .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
-        .padding(.vertical, 7)
+        .padding(.vertical, 8)
     }
 
     private func glyph(for kind: MissionConsoleTickerEntry.Kind) -> String {
         switch kind {
         case .status:       return "circle.fill"
         case .toolCall:     return "hammer.fill"
-        case .toolResult:   return "checkmark.diamond.fill"
+        case .toolResult:   return "checkmark.circle.fill"
         case .llmResponse:  return "text.bubble.fill"
         case .finalAnswer:  return "flag.checkered"
         case .changedFile:  return "pencil.and.outline"
@@ -699,15 +468,15 @@ public struct MissionActivityTicker: View {
     private func color(for kind: MissionConsoleTickerEntry.Kind, isError: Bool) -> Color {
         if isError { return UnifiedDesignSystem.Colors.error }
         switch kind {
-        case .status:      return UnifiedDesignSystem.Colors.textSecondary
+        case .status:      return UnifiedDesignSystem.Colors.textMuted
         case .toolCall:    return UnifiedDesignSystem.Colors.amber
         case .toolResult:  return UnifiedDesignSystem.Colors.success
-        case .llmResponse: return UnifiedDesignSystem.Colors.ember
+        case .llmResponse: return UnifiedDesignSystem.Colors.textSecondary
         case .finalAnswer: return UnifiedDesignSystem.Colors.success
-        case .changedFile: return UnifiedDesignSystem.Colors.hermesAureate
-        case .artifact:    return UnifiedDesignSystem.Colors.hermesAureate
+        case .changedFile: return UnifiedDesignSystem.Colors.textSecondary
+        case .artifact:    return UnifiedDesignSystem.Colors.textSecondary
         case .error:       return UnifiedDesignSystem.Colors.error
-        case .approval:    return UnifiedDesignSystem.Colors.hermesAureate
+        case .approval:    return UnifiedDesignSystem.Colors.warning
         }
     }
 }

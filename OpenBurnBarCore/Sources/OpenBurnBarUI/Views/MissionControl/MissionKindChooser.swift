@@ -3,12 +3,10 @@ import OpenBurnBarKernel
 
 // MARK: - Mission Kind Chooser
 //
-// 4-column grid of mission-kind tiles. Each tile carries:
-//   • Glyph
-//   • Display name
-//   • Tagline (1 line)
-//   • Small "recommends ▸ <runtime>" hint (when known)
-// Tap to select. Selected tile gets ember stripe + soft glow.
+// Adaptive grid of mission-kind tiles — two columns on a phone, more as width
+// allows. Every kind is visible without scrolling. Each tile carries a glyph
+// chip, display name, and one-line tagline. The selected tile gets a tinted
+// fill and accent border; nothing glows.
 
 public struct MissionKindChooser: View {
     public let runtimes: [MissionConsoleRuntime]
@@ -25,128 +23,76 @@ public struct MissionKindChooser: View {
         self.onSelect = onSelect
     }
 
-    private let rows: [GridItem] = Array(
-        repeating: GridItem(.fixed(92), spacing: UnifiedDesignSystem.Spacing.sm),
-        count: 2
-    )
+    private let columns: [GridItem] = [
+        GridItem(.adaptive(minimum: 158, maximum: 260), spacing: UnifiedDesignSystem.Spacing.sm, alignment: .top)
+    ]
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-            sectionHeader
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+            MissionSectionHeader(
+                title: "Mission type",
+                trailing: recommendedRuntimeName.map { "Best fit: \($0)" }
+            )
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHGrid(rows: rows, alignment: .top, spacing: UnifiedDesignSystem.Spacing.sm) {
-                    ForEach(MissionConsoleKind.allCases) { kind in
-                        kindTile(kind)
-                    }
+            LazyVGrid(columns: columns, spacing: UnifiedDesignSystem.Spacing.sm) {
+                ForEach(MissionConsoleKind.allCases) { kind in
+                    kindTile(kind)
                 }
-                .padding(.leading, 1)
-                .padding(.trailing, UnifiedDesignSystem.Spacing.xl)
-                .padding(.vertical, 2)
-                .fixedSize(horizontal: true, vertical: false)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .scrollClipDisabled(false)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var sectionHeader: some View {
-        HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-            Text("01 · KIND")
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .tracking(2.4)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-            Rectangle()
-                .fill(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.6))
-                .frame(height: 1)
-                .frame(maxWidth: .infinity)
-            Text(selectedKind.displayName.uppercased())
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .tracking(1.6)
-                .foregroundStyle(UnifiedDesignSystem.Colors.ember)
-        }
+    private var recommendedRuntimeName: String? {
+        guard let id = selectedKind.preferredRuntimes.first else { return nil }
+        return runtimes.first(where: { $0.id == id })?.displayName
     }
 
-    @ViewBuilder
     private func kindTile(_ kind: MissionConsoleKind) -> some View {
         let isSelected = kind == selectedKind
-        let recommendedID = kind.preferredRuntimes.first
-        let recommendedDisplay = runtimes.first(where: { $0.id == recommendedID })?.displayName
+        return Button { onSelect(kind) } label: {
+            HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                Image(systemName: kind.glyph)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(isSelected ? Color.white : MissionChrome.accent)
+                    .frame(width: 30, height: 30)
+                    .background {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(isSelected ? MissionChrome.accent : MissionChrome.accent.opacity(0.12))
+                    }
 
-        Button { onSelect(kind) } label: {
-            HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.sm) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(
-                            isSelected
-                                ? AnyShapeStyle(UnifiedDesignSystem.primaryGradient)
-                                : AnyShapeStyle(UnifiedDesignSystem.Colors.surfaceElevated.opacity(0.7))
-                        )
-                        .frame(width: 36, height: 36)
-                    Image(systemName: kind.glyph)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(isSelected ? Color.white : UnifiedDesignSystem.Colors.ember)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text(kind.displayName)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                         .lineLimit(1)
-
                     Text(kind.tagline)
-                        .font(.system(size: 13, weight: .regular, design: .rounded))
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if let name = recommendedDisplay {
-                        HStack(spacing: 3) {
-                            Image(systemName: "arrowshape.right.fill")
-                                .font(.system(size: 12, weight: .bold))
-                            Text("Recommends \(name)")
-                                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                .tracking(0.5)
-                        }
-                        .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate.opacity(0.85))
-                        .padding(.top, 1)
-                    }
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
 
                 Spacer(minLength: 0)
             }
-            .padding(UnifiedDesignSystem.Spacing.sm)
-            .frame(minWidth: 260, maxWidth: 260, minHeight: 88, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background {
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                    .fill(UnifiedDesignSystem.Colors.surface.opacity(isSelected ? 0.95 : 0.55))
+                RoundedRectangle(cornerRadius: MissionChrome.controlCorner, style: .continuous)
+                    .fill(isSelected ? MissionChrome.accent.opacity(0.14) : MissionChrome.cardFill)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
+                RoundedRectangle(cornerRadius: MissionChrome.controlCorner, style: .continuous)
                     .strokeBorder(
-                        isSelected
-                            ? UnifiedDesignSystem.Colors.ember.opacity(0.85)
-                            : UnifiedDesignSystem.Colors.borderSubtle.opacity(0.6),
-                        lineWidth: isSelected ? 1.2 : 0.6
+                        isSelected ? MissionChrome.accent.opacity(0.75) : MissionChrome.hairlineColor,
+                        lineWidth: isSelected ? 1 : MissionChrome.hairline
                     )
             }
-            .overlay(alignment: .leading) {
-                if isSelected {
-                    Rectangle()
-                        .fill(UnifiedDesignSystem.primaryGradient)
-                        .frame(width: 3)
-                        .clipShape(RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous))
-                }
-            }
-            .shadow(
-                color: isSelected ? UnifiedDesignSystem.Colors.ember.opacity(0.25) : Color.black.opacity(0.05),
-                radius: isSelected ? 10 : 3,
-                y: isSelected ? 4 : 1
-            )
-            .animation(UnifiedDesignSystem.Animation.standard, value: isSelected)
+            .animation(UnifiedDesignSystem.Animation.snappy, value: isSelected)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(kind.displayName) — \(kind.tagline). \(isSelected ? "Selected." : "Tap to select.")")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

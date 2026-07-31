@@ -1,7 +1,46 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { sanitizeEvidenceArtifact } from "./collect-firebase-security-evidence.mjs";
+import {
+  sanitizeEvidenceArtifact,
+  secretIdFromResourceName,
+} from "./collect-firebase-security-evidence.mjs";
+
+test("secretIdFromResourceName preserves a live Secret Manager lookup target", () => {
+  assert.equal(
+    secretIdFromResourceName(
+      "projects/burnbar/secrets/STRIPE_WEBHOOK_SECRET",
+      "burnbar",
+    ),
+    "STRIPE_WEBHOOK_SECRET",
+  );
+  assert.equal(
+    secretIdFromResourceName("STRIPE_WEBHOOK_SECRET", "burnbar"),
+    "STRIPE_WEBHOOK_SECRET",
+  );
+  assert.equal(
+    secretIdFromResourceName(
+      "projects/246956661961/secrets/STRIPE_WEBHOOK_SECRET",
+      "burnbar",
+      "246956661961",
+    ),
+    "STRIPE_WEBHOOK_SECRET",
+  );
+  assert.equal(
+    secretIdFromResourceName(
+      "projects/burnbar-staging/secrets/STRIPE_WEBHOOK_SECRET",
+      "burnbar",
+    ),
+    null,
+  );
+  assert.equal(
+    secretIdFromResourceName(
+      "projects/[REDACTED]/secrets/[REDACTED]",
+      "burnbar",
+    ),
+    null,
+  );
+});
 
 test("sanitizeEvidenceArtifact keeps proof signals but removes raw cloud inventory", () => {
   const projectId = ["prod", "project", "123"].join("-");

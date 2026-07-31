@@ -3,8 +3,9 @@ import OpenBurnBarKernel
 
 // MARK: - Mission Burn Forecast Strip
 //
-// Pre-dispatch sanity panel. Three mono digit blocks (tokens / cost / ETA) with
-// a low–high range. Tints amber when projected cost exceeds $1.
+// Pre-dispatch sanity panel: three columns (tokens / cost / ETA) with the
+// low–high range from the forecast computer. Tints the cost when the high end
+// exceeds $1.
 
 public struct MissionBurnForecastStrip: View {
     public let forecast: MissionConsoleForecast
@@ -22,74 +23,71 @@ public struct MissionBurnForecastStrip: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-            HStack(spacing: 6) {
-                Image(systemName: "gauge.with.dots.needle.bottom.50percent")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(runtimeAccent)
-                Text("FORECAST")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .tracking(1.8)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                Spacer()
-                Text("via \(runtimeName)")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(runtimeAccent)
-            }
+        MissionConsoleCard {
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+                HStack(spacing: 6) {
+                    Text("Estimate")
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                    Spacer(minLength: 0)
+                    Text("via \(runtimeName)")
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(runtimeAccent)
+                        .lineLimit(1)
+                }
 
-            HStack(spacing: UnifiedDesignSystem.Spacing.lg) {
-                forecastCell(
-                    label: "TOKENS",
-                    value: MissionConsoleFormatting.tokenRange(forecast.tokensLow, forecast.tokensHigh),
-                    tint: UnifiedDesignSystem.Colors.textPrimary
-                )
-                Divider().frame(height: 36).overlay(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.7))
-                forecastCell(
-                    label: "COST",
-                    value: MissionConsoleFormatting.costRange(forecast.costLowUSD, forecast.costHighUSD),
-                    tint: forecast.costHighUSD > 1.0 ? UnifiedDesignSystem.Colors.ember : UnifiedDesignSystem.Colors.textPrimary
-                )
-                Divider().frame(height: 36).overlay(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.7))
-                forecastCell(
-                    label: "ETA",
-                    value: MissionConsoleFormatting.durationRange(forecast.etaLow, forecast.etaHigh),
-                    tint: UnifiedDesignSystem.Colors.textPrimary
-                )
-                Spacer(minLength: 0)
+                HStack(spacing: 0) {
+                    forecastCell(
+                        label: "Tokens",
+                        value: MissionConsoleFormatting.tokenRange(forecast.tokensLow, forecast.tokensHigh),
+                        tint: UnifiedDesignSystem.Colors.textPrimary
+                    )
+                    forecastDivider
+                    forecastCell(
+                        label: "Cost",
+                        value: MissionConsoleFormatting.costRange(forecast.costLowUSD, forecast.costHighUSD),
+                        tint: forecast.costHighUSD > 1.0 ? UnifiedDesignSystem.Colors.ember : UnifiedDesignSystem.Colors.textPrimary
+                    )
+                    forecastDivider
+                    forecastCell(
+                        label: "Time",
+                        value: MissionConsoleFormatting.durationRange(forecast.etaLow, forecast.etaHigh),
+                        tint: UnifiedDesignSystem.Colors.textPrimary
+                    )
+                }
             }
+            .padding(UnifiedDesignSystem.Spacing.md)
         }
-        .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
-        .padding(.vertical, UnifiedDesignSystem.Spacing.sm)
-        .background {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                .fill(UnifiedDesignSystem.Colors.surface.opacity(0.4))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                .strokeBorder(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.5), lineWidth: 0.5)
-        }
+    }
+
+    private var forecastDivider: some View {
+        Rectangle()
+            .fill(MissionChrome.hairlineColor)
+            .frame(width: MissionChrome.hairline, height: 32)
     }
 
     private func forecastCell(label: String, value: String, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .tracking(1.4)
+                .font(.system(size: 12, weight: .regular, design: .rounded))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             Text(value)
-                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .font(.system(size: 14, weight: .semibold, design: .monospaced))
                 .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
                 .contentTransition(.numericText())
                 .animation(UnifiedDesignSystem.Animation.gentle, value: value)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
     }
 }
 
 // MARK: - Dispatch Button
 //
-// The hero CTA. Fills with the chosen runtime's provider color. On press it
-// scales subtly. While dispatching it shows an inline progress spinner; the
-// "lift-off" transition is owned by the parent (the active tile slides in).
+// The primary CTA. Full-width rounded rect in the accent gradient. While
+// dispatching it swaps the label for a spinner.
 
 public struct MissionDispatchButton: View {
     public let runtimeAccent: Color
@@ -97,8 +95,6 @@ public struct MissionDispatchButton: View {
     public let isEnabled: Bool
     public let isDispatching: Bool
     public let action: () -> Void
-
-    @State private var pressed = false
 
     public init(
         runtimeAccent: Color,
@@ -122,63 +118,33 @@ public struct MissionDispatchButton: View {
                         .progressViewStyle(.circular)
                         .controlSize(.small)
                         .tint(.white)
+                    Text("Dispatching…")
                 } else {
                     Image(systemName: "paperplane.fill")
-                        .font(.system(size: 14, weight: .bold))
-                        .rotationEffect(.degrees(-45))
-                }
-
-                Text(isDispatching ? "Dispatching…" : "Dispatch")
-                    .font(.system(size: 16, weight: .heavy, design: .rounded))
-                    .kerning(0.2)
-
-                Spacer(minLength: UnifiedDesignSystem.Spacing.sm)
-
-                if !isDispatching {
-                    HStack(spacing: 4) {
-                        Text("via")
-                            .font(.system(size: 13, weight: .medium, design: .monospaced))
-                            .opacity(0.7)
-                        Text(runtimeName.uppercased())
-                            .font(.system(size: 13, weight: .bold, design: .monospaced))
-                            .tracking(1.2)
-                    }
-                    .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
-                    .padding(.vertical, 4)
-                    .background {
-                        Capsule().fill(Color.white.opacity(0.2))
-                    }
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Dispatch via \(runtimeName)")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
             }
+            .font(.system(size: 15, weight: .semibold, design: .rounded))
             .foregroundStyle(Color.white)
-            .padding(.horizontal, UnifiedDesignSystem.Spacing.lg)
-            .padding(.vertical, UnifiedDesignSystem.Spacing.md)
             .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
             .background {
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
+                RoundedRectangle(cornerRadius: MissionChrome.cardCorner, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [runtimeAccent, runtimeAccent.opacity(0.78)],
+                            colors: [runtimeAccent, runtimeAccent.opacity(0.8)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
             }
-            .overlay {
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.75)
-            }
-            .shadow(color: runtimeAccent.opacity(0.42), radius: pressed ? 6 : 18, y: pressed ? 2 : 8)
-            .scaleEffect(pressed ? 0.985 : 1.0)
-            .opacity(isEnabled ? 1.0 : 0.45)
-            .animation(UnifiedDesignSystem.Animation.hover, value: pressed)
+            .opacity(isEnabled || isDispatching ? 1.0 : 0.4)
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled || isDispatching)
-        .onHover { hovering in
-            // Picked up by hover on macOS; ignored on iOS.
-            pressed = hovering
-        }
         .accessibilityLabel(isDispatching ? "Dispatching mission via \(runtimeName)" : "Dispatch mission via \(runtimeName)")
     }
 }

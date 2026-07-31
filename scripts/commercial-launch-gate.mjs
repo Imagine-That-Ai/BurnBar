@@ -232,6 +232,7 @@ const REQUIRED_FIREBASE_FUNCTIONS = [
   "searchStreams",
   "stripeBurnBarProWebhook",
   "verifyCloudProTopUp",
+  "googlePlayDeveloperNotifications",
   "verifyGooglePlayCloudProTopUp",
   "verifyGooglePlayBurnBarProSubscription",
   "verifyHostedQuotaEntitlement",
@@ -344,6 +345,8 @@ const REQUIRED_COMMERCIAL_ENV_VALUES = {
     COMMERCIAL_PRODUCTS.elderWandSearches100,
   ELDER_WAND_SEARCHES_500_PRODUCT_ID:
     COMMERCIAL_PRODUCTS.elderWandSearches500,
+  GOOGLE_PLAY_PACKAGE_NAME: "com.openburnbar",
+  GOOGLE_PLAY_RTDN_TOPIC: "play-billing-notifications",
   GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.cloudMonthly,
   GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.cloudAnnual,
   GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID:
@@ -1676,6 +1679,9 @@ function checkCommercialBillingRuntime() {
   const googlePlayTopUp = deployedFunctionEnvironment(
     "verifyGooglePlayCloudProTopUp",
   );
+  const googlePlayRtdn = deployedFunctionEnvironment(
+    "googlePlayDeveloperNotifications",
+  );
   const appStoreTopUp = deployedFunctionEnvironment("verifyCloudProTopUp");
   const webhook = deployedFunctionEnvironment("stripeBurnBarProWebhook");
   // RTDN backstop: the daily voided-purchase sweep must be deployed so a
@@ -1688,6 +1694,7 @@ function checkCommercialBillingRuntime() {
     checkout,
     googlePlay,
     googlePlayTopUp,
+    googlePlayRtdn,
     appStoreTopUp,
   ].filter((source) => source.ok);
   const mergedEnv = Object.assign(
@@ -1717,6 +1724,7 @@ function checkCommercialBillingRuntime() {
       checkout.ok &&
       googlePlay.ok &&
       googlePlayTopUp.ok &&
+      googlePlayRtdn.ok &&
       appStoreTopUp.ok &&
       webhook.ok &&
       googlePlayVoidedSweep.ok &&
@@ -1726,6 +1734,7 @@ function checkCommercialBillingRuntime() {
       checkout,
       googlePlay,
       googlePlayTopUp,
+      googlePlayRtdn,
       appStoreTopUp,
       webhook,
       googlePlayVoidedSweep,

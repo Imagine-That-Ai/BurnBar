@@ -15,22 +15,11 @@ final class IndexSettings {
         didSet { persistence.set(restrictedLogAccess, forKey: "restrictedLogAccess") }
     }
 
-    /// Encryption-at-rest is default-ON for new installs (B-DATA-1). Existing
-    /// installs keep whatever value they previously persisted (see `init`).
-    var databaseEncryptionEnabled: Bool = true {
-        didSet { persistence.set(databaseEncryptionEnabled, forKey: "databaseEncryptionEnabled") }
-    }
-
-    /// Explicit, persisted, user-acknowledged plaintext escape hatch. When the
-    /// build genuinely cannot encrypt (no SQLCipher) or an existing plaintext DB
-    /// cannot be safely migrated, the database opens in plaintext only while this
-    /// flag is set, and a standing banner should warn the user. Default false:
-    /// without it, an encryption failure surfaces rather than silently shipping
-    /// plaintext. Persisted under the same key the DB-open path reads from
-    /// `UserDefaults.standard` so it is available before `SettingsManager` exists.
-    var plaintextDatabaseAcknowledged: Bool = false {
-        didSet { persistence.set(plaintextDatabaseAcknowledged, forKey: "plaintextDatabaseAcknowledged") }
-    }
+    /// Encryption-at-rest is mandatory (B-DATA-1). These read-only compatibility
+    /// values keep older presentation code source-compatible while preventing any
+    /// settings caller from recreating the retired plaintext opt-outs.
+    private(set) var databaseEncryptionEnabled: Bool = true
+    private(set) var plaintextDatabaseAcknowledged: Bool = false
 
     var preferredIndexEmbeddingVersionID: String = "" {
         didSet { persistence.set(preferredIndexEmbeddingVersionID, forKey: "preferredIndexEmbeddingVersionID") }
@@ -66,13 +55,11 @@ final class IndexSettings {
         } else {
             self.restrictedLogAccess = true
         }
-        if persistence.objectExists(forKey: "databaseEncryptionEnabled") {
-            self.databaseEncryptionEnabled = persistence.bool(forKey: "databaseEncryptionEnabled")
-        } else {
-            // New install: encryption-at-rest default-on (B-DATA-1).
-            self.databaseEncryptionEnabled = true
-        }
-        self.plaintextDatabaseAcknowledged = persistence.bool(forKey: "plaintextDatabaseAcknowledged")
+        self.databaseEncryptionEnabled = true
+        self.plaintextDatabaseAcknowledged = false
+        persistence.set(true, forKey: "databaseEncryptionEnabled")
+        persistence.removeObject(forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey)
+        persistence.removeObject(forKey: "plaintextDatabaseAcknowledged")
         self.preferredIndexEmbeddingVersionID = persistence.string(forKey: "preferredIndexEmbeddingVersionID")
         if let rawProvider = persistence.optionalString(forKey: "indexEmbeddingProvider"),
            let provider = IndexEmbeddingProviderID(rawValue: rawProvider) {

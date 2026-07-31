@@ -1195,7 +1195,7 @@ private struct CloudStoreActionBar: View {
             }
             .buttonStyle(.aurora(.primary, fullWidth: true))
             .disabled(store.isPurchasing)
-            .accessibilityIdentifier("cloudStore.subscribe")
+            .accessibilityIdentifier("cloudStore.subscribe.summary")
             .accessibilityLabel(primaryButtonTitle)
 
             if let error = store.error {
