@@ -159,6 +159,28 @@ class ScreenShareInputPolicyTest {
     }
 
     @Test
+    fun remoteKeyboardDismissesOnlyAfterTheImeWasVisible() {
+        assertFalse(
+            shouldDismissRemoteKeyboardCapture(
+                hasShownKeyboard = false,
+                isKeyboardVisible = false,
+            ),
+        )
+        assertFalse(
+            shouldDismissRemoteKeyboardCapture(
+                hasShownKeyboard = true,
+                isKeyboardVisible = true,
+            ),
+        )
+        assertTrue(
+            shouldDismissRemoteKeyboardCapture(
+                hasShownKeyboard = true,
+                isKeyboardVisible = false,
+            ),
+        )
+    }
+
+    @Test
     fun remoteKeyboardCaptureSuppressesDuplicateRawValueButKeepsIntentionalDoubleLetters() {
         var state = RemoteKeyboardCaptureState()
 

@@ -217,6 +217,7 @@ private fun ScreenShareViewerSmartZoomFollowEffect(params: ScreenShareViewerSmar
 
 @Composable
 private fun ScreenShareViewerAutoTypeEffect(params: ScreenShareViewerAutoTypeParams) {
+    var openedAutomatically by remember { mutableStateOf(false) }
     val latestFocusContext = params.latestFocusContext
     val autoKeyboardOnTextFocus = params.autoKeyboardOnTextFocus
     val controlMode = params.controlMode
@@ -248,12 +249,24 @@ private fun ScreenShareViewerAutoTypeEffect(params: ScreenShareViewerAutoTypePar
         )
         when {
             ScreenShareAutoTypeFollowPolicy.shouldOpen(autoTypeInput) -> {
+                openedAutomatically = true
                 onTypingOpenChange(true)
                 if (controlMode == ScreenMirrorControlMode.VIEW) {
                     onControlModeNameChange(ScreenMirrorControlMode.TOUCH.name)
                 }
             }
-            typingOpen && ScreenShareAutoTypeFollowPolicy.shouldClose(autoTypeInput) -> onTypingOpenChange(false)
+            typingOpen && !standardControlEnabled -> {
+                openedAutomatically = false
+                onTypingOpenChange(false)
+            }
+            ScreenShareAutoTypeFollowPolicy.shouldCloseAutomatically(
+                input = autoTypeInput,
+                openedAutomatically = openedAutomatically,
+            ) -> {
+                openedAutomatically = false
+                onTypingOpenChange(false)
+            }
+            !typingOpen -> openedAutomatically = false
         }
     }
 }

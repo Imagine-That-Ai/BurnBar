@@ -92,7 +92,11 @@ vi.mock("../callables/shared.js", async () => {
     BURNBAR_ULTRA_ENTITLEMENT_ID: "burnbar_ultra",
     STRIPE_API_SECRETS: [],
     STRIPE_WEBHOOK_SECRETS: [],
-    GOOGLE_PLAY_ACTIVE_STATES: new Set(["SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIOD"]),
+    GOOGLE_PLAY_ACTIVE_STATES: new Set([
+      "SUBSCRIPTION_STATE_ACTIVE",
+      "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
+      "SUBSCRIPTION_STATE_CANCELED",
+    ]),
     nowISO: () => new Date().toISOString(),
     boundedTrimmedString: (raw: unknown, fieldName: string, _maxLength: number, required?: boolean) => {
       if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
@@ -105,12 +109,35 @@ vi.mock("../callables/shared.js", async () => {
     boundedHttpsURL: vi.fn(),
     assertActiveBurnBarCloudProEntitlement: state.assertActiveMock,
     getOrCreateStripeCustomer: vi.fn(),
-    googlePlayLineItemForProduct: (purchase: { lineItems?: Array<{ productId?: unknown }> }, productID: string) =>
-      purchase.lineItems?.find((item) => item.productId === productID),
-    googlePlayExpiryMillis: (lineItem?: { expiryTime?: unknown }) =>
-      lineItem && typeof lineItem.expiryTime === "string" ? Date.parse(lineItem.expiryTime) : 0,
+    selectGooglePlaySubscriptionLineItem: (
+      purchase: { lineItems?: Array<{ productId?: unknown; expiryTime?: unknown }> },
+      preferredProductIDs: string[],
+    ) => {
+      const lineItem =
+        purchase.lineItems?.find((item) => preferredProductIDs.includes(String(item.productId))) ??
+        purchase.lineItems?.[0] ??
+        {};
+      const productID = String(lineItem.productId);
+      return {
+        lineItem,
+        target: {
+          entitlementID: "burnbar_pro",
+          canonicalProductID: productID,
+          tierRank: 1,
+        },
+        expiresAtMillis: typeof lineItem.expiryTime === "string" ? Date.parse(lineItem.expiryTime) : 0,
+      };
+    },
     applyStripeCheckoutSession: vi.fn(),
     applyStripeSubscription: vi.fn(),
+    reconcileStripeInvoice: vi.fn(),
+    reconcileStripeCharge: vi.fn(),
+    reconcileStripeRefund: vi.fn(),
+    reconcileStripeDispute: vi.fn(),
+    reconcileStripeCreditNote: vi.fn(),
+    deactivateStripeCustomerEntitlements: vi.fn(),
+    assertStripeCustomerCanStartSubscriptionCheckout: vi.fn(),
+    findReusableStripeSubscriptionCheckoutSession: vi.fn(),
     creditCloudProTopUp: vi.fn(),
     writeBurnBarProEntitlement: state.writeEntitlementMock,
   };

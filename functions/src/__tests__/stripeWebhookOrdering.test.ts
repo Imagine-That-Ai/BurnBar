@@ -23,6 +23,12 @@ const firestoreState = vi.hoisted(() => {
   class FakeDocRef {
     constructor(readonly path: string) {}
 
+    collection(name: string) {
+      return {
+        doc: (id: string) => new FakeDocRef(`${this.path}/${name}/${id}`),
+      };
+    }
+
     async get() {
       return new FakeDocSnapshot(docs.get(this.path));
     }
@@ -32,6 +38,14 @@ const firestoreState = vi.hoisted(() => {
       for (const [key, value] of Object.entries(data)) {
         if (typeof value === "object" && value !== null && value.constructor.name === "DeleteTransform") {
           delete next[key];
+        } else if (
+          typeof value === "object" &&
+          value !== null &&
+          value.constructor.name === "NumericIncrementTransform"
+        ) {
+          const operand = Reflect.get(value, "operand");
+          const prior = typeof next[key] === "number" ? next[key] : 0;
+          next[key] = prior + (typeof operand === "number" ? operand : 0);
         } else {
           next[key] = value;
         }
@@ -66,14 +80,38 @@ vi.mock("../adminRuntime.js", () => ({
 }));
 
 vi.mock("../cloudProAllowanceRemoteConfig.js", () => ({
-  loadCloudProAllowanceConfig: vi.fn(),
+  loadCloudProAllowanceConfig: vi.fn(async () => ({
+    includedHostedActionsMonthly: 500,
+    includedRelayGBMonthly: 50,
+    includedFusionSearchesMonthly: 100,
+    includedUltraFusionSearchesMonthly: 300,
+    actionTopUpUnit: 100,
+    relayTopUpUnitGB: 50,
+    fusionSearchTopUpUnit: 100,
+    fusionSearchLargeTopUpUnit: 500,
+    monthlyHostedActionCap: 2_000,
+    monthlyRelayGBCap: 300,
+    monthlyFusionSearchCap: 1_000,
+    monthlyUltraFusionSearchCap: 2_000,
+  })),
+}));
+
+vi.mock("../resilienceHelpers.js", () => ({
+  stripeWithResilience: vi.fn(async <T>(_name: string, fn: () => Promise<T>) => fn()),
 }));
 
 import type Stripe from "stripe";
 
 import {
   applyStripeCheckoutSession,
+  applyStripeSubscription,
   BURNBAR_PRO_ENTITLEMENT_ID,
+  BURNBAR_ULTRA_ENTITLEMENT_ID,
+  deactivateStripeCustomerEntitlements,
+  reconcileStripeCharge,
+  reconcileStripeCreditNote,
+  reconcileStripeDispute,
+  reconcileStripeInvoice,
   writeBurnBarProEntitlement,
 } from "../callables/shared.js";
 import {
@@ -262,6 +300,345 @@ describe("Stripe checkout watermark stamping", () => {
     });
     expect(firestoreState.docs.get(ENTITLEMENT_PATH)?.active).toBe(true);
     expect(firestoreState.docs.get(ENTITLEMENT_PATH)?.sourceEventID).toBe("evt_checkout_1");
+  });
+});
+
+describe("Stripe lifecycle reconciliation", () => {
+  const PERIOD_END_SECONDS = Math.floor(Date.parse("2030-01-01T00:00:00.000Z") / 1000);
+
+  function subscription(
+    id: string,
+    customer = "cus_lifecycle_1",
+    status: Stripe.Subscription.Status = "active",
+  ): Stripe.Subscription {
+    const value = {
+      id,
+      status,
+      customer,
+      metadata: { firebaseUID: UID },
+      current_period_end: PERIOD_END_SECONDS,
+      items: { data: [] },
+    };
+    // @ts-expect-error reason: focused Stripe subscription stub
+    return value;
+  }
+
+  it("maps an Ultra Stripe subscription to the Ultra entitlement and full feature set", async () => {
+    const ultraMonthlyPriceID = "price_ultra_monthly";
+    const ultra = {
+      ...subscription("sub_ultra_1"),
+      metadata: { firebaseUID: UID, entitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID },
+      items: { data: [{ price: { id: ultraMonthlyPriceID } }] },
+    };
+
+    await applyStripeSubscription({} as Stripe, ultra as unknown as Stripe.Subscription, UID, {
+      eventID: "evt_ultra_1",
+      eventCreatedMillis: 4_500,
+    });
+
+    expect(firestoreState.docs.get(`users/${UID}/entitlements/${BURNBAR_ULTRA_ENTITLEMENT_ID}`)).toMatchObject({
+      active: true,
+      entitlementFamily: BURNBAR_ULTRA_ENTITLEMENT_ID,
+      features: {
+        hostedQuota: true,
+        hostedLLM: true,
+        encryptedSessionLogBackup: true,
+        cloudConversationSearch: true,
+        floo: true,
+        agentControl: true,
+      },
+      externalSubscriptionID: ultra.id,
+      sourceEventID: "evt_ultra_1",
+    });
+  });
+
+  it("reconciles invoice failures through the invoice's current subscription", async () => {
+    const current = subscription("sub_invoice_current");
+    const retrieve = vi.fn(async () => current);
+    // @ts-expect-error reason: focused Stripe client stub
+    const stripe: Stripe = { subscriptions: { retrieve } };
+    const invoice = {
+      id: "in_failed_1",
+      customer: current.customer,
+      parent: {
+        type: "subscription_details",
+        subscription_details: { subscription: current.id, metadata: null },
+        quote_details: null,
+      },
+    };
+
+    await reconcileStripeInvoice(
+      stripe,
+      // @ts-expect-error reason: focused Stripe invoice stub
+      invoice,
+      { eventID: "evt_invoice_failed", eventCreatedMillis: 4_000 },
+    );
+
+    expect(retrieve).toHaveBeenCalledWith(current.id);
+    expect(firestoreState.docs.get(ENTITLEMENT_PATH)).toMatchObject({
+      active: true,
+      externalSubscriptionID: current.id,
+      sourceEventID: "evt_invoice_failed",
+      sourceEventCreatedMillis: 4_000,
+    });
+  });
+
+  it("reconciles a refunded charge against every current customer subscription", async () => {
+    const cloud = subscription("sub_refund_cloud");
+    const cloudPro = {
+      ...subscription("sub_refund_cloud_pro"),
+      metadata: { firebaseUID: UID, entitlementID: "burnbar_pro_max" },
+    };
+    const list = vi.fn(async () => ({ data: [cloud, cloudPro], has_more: false }));
+    const charge = {
+      id: "ch_refunded_1",
+      customer: "cus_lifecycle_1",
+      payment_intent: "pi_refunded_1",
+      amount: 2_000,
+      amount_refunded: 2_000,
+    };
+    const chargeRetrieve = vi.fn(async () => charge);
+    const checkoutList = vi.fn(async () => ({ data: [], has_more: false }));
+    const stripe = {
+      subscriptions: { list },
+      charges: { retrieve: chargeRetrieve },
+      checkout: { sessions: { list: checkoutList } },
+    } as unknown as Stripe;
+
+    await reconcileStripeCharge(
+      stripe,
+      // @ts-expect-error reason: focused Stripe charge stub
+      charge,
+      { eventID: "evt_charge_refunded", eventCreatedMillis: 5_000 },
+    );
+
+    expect(list).toHaveBeenCalledWith({
+      customer: "cus_lifecycle_1",
+      limit: 100,
+      status: "all",
+    });
+    expect(chargeRetrieve).toHaveBeenCalledWith(charge.id);
+    expect(firestoreState.docs.get(ENTITLEMENT_PATH)?.externalSubscriptionID).toBe(cloud.id);
+    expect(firestoreState.docs.get(`users/${UID}/entitlements/burnbar_pro_max`)?.externalSubscriptionID).toBe(
+      cloudPro.id,
+    );
+  });
+
+  it("maps a paid top-up to its PaymentIntent and Charge, then reverses partial refunds", async () => {
+    const customerID = "cus_topup_1";
+    const paymentIntentID = "pi_topup_1";
+    const chargeID = "ch_topup_1";
+    await writeBurnBarProEntitlement({
+      uid: UID,
+      productID: "com.openburnbar.proMax.v2.monthly",
+      expiresAtMillis: Date.parse("2030-01-01T00:00:00.000Z"),
+      source: "stripe_webhook_verified",
+      platform: "stripe",
+      entitlementID: "burnbar_pro_max",
+      rawStatus: "active",
+      activeOverride: true,
+    });
+    const paidCharge = {
+      id: chargeID,
+      amount: 2_000,
+      amount_refunded: 0,
+      currency: "usd",
+      customer: null,
+      payment_intent: paymentIntentID,
+    };
+    const paymentIntentRetrieve = vi.fn(async () => ({
+      id: paymentIntentID,
+      amount: 2_000,
+      amount_received: 2_000,
+      currency: "usd",
+      latest_charge: paidCharge,
+    }));
+    const chargeRetrieve = vi.fn(async () => paidCharge);
+    const stripe = {
+      paymentIntents: { retrieve: paymentIntentRetrieve },
+      charges: { retrieve: chargeRetrieve },
+    };
+    const session = {
+      id: "cs_topup_1",
+      customer: customerID,
+      metadata: { firebaseUID: UID, topUpKind: "agent_control_actions_100" },
+      payment_status: "paid",
+      payment_intent: paymentIntentID,
+      amount_total: 2_000,
+      currency: "usd",
+    };
+
+    await applyStripeCheckoutSession(stripe as unknown as Stripe, session as unknown as Stripe.Checkout.Session, {
+      eventID: "evt_topup_paid",
+      eventCreatedMillis: 8_000,
+    });
+
+    const allowancePath = `users/${UID}/billing/allowances/months/${new Date().toISOString().slice(0, 7)}`;
+    const receiptPath = `users/${UID}/billing/cloud_pro_topups/receipts/stripe_checkout_${session.id}`;
+    expect(firestoreState.docs.get(allowancePath)?.topupActionsPurchased).toBe(100);
+    expect(firestoreState.docs.get(receiptPath)).toMatchObject({
+      externalPaymentIntentID: paymentIntentID,
+      externalChargeID: chargeID,
+      externalAmountMinor: 2_000,
+    });
+    expect(firestoreState.docs.get(receiptPath)?.reversedUnits).toBeUndefined();
+    expect(firestoreState.docs.get(`stripe_topup_payments/charge_${chargeID}`)).toMatchObject({
+      uid: UID,
+      receiptID: `stripe_checkout_${session.id}`,
+      paymentIntentID,
+      chargeID,
+    });
+
+    paidCharge.amount_refunded = 1_000;
+    await reconcileStripeCharge(stripe as unknown as Stripe, paidCharge as unknown as Stripe.Charge, {
+      eventID: "evt_topup_refund",
+      eventCreatedMillis: 9_000,
+    });
+
+    expect(firestoreState.docs.get(allowancePath)?.topupActionsPurchased).toBe(50);
+    expect(firestoreState.docs.get(receiptPath)).toMatchObject({
+      refundedAmountMinor: 1_000,
+      refundReversedUnits: 50,
+      reversedUnits: 50,
+      reversalState: "partial",
+    });
+  });
+
+  it("suspends a disputed top-up and restores only the non-refunded portion after a win", async () => {
+    const chargeID = "ch_disputed_topup_1";
+    const paymentIntentID = "pi_disputed_topup_1";
+    const receiptID = "stripe_checkout_cs_disputed_topup_1";
+    const monthKey = "2026-07";
+    const receiptPath = `users/${UID}/billing/cloud_pro_topups/receipts/${receiptID}`;
+    const allowancePath = `users/${UID}/billing/allowances/months/${monthKey}`;
+    firestoreState.docs.set(`stripe_topup_payments/charge_${chargeID}`, {
+      uid: UID,
+      receiptID,
+      checkoutSessionID: "cs_disputed_topup_1",
+      paymentIntentID,
+      chargeID,
+    });
+    firestoreState.docs.set(receiptPath, {
+      uid: UID,
+      firstMonthKey: monthKey,
+      latestMonthKey: monthKey,
+      meter: "hosted_actions",
+      units: 100,
+      refundedAmountMinor: 500,
+      refundReversedUnits: 25,
+      reversedUnits: 25,
+      externalAmountMinor: 2_000,
+    });
+    firestoreState.docs.set(allowancePath, { topupActionsPurchased: 75 });
+    const charge = {
+      id: chargeID,
+      amount: 2_000,
+      amount_refunded: 500,
+      currency: "usd",
+      customer: null,
+      payment_intent: paymentIntentID,
+    };
+    const chargeRetrieve = vi.fn(async () => charge);
+    const paymentIntentRetrieve = vi.fn(async () => ({ id: paymentIntentID, customer: null }));
+    const disputeRetrieve = vi
+      .fn()
+      .mockResolvedValueOnce({ id: "dp_topup_1", charge, status: "under_review" })
+      .mockResolvedValueOnce({ id: "dp_topup_1", charge, status: "won" });
+    const stripe = {
+      charges: { retrieve: chargeRetrieve },
+      disputes: { retrieve: disputeRetrieve },
+      paymentIntents: { retrieve: paymentIntentRetrieve },
+    };
+    const dispute = { id: "dp_topup_1", charge, status: "under_review" };
+
+    await reconcileStripeDispute(stripe as unknown as Stripe, dispute as unknown as Stripe.Dispute, {
+      eventID: "evt_dispute_open",
+      eventCreatedMillis: 10_000,
+    });
+    expect(firestoreState.docs.get(allowancePath)?.topupActionsPurchased).toBe(0);
+    expect(firestoreState.docs.get(receiptPath)).toMatchObject({
+      disputeStatus: "under_review",
+      disputeReversedUnits: 100,
+      reversedUnits: 100,
+      reversalState: "reversed",
+    });
+
+    await reconcileStripeDispute(stripe as unknown as Stripe, dispute as unknown as Stripe.Dispute, {
+      eventID: "evt_dispute_won",
+      eventCreatedMillis: 11_000,
+    });
+    expect(firestoreState.docs.get(allowancePath)?.topupActionsPurchased).toBe(75);
+    expect(firestoreState.docs.get(receiptPath)).toMatchObject({
+      disputeStatus: "won",
+      disputeReversedUnits: 0,
+      refundReversedUnits: 25,
+      reversedUnits: 25,
+      reversalState: "partial",
+    });
+  });
+
+  it("resolves credit notes through their invoice before reconciling the subscription", async () => {
+    const current = subscription("sub_credit_note_1");
+    const invoiceRetrieve = vi.fn(async () => ({
+      id: "in_credit_note_1",
+      customer: current.customer,
+      parent: {
+        type: "subscription_details",
+        subscription_details: { subscription: current.id, metadata: null },
+        quote_details: null,
+      },
+    }));
+    const subscriptionRetrieve = vi.fn(async () => current);
+    const stripe = {
+      invoices: { retrieve: invoiceRetrieve },
+      subscriptions: { retrieve: subscriptionRetrieve },
+    };
+
+    await reconcileStripeCreditNote(
+      // @ts-expect-error reason: focused Stripe client stub
+      stripe,
+      { id: "cn_1", invoice: "in_credit_note_1", customer: current.customer },
+      { eventID: "evt_credit_note", eventCreatedMillis: 6_000 },
+    );
+
+    expect(invoiceRetrieve).toHaveBeenCalledWith("in_credit_note_1");
+    expect(subscriptionRetrieve).toHaveBeenCalledWith(current.id);
+    expect(firestoreState.docs.get(ENTITLEMENT_PATH)?.sourceEventID).toBe("evt_credit_note");
+  });
+
+  it("deactivates only Stripe-backed entitlements when the Stripe customer is deleted", async () => {
+    const customerID = "cus_deleted_1";
+    firestoreState.docs.set(`stripe_customers/${customerID}`, { uid: UID, customerID });
+    await activeSubscriptionWrite({
+      externalCustomerID: customerID,
+      sourceEventID: "evt_active",
+      sourceEventCreatedMillis: 1_000,
+    });
+    await writeBurnBarProEntitlement({
+      uid: UID,
+      productID: "com.openburnbar.pro.max.monthly",
+      expiresAtMillis: Date.parse("2030-01-01T00:00:00.000Z"),
+      source: "app_store_verified",
+      platform: "ios",
+      entitlementID: "burnbar_pro_max",
+      rawStatus: "active",
+      activeOverride: true,
+    });
+
+    await deactivateStripeCustomerEntitlements(customerID, undefined, {
+      eventID: "evt_customer_deleted",
+      eventCreatedMillis: 7_000,
+    });
+
+    expect(firestoreState.docs.get(ENTITLEMENT_PATH)).toMatchObject({
+      active: false,
+      rawStatus: "customer_deleted",
+      sourceEventID: "evt_customer_deleted",
+    });
+    expect(firestoreState.docs.get(`users/${UID}/entitlements/burnbar_pro_max`)?.active).toBe(true);
+    expect(firestoreState.docs.get(`stripe_customers/${customerID}`)).toMatchObject({
+      subscriptionStatus: "customer_deleted",
+    });
   });
 });
 

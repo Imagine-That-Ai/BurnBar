@@ -22,6 +22,11 @@ const realWorkflow = join(
   "workflows",
   "deploy-staging.yml",
 );
+const realTargetManifest = join(
+  repoRoot,
+  "functions",
+  "staging-deploy-targets.json",
+);
 const fixtureRoot = mkdtempSync(
   join(tmpdir(), "openburnbar-staging-boundary-"),
 );
@@ -31,10 +36,18 @@ const fixtureWorkflow = join(
   "workflows",
   "deploy-staging.yml",
 );
+const fixtureTargetManifest = join(
+  fixtureRoot,
+  "functions",
+  "staging-deploy-targets.json",
+);
 
 mkdirSync(dirname(fixtureWorkflow), { recursive: true });
 cpSync(realWorkflow, fixtureWorkflow);
+mkdirSync(dirname(fixtureTargetManifest), { recursive: true });
+cpSync(realTargetManifest, fixtureTargetManifest);
 const pristine = readFileSync(fixtureWorkflow, "utf8");
+const pristineTargetManifest = readFileSync(fixtureTargetManifest, "utf8");
 
 function runGate() {
   return spawnSync(process.execPath, [gate], {
@@ -59,6 +72,15 @@ function expectFailure(label, mutate) {
     throw new Error(`${label}: expected failure`);
   }
   writeFileSync(fixtureWorkflow, pristine);
+}
+
+function expectManifestFailure(label, mutate) {
+  writeFileSync(fixtureTargetManifest, mutate(pristineTargetManifest));
+  const result = runGate();
+  if (result.status === 0) {
+    throw new Error(`${label}: expected failure`);
+  }
+  writeFileSync(fixtureTargetManifest, pristineTargetManifest);
 }
 
 try {
@@ -101,6 +123,16 @@ try {
         "      - name: Deploy Cloud Functions (staging)\n",
         `${command}      - name: Deploy Cloud Functions (staging)\n`,
       );
+  });
+  expectManifestFailure("missing commercial target", (source) => {
+    const manifest = JSON.parse(source);
+    delete manifest.targets.stripeBurnBarProWebhook;
+    return `${JSON.stringify(manifest, null, 2)}\n`;
+  });
+  expectManifestFailure("misbound commercial target", (source) => {
+    const manifest = JSON.parse(source);
+    manifest.targets.verifyCloudProTopUp.module = "./callables/stripe.js";
+    return `${JSON.stringify(manifest, null, 2)}\n`;
   });
   console.log("PASS: staging Functions deploy boundary self-test.");
 } finally {

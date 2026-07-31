@@ -39,7 +39,7 @@ on:
         type: boolean
         default: false
       function_targets:
-        description: "Optional comma-separated Firebase targets (for example functions:issueWindowsAppCheckChallenge,functions:mintWindowsAppCheckToken). Empty deploys every function."
+        description: "Optional comma-separated approved Firebase targets (for example functions:createStripeBurnBarProCheckoutSession,functions:stripeBurnBarProWebhook). Empty deploys every function."
         required: false
         type: string
         default: ""

@@ -16,20 +16,20 @@ private enum CloudSubscriptionDisclosure {
     static let included = "BurnBar Cloud includes sync, encrypted history backup, cloud search, "
         + "Intelligence Brief fallback, remote relay, and Hosted Remote MCP. "
         + "BurnBar Cloud Pro adds Floo live control, supervised Agent Control, 500 hosted actions, and 50 relay GB. "
-        + "BurnBar Cloud Ultra adds 10x agent memory (15 sources, 50,000 chunks, 250 MB) sealed on-device, "
+        + "BurnBar Cloud Ultra adds 10x agent memory (100 sources, 500,000 chunks, 10 GB) sealed on-device, "
         + "with the same hosted Agent Control and relay allowance as Pro."
     static let billing = "Billed by Apple. Auto-renews until canceled at least 24 hours before renewal. Manage or cancel in Settings -> Apple ID."
     static let reviewVisiblePlans = [
-        "BurnBar Cloud Monthly - 1 month - $7.99 - 14-day intro free trial for new subscribers.",
-        "BurnBar Cloud Annual - 1 year - $79 - 14-day intro free trial for new subscribers.",
-        "BurnBar Cloud Pro Monthly - 1 month - $24.99 - no intro trial.",
-        "BurnBar Cloud Pro Annual - 1 year - $249 - no intro trial.",
-        "BurnBar Cloud Ultra Monthly - 1 month - $59.99 - no intro trial.",
-        "BurnBar Cloud Ultra Annual - 1 year - $599 - no intro trial.",
-        "Agent Control 100 Actions - consumable top-up - $4.99.",
-        "Floo Relay 50 GB - consumable top-up - $4.99.",
-        "Elder Wand Search 100 - consumable top-up - $4.99.",
-        "Elder Wand Search 500 - consumable top-up - $19.99."
+        "BurnBar Cloud Monthly - 1 month.",
+        "BurnBar Cloud Annual - 1 year.",
+        "BurnBar Cloud Pro Monthly - 1 month.",
+        "BurnBar Cloud Pro Annual - 1 year.",
+        "BurnBar Cloud Ultra Monthly - 1 month.",
+        "BurnBar Cloud Ultra Annual - 1 year.",
+        "Agent Control 100 Actions - consumable top-up.",
+        "Floo Relay 50 GB - consumable top-up.",
+        "Elder Wand Search 100 - consumable top-up.",
+        "Elder Wand Search 500 - consumable top-up."
     ]
     static let reviewVisiblePlanSummary = "All App Store Connect subscriptions for this app are available here: \(reviewVisiblePlans.joined(separator: " "))"
 }
@@ -1194,7 +1194,7 @@ private struct CloudStoreActionBar: View {
             }
             .buttonStyle(.aurora(.primary, fullWidth: true))
             .disabled(store.isPurchasing)
-            .accessibilityIdentifier("cloudStore.subscribe")
+            .accessibilityIdentifier("cloudStore.subscribe.summary")
             .accessibilityLabel(primaryButtonTitle)
 
             if let error = store.error {

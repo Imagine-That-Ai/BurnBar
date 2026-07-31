@@ -94,20 +94,36 @@ export {
   writeBurnBarProEntitlement,
   paidEntitlementWriteWouldDowngrade,
   creditCloudProTopUp,
+  reconcileCloudProTopUpReversal,
 } from "./shared/entitlements.js";
 
 export {
   STRIPE_API_SECRETS,
   STRIPE_WEBHOOK_SECRETS,
-  GOOGLE_PLAY_ACTIVE_STATES,
+  STRIPE_CHECKOUT_SCHEMA_VERSION,
   requireConfiguredStripe,
   requireConfiguredStripeWebhookSecret,
   getOrCreateStripeCustomer,
-  googlePlayLineItemForProduct,
-  googlePlayExpiryMillis,
   applyStripeCheckoutSession,
   applyStripeSubscription,
+  reconcileStripeSubscription,
+  reconcileStripeCustomerSubscriptions,
+  reconcileStripeInvoice,
+  reconcileStripeCharge,
+  reconcileStripeRefund,
+  reconcileStripeDispute,
+  reconcileStripeCreditNote,
+  deactivateStripeCustomerEntitlements,
+  assertStripeCustomerCanStartSubscriptionCheckout,
+  findReusableStripeSubscriptionCheckoutSession,
+  stripeTaxAwareCheckoutParams,
 } from "./shared/stripe.js";
+
+export {
+  GOOGLE_PLAY_ACTIVE_STATES,
+  googlePlaySubscriptionEntitlement,
+  selectGooglePlaySubscriptionLineItem,
+} from "./shared/googlePlay.js";
 
 export {
   normalizeCloudConnectAuthMethodID,

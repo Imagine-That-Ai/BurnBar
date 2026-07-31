@@ -11,6 +11,7 @@ import {
   sanitizePiAgentModels,
   validatePiAgentEndpointURL,
 } from "../lib/piAgent.js";
+import { assertConsolidatedServerOnlyCollection } from "../../scripts/lib/firestore-rules-contract.mjs";
 
 function assertHttpsError(fn, code) {
   assert.throws(fn, (err) => err?.code === code);
@@ -93,10 +94,7 @@ assert.equal(isPiAgentConnectionDoc({ id: "partial", status: "revoked" }), false
 
 const rules = readFileSync(new URL("../../firestore.rules", import.meta.url), "utf8");
 for (const collection of ["pi_agent_pairings", "pi_agent_audit_events"]) {
-  const start = rules.indexOf(`match /users/{userId}/${collection}/`);
-  assert.notEqual(start, -1, `${collection} rules block must exist`);
-  const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
-  assert.match(block, /allow write: if false;/, `${collection} must be server-only for writes`);
+  assertConsolidatedServerOnlyCollection(rules, collection);
 }
 {
   const start = rules.indexOf("match /users/{userId}/pi_agent_connections/");

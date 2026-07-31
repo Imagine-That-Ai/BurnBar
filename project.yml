@@ -43,6 +43,11 @@ settings:
 packages:
   OpenBurnBarCore:
     path: OpenBurnBarCore
+  # Local-only live-device QA bridge. The app imports and starts this package
+  # only when both DEBUG and GSTACK_IOS_QA are defined; Release compiles every
+  # Swift bridge source out and the Objective-C touch shim becomes a no-op.
+  DebugBridge:
+    path: tools/DebugBridge
   # SQLCipher-enabled GRDB (SPM). Must stay aligned with OpenBurnBarDaemon/Package.swift.
   # Vendored from https://github.com/SahebRoy92/GRDB-SQLCipher at 2cf6c756 and
   # patched so SwiftPM GRDB imports the pinned SQLCipher XCFramework instead of system sqlite3,
@@ -915,9 +920,19 @@ targets:
       configs:
         Debug:
           APS_ENVIRONMENT: development
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) GSTACK_IOS_QA"
         Release:
           APS_ENVIRONMENT: production
     postBuildScripts:
+      - name: Block iOS QA Bridge In Release
+        script: |
+          set -euo pipefail
+          if [[ "${CONFIGURATION:-}" != "Release" ]]; then
+            exit 0
+          fi
+          /bin/bash "${SRCROOT}/scripts/ci/verify-ios-debug-bridge-release.sh" \
+            "${TARGET_BUILD_DIR}/${WRAPPER_NAME}"
+        basedOnDependencyAnalysis: false
       - name: Copy Firebase Config If Present
         script: |
           set -euo pipefail
@@ -1106,6 +1121,10 @@ targets:
         product: OpenBurnBarComputerUseCore
       - package: OpenBurnBarCore
         product: OpenBurnBarSignalCore
+      - package: DebugBridge
+        product: DebugBridgeCore
+      - package: DebugBridge
+        product: DebugBridgeUI
       - package: AmplitudeSwift
         product: AmplitudeSwift
       - package: AmplitudeCore

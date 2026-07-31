@@ -608,16 +608,14 @@ final class SettingsManager {
     }
 
     var databaseEncryptionEnabled: Bool {
-        get { index.databaseEncryptionEnabled }
-        set { index.databaseEncryptionEnabled = newValue }
+        index.databaseEncryptionEnabled
     }
 
     /// Legacy banner flag from the pre-fail-closed database-encryption rollout.
-    /// Current encrypted startup must throw before opening plaintext; this remains
-    /// only so older defaults can be read/cleared without changing persisted keys.
+    /// Current encrypted startup must throw before opening plaintext. This
+    /// read-only compatibility value is always false after settings migration.
     var plaintextDatabaseAcknowledged: Bool {
-        get { index.plaintextDatabaseAcknowledged }
-        set { index.plaintextDatabaseAcknowledged = newValue }
+        index.plaintextDatabaseAcknowledged
     }
 
     var preferredIndexEmbeddingVersionID: String {

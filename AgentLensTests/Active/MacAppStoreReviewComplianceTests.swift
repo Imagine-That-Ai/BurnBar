@@ -33,7 +33,10 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
         let linksSource = try bundledTextResource(named: "MacCloudStoreLegalLinks")
 
         XCTAssertTrue(purchaseSource.contains("import StoreKit"))
-        XCTAssertTrue(purchaseSource.contains("guard let productID = tier.monthlyProductID"))
+        XCTAssertTrue(purchaseSource.contains("guard let productID = tier.productID(for: billingPeriod)"))
+        XCTAssertTrue(purchaseSource.contains("cloudAnnualProductID"))
+        XCTAssertTrue(purchaseSource.contains("cloudProAnnualProductID"))
+        XCTAssertTrue(purchaseSource.contains("cloudUltraAnnualProductID"))
         XCTAssertTrue(purchaseSource.contains("Product.products(for: [productID])"))
         XCTAssertTrue(purchaseSource.contains("purchaseTarget.purchase(options: purchaseOptions)"))
         XCTAssertTrue(purchaseSource.contains("MacHostedQuotaPurchaseError.signedOutSubscriptionPurchase"))

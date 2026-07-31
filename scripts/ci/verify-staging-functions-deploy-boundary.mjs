@@ -8,9 +8,20 @@ const root =
   process.env.STAGING_DEPLOY_BOUNDARY_ROOT ??
   join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const workflowPath = join(root, ".github", "workflows", "deploy-staging.yml");
+const targetManifestPath = join(
+  root,
+  "functions",
+  "staging-deploy-targets.json",
+);
 
 if (!existsSync(workflowPath)) {
   console.error(`MISCONFIGURED: workflow not found: ${workflowPath}`);
+  process.exit(2);
+}
+if (!existsSync(targetManifestPath)) {
+  console.error(
+    `MISCONFIGURED: staging target manifest not found: ${targetManifestPath}`,
+  );
   process.exit(2);
 }
 
@@ -73,6 +84,80 @@ reject(
   /^\s{10,}[^\n]*\$\{\{\s*github\.event\.inputs\.function_targets\s*\}\}/mu,
   "function_targets must not be interpolated directly into a run script",
 );
+
+const requiredCommercialTargets = {
+  appStoreServerNotificationsV2: {
+    module: "./appstore/notifications.js",
+    export: "appStoreServerNotificationsV2",
+  },
+  beginEntitlementBinding: {
+    module: "./appstore/callable.js",
+    export: "beginEntitlementBinding",
+  },
+  createStripeBurnBarProCheckoutSession: {
+    module: "./callables/stripe.js",
+    export: "createStripeBurnBarProCheckoutSession",
+  },
+  createStripeBurnBarProPortalSession: {
+    module: "./callables/stripe.js",
+    export: "createStripeBurnBarProPortalSession",
+  },
+  googlePlayDeveloperNotifications: {
+    module: "./googlePlayRtdn.js",
+    export: "googlePlayDeveloperNotifications",
+  },
+  reconcileHostedEntitlementsDaily: {
+    module: "./appstore/scheduled.js",
+    export: "reconcileHostedEntitlementsDaily",
+  },
+  restoreHostedQuotaEntitlement: {
+    module: "./appstore/callable.js",
+    export: "restoreHostedQuotaEntitlement",
+  },
+  stripeBurnBarProWebhook: {
+    module: "./callables/stripe.js",
+    export: "stripeBurnBarProWebhook",
+  },
+  verifyCloudProTopUp: {
+    module: "./appstore/callable.js",
+    export: "verifyCloudProTopUp",
+  },
+  verifyGooglePlayBurnBarProSubscription: {
+    module: "./callables/stripe.js",
+    export: "verifyGooglePlayBurnBarProSubscription",
+  },
+  verifyGooglePlayCloudProTopUp: {
+    module: "./callables/stripe.js",
+    export: "verifyGooglePlayCloudProTopUp",
+  },
+  verifyHostedQuotaEntitlement: {
+    module: "./appstore/callable.js",
+    export: "verifyHostedQuotaEntitlement",
+  },
+};
+let targetManifest;
+try {
+  targetManifest = JSON.parse(readFileSync(targetManifestPath, "utf8"));
+} catch (error) {
+  failures.push(
+    `staging target manifest must be valid JSON: ${
+      error instanceof Error ? error.message : String(error)
+    }`,
+  );
+}
+for (const [targetName, expected] of Object.entries(
+  requiredCommercialTargets,
+)) {
+  const actual = targetManifest?.targets?.[targetName];
+  if (
+    actual?.module !== expected.module ||
+    actual?.export !== expected.export
+  ) {
+    failures.push(
+      `commercial staging target ${targetName} must bind ${expected.module}#${expected.export}`,
+    );
+  }
+}
 
 const functionsJobIndex = source.indexOf("  functions-staging:");
 const scopeIndex = source.indexOf(

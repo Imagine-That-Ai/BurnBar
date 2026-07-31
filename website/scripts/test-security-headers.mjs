@@ -21,7 +21,7 @@ assert.equal(defaults.get("Cross-Origin-Embedder-Policy"), "require-corp");
 assert.equal(defaults.get("Cross-Origin-Opener-Policy"), "same-origin");
 assert.equal(defaults.get("Cross-Origin-Resource-Policy"), "same-origin");
 
-for (const source of ["/link", "/hermes/connect"]) {
+for (const source of ["/link", "/hermes/connect", "/subscribe"]) {
   const headers = headersFor(source);
   assert.equal(headers.get("Cross-Origin-Embedder-Policy"), "unsafe-none");
   assert.equal(headers.get("Cross-Origin-Opener-Policy"), "same-origin-allow-popups");
@@ -38,4 +38,4 @@ assert.doesNotMatch(
   "public marketing copy must not expose private-network addresses"
 );
 
-console.log("security-headers: 4 invariant groups passed");
+console.log("security-headers: 5 invariant groups passed");

@@ -175,8 +175,8 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
     }
 
     /// (d) An existing PLAINTEXT database still opens through the explicit
-    /// encryption-disabled/tooling path. App startup with encryption enabled is
-    /// covered separately below and must fail closed until migration is implemented.
+    /// migration/test tooling path. Production startup is covered separately
+    /// below and must migrate the file before opening it.
     func testExistingPlaintextDatabaseStillOpensWithoutDataLoss() throws {
         let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-plain-existing-\(UUID().uuidString).sqlite")
         defer {
@@ -211,17 +211,16 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
     }
 
     #if DEBUG
-    /// With encryption enabled and an existing PLAINTEXT database, startup must
-    /// migrate to SQLCipher on first launch and keep data. The SQLCipher runtime
-    /// assertion above covers the codec, so this test must exercise the migration
-    /// branch rather than accepting a skipped/codec-absent path.
+    /// A legacy persisted encryption opt-out must never reopen the production
+    /// database plaintext. Startup normalizes the retired preference, migrates
+    /// an existing plaintext file to SQLCipher, and preserves its data.
     @MainActor
-    func testCoordinatorHandlesExistingPlaintextDatabaseWhenEncryptionEnabled() throws {
+    func testCoordinatorMigratesLegacyPlaintextDatabaseWhenEncryptionPreferenceIsFalse() throws {
         let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-plain-refuse-\(UUID().uuidString).sqlite")
         let defaults = UserDefaults.standard
         let previousEncryptionDefault = defaults.object(forKey: "databaseEncryptionEnabled")
         let previousFallbackFlag = defaults.object(forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey)
-        defaults.removeObject(forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey)
+        let previousLegacyAcknowledgement = defaults.object(forKey: "plaintextDatabaseAcknowledged")
         defer {
             for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + suffix) }
             if let previousEncryptionDefault {
@@ -234,6 +233,11 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
             } else {
                 defaults.removeObject(forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey)
             }
+            if let previousLegacyAcknowledgement {
+                defaults.set(previousLegacyAcknowledgement, forKey: "plaintextDatabaseAcknowledged")
+            } else {
+                defaults.removeObject(forKey: "plaintextDatabaseAcknowledged")
+            }
         }
 
         var plainConfig = Configuration()
@@ -245,7 +249,9 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         }
         try? plaintext.close()
 
-        defaults.set(true, forKey: "databaseEncryptionEnabled")
+        defaults.set(false, forKey: "databaseEncryptionEnabled")
+        defaults.set(true, forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey)
+        defaults.set(true, forKey: "plaintextDatabaseAcknowledged")
 
         let testKey = String(repeating: "a", count: 64)
         let keychain = DatabaseEncryptionKeychainClient(
@@ -268,6 +274,14 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         XCTAssertFalse(
             defaults.bool(forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey),
             "Encryption-requested startup must not set or rely on the retired plaintext fallback disclosure flag."
+        )
+        XCTAssertTrue(
+            defaults.bool(forKey: "databaseEncryptionEnabled"),
+            "Production startup must normalize the retired encryption opt-out to enabled."
+        )
+        XCTAssertFalse(
+            defaults.bool(forKey: "plaintextDatabaseAcknowledged"),
+            "Production startup must clear the retired plaintext acknowledgement."
         )
     }
     #endif

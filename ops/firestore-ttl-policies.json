@@ -184,6 +184,21 @@
       "source": "functions/src/callables/stripe.ts"
     },
     {
+      "collectionGroup": "google_play_rtdn_events",
+      "path": "google_play_rtdn_events/{eventId}",
+      "category": "billing-ledger",
+      "growth": "One document per Google Play real-time developer notification (idempotency and reconciliation ledger).",
+      "mechanism": "firestore-ttl-field",
+      "ttlField": "expireAt",
+      "retentionSeconds": 7776000,
+      "retention": "90 days (GOOGLE_PLAY_RTDN_EVENT_RETENTION_MS)",
+      "indexDeclared": true,
+      "status": "active",
+      "operatorAction": "Verify live via scripts/ci/verify-firestore-ttl-state.mjs.",
+      "rationale": "Google Play billing notifications need a bounded replay, retry, and reconciliation audit window without retaining raw purchase tokens.",
+      "source": "functions/src/googlePlayRtdn.ts"
+    },
+    {
       "collectionGroup": "windows_app_check_challenges",
       "path": "windows_app_check_challenges/{challengeId}",
       "category": "security-ephemeral",

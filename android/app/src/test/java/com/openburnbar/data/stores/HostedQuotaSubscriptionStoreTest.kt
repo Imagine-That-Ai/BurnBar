@@ -22,6 +22,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.QuerySnapshot
 import com.openburnbar.MainDispatcherRule
 import com.openburnbar.data.firebase.FunctionsRepository
 import io.mockk.coEvery
@@ -310,6 +311,8 @@ class HostedQuotaSubscriptionStoreTest {
         every { mockPricingPhases.pricingPhaseList } returns listOf(mockPricingPhase)
 
         val mockOfferDetails = mockk<ProductDetails.SubscriptionOfferDetails>()
+        every { mockOfferDetails.basePlanId } returns "monthly"
+        every { mockOfferDetails.offerId } returns null
         every { mockOfferDetails.offerToken } returns "mock-offer-token"
         every { mockOfferDetails.pricingPhases } returns mockPricingPhases
 
@@ -349,6 +352,52 @@ class HostedQuotaSubscriptionStoreTest {
     }
 
     @Test
+    fun `subscription offer selection matches the configured base plan and standard offer`() {
+        val promotionalPhase = mockk<ProductDetails.PricingPhase>()
+        every { promotionalPhase.formattedPrice } returns "$0.00"
+        val promotionalPhases = mockk<ProductDetails.PricingPhases>()
+        every { promotionalPhases.pricingPhaseList } returns listOf(promotionalPhase)
+        val promotionalOffer = mockk<ProductDetails.SubscriptionOfferDetails>()
+        every { promotionalOffer.basePlanId } returns "monthly"
+        every { promotionalOffer.offerId } returns "intro"
+        every { promotionalOffer.offerToken } returns "intro-token"
+        every { promotionalOffer.pricingPhases } returns promotionalPhases
+
+        val wrongBasePlanOffer = mockk<ProductDetails.SubscriptionOfferDetails>()
+        every { wrongBasePlanOffer.basePlanId } returns "annual"
+        every { wrongBasePlanOffer.offerId } returns null
+        every { wrongBasePlanOffer.offerToken } returns "annual-token"
+
+        val recurringPhase = mockk<ProductDetails.PricingPhase>()
+        every { recurringPhase.formattedPrice } returns "$7.99"
+        val recurringPhases = mockk<ProductDetails.PricingPhases>()
+        every { recurringPhases.pricingPhaseList } returns listOf(recurringPhase)
+        val configuredOffer = mockk<ProductDetails.SubscriptionOfferDetails>()
+        every { configuredOffer.basePlanId } returns "monthly"
+        every { configuredOffer.offerId } returns null
+        every { configuredOffer.offerToken } returns "monthly-token"
+        every { configuredOffer.pricingPhases } returns recurringPhases
+
+        val productDetails = mockk<ProductDetails>()
+        every { productDetails.subscriptionOfferDetails } returns
+            listOf(promotionalOffer, wrongBasePlanOffer, configuredOffer)
+        every { productDetails.oneTimePurchaseOfferDetails } returns null
+        val storeProduct =
+            HostedQuotaSubscriptionStore.STORE_PRODUCTS.first {
+                it.id == HostedQuotaSubscriptionStore.PRODUCT_ID
+            }
+
+        assertEquals(
+            configuredOffer,
+            HostedQuotaBillingSupport.subscriptionOffer(productDetails, storeProduct),
+        )
+        assertEquals(
+            "$7.99",
+            HostedQuotaBillingSupport.formattedPrice(productDetails, storeProduct),
+        )
+    }
+
+    @Test
     fun `purchase includes existing subscription when upgrading to Ultra`() = runTest {
         // Arrange
         every { mockBillingClient.isReady } returns true
@@ -363,6 +412,8 @@ class HostedQuotaSubscriptionStoreTest {
         every { mockPricingPhases.pricingPhaseList } returns listOf(mockPricingPhase)
 
         val mockOfferDetails = mockk<ProductDetails.SubscriptionOfferDetails>()
+        every { mockOfferDetails.basePlanId } returns "p1m"
+        every { mockOfferDetails.offerId } returns null
         every { mockOfferDetails.offerToken } returns "ultra-offer-token"
         every { mockOfferDetails.pricingPhases } returns mockPricingPhases
 
@@ -553,7 +604,7 @@ class HostedQuotaSubscriptionStoreTest {
     }
 
     @Test
-    fun `cloud entitlement keeps cross-platform restore active until canonical doc is missing`() = runTest {
+    fun `cloud entitlement resolves all canonical documents by tier until server state is empty`() = runTest {
         every { mockBillingClient.isReady } returns true
 
         val mockResult = mockk<BillingResult>()
@@ -568,14 +619,12 @@ class HostedQuotaSubscriptionStoreTest {
         val usersCollection = mockk<CollectionReference>()
         val userDocument = mockk<DocumentReference>()
         val entitlementsCollection = mockk<CollectionReference>()
-        val entitlementDocument = mockk<DocumentReference>()
         val entitlementRegistration = mockk<ListenerRegistration>(relaxed = true)
-        val entitlementListenerSlot = slot<EventListener<DocumentSnapshot>>()
+        val entitlementListenerSlot = slot<EventListener<QuerySnapshot>>()
         every { firestore.collection("users") } returns usersCollection
         every { usersCollection.document("user-123") } returns userDocument
         every { userDocument.collection("entitlements") } returns entitlementsCollection
-        every { entitlementsCollection.document("hosted_quota_sync") } returns entitlementDocument
-        every { entitlementDocument.addSnapshotListener(capture(entitlementListenerSlot)) } returns entitlementRegistration
+        every { entitlementsCollection.addSnapshotListener(capture(entitlementListenerSlot)) } returns entitlementRegistration
 
         val firebaseUser = mockk<FirebaseUser>()
         every { firebaseUser.uid } returns "user-123"
@@ -594,28 +643,56 @@ class HostedQuotaSubscriptionStoreTest {
             )
         store.initialize(context)
 
-        val activeSnap = mockk<DocumentSnapshot>()
-        every { activeSnap.exists() } returns true
-        every { activeSnap.data } returns
+        val legacyCloudDoc = mockk<DocumentSnapshot>()
+        every { legacyCloudDoc.id } returns "hosted_quota_sync"
+        every { legacyCloudDoc.data } returns
             mapOf(
                 "active" to true,
                 "productID" to "com.openburnbar.hostedQuotaSync.cloud.monthly",
                 "expiresAt" to ACTIVE_SUBSCRIPTION_EXPIRES_AT,
             )
+        val cloudProDoc = mockk<DocumentSnapshot>()
+        every { cloudProDoc.id } returns "burnbar_pro_max"
+        every { cloudProDoc.data } returns
+            mapOf(
+                "active" to true,
+                "productID" to HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID,
+                "expiresAt" to ACTIVE_SUBSCRIPTION_EXPIRES_AT,
+            )
+        val ultraDoc = mockk<DocumentSnapshot>()
+        every { ultraDoc.id } returns "burnbar_ultra"
+        every { ultraDoc.data } returns
+            mapOf(
+                "active" to true,
+                "productID" to HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID,
+                "expiresAt" to ACTIVE_SUBSCRIPTION_EXPIRES_AT,
+            )
+        val activeSnapshot = mockk<QuerySnapshot>()
+        every { activeSnapshot.documents } returns listOf(legacyCloudDoc, cloudProDoc, ultraDoc)
 
-        entitlementListenerSlot.captured.onEvent(activeSnap, null)
+        entitlementListenerSlot.captured.onEvent(activeSnapshot, null)
         assertTrue(store.isActive.value)
+        assertEquals(HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID, store.activeProductID.value)
+        assertEquals(com.openburnbar.ui.pro.CloudTier.ULTRA, store.currentTier.value)
 
         store.restorePurchases()
         advanceUntilIdle()
 
         assertTrue(store.isActive.value)
-        assertEquals("com.openburnbar.hostedQuotaSync.cloud.monthly", store.activeProductID.value)
+        assertEquals(HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID, store.activeProductID.value)
 
-        val missingSnap = mockk<DocumentSnapshot>()
-        every { missingSnap.exists() } returns false
+        val downgradedSnapshot = mockk<QuerySnapshot>()
+        every { downgradedSnapshot.documents } returns listOf(legacyCloudDoc, cloudProDoc)
+        entitlementListenerSlot.captured.onEvent(downgradedSnapshot, null)
 
-        entitlementListenerSlot.captured.onEvent(missingSnap, null)
+        assertTrue(store.isActive.value)
+        assertEquals(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID, store.activeProductID.value)
+        assertEquals(com.openburnbar.ui.pro.CloudTier.PRO, store.currentTier.value)
+
+        val emptySnapshot = mockk<QuerySnapshot>()
+        every { emptySnapshot.documents } returns emptyList()
+
+        entitlementListenerSlot.captured.onEvent(emptySnapshot, null)
 
         assertFalse(store.isActive.value)
         assertNull(store.activeProductID.value)

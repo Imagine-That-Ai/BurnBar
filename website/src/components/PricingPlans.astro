@@ -157,14 +157,15 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
       <span class="plan__inc-label mono">Included</span>
       <ul class="plan__specs">
         <li>Everything in Free, local-first</li>
-        <li>14-day introductory free trial for new subscribers</li>
-        <li>Monthly and annual plans available on web, App Store, and Google Play</li>
+        <li>Monthly and annual billing with no hidden overage spend</li>
+        <li>Subscribe on the web or App Store today; Play Store launch is pending</li>
       </ul>
     </div>
 
     <a
       class="btn btn--ember plan__cta"
-      href="/download"
+      href="/subscribe?tier=cloud&amp;cadence=monthly"
+      data-subscribe-tier="cloud"
       data-analytics-event="pricing.cta.clicked"
       data-analytics-prop-plan="cloud"
     >
@@ -234,7 +235,8 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
 
     <a
       class="btn btn--ember plan__cta"
-      href="/download"
+      href="/subscribe?tier=cloud_pro&amp;cadence=monthly"
+      data-subscribe-tier="cloud_pro"
       data-analytics-event="pricing.cta.clicked"
       data-analytics-prop-plan="cloud_pro"
     >
@@ -312,7 +314,8 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
 
     <a
       class="btn btn--ember plan__cta"
-      href="/download"
+      href="/subscribe?tier=ultra&amp;cadence=monthly"
+      data-subscribe-tier="ultra"
       data-analytics-event="pricing.cta.clicked"
       data-analytics-prop-plan="ultra"
     >
@@ -1084,11 +1087,24 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
 
   const grid = document.querySelector<HTMLElement>(".plans__grid");
   const billing = document.querySelector<HTMLElement>(".billing");
+  const subscriptionLinks = Array.from(
+    document.querySelectorAll<HTMLAnchorElement>("[data-subscribe-tier]")
+  );
+  const updateSubscriptionLinks = (cadence: "monthly" | "annual") => {
+    for (const link of subscriptionLinks) {
+      const tier = link.dataset.subscribeTier;
+      if (tier) {
+        link.href = `/subscribe?tier=${encodeURIComponent(tier)}&cadence=${cadence}`;
+      }
+    }
+  };
+  updateSubscriptionLinks("monthly");
   if (grid && billing) {
     const opts = Array.from(billing.querySelectorAll<HTMLButtonElement>("[data-billing-set]"));
     for (const btn of opts) {
       btn.addEventListener("click", () => {
         const annual = btn.dataset.billingSet === "annual";
+        updateSubscriptionLinks(annual ? "annual" : "monthly");
         grid.classList.toggle("is-annual", annual);
         billing.classList.toggle("is-annual", annual);
         for (const b of opts) {

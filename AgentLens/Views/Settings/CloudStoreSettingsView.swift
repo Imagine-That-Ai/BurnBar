@@ -16,6 +16,7 @@ struct CloudStoreSettingsView: View {
     @StateObject private var entitlement = MacCloudEntitlementStore.shared
     @StateObject private var purchaseStore = MacHostedQuotaPurchaseStore()
     @State private var showBadgePicker = false
+    @State private var billingPeriod: MacCloudBillingPeriod = .monthly
 
     /// Injected so the Backup & Sync card can read/write the live cloud toggles
     /// and trigger an on-demand session-log backup. Defaulted to the shared
@@ -905,6 +906,15 @@ struct CloudStoreSettingsView: View {
                 }
             }
 
+            Picker("Billing period", selection: $billingPeriod) {
+                ForEach(MacCloudBillingPeriod.allCases) { period in
+                    Text(period.title).tag(period)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 360)
+            .accessibilityIdentifier("macCloudStore.billingPeriod")
+
             VStack(spacing: 16) {
                 ForEach(MacPricingTierModel.all) { model in
                     tierCard(model)
@@ -940,7 +950,7 @@ struct CloudStoreSettingsView: View {
         let currentTier = entitlement.currentTier
         let isCurrent = currentTier == model.entitlementTier && model.entitlementTier != .free
         let isOwned = model.entitlementTier != .free && currentTier >= model.entitlementTier
-        let isBusy = purchaseStore.purchasingTier == tier
+        let isBusy = purchaseStore.purchasingProductID == tier.productID(for: billingPeriod)
 
         AuroraGlassCardMac {
             ZStack(alignment: .topTrailing) {
@@ -1025,18 +1035,18 @@ struct CloudStoreSettingsView: View {
                     .font(.system(size: 13))
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             } else {
-                Text(purchaseStore.displayPrice(for: model.tier) ?? "—")
+                Text(
+                    purchaseStore.displayPrice(
+                        for: model.tier,
+                        billingPeriod: billingPeriod
+                    ) ?? "—"
+                )
                     .font(.system(size: 32, weight: .bold, design: .rounded))
                     .foregroundStyle(DesignSystem.Colors.primaryGradient)
                     .accessibilityIdentifier("macCloudStore.price.\(model.tier.rawValue)")
-                Text("/ month")
+                Text(billingPeriod.priceSuffix)
                     .font(.system(size: 13))
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
-                if let annual = MacHostedQuotaPurchaseStore.fallbackAnnualPrice[model.tier] {
-                    Text("· \(annual)/yr")
-                        .font(.system(size: 11))
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
             }
         }
     }
@@ -1109,7 +1119,12 @@ struct CloudStoreSettingsView: View {
             .padding(.top, 4)
         } else {
             Button {
-                Task { await purchaseStore.purchase(tier: model.tier) }
+                Task {
+                    await purchaseStore.purchase(
+                        tier: model.tier,
+                        billingPeriod: billingPeriod
+                    )
+                }
             } label: {
                 Group {
                     if isBusy {

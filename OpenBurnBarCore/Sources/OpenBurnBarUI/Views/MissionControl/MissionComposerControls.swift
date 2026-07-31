@@ -6,9 +6,9 @@ import OpenBurnBarKernel
 // Five subviews bundled in one file because they share visual treatment and
 // always render together inside the composer column:
 //   • MissionTitlePromptFields — the title + prompt text fields
-//   • MissionDepthDial — three-stop arc dial (light / standard / deep)
-//   • MissionApprovalLever — existing-policy ↔ require-approval lever
-//   • MissionPermissionsRow — Commands + File Edits toggles with risk hint
+//   • MissionDepthDial — three-option segmented control (light / standard / deep)
+//   • MissionApprovalLever — two-option segmented control + caption
+//   • MissionPermissionsRow — Commands + File Edits toggle rows with risk hint
 //   • MissionProjectField — autocomplete over knownProjects
 
 // MARK: - Title + prompt
@@ -26,105 +26,126 @@ public struct MissionTitlePromptFields: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
-            sectionHeader
+            MissionSectionHeader(
+                title: "Brief",
+                trailing: prompt.isEmpty ? nil : "\(prompt.count) chars"
+            )
 
-            VStack(alignment: .leading, spacing: 6) {
-                fieldLabel("TITLE")
-                TextField("e.g. Tighten the cache reset path", text: $title)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+            TextField("Title — e.g. Tighten the cache reset path", text: $title)
+                .textFieldStyle(.plain)
+                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                    .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
-                    .padding(.vertical, UnifiedDesignSystem.Spacing.sm)
-                    .focused($titleFocused)
-                    .background {
-                        RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                            .fill(UnifiedDesignSystem.Colors.surfaceElevated.opacity(0.6))
-                    }
-                    .overlay {
-                        RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                            .strokeBorder(
-                                titleFocused
-                                    ? UnifiedDesignSystem.Colors.ember.opacity(0.85)
-                                    : UnifiedDesignSystem.Colors.borderSubtle.opacity(0.7),
-                                lineWidth: titleFocused ? 1.2 : 0.6
-                            )
-                    }
-                    .animation(UnifiedDesignSystem.Animation.hover, value: titleFocused)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    fieldLabel("MISSION BRIEF")
-                    Spacer()
-                    Text("\(prompt.count) chars")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
+                .padding(.vertical, 11)
+                .focused($titleFocused)
+                .background {
+                    RoundedRectangle(cornerRadius: MissionChrome.controlCorner, style: .continuous)
+                        .fill(MissionChrome.fieldFill)
                 }
-                TextEditor(text: $prompt)
-                    .textEditorStyle(.plain)
-                    .font(.system(size: 14, weight: .regular, design: .rounded))
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                    .scrollContentBackground(.hidden)
-                    .focused($promptFocused)
-                    .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
-                    .padding(.vertical, UnifiedDesignSystem.Spacing.sm)
-                    .frame(minHeight: 110, maxHeight: 180)
-                    .background {
-                        RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                            .fill(UnifiedDesignSystem.Colors.surfaceElevated.opacity(0.6))
-                    }
-                    .overlay {
-                        RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                            .strokeBorder(
-                                promptFocused
-                                    ? UnifiedDesignSystem.Colors.ember.opacity(0.85)
-                                    : UnifiedDesignSystem.Colors.borderSubtle.opacity(0.7),
-                                lineWidth: promptFocused ? 1.2 : 0.6
-                            )
-                    }
-                    .overlay(alignment: .topLeading) {
-                        if prompt.isEmpty {
-                            Text("What should the agent do? Be specific — the brief becomes the prompt verbatim.")
-                                .font(.system(size: 14, weight: .regular, design: .rounded))
-                                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                .overlay {
+                    RoundedRectangle(cornerRadius: MissionChrome.controlCorner, style: .continuous)
+                        .strokeBorder(
+                            titleFocused ? MissionChrome.accent.opacity(0.8) : MissionChrome.hairlineColor,
+                            lineWidth: titleFocused ? 1 : MissionChrome.hairline
+                        )
+                }
+                .animation(UnifiedDesignSystem.Animation.snappy, value: titleFocused)
+
+            TextEditor(text: $prompt)
+                .textEditorStyle(.plain)
+                .font(.system(size: 14, weight: .regular, design: .rounded))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                .scrollContentBackground(.hidden)
+                .focused($promptFocused)
+                .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
+                .padding(.vertical, UnifiedDesignSystem.Spacing.sm)
+                .frame(minHeight: 96, maxHeight: 160)
+                .background {
+                    RoundedRectangle(cornerRadius: MissionChrome.controlCorner, style: .continuous)
+                        .fill(MissionChrome.fieldFill)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: MissionChrome.controlCorner, style: .continuous)
+                        .strokeBorder(
+                            promptFocused ? MissionChrome.accent.opacity(0.8) : MissionChrome.hairlineColor,
+                            lineWidth: promptFocused ? 1 : MissionChrome.hairline
+                        )
+                }
+                .overlay(alignment: .topLeading) {
+                    if prompt.isEmpty {
+                        Text("What should the agent do? Be specific — the brief becomes the prompt verbatim.")
+                            .font(.system(size: 14, weight: .regular, design: .rounded))
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                             .lineLimit(3)
                             .fixedSize(horizontal: false, vertical: true)
-                                .padding(.horizontal, UnifiedDesignSystem.Spacing.sm + 5)
-                                .padding(.vertical, UnifiedDesignSystem.Spacing.sm + 8)
-                                .allowsHitTesting(false)
-                        }
+                            .padding(.horizontal, UnifiedDesignSystem.Spacing.sm + 5)
+                            .padding(.vertical, UnifiedDesignSystem.Spacing.sm + 8)
+                            .allowsHitTesting(false)
                     }
-                    .animation(UnifiedDesignSystem.Animation.hover, value: promptFocused)
-            }
+                }
+                .animation(UnifiedDesignSystem.Animation.snappy, value: promptFocused)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+}
 
-    private var sectionHeader: some View {
-        HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-            Text("03 · BRIEF")
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .tracking(2.4)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-            Rectangle()
-                .fill(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.6))
-                .frame(height: 1)
-                .frame(maxWidth: .infinity)
+// MARK: - Segmented option (shared by depth + approval)
+
+private struct MissionSegmentedOption: Identifiable {
+    let id: String
+    let title: String
+    let tint: Color?
+}
+
+private struct MissionSegmentedControl: View {
+    let options: [MissionSegmentedOption]
+    let selectedID: String
+    let onSelect: (String) -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(options) { option in
+                let isSelected = option.id == selectedID
+                Button { onSelect(option.id) } label: {
+                    Text(option.title)
+                        .font(.system(size: 13, weight: isSelected ? .semibold : .medium, design: .rounded))
+                        .foregroundStyle(
+                            isSelected
+                                ? (option.tint ?? UnifiedDesignSystem.Colors.textPrimary)
+                                : UnifiedDesignSystem.Colors.textSecondary
+                        )
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background {
+                            if isSelected {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(UnifiedDesignSystem.Colors.surfaceElevated)
+                                    .shadow(color: Color.black.opacity(0.18), radius: 2, y: 1)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
         }
-    }
-
-    private func fieldLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
-            .tracking(1.5)
-            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+        .padding(3)
+        .background {
+            RoundedRectangle(cornerRadius: MissionChrome.controlCorner, style: .continuous)
+                .fill(MissionChrome.cardFill)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: MissionChrome.controlCorner, style: .continuous)
+                .strokeBorder(MissionChrome.hairlineColor, lineWidth: MissionChrome.hairline)
+        }
+        .animation(UnifiedDesignSystem.Animation.snappy, value: selectedID)
     }
 }
 
-// MARK: - Depth dial
+// MARK: - Depth
 
 public struct MissionDepthDial: View {
     @Binding public var depth: MissionConsoleDepth
@@ -135,85 +156,30 @@ public struct MissionDepthDial: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-            fieldLabel("DEPTH")
+            MissionFieldLabel("Depth")
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
-                    ForEach(MissionConsoleDepth.allCases) { stop in
-                        stopButton(stop)
-                            .frame(width: 196, alignment: .leading)
+            MissionSegmentedControl(
+                options: MissionConsoleDepth.allCases.map {
+                    MissionSegmentedOption(id: $0.id, title: $0.displayName, tint: nil)
+                },
+                selectedID: depth.id,
+                onSelect: { id in
+                    if let match = MissionConsoleDepth.allCases.first(where: { $0.id == id }) {
+                        depth = match
                     }
                 }
-                .padding(.trailing, UnifiedDesignSystem.Spacing.lg)
-                .fixedSize(horizontal: true, vertical: false)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .scrollClipDisabled(false)
+            )
+
+            Text(depth.subtitle)
+                .font(.system(size: 12, weight: .regular, design: .rounded))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                .animation(UnifiedDesignSystem.Animation.snappy, value: depth)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-
-    private func stopButton(_ stop: MissionConsoleDepth) -> some View {
-        let isSelected = stop == depth
-        return Button { depth = stop } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 4) {
-                    depthGlyph(for: stop, isSelected: isSelected)
-                    Text(stop.displayName)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundStyle(isSelected ? UnifiedDesignSystem.Colors.textPrimary : UnifiedDesignSystem.Colors.textSecondary)
-                }
-                Text(stop.subtitle)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(isSelected ? UnifiedDesignSystem.Colors.textSecondary : UnifiedDesignSystem.Colors.textMuted)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
-            .padding(.vertical, 8)
-            .background {
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                    .fill(isSelected ? UnifiedDesignSystem.Colors.surfaceElevated : UnifiedDesignSystem.Colors.surface.opacity(0.5))
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                    .strokeBorder(
-                        isSelected
-                            ? UnifiedDesignSystem.Colors.amber.opacity(0.9)
-                            : UnifiedDesignSystem.Colors.borderSubtle.opacity(0.6),
-                        lineWidth: isSelected ? 1.2 : 0.5
-                    )
-            }
-            .animation(UnifiedDesignSystem.Animation.standard, value: isSelected)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func depthGlyph(for stop: MissionConsoleDepth, isSelected: Bool) -> some View {
-        HStack(spacing: 2) {
-            ForEach(0..<3) { i in
-                Circle()
-                    .fill(
-                        i <= stop.ordinal && isSelected
-                            ? UnifiedDesignSystem.Colors.amber
-                            : i <= stop.ordinal
-                                ? UnifiedDesignSystem.Colors.textSecondary
-                                : UnifiedDesignSystem.Colors.borderSubtle.opacity(0.7)
-                    )
-                    .frame(width: 5, height: 5)
-            }
-        }
-    }
-
-    private func fieldLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
-            .tracking(1.5)
-            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-    }
 }
 
-// MARK: - Approval lever
+// MARK: - Approval mode
 
 public struct MissionApprovalLever: View {
     @Binding public var mode: MissionConsoleApprovalMode
@@ -224,81 +190,40 @@ public struct MissionApprovalLever: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-            fieldLabel("APPROVAL")
+            MissionFieldLabel("Approvals")
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 0) {
-                    option(.existingPolicy, glyph: "shield.checkered")
-                        .frame(width: 304)
-                    option(.requireApproval, glyph: "hand.raised.fill")
-                        .frame(width: 304)
+            MissionSegmentedControl(
+                options: [
+                    MissionSegmentedOption(
+                        id: MissionConsoleApprovalMode.existingPolicy.id,
+                        title: "Existing policy",
+                        tint: nil
+                    ),
+                    MissionSegmentedOption(
+                        id: MissionConsoleApprovalMode.requireApproval.id,
+                        title: "Ask me first",
+                        tint: UnifiedDesignSystem.Colors.warning
+                    ),
+                ],
+                selectedID: mode.id,
+                onSelect: { id in
+                    if let match = MissionConsoleApprovalMode.allCases.first(where: { $0.id == id }) {
+                        mode = match
+                    }
                 }
-                .padding(.trailing, UnifiedDesignSystem.Spacing.lg)
-                .fixedSize(horizontal: true, vertical: false)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .scrollClipDisabled(false)
+            )
 
             Text(mode.caption)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .font(.system(size: 12, weight: .regular, design: .rounded))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
                 .animation(UnifiedDesignSystem.Animation.snappy, value: mode)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-
-    private func option(_ value: MissionConsoleApprovalMode, glyph: String) -> some View {
-        let isSelected = mode == value
-        return Button { mode = value } label: {
-            HStack(spacing: 6) {
-                Image(systemName: glyph)
-                    .font(.system(size: 13, weight: .bold))
-                Text(value.displayName)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(
-                isSelected ? UnifiedDesignSystem.Colors.textPrimary : UnifiedDesignSystem.Colors.textSecondary
-            )
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 9)
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                        .fill(
-                            value == .requireApproval
-                                ? AnyShapeStyle(UnifiedDesignSystem.Colors.hermesAureate.opacity(0.18))
-                                : AnyShapeStyle(UnifiedDesignSystem.Colors.success.opacity(0.18))
-                        )
-                }
-            }
-            .overlay {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                        .strokeBorder(
-                            value == .requireApproval
-                                ? UnifiedDesignSystem.Colors.hermesAureate.opacity(0.7)
-                                : UnifiedDesignSystem.Colors.success.opacity(0.7),
-                            lineWidth: 1
-                        )
-                }
-            }
-            .animation(UnifiedDesignSystem.Animation.standard, value: isSelected)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func fieldLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
-            .tracking(1.5)
-            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-    }
 }
 
-// MARK: - Permissions row
+// MARK: - Permissions
 
 public struct MissionPermissionsRow: View {
     @Binding public var commandsAllowed: Bool
@@ -314,153 +239,71 @@ public struct MissionPermissionsRow: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-            fieldLabel("PERMISSIONS")
-            ViewThatFits(in: .horizontal) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                        toggleTile(
-                            label: "Commands",
-                            subtitle: "Allow shell execution",
-                            glyph: "terminal.fill",
-                            isOn: $commandsAllowed
-                        )
-                        .frame(width: 300, alignment: .leading)
-                        toggleTile(
-                            label: "File edits",
-                            subtitle: "Allow code writes",
-                            glyph: "doc.fill.badge.plus",
-                            isOn: $fileEditsAllowed
-                        )
-                        .frame(width: 300, alignment: .leading)
-                    }
-                    .padding(.trailing, UnifiedDesignSystem.Spacing.lg)
-                    .fixedSize(horizontal: true, vertical: false)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .scrollClipDisabled(false)
-                HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                    toggleTile(
+            MissionFieldLabel("Permissions")
+
+            MissionConsoleCard {
+                VStack(spacing: 0) {
+                    permissionRow(
                         label: "Commands",
                         subtitle: "Allow shell execution",
                         glyph: "terminal.fill",
                         isOn: $commandsAllowed
                     )
-                    toggleTile(
+                    MissionRowDivider(indent: 46)
+                    permissionRow(
                         label: "File edits",
                         subtitle: "Allow code writes",
                         glyph: "doc.fill.badge.plus",
                         isOn: $fileEditsAllowed
                     )
                 }
-                .frame(maxWidth: .infinity)
-                VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                    toggleTile(
-                        label: "Commands",
-                        subtitle: "Allow shell execution",
-                        glyph: "terminal.fill",
-                        isOn: $commandsAllowed
-                    )
-                    toggleTile(
-                        label: "File edits",
-                        subtitle: "Allow code writes",
-                        glyph: "doc.fill.badge.plus",
-                        isOn: $fileEditsAllowed
-                    )
-                }
-                .frame(maxWidth: .infinity)
             }
+
             if commandsAllowed && fileEditsAllowed {
-                HStack(spacing: 6) {
-                    Image(systemName: "flame.fill")
-                        .font(.system(size: 12, weight: .bold))
-                    Text("Highest blast radius — agent can run anything and rewrite files.")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Highest blast radius — the agent can run anything and rewrite files.")
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .foregroundStyle(UnifiedDesignSystem.Colors.ember)
-                .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
-                .padding(.vertical, 5)
-                .background {
-                    RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                        .fill(UnifiedDesignSystem.Colors.ember.opacity(0.12))
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                        .strokeBorder(UnifiedDesignSystem.Colors.ember.opacity(0.4), lineWidth: 0.5)
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                .foregroundStyle(UnifiedDesignSystem.Colors.warning)
+                .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(UnifiedDesignSystem.Animation.standard, value: commandsAllowed && fileEditsAllowed)
+        .animation(UnifiedDesignSystem.Animation.snappy, value: commandsAllowed && fileEditsAllowed)
     }
 
-    private func toggleTile(
+    private func permissionRow(
         label: String,
         subtitle: String,
         glyph: String,
         isOn: Binding<Bool>
     ) -> some View {
-        Button {
-            isOn.wrappedValue.toggle()
-        } label: {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: glyph)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(
-                        isOn.wrappedValue
-                            ? UnifiedDesignSystem.Colors.warning
-                            : UnifiedDesignSystem.Colors.textMuted
-                    )
-                    .frame(width: 20)
+        HStack(spacing: UnifiedDesignSystem.Spacing.md) {
+            Image(systemName: glyph)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(isOn.wrappedValue ? UnifiedDesignSystem.Colors.warning : UnifiedDesignSystem.Colors.textMuted)
+                .frame(width: 22)
 
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 4) {
-                        Text(label)
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                        Text(isOn.wrappedValue ? "ON" : "OFF")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .tracking(0.6)
-                            .foregroundStyle(
-                                isOn.wrappedValue
-                                    ? UnifiedDesignSystem.Colors.warning
-                                    : UnifiedDesignSystem.Colors.textMuted
-                            )
-                    }
-                    Text(subtitle)
-                        .font(.system(size: 12, weight: .regular, design: .rounded))
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                        .lineLimit(1)
-                }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                Text(subtitle)
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+            }
 
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                    .fill(UnifiedDesignSystem.Colors.surface.opacity(0.55))
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                    .strokeBorder(
-                        isOn.wrappedValue
-                            ? UnifiedDesignSystem.Colors.warning.opacity(0.7)
-                            : UnifiedDesignSystem.Colors.borderSubtle.opacity(0.6),
-                        lineWidth: isOn.wrappedValue ? 1.0 : 0.5
-                    )
-            }
-            .animation(UnifiedDesignSystem.Animation.standard, value: isOn.wrappedValue)
+            Spacer(minLength: 0)
+
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .tint(UnifiedDesignSystem.Colors.warning)
         }
-        .buttonStyle(.plain)
-    }
-
-    private func fieldLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
-            .tracking(1.5)
-            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+        .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
+        .padding(.vertical, 10)
     }
 }
 
@@ -484,26 +327,16 @@ public struct MissionProjectField: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-            HStack {
-                fieldLabel("PROJECT")
-                Spacer()
-                if !project.isEmpty {
-                    Text(normalizedPath)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
+            MissionFieldLabel("Project")
 
             HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                Image(systemName: "folder.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate)
+                Image(systemName: "folder")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
 
-                TextField("~/Projects/Foo or leave blank", text: $project)
+                TextField("~/Projects/Foo — optional", text: $project)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .font(.system(size: 14, weight: .regular, design: .rounded))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -512,28 +345,27 @@ public struct MissionProjectField: View {
                 if !project.isEmpty {
                     Button { project = "" } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 12))
+                            .font(.system(size: 14))
                             .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Clear project")
                 }
             }
             .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
-            .padding(.vertical, 9)
+            .padding(.vertical, 11)
             .background {
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                    .fill(UnifiedDesignSystem.Colors.surfaceElevated.opacity(0.6))
+                RoundedRectangle(cornerRadius: MissionChrome.controlCorner, style: .continuous)
+                    .fill(MissionChrome.fieldFill)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
+                RoundedRectangle(cornerRadius: MissionChrome.controlCorner, style: .continuous)
                     .strokeBorder(
-                        isFocused
-                            ? UnifiedDesignSystem.Colors.hermesAureate.opacity(0.85)
-                            : UnifiedDesignSystem.Colors.borderSubtle.opacity(0.7),
-                        lineWidth: isFocused ? 1.0 : 0.6
+                        isFocused ? MissionChrome.accent.opacity(0.8) : MissionChrome.hairlineColor,
+                        lineWidth: isFocused ? 1 : MissionChrome.hairline
                     )
             }
-            .animation(UnifiedDesignSystem.Animation.hover, value: isFocused)
+            .animation(UnifiedDesignSystem.Animation.snappy, value: isFocused)
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if isFocused && !filteredSuggestions.isEmpty {
@@ -543,15 +375,6 @@ public struct MissionProjectField: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var normalizedPath: String {
-        let home = NSHomeDirectory()
-        if project.hasPrefix("~") { return project }
-        if project.hasPrefix(home) {
-            return "~" + project.dropFirst(home.count)
-        }
-        return project
     }
 
     private var filteredSuggestions: [String] {
@@ -583,8 +406,7 @@ public struct MissionProjectField: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
                 Text("Recent")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .tracking(0.8)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 ForEach(Array((recentProjects + knownProjects).uniqueOrderPreserving.prefix(8)), id: \.self) { name in
                     suggestionChip(name)
@@ -598,26 +420,19 @@ public struct MissionProjectField: View {
     private func suggestionChip(_ name: String) -> some View {
         Button { project = name } label: {
             Text(name)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(.system(size: 12, weight: .regular, design: .monospaced))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                 .lineLimit(1)
-                .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
                 .background {
-                    Capsule().fill(UnifiedDesignSystem.Colors.surface.opacity(0.7))
+                    Capsule().fill(MissionChrome.cardFill)
                 }
                 .overlay {
-                    Capsule().strokeBorder(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.6), lineWidth: 0.5)
+                    Capsule().strokeBorder(MissionChrome.hairlineColor, lineWidth: MissionChrome.hairline)
                 }
         }
         .buttonStyle(.plain)
-    }
-
-    private func fieldLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
-            .tracking(1.5)
-            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
     }
 }
 

@@ -96,6 +96,7 @@ vi.mock("../config.js", () => ({
 }));
 vi.mock("../resilienceHelpers.js", () => ({
   externalApiWithResilience: vi.fn(async <T>(_name: string, fn: () => Promise<T>) => fn()),
+  googlePlayConsumeWithResilience: vi.fn(async <T>(fn: () => Promise<T>) => fn()),
   stripeWithResilience: vi.fn(async <T>(_name: string, fn: () => Promise<T>) => fn()),
 }));
 vi.mock("../callables/googlePlayTokenClaims.js", () => ({ claimGooglePlayPurchaseToken: state.claimMock }));
@@ -115,7 +116,11 @@ vi.mock("../callables/shared.js", async () => {
     BURNBAR_ULTRA_ENTITLEMENT_ID: "burnbar_ultra",
     STRIPE_API_SECRETS: [],
     STRIPE_WEBHOOK_SECRETS: [],
-    GOOGLE_PLAY_ACTIVE_STATES: new Set(["SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIOD"]),
+    GOOGLE_PLAY_ACTIVE_STATES: new Set([
+      "SUBSCRIPTION_STATE_ACTIVE",
+      "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
+      "SUBSCRIPTION_STATE_CANCELED",
+    ]),
     nowISO: () => new Date().toISOString(),
     boundedTrimmedString: (raw: unknown, fieldName: string, _maxLength: number, required?: boolean) => {
       if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
@@ -128,12 +133,35 @@ vi.mock("../callables/shared.js", async () => {
     boundedHttpsURL: vi.fn(),
     assertActiveBurnBarCloudProEntitlement: state.assertActiveMock,
     getOrCreateStripeCustomer: vi.fn(),
-    googlePlayLineItemForProduct: (purchase: { lineItems?: Array<{ productId?: unknown }> }, productID: string) =>
-      purchase.lineItems?.find((item) => item.productId === productID),
-    googlePlayExpiryMillis: (lineItem?: { expiryTime?: unknown }) =>
-      lineItem && typeof lineItem.expiryTime === "string" ? Date.parse(lineItem.expiryTime) : 0,
+    selectGooglePlaySubscriptionLineItem: (
+      purchase: { lineItems?: Array<{ productId?: unknown; expiryTime?: unknown }> },
+      preferredProductIDs: string[],
+    ) => {
+      const lineItem =
+        purchase.lineItems?.find((item) => preferredProductIDs.includes(String(item.productId))) ??
+        purchase.lineItems?.[0] ??
+        {};
+      const productID = String(lineItem.productId);
+      return {
+        lineItem,
+        target: {
+          entitlementID: "burnbar_pro",
+          canonicalProductID: productID,
+          tierRank: 1,
+        },
+        expiresAtMillis: typeof lineItem.expiryTime === "string" ? Date.parse(lineItem.expiryTime) : 0,
+      };
+    },
     applyStripeCheckoutSession: vi.fn(),
     applyStripeSubscription: vi.fn(),
+    reconcileStripeInvoice: vi.fn(),
+    reconcileStripeCharge: vi.fn(),
+    reconcileStripeRefund: vi.fn(),
+    reconcileStripeDispute: vi.fn(),
+    reconcileStripeCreditNote: vi.fn(),
+    deactivateStripeCustomerEntitlements: vi.fn(),
+    assertStripeCustomerCanStartSubscriptionCheckout: vi.fn(),
+    findReusableStripeSubscriptionCheckoutSession: vi.fn(),
     creditCloudProTopUp: state.creditMock,
     writeBurnBarProEntitlement: state.writeEntitlementMock,
   };
@@ -168,7 +196,10 @@ function req(data: Record<string, unknown>) {
 }
 
 function invokeCallable<TRes = unknown>(callable: unknown, data: Record<string, unknown>): Promise<TRes> {
-  const run = callable && (typeof callable === "object" || typeof callable === "function") ? Reflect.get(callable, "run") : undefined;
+  const run =
+    callable && (typeof callable === "object" || typeof callable === "function")
+      ? Reflect.get(callable, "run")
+      : undefined;
   if (typeof run !== "function") {
     throw new Error("callable test target is missing run()");
   }
@@ -346,6 +377,39 @@ describe("verifyGooglePlayCloudProTopUp", () => {
       kind: "elder_wand_searches_100",
       purchaseState: 0,
       consumed: true,
+    });
+  });
+
+  it("recovers when concurrent verification consumes the purchase first", async () => {
+    state.productsGet
+      .mockResolvedValueOnce({ data: { purchaseState: 0, consumptionState: 0, orderId: "GPA.concurrent" } })
+      .mockResolvedValueOnce({ data: { purchaseState: 0, consumptionState: 1, orderId: "GPA.concurrent" } });
+    state.productsConsume.mockRejectedValueOnce(new Error("purchase token is already consumed"));
+    state.creditMock.mockResolvedValueOnce({
+      credited: false,
+      monthKey: "2026-06",
+      units: 100,
+      kind: "agent_control_actions_100",
+    });
+
+    const res = await invokeCallable<{ credited: boolean; purchaseState: number; consumed: boolean }>(
+      verifyGooglePlayCloudProTopUp,
+      { purchaseToken: TOPUP_TOKEN, productID: "gp_agent_control_100" },
+    );
+
+    expect(state.creditMock).toHaveBeenCalledTimes(1);
+    expect(state.productsConsume).toHaveBeenCalledTimes(1);
+    expect(state.productsGet).toHaveBeenCalledTimes(2);
+    expect(res).toMatchObject({
+      credited: false,
+      purchaseState: 0,
+      consumed: true,
+    });
+    expect(state.docSets.at(-1)?.data).toMatchObject({
+      credited: true,
+      creditedByThisInvocation: false,
+      consumed: true,
+      consumptionConfirmedAfterError: true,
     });
   });
 

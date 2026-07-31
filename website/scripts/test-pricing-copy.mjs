@@ -142,6 +142,34 @@ assert.match(
   "Wand copy must say model tokens come from the user's own providers"
 );
 assert.match(publicPricingCopy, /prepaid before use/i, "top-up copy must say prepaid before use");
+assert.doesNotMatch(publicPricingCopy, /14-day|free trial/i, "unsupported trial claims must not be public");
+assert.doesNotMatch(
+  publicPricingCopy,
+  /available on (?:the )?web, App Store, and Google Play/i,
+  "Google Play must not be presented as a currently available purchase surface"
+);
+assert.match(
+  publicPricingCopy,
+  /Play Store (?:launch is pending|listing|opens)/i,
+  "Android purchase copy must disclose that the public Play listing is pending"
+);
+for (const tier of ["cloud", "cloud_pro", "ultra"]) {
+  assert.match(
+    plans,
+    new RegExp(`href="/subscribe\\?tier=${tier}&amp;cadence=monthly"`),
+    `${tier} CTA must enter the web subscription flow`
+  );
+  assert.match(
+    plans,
+    new RegExp(`data-subscribe-tier="${tier}"`),
+    `${tier} CTA must expose its cadence-update contract`
+  );
+}
+assert.match(
+  plans,
+  /updateSubscriptionLinks\(annual \? "annual" : "monthly"\)/,
+  "billing toggle must update paid subscription CTAs to annual cadence"
+);
 assert.match(
   publicPricingCopy,
   /grandfathered/i,

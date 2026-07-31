@@ -205,14 +205,7 @@ export function cloudVaultAADContext(
 }
 
 export function roamingProfileAADContext(uid: unknown): string {
-  return cloudVaultAADContext(
-    uid,
-    "roaming_profile",
-    "current",
-    "sealedPayload",
-    2,
-    ROAMING_PROFILE_AAD_DOMAIN,
-  );
+  return cloudVaultAADContext(uid, "roaming_profile", "current", "sealedPayload", 2, ROAMING_PROFILE_AAD_DOMAIN);
 }
 
 function requireCloudVaultAAD(raw: unknown, fieldName: string, expectedAAD?: string): string {
@@ -289,12 +282,7 @@ function requireCloudVaultSealedPayload(
   if (!/^v1_[a-f0-9]{32}$/u.test(vaultKeyID)) {
     throw new HttpsError("invalid-argument", `${fieldName}.vaultKeyID must be a CloudVault vault key id.`);
   }
-  const sealedBoxBase64 = boundedTrimmedString(
-    envelope.sealedBoxBase64,
-    `${fieldName}.sealedBoxBase64`,
-    900_000,
-    true,
-  );
+  const sealedBoxBase64 = boundedTrimmedString(envelope.sealedBoxBase64, `${fieldName}.sealedBoxBase64`, 900_000, true);
   if (!/^[A-Za-z0-9+/=]+$/u.test(sealedBoxBase64)) {
     throw new HttpsError("invalid-argument", `${fieldName}.sealedBoxBase64 must be base64.`);
   }
@@ -396,7 +384,11 @@ export function requireCloudVaultBlobEnvelope(
   };
 }
 
-export function boundedHttpsURL(raw: unknown, fieldName: string): string {
+export function boundedHttpsURL(
+  raw: unknown,
+  fieldName: string,
+  allowedNonLoopbackHosts: readonly string[] = [],
+): string {
   const value = boundedTrimmedString(raw, fieldName, 2048, true);
   let url: URL;
   try {
@@ -418,6 +410,12 @@ export function boundedHttpsURL(raw: unknown, fieldName: string): string {
   const isExactLoopback = rawHost === "localhost" || rawHost === "127.0.0.1" || rawHost === "[::1]";
   if (url.protocol !== "https:" && !isExactLoopback) {
     throw new HttpsError("invalid-argument", `${fieldName} must be HTTPS.`);
+  }
+  if (allowedNonLoopbackHosts.length > 0 && !isExactLoopback) {
+    const allowedHosts = new Set(allowedNonLoopbackHosts.map((host) => host.trim().toLowerCase()).filter(Boolean));
+    if (!allowedHosts.has(url.host.toLowerCase())) {
+      throw new HttpsError("invalid-argument", `${fieldName} must use an approved redirect host.`);
+    }
   }
   return url.toString();
 }

@@ -98,6 +98,21 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(settings.refreshInterval, 300)
     }
 
+    func test_databaseEncryptionPreferences_normalizeRetiredPlaintextOptOuts() {
+        let defaults = makeIsolatedDefaults()
+        defaults.set(false, forKey: "databaseEncryptionEnabled")
+        defaults.set(true, forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey)
+        defaults.set(true, forKey: "plaintextDatabaseAcknowledged")
+
+        let settings = makeSettingsManager(defaults: defaults)
+
+        XCTAssertTrue(settings.databaseEncryptionEnabled)
+        XCTAssertFalse(settings.plaintextDatabaseAcknowledged)
+        XCTAssertTrue(defaults.bool(forKey: "databaseEncryptionEnabled"))
+        XCTAssertNil(defaults.object(forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey))
+        XCTAssertNil(defaults.object(forKey: "plaintextDatabaseAcknowledged"))
+    }
+
     func test_smartHubHomeAssistantRecoveryWebhookURL_roundTrips() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)

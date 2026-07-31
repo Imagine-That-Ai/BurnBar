@@ -9,14 +9,20 @@ import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { logError, wrapCallableHandler } from "../logging.js";
-import { externalApiWithResilience, stripeWithResilience } from "../resilienceHelpers.js";
+import {
+  externalApiWithResilience,
+  googlePlayConsumeWithResilience,
+  stripeWithResilience,
+} from "../resilienceHelpers.js";
 import {
   BURNBAR_PRO_ENTITLEMENT_ID,
   BURNBAR_PRO_MAX_ENTITLEMENT_ID,
   BURNBAR_ULTRA_ENTITLEMENT_ID,
   STRIPE_API_SECRETS,
   STRIPE_WEBHOOK_SECRETS,
+  STRIPE_CHECKOUT_SCHEMA_VERSION,
   GOOGLE_PLAY_ACTIVE_STATES,
+  selectGooglePlaySubscriptionLineItem,
   nowISO,
   sha256Hex,
   requireConfiguredStripe,
@@ -24,16 +30,15 @@ import {
   boundedHttpsURL,
   assertActiveBurnBarCloudProEntitlement,
   getOrCreateStripeCustomer,
-  googlePlayLineItemForProduct,
-  googlePlayExpiryMillis,
-  applyStripeCheckoutSession,
-  applyStripeSubscription,
+  assertStripeCustomerCanStartSubscriptionCheckout,
+  findReusableStripeSubscriptionCheckoutSession,
+  stripeTaxAwareCheckoutParams,
   creditCloudProTopUp,
   writeBurnBarProEntitlement,
 } from "./shared.js";
 import Stripe from "stripe";
 import { parseGooglePlayProSubscriptionInput, parseGooglePlayTopUpInput } from "./stripeInputSchemas.js";
-import { isStripeCheckoutSession, isStripeSubscription, jsonObject, stripUndefinedObject } from "../guards.js";
+import { jsonObject, stripUndefinedObject } from "../guards.js";
 import {
   allowanceDocPath,
   cloudProTopUpReceiptDocPath,
@@ -51,12 +56,13 @@ import {
   entitlementFamilyOf,
   boundedAnalyticsDeviceId,
 } from "../analytics/index.js";
+import { processStripeWebhookEvent } from "./stripeWebhookDispatch.js";
 
 // ---------------------------------------------------------------------------
 // Callable / HTTP: BurnBar Pro billing bridges
 // ---------------------------------------------------------------------------
 
-type StripeCheckoutTier = "cloud" | "cloud_pro";
+type StripeCheckoutTier = "cloud" | "cloud_pro" | "ultra";
 type StripeCheckoutCadence = "monthly" | "annual";
 type StripeWebhookReservation = "reserved" | "processed" | "processing";
 
@@ -107,8 +113,17 @@ function subscriptionCheckoutSelection(data: { tier?: unknown; cadence?: unknown
   cadence: StripeCheckoutCadence;
 } {
   const cfg = getConfig();
-  const tier = optionalChoice(data.tier, ["cloud", "cloud_pro"] as const, "tier") ?? "cloud";
+  const tier = optionalChoice(data.tier, ["cloud", "cloud_pro", "ultra"] as const, "tier") ?? "cloud";
   const cadence = optionalChoice(data.cadence, ["monthly", "annual"] as const, "cadence") ?? "monthly";
+  if (tier === "ultra") {
+    const priceID = cadence === "annual" ? cfg.stripeBurnBarUltraAnnualPriceID : cfg.stripeBurnBarUltraMonthlyPriceID;
+    return {
+      priceID: requireConfiguredPriceID(priceID, `BurnBar Ultra ${cadence}`),
+      entitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID,
+      tier,
+      cadence,
+    };
+  }
   if (tier === "cloud_pro") {
     const priceID =
       cadence === "annual" ? cfg.stripeBurnBarCloudProAnnualPriceID : cfg.stripeBurnBarCloudProMonthlyPriceID;
@@ -129,39 +144,6 @@ function subscriptionCheckoutSelection(data: { tier?: unknown; cadence?: unknown
     tier,
     cadence,
   };
-}
-
-function googlePlaySubscriptionEntitlement(productID: string): { entitlementID: string; canonicalProductID: string } {
-  const cfg = getConfig();
-  const cloudProductIDs = new Set([
-    cfg.googlePlaySubscriptionProductID,
-    cfg.googlePlayCloudMonthlyProductID,
-    cfg.googlePlayCloudAnnualProductID,
-    cfg.burnBarProProductID,
-    cfg.burnBarProAnnualProductID,
-  ]);
-  const cloudProProductIDs = new Set([
-    cfg.googlePlayCloudProMonthlyProductID,
-    cfg.googlePlayCloudProAnnualProductID,
-    cfg.burnBarProMaxProductID,
-    cfg.burnBarProMaxAnnualProductID,
-  ]);
-  const ultraProductIDs = new Set([
-    cfg.googlePlayUltraMonthlyProductID,
-    cfg.googlePlayUltraAnnualProductID,
-    cfg.burnBarUltraProductID,
-    cfg.burnBarUltraAnnualProductID,
-  ]);
-  if (cloudProductIDs.has(productID)) {
-    return { entitlementID: BURNBAR_PRO_ENTITLEMENT_ID, canonicalProductID: productID };
-  }
-  if (cloudProProductIDs.has(productID)) {
-    return { entitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID, canonicalProductID: productID };
-  }
-  if (ultraProductIDs.has(productID)) {
-    return { entitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID, canonicalProductID: productID };
-  }
-  throw new HttpsError("invalid-argument", "Unsupported Google Play subscription product.");
 }
 
 function stripeWebhookEventRef(eventID: string) {
@@ -260,9 +242,10 @@ export const createStripeBurnBarProCheckoutSession = onCall(
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before starting checkout.");
       enforceAuthAndAppCheck(request, uid);
 
+      const cfg = getConfig();
       const stripe = requireConfiguredStripe();
-      const successUrl = boundedHttpsURL(request.data.successUrl, "successUrl");
-      const cancelUrl = boundedHttpsURL(request.data.cancelUrl, "cancelUrl");
+      const successUrl = boundedHttpsURL(request.data.successUrl, "successUrl", cfg.stripeRedirectURLAllowlist);
+      const cancelUrl = boundedHttpsURL(request.data.cancelUrl, "cancelUrl", cfg.stripeRedirectURLAllowlist);
       const customerID = await getOrCreateStripeCustomer(uid, stripe);
       const topUpKind = optionalChoice(request.data.topUpKind, STRIPE_TOP_UP_KINDS, "topUpKind");
 
@@ -277,9 +260,11 @@ export const createStripeBurnBarProCheckoutSession = onCall(
             success_url: successUrl,
             cancel_url: cancelUrl,
             line_items: [{ price: topUp.priceID, quantity: 1 }],
+            ...stripeTaxAwareCheckoutParams(),
             metadata: {
               firebaseUID: uid,
               topUpKind: topUp.kind,
+              checkoutSchemaVersion: STRIPE_CHECKOUT_SCHEMA_VERSION,
             },
           }),
         );
@@ -287,34 +272,47 @@ export const createStripeBurnBarProCheckoutSession = onCall(
       }
 
       const selection = subscriptionCheckoutSelection(request.data);
-
-      const session = await stripeWithResilience("checkout.sessions.create.subscription", () =>
-        stripe.checkout.sessions.create({
-          mode: "subscription",
-          customer: customerID,
-          client_reference_id: uid,
-          success_url: successUrl,
-          cancel_url: cancelUrl,
-          allow_promotion_codes: true,
-          line_items: [{ price: selection.priceID, quantity: 1 }],
+      await assertStripeCustomerCanStartSubscriptionCheckout(stripe, customerID);
+      const reusable = await findReusableStripeSubscriptionCheckoutSession(stripe, customerID, selection);
+      if (reusable) {
+        return { sessionId: reusable.id, url: reusable.url, reused: true };
+      }
+      const idempotencyBucket = Math.floor(Date.now() / (10 * 60 * 1000));
+      const sessionParams: Stripe.Checkout.SessionCreateParams = {
+        mode: "subscription",
+        customer: customerID,
+        client_reference_id: uid,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        allow_promotion_codes: true,
+        line_items: [{ price: selection.priceID, quantity: 1 }],
+        ...stripeTaxAwareCheckoutParams(),
+        metadata: {
+          firebaseUID: uid,
+          entitlementID: selection.entitlementID,
+          tier: selection.tier,
+          cadence: selection.cadence,
+          checkoutSchemaVersion: STRIPE_CHECKOUT_SCHEMA_VERSION,
+        },
+        subscription_data: {
           metadata: {
             firebaseUID: uid,
             entitlementID: selection.entitlementID,
             tier: selection.tier,
             cadence: selection.cadence,
+            checkoutSchemaVersion: STRIPE_CHECKOUT_SCHEMA_VERSION,
           },
-          subscription_data: {
-            metadata: {
-              firebaseUID: uid,
-              entitlementID: selection.entitlementID,
-              tier: selection.tier,
-              cadence: selection.cadence,
-            },
-          },
-        }),
+        },
+      };
+      const idempotencyKey = sha256Hex(
+        `burnbar_subscription_checkout:${idempotencyBucket}:${JSON.stringify(sessionParams)}`,
       );
 
-      return { sessionId: session.id, url: session.url };
+      const session = await stripeWithResilience("checkout.sessions.create.subscription", () =>
+        stripe.checkout.sessions.create(sessionParams, { idempotencyKey }),
+      );
+
+      return { sessionId: session.id, url: session.url, reused: false };
     },
   ),
 );
@@ -337,8 +335,9 @@ export const createStripeBurnBarProPortalSession = onCall(
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before opening the billing portal.");
       enforceAuthAndAppCheck(request, uid);
 
+      const cfg = getConfig();
       const stripe = requireConfiguredStripe();
-      const returnUrl = boundedHttpsURL(request.data.returnUrl, "returnUrl");
+      const returnUrl = boundedHttpsURL(request.data.returnUrl, "returnUrl", cfg.stripeRedirectURLAllowlist);
       const customerID = await getOrCreateStripeCustomer(uid, stripe);
       const session = await stripeWithResilience("billingPortal.sessions.create", () =>
         stripe.billingPortal.sessions.create({
@@ -380,7 +379,6 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
       const cfg = getConfig();
       const { purchaseToken, productID: requestedProductID } = parseGooglePlayProSubscriptionInput(request.data);
       const productID = requestedProductID ?? cfg.googlePlaySubscriptionProductID;
-      const entitlementTarget = googlePlaySubscriptionEntitlement(productID);
 
       // Lazy-load googleapis (~500ms) so every other function skips it on cold start.
       const { google } = await import("googleapis");
@@ -398,8 +396,11 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
       const purchase = jsonObject(response.data);
       const subscriptionState =
         typeof purchase.subscriptionState === "string" ? purchase.subscriptionState : "SUBSCRIPTION_STATE_UNSPECIFIED";
-      const lineItem = googlePlayLineItemForProduct(purchase, productID);
-      const expiresAtMillis = googlePlayExpiryMillis(lineItem);
+      const {
+        lineItem,
+        target: entitlementTarget,
+        expiresAtMillis,
+      } = selectGooglePlaySubscriptionLineItem(purchase, [productID]);
       const active = GOOGLE_PLAY_ACTIVE_STATES.has(subscriptionState) && expiresAtMillis > Date.now();
       const tokenHash = sha256Hex(purchaseToken);
       await claimGooglePlayPurchaseToken({
@@ -429,7 +430,7 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
           purchaseTokenHash: tokenHash,
           subscriptionState,
           expiresAt: new Date(expiresAtMillis).toISOString(),
-          lineItemProductID: lineItem && typeof lineItem.productId === "string" ? lineItem.productId : undefined,
+          lineItemProductID: typeof lineItem.productId === "string" ? lineItem.productId : undefined,
           lastVerifiedAt: nowISO(),
           schemaVersion: 1,
         }),
@@ -553,15 +554,42 @@ export const verifyGooglePlayCloudProTopUp = onCall(
         externalPaymentID: tokenHash,
       });
       let consumed = false;
+      let consumptionConfirmedAfterError = false;
       if (consumptionState !== 1) {
-        await externalApiWithResilience("googleplay.products.consume", () =>
-          androidpublisher.purchases.products.consume({
-            packageName: cfg.googlePlayPackageName,
-            productId: productID,
-            token: purchaseToken,
-          }),
-        );
-        consumed = true;
+        try {
+          await googlePlayConsumeWithResilience(() =>
+            androidpublisher.purchases.products.consume({
+              packageName: cfg.googlePlayPackageName,
+              productId: productID,
+              token: purchaseToken,
+            }),
+          );
+          consumed = true;
+        } catch (consumeError) {
+          // Two verification requests can both observe consumptionState=0,
+          // then race after the Firestore credit transaction. Google Play may
+          // accept the first consume and reject the second even though the
+          // purchase is now safely consumed. A timeout can produce the same
+          // ambiguity. Re-read Play's authoritative state before surfacing an
+          // error; only treat the call as successful when Play confirms the
+          // exact token has transitioned to consumed.
+          const refreshedResponse = await externalApiWithResilience("googleplay.products.get.after_consume", () =>
+            androidpublisher.purchases.products.get({
+              packageName: cfg.googlePlayPackageName,
+              productId: productID,
+              token: purchaseToken,
+            }),
+          );
+          const refreshedPurchase = jsonObject(refreshedResponse.data);
+          const refreshedConsumptionState =
+            typeof refreshedPurchase.consumptionState === "number" &&
+            Number.isFinite(refreshedPurchase.consumptionState)
+              ? refreshedPurchase.consumptionState
+              : undefined;
+          if (refreshedConsumptionState !== 1) throw consumeError;
+          consumed = true;
+          consumptionConfirmedAfterError = true;
+        }
       }
 
       await db.doc(googlePlayBillingRecordPath(uid, "topup", tokenHash)).set(
@@ -573,8 +601,10 @@ export const verifyGooglePlayCloudProTopUp = onCall(
           purchaseState,
           consumptionState,
           orderId: typeof purchase.orderId === "string" ? purchase.orderId : undefined,
-          credited,
+          credited: true,
+          creditedByThisInvocation: credited.credited,
           consumed,
+          consumptionConfirmedAfterError,
           lastVerifiedAt: nowISO(),
           schemaVersion: 1,
         }),
@@ -628,55 +658,7 @@ export const stripeBurnBarProWebhook = onRequest(
     }
 
     try {
-      switch (event.type) {
-        case "checkout.session.completed":
-        case "checkout.session.async_payment_succeeded":
-          if (isStripeCheckoutSession(event.data.object)) {
-            // The event context sets the entitlement's ordering watermark
-            // (LB-5): the checkout path re-fetches the subscription fresh,
-            // so the written state is at least as new as event.created.
-            await applyStripeCheckoutSession(stripe, event.data.object, {
-              eventID: event.id,
-              eventCreatedMillis: event.created * 1000,
-            });
-          }
-          break;
-        case "customer.subscription.created":
-        case "customer.subscription.updated":
-          if (isStripeSubscription(event.data.object)) {
-            // Re-fetch instead of writing the event's point-in-time snapshot
-            // (LB-5): event.created has only second granularity, so two
-            // different subscription events landing in the same second
-            // cannot be ordered by timestamp. Writing Stripe's CURRENT state
-            // makes whichever tied event applies first authoritative, and
-            // the sourceEventID tie-break in
-            // paidEntitlementWriteWouldRewindSourceEvent safely rejects the
-            // other. A failed retrieve fails the webhook so Stripe
-            // redelivers rather than letting a stale snapshot through.
-            const snapshotID = event.data.object.id;
-            const subscription = await stripeWithResilience("subscriptions.retrieve.webhook", () =>
-              stripe.subscriptions.retrieve(snapshotID),
-            );
-            await applyStripeSubscription(stripe, subscription, undefined, {
-              eventID: event.id,
-              eventCreatedMillis: event.created * 1000,
-            });
-          }
-          break;
-        case "customer.subscription.deleted":
-          if (isStripeSubscription(event.data.object)) {
-            // No re-fetch here: `canceled` is terminal, so the deletion
-            // snapshot IS the current state (and a retrieve can fail after
-            // the Stripe customer itself is deleted).
-            await applyStripeSubscription(stripe, event.data.object, undefined, {
-              eventID: event.id,
-              eventCreatedMillis: event.created * 1000,
-            });
-          }
-          break;
-        default:
-          break;
-      }
+      await processStripeWebhookEvent(stripe, event);
       await markStripeWebhookEventProcessed(event);
       res.json({ received: true });
     } catch (err) {

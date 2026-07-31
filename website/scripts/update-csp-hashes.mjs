@@ -115,38 +115,41 @@ function buildMarketingCsp(
 }
 
 function expectedMarketingCsps(hashes) {
+  const firebaseAuthSources = {
+    imgSrc: ["https://*.googleusercontent.com"],
+    scriptSrc: [
+      "https://apis.google.com",
+      "https://www.google.com/recaptcha/",
+      "https://www.gstatic.com/recaptcha/",
+    ],
+    frameSrc: [
+      "https://*.firebaseapp.com",
+      "https://accounts.google.com",
+      "https://appleid.apple.com",
+      "https://www.google.com/recaptcha/",
+    ],
+    connectSrc: [
+      "https://apis.google.com",
+      "https://*.googleapis.com",
+      "https://*.firebaseio.com",
+      "https://*.cloudfunctions.net",
+      "https://identitytoolkit.googleapis.com",
+      "https://securetoken.googleapis.com",
+      "https://firebaseinstallations.googleapis.com",
+      "https://firebaseappcheck.googleapis.com",
+      "https://content-firebaseappcheck.googleapis.com",
+      "https://www.google.com",
+      "https://www.gstatic.com",
+      "http://localhost:5001",
+      "http://localhost:9099",
+    ],
+    formAction: ["https://accounts.google.com", "https://appleid.apple.com"],
+  };
   return new Map([
     ["**", buildMarketingCsp(hashes)],
-    [
-      "/link",
-      buildMarketingCsp(hashes, {
-        imgSrc: ["https://*.googleusercontent.com"],
-        scriptSrc: ["https://www.google.com", "https://www.gstatic.com"],
-        frameSrc: ["https://*.google.com"],
-        connectSrc: [
-          "https://*.googleapis.com",
-          "https://*.firebaseio.com",
-          "https://*.cloudfunctions.net",
-          "http://localhost:5001",
-          "http://localhost:9099",
-        ],
-      }),
-    ],
-    [
-      "/hermes/connect",
-      buildMarketingCsp(hashes, {
-        imgSrc: ["https://*.googleusercontent.com"],
-        frameSrc: ["https://*.google.com", "https://accounts.google.com", "https://appleid.apple.com"],
-        connectSrc: [
-          "https://*.googleapis.com",
-          "https://*.firebaseio.com",
-          "https://*.cloudfunctions.net",
-          "https://identitytoolkit.googleapis.com",
-          "https://securetoken.googleapis.com",
-        ],
-        formAction: ["https://accounts.google.com", "https://appleid.apple.com"],
-      }),
-    ],
+    ["/link", buildMarketingCsp(hashes, firebaseAuthSources)],
+    ["/hermes/connect", buildMarketingCsp(hashes, firebaseAuthSources)],
+    ["/subscribe", buildMarketingCsp(hashes, firebaseAuthSources)],
   ]);
 }
 

@@ -293,7 +293,6 @@ struct CloudTierCard: View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
             header
             priceRow
-            trialRibbon
             Divider().overlay(ProTheme.Membership.hairline.opacity(0.35))
             featureList
             FoilCTAButton(
@@ -304,6 +303,11 @@ struct CloudTierCard: View {
                 action: onSubscribe
             )
             .padding(.top, MobileTheme.Spacing.xs)
+            .accessibilityIdentifier(
+                tier == .cloud
+                    ? "cloudStore.subscribe"
+                    : "cloudStore.subscribe.\(plan.id)"
+            )
         }
         .padding(MobileTheme.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -311,7 +315,7 @@ struct CloudTierCard: View {
         .membershipCard(enableShimmer: false, strokeWidth: isFlagship ? 1.4 : 1.0)
         .overlay(holographicAccent)
         .overlay(flagshipChromaticRim)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityText)
         .accessibilityIdentifier("cloudStore.tier.\(plan.id)")
     }
@@ -472,22 +476,6 @@ struct CloudTierCard: View {
 
     private var annualSealText: String { Self.annualSealText(freeMonths: annualFreeMonths) }
 
-    @ViewBuilder
-    private var trialRibbon: some View {
-        // Only base Cloud carries the introductory free trial; Pro and Ultra
-        // have no trial, matching the App Store Connect configuration.
-        if tier == .cloud {
-            HStack(spacing: 6) {
-                Image(systemName: "gift.fill")
-                    .font(.system(size: 13, weight: .bold))
-                Text("14-day free trial for new subscribers")
-                    .font(MobileTheme.Typography.caption)
-                    .fontWeight(.semibold)
-            }
-            .foregroundStyle(ProTheme.Membership.foilLeaf)
-        }
-    }
-
     private var featureList: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm + 2) {
             ForEach(features) { benefit in
@@ -562,7 +550,7 @@ struct CloudTierCard: View {
                 CloudTierBenefit(icon: "infinity",
                                  text: "Everything in BurnBar Cloud Pro"),
                 CloudTierBenefit(icon: "brain.head.profile",
-                                 text: "10× agent memory: 15 sources · 50,000 chunks · 250 MB"),
+                                 text: "10× agent memory: 100 sources · 500,000 chunks · 10 GB"),
                 CloudTierBenefit(icon: "lock.shield.fill",
                                  text: "Sealed on-device — hosted recall is opt-in, and structural patterns stay visible"),
                 CloudTierBenefit(icon: "arrow.up.arrow.down",
@@ -608,7 +596,7 @@ struct CloudTopUpStrip: View {
             }
 
             if !store.isActivePro {
-                Text("Top-ups unlock after BurnBar Cloud Pro is active.")
+                Text("Top-ups unlock after BurnBar Cloud Pro or Ultra is active.")
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(ProTheme.Membership.engravingMuted)
                     .fixedSize(horizontal: false, vertical: true)

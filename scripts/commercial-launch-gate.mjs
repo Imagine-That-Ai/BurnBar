@@ -219,6 +219,7 @@ const REQUIRED_FIREBASE_FUNCTIONS = [
   "searchStreams",
   "stripeBurnBarProWebhook",
   "verifyCloudProTopUp",
+  "googlePlayDeveloperNotifications",
   "verifyGooglePlayCloudProTopUp",
   "verifyGooglePlayBurnBarProSubscription",
   "verifyHostedQuotaEntitlement",
@@ -316,6 +317,8 @@ export function evaluateHostedQuotaRunnerEndpoint({
 }
 const REQUIRED_COMMERCIAL_ENV_VALUES = {
   STRIPE_BURNBAR_PRO_PRICE_ID: "alias:STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
+  STRIPE_REDIRECT_URL_ALLOWLIST:
+    "burnbar.ai,www.burnbar.ai,burnbar.web.app,burnbar.firebaseapp.com",
   BURNBAR_PRO_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudMonthly,
   BURNBAR_PRO_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudAnnual,
   BURNBAR_PRO_MAX_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProMonthly,
@@ -329,6 +332,8 @@ const REQUIRED_COMMERCIAL_ENV_VALUES = {
     COMMERCIAL_PRODUCTS.elderWandSearches100,
   ELDER_WAND_SEARCHES_500_PRODUCT_ID:
     COMMERCIAL_PRODUCTS.elderWandSearches500,
+  GOOGLE_PLAY_PACKAGE_NAME: "com.openburnbar",
+  GOOGLE_PLAY_RTDN_TOPIC: "play-billing-notifications",
   GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.cloudMonthly,
   GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.cloudAnnual,
   GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID:
@@ -349,6 +354,8 @@ const REQUIRED_COMMERCIAL_ENV_PRESENT = [
   "STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID",
   "STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID",
   "STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID",
+  "STRIPE_BURNBAR_ULTRA_MONTHLY_PRICE_ID",
+  "STRIPE_BURNBAR_ULTRA_ANNUAL_PRICE_ID",
   "STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID",
   "STRIPE_FLOO_RELAY_50GB_PRICE_ID",
   "STRIPE_ELDER_WAND_SEARCHES_100_PRICE_ID",
@@ -1659,6 +1666,9 @@ function checkCommercialBillingRuntime() {
   const googlePlayTopUp = deployedFunctionEnvironment(
     "verifyGooglePlayCloudProTopUp",
   );
+  const googlePlayRtdn = deployedFunctionEnvironment(
+    "googlePlayDeveloperNotifications",
+  );
   const appStoreTopUp = deployedFunctionEnvironment("verifyCloudProTopUp");
   const webhook = deployedFunctionEnvironment("stripeBurnBarProWebhook");
 
@@ -1666,6 +1676,7 @@ function checkCommercialBillingRuntime() {
     checkout,
     googlePlay,
     googlePlayTopUp,
+    googlePlayRtdn,
     appStoreTopUp,
   ].filter((source) => source.ok);
   const mergedEnv = Object.assign(
@@ -1695,6 +1706,7 @@ function checkCommercialBillingRuntime() {
       checkout.ok &&
       googlePlay.ok &&
       googlePlayTopUp.ok &&
+      googlePlayRtdn.ok &&
       appStoreTopUp.ok &&
       webhook.ok &&
       envRequirements.ok &&
@@ -1703,6 +1715,7 @@ function checkCommercialBillingRuntime() {
       checkout,
       googlePlay,
       googlePlayTopUp,
+      googlePlayRtdn,
       appStoreTopUp,
       webhook,
     },
@@ -1756,7 +1769,18 @@ function checkRemoteConfigCaps() {
   const result = run(
     "firebase",
     ["remoteconfig:get", "--project", PROJECT, "--output", tempFile],
-    { timeout: 60_000 },
+    {
+      timeout: 60_000,
+      // Firebase CLI authenticates this request with local ADC in operator
+      // environments. Google requires an explicit quota project for the
+      // Remote Config API, even when the access token already belongs to a
+      // principal that can read the target project.
+      env: {
+        ...process.env,
+        GOOGLE_CLOUD_QUOTA_PROJECT:
+          process.env.GOOGLE_CLOUD_QUOTA_PROJECT || PROJECT,
+      },
+    },
   );
   try {
     if (!result.ok) {

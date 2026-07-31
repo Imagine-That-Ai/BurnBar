@@ -1,9 +1,29 @@
 {
   "schemaVersion": "openburnbar.staging-function-targets.v1",
   "targets": {
+    "appStoreServerNotificationsV2": {
+      "module": "./appstore/notifications.js",
+      "export": "appStoreServerNotificationsV2"
+    },
+    "beginEntitlementBinding": {
+      "module": "./appstore/callable.js",
+      "export": "beginEntitlementBinding"
+    },
+    "createStripeBurnBarProCheckoutSession": {
+      "module": "./callables/stripe.js",
+      "export": "createStripeBurnBarProCheckoutSession"
+    },
+    "createStripeBurnBarProPortalSession": {
+      "module": "./callables/stripe.js",
+      "export": "createStripeBurnBarProPortalSession"
+    },
     "getWindowsRuntimeSafetyConfig": {
       "module": "./callables/windowsRuntimeSafetyConfig.js",
       "export": "getWindowsRuntimeSafetyConfig"
+    },
+    "googlePlayDeveloperNotifications": {
+      "module": "./googlePlayRtdn.js",
+      "export": "googlePlayDeveloperNotifications"
     },
     "issueWindowsAppCheckChallenge": {
       "module": "./callables/windowsAppCheck.js",
@@ -13,9 +33,37 @@
       "module": "./callables/windowsAppCheck.js",
       "export": "mintWindowsAppCheckToken"
     },
+    "reconcileHostedEntitlementsDaily": {
+      "module": "./appstore/scheduled.js",
+      "export": "reconcileHostedEntitlementsDaily"
+    },
+    "restoreHostedQuotaEntitlement": {
+      "module": "./appstore/callable.js",
+      "export": "restoreHostedQuotaEntitlement"
+    },
+    "stripeBurnBarProWebhook": {
+      "module": "./callables/stripe.js",
+      "export": "stripeBurnBarProWebhook"
+    },
     "submitDomainCoreShadowSamples": {
       "module": "./callables/domainCoreShadowEvidence.js",
       "export": "submitDomainCoreShadowSamples"
+    },
+    "verifyCloudProTopUp": {
+      "module": "./appstore/callable.js",
+      "export": "verifyCloudProTopUp"
+    },
+    "verifyGooglePlayBurnBarProSubscription": {
+      "module": "./callables/stripe.js",
+      "export": "verifyGooglePlayBurnBarProSubscription"
+    },
+    "verifyGooglePlayCloudProTopUp": {
+      "module": "./callables/stripe.js",
+      "export": "verifyGooglePlayCloudProTopUp"
+    },
+    "verifyHostedQuotaEntitlement": {
+      "module": "./appstore/callable.js",
+      "export": "verifyHostedQuotaEntitlement"
     }
   }
 }
