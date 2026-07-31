@@ -595,6 +595,57 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertFalse(docData.keys.contains("token"))
     }
 
+    func test_providerAccountUpload_skipsServerManagedAccountsWithoutBlockingLocalMetadata() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let localAccounts = [
+            makeProviderAccount(
+                id: "local-keychain",
+                providerID: .openAI,
+                label: "Local Keychain",
+                sourceDeviceID: nil,
+                storageScope: .deviceKeychain,
+                createdAt: now
+            ),
+            makeProviderAccount(
+                id: "local-metadata",
+                providerID: .anthropic,
+                label: "Local Metadata",
+                sourceDeviceID: nil,
+                storageScope: .localOnly,
+                createdAt: now.addingTimeInterval(1)
+            )
+        ]
+        let serverManagedAccounts = [
+            makeProviderAccount(
+                id: "cloud-refreshable",
+                providerID: .codex,
+                label: "Cloud Refreshable",
+                sourceDeviceID: nil,
+                storageScope: .cloudRefreshable,
+                createdAt: now.addingTimeInterval(2)
+            ),
+            makeProviderAccount(
+                id: "server-private",
+                providerID: .mimo,
+                label: "Server Private",
+                sourceDeviceID: nil,
+                storageScope: .serverPrivate,
+                createdAt: now.addingTimeInterval(3)
+            )
+        ]
+        for account in localAccounts + serverManagedAccounts {
+            try await dataStore.upsertProviderAccount(account)
+        }
+
+        await providerAccountSync.uploadAccounts()
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/provider_accounts")
+        XCTAssertEqual(Set(docs.keys), [
+            "users/test-uid-1/provider_accounts/local-keychain",
+            "users/test-uid-1/provider_accounts/local-metadata"
+        ])
+    }
+
     func test_providerAccountDownload_importsRemoteAccountMetadataWithoutCredentialFields() async throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let encodedNow = ISO8601DateFormatter().string(from: now)
