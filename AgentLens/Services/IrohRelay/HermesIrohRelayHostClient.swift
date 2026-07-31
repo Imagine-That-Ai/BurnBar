@@ -1403,9 +1403,15 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         AppLogger.network.error(
             "hermes_iroh_native_backend_missing detail=OpenBurnBarIrohFFI_not_linked_Mercury_disabled_check_Vendor_OpenBurnBarIroh.xcframework"
         )
-        assertionFailure(
-            "Hermes iroh host has no native backend: OpenBurnBarIrohFFI is not linked. Mercury mirror/calls/file-transfer are disabled for this whole process. Build/link Vendor/OpenBurnBarIroh.xcframework."
-        )
+        // The unit suite exercises this exact path with an injected nil
+        // factory (HermesIrohRelayHostClientMattersTests) to pin the graceful
+        // `.backendUnavailable` contract, so the trap must not fire under
+        // XCTest — only in a real dev/QA app launch.
+        if !OpenBurnBarRuntime.isRunningTests {
+            assertionFailure(
+                "Hermes iroh host has no native backend: OpenBurnBarIrohFFI is not linked. Mercury mirror/calls/file-transfer are disabled for this whole process. Build/link Vendor/OpenBurnBarIroh.xcframework."
+            )
+        }
         return UnavailableIrohRelayTransport()
     }
 }
