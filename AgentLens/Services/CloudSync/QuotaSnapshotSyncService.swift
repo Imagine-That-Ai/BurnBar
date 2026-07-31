@@ -24,6 +24,7 @@ final class ProviderAccountSyncService: Sendable {
 
         do {
             let accounts = try await context.dataStore.fetchProviderAccounts()
+                .filter(Self.isClientWritableAccount)
             guard !accounts.isEmpty else { return }
 
             let batch = context.firestoreGateway.batch()
@@ -96,6 +97,18 @@ final class ProviderAccountSyncService: Sendable {
             return deviceId
         case .cloudRefreshable, .serverPrivate:
             return nil
+        }
+    }
+
+    private nonisolated static func isClientWritableAccount(_ account: ProviderAccountDoc) -> Bool {
+        switch account.storageScope {
+        case .localOnly, .deviceKeychain:
+            return true
+        case .cloudRefreshable, .serverPrivate:
+            // Firestore rules keep refresh-sweep accounts server-owned. Including
+            // one in this batch rejects every local-account write with
+            // permission-denied, so never enqueue server-managed metadata here.
+            return false
         }
     }
 
