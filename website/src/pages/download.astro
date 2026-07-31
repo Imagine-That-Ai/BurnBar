@@ -22,11 +22,12 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
 <BaseLayout
   title="Download"
   description="Download OpenBurnBar. macOS by direct download, iPhone & iPad on the App Store, Linux ARM64 builds, Cursor/VS Code extension source-only."
+  ambientEffects={false}
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
       <span class="eyebrow eyebrow--ember">Download</span>
-      <h1 class="pagehead__h">
+      <h1 class="pagehead__h" data-pretext-native>
         <span>Get</span>
         <span class="pagehead__product">OpenBurnBar</span>
       </h1>

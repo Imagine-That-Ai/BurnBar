@@ -148,7 +148,12 @@ assert.match(downloadPage, /public macOS DMG is served from GitHub Releases/);
 assert.match(downloadPage, /branded\s+direct-download host is being republished/);
 assert.match(
   downloadPage,
-  /<h1 class="pagehead__h">[\s\S]*?<span>Get<\/span>[\s\S]*?<span class="pagehead__product">OpenBurnBar<\/span>[\s\S]*?<\/h1>/,
+  /<BaseLayout[\s\S]*?ambientEffects=\{false\}[\s\S]*?>/,
+  "download page must suppress ambient canvases so platform choices stay visually unobstructed"
+);
+assert.match(
+  downloadPage,
+  /<h1 class="pagehead__h" data-pretext-native>[\s\S]*?<span>Get<\/span>[\s\S]*?<span class="pagehead__product">OpenBurnBar<\/span>[\s\S]*?<\/h1>/,
   "download hero must keep the product name as one non-breaking visual unit"
 );
 assert.match(

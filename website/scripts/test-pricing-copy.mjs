@@ -30,6 +30,11 @@ const claims = await read("CLAIMS.md");
 const supportMacros = await read("src/data/supportMacros.ts");
 const publicPricingCopy = [pricing, plans, wandModule, faq, claims, supportMacros].join("\n");
 
+assert.match(
+  pricing,
+  /<BaseLayout[\s\S]*?ambientEffects=\{false\}[\s\S]*?>/,
+  "pricing page must suppress ambient canvases so plan comparison stays visually unobstructed"
+);
 assert.match(site, /pricing:\s*{/, "site constants must expose a structured pricing catalog");
 assert.doesNotMatch(
   site,
