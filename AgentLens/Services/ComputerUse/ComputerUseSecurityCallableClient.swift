@@ -159,17 +159,14 @@ enum ComputerUseSecurityCallableClient {
     /// `obb_app_check` binding between our bind and the nonce mint. Re-run the full
     /// bind -> claims refresh -> nonce sequence once when the mint is rejected at the
     /// App Check binding gate; rethrow every other failure unchanged.
-    static func issueHighRiskActionNonceRecoveringBindingConflict(
-        issueNonce: () async throws -> String = { try await issueHighRiskActionNonce() }, // cov:ignore -- live Firebase nonce mint; recovery sequencing is unit-tested with injected closures
-        rebindAttestation: () async throws -> Void = { try await bindAppCheckAttestation() } // cov:ignore -- live App Check rebind + Auth claims refresh
+    static func reboundHighRiskActionNonce(
+        afterBindingConflict error: Error,
+        rebindAttestation: () async throws -> Void = { try await bindAppCheckAttestation() }, // cov:ignore -- live App Check rebind + Auth claims refresh; the recovery decision is unit-tested with injected closures
+        issueNonce: () async throws -> String = { try await issueHighRiskActionNonce() } // cov:ignore -- live Firebase nonce mint
     ) async throws -> String {
-        do {
-            return try await issueNonce()
-        } catch {
-            guard isAppCheckBindingConflictError(error) else { throw error }
-            try await rebindAttestation()
-            return try await issueNonce()
-        }
+        guard isAppCheckBindingConflictError(error) else { throw error }
+        try await rebindAttestation()
+        return try await issueNonce()
     }
 
     static func isAppCheckBindingConflictError(_ error: Error) -> Bool {
@@ -193,8 +190,15 @@ enum ComputerUseSecurityCallableClient {
         keyVersion: Int? = nil
     ) async throws {
         _ = try requireSignedInUser()
-        try await bindAppCheckAttestation() // cov:ignore -- live Firebase App Check bind; the claims refresh needs live Auth
-        let nonce = try await issueHighRiskActionNonceRecoveringBindingConflict() // cov:ignore -- live Firebase nonce mint; binding-conflict recovery is unit-tested with injected closures
+        // cov:ignore-start -- live Firebase attestation bind + nonce mint; the binding-conflict recovery decision is unit-tested with injected closures in ComputerUseSecurityCallableClientTests
+        try await bindAppCheckAttestation()
+        let nonce: String
+        do {
+            nonce = try await issueHighRiskActionNonce()
+        } catch {
+            nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
+        }
+        // cov:ignore-end
         var payload: [String: Any] = [
             "deviceId": deviceId,
             "deviceName": deviceName,
@@ -221,14 +225,21 @@ enum ComputerUseSecurityCallableClient {
     /// Elevates an escrow device to `trusted` via the server-only callable (Firestore rules block client writes).
     static func approveEscrowDeviceTrust(deviceId: String, approverDeviceId: String? = nil) async throws {
         let uid = try requireSignedInUser().uid
-        try await bindAppCheckAttestation() // cov:ignore -- live Firebase App Check bind before protected trust-chain writes
+        try await bindAppCheckAttestation() // cov:ignore -- live Firebase attestation bind before protected trust-chain writes
         let resolvedApproverDeviceId = approverDeviceId?.isEmpty == false ? approverDeviceId! : deviceId
         let trustChain = try await buildTrustChainProof(
             uid: uid,
             targetDeviceId: deviceId,
             approverDeviceId: resolvedApproverDeviceId
         )
-        let nonce = try await issueHighRiskActionNonceRecoveringBindingConflict() // cov:ignore -- live Firebase nonce mint; binding-conflict recovery is unit-tested with injected closures
+        // cov:ignore-start -- live Firebase nonce mint; the binding-conflict recovery decision is unit-tested with injected closures in ComputerUseSecurityCallableClientTests
+        let nonce: String
+        do {
+            nonce = try await issueHighRiskActionNonce()
+        } catch {
+            nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
+        }
+        // cov:ignore-end
         var payload: [String: Any] = [
             "deviceId": deviceId,
             "nonce": nonce,

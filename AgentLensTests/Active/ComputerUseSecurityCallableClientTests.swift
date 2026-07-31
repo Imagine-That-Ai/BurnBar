@@ -825,88 +825,76 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
         )
     }
 
-    func testHighRiskNonceMintReturnsFirstNonceWithoutRebinding() async throws {
-        var mintCount = 0
+    func testReboundHighRiskActionNonceRebindsThenRemintsAfterBindingConflict() async throws {
         var rebindCount = 0
-
-        let nonce = try await ComputerUseSecurityCallableClient.issueHighRiskActionNonceRecoveringBindingConflict(
-            issueNonce: {
-                mintCount += 1
-                return "nonce-first"
-            },
-            rebindAttestation: { rebindCount += 1 }
-        )
-
-        XCTAssertEqual(nonce, "nonce-first")
-        XCTAssertEqual(mintCount, 1)
-        XCTAssertEqual(rebindCount, 0)
-    }
-
-    func testHighRiskNonceMintRebindsOnceAfterAppCheckBindingConflict() async throws {
         var mintCount = 0
-        var rebindCount = 0
+        var rebindHappenedBeforeMint = false
         let conflict = functionsError(
             code: .permissionDenied,
             message: "App Check binding mismatch for this app instance."
         )
 
-        let nonce = try await ComputerUseSecurityCallableClient.issueHighRiskActionNonceRecoveringBindingConflict(
+        let nonce = try await ComputerUseSecurityCallableClient.reboundHighRiskActionNonce(
+            afterBindingConflict: conflict,
+            rebindAttestation: { rebindCount += 1 },
             issueNonce: {
+                rebindHappenedBeforeMint = rebindCount == 1
                 mintCount += 1
-                if mintCount == 1 { throw conflict }
                 return "nonce-after-rebind"
-            },
-            rebindAttestation: { rebindCount += 1 }
+            }
         )
 
         XCTAssertEqual(nonce, "nonce-after-rebind")
-        XCTAssertEqual(mintCount, 2)
         XCTAssertEqual(rebindCount, 1)
+        XCTAssertEqual(mintCount, 1)
+        XCTAssertTrue(rebindHappenedBeforeMint)
     }
 
-    func testHighRiskNonceMintRethrowsNonConflictErrorsWithoutRebinding() async {
-        var mintCount = 0
+    func testReboundHighRiskActionNonceRethrowsNonConflictErrorsWithoutRebinding() async {
         var rebindCount = 0
+        var mintCount = 0
         let unrelated = functionsError(code: .notFound, message: "App Check binding mismatch")
 
         await XCTAssertThrowsErrorAsync({
-            try await ComputerUseSecurityCallableClient.issueHighRiskActionNonceRecoveringBindingConflict(
+            try await ComputerUseSecurityCallableClient.reboundHighRiskActionNonce(
+                afterBindingConflict: unrelated,
+                rebindAttestation: { rebindCount += 1 },
                 issueNonce: {
                     mintCount += 1
-                    throw unrelated
-                },
-                rebindAttestation: { rebindCount += 1 }
+                    return "unreachable"
+                }
             )
         }, { error in
             XCTAssertEqual((error as NSError).code, FunctionsErrorCode.notFound.rawValue)
         })
 
-        XCTAssertEqual(mintCount, 1)
         XCTAssertEqual(rebindCount, 0)
+        XCTAssertEqual(mintCount, 0)
     }
 
-    func testHighRiskNonceMintRetriesOnlyOnceWhenConflictPersists() async {
-        var mintCount = 0
+    func testReboundHighRiskActionNoncePropagatesPersistentConflictAfterSingleRetry() async {
         var rebindCount = 0
+        var mintCount = 0
         let conflict = functionsError(
             code: .failedPrecondition,
             message: "Call bindAppCheckAttestation before high-risk actions."
         )
 
         await XCTAssertThrowsErrorAsync({
-            try await ComputerUseSecurityCallableClient.issueHighRiskActionNonceRecoveringBindingConflict(
+            try await ComputerUseSecurityCallableClient.reboundHighRiskActionNonce(
+                afterBindingConflict: conflict,
+                rebindAttestation: { rebindCount += 1 },
                 issueNonce: {
                     mintCount += 1
                     throw conflict
-                },
-                rebindAttestation: { rebindCount += 1 }
+                }
             )
         }, { error in
             XCTAssertEqual((error as NSError).code, FunctionsErrorCode.failedPrecondition.rawValue)
         })
 
-        XCTAssertEqual(mintCount, 2)
         XCTAssertEqual(rebindCount, 1)
+        XCTAssertEqual(mintCount, 1)
     }
 
     func testAppCheckBindingConflictErrorRequiresFunctionsBindingGateSignature() {
