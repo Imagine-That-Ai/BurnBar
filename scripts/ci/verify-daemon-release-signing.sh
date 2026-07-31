@@ -30,6 +30,7 @@ app_identifier="$(signature_field "$app_path" Identifier)"
 daemon_identifier="$(signature_field "$daemon_path" Identifier)"
 app_team_id="$(signature_field "$app_path" TeamIdentifier)"
 daemon_team_id="$(signature_field "$daemon_path" TeamIdentifier)"
+app_signature="$(codesign -d --verbose=4 "$app_path" 2>&1)"
 daemon_signature="$(codesign -d --verbose=4 "$daemon_path" 2>&1)"
 watchdog_signature="$(codesign -d --verbose=4 "$watchdog_path" 2>&1)"
 
@@ -43,6 +44,11 @@ if [[ "$daemon_team_id" != "$app_team_id" ]]; then
 fi
 if [[ -n "$expected_team_id" && "$app_team_id" != "$expected_team_id" ]]; then
   echo "ERROR: App and daemon must be signed by team $expected_team_id; found '${app_team_id:-missing}'." >&2
+  exit 1
+fi
+if ! grep -q 'flags=.*runtime' <<<"$app_signature" || ! grep -q 'flags=.*library-validation' <<<"$app_signature"; then
+  echo "ERROR: App must use hardened runtime and library validation so the daemon can authenticate its RPC peer." >&2
+  printf '%s\n' "$app_signature" >&2
   exit 1
 fi
 if ! grep -q 'flags=.*runtime' <<<"$daemon_signature" || ! grep -q 'flags=.*library-validation' <<<"$daemon_signature"; then

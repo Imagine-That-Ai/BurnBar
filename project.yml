@@ -220,6 +220,11 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/OpenBurnBar.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        # The daemon authenticates this app over the local RPC socket and
+        # requires both CodeDirectory flags. Keep the Xcode product compliant
+        # before any local/distribution re-signing step runs.
+        OTHER_CODE_SIGN_FLAGS: --options runtime,library
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar
         INFOPLIST_KEY_NSSupportsAutomaticTermination: NO
