@@ -107,7 +107,7 @@ data class CLIAgentSessionRecord(
 // timestamp. Reads the same `cli_sessions` mirror used by iOS so Codex,
 // Claude Code, and OpenClaw sessions appear in Android Hermes Square.
 
-class ThreadInboxStore private constructor(
+class ThreadInboxStore internal constructor(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
 ) {
