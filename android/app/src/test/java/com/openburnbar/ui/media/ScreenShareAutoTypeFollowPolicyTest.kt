@@ -268,6 +268,34 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
+    fun manualTypingStaysOpenWithoutMacTextFocus() {
+        assertFalse(
+            ScreenShareAutoTypeFollowPolicy.shouldCloseAutomatically(
+                input =
+                baseInput(
+                    typingOpen = true,
+                    context = null,
+                ),
+                openedAutomatically = false,
+            ),
+        )
+    }
+
+    @Test
+    fun automaticallyOpenedTypingClosesWhenMacTextFocusDisappears() {
+        assertTrue(
+            ScreenShareAutoTypeFollowPolicy.shouldCloseAutomatically(
+                input =
+                baseInput(
+                    typingOpen = true,
+                    context = null,
+                ),
+                openedAutomatically = true,
+            ),
+        )
+    }
+
+    @Test
     fun hasActiveTextFocusTrueForFreshTextFocus() {
         assertTrue(
             ScreenShareAutoTypeFollowPolicy.hasActiveTextFocus(

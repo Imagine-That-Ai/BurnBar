@@ -42,6 +42,8 @@ internal object ScreenShareAutoTypeFollowPolicy {
         return !isFreshTextFocus(context, input.selectedDisplayId, input.nowMillis)
     }
 
+    fun shouldCloseAutomatically(input: Input, openedAutomatically: Boolean): Boolean = openedAutomatically && shouldClose(input)
+
     fun isFreshTextFocus(context: ScreenShareSmartZoomContext, selectedDisplayId: String?, nowMillis: Long): Boolean {
         val confidence = context.confidence
         val displayMatches =

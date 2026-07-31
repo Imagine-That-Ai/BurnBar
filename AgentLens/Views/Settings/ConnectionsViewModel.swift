@@ -901,9 +901,11 @@ final class ConnectionsViewModel {
             sourceKind: sourceKinds.count == 1 ? sourceKinds[0] : "gateway_failover_pool",
             formatFamily: formatFamilies.count == 1 ? formatFamilies[0] : representative.formatFamily,
             servedEndpoints: servedEndpoints.isEmpty ? representative.servedEndpoints : servedEndpoints,
-            contextWindowTokens: representative.contextWindowTokens
-                ?? rows.compactMap(\.contextWindowTokens).first,
-            inputModalities: uniqueNonEmpty(rows.flatMap(\.inputModalities)),
+            contextWindowTokens: rows.compactMap(\.contextWindowTokens).min(),
+            inputModalities: intersectionOfModalities(
+                rows.map(\.inputModalities),
+                fallback: representative.inputModalities
+            ),
             quotaState: logicalQuotaState(from: rows),
             advertisementEnabled: rows.contains { $0.advertisementEnabled },
             advertised: rows.contains { $0.advertised },
@@ -915,6 +917,22 @@ final class ConnectionsViewModel {
             hidesBaseModel: representative.hidesBaseModel,
             displayNameIsCustom: rows.contains { $0.displayNameIsCustom }
         )
+    }
+
+    /// Mirrors the daemon's `mergedModelCapabilities` intersection: a logical
+    /// multi-account row may be served by any backing account, so it can only
+    /// advertise the modalities every row supports (never a union that
+    /// promises capabilities one account lacks).
+    private static func intersectionOfModalities(
+        _ lists: [[String]],
+        fallback: [String]
+    ) -> [String] {
+        guard let first = lists.first, !first.isEmpty else { return fallback }
+        let remaining = lists.dropFirst().map { Set($0.map { $0.lowercased() }) }
+        let result = first.filter { value in
+            remaining.allSatisfy { $0.contains(value.lowercased()) }
+        }
+        return result.isEmpty ? fallback : result
     }
 
     private static func logicalQuotaState(from rows: [ProxyAdvertisedModel]) -> String {

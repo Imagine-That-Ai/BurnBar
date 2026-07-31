@@ -1,0 +1,99 @@
+{
+  "schema": "openburnbar.windows.release-certification-bundle.v1",
+  "generatedAtUtc": "2026-07-17T12:30:30.525Z",
+  "source": {
+    "commitSha": "71a1e0c020f6a33616d39443f66e4a1961b1ed87",
+    "dirtyTree": true
+  },
+  "runner": {
+    "script": "scripts/windows-port/run-local-certification-checks.mjs",
+    "host": "macOS authoring host",
+    "note": "This bundle records macOS-reachable evidence and external blockers; it does not attest physical Windows hardware or satisfy physical/live gates."
+  },
+  "overallVerdict": "NO-GO",
+  "receipts": [
+    {
+      "path": "receipts/local-automated-checks.json",
+      "sha256": "6107c38397f90bafe67de2f255662bb5d102d588705581393bd533abe25fd8fe"
+    },
+    {
+      "path": "receipts/physical-performance-x64.json",
+      "sha256": "0e338ae6758923f9dcca379de1e965dd088af4b8d74143d79998dbb8847b6680"
+    },
+    {
+      "path": "receipts/physical-performance-arm64.json",
+      "sha256": "15cdcded9cd1a92b9cbd5395daec00ba45428f86ce22ba41335bfd499eb3e371"
+    },
+    {
+      "path": "receipts/accessibility-display.json",
+      "sha256": "8eaa42294f2c573fca46b61bd905a9ae24719f8df33d22ea538d8db7744bf66d"
+    },
+    {
+      "path": "receipts/staging-cloud.json",
+      "sha256": "b294810e460199e01216964935e57ec8eaa796d02bfa37263dde49c25f254ebb"
+    },
+    {
+      "path": "receipts/media-computer-use-safety.json",
+      "sha256": "7f349377bf4e1e424c09efcab743122cc61e063c041b151475a5cb4bb6a69a96"
+    },
+    {
+      "path": "receipts/store-update-lifecycle.json",
+      "sha256": "44c13d5f6633e57106b5a2fd107aa335a9bab025ebe562412634c8c347d84cfc"
+    }
+  ],
+  "gates": [
+    {
+      "id": "local-automated-checks",
+      "status": "FAIL",
+      "receipts": [
+        "receipts/local-automated-checks.json"
+      ]
+    },
+    {
+      "id": "physical-performance-x64",
+      "status": "BLOCKED",
+      "receipts": [
+        "receipts/physical-performance-x64.json"
+      ]
+    },
+    {
+      "id": "physical-performance-arm64",
+      "status": "BLOCKED",
+      "receipts": [
+        "receipts/physical-performance-arm64.json"
+      ]
+    },
+    {
+      "id": "accessibility-display",
+      "status": "BLOCKED",
+      "receipts": [
+        "receipts/accessibility-display.json"
+      ]
+    },
+    {
+      "id": "staging-cloud",
+      "status": "BLOCKED",
+      "receipts": [
+        "receipts/staging-cloud.json"
+      ]
+    },
+    {
+      "id": "media-computer-use-safety",
+      "status": "BLOCKED",
+      "receipts": [
+        "receipts/media-computer-use-safety.json"
+      ]
+    },
+    {
+      "id": "store-update-lifecycle",
+      "status": "BLOCKED",
+      "receipts": [
+        "receipts/store-update-lifecycle.json"
+      ]
+    }
+  ],
+  "notes": [
+    "Physical PASS is reserved for physical-windows device receipts with recorded signed artifacts.",
+    "VM, hosted runner, source review, unit tests, and successful package registration do not satisfy physical certification."
+  ]
+}

@@ -94,8 +94,12 @@ extension RoutingClientWiring {
 
         let backupURL = try backupIfExists(url: url)
         try writeText(next, to: url)
-        try writeCodexProfile(gateway: gateway, advertisedModels: advertisedModels)
+        // Write the catalog before the profile: the profile records the
+        // catalog fingerprint, so persisting it only after the catalog write
+        // succeeds keeps `modelSyncStatus(.codex)` from reporting `.current`
+        // against a stale or missing catalog when the catalog write fails.
         try writeCodexModelCatalog(advertisedModels: advertisedModels)
+        try writeCodexProfile(gateway: gateway, advertisedModels: advertisedModels)
         return RoutingClientWiringChange(
             target: .codex,
             configURL: url,

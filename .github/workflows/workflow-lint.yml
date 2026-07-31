@@ -57,6 +57,8 @@ on:
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.test.mjs"
+      - "scripts/ci/verify-android-firebase-release-config.mjs"
+      - "scripts/ci/verify-android-firebase-release-config.test.mjs"
       - "scripts/ci/prepare-firebase-tools.sh"
       - "scripts/ci/verify-firebase-tools-runtime.mjs"
       - "scripts/ci/verify-firebase-tools-runtime.test.mjs"
@@ -164,6 +166,8 @@ on:
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.test.mjs"
+      - "scripts/ci/verify-android-firebase-release-config.mjs"
+      - "scripts/ci/verify-android-firebase-release-config.test.mjs"
       - "scripts/ci/prepare-firebase-tools.sh"
       - "scripts/ci/verify-firebase-tools-runtime.mjs"
       - "scripts/ci/verify-firebase-tools-runtime.test.mjs"
@@ -381,6 +385,9 @@ jobs:
 
       - name: Verify staging Functions deploy boundary
         run: node scripts/ci/verify-staging-functions-deploy-boundary.mjs
+
+      - name: Self-test Android Firebase release config redaction
+        run: node scripts/ci/verify-android-firebase-release-config.test.mjs
 
       - name: Self-test Firebase CLI runtime compatibility guard
         run: node --test scripts/ci/verify-firebase-tools-runtime.test.mjs

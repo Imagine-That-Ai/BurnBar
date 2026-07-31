@@ -3,6 +3,19 @@ import FirebaseCore
 import GoogleSignIn
 import OpenBurnBarCore
 
+#if DEBUG && GSTACK_IOS_QA
+import DebugBridgeCore
+import DebugBridgeUI
+#endif
+
+enum MobileDebugBridgeBuild {
+#if DEBUG && GSTACK_IOS_QA
+    static let isEnabled = true
+#else
+    static let isEnabled = false
+#endif
+}
+
 @MainActor
 enum HermesGatewayPairingDeepLink {
     static let notificationName = Notification.Name("OpenHermesGatewayPairing")
@@ -108,6 +121,11 @@ struct OpenBurnBarMobileApp: App {
 
     init() {
         MobileDataProtectionBootstrap.apply()
+#if DEBUG && GSTACK_IOS_QA
+        DebugBridgeUIWiring.installAll()
+        DebugOverlayWindow.shared.install()
+        StateServer.shared.start()
+#endif
         // Resume opt-in analytics for a previously-consented install WITHOUT
         // re-emitting the grant event, then record this app session. Both are
         // no-ops (and the SDK is never constructed) unless consent is granted and
