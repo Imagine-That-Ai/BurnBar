@@ -19,9 +19,11 @@ name: CodeQL
 # on the *nightly* run (via "Require status checks → from any source") so
 # the daily result gates the next day's merges without blocking same-day PRs.
 
+# CI-cost hardening (2026-07-31): the push-to-main trigger re-ran the full
+# Swift analysis (~140 macOS min) on every merge (~52K macOS minutes/month).
+# Per the branch-protection note above, the NIGHTLY run is the gating result;
+# the push trigger was redundant with this workflow's own stated design.
 on:
-  push:
-    branches: [main]
   schedule:
     # 09:17 UTC daily — slightly off the hour to dodge GitHub's cron contention.
     - cron: "17 9 * * *"

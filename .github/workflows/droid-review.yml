@@ -1,8 +1,12 @@
 name: Droid Auto Review
 
+# CI-cost hardening (2026-07-31): `synchronize` triggered a full high-effort
+# GLM-5.2 review + security review on EVERY commit pushed to every open PR
+# (~74 Factory-credit runs/48h). Review once when the PR becomes reviewable;
+# re-request by closing/reopening or ready_for_review if a re-review is needed.
 on:
   pull_request:
-    types: [opened, ready_for_review, reopened, synchronize]
+    types: [opened, ready_for_review, reopened]
   merge_group:
     types: [checks_requested]
 
