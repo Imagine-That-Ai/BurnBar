@@ -97,6 +97,7 @@ class ComputerUseSecurityCallableClient(
         keyVersion: Int? = null,
     ) {
         requireAuthenticatedUser()
+        bindAppCheckAttestation()
         val nonce = issueHighRiskActionNonce()
         val payload =
             linkedMapOf<String, Any>(
@@ -114,6 +115,7 @@ class ComputerUseSecurityCallableClient(
 
     suspend fun approveEscrowDeviceTrust(deviceId: String, approverDeviceId: String? = null, trustChain: Map<String, Any>? = null) {
         requireAuthenticatedUser()
+        bindAppCheckAttestation()
         val nonce = issueHighRiskActionNonce()
         val payload = mutableMapOf<String, Any>("deviceId" to deviceId, "nonce" to nonce)
         approverDeviceId?.takeIf { it.isNotBlank() }?.let { payload["approverDeviceId"] = it }

@@ -165,6 +165,7 @@ enum ComputerUseSecurityCallableClient {
         keyVersion: Int? = nil
     ) async throws {
         _ = try requireSignedInUser()
+        try await bindAppCheckAttestation()
         let nonce = try await issueHighRiskActionNonce()
         var payload: [String: Any] = [
             "deviceId": deviceId,
@@ -192,6 +193,7 @@ enum ComputerUseSecurityCallableClient {
     /// Elevates an escrow device to `trusted` via the server-only callable (Firestore rules block client writes).
     static func approveEscrowDeviceTrust(deviceId: String, approverDeviceId: String? = nil) async throws {
         let uid = try requireSignedInUser().uid
+        try await bindAppCheckAttestation()
         let resolvedApproverDeviceId = approverDeviceId?.isEmpty == false ? approverDeviceId! : deviceId
         let trustChain = try await buildTrustChainProof(
             uid: uid,
