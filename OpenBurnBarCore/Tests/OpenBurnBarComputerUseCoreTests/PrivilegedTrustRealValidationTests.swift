@@ -48,6 +48,64 @@ final class PrivilegedTrustRealValidationTests: XCTestCase {
         }
     }
 
+    func test_staticValidation_rejectsTestHostUnderProductionRequirement() throws {
+        // On-disk install/launch checks keep the full static validation. The
+        // test host is not first-party signed, so the production designated
+        // requirement must refuse its static code.
+        let staticCode = try Self.selfStaticCode()
+
+        XCTAssertThrowsError(
+            try OpenBurnBarPrivilegedTrust.validateStaticCode(staticCode)
+        ) { error in
+            guard case PrivilegedSocketTrustError.codeSignatureInvalid = error else {
+                return XCTFail("expected codeSignatureInvalid, got \(error)")
+            }
+        }
+    }
+
+    func test_staticCodeAndFlagPlumbing_executesAgainstAppleSignedHost() throws {
+        // Mirror of the dynamic-path plumbing test for the retained static
+        // lane: relax only the requirement string so SecStaticCodeCheckValidity
+        // passes for the Apple-signed test host and the signing-info →
+        // CodeDirectory-flag plumbing actually runs. The only acceptable
+        // failure is the M-9 flag-policy refusal.
+        let staticCode = try Self.selfStaticCode()
+
+        do {
+            try OpenBurnBarPrivilegedTrust.validateStaticCode(staticCode, requirementString: "anchor apple")
+        } catch PrivilegedSocketTrustError.codeSignatureInvalid(let status) {
+            XCTAssertEqual(
+                status,
+                errSecCSReqFailed,
+                "flag policy must be the only refusal for an Apple-signed host (got \(status))"
+            )
+        }
+    }
+
+    func test_staticValidation_invalidRequirementString_failsClosed() throws {
+        let staticCode = try Self.selfStaticCode()
+
+        XCTAssertThrowsError(
+            try OpenBurnBarPrivilegedTrust.validateStaticCode(staticCode, requirementString: "not a requirement ((")
+        ) { error in
+            guard case PrivilegedSocketTrustError.codeSignatureInvalid = error else {
+                return XCTFail("expected codeSignatureInvalid, got \(error)")
+            }
+        }
+    }
+
+    /// Static code of the running test host, for exercising the on-disk
+    /// validation lane against a real signed binary.
+    private static func selfStaticCode() throws -> SecStaticCode {
+        var selfCode: SecCode?
+        XCTAssertEqual(SecCodeCopySelf([], &selfCode), errSecSuccess)
+        let code = try XCTUnwrap(selfCode)
+
+        var staticCode: SecStaticCode?
+        XCTAssertEqual(SecCodeCopyStaticCode(code, [], &staticCode), errSecSuccess)
+        return try XCTUnwrap(staticCode)
+    }
+
     func test_codeDirectoryFlagPolicy_requiresBothBits() {
         let runtime = OpenBurnBarPrivilegedTrust.hardenedRuntimeFlag
         let library = OpenBurnBarPrivilegedTrust.libraryValidationFlag
