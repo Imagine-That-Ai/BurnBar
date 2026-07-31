@@ -227,5 +227,9 @@ xcodebuild -create-xcframework \
   "${build_xcframework_args[@]}" \
   -output "${XCFRAMEWORK}"
 
+# Record the cargo profile so the release preflight
+# (scripts/ci/verify-iroh-release-artifact.sh) can reject debug archives.
+printf '%s\n' "${PROFILE_DIR}" > "${XCFRAMEWORK}/openburnbar-iroh-build-profile"
+
 log "DONE: ${XCFRAMEWORK}"
 log "swift bindings: ${GENERATED_DIR}"

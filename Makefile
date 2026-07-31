@@ -42,7 +42,7 @@ preflight:
 	@command -v xcodebuild >/dev/null 2>&1 || { echo "ERROR: xcodebuild not found. Install Xcode 16+ command line tools first."; exit 1; }
 	@command -v swift >/dev/null 2>&1 || { echo "ERROR: swift not found. Install Xcode 16+ command line tools first."; exit 1; }
 
-bootstrap: ## Fresh-clone setup: init submodules, preflight Rust/protoc, build the libsignal FFI XCFramework
+bootstrap: ## Fresh-clone setup: init submodules, preflight Rust/protoc, build the libsignal FFI and Mercury Iroh XCFrameworks
 	@if git submodule status Vendor/libsignal 2>/dev/null | grep -q '^-'; then \
 		echo "==> Initializing Vendor/libsignal submodule…"; \
 		git submodule update --init --recursive; \
@@ -55,6 +55,14 @@ bootstrap: ## Fresh-clone setup: init submodules, preflight Rust/protoc, build t
 		{ command -v rustup >/dev/null 2>&1 || [ -x "$$HOME/.cargo/bin/rustup" ]; } || { echo "ERROR: rustup not found. The libsignal FFI build uses it to add Apple build targets — install via https://rustup.rs and re-run 'make bootstrap'."; exit 1; }; \
 		echo "==> Building Signal FFI XCFramework artifacts (first run can take 20+ minutes)…"; \
 		SIGNAL_FFI_BUILD_PROFILE="$${SIGNAL_FFI_BUILD_PROFILE:-release}" bash scripts/lib/prepare-signal-ffi-xcframework.sh; \
+	fi
+	@if bash scripts/ci/verify-iroh-release-artifact.sh >/dev/null 2>&1; then \
+		echo "==> Mercury Iroh XCFramework already present."; \
+	else \
+		{ command -v cargo >/dev/null 2>&1 || [ -x "$$HOME/.cargo/bin/cargo" ]; } || { echo "ERROR: Rust (cargo) not found. Building the Mercury Iroh FFI requires it. Install via https://rustup.rs and re-run 'make bootstrap'."; exit 1; }; \
+		{ command -v rustup >/dev/null 2>&1 || [ -x "$$HOME/.cargo/bin/rustup" ]; } || { echo "ERROR: rustup not found. The Mercury Iroh FFI build uses it to add Apple build targets. Install via https://rustup.rs and re-run 'make bootstrap'."; exit 1; }; \
+		echo "==> Building Mercury Iroh XCFramework (first run can take several minutes)…"; \
+		bash scripts/build-iroh-xcframework.sh; \
 	fi
 
 build: bootstrap preflight
