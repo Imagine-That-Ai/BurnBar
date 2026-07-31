@@ -539,6 +539,18 @@ test("Functions preparation is uncredentialed and deploy consumes only a verifie
   assert.match(prepare, /--portable-functions-source/u);
   assert.match(
     prepare,
+    /node scripts\/ci\/prepare-functions-runtime-package\.mjs[\s\S]*--functions-dir "\$stage\/functions"/u,
+  );
+  const prepareRuntimePackage = prepare.indexOf(
+    "node scripts/ci/prepare-functions-runtime-package.mjs",
+  );
+  const artifactChecksum = prepare.indexOf(
+    'xargs -0 sha256sum > "$RUNNER_TEMP/prepared-functions-SHA256SUMS"',
+  );
+  assert.ok(prepareRuntimePackage > 0);
+  assert.ok(artifactChecksum > prepareRuntimePackage);
+  assert.match(
+    prepare,
     /- name: Prepare pinned Sentry CLI\n        if: steps\.tag\.outputs\.dry_run != 'true'/u,
   );
 

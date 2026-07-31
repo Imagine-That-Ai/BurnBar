@@ -582,6 +582,8 @@ jobs:
             --exclude 'node_modules/.bin/' \
             --exclude '.env*' \
             functions/ "$stage/functions/"
+          node scripts/ci/prepare-functions-runtime-package.mjs \
+            --functions-dir "$stage/functions"
           mkdir -p "$stage/sentry-cli"
           rsync -aL --delete \
             --exclude 'node_modules/.bin/' \
