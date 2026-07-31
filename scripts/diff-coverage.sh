@@ -524,6 +524,24 @@ COVERAGE_ALLOWLIST = {
         "Swift package XCTest coverage target, so line attribution here would "
         "be misleading."
     ),
+    "OpenBurnBarCore/Sources/OpenBurnBarUI/Views/MissionControl/": (
+        "SwiftUI mission-console rendering: liquid-glass surfaces, hero and "
+        "constellation canvases, composer chrome, and situation-room layout "
+        "require a live window server to line-hit. The decision logic is "
+        "line-gated in the package lane: forecast cost/runtime math, mission "
+        "kind metadata, FAB gauge configuration, and cost/token formatting are "
+        "covered by MissionConsoleTests (MissionConsoleForecastTests, "
+        "MissionConsoleKindTests, MissionFABGaugeConfigurationTests, "
+        "MissionConsoleFormattingTests), and the mission-control RPC surface "
+        "by OpenBurnBarMissionControlContractsTests."
+    ),
+    "tools/DebugBridge/": (
+        "Local debug-bridge dev tool: a standalone SPM package that is never "
+        "compiled into the app coverage-bearing target, so this lane can never "
+        "produce line evidence for it. Its auth/lifecycle decisions (healthz "
+        "auth exemption, tap auth requirement, boot-token rotation) are "
+        "covered by its own StateServerSmokeTests package test target."
+    ),
 }
 
 for waiver_path, waiver_reason in COVERAGE_ALLOWLIST.items():
