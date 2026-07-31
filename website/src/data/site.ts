@@ -143,7 +143,7 @@ export const SITE = {
   publicBeta: {
     label: "Public beta",
     shortBlurb:
-      "Free local Mac + iOS Core. We are bug-watching with early users — Windows and Linux stay early/private until certified.",
+      "Free local Core on Mac, plus an iOS companion (sign-in + Mac sync). We are bug-watching with early users; Windows and Linux stay early/private until certified.",
     feedbackFormUrl: "",
     discussionsUrl: "https://github.com/Imagine-That-Ai/BurnBar/discussions",
     issuesUrl: "https://github.com/Imagine-That-Ai/BurnBar/issues/new/choose",

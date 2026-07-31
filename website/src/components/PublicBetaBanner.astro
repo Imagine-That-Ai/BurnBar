@@ -27,7 +27,9 @@ const primaryFeedbackLabel = formHref ? "Send feedback" : "Open Discussions";
 <style>
   .public-beta {
     position: relative;
-    z-index: 40;
+    /* Stay below the sticky header (z-index: 20 in Header.astro) so the banner
+       never paints over or intercepts the navigation while scrolling past it. */
+    z-index: 10;
     border-bottom: 1px solid color-mix(in oklab, var(--ember, #fa6b06) 45%, transparent);
     background: color-mix(in oklab, var(--ember, #fa6b06) 12%, var(--bg, #07060a));
   }
