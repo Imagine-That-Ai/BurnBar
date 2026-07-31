@@ -431,12 +431,12 @@ jobs:
           include-hidden-files: true
 
       - name: Dry-run summary
-        if: ${{ github.event.inputs.dry_run == 'true' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
         run: echo "dry_run=true — built, stripped, hashed, and uploaded hosting artifacts; skipped production deploy"
 
   deploy-hosting:
     needs: build-hosting-artifacts
-    if: ${{ github.event.inputs.dry_run != 'true' }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
@@ -657,7 +657,7 @@ jobs:
 
   hosting-smoke-result:
     needs: [build-hosting-artifacts, deploy-hosting]
-    if: ${{ always() && github.event.inputs.dry_run != 'true' }}
+    if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

@@ -85,6 +85,7 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         if (routeLivingThemeIntent(intent)) return
+        enableOpenBurnBarScreenPrivacy()
         handleIntent(intent)
     }
 

@@ -1,4 +1,9 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import {
   assertDebianLifecyclePayload,
@@ -62,13 +67,35 @@ test('complete release asset matrix is accepted for both architectures', () => {
       expected.deb,
       `openburnbar-1.2.3-1-${architecture}.pkg.tar.zst`,
       `openburnbar-1.2.3-1-${architecture}.pkg.tar.zst.ed25519.sig`,
-      expected.installedManifest,
-      expected.installedManifestSignature,
+      ...Object.values(expected.installedAttestations).flatMap((attestation) => [
+        attestation.manifest,
+        attestation.signature
+      ]),
       expected.productProof,
       expected.productProofSignature
     );
   }
   assert.equal(inspectReleaseAssets({ version: '1.2.3', assets }).passed, true);
+});
+
+test('format-specific installed attestations cannot substitute for one another', () => {
+  const assets = [];
+  for (const architecture of ['aarch64', 'x86_64']) {
+    const expected = expectedAssets('1.2.3', architecture);
+    assets.push(
+      expected.deb,
+      `openburnbar-1.2.3-1-${architecture}.pkg.tar.zst`,
+      `openburnbar-1.2.3-1-${architecture}.pkg.tar.zst.ed25519.sig`,
+      expected.installedAttestations.arch.manifest,
+      expected.installedAttestations.arch.signature,
+      expected.productProof,
+      expected.productProofSignature
+    );
+  }
+  const result = inspectReleaseAssets({ version: '1.2.3', assets });
+  assert.equal(result.passed, false);
+  assert.ok(result.failures.some((failure) => /deb-aarch64.*installed-manifest/u.test(failure)));
+  assert.ok(result.failures.some((failure) => /rpm-x86_64.*installed-manifest/u.test(failure)));
 });
 
 test('Debian payload inspection requires exact identity and the daemon launcher', () => {
@@ -97,4 +124,101 @@ test('Debian payload inspection requires exact identity and the daemon launcher'
   const rejected = assertDebianLifecyclePayload({ packagePath: '/tmp/candidate.deb', version: '1.2.3', architecture: 'x86_64', run: missingLauncher });
   assert.equal(rejected.passed, false);
   assert.match(rejected.reason, /missing .*daemon-launch/u);
+  // An authoritative incompatibility verdict is not indeterminate: only a
+  // failure to inspect the package at all may block a strict bootstrap.
+  assert.notEqual(rejected.indeterminate, true);
+});
+
+test('uninspectable Debian payloads are indeterminate rather than an incompatibility verdict', () => {
+  const metadataFailure = (_command, args) => args[0] === '-f' && args[2] === 'Package'
+    ? { exitCode: 1, stdout: '', stderr: 'dpkg-deb: error' }
+    : { exitCode: 0, stdout: '', stderr: '' };
+  const metadata = assertDebianLifecyclePayload({ packagePath: '/tmp/candidate.deb', version: '1.2.3', architecture: 'x86_64', run: metadataFailure });
+  assert.equal(metadata.passed, false);
+  assert.equal(metadata.indeterminate, true);
+
+  const contentFailure = (_command, args) => args[0] === '-c'
+    ? { exitCode: 1, stdout: '', stderr: 'dpkg-deb: error' }
+    : args[2] === 'Package'
+      ? { exitCode: 0, stdout: 'open-burn-bar\n', stderr: '' }
+      : args[2] === 'Version'
+        ? { exitCode: 0, stdout: '1.2.3\n', stderr: '' }
+        : { exitCode: 0, stdout: 'amd64\n', stderr: '' };
+  const content = assertDebianLifecyclePayload({ packagePath: '/tmp/candidate.deb', version: '1.2.3', architecture: 'x86_64', run: contentFailure });
+  assert.equal(content.passed, false);
+  assert.equal(content.indeterminate, true);
+});
+
+test('strict mode fails closed on transient release discovery errors instead of reporting no baseline', () => {
+  const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'resolve-linux-previous-release.mjs');
+  const shimDir = fs.mkdtempSync(path.join(os.tmpdir(), 'resolve-strict-'));
+  fs.writeFileSync(path.join(shimDir, 'gh'), '#!/bin/sh\necho "API rate limit exceeded" >&2\nexit 1\n', { mode: 0o755 });
+  const run = (extraArgs) => spawnSync(process.execPath, [script, '--current-version', '1.2.3', ...extraArgs], {
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${shimDir}:${process.env.PATH}`, GITHUB_OUTPUT: '', RUNNER_TEMP: shimDir }
+  });
+  try {
+    const strict = run(['--strict']);
+    assert.equal(strict.status, 1);
+    const strictResult = JSON.parse(strict.stdout);
+    assert.equal(strictResult.passed, false);
+    assert.equal(strictResult.discoveryError, true);
+
+    const lenient = run([]);
+    assert.equal(lenient.status, 0);
+    const lenientResult = JSON.parse(lenient.stdout);
+    assert.equal(lenientResult.passed, false);
+    assert.equal(lenientResult.discoveryError, true);
+  } finally {
+    fs.rmSync(shimDir, { recursive: true, force: true });
+  }
+});
+
+// `gh release list` and `view` are not the only ways discovery can fail: the
+// per-candidate asset download runs through defaultRun, so a transient
+// failure there once produced a clean `{passed:false, version:"", tag:""}`
+// with exit 0 — exactly the shape the one-time lifecycle bootstrap treats as
+// "no baseline exists, publishing is authorized".
+test('strict mode fails closed when a candidate package cannot be downloaded for inspection', () => {
+  const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'resolve-linux-previous-release.mjs');
+  const shimDir = fs.mkdtempSync(path.join(os.tmpdir(), 'resolve-download-'));
+  const version = '1.0.0';
+  const assets = [
+    `OpenBurnBar_${version}_arm64.deb`,
+    `OpenBurnBar_${version}_amd64.deb`,
+    `openburnbar-${version}-1-aarch64.pkg.tar.zst`,
+    `openburnbar-${version}-1-aarch64.pkg.tar.zst.ed25519.sig`,
+    `openburnbar-${version}-1-x86_64.pkg.tar.zst`,
+    `openburnbar-${version}-1-x86_64.pkg.tar.zst.ed25519.sig`,
+    'product-proof-closure.json',
+    'product-proof-closure.json.ed25519.sig',
+    ...['aarch64', 'x86_64'].flatMap((architecture) => ['arch', 'deb', 'rpm'].flatMap((format) => [
+      `openburnbar-${version}-${format}-${architecture}.installed-manifest.json`,
+      `openburnbar-${version}-${format}-${architecture}.installed-manifest.ed25519`
+    ]))
+  ];
+  fs.writeFileSync(path.join(shimDir, 'gh'), [
+    '#!/bin/sh',
+    'case "$2" in',
+    `  list) echo '${JSON.stringify([{ tagName: `linux-v${version}`, isDraft: false, isPrerelease: false }])}'; exit 0 ;;`,
+    `  view) echo '${JSON.stringify({ assets: assets.map((name) => ({ name })) })}'; exit 0 ;;`,
+    '  download) echo "HTTP 500: transient" >&2; exit 1 ;;',
+    'esac',
+    'exit 1',
+    ''
+  ].join('\n'), { mode: 0o755 });
+  const run = (extraArgs) => spawnSync(process.execPath, [script, '--current-version', '2.0.0', ...extraArgs], {
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${shimDir}:${process.env.PATH}`, GITHUB_OUTPUT: '', RUNNER_TEMP: shimDir }
+  });
+  try {
+    const strict = run(['--strict']);
+    const strictResult = JSON.parse(strict.stdout);
+    assert.equal(strictResult.passed, false);
+    assert.equal(strictResult.discoveryError, true);
+    assert.match(strictResult.reason, /failed to download/u);
+    assert.equal(strict.status, 1);
+  } finally {
+    fs.rmSync(shimDir, { recursive: true, force: true });
+  }
 });

@@ -12,11 +12,12 @@ private val screenPrivacySession = ScreenPrivacySession()
  * expose prompts, transcripts, usage data, media sessions, or remote-control UI.
  */
 fun Activity.enableOpenBurnBarScreenPrivacy() {
-    val allowScreenshotsForDeviceQA = screenPrivacySession.allowScreenshots(
-        isDebugBuild = BuildConfig.DEBUG,
-        launchRequestedDeviceQA =
-        intent?.getBooleanExtra(EXTRA_ALLOW_SCREENSHOTS_FOR_DEVICE_QA, false) == true,
-    )
+    val allowScreenshotsForDeviceQA =
+        screenPrivacySession.allowScreenshots(
+            isDebugBuild = BuildConfig.DEBUG,
+            launchRequestedDeviceQA =
+            intent?.getBooleanExtra(EXTRA_ALLOW_SCREENSHOTS_FOR_DEVICE_QA, false) == true,
+        )
     if (
         shouldSecureScreen(
             isDebugBuild = BuildConfig.DEBUG,

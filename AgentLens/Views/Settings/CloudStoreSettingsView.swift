@@ -25,6 +25,14 @@ struct CloudStoreSettingsView: View {
     var accountManager: AccountManager = .shared
     var dataStore: DataStore?
 
+    /// `onAppear` starts live services (StoreKit catalogue load, backup
+    /// catch-up, analytics, remote-MCP Firestore listener) and the
+    /// `repeatForever` tier-crest shimmer. Headless test renders set this to
+    /// `false`: an off-window `NSHostingView` never fires `onDisappear`, so
+    /// on CI the leftover work/animation from a snapshot render wedges the
+    /// shared test process and hangs later suites (App PR Gate timeout).
+    var startsLiveServicesOnAppear: Bool = true
+
     @State private var isBackingUp = false
     @State private var backupNoticeError: String?
     @State private var lastManualBackupAt: Date?
@@ -91,6 +99,7 @@ struct CloudStoreSettingsView: View {
             CloudBadgePicker()
         }
         .onAppear {
+            guard startsLiveServicesOnAppear else { return }
             Analytics.shared.track(.screenViewed, ["surface": "cloud_sync"])
             entitlement.start()
             Task { await purchaseStore.load() }
@@ -960,7 +969,8 @@ struct CloudStoreSettingsView: View {
                     TierHolographicAccent(
                         crestAsset: crestAsset,
                         palette: model.holoPalette,
-                        reduceMotion: reduceMotion
+                        reduceMotion: reduceMotion,
+                        animates: startsLiveServicesOnAppear
                     )
                     .allowsHitTesting(false)
                 }
@@ -1119,12 +1129,7 @@ struct CloudStoreSettingsView: View {
             .padding(.top, 4)
         } else {
             Button {
-                Task {
-                    await purchaseStore.purchase(
-                        tier: model.tier,
-                        billingPeriod: billingPeriod
-                    )
-                }
+                subscribeToSelectedCadence(model.tier) // cov:ignore -- button chrome; the action is unit-tested via subscribeToSelectedCadence(_:)
             } label: {
                 Group {
                     if isBusy {
@@ -1146,6 +1151,19 @@ struct CloudStoreSettingsView: View {
             .disabled(purchaseStore.isPurchasing)
             .padding(.top, 4)
             .accessibilityIdentifier("macCloudStore.subscribe.\(model.tier.rawValue)")
+        }
+    }
+
+    /// Starts the StoreKit purchase for `tier` at the billing cadence the
+    /// pane's segmented picker currently selects. Internal (not private) so
+    /// unit tests can drive the exact action the subscribe button performs.
+    @discardableResult
+    func subscribeToSelectedCadence(_ tier: MacCloudPricingTier) -> Task<Void, Never> {
+        Task {
+            await purchaseStore.purchase(
+                tier: tier,
+                billingPeriod: billingPeriod
+            )
         }
     }
 
@@ -1391,7 +1409,10 @@ struct CloudStoreSettingsView: View {
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onAppear { remoteMCPClients.startListening() }
+        .onAppear {
+            guard startsLiveServicesOnAppear else { return }
+            remoteMCPClients.startListening()
+        }
         .onDisappear { remoteMCPClients.stopListening() }
         .sheet(isPresented: $showingHostedMCPUnlock) {
             FeatureUnlockSheet(feature: GatedFeature.gatedFeature(.hostedMCP))

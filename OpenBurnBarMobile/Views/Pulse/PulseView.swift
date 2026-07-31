@@ -178,6 +178,7 @@ struct PulseView: View {
         // Pulse, so the big headline was pure chrome.
         .navigationTitle("Pulse")
         .accessibilityIdentifier("screen.pulse")
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .navigationBar)
         .task { await initialLoad() }
         .sheet(isPresented: $showCloudStore) {

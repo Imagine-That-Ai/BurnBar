@@ -95,22 +95,54 @@ FIREBASE_UID_RE = re.compile(r"\b(uid|user[_-]?id|firebase[_-]?uid)\s*[:=]\s*[A-
 SAFE_IDENTIFIER_RE = re.compile(r"[^A-Za-z0-9_.:-]+")
 
 
+# Safety cap on pagination: 40 pages x 100 issues is far beyond any plausible
+# twice-daily intake and bounds the loop if Sentry misbehaves.
+MAX_SENTRY_PAGES = 40
+
+
+def _sentry_next_page_url(link_header: str) -> str | None:
+    """Return the next-page URL from a Sentry Link header, if more results exist."""
+    for part in link_header.split(","):
+        if 'rel="next"' in part and 'results="true"' in part:
+            match = re.search(r"<([^>]+)>", part)
+            if match:
+                return match.group(1)
+    return None
+
+
 def sentry_get(path: str) -> list:
+    """GET a Sentry API listing, following cursor pagination until exhausted.
+
+    The twice-daily cadence (was every 4h) means a single page of 25-100
+    results can silently drop older groups past the advancing lookback cutoff;
+    follow the Link header so the whole window is consumed.
+    """
     url = f"https://sentry.io/api/0{path}"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "Authorization": f"Bearer {SENTRY_AUTH_TOKEN}",
-            "Content-Type": "application/json",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return []
-        raise
+    results: list = []
+    for _ in range(MAX_SENTRY_PAGES):
+        req = urllib.request.Request(
+            url,
+            headers={
+                "Authorization": f"Bearer {SENTRY_AUTH_TOKEN}",
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                page = json.loads(resp.read())
+                link_header = resp.headers.get("Link", "")
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return results
+            raise
+        if not isinstance(page, list):
+            return page if not results else results
+        results.extend(page)
+        next_url = _sentry_next_page_url(link_header)
+        if not next_url:
+            break
+        url = next_url
+    return results
 
 
 def normalize_identifier(value: object, fallback_prefix: str = "id") -> str:
@@ -278,7 +310,7 @@ def main() -> None:
         query = f"is:unresolved firstSeen:>{cutoff_str}"
         path = (
             f"/projects/{SENTRY_ORG}/{project_slug}/issues/"
-            f"?{urllib.parse.urlencode({'query': query, 'limit': 25, 'sort': 'date'})}"
+            f"?{urllib.parse.urlencode({'query': query, 'limit': 100, 'sort': 'date'})}"
         )
 
         try:

@@ -2,16 +2,38 @@ import Foundation
 import GRDB
 import OpenBurnBarCore
 
+// MARK: - Conversation Indexing Seam
+
+/// The single capability the reconcile stage needs from `RefreshOrchestrator`.
+///
+/// Narrow on purpose. Usage accounting depends on conversation indexing running
+/// *after* usage rows are committed, and that ordering is only worth as much as
+/// the test that pins it. A protocol here lets a test observe the usage table at
+/// the exact moment indexing is invoked; `RefreshOrchestrator` is an `actor` and
+/// cannot be subclassed for that purpose.
+protocol ConversationIndexingCoordinator: Sendable {
+    func indexConversationsOffMain(
+        _ conversations: [OpenBurnBarCore.ConversationRecord],
+        indexingEnabled: Bool
+    ) async -> Int
+}
+
+extension RefreshOrchestrator: ConversationIndexingCoordinator {}
+
 // MARK: - Usage Refresh Pipeline Stages
 
-/// Explicit refresh pipeline: discover → parse → reconcile → persist.
+/// Explicit refresh pipeline: discover → parse → persist → reconcile.
 ///
 /// `RefreshBackgroundWork` delegates to these stages so timing and failure
 /// boundaries stay visible without rewriting the orchestrator graph.
+///
+/// Stage order is a correctness contract, not a preference: usage rows are
+/// published before anything indexes conversation bodies. See
+/// `publishUsageThenIndexConversations(parsed:)`.
 struct UsageRefreshPipeline: Sendable {
     let parsers: [AgentProvider: any OpenBurnBarCore.LogParser]
     let dataStore: DataStore
-    let orchestrator: RefreshOrchestrator
+    let orchestrator: any ConversationIndexingCoordinator
     let settings: RefreshSettingsSnapshot
 
     struct DiscoverResult: Sendable {
@@ -36,6 +58,15 @@ struct UsageRefreshPipeline: Sendable {
         var typedPersistenceError: OpenBurnBarError?
         var healthWriteError: String?
         var duration: TimeInterval = 0
+    }
+
+    /// Result of the ordered publish-then-index operation. Holding one is proof
+    /// that usage rows were committed before conversation indexing ran, or,
+    /// when persistence failed, that indexing was deliberately skipped rather
+    /// than run against a partially published usage table.
+    struct PublishResult: Sendable {
+        var persist: PersistResult
+        var reconcile: ReconcileResult
     }
 
     func discover() -> DiscoverResult {
@@ -98,7 +129,49 @@ struct UsageRefreshPipeline: Sendable {
         return result
     }
 
-    func reconcile(parsed: ParsedBatch) async -> ReconcileResult {
+    /// Commits the parsed usage batch, then indexes any conversation bodies it
+    /// carried — in that order, always.
+    ///
+    /// The ordering is the fix. `persist` is what makes a refresh tick's numbers
+    /// real: it deletes the session IDs the parsers invalidated
+    /// (`usageSessionIDsToDelete` — e.g. a Codex lifetime row superseded by exact
+    /// per-day rows) and inserts the replacements. `reconcile` runs
+    /// `ConversationIndexer`, which takes the DataStore's single writer for one
+    /// `upsertConversation` + one `enqueueConversationProjectionJob` per changed
+    /// record and wakes the projection worker.
+    ///
+    /// Running reconcile first opens a window in which the usage table still
+    /// holds the superseded rows, does not yet hold their replacements, and is
+    /// already being read by projection jobs the indexer just enqueued — so
+    /// totals computed in that window double-count. Persisting first closes it:
+    /// by the time anything indexes, the tick's accounting has committed.
+    ///
+    /// When persistence fails the ordering contract cannot be satisfied at all:
+    /// the deletions and chunked inserts commit in separate transactions, so a
+    /// mid-flight failure can leave only some invalidations or replacements
+    /// applied. Indexing against that partially published state would enqueue
+    /// projection jobs that materialize incomplete totals, so reconciliation is
+    /// skipped and the persistence error is surfaced via `PublishResult.persist`.
+    func publishUsageThenIndexConversations(parsed: ParsedBatch) async -> PublishResult {
+        let persisted = await persist(parsed: parsed)
+        guard persisted.persistenceErrorMessage == nil else {
+            return PublishResult(persist: persisted, reconcile: ReconcileResult())
+        }
+        let reconciled = await reconcile(parsed: parsed, afterPublishing: persisted)
+        return PublishResult(persist: persisted, reconcile: reconciled)
+    }
+
+    /// Indexes conversation bodies.
+    ///
+    /// `private` on purpose: `publishUsageThenIndexConversations` is the only
+    /// entry point to conversation indexing, so a caller cannot schedule
+    /// indexing ahead of (or instead of) usage publication. `published` keeps
+    /// the ordering explicit at the single call site inside this file.
+    private func reconcile(
+        parsed: ParsedBatch,
+        afterPublishing published: PersistResult
+    ) async -> ReconcileResult {
+        _ = published
         var result = ReconcileResult()
         result.indexedConversationChanges = await orchestrator.indexConversationsOffMain(
             parsed.allConversations,

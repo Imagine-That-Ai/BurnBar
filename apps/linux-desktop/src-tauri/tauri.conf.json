@@ -28,6 +28,7 @@
     "icon": ["icons/icon.png"],
     "linux": {
       "deb": {
+        "desktopTemplate": "../../../packaging/linux/tauri-installed.desktop",
         "depends": [
           "libsecret-tools",
           "ibus",
@@ -64,6 +65,7 @@
         "postInstallScript": "../../../packaging/linux/openburnbar-cli-migrate.sh"
       },
       "rpm": {
+        "desktopTemplate": "../../../packaging/linux/tauri-installed.desktop",
         "depends": [
           "libsecret",
           "ibus",

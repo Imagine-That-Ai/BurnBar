@@ -14,6 +14,12 @@ on:
       rules_artifact:
         required: true
         type: string
+      deploy_hosting:
+        required: true
+        type: boolean
+      hosting_artifact:
+        required: true
+        type: string
       deploy_functions:
         required: true
         type: boolean
@@ -45,10 +51,13 @@ jobs:
     env:
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
       RULES_ARTIFACT: ${{ inputs.rules_artifact }}
+      HOSTING_ARTIFACT: ${{ inputs.hosting_artifact }}
+      DEPLOY_HOSTING: ${{ inputs.deploy_hosting }}
       FUNCTIONS_ARTIFACT: ${{ inputs.functions_artifact }}
       DEPLOY_FUNCTIONS: ${{ inputs.deploy_functions }}
       FUNCTION_TARGETS: ${{ inputs.function_targets }}
       FIREBASE_PROJECT: ${{ vars.STAGING_FIREBASE_PROJECT || 'burnbar-staging' }}
+      STAGING_FIREBASE_PUBLIC_CONFIG_JSON: ${{ vars.STAGING_FIREBASE_PUBLIC_CONFIG_JSON }}
       STAGING_ENABLED: ${{ vars.STAGING_ENABLED }}
     steps:
       - name: Check out trusted deployment instructions from main
@@ -70,6 +79,17 @@ jobs:
           [[ "$RULES_ARTIFACT" == "staging-rules-$CANDIDATE_SHA" ]] || {
             echo "::error::rules artifact identity does not match candidate SHA."; exit 1;
           }
+          if [[ "$DEPLOY_HOSTING" == "true" ]]; then
+            [[ "$HOSTING_ARTIFACT" == "staging-hosting-$CANDIDATE_SHA" ]] || {
+              echo "::error::Hosting artifact identity does not match candidate SHA."; exit 1;
+            }
+            [[ -n "$STAGING_FIREBASE_PUBLIC_CONFIG_JSON" ]] || {
+              echo "::error::STAGING_FIREBASE_PUBLIC_CONFIG_JSON is not provisioned."; exit 1;
+            }
+            [[ "$FIREBASE_PROJECT" == "burnbar-staging" ]] || {
+              echo "::error::The staging website public Firebase config is pinned to burnbar-staging."; exit 1;
+            }
+          fi
           if [[ "$DEPLOY_FUNCTIONS" == "true" ]]; then
             [[ "$FUNCTIONS_ARTIFACT" == "staging-functions-$CANDIDATE_SHA" ]] || {
               echo "::error::Functions artifact identity does not match candidate SHA."; exit 1;
@@ -98,6 +118,12 @@ jobs:
           name: ${{ inputs.functions_artifact }}
           path: ${{ runner.temp }}/candidate-functions
 
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        if: ${{ inputs.deploy_hosting }}
+        with:
+          name: ${{ inputs.hosting_artifact }}
+          path: ${{ runner.temp }}/candidate-hosting
+
       - name: Verify bounded candidate artifacts before authentication
         run: |
           set -euo pipefail
@@ -108,18 +134,25 @@ jobs:
           (cd "$rules" && sha256sum --check SHA256SUMS)
           find "$rules" -type l -exec false {} +
 
+          if [[ "$DEPLOY_HOSTING" == "true" ]]; then
+            hosting="$RUNNER_TEMP/candidate-hosting"
+            test "$(cat "$hosting/CANDIDATE_SHA")" = "$CANDIDATE_SHA"
+            test "$(du -sk "$hosting" | cut -f1)" -le 131072
+            test "$(find "$hosting" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')" = "2"
+            test "$(find "$hosting" -mindepth 1 -maxdepth 1 -type d -name website | wc -l | tr -d ' ')" = "1"
+            test "$(find "$hosting" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = "3"
+            test -f "$hosting/website/dist/index.html"
+            test -f "$hosting/website/dist/subscribe/index.html"
+            test "$(find "$hosting/website/dist" -type f | wc -l | tr -d ' ')" -le 10000
+            (cd "$hosting" && sha256sum --check SHA256SUMS)
+            find "$hosting" -type l -exec false {} +
+          fi
+
           if [[ "$DEPLOY_FUNCTIONS" == "true" ]]; then
             functions="$RUNNER_TEMP/candidate-functions"
-            test "$(cat "$functions/CANDIDATE_SHA")" = "$CANDIDATE_SHA"
-            test "$(du -sk "$functions" | cut -f1)" -le 131072
-            (cd "$functions" && sha256sum --check SHA256SUMS)
-            find "$functions" -type l -exec false {} +
-            find "$functions/functions" -type f | while IFS= read -r path; do
-              case "${path#"$functions/functions/"}" in
-                lib/*.js|lib/*.js.map|package.json|package-lock.json|.env.burnbar-staging) ;;
-                *) echo "::error::Unexpected Functions artifact path: $path"; exit 1 ;;
-              esac
-            done
+            node trusted/scripts/ci/verify-staging-functions-artifact.mjs \
+              --artifact-root "$functions" \
+              --candidate-sha "$CANDIDATE_SHA"
           fi
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -137,9 +170,20 @@ jobs:
              "$RUNNER_TEMP/candidate-rules/firestore.indexes.json" \
              "$RUNNER_TEMP/candidate-rules/storage.rules" \
              "$deploy_root/"
-          cat > "$deploy_root/firebase-rules.json" <<'JSON'
-          {"firestore":{"rules":"firestore.rules","indexes":"firestore.indexes.json"},"storage":{"rules":"storage.rules"}}
-          JSON
+          jq -nc \
+            --arg bucket "${FIREBASE_PROJECT}.firebasestorage.app" \
+            '{firestore:{rules:"firestore.rules",indexes:"firestore.indexes.json"},storage:[{bucket:$bucket,rules:"storage.rules"}]}' \
+            > "$deploy_root/firebase-rules.json"
+          node scripts/ci/compact-firestore-rules-inplace.mjs \
+            "$deploy_root/firestore.rules"
+          if [[ "$DEPLOY_HOSTING" == "true" ]]; then
+            cp -R "$RUNNER_TEMP/candidate-hosting/website" "$deploy_root/website"
+            node scripts/ci/write-firebase-hosting-ci-config.mjs \
+              --mode staging-hosting \
+              --output "$deploy_root/firebase-hosting.json" \
+              --manifest "$deploy_root/firebase-hosting.manifest.json" \
+              --check
+          fi
           if [[ "$DEPLOY_FUNCTIONS" == "true" ]]; then
             cp -R "$RUNNER_TEMP/candidate-functions/functions" "$deploy_root/functions"
             npm ci --prefix "$deploy_root/functions" --omit=dev --ignore-scripts
@@ -147,9 +191,12 @@ jobs:
           {"functions":[{"source":"functions","codebase":"default","ignore":["node_modules/.cache",".git","firebase-debug.log","firebase-debug.*.log"]}]}
           JSON
           fi
-          grep -R -q '"predeploy"' "$deploy_root" && {
-            echo "::error::Candidate deployment workspace contains a predeploy hook."; exit 1;
-          }
+          for config in "$deploy_root"/firebase-*.json; do
+            if grep -q '"predeploy"' "$config"; then
+              echo "::error::Trusted deployment config contains a predeploy hook."
+              exit 1
+            fi
+          done
 
       - name: Authenticate to Google Cloud through trusted-main WIF
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
@@ -184,6 +231,8 @@ jobs:
           set -euo pipefail
           functions_dir="$RUNNER_TEMP/staging-deploy/functions"
           env_file="$functions_dir/.env.${FIREBASE_PROJECT}"
+          env_temp="$(mktemp "$RUNNER_TEMP/staging-functions-env.XXXXXX")"
+          trap 'rm -f "$env_temp"' EXIT
           {
             cat "$functions_dir/.env.burnbar-staging"
             printf '\nFUNCTION_VERSION=staging-%s\n' "$CANDIDATE_SHA"
@@ -191,7 +240,9 @@ jobs:
             if [[ -n "${SENTRY_DSN:-}" ]]; then
               printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=staging\n' "$SENTRY_DSN"
             fi
-          } > "$env_file"
+          } > "$env_temp"
+          mv "$env_temp" "$env_file"
+          trap - EXIT
           deploy_scope="functions"
           if [[ -n "${FUNCTION_TARGETS:-}" ]]; then
             deploy_scope="$FUNCTION_TARGETS"
@@ -202,6 +253,126 @@ jobs:
             --config "$FIREBASE_CONFIG_PATH" \
             --non-interactive
 
+      - name: Verify every Hosting rewrite target exists
+        if: ${{ inputs.deploy_hosting }}
+        working-directory: trusted
+        env:
+          FIREBASE_CONFIG_PATH: ${{ runner.temp }}/staging-deploy/firebase-hosting.json
+        run: |
+          set -euo pipefail
+          test -n "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          rewrite_count=0
+          while IFS=$'\t' read -r function_id region; do
+            [[ -n "$function_id" && -n "$region" ]] || continue
+            rewrite_count=$((rewrite_count + 1))
+            gcloud functions describe "$function_id" \
+              --gen2 \
+              --region "$region" \
+              --project "$FIREBASE_PROJECT" \
+              --format='value(state)' |
+              grep -qx ACTIVE || {
+                echo "::error::Hosting rewrite target $function_id is not ACTIVE in $FIREBASE_PROJECT/$region."
+                exit 1
+              }
+          done < <(
+            jq -r '
+              .hosting[]
+              | .rewrites[]?
+              | select(.function)
+              | if (.function | type) == "string"
+                then [.function, "us-central1"]
+                else [.function.functionId, (.function.region // "us-central1")]
+                end
+              | @tsv
+            ' "$FIREBASE_CONFIG_PATH"
+          )
+          [[ "$rewrite_count" -gt 0 ]] || {
+            echo "::error::Staging marketing Hosting config has no reviewed Function rewrites."
+            exit 1
+          }
+
+      - name: Grant public invocation only to reviewed Hosting rewrite services
+        if: ${{ inputs.deploy_hosting }}
+        working-directory: trusted
+        env:
+          FIREBASE_CONFIG_PATH: ${{ runner.temp }}/staging-deploy/firebase-hosting.json
+        run: |
+          set -euo pipefail
+          test -n "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          declare -A reviewed_rewrites=(
+            [burnBarHermesGateway]=us-central1
+            [latestRouterRundown]=us-central1
+            [startCliLink]=us-central1
+            [pollCliLink]=us-central1
+          )
+          rewrite_count=0
+          while IFS=$'\t' read -r function_id region; do
+            [[ -n "$function_id" && -n "$region" ]] || continue
+            expected_region="${reviewed_rewrites[$function_id]:-}"
+            [[ -n "$expected_region" && "$region" == "$expected_region" ]] || {
+              echo "::error::Refusing to grant public invocation to unreviewed rewrite $function_id in $region."
+              exit 1
+            }
+            service_resource="$(
+              gcloud functions describe "$function_id" \
+                --gen2 \
+                --region "$region" \
+                --project "$FIREBASE_PROJECT" \
+                --format='value(serviceConfig.service)'
+            )"
+            service_name="${service_resource##*/}"
+            [[ -n "$service_name" && "$service_name" != "$service_resource" ]] || {
+              echo "::error::Could not resolve the Cloud Run service for rewrite $function_id."
+              exit 1
+            }
+            gcloud run services add-iam-policy-binding "$service_name" \
+              --region "$region" \
+              --project "$FIREBASE_PROJECT" \
+              --member=allUsers \
+              --role=roles/run.invoker \
+              --quiet
+            unset 'reviewed_rewrites[$function_id]'
+            rewrite_count=$((rewrite_count + 1))
+          done < <(
+            jq -r '
+              .hosting[]
+              | .rewrites[]?
+              | select(.function)
+              | if (.function | type) == "string"
+                then [.function, "us-central1"]
+                else [.function.functionId, (.function.region // "us-central1")]
+                end
+              | @tsv
+            ' "$FIREBASE_CONFIG_PATH"
+          )
+          [[ "$rewrite_count" -eq 4 && "${#reviewed_rewrites[@]}" -eq 0 ]] || {
+            echo "::error::Staging marketing Hosting must contain exactly the four reviewed public rewrites."
+            exit 1
+          }
+
+      - name: Deploy reviewed Hosting artifact
+        if: ${{ inputs.deploy_hosting }}
+        working-directory: trusted
+        env:
+          FIREBASE_CONFIG_PATH: ${{ runner.temp }}/staging-deploy/firebase-hosting.json
+        run: |
+          set -euo pipefail
+          test -n "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          "$FIREBASE_TOOLS_BIN" deploy \
+            --only hosting:marketing \
+            --project "$FIREBASE_PROJECT" \
+            --config "$FIREBASE_CONFIG_PATH" \
+            --non-interactive
+
+      - name: Verify exact staging website deployment
+        if: ${{ inputs.deploy_hosting }}
+        working-directory: trusted
+        run: |
+          set -euo pipefail
+          node website/scripts/verify-staging-deployment.mjs \
+            --base-url "https://${FIREBASE_PROJECT}.web.app" \
+            --dist "$RUNNER_TEMP/staging-deploy/website/dist"
+
       - name: Record trusted staging receipt
         if: always()
         run: |
@@ -210,6 +381,7 @@ jobs:
             echo "- Candidate: \`$CANDIDATE_SHA\`"
             echo "- Trusted workflow: \`$GITHUB_WORKFLOW_REF\`"
             echo "- Project: \`$FIREBASE_PROJECT\`"
+            echo "- Hosting included: \`$DEPLOY_HOSTING\`"
             echo "- Functions included: \`$DEPLOY_FUNCTIONS\`"
             echo "- Function targets: \`${FUNCTION_TARGETS:-all}\`"
           } >> "$GITHUB_STEP_SUMMARY"

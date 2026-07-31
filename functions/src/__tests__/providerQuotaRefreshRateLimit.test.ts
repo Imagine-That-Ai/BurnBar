@@ -21,7 +21,10 @@ vi.mock("../quota.js", () => ({
 const ACCOUNT_ID = "openai_default";
 const NOW = "2026-06-25T09:30:00.000Z";
 
-function seedProviderAccount(accountID = ACCOUNT_ID) {
+function seedProviderAccount(
+  accountID = ACCOUNT_ID,
+  dates: { createdAt: unknown; updatedAt: unknown } = { createdAt: NOW, updatedAt: NOW },
+) {
   seedDoc(mocks.store, `users/${ALICE_UID}/provider_accounts/${accountID}`, {
     id: accountID,
     providerID: "openai",
@@ -33,8 +36,8 @@ function seedProviderAccount(accountID = ACCOUNT_ID) {
     isDefault: true,
     sortKey: 0,
     schemaVersion: 1,
-    createdAt: NOW,
-    updatedAt: NOW,
+    createdAt: dates.createdAt,
+    updatedAt: dates.updatedAt,
   });
 }
 
@@ -69,6 +72,20 @@ describe("refreshProviderAccountQuota rate limiting", () => {
 
     expect(mocks.refreshUserProviderAccountQuota).toHaveBeenCalledWith(expect.anything(), ALICE_UID, ACCOUNT_ID);
     expect(mocks.store.get(`users/${ALICE_UID}/_rate_limits/refresh_openai`)).toHaveProperty("lastRefreshAt");
+  });
+
+  it("refreshes legacy accounts whose dates are Firestore Timestamp values", async () => {
+    const legacyTimestamp = { toDate: () => new Date(NOW) };
+    seedProviderAccount(ACCOUNT_ID, {
+      createdAt: legacyTimestamp,
+      updatedAt: legacyTimestamp,
+    });
+
+    await expect(runAccountRefresh()).resolves.toMatchObject({
+      providerID: "openai",
+      accountID: ACCOUNT_ID,
+    });
+    expect(mocks.refreshUserProviderAccountQuota).toHaveBeenCalledWith(expect.anything(), ALICE_UID, ACCOUNT_ID);
   });
 
   it("rejects hot account refreshes before calling quota providers", async () => {

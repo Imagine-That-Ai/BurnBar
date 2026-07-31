@@ -303,11 +303,7 @@ struct CloudTierCard: View {
                 action: onSubscribe
             )
             .padding(.top, MobileTheme.Spacing.xs)
-            .accessibilityIdentifier(
-                tier == .cloud
-                    ? "cloudStore.subscribe"
-                    : "cloudStore.subscribe.\(plan.id)"
-            )
+            .accessibilityIdentifier("cloudStore.tier.\(plan.id).subscribe")
         }
         .padding(MobileTheme.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -315,6 +311,9 @@ struct CloudTierCard: View {
         .membershipCard(enableShimmer: false, strokeWidth: isFlagship ? 1.4 : 1.0)
         .overlay(holographicAccent)
         .overlay(flagshipChromaticRim)
+        // Keep the purchase button as its own accessibility element. Combining
+        // the whole card collapses the CTA into static card copy on iPad and
+        // prevents VoiceOver and UI automation from activating the purchase.
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityText)
         .accessibilityIdentifier("cloudStore.tier.\(plan.id)")

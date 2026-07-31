@@ -50,6 +50,17 @@ const ALERT_DELIVERY_EVIDENCE_PATH =
 const ALERT_DELIVERY_TTL_HOURS = Number(
   process.env.OPENBURNBAR_ALERT_DELIVERY_TTL_HOURS || "168",
 );
+const GOOGLE_PLAY_RTDN_TOPIC_ID =
+  process.env.OPENBURNBAR_GOOGLE_PLAY_RTDN_TOPIC ||
+  "play-billing-notifications";
+const GOOGLE_PLAY_RTDN_TOPIC_NAME =
+  `projects/${PROJECT}/topics/${GOOGLE_PLAY_RTDN_TOPIC_ID}`;
+const GOOGLE_PLAY_RTDN_FUNCTION = "googlePlayDeveloperNotifications";
+const GOOGLE_PLAY_RTDN_PUBLISHER =
+  "serviceAccount:google-play-developer-notifications@system.gserviceaccount.com";
+const GOOGLE_PLAY_RTDN_TTL_FIELD =
+  `projects/${PROJECT}/databases/(default)/collectionGroups/` +
+  "google_play_rtdn_events/fields/expireAt";
 const LEGACY_HOSTED_QUOTA_PRODUCT_ID =
   "com.openburnbar.hostedQuotaSync.cloud.monthly";
 export const COMMERCIAL_PRODUCTS = Object.freeze({
@@ -199,9 +210,11 @@ const REQUIRED_FIREBASE_FUNCTIONS = [
   "evaluateComputerUseBudget",
   "evaluateMediaBudget",
   "computeTierCogsDaily",
+  GOOGLE_PLAY_RTDN_FUNCTION,
   "onUsageWritten",
   "performElderWandHostedSearch",
   "rebuildRollups",
+  "reconcileGooglePlayVoidedPurchasesDaily",
   "reconcileHostedEntitlementsDaily",
   "recomputeComputerUseQuotaUsage",
   "recomputeMediaQuotaUsage",
@@ -1671,6 +1684,11 @@ function checkCommercialBillingRuntime() {
   );
   const appStoreTopUp = deployedFunctionEnvironment("verifyCloudProTopUp");
   const webhook = deployedFunctionEnvironment("stripeBurnBarProWebhook");
+  // RTDN backstop: the daily voided-purchase sweep must be deployed so a
+  // missed Google Play refund/chargeback notification still revokes access.
+  const googlePlayVoidedSweep = deployedFunctionEnvironment(
+    "reconcileGooglePlayVoidedPurchasesDaily",
+  );
 
   const envSources = [
     checkout,
@@ -1709,6 +1727,7 @@ function checkCommercialBillingRuntime() {
       googlePlayRtdn.ok &&
       appStoreTopUp.ok &&
       webhook.ok &&
+      googlePlayVoidedSweep.ok &&
       envRequirements.ok &&
       stripeSecrets.ok,
     functions: {
@@ -1718,6 +1737,7 @@ function checkCommercialBillingRuntime() {
       googlePlayRtdn,
       appStoreTopUp,
       webhook,
+      googlePlayVoidedSweep,
     },
     envRequirements,
     stripeSecrets,
@@ -1797,6 +1817,157 @@ function checkRemoteConfigCaps() {
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
+}
+
+function normalizedPubSubTopicName(value, project = PROJECT) {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const topic = value.trim();
+  return topic.startsWith("projects/")
+    ? topic
+    : `projects/${project}/topics/${topic}`;
+}
+
+export function evaluateGooglePlayRtdnReadiness(
+  {
+    topic,
+    iamPolicy,
+    functionDetails,
+    ttlFields,
+  },
+  options = {},
+) {
+  const project = options.project || PROJECT;
+  const topicID = options.topicID || GOOGLE_PLAY_RTDN_TOPIC_ID;
+  const expectedTopicName = `projects/${project}/topics/${topicID}`;
+  const expectedPublisher =
+    options.publisher || GOOGLE_PLAY_RTDN_PUBLISHER;
+  const expectedTtlField =
+    options.ttlField ||
+    `projects/${project}/databases/(default)/collectionGroups/` +
+      "google_play_rtdn_events/fields/expireAt";
+
+  const publisherBinding = (iamPolicy?.bindings || []).find(
+    (binding) =>
+      binding?.role === "roles/pubsub.publisher" &&
+      Array.isArray(binding.members) &&
+      binding.members.includes(expectedPublisher),
+  );
+  const triggerTopic = normalizedPubSubTopicName(
+    functionDetails?.eventTrigger?.eventFilters?.topic ||
+      functionDetails?.eventTrigger?.pubsubTopic,
+    project,
+  );
+  const configuredTopic =
+    functionDetails?.serviceConfig?.environmentVariables
+      ?.GOOGLE_PLAY_RTDN_TOPIC ?? null;
+  const ttlField = (Array.isArray(ttlFields) ? ttlFields : []).find(
+    (field) => field?.name === expectedTtlField,
+  );
+
+  const topicCheck = {
+    ok: topic?.name === expectedTopicName,
+    expected: expectedTopicName,
+    actual: topic?.name ?? null,
+  };
+  const publisherCheck = {
+    ok: Boolean(publisherBinding),
+    expected: expectedPublisher,
+    role: "roles/pubsub.publisher",
+  };
+  const functionCheck = {
+    ok:
+      functionDetails?.state === "ACTIVE" &&
+      triggerTopic === expectedTopicName &&
+      configuredTopic === topicID,
+    name: GOOGLE_PLAY_RTDN_FUNCTION,
+    state: functionDetails?.state ?? null,
+    triggerTopic,
+    expectedTriggerTopic: expectedTopicName,
+    configuredTopic,
+    expectedConfiguredTopic: topicID,
+  };
+  const ttlCheck = {
+    ok: ttlField?.ttlConfig?.state === "ACTIVE",
+    field: expectedTtlField,
+    state: ttlField?.ttlConfig?.state ?? "MISSING",
+  };
+
+  return {
+    ok:
+      topicCheck.ok &&
+      publisherCheck.ok &&
+      functionCheck.ok &&
+      ttlCheck.ok,
+    topic: topicCheck,
+    publisher: publisherCheck,
+    function: functionCheck,
+    ttl: ttlCheck,
+  };
+}
+
+function checkGooglePlayRtdnReadiness() {
+  const commands = {
+    topic: run("gcloud", [
+      "pubsub",
+      "topics",
+      "describe",
+      GOOGLE_PLAY_RTDN_TOPIC_NAME,
+      "--project",
+      PROJECT,
+      "--format=json",
+    ]),
+    iamPolicy: run("gcloud", [
+      "pubsub",
+      "topics",
+      "get-iam-policy",
+      GOOGLE_PLAY_RTDN_TOPIC_NAME,
+      "--project",
+      PROJECT,
+      "--format=json",
+    ]),
+    functionDetails: run("gcloud", [
+      "functions",
+      "describe",
+      GOOGLE_PLAY_RTDN_FUNCTION,
+      "--gen2",
+      "--region",
+      REGION,
+      "--project",
+      PROJECT,
+      "--format=json",
+    ]),
+    ttlFields: run("gcloud", [
+      "firestore",
+      "fields",
+      "ttls",
+      "list",
+      "--project",
+      PROJECT,
+      "--format=json",
+    ]),
+  };
+  const commandErrors = {};
+  const parsed = {};
+  for (const [name, result] of Object.entries(commands)) {
+    if (!result.ok) {
+      commandErrors[name] = compactCommandOutput(
+        result.stderr || result.stdout || result.error,
+      );
+      continue;
+    }
+    try {
+      parsed[name] = JSON.parse(result.stdout);
+    } catch (error) {
+      commandErrors[name] = `invalid JSON: ${error.message}`;
+    }
+  }
+
+  const evaluated = evaluateGooglePlayRtdnReadiness(parsed);
+  return {
+    ...evaluated,
+    ok: Object.keys(commandErrors).length === 0 && evaluated.ok,
+    commandErrors,
+  };
 }
 
 function checkFirebaseFunctionsInventory() {
@@ -1954,6 +2125,7 @@ async function main() {
     billingAlerts,
     alertDeliverability: checkAlertDeliverabilityEvidence([opsAlerts, billingAlerts]),
     firestoreDisasterRecovery: checkFirestoreDisasterRecovery(),
+    googlePlayRtdn: checkGooglePlayRtdnReadiness(),
     firebaseFunctionsInventory: checkFirebaseFunctionsInventory(),
     launchEvidence: checkLaunchEvidence(),
   };

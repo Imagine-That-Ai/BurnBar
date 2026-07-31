@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const stylesDir = path.dirname(fileURLToPath(import.meta.url));
 const appCss = fs.readFileSync(path.join(stylesDir, 'app.css'), 'utf8');
+const adaptiveCss = fs.readFileSync(path.join(stylesDir, 'adaptive-foreground.css'), 'utf8');
 const tokensCss = fs.readFileSync(path.join(stylesDir, 'tokens.css'), 'utf8');
 const liquidGlassTokensCss = fs.readFileSync(path.join(stylesDir, 'liquid-glass-tokens.css'), 'utf8');
 const topChromeCss = fs.readFileSync(path.join(stylesDir, '../components/TopChrome.css'), 'utf8');
@@ -130,4 +131,17 @@ describe('VAL-TOKENS design token contract', () => {
   it('declares a dark native-control color scheme for WebKitGTK', () => {
     expect(appCss).toMatch(/:root\s*\{[^}]*color-scheme:\s*dark;/s);
   });
+  it('adaptive foregrounds stay explicit, semantic, and accessible', () => {
+    expect(adaptiveCss).toContain('--adaptive-text-primary');
+    expect(adaptiveCss).toContain('--adaptive-text-secondary');
+    expect(adaptiveCss).toContain('--adaptive-text-muted');
+    expect(adaptiveCss).toContain('--adaptive-icon');
+    expect(adaptiveCss).toContain('--adaptive-accent');
+    expect(adaptiveCss).toContain('--adaptive-focus');
+    expect(adaptiveCss).toContain('--adaptive-scrim-opacity');
+    expect(adaptiveCss).toContain('@media (forced-colors: active)');
+    expect(adaptiveCss).toContain('@media (prefers-contrast: more)');
+    expect(adaptiveCss).not.toContain('mix-blend-mode');
+  });
+
 });

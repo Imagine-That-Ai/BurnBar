@@ -456,13 +456,9 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install protobuf for libsignal Swift FFI
+      - name: Ensure libsignal native toolchain (protoc + cmake)
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Resolve libsignal revision
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
@@ -546,13 +542,9 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install protobuf for libsignal Swift FFI
+      - name: Ensure libsignal native toolchain (protoc + cmake)
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Resolve libsignal revision
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
@@ -644,13 +636,9 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install protobuf for libsignal Swift FFI
+      - name: Ensure libsignal native toolchain (protoc + cmake)
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Resolve libsignal revision
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
@@ -727,13 +715,9 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install protobuf for libsignal Swift FFI
+      - name: Ensure libsignal native toolchain (protoc + cmake)
         if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Resolve libsignal revision
         if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
@@ -1087,12 +1071,8 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install protobuf for libsignal Swift FFI
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Resolve libsignal revision
         id: libsignal
@@ -1310,7 +1290,7 @@ jobs:
             exit 1
           fi
           cd android
-          ./gradlew :app:bundleRelease --no-daemon -PopenBurnBarAppVersionName="${{ needs.release-preflight.outputs.version }}"
+          ./gradlew :app:bundleRelease :app:assembleRelease --no-daemon -PopenBurnBarAppVersionName="${{ needs.release-preflight.outputs.version }}"
           source_path="$(pwd)/app/build/outputs/bundle/release/app-release.aab"
           release_name="OpenBurnBar-${{ needs.release-preflight.outputs.version }}-Android.aab"
           release_path="$RUNNER_TEMP/$release_name"
@@ -1332,7 +1312,9 @@ jobs:
           target: google_apis
           disk-size: 4G
           heap-size: 768M
-          script: bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" "$RUNNER_TEMP/domain-core-android-observed-identity.json"
+          script: |
+            bash scripts/ci/run-android-release-startup-smoke.sh android/app/build/outputs/apk/release/app-release.apk
+            bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" "$RUNNER_TEMP/domain-core-android-observed-identity.json"
 
       - name: Verify loaded Android Rust identity
         run: |

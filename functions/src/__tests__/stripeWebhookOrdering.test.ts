@@ -120,6 +120,12 @@ import {
   reserveStripeWebhookEvent,
 } from "../callables/stripe.js";
 
+// Focused Stripe test doubles: each stub covers only the client/object surface its test exercises.
+function stripeStub<T>(stub: object = {}): T {
+  // @ts-expect-error reason: the stub implements the Stripe surface these ordering tests exercise
+  return stub;
+}
+
 const UID = "stripe-user-1";
 const SUBSCRIPTION_ID = "sub_ordering_1";
 const ENTITLEMENT_PATH = `users/${UID}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`;
@@ -139,36 +145,27 @@ function activeSubscriptionWrite(overrides: Partial<Parameters<typeof writeBurnB
   });
 }
 
+function inactiveSubscriptionWrite(overrides: Partial<Parameters<typeof writeBurnBarProEntitlement>[0]> = {}) {
+  return activeSubscriptionWrite({
+    expiresAtMillis: Date.parse("2026-06-10T00:00:00.000Z"),
+    rawStatus: "canceled",
+    activeOverride: false,
+    ...overrides,
+  });
+}
+
 beforeEach(() => {
   firestoreState.docs.clear();
 });
 
 describe("Stripe webhook entitlement ordering", () => {
   it("keeps a cancellation when a stale active subscription update replays later", async () => {
-    await writeBurnBarProEntitlement({
-      uid: UID,
-      productID: "com.openburnbar.pro.monthly",
-      expiresAtMillis: Date.parse("2026-06-10T00:00:00.000Z"),
-      source: "stripe_webhook_verified",
-      platform: "stripe",
-      externalSubscriptionID: SUBSCRIPTION_ID,
-      rawStatus: "canceled",
-      environment: "Production",
-      activeOverride: false,
+    await inactiveSubscriptionWrite({
       sourceEventID: "evt_deleted",
       sourceEventCreatedMillis: 2_000,
     });
 
-    await writeBurnBarProEntitlement({
-      uid: UID,
-      productID: "com.openburnbar.pro.monthly",
-      expiresAtMillis: Date.parse("2026-07-10T00:00:00.000Z"),
-      source: "stripe_webhook_verified",
-      platform: "stripe",
-      externalSubscriptionID: SUBSCRIPTION_ID,
-      rawStatus: "active",
-      environment: "Production",
-      activeOverride: true,
+    await activeSubscriptionWrite({
       sourceEventID: "evt_stale_update",
       sourceEventCreatedMillis: 1_000,
     });
@@ -207,17 +204,25 @@ describe("Stripe webhook entitlement ordering", () => {
     expect(firestoreState.docs.get(ENTITLEMENT_PATH)?.rawStatus).toBe("active_renewed");
   });
 
-  it("rejects a same-second write from a DIFFERENT event (second-granularity tie-break)", async () => {
-    await writeBurnBarProEntitlement({
-      uid: UID,
-      productID: "com.openburnbar.pro.monthly",
-      expiresAtMillis: Date.parse("2026-06-10T00:00:00.000Z"),
-      source: "stripe_webhook_verified",
-      platform: "stripe",
-      externalSubscriptionID: SUBSCRIPTION_ID,
-      rawStatus: "canceled",
-      environment: "Production",
-      activeOverride: false,
+  it("allows a same-second terminal transition to replace an active entitlement", async () => {
+    await activeSubscriptionWrite({
+      sourceEventID: "evt_active",
+      sourceEventCreatedMillis: 2_000,
+    });
+
+    await inactiveSubscriptionWrite({
+      sourceEventID: "evt_deleted",
+      sourceEventCreatedMillis: 2_000,
+    });
+
+    const entitlement = firestoreState.docs.get(ENTITLEMENT_PATH);
+    expect(entitlement?.active).toBe(false);
+    expect(entitlement?.rawStatus).toBe("canceled");
+    expect(entitlement?.sourceEventID).toBe("evt_deleted");
+  });
+
+  it("rejects a same-second active resurrection after a terminal transition", async () => {
+    await inactiveSubscriptionWrite({
       sourceEventID: "evt_deleted",
       sourceEventCreatedMillis: 2_000,
     });
@@ -331,7 +336,7 @@ describe("Stripe lifecycle reconciliation", () => {
       items: { data: [{ price: { id: ultraMonthlyPriceID } }] },
     };
 
-    await applyStripeSubscription({} as Stripe, ultra as unknown as Stripe.Subscription, UID, {
+    await applyStripeSubscription(stripeStub<Stripe>(), stripeStub<Stripe.Subscription>(ultra), UID, {
       eventID: "evt_ultra_1",
       eventCreatedMillis: 4_500,
     });
@@ -399,11 +404,12 @@ describe("Stripe lifecycle reconciliation", () => {
     };
     const chargeRetrieve = vi.fn(async () => charge);
     const checkoutList = vi.fn(async () => ({ data: [], has_more: false }));
-    const stripe = {
+    const stripe = stripeStub<Stripe>({
       subscriptions: { list },
       charges: { retrieve: chargeRetrieve },
       checkout: { sessions: { list: checkoutList } },
-    } as unknown as Stripe;
+      invoicePayments: { list: vi.fn(async () => ({ data: [], has_more: false })) },
+    });
 
     await reconcileStripeCharge(
       stripe,
@@ -457,6 +463,7 @@ describe("Stripe lifecycle reconciliation", () => {
     const stripe = {
       paymentIntents: { retrieve: paymentIntentRetrieve },
       charges: { retrieve: chargeRetrieve },
+      invoicePayments: { list: vi.fn(async () => ({ data: [], has_more: false })) },
     };
     const session = {
       id: "cs_topup_1",
@@ -468,7 +475,7 @@ describe("Stripe lifecycle reconciliation", () => {
       currency: "usd",
     };
 
-    await applyStripeCheckoutSession(stripe as unknown as Stripe, session as unknown as Stripe.Checkout.Session, {
+    await applyStripeCheckoutSession(stripeStub<Stripe>(stripe), stripeStub<Stripe.Checkout.Session>(session), {
       eventID: "evt_topup_paid",
       eventCreatedMillis: 8_000,
     });
@@ -490,7 +497,7 @@ describe("Stripe lifecycle reconciliation", () => {
     });
 
     paidCharge.amount_refunded = 1_000;
-    await reconcileStripeCharge(stripe as unknown as Stripe, paidCharge as unknown as Stripe.Charge, {
+    await reconcileStripeCharge(stripeStub<Stripe>(stripe), stripeStub<Stripe.Charge>(paidCharge), {
       eventID: "evt_topup_refund",
       eventCreatedMillis: 9_000,
     });
@@ -548,10 +555,11 @@ describe("Stripe lifecycle reconciliation", () => {
       charges: { retrieve: chargeRetrieve },
       disputes: { retrieve: disputeRetrieve },
       paymentIntents: { retrieve: paymentIntentRetrieve },
+      invoicePayments: { list: vi.fn(async () => ({ data: [], has_more: false })) },
     };
     const dispute = { id: "dp_topup_1", charge, status: "under_review" };
 
-    await reconcileStripeDispute(stripe as unknown as Stripe, dispute as unknown as Stripe.Dispute, {
+    await reconcileStripeDispute(stripeStub<Stripe>(stripe), stripeStub<Stripe.Dispute>(dispute), {
       eventID: "evt_dispute_open",
       eventCreatedMillis: 10_000,
     });
@@ -563,7 +571,7 @@ describe("Stripe lifecycle reconciliation", () => {
       reversalState: "reversed",
     });
 
-    await reconcileStripeDispute(stripe as unknown as Stripe, dispute as unknown as Stripe.Dispute, {
+    await reconcileStripeDispute(stripeStub<Stripe>(stripe), stripeStub<Stripe.Dispute>(dispute), {
       eventID: "evt_dispute_won",
       eventCreatedMillis: 11_000,
     });

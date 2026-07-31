@@ -118,12 +118,10 @@ enum MissionRemoteAuthorizationShadow {
         case enforce
     }
 
-    /// Ships defaulting to shadow-mode. A runtime override can force it `.off`
-    /// for a fast rollback without reverting the wiring, or `.enforce` to make
-    /// the daemon authoritative. Only the explicit string `"enforce"` selects
-    /// enforce mode — boolean-like values (`true`, `1`, `enabled`) remain in
-    /// `.shadow` so existing deployments that set the flag to enable shadow
-    /// observation do not silently switch to enforcement. `nonisolated(unsafe)`
+    /// Ships defaulting to enforce-mode for the M4 cutover. A runtime override
+    /// can force it `.shadow` for telemetry-only rollback or `.off` for a hard
+    /// fail-closed stop. Only the explicit string `"shadow"` selects observation;
+    /// boolean-like values remain fail-closed in `.enforce`. `nonisolated(unsafe)`
     /// is safe here: this is a set-once-at-launch reversal flag, resolved from
     /// the environment on first access and only ever read afterward on the main
     /// actor (`observe` / `enforce`) or from tests.
@@ -135,8 +133,10 @@ enum MissionRemoteAuthorizationShadow {
             return .off
         case "enforce":
             return .enforce
-        default:
+        case "shadow", "observe", "observe_only", "observe-only":
             return .shadow
+        default:
+            return .enforce
         }
     }()
 
@@ -240,6 +240,7 @@ enum MissionRemoteAuthorizationShadow {
             approverDeviceID: ctx.approverDeviceID,
             entitlementTier: ctx.entitlementTier,
             requestedFanOutCount: max(1, ctx.fanOutCount),
+            trustedFanOutCap: ctx.trustedFanOutCap,
             workingDirectory: ctx.workingDirectory
         )
     }
@@ -449,6 +450,50 @@ enum MissionRemoteAuthorizationShadow {
         }
     }
 
+    /// Explicit daemon-authority result consumed by the M4 listener path.
+    /// Every outcome other than `.authorized` is non-executable; transport
+    /// failure remains distinct so the shared mission can stay pending for a
+    /// different healthy executor.
+    enum AuthorizationOutcome: Equatable, Sendable {
+        case authorized(grantCeiling: BurnBarRemoteMissionCapabilityGrantRequest?)
+        case requiresApproval
+        case denied(reason: BurnBarRemoteMissionDenialReason?, detail: String?)
+        case daemonUnreachable(detail: String)
+    }
+
+    /// Ask the daemon for the authoritative mission verdict. This is the
+    /// typed M4 entry point; it never throws and fails closed on an unhealthy
+    /// daemon or malformed RPC response.
+    @MainActor
+    static func authorize(
+        ctx: ShadowContext,
+        executorTrustState: String,
+        manager: OpenBurnBarDaemonManager = .shared
+    ) async -> AuthorizationOutcome {
+        let request = makeRequest(ctx: ctx, executorTrustState: executorTrustState)
+        guard case .healthy = manager.status else {
+            logger.warning("mission_authorize enforce fail_closed mission=\(ctx.missionID, privacy: .public) reason=daemon_not_healthy sha=\(request.promptSHA256, privacy: .public)")
+            return .daemonUnreachable(detail: "daemon not healthy")
+        }
+
+        do {
+            let response = try await manager.daemonRPC {
+                try OpenBurnBarDaemonSocketClient.authorizeRemoteMission(request, at: manager.paths.socketURL)
+            }
+            switch response.verdict {
+            case .authorized:
+                return .authorized(grantCeiling: response.grantCeiling)
+            case .requiresApproval:
+                return .requiresApproval
+            case .denied:
+                return .denied(reason: response.deniedReason, detail: response.detail)
+            }
+        } catch {
+            logger.warning("mission_authorize enforce fail_closed mission=\(ctx.missionID, privacy: .public) reason=rpc_error detail=\(error.localizedDescription, privacy: .public) sha=\(request.promptSHA256, privacy: .public)")
+            return .daemonUnreachable(detail: error.localizedDescription)
+        }
+    }
+
     /// Reduce the GUI listener's observable outcome, once trust has passed,
     /// onto the comparable verdict lattice:
     ///   - a rejected/cancelled approval handshake → `.deny`
@@ -494,6 +539,43 @@ enum MissionRemoteAuthorizationShadow {
         let entitlementTier: String
         let workingDirectory: String?
         let fanOutCount: Int
+        let trustedFanOutCap: Int?
+
+        init(
+            missionID: String,
+            prompt: String,
+            runtime: String?,
+            modelID: String?,
+            commandsAllowed: Bool,
+            fileEditsAllowed: Bool,
+            originDeviceID: String,
+            originPlatform: String,
+            personaScopeJSON: String?,
+            approvalMode: String?,
+            approvalStatus: String,
+            approverDeviceID: String?,
+            entitlementTier: String,
+            workingDirectory: String?,
+            fanOutCount: Int,
+            trustedFanOutCap: Int? = nil
+        ) {
+            self.missionID = missionID
+            self.prompt = prompt
+            self.runtime = runtime
+            self.modelID = modelID
+            self.commandsAllowed = commandsAllowed
+            self.fileEditsAllowed = fileEditsAllowed
+            self.originDeviceID = originDeviceID
+            self.originPlatform = originPlatform
+            self.personaScopeJSON = personaScopeJSON
+            self.approvalMode = approvalMode
+            self.approvalStatus = approvalStatus
+            self.approverDeviceID = approverDeviceID
+            self.entitlementTier = entitlementTier
+            self.workingDirectory = workingDirectory
+            self.fanOutCount = fanOutCount
+            self.trustedFanOutCap = trustedFanOutCap
+        }
     }
 
     // MARK: Fire-and-forget observation helpers

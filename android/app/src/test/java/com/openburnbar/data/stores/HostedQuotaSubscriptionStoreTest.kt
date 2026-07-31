@@ -7,6 +7,7 @@ import android.util.Log
 import com.android.billingclient.api.AcknowledgePurchaseResponseListener
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
+import com.android.billingclient.api.BillingFlowParams
 import com.android.billingclient.api.BillingResult
 import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.ProductDetailsResponseListener
@@ -394,6 +395,61 @@ class HostedQuotaSubscriptionStoreTest {
         assertEquals(
             "$7.99",
             HostedQuotaBillingSupport.formattedPrice(productDetails, storeProduct),
+        )
+    }
+
+    @Test
+    fun `subscription replacement modes charge prorated upgrades and defer downgrades`() {
+        assertEquals(
+            BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams.ReplacementMode
+                .CHARGE_PRORATED_PRICE,
+            HostedQuotaSubscriptionStore.subscriptionReplacementMode(
+                HostedQuotaSubscriptionStore.PRODUCT_ID,
+                HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID,
+            ),
+        )
+        assertEquals(
+            BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams.ReplacementMode
+                .DEFERRED,
+            HostedQuotaSubscriptionStore.subscriptionReplacementMode(
+                HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID,
+                HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID,
+            ),
+        )
+        assertEquals(
+            BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams.ReplacementMode
+                .DEFERRED,
+            HostedQuotaSubscriptionStore.subscriptionReplacementMode(
+                HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID,
+                HostedQuotaSubscriptionStore.CLOUD_PRO_ANNUAL_PRODUCT_ID,
+            ),
+        )
+    }
+
+    @Test
+    fun `subscription replacement carries the highest active tier purchase token`() {
+        val cloudPurchase = mockk<Purchase>()
+        every { cloudPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
+        every { cloudPurchase.products } returns listOf(HostedQuotaSubscriptionStore.PRODUCT_ID)
+        every { cloudPurchase.purchaseToken } returns "cloud-token"
+
+        val proPurchase = mockk<Purchase>()
+        every { proPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
+        every { proPurchase.products } returns listOf(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID)
+        every { proPurchase.purchaseToken } returns "cloud-pro-token"
+
+        val replacement =
+            HostedQuotaSubscriptionStore.selectSubscriptionReplacement(
+                newProductID = HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID,
+                purchases = listOf(cloudPurchase, proPurchase),
+            )
+
+        assertEquals(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID, replacement?.oldProductID)
+        assertEquals("cloud-pro-token", replacement?.oldPurchaseToken)
+        assertEquals(
+            BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams.ReplacementMode
+                .CHARGE_PRORATED_PRICE,
+            replacement?.replacementMode,
         )
     }
 

@@ -198,6 +198,37 @@ const source = readFileSync(WORKFLOW, "utf8");
 const jobs = extractJobs(source);
 const allJobNames = [...jobs.keys()];
 
+// --- Windows native domain-core prerequisite ---
+{
+  const block = jobs.get("windows");
+
+  expect("windows job exists", block !== undefined);
+
+  if (block) {
+    const nativeBuildIndex = block.indexOf(
+      "cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi",
+    );
+    const solutionBuildIndex = block.indexOf(
+      "dotnet build windows/OpenBurnBar.sln",
+    );
+
+    expect(
+      "windows job installs the pinned Rust toolchain",
+      block.includes("dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b"),
+    );
+    expect(
+      "windows job builds openburnbar-domain-ffi before the C# solution",
+      nativeBuildIndex !== -1 &&
+        solutionBuildIndex !== -1 &&
+        nativeBuildIndex < solutionBuildIndex,
+    );
+    expect(
+      "windows test suite requires the native domain core",
+      block.includes('OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"'),
+    );
+  }
+}
+
 // --- Assertion 1: harness-required ---
 {
   const name = "harness-required";

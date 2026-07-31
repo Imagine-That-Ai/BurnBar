@@ -4,6 +4,9 @@ import test from "node:test";
 import {
   collectObservations,
   evaluateGate,
+  githubJson,
+  isTransientGithubStatus,
+  pendingComponentAllowanceMs,
   resolveObservedSha,
 } from "./await-burnbar-ci-gate.mjs";
 
@@ -27,6 +30,128 @@ test("workflow executes trusted base code and observes the exact candidate", () 
     workflow,
     /\[\[ "\$\(git rev-parse HEAD\)" == "\$BURNBAR_BASE_SHA" \]\]/,
   );
+});
+
+test("umbrella timeout outlives the longest required component", () => {
+  const workflow = readFileSync(
+    new URL("../../.github/workflows/burnbar-ci-gate.yml", import.meta.url),
+    "utf8",
+  );
+  const appWorkflow = readFileSync(
+    new URL("../../.github/workflows/app-pr-gate.yml", import.meta.url),
+    "utf8",
+  );
+  const config = JSON.parse(
+    readFileSync(
+      new URL("../../governance/burnbar-ci-gate.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const umbrellaTimeout = Number(
+    workflow.match(/^\s{4}timeout-minutes:\s*(\d+)\s*$/mu)?.[1],
+  );
+  const appJob = appWorkflow.match(
+    /^\s{2}app-build-test:\n([\s\S]*?)^\s{2}mobile-build-gate:/mu,
+  )?.[1];
+  const appTimeout = Number(
+    appJob?.match(/^\s{4}timeout-minutes:\s*(\d+)\s*$/mu)?.[1],
+  );
+
+  assert.ok(Number.isSafeInteger(appTimeout) && appTimeout > 0);
+  assert.ok(
+    config.timeout_minutes >= appTimeout + 15,
+    "evaluator must outlive the longest component with polling headroom",
+  );
+  assert.ok(
+    umbrellaTimeout >= config.timeout_minutes + 5,
+    "workflow timeout must outlive the evaluator deadline",
+  );
+  assert.ok(
+    config.component_runtime_budget_minutes >= appTimeout,
+    "started-component budget must cover the longest component's runtime cap",
+  );
+  assert.ok(
+    umbrellaTimeout > config.timeout_minutes + 15,
+    "workflow timeout must fund queueing skew beyond the base deadline",
+  );
+  assert.ok(umbrellaTimeout < 300, "workflow must stay below the merge-queue response timeout");
+});
+
+test("deadline re-anchors to the observed component start, never to unstarted work", () => {
+  const componentBudgetMs = 240 * 60_000;
+  const headroomMs = 5 * 60_000;
+  // An app job that left the runner queue an hour after the umbrella started
+  // is allowed its full runtime budget from its own observed start.
+  assert.equal(
+    pendingComponentAllowanceMs(
+      [
+        {
+          context: "App build + test (AgentLens)",
+          status: "in_progress",
+          startedAt: "2026-07-28T13:00:00Z",
+        },
+      ],
+      { componentBudgetMs, headroomMs },
+    ),
+    Date.parse("2026-07-28T13:00:00Z") + componentBudgetMs + headroomMs,
+  );
+  // The latest observed start bounds the wait when several components run.
+  assert.equal(
+    pendingComponentAllowanceMs(
+      [
+        { context: "early", status: "in_progress", startedAt: "2026-07-28T12:00:00Z" },
+        { context: "late", status: "in_progress", startedAt: "2026-07-28T13:30:00Z" },
+      ],
+      { componentBudgetMs, headroomMs },
+    ),
+    Date.parse("2026-07-28T13:30:00Z") + componentBudgetMs + headroomMs,
+  );
+  // A pending context without an observed start gets no extension, so the
+  // base deadline still fails closed for never-started or missing work.
+  assert.equal(
+    pendingComponentAllowanceMs(
+      [
+        { context: "started", status: "in_progress", startedAt: "2026-07-28T13:00:00Z" },
+        { context: "unstarted", status: "replacement_pending" },
+      ],
+      { componentBudgetMs, headroomMs },
+    ),
+    null,
+  );
+  assert.equal(pendingComponentAllowanceMs([], { componentBudgetMs, headroomMs }), null);
+  // Without a configured budget the evaluator keeps its fixed deadline.
+  assert.equal(
+    pendingComponentAllowanceMs(
+      [{ context: "started", status: "in_progress", startedAt: "2026-07-28T13:00:00Z" }],
+      { componentBudgetMs: 0, headroomMs },
+    ),
+    null,
+  );
+});
+
+test("evaluator surfaces observed component starts on pending contexts", () => {
+  const state = evaluateGate(
+    ["running"],
+    new Map([
+      [
+        "running",
+        {
+          conclusion: null,
+          status: "in_progress",
+          startedAt: "2026-07-28T13:00:00Z",
+          url: "run",
+        },
+      ],
+    ]),
+  );
+  assert.deepEqual(state.pending, [
+    {
+      context: "running",
+      status: "in_progress",
+      url: "run",
+      startedAt: "2026-07-28T13:00:00Z",
+    },
+  ]);
 });
 
 test("pull_request_target gate stays read-only and secret-free", () => {
@@ -69,7 +194,10 @@ test("explicit observed SHA wins over GitHub's immutable merge-ref SHA", () => {
     }),
     "pull-request-head",
   );
-  assert.equal(resolveObservedSha({ GITHUB_SHA: "merge-group" }), "merge-group");
+  assert.equal(
+    resolveObservedSha({ GITHUB_SHA: "merge-group" }),
+    "merge-group",
+  );
 });
 
 test("gate accepts successful, neutral, and intentionally skipped contexts", () => {
@@ -93,6 +221,57 @@ test("gate fails closed on terminal failures", () => {
   assert.equal(state.ready, false);
   assert.deepEqual(state.failed, [
     { context: "build", conclusion: "timed_out", url: "run" },
+  ]);
+});
+
+test("gate briefly waits for a replacement after a superseded run is cancelled", () => {
+  const nowMs = Date.parse("2026-07-26T21:45:36Z");
+  const state = evaluateGate(
+    ["build"],
+    new Map([
+      [
+        "build",
+        {
+          conclusion: "cancelled",
+          completedAt: "2026-07-26T21:45:08Z",
+          url: "superseded-run",
+        },
+      ],
+    ]),
+    { nowMs, cancelledGraceMs: 120_000 },
+  );
+  assert.equal(state.failed.length, 0);
+  assert.deepEqual(state.pending, [
+    {
+      context: "build",
+      status: "replacement_pending",
+      url: "superseded-run",
+    },
+  ]);
+});
+
+test("gate fails closed when no replacement appears before the cancellation grace expires", () => {
+  const nowMs = Date.parse("2026-07-26T21:48:00Z");
+  const state = evaluateGate(
+    ["build"],
+    new Map([
+      [
+        "build",
+        {
+          conclusion: "cancelled",
+          completedAt: "2026-07-26T21:45:08Z",
+          url: "cancelled-run",
+        },
+      ],
+    ]),
+    { nowMs, cancelledGraceMs: 120_000 },
+  );
+  assert.deepEqual(state.failed, [
+    {
+      context: "build",
+      conclusion: "cancelled",
+      url: "cancelled-run",
+    },
   ]);
 });
 
@@ -123,6 +302,7 @@ test("collector paginates repositories with more than 100 checks", async () => {
                   name: `check-${index + 1}`,
                   status: "completed",
                   conclusion: "success",
+                  completed_at: "2026-07-26T21:45:00Z",
                 }))
               : [
                   {
@@ -130,6 +310,7 @@ test("collector paginates repositories with more than 100 checks", async () => {
                     name: "late-check",
                     status: "completed",
                     conclusion: "success",
+                    completed_at: "2026-07-26T21:45:01Z",
                   },
                 ],
         }
@@ -143,11 +324,97 @@ test("collector paginates repositories with more than 100 checks", async () => {
       "token",
     );
     assert.equal(observations.get("late-check").conclusion, "success");
+    assert.equal(
+      observations.get("late-check").completedAt,
+      "2026-07-26T21:45:01Z",
+    );
     assert.ok(
       calls.some((url) => url.includes("check-runs") && url.includes("page=2")),
     );
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("transient API failures retry with backoff instead of killing the wait", async () => {
+  // PR #2080's gate run died at minute 79 of an otherwise healthy wait when a
+  // single poll hit a GitHub 502. Transient server errors, rate limits, and
+  // dropped connections must be retried, not turned into a gate failure.
+  const originalFetch = globalThis.fetch;
+  const delays = [];
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) return { ok: false, status: 502, text: async () => "Server Error" };
+    if (calls === 2) throw new TypeError("fetch failed");
+    return { ok: true, json: async () => ({ value: "recovered" }) };
+  };
+  try {
+    const payload = await githubJson("https://api.github.com/poll", "token", {
+      attempts: 5,
+      baseBackoffMs: 1_000,
+      sleep: async (ms) => delays.push(ms),
+    });
+    assert.deepEqual(payload, { value: "recovered" });
+    assert.equal(calls, 3);
+    assert.deepEqual(delays, [1_000, 2_000], "backoff must grow between retries");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("exhausted transient retries surface the last failure", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return { ok: false, status: 502, text: async () => "Server Error" };
+  };
+  try {
+    await assert.rejects(
+      githubJson("https://api.github.com/poll", "token", {
+        attempts: 3,
+        baseBackoffMs: 0,
+        sleep: async () => {},
+      }),
+      /GitHub API 502/,
+    );
+    assert.equal(calls, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("non-transient API errors fail fast so misconfiguration stays loud", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return { ok: false, status: 401, text: async () => "Bad credentials" };
+  };
+  try {
+    await assert.rejects(
+      githubJson("https://api.github.com/poll", "token", {
+        attempts: 5,
+        baseBackoffMs: 0,
+        sleep: async () => {
+          throw new Error("must not retry a non-transient error");
+        },
+      }),
+      /GitHub API 401/,
+    );
+    assert.equal(calls, 1, "a bad token must not be retried");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("transient status classification covers rate limits and server errors", () => {
+  for (const status of [429, 500, 502, 503, 504]) {
+    assert.equal(isTransientGithubStatus(status), true, String(status));
+  }
+  for (const status of [200, 301, 401, 403, 404, 422]) {
+    assert.equal(isTransientGithubStatus(status), false, String(status));
   }
 });
 

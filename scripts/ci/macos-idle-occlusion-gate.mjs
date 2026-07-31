@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFile as execFileCallback, spawn } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import {
   access,
@@ -487,6 +487,9 @@ export async function launchFreshProcess(
         CFFIXED_USER_HOME: workDirectory,
         HOME: workDirectory,
         OPENBURNBAR_UITEST: "1",
+        // Random per-run SQLCipher key so the encrypted store opens without a
+        // Keychain prompt, without relying on any predictable constant.
+        OPENBURNBAR_UITEST_DB_KEY: randomBytes(32).toString("base64"),
         OPENBURNBAR_FORCE_LIVE_SCENE: "1",
         OPENBURNBAR_E2E_HOLD_OPEN: "1",
         OPENBURNBAR_PERFORMANCE_GATE: "1",

@@ -84,6 +84,8 @@ jobs:
       - self-hosted
       - macos
       - arm64
+      - m5max
+      - ios
     timeout-minutes: 30
     steps:
       - name: Check out the exact evidence source
@@ -593,7 +595,7 @@ jobs:
 
       - name: Install signed candidate for installed feature proofs
         id: p09_p10_p11_p12_install
-        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-13' || inputs.requirement == 'P-14' || inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-17' || inputs.requirement == 'P-18' || inputs.requirement == 'P-19' || inputs.requirement == 'P-20' || inputs.requirement == 'P-21' || inputs.requirement == 'P-22' || inputs.requirement == 'P-23' || inputs.requirement == 'P-24' || inputs.requirement == 'P-25' || inputs.requirement == 'P-26' || inputs.requirement == 'P-27' || inputs.requirement == 'P-28' || inputs.requirement == 'P-29' || inputs.requirement == 'P-30' || inputs.requirement == 'P-32' || inputs.requirement == 'P-33' || inputs.requirement == 'P-35' || inputs.requirement == 'P-36'
+        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-13' || inputs.requirement == 'P-14' || inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-17' || inputs.requirement == 'P-18' || inputs.requirement == 'P-19' || inputs.requirement == 'P-20' || inputs.requirement == 'P-21' || inputs.requirement == 'P-22' || inputs.requirement == 'P-23' || inputs.requirement == 'P-24' || inputs.requirement == 'P-25' || inputs.requirement == 'P-26' || inputs.requirement == 'P-27' || inputs.requirement == 'P-28' || inputs.requirement == 'P-29' || inputs.requirement == 'P-30' || inputs.requirement == 'P-31' || inputs.requirement == 'P-32' || inputs.requirement == 'P-33' || inputs.requirement == 'P-35' || inputs.requirement == 'P-36'
         shell: bash
         env:
           REQUIREMENT_ID: ${{ inputs.requirement }}
@@ -647,11 +649,65 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Provision native Tauri WebDriver prerequisites
-        if: inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-27' || inputs.requirement == 'P-36'
+        if: inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-27' || inputs.requirement == 'P-31' || inputs.requirement == 'P-36'
         shell: bash
         run: |
           set -euo pipefail
           bash scripts/linux-port/install-tauri-webdriver-prerequisites.sh
+
+      - name: Provision P-31 live accessibility prerequisites
+        if: inputs.requirement == 'P-31'
+        shell: bash
+        env:
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          case "$ENVIRONMENT_ID" in
+            ubuntu-24.04-gnome-x11-*)
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends \
+                at-spi2-core \
+                gnome-accessibility-themes \
+                libglib2.0-bin \
+                orca \
+                python3-pyatspi \
+                wmctrl \
+                xdotool
+              ;;
+            ubuntu-24.04-gnome-wayland-*)
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends \
+                at-spi2-core \
+                gnome-accessibility-themes \
+                libglib2.0-bin \
+                orca \
+                python3-pyatspi \
+                ydotool \
+                ydotoold
+              ;;
+            fedora-kde-wayland-*)
+              sudo dnf install -y \
+                at-spi2-core \
+                glib2 \
+                gnome-themes-extra \
+                gsettings-desktop-schemas \
+                kscreen \
+                orca \
+                python3-pyatspi \
+                ydotool
+              ;;
+            arch-sway-wayland-x86_64)
+              sudo pacman -S --needed --noconfirm \
+                at-spi2-core \
+                glib2 \
+                gnome-themes-extra \
+                gsettings-desktop-schemas \
+                orca \
+                python-atspi \
+                ydotool
+              ;;
+            *) echo "unsupported P-31 environment: $ENVIRONMENT_ID" >&2; exit 1 ;;
+          esac
 
       - name: Capture P-09 installed navigation shell proof
         if: inputs.requirement == 'P-09'
@@ -2376,7 +2432,7 @@ jobs:
           }
           trap cleanup EXIT
           chmod 700 "$raw_input" "$evidence_root"
-          for report in linux-desktop-session-report.json runtime-perf-samples.jsonl packaged-route-session-transcript.json matched-performance-macos.json; do
+          for report in linux-desktop-session-report.json runtime-perf-samples.jsonl tray-reconnect-handler-acks.jsonl tray-reconnect-daemon-health.log tray-reconnect-receipts.jsonl packaged-route-session-transcript.json matched-performance-macos.json; do
             test -f "$input_root/$report"
             install -m 600 "$input_root/$report" "$raw_input/$report"
           done
@@ -2686,9 +2742,45 @@ jobs:
           CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
           CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
           TARGET_HEAD: ${{ github.sha }}
+          PACKAGE_VERSION: ${{ steps.p09_p10_p11_p12_install.outputs.package_version }}
+          MANIFEST_SHA256: ${{ steps.p09_p10_p11_p12_install.outputs.manifest_sha256 }}
+          MANIFEST_SIGNATURE_SHA256: ${{ steps.p09_p10_p11_p12_install.outputs.manifest_signature_sha256 }}
         run: |
           set -euo pipefail
           input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          case "$ENVIRONMENT_ID" in
+            ubuntu-24.04-gnome-x11-*) compositor=Mutter ;;
+            ubuntu-24.04-gnome-wayland-*) compositor=Mutter ;;
+            fedora-kde-wayland-*) compositor=KWin ;;
+            arch-sway-wayland-x86_64) compositor=Sway ;;
+            *) echo "unsupported P-31 environment: $ENVIRONMENT_ID" >&2; exit 1 ;;
+          esac
+          if [[ "$ENVIRONMENT_ID" == *-wayland-* ]]; then
+            test -n "${YDOTOOL_SOCKET:-}" \
+              || { echo 'P-31 Wayland runners require an explicit runner-owned YDOTOOL_SOCKET.' >&2; exit 1; }
+          fi
+          state_home="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p31-home.XXXXXX")"
+          cleanup_p31() {
+            status=$?
+            rm -rf "$state_home" || status=1
+            exit "$status"
+          }
+          trap cleanup_p31 EXIT
+          chmod 700 "$state_home"
+          rm -rf "$input_root/p31-live" "$input_root/p31-live-session.json"
+          install -d -m 700 "$input_root/p31-live"
+          node scripts/linux-port/run-p31-live-accessibility-session.mjs \
+            --output-root "$input_root" \
+            --raw-output-dir "$input_root/p31-live" \
+            --state-home "$state_home" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --package-version "$PACKAGE_VERSION" \
+            --manifest-sha256 "$MANIFEST_SHA256" \
+            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256" \
+            --compositor "$compositor"
           session_report="$input_root/p31-live-session.json"
           test -f "$session_report"
           node scripts/linux-port/capture-p31-accessibility.mjs \
@@ -2884,63 +2976,7 @@ jobs:
         run: |
           set -euo pipefail
           input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
-          test "$ENVIRONMENT_ID" = 'ubuntu-24.04-gnome-x11-aarch64' \
-            || { echo 'P-40 installed RPC producer currently targets the Ubuntu 24.04 aarch64 UTM session.' >&2; exit 1; }
-          deb=""
-          while IFS= read -r candidate; do
-            architecture="$(dpkg-deb -f "$candidate" Architecture)"
-            package_name="$(dpkg-deb -f "$candidate" Package)"
-            if test "$architecture" = arm64 && test "$package_name" = open-burn-bar; then
-              deb="$candidate"
-              break
-            fi
-          done < <(find "$input_root" -type f -name '*.deb' -print | sort)
-          test -n "$deb" || { echo 'P-40 requires an installed open-burn-bar arm64 Debian package.' >&2; exit 1; }
-          sudo apt-get install -y --reinstall "$deb"
-
-          candidate_root="$RUNNER_TEMP/openburnbar-p40-${CANDIDATE_RUN_ID}"
-          rm -rf "$candidate_root"
-          install -d -m 700 "$candidate_root/support" "$candidate_root/runtime/openburnbar" "$candidate_root/evidence"
-          socket="$candidate_root/runtime/openburnbar/daemon.sock"
-          support="$candidate_root/support"
-          OPENBURNBAR_DAEMON_SUPPORT_DIR="$support" \
-          OPENBURNBAR_DAEMON_SOCKET_PATH="$socket" \
-          XDG_DATA_HOME="$candidate_root/data" \
-          XDG_RUNTIME_DIR="$candidate_root/runtime" \
-          /usr/libexec/openburnbar-daemon-launch >"$candidate_root/daemon.log" 2>&1 &
-          daemon_pid=$!
-          cleanup_p40() {
-            kill "$daemon_pid" 2>/dev/null || true
-            wait "$daemon_pid" 2>/dev/null || true
-            rm -rf "$candidate_root"
-          }
-          trap cleanup_p40 EXIT
-          for _ in $(seq 1 60); do test -S "$socket" && break; sleep 0.5; done
-          test -S "$socket"
-          token_file="$support/daemon-socket-auth-token"
-          test -f "$token_file"
-          manifest_sha256="$(sha256sum /usr/share/openburnbar/attestation/installed-manifest.json | awk '{print $1}')"
-          package_version="$(dpkg-deb -f "$deb" Version)"
-          # The trusted launcher exports this path for the daemon. The producer
-          # also invokes the installed Swift CLI peer, so bind the same
-          # package-owned runtime explicitly for its child process.
-          export LD_LIBRARY_PATH="/usr/lib/openburnbar/swift:/usr/lib/openburnbar/native${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-          node scripts/linux-port/run-p40-privacy-rpc-session.mjs \
-            --socket "$socket" \
-            --token-file "$token_file" \
-            --output-root "$candidate_root/evidence" \
-            --environment "$ENVIRONMENT_ID" \
-            --target-head "$TARGET_HEAD" \
-            --candidate-run-id "$CANDIDATE_RUN_ID" \
-            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
-            --package-version "$package_version" \
-            --manifest-sha256 "$manifest_sha256"
-          cp -f "$candidate_root/evidence/p40-live-session.json" "$input_root/p40-live-session.json"
-          install -d -m 700 "$input_root/privacy"
-          cp -f "$candidate_root/evidence/privacy/inventory.json" "$input_root/privacy/inventory.json"
-          cp -f "$candidate_root/evidence/privacy/deletion.json" "$input_root/privacy/deletion.json"
-          cp -f "$candidate_root/evidence/privacy/export.json" "$input_root/privacy/export.json"
-          cp -f "$candidate_root/evidence/privacy/retention.json" "$input_root/privacy/retention.json"
+          bash scripts/linux-port/run-p40-installed-privacy-proof.sh
           session_report="$input_root/p40-live-session.json"
           test -f "$session_report"
           node scripts/linux-port/capture-p40-privacy-proof.mjs \

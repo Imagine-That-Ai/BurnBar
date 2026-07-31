@@ -54,6 +54,7 @@ REQUIRED_TTLS=(
     "voip_outbound/fields/expireAt"
     "fcm_outbound/fields/expireAt"
     "agent_notification_events/fields/expireAt"
+    "google_play_rtdn_events/fields/expireAt"
 )
 
 FAILED_CHECKS=0

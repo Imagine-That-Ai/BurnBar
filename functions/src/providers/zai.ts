@@ -6,17 +6,21 @@
  *   • https://api.z.ai            (international)
  *   • https://open.bigmodel.cn    (mainland China — original Zhipu host)
  *
- * Both expose:
- *   • GET /api/paas/v4/models                       — credential validation
- *   • GET /api/paas/v4/user/balance                  — pay-as-you-go balance
- *   • GET /api/monitor/usage/quota/limit            — coding-plan window limits
+ * The supported endpoints use different authentication formats:
+ *   • GET /api/paas/v4/models                       — Bearer token validation
+ *   • GET /api/monitor/usage/quota/limit            — raw Coding Plan token
  *
  * Historically this adapter only hit `open.bigmodel.cn` and the now-defunct
  * `/v4/user/info` route. The mainland host is unreachable from many
  * production regions (and explicitly errors on coding-plan keys), so we
  * iterate the candidate hosts in order and fall back to whichever one
- * responds first. Validation always uses `/v4/models`, which is the only
- * stable Z.ai endpoint that accepts both account-style and coding-plan keys.
+ * responds first. Validation first uses `/v4/models` (the stable standard-API
+ * credential endpoint) and falls back to the raw-token monitor endpoint so
+ * Coding Plan-only keys, which the standard API rejects, can still connect.
+ * Z.ai does not expose a documented, reliable pay-as-you-go balance endpoint,
+ * so a valid standard-API account without Coding Plan quota returns a
+ * successful empty snapshot. Transient monitor failures (network errors,
+ * 5xx) propagate as errors instead of masquerading as "no Coding Plan".
  *
  * Z.ai responses use a mix of `{ error: { code, message } }` (paas/v4) and
  * `{ code, msg, data }` (monitor/*) envelopes; both are handled here.
@@ -32,7 +36,6 @@ const PROVIDER = "zai" as const;
 const HOSTS = ["https://api.z.ai", "https://open.bigmodel.cn"] as const;
 
 const VALIDATE_PATH = "/api/paas/v4/models";
-const BALANCE_PATH = "/api/paas/v4/user/balance";
 const QUOTA_PATH = "/api/monitor/usage/quota/limit";
 
 function redact(token: string): string {
@@ -48,13 +51,17 @@ interface ZaiFetchResult {
   errorCode?: string;
 }
 
-async function zaiFetch(url: string, token: string): Promise<ZaiFetchResult> {
+function authorizationHeader(path: string, token: string): string {
+  return path.startsWith("/api/monitor/") ? token : `Bearer ${token}`;
+}
+
+async function zaiFetch(url: string, path: string, token: string): Promise<ZaiFetchResult> {
   let response: Response;
   try {
     response = await providerFetch(PROVIDER, "api", url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: authorizationHeader(path, token),
         Accept: "application/json",
         "Accept-Language": "en-US,en",
       },
@@ -145,7 +152,7 @@ async function tryEachHost(path: string, token: string): Promise<ZaiFetchResult>
   let lastFailure: ZaiFetchResult | undefined;
   for (const host of HOSTS) {
     const url = `${host}${path}`;
-    const result = await zaiFetch(url, token);
+    const result = await zaiFetch(url, path, token);
     if (result.ok) return result;
     lastFailure = result;
     // Don't try the second host when the credential is rejected — we know it
@@ -176,21 +183,34 @@ export const zaiAdapter: ProviderAdapter = {
       };
     }
 
-    const result = await tryEachHost(VALIDATE_PATH, trimmed);
-    if (!result.ok) {
+    const standard = await tryEachHost(VALIDATE_PATH, trimmed);
+    if (standard.ok) {
       return {
-        valid: false,
+        valid: true,
         redactedLabel: redact(trimmed),
         credentialKind: "bearer",
-        errorCode: result.errorCode ?? "validation_failed",
-        errorMessage: result.error || "Z.ai validation request failed.",
+      };
+    }
+
+    // Coding Plan-only keys are rejected by the standard paas/v4 API but
+    // authenticate against the monitor endpoint with raw-token authorization.
+    // Accept them here so connection validation does not block keys that
+    // fetchQuota can serve.
+    const monitor = await tryEachHost(QUOTA_PATH, trimmed);
+    if (monitor.ok) {
+      return {
+        valid: true,
+        redactedLabel: redact(trimmed),
+        credentialKind: "bearer",
       };
     }
 
     return {
-      valid: true,
+      valid: false,
       redactedLabel: redact(trimmed),
       credentialKind: "bearer",
+      errorCode: standard.errorCode ?? "validation_failed",
+      errorMessage: standard.error || "Z.ai validation request failed.",
     };
   },
 
@@ -211,24 +231,40 @@ export const zaiAdapter: ProviderAdapter = {
       confidence = buckets.length ? "high" : "low";
     }
 
-    if (buckets.length === 0) {
-      // Pay-as-you-go balance fallback.
-      const balance = await tryEachHost(BALANCE_PATH, trimmed);
-      if (!balance.ok && !coding.ok) {
-        // Both probes failed — surface the most useful error. Auth failures
-        // win over generic "endpoint not found" misses.
-        const failure = (coding.errorCode === "auth_failed" ? coding : balance) ?? coding ?? balance;
+    if (!coding.ok) {
+      // Transient monitor failures (network errors, timeouts, 5xx after
+      // retries) must not masquerade as "this account has no Coding Plan":
+      // publishing a successful empty snapshot would overwrite previously
+      // valid quota data. Only fall back when the monitor gave a definitive
+      // answer for this credential (rejected key, missing endpoint, or an
+      // explicit inline "no plan" envelope).
+      const definitiveMonitorOutcome =
+        coding.errorCode === "auth_failed" ||
+        coding.errorCode === "endpoint_not_found" ||
+        coding.errorCode === "zai_error";
+      if (!definitiveMonitorOutcome) {
+        return {
+          ok: false,
+          errorCode: coding.errorCode ?? "fetch_failed",
+          errorMessage: coding.error || "Z.ai quota request failed.",
+        };
+      }
+
+      // Standard API tokens are valid Z.ai credentials even when the account
+      // has no Coding Plan. Confirm them against the stable paas/v4 endpoint
+      // and return an honest empty snapshot instead of fabricating a balance
+      // or escalating the provider's "no plan" response to HTTP 500.
+      const validation = await tryEachHost(VALIDATE_PATH, trimmed);
+      if (!validation.ok) {
+        const failure = validation.errorCode === "auth_failed" ? validation : coding;
         return {
           ok: false,
           errorCode: failure.errorCode ?? "fetch_failed",
           errorMessage: failure.error || "Z.ai quota request failed.",
         };
       }
-      if (balance.ok) {
-        buckets = bucketsFromBalance(balance.data);
-        source = "Z.ai balance";
-        confidence = buckets.length ? "high" : "low";
-      }
+      source = "Z.ai standard API";
+      confidence = "low";
     }
 
     return {
@@ -241,8 +277,10 @@ export const zaiAdapter: ProviderAdapter = {
         source,
         confidence,
         statusMessage: buckets.length
-          ? "Fetched from Z.ai (Zhipu) account endpoint."
-          : "Z.ai responded but did not expose recognizable quota buckets.",
+          ? "Fetched from the Z.ai Coding Plan quota endpoint."
+          : coding.ok
+            ? "Z.ai responded, but this account did not expose recognizable Coding Plan quota."
+            : "Z.ai credentials are valid, but this account does not expose Coding Plan quota.",
         buckets,
       },
     };
@@ -289,42 +327,6 @@ function bucketsFromMonitorQuota(payload: unknown): QuotaBucket[] {
   // tile instead of a blank dashboard.
   const harvested = harvestQuotaBuckets(record);
   return harvested;
-}
-
-function bucketsFromBalance(payload: unknown): QuotaBucket[] {
-  const record = recordOrUndefined(payload);
-  if (!record) return [];
-  const nested = recordOrUndefined(record.data) ?? record;
-
-  const total = numberFromAny(nested.total);
-  const used = numberFromAny(nested.used) ?? 0;
-  const balance = numberFromAny(nested.balance);
-
-  if (total !== undefined) {
-    return [
-      {
-        name: "tokens",
-        used,
-        limit: total,
-        remaining: Math.max(0, total - used),
-        window: "account",
-        meta: { currency: stringFromAny(nested.currency) ?? "CNY" },
-      },
-    ];
-  }
-  if (balance !== undefined) {
-    return [
-      {
-        name: "balance",
-        used: 0,
-        limit: -1,
-        remaining: balance,
-        window: "account",
-        meta: { currency: stringFromAny(nested.currency) ?? "CNY" },
-      },
-    ];
-  }
-  return [];
 }
 
 /**
@@ -527,8 +529,8 @@ function diagnosticStringFromAny(raw: unknown): string | undefined {
 export const __testing__ = {
   zaiFetch,
   tryEachHost,
+  authorizationHeader,
   inlineErrorMessage,
   bucketsFromMonitorQuota,
-  bucketsFromBalance,
   HOSTS,
 };

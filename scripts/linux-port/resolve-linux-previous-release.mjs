@@ -34,12 +34,20 @@ export function compareSemver(left, right) {
 export function expectedAssets(version, architecture) {
   const deb = DEB_ASSET[architecture]?.replace('{version}', version);
   const arch = `openburnbar-${version}-`;
+  const installedAttestations = Object.fromEntries(
+    ['arch', 'deb', 'rpm'].map((format) => [
+      format,
+      {
+        manifest: `openburnbar-${version}-${format}-${architecture}.installed-manifest.json`,
+        signature: `openburnbar-${version}-${format}-${architecture}.installed-manifest.ed25519`
+      }
+    ])
+  );
   return {
     deb,
     archPackage: new RegExp(`^${escapeRegExp(arch)}[0-9]+-${escapeRegExp(architecture)}\\.pkg\\.tar\\.zst$`, 'u'),
     archSignature: new RegExp(`^${escapeRegExp(arch)}[0-9]+-${escapeRegExp(architecture)}\\.pkg\\.tar\\.zst\\.ed25519\\.sig$`, 'u'),
-    installedManifest: `openburnbar-${version}-${architecture}.installed-manifest.json`,
-    installedManifestSignature: `openburnbar-${version}-${architecture}.installed-manifest.ed25519`,
+    installedAttestations,
     productProof: 'product-proof-closure.json',
     productProofSignature: 'product-proof-closure.json.ed25519.sig'
   };
@@ -56,13 +64,23 @@ export function inspectReleaseAssets({ version, assets, architectures = ARCHITEC
     const archSignatures = [...names].filter((name) => expected.archSignature.test(name));
     if (archPackages.length !== 1) failures.push(`${architecture}: expected one canonical Arch package, found ${archPackages.length}`);
     if (archSignatures.length !== 1) failures.push(`${architecture}: expected one detached Arch package signature, found ${archSignatures.length}`);
-    for (const sidecar of ['installedManifest', 'installedManifestSignature', 'productProof', 'productProofSignature']) {
+    for (const format of ['arch', 'deb', 'rpm']) {
+      const attestation = expected.installedAttestations[format];
+      if (!names.has(attestation.manifest)) {
+        failures.push(`${architecture}: missing ${attestation.manifest}`);
+      }
+      if (!names.has(attestation.signature)) {
+        failures.push(`${architecture}: missing ${attestation.signature}`);
+      }
+    }
+    for (const sidecar of ['productProof', 'productProofSignature']) {
       if (!names.has(expected[sidecar])) failures.push(`${architecture}: missing ${expected[sidecar]}`);
     }
     selected[architecture] = {
       deb: expected.deb,
       archPackage: archPackages[0] ?? null,
-      archSignature: archSignatures[0] ?? null
+      archSignature: archSignatures[0] ?? null,
+      installedAttestations: expected.installedAttestations
     };
   }
   return { passed: failures.length === 0, failures, selected };
@@ -89,11 +107,19 @@ export function releaseCandidates({ releases, currentVersion, requestedVersion =
   return { candidates: ordered, failures };
 }
 
+// A payload check has three outcomes, not two.  "Incompatible" is an
+// authoritative verdict about a release; "indeterminate" means the release
+// could not be inspected at all (the download or dpkg-deb failed).  Callers
+// that treat "no compatible baseline" as authorization must never be handed
+// an indeterminate result dressed up as a verdict, so the distinction is
+// carried explicitly instead of being collapsed into `passed: false`.
 export function assertDebianLifecyclePayload({ packagePath, version, architecture, run = defaultRun }) {
   const fields = [];
   for (const field of ['Package', 'Version', 'Architecture']) {
     const result = run('dpkg-deb', ['-f', packagePath, field]);
-    if (result.exitCode !== 0) return { passed: false, reason: `${architecture}: dpkg-deb metadata inspection failed` };
+    if (result.exitCode !== 0) {
+      return { passed: false, indeterminate: true, reason: `${architecture}: dpkg-deb metadata inspection failed` };
+    }
     fields.push(result.stdout.trim());
   }
   const expectedArchitecture = architecture === 'aarch64' ? 'arm64' : 'amd64';
@@ -101,7 +127,10 @@ export function assertDebianLifecyclePayload({ packagePath, version, architectur
     return { passed: false, reason: `${architecture}: Debian package identity is not open-burn-bar ${version} ${expectedArchitecture}` };
   }
   const contents = run('dpkg-deb', ['-c', packagePath]);
-  if (contents.exitCode !== 0 || !contents.stdout.split(/\n/u).some((line) => /(?:^|\s)\.\/usr\/libexec\/openburnbar-daemon-launch$/u.test(line.trim()))) {
+  if (contents.exitCode !== 0) {
+    return { passed: false, indeterminate: true, reason: `${architecture}: dpkg-deb content inspection failed` };
+  }
+  if (!contents.stdout.split(/\n/u).some((line) => /(?:^|\s)\.\/usr\/libexec\/openburnbar-daemon-launch$/u.test(line.trim()))) {
     return { passed: false, reason: `${architecture}: Debian package is missing /usr/libexec/openburnbar-daemon-launch` };
   }
   return { passed: true };
@@ -169,14 +198,24 @@ function main() {
         ]);
         const packagePath = path.join(packageDir, assetName);
         if (download.exitCode !== 0 || !fs.existsSync(packagePath)) {
-          packageChecks.push({ passed: false, reason: `${architecture}: failed to download ${assetName} for payload inspection` });
+          // A failed download proves nothing about the release; it is a
+          // discovery failure, not evidence that no baseline exists.
+          packageChecks.push({
+            passed: false,
+            indeterminate: true,
+            reason: `${architecture}: failed to download ${assetName} for payload inspection`
+          });
           continue;
         }
         packageChecks.push(assertDebianLifecyclePayload({ packagePath, version: candidate.version, architecture }));
       }
-      const packageFailures = packageChecks.filter((check) => !check.passed).map((check) => check.reason);
-      if (packageFailures.length > 0) {
-        reasons.push(`${candidate.tag}: ${packageFailures.join('; ')}`);
+      const failedChecks = packageChecks.filter((check) => !check.passed);
+      const indeterminate = failedChecks.filter((check) => check.indeterminate === true);
+      if (indeterminate.length > 0) {
+        throw new Error(`${candidate.tag}: ${indeterminate.map((check) => check.reason).join('; ')}`);
+      }
+      if (failedChecks.length > 0) {
+        reasons.push(`${candidate.tag}: ${failedChecks.map((check) => check.reason).join('; ')}`);
         continue;
       }
       selected = candidate;
@@ -190,7 +229,7 @@ function main() {
     };
     if (requestedVersion && !selected) result.reason = `requested baseline ${requestedVersion} is not lifecycle-compatible: ${result.reason}`;
   } catch (error) {
-    result = { passed: false, version: '', tag: '', reason: error.message };
+    result = { passed: false, version: '', tag: '', discoveryError: true, reason: error.message };
   } finally {
     fs.rmSync(workDir, { recursive: true, force: true });
   }
@@ -203,6 +242,10 @@ function main() {
   // lifecycle report explain the promotion state.  A strict but incompatible
   // requested release is also retained as a blocked input so prerelease runs
   // still produce honest evidence; only malformed semver is an input error.
+  // Under --strict, a transient discovery failure (for example a gh API
+  // outage) is fatal: consumers that treat "no baseline" as an authorization
+  // signal must never mistake an error for an authoritative empty result.
+  if (process.argv.includes('--strict') && result.discoveryError === true) process.exit(1);
   process.exit(requestedVersion && !SEMVER.test(requestedVersion) ? 1 : 0);
 }
 

@@ -156,7 +156,7 @@ assert.match(
 for (const tier of ["cloud", "cloud_pro", "ultra"]) {
   assert.match(
     plans,
-    new RegExp(`href="/subscribe\\?tier=${tier}&amp;cadence=monthly"`),
+    new RegExp(`href="/subscribe\\?tier=${tier}&(?:amp;)?cadence=monthly"`),
     `${tier} CTA must enter the web subscription flow`
   );
   assert.match(
@@ -169,6 +169,60 @@ assert.match(
   plans,
   /updateSubscriptionLinks\(annual \? "annual" : "monthly"\)/,
   "billing toggle must update paid subscription CTAs to annual cadence"
+);
+// `[^}]*` keeps every structural assertion inside a single declaration block,
+// so a match can never leak into a later, unrelated rule.
+assert.match(
+  plans,
+  /\.billing \{[^}]*display: grid;[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[^}]*width: min\(100%, 19rem\);/,
+  "billing toggle must reserve equal, mobile-safe space for monthly and annual options"
+);
+assert.match(
+  plans,
+  /@media \(max-width: 400px\) \{\s*\.billing__opt \{[^}]*padding: 0\.5rem 0\.4rem;/,
+  "billing options must compact on narrow phones so both tracks fit at 320px"
+);
+assert.match(
+  plans,
+  /@media \(max-width: 340px\) \{\s*\.billing__save \{[^}]*display: none;/,
+  "billing savings badge must drop on ultra-narrow viewports"
+);
+for (const token of [
+  "--plan-text-bright",
+  "--plan-text-base",
+  "--plan-text-mute",
+  "--plan-line"
+]) {
+  assert.match(
+    plans,
+    new RegExp(`${token}:\\s*rgba\\(255, 255, 255, 0\\.\\d+\\)`),
+    `${token} must be declared (not merely referenced) for dark pricing cards`
+  );
+}
+const dimDeclaration = plans.match(/--plan-text-dim:\s*rgba\(255, 255, 255, (0\.\d+)\)/);
+assert.ok(
+  dimDeclaration && Number(dimDeclaration[1]) >= 0.62,
+  "--plan-text-dim must be declared at an AA-safe opacity (>= 0.62) for small dark-card text"
+);
+const cardBackdrop = plans.match(/\.plan \{[^}]*rgba\(10, 10, 15, (0\.\d+)\)/);
+assert.ok(
+  cardBackdrop && Number(cardBackdrop[1]) >= 0.9,
+  "plan card backdrop must stay opaque enough (>= 0.9 alpha) for AA text contrast over the light theme"
+);
+assert.match(
+  plans,
+  /\.plan__name \{[^}]*color: var\(--plan-text-bright\)/,
+  "plan headings must use explicit dark-card text"
+);
+assert.match(
+  plans,
+  /\.plan__list li \{[^}]*color: var\(--plan-text-base\)/,
+  "plan feature copy must use explicit dark-card text"
+);
+assert.match(
+  plans,
+  /\.plan__sub \{[^}]*color: var\(--plan-text-mute\)/,
+  "plan summaries must use explicit dark-card text"
 );
 assert.match(
   publicPricingCopy,

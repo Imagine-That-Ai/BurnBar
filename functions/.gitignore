@@ -7,6 +7,7 @@ lib/
 !vendor/openburnbar/domain-core-wasm/openburnbar_domain_core.js
 !vendor/openburnbar/domain-core-wasm/openburnbar_domain_core.d.ts
 !vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm.d.ts
+!vendor/openburnbar/brace-expansion-cjs/index.js
 
 # Dependencies
 node_modules/

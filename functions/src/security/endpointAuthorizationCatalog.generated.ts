@@ -1275,6 +1275,27 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
   },
   {
+    exportedName: "googlePlayDeveloperNotifications",
+    trigger: "pubsub-trigger",
+    authMethod: "Google Cloud Pub/Sub topic IAM and Firebase Functions platform delivery",
+    appCheck: "not-applicable",
+    tenantSource:
+      "server-owned Google Play token claim resolved from the RTDN purchase-token hash; the provider payload never supplies a uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger accepts only Pub/Sub delivery, validates the BurnBar package, hashes the purchase token, resolves the server-owned claim, and reconciles against the Google Play Developer API before updating that claim's uid",
+    handlerModule: "googlePlayRtdn.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["googlePlayDeveloperNotifications"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
     exportedName: "grantMediaGrandfather",
     trigger: "callable",
     authMethod: "Firebase Auth with callable-level ownership checks",
@@ -1769,7 +1790,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     exportedName: "mintLinuxAppCheckToken",
     trigger: "callable",
     authMethod:
-      "Firebase Auth; approved per-install Ed25519 key and a durable single-use challenge (no App Check on the bootstrap path)",
+      "Firebase Auth; lower-trust Linux attestation-gated App Check token mint (no App Check on the bootstrap path)",
     appCheck: "not-required",
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["attestation.deviceId", "attestation.challengeId"],
@@ -2311,6 +2332,27 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
         test: "platform triggers are not client-callable",
         kind: "platform-trigger",
         covers: ["reconcileAccountErasures"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
+    exportedName: "reconcileGooglePlayVoidedPurchasesDaily",
+    trigger: "scheduled",
+    authMethod: "Cloud Scheduler / Firebase Functions platform trigger",
+    appCheck: "not-applicable",
+    tenantSource:
+      "server-owned Google Play token claim resolved from the voided purchase-token hash; the provider response never supplies a uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "scheduled job lists only the configured BurnBar package, hashes each transient purchase token, resolves the server-owned claim, and routes reconciliation through the same provider-verified RTDN processor",
+    handlerModule: "googlePlayVoidedPurchaseReconciler.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["reconcileGooglePlayVoidedPurchasesDaily"],
       },
     ],
     highRiskComputerUse: false,

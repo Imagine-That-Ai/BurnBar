@@ -14,6 +14,7 @@ import {
   evaluateAlertDeliverabilityEvidence,
   evaluateEnvRequirements,
   evaluateHostedQuotaRunnerEndpoint,
+  evaluateGooglePlayRtdnReadiness,
   evaluateRetiredCloudRunServiceAbsence,
   evaluateRemoteConfigDefaults,
   evaluateRequiredProductIDs,
@@ -39,6 +40,12 @@ assert.match(launchGateSource, /LAUNCH_DONE/);
 assert.match(launchGateSource, /prove:paid-tier/);
 assert.match(launchGateSource, /validateLaunchEvidenceBundle/);
 assert.match(launchGateSource, /firestoreDisasterRecovery/);
+assert.match(launchGateSource, /googlePlayRtdn/);
+assert.match(launchGateSource, /googlePlayDeveloperNotifications/);
+assert.match(
+  launchGateSource,
+  /google-play-developer-notifications@system\.gserviceaccount\.com/,
+);
 assert.match(launchGateSource, /alertDeliverability/);
 assert.match(launchGateSource, /openburnbar-hosted-mcp/);
 assert.match(launchGateSource, /HOSTED_QUOTA_RUNNER_ALLOWED_HOSTS/);
@@ -196,6 +203,7 @@ function passingChecks(overrides = {}) {
     billingAlerts: { ok: true },
     alertDeliverability: { ok: true },
     firestoreDisasterRecovery: { ok: true },
+    googlePlayRtdn: { ok: true },
     firebaseFunctionsInventory: { ok: true },
     launchEvidence: {
       ok: true,
@@ -268,6 +276,86 @@ function passingChecks(overrides = {}) {
     verdict(passingChecks({ alertDeliverability: { ok: false } })).status,
     "NO_GO",
   );
+  assert.equal(
+    verdict(passingChecks({ googlePlayRtdn: { ok: false } })).status,
+    "NO_GO",
+  );
+}
+
+{
+  const readiness = evaluateGooglePlayRtdnReadiness(
+    {
+      topic: {
+        name: "projects/burnbar/topics/play-billing-notifications",
+      },
+      iamPolicy: {
+        bindings: [
+          {
+            role: "roles/pubsub.publisher",
+            members: [
+              "serviceAccount:google-play-developer-notifications@system.gserviceaccount.com",
+            ],
+          },
+        ],
+      },
+      functionDetails: {
+        state: "ACTIVE",
+        eventTrigger: {
+          eventFilters: { topic: "play-billing-notifications" },
+        },
+        serviceConfig: {
+          environmentVariables: {
+            GOOGLE_PLAY_RTDN_TOPIC: "play-billing-notifications",
+          },
+        },
+      },
+      ttlFields: [
+        {
+          name:
+            "projects/burnbar/databases/(default)/collectionGroups/" +
+            "google_play_rtdn_events/fields/expireAt",
+          ttlConfig: { state: "ACTIVE" },
+        },
+      ],
+    },
+    { project: "burnbar" },
+  );
+  assert.equal(readiness.ok, true);
+  assert.equal(readiness.function.triggerTopic, readiness.topic.expected);
+}
+
+{
+  const readiness = evaluateGooglePlayRtdnReadiness(
+    {
+      topic: {
+        name: "projects/burnbar/topics/play-billing-notifications",
+      },
+      iamPolicy: { bindings: [] },
+      functionDetails: {
+        state: "ACTIVE",
+        eventTrigger: {
+          eventFilters: { topic: "play-billing-notifications" },
+        },
+        serviceConfig: {
+          environmentVariables: {
+            GOOGLE_PLAY_RTDN_TOPIC: "play-billing-notifications",
+          },
+        },
+      },
+      ttlFields: [
+        {
+          name:
+            "projects/burnbar/databases/(default)/collectionGroups/" +
+            "google_play_rtdn_events/fields/expireAt",
+          ttlConfig: { state: "CREATING" },
+        },
+      ],
+    },
+    { project: "burnbar" },
+  );
+  assert.equal(readiness.ok, false);
+  assert.equal(readiness.publisher.ok, false);
+  assert.equal(readiness.ttl.ok, false);
 }
 
 {

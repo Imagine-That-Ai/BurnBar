@@ -9,20 +9,14 @@ import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { logError, wrapCallableHandler } from "../logging.js";
-import {
-  externalApiWithResilience,
-  googlePlayConsumeWithResilience,
-  stripeWithResilience,
-} from "../resilienceHelpers.js";
+import { externalApiWithResilience, stripeWithResilience } from "../resilienceHelpers.js";
 import {
   BURNBAR_PRO_ENTITLEMENT_ID,
   BURNBAR_PRO_MAX_ENTITLEMENT_ID,
   BURNBAR_ULTRA_ENTITLEMENT_ID,
   STRIPE_API_SECRETS,
   STRIPE_WEBHOOK_SECRETS,
-  STRIPE_CHECKOUT_SCHEMA_VERSION,
   GOOGLE_PLAY_ACTIVE_STATES,
-  selectGooglePlaySubscriptionLineItem,
   nowISO,
   sha256Hex,
   requireConfiguredStripe,
@@ -30,9 +24,10 @@ import {
   boundedHttpsURL,
   assertActiveBurnBarCloudProEntitlement,
   getOrCreateStripeCustomer,
+  selectGooglePlaySubscriptionLineItem,
   assertStripeCustomerCanStartSubscriptionCheckout,
   findReusableStripeSubscriptionCheckoutSession,
-  stripeTaxAwareCheckoutParams,
+  expireOpenStripeSubscriptionCheckoutSessions,
   creditCloudProTopUp,
   writeBurnBarProEntitlement,
 } from "./shared.js";
@@ -48,6 +43,7 @@ import {
 import { googlePlayBillingRecordPath } from "./googlePlayBillingPaths.js";
 import { claimGooglePlayPurchaseToken } from "./googlePlayTokenClaims.js";
 import { googlePlayTopUpKind, STRIPE_TOP_UP_KINDS, topUpCheckoutSelection } from "./stripeTopUps.js";
+import { STRIPE_CHECKOUT_CUSTOMER_AND_TAX_SETTINGS } from "./stripeCheckoutPolicy.js";
 import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 import {
   ANALYTICS_SECRETS,
@@ -256,15 +252,14 @@ export const createStripeBurnBarProCheckoutSession = onCall(
           stripe.checkout.sessions.create({
             mode: "payment",
             customer: customerID,
+            ...STRIPE_CHECKOUT_CUSTOMER_AND_TAX_SETTINGS,
             client_reference_id: uid,
             success_url: successUrl,
             cancel_url: cancelUrl,
             line_items: [{ price: topUp.priceID, quantity: 1 }],
-            ...stripeTaxAwareCheckoutParams(),
             metadata: {
               firebaseUID: uid,
               topUpKind: topUp.kind,
-              checkoutSchemaVersion: STRIPE_CHECKOUT_SCHEMA_VERSION,
             },
           }),
         );
@@ -273,43 +268,54 @@ export const createStripeBurnBarProCheckoutSession = onCall(
 
       const selection = subscriptionCheckoutSelection(request.data);
       await assertStripeCustomerCanStartSubscriptionCheckout(stripe, customerID);
-      const reusable = await findReusableStripeSubscriptionCheckoutSession(stripe, customerID, selection);
+      const redirectFingerprint = sha256Hex(`checkout_redirect_v1\n${successUrl}\n${cancelUrl}`);
+      const reusable = await findReusableStripeSubscriptionCheckoutSession(
+        stripe,
+        customerID,
+        selection,
+        redirectFingerprint,
+      );
       if (reusable) {
         return { sessionId: reusable.id, url: reusable.url, reused: true };
       }
+      // A reuse miss means the user changed tier, cadence, or redirect URLs.
+      // Expire the superseded open sessions before creating the new one so a
+      // stale checkout URL for a different selection cannot still be paid.
+      await expireOpenStripeSubscriptionCheckoutSessions(stripe, customerID);
       const idempotencyBucket = Math.floor(Date.now() / (10 * 60 * 1000));
-      const sessionParams: Stripe.Checkout.SessionCreateParams = {
-        mode: "subscription",
-        customer: customerID,
-        client_reference_id: uid,
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        allow_promotion_codes: true,
-        line_items: [{ price: selection.priceID, quantity: 1 }],
-        ...stripeTaxAwareCheckoutParams(),
-        metadata: {
-          firebaseUID: uid,
-          entitlementID: selection.entitlementID,
-          tier: selection.tier,
-          cadence: selection.cadence,
-          checkoutSchemaVersion: STRIPE_CHECKOUT_SCHEMA_VERSION,
-        },
-        subscription_data: {
-          metadata: {
-            firebaseUID: uid,
-            entitlementID: selection.entitlementID,
-            tier: selection.tier,
-            cadence: selection.cadence,
-            checkoutSchemaVersion: STRIPE_CHECKOUT_SCHEMA_VERSION,
-          },
-        },
-      };
       const idempotencyKey = sha256Hex(
-        `burnbar_subscription_checkout:${idempotencyBucket}:${JSON.stringify(sessionParams)}`,
+        `burnbar_subscription_checkout:${uid}:${selection.tier}:${selection.cadence}:${redirectFingerprint}:${idempotencyBucket}`,
       );
 
       const session = await stripeWithResilience("checkout.sessions.create.subscription", () =>
-        stripe.checkout.sessions.create(sessionParams, { idempotencyKey }),
+        stripe.checkout.sessions.create(
+          {
+            mode: "subscription",
+            customer: customerID,
+            ...STRIPE_CHECKOUT_CUSTOMER_AND_TAX_SETTINGS,
+            client_reference_id: uid,
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+            allow_promotion_codes: true,
+            line_items: [{ price: selection.priceID, quantity: 1 }],
+            metadata: {
+              firebaseUID: uid,
+              entitlementID: selection.entitlementID,
+              tier: selection.tier,
+              cadence: selection.cadence,
+              redirectFingerprint,
+            },
+            subscription_data: {
+              metadata: {
+                firebaseUID: uid,
+                entitlementID: selection.entitlementID,
+                tier: selection.tier,
+                cadence: selection.cadence,
+              },
+            },
+          },
+          { idempotencyKey },
+        ),
       );
 
       return { sessionId: session.id, url: session.url, reused: false };
@@ -430,7 +436,7 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
           purchaseTokenHash: tokenHash,
           subscriptionState,
           expiresAt: new Date(expiresAtMillis).toISOString(),
-          lineItemProductID: typeof lineItem.productId === "string" ? lineItem.productId : undefined,
+          lineItemProductID: lineItem && typeof lineItem.productId === "string" ? lineItem.productId : undefined,
           lastVerifiedAt: nowISO(),
           schemaVersion: 1,
         }),
@@ -554,42 +560,15 @@ export const verifyGooglePlayCloudProTopUp = onCall(
         externalPaymentID: tokenHash,
       });
       let consumed = false;
-      let consumptionConfirmedAfterError = false;
       if (consumptionState !== 1) {
-        try {
-          await googlePlayConsumeWithResilience(() =>
-            androidpublisher.purchases.products.consume({
-              packageName: cfg.googlePlayPackageName,
-              productId: productID,
-              token: purchaseToken,
-            }),
-          );
-          consumed = true;
-        } catch (consumeError) {
-          // Two verification requests can both observe consumptionState=0,
-          // then race after the Firestore credit transaction. Google Play may
-          // accept the first consume and reject the second even though the
-          // purchase is now safely consumed. A timeout can produce the same
-          // ambiguity. Re-read Play's authoritative state before surfacing an
-          // error; only treat the call as successful when Play confirms the
-          // exact token has transitioned to consumed.
-          const refreshedResponse = await externalApiWithResilience("googleplay.products.get.after_consume", () =>
-            androidpublisher.purchases.products.get({
-              packageName: cfg.googlePlayPackageName,
-              productId: productID,
-              token: purchaseToken,
-            }),
-          );
-          const refreshedPurchase = jsonObject(refreshedResponse.data);
-          const refreshedConsumptionState =
-            typeof refreshedPurchase.consumptionState === "number" &&
-            Number.isFinite(refreshedPurchase.consumptionState)
-              ? refreshedPurchase.consumptionState
-              : undefined;
-          if (refreshedConsumptionState !== 1) throw consumeError;
-          consumed = true;
-          consumptionConfirmedAfterError = true;
-        }
+        await externalApiWithResilience("googleplay.products.consume", () =>
+          androidpublisher.purchases.products.consume({
+            packageName: cfg.googlePlayPackageName,
+            productId: productID,
+            token: purchaseToken,
+          }),
+        );
+        consumed = true;
       }
 
       await db.doc(googlePlayBillingRecordPath(uid, "topup", tokenHash)).set(
@@ -601,10 +580,8 @@ export const verifyGooglePlayCloudProTopUp = onCall(
           purchaseState,
           consumptionState,
           orderId: typeof purchase.orderId === "string" ? purchase.orderId : undefined,
-          credited: true,
-          creditedByThisInvocation: credited.credited,
+          credited,
           consumed,
-          consumptionConfirmedAfterError,
           lastVerifiedAt: nowISO(),
           schemaVersion: 1,
         }),

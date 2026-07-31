@@ -111,7 +111,10 @@ final class MercuryRouterTests: XCTestCase {
             screenCaptureFactory: { _, _ in RouterNoopScreenCaptureSession() },
             videoEncoderFactory: { _, _ in RouterNoopVideoEncoder() }
         )
-        let consentStore = MercuryConsentStore(defaults: makeIsolatedDefaults())
+        // The store must share the router's clock: its defaults observer
+        // prunes grants against that clock, and these tests pin `now` years
+        // away from the wall clock.
+        let consentStore = MercuryConsentStore(defaults: makeIsolatedDefaults(), clock: clock)
         if consent {
             seedTestAutoAcceptGrants(in: consentStore)
         }
@@ -176,10 +179,20 @@ final class MercuryRouterTests: XCTestCase {
         return suite
     }
 
+    /// Polls until a frame matching `predicate` has been sent.
+    ///
+    /// The budget is wall-clock tolerance for the CI scheduler, not a behavioural
+    /// assertion: a passing run returns as soon as the frame appears, so a larger
+    /// timeout costs nothing when healthy and cannot mask a wrong frame — the
+    /// predicate still has to be satisfied. One second was too tight on the
+    /// shared macOS runners, where this suite runs alongside parallel Swift
+    /// compiles and the emitting task can be starved past the deadline
+    /// (`testControlStreamMirrorSinkEmitsHealthHeartbeatsWithoutVideoFrames`
+    /// asks for a 20 ms heartbeat and still timed out).
     private func waitForSentFrame(
         on stream: RecordingIrohStream,
         matching predicate: (HermesRealtimeRelayFrame) -> Bool,
-        timeout: TimeInterval = 1.0
+        timeout: TimeInterval = 10.0
     ) async throws -> HermesRealtimeRelayFrame {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -670,7 +683,11 @@ final class MercuryRouterTests: XCTestCase {
     }
 
     func testExistingPeerGrantAutoAcceptDoesNotRenewGrant() async throws {
-        var now = Date(timeIntervalSince1970: 1_700_000_000)
+        // Anchor the synthetic clock to the wall clock: the consent store's
+        // UserDefaults observer re-synchronizes grants against real `Date()`,
+        // so a grant minted at a fixed 2023 epoch would be purged as expired
+        // whenever that observer fires between the awaits below.
+        var now = Date()
         let (router, sink, consentStore) = makeRouterWithConsentStore(
             startScreenShare: { _, _, _, _, _, _, _, _ in },
             clock: { now }

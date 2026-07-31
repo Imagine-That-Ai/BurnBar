@@ -45,7 +45,47 @@ function stepBlock(source, stepName) {
   return source.slice(start, start + needle.length + endRel);
 }
 
+function jobBlock(source, jobName) {
+  const needle = `  ${jobName}:`;
+  const start = source.indexOf(needle);
+  if (start < 0) return null;
+  const rest = source.slice(start + needle.length);
+  const nextJob = rest.search(/\n  [a-zA-Z0-9_-]+:/u);
+  const endRel = nextJob >= 0 ? nextJob : rest.length;
+  return source.slice(start, start + needle.length + endRel);
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────
+
+test("push deploys are enabled while manual dry-runs remain build-only", () => {
+  const build = jobBlock(WORKFLOW, "build-hosting-artifacts");
+  const deploy = jobBlock(WORKFLOW, "deploy-hosting");
+  const smoke = jobBlock(WORKFLOW, "hosting-smoke-result");
+  assert.ok(build);
+  assert.ok(deploy);
+  assert.ok(smoke);
+
+  assert.match(
+    build,
+    /if: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.dry_run == true \}\}/u,
+    "dry-run summary must be manual-dispatch-only",
+  );
+  assert.match(
+    deploy,
+    /if: \$\{\{ github\.event_name != 'workflow_dispatch' \|\| inputs\.dry_run != true \}\}/u,
+    "push and tag events must not depend on absent workflow_dispatch inputs",
+  );
+  assert.match(
+    smoke,
+    /if: \$\{\{ always\(\) && \(github\.event_name != 'workflow_dispatch' \|\| inputs\.dry_run != true\) \}\}/u,
+    "hosting smoke must follow the same push-safe dry-run gate",
+  );
+  assert.doesNotMatch(
+    WORKFLOW,
+    /github\.event\.inputs\.dry_run/u,
+    "workflow must use the typed inputs context with an explicit event guard",
+  );
+});
 
 test("workflow contains Resolve signed public domain-core profile step", () => {
   const block = stepBlock(
@@ -482,10 +522,7 @@ test("missing-receipt guard fails closed when live identity commit equals RELEAS
   // The error message must name the deployment identity and the missing
   // receipt, so an operator can trace the fail-closed reason.
   assert.match(branch, /already live \(deployment identity commit/u);
-  assert.match(
-    branch,
-    /immutable Console deployment receipt is missing/u,
-  );
+  assert.match(branch, /immutable Console deployment receipt is missing/u);
 });
 
 test("missing-receipt guard does not consult CANDIDATE_COMMIT in the fail-closed branch", () => {
@@ -509,7 +546,9 @@ test("missing-receipt guard fails closed when live identity is unreachable and p
     "guard must fail closed when the live identity is unreachable",
   );
   assert.ok(
-    branch.includes('fi\n            echo "reused=false" >> "$GITHUB_OUTPUT"\n            exit 0'),
+    branch.includes(
+      'fi\n            echo "reused=false" >> "$GITHUB_OUTPUT"\n            exit 0',
+    ),
     "guard must emit reused=false and exit 0 when live commit differs from RELEASE_COMMIT",
   );
 });

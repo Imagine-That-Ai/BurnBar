@@ -379,6 +379,15 @@ final class HostedQuotaSubscriptionStore {
         transactionUpdatesTask?.cancel()
     }
 
+    private func clearEntitlementState() {
+        isActive = false
+        activeProductID = nil
+        expirationDate = nil
+        purchaseDate = nil
+        latestTransactionID = nil
+        UltraTierBridge.shared.tier = nil
+    }
+
     func load() async {
         isLoading = true
         error = nil
@@ -387,11 +396,7 @@ final class HostedQuotaSubscriptionStore {
             startObservingTransactionUpdates()
         }
         guard isSignedIn() else {
-            isActive = false
-            activeProductID = nil
-            expirationDate = nil
-            purchaseDate = nil
-            latestTransactionID = nil
+            clearEntitlementState()
             await loadProductMetadataIfAvailable()
             return
         }
@@ -540,11 +545,7 @@ final class HostedQuotaSubscriptionStore {
         preverifiedResponse: (jws: String, response: HostedQuotaEntitlementResponse)?
     ) async throws {
         guard isSignedIn() else {
-            isActive = false
-            activeProductID = nil
-            expirationDate = nil
-            purchaseDate = nil
-            latestTransactionID = nil
+            clearEntitlementState()
             return
         }
 
@@ -596,9 +597,7 @@ final class HostedQuotaSubscriptionStore {
                 let directReadRecovered = await applyDirectReadIfActive()
                 let serverTierRecovered = directReadRecovered ? false : await applyServerResolvedTierIfActive()
                 if !directReadRecovered && !serverTierRecovered {
-                    isActive = false
-                    activeProductID = nil
-                    expirationDate = nil
+                    clearEntitlementState()
                 }
             }
         }
@@ -662,7 +661,7 @@ final class HostedQuotaSubscriptionStore {
         case "cloud", "premium":
             productID = Self.productID
         default:
-            UltraTierBridge.shared.tier = tier == "free" ? nil : tier
+            clearEntitlementState()
             return false
         }
         UltraTierBridge.shared.tier = tier
@@ -908,10 +907,14 @@ final class HostedQuotaSubscriptionStore {
         let active = response.active &&
             Self.entitlementProductIDs.contains(response.productID) &&
             acceptsEntitlementEnvironment(response.environment)
-        isActive = active
-        activeProductID = active ? response.productID : nil
-        expirationDate = active ? response.expiresAt : nil
-        UltraTierBridge.shared.tier = active ? Self.resolvedTierName(for: response.productID) : nil
+        guard active else {
+            clearEntitlementState()
+            return
+        }
+        isActive = true
+        activeProductID = response.productID
+        expirationDate = response.expiresAt
+        UltraTierBridge.shared.tier = Self.resolvedTierName(for: response.productID)
     }
 
     private static func resolvedTierName(for productID: String) -> String? {

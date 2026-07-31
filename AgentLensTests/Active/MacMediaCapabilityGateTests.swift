@@ -6,6 +6,7 @@ import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 import Security
+import SwiftUI
 @testable import OpenBurnBar
 
 /// Locks in the admission decisions made by `MacMediaCapabilityGate`.
@@ -64,6 +65,51 @@ final class MacMediaCapabilityGateTests: XCTestCase {
             return
         }
         XCTAssertEqual(reason, .entitlementMissing)
+    }
+
+    func testEntitlementRefreshCompletesBeforeAdmissionReadsState() async {
+        var entitlement = MacMediaCapabilityGate.EntitlementState(
+            active: false,
+            fileTransfer: false,
+            screenShare: false,
+            videoCall: false
+        )
+        var refreshCount = 0
+        let gate = MacMediaCapabilityGate(
+            entitlementProvider: { entitlement },
+            entitlementRefreshProvider: {
+                refreshCount += 1
+                entitlement = self.happyEntitlement
+            },
+            usageProvider: { self.zeroUsage },
+            budgetProvider: { self.normalBudget },
+            concurrentSessionsProvider: { _ in 0 },
+            killSwitchProvider: { false }
+        )
+
+        let result = await gate.check(
+            feature: .screenShare,
+            sessionDurationLimitSeconds: nil,
+            sessionByteBudget: nil
+        )
+
+        XCTAssertEqual(refreshCount, 1)
+        XCTAssertTrue(result.isAllowed)
+    }
+
+    func testMediaSessionErrorsProvideActionableDescriptions() {
+        XCTAssertEqual(
+            MediaSessionError.denied(reason: .entitlementMissing).localizedDescription,
+            "Screen sharing requires an active Cloud Pro or Ultra subscription."
+        )
+        XCTAssertEqual(
+            MediaSessionError.captureFailed.localizedDescription,
+            "The Mac could not start screen capture."
+        )
+        XCTAssertEqual(
+            MediaSessionError.encodeFailed.localizedDescription,
+            "The Mac could not start the video encoder."
+        )
     }
 
     func testSharedMediaEntitlementMappingFailsClosedUntilMediaOrProMaxEntitlementIsActive() {
@@ -267,6 +313,183 @@ final class MacMediaCapabilityGateTests: XCTestCase {
 
         XCTAssertEqual(selected.productID, MacCloudStoreKitProductCatalog.cloudUltraAnnualProductID)
         XCTAssertEqual(selected.signedTransactionJWS, "ultra-annual-jws")
+    }
+
+    func testMacHostedQuotaRestoreTieBreaksByPurchaseDateWithinSameTierAndExpiration() throws {
+        let now = Date()
+        let expiry = now.addingTimeInterval(86_400)
+        let selected = try XCTUnwrap(
+            MacHostedQuotaPurchaseStore.preferredCurrentEntitlement(
+                from: [
+                    MacHostedQuotaCurrentEntitlement(
+                        productID: MacCloudStoreKitProductCatalog.cloudUltraMonthlyProductID,
+                        signedTransactionJWS: "older-purchase-jws",
+                        expirationDate: expiry,
+                        purchaseDate: now.addingTimeInterval(-600),
+                        transactionID: 99
+                    ),
+                    MacHostedQuotaCurrentEntitlement(
+                        productID: MacCloudStoreKitProductCatalog.legacyCloudUltraAnnualProductID,
+                        signedTransactionJWS: "newer-purchase-jws",
+                        expirationDate: expiry,
+                        purchaseDate: now.addingTimeInterval(-60),
+                        transactionID: 1
+                    )
+                ]
+            )
+        )
+
+        XCTAssertEqual(selected.signedTransactionJWS, "newer-purchase-jws")
+    }
+
+    func testMacHostedQuotaRestoreTieBreaksByTransactionIDThenProductID() throws {
+        let now = Date()
+        let expiry = now.addingTimeInterval(86_400)
+        let purchase = now.addingTimeInterval(-300)
+
+        let byTransactionID = try XCTUnwrap(
+            MacHostedQuotaPurchaseStore.preferredCurrentEntitlement(
+                from: [
+                    MacHostedQuotaCurrentEntitlement(
+                        productID: MacCloudStoreKitProductCatalog.cloudUltraMonthlyProductID,
+                        signedTransactionJWS: "earlier-transaction-jws",
+                        expirationDate: expiry,
+                        purchaseDate: purchase,
+                        transactionID: 10
+                    ),
+                    MacHostedQuotaCurrentEntitlement(
+                        productID: MacCloudStoreKitProductCatalog.legacyCloudUltraAnnualProductID,
+                        signedTransactionJWS: "later-transaction-jws",
+                        expirationDate: expiry,
+                        purchaseDate: purchase,
+                        transactionID: 20
+                    )
+                ]
+            )
+        )
+        XCTAssertEqual(byTransactionID.signedTransactionJWS, "later-transaction-jws")
+
+        let byProductID = try XCTUnwrap(
+            MacHostedQuotaPurchaseStore.preferredCurrentEntitlement(
+                from: [
+                    MacHostedQuotaCurrentEntitlement(
+                        productID: MacCloudStoreKitProductCatalog.cloudUltraAnnualProductID,
+                        signedTransactionJWS: "annual-jws",
+                        expirationDate: expiry,
+                        purchaseDate: purchase,
+                        transactionID: 7
+                    ),
+                    MacHostedQuotaCurrentEntitlement(
+                        productID: MacCloudStoreKitProductCatalog.cloudUltraMonthlyProductID,
+                        signedTransactionJWS: "monthly-jws",
+                        expirationDate: expiry,
+                        purchaseDate: purchase,
+                        transactionID: 7
+                    )
+                ]
+            )
+        )
+        XCTAssertEqual(
+            byProductID.productID,
+            MacCloudStoreKitProductCatalog.cloudUltraMonthlyProductID
+        )
+    }
+
+    func testMacHostedQuotaRestoreToleratesMissingDatesAndIgnoresUnknownProducts() {
+        XCTAssertNil(MacHostedQuotaPurchaseStore.preferredCurrentEntitlement(from: []))
+        XCTAssertNil(
+            MacHostedQuotaPurchaseStore.preferredCurrentEntitlement(
+                from: [
+                    MacHostedQuotaCurrentEntitlement(
+                        productID: "com.openburnbar.not-a-real-product",
+                        signedTransactionJWS: "bogus-jws",
+                        expirationDate: nil,
+                        purchaseDate: nil,
+                        transactionID: nil
+                    )
+                ]
+            )
+        )
+
+        let selected = MacHostedQuotaPurchaseStore.preferredCurrentEntitlement(
+            from: [
+                MacHostedQuotaCurrentEntitlement(
+                    productID: MacCloudStoreKitProductCatalog.cloudUltraMonthlyProductID,
+                    signedTransactionJWS: "lifetime-jws",
+                    expirationDate: nil,
+                    purchaseDate: nil,
+                    transactionID: nil
+                ),
+                MacHostedQuotaCurrentEntitlement(
+                    productID: MacCloudStoreKitProductCatalog.cloudMonthlyProductID,
+                    signedTransactionJWS: "cloud-jws",
+                    expirationDate: Date(timeIntervalSinceNow: 3_600),
+                    purchaseDate: Date(),
+                    transactionID: 5
+                )
+            ]
+        )
+        XCTAssertEqual(selected?.signedTransactionJWS, "lifetime-jws")
+    }
+
+    func testMacCloudBillingPeriodPresentsBothCadences() {
+        XCTAssertEqual(MacCloudBillingPeriod.allCases, [.monthly, .annual])
+        XCTAssertEqual(MacCloudBillingPeriod.monthly.id, "monthly")
+        XCTAssertEqual(MacCloudBillingPeriod.annual.id, "annual")
+        XCTAssertEqual(MacCloudBillingPeriod.monthly.title, "Monthly")
+        XCTAssertEqual(MacCloudBillingPeriod.annual.title, "Annual")
+        XCTAssertEqual(MacCloudBillingPeriod.monthly.priceSuffix, "/ month")
+        XCTAssertEqual(MacCloudBillingPeriod.annual.priceSuffix, "/ year")
+    }
+
+    func testMacHostedQuotaDisplayPriceFallsBackPerCadenceUntilCatalogueLoads() {
+        let store = MacHostedQuotaPurchaseStore()
+
+        XCTAssertTrue(store.productsByID.isEmpty)
+        XCTAssertNil(store.displayPrice(for: .local, billingPeriod: .monthly))
+        XCTAssertNil(store.displayPrice(for: .local, billingPeriod: .annual))
+        for tier in [MacCloudPricingTier.cloud, .pro, .ultra] {
+            XCTAssertEqual(
+                store.displayPrice(for: tier, billingPeriod: .monthly),
+                MacHostedQuotaPurchaseStore.fallbackMonthlyPrice[tier]
+            )
+            XCTAssertEqual(
+                store.displayPrice(for: tier, billingPeriod: .annual),
+                MacHostedQuotaPurchaseStore.fallbackAnnualPrice[tier]
+            )
+        }
+    }
+
+    func testMacHostedQuotaPurchaseFailsClosedWhenCloudIsNotConfigured() async {
+        guard FirebaseApp.app() == nil else {
+            return
+        }
+        let store = MacHostedQuotaPurchaseStore()
+
+        // Local has no StoreKit product for either cadence; the guard returns
+        // before any purchase state is touched.
+        await store.purchase(tier: .local, billingPeriod: .annual)
+        XCTAssertNil(store.error)
+        XCTAssertNil(store.purchasingProductID)
+
+        // The legacy single-tier entry point resolves to Cloud monthly and
+        // fails closed when Firebase has never been configured.
+        await store.purchase()
+        XCTAssertEqual(
+            store.error,
+            MacHostedQuotaPurchaseError.cloudUnavailable.localizedDescription
+        )
+        XCTAssertFalse(store.isPurchasing)
+        XCTAssertNil(store.purchasingProductID)
+
+        // The annual cadence resolves its own product id and fails closed the
+        // same way.
+        await store.purchase(tier: .ultra, billingPeriod: .annual)
+        XCTAssertEqual(
+            store.error,
+            MacHostedQuotaPurchaseError.cloudUnavailable.localizedDescription
+        )
+        XCTAssertNil(store.purchasingProductID)
     }
 
     func testMacPricingCopyAvoidsStaticTrialPromiseAndMatchesUltraLimits() throws {
@@ -1273,5 +1496,46 @@ private final class FakeMacStoreKitAppAccountTokenBindingProvider: MacStoreKitAp
 
     func appAccountToken(_ token: UUID, isBoundToFirebaseUID uid: String) -> Bool {
         bindings[token.uuidString.lowercased()] == uid
+    }
+}
+
+// MARK: - CloudStoreSettingsView billing-cadence pane
+
+/// Renders the macOS Cloud store pane through a real `NSHostingView` so the
+/// tier lineup (segmented billing-period picker, per-cadence prices, and
+/// per-card busy state) actually executes, and drives the subscribe action
+/// directly to lock in its fail-closed behavior when Firebase is absent.
+///
+/// Both tests construct the pane with `startsLiveServicesOnAppear: false`:
+/// rendering must not start the live `onAppear` work (StoreKit catalogue
+/// load, transaction-updates listener, backup catch-up). On CI that leftover
+/// work wedged the shared test process and deterministically hung the next
+/// async-heavy suite (`MemoryActivationEndToEndTests`) until the App PR Gate
+/// job timed out.
+@MainActor
+final class CloudStoreSettingsViewBillingTests: XCTestCase {
+    func testCloudStorePaneRendersTierLineupWithPerCadencePricing() {
+        let image = renderViewSnapshot(
+            CloudStoreSettingsView(startsLiveServicesOnAppear: false),
+            size: CGSize(width: 980, height: 1600),
+            colorScheme: .dark
+        )
+
+        XCTAssertNotNil(image.tiffRepresentation)
+    }
+
+    func testSubscribeActionPurchasesSelectedCadenceAndFailsClosed() async {
+        guard FirebaseApp.app() == nil else {
+            return
+        }
+        let view = CloudStoreSettingsView(startsLiveServicesOnAppear: false)
+
+        // Paid tier: the purchase runs and fails closed on the FirebaseApp
+        // guard without ever reaching StoreKit.
+        await view.subscribeToSelectedCadence(.ultra).value
+
+        // Local tier: no StoreKit product exists for either cadence, so the
+        // action returns without starting a purchase.
+        await view.subscribeToSelectedCadence(.local).value
     }
 }

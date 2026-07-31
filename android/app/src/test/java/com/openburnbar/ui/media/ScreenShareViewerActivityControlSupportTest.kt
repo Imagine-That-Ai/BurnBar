@@ -2,6 +2,7 @@
 package com.openburnbar.ui.media
 
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
+import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -72,6 +73,60 @@ class ScreenShareViewerActivityControlSupportTest {
             val copy = message(reason)
             assertTrue("$reason produced blank copy", copy.isNotBlank())
             assertFalse("$reason leaked an internal token", copy.contains("_"))
+        }
+    }
+
+    @Test
+    fun `terminal mirror acknowledgements preserve mac detail`() {
+        val ack =
+            HermesRealtimeRelayMirrorAck(
+                requestId = "mirror-1",
+                decision = HermesRealtimeRelayMirrorAck.Decision.UNSUPPORTED,
+                detail = "Screen sharing requires an active Cloud Pro or Ultra subscription.",
+            )
+
+        assertEquals(
+            "Screen sharing requires an active Cloud Pro or Ultra subscription.",
+            mirrorAckFailureMessage(ack),
+        )
+    }
+
+    @Test
+    fun `accepted mirror acknowledgement has fallback copy`() {
+        assertEquals(
+            "Screen sharing approved.",
+            mirrorAckFailureMessage(
+                HermesRealtimeRelayMirrorAck(
+                    requestId = "mirror-1",
+                    decision = HermesRealtimeRelayMirrorAck.Decision.ACCEPTED,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `terminal mirror acknowledgements have useful fallback copy`() {
+        val expected =
+            mapOf(
+                HermesRealtimeRelayMirrorAck.Decision.DENIED to "The Mac declined screen sharing.",
+                HermesRealtimeRelayMirrorAck.Decision.COOLING_DOWN to
+                    "The Mac is cooling down before another screen-sharing request.",
+                HermesRealtimeRelayMirrorAck.Decision.UNSUPPORTED to
+                    "The Mac could not start screen sharing.",
+                HermesRealtimeRelayMirrorAck.Decision.BUSY to
+                    "The Mac is already handling another screen-sharing request.",
+            )
+
+        for ((decision, copy) in expected) {
+            assertEquals(
+                copy,
+                mirrorAckFailureMessage(
+                    HermesRealtimeRelayMirrorAck(
+                        requestId = "mirror-1",
+                        decision = decision,
+                    ),
+                ),
+            )
         }
     }
 }

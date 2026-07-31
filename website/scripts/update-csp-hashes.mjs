@@ -140,8 +140,6 @@ function expectedMarketingCsps(hashes) {
       "https://content-firebaseappcheck.googleapis.com",
       "https://www.google.com",
       "https://www.gstatic.com",
-      "http://localhost:5001",
-      "http://localhost:9099",
     ],
     formAction: ["https://accounts.google.com", "https://appleid.apple.com"],
   };

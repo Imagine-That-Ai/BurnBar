@@ -12,19 +12,33 @@ import { getConfig } from "../../config.js";
 import { stripeWithResilience } from "../../resilienceHelpers.js";
 import { jsonObject, recordOrUndefined } from "../../guards.js";
 import { auth, db } from "../../adminRuntime.js";
+import { logWarn } from "../../logging.js";
 import {
   BURNBAR_PRO_ENTITLEMENT_ID,
   BURNBAR_PRO_MAX_ENTITLEMENT_ID,
   BURNBAR_ULTRA_ENTITLEMENT_ID,
   writeBurnBarProEntitlement,
 } from "./entitlements.js";
+import {
+  deactivateReplacedStripeTierEntitlements,
+  stripeEntitlementExpiryMillis,
+  stripeEntitlementProductID,
+  stripeSubscriptionEntitlementID,
+  stripeSubscriptionProductID,
+} from "./stripeSubscriptionTiers.js";
 import { applyStripeTopUpCheckoutSession, reconcileStripeTopUpCharge } from "./stripeTopUps.js";
+import {
+  recordStripeSubscriptionPaymentReversal,
+  stripeInvoiceSubscriptionID,
+  stripeObjectID,
+  stripePaymentReversalDocPath,
+} from "./stripePaymentReversal.js";
+import { sha256Hex } from "./validators.js";
 
 const STRIPE_SECRET_KEY = defineSecret("STRIPE_SECRET_KEY");
 const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
 export const STRIPE_API_SECRETS = [STRIPE_SECRET_KEY];
 export const STRIPE_WEBHOOK_SECRETS = [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET];
-export const STRIPE_CHECKOUT_SCHEMA_VERSION = "tax-v1";
 const STRIPE_ACTIVE_STATES = new Set<string>(["active", "trialing", "past_due"]);
 const STRIPE_BLOCKING_SUBSCRIPTION_STATES = new Set<Stripe.Subscription.Status>([
   "incomplete",
@@ -40,29 +54,7 @@ interface StripeSubscriptionCheckoutSelection {
   cadence: "monthly" | "annual";
 }
 
-/**
- * Checkout defaults shared by subscription and top-up purchases.
- *
- * Automatic Tax collects the location details Stripe needs to calculate tax.
- * Because Checkout receives an existing Customer, customer_update persists the
- * verified billing identity for future invoices and Billing Portal sessions.
- */
-export function stripeTaxAwareCheckoutParams(): Pick<
-  Stripe.Checkout.SessionCreateParams,
-  "automatic_tax" | "billing_address_collection" | "customer_update" | "tax_id_collection"
-> {
-  return {
-    automatic_tax: { enabled: true },
-    billing_address_collection: "auto",
-    customer_update: {
-      address: "auto",
-      name: "auto",
-    },
-    tax_id_collection: { enabled: true },
-  };
-}
-
-export interface StripeEventContext {
+interface StripeEventContext {
   eventID?: string;
   eventCreatedMillis?: number;
 }
@@ -93,6 +85,40 @@ export function requireConfiguredStripeWebhookSecret(): string {
   return secret;
 }
 
+function stripeSearchLiteral(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
+}
+
+async function persistStripeCustomerMapping(
+  uid: string,
+  customer: Pick<Stripe.Customer, "id" | "created">,
+): Promise<void> {
+  const now = Timestamp.now();
+  const createdAt = Timestamp.fromMillis(customer.created * 1000);
+  await Promise.all([
+    db.doc(`users/${uid}/billing/stripe`).set(
+      {
+        uid,
+        customerID: customer.id,
+        createdAt,
+        updatedAt: now,
+        schemaVersion: 1,
+      },
+      { merge: true },
+    ),
+    db.doc(`stripe_customers/${customer.id}`).set(
+      {
+        uid,
+        customerID: customer.id,
+        createdAt,
+        updatedAt: now,
+        schemaVersion: 1,
+      },
+      { merge: true },
+    ),
+  ]);
+}
+
 export async function getOrCreateStripeCustomer(uid: string, stripe: Stripe): Promise<string> {
   const ref = db.doc(`users/${uid}/billing/stripe`);
   const existing = await ref.get();
@@ -101,34 +127,48 @@ export async function getOrCreateStripeCustomer(uid: string, stripe: Stripe): Pr
     return existingID;
   }
 
+  try {
+    const matches = await stripeWithResilience("customers.search.firebase_uid", () =>
+      stripe.customers.search({
+        query: `metadata['firebaseUID']:'${stripeSearchLiteral(uid)}'`,
+        limit: 100,
+      }),
+    );
+    const recovered = matches.data
+      .filter((customer) => customer.metadata.firebaseUID === uid)
+      .sort((lhs, rhs) => lhs.created - rhs.created || lhs.id.localeCompare(rhs.id))
+      .at(0);
+    if (recovered) {
+      await persistStripeCustomerMapping(uid, recovered);
+      return recovered.id;
+    }
+  } catch (error) {
+    // Search is a recovery path. A stable create idempotency key below still
+    // converges concurrent first-checkout calls if search is temporarily
+    // unavailable or has not indexed a just-created customer yet.
+    logWarn({
+      event: "stripe_customer_metadata_search_failed",
+      error: error instanceof Error ? error.name : "unknown",
+    });
+  }
+
   const user = await auth.getUser(uid).catch(() => undefined);
   const customer = await stripeWithResilience("customers.create", () =>
-    stripe.customers.create({
-      email: user?.email ?? undefined,
-      name: user?.displayName ?? undefined,
-      metadata: { firebaseUID: uid },
-    }),
+    stripe.customers.create(
+      {
+        email: user?.email ?? undefined,
+        name: user?.displayName ?? undefined,
+        metadata: {
+          firebaseUID: uid,
+          firebaseUIDHash: sha256Hex(uid),
+        },
+      },
+      {
+        idempotencyKey: `burnbar_customer_v1:${sha256Hex(uid)}`,
+      },
+    ),
   );
-  await ref.set(
-    {
-      uid,
-      customerID: customer.id,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-      schemaVersion: 1,
-    },
-    { merge: true },
-  );
-  await db.doc(`stripe_customers/${customer.id}`).set(
-    {
-      uid,
-      customerID: customer.id,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-      schemaVersion: 1,
-    },
-    { merge: true },
-  );
+  await persistStripeCustomerMapping(uid, customer);
   return customer.id;
 }
 
@@ -175,6 +215,7 @@ export async function findReusableStripeSubscriptionCheckoutSession(
   stripe: Stripe,
   customerID: string,
   selection: StripeSubscriptionCheckoutSelection,
+  redirectFingerprint: string,
 ): Promise<Stripe.Checkout.Session | undefined> {
   let startingAfter: string | undefined;
   for (;;) {
@@ -192,13 +233,68 @@ export async function findReusableStripeSubscriptionCheckoutSession(
         typeof session.url === "string" &&
         session.metadata?.tier === selection.tier &&
         session.metadata?.cadence === selection.cadence &&
-        session.metadata?.checkoutSchemaVersion === STRIPE_CHECKOUT_SCHEMA_VERSION &&
-        session.automatic_tax?.enabled === true &&
-        session.tax_id_collection?.enabled === true,
+        session.metadata?.redirectFingerprint === redirectFingerprint,
     );
     if (reusable) return reusable;
     const last = page.data.at(-1);
     if (!page.has_more || !last) return undefined;
+    startingAfter = last.id;
+  }
+}
+
+/**
+ * Expires every open subscription-mode Checkout Session for a customer.
+ *
+ * Called when the reuse lookup misses (the user changed tier, cadence, or
+ * redirect URLs), so previously issued checkout URLs stop being completable
+ * and the customer cannot pay through two different selections in parallel.
+ * A session completing inside the tiny list -> expire race window is still
+ * contained: Stripe rejects expiring a completed session (swallowed below),
+ * and the subscription checkout guard plus webhook reconciliation keep the
+ * account converged on whichever subscription actually got created.
+ */
+export async function expireOpenStripeSubscriptionCheckoutSessions(
+  stripe: Stripe,
+  customerID: string,
+): Promise<void> {
+  let startingAfter: string | undefined;
+  for (;;) {
+    const page = await stripeWithResilience("checkout.sessions.list.expire_superseded", () =>
+      stripe.checkout.sessions.list({
+        customer: customerID,
+        limit: 100,
+        status: "open",
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      }),
+    );
+    for (const session of page.data) {
+      if (session.mode !== "subscription") continue;
+      try {
+        await stripeWithResilience("checkout.sessions.expire.superseded", () =>
+          stripe.checkout.sessions.expire(session.id),
+        );
+      } catch (error) {
+        // Only a session verified to be terminal may be skipped: the session
+        // may have completed or expired between list and expire, and Stripe
+        // rejects expiring it, which is what this sweep wants anyway. But a
+        // transient Stripe/auth/permission/rate-limit failure must propagate;
+        // swallowing it would leave a payable checkout URL open alongside the
+        // one the caller is about to create, letting the customer pay two
+        // parallel subscription selections. The re-fetch failing (or the
+        // session still being open) fails checkout creation closed.
+        const refreshed = await stripeWithResilience("checkout.sessions.retrieve.expire_verify", () =>
+          stripe.checkout.sessions.retrieve(session.id),
+        );
+        if (refreshed.status === "open") throw error;
+        logWarn({
+          event: "stripe_checkout_session_expire_failed",
+          error: error instanceof Error ? error.name : "unknown",
+          sessionStatus: refreshed.status ?? "unknown",
+        });
+      }
+    }
+    const last = page.data.at(-1);
+    if (!page.has_more || !last) return;
     startingAfter = last.id;
   }
 }
@@ -243,16 +339,29 @@ export async function applyStripeSubscription(
 
   const customerID = stripeCustomerID(subscription.customer);
   const expiresAtMillis = stripeSubscriptionPeriodEndMillis(subscription);
-  const status = String(subscription.status ?? "unknown");
-  const active = STRIPE_ACTIVE_STATES.has(status) && expiresAtMillis > Date.now();
-  const metadataEntitlementID = subscription.metadata?.entitlementID;
-  const entitlementID =
-    metadataEntitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID
-      ? BURNBAR_ULTRA_ENTITLEMENT_ID
-      : metadataEntitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID
-        ? BURNBAR_PRO_MAX_ENTITLEMENT_ID
-        : BURNBAR_PRO_ENTITLEMENT_ID;
+  let status = String(subscription.status ?? "unknown");
+  let active = STRIPE_ACTIVE_STATES.has(status) && expiresAtMillis > Date.now();
+  // A full refund or an open/lost dispute reverses the payment without moving
+  // the subscription out of `active`, so subscription state alone would keep
+  // the entitlement alive. The reversal marker written by
+  // reconcileStripeCharge is the durable record of that money-state and wins
+  // over the point-in-time subscription status.
+  if (active) {
+    const reversalSnap = await db.doc(stripePaymentReversalDocPath(subscription.id)).get();
+    if (reversalSnap.get("reversed") === true) {
+      active = false;
+      status = `${status}:payment_reversed`;
+    }
+  }
+  const entitlementID = stripeSubscriptionEntitlementID(subscription);
   const productID = stripeSubscriptionProductID(subscription, entitlementID);
+
+  // A Billing Portal plan change moves the subscription to another tier's
+  // price while the previous tier's entitlement doc stays active until its
+  // paid-through date. Deactivate the replaced tier docs backed by this same
+  // subscription BEFORE writing the current tier, so an Ultra deactivation's
+  // burnbar_pro_max mirror can never clobber a fresh pro_max write.
+  await deactivateReplacedStripeTierEntitlements(uid, subscription, entitlementID, customerID, eventContext);
 
   await writeBurnBarProEntitlement({
     uid,
@@ -301,7 +410,7 @@ export async function applyStripeSubscription(
  * Re-fetches and applies one subscription so non-subscription webhook events
  * never write a stale point-in-time snapshot.
  */
-export async function reconcileStripeSubscription(
+async function reconcileStripeSubscription(
   stripe: Stripe,
   subscriptionID: string,
   eventContext: StripeEventContext = {},
@@ -320,7 +429,7 @@ export async function reconcileStripeSubscription(
  * explicit pagination prevents a large customer history from silently
  * truncating reconciliation at Stripe's first page.
  */
-export async function reconcileStripeCustomerSubscriptions(
+async function reconcileStripeCustomerSubscriptions(
   stripe: Stripe,
   customerID: string,
   eventContext: StripeEventContext = {},
@@ -384,6 +493,10 @@ export async function reconcileStripeCharge(
     stripe.charges.retrieve(charge.id),
   );
   await reconcileStripeTopUpCharge(stripe, currentCharge, eventContext, disputeStatus);
+  // Record the money-state BEFORE reconciling subscriptions so the customer
+  // sweep below observes the marker and deactivates the entitlement in the
+  // same pass.
+  await recordStripeSubscriptionPaymentReversal(stripe, currentCharge, eventContext, disputeStatus);
 
   let customerID = stripeCustomerID(currentCharge.customer);
   if (!customerID) {
@@ -411,12 +524,13 @@ export async function reconcileStripeDispute(
   const currentDispute = await stripeWithResilience("disputes.retrieve.webhook_reconcile", () =>
     stripe.disputes.retrieve(dispute.id),
   );
+  const disputeCharge = currentDispute.charge;
   const charge =
-    typeof currentDispute.charge === "string"
+    typeof disputeCharge === "string"
       ? await stripeWithResilience("charges.retrieve.dispute_reconcile", () =>
-          stripe.charges.retrieve(currentDispute.charge as string),
+          stripe.charges.retrieve(disputeCharge),
         )
-      : currentDispute.charge;
+      : disputeCharge;
   await reconcileStripeCharge(stripe, charge, eventContext, currentDispute.status);
 }
 
@@ -430,13 +544,14 @@ export async function reconcileStripeRefund(
     stripe.refunds.retrieve(refund.id),
   );
   let charge = currentRefund.charge;
-  if (!charge && currentRefund.payment_intent) {
+  const refundPaymentIntent = currentRefund.payment_intent;
+  if (!charge && refundPaymentIntent) {
     const paymentIntent =
-      typeof currentRefund.payment_intent === "string"
+      typeof refundPaymentIntent === "string"
         ? await stripeWithResilience("payment_intents.retrieve.refund_reconcile", () =>
-            stripe.paymentIntents.retrieve(currentRefund.payment_intent as string),
+            stripe.paymentIntents.retrieve(refundPaymentIntent),
           )
-        : currentRefund.payment_intent;
+        : refundPaymentIntent;
     charge = paymentIntent.latest_charge;
   }
   if (!charge) return;
@@ -529,49 +644,6 @@ export async function deactivateStripeCustomerEntitlements(
   );
 }
 
-function stripeSubscriptionProductID(subscription: Stripe.Subscription, entitlementID: string): string {
-  const cfg = getConfig();
-  const priceIDs = new Set(
-    subscription.items?.data
-      ?.map((item) => item.price?.id)
-      .filter((priceID): priceID is string => typeof priceID === "string") || [],
-  );
-  if (cfg.stripeBurnBarCloudAnnualPriceID && priceIDs.has(cfg.stripeBurnBarCloudAnnualPriceID)) {
-    return cfg.burnBarProAnnualProductID;
-  }
-  if (cfg.stripeBurnBarCloudProMonthlyPriceID && priceIDs.has(cfg.stripeBurnBarCloudProMonthlyPriceID)) {
-    return cfg.burnBarProMaxProductID;
-  }
-  if (cfg.stripeBurnBarCloudProAnnualPriceID && priceIDs.has(cfg.stripeBurnBarCloudProAnnualPriceID)) {
-    return cfg.burnBarProMaxAnnualProductID;
-  }
-  if (cfg.stripeBurnBarUltraMonthlyPriceID && priceIDs.has(cfg.stripeBurnBarUltraMonthlyPriceID)) {
-    return cfg.burnBarUltraProductID;
-  }
-  if (cfg.stripeBurnBarUltraAnnualPriceID && priceIDs.has(cfg.stripeBurnBarUltraAnnualPriceID)) {
-    return cfg.burnBarUltraAnnualProductID;
-  }
-  if (entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID) return cfg.burnBarUltraProductID;
-  return entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID ? cfg.burnBarProMaxProductID : cfg.burnBarProProductID;
-}
-
-function stripeInvoiceSubscriptionID(invoice: Stripe.Invoice): string | undefined {
-  const parentSubscription = invoice.parent?.subscription_details?.subscription;
-  const parentID = stripeObjectID(parentSubscription);
-  if (parentID) return parentID;
-
-  // Compatibility for invoices created under older Stripe API versions.
-  return stripeObjectID(jsonObject(invoice).subscription);
-}
-
-function stripeObjectID(value: unknown): string | undefined {
-  if (typeof value === "string" && value.length > 0) return value;
-  if (value && typeof value === "object" && "id" in value && typeof value.id === "string") {
-    return value.id;
-  }
-  return undefined;
-}
-
 async function uidForStripeSubscription(subscription: Stripe.Subscription): Promise<string | undefined> {
   const metadataUID = subscription.metadata?.firebaseUID;
   if (metadataUID) return metadataUID;
@@ -603,27 +675,4 @@ function isStripeBackedEntitlementForCustomer(entitlement: Record<string, unknow
   if (!platformIsStripe && !sourceIsStripe) return false;
   const externalCustomerID = entitlement.externalCustomerID;
   return typeof externalCustomerID !== "string" || externalCustomerID === customerID;
-}
-
-function stripeEntitlementProductID(entitlement: Record<string, unknown>, entitlementID: string): string {
-  if (typeof entitlement.productID === "string" && entitlement.productID.length > 0) {
-    return entitlement.productID;
-  }
-  const cfg = getConfig();
-  if (entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID) return cfg.burnBarUltraProductID;
-  if (entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID) return cfg.burnBarProMaxProductID;
-  return cfg.burnBarProProductID;
-}
-
-function stripeEntitlementExpiryMillis(entitlement: Record<string, unknown>): number {
-  const expireAt = entitlement.expireAt;
-  if (expireAt && typeof expireAt === "object" && "toMillis" in expireAt && typeof expireAt.toMillis === "function") {
-    const millis = expireAt.toMillis();
-    if (Number.isFinite(millis)) return millis;
-  }
-  if (typeof entitlement.expiresAt === "string") {
-    const millis = Date.parse(entitlement.expiresAt);
-    if (Number.isFinite(millis)) return millis;
-  }
-  return Date.now() - 1;
 }

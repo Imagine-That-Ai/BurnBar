@@ -157,8 +157,10 @@ vi.mock("../auth.js", () => ({
 }));
 const { configMock } = vi.hoisted(() => ({ configMock: { enforceAppCheck: true, requireHighRiskNonce: false } }));
 vi.mock("../config.js", () => ({ getConfig: () => configMock }));
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../callables/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../callables/shared/entitlements.js")>(
+    "../callables/shared/entitlements.js",
+  );
   return {
     ...actual,
     assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined),

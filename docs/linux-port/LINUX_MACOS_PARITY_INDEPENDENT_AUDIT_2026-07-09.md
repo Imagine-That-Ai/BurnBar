@@ -2,11 +2,11 @@
 
 | Audit field | Value |
 |---|---|
-| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-23 UTC |
+| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-24 UTC |
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Current status | **Proof infrastructure: 40/40 owners**, committed at `df1852fae2`; the exhaustive registry/preflight suite passes **44/44**. **Implemented product behavior: approximately 80%** by the audit's source-level classification. **Strict certification: 0/40 requirements and 0/7 environments.** Ownership means every requirement has a fail-closed producer/materializer/validator path; it does not mean the behavior exists completely or has passed on a signed installed candidate. |
+| Current status | **Proof infrastructure: 40/40 owners**, committed at `df1852fae2`. Source behavior and fail-closed proof production are substantially complete, including portable P-16, P-25, P-31, and P-40 execution paths. **Strict certification remains 0/40 requirements and 0/7 environments.** Ownership and passing source tests do not mean a row has passed on an exact signed installed candidate in every required environment. |
 | Latest source delta | `336ee0eca2` adds a daemon-owned, durable all-time usage projection and explicit recount over the canonical ledger; `736fcae8a9` makes the renderer reject inconsistent or out-of-range aggregates. `e4e4c15bdb` adds Copilot session-state/log parsing, rotation-safe event deduplication, bounded token accumulation, durable cumulative checkpoints, restart-safe delta recording, and Linux daemon scheduling; `dd78a83bef` expands the Linux default registry to all 18 previously implemented core parser identities, and `5a37e88f8e` adds the remaining nine local-log lifts (Aider, Cursor SQLite, OpenCode SQLite, Pi Agent, OpenClaw, Ollama, Junie, and Z.ai/MiniMax model filters) with exact-vs-estimated provenance tests. `e7531159b3` adds active-entitlement Stripe Billing Portal routing with production callable framing, App Check, bounded requests, and strict native URL validation. `b45f6378e9` plus `45926a4fac` add the injected P-16 daemon RPC/runtime, encrypted local-first replica engine, and atomic authoritative conflict reconciliation with fail-closed acknowledgements and consent-aware pending state; `6d71bc8aff` adds the daemon-owned Firebase callable gateway, transactional idempotency/merge handlers, strict endpoint allowlisting, and production runtime composition (`7a8391acb5`). `e9923ca4c4` starts and stops a cancellation-safe daemon background sync loop, `dd95895ee9` falls through approved native secret stores when one is locked/unavailable without weakening trust refusal, and `c8b9a9ec4d` adds the portal-backed PipeWire-to-Opus Mercury audio adapter with fail-closed native linking and lifecycle tests. `2df8b03a5a` hardens the Linux Iroh directory client with an explicit HTTPS host allowlist, and `8776a196f6` adds daemon-owned Cloud Sync and metadata-consent controls to Linux Settings with fail-closed readback/error states. `24e1bae875` and `cb118e647f` add a bounded, live-route-gated Iroh remote-read RPC boundary and daemon-composed ECIES credential escrow; plaintext credentials never cross the renderer or persist in the escrow bridge. `d814f85f49` adds the authenticated Mercury call-invite seal contract, fail-closed call acceptance, and portal-backed outbound Opus capture with independent sequencing and teardown tests. `3bda513f65` adds daemon-owned trusted-device list/approve/revoke contracts with bounded redacted validation and unavailable-by-default composition; `bcf0b1a7bf` adds native inbound sealed Opus playback through GStreamer `opusdec`/`autoaudiosink`, bounded packet ingress, capability probing, and route teardown; `ffcae66d4b` wires the trusted-device contract through Linux Settings and Tauri and exposes playback capability state without fabricating devices; `cc9ad63f7a` adds the bounded native Firebase callable adapter with companion-owned credentials and nonce/action-proof injection; `b90945e411` validates the manager session before asking the companion to mint proof; `17d909ab5a` classifies malformed manager credentials as rejected rather than device-ID errors. Focused checks are green: Hermes wire protocol 18/18, Linux Settings/decoder/bridge tests 112/112, Tauri Rust 135/135, Swift trusted-device adapter parse, a clean macOS daemon build, production frontend bundle, and Linux-target Swift parsing. A focused physical-iPad settings test passed 1/1 on the attached device at this head. These are meaningful advances within partial rows. Remaining gaps are companion/Iroh credential/proof injection, live Linux GStreamer/PipeWire output proof, and live signed/device/environment proof. |
 | Latest continuation delta | `e3765be861` makes Linux Mercury inbound-download destination selection atomic with `O_EXCL`, preventing concurrent transfers from reserving the same user-visible filename; the Linux media regression exercises 32 concurrent reservations and verifies unique existing paths. `b13b191f82` preserves data-backed PDF/image `input_file` parts when an OpenAI Responses request falls back to Chat Completions, and fails closed for unresolved file IDs or remote URLs instead of silently dropping the input; focused conversion regression coverage was added. `26dd3cbc30` preserves model-authorized PDF attachments through the Anthropic compatibility route by mapping the shared macOS/Linux data-URL shape to Anthropic `document` blocks and mapping those blocks back to the OpenAI-compatible PDF shape; the package compiled and the focused gateway test was added, while local XCTest execution remains blocked by the missing SQLCipher runtime loader. `fc30202f6b` aligns daemon chat attachment policy with the Tauri model-authorized PNG/JPEG/WebP path; focused Swift/Rust/frontend tests pass 4/4, 4/4, and 3/3. `b96ea13e24` records a fresh physical-iPad Settings/navigation selector at 1/1 on the current source head. The UTM guest's stale root-level crash-looping systemd unit was disabled while the packaged per-user daemon stayed active and the CLI health probe returned `ok=true`. These are bounded source/environment receipts; signed current-candidate binding, Firebase/App Check trust-cycle execution, remaining provider/binary breadth, and the remaining environment matrix are still open. Earlier source deltas remain: `96e021053b` raises the shared activity snapshot migration window from the legacy 80 conversations to a bounded 10,000-session window and adds a 10k-session/100-project regression; `92d87249ea` and `6a87c4ccc4` make P-39 producer evidence attest real runtime metadata; `2298e68f49` plus `058ff3c049` derive Linux parser registration from the generated catalog; `a6f3ec2b0f` centralizes macOS quota adapter coverage; and `b46f16c6ed` fences stale chat capability before send. These commits reduce source-level gaps but do not create live signed or cross-environment receipts. |
 | Current continuation delta | `98e8ac02d1`, `29af365384`, and `e6b5539847` add macOS-aligned Linux swarm preferences: provider selection, brand-shape exclusion, auto-cycle, settled-shape sparkles, motion speed, and opt-in click cycling. The catalog now carries all 33 macOS provider IDs; baked point tables remain deterministic, while missing tables use bundled logo rasterization and a readable monogram fallback. `427e86f63f` preserves deterministic macOS provider/model color roles through quota cards, provider cards, overview spend curves, and provider fallbacks. `ea07f5cb99` expands the native tray with Summary, Providers, Mercury, and Quick Switch entries and pins every new entry to a registered shell route. `90124fef88` adds bounded GNOME/KDE/XFCE native wallpaper application and `71c07448e4` wires it through the typed bridge and Appearance settings with status/error readback. `f4b113e6ac` extends the adapter to trusted Sway and Hyprland IPC and `53c45ff60c` adds the macOS Constellation Style preset to persisted Linux Appearance settings and the real swarm engine; the renderer decoder now accepts those native backends. `56ee050bf3` adds real Wayland `CreateSession`/`BindShortcuts` registration and `Activated` event dispatch through the typed portal capability path; `1acf69a9a2` binds every event to the exact active session object path before dispatch. `e194567e74`, `f4b113e6ac`, and `f3c2e4e8ca` retain bounded trusted portal probing. `1f6f2e9383` fails closed on malformed or expired onboarding cloud-auth operations, while `404e425a2e` requires exact provider/label/enabled-slot credential readback before onboarding can report success. The current wallpaper implementation now captures a validated local GNOME/XFCE/Hyprpaper path before the first palette change, persists it owner-only, and exposes a typed accessible restore action; queryless KDE/Sway restoration remains explicitly unavailable. The current frontend gate is green at 107/107 files and 1002/1002 tests, with typecheck, lint, Vite build, and the production bundle verifier passing; the host Rust gate is green at 153/153 tests. These are source/build advances only; live portal consent/event receipts, prior-wallpaper compositor receipts, installed device/compositor receipts, signed current-head artifacts, and the strict 0/40 + 0/7 ledger remain open. |
@@ -25,6 +25,79 @@
 | Latest VM proof | The exact `5571e65f85` Ubuntu 24.04 GNOME/X11 ARM64 DEB is 152,137,340 bytes with SHA-256 `5c3218d60fc188df6102c683628e9b0dcae77d80167b724dcad4fdb8df01483`. The clean guest build preserves all 12,456 tracked source blobs; all 163 regular package files match their installed bytes; desktop, daemon, CLI, iroh, linkage, daemon service, and CLI health checks pass; and no stale `/usr/local` product process is present. Live QA exposed and fixed a startup race where `main.tsx` and `App.tsx` could drain the same initial deep link. After `5571e65f85`, three of three true cold starts with `openburnbar://providers?provider=codex` selected Codex and passed AT-SPI at 189 nodes / 108 named / 91 actionable with zero failures. Receipt: [`evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-exact-native-2026-07-20.json). Screenshot: [`evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-provider-deep-link.png`](evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-provider-deep-link.png). The receipt remains explicitly non-certifying because the installed manifest is the unsigned `{}` placeholder, production cloud identifiers are absent, and the remaining environment/device matrix is open. |
 | Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the current package visibly uses the Canvas2D fallback with an explicit `WebGL2 unavailable` label. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
+## Orchestration reconciliation checkpoint — 2026-07-24
+
+The parity branch has been reconciled with `origin/main` without dropping
+main's canonical proxy-route interruption behavior. The merged Linux gateway
+records committed mid-stream failures as `interrupted`, preserves partial
+usage, avoids a false provider-health strike, and exposes human-readable,
+retryable status in Linux Settings.
+
+The remaining proof lanes now have portable, fail-closed producers:
+
+- P-16 has a bounded read-only host preflight that reports VM, coordination
+  roots, exact physical-iPad availability, and runner capacity independently.
+  Its mobile producer is pinned to the real macOS/iOS runner labels and rejects
+  Simulator or substituted-device authority.
+- P-25 has a protected, one-time authenticated baseline workflow with
+  format-and-architecture-specific manifest/signature sidecars. It cannot
+  publish `latest`, write the update feed, or claim parity. The permanent
+  sequence is baseline `0.1.1`, then candidate `0.1.2`, then the strict
+  installed upgrade/rollback/restore lifecycle.
+- P-31 accepts exactly the seven canonical distro/architecture/session rows,
+  validates real logind/compositor/input state, and requires exact 200 percent
+  scale plus package-owned assistive-technology traversal.
+- P-40 installs and inspects DEB, RPM, and Arch packages on both architectures,
+  binds the privacy RPC session to the real host identity, and prevents direct
+  workflow bypass of the portable runner.
+- Runner selectors and repository action lint now understand the canonical
+  macOS/iOS and Linux parity labels without silently falling back to an
+  incompatible host.
+
+Validation on the reconciled tree is green: the pre-reconciliation complete
+Linux-port suite passed **1,004/1,009** with five declared skips and zero
+failures; the post-reconciliation focused parity suite passed **120/120**;
+domain-control-plane tests passed **35/35** with **296** trusted files; the
+Linux desktop passed **1,029/1,029** tests, TypeScript, ESLint, production
+build, and bundle verification; and `actionlint` passed.
+
+These are source/build and proof-infrastructure results, not certification.
+The Ubuntu UTM guest was deliberately left stopped. No exact physical iPad was
+available for P-16, six canonical Linux environments still lack live runners,
+and production Firebase still lacks the six Linux App Check callable
+deployments. The protected Functions dry run also requires a successful
+Domain Core push run bound to the exact future `main` head. Therefore the
+strict ledger correctly remains **0/40 product requirements and 0/7
+environments**, with `productParityClaim=false`.
+
+## Release-candidate checkpoint — 2026-07-24
+
+The current release wave includes telemetry-focus preservation (`222556ab34`),
+forward and reverse Orca traversal anchoring (`fd0c3d3338`, `7173af3625`), and
+the trusted-manifest/window-focus integration merge (`f2c1299c00`). Linux
+Release Candidate run `30109002594` at `f2c1299c00` passed both native
+architecture shards. The package-owned Orca sessions recorded **12 aarch64**
+and **14 x86_64 true-focus events**.
+
+Final assembly did not produce a candidate receipt: generated release outputs
+made the signed Domain Core source checkout fail its cleanliness gate during
+candidate-bound evidence creation. `4a057f7627` isolates only those generated
+release-output directories while retaining the check for tracked or unrelated
+workspace drift; the focused local release/control-plane contract suites pass
+**77/77**.
+
+Replacement run `30134090049` at `4a057f7627` passed the x86_64 shard and every
+aarch64 build, package, signature, install, lifecycle, and daemon gate before
+the package-owned accessibility session. That final session sent 28 physical
+Tab and 12 physical Shift+Tab keys, but Orca exposed **9** true focus events
+against the unchanged **10-event** minimum, so the aarch64 shard failed and
+assembly correctly remained skipped. The follow-up retains the 10-event,
+3-distinct-target, and 3-named-target requirements and adds at most three
+paced recovery traversals from the real AT-SPI `Skip to content` anchor. Until
+a replacement run produces the signed candidate and live environment receipts,
+strict certification remains **0/40 product requirements and 0/7
+environments**.
+
 ## Exact-head Linux gate checkpoint — 2026-07-23
 
 The corrected Linux PR Gate run `30036735995` passed at head
@@ -41,13 +114,14 @@ pre-change package, while signed current-candidate execution, production
 credentials, and the strict **0/40 product + 0/7 environment** ledger remain
 open.
 
-## Current integration branch checkpoint — 2026-07-23
+## Dated integration branch checkpoint — 2026-07-23
 
-The parity integration branch is now at `22b8bb6687`. It includes the earlier
+At that checkpoint, the parity integration branch was at `22b8bb6687`. It
+included the earlier
 CI-only SwiftLint correction, native PDF/audio attachment parity, OMP and
 OpenClaude local usage ingestion, and the refreshed provider-count audit text.
-The commits are pushed to GitHub and GitLab in PR #1930. Fresh hosted checks
-for the new head are running;
+The commits had been pushed to GitHub and GitLab in PR #1930. Fresh hosted
+checks were running at the time;
 the existing SQLCipher, UTM, device, and environment limitations remain
 unchanged.
 

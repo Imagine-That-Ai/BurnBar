@@ -974,12 +974,14 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertEqual(CLIAgentMissionRuntimePlanner.presentationMode(from: [:]), .nativeChat)
     }
 
-    func test_missionRuntimePlanner_requiresApprovalForRemoteLocalAgentRuntimes() {
-        let readOnlyData: [String: Any] = [
-            "approvalMode": "existing_policy",
-            "commandsAllowed": false,
-            "fileEditsAllowed": false
-        ]
+    // The pre-dispatch approval DECISION (`requiresPreDispatchApproval`) moved to
+    // the daemon in split-brain M4; its GUI↔daemon parity is now pinned by
+    // OpenBurnBarDaemonTests/`MissionRemoteAuthorizationParityTests` and the
+    // daemon's own `BurnBarRemoteMissionAuthorizationTests`. The EXECUTION-side
+    // Mac CLI-assistant consent gate (`requiresMacCLIAssistantConsentForRemoteMission`)
+    // survives M4 and stays pinned below.
+
+    func test_missionRuntimePlanner_localAgentRuntimesHonorMacCLIAssistantConsentGate() {
         let localAgentBackends = [
             CLIAgentMissionBackend(chatBackend: .codex),
             CLIAgentMissionBackend(chatBackend: .claude),
@@ -995,55 +997,14 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
 
         for backend in localAgentBackends {
             XCTAssertTrue(
-                CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(data: readOnlyData, backend: backend),
-                "\(backend.rawValue) must not launch from a remote mission without approval"
-            )
-            XCTAssertTrue(
                 CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend),
                 "\(backend.rawValue) must honor the Mac CLI assistant consent switch before local launch"
             )
         }
     }
 
-    func test_missionRuntimePlanner_keepsHermesReadOnlyMissionNonBlocking() {
-        let readOnlyData: [String: Any] = [
-            "approvalMode": "existing_policy",
-            "commandsAllowed": false,
-            "fileEditsAllowed": false
-        ]
-
-        XCTAssertFalse(CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(
-            data: readOnlyData,
-            backend: CLIAgentMissionBackend(chatBackend: .hermes)
-        ))
+    func test_missionRuntimePlanner_hermesIsExemptFromTheMacCLIAssistantConsentGate() {
         XCTAssertFalse(CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(
-            backend: CLIAgentMissionBackend(chatBackend: .hermes)
-        ))
-    }
-
-    func test_missionRuntimePlanner_doesNotTrustSpoofableMacWandSourceForLocalAgentApproval() {
-        let readOnlyData: [String: Any] = [
-            "source": "mac",
-            "sourceSurface": "mac-wand",
-            "requestedRuntime": "droid",
-            "approvalMode": "existing_policy",
-            "commandsAllowed": false,
-            "fileEditsAllowed": false
-        ]
-
-        XCTAssertTrue(CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(
-            data: readOnlyData,
-            backend: CLIAgentMissionBackend(chatBackend: .droid)
-        ))
-    }
-
-    func test_missionRuntimePlanner_keepsRiskyApprovalPolicyForHermes() {
-        XCTAssertTrue(CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(
-            data: [
-                "approvalMode": "existing_policy",
-                "commandsAllowed": true,
-                "fileEditsAllowed": false
-            ],
             backend: CLIAgentMissionBackend(chatBackend: .hermes)
         ))
     }

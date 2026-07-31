@@ -19,13 +19,13 @@ export const GOOGLE_PLAY_ACTIVE_STATES = new Set<string>([
   "SUBSCRIPTION_STATE_CANCELED",
 ]);
 
-export interface GooglePlaySubscriptionEntitlementTarget {
+interface GooglePlaySubscriptionEntitlementTarget {
   entitlementID: string;
   canonicalProductID: string;
   tierRank: number;
 }
 
-export interface GooglePlaySubscriptionSelection {
+interface GooglePlaySubscriptionSelection {
   lineItem: Record<string, unknown>;
   target: GooglePlaySubscriptionEntitlementTarget;
   expiresAtMillis: number;

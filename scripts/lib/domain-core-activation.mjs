@@ -8,6 +8,14 @@ import { DOMAIN_CORE_PROTECTED_SIGNER_WORKFLOW } from "./domain-core-release-evi
 
 const FULL_SHA = /^[0-9a-f]{40}$/u;
 const DIGEST_RE = /^[0-9a-f]{64}$/u;
+const ACTIVATION_RECEIPT_KEYS = Object.freeze([
+  "candidateCommit",
+  "activationCommit",
+  "coreVersion",
+  "abiVersion",
+  "sourceSha256",
+  "changedPathsSha256",
+]);
 const REQUIRED_EXACT = new Set([
   "config/domain-core-build-profiles.json",
   "config/domain-core-legacy-deletion.json",
@@ -172,6 +180,19 @@ function canonicalSha256(value) {
   return createHash("sha256").update(canonical(value)).digest("hex");
 }
 
+export function domainCoreActivationReceiptClosure(value) {
+  const activation = requireExactKeys(value, [
+    "active",
+    ...ACTIVATION_RECEIPT_KEYS,
+  ]);
+  if (activation.active !== true) {
+    throw new Error("previous activation annulment closure is not active");
+  }
+  return Object.fromEntries(
+    ACTIVATION_RECEIPT_KEYS.map((key) => [key, activation[key]]),
+  );
+}
+
 export function activationChangedPaths(
   repoRoot,
   candidateCommit,
@@ -179,6 +200,9 @@ export function activationChangedPaths(
 ) {
   const candidate = commit(candidateCommit, "candidate commit");
   const activation = commit(activationCommit, "activation commit");
+  if (candidate === activation) {
+    throw new Error("activation diff must not be empty");
+  }
   try {
     execFileSync("git", [
       "-C",
@@ -217,6 +241,116 @@ export function activationChangedPaths(
   for (const required of REQUIRED_EXACT) {
     if (!paths.includes(required)) {
       throw new Error(`activation diff must include ${required}`);
+    }
+  }
+  return paths;
+}
+
+export function annullableActivationChangedPaths(
+  repoRoot,
+  candidateCommit,
+  activationCommit,
+) {
+  const candidate = commit(candidateCommit, "candidate commit");
+  const activation = commit(activationCommit, "activation commit");
+  if (candidate === activation) {
+    throw new Error("annullable activation diff must not be empty");
+  }
+  try {
+    execFileSync("git", [
+      "-C",
+      repoRoot,
+      "merge-base",
+      "--is-ancestor",
+      candidate,
+      activation,
+    ]);
+  } catch {
+    throw new Error(
+      "candidate commit must be an ancestor of annullable activation commit",
+    );
+  }
+  const activationCommits = git(repoRoot, [
+    "rev-list",
+    "--first-parent",
+    "--reverse",
+    `${candidate}..${activation}`,
+  ])
+    .split("\n")
+    .filter(Boolean);
+  const incidentalPaths = new Set();
+  for (const revision of activationCommits) {
+    const lineage = git(repoRoot, [
+      "rev-list",
+      "--parents",
+      "-n",
+      "1",
+      revision,
+    ]).split(/\s+/u);
+    if (lineage.length < 2) {
+      throw new Error("annullable activation commit must have a parent");
+    }
+    const commitPaths = git(repoRoot, [
+      "diff",
+      "--name-only",
+      "--diff-filter=ACDMRTUXB",
+      `${lineage[1]}..${revision}`,
+    ])
+      .split("\n")
+      .filter(Boolean)
+      .sort();
+    const commitForbidden = commitPaths.filter(
+      (path) =>
+        !REQUIRED_EXACT.has(path) &&
+        !OPTIONAL_EXACT.has(path) &&
+        !ALLOWED_PREFIXES.some((prefix) => path.startsWith(prefix)),
+    );
+    if (commitForbidden.length > 0) {
+      if (revision === activation) {
+        throw new Error(
+          `annullable activation final diff contains forbidden paths: ${commitForbidden.join(", ")}`,
+        );
+      }
+      // A commit is incidental only when it changes no activation-authority
+      // path. A mixed commit would silently drop authority changes from the
+      // annulment closure, so fail closed.
+      if (commitForbidden.length !== commitPaths.length) {
+        throw new Error(
+          `annullable incidental protected-main commit ${revision} must not change activation authority paths`,
+        );
+      }
+      for (const path of commitPaths) incidentalPaths.add(path);
+    }
+  }
+  // Annulment-only recovery binds the full candidate..activation diff while
+  // excluding paths proven to come solely from incidental protected-main
+  // commits. Normal release activation remains strict and never uses this path.
+  const paths = git(repoRoot, [
+    "diff",
+    "--name-only",
+    "--diff-filter=ACDMRTUXB",
+    `${candidate}..${activation}`,
+  ])
+    .split("\n")
+    .filter((path) => path && !incidentalPaths.has(path))
+    .sort();
+  if (paths.length === 0) {
+    throw new Error("annullable activation diff must not be empty");
+  }
+  const forbidden = paths.filter(
+    (path) =>
+      !REQUIRED_EXACT.has(path) &&
+      !OPTIONAL_EXACT.has(path) &&
+      !ALLOWED_PREFIXES.some((prefix) => path.startsWith(prefix)),
+  );
+  if (forbidden.length > 0) {
+    throw new Error(
+      `annullable activation suffix contains forbidden paths: ${forbidden.join(", ")}`,
+    );
+  }
+  for (const required of REQUIRED_EXACT) {
+    if (!paths.includes(required)) {
+      throw new Error(`annullable activation diff must include ${required}`);
     }
   }
   return paths;
@@ -289,6 +423,45 @@ export function validateDomainCoreActivation({
     abiVersion: candidate.abiVersion,
     sourceSha256: candidate.sourceSha256,
     changedPathsSha256,
+  };
+}
+
+export function validateDomainCoreAnnullableActivation({
+  repoRoot,
+  candidateCommit,
+  activationCommit,
+}) {
+  requireCleanCheckout(repoRoot);
+  const candidate = candidateAt(
+    repoRoot,
+    commit(candidateCommit, "candidate commit"),
+  );
+  const activationSha = commit(activationCommit, "activation commit");
+  const activationIdentity = candidateAt(repoRoot, activationSha);
+  if (
+    activationIdentity.coreVersion !== candidate.coreVersion ||
+    activationIdentity.abiVersion !== candidate.abiVersion ||
+    activationIdentity.sourceSha256 !== candidate.sourceSha256
+  ) {
+    throw new Error(
+      "annullable activation changed the attested Rust core closure",
+    );
+  }
+  const paths = annullableActivationChangedPaths(
+    repoRoot,
+    candidate.candidateCommit,
+    activationSha,
+  );
+  return {
+    active: true,
+    candidateCommit: candidate.candidateCommit,
+    activationCommit: activationSha,
+    coreVersion: candidate.coreVersion,
+    abiVersion: candidate.abiVersion,
+    sourceSha256: candidate.sourceSha256,
+    changedPathsSha256: createHash("sha256")
+      .update(JSON.stringify(paths))
+      .digest("hex"),
   };
 }
 
@@ -493,6 +666,7 @@ function verifySupersededAuthority({
   authorityGeneration,
   approvedAt,
   supersedes,
+  candidateCommit,
 }) {
   if (authorityGeneration === 1) {
     if (supersedes !== null) throw provenanceError();
@@ -500,6 +674,7 @@ function verifySupersededAuthority({
   }
   const link = requireExactKeys(supersedes, ["transition", "path", "sha256"]);
   const fileName = {
+    annulment: "annulment.json",
     rollback: "rollback.json",
     stable_release: "stable_release.json",
   }[link.transition];
@@ -536,6 +711,87 @@ function verifySupersededAuthority({
     const activatedAt = Date.parse(previous?.rollback?.activatedAt);
     if (!Number.isFinite(activatedAt) || activatedAt > previousApprovedAt) {
       throw new Error("previous rollback activation cannot follow rollback approval");
+    }
+  }
+  if (link.transition === "annulment") {
+    const payload = requireExactKeys(previous?.activationAnnulment, [
+      "promotionReceiptSha256",
+      "candidate",
+      "activation",
+      "advancedMainCommit",
+      "reason",
+      "replacementCandidateRequired",
+    ]);
+    const candidate = requireExactKeys(payload.candidate, [
+      "candidateCommit",
+      "coreVersion",
+      "abiVersion",
+      "sourceSha256",
+    ]);
+    const activation = requireExactKeys(payload.activation, [
+      "candidateCommit",
+      "activationCommit",
+      "coreVersion",
+      "abiVersion",
+      "sourceSha256",
+      "changedPathsSha256",
+    ]);
+    const previousPromotionPath =
+      `config/domain-core-legacy-deletion-receipts/${rowId}/${authorityGeneration - 1}/promotion.json`;
+    if (
+      payload.promotionReceiptSha256 !==
+        sha256GitBlob(repoRoot, activationCommit, previousPromotionPath) ||
+      payload.advancedMainCommit !== previous.commit ||
+      payload.reason !== "release_train_advanced_before_stable_receipt" ||
+      payload.replacementCandidateRequired !== true ||
+      candidate.candidateCommit !== activation.candidateCommit ||
+      !FULL_SHA.test(activation.activationCommit) ||
+      activation.activationCommit === payload.advancedMainCommit
+    ) {
+      throw new Error("previous activation annulment authority is invalid");
+    }
+    const expectedActivation = validateDomainCoreAnnullableActivation({
+      repoRoot,
+      candidateCommit: candidate.candidateCommit,
+      activationCommit: activation.activationCommit,
+    });
+    if (
+      canonicalSha256(
+        domainCoreActivationReceiptClosure(expectedActivation),
+      ) !== canonicalSha256(activation)
+    ) {
+      throw new Error("previous activation annulment closure is invalid");
+    }
+    try {
+      execFileSync("git", [
+        "-C",
+        repoRoot,
+        "merge-base",
+        "--is-ancestor",
+        activation.activationCommit,
+        payload.advancedMainCommit,
+      ]);
+    } catch {
+      throw new Error("previous activation annulment main advance is invalid");
+    }
+    if (candidate.candidateCommit === candidateCommit) {
+      throw new Error(
+        "promotion after annulment must attest a fresh replacement candidate",
+      );
+    }
+    try {
+      execFileSync("git", [
+        "-C",
+        repoRoot,
+        "merge-base",
+        "--is-ancestor",
+        payload.advancedMainCommit,
+        candidateCommit,
+      ]);
+    } catch {
+      throw new Error(
+        "promotion after annulment must descend from the advanced main commit",
+      );
     }
   }
 }
@@ -621,6 +877,7 @@ function verifyPromotionReceipt({
     authorityGeneration,
     approvedAt: receipt.approvedAt,
     supersedes: attestationPointer.supersedes,
+    candidateCommit: receipt.commit,
   });
   if (
     sha256GitBlob(repoRoot, activationCommit, attestationPointer.path) !==

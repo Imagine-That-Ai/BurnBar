@@ -232,7 +232,19 @@ class VideoReceivePipeline(
         mutex.withLock { stopLocked() }
     }
 
+    suspend fun fail(reason: String) {
+        mutex.withLock {
+            releaseDecoderLocked()
+            _phase.value = Phase.Failed(reason)
+        }
+    }
+
     private fun stopLocked() {
+        releaseDecoderLocked()
+        _phase.value = Phase.Stopped
+    }
+
+    private fun releaseDecoderLocked() {
         renderJob?.cancel()
         renderJob = null
         decoder?.runCatching {
@@ -242,7 +254,6 @@ class VideoReceivePipeline(
         decoder = null
         currentGopID = UInt.MAX_VALUE
         resetStatsWindow()
-        _phase.value = Phase.Stopped
     }
 
     private suspend fun drainOutput(decoder: MediaCodec) {

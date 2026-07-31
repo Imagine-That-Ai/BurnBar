@@ -8,7 +8,7 @@ name: PR Security Gate
 #   1. Secret detection via gitleaks
 #   2. GitHub Dependency Review (blocks PRs that introduce known CVEs)
 #   3. npm audit on all PR-gated Node package locks (high/critical only)
-#   4. OSV-Scanner on package-lock.json files
+#   4. OSV-Scanner on package-lock.json files + the .deepsec pnpm lock
 #   5. Remote installer / CODEOWNERS / Signal activation / Browser target policy gates
 #   6. Hosted-MCP isolation: smoke (always) + local deterministic adversarial
 #      proofs (cross-tenant / revocation / entitlement / cap / at-rest) — RR-11
@@ -47,13 +47,27 @@ permissions:
   security-events: write
   pull-requests: write
 
+# Agent branches push repeatedly, and without this every push left the previous
+# run of this workflow occupying a runner slot until it finished on a commit
+# nobody was waiting for. Only superseded pull_request runs share a group and
+# get cancelled. `push: main` runs are the RR-17 direct-push backstop and MUST
+# always complete, as must merge_group runs -- and a shared group would still
+# cancel *pending* runs even with cancel-in-progress false (GitHub keeps at
+# most one queued run per group), so those events get a unique per-run group
+# that can never collide.
+concurrency:
+  group: security-pr-${{ github.event_name == 'pull_request' && format('pr-{0}', github.ref) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   secret-detection:
     name: Secret Detection (gitleaks)
     runs-on: ubuntu-latest
-    # Scans every commit in the PR range; binary-heavy branches blew the
-    # old 5 min budget at checkout/scan.
-    timeout-minutes: 15
+    # Scans every commit in the PR range and therefore cannot use the blobless
+    # optimization available to path-only detectors. Binary-heavy branches and
+    # degraded GitHub checkout have exhausted both the old 5 and 15 minute
+    # budgets before the fail-closed scan could run.
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -119,6 +133,14 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0 (node24-native)
         with:
           fail-on-severity: high
+          # Deliberately no allow-ghsas: the action's vulnerability allowlist
+          # is advisory-ID-wide, so any exception would also suppress the same
+          # GHSA for every newly introduced dependency, not just the reviewed
+          # package/version that justified it. This gate reviews only the PR's
+          # dependency diff, so an unchanged base-pinned dependency covered by
+          # the paired time-boxed npm/OSV policy never trips it, while a PR
+          # that adds or downgrades into a vulnerable version always fails
+          # closed here and gets explicit human review.
           # Allow known-safe license exceptions. BlueOak-1.0.0 is a permissive
           # npm ecosystem license used by tar and related transitive packages;
           # allow it so patched releases can land without vulnerable downgrades.
@@ -161,6 +183,17 @@ jobs:
 
       - name: Audit Node package locks
         run: node scripts/ci/check-npm-audit-fail-closed.mjs
+
+      # npm/pnpm audit only sees ecosystems it has a lockfile parser for, and the
+      # npm gate above skips any directory without a package-lock.json — which is
+      # how .deepsec/pnpm-lock.yaml accumulated 15 open Dependabot alerts (1
+      # critical) without ever failing a PR. This floor check reads both lockfile
+      # formats and fails closed on known-vulnerable pins. It is a regression
+      # tripwire for the specific advisories cleared in that backlog, not full
+      # advisory coverage: the OSV-Scanner job below audits the pnpm lock against
+      # the live advisory database (on PRs and the RR-17 push: main backstop).
+      - name: Enforce known vulnerability floors
+        run: node scripts/security/check-known-vulnerability-floors.mjs
 
   remote-installer-policy:
     name: Remote Installer Policy
@@ -290,6 +323,8 @@ jobs:
         uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
         with:
           scan-args: |-
+            --config=osv-scanner.toml
+            --lockfile=.deepsec/pnpm-lock.yaml
             --lockfile=package-lock.json
             --lockfile=apps/console/package-lock.json
             --lockfile=apps/linux-desktop/package-lock.json

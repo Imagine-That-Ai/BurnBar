@@ -4,7 +4,16 @@
 
 import Stripe from "stripe";
 
-import { isStripeCheckoutSession, isStripeSubscription } from "../guards.js";
+import {
+  isStripeCharge,
+  isStripeCheckoutSession,
+  isStripeCreditNote,
+  isStripeCustomer,
+  isStripeDispute,
+  isStripeInvoice,
+  isStripeRefund,
+  isStripeSubscription,
+} from "../guards.js";
 import { stripeWithResilience } from "../resilienceHelpers.js";
 import {
   applyStripeCheckoutSession,
@@ -113,27 +122,39 @@ export async function processStripeWebhookEvent(stripe: Stripe, event: Stripe.Ev
     return;
   }
   if (INVOICE_EVENT_TYPES.has(event.type)) {
-    await reconcileStripeInvoice(stripe, event.data.object as Stripe.Invoice, eventContext);
+    if (isStripeInvoice(event.data.object)) {
+      await reconcileStripeInvoice(stripe, event.data.object, eventContext);
+    }
     return;
   }
   if (event.type === "charge.refunded") {
-    await reconcileStripeCharge(stripe, event.data.object as Stripe.Charge, eventContext);
+    if (isStripeCharge(event.data.object)) {
+      await reconcileStripeCharge(stripe, event.data.object, eventContext);
+    }
     return;
   }
   if (REFUND_EVENT_TYPES.has(event.type)) {
-    await reconcileStripeRefund(stripe, event.data.object as Stripe.Refund, eventContext);
+    if (isStripeRefund(event.data.object)) {
+      await reconcileStripeRefund(stripe, event.data.object, eventContext);
+    }
     return;
   }
   if (DISPUTE_EVENT_TYPES.has(event.type)) {
-    await reconcileStripeDispute(stripe, event.data.object as Stripe.Dispute, eventContext);
+    if (isStripeDispute(event.data.object)) {
+      await reconcileStripeDispute(stripe, event.data.object, eventContext);
+    }
     return;
   }
   if (CREDIT_NOTE_EVENT_TYPES.has(event.type)) {
-    await reconcileStripeCreditNote(stripe, event.data.object as Stripe.CreditNote, eventContext);
+    if (isStripeCreditNote(event.data.object)) {
+      await reconcileStripeCreditNote(stripe, event.data.object, eventContext);
+    }
     return;
   }
   if (event.type === "customer.deleted") {
-    const customer = event.data.object as Stripe.Customer;
-    await deactivateStripeCustomerEntitlements(customer.id, customer.metadata?.firebaseUID, eventContext);
+    const customer = event.data.object;
+    if (isStripeCustomer(customer)) {
+      await deactivateStripeCustomerEntitlements(customer.id, customer.metadata?.firebaseUID, eventContext);
+    }
   }
 }

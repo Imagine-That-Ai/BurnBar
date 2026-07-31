@@ -1073,6 +1073,65 @@ fn probe_authenticated_daemon_health(timeout: Duration) -> DaemonHealth {
 }
 
 fn probe_daemon_health_with_timeout(timeout: Duration, require_auth: bool) -> DaemonHealth {
+    probe_daemon_health_with_receipt(timeout, require_auth).0
+}
+
+fn probe_daemon_health_with_receipt(
+    timeout: Duration,
+    require_auth: bool,
+) -> (DaemonHealth, String) {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let request_id = format!("health-{stamp}");
+    let health = probe_daemon_health_with_request_id(timeout, require_auth, &request_id);
+    (health, request_id)
+}
+
+fn validated_daemon_health_result<'a>(
+    parsed: &'a serde_json::Value,
+    request_id: &str,
+) -> Result<&'a serde_json::Value, String> {
+    let response_id = parsed.get("id").and_then(|value| value.as_str());
+    if response_id != Some(request_id) {
+        return Err(format!(
+            "Health response id mismatch: expected {request_id}, received {}",
+            response_id.unwrap_or("<missing>")
+        ));
+    }
+    let protocol_version = parsed
+        .get("protocolVersion")
+        .and_then(|value| value.as_u64());
+    if protocol_version != Some(1) {
+        return Err(format!(
+            "Unsupported health response protocol version: {}",
+            protocol_version
+                .map(|version| version.to_string())
+                .unwrap_or_else(|| "<missing>".into())
+        ));
+    }
+    if let Some(error) = parsed.get("error").filter(|value| !value.is_null()) {
+        let message = error
+            .get("message")
+            .and_then(|value| value.as_str())
+            .unwrap_or("Malformed health response error");
+        return Err(message.to_string());
+    }
+    let result = parsed
+        .get("result")
+        .ok_or_else(|| "Health response result is missing".to_string())?;
+    if !result.is_object() {
+        return Err("Health response result must be an object".to_string());
+    }
+    Ok(result)
+}
+
+fn probe_daemon_health_with_request_id(
+    timeout: Duration,
+    require_auth: bool,
+    request_id: &str,
+) -> DaemonHealth {
     let socket_path = linux_socket_path();
     let auth_token = read_auth_token();
     if require_auth && auth_token.is_none() {
@@ -1097,15 +1156,11 @@ fn probe_daemon_health_with_timeout(timeout: Duration, require_auth: bool) -> Da
     let _ = stream.set_read_timeout(Some(timeout));
     let _ = stream.set_write_timeout(Some(timeout));
 
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
     let mut envelope = serde_json::json!({
         "protocolVersion": 1,
-        "id": format!("health-{stamp}"),
+        "id": request_id,
         "method": "daemon.health",
-        "traceId": format!("trace-{stamp}"),
+        "traceId": format!("trace-{request_id}"),
     });
     if let Some(token) = auth_token {
         envelope["authToken"] = serde_json::Value::String(token);
@@ -1141,22 +1196,17 @@ fn probe_daemon_health_with_timeout(timeout: Duration, require_auth: bool) -> Da
             };
         }
     };
-    if let Some(err) = parsed
-        .get("error")
-        .and_then(|e| e.get("message"))
-        .and_then(|m| m.as_str())
-    {
-        return DaemonHealth {
-            ok: false,
-            socket_path: Some(socket_path.display().to_string()),
-            error: Some(err.to_string()),
-            ..Default::default()
-        };
-    }
-    let result = parsed
-        .get("result")
-        .cloned()
-        .unwrap_or(serde_json::json!({}));
+    let result = match validated_daemon_health_result(&parsed, request_id) {
+        Ok(result) => result,
+        Err(error) => {
+            return DaemonHealth {
+                ok: false,
+                socket_path: Some(socket_path.display().to_string()),
+                error: Some(error),
+                ..Default::default()
+            };
+        }
+    };
     DaemonHealth {
         ok: result.get("ok").and_then(|v| v.as_bool()).unwrap_or(false),
         protocol_version: result

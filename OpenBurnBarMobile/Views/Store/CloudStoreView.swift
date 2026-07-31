@@ -171,6 +171,7 @@ struct CloudStoreView: View {
                 .padding(.top, MobileTheme.Spacing.md)
                 .padding(.bottom, store.isActive ? MobileTheme.Spacing.xl : 140)
             }
+            .accessibilityIdentifier("cloudStore.scrollView")
             .settingsAnchor(SettingsAnchor.cloudRow)
         }
         .navigationTitle("OpenBurnBar Cloud")

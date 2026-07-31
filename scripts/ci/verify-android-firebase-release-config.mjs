@@ -29,13 +29,11 @@ for (let index = 0; index < args.length; index += 1) {
 
 const expected = {
   projectId: process.env.OPENBURNBAR_FIREBASE_PROJECT_ID || "burnbar",
-  projectNumber:
-    process.env.OPENBURNBAR_FIREBASE_PROJECT_NUMBER || "246956661961",
+  projectNumber: process.env.OPENBURNBAR_FIREBASE_PROJECT_NUMBER || "246956661961",
   appId:
     process.env.OPENBURNBAR_ANDROID_FIREBASE_APP_ID ||
     "1:246956661961:android:6ffe560abf1a583a480118",
-  packageName:
-    process.env.OPENBURNBAR_ANDROID_PACKAGE_NAME || "com.openburnbar",
+  packageName: process.env.OPENBURNBAR_ANDROID_PACKAGE_NAME || "com.openburnbar",
 };
 
 let raw;
@@ -76,9 +74,10 @@ if (base64EnvName) {
 }
 
 console.log(
-  `Firebase Android config verified: identity=matched credentials=present strictRelease=${
-    strictRelease ? "true" : "false"
-  }`,
+  [
+    "Firebase Android config verified:",
+    `strictRelease=${strictRelease ? "true" : "false"}`,
+  ].join(" ")
 );
 
 function validateConfig(payload, { expected, strictRelease }) {
@@ -86,15 +85,13 @@ function validateConfig(payload, { expected, strictRelease }) {
   const clients = arrayAt(payload, "client");
   const client = clients.find((candidate) => {
     return (
-      objectAt(objectAt(candidate, "client_info"), "android_client_info")
-        .package_name === expected.packageName
+      objectAt(objectAt(candidate, "client_info"), "android_client_info").package_name ===
+      expected.packageName
     );
   });
 
   if (!client) {
-    fail(
-      `google-services.json does not contain an Android client for ${expected.packageName}.`,
-    );
+    fail(`google-services.json does not contain an Android client for ${expected.packageName}.`);
   }
 
   const clientInfo = objectAt(client, "client_info");
@@ -106,70 +103,34 @@ function validateConfig(payload, { expected, strictRelease }) {
     .filter((entry) => {
       const oauth = objectAt(entry);
       const oauthAndroidInfo = objectAt(oauth, "android_info");
-      return (
-        String(oauth.client_type) === "1" &&
-        oauthAndroidInfo.package_name === expected.packageName
-      );
+      return String(oauth.client_type) === "1" && oauthAndroidInfo.package_name === expected.packageName;
     })
-    .map((entry) =>
-      String(
-        objectAt(objectAt(entry), "android_info").certificate_hash ?? "",
-      ).trim(),
-    )
-    .filter(
-      (certificateHash) =>
-        certificateHash.length >= 40 && !isPlaceholder(certificateHash),
-    );
+    .map((entry) => String(objectAt(objectAt(entry), "android_info").certificate_hash ?? "").trim())
+    .filter((certificateHash) => certificateHash.length >= 40 && !isPlaceholder(certificateHash));
 
   const failures = [];
-  requireEqual(
-    failures,
-    "project_id",
-    projectInfo.project_id,
-    expected.projectId,
-  );
-  requireEqual(
-    failures,
-    "project_number",
-    projectInfo.project_number,
-    expected.projectNumber,
-  );
-  requireEqual(
-    failures,
-    "mobilesdk_app_id",
-    clientInfo.mobilesdk_app_id,
-    expected.appId,
-  );
-  requireEqual(
-    failures,
-    "package_name",
-    androidInfo.package_name,
-    expected.packageName,
-  );
+  requireEqual(failures, "project_id", projectInfo.project_id, expected.projectId);
+  requireEqual(failures, "project_number", projectInfo.project_number, expected.projectNumber);
+  requireEqual(failures, "mobilesdk_app_id", clientInfo.mobilesdk_app_id, expected.appId);
+  requireEqual(failures, "package_name", androidInfo.package_name, expected.packageName);
 
   if (apiKeys.length === 0 || apiKeys.some(isPlaceholder)) {
-    failures.push(
-      "api_key must be a real non-placeholder Firebase Android API key",
-    );
+    failures.push("api_key must be a real non-placeholder Firebase Android API key");
   }
 
   if (strictRelease) {
     if (!apiKeys.some((key) => /^[A-Za-z0-9_-]{30,}$/.test(key))) {
-      failures.push(
-        "api_key must have the shape of a Firebase Android API key",
-      );
+      failures.push("api_key must have the shape of a Firebase Android API key");
     }
     if (androidOauthCertificates.length === 0) {
       failures.push(
-        `oauth_client must include at least one Android client certificate for ${expected.packageName}`,
+        `oauth_client must include at least one Android client certificate for ${expected.packageName}`
       );
     }
   }
 
   if (failures.length > 0) {
-    fail(
-      `Invalid Android Firebase config:\n${failures.map((item) => `- ${item}`).join("\n")}`,
-    );
+    fail(`Invalid Android Firebase config:\n${failures.map((item) => `- ${item}`).join("\n")}`);
   }
 
   return {
@@ -183,9 +144,7 @@ function validateConfig(payload, { expected, strictRelease }) {
 
 function objectAt(value, key) {
   const target = key === undefined ? value : value?.[key];
-  return target && typeof target === "object" && !Array.isArray(target)
-    ? target
-    : {};
+  return target && typeof target === "object" && !Array.isArray(target) ? target : {};
 }
 
 function arrayAt(value, key) {
@@ -203,9 +162,7 @@ function isPlaceholder(value) {
   const normalized = String(value ?? "").trim();
   return (
     normalized.length === 0 ||
-    ["YOUR_", "REPLACE_", "EXAMPLE_", "PLACEHOLDER"].some((prefix) =>
-      normalized.startsWith(prefix),
-    )
+    ["YOUR_", "REPLACE_", "EXAMPLE_", "PLACEHOLDER"].some((prefix) => normalized.startsWith(prefix))
   );
 }
 

@@ -112,6 +112,22 @@ final class DashboardToolbarTests: XCTestCase {
         let script = try String(contentsOf: scriptURL, encoding: .utf8)
         XCTAssertTrue(script.contains("getContext(\"webgl2\",{alpha:!0"))
         XCTAssertFalse(script.contains("getContext(\"webgl2\",{alpha:!1"))
+        XCTAssertTrue(script.contains("__getReadability"))
+        XCTAssertTrue(script.contains("backdropReadability"))
+    }
+
+    func test_kernelCatalogIncludesEveryBundledKernel() throws {
+        let scriptURL = try XCTUnwrap(Bundle.main.url(
+            forResource: "kernel-backdrop",
+            withExtension: "js",
+            subdirectory: "KernelBackdrop"
+        ))
+        let script = try String(contentsOf: scriptURL, encoding: .utf8)
+        XCTAssertEqual(KernelCatalog.all.count, 32)
+        XCTAssertEqual(Set(KernelCatalog.all.map(\.id)).count, KernelCatalog.all.count)
+        for kernel in KernelCatalog.all {
+            XCTAssertTrue(script.contains("id:\"\(kernel.id)\""), kernel.id)
+        }
     }
 
     func test_dashboardDepthBackdropRendersFlatAndDynamicBranches() throws {

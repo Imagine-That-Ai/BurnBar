@@ -269,16 +269,58 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
     }
 
     func refreshProviderAccountQuota(accountID: String) async throws -> ProviderQuotaSnapshot {
-        // Representative migration to the typed callable helper (WP2-TYPED-IOS):
-        // request is `Encodable`, response is `Decodable`, and a malformed
-        // response surfaces `DecodingError` context instead of collapsing into an
-        // opaque `try?` failure. The encoded request `{accountID}` is byte-for-byte
-        // the same wire shape as the previous `["accountID": accountID]` dictionary.
         struct Request: Encodable { let accountID: String }
-        return try await FirebaseCallableExecutor.call(
-            "refreshProviderAccountQuota",
-            Request(accountID: accountID),
-            using: functionsClient()
+        let request = try FirebaseCallableExecutor.encodeToJSONObject(
+            Request(accountID: accountID)
+        )
+        let callable = try functionsClient().httpsCallable("refreshProviderAccountQuota")
+        let result = try await FirebaseCallableExecutor(callable).call(
+            FirebaseCallablePayload(request)
+        )
+        return try Self.decodeRefreshProviderAccountQuotaResponse(
+            result.data,
+            accountID: accountID
+        )
+    }
+
+    /// Decode the quota document returned directly by
+    /// `refreshProviderAccountQuota`.
+    ///
+    /// Firestore keeps a document's ID outside its data payload, so the backend
+    /// correctly returns a quota document without the required mobile-model
+    /// `id` field. Normal Firestore reads add that ID in
+    /// `normalizeQuotaSnapshotData`; callable refreshes must take the same path
+    /// before typed decoding.
+    static func decodeRefreshProviderAccountQuotaResponse(
+        _ raw: Any?,
+        accountID: String
+    ) throws -> ProviderQuotaSnapshot {
+        guard let data = raw as? [String: Any] else {
+            return try FirebaseCallableExecutor.decodeResponse(
+                ProviderQuotaSnapshot.self,
+                from: raw
+            )
+        }
+        guard let providerID = ParsePrimitives.string(data["providerID"]) else {
+            throw FunctionsError.responseDecodingFailed(
+                "Decoding ProviderQuotaSnapshot failed: missing key 'providerID' at <root>."
+            )
+        }
+        guard let sourceID = ParsePrimitives.string(data["sourceId"])
+            ?? ParsePrimitives.string(data["sourceID"]) else {
+            throw FunctionsError.responseDecodingFailed(
+                "Decoding ProviderQuotaSnapshot failed: missing key 'sourceId' at <root>."
+            )
+        }
+
+        let documentID = "\(providerID)_\(accountID)_\(sourceID)"
+        let normalized = FirestoreRepository.shared.normalizeQuotaSnapshotData(
+            data,
+            docID: documentID
+        )
+        return try FirebaseCallableExecutor.decodeResponse(
+            ProviderQuotaSnapshot.self,
+            from: normalized
         )
     }
 

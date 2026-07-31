@@ -41,6 +41,50 @@ const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const VERSION = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:[-+][0-9A-Za-z.-]+)?$/u;
 const SOCKET_TIMEOUT_MS = 15_000;
 const EXPIRY_SAFETY_MS = 1_000;
+const SYSTEM_COMMANDS = Object.freeze({
+  dpkgQuery: '/usr/bin/dpkg-query',
+  loginctl: '/usr/bin/loginctl',
+  pacman: '/usr/bin/pacman',
+  pgrep: '/usr/bin/pgrep',
+  rpm: '/usr/bin/rpm'
+});
+const PACKAGE_FORMATS = Object.freeze({
+  deb: Object.freeze({
+    manager: 'dpkg',
+    packageName: 'open-burn-bar',
+    queryCommand: SYSTEM_COMMANDS.dpkgQuery
+  }),
+  rpm: Object.freeze({
+    manager: 'rpm',
+    packageName: 'open-burn-bar',
+    queryCommand: SYSTEM_COMMANDS.rpm
+  }),
+  arch: Object.freeze({
+    manager: 'pacman',
+    packageName: 'openburnbar',
+    queryCommand: SYSTEM_COMMANDS.pacman
+  })
+});
+const DESKTOP_RUNTIMES = Object.freeze({
+  GNOME: Object.freeze({
+    compositor: 'Mutter',
+    desktopProcess: 'gnome-shell',
+    compositorProcess: 'gnome-shell',
+    markers: Object.freeze(['gnome'])
+  }),
+  'KDE Plasma': Object.freeze({
+    compositor: 'KWin',
+    desktopProcess: 'plasmashell',
+    compositorProcess: 'kwin_wayland',
+    markers: Object.freeze(['kde', 'plasma'])
+  }),
+  'Sway/wlroots': Object.freeze({
+    compositor: 'Sway',
+    desktopProcess: 'sway',
+    compositorProcess: 'sway',
+    markers: Object.freeze(['sway'])
+  })
+});
 let activeTokenFile = null;
 
 function dateMilliseconds(value) {
@@ -187,13 +231,142 @@ function readJSON(file, label) {
   }
 }
 
+function normalizeArchitecture(value) {
+  switch (String(value ?? '').trim()) {
+    case 'x64':
+    case 'amd64':
+    case 'x86_64':
+      return 'x86_64';
+    case 'arm64':
+    case 'aarch64':
+      return 'aarch64';
+    default:
+      fail(`unsupported Linux architecture: ${String(value ?? '').trim() || '<empty>'}`);
+  }
+}
+
+function environmentIdentity(environmentId) {
+  const expected = P40_ENVIRONMENTS[environmentId];
+  assert(expected, `unsupported P-40 environment: ${environmentId}`);
+  const packageRuntime = PACKAGE_FORMATS[expected.format];
+  const desktopRuntime = DESKTOP_RUNTIMES[expected.desktop];
+  assert(packageRuntime, `unsupported P-40 package format: ${expected.format}`);
+  assert(desktopRuntime, `unsupported P-40 desktop: ${expected.desktop}`);
+  return {
+    architecture: expected.architecture,
+    compositor: desktopRuntime.compositor,
+    compositorProcess: desktopRuntime.compositorProcess,
+    desktop: expected.desktop,
+    desktopMarkers: [...desktopRuntime.markers],
+    desktopProcess: desktopRuntime.desktopProcess,
+    displayServer: expected.session,
+    manager: packageRuntime.manager,
+    os: { ...expected.os },
+    packageFormat: expected.format,
+    packageName: packageRuntime.packageName,
+    packageQueryCommand: packageRuntime.queryCommand
+  };
+}
+
+function trustedSystemExecutable(file, label) {
+  const stat = lstatNoSymlink(file, label);
+  assert(stat.isFile() && stat.uid === 0 && (stat.mode & 0o111) !== 0 && (stat.mode & 0o022) === 0,
+    `${label} must be a root-owned non-writable executable`);
+}
+
+function systemCommandEnvironment() {
+  const environment = { ...process.env, LC_ALL: 'C' };
+  for (const variable of [
+    'DPKG_ADMINDIR',
+    'DPKG_ROOT',
+    'LD_AUDIT',
+    'LD_LIBRARY_PATH',
+    'LD_PRELOAD',
+    'RPM_CONFIGDIR'
+  ]) {
+    delete environment[variable];
+  }
+  return environment;
+}
+
+function commandOutput(runner, command, args, label) {
+  const result = runner(command, args, {
+    encoding: 'utf8',
+    env: systemCommandEnvironment(),
+    timeout: 15_000,
+    maxBuffer: 64 * 1024
+  });
+  assert(!result?.error && result?.status === 0, `${label} failed`);
+  assert(typeof result.stdout === 'string' && result.stdout.trim().length > 0, `${label} returned no identity`);
+  return result.stdout;
+}
+
+function queryInstalledPackage(identity, expectedVersion, runner = spawnSync) {
+  if (runner === spawnSync) trustedSystemExecutable(identity.packageQueryCommand, 'native package query');
+  let packageName;
+  let packageVersion;
+  let packageArchitecture;
+  if (identity.packageFormat === 'deb') {
+    const output = commandOutput(
+      runner,
+      identity.packageQueryCommand,
+      ['-W', '-f=${Status}\t${Version}\t${Architecture}\t${Package}\n', identity.packageName],
+      'installed Debian package query'
+    );
+    const [status, version, architecture, name, ...extra] = output.trim().split('\t');
+    assert(extra.length === 0 && status === 'install ok installed', 'installed Debian package status is invalid');
+    packageName = name;
+    packageVersion = version;
+    packageArchitecture = normalizeArchitecture(architecture);
+  } else if (identity.packageFormat === 'rpm') {
+    const output = commandOutput(
+      runner,
+      identity.packageQueryCommand,
+      ['-q', '--queryformat', '%{NAME}\t%{VERSION}\t%{ARCH}\n', identity.packageName],
+      'installed RPM package query'
+    );
+    const [name, version, architecture, ...extra] = output.trim().split('\t');
+    assert(extra.length === 0, 'installed RPM package identity is malformed');
+    packageName = name;
+    packageVersion = version;
+    packageArchitecture = normalizeArchitecture(architecture);
+  } else if (identity.packageFormat === 'arch') {
+    const output = commandOutput(
+      runner,
+      identity.packageQueryCommand,
+      ['-Qi', identity.packageName],
+      'installed Arch package query'
+    );
+    const fields = new Map();
+    for (const line of output.split('\n')) {
+      const match = /^([^:]+?)\s*:\s*(.*)$/u.exec(line);
+      if (match && !fields.has(match[1].trim())) fields.set(match[1].trim(), match[2].trim());
+    }
+    packageName = fields.get('Name');
+    packageVersion = String(fields.get('Version') ?? '').replace(/-[1-9][0-9]*$/u, '');
+    packageArchitecture = normalizeArchitecture(fields.get('Architecture'));
+  } else {
+    fail(`unsupported installed package format: ${identity.packageFormat}`);
+  }
+  assert(packageName === identity.packageName, 'installed package name does not match the support environment');
+  assert(packageVersion === expectedVersion, 'installed package version does not match the signed candidate');
+  assert(packageArchitecture === identity.architecture,
+    'installed package architecture does not match the support environment');
+  return {
+    architecture: packageArchitecture,
+    format: identity.packageFormat,
+    manager: identity.manager,
+    name: packageName,
+    version: packageVersion
+  };
+}
+
 function verifyInstalledCandidate(options) {
   assert(process.platform === 'linux', 'P-40 producer must run on Linux');
   for (const variable of ['OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG', 'BURNBAR_DAEMON_DISABLE_PEER_CODESIG']) {
     assert(process.env[variable] !== '1', `${variable}=1 is forbidden for release P-40 evidence`);
   }
-  const expected = P40_ENVIRONMENTS[options.environmentId];
-  assert(expected.format === 'deb', 'P-40 producer currently supports only Debian environments');
+  const identity = environmentIdentity(options.environmentId);
   const manifestStat = lstatNoSymlink(MANIFEST_PATH, 'installed manifest');
   assert(manifestStat.isFile() && manifestStat.uid === 0 && (manifestStat.mode & 0o0777) === 0o644,
     'installed manifest must be root-owned mode 0644');
@@ -220,8 +393,9 @@ function verifyInstalledCandidate(options) {
   assert(signatureValid, 'installed manifest signature is invalid');
   const manifest = readJSON(MANIFEST_PATH, 'installed manifest');
   assert(manifest.gitCommit === options.targetHead, 'installed manifest commit does not match target head');
-  assert(manifest.packageArchitecture === expected.architecture, 'installed manifest architecture mismatch');
-  assert(manifest.packageFormat === expected.format, 'installed manifest format mismatch');
+  assert(manifest.packageArchitecture === identity.architecture, 'installed manifest architecture mismatch');
+  assert(manifest.packageFormat === identity.packageFormat, 'installed manifest format mismatch');
+  assert(manifest.packageName === identity.packageName, 'installed manifest package name mismatch');
   assert(manifest.packageVersion === options.packageVersion, 'installed manifest version mismatch');
   assert(crypto.createHash('sha256').update(manifestBytes).digest('hex') === options.manifestSha256,
     'installed manifest hash mismatch');
@@ -229,25 +403,15 @@ function verifyInstalledCandidate(options) {
     const stat = lstatNoSymlink(required, `installed candidate ${required}`);
     assert(stat.isFile() && stat.uid === 0 && (stat.mode & 0o111) !== 0 && (stat.mode & 0o022) === 0,
       `installed candidate binary is not a trusted executable: ${required}`);
-    if (required === CLI_BINARY_PATH) {
-      const manifestFile = manifest.files?.find((entry) => entry?.path === required && entry.type === 'file');
-      assert(manifestFile?.mode === '0755' && manifestFile.uid === 0 && manifestFile.gid === 0,
-        'installed manifest does not inventory the authorized CLI peer');
-      assert(crypto.createHash('sha256').update(fs.readFileSync(required)).digest('hex') === manifestFile.sha256,
-        'installed CLI peer hash does not match the signed manifest');
-    }
+    const manifestFile = manifest.files?.find((entry) => entry?.path === required && entry.type === 'file');
+    assert(manifestFile?.mode === '0755' && manifestFile.uid === 0 && manifestFile.gid === 0,
+      `installed manifest does not inventory the trusted executable: ${required}`);
+    assert(crypto.createHash('sha256').update(fs.readFileSync(required)).digest('hex') === manifestFile.sha256,
+      `installed executable hash does not match the signed manifest: ${required}`);
   }
 
-  const packageQuery = spawnSync('dpkg-query', ['-W', '-f=${Status}\t${Version}\t${Architecture}\t${Package}\n', 'open-burn-bar'], {
-    encoding: 'utf8',
-    timeout: 15_000,
-    maxBuffer: 32 * 1024
-  });
-  assert(packageQuery.status === 0, 'open-burn-bar is not installed through dpkg');
-  const [status, version, architecture, packageName] = packageQuery.stdout.trim().split('\t');
-  assert(status === 'install ok installed' && packageName === 'open-burn-bar', 'installed package status is invalid');
-  assert(version === options.packageVersion && architecture === 'arm64', 'installed package metadata mismatch');
-  return { manifest, expected };
+  const packageIdentity = queryInstalledPackage(identity, options.packageVersion);
+  return { identity, manifest, packageIdentity };
 }
 
 function readOSRelease() {
@@ -270,67 +434,134 @@ function processEnvironment(pid) {
   }
 }
 
-function activeGnomeShellEnvironment(uid) {
-  const listed = spawnSync('pgrep', ['-u', uid, '-x', 'gnome-shell'], {
-    encoding: 'utf8', timeout: 10_000, maxBuffer: 64 * 1024
+function desktopMatches(identity, value) {
+  const observed = String(value ?? '').toLowerCase();
+  return identity.desktopMarkers.some((marker) => observed.includes(marker));
+}
+
+function processIds(uid, processName, runner) {
+  const listed = runner(SYSTEM_COMMANDS.pgrep, ['-u', uid, '-x', processName], {
+    encoding: 'utf8',
+    env: systemCommandEnvironment(),
+    timeout: 10_000,
+    maxBuffer: 64 * 1024
   });
-  if (listed.status !== 0) return null;
-  for (const pid of listed.stdout.split(/\s+/u).filter(Boolean)) {
-    const environment = processEnvironment(pid);
-    if (environment) return environment;
+  assert(!listed?.error, `unable to inspect ${processName}`);
+  if (listed.status === 1) return [];
+  assert(listed.status === 0, `unable to inspect ${processName}`);
+  const ids = listed.stdout.split(/\s+/u).filter(Boolean);
+  assert(ids.length > 0 && ids.every((pid) => /^[1-9][0-9]*$/u.test(pid)),
+    `${processName} process identity is malformed`);
+  return [...new Set(ids)];
+}
+
+function matchingProcessEnvironment({
+  uid,
+  processName,
+  identity,
+  runner,
+  readProcessEnvironment,
+  requireDesktop,
+  requireDisplay
+}) {
+  const displayVariable = identity.displayServer === 'Wayland' ? 'WAYLAND_DISPLAY' : 'DISPLAY';
+  for (const pid of processIds(uid, processName, runner)) {
+    const environment = readProcessEnvironment(pid);
+    if (!environment) continue;
+    if ((environment.XDG_SESSION_TYPE || '').toLowerCase() !== identity.displayServer.toLowerCase()) continue;
+    if (requireDesktop) {
+      const desktop = [environment.XDG_CURRENT_DESKTOP, environment.XDG_SESSION_DESKTOP, environment.DESKTOP_SESSION]
+        .filter(Boolean).join(':');
+      if (!desktopMatches(identity, desktop)) continue;
+    }
+    if (requireDisplay
+        && (typeof environment[displayVariable] !== 'string' || environment[displayVariable].length === 0)) continue;
+    return { environment, pid };
   }
   return null;
 }
 
-function verifyDesktopSession(expected) {
-  const osRelease = readOSRelease();
-  assert(osRelease.ID === expected.os.id, 'running OS id does not match support environment');
-  assert(expected.os.versionId === null || osRelease.VERSION_ID === expected.os.versionId,
-    'running OS version does not match support environment');
-  assert(os.arch() === 'arm64', 'running architecture is not aarch64');
-  const sessionType = (process.env.XDG_SESSION_TYPE || '').toLowerCase();
-  const desktops = [process.env.XDG_CURRENT_DESKTOP, process.env.XDG_SESSION_DESKTOP]
-    .filter(Boolean).join(':').toUpperCase();
-  if (sessionType === expected.session.toLowerCase() && desktops.includes(expected.desktop.toUpperCase())) {
-    return { session: expected.session };
+function verifyDesktopSession(identity, dependencies = {}) {
+  const runner = dependencies.runner ?? spawnSync;
+  const osRelease = dependencies.osRelease ?? readOSRelease();
+  const architecture = normalizeArchitecture(dependencies.architecture ?? os.arch());
+  const getuid = dependencies.getuid ?? process.getuid;
+  const readProcessEnvironment = dependencies.readProcessEnvironment ?? processEnvironment;
+  if (!dependencies.runner) {
+    trustedSystemExecutable(SYSTEM_COMMANDS.loginctl, 'logind session query');
+    trustedSystemExecutable(SYSTEM_COMMANDS.pgrep, 'desktop process query');
   }
+  assert(typeof getuid === 'function', 'P-40 desktop verification requires a numeric user id');
+  const uid = String(getuid());
+  assert(/^[0-9]+$/u.test(uid), 'P-40 desktop verification user id is invalid');
+  assert(osRelease.ID === identity.os.id, 'running OS id does not match support environment');
+  assert(identity.os.versionId === null || osRelease.VERSION_ID === identity.os.versionId,
+    'running OS version does not match support environment');
+  const osVersionId = osRelease.VERSION_ID || osRelease.BUILD_ID;
+  assert(typeof osVersionId === 'string' && osVersionId.length > 0,
+    'running OS does not expose a real version/build identity');
+  assert(architecture === identity.architecture, 'running architecture does not match support environment');
 
-  // The producer is commonly launched over SSH, where XDG variables are not
-  // inherited. Resolve the current user's active local GNOME session through
-  // logind rather than treating an SSH shell as the desktop session.
-  const listed = spawnSync('loginctl', ['list-sessions', '--no-legend'], {
-    encoding: 'utf8', timeout: 10_000, maxBuffer: 128 * 1024
+  // The producer is commonly launched by a service or over SSH. Bind the
+  // claimed row to an active local logind session and to the actual desktop
+  // and compositor processes instead of trusting caller-controlled XDG vars.
+  const listed = runner(SYSTEM_COMMANDS.loginctl, ['list-sessions', '--no-legend', '--no-pager'], {
+    encoding: 'utf8',
+    env: systemCommandEnvironment(),
+    timeout: 10_000,
+    maxBuffer: 128 * 1024
   });
-  assert(listed.status === 0, 'unable to inspect the live logind session');
-  const uid = String(process.getuid());
+  assert(!listed?.error && listed.status === 0, 'unable to inspect the live logind session');
   const sessions = listed.stdout.split('\n').map((line) => line.trim().split(/\s+/u)).filter((parts) => parts.length >= 2);
   for (const [sessionId, sessionUid] of sessions) {
     if (sessionUid !== uid) continue;
-    const detail = spawnSync('loginctl', [
+    const detail = runner(SYSTEM_COMMANDS.loginctl, [
       'show-session', sessionId,
-      '-p', 'Type', '-p', 'Desktop', '-p', 'Class', '-p', 'Active', '-p', 'Remote', '-p', 'State'
-    ], { encoding: 'utf8', timeout: 10_000, maxBuffer: 64 * 1024 });
-    if (detail.status !== 0) continue;
+      '-p', 'Type', '-p', 'Desktop', '-p', 'Class', '-p', 'Active', '-p', 'Remote', '-p', 'State',
+      '--no-pager'
+    ], {
+      encoding: 'utf8',
+      env: systemCommandEnvironment(),
+      timeout: 10_000,
+      maxBuffer: 64 * 1024
+    });
+    if (detail?.error || detail.status !== 0) continue;
     const fields = Object.fromEntries(detail.stdout.split('\n').map((line) => line.split('=', 2)).filter(([key, value]) => key && value));
-    const sessionIsActive = fields.Type === expected.session.toLowerCase()
+    const sessionIsActive = fields.Type === identity.displayServer.toLowerCase()
       && fields.Class === 'user' && fields.Active === 'yes' && fields.Remote === 'no'
       && ['active', 'online'].includes((fields.State || '').toLowerCase());
-    const desktop = (fields.Desktop || '').toUpperCase();
-    if (sessionIsActive && desktop.includes(expected.desktop.toUpperCase())) {
-      return { session: expected.session };
-    }
-    // Ubuntu's gdm session can leave logind's Desktop field empty. In that
-    // case, bind the active X11 session to the user's actual GNOME shell
-    // environment rather than rejecting a valid local desktop over SSH.
-    if (sessionIsActive && !desktop && expected.desktop.toUpperCase() === 'GNOME') {
-      const shell = activeGnomeShellEnvironment(uid);
-      const shellType = (shell?.XDG_SESSION_TYPE || '').toLowerCase();
-      const shellDesktop = [shell?.XDG_CURRENT_DESKTOP, shell?.XDG_SESSION_DESKTOP]
-        .filter(Boolean).join(':').toUpperCase();
-      if (shellType === expected.session.toLowerCase() && shellDesktop.includes(expected.desktop.toUpperCase())) {
-        return { session: expected.session };
-      }
-    }
+    if (!sessionIsActive || (fields.Desktop && !desktopMatches(identity, fields.Desktop))) continue;
+    const desktopProcess = matchingProcessEnvironment({
+      uid,
+      processName: identity.desktopProcess,
+      identity,
+      runner,
+      readProcessEnvironment,
+      requireDesktop: true,
+      requireDisplay: true
+    });
+    if (!desktopProcess) continue;
+    const compositorProcess = identity.compositorProcess === identity.desktopProcess
+      ? desktopProcess
+      : matchingProcessEnvironment({
+          uid,
+          processName: identity.compositorProcess,
+          identity,
+          runner,
+          readProcessEnvironment,
+          requireDesktop: false,
+          // Wayland compositors create the display socket; unlike their
+          // desktop clients, they need not inherit WAYLAND_DISPLAY.
+          requireDisplay: false
+        });
+    if (!compositorProcess) continue;
+    return {
+      architecture,
+      compositor: identity.compositor,
+      desktop: identity.desktop,
+      displayServer: identity.displayServer,
+      os: { id: osRelease.ID, versionId: osVersionId }
+    };
   }
   fail('no active local desktop session matches the support environment');
 }
@@ -547,14 +778,26 @@ function buildContract() {
   };
 }
 
-function buildSession(options, expected, packageVersion, manifestSha256, observations) {
+function buildSession(options, identity, packageVersion, manifestSha256, observations, runtime) {
+  assertObject(runtime, 'P-40 observed runtime');
+  assertObject(runtime.os, 'P-40 observed runtime os');
+  assert(runtime.architecture === identity.architecture, 'P-40 observed architecture drifted');
+  assert(runtime.desktop === identity.desktop, 'P-40 observed desktop drifted');
+  assert(runtime.displayServer === identity.displayServer, 'P-40 observed display server drifted');
+  assert(runtime.compositor === identity.compositor, 'P-40 observed compositor drifted');
+  assert(runtime.os.id === identity.os.id, 'P-40 observed OS id drifted');
+  assert(typeof runtime.os.versionId === 'string' && runtime.os.versionId.length > 0,
+    'P-40 observed OS version/build identity is required');
+  if (identity.os.versionId !== null) {
+    assert(runtime.os.versionId === identity.os.versionId, 'P-40 observed OS version drifted');
+  }
   const capture = {
-    architecture: expected.architecture,
-    desktop: expected.desktop,
+    architecture: runtime.architecture,
+    desktop: runtime.desktop,
     mode: 'installed-rpc',
-    os: { id: expected.os.id, versionId: expected.os.versionId },
+    os: { ...runtime.os },
     platform: 'linux',
-    session: expected.session
+    session: runtime.displayServer
   };
   const session = {
     schemaVersion: 1,
@@ -565,14 +808,14 @@ function buildSession(options, expected, packageVersion, manifestSha256, observa
     candidate: { runId: options.candidateRunId, artifactDigest: options.candidateArtifactDigest },
     capture,
     package: {
-      architecture: expected.architecture,
-      format: expected.format,
+      architecture: identity.architecture,
+      format: identity.packageFormat,
       installed: true,
       manifestSha256,
       source: 'signed-installed-candidate',
       version: packageVersion
     },
-    desktop: { desktop: expected.desktop, liveSession: true, session: expected.session },
+    desktop: { desktop: runtime.desktop, liveSession: true, session: runtime.displayServer },
     daemon: { installed: true, rpcMethods: [...P40_RPC_METHODS], running: true, source: 'installed-candidate-daemon' },
     contract: buildContract(),
     observations
@@ -588,8 +831,8 @@ function buildSession(options, expected, packageVersion, manifestSha256, observa
 
 async function runSession(options) {
   const { privacy } = ensureOutputRoot(options.outputRoot);
-  const { expected } = verifyInstalledCandidate(options);
-  verifyDesktopSession(expected);
+  const { identity } = verifyInstalledCandidate(options);
+  const runtime = verifyDesktopSession(identity);
   const token = readOwnerOnlyToken(options.tokenFile);
   const support = path.dirname(options.tokenFile);
   assert(path.basename(options.tokenFile) === TOKEN_FILENAME, 'token file is not the daemon support token');
@@ -760,7 +1003,14 @@ async function runSession(options) {
       },
       retention
     };
-    const session = buildSession(options, expected, options.packageVersion, options.manifestSha256, observations);
+    const session = buildSession(
+      options,
+      identity,
+      options.packageVersion,
+      options.manifestSha256,
+      observations,
+      runtime
+    );
     atomicJSON(path.join(options.outputRoot, 'p40-live-session.json'), session);
     return session;
   } finally {
@@ -776,7 +1026,17 @@ async function runSession(options) {
   }
 }
 
-export { RPCError, buildSession, callRPC, parseArguments, runSession };
+export {
+  RPCError,
+  buildSession,
+  callRPC,
+  environmentIdentity,
+  normalizeArchitecture,
+  parseArguments,
+  queryInstalledPackage,
+  runSession,
+  verifyDesktopSession
+};
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   runSession(parseArguments(process.argv.slice(2)))

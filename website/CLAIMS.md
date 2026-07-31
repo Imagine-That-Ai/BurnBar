@@ -248,7 +248,7 @@ These are the recurring **[verify]** flags above, collected:
    `downloads.burnbar.ai` host only after the notarized direct-download pipeline publishes
    matching live assets.
 5. **Sentry / encryption-key recovery / HTTP-gateway TLS** — `docs/reviews/SECURITY_PRIVACY_REVIEW.md` notes a few items the team intended to fix. Re-read against the current shipping build before publishing the security page.
-6. **Trademark clearance for "OpenBurnBar"** is listed as a TODO in `docs/OSS_LAUNCH_CHECKLIST.md:108`. The site uses the name everywhere, so confirm clearance before going public.
+6. **Trademark clearance for "OpenBurnBar"** remains an unchecked legal-owner item in `docs/OSS_LAUNCH_CHECKLIST.md:148`. Public-facing app, repository, and website surfaces already use the name, so this is a current release-risk review—not a future "before going public" task. Automated repository checks cannot substitute for counsel/owner sign-off.
 7. **Team plan copy** — kept off the page until built.
 8. **Floo activation state.** The `/floo` page and the surfaces matrix say "Built · rolling out." Confirm which Floo capabilities (screen view, control, file transfer, calls, remote unlock) are flag-live in the shipping build before any "available now" framing. Activation gates: `docs/runbooks/media-rollout-status.md`.
 9. **Agent Control submission state.** The `/control` page says "Direct download · behind your grant" and states the Mac App Store build ships without it. Confirm the App Store Connect submission / usage-description posture matches before launch.

@@ -63,6 +63,37 @@ the bound receipt has been consumed. The macOS runner must be self-hosted,
 Apple-silicon, signed into the mobile test account, and have the physical iPad
 paired and available.
 
+## Host preflight
+
+Before dispatching a live P-16 row, run the bounded host checker on the Mac that
+owns the documented UTM guest:
+
+```bash
+node scripts/linux-port/preflight-p16-live-certification.mjs
+```
+
+The command prints machine-readable JSON and exits nonzero when host
+prerequisites are not ready. It verifies the exact
+`Imagine-That-Ai/BurnBar` repository; the exact `OpenBurnBar Linux` VM name,
+UUID, and current status; both coordination-root repository variables; a
+canonical, real, current-user-owned `0700` macOS root; one available physical
+non-Simulator iPad; and an online, non-busy organization runner carrying
+`self-hosted`, `macOS`, `ARM64`, `m5max`, and `ios`. A labelled runner counts
+only when its runner group actually grants this repository access — the group
+is visible to all repositories, or `Imagine-That-Ai/BurnBar` appears in its
+selected list. Otherwise the P-16 workflow would queue indefinitely against a
+runner it can never use, so unmappable or unreadable groups fail closed.
+
+The preflight is strictly read-only. It does not start, resume, pause, or stop
+UTM; register a runner; change GitHub variables; create coordination
+directories; or alter an iPad. A stopped VM is reported as a blocker. While the
+guest is stopped, the Linux root can only be checked as a canonical absolute
+POSIX path. Even after the host checks pass, the JSON deliberately records UTM
+share/path equivalence as deferred: the live Linux-side session must still
+validate that both configured roots expose the same owner-only directory. The
+checker requests no secrets and never includes raw command output in its
+report.
+
 ## Honest boundary
 
 This proof does not claim Linux can approve itself. It proves only the account
