@@ -33,6 +33,13 @@ if [[ "${PROFILE}" == "debug" ]]; then
   PROFILE_DIR="debug"
 else
   PROFILE_FLAG="--release"
+  # Keep Cargo from stripping host-side proc-macro dylibs. Xcode 27's linker
+  # can emit malformed LINKEDIT data when rustc applies `strip = "symbols"`
+  # to those plugins, which then surfaces as misleading "can't find crate"
+  # failures while compiling dependencies. The final app build performs its
+  # own release stripping, so retaining symbols in this intermediate static
+  # library does not change the shipped app's release configuration.
+  export CARGO_PROFILE_RELEASE_STRIP="${IROH_CARGO_RELEASE_STRIP:-none}"
 fi
 
 DEFAULT_TARGETS=(
@@ -56,17 +63,32 @@ else
   RUSTUP_BIN="$(command -v rustup)"
 fi
 
-if [[ -x "${HOME}/.cargo/bin/cargo" ]]; then
-  CARGO_BIN="${HOME}/.cargo/bin/cargo"
-else
-  CARGO_BIN="$(command -v cargo)"
+RUST_TOOLCHAIN="$(
+  sed -nE 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
+    "${CRATE_DIR}/rust-toolchain.toml" \
+    | head -n 1
+)"
+if [[ -z "${RUST_TOOLCHAIN}" ]]; then
+  echo "missing pinned Rust channel in ${CRATE_DIR}/rust-toolchain.toml" >&2
+  exit 1
 fi
+export CARGO_TARGET_DIR="${IROH_CARGO_TARGET_DIR:-${CRATE_DIR}/target/xcframework-${RUST_TOOLCHAIN}}"
+CARGO_BIN="$("${RUSTUP_BIN}" which --toolchain "${RUST_TOOLCHAIN}" cargo)"
+RUSTC_BIN="$("${RUSTUP_BIN}" which --toolchain "${RUST_TOOLCHAIN}" rustc)"
+TOOLCHAIN_BIN_DIR="$(dirname "${RUSTC_BIN}")"
+
+run_cargo() {
+  PATH="${TOOLCHAIN_BIN_DIR}:${PATH}" \
+    RUSTC="${RUSTC_BIN}" \
+    "${CARGO_BIN}" "$@"
+}
 
 ensure_rust_target() {
   local target="$1"
-  if ! "${RUSTUP_BIN}" target list --installed | grep -q "^${target}$"; then
+  if ! "${RUSTUP_BIN}" target list --toolchain "${RUST_TOOLCHAIN}" --installed \
+    | grep -q "^${target}$"; then
     log "installing rust target ${target}"
-    "${RUSTUP_BIN}" target add "${target}"
+    "${RUSTUP_BIN}" target add --toolchain "${RUST_TOOLCHAIN}" "${target}"
   fi
 }
 
@@ -123,7 +145,7 @@ build_target() {
     IPHONEOS_DEPLOYMENT_TARGET=17.0 \
     IPHONE_SIMULATOR_DEPLOYMENT_TARGET=17.0 \
     PATH="${HOME}/.cargo/bin:${PATH}" \
-      "${CARGO_BIN}" build ${PROFILE_FLAG} --target "${target}"
+      run_cargo build ${PROFILE_FLAG} --target "${target}"
   )
 }
 
@@ -138,9 +160,9 @@ done
 # from the iroh-introspection point of view.
 log "generating swift bindings via pinned UniFFI helper"
 ensure_uniffi_bindgen_swift_helper
-HOST_DYLIB="${CRATE_DIR}/target/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_iroh.dylib"
+HOST_DYLIB="${CARGO_TARGET_DIR}/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_iroh.dylib"
 if [[ ! -f "${HOST_DYLIB}" ]]; then
-  HOST_DYLIB="${CRATE_DIR}/target/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_iroh.a"
+  HOST_DYLIB="${CARGO_TARGET_DIR}/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_iroh.a"
 fi
 rm -rf "${GENERATED_DIR}"
 mkdir -p "${GENERATED_DIR}"
@@ -150,7 +172,7 @@ mkdir -p "${GENERATED_DIR}"
   UNIFFI_OUT_DIR="${GENERATED_DIR}" \
   UNIFFI_MODULE_NAME="openburnbar_irohFFI" \
   PATH="${HOME}/.cargo/bin:${PATH}" \
-    "${CARGO_BIN}" run --manifest-path "${UNIFFI_HELPER_DIR}/Cargo.toml" --release --quiet
+    run_cargo run --manifest-path "${UNIFFI_HELPER_DIR}/Cargo.toml" --release --quiet
 )
 if compgen -G "${GENERATED_DIR}/*.modulemap" >/dev/null; then
   perl -0pi -e 's/framework module /module /g' "${GENERATED_DIR}/"*.modulemap
@@ -181,7 +203,7 @@ package_static_for_target() {
   esac
   local out_dir="${ARCHS_DIR}/${platform_id}"
   mkdir -p "${out_dir}/Headers"
-  cp "${CRATE_DIR}/target/${target}/${PROFILE_DIR}/libopenburnbar_iroh.a" \
+  cp "${CARGO_TARGET_DIR}/${target}/${PROFILE_DIR}/libopenburnbar_iroh.a" \
      "${out_dir}/libopenburnbar_iroh.a"
   if compgen -G "${GENERATED_DIR}/*.h" >/dev/null; then
     cp "${GENERATED_DIR}/"*.h "${out_dir}/Headers/"
@@ -200,8 +222,8 @@ if printf '%s\n' "${TARGETS[@]}" | grep -q "aarch64-apple-ios-sim" \
   SIM_DIR="${ARCHS_DIR}/ios-simulator"
   mkdir -p "${SIM_DIR}/Headers"
   lipo -create \
-    "${CRATE_DIR}/target/aarch64-apple-ios-sim/${PROFILE_DIR}/libopenburnbar_iroh.a" \
-    "${CRATE_DIR}/target/x86_64-apple-ios/${PROFILE_DIR}/libopenburnbar_iroh.a" \
+    "${CARGO_TARGET_DIR}/aarch64-apple-ios-sim/${PROFILE_DIR}/libopenburnbar_iroh.a" \
+    "${CARGO_TARGET_DIR}/x86_64-apple-ios/${PROFILE_DIR}/libopenburnbar_iroh.a" \
     -output "${SIM_DIR}/libopenburnbar_iroh.a"
   if compgen -G "${GENERATED_DIR}/*.h" >/dev/null; then
     cp "${GENERATED_DIR}/"*.h "${SIM_DIR}/Headers/"
