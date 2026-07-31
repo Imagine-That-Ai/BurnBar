@@ -11,8 +11,11 @@ name: Codex Nightly CI Repair
 # per-completion reactivity only saved a few hours of repair latency.
 on:
   schedule:
-    # 11:15 UTC daily, after the full harness and nightly E2E have time to run.
-    - cron: "15 11 * * *"
+    # 12:45 UTC daily, after every monitored lane's maximum runtime: the full
+    # harness (08:37 start + 180-min job cap), CodeQL (09:17 + 150-min cap),
+    # and Linux Nightly (10:17 + 75-min cap) could all still be running at the
+    # previous 11:15 sweep, hiding that day's result from the collector.
+    - cron: "45 12 * * *"
   workflow_dispatch:
 
 permissions:
@@ -296,9 +299,14 @@ jobs:
             case "$workflow" in
               deploy-production.yml|deploy-cloud-run.yml) branch_args=() ;;
             esac
+            # Select the latest COMPLETED run: without the status filter, an
+            # in-progress run (today's lane still executing, or queued behind
+            # runner contention) hides the most recent finished result, so a
+            # failed run could be skipped on every sweep and never repaired.
             run_json="$(gh run list \
               --workflow "$workflow" \
               "${branch_args[@]}" \
+              --status completed \
               --limit 1 \
               --json databaseId,conclusion,createdAt,event,headSha,name,status,url)"
 
