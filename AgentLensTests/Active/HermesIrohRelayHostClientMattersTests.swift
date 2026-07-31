@@ -249,6 +249,53 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
         client.stop()
     }
 
+    /// The native path reports peer-close accept failures before Swift obtains
+    /// a peer identity or applies the inbound allowlist, so any peer that can
+    /// reach the advertised endpoint can manufacture an arbitrary run of them
+    /// by completing ALPN and closing early. When the host holds
+    /// peer-independent acceptor-health evidence (here: a recently completed
+    /// `accept`), such a burst must NOT tear the endpoint down; otherwise an
+    /// unauthenticated or revoked peer could repeatedly cancel live chat/media
+    /// sessions and churn the published NodeId.
+    @MainActor
+    func test_peerAcceptFailureBurst_withHealthEvidence_doesNotRebuild() async throws {
+        let directory = FlakyRevokeDirectory(failuresBeforeSuccess: 0)
+        let transport = StubIrohRelayTransport(
+            nodeId: "node-healthy",
+            acceptBehavior: .acceptOneThenConnectionLost
+        )
+        // A decoy replacement transport: a rebuild would consume it and
+        // republish under "node-rebuilt", so it staying queued (and the
+        // directory keeping "node-healthy") proves suppression.
+        let decoy = StubIrohRelayTransport(nodeId: "node-rebuilt", acceptBehavior: .park)
+        var transports: [StubIrohRelayTransport] = [transport, decoy]
+        let client = makeClient(
+            directory: directory,
+            transportFactory: { _ in transports.removeFirst() }
+        )
+
+        let started = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(started)
+
+        // Let the hostile burst run well past the rebuild threshold.
+        try await waitUntil(timeout: 4) {
+            transport.acceptCallCount >= 6
+        }
+        let record = try await directory.fetch(uid: uid, connectionId: connectionID)
+        XCTAssertEqual(
+            record?.nodeId,
+            "node-healthy",
+            "A peer-manufactured accept-failure burst must not revoke or rotate the published NodeId"
+        )
+        XCTAssertEqual(
+            transports.count,
+            1,
+            "The original transport must stay current; a rebuild would have consumed the decoy replacement"
+        )
+
+        client.stop()
+    }
+
     // MARK: - Helpers
 
     @MainActor
@@ -567,6 +614,10 @@ private final class StubIrohRelayTransport: IrohRelayTransport, @unchecked Senda
         case park
         case shutdownImmediately
         case connectionLostRepeatedly
+        /// First `accept` hands back a real stream (acceptor-health evidence),
+        /// every later `accept` fails like a peer that completed ALPN and
+        /// closed before opening a bidirectional stream.
+        case acceptOneThenConnectionLost
     }
 
     private let identity: IrohEndpointIdentity
@@ -595,11 +646,19 @@ private final class StubIrohRelayTransport: IrohRelayTransport, @unchecked Senda
     }
 
     func accept(timeout: TimeInterval) async throws -> any IrohRelayStream {
-        lock.withLock { _acceptCallCount += 1 }
+        let callIndex = lock.withLock { () -> Int in
+            _acceptCallCount += 1
+            return _acceptCallCount
+        }
         switch acceptBehavior {
         case .shutdownImmediately:
             throw IrohRelayTransportError.shutdown
         case .connectionLostRepeatedly:
+            throw IrohRelayTransportError.streamRejected("connection lost")
+        case .acceptOneThenConnectionLost:
+            if callIndex == 1 {
+                return BlockingHostTestStream(remotePeerNodeId: "unadmitted-peer")
+            }
             throw IrohRelayTransportError.streamRejected("connection lost")
         case .park:
             while !Task.isCancelled {
