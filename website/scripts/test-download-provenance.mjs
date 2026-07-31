@@ -146,7 +146,16 @@ if (macUpdateBaseUrlRaw) {
 
 assert.match(downloadPage, /public macOS DMG is served from GitHub Releases/);
 assert.match(downloadPage, /branded\s+direct-download host is being republished/);
-assert.match(downloadPage, /<h1 class="pagehead__h">Get OpenBurnBar<\/h1>/);
+assert.match(
+  downloadPage,
+  /<h1 class="pagehead__h">[\s\S]*?<span>Get<\/span>[\s\S]*?<span class="pagehead__product">OpenBurnBar<\/span>[\s\S]*?<\/h1>/,
+  "download hero must keep the product name as one non-breaking visual unit"
+);
+assert.match(
+  downloadPage,
+  /\.pagehead__product \{[^}]*white-space: nowrap;/,
+  "download hero product name must not split mid-word on narrow screens"
+);
 assert.doesNotMatch(
   downloadPage,
   /Get OpenBurnBar\.<\/h1>/,

@@ -23,7 +23,8 @@ const plans = await read("src/components/PricingPlans.astro");
 const wandModule = await read("src/components/WandPricingModule.astro");
 const stripAstro = (src) =>
   src.replace(/---[\s\S]*?---/, "").replace(/<style>[\s\S]*?<\/style>/g, "");
-const pricingPublicText = stripAstro(pricing) + "\n" + stripAstro(plans) + "\n" + stripAstro(wandModule);
+const pricingPublicText =
+  stripAstro(pricing) + "\n" + stripAstro(plans) + "\n" + stripAstro(wandModule);
 const faq = await read("src/data/faq.ts");
 const claims = await read("CLAIMS.md");
 const supportMacros = await read("src/data/supportMacros.ts");
@@ -63,11 +64,7 @@ assert.match(publicPricingCopy, /\$24\.99/, "Cloud Pro monthly price must be pub
 assert.match(publicPricingCopy, /\$249\/year|\$249\/yr/, "Cloud Pro annual price must be public");
 assert.match(publicPricingCopy, /\$59\.99/, "Ultra monthly price must be public");
 assert.match(publicPricingCopy, /\$599\/year|\$599\/yr/, "Ultra annual price must be public");
-assert.match(
-  publicPricingCopy,
-  /100 knowledge sources/,
-  "Ultra source limit must be public"
-);
+assert.match(publicPricingCopy, /100 knowledge sources/, "Ultra source limit must be public");
 // CLAIMS.md may reference internal source naming; the rendered surfaces may not.
 assert.doesNotMatch(
   [pricing, plans, wandModule, faq, supportMacros].join("\n"),
@@ -95,37 +92,21 @@ for (const [tier, cap] of [
   ["Cloud Pro", 8],
   ["Ultra", 16]
 ]) {
-  assert.match(site, new RegExp(`wandParallelMax:\\s*${cap}`), `${tier} Wand cap must be in site data`);
+  assert.match(
+    site,
+    new RegExp(`wandParallelMax:\\s*${cap}`),
+    `${tier} Wand cap must be in site data`
+  );
 }
 assert.match(publicPricingCopy, /Free opens 1/i, "Free Wand cap must be public");
 assert.match(publicPricingCopy, /Cloud opens 3/i, "Cloud Wand cap must be public");
 assert.match(publicPricingCopy, /Cloud Pro opens 8/i, "Cloud Pro Wand cap must be public");
 assert.match(publicPricingCopy, /Ultra opens 16/i, "Ultra Wand cap must be public");
-assert.match(
-  publicPricingCopy,
-  /Headmaster/i,
-  "Headmaster's Wand must be named in public copy"
-);
-assert.match(
-  publicPricingCopy,
-  /Pareto/i,
-  "Pareto Wand must be named in public copy"
-);
-assert.match(
-  publicPricingCopy,
-  /Highest capability/i,
-  "Headmaster's tagline must be present"
-);
-assert.match(
-  publicPricingCopy,
-  /Best quality per quota/i,
-  "Pareto tagline must be present"
-);
-assert.match(
-  publicPricingCopy,
-  /Go wider/i,
-  "Upgrade persuasion copy must be present"
-);
+assert.match(publicPricingCopy, /Headmaster/i, "Headmaster's Wand must be named in public copy");
+assert.match(publicPricingCopy, /Pareto/i, "Pareto Wand must be named in public copy");
+assert.match(publicPricingCopy, /Highest capability/i, "Headmaster's tagline must be present");
+assert.match(publicPricingCopy, /Best quality per quota/i, "Pareto tagline must be present");
+assert.match(publicPricingCopy, /Go wider/i, "Upgrade persuasion copy must be present");
 assert.match(
   publicPricingCopy,
   /model tokens still come from/i,
@@ -142,7 +123,11 @@ assert.match(
   "Wand copy must say model tokens come from the user's own providers"
 );
 assert.match(publicPricingCopy, /prepaid before use/i, "top-up copy must say prepaid before use");
-assert.doesNotMatch(publicPricingCopy, /14-day|free trial/i, "unsupported trial claims must not be public");
+assert.doesNotMatch(
+  publicPricingCopy,
+  /14-day|free trial/i,
+  "unsupported trial claims must not be public"
+);
 assert.doesNotMatch(
   publicPricingCopy,
   /available on (?:the )?web, App Store, and Google Play/i,
@@ -192,12 +177,26 @@ assert.match(
   /@media \(max-width: 400px\) \{\s*\.billing__opt \{[^}]*padding: 0\.5rem 0\.55rem;/,
   "billing options must compact on narrow phones so both tracks fit at 320px"
 );
-for (const token of [
-  "--plan-text-bright",
-  "--plan-text-base",
-  "--plan-text-mute",
-  "--plan-line"
-]) {
+assert.match(
+  plans,
+  /:global\(:root\[data-theme="light"\]\) \.topups \{[^}]*background: rgba\(255, 255, 255, 0\.7\)/,
+  "pricing top-ups must use a light vellum surface in light mode"
+);
+for (const selector of ["\\.wand-rail", "\\.wand-ladder__row", "\\.wand-mode", "\\.wand-cta"]) {
+  assert.match(
+    wandModule,
+    new RegExp(
+      `:global\\(:root\\[data-theme="light"\\]\\) ${selector} \\{[^}]*background:[\\s\\S]*?(?:rgba\\(255, 255, 255|color-mix\\(in oklab, var\\(--ink-base\\))`
+    ),
+    `${selector} must define a paper-safe light-mode background`
+  );
+}
+assert.match(
+  pricing,
+  /:global\(:root\[data-theme="light"\]\) \.defs > div \{[^}]*background: rgba\(255, 255, 255, 0\.72\)/,
+  "pricing detail rows must use a light vellum surface in light mode"
+);
+for (const token of ["--plan-text-bright", "--plan-text-base", "--plan-text-mute", "--plan-line"]) {
   assert.match(
     plans,
     new RegExp(`${token}:\\s*rgba\\(255, 255, 255, 0\\.\\d+\\)`),
