@@ -2,12 +2,12 @@ package com.openburnbar.data.square
 
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
+import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
@@ -88,10 +88,11 @@ class ThreadInboxStoreRefreshTest {
         every { documents } returns emptyList()
     }
 
-    private fun transientFailure(): FirebaseFirestoreException = FirebaseFirestoreException(
-        "App Check token is temporarily unavailable.",
-        FirebaseFirestoreException.Code.UNAVAILABLE,
-    )
+    // FirebaseNetworkException carries no Android framework dependencies, while
+    // FirebaseFirestoreException.Code's static SparseArray table cannot
+    // initialize under the mockable android.jar. Production catches the shared
+    // FirebaseException supertype, so either models the App Check refresh window.
+    private fun transientFailure(): FirebaseNetworkException = FirebaseNetworkException("App Check token is temporarily unavailable.")
 
     @Test
     fun `refresh is a no-op while a load is already in flight`(): TestResult = runTest {
