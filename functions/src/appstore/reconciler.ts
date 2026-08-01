@@ -63,7 +63,7 @@ const BURNBAR_ULTRA_ENTITLEMENT_ID = "burnbar_ultra";
 const HOSTED_QUOTA_ENTITLEMENT_ID = "hosted_quota_sync";
 const ORIGINAL_TRANSACTION_OWNER_LOOKUP_LIMIT = 50;
 
-export interface AppStoreEntitlementTarget {
+interface AppStoreEntitlementTarget {
   sourceEntitlementID: string;
   mirrorEntitlementID: string;
 }
