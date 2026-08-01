@@ -26,23 +26,14 @@ int main(int argc, char **argv) {
   return 2;
 }
 C
-write_info_plist() {
-  local version="${1:-}"
-  local version_keys=""
-  if [[ -n "$version" ]]; then
-    version_keys="  <key>CFBundleShortVersionString</key><string>$version</string>"
-  fi
-  cat > "$app/Contents/Info.plist" <<PLIST
+cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleIdentifier</key><string>com.openburnbar.app</string>
   <key>CFBundleExecutable</key><string>OpenBurnBar</string>
-$version_keys
 </dict></plist>
 PLIST
-}
-write_info_plist
 cat > "$tmpdir/restricted.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -80,30 +71,23 @@ expect_failure() {
   fi
 }
 
+sign_pair com.openburnbar.daemon
+"$verifier" "$app" >/dev/null
+
+codesign --force --sign - --options runtime,library --identifier wrong.app.identifier "$app" >/dev/null
+expect_failure "an incorrect app signing identifier"
+
+sign_pair com.openburnbar.daemon
+codesign --force --sign - --identifier com.openburnbar.app "$app" >/dev/null
+expect_failure "an app without hardened runtime and library validation"
+
 sign_pair com.openburnbar.app
-"$verifier" "$app" >/dev/null
+expect_failure "the app identifier reused for the daemon"
 
-sign_pair com.openburnbar.daemon
-expect_failure "a different daemon signing identifier"
-
-# Shipped releases on the legacy allowlist may keep the pre-split-brain
-# com.openburnbar.daemon identifier; everything else stays rejected.
-write_info_plist 1.0.29
-sign_pair com.openburnbar.daemon
-"$verifier" "$app" >/dev/null
-
-sign_pair com.openburnbar.rogue
-expect_failure "a non-legacy daemon identifier on an allowlisted release"
-
-write_info_plist 1.0.99
-sign_pair com.openburnbar.daemon
-expect_failure "the legacy daemon identifier on a non-allowlisted version"
-
-write_info_plist
-sign_pair com.openburnbar.app "$tmpdir/restricted.plist"
+sign_pair com.openburnbar.daemon "$tmpdir/restricted.plist"
 expect_failure "a restricted Keychain entitlement on a bare daemon"
 
-sign_pair com.openburnbar.app
+sign_pair com.openburnbar.daemon
 codesign --force --sign - --identifier wrong.watchdog.identifier "$watchdog" >/dev/null
 codesign --force --sign - --options runtime,library --identifier com.openburnbar.app "$app" >/dev/null
 expect_failure "an ad-hoc or incorrectly identified kill-switch watchdog"
@@ -112,7 +96,7 @@ cat > "$tmpdir/daemon.c" <<'C'
 int main(void) { return 7; }
 C
 clang "$tmpdir/daemon.c" -o "$daemon"
-sign_pair com.openburnbar.app
+sign_pair com.openburnbar.daemon
 expect_failure "a signed daemon that cannot execute its --help contract"
 
 echo "PASS: daemon release signing verifier rejects identity, entitlement, and launch regressions"
