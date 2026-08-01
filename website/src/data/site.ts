@@ -126,6 +126,10 @@ export const SITE = {
   linuxRpmFile: "OpenBurnBar-0.1.0-1.aarch64.rpm",
   linuxPubKeyFile: "openburnbar-linux-ed25519.pub.pem",
   linuxDownloadBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v0.1.0",
+  // Signed Linux update feed host. Keep empty while downloads.burnbar.ai DNS/R2
+  // is offline (same policy as macUpdateBaseUrl); set it to the live feed host
+  // to re-enable latest-linux.json verification in CI.
+  linuxUpdateBaseUrl: "",
   linuxArch: "aarch64 (ARM64)",
   // Shown on download cards and jump pills — lead with Available so it doesn't
   // read like a blocked/pending platform next to macOS.
