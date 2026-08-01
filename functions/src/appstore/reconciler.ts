@@ -254,9 +254,11 @@ function writeEntitlementMirrorOnly(
   target: AppStoreEntitlementTarget,
 ): void {
   if (target.sourceEntitlementID === target.mirrorEntitlementID) return;
-  const { mirrorDoc } = buildAppStoreEntitlementWritePayloads(entitlement, target);
-  if (!mirrorDoc) return;
-  tx.set(db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`), mirrorDoc, { merge: true });
+  tx.set(
+    db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`),
+    buildBurnBarEntitlementMirror(entitlement, target),
+    { merge: true },
+  );
 }
 
 function writeEntitlementDocs(
@@ -267,32 +269,29 @@ function writeEntitlementDocs(
   target: AppStoreEntitlementTarget,
 ): void {
   const sourceRef = db.doc(`users/${uid}/entitlements/${target.sourceEntitlementID}`);
-  const { sourceDoc, mirrorDoc } = buildAppStoreEntitlementWritePayloads(entitlement, target);
-  tx.set(sourceRef, sourceDoc, { merge: true });
-  if (mirrorDoc) {
-    tx.set(db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`), mirrorDoc, { merge: true });
-  }
-}
-
-/** Builds the exact source and mirror payloads consumed by the writer. */
-export function buildAppStoreEntitlementWritePayloads(
-  entitlement: HostedQuotaEntitlementDoc,
-  target: AppStoreEntitlementTarget,
-) {
-  const sourceDoc = { ...operatorProvenanceCleanup(), ...stripUndefinedObject(entitlement) };
-  const mirrorDoc = { ...operatorProvenanceCleanup(), ...buildBurnBarEntitlementMirror(entitlement, target) };
+  const sourceDoc = buildAppStoreEntitlementSource(entitlement);
+  const mirrorDoc = buildBurnBarEntitlementMirror(entitlement, target);
   if (target.sourceEntitlementID === target.mirrorEntitlementID) {
-    return { sourceDoc: stripUndefinedObject({ ...sourceDoc, ...mirrorDoc }) };
+    tx.set(sourceRef, stripUndefinedObject({ ...sourceDoc, ...mirrorDoc }), { merge: true });
+    return;
   }
-  return { sourceDoc, mirrorDoc };
+  tx.set(sourceRef, sourceDoc, { merge: true });
+  tx.set(db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`), mirrorDoc, { merge: true });
 }
 
-function buildBurnBarEntitlementMirror(
+/** Builds the exact provider-owned source payload consumed by the writer. */
+export function buildAppStoreEntitlementSource(entitlement: HostedQuotaEntitlementDoc): Record<string, unknown> {
+  return { ...operatorProvenanceCleanup(), ...stripUndefinedObject(entitlement) };
+}
+
+/** Builds the exact provider-owned mirror payload consumed by the writer. */
+export function buildBurnBarEntitlementMirror(
   hosted: HostedQuotaEntitlementDoc,
   target: AppStoreEntitlementTarget,
 ): Record<string, unknown> {
   const cloudPro = target.mirrorEntitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID;
   return {
+    ...operatorProvenanceCleanup(),
     id: target.mirrorEntitlementID,
     active: hosted.active,
     productID: hosted.productID,

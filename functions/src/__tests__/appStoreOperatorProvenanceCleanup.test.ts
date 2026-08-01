@@ -8,7 +8,11 @@ import { describe, expect, it } from "vitest";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 
 import type { HostedQuotaEntitlementDoc } from "../types.js";
-import { appStoreEntitlementTarget, buildAppStoreEntitlementWritePayloads } from "../appstore/reconciler.js";
+import {
+  appStoreEntitlementTarget,
+  buildAppStoreEntitlementSource,
+  buildBurnBarEntitlementMirror,
+} from "../appstore/reconciler.js";
 import { getConfig } from "../config.js";
 
 type Doc = Record<string, unknown>;
@@ -59,7 +63,8 @@ describe("App Store provider adoption write payloads", () => {
     const productID = getConfig().hostedQuotaProductID;
     const entitlement = verifiedHostedQuotaEntitlement(productID);
     const target = appStoreEntitlementTarget(productID);
-    const payloads = buildAppStoreEntitlementWritePayloads(entitlement, target);
+    const sourcePayload = buildAppStoreEntitlementSource(entitlement);
+    const mirrorPayload = buildBurnBarEntitlementMirror(entitlement, target);
 
     const staleSource = {
       id: target.sourceEntitlementID,
@@ -72,7 +77,7 @@ describe("App Store provider adoption write payloads", () => {
       ...OPERATOR_PROVENANCE,
     };
 
-    const sourceDoc = applyMerge(staleSource, payloads.sourceDoc);
+    const sourceDoc = applyMerge(staleSource, sourcePayload);
     expect(sourceDoc).toMatchObject({
       id: target.sourceEntitlementID,
       active: true,
@@ -83,8 +88,7 @@ describe("App Store provider adoption write payloads", () => {
       expect(sourceDoc).not.toHaveProperty(field);
     }
 
-    expect(payloads.mirrorDoc).toBeDefined();
-    const mirrorDoc = applyMerge(staleMirror, payloads.mirrorDoc ?? {});
+    const mirrorDoc = applyMerge(staleMirror, mirrorPayload);
     expect(mirrorDoc).toMatchObject({
       id: target.mirrorEntitlementID,
       active: true,
@@ -95,5 +99,35 @@ describe("App Store provider adoption write payloads", () => {
     expect(mirrorDoc).not.toHaveProperty("operatorGrant");
     expect(mirrorDoc).not.toHaveProperty("operatorGrantedAt");
     expect(mirrorDoc).not.toHaveProperty("operatorGrantReason");
+  });
+
+  it("composes a single clean document when the source is also the mirror", () => {
+    const productID = getConfig().burnBarProProductID;
+    const target = appStoreEntitlementTarget(productID);
+    const entitlement = {
+      ...verifiedHostedQuotaEntitlement(productID),
+      id: target.sourceEntitlementID,
+    };
+    const sourcePayload = buildAppStoreEntitlementSource(entitlement);
+    const mirrorPayload = buildBurnBarEntitlementMirror(entitlement, target);
+
+    const sourceDoc = applyMerge(
+      {
+        id: target.sourceEntitlementID,
+        source: "internal_operator_grant",
+        ...OPERATOR_PROVENANCE,
+      },
+      { ...sourcePayload, ...mirrorPayload },
+    );
+    expect(sourceDoc).toMatchObject({
+      id: target.sourceEntitlementID,
+      active: true,
+      source: "apple_jws_verified",
+      sourceEntitlementID: target.sourceEntitlementID,
+      sourceProductID: productID,
+    });
+    expect(sourceDoc).not.toHaveProperty("operatorGrant");
+    expect(sourceDoc).not.toHaveProperty("operatorGrantedAt");
+    expect(sourceDoc).not.toHaveProperty("operatorGrantReason");
   });
 });
