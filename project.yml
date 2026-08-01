@@ -546,10 +546,10 @@ targets:
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: YES
-        # The bare helper shares the app's designated requirement so both can
-        # read the ordinary database-key Keychain ACL. Restricted entitlements
-        # on an unbundled executable are rejected by macOS before main().
-        OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.app --options runtime,library
+        # The bare helper keeps its fixed daemon identity while sharing the
+        # app's trusted Developer ID team and certificate chain. Restricted
+        # entitlements on an unbundled executable are rejected before main().
+        OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.daemon --options runtime,library
         SKIP_INSTALL: true
     dependencies:
       # Core-decomposition P-18 (S17): OpenBurnBarDaemonMain imports OpenBurnBarEngine

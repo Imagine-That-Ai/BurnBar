@@ -71,16 +71,23 @@ expect_failure() {
   fi
 }
 
-sign_pair com.openburnbar.app
+sign_pair com.openburnbar.daemon
 "$verifier" "$app" >/dev/null
 
-sign_pair com.openburnbar.daemon
-expect_failure "a different daemon signing identifier"
+codesign --force --sign - --options runtime,library --identifier wrong.app.identifier "$app" >/dev/null
+expect_failure "an incorrect app signing identifier"
 
-sign_pair com.openburnbar.app "$tmpdir/restricted.plist"
-expect_failure "a restricted Keychain entitlement on a bare daemon"
+sign_pair com.openburnbar.daemon
+codesign --force --sign - --identifier com.openburnbar.app "$app" >/dev/null
+expect_failure "an app without hardened runtime and library validation"
 
 sign_pair com.openburnbar.app
+expect_failure "the app identifier reused for the daemon"
+
+sign_pair com.openburnbar.daemon "$tmpdir/restricted.plist"
+expect_failure "a restricted Keychain entitlement on a bare daemon"
+
+sign_pair com.openburnbar.daemon
 codesign --force --sign - --identifier wrong.watchdog.identifier "$watchdog" >/dev/null
 codesign --force --sign - --options runtime,library --identifier com.openburnbar.app "$app" >/dev/null
 expect_failure "an ad-hoc or incorrectly identified kill-switch watchdog"
@@ -89,7 +96,7 @@ cat > "$tmpdir/daemon.c" <<'C'
 int main(void) { return 7; }
 C
 clang "$tmpdir/daemon.c" -o "$daemon"
-sign_pair com.openburnbar.app
+sign_pair com.openburnbar.daemon
 expect_failure "a signed daemon that cannot execute its --help contract"
 
 echo "PASS: daemon release signing verifier rejects identity, entitlement, and launch regressions"

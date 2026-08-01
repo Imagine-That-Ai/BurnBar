@@ -23,6 +23,10 @@ designated_requirement() {
     | head -n 1
 }
 
+authority_chain() {
+  sed -n 's/^Authority=//p'
+}
+
 codesign --verify --strict --verbose=2 "$app_path"
 codesign --verify --strict --verbose=2 "$daemon_path"
 
@@ -30,19 +34,39 @@ app_identifier="$(signature_field "$app_path" Identifier)"
 daemon_identifier="$(signature_field "$daemon_path" Identifier)"
 app_team_id="$(signature_field "$app_path" TeamIdentifier)"
 daemon_team_id="$(signature_field "$daemon_path" TeamIdentifier)"
+app_signature="$(codesign -d --verbose=4 "$app_path" 2>&1)"
 daemon_signature="$(codesign -d --verbose=4 "$daemon_path" 2>&1)"
 watchdog_signature="$(codesign -d --verbose=4 "$watchdog_path" 2>&1)"
+app_authority_chain="$(authority_chain <<<"$app_signature")"
+daemon_authority_chain="$(authority_chain <<<"$daemon_signature")"
 
-if [[ "$app_identifier" != "com.openburnbar.app" || "$daemon_identifier" != "$app_identifier" ]]; then
-  echo "ERROR: App and daemon must share the com.openburnbar.app signing identifier; app='$app_identifier' daemon='$daemon_identifier'." >&2
+if [[ "$app_identifier" != "com.openburnbar.app" ]]; then
+  echo "ERROR: App must use signing identifier com.openburnbar.app; found '$app_identifier'." >&2
   exit 1
 fi
-if [[ "$daemon_team_id" != "$app_team_id" ]]; then
+if [[ "$daemon_identifier" != "com.openburnbar.daemon" ]]; then
+  echo "ERROR: Daemon must use signing identifier com.openburnbar.daemon; found '$daemon_identifier'." >&2
+  exit 1
+fi
+if [[ -z "$app_team_id" || -z "$daemon_team_id" || "$daemon_team_id" != "$app_team_id" ]]; then
   echo "ERROR: App and daemon are signed by different teams; app='${app_team_id:-missing}' daemon='${daemon_team_id:-missing}'." >&2
   exit 1
 fi
 if [[ -n "$expected_team_id" && "$app_team_id" != "$expected_team_id" ]]; then
   echo "ERROR: App and daemon must be signed by team $expected_team_id; found '${app_team_id:-missing}'." >&2
+  exit 1
+fi
+if [[ -n "$app_authority_chain" || -n "$daemon_authority_chain" ]]; then
+  if [[ -z "$app_authority_chain" || -z "$daemon_authority_chain" || "$daemon_authority_chain" != "$app_authority_chain" ]]; then
+    echo "ERROR: App and daemon must have the same ordered signing-certificate authority chain." >&2
+    echo "app authorities: ${app_authority_chain:-missing}" >&2
+    echo "daemon authorities: ${daemon_authority_chain:-missing}" >&2
+    exit 1
+  fi
+fi
+if ! grep -q 'flags=.*runtime' <<<"$app_signature" || ! grep -q 'flags=.*library-validation' <<<"$app_signature"; then
+  echo "ERROR: App must use hardened runtime and library validation so the daemon can authenticate its RPC peer." >&2
+  printf '%s\n' "$app_signature" >&2
   exit 1
 fi
 if ! grep -q 'flags=.*runtime' <<<"$daemon_signature" || ! grep -q 'flags=.*library-validation' <<<"$daemon_signature"; then
@@ -88,8 +112,8 @@ fi
 if [[ "$app_team_id" != "not set" ]]; then
   app_requirement="$(designated_requirement "$app_path")"
   daemon_requirement="$(designated_requirement "$daemon_path")"
-  if [[ -z "$app_requirement" || "$daemon_requirement" != "$app_requirement" ]]; then
-    echo "ERROR: App and daemon designated requirements differ, so they cannot share the ordinary database-key Keychain ACL." >&2
+  if [[ -z "$app_requirement" || -z "$daemon_requirement" ]]; then
+    echo "ERROR: App and daemon must each have a designated requirement." >&2
     echo "app: ${app_requirement:-missing}" >&2
     echo "daemon: ${daemon_requirement:-missing}" >&2
     exit 1
@@ -119,4 +143,4 @@ if result.returncode != 0 or "Usage: OpenBurnBarDaemon" not in output:
     )
 PY
 
-echo "PASS: signed daemon launches, shares the app designated requirement, and release watchdog trust is valid"
+echo "PASS: signed daemon launches with its fixed identifier and shared trusted signing chain; release watchdog trust is valid"

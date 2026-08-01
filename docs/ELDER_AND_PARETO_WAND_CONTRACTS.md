@@ -169,14 +169,14 @@ the last complete atomic replace wins. Validation ignores only the volatile
 
 Physical-device fan-out depends on the signed Mac daemon listening to the same
 user's Firestore mission queue. The app and daemon open one SQLCipher database,
-so the bare daemon helper is signed with the app's exact designated requirement
-(identifier `com.openburnbar.app`, Developer ID team, hardened runtime). It does
-not carry the app's restricted Keychain access-group entitlement: macOS rejects
-that entitlement on this unbundled helper before `main()`. Matching the ordinary
-database-key item's designated-requirement ACL lets the daemon retrieve the
-existing key without weakening access. Xcode signing, website-release
-re-signing, the SQLCipher policy gate, and the public-download artifact check
-preserve and enforce this contract.
+and the bare helper retains its fixed `com.openburnbar.daemon` signing
+identifier while the app retains `com.openburnbar.app`. Both must use the same
+trusted Developer ID team and ordered certificate chain, hardened runtime, and
+library validation. The daemon does not carry the app's restricted Keychain
+access-group entitlement: macOS rejects that entitlement on this unbundled
+helper before `main()`. Xcode signing, website-release re-signing, the SQLCipher
+policy gate, and the public-download artifact check preserve and enforce this
+contract.
 
 ## Interaction invariants
 
