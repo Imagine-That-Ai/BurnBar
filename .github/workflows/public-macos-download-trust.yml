@@ -49,7 +49,7 @@ jobs:
             if grep -qx 'website/src/data/site.ts' "$changed_paths"; then
               changed=true
             fi
-            if grep -Eq '^(\.github/workflows/public-macos-download-trust\.yml|scripts/ci/verify-public-macos-download-trust\.sh|scripts/ci/verify-public-macos-download-trust\.test\.sh|scripts/ci/verify-apple-release-firebase-config\.sh|scripts/ci/verify-apple-release-firebase-config\.test\.sh|scripts/ci/verify-apple-appcheck-release-artifact\.sh)$' "$changed_paths"; then
+            if grep -Eq '^(\.github/workflows/public-macos-download-trust\.yml|scripts/ci/verify-public-macos-download-trust\.sh|scripts/ci/verify-public-macos-download-trust\.test\.sh|scripts/ci/verify-daemon-release-signing\.sh|scripts/ci/verify-daemon-release-signing\.test\.sh|scripts/ci/verify-apple-release-firebase-config\.sh|scripts/ci/verify-apple-release-firebase-config\.test\.sh|scripts/ci/verify-apple-appcheck-release-artifact\.sh)$' "$changed_paths"; then
               gate_changed=true
             fi
           elif [[ "$EVENT_NAME" == "push" ]]; then
@@ -61,7 +61,7 @@ jobs:
               if grep -qx 'website/src/data/site.ts' "$changed_paths"; then
                 changed=true
               fi
-              if grep -Eq '^(\.github/workflows/public-macos-download-trust\.yml|scripts/ci/verify-public-macos-download-trust\.sh|scripts/ci/verify-public-macos-download-trust\.test\.sh|scripts/ci/verify-apple-release-firebase-config\.sh|scripts/ci/verify-apple-release-firebase-config\.test\.sh|scripts/ci/verify-apple-appcheck-release-artifact\.sh)$' "$changed_paths"; then
+              if grep -Eq '^(\.github/workflows/public-macos-download-trust\.yml|scripts/ci/verify-public-macos-download-trust\.sh|scripts/ci/verify-public-macos-download-trust\.test\.sh|scripts/ci/verify-daemon-release-signing\.sh|scripts/ci/verify-daemon-release-signing\.test\.sh|scripts/ci/verify-apple-release-firebase-config\.sh|scripts/ci/verify-apple-release-firebase-config\.test\.sh|scripts/ci/verify-apple-appcheck-release-artifact\.sh)$' "$changed_paths"; then
                 gate_changed=true
               fi
             fi
@@ -90,8 +90,11 @@ jobs:
           bash -n scripts/ci/verify-apple-release-firebase-config.sh
           bash -n scripts/ci/verify-apple-release-firebase-config.test.sh
           bash -n scripts/ci/verify-apple-appcheck-release-artifact.sh
+          bash -n scripts/ci/verify-daemon-release-signing.sh
+          bash -n scripts/ci/verify-daemon-release-signing.test.sh
           bash -n scripts/ci/verify-public-macos-download-trust.test.sh
           bash scripts/ci/verify-apple-release-firebase-config.test.sh
+          bash scripts/ci/verify-daemon-release-signing.test.sh
           bash scripts/ci/verify-public-macos-download-trust.test.sh
 
   verify-public-macos-download-trust:

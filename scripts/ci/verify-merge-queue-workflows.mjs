@@ -76,6 +76,40 @@ for (const [name, jobName] of publicDownloadDetectors) {
 }
 
 {
+  const name = "public-macos-download-trust.yml";
+  const source = readFileSync(join(root, ".github", "workflows", name), "utf8");
+  const detector = jobBlock(source, "detect-public-macos-download-change");
+  const codeGate = jobBlock(source, "verify-public-macos-download-trust-code");
+  const signingVerifierPattern =
+    "scripts/ci/verify-daemon-release-signing\\.sh";
+  const signingTestPattern =
+    "scripts/ci/verify-daemon-release-signing\\.test\\.sh";
+
+  if (detector === null) {
+    failures.push(`${name}: detect-public-macos-download-change job is missing`);
+  } else {
+    for (const dependency of [signingVerifierPattern, signingTestPattern]) {
+      const occurrences = detector.split(dependency).length - 1;
+      if (occurrences < 2) {
+        failures.push(
+          `${name}: both PR and push detection must treat ${dependency} as trusted-gate code`,
+        );
+      }
+    }
+  }
+
+  if (codeGate === null) {
+    failures.push(`${name}: verify-public-macos-download-trust-code job is missing`);
+  } else if (
+    !codeGate.includes("bash scripts/ci/verify-daemon-release-signing.test.sh")
+  ) {
+    failures.push(
+      `${name}: trust-gate code job must execute the daemon signing regression suite`,
+    );
+  }
+}
+
+{
   const name = "domain-core.yml";
   const source = readFileSync(join(root, ".github", "workflows", name), "utf8");
   const job = jobBlock(source, "domain-core-pr-gate");
