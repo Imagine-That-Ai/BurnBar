@@ -1,18 +1,17 @@
 import Foundation
 import SwiftUI
 import CoreImage
-#if canImport(UIKit)
-import UIKit
-#endif
+import CoreGraphics
+import ImageIO
 
 /// Samples the dominant accent color from a Mac wallpaper payload.
 ///
 /// The input is a base64-encoded JPEG/PNG (the same field that
 /// `MercuryPeer.blurredWallpaperBase64` carries — already blurred and
-/// downscaled by the Mac side, typically <50KB). We use Core Image's
-/// `CIAreaAverage` filter to compute a single-pixel average, then bump
-/// saturation a bit so the resulting color reads as an accent rather
-/// than a muddy backdrop.
+/// downscaled by the Mac side, typically <50KB). The production payload
+/// path decodes with ImageIO and downsamples into a deterministic 1×1
+/// Core Graphics bitmap, then bumps saturation a bit so the resulting
+/// color reads as an accent rather than a muddy backdrop.
 ///
 /// Why not k-means or histogram quantization? The wallpaper is already
 /// blurred to one dominant tone — average is cheap, deterministic, and
@@ -39,16 +38,44 @@ enum WallpaperAccentSampler {
 
     @MainActor
     static func dominantAccent(fromImageData data: Data) -> Color? {
-        #if canImport(UIKit)
-        guard let image = UIImage(data: data),
-              let cgImage = image.cgImage else {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(
+                  source,
+                  0,
+                  [kCGImageSourceShouldCacheImmediately: true] as CFDictionary
+              ) else {
             return nil
         }
-        let ciImage = CIImage(cgImage: cgImage)
-        return dominantAccent(from: ciImage)
-        #else
-        return nil
-        #endif
+        return dominantAccent(from: image)
+    }
+
+    @MainActor
+    private static func dominantAccent(from cgImage: CGImage) -> Color? {
+        var bitmap = [UInt8](repeating: 0, count: 4)
+        let bitmapInfo = CGBitmapInfo.byteOrder32Big.rawValue
+            | CGImageAlphaInfo.premultipliedLast.rawValue
+        guard let context = CGContext(
+            data: &bitmap,
+            width: 1,
+            height: 1,
+            bitsPerComponent: 8,
+            bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: bitmapInfo
+        ) else {
+            return nil
+        }
+
+        context.interpolationQuality = .high
+        context.setBlendMode(.copy)
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+
+        let alpha = Double(bitmap[3]) / 255.0
+        guard alpha > 0 else { return nil }
+        let r = min(Double(bitmap[0]) / 255.0 / alpha, 1.0)
+        let g = min(Double(bitmap[1]) / 255.0 / alpha, 1.0)
+        let b = min(Double(bitmap[2]) / 255.0 / alpha, 1.0)
+        return punchUp(r: r, g: g, b: b)
     }
 
     /// Internal seam — public for testing.
