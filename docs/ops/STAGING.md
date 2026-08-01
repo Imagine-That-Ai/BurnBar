@@ -393,29 +393,44 @@ After the three Stripe Functions and the staging test-mode webhook are deployed,
 run the guarded lifecycle proof from an authenticated operator workstation:
 
 ```bash
+CANDIDATE_SHA="$(git rev-parse HEAD)"
 node scripts/e2e/staging-stripe-lifecycle.mjs \
-  --confirm burnbar-staging-commercial-lifecycle
+  --confirm burnbar-staging-commercial-lifecycle \
+  --expected-sha "$CANDIDATE_SHA"
 ```
 
 The runner refuses every project/account except `burnbar-staging` and
-`acct_1REg6cCFamvUJU7y`. It temporarily enables anonymous sign-in for one
-synthetic staging user while keeping App Check enforcement on, registers a
-short-lived App Check debug token, and then verifies:
+`acct_1REg6cCFamvUJU7y`. Before any mutation it refuses a dirty checkout and
+requires the Checkout, Portal, and Webhook Functions to be ACTIVE with
+`OPENBURNBAR_SOURCE_COMMIT` and `FUNCTION_VERSION` matching the full
+`--expected-sha`. It temporarily enables anonymous sign-in for one synthetic
+staging user while keeping App Check enforcement on, registers a short-lived
+App Check debug token, and then verifies:
 
 1. the deployed checkout callable creates a test-mode subscription Checkout
-   Session;
+   Session for exactly USD $7.99 with the `cloud` / `monthly` /
+   `burnbar_pro` metadata contract;
 2. Stripe completes payment with its test card path;
 3. the registered remote webhook records a processed event and writes an active
    `burnbar_pro` Firestore entitlement;
 4. the deployed portal callable creates a billing-portal session;
-5. a full refund is delivered, writes a durable
+5. cancellation is scheduled at period end, the matching
+   `customer.subscription.updated` webhook is processed, and the paid-through
+   entitlement remains active with that event as its source;
+6. a full refund is delivered, writes a durable
    `stripe_payment_reversals/{subscriptionID}` marker, and immediately makes
    the entitlement inactive with `rawStatus: active:payment_reversed`;
-6. cancellation is delivered and keeps the entitlement inactive with
-   `rawStatus: canceled`; and
-7. the synthetic Auth user, App Check debug token, Stripe customer, and
+7. only after the reversal is proven, the subscription is deleted as cleanup
+   and the terminal cancellation webhook keeps the entitlement inactive; and
+8. the synthetic Auth user, App Check debug token, Stripe customer, and
    Firestore customer/user records are deleted, with the original anonymous
    sign-in setting restored in `finally`.
+
+On success the runner writes a private (`0700` directory / `0600` files),
+digest-sealed result under `launch-evidence/`. The record binds every tested
+Function revision and the lifecycle result to the exact candidate SHA and Git
+tree while hashing Stripe object/event identifiers instead of persisting them
+in plaintext. `launch-evidence/` remains gitignored.
 
 The runner uses Stripe **test mode only** and requires the already paired
 `openburnbar` Stripe CLI profile. A failed assertion still runs the reversible

@@ -1099,6 +1099,9 @@ jobs:
       - name: Self-test launch evidence capture permissions
         run: node scripts/test-capture-commercial-launch-evidence.mjs
 
+      - name: Self-test exact-SHA staging Stripe lifecycle
+        run: node --test scripts/e2e/staging-stripe-lifecycle.test.mjs
+
       - name: Self-test production deploy auth boundary
         run: bash scripts/ci/verify-production-deploy-auth.test.sh
 
