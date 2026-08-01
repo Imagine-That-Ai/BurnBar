@@ -365,20 +365,20 @@ describe("M-037 phone-control authority binds each trusted controller independen
     await tier2CallableProof(store, {
       exportedName: "issuePhoneControlEnrollmentGrant",
       run: (request) => {
-        const callableRequest = request as {
-          auth?: { token?: Record<string, unknown> };
-          app?: { appId?: string };
-        };
-        if (callableRequest.auth) {
-          callableRequest.auth.token = {
-            [APP_CHECK_ATTESTATION_CLAIM_KEY]: {
-              v: 1,
-              appId: APP_ID,
-              boundAtMillis: APP_CHECK_BOUND_AT_MILLIS,
-            },
-          };
+        if (request && typeof request === "object") {
+          const auth = Reflect.get(request, "auth");
+          if (auth && typeof auth === "object") {
+            Reflect.set(auth, "token", {
+              [APP_CHECK_ATTESTATION_CLAIM_KEY]: {
+                v: 1,
+                appId: APP_ID,
+                boundAtMillis: APP_CHECK_BOUND_AT_MILLIS,
+              },
+            });
+          }
+          const app = Reflect.get(request, "app");
+          if (app && typeof app === "object") Reflect.set(app, "appId", APP_ID);
         }
-        if (callableRequest.app) callableRequest.app.appId = APP_ID;
         return bolaCallableRunner(issuePhoneControlEnrollmentGrant)(request);
       },
       payload: {
