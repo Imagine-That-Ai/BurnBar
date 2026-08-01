@@ -41,7 +41,22 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
       return this.ms;
     }
   }
-  const FieldValueMock = { serverTimestamp: () => ({ __serverTimestamp: true }) };
+  const FIELD_DELETE = { __delete: true } as const;
+  const FieldValueMock = {
+    delete: () => FIELD_DELETE,
+    serverTimestamp: () => ({ __serverTimestamp: true }),
+  };
+  const mergedData = (existing: Record<string, unknown>, data: Record<string, unknown>): Record<string, unknown> => {
+    const next = { ...existing };
+    for (const [key, value] of Object.entries(data)) {
+      if (value === FIELD_DELETE) {
+        delete next[key];
+      } else {
+        next[key] = value;
+      }
+    }
+    return next;
+  };
 
   const snapshotFor = (path: string) => {
     const data = store.get(path);
@@ -88,7 +103,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
     },
     async set(data: Record<string, unknown>, opts?: { merge?: boolean }) {
       const existing = opts?.merge ? (store.get(path) ?? {}) : {};
-      store.set(path, { ...existing, ...data });
+      store.set(path, mergedData(existing, data));
     },
     async delete() {
       store.delete(path);
@@ -113,7 +128,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
         set(ref: { path: string }, data: Record<string, unknown>, opts?: { merge?: boolean }) {
           writes.push(() => {
             const existing = opts?.merge ? (store.get(ref.path) ?? {}) : {};
-            store.set(ref.path, { ...existing, ...data });
+            store.set(ref.path, mergedData(existing, data));
           });
           return transaction;
         },
@@ -132,7 +147,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
         set(ref: { path: string }, data: Record<string, unknown>, opts?: { merge?: boolean }) {
           ops.push(() => {
             const existing = opts?.merge ? (store.get(ref.path) ?? {}) : {};
-            store.set(ref.path, { ...existing, ...data });
+            store.set(ref.path, mergedData(existing, data));
           });
         },
         delete(ref: { path: string }) {
@@ -178,6 +193,7 @@ import {
   publishIrohPairingRecord,
   publishPhoneControlAuthority,
   revokeEscrowDeviceTrust,
+  revokeIrohPairingRecord,
 } from "../callables/computerUseSecurity.js";
 import { APP_CHECK_ATTESTATION_CLAIM_KEY, appCheckAttestationDigestHex } from "../appCheckAttestation.js";
 
@@ -282,6 +298,32 @@ describe("M-037 phone-control authority binds each trusted controller independen
       "phone-a",
       "phone-b",
     ]);
+  });
+
+  it("a transient host revoke keeps controller approval while removing every dialable pairing field", async () => {
+    await publishMacPairing();
+    const key = ed25519Key();
+    await issuePhoneEnrollmentGrant("phone-a", key);
+    await publishPhoneAuthority("phone-a", key);
+
+    await invokeCallable(revokeIrohPairingRecord, {
+      deviceId: MAC,
+      connectionId: CONN,
+    });
+
+    const tombstone = store.get(`users/${UID}/iroh_pairing/${CONN}`);
+    expect(tombstone).toMatchObject({
+      authorizedControllerDeviceIds: ["phone-a"],
+      publishedByDeviceId: MAC,
+    });
+    expect(tombstone?.nodeId).toBeUndefined();
+    expect(tombstone?.publishedAtMillis).toBeUndefined();
+    expect(tombstone?.signature).toBeUndefined();
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}/controllers/${key.peerNodeId}`)?.deviceId).toBe("phone-a");
+
+    await publishMacPairing();
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual(["phone-a"]);
+    await expect(publishPhoneAuthority("phone-a", key)).resolves.toMatchObject({ ok: true });
   });
 
   it("a new phone requires a fresh grant from the Mac that owns the pairing", async () => {

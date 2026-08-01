@@ -16,6 +16,7 @@ import {
 } from "./irohControllerRouteTestSupport.js";
 
 const { store } = vi.hoisted(() => ({ store: new Map<string, Record<string, unknown>>() }));
+const FIELD_DELETE = { __delete: true } as const;
 
 type Ref = { path: string };
 
@@ -34,7 +35,15 @@ function snapshot(path: string) {
 }
 
 function mergeWrite(path: string, data: Record<string, unknown>, merge = false): void {
-  store.set(path, merge ? { ...(store.get(path) ?? {}), ...data } : { ...data });
+  const next = merge ? { ...(store.get(path) ?? {}) } : {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value === FIELD_DELETE) {
+      delete next[key];
+    } else {
+      next[key] = value;
+    }
+  }
+  store.set(path, next);
 }
 
 vi.mock("../adminRuntime.js", () => ({
@@ -65,7 +74,10 @@ vi.mock("../adminRuntime.js", () => ({
 }));
 
 vi.mock("firebase-admin/firestore", () => ({
-  FieldValue: { serverTimestamp: () => ({ __serverTimestamp: true }) },
+  FieldValue: {
+    delete: () => FIELD_DELETE,
+    serverTimestamp: () => ({ __serverTimestamp: true }),
+  },
   Timestamp: { fromMillis: (millis: number) => ({ toMillis: () => millis }) },
 }));
 
@@ -562,6 +574,12 @@ describe("verified iroh controller route registry", () => {
         nonce: "host-pairing-revoke-nonce",
       }),
     ).resolves.toEqual({ ok: true, connectionId: CONNECTION_ID });
+    expect(store.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}`)).toMatchObject({
+      authorizedControllerDeviceIds: [SOURCE_DEVICE_ID],
+      publishedByDeviceId: HOST_DEVICE_ID,
+    });
+    expect(store.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}`)?.nodeId).toBeUndefined();
+    expect(store.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}`)?.signature).toBeUndefined();
     expect(store.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}/controller_routes/${SOURCE_DEVICE_ID}`)).toMatchObject(
       { status: "revoked", generation: 2 },
     );
