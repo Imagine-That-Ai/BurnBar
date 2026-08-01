@@ -29,7 +29,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { Timestamp, type Firestore, type Transaction } from "firebase-admin/firestore";
+import { FieldValue, Timestamp, type Firestore, type Transaction } from "firebase-admin/firestore";
 
 import type { JWSTransactionDecodedPayload } from "@apple/app-store-server-library";
 
@@ -228,6 +228,24 @@ export async function reconcileEntitlement(
   return { uid, entitlement: result.entitlement, changed: result.changed };
 }
 
+/**
+ * A verified Apple lifecycle replaces the mutable entitlement snapshot.
+ * Remove operator-only provenance left by a temporary support bridge so the
+ * document cannot claim both provider verification and an active operator
+ * grant at the same time (the same cleanup `writeBurnBarProEntitlement`
+ * applies on the Stripe/Google Play path). Mirror docs re-assert their own
+ * sourceEntitlementID/sourceProductID after this cleanup is spread first.
+ */
+function operatorProvenanceCleanup(): Record<string, FieldValue> {
+  return {
+    operatorGrant: FieldValue.delete(),
+    operatorGrantedAt: FieldValue.delete(),
+    operatorGrantReason: FieldValue.delete(),
+    sourceEntitlementID: FieldValue.delete(),
+    sourceProductID: FieldValue.delete(),
+  };
+}
+
 function writeEntitlementMirrorOnly(
   tx: Transaction,
   db: Firestore,
@@ -238,7 +256,7 @@ function writeEntitlementMirrorOnly(
   if (target.sourceEntitlementID === target.mirrorEntitlementID) return;
   tx.set(
     db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`),
-    buildBurnBarEntitlementMirror(entitlement, target),
+    { ...operatorProvenanceCleanup(), ...buildBurnBarEntitlementMirror(entitlement, target) },
     { merge: true },
   );
 }
@@ -251,8 +269,8 @@ function writeEntitlementDocs(
   target: AppStoreEntitlementTarget,
 ): void {
   const sourceRef = db.doc(`users/${uid}/entitlements/${target.sourceEntitlementID}`);
-  const sourceDoc = stripUndefinedObject(entitlement);
-  const mirrorDoc = buildBurnBarEntitlementMirror(entitlement, target);
+  const sourceDoc = { ...operatorProvenanceCleanup(), ...stripUndefinedObject(entitlement) };
+  const mirrorDoc = { ...operatorProvenanceCleanup(), ...buildBurnBarEntitlementMirror(entitlement, target) };
   if (target.sourceEntitlementID === target.mirrorEntitlementID) {
     tx.set(sourceRef, stripUndefinedObject({ ...sourceDoc, ...mirrorDoc }), { merge: true });
     return;
