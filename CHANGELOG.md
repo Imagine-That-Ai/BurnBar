@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Stripe entitlement reconciliation
+
+- **Made temporary Stripe-bound operator grants yield to the verified lifecycle
+  for that exact subscription**: the first signed webhook now replaces the
+  bridge grant with real renewal dates and restores normal cancellation,
+  refund, and dispute revocation. Grants for another subscription or platform
+  remain protected.
+
 ### Fixed - Linux packaged launcher identity
 
 - **Pinned every DEB, RPM, and Arch desktop launcher to the package-owned
