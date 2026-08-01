@@ -1,0 +1,45 @@
+{
+  "generatedAt": "2026-08-01T22:30:26.959Z",
+  "project": "burnbar",
+  "runId": "alert-delivery-drill-2026-08-01T22-10-58-333Z",
+  "canary": {
+    "logName": "openburnbar-alert-delivery-drill",
+    "event": "alert_delivery_drill",
+    "triggeredAt": "2026-08-01T22:10:58.333Z",
+    "triggerSkipped": false
+  },
+  "channels": [
+    {
+      "name": "projects/burnbar/notificationChannels/5012565067290551244",
+      "type": "email",
+      "target": "alberto8793@gmail.com",
+      "policyDisplayNames": [
+        "OpenBurnBar Callable error spike",
+        "OpenBurnBar Rollup rebuild breaker open",
+        "OpenBurnBar Rollup delta drain capped",
+        "OpenBurnBar Rollup task queue backlog",
+        "OpenBurnBar Circuit breaker open",
+        "OpenBurnBar alert-delivery drill canary",
+        "OpenBurnBar healthReady degraded",
+        "OpenBurnBar Hermes relay 5xx spike",
+        "OpenBurnBar Hosted MCP 5xx spike",
+        "OpenBurnBar uptime burnbar.ai",
+        "OpenBurnBar uptime app.burnbar.ai",
+        "OpenBurnBar uptime hosted MCP",
+        "OpenBurnBar uptime iroh hosted relay",
+        "OpenBurnBar Firestore read spike",
+        "OpenBurnBar storage growth",
+        "OpenBurnBar relay spend proxy",
+        "OpenBurnBar Redis pressure",
+        "OpenBurnBar Firestore read spike",
+        "OpenBurnBar storage growth",
+        "OpenBurnBar relay spend proxy",
+        "OpenBurnBar Redis pressure"
+      ],
+      "deliveryConfirmed": true,
+      "deliveredAt": "2026-08-01T22:30:26.959Z",
+      "verifiedBy": "albertonunez",
+      "evidenceUri": "https://console.cloud.google.com/monitoring/alerting/alerts/0.oaxqdglgjzt6?channelType=mail&project=burnbar"
+    }
+  ]
+}
