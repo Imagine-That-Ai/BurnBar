@@ -12720,7 +12720,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				OTHER_CODE_SIGN_FLAGS = "--identifier com.openburnbar.app --options runtime,library";
+				OTHER_CODE_SIGN_FLAGS = "--identifier com.openburnbar.daemon --options runtime,library";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -12944,7 +12944,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				OTHER_CODE_SIGN_FLAGS = "--identifier com.openburnbar.app --options runtime,library";
+				OTHER_CODE_SIGN_FLAGS = "--identifier com.openburnbar.daemon --options runtime,library";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
