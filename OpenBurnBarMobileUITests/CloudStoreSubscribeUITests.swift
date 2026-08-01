@@ -164,11 +164,28 @@ final class PhysicalIPadMercuryE2EUITests: XCTestCase {
     func testMirrorStopReconnect() throws {
         let app = XCUIApplication()
         app.launch()
+        dismissTouchIDPromptIfPresent(timeout: 3)
 
         if !waitForAgentsRoute(in: app, timeout: 8) {
+            // The signed-in app can ask for its Secure Enclave identity while
+            // the dashboard is settling. Dismiss that system overlay before
+            // querying the app hierarchy; otherwise XCTest temporarily sees
+            // no sidebar elements at all.
+            dismissTouchIDPromptIfPresent(timeout: 3)
             let sidebarAgents = app.buttons["sidebar.destination.agents"].firstMatch
-            if sidebarAgents.waitForExistence(timeout: 20), sidebarAgents.isHittable {
-                sidebarAgents.tap()
+            if sidebarAgents.waitForExistence(timeout: 20) {
+                if sidebarAgents.isHittable {
+                    sidebarAgents.tap()
+                } else {
+                    // On a physical iPad, NavigationSplitView can expose the
+                    // visible sidebar button before XCTest marks it hittable.
+                    // A center-coordinate tap still targets only the proved
+                    // Agents button and avoids falling through to the
+                    // compact-width deep-link path.
+                    sidebarAgents.coordinate(
+                        withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+                    ).tap()
+                }
             } else {
                 // Compact-width fallback for running the same physical test on
                 // an iPhone without weakening the iPad path.
@@ -266,15 +283,15 @@ final class PhysicalIPadMercuryE2EUITests: XCTestCase {
         // keeps the mirror request read-only and allows frame/reconnect QA;
         // real input QA still requires a live biometric match.
         RunLoop.current.run(until: Date().addingTimeInterval(1))
-        dismissTouchIDPromptIfPresent()
+        dismissTouchIDPromptIfPresent(timeout: 2)
     }
 
-    private func dismissTouchIDPromptIfPresent() {
+    private func dismissTouchIDPromptIfPresent(timeout: TimeInterval = 0) {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let alert = springboard.alerts[
             "com.apple.localauthentication.ax.authentication.alert"
         ].firstMatch
-        guard alert.exists else { return }
+        guard alert.waitForExistence(timeout: timeout) else { return }
 
         let cancel = springboard.buttons[
             "com.apple.localauthentication.ax.authentication.button.cancel"
@@ -287,6 +304,7 @@ final class PhysicalIPadMercuryE2EUITests: XCTestCase {
         springboard.coordinate(
             withNormalizedOffset: CGVector(dx: 0.5, dy: 0.575)
         ).tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
     }
 
     private func waitForStreamingVideo(

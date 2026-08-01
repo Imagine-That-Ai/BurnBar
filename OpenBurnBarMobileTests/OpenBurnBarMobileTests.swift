@@ -1,12 +1,19 @@
 import XCTest
 import CryptoKit
 import Security
+import FirebaseAuth
 import FirebaseFirestore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 @testable import OpenBurnBarMobile
+
+private struct LiveMacHostKeyProof {
+    let advertisedKeyBase64: String
+    let advertisedFingerprint: String
+    let record: IrohPairingRecord
+}
 
 /// Hermetic in-memory backing for ``HermesGatewayAgentKeyPinStore`` tests. Mirrors
 /// the Keychain backing's three-state read contract without needing Keychain
@@ -225,10 +232,181 @@ final class OpenBurnBarMobileTests: XCTestCase {
         )
     }
 
+    func testMercuryHostPinFailureHasActionableLocalizedDescription() {
+        let error = FirestoreIrohPairingPublicKeyError.hostKeyPinUnavailable(
+            status: Int(errSecDecode)
+        )
+
+        XCTAssertEqual(
+            error.localizedDescription,
+            "This device could not read its saved Mac identity from Keychain (status \(errSecDecode))."
+        )
+    }
+
+    func testSignedDeviceIrohHostKeyKeychainRoundTrip() throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Requires a signed physical-device app process.")
+        #else
+        let backing = IrohHostKeyKeychainPinBacking()
+        let account = "signed-device-probe|\(UUID().uuidString)"
+        let first = ControllerPinRecord(
+            keyBase64: Data(repeating: 0x11, count: 32).base64EncodedString(),
+            confirmed: false,
+            pinnedAtEpoch: 1
+        )
+        let updated = ControllerPinRecord(
+            keyBase64: first.keyBase64,
+            confirmed: true,
+            pinnedAtEpoch: first.pinnedAtEpoch
+        )
+        backing.delete(account: account)
+        defer { backing.delete(account: account) }
+
+        XCTAssertEqual(backing.load(account: account), .absent)
+        XCTAssertEqual(backing.save(first, account: account), errSecSuccess)
+        XCTAssertEqual(backing.load(account: account), .found(first))
+        XCTAssertEqual(backing.save(updated, account: account), errSecSuccess)
+        XCTAssertEqual(backing.load(account: account), .found(updated))
+        backing.delete(account: account)
+        XCTAssertEqual(backing.load(account: account), .absent)
+        #endif
+    }
+
+    func testSignedDeviceAdvertisedHostKeyVerifiesFreshMacPairingRecord() async throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Requires the signed-in physical iPad and live Mac host.")
+        #else
+        guard let uid = Auth.auth().currentUser?.uid else {
+            XCTFail("The physical iPad must remain signed in.")
+            return
+        }
+
+        let proof = try await fetchLiveMacHostKeyProof(uid: uid)
+        let backing = IrohHostKeyKeychainPinBacking()
+        let pinned = backing.load(account: "\(uid)|host")
+
+        print("OpenBurnBarHostPinProof advertisedSHA256=\(proof.advertisedFingerprint)")
+        print("OpenBurnBarHostPinProof signedConnectionID=\(proof.record.connectionId)")
+        if case .found(let record) = pinned {
+            print("OpenBurnBarHostPinProof pinnedSHA256=\(fingerprint(record.keyBase64))")
+        }
+        #endif
+    }
+
+    func testOperatorAuthorizedLiveMacHostPinRepair() async throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Requires the signed-in physical iPad and live Mac host.")
+        #else
+        guard ProcessInfo.processInfo.environment["OPENBURNBAR_RUN_HOST_PIN_REPAIR"] == "1" else {
+            throw XCTSkip("Set OPENBURNBAR_RUN_HOST_PIN_REPAIR=1 for an explicit operator-authorized repair.")
+        }
+        guard let uid = Auth.auth().currentUser?.uid else {
+            XCTFail("The physical iPad must remain signed in.")
+            return
+        }
+
+        let preview = try await fetchLiveMacHostKeyProof(uid: uid)
+        let revalidated = try await fetchLiveMacHostKeyProof(uid: uid)
+        XCTAssertEqual(
+            revalidated.advertisedKeyBase64,
+            preview.advertisedKeyBase64,
+            "The advertised Mac identity changed between preview and authorization."
+        )
+
+        let backing = IrohHostKeyKeychainPinBacking()
+        let account = "\(uid)|host"
+        backing.delete(account: account)
+        XCTAssertEqual(
+            backing.load(account: account),
+            .absent,
+            "The old iPad host pin was not durably removed."
+        )
+
+        let replacement = ControllerPinRecord(
+            keyBase64: revalidated.advertisedKeyBase64,
+            confirmed: true,
+            pinnedAtEpoch: Date().timeIntervalSince1970
+        )
+        XCTAssertEqual(backing.save(replacement, account: account), errSecSuccess)
+        XCTAssertEqual(
+            backing.load(account: account),
+            .found(replacement),
+            "The verified live Mac identity did not survive Keychain readback."
+        )
+        print("OpenBurnBarHostPinRepair verifiedSHA256=\(revalidated.advertisedFingerprint)")
+        #endif
+    }
+
     func testHermesGatewayPairingDeepLinkStoresPendingCodeForSettingsScreen() {
         HermesGatewayPairingDeepLink.open(code: "  SQKV-AP5R  ")
         XCTAssertEqual(HermesGatewayPairingDeepLink.consumePendingCode(), "SQKV-AP5R")
         XCTAssertNil(HermesGatewayPairingDeepLink.consumePendingCode())
+    }
+
+    private func fetchLiveMacHostKeyProof(uid: String) async throws -> LiveMacHostKeyProof {
+        let firestore = Firestore.firestore()
+        let keySnapshot = try await firestore
+            .collection("users")
+            .document(uid)
+            .collection("iroh_pairing_keys")
+            .document("host")
+            .getDocument(source: .server)
+        guard let advertisedKeyBase64 = keySnapshot.data()?["publicKeyBase64"] as? String,
+              let advertisedKey = Data(base64Encoded: advertisedKeyBase64),
+              advertisedKey.count == 32 else {
+            XCTFail("The Mac has not published a valid host identity.")
+            throw FirestoreIrohPairingPublicKeyError.invalidPublicKey
+        }
+
+        let records = try await firestore
+            .collection("users")
+            .document(uid)
+            .collection("iroh_pairing")
+            .getDocuments(source: .server)
+            .documents
+            .compactMap { document -> IrohPairingRecord? in
+                let data = document.data()
+                guard let nodeId = data["nodeId"] as? String,
+                      let publishedAtMillis = data["publishedAtMillis"] as? Int64
+                        ?? (data["publishedAtMillis"] as? NSNumber)?.int64Value,
+                      let signature = data["signature"] as? String else {
+                    return nil
+                }
+                return IrohPairingRecord(
+                    uid: uid,
+                    connectionId: data["id"] as? String ?? document.documentID,
+                    nodeId: nodeId,
+                    relayURL: data["relayURL"] as? String,
+                    directAddresses: data["directAddresses"] as? [String] ?? [],
+                    publishedAtMillis: publishedAtMillis,
+                    protocolVersion: (data["protocolVersion"] as? Int)
+                        ?? (data["protocolVersion"] as? NSNumber)?.intValue
+                        ?? IrohRelayProtocol.frameProtocolVersion,
+                    signature: signature
+                )
+            }
+            .sorted { $0.publishedAtMillis > $1.publishedAtMillis }
+
+        guard let verified = records.first(where: { record in
+            (try? IrohPairingSignature.verify(
+                record,
+                publicKey: advertisedKey,
+                now: Date()
+            )) != nil
+        }) else {
+            XCTFail("The advertised host identity did not verify any fresh live Mac pairing record.")
+            throw IrohPairingError.invalidSignature
+        }
+        return LiveMacHostKeyProof(
+            advertisedKeyBase64: advertisedKeyBase64,
+            advertisedFingerprint: fingerprint(advertisedKeyBase64),
+            record: verified
+        )
+    }
+
+    private func fingerprint(_ keyBase64: String) -> String {
+        guard let data = Data(base64Encoded: keyBase64) else { return "invalid" }
+        return Data(SHA256.hash(data: data)).map { String(format: "%02x", $0) }.joined()
     }
 
     @MainActor

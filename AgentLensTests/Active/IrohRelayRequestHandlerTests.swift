@@ -2,6 +2,7 @@ import XCTest
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
+import Security
 @testable import OpenBurnBar
 
 final class IrohRelayRequestHandlerTests: XCTestCase {
@@ -19,6 +20,53 @@ final class IrohRelayRequestHandlerTests: XCTestCase {
         XCTAssertFalse(key?.isEmpty ?? true)
         // A second read loads the persisted key rather than regenerating.
         XCTAssertEqual(store.publicKeyBase64, key)
+    }
+
+    func test_irohPairingKeyStore_keychainAccessDeniedFailsClosedWithoutSavingReplacement() {
+        let keychain = IrohPairingFaultInjectingKeychainStore(
+            loadError: IrohRotatingKeychainSecretStoreError.accessDenied(
+                errSecInteractionNotAllowed
+            )
+        )
+        let store = IrohPairingKeyStore(
+            service: "ai.openburnbar.iroh-pairing.test.denied",
+            account: "primary",
+            keychain: keychain
+        )
+
+        XCTAssertThrowsError(try store.keypair()) { error in
+            XCTAssertEqual(
+                error as? IrohPairingKeyStoreError,
+                .keychainAccessDenied(errSecInteractionNotAllowed)
+            )
+        }
+        XCTAssertEqual(keychain.saveCallCount, 0)
+        XCTAssertNil(store.publicKeyBase64)
+        XCTAssertEqual(
+            keychain.saveCallCount,
+            0,
+            "A denied read must never create or publish a replacement verifier root."
+        )
+    }
+
+    func test_irohPairingKeyStore_malformedStoredKeyFailsClosedWithoutSavingReplacement() {
+        let keychain = IrohPairingFaultInjectingKeychainStore(
+            loadedData: Data(repeating: 0xA5, count: 31)
+        )
+        let store = IrohPairingKeyStore(
+            service: "ai.openburnbar.iroh-pairing.test.malformed",
+            account: "primary",
+            keychain: keychain
+        )
+
+        XCTAssertThrowsError(try store.keypair()) { error in
+            XCTAssertEqual(error as? IrohPairingKeyStoreError, .invalidKey)
+        }
+        XCTAssertEqual(
+            keychain.saveCallCount,
+            0,
+            "Malformed persisted identity data must not trigger silent rotation."
+        )
     }
 
     func test_usesBurnBarGatewayForOpenAICompatibleRelaySurface() {
@@ -269,6 +317,32 @@ final class IrohRelayRequestHandlerTests: XCTestCase {
         XCTAssertTrue(registrations.isEmpty)
         let sentFrames = await stream.sentFrames
         XCTAssertEqual(sentFrames.last?.type, .responseError)
+    }
+}
+
+private final class IrohPairingFaultInjectingKeychainStore:
+    IrohPairingKeychainSecretStoring,
+    @unchecked Sendable
+{
+    private let loadedData: Data?
+    private let loadError: Error?
+    private(set) var saveCallCount = 0
+
+    init(loadedData: Data? = nil, loadError: Error? = nil) {
+        self.loadedData = loadedData
+        self.loadError = loadError
+    }
+
+    func load() throws -> Data? {
+        if let loadError {
+            throw loadError
+        }
+        return loadedData
+    }
+
+    func save(_ data: Data) throws {
+        _ = data
+        saveCallCount += 1
     }
 }
 

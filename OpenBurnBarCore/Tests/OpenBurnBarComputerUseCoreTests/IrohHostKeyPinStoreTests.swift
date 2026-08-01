@@ -123,6 +123,80 @@ final class IrohHostKeyPinStoreTests: XCTestCase {
         XCTAssertFalse(result.admits(requireConfirmation: false), "an unpersisted pin must not admit")
     }
 
+    func testConcurrentFirstPinDuplicateReusesOnlyTheSameDurableKey() {
+        let key = newKeyBase64()
+        let backing = ConcurrentFirstPinRaceBacking(
+            durableRecord: ControllerPinRecord(
+                keyBase64: key,
+                confirmed: false,
+                pinnedAtEpoch: 1
+            ),
+            saveStatus: -25_299
+        )
+        let store = IrohHostKeyPinStore(backing: backing)
+
+        let result = store.verifyOrPin(
+            advertisedKeyBase64: key,
+            uid: "u1",
+            roleId: "host"
+        )
+
+        guard case .matchesPendingConfirmation = result else {
+            XCTFail("the losing concurrent writer should reuse the identical durable pin, got \(result)")
+            return
+        }
+        XCTAssertTrue(result.admits(requireConfirmation: false))
+    }
+
+    func testConcurrentFirstPinDuplicateRefusesDifferentDurableKey() {
+        let advertised = newKeyBase64()
+        let durable = newKeyBase64()
+        let backing = ConcurrentFirstPinRaceBacking(
+            durableRecord: ControllerPinRecord(
+                keyBase64: durable,
+                confirmed: false,
+                pinnedAtEpoch: 1
+            ),
+            saveStatus: -25_299
+        )
+        let store = IrohHostKeyPinStore(backing: backing)
+
+        let result = store.verifyOrPin(
+            advertisedKeyBase64: advertised,
+            uid: "u1",
+            roleId: "host"
+        )
+
+        guard case .mismatch = result else {
+            XCTFail("a concurrent writer that pinned another key must remain fail-closed, got \(result)")
+            return
+        }
+        XCTAssertFalse(result.admits(requireConfirmation: false))
+    }
+
+    func testNonDuplicateFirstPinWriteFailureDoesNotReuseMatchingLaterRead() {
+        let key = newKeyBase64()
+        let backing = ConcurrentFirstPinRaceBacking(
+            durableRecord: ControllerPinRecord(
+                keyBase64: key,
+                confirmed: true,
+                pinnedAtEpoch: 1
+            ),
+            saveStatus: -34_018
+        )
+        let store = IrohHostKeyPinStore(backing: backing)
+
+        let result = store.verifyOrPin(
+            advertisedKeyBase64: key,
+            uid: "u1",
+            roleId: "host"
+        )
+
+        XCTAssertEqual(result, .unknownKeychainError(status: -34_018))
+        XCTAssertFalse(result.admits(requireConfirmation: false))
+        XCTAssertEqual(backing.loadCount, 1, "non-duplicate failures must not trigger a durable reread")
+    }
+
     func testUnreadableKeychainFailsClosed() {
         let backing = InMemoryControllerKeyPinBacking()
         backing.failReads(with: -25295) // errSecInteractionNotAllowed-class read failure
@@ -149,4 +223,40 @@ final class IrohHostKeyPinStoreTests: XCTestCase {
             return
         }
     }
+}
+
+private final class ConcurrentFirstPinRaceBacking: ControllerKeyPinBacking, @unchecked Sendable {
+    private let lock = NSLock()
+    private let durableRecord: ControllerPinRecord
+    private let saveStatus: Int32
+    private var firstLoad = true
+    private var storedLoadCount = 0
+
+    init(durableRecord: ControllerPinRecord, saveStatus: Int32) {
+        self.durableRecord = durableRecord
+        self.saveStatus = saveStatus
+    }
+
+    var loadCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedLoadCount
+    }
+
+    func load(account: String) -> ControllerKeyPinLoad {
+        lock.lock()
+        defer { lock.unlock() }
+        storedLoadCount += 1
+        if firstLoad {
+            firstLoad = false
+            return .absent
+        }
+        return .found(durableRecord)
+    }
+
+    func save(_ record: ControllerPinRecord, account: String) -> Int32 {
+        saveStatus
+    }
+
+    func delete(account: String) {}
 }

@@ -3,6 +3,8 @@ import Foundation
 import Security
 #endif
 
+private let errSecDuplicateItemCompat: Int32 = -25_299
+
 /// # Iroh host-key pinning (T-TRN-01 / T-PTR-03 — transport-plane trust root, phone side)
 ///
 /// **Threat closed.** A mobile client dials the user's Mac over iroh QUIC. The Mac
@@ -144,7 +146,27 @@ public struct IrohHostKeyPinStore: Sendable {
             )
             let status = backing.save(record, account: acct)
             guard status == errSecSuccessCompat else {
-                return .unknownKeychainError(status: Int(status))
+                guard status == errSecDuplicateItemCompat else {
+                    return .unknownKeychainError(status: Int(status))
+                }
+                // Two app boot paths can observe `.absent` concurrently. One
+                // writer then wins `SecItemAdd` while the other receives
+                // `errSecDuplicateItem`. Re-read before failing: admitting is
+                // safe only when the durable winner pinned the exact same key.
+                // A different key remains a hard mismatch, and an unreadable
+                // item remains fail-closed.
+                switch backing.load(account: acct) {
+                case .found(let persisted) where persisted.keyBase64 == normalized:
+                    return persisted.confirmed
+                        ? .matchesConfirmedPin
+                        : .matchesPendingConfirmation(safetyCode: safetyCode(forKeyBase64: normalized))
+                case .found(let persisted):
+                    return .mismatch(pinnedSafetyCode: safetyCode(forKeyBase64: persisted.keyBase64))
+                case .absent:
+                    return .unknownKeychainError(status: Int(status))
+                case .unreadable(let readStatus):
+                    return .unknownKeychainError(status: Int(readStatus))
+                }
             }
             return .pinnedFirstUse(safetyCode: safetyCode(forKeyBase64: normalized))
         case .unreadable(let status):
