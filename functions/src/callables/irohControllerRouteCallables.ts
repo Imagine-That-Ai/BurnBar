@@ -29,9 +29,10 @@ import {
 import {
   readAndVerifyIrohControllerRouteJoin,
   requireTrustedIrohRouteDevice,
-  type VerifiedIrohControllerRouteJoin,
 } from "./irohControllerRouteTrust.js";
 import { assertActiveBurnBarCloudProEntitlement } from "./shared.js";
+
+type VerifiedIrohControllerRouteJoin = Awaited<ReturnType<typeof readAndVerifyIrohControllerRouteJoin>>;
 
 const ROUTE_SCHEMA_VERSION = 2;
 const MAX_GENERATION = Number.MAX_SAFE_INTEGER - 1;

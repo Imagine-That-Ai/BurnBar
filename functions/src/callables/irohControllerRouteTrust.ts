@@ -14,7 +14,7 @@ import {
   requireVerifiedControllerAuthority,
 } from "./irohControllerRouteSecurity.js";
 
-export type VerifiedIrohControllerRouteJoin = {
+type VerifiedIrohControllerRouteJoin = {
   authorityPublicKeySHA256: string;
   authorityPublicKey: Buffer;
   authorityKeyKind: "ed25519" | "se-p256";
