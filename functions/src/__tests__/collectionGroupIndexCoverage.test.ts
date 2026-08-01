@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 
 const REPO_ROOT = resolve(__dirname, "../../..");
-const SRC_DIR = resolve(REPO_ROOT, "functions/src");
 const GUARD = "tools/firestore-indexes/check-collection-group-coverage.mjs";
 
-function runGuard(): { code: number; stdout: string; stderr: string } {
+function runGuard(sourceRoot?: string): { code: number; stdout: string; stderr: string } {
+  const args = sourceRoot ? [GUARD, "--source-root", sourceRoot] : [GUARD];
   try {
-    const stdout = execFileSync("node", [GUARD], { cwd: REPO_ROOT, encoding: "utf8" });
+    const stdout = execFileSync("node", args, { cwd: REPO_ROOT, encoding: "utf8" });
     return { code: 0, stdout, stderr: "" };
   } catch (err) {
     const e: Record<string, unknown> = typeof err === "object" && err !== null ? { ...err } : {};
@@ -30,10 +31,9 @@ describe("check-collection-group-coverage.mjs", () => {
   });
 
   it("fails when a collection-group query without a declared index is injected", () => {
-    // Write a throwaway file querying an unindexed collection group into
-    // functions/src, run the guard, and confirm it fails. The temp dir is
-    // removed regardless.
-    const dir = mkdtempSync(resolve(SRC_DIR, "__cg_guard_fixture_"));
+    // Keep the throwaway source tree outside functions/src so concurrent guard
+    // invocations cannot observe this deliberately invalid fixture.
+    const dir = mkdtempSync(resolve(tmpdir(), "burnbar-cg-guard-"));
     const file = resolve(dir, "injected.ts");
     try {
       writeFileSync(
@@ -42,7 +42,7 @@ describe("check-collection-group-coverage.mjs", () => {
           'export const q = db.collectionGroup("cg_guard_unindexed").where("nope", "==", true).get();\n',
         "utf8",
       );
-      const { code, stderr } = runGuard();
+      const { code, stderr } = runGuard(dir);
       expect(code).toBe(1);
       expect(stderr).toContain("cg_guard_unindexed");
     } finally {
