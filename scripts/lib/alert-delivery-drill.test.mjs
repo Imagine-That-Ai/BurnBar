@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  REDACTED_PROJECT_PLACEHOLDER,
   alertDeliveryChannelDrift,
   alertDeliveryRunId,
   assertAlertDeliveryRunId,
   buildAlertDeliveryEvidence,
   buildPendingAlertDeliveryTrigger,
+  redactedAlertChannelName,
 } from "./alert-delivery-drill.mjs";
 
 const channel = {
@@ -15,6 +17,7 @@ const channel = {
   target: "ops@burnbar.ai",
   policyDisplayNames: ["OpenBurnBar alert-delivery drill canary"],
 };
+const redactedChannelName = `projects/${REDACTED_PROJECT_PLACEHOLDER}/notificationChannels/email`;
 
 test("alert delivery confirmation preserves the triggered canary run id", () => {
   const triggeredAt = "2026-06-17T15:00:00.000Z";
@@ -40,6 +43,26 @@ test("alert delivery confirmation preserves the triggered canary run id", () => 
   assert.equal(evidence.channels[0].deliveryConfirmed, true);
   assert.equal(evidence.channels[0].verifiedBy, "operator");
   assert.equal(evidence.channels[0].evidenceUri, "https://example.test/proof");
+});
+
+test("alert delivery evidence redacts the project id and channel resource paths", () => {
+  const pending = buildPendingAlertDeliveryTrigger({
+    project: "burnbar",
+    runId: "alert-delivery-drill-2026-06-17T15-00-00-000Z",
+    triggeredAt: "2026-06-17T15:00:00.000Z",
+    channels: [channel],
+  });
+  assert.equal(pending.project, REDACTED_PROJECT_PLACEHOLDER);
+  assert.equal(pending.channels[0].name, redactedChannelName);
+
+  const evidence = buildAlertDeliveryEvidence({ pending, operator: "operator" });
+  assert.equal(evidence.project, REDACTED_PROJECT_PLACEHOLDER);
+  assert.equal(evidence.channels[0].name, redactedChannelName);
+
+  // Redaction is idempotent so gate-side normalization can run on both raw
+  // live names and already-redacted committed evidence.
+  assert.equal(redactedAlertChannelName(channel.name), redactedChannelName);
+  assert.equal(redactedAlertChannelName(redactedChannelName), redactedChannelName);
 });
 
 test("alert delivery evidence refuses skipped triggers and blank operators", () => {
@@ -119,8 +142,8 @@ test("alert delivery pending channel drift catches stale and missing channels", 
     alertDeliveryChannelDrift([channel], [{ ...channel, name: "projects/burnbar/notificationChannels/sms" }]),
     {
       ok: false,
-      missing: ["projects/burnbar/notificationChannels/sms"],
-      stale: ["projects/burnbar/notificationChannels/email"],
+      missing: [`projects/${REDACTED_PROJECT_PLACEHOLDER}/notificationChannels/sms`],
+      stale: [redactedChannelName],
       changed: [],
     },
   );
@@ -130,7 +153,7 @@ test("alert delivery pending channel drift catches stale and missing channels", 
       ok: false,
       missing: [],
       stale: [],
-      changed: ["projects/burnbar/notificationChannels/email"],
+      changed: [redactedChannelName],
     },
   );
 });

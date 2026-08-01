@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-08-01T22:30:26.959Z",
-  "project": "burnbar",
+  "project": "<redacted-project>",
   "runId": "alert-delivery-drill-2026-08-01T22-10-58-333Z",
   "canary": {
     "logName": "openburnbar-alert-delivery-drill",
@@ -10,7 +10,7 @@
   },
   "channels": [
     {
-      "name": "projects/burnbar/notificationChannels/5012565067290551244",
+      "name": "projects/<redacted-project>/notificationChannels/5012565067290551244",
       "type": "email",
       "target": "alberto8793@gmail.com",
       "policyDisplayNames": [

@@ -8,7 +8,20 @@
 
 export const ALERT_DRILL_LOG_NAME = "openburnbar-alert-delivery-drill";
 export const ALERT_DRILL_EVENT = "alert_delivery_drill";
+export const REDACTED_PROJECT_PLACEHOLDER = "<redacted-project>";
 const RUN_ID_PATTERN = /^alert-delivery-drill-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/u;
+
+/**
+ * Canonical redaction for GCP notification-channel resource names. Committed
+ * launch evidence must not carry the raw project segment (the public evidence
+ * redaction guard rejects `projects/<id>/notificationChannels/...`), so both
+ * the evidence writers and the launch-gate matcher normalize names through
+ * this helper. Idempotent: already-redacted names pass through unchanged.
+ */
+export function redactedAlertChannelName(name) {
+  if (typeof name !== "string") return name;
+  return name.replace(/^projects\/[^/<][^/]*\//u, `projects/${REDACTED_PROJECT_PLACEHOLDER}/`);
+}
 
 export function alertDeliveryRunId(triggeredAt) {
   if (typeof triggeredAt !== "string" || triggeredAt.trim() === "") {
@@ -44,7 +57,7 @@ function normalizedChannelName(channel) {
   if (typeof channel?.name !== "string" || channel.name.trim() === "") {
     throw new Error("channel.name is required");
   }
-  return channel.name;
+  return redactedAlertChannelName(channel.name);
 }
 
 export function buildPendingAlertDeliveryTrigger({
@@ -69,7 +82,8 @@ export function buildPendingAlertDeliveryTrigger({
   return {
     schemaVersion: 1,
     generatedAt: recordedAt,
-    project,
+    // Committed evidence is public; the concrete project id stays out of it.
+    project: REDACTED_PROJECT_PLACEHOLDER,
     runId,
     canary: {
       logName: ALERT_DRILL_LOG_NAME,
@@ -128,7 +142,8 @@ export function buildAlertDeliveryEvidence({
 
   return {
     generatedAt,
-    project: pending.project,
+    // Re-redact defensively in case an older pending file carried the raw id.
+    project: REDACTED_PROJECT_PLACEHOLDER,
     runId: assertAlertDeliveryRunId(pending.runId),
     canary: {
       logName: pending.canary?.logName || ALERT_DRILL_LOG_NAME,

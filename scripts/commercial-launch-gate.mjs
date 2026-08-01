@@ -23,6 +23,7 @@ import {
   evaluateFirebaseAppCheckEnforcement,
   evaluateFirebaseAppCheckServiceSet,
 } from "./lib/evaluate-firebase-app-check-enforcement.mjs";
+import { redactedAlertChannelName } from "./lib/alert-delivery-drill.mjs";
 import {
   VERIFIABLE_CHANNEL_TYPES,
   checkBillingAlerts,
@@ -1396,13 +1397,16 @@ export function evaluateAlertDeliverabilityEvidence(evidence, requiredChannels, 
     failures.push("no verifiable alert notification channels were present in ops/billing alert checks");
   }
 
+  // Committed evidence stores redaction-canonical channel names (no raw
+  // project segment), while required channels come from live GCP with raw
+  // names. Normalize both sides through the same redaction before matching.
   const evidenceByName = new Map(
     channels
       .filter((channel) => typeof channel?.name === "string")
-      .map((channel) => [channel.name, channel]),
+      .map((channel) => [redactedAlertChannelName(channel.name), channel]),
   );
   const checkedChannels = (requiredChannels || []).map((required) => {
-    const channel = evidenceByName.get(required.name);
+    const channel = evidenceByName.get(redactedAlertChannelName(required.name));
     const deliveredAt = parseEvidenceTime(channel?.deliveredAt || channel?.confirmedAt);
     const problems = [];
     if (!channel) {

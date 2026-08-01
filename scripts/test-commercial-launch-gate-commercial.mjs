@@ -676,7 +676,9 @@ function passingChecks(overrides = {}) {
       generatedAt: "2026-06-17T12:00:00.000Z",
       channels: [
         {
-          name: "projects/burnbar/notificationChannels/email",
+          // Committed evidence stores redaction-canonical names; the gate
+          // must still match them against raw live channel names.
+          name: "projects/<redacted-project>/notificationChannels/email",
           type: "email",
           deliveryConfirmed: true,
           deliveredAt: "2026-06-17T11:58:00.000Z",
