@@ -6,9 +6,9 @@
  * Extracted verbatim from `computerUseSecurity.ts` (U6 split).
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
-import { FieldValue, type DocumentReference, type Transaction } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 
 import { getConfig } from "../config.js";
@@ -29,8 +29,6 @@ import {
   IROH_CONTROLLER_DEVICE_LIMIT,
   IROH_HOST_ESCROW_PLATFORMS,
   PHONE_CONTROL_ESCROW_PLATFORMS,
-  RELAY_AUTH_ENCRYPTION,
-  RELAY_AUTH_KEY_VERSION,
   boundedInteger,
   boundedStringArray,
   normalizedControllerDeviceAllowlist,
@@ -38,17 +36,17 @@ import {
   requireBase64Like,
   requireDerivedPhoneControlPeerNodeId,
   requireFreshPublicationMillis,
-  requireP256X963PublicKey,
   requirePhoneControlAuthorityPublicKey,
 } from "./computerUseSecurityCodecs.js";
-import { requireTrustedDeviceActionProof, requireTrustedEscrowDevice } from "./computerUseSecurityFirestore.js";
+import { requireTrustedEscrowDevice } from "./computerUseSecurityFirestore.js";
 import { revokeIrohPairingAndControllerRoutes } from "./irohControllerRouteFirestore.js";
 import { requireApprovedLinuxAppCheckIrohHost } from "./linuxAppCheckDevices.js";
+import { stageTrustedEscrowDevicePeerNodeBinding } from "./trustedEscrowDevicePeerBinding.js";
 
-const RELAY_SENDER_KEY_PUBLISH_ACTION_KIND = "relay_sender_key_publish";
-const RELAY_SENDER_PROOF_PROTOCOL_VERSION = "3";
-const TRUSTED_DEVICE_PEER_NODE_ID_LIMIT = 16;
 const PHONE_CONTROL_ENROLLMENT_GRANT_TTL_MS = 2 * 60 * 1000;
+
+export { publishRelaySenderKey } from "./phoneControlRelaySenderKeyCallable.js";
+export { bindTrustedEscrowDevicePeerNodeId } from "./trustedEscrowDevicePeerBinding.js";
 
 async function requireApprovedIrohHostMutationDevice(
   request: CallableRequest,
@@ -76,128 +74,6 @@ function rejectMismatchedExpectedUID(expectedUID: unknown, authenticatedUID: str
   if (expectedUID !== authenticatedUID) {
     throw new HttpsError("permission-denied", "Authenticated account changed during authority publication.");
   }
-}
-
-function normalizedTrustedDevicePeerNodeIds(rawPeerNodeId: unknown, rawPeerNodeIds: unknown): string[] {
-  const ids: string[] = [];
-  const append = (value: unknown) => {
-    if (typeof value !== "string") return;
-    const trimmed = value.trim();
-    if (trimmed.length === 0 || ids.includes(trimmed)) return;
-    ids.push(trimmed);
-  };
-  append(rawPeerNodeId);
-  if (Array.isArray(rawPeerNodeIds)) {
-    for (const value of rawPeerNodeIds) append(value);
-  }
-  return ids.slice(-TRUSTED_DEVICE_PEER_NODE_ID_LIMIT);
-}
-
-async function stageTrustedEscrowDevicePeerNodeBinding(args: {
-  transaction: Transaction;
-  uid: string;
-  deviceId: string;
-  peerNodeId: string;
-  permittedPriorPeerRefs?: DocumentReference[];
-  permittedPriorPeerRefForPeerNodeId?: (peerNodeId: string) => DocumentReference;
-}): Promise<void> {
-  const {
-    transaction,
-    uid,
-    deviceId,
-    peerNodeId,
-    permittedPriorPeerRefs = [],
-    permittedPriorPeerRefForPeerNodeId,
-  } = args;
-  const deviceRef = db.doc(`users/${uid}/escrow_devices/${deviceId}`);
-  const device = await transaction.get(deviceRef);
-  if (!device.exists || device.get("trustState") !== "trusted") {
-    throw new HttpsError("permission-denied", "Phone-control peer binding requires a trusted device.");
-  }
-  const existingPeerNodeIds = normalizedTrustedDevicePeerNodeIds(device.get("peerNodeId"), device.get("peerNodeIds"));
-  const existingPeerNodeId = device.get("peerNodeId");
-  if (
-    !existingPeerNodeIds.includes(peerNodeId) &&
-    typeof existingPeerNodeId === "string" &&
-    existingPeerNodeId.length > 0
-  ) {
-    let priorPeerIsDurableForDevice = Array.isArray(device.get("peerNodeIds"));
-    const priorRefs = [...permittedPriorPeerRefs];
-    if (permittedPriorPeerRefForPeerNodeId) {
-      priorRefs.push(permittedPriorPeerRefForPeerNodeId(existingPeerNodeId));
-    }
-    for (const priorRef of priorRefs) {
-      const prior = await transaction.get(priorRef);
-      const priorDeviceId = prior.get("deviceId") ?? prior.get("sourceDeviceId");
-      if (prior.exists && priorDeviceId === deviceId && prior.get("peerNodeId") === existingPeerNodeId) {
-        priorPeerIsDurableForDevice = true;
-        break;
-      }
-    }
-    if (!priorPeerIsDurableForDevice) {
-      throw new HttpsError("permission-denied", "Phone-control peer node does not match the trusted device binding.");
-    }
-  }
-  const peerNodeIds = normalizedTrustedDevicePeerNodeIds(undefined, [...existingPeerNodeIds, peerNodeId]);
-  transaction.set(
-    deviceRef,
-    {
-      peerNodeId,
-      peerNodeIds,
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
-}
-
-export async function bindTrustedEscrowDevicePeerNodeId(args: {
-  uid: string;
-  deviceId: string;
-  peerNodeId: string;
-  permittedPriorPeerRefs?: DocumentReference[];
-  permittedPriorPeerRefForPeerNodeId?: (peerNodeId: string) => DocumentReference;
-}): Promise<void> {
-  await db.runTransaction(async (transaction) => {
-    await stageTrustedEscrowDevicePeerNodeBinding({ transaction, ...args });
-  });
-}
-
-function relaySenderKeyPublishProofSubjectId(args: {
-  deviceId: string;
-  peerNodeId: string;
-  keyId: string;
-  publicKeySHA256Hex: string;
-  publishedAtMillis: number;
-  signalIdentityKeyId: string;
-  signalIdentityKeyVersion: number;
-  signalIdentityPublicKeyFingerprint: string;
-}): string {
-  const segments = [
-    "version",
-    "1",
-    "deviceId",
-    args.deviceId,
-    "peerNodeId",
-    args.peerNodeId,
-    "keyId",
-    args.keyId,
-    "publicKeySHA256Hex",
-    args.publicKeySHA256Hex,
-    "relayKeyVersion",
-    RELAY_SENDER_PROOF_PROTOCOL_VERSION,
-    "publishedAtMillis",
-    String(args.publishedAtMillis),
-    "signalIdentityKeyId",
-    args.signalIdentityKeyId,
-    "signalIdentityKeyVersion",
-    String(args.signalIdentityKeyVersion),
-    "signalIdentityPublicKeyFingerprint",
-    args.signalIdentityPublicKeyFingerprint,
-  ];
-  const canonical = `OpenBurnBar-RelaySenderKeyPublish-v1\n${segments
-    .map((segment) => `${Buffer.byteLength(segment, "utf8")}:${segment}\n`)
-    .join("")}`;
-  return createHash("sha256").update(canonical).digest("hex");
 }
 
 export const publishIrohPairingPublicKey = onCallProduction(
@@ -590,145 +466,5 @@ export const publishPhoneControlAuthority = onCallProduction(
       device_id: deviceId,
     });
     return { ok: true, connectionId, peerNodeId };
-  },
-);
-
-export const publishRelaySenderKey = onCallProduction(
-  "publishRelaySenderKey",
-  {
-    region: FUNCTIONS_REGION,
-    enforceAppCheck: getConfig().enforceAppCheck,
-    maxInstances: 100,
-  },
-  async (
-    request: CallableRequest<{
-      deviceId?: unknown;
-      peerNodeId?: unknown;
-      keyId?: unknown;
-      publicKeyBase64?: unknown;
-      relayKeyVersion?: unknown;
-      publishedAtMillis?: unknown;
-      signalIdentityKeyId?: unknown;
-      signalIdentityKeyVersion?: unknown;
-      signalIdentityPublicKeyFingerprint?: unknown;
-      actionProof?: unknown;
-      nonce?: unknown;
-    }>,
-  ) => {
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing a relay sender key.");
-    const nonce = boundedTrimmedString(request.data.nonce, "nonce", 256, true);
-    await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce);
-    await assertActiveBurnBarCloudProEntitlement(uid);
-
-    const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
-    await requireTrustedEscrowDevice(uid, deviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
-    const peerNodeId = boundedTrimmedString(request.data.peerNodeId, "peerNodeId", 160, true);
-    const keyId = boundedTrimmedString(request.data.keyId, "keyId", 128, true);
-    if (!/^relay-v3-[a-f0-9]{24}$/u.test(keyId)) {
-      throw new HttpsError("invalid-argument", "keyId must be a v3 relay sender key id.");
-    }
-    const relayKeyVersion =
-      boundedInteger(
-        request.data.relayKeyVersion,
-        "relayKeyVersion",
-        RELAY_AUTH_KEY_VERSION,
-        RELAY_AUTH_KEY_VERSION,
-        true,
-      ) ?? RELAY_AUTH_KEY_VERSION;
-    const relaySenderKey = requireP256X963PublicKey(request.data.publicKeyBase64, "publicKeyBase64");
-    const publicKeySHA256Hex = createHash("sha256").update(relaySenderKey.decoded).digest("hex");
-    const derivedKeyId = `relay-v3-${publicKeySHA256Hex.slice(0, 24)}`;
-    if (keyId !== derivedKeyId) {
-      throw new HttpsError("invalid-argument", "keyId does not match the relay sender key.");
-    }
-    const publishedAtMillis = requireFreshPublicationMillis(request.data.publishedAtMillis, "publishedAtMillis");
-    const signalIdentityKeyId = boundedTrimmedString(
-      request.data.signalIdentityKeyId,
-      "signalIdentityKeyId",
-      200,
-      true,
-    );
-    const signalIdentityKeyVersion =
-      boundedInteger(request.data.signalIdentityKeyVersion, "signalIdentityKeyVersion", 1, 100, true) ?? 1;
-    const expectedSignalIdentityKeyId = `${deviceId}_${signalIdentityKeyVersion}`;
-    if (signalIdentityKeyId !== expectedSignalIdentityKeyId) {
-      throw new HttpsError("permission-denied", "Relay sender key must bind to this device's current Signal identity.");
-    }
-    const signalIdentityPublicKeyFingerprint = boundedTrimmedString(
-      request.data.signalIdentityPublicKeyFingerprint,
-      "signalIdentityPublicKeyFingerprint",
-      128,
-      true,
-    );
-
-    const identity = await db.doc(`users/${uid}/signal_identity_public_keys/${signalIdentityKeyId}`).get();
-    if (
-      !identity.exists ||
-      identity.get("deviceId") !== deviceId ||
-      identity.get("identityKeyId") !== signalIdentityKeyId ||
-      identity.get("publicKeyFingerprint") !== signalIdentityPublicKeyFingerprint ||
-      identity.get("keyVersion") !== signalIdentityKeyVersion
-    ) {
-      throw new HttpsError(
-        "permission-denied",
-        "Relay sender key requires a published Signal identity for this trusted device.",
-      );
-    }
-    await requireTrustedDeviceActionProof({
-      uid,
-      deviceId,
-      actionKind: RELAY_SENDER_KEY_PUBLISH_ACTION_KIND,
-      subjectId: relaySenderKeyPublishProofSubjectId({
-        deviceId,
-        peerNodeId,
-        keyId,
-        publicKeySHA256Hex,
-        publishedAtMillis,
-        signalIdentityKeyId,
-        signalIdentityKeyVersion,
-        signalIdentityPublicKeyFingerprint,
-      }),
-      approve: true,
-      nonce,
-      proofRaw: request.data.actionProof,
-      allowedPlatforms: PHONE_CONTROL_ESCROW_PLATFORMS,
-    });
-    await bindTrustedEscrowDevicePeerNodeId({
-      uid,
-      deviceId,
-      peerNodeId,
-      permittedPriorPeerRefs: [db.doc(`users/${uid}/relay_sender_keys/${deviceId}`)],
-    });
-
-    await db.doc(`users/${uid}/relay_sender_keys/${deviceId}`).set(
-      {
-        deviceId,
-        peerNodeId,
-        keyId,
-        publicKeyBase64: relaySenderKey.encoded,
-        relayEncryption: RELAY_AUTH_ENCRYPTION,
-        relayKeyVersion,
-        status: "active",
-        publishedAtMillis,
-        publishedByDeviceId: deviceId,
-        signalIdentityKeyId,
-        signalIdentityKeyVersion,
-        signalIdentityPublicKeyFingerprint,
-        signalIdentityVerification: "verified",
-        schemaVersion: 1,
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
-
-    logInfo({
-      event: "callable_info",
-      message: "relay_sender_key_published",
-      device_id: deviceId,
-      peer_node_id: peerNodeId,
-      key_id: keyId,
-    });
-    return { ok: true, deviceId, peerNodeId, keyId };
   },
 );

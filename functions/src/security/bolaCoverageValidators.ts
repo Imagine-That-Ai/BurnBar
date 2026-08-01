@@ -65,8 +65,10 @@ function escapeRegExp(value: string): string {
 
 function parseItTitles(source: string): Set<string> {
   const titles = new Set<string>();
-  for (const match of source.matchAll(/\bit\s*\(\s*(["'`])([^"'`]+)\1/gu)) {
-    titles.add(match[2]);
+  for (const pattern of [/\bit\s*\(\s*"([^"\n]+)"/gu, /\bit\s*\(\s*'([^'\n]+)'/gu, /\bit\s*\(\s*`([^`\n]+)`/gu]) {
+    for (const match of source.matchAll(pattern)) {
+      titles.add(match[1]);
+    }
   }
   return titles;
 }

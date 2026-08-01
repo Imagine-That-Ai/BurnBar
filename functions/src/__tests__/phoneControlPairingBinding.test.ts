@@ -196,6 +196,7 @@ import {
   revokeIrohPairingRecord,
 } from "../callables/computerUseSecurity.js";
 import { APP_CHECK_ATTESTATION_CLAIM_KEY, appCheckAttestationDigestHex } from "../appCheckAttestation.js";
+import { callableRunner as bolaCallableRunner, tier2CallableProof } from "./bola/callableBolaHarness.js";
 
 const APP_ID = "1:123:ios:abc";
 const APP_CHECK_BOUND_AT_MILLIS = Date.now();
@@ -357,9 +358,39 @@ describe("M-037 phone-control authority binds each trusted controller independen
     });
     await publishMacPairing();
 
-    await expect(issuePhoneEnrollmentGrant("phone-a", ed25519Key(), "mac-2")).rejects.toThrow(
-      /trusted host that published this iroh pairing/i,
-    );
+    await expect(issuePhoneEnrollmentGrant("phone-a", ed25519Key(), "mac-2")).rejects.toMatchObject({
+      code: "permission-denied",
+    });
+
+    await tier2CallableProof(store, {
+      exportedName: "issuePhoneControlEnrollmentGrant",
+      run: (request) => {
+        const callableRequest = request as {
+          auth?: { token?: Record<string, unknown> };
+          app?: { appId?: string };
+        };
+        if (callableRequest.auth) {
+          callableRequest.auth.token = {
+            [APP_CHECK_ATTESTATION_CLAIM_KEY]: {
+              v: 1,
+              appId: APP_ID,
+              boundAtMillis: APP_CHECK_BOUND_AT_MILLIS,
+            },
+          };
+        }
+        if (callableRequest.app) callableRequest.app.appId = APP_ID;
+        return bolaCallableRunner(issuePhoneControlEnrollmentGrant)(request);
+      },
+      payload: {
+        hostDeviceId: "bob-hostDeviceId",
+        connectionId: "bob-conn",
+        controllerDeviceId: "bob-controllerDeviceId",
+        controllerPeerNodeId: "bob-controllerPeerNodeId",
+      },
+      expectedOutcome: "throws",
+      expectedCode: "permission-denied",
+      strictCode: true,
+    });
   });
 
   it("an expired enrollment grant cannot authorize a new phone", async () => {

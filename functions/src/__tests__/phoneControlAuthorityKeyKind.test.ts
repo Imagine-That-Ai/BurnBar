@@ -335,7 +335,7 @@ function invokeCallable<TRes = unknown>(callable: unknown, data: Record<string, 
 function seedTrustedDeviceAndPairing() {
   store.clear();
   store.set(`users/${UID}/escrow_devices/${DEVICE}`, { platform: "iOS", trustState: "trusted", keyVersion: 1 });
-  store.set(`users/${UID}/iroh_pairing/${CONN}`, { id: CONN });
+  store.set(`users/${UID}/iroh_pairing/${CONN}`, { id: CONN, publishedByDeviceId: "mac-1" });
 }
 
 function seedPhoneControlEnrollmentGrant(peerNodeId: string) {

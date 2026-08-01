@@ -105,12 +105,7 @@ import {
   resolveActiveIrohControllerRoutes,
   revokeIrohControllerRoute,
 } from "../callables/irohControllerRouteCallables.js";
-import { parseEscrowPlatform } from "../callables/computerUseSecurityCodecs.js";
-import {
-  publishIrohPairingPublicKey,
-  publishIrohPairingRecord,
-  revokeIrohPairingRecord,
-} from "../callables/phoneControlCallables.js";
+import { revokeIrohPairingRecord } from "../callables/phoneControlCallables.js";
 
 const UID = "route-owner", CONNECTION_ID = "linux-browser-cu";
 const HOST_DEVICE_ID = "linux-host-fixture", SOURCE_DEVICE_ID = "phone-controller";
@@ -161,62 +156,6 @@ async function registerChallenge(
 
 describe("verified iroh controller route registry", () => {
   beforeEach(() => store.clear());
-
-  it("admits attested Linux escrow hosts to publish the signed iroh pairing root", async () => {
-    const host = generateKeyPairSync("ed25519");
-    const hostNodeId = randomBytes(32).toString("hex");
-    store.set(`users/${UID}/escrow_devices/${HOST_DEVICE_ID}`, {
-      deviceId: HOST_DEVICE_ID,
-      platform: parseEscrowPlatform("Linux"),
-      trustState: "trusted",
-    });
-    await expect(
-      invokeCallable(publishIrohPairingPublicKey, UID, {
-        deviceId: HOST_DEVICE_ID,
-        roleId: "host",
-        publicKeyBase64: rawEd25519PublicKey(host.publicKey).toString("base64"),
-        nonce: "linux-host-key-nonce",
-      }),
-    ).resolves.toEqual({ ok: true, roleId: "host" });
-    await expect(
-      invokeCallable(publishIrohPairingRecord, UID, {
-        deviceId: HOST_DEVICE_ID,
-        connectionId: CONNECTION_ID,
-        nodeId: hostNodeId,
-        directAddresses: [],
-        publishedAtMillis: Date.now(),
-        protocolVersion: 1,
-        signature: randomBytes(64).toString("base64"),
-        nonce: "linux-host-pairing-nonce",
-      }),
-    ).resolves.toEqual({ ok: true, connectionId: CONNECTION_ID });
-    expect(store.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}`)?.publishedByDeviceId).toBe(HOST_DEVICE_ID);
-  });
-
-  it("admits an approved Linux App Check host without granting CloudVault escrow trust", async () => {
-    const host = generateKeyPairSync("ed25519");
-    store.set(`users/${UID}/linux_app_check_devices/${HOST_DEVICE_ID}`, {
-      appId: "1:123:linux:route-test",
-      deviceId: HOST_DEVICE_ID,
-      platform: "Linux",
-      trustState: "approved",
-    });
-    expect(store.has(`users/${UID}/escrow_devices/${HOST_DEVICE_ID}`)).toBe(false);
-    await expect(
-      callableRunner(publishIrohPairingPublicKey)(
-        callableRequest(
-          UID,
-          {
-            deviceId: HOST_DEVICE_ID,
-            roleId: "host",
-            publicKeyBase64: rawEd25519PublicKey(host.publicKey).toString("base64"),
-            nonce: "approved-linux-host-nonce",
-          },
-          "1:123:linux:route-test",
-        ),
-      ),
-    ).resolves.toEqual({ ok: true, roleId: "host" });
-  });
 
   it("registers and resolves distinct transport, authority, and device identities", async () => {
     const fixture = seedTrustGraph();

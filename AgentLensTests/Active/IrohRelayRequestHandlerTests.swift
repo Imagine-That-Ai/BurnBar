@@ -322,8 +322,7 @@ final class IrohRelayRequestHandlerTests: XCTestCase {
 
 private final class IrohPairingFaultInjectingKeychainStore:
     IrohPairingKeychainSecretStoring,
-    @unchecked Sendable
-{
+    @unchecked Sendable {
     private let loadedData: Data?
     private let loadError: Error?
     private(set) var saveCallCount = 0
