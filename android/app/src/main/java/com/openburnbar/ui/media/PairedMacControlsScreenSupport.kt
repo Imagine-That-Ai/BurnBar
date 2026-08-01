@@ -33,9 +33,6 @@ internal const val REMOTE_UNLOCK_SESSION_REQUIRED = "remote_unlock_session_requi
 internal const val MERCURY_READY_PREVIEW_LABEL = "MERCURY READY"
 internal const val MIRROR_NO_RESPONSE_MESSAGE = "No response from the Mac. Open BurnBar on the Mac, then try again."
 internal const val CALL_NO_RESPONSE_MESSAGE = "No call response from the Mac. Open BurnBar on the Mac, then try again."
-internal const val MERCURY_READY_PREVIEW_LABEL = "MERCURY READY"
-internal const val MIRROR_NO_RESPONSE_MESSAGE = "No response from the Mac. Open BurnBar on the Mac, then try again."
-internal const val CALL_NO_RESPONSE_MESSAGE = "No call response from the Mac. Open BurnBar on the Mac, then try again."
 
 internal data class PairedMacControlsUiState(
     val phase: MediaControlStreamCoordinator.Phase,
