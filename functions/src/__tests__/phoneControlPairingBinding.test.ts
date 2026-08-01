@@ -200,7 +200,10 @@ function req(data: Record<string, unknown>) {
 }
 
 function invokeCallable<TRes = unknown>(callable: unknown, data: Record<string, unknown>): Promise<TRes> {
-  const run = callable && (typeof callable === "object" || typeof callable === "function") ? Reflect.get(callable, "run") : undefined;
+  const run =
+    callable && (typeof callable === "object" || typeof callable === "function")
+      ? Reflect.get(callable, "run")
+      : undefined;
   if (typeof run !== "function") {
     throw new Error("callable test target is missing run()");
   }
@@ -234,11 +237,7 @@ function publishPhoneAuthority(deviceId: string, key: { base64: string; peerNode
   });
 }
 
-function issuePhoneEnrollmentGrant(
-  controllerDeviceId: string,
-  key: { peerNodeId: string },
-  hostDeviceId = MAC,
-) {
+function issuePhoneEnrollmentGrant(controllerDeviceId: string, key: { peerNodeId: string }, hostDeviceId = MAC) {
   return invokeCallable<{ ok: boolean; grantNonce: string; expiresAtMillis: number }>(
     issuePhoneControlEnrollmentGrant,
     {
@@ -303,9 +302,9 @@ describe("M-037 phone-control authority binds each trusted controller independen
     expect(controller?.appCheckAttestationHashBlake3).toBe(
       appCheckAttestationDigestHex(APP_ID, APP_CHECK_BOUND_AT_MILLIS),
     );
-    expect(
-      store.get(`users/${UID}/iroh_pairing/${CONN}/controller_enrollment_grants/phone-a`)?.status,
-    ).toBe("consumed");
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}/controller_enrollment_grants/phone-a`)?.status).toBe(
+      "consumed",
+    );
   });
 
   it("a different trusted Mac cannot issue a controller grant for another host's pairing", async () => {
@@ -333,6 +332,27 @@ describe("M-037 phone-control authority binds each trusted controller independen
 
     await expect(publishPhoneAuthority("phone-a", key)).rejects.toThrow(/fresh approval from this Mac/i);
 
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual([]);
+    expect(store.has(`users/${UID}/iroh_pairing/${CONN}/controllers/${key.peerNodeId}`)).toBe(false);
+    expect(store.get(grantPath)?.status).toBe("pending");
+  });
+
+  it("a grant from the prior host cannot survive pairing-host takeover", async () => {
+    store.set(`users/${UID}/escrow_devices/mac-2`, {
+      platform: "macOS",
+      trustState: "trusted",
+      keyVersion: 1,
+    });
+    await publishMacPairing();
+    const key = ed25519Key();
+    await issuePhoneEnrollmentGrant("phone-a", key);
+    const grantPath = `users/${UID}/iroh_pairing/${CONN}/controller_enrollment_grants/phone-a`;
+    expect(store.get(grantPath)?.issuedByDeviceId).toBe(MAC);
+
+    await publishMacPairing("mac-2");
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.publishedByDeviceId).toBe("mac-2");
+
+    await expect(publishPhoneAuthority("phone-a", key)).rejects.toThrow(/fresh approval from this Mac/i);
     expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual([]);
     expect(store.has(`users/${UID}/iroh_pairing/${CONN}/controllers/${key.peerNodeId}`)).toBe(false);
     expect(store.get(grantPath)?.status).toBe("pending");

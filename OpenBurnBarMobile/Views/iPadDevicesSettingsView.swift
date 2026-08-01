@@ -8,7 +8,6 @@ struct iPadDevicesSettingsView: View {
     @State private var newName = ""
     @State private var showRenameSheet = false
     @State private var showRevokeConfirmation = false
-    @State private var showCleanupConfirmation = false
     @State private var deviceToRevoke: DeviceRecord?
     @State private var deviceToApprove: DeviceRecord?
     @State private var linuxDeviceToApprove: LinuxAppCheckDeviceRecord?
@@ -65,10 +64,6 @@ struct iPadDevicesSettingsView: View {
             otherDevicesSection
             linuxAppCheckDevicesSection
             smartHubSection
-
-            if !store.staleDuplicates.isEmpty {
-                duplicatesSection
-            }
         }
         .navigationTitle("Devices & Sync")
         .accessibilityIdentifier("devicesSync.screen")
@@ -106,14 +101,6 @@ struct iPadDevicesSettingsView: View {
             }
         } message: {
             Text("This device will lose access to your OpenBurnBar data.")
-        }
-        .alert("Remove duplicate copies?", isPresented: $showCleanupConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Remove \(store.staleDuplicates.count)", role: .destructive) {
-                Task { await store.revokeStaleDuplicates() }
-            }
-        } message: {
-            Text("Older Firestore copies of devices that share the same name will be revoked. Active devices stay connected.")
         }
         .alert(
             "Approve Linux Device?",
@@ -233,7 +220,7 @@ struct iPadDevicesSettingsView: View {
                 Text("No other devices connected.")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(store.otherDevices, id: \.id) { device in
+                ForEach(store.otherDevices) { device in
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(device.displayName)
@@ -557,48 +544,6 @@ struct iPadDevicesSettingsView: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return "Last seen \(formatter.localizedString(for: date, relativeTo: Date()))"
-    }
-
-    // MARK: - Duplicate Cleanup
-
-    private var duplicatesSection: some View {
-        settingsSection(
-            "Stale duplicates",
-            footer: "Old Firestore copies of this iPhone left over from previous installs. Removing them is safe - the active device stays connected."
-        ) {
-            let duplicates = store.staleDuplicates
-            let preview = Array(duplicates.prefix(8))
-
-            ForEach(preview, id: \.id) { device in
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(device.displayName)
-                            .font(.body)
-                        Text(device.id.prefix(8))
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                        if let seen = device.lastSeen {
-                            Text("Last seen \(seen.formatted(.relative(presentation: .numeric)))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer()
-                    trustBadge(for: device.trustState)
-                }
-            }
-            if duplicates.count > preview.count {
-                Text("\(duplicates.count - preview.count) more stale copies will be removed by cleanup.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Button(role: .destructive) {
-                showCleanupConfirmation = true
-            } label: {
-                Label("Clean up \(duplicates.count) duplicates", systemImage: "sparkles")
-                    .font(.body)
-            }
-        }
     }
 
     // MARK: - Smart Hub (Cast Now)

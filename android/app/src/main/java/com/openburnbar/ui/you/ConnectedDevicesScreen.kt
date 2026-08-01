@@ -174,7 +174,7 @@ internal fun ConnectedDevicesContent(
                     } else {
                         DeviceRow(
                             device = currentDevice,
-                            actionInFlight = actionInFlightFor == currentDevice.id,
+                            actionInFlight = actionInFlightFor == currentDevice.stableIdentity,
                             onApprove = null,
                             onRevoke = null,
                             onRename = { renameDevice = currentDevice },
@@ -206,7 +206,7 @@ internal fun ConnectedDevicesContent(
                             if (index > 0) HorizontalDivider()
                             DeviceRow(
                                 device = device,
-                                actionInFlight = actionInFlightFor == device.id,
+                                actionInFlight = actionInFlightFor == device.stableIdentity,
                                 onApprove =
                                 if (device.trustState == DeviceTrustState.PENDING) {
                                     { approveDevice = device }

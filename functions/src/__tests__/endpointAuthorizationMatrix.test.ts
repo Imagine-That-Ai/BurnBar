@@ -24,4 +24,18 @@ describe("endpoint authorization matrix", () => {
     const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
     expect(duplicates).toEqual([]);
   });
+
+  it("tracks phone-control grant issuance and describes multi-controller ownership accurately", () => {
+    const enrollmentGrant = endpointAuthorizationMatrix.find(
+      (entry) => entry.exportedName === "issuePhoneControlEnrollmentGrant",
+    );
+    expect(enrollmentGrant).toMatchObject({
+      handlerModule: "callables/phoneControlCallables.ts",
+      objectIdsFromClient: ["hostDeviceId", "connectionId", "controllerDeviceId", "controllerPeerNodeId"],
+    });
+
+    for (const entry of endpointAuthorizationMatrix) {
+      expect(entry.ownershipCheck, entry.exportedName).not.toMatch(/\bsole trusted controller\b/iu);
+    }
+  });
 });

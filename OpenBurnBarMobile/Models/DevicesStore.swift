@@ -163,34 +163,19 @@ final class DevicesStore {
         self.linuxAppCheckManager = linuxAppCheckManager
     }
 
-    /// Display-ready devices. Raw Firestore device docs can include stale
-    /// reinstall/re-pairing copies; keep those only for the cleanup action.
+    /// Display-ready registrations keyed only by their durable Firestore device identity.
+    /// Friendly names and platforms are intentionally not identity: a user can own multiple
+    /// iPhones, iPads, or Android devices with the same model/name.
     var devices: [DeviceRecord] {
-        Self.deduplicated(rawDevices)
+        Self.uniqueRegistrations(rawDevices)
     }
 
     var currentDevice: DeviceRecord? {
         devices.first(where: \.isCurrentDevice)
     }
 
-    /// Distinct other devices, deduped by display-name + platform. When
-    /// multiple Firestore docs map to the same physical device (e.g. the
-    /// user reinstalled iOS and got fresh UUIDs before we anchored on
-    /// `identifierForVendor`), we keep the most-recently-seen as the
-    /// "primary" entry.
     var otherDevices: [DeviceRecord] {
         devices.filter { !$0.isCurrentDevice }
-    }
-
-    /// Stale duplicates that we hid from the main list. Surfaced in a
-    /// "Cleanup" card so the user can revoke them in bulk.
-    var staleDuplicates: [DeviceRecord] {
-        let primaries = Set(devices.map(\.id))
-        return rawDevices
-            .filter { !primaries.contains($0.id) }
-            .sorted { lhs, rhs in
-                (lhs.lastSeen ?? .distantPast) > (rhs.lastSeen ?? .distantPast)
-            }
     }
 
     var thisDeviceTrustState: DeviceTrustState { currentDevice?.trustState ?? .pending }
@@ -199,15 +184,10 @@ final class DevicesStore {
         return !hasTrusted && thisDeviceTrustState != .trusted
     }
 
-    // MARK: - Dedup
+    // MARK: - Stable identity
 
-    /// Group records by (lowercased display name, platform) and keep the
-    /// most-recently-seen (or trusted, when last-seen is missing).
-    private static func deduplicated(_ records: [DeviceRecord]) -> [DeviceRecord] {
-        let groups = Dictionary(grouping: records) { record -> String in
-            let name = record.displayName.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-            return "\(name)\u{1F}\(record.platform.lowercased())"
-        }
+    private static func uniqueRegistrations(_ records: [DeviceRecord]) -> [DeviceRecord] {
+        let groups = Dictionary(grouping: records, by: \.id)
         let primaries = groups.values.map { bucket -> DeviceRecord in
             bucket.max(by: Self.staleness) ?? bucket[0]
         }
@@ -234,18 +214,6 @@ final class DevicesStore {
         case .pending: return 1
         case .revoked: return 0
         }
-    }
-
-    /// Revoke every record in `staleDuplicates`. Used by the "Clean up
-    /// duplicates" button in the Devices view.
-    func revokeStaleDuplicates() async {
-        let stale = staleDuplicates
-        for device in stale {
-            actionInFlightFor = device.id
-            do { try await trustGateway.revoke(deviceID: device.id) } catch let CloudGatewayError.classified(c) { lastError = c } catch { lastError = .other(message: error.localizedDescription) }
-        }
-        actionInFlightFor = nil
-        await load()
     }
 
     func load() async {
