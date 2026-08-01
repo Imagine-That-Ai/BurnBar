@@ -26,6 +26,15 @@ private const val BITS_PER_BYTE = 8.0
 private const val DEQUEUE_TIMEOUT_MICROS = 20_000
 private const val DECODER_FRAME_RATE_FPS = 30
 
+private fun videoFormat(codec: VideoReceivePipeline.Codec, widthPx: Int, heightPx: Int, lowLatency: Boolean): MediaFormat =
+    MediaFormat.createVideoFormat(codec.mime, widthPx, heightPx).apply {
+        setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+        setInteger(MediaFormat.KEY_FRAME_RATE, DECODER_FRAME_RATE_FPS)
+        if (lowLatency && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+        }
+    }
+
 /**
  * Android-side decode pipeline for inbound Mercury video frames. 1:1 port
  * of `VideoReceivePipeline.swift`.
@@ -415,7 +424,7 @@ class VideoReceivePipeline(
             selection.codecName
                 ?.let(MediaCodec::createByCodecName)
                 ?: MediaCodec.createDecoderByType(selection.codec.mime)
-        return try {
+        return runCatching {
             decoder.apply {
                 configure(
                     videoFormat(selection.codec, widthPx, heightPx, selection.lowLatency),
@@ -429,20 +438,10 @@ class VideoReceivePipeline(
                     "Mercury decoder started codec=${selection.codec} component=${selection.codecName ?: "system-default"} lowLatency=${selection.lowLatency}",
                 )
             }
-        } catch (error: Throwable) {
+        }.onFailure {
             decoder.runCatching { release() }
-            throw error
-        }
+        }.getOrThrow()
     }
-
-    private fun videoFormat(codec: Codec, widthPx: Int, heightPx: Int, lowLatency: Boolean): MediaFormat =
-        MediaFormat.createVideoFormat(codec.mime, widthPx, heightPx).apply {
-            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_FRAME_RATE, DECODER_FRAME_RATE_FPS)
-            if (lowLatency && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
-            }
-        }
 
     companion object {
         private const val MIN_STATS_WINDOW_MILLIS = 500L

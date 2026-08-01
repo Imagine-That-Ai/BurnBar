@@ -93,6 +93,23 @@ private suspend fun BurnBarApplication.rebuildMediaControlCoordinator(
     // transport owns the shared native endpoint and controller-route identity;
     // shutting it down here invalidates unrelated iroh work and can leave the
     // replacement coordinator with EndpointNotInitialized.
+    val coordinator = buildMediaControlCoordinator()
+    BurnBarApplication.mediaControlCoordinator = coordinator
+    activeCoordinatorUid = uid
+    activeCoordinatorConnection = connectionId
+    activeCoordinatorPublishedAtMillis = selection.publishedAtMillis
+    activeCoordinatorTarget = target
+    BurnBarApplication.fileTransferService?.let { receiver ->
+        runCatching {
+            coordinator.attachReceiver(receiver)
+            receiver.attachControlStream(coordinator)
+        }.onFailure { Log.w("BurnBar", "attachControlStream failed: ${it.message}") }
+    }
+    runCatching { coordinator.start(uid = uid, connectionID = connectionId) }
+        .onFailure { Log.w("BurnBar", "MediaControlStreamCoordinator.start failed: ${it.message}") }
+}
+
+private fun BurnBarApplication.buildMediaControlCoordinator(): MediaControlStreamCoordinator {
     val dialer = MediaControlStreamCoordinator.StreamDialer { dialedUid, dialedConnection ->
         val dialTarget = activeCoordinatorTarget
             ?: fetchVerifiedPairingTarget(uid = dialedUid, connectionId = dialedConnection)
@@ -102,7 +119,7 @@ private suspend fun BurnBarApplication.rebuildMediaControlCoordinator(
             target = dialTarget,
         )
     }
-    val coordinator = MediaControlStreamCoordinator(
+    return MediaControlStreamCoordinator(
         dialer = dialer,
         receiver = BurnBarApplication.fileTransferService,
         peerDeviceIdProvider = {
@@ -110,7 +127,7 @@ private suspend fun BurnBarApplication.rebuildMediaControlCoordinator(
         },
         controlAuthorityPeerNodeIdProvider = {
             runCatching {
-                com.openburnbar.data.computeruse.PhoneControlSigningKeyStore(this@rebuildMediaControlCoordinator)
+                com.openburnbar.data.computeruse.PhoneControlSigningKeyStore(this@buildMediaControlCoordinator)
                     .peerNodeId()
             }.getOrNull()
         },
@@ -129,19 +146,6 @@ private suspend fun BurnBarApplication.rebuildMediaControlCoordinator(
             )
         },
     )
-    BurnBarApplication.mediaControlCoordinator = coordinator
-    activeCoordinatorUid = uid
-    activeCoordinatorConnection = connectionId
-    activeCoordinatorPublishedAtMillis = selection.publishedAtMillis
-    activeCoordinatorTarget = target
-    BurnBarApplication.fileTransferService?.let { receiver ->
-        runCatching {
-            coordinator.attachReceiver(receiver)
-            receiver.attachControlStream(coordinator)
-        }.onFailure { Log.w("BurnBar", "attachControlStream failed: ${it.message}") }
-    }
-    runCatching { coordinator.start(uid = uid, connectionID = connectionId) }
-        .onFailure { Log.w("BurnBar", "MediaControlStreamCoordinator.start failed: ${it.message}") }
 }
 
 private fun MediaControlStreamCoordinator.Phase.mercuryLogLabel(): String = when (this) {

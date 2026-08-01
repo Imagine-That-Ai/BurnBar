@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -109,34 +110,61 @@ internal fun ConnectedDevicesContent(
     onRevoke: (DeviceRecord) -> Unit,
     onCleanupDuplicates: () -> Unit,
 ) {
-    val currentDevice = devices.firstOrNull { it.isCurrentDevice }
-    val otherDevices = devices.filterNot { it.isCurrentDevice }
-    val isDark = isSystemInDarkTheme()
-    val useWebsiteBackground by rememberWebsiteBackground()
     var renameDevice by remember { mutableStateOf<DeviceRecord?>(null) }
     var approveDevice by remember { mutableStateOf<DeviceRecord?>(null) }
     var revokeDevice by remember { mutableStateOf<DeviceRecord?>(null) }
     var confirmCleanup by rememberSaveable { mutableStateOf(false) }
 
-    Box(
-        modifier =
-        Modifier
-            .fillMaxSize()
-            .background(
-                if (useWebsiteBackground) {
-                    Color.Transparent
-                } else if (isDark) {
-                    AuroraColors.darkBackground
-                } else {
-                    AuroraColors.lightBackground
-                },
-            )
-            .testTag("connectedDevices.screen"),
-    ) {
-        if (useWebsiteBackground) {
-            WebsiteBackground(accentColor = AuroraColors.hermesMercury)
-        }
+    ConnectedDevicesBody(
+        devices = devices,
+        isLoading = isLoading,
+        lastError = lastError,
+        actionInFlightFor = actionInFlightFor,
+        bootstrapEligible = bootstrapEligible,
+        staleDuplicateCount = staleDuplicateCount,
+        onBack = onBack,
+        onRefresh = onRefresh,
+        onBootstrapApproveSelf = onBootstrapApproveSelf,
+        onRenameDevice = { renameDevice = it },
+        onApproveDevice = { approveDevice = it },
+        onRevokeDevice = { revokeDevice = it },
+        onCleanupRequest = { confirmCleanup = true },
+    )
 
+    ConnectedDevicesDialogs(
+        renameDevice = renameDevice,
+        approveDevice = approveDevice,
+        revokeDevice = revokeDevice,
+        confirmCleanup = confirmCleanup,
+        staleDuplicateCount = staleDuplicateCount,
+        onRenameSelf = onRenameSelf,
+        onApprove = onApprove,
+        onRevoke = onRevoke,
+        onCleanupDuplicates = onCleanupDuplicates,
+        onClearRename = { renameDevice = null },
+        onClearApprove = { approveDevice = null },
+        onClearRevoke = { revokeDevice = null },
+        onClearCleanup = { confirmCleanup = false },
+    )
+}
+
+@Composable
+private fun ConnectedDevicesBody(
+    devices: List<DeviceRecord>,
+    isLoading: Boolean,
+    lastError: String?,
+    actionInFlightFor: String?,
+    bootstrapEligible: Boolean,
+    staleDuplicateCount: Int,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+    onBootstrapApproveSelf: () -> Unit,
+    onRenameDevice: (DeviceRecord) -> Unit,
+    onApproveDevice: (DeviceRecord) -> Unit,
+    onRevokeDevice: (DeviceRecord) -> Unit,
+    onCleanupRequest: () -> Unit,
+) {
+    ConnectedDevicesBackground {
         LazyColumn(
             modifier =
             Modifier
@@ -144,117 +172,227 @@ internal fun ConnectedDevicesContent(
                 .padding(horizontal = AuroraSpacing.LG.dp),
             verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
         ) {
-            item {
-                Spacer(Modifier.height(AuroraSpacing.LG.dp))
-                ConnectedDevicesTopBar(
-                    isLoading = isLoading,
-                    onBack = onBack,
-                    onRefresh = onRefresh,
-                )
-            }
-
-            if (lastError != null) {
-                item {
-                    AuroraGlassCard(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = lastError,
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                }
-            }
-
-            item {
-                DeviceSection(title = "This device") {
-                    if (currentDevice == null) {
-                        EmptyDeviceMessage(
-                            if (isLoading) "Loading this device…" else "This installation is not registered yet.",
-                        )
-                    } else {
-                        DeviceRow(
-                            device = currentDevice,
-                            actionInFlight = actionInFlightFor == currentDevice.stableIdentity,
-                            onApprove = null,
-                            onRevoke = null,
-                            onRename = { renameDevice = currentDevice },
-                        )
-                        if (bootstrapEligible) {
-                            HorizontalDivider()
-                            Button(
-                                onClick = onBootstrapApproveSelf,
-                                enabled = actionInFlightFor == null,
-                                modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .testTag("connectedDevices.approveThisDevice"),
-                            ) {
-                                Icon(Icons.Filled.Shield, contentDescription = null)
-                                Text("Approve this device", modifier = Modifier.padding(start = 8.dp))
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                DeviceSection(title = "Other devices") {
-                    if (otherDevices.isEmpty()) {
-                        EmptyDeviceMessage("No other devices are connected.")
-                    } else {
-                        otherDevices.forEachIndexed { index, device ->
-                            if (index > 0) HorizontalDivider()
-                            DeviceRow(
-                                device = device,
-                                actionInFlight = actionInFlightFor == device.stableIdentity,
-                                onApprove =
-                                if (device.trustState == DeviceTrustState.PENDING) {
-                                    { approveDevice = device }
-                                } else {
-                                    null
-                                },
-                                onRevoke =
-                                if (device.trustState == DeviceTrustState.TRUSTED) {
-                                    { revokeDevice = device }
-                                } else {
-                                    null
-                                },
-                                onRename = null,
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (staleDuplicateCount > 0) {
-                item {
-                    DeviceSection(title = "Cleanup") {
-                        Text(
-                            "$staleDuplicateCount older device ${if (staleDuplicateCount == 1) "copy is" else "copies are"} hidden from the main list.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        OutlinedButton(
-                            onClick = { confirmCleanup = true },
-                            enabled = actionInFlightFor == null,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text("Remove duplicate copies")
-                        }
-                    }
-                }
-            }
-
-            item { Spacer(Modifier.height(AuroraSpacing.XXXL.dp)) }
+            connectedDevicesItems(
+                devices = devices,
+                isLoading = isLoading,
+                lastError = lastError,
+                actionInFlightFor = actionInFlightFor,
+                bootstrapEligible = bootstrapEligible,
+                staleDuplicateCount = staleDuplicateCount,
+                onBack = onBack,
+                onRefresh = onRefresh,
+                onBootstrapApproveSelf = onBootstrapApproveSelf,
+                onRenameDevice = onRenameDevice,
+                onApproveDevice = onApproveDevice,
+                onRevokeDevice = onRevokeDevice,
+                onCleanupRequest = onCleanupRequest,
+            )
         }
     }
+}
 
+private fun LazyListScope.connectedDevicesItems(
+    devices: List<DeviceRecord>,
+    isLoading: Boolean,
+    lastError: String?,
+    actionInFlightFor: String?,
+    bootstrapEligible: Boolean,
+    staleDuplicateCount: Int,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+    onBootstrapApproveSelf: () -> Unit,
+    onRenameDevice: (DeviceRecord) -> Unit,
+    onApproveDevice: (DeviceRecord) -> Unit,
+    onRevokeDevice: (DeviceRecord) -> Unit,
+    onCleanupRequest: () -> Unit,
+) {
+    item {
+        Spacer(Modifier.height(AuroraSpacing.LG.dp))
+        ConnectedDevicesTopBar(isLoading = isLoading, onBack = onBack, onRefresh = onRefresh)
+    }
+    if (lastError != null) {
+        item { ConnectedDevicesErrorCard(lastError) }
+    }
+    item {
+        ThisDeviceSection(
+            currentDevice = devices.firstOrNull { it.isCurrentDevice },
+            isLoading = isLoading,
+            actionInFlightFor = actionInFlightFor,
+            bootstrapEligible = bootstrapEligible,
+            onBootstrapApproveSelf = onBootstrapApproveSelf,
+            onRenameDevice = onRenameDevice,
+        )
+    }
+    item {
+        OtherDevicesSection(
+            otherDevices = devices.filterNot { it.isCurrentDevice },
+            actionInFlightFor = actionInFlightFor,
+            onApproveDevice = onApproveDevice,
+            onRevokeDevice = onRevokeDevice,
+        )
+    }
+    if (staleDuplicateCount > 0) {
+        item {
+            CleanupSection(
+                staleDuplicateCount = staleDuplicateCount,
+                actionsEnabled = actionInFlightFor == null,
+                onCleanupRequest = onCleanupRequest,
+            )
+        }
+    }
+    item { Spacer(Modifier.height(AuroraSpacing.XXXL.dp)) }
+}
+
+@Composable
+private fun ConnectedDevicesBackground(content: @Composable () -> Unit) {
+    val isDark = isSystemInDarkTheme()
+    val useWebsiteBackground by rememberWebsiteBackground()
+    Box(
+        modifier =
+        Modifier
+            .fillMaxSize()
+            .background(
+                when {
+                    useWebsiteBackground -> Color.Transparent
+                    isDark -> AuroraColors.darkBackground
+                    else -> AuroraColors.lightBackground
+                },
+            )
+            .testTag("connectedDevices.screen"),
+    ) {
+        if (useWebsiteBackground) {
+            WebsiteBackground(accentColor = AuroraColors.hermesMercury)
+        }
+        content()
+    }
+}
+
+@Composable
+private fun ConnectedDevicesErrorCard(lastError: String) {
+    AuroraGlassCard(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = lastError,
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
+@Composable
+private fun ThisDeviceSection(
+    currentDevice: DeviceRecord?,
+    isLoading: Boolean,
+    actionInFlightFor: String?,
+    bootstrapEligible: Boolean,
+    onBootstrapApproveSelf: () -> Unit,
+    onRenameDevice: (DeviceRecord) -> Unit,
+) {
+    DeviceSection(title = "This device") {
+        if (currentDevice == null) {
+            EmptyDeviceMessage(
+                if (isLoading) "Loading this device…" else "This installation is not registered yet.",
+            )
+        } else {
+            DeviceRow(
+                device = currentDevice,
+                actionInFlight = actionInFlightFor == currentDevice.stableIdentity,
+                onApprove = null,
+                onRevoke = null,
+                onRename = { onRenameDevice(currentDevice) },
+            )
+            if (bootstrapEligible) {
+                HorizontalDivider()
+                Button(
+                    onClick = onBootstrapApproveSelf,
+                    enabled = actionInFlightFor == null,
+                    modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .testTag("connectedDevices.approveThisDevice"),
+                ) {
+                    Icon(Icons.Filled.Shield, contentDescription = null)
+                    Text("Approve this device", modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OtherDevicesSection(
+    otherDevices: List<DeviceRecord>,
+    actionInFlightFor: String?,
+    onApproveDevice: (DeviceRecord) -> Unit,
+    onRevokeDevice: (DeviceRecord) -> Unit,
+) {
+    DeviceSection(title = "Other devices") {
+        if (otherDevices.isEmpty()) {
+            EmptyDeviceMessage("No other devices are connected.")
+        } else {
+            otherDevices.forEachIndexed { index, device ->
+                if (index > 0) HorizontalDivider()
+                DeviceRow(
+                    device = device,
+                    actionInFlight = actionInFlightFor == device.stableIdentity,
+                    onApprove =
+                    if (device.trustState == DeviceTrustState.PENDING) {
+                        { onApproveDevice(device) }
+                    } else {
+                        null
+                    },
+                    onRevoke =
+                    if (device.trustState == DeviceTrustState.TRUSTED) {
+                        { onRevokeDevice(device) }
+                    } else {
+                        null
+                    },
+                    onRename = null,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CleanupSection(staleDuplicateCount: Int, actionsEnabled: Boolean, onCleanupRequest: () -> Unit) {
+    DeviceSection(title = "Cleanup") {
+        Text(
+            "$staleDuplicateCount older device ${if (staleDuplicateCount == 1) "copy is" else "copies are"} hidden from the main list.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        OutlinedButton(
+            onClick = onCleanupRequest,
+            enabled = actionsEnabled,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Remove duplicate copies")
+        }
+    }
+}
+
+@Composable
+private fun ConnectedDevicesDialogs(
+    renameDevice: DeviceRecord?,
+    approveDevice: DeviceRecord?,
+    revokeDevice: DeviceRecord?,
+    confirmCleanup: Boolean,
+    staleDuplicateCount: Int,
+    onRenameSelf: (String) -> Unit,
+    onApprove: (DeviceRecord) -> Unit,
+    onRevoke: (DeviceRecord) -> Unit,
+    onCleanupDuplicates: () -> Unit,
+    onClearRename: () -> Unit,
+    onClearApprove: () -> Unit,
+    onClearRevoke: () -> Unit,
+    onClearCleanup: () -> Unit,
+) {
     renameDevice?.let { device ->
         RenameDeviceDialog(
             device = device,
-            onDismiss = { renameDevice = null },
+            onDismiss = onClearRename,
             onConfirm = { name ->
-                renameDevice = null
+                onClearRename()
                 onRenameSelf(name)
             },
         )
@@ -262,55 +400,73 @@ internal fun ConnectedDevicesContent(
     approveDevice?.let { device ->
         ApproveDeviceDialog(
             device = device,
-            onDismiss = { approveDevice = null },
+            onDismiss = onClearApprove,
             onConfirm = {
-                approveDevice = null
+                onClearApprove()
                 onApprove(device)
             },
         )
     }
     revokeDevice?.let { device ->
-        AlertDialog(
-            onDismissRequest = { revokeDevice = null },
-            title = { Text("Revoke ${device.displayName}?") },
-            text = { Text("This device will immediately lose access to your OpenBurnBar data.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        revokeDevice = null
-                        onRevoke(device)
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                ) {
-                    Text("Revoke")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { revokeDevice = null }) { Text("Cancel") }
+        RevokeDeviceDialog(
+            device = device,
+            onDismiss = onClearRevoke,
+            onConfirm = {
+                onClearRevoke()
+                onRevoke(device)
             },
         )
     }
     if (confirmCleanup) {
-        AlertDialog(
-            onDismissRequest = { confirmCleanup = false },
-            title = { Text("Remove duplicate copies?") },
-            text = { Text("Only older duplicate registrations will be revoked. Active devices stay connected.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmCleanup = false
-                        onCleanupDuplicates()
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                ) {
-                    Text("Remove $staleDuplicateCount")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmCleanup = false }) { Text("Cancel") }
+        CleanupConfirmDialog(
+            staleDuplicateCount = staleDuplicateCount,
+            onDismiss = onClearCleanup,
+            onConfirm = {
+                onClearCleanup()
+                onCleanupDuplicates()
             },
         )
     }
+}
+
+@Composable
+private fun RevokeDeviceDialog(device: DeviceRecord, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Revoke ${device.displayName}?") },
+        text = { Text("This device will immediately lose access to your OpenBurnBar data.") },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) {
+                Text("Revoke")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun CleanupConfirmDialog(staleDuplicateCount: Int, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Remove duplicate copies?") },
+        text = { Text("Only older duplicate registrations will be revoked. Active devices stay connected.") },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) {
+                Text("Remove $staleDuplicateCount")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable
@@ -366,81 +522,100 @@ private fun DeviceRow(device: DeviceRecord, actionInFlight: Boolean, onApprove: 
             .testTag("connectedDevices.device.${device.id}"),
         verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = if (device.trustState == DeviceTrustState.TRUSTED) Icons.Filled.CheckCircle else Icons.Filled.Devices,
-                contentDescription = null,
-                tint = trustColor(device.trustState),
-            )
-            Column(
-                modifier =
-                Modifier
-                    .weight(1f)
-                    .padding(start = AuroraSpacing.MD.dp),
-            ) {
-                Text(device.displayName.ifBlank { "Unnamed device" }, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "${device.platform.ifBlank { "Unknown platform" }} · ${device.id.take(12)}",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
-            Text(
-                trustLabel(device.trustState),
-                color = trustColor(device.trustState),
-                style = MaterialTheme.typography.labelMedium,
-            )
-        }
-
+        DeviceRowHeader(device)
         if (device.trustState == DeviceTrustState.PENDING) {
-            val safetyCode = device.safetyCode
+            DeviceRowSafetyCode(device)
+        }
+        DeviceRowActions(
+            device = device,
+            actionInFlight = actionInFlight,
+            onApprove = onApprove,
+            onRevoke = onRevoke,
+            onRename = onRename,
+        )
+    }
+}
+
+@Composable
+private fun DeviceRowHeader(device: DeviceRecord) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = if (device.trustState == DeviceTrustState.TRUSTED) Icons.Filled.CheckCircle else Icons.Filled.Devices,
+            contentDescription = null,
+            tint = trustColor(device.trustState),
+        )
+        Column(
+            modifier =
+            Modifier
+                .weight(1f)
+                .padding(start = AuroraSpacing.MD.dp),
+        ) {
+            Text(device.displayName.ifBlank { "Unnamed device" }, fontWeight = FontWeight.SemiBold)
             Text(
-                safetyCode ?: "Waiting for this device to publish a verified safety code.",
-                color =
-                if (device.hasVerifiedSafetyCode) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.error
-                },
+                "${device.platform.ifBlank { "Unknown platform" }} · ${device.id.take(12)}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
-                fontFamily = if (safetyCode != null) FontFamily.Monospace else FontFamily.Default,
+                fontFamily = FontFamily.Monospace,
             )
         }
+        Text(
+            trustLabel(device.trustState),
+            color = trustColor(device.trustState),
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (actionInFlight) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            } else {
-                onRename?.let {
-                    TextButton(
-                        onClick = it,
-                        modifier = Modifier.testTag("connectedDevices.rename"),
-                    ) {
-                        Text("Rename")
-                    }
+@Composable
+private fun DeviceRowSafetyCode(device: DeviceRecord) {
+    val safetyCode = device.safetyCode
+    Text(
+        safetyCode ?: "Waiting for this device to publish a verified safety code.",
+        color =
+        if (device.hasVerifiedSafetyCode) {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        } else {
+            MaterialTheme.colorScheme.error
+        },
+        style = MaterialTheme.typography.bodySmall,
+        fontFamily = if (safetyCode != null) FontFamily.Monospace else FontFamily.Default,
+    )
+}
+
+@Composable
+private fun DeviceRowActions(device: DeviceRecord, actionInFlight: Boolean, onApprove: (() -> Unit)?, onRevoke: (() -> Unit)?, onRename: (() -> Unit)?) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (actionInFlight) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+        } else {
+            onRename?.let {
+                TextButton(
+                    onClick = it,
+                    modifier = Modifier.testTag("connectedDevices.rename"),
+                ) {
+                    Text("Rename")
                 }
-                onApprove?.let {
-                    Button(
-                        onClick = it,
-                        enabled = device.hasVerifiedSafetyCode,
-                        modifier = Modifier.testTag("connectedDevices.approve.${device.id}"),
-                    ) {
-                        Text("Approve")
-                    }
+            }
+            onApprove?.let {
+                Button(
+                    onClick = it,
+                    enabled = device.hasVerifiedSafetyCode,
+                    modifier = Modifier.testTag("connectedDevices.approve.${device.id}"),
+                ) {
+                    Text("Approve")
                 }
-                onRevoke?.let {
-                    OutlinedButton(
-                        onClick = it,
-                        modifier = Modifier.testTag("connectedDevices.revoke.${device.id}"),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                    ) {
-                        Text("Revoke")
-                    }
+            }
+            onRevoke?.let {
+                OutlinedButton(
+                    onClick = it,
+                    modifier = Modifier.testTag("connectedDevices.revoke.${device.id}"),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) {
+                    Text("Revoke")
                 }
             }
         }

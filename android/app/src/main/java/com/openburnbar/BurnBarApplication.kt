@@ -117,6 +117,7 @@ class BurnBarApplication : Application() {
         private const val DEVICE_ID_PREF_KEY = "stable_device_id"
         private const val MEDIA_CONTROL_DIAL_TIMEOUT_MILLIS = 15_000L
         private const val LOG_NODE_ID_PREFIX_LENGTH = 12
+        private const val LOG_UID_PREFIX_LENGTH = 8
 
         @Volatile internal var mediaControlCoordinator: MediaControlStreamCoordinator? = null
 
@@ -302,7 +303,7 @@ class BurnBarApplication : Application() {
         val listener = FirebaseAuth.AuthStateListener { auth ->
             val uid = auth.currentUser?.uid
             if (!ControllerAuthStatePolicy.shouldReconcile(previousUid = controllerRouteAuthUid, nextUid = uid)) {
-                Log.i("BurnBar", "Mercury auth callback ignored for unchanged uid=${uid?.take(8) ?: "signed-out"}")
+                Log.i("BurnBar", "Mercury auth callback ignored for unchanged uid=${uid?.take(LOG_UID_PREFIX_LENGTH) ?: "signed-out"}")
                 return@AuthStateListener
             }
             val epoch = controllerAuthEpoch.incrementAndGet()

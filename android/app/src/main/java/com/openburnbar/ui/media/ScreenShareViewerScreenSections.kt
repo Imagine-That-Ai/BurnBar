@@ -2,6 +2,7 @@
 
 package com.openburnbar.ui.media
 
+import android.content.Context
 import android.graphics.Color as AndroidColor
 import android.text.Editable
 import android.text.InputType
@@ -868,8 +869,6 @@ private fun MirrorControlShelfScreenExtras(params: MirrorControlShelfParams) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (String) -> Unit, onKey: (String) -> Unit, onDismiss: () -> Unit) {
-    var captureState by remember { mutableStateOf(RemoteKeyboardCaptureState()) }
-    var hasFocused by remember { mutableStateOf(false) }
     var hasShownKeyboard by remember { mutableStateOf(false) }
     var editor by remember { mutableStateOf<EditText?>(null) }
     val currentOnText by rememberUpdatedState(onText)
@@ -905,72 +904,12 @@ internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (
 
     AndroidView(
         factory = { context ->
-            EditText(context).apply {
-                background = null
-                setTextColor(AndroidColor.TRANSPARENT)
-                setHintTextColor(AndroidColor.TRANSPARENT)
-                isCursorVisible = false
-                isClickable = false
-                isLongClickable = false
-                setTextIsSelectable(false)
-                isSingleLine = true
-                isFocusable = true
-                isFocusableInTouchMode = true
-                showSoftInputOnFocus = true
-                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-                imeOptions = EditorInfo.IME_ACTION_SEND or EditorInfo.IME_FLAG_NO_EXTRACT_UI
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
-                setPadding(0, 0, 0, 0)
-
-                var applyingRetainedText = false
-                addTextChangedListener(
-                    object : TextWatcher {
-                        override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) = Unit
-
-                        override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) = Unit
-
-                        override fun afterTextChanged(editable: Editable?) {
-                            if (applyingRetainedText) return
-
-                            val newText = editable?.toString().orEmpty()
-                            val change = remoteKeyboardCaptureChange(captureState, newText)
-                            captureState = change.nextState
-                            repeat(change.deletedCount.coerceAtMost(64)) {
-                                currentOnKey("delete")
-                            }
-                            dispatchRemoteKeyboardText(
-                                change.insertedText,
-                                onText = currentOnText,
-                                onKey = currentOnKey,
-                            )
-
-                            if (change.nextState.retainedText != newText) {
-                                applyingRetainedText = true
-                                setText(change.nextState.retainedText)
-                                setSelection(length())
-                                applyingRetainedText = false
-                            }
-                        }
-                    },
-                )
-                setOnEditorActionListener { _, actionId, event ->
-                    val isReturn =
-                        actionId == EditorInfo.IME_ACTION_SEND ||
-                            (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)
-                    if (isReturn) currentOnKey("return")
-                    isReturn
-                }
-                onFocusChangeListener =
-                    View.OnFocusChangeListener { _, isFocused ->
-                        if (isFocused) {
-                            hasFocused = true
-                        } else if (hasFocused) {
-                            currentOnDismiss()
-                        }
-                    }
-                editor = this
-            }
+            createRemoteKeyboardCaptureEditor(
+                context = context,
+                onText = { currentOnText(it) },
+                onKey = { currentOnKey(it) },
+                onDismiss = { currentOnDismiss() },
+            ).also { editor = it }
         },
         // Keep the native editor attached and focusable for Samsung IME
         // compatibility without placing a transparent 48dp hit target over
@@ -979,6 +918,80 @@ internal fun RemoteKeyboardCaptureField(modifier: Modifier = Modifier, onText: (
         modifier = modifier.size(1.dp),
     )
 }
+
+private fun createRemoteKeyboardCaptureEditor(
+    context: Context,
+    onText: (String) -> Unit,
+    onKey: (String) -> Unit,
+    onDismiss: () -> Unit,
+): EditText = EditText(context).apply {
+    background = null
+    setTextColor(AndroidColor.TRANSPARENT)
+    setHintTextColor(AndroidColor.TRANSPARENT)
+    isCursorVisible = false
+    isClickable = false
+    isLongClickable = false
+    setTextIsSelectable(false)
+    isSingleLine = true
+    isFocusable = true
+    isFocusableInTouchMode = true
+    showSoftInputOnFocus = true
+    inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+    imeOptions = EditorInfo.IME_ACTION_SEND or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+    setPadding(0, 0, 0, 0)
+    addTextChangedListener(remoteKeyboardCaptureWatcher(editor = this, onText = onText, onKey = onKey))
+    setOnEditorActionListener { _, actionId, event ->
+        val isReturn =
+            actionId == EditorInfo.IME_ACTION_SEND ||
+                (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)
+        if (isReturn) onKey("return")
+        isReturn
+    }
+    var hasFocused = false
+    onFocusChangeListener =
+        View.OnFocusChangeListener { _, isFocused ->
+            if (isFocused) {
+                hasFocused = true
+            } else if (hasFocused) {
+                onDismiss()
+            }
+        }
+}
+
+private fun remoteKeyboardCaptureWatcher(editor: EditText, onText: (String) -> Unit, onKey: (String) -> Unit): TextWatcher =
+    object : TextWatcher {
+        private var applyingRetainedText = false
+        private var captureState = RemoteKeyboardCaptureState()
+
+        override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) = Unit
+
+        override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) = Unit
+
+        override fun afterTextChanged(editable: Editable?) {
+            if (applyingRetainedText) return
+
+            val newText = editable?.toString().orEmpty()
+            val change = remoteKeyboardCaptureChange(captureState, newText)
+            captureState = change.nextState
+            repeat(change.deletedCount.coerceAtMost(64)) {
+                onKey("delete")
+            }
+            dispatchRemoteKeyboardText(
+                change.insertedText,
+                onText = onText,
+                onKey = onKey,
+            )
+
+            if (change.nextState.retainedText != newText) {
+                applyingRetainedText = true
+                editor.setText(change.nextState.retainedText)
+                editor.setSelection(editor.length())
+                applyingRetainedText = false
+            }
+        }
+    }
 
 @Composable
 private fun RemoteKeyboardOpenEffects(editor: EditText?, onSystemHide: () -> Unit) {

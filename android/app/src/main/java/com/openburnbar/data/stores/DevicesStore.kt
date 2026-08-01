@@ -125,41 +125,7 @@ class DevicesStore(
                         val data = doc.data ?: return@mapNotNull null
                         generalDeviceRecord(doc.id, data, currentPresenceDeviceID)
                     }
-                val escrowDevices =
-                    try {
-                        val userRef = db.collection("users").document(uid)
-                        val escrowSnapshot = userRef
-                            .collection("escrow_devices")
-                            .get().await()
-                        val escrowPublicKeys =
-                            runCatching {
-                                userRef.collection("escrow_public_keys")
-                                    .get().await()
-                                    .documents
-                                    .associate { document ->
-                                        document.id to (document.getString("publicKeyData") ?: "")
-                                    }
-                            }.getOrElse { error ->
-                                Log.w("BurnBar", "Escrow public-key load failed; approval stays disabled", error)
-                                emptyMap()
-                            }
-                        escrowSnapshot.documents.mapNotNull { doc ->
-                            val data = doc.data ?: return@mapNotNull null
-                            val keyVersion = (data["keyVersion"] as? Number)?.toInt()
-                            val publicKeyData =
-                                keyVersion?.let { escrowPublicKeys["${doc.id}_$it"] }
-                                    ?.takeIf { it.isNotBlank() }
-                            escrowDeviceRecord(
-                                documentID = doc.id,
-                                data = data,
-                                currentEscrowDeviceID = currentEscrowDeviceID,
-                                publicKeyData = publicKeyData,
-                            )
-                        }
-                    } catch (e: FirebaseException) {
-                        Log.w("BurnBar", "Escrow devices load failed; showing presence devices as pending", e)
-                        emptyList()
-                    }
+                val escrowDevices = loadEscrowDevices(uid = uid, currentEscrowDeviceID = currentEscrowDeviceID)
                 rawDevices = mergeDeviceRecords(generalDevices, escrowDevices)
                 _devices.value = deduplicated(rawDevices)
                 // RR-5 pickup-on-launch: finish any pending Cloud Vault rotation this device is a
@@ -178,6 +144,41 @@ class DevicesStore(
     }
 
     private var pendingRotationPickupDone = false
+
+    private suspend fun loadEscrowDevices(uid: String, currentEscrowDeviceID: String?): List<DeviceRecord> = try {
+        val userRef = db.collection("users").document(uid)
+        val escrowSnapshot = userRef
+            .collection("escrow_devices")
+            .get().await()
+        val escrowPublicKeys =
+            runCatching {
+                userRef.collection("escrow_public_keys")
+                    .get().await()
+                    .documents
+                    .associate { document ->
+                        document.id to (document.getString("publicKeyData") ?: "")
+                    }
+            }.getOrElse { error ->
+                Log.w("BurnBar", "Escrow public-key load failed; approval stays disabled", error)
+                emptyMap()
+            }
+        escrowSnapshot.documents.mapNotNull { doc ->
+            val data = doc.data ?: return@mapNotNull null
+            val keyVersion = (data["keyVersion"] as? Number)?.toInt()
+            val publicKeyData =
+                keyVersion?.let { escrowPublicKeys["${doc.id}_$it"] }
+                    ?.takeIf { it.isNotBlank() }
+            escrowDeviceRecord(
+                documentID = doc.id,
+                data = data,
+                currentEscrowDeviceID = currentEscrowDeviceID,
+                publicKeyData = publicKeyData,
+            )
+        }
+    } catch (e: FirebaseException) {
+        Log.w("BurnBar", "Escrow devices load failed; showing presence devices as pending", e)
+        emptyList()
+    }
 
     fun bootstrapApproveSelf() {
         viewModelScope.launch {
@@ -212,7 +213,11 @@ class DevicesStore(
                     targetDeviceId = device.escrowID ?: device.id,
                 )
                 load()
-            } catch (error: Exception) {
+            } catch (error: FirebaseException) {
+                _lastError.value = error.message
+            } catch (error: IllegalArgumentException) {
+                _lastError.value = error.message
+            } catch (error: IllegalStateException) {
                 _lastError.value = error.message
             } finally {
                 _actionInFlightFor.value = null

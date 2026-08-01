@@ -247,15 +247,16 @@ internal suspend fun executeMirrorRequest(input: PairedMacControlsMirrorRequestI
         PairedMacControlsMirrorRequestResult(
             coordinator = input.coordinator,
             pendingRequestID = null,
-            statusMessage =
-            when (error) {
-                is TimeoutCancellationException ->
-                    "Mercury did not connect within 20 seconds. Open BurnBar on the Mac, then try again."
-                else ->
-                    "Mercury unavailable: ${error.localizedMessage ?: error.javaClass.simpleName}"
-            },
+            statusMessage = mirrorRequestFailureMessage(error),
         )
     }
+}
+
+internal fun mirrorRequestFailureMessage(error: Throwable): String = when (error) {
+    is TimeoutCancellationException ->
+        "Mercury did not connect within 20 seconds. Open BurnBar on the Mac, then try again."
+    else ->
+        "Mercury unavailable: ${error.localizedMessage ?: error.javaClass.simpleName}"
 }
 
 internal suspend fun requestMirrorAfterPeerReady(
