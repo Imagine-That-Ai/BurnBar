@@ -10,9 +10,10 @@
   },
   "channels": [
     {
-      "name": "projects/<redacted-project>/notificationChannels/5012565067290551244",
+      "name": "<redacted-notification-channel>",
+      "channelFingerprint": "sha256:1e44cc96bfcd34f28ff2cbf48044e1cbe028f356a315787d95d7070259085819",
       "type": "email",
-      "target": "alberto8793@gmail.com",
+      "target": "<redacted-alert-target>",
       "policyDisplayNames": [
         "OpenBurnBar Callable error spike",
         "OpenBurnBar Rollup rebuild breaker open",
@@ -38,8 +39,8 @@
       ],
       "deliveryConfirmed": true,
       "deliveredAt": "2026-08-01T22:30:26.959Z",
-      "verifiedBy": "albertonunez",
-      "evidenceUri": "https://console.cloud.google.com/monitoring/alerting/alerts/0.oaxqdglgjzt6?channelType=mail&project=burnbar"
+      "verifiedBy": "<redacted-operator>",
+      "evidenceUri": "<redacted-evidence-url>"
     }
   ]
 }

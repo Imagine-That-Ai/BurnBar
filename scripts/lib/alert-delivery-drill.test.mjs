@@ -2,13 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  REDACTED_CHANNEL_NAME_PLACEHOLDER,
+  REDACTED_CHANNEL_TARGET_PLACEHOLDER,
+  REDACTED_EVIDENCE_URL_PLACEHOLDER,
+  REDACTED_OPERATOR_PLACEHOLDER,
   REDACTED_PROJECT_PLACEHOLDER,
   alertDeliveryChannelDrift,
+  alertDeliveryChannelFingerprint,
   alertDeliveryRunId,
   assertAlertDeliveryRunId,
   buildAlertDeliveryEvidence,
   buildPendingAlertDeliveryTrigger,
-  redactedAlertChannelName,
+  isAlertDeliveryChannelFingerprint,
 } from "./alert-delivery-drill.mjs";
 
 const channel = {
@@ -17,7 +22,8 @@ const channel = {
   target: "ops@burnbar.ai",
   policyDisplayNames: ["OpenBurnBar alert-delivery drill canary"],
 };
-const redactedChannelName = `projects/${REDACTED_PROJECT_PLACEHOLDER}/notificationChannels/email`;
+const channelFingerprint =
+  "sha256:a5bf8bcf8c1e0be32e3adc18bb620c6eb22a699f494baff384a0c792eb0ac194";
 
 test("alert delivery confirmation preserves the triggered canary run id", () => {
   const triggeredAt = "2026-06-17T15:00:00.000Z";
@@ -41,28 +47,47 @@ test("alert delivery confirmation preserves the triggered canary run id", () => 
   assert.equal(evidence.canary.triggeredAt, triggeredAt);
   assert.equal(evidence.canary.triggerSkipped, false);
   assert.equal(evidence.channels[0].deliveryConfirmed, true);
-  assert.equal(evidence.channels[0].verifiedBy, "operator");
-  assert.equal(evidence.channels[0].evidenceUri, "https://example.test/proof");
+  assert.equal(evidence.channels[0].verifiedBy, REDACTED_OPERATOR_PLACEHOLDER);
+  assert.equal(evidence.channels[0].evidenceUri, REDACTED_EVIDENCE_URL_PLACEHOLDER);
 });
 
-test("alert delivery evidence redacts the project id and channel resource paths", () => {
+test("alert delivery evidence redacts public identity fields and emits a stable fingerprint", () => {
   const pending = buildPendingAlertDeliveryTrigger({
     project: "burnbar",
     runId: "alert-delivery-drill-2026-06-17T15-00-00-000Z",
     triggeredAt: "2026-06-17T15:00:00.000Z",
     channels: [channel],
   });
-  assert.equal(pending.project, REDACTED_PROJECT_PLACEHOLDER);
-  assert.equal(pending.channels[0].name, redactedChannelName);
+  assert.equal(pending.project, "burnbar");
+  assert.equal(pending.channels[0].name, channel.name);
+  assert.equal(pending.channels[0].target, channel.target);
 
-  const evidence = buildAlertDeliveryEvidence({ pending, operator: "operator" });
+  const evidence = buildAlertDeliveryEvidence({
+    pending,
+    operator: "operator",
+    evidenceUrl: "https://example.test/proof",
+  });
   assert.equal(evidence.project, REDACTED_PROJECT_PLACEHOLDER);
-  assert.equal(evidence.channels[0].name, redactedChannelName);
-
-  // Redaction is idempotent so gate-side normalization can run on both raw
-  // live names and already-redacted committed evidence.
-  assert.equal(redactedAlertChannelName(channel.name), redactedChannelName);
-  assert.equal(redactedAlertChannelName(redactedChannelName), redactedChannelName);
+  assert.equal(evidence.channels[0].name, REDACTED_CHANNEL_NAME_PLACEHOLDER);
+  assert.equal(evidence.channels[0].target, REDACTED_CHANNEL_TARGET_PLACEHOLDER);
+  assert.equal(evidence.channels[0].verifiedBy, REDACTED_OPERATOR_PLACEHOLDER);
+  assert.equal(evidence.channels[0].evidenceUri, REDACTED_EVIDENCE_URL_PLACEHOLDER);
+  assert.equal(evidence.channels[0].channelFingerprint, channelFingerprint);
+  assert.equal(alertDeliveryChannelFingerprint(channel), channelFingerprint);
+  assert.equal(
+    alertDeliveryChannelFingerprint({
+      ...channel,
+      type: " EMAIL ",
+      target: "OPS@BURNBAR.AI",
+    }),
+    channelFingerprint,
+  );
+  assert.equal(isAlertDeliveryChannelFingerprint(channelFingerprint), true);
+  assert.equal(isAlertDeliveryChannelFingerprint("sha256:not-a-digest"), false);
+  assert.notEqual(
+    alertDeliveryChannelFingerprint({ ...channel, target: "ops2@burnbar.ai" }),
+    channelFingerprint,
+  );
 });
 
 test("alert delivery evidence refuses skipped triggers and blank operators", () => {
@@ -142,8 +167,8 @@ test("alert delivery pending channel drift catches stale and missing channels", 
     alertDeliveryChannelDrift([channel], [{ ...channel, name: "projects/burnbar/notificationChannels/sms" }]),
     {
       ok: false,
-      missing: [`projects/${REDACTED_PROJECT_PLACEHOLDER}/notificationChannels/sms`],
-      stale: [redactedChannelName],
+      missing: ["projects/burnbar/notificationChannels/sms"],
+      stale: [channel.name],
       changed: [],
     },
   );
@@ -153,7 +178,7 @@ test("alert delivery pending channel drift catches stale and missing channels", 
       ok: false,
       missing: [],
       stale: [],
-      changed: [redactedChannelName],
+      changed: [channel.name],
     },
   );
 });

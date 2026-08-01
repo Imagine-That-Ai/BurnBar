@@ -6,21 +6,37 @@
  * commercial launch gate cannot pass on a confirmation for a different canary.
  */
 
+import { createHash } from "node:crypto";
+
 export const ALERT_DRILL_LOG_NAME = "openburnbar-alert-delivery-drill";
 export const ALERT_DRILL_EVENT = "alert_delivery_drill";
 export const REDACTED_PROJECT_PLACEHOLDER = "<redacted-project>";
+export const REDACTED_CHANNEL_NAME_PLACEHOLDER = "<redacted-notification-channel>";
+export const REDACTED_CHANNEL_TARGET_PLACEHOLDER = "<redacted-alert-target>";
+export const REDACTED_OPERATOR_PLACEHOLDER = "<redacted-operator>";
+export const REDACTED_EVIDENCE_URL_PLACEHOLDER = "<redacted-evidence-url>";
 const RUN_ID_PATTERN = /^alert-delivery-drill-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/u;
+const CHANNEL_FINGERPRINT_PATTERN = /^sha256:[0-9a-f]{64}$/u;
 
 /**
- * Canonical redaction for GCP notification-channel resource names. Committed
- * launch evidence must not carry the raw project segment (the public evidence
- * redaction guard rejects `projects/<id>/notificationChannels/...`), so both
- * the evidence writers and the launch-gate matcher normalize names through
- * this helper. Idempotent: already-redacted names pass through unchanged.
+ * Stable, opaque join key between live GCP channel inventory and publishable
+ * delivery evidence. The fixed-key JSON serialization is part of the evidence
+ * contract; changing it intentionally requires updating the golden tests and
+ * regenerating evidence.
  */
-export function redactedAlertChannelName(name) {
-  if (typeof name !== "string") return name;
-  return name.replace(/^projects\/[^/<][^/]*\//u, `projects/${REDACTED_PROJECT_PLACEHOLDER}/`);
+export function alertDeliveryChannelFingerprint(channel) {
+  const canonical = {
+    name: normalizedChannelName(channel),
+    type: normalizedChannelType(channel),
+    target: normalizedChannelTarget(channel),
+  };
+  return `sha256:${createHash("sha256")
+    .update(JSON.stringify(canonical), "utf8")
+    .digest("hex")}`;
+}
+
+export function isAlertDeliveryChannelFingerprint(value) {
+  return typeof value === "string" && CHANNEL_FINGERPRINT_PATTERN.test(value);
 }
 
 export function alertDeliveryRunId(triggeredAt) {
@@ -45,8 +61,8 @@ function normalizedChannels(channels) {
   }
   return channels.map((channel) => ({
     name: normalizedChannelName(channel),
-    type: channel.type,
-    target: channel.target,
+    type: normalizedChannelType(channel),
+    target: normalizedChannelTarget(channel),
     policyDisplayNames: Array.isArray(channel.policyDisplayNames)
       ? [...channel.policyDisplayNames]
       : [],
@@ -57,7 +73,22 @@ function normalizedChannelName(channel) {
   if (typeof channel?.name !== "string" || channel.name.trim() === "") {
     throw new Error("channel.name is required");
   }
-  return redactedAlertChannelName(channel.name);
+  return channel.name.trim();
+}
+
+function normalizedChannelType(channel) {
+  if (typeof channel?.type !== "string" || channel.type.trim() === "") {
+    throw new Error("channel.type is required");
+  }
+  return channel.type.trim().toLowerCase();
+}
+
+function normalizedChannelTarget(channel) {
+  const target = channel?.target || channel?.emailAddress;
+  if (typeof target !== "string" || target.trim() === "") {
+    throw new Error("channel.target is required");
+  }
+  return target.trim().toLowerCase();
 }
 
 export function buildPendingAlertDeliveryTrigger({
@@ -82,8 +113,9 @@ export function buildPendingAlertDeliveryTrigger({
   return {
     schemaVersion: 1,
     generatedAt: recordedAt,
-    // Committed evidence is public; the concrete project id stays out of it.
-    project: REDACTED_PROJECT_PLACEHOLDER,
+    // Pending evidence is local and ignored so drift can compare the exact
+    // channel identity before the public artifact is redacted.
+    project: project.trim(),
     runId,
     canary: {
       logName: ALERT_DRILL_LOG_NAME,
@@ -131,8 +163,8 @@ export function buildAlertDeliveryEvidence({
   if (pending.canary?.triggerSkipped === true) {
     throw new Error("cannot confirm delivery for a skipped canary trigger");
   }
-  const verifiedBy = typeof operator === "string" ? operator.trim() : "";
-  if (verifiedBy === "") {
+  const operatorName = typeof operator === "string" ? operator.trim() : "";
+  if (operatorName === "") {
     throw new Error("operator is required");
   }
   const channels = normalizedChannels(pending.channels);
@@ -152,11 +184,18 @@ export function buildAlertDeliveryEvidence({
       triggerSkipped: false,
     },
     channels: channels.map((channel) => ({
-      ...channel,
+      name: REDACTED_CHANNEL_NAME_PLACEHOLDER,
+      channelFingerprint: alertDeliveryChannelFingerprint(channel),
+      type: channel.type,
+      target: REDACTED_CHANNEL_TARGET_PLACEHOLDER,
+      policyDisplayNames: channel.policyDisplayNames,
       deliveryConfirmed: true,
       deliveredAt,
-      verifiedBy,
-      evidenceUri: evidenceUrl || undefined,
+      verifiedBy: REDACTED_OPERATOR_PLACEHOLDER,
+      evidenceUri:
+        typeof evidenceUrl === "string" && evidenceUrl.trim() !== ""
+          ? REDACTED_EVIDENCE_URL_PLACEHOLDER
+          : undefined,
     })),
   };
 }

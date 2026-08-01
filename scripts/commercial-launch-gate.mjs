@@ -23,7 +23,10 @@ import {
   evaluateFirebaseAppCheckEnforcement,
   evaluateFirebaseAppCheckServiceSet,
 } from "./lib/evaluate-firebase-app-check-enforcement.mjs";
-import { redactedAlertChannelName } from "./lib/alert-delivery-drill.mjs";
+import {
+  alertDeliveryChannelFingerprint,
+  isAlertDeliveryChannelFingerprint,
+} from "./lib/alert-delivery-drill.mjs";
 import {
   VERIFIABLE_CHANNEL_TYPES,
   checkBillingAlerts,
@@ -1397,18 +1400,43 @@ export function evaluateAlertDeliverabilityEvidence(evidence, requiredChannels, 
     failures.push("no verifiable alert notification channels were present in ops/billing alert checks");
   }
 
-  // Committed evidence stores redaction-canonical channel names (no raw
-  // project segment), while required channels come from live GCP with raw
-  // names. Normalize both sides through the same redaction before matching.
-  const evidenceByName = new Map(
-    channels
-      .filter((channel) => typeof channel?.name === "string")
-      .map((channel) => [redactedAlertChannelName(channel.name), channel]),
-  );
+  // Published evidence carries no raw project, channel, or endpoint identity.
+  // Join it to the live GCP inventory through a deterministic SHA-256
+  // fingerprint instead. Exact raw-name matching remains only as a compatibility
+  // path for older local/private evidence.
+  const evidenceByFingerprint = new Map();
+  const legacyEvidenceByRawName = new Map();
+  for (const channel of channels) {
+    if (channel?.channelFingerprint !== undefined) {
+      if (!isAlertDeliveryChannelFingerprint(channel.channelFingerprint)) {
+        failures.push("evidence channelFingerprint is missing or invalid");
+      } else if (evidenceByFingerprint.has(channel.channelFingerprint)) {
+        failures.push(`duplicate evidence channelFingerprint: ${channel.channelFingerprint}`);
+      } else {
+        evidenceByFingerprint.set(channel.channelFingerprint, channel);
+      }
+    }
+    if (
+      typeof channel?.name === "string" &&
+      channel.name.trim() !== "" &&
+      !channel.name.includes("<redacted")
+    ) {
+      legacyEvidenceByRawName.set(channel.name, channel);
+    }
+  }
+
   const checkedChannels = (requiredChannels || []).map((required) => {
-    const channel = evidenceByName.get(redactedAlertChannelName(required.name));
-    const deliveredAt = parseEvidenceTime(channel?.deliveredAt || channel?.confirmedAt);
     const problems = [];
+    let channelFingerprint = null;
+    try {
+      channelFingerprint = alertDeliveryChannelFingerprint(required);
+    } catch (error) {
+      problems.push(`cannot fingerprint required channel: ${error.message}`);
+    }
+    const channel =
+      (channelFingerprint && evidenceByFingerprint.get(channelFingerprint)) ||
+      legacyEvidenceByRawName.get(required.name);
+    const deliveredAt = parseEvidenceTime(channel?.deliveredAt || channel?.confirmedAt);
     if (!channel) {
       problems.push("missing from evidence");
     } else {
@@ -1427,6 +1455,7 @@ export function evaluateAlertDeliverabilityEvidence(evidence, requiredChannels, 
     failures.push(...problems.map((problem) => `${required.name}: ${problem}`));
     return {
       ...required,
+      channelFingerprint,
       deliveredAt: deliveredAt?.toISOString() || null,
       verifiedBy: channel?.verifiedBy || null,
       ok: problems.length === 0,
