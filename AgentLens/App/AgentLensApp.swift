@@ -151,6 +151,7 @@ enum OpenBurnBarRuntime {
     static func beginApplicationHostActivityIfNeeded() {
         guard shouldDisableAutomaticTerminationForApplication,
               applicationHostActivity == nil else { return }
+        // cov:ignore-start -- process-lifetime NSProcessInfo activity: the guard above keeps this from running under the XCTest stub scene, so these lines only execute in a real app process; the gating decision is unit-tested via shouldDisableAutomaticTerminationForApplication(shouldUseTestStubScene:)
         let processInfo = ProcessInfo.processInfo
         processInfo.disableSuddenTermination()
         processInfo.disableAutomaticTermination("OpenBurnBar background services are active")
@@ -158,6 +159,7 @@ enum OpenBurnBarRuntime {
             options: [.automaticTerminationDisabled, .suddenTerminationDisabled],
             reason: "OpenBurnBar background services are active"
         )
+        // cov:ignore-end
     }
 
     /// Protects the XCTest runner-connect window by bypassing the live menu-bar scene.

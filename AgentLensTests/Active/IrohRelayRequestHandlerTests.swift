@@ -69,6 +69,23 @@ final class IrohRelayRequestHandlerTests: XCTestCase {
         )
     }
 
+    func test_irohPairingKeyStoreError_descriptionsNameTheFailureAndPreserveIdentity() {
+        XCTAssertEqual(
+            IrohPairingKeyStoreError.keychainAccessDenied(errSecInteractionNotAllowed).errorDescription,
+            "OpenBurnBar could not access its Mercury pairing identity in the macOS Keychain "
+                + "(\(errSecInteractionNotAllowed)). Unlock this Mac and try again; the identity was not rotated."
+        )
+        XCTAssertEqual(
+            IrohPairingKeyStoreError.keychainStatus(errSecItemNotFound).errorDescription,
+            "OpenBurnBar could not read its Mercury pairing identity from the macOS Keychain "
+                + "(\(errSecItemNotFound))."
+        )
+        XCTAssertEqual(
+            IrohPairingKeyStoreError.invalidKey.errorDescription,
+            "OpenBurnBar's Mercury pairing identity in the macOS Keychain is invalid. The identity was not rotated."
+        )
+    }
+
     func test_usesBurnBarGatewayForOpenAICompatibleRelaySurface() {
         XCTAssertTrue(IrohRelayRequestHandler.usesBurnBarGateway(.models))
         XCTAssertTrue(IrohRelayRequestHandler.usesBurnBarGateway(.chatCompletions))

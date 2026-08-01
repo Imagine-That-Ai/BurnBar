@@ -759,12 +759,14 @@ enum ComputerUseSecurityCallableClient {
     ) async throws {
         _ = try requireSignedInUser()
         try await bindAppCheckAttestation()
+        // cov:ignore-start -- live Firebase nonce mint; the binding-conflict recovery decision is unit-tested with injected closures in ComputerUseSecurityCallableClientTests
         let nonce: String
         do {
             nonce = try await issueHighRiskActionNonce()
         } catch {
             nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
         }
+        // cov:ignore-end
         let result = try await functions.httpsCallable("publishIrohPairingPublicKey").call([
             "deviceId": deviceId,
             "roleId": roleId,
@@ -779,12 +781,14 @@ enum ComputerUseSecurityCallableClient {
     static func publishIrohPairingRecord(deviceId: String, record: IrohPairingRecord) async throws {
         _ = try requireSignedInUser()
         try await bindAppCheckAttestation()
+        // cov:ignore-start -- live Firebase nonce mint; the binding-conflict recovery decision is unit-tested with injected closures in ComputerUseSecurityCallableClientTests
         let nonce: String
         do {
             nonce = try await issueHighRiskActionNonce()
         } catch {
             nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
         }
+        // cov:ignore-end
         var payload: [String: Any] = [
             "deviceId": deviceId,
             "connectionId": record.connectionId,
@@ -824,6 +828,7 @@ enum ComputerUseSecurityCallableClient {
         controllerDeviceId: String,
         controllerPeerNodeId: String
     ) async throws {
+        // cov:ignore-start -- live Firebase App Check bind, nonce mint, and callable invocation; the binding-conflict recovery decision is unit-tested with injected closures in ComputerUseSecurityCallableClientTests, and the router-side grant wiring is covered by MercuryRouterTests
         _ = try requireSignedInUser()
         try await bindAppCheckAttestation()
         let nonce: String
@@ -843,6 +848,7 @@ enum ComputerUseSecurityCallableClient {
               dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Phone-control enrollment approval failed.")
         }
+        // cov:ignore-end
     }
 
     static func resolveActiveIrohControllerRoutes(

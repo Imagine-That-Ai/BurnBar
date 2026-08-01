@@ -855,6 +855,32 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(frames.last?.media?.mirrorAck?.decision, .accepted)
     }
 
+    func testAcceptMirrorSurfacesEnrollmentGrantFailureAndStillAcceptsMirror() async {
+        struct EnrollmentGrantError: LocalizedError {
+            var errorDescription: String? { "grant rejected" }
+        }
+        let (router, sink) = makeRouter(
+            startScreenShare: { _, _, _, _, _, _, _, _ in },
+            phoneControlEnrollmentGrantIssuer: { _, _, _ in
+                throw EnrollmentGrantError()
+            }
+        )
+
+        await handleMirrorFrame(mirrorRequestFrame(), router: router, sink: sink)
+        guard let pending = router.pendingRequest else {
+            XCTFail("expected pending request")
+            return
+        }
+        await router.acceptMirror(pending)
+
+        XCTAssertEqual(
+            router.lastError,
+            "Mirror accepted, but phone control still needs device approval: grant rejected"
+        )
+        let frames = await sink.frames
+        XCTAssertEqual(frames.last?.media?.mirrorAck?.decision, .accepted)
+    }
+
     func testDeclineEmitsDeniedAckAndEntersCooldown() async {
         let (router, sink) = makeRouter(cooldownSeconds: 5)
         await handleMirrorFrame(mirrorRequestFrame(), router: router, sink: sink)
