@@ -86,15 +86,21 @@ final class BudgetForecastMattersTests: XCTestCase {
     }
 
     func test_seededLedger_computesRealSpendAndStaysAvailable() async throws {
-        let now = Date()
+        // Pin the reference to mid-month noon in the same calendar the forecast uses.
+        // A bare `Date()` flaked here: a run in the first two hours of a month put the
+        // seeded rows (1-2 hours earlier) in the PREVIOUS month, outside the monthly
+        // window, so the summed spend read back as a legitimate 0.
+        let reference = try XCTUnwrap(
+            Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 15, hour: 12))
+        )
         let queue = try await makeQueueWithLedger(rows: [
-            (cost: 30, startTime: now.addingTimeInterval(-3_600)),
-            (cost: 12, startTime: now.addingTimeInterval(-7_200))
+            (cost: 30, startTime: reference.addingTimeInterval(-3_600)),
+            (cost: 12, startTime: reference.addingTimeInterval(-7_200))
         ])
         let forecast = BudgetForecast(dbQueue: queue)
         let rule = makeRule(amountUSD: 100, period: .month)
 
-        let projection = await forecast.forecast(forRule: rule, reference: now)
+        let projection = await forecast.forecast(forRule: rule, reference: reference)
 
         XCTAssertFalse(projection.dataUnavailable)
         XCTAssertEqual(projection.currentSpend, 42, accuracy: 0.0001, "spend is summed from the readable ledger")

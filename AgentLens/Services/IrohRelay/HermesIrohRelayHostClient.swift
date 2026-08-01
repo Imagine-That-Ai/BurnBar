@@ -190,6 +190,55 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         return authenticatedUID != readyUID
     }
 
+    /// A bounded, non-PII rendering of a transport/backend failure's own
+    /// message — the piece that actually names *why* the iroh endpoint refused
+    /// to start (bind refused, relay unreachable, no home relay, ...).
+    ///
+    /// `publicErrorClass` only yields `domain#code`, which for a Swift enum
+    /// collapses every variant to the same token and hides the payload. These
+    /// two error types are ours: their associated values are messages produced
+    /// by our own Rust/transport layer, never user content or credentials. Any
+    /// other error falls back to the class token so an unexpected type can't
+    /// leak a `localizedDescription` that might carry a path or identifier.
+    ///
+    /// The result is truncated and stripped of characters that would break log
+    /// scanning, mirroring `AppLogger.sanitizedDiagnosticToken`'s posture.
+    private nonisolated static func publicErrorDetail(_ error: Error) -> String {
+        let raw: String
+        switch error {
+        case let transportError as IrohRelayTransportError:
+            switch transportError {
+            case .nodeIdUnreachable(let message),
+                 .streamRejected(let message),
+                 .decodeFailed(let message):
+                raw = message
+            case .backendUnavailable, .endpointNotReady, .protocolMismatch, .timedOut, .shutdown:
+                raw = String(describing: transportError)
+            }
+        case let backendError as IrohBackendError:
+            switch backendError {
+            case .connectFailed(let message),
+                 .streamFailed(let message),
+                 .acceptFailed(let message),
+                 .shutdownFailed(let message),
+                 .runtimeFailed(let message):
+                raw = message
+            case .notInitialized, .invalidSecretKey, .invalidNodeId:
+                raw = String(describing: backendError)
+            }
+        default:
+            return publicErrorClass(error)
+        }
+
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: " ._:/#,()-"))
+        var output = ""
+        for scalar in raw.unicodeScalars {
+            if output.count >= 240 { break }
+            output.append(allowed.contains(scalar) ? Character(scalar) : "_")
+        }
+        return output.isEmpty ? publicErrorClass(error) : output
+    }
+
     // nonisolated: a pure error-classification helper (no actor state) used from
     // both isolated and nonisolated async retry/accept paths.
     private nonisolated static func publicErrorClass(_ error: Error) -> String {
@@ -507,7 +556,35 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             await lifecycleGate.release()
             return isCurrentRuntimeOwner(owner) && relayRuntimeHealthy
         } catch {
-            AppLogger.network.silentFailure("hermes_iroh_relay_start_failed", error: error)
+            // A permanent host-start outage takes down every Mercury surface
+            // (mirror, calls, file transfer) while the Mac still publishes
+            // `status: online` from its healthy chat gateway, so this log line
+            // is the only place the real cause is ever stated.
+            //
+            // `silentFailure` alone is not enough: it emits errorType/
+            // errorDomain/errorCode as *metadata*, and `logMetadata` hashes
+            // every metadata value (`privacy: .private(mask: .hash)`). The
+            // 2026-07-28 investigation therefore saw the event fire on a loop
+            // with all four fields masked, and had to bisect the whole `do`
+            // block by hand to localize the throw.
+            //
+            // Emit the diagnosis in the event string instead, which OSLog
+            // renders `.public` — matching `hermes_iroh_relay_accept_peer_closed`
+            // below. `publicErrorClass` yields a sanitized `domain#code` token
+            // (no user data), and `stage` distinguishes an endpoint-bootstrap
+            // failure from a post-publish one, which is exactly the split that
+            // was expensive to recover by hand.
+            let stage = pairingPublicationAttempted ? "post_pairing_publish" : "endpoint_bootstrap"
+            AppLogger.network.error(
+                "hermes_iroh_relay_start_failed connectionID=\(connectionID) stage=\(stage) errorClass=\(Self.publicErrorClass(error)) hostedRelayConfigured=\(HermesIrohHostedRelayConfig.currentURL() != nil) detail=\(Self.publicErrorDetail(error))"
+            )
+            // Keep the structured/Sentry breadcrumb too — the line above is for
+            // a human reading `log show`, this one keeps crash-reporter parity.
+            AppLogger.network.silentFailure(
+                "hermes_iroh_relay_start_failed",
+                error: error,
+                context: ["stage": stage]
+            )
             if let newTransport {
                 await newTransport.shutdown()
             }
@@ -1405,6 +1482,30 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 relayURLProvider: {
                     HermesIrohHostedRelayConfig.currentURL()
                 }
+            )
+        }
+        // No native iroh module in this build. Every Mercury surface (mirror,
+        // calls, file transfer) is dead for the life of the process — but the
+        // Mac still publishes `status: online` from its healthy chat gateway,
+        // so nothing downstream looks broken. That is exactly how a build
+        // shipped on 2026-07-28 with `canImport(OpenBurnBarIrohFFI)` false:
+        // it degraded silently and the only symptom was a Mercury tile that
+        // never appeared, eight days later.
+        //
+        // Say so once, loudly, at the point of degradation. `assertionFailure`
+        // stops a dev/QA build immediately; release builds get an error-level
+        // log that names the cause instead of the downstream `backendUnavailable`
+        // throw, which reads like a runtime fault rather than a packaging one.
+        AppLogger.network.error(
+            "hermes_iroh_native_backend_missing detail=OpenBurnBarIrohFFI_not_linked_Mercury_disabled_check_Vendor_OpenBurnBarIroh.xcframework"
+        )
+        // The unit suite exercises this exact path with an injected nil
+        // factory (HermesIrohRelayHostClientMattersTests) to pin the graceful
+        // `.backendUnavailable` contract, so the trap must not fire under
+        // XCTest — only in a real dev/QA app launch.
+        if !OpenBurnBarRuntime.isRunningTests {
+            assertionFailure(
+                "Hermes iroh host has no native backend: OpenBurnBarIrohFFI is not linked. Mercury mirror/calls/file-transfer are disabled for this whole process. Build/link Vendor/OpenBurnBarIroh.xcframework."
             )
         }
         return UnavailableIrohRelayTransport()

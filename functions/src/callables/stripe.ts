@@ -9,7 +9,7 @@ import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { logError, wrapCallableHandler } from "../logging.js";
-import { externalApiWithResilience, stripeWithResilience } from "../resilienceHelpers.js";
+import { externalApiWithResilience, googlePlayConsumeWithResilience, stripeWithResilience } from "../resilienceHelpers.js";
 import {
   BURNBAR_PRO_ENTITLEMENT_ID,
   BURNBAR_PRO_MAX_ENTITLEMENT_ID,
@@ -560,15 +560,42 @@ export const verifyGooglePlayCloudProTopUp = onCall(
         externalPaymentID: tokenHash,
       });
       let consumed = false;
+      let consumptionConfirmedAfterError = false;
       if (consumptionState !== 1) {
-        await externalApiWithResilience("googleplay.products.consume", () =>
-          androidpublisher.purchases.products.consume({
-            packageName: cfg.googlePlayPackageName,
-            productId: productID,
-            token: purchaseToken,
-          }),
-        );
-        consumed = true;
+        try {
+          await googlePlayConsumeWithResilience(() =>
+            androidpublisher.purchases.products.consume({
+              packageName: cfg.googlePlayPackageName,
+              productId: productID,
+              token: purchaseToken,
+            }),
+          );
+          consumed = true;
+        } catch (consumeError) {
+          // Two verification requests can both observe consumptionState=0,
+          // then race after the Firestore credit transaction. Google Play may
+          // accept the first consume and reject the second even though the
+          // purchase is now safely consumed. A timeout can produce the same
+          // ambiguity. Re-read Play's authoritative state before surfacing an
+          // error; only treat the call as successful when Play confirms the
+          // exact token has transitioned to consumed.
+          const refreshedResponse = await externalApiWithResilience("googleplay.products.get.after_consume", () =>
+            androidpublisher.purchases.products.get({
+              packageName: cfg.googlePlayPackageName,
+              productId: productID,
+              token: purchaseToken,
+            }),
+          );
+          const refreshedPurchase = jsonObject(refreshedResponse.data);
+          const refreshedConsumptionState =
+            typeof refreshedPurchase.consumptionState === "number" &&
+            Number.isFinite(refreshedPurchase.consumptionState)
+              ? refreshedPurchase.consumptionState
+              : undefined;
+          if (refreshedConsumptionState !== 1) throw consumeError;
+          consumed = true;
+          consumptionConfirmedAfterError = true;
+        }
       }
 
       await db.doc(googlePlayBillingRecordPath(uid, "topup", tokenHash)).set(
@@ -580,8 +607,10 @@ export const verifyGooglePlayCloudProTopUp = onCall(
           purchaseState,
           consumptionState,
           orderId: typeof purchase.orderId === "string" ? purchase.orderId : undefined,
-          credited,
+          credited: true,
+          creditedByThisInvocation: credited.credited,
           consumed,
+          consumptionConfirmedAfterError,
           lastVerifiedAt: nowISO(),
           schemaVersion: 1,
         }),

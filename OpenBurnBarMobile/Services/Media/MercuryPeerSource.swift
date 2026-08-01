@@ -212,9 +212,48 @@ final class MercuryPeerSource: ObservableObject {
 
     private func resolveCapabilities(isOnline: Bool) -> Set<MercuryPeer.Feature> {
         guard let heartbeat = lastHeartbeat else {
-            return isOnline ? MercuryPeer.macFallbackCapabilities : (peer?.capabilities ?? [])
+            guard isOnline else { return peer?.capabilities ?? [] }
+            return Self.fallbackCapabilities(for: relayConnectionProvider())
         }
         let parsed = Set(heartbeat.capabilities.compactMap { MercuryPeer.Feature(rawValue: $0) })
         return parsed.isEmpty ? MercuryPeer.macFallbackCapabilities : parsed
+    }
+
+    /// Pre-heartbeat capability guess for an online Mac.
+    ///
+    /// The heartbeat only arrives once the `media.control` stream is live, so
+    /// before that we fall back to `macFallbackCapabilities`. But a Mac whose
+    /// iroh host failed to start still publishes `status: online` (its chat
+    /// gateway is healthy) while omitting the realtime capability and reporting
+    /// `realtimeRelayStatus: "offline"`. Handing back the full fallback set
+    /// there advertised mirroring the Mac could not perform, so the Live sheet
+    /// showed "connecting"/"reconnecting" forever instead of naming the fault.
+    ///
+    /// When the relay record is explicit that realtime is unavailable, drop the
+    /// mirror/call features and keep only what the non-realtime path serves.
+    /// An older Mac that predates the realtime advertise publishes neither
+    /// signal, so an absent capability list is still treated as "assume
+    /// capable" — this narrows only on a positive statement of offline.
+    static func fallbackCapabilities(
+        for relay: HermesConnectionRecord?
+    ) -> Set<MercuryPeer.Feature> {
+        guard let relay, isRealtimeExplicitlyUnavailable(relay) else {
+            return MercuryPeer.macFallbackCapabilities
+        }
+        return MercuryPeer.macFallbackCapabilities.subtracting([
+            .mirrorHost,
+            .callReceive
+        ])
+    }
+
+    /// True when the Mac positively reports that its realtime (iroh) relay is
+    /// down — either an explicit `realtimeRelayStatus: "offline"`, or a
+    /// populated capability list that omits the realtime marker.
+    static func isRealtimeExplicitlyUnavailable(_ relay: HermesConnectionRecord) -> Bool {
+        if relay.realtimeRelayStatus?.lowercased() == "offline" {
+            return true
+        }
+        return !relay.capabilities.isEmpty
+            && !relay.capabilities.contains(HermesRealtimeRelayProtocol.capability)
     }
 }

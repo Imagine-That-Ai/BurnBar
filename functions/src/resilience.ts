@@ -21,6 +21,7 @@ import {
   ConsecutiveBreaker,
   ExponentialBackoff,
   handleAll,
+  handleWhen,
   IPolicy,
   retry,
   timeout,
@@ -137,6 +138,37 @@ const externalTimeout = timeout(EXTERNAL_API_TIMEOUT_MS, TimeoutStrategy.Aggress
 /** Generic external API resilience policy. */
 export const externalApiPolicy: IPolicy = wrap(externalTimeout, externalRetry, externalBreaker);
 
+/**
+ * Google Play reports an already-consumed one-time product as "not owned".
+ * Concurrent verification can legitimately produce that response after another
+ * invocation consumed the same token. It must be re-read from Play before being
+ * accepted, but it is not retryable and must not count against the provider
+ * circuit breaker.
+ */
+export function isGooglePlayPurchaseNotOwnedError(error: unknown): boolean {
+  return error instanceof Error && /product purchase is not owned by the user/i.test(error.message);
+}
+
+const googlePlayConsumeErrors = handleWhen((error) => !isGooglePlayPurchaseNotOwnedError(error));
+const googlePlayConsumeBreaker = circuitBreaker(googlePlayConsumeErrors, {
+  halfOpenAfter: EXTERNAL_API_HALF_OPEN_AFTER_MS,
+  breaker: new ConsecutiveBreaker(EXTERNAL_API_BREAKER_FAILURE_THRESHOLD),
+});
+googlePlayConsumeBreaker.onBreak(() => {
+  logError({
+    event: "circuit_breaker_tripped",
+    service: "google_play_consume",
+    state: "open",
+  });
+});
+const googlePlayConsumeRetry = retry(googlePlayConsumeErrors, {
+  maxAttempts: EXTERNAL_API_RETRY_MAX_ATTEMPTS,
+  backoff: makeBackoff(),
+});
+
+/** Google Play consume policy that excludes the expected already-consumed race. */
+export const googlePlayConsumePolicy: IPolicy = wrap(externalTimeout, googlePlayConsumeRetry, googlePlayConsumeBreaker);
+
 const providerPolicies = new Map<string, IPolicy>();
 
 function normalizeProviderPolicyKey(providerKey: string): string {
@@ -195,15 +227,22 @@ export const firestorePolicy: IPolicy = wrap(firestoreTimeout, firestoreBulkhead
  * Wraps any async operation with the given policy and a descriptive label.
  * Logs failures with context for easier debugging.
  */
-export async function withResilience<T>(policy: IPolicy, label: string, fn: () => Promise<T>): Promise<T> {
+export async function withResilience<T>(
+  policy: IPolicy,
+  label: string,
+  fn: () => Promise<T>,
+  options?: { expectedError?: (error: unknown) => boolean },
+): Promise<T> {
   try {
     return await policy.execute(fn);
   } catch (err) {
-    logError({
-      event: "resilience_failure",
-      label,
-      error: err instanceof Error ? err.message : String(err),
-    });
+    if (!options?.expectedError?.(err)) {
+      logError({
+        event: "resilience_failure",
+        label,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     throw err;
   }
 }

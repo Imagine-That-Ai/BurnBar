@@ -7,7 +7,12 @@ vi.mock("../logging.js", () => ({
 }));
 
 import { logError } from "../logging.js";
-import { withResilience, stripePolicy } from "../resilience.js";
+import {
+  googlePlayConsumePolicy,
+  isGooglePlayPurchaseNotOwnedError,
+  stripePolicy,
+  withResilience,
+} from "../resilience.js";
 
 describe("resilience", () => {
   beforeEach(() => {
@@ -39,5 +44,21 @@ describe("resilience", () => {
     expect(logError).toHaveBeenCalledWith(
       expect.objectContaining({ event: "circuit_breaker_tripped", service: "test" }),
     );
+  });
+
+  it("does not retry or error-log Google Play's expected already-consumed response", async () => {
+    const operation = vi.fn(async () => {
+      throw new Error("The product purchase is not owned by the user.");
+    });
+
+    await expect(
+      withResilience(googlePlayConsumePolicy, "external:googleplay.products.consume", operation, {
+        expectedError: isGooglePlayPurchaseNotOwnedError,
+      }),
+    ).rejects.toThrow("not owned by the user");
+
+    expect(operation).toHaveBeenCalledTimes(1);
+    expect(logError).not.toHaveBeenCalledWith(expect.objectContaining({ event: "resilience_failure" }));
+    expect(isGooglePlayPurchaseNotOwnedError(new Error("The product purchase is not owned by the user."))).toBe(true);
   });
 });

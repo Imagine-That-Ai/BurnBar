@@ -194,13 +194,12 @@ final class DataStoreCoordinator {
 
     // MARK: - Initialization
 
-    /// Creates the database pool. Reads `databaseEncryptionEnabled` directly from
-    /// UserDefaults so this can be called before SettingsManager is initialized.
-    /// Enables WAL mode for better read concurrency and write performance.
+    /// Creates the production database pool. Encryption-at-rest is mandatory
+    /// (B-DATA-1), so legacy persisted opt-outs are normalized before any file is
+    /// opened. `DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)`
+    /// remains available only to explicit migration and test tooling.
     ///
-    /// Encryption-at-rest is default-ON for new installs (B-DATA-1): when the key
-    /// has no persisted value we treat it as enabled. Existing installs keep their
-    /// stored value.
+    /// Enables WAL mode for better read concurrency and write performance.
     ///
     /// **Fail-closed invariant.** When encryption is enabled, this method never
     /// opens the store plaintext. If the build is missing SQLCipher or Keychain
@@ -210,18 +209,7 @@ final class DataStoreCoordinator {
     /// startup instead of silently violating the data-at-rest contract.
     private static func makeDatabaseOpenResult(path: String) throws -> DatabaseOpenResult {
         let defaults = UserDefaults.standard
-        // Default-on for new installs: only treat as disabled when explicitly stored false.
-        let encryptionEnabled = (defaults.object(forKey: "databaseEncryptionEnabled") as? Bool) ?? true
-
-        guard encryptionEnabled else {
-            var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
-            installStartupPragmas(on: &config)
-            installDebugQueryTracer(on: &config)
-            return DatabaseOpenResult(
-                pool: try openDatabasePool(path: path, configuration: config),
-                migrationBackupConfigurationBuilder: nil
-            )
-        }
+        normalizeLegacyEncryptionPreferences(in: defaults)
 
         guard DatabaseEncryptionService.isCipherAvailable() else {
             AppLogger.dataStore.error(
@@ -352,6 +340,12 @@ final class DataStoreCoordinator {
     /// stale disclosed-plaintext state. New encryption-enabled startup rejects
     /// plaintext fallback when SQLCipher is unavailable.
     static let plaintextFallbackAcknowledgedDefaultsKey = "databaseEncryptionPlaintextFallbackAcknowledged"
+
+    private static func normalizeLegacyEncryptionPreferences(in defaults: UserDefaults) {
+        defaults.set(true, forKey: "databaseEncryptionEnabled")
+        defaults.removeObject(forKey: plaintextFallbackAcknowledgedDefaultsKey)
+        defaults.removeObject(forKey: "plaintextDatabaseAcknowledged")
+    }
 
     #if DEBUG
     static func makeDatabasePoolForTesting(path: String) throws -> DatabasePool {
