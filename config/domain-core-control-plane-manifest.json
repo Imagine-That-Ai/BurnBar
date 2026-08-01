@@ -150,7 +150,7 @@
     "scripts/ci/verify-apple-release-firebase-config.sh": ["f2b65dc787117261","568eb7c042e385bb","f69900d7a120e6f0","2a9315bf767aa51c"],
     "scripts/ci/verify-callable-logging.sh": ["2099c0564d639684","0262b44fc69c9367","a15501b89ac340ce","85470321c8a6507f"],
     "scripts/ci/verify-corresponding-source-archive.sh": ["e6ce612576b01874","05b1d09dcf8a629b","a076a169830046ba","75228a1410eb9e08"],
-    "scripts/ci/verify-daemon-release-signing.sh": ["fc50a6cc5541c0e2","9819d5161a6a9307","20d8541b340fa367","66b5c9c208fb6d1d"],
+    "scripts/ci/verify-daemon-release-signing.sh": ["5c915fc90f16a440","1e6792e71c17b14f","758c3a0e16fb73ee","2a7f45b1a9a0f913"],
     "scripts/ci/verify-domain-core-android-universal-artifact.mjs": ["2bd014977aff00e9","8aa2664674df4a65","cdd7313ee81df3a9","7d5219fcd30c8c40"],
     "scripts/ci/verify-domain-core-app-store-connect-status.py": ["54cd86b90f7480f5","a92a48811482db44","5bf9a0d0d5944951","7a660747b32d4b6e"],
     "scripts/ci/verify-domain-core-apple-signing-identity.mjs": ["60b98b52f6247283","2ec68032a2a03d29","84dbad1b9c7e5b60","42cb8778d4c5d2e0"],
