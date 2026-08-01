@@ -22,7 +22,7 @@ const ORIGINAL_TRANSACTION_ID = "2000000000000";
 
 type Doc = Record<string, unknown>;
 
-function fakeFirestore() {
+function fakeFirestore(): { docs: Map<string, Doc>; db: Firestore } {
   const docs = new Map<string, Doc>();
 
   class FakeDocSnapshot {
@@ -89,7 +89,8 @@ function fakeFirestore() {
       }),
   };
 
-  return { docs, db: db as unknown as Firestore };
+  // @ts-expect-error reason: the fake implements the Firestore surface reconcileEntitlement exercises
+  return { docs, db };
 }
 
 function appStoreConfig(): AppStoreConfig {
