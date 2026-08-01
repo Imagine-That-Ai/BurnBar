@@ -48,7 +48,8 @@ class P256PointValidationTest {
     @Test
     fun `coordinate outside the prime field is rejected`() {
         val params = generateP256PublicKey().params
-        val primeModulus = (params.curve.field as ECFieldFp).p
+        val primeModulus = (params.curve.field as? ECFieldFp)?.p
+            ?: error("P-256 test fixture requires a prime-field curve.")
 
         assertThrows(IllegalStateException::class.java) {
             requireP256Point(FakeEcPublicKey(params, ECPoint(primeModulus, BigInteger.ONE)), "Test")
@@ -76,7 +77,8 @@ class P256PointValidationTest {
     private fun generateP256PublicKey(): ECPublicKey {
         val generator = KeyPairGenerator.getInstance("EC")
         generator.initialize(ECGenParameterSpec("secp256r1"))
-        return generator.generateKeyPair().public as ECPublicKey
+        return generator.generateKeyPair().public as? ECPublicKey
+            ?: error("P-256 test fixture requires an EC public key.")
     }
 
     private class FakeEcPublicKey(
