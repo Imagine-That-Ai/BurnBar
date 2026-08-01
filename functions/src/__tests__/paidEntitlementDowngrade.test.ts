@@ -47,6 +47,69 @@ describe("paidEntitlementWriteWouldDowngrade", () => {
     ).toBe(false);
   });
 
+  it("lets a verified Stripe lifecycle adopt an operator grant bound to the same subscription", () => {
+    expect(
+      paidEntitlementWriteWouldDowngrade(
+        {
+          active: true,
+          source: "internal_operator_grant",
+          platform: "stripe",
+          externalSubscriptionID: "sub_live_cloud",
+          expiresAt: "2099-12-31T23:59:59Z",
+        },
+        {
+          source: "stripe_webhook_verified",
+          expiresAtMillis: Date.parse("2026-06-15T06:00:00Z"),
+          active: true,
+          externalSubscriptionID: "sub_live_cloud",
+          nowMillis,
+        },
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps an operator grant when the verified Stripe write is for a different subscription", () => {
+    expect(
+      paidEntitlementWriteWouldDowngrade(
+        {
+          active: true,
+          source: "internal_operator_grant",
+          platform: "stripe",
+          externalSubscriptionID: "sub_operator_override",
+          expiresAt: "2099-12-31T23:59:59Z",
+        },
+        {
+          source: "stripe_webhook_verified",
+          expiresAtMillis: Date.parse("2026-06-15T06:00:00Z"),
+          active: true,
+          externalSubscriptionID: "sub_different",
+          nowMillis,
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps non-Stripe operator grants even when an external subscription id happens to match", () => {
+    expect(
+      paidEntitlementWriteWouldDowngrade(
+        {
+          active: true,
+          source: "internal_operator_grant",
+          platform: "android",
+          externalSubscriptionID: "sub_live_cloud",
+          expiresAt: "2099-12-31T23:59:59Z",
+        },
+        {
+          source: "stripe_webhook_verified",
+          expiresAtMillis: Date.parse("2026-06-15T06:00:00Z"),
+          active: true,
+          externalSubscriptionID: "sub_live_cloud",
+          nowMillis,
+        },
+      ),
+    ).toBe(true);
+  });
+
   it("allows a different provider write when it extends the entitlement farther", () => {
     expect(
       paidEntitlementWriteWouldDowngrade(stripeActiveCloudPro, {

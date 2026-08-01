@@ -32,6 +32,7 @@ import {
   stripeTopUpReversalState,
   type StripeTopUpDisputeStatus,
 } from "./stripeTopUpReversal.js";
+import { sameEntitlementWriteSource } from "./entitlementWriteSource.js";
 import { nowISO, requiredIdentifier } from "./validators.js";
 
 export const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
@@ -341,32 +342,6 @@ function entitlementExpiresAtMillis(existing: Record<string, unknown>): number |
     return Number.isFinite(parsed) ? parsed : undefined;
   }
   return undefined;
-}
-
-function sameEntitlementWriteSource(
-  existing: Record<string, unknown>,
-  incoming: {
-    source: string;
-    externalSubscriptionID?: string;
-    purchaseTokenHash?: string;
-  },
-): boolean {
-  if (existing.source !== incoming.source) return false;
-  if (
-    incoming.externalSubscriptionID &&
-    typeof existing.externalSubscriptionID === "string" &&
-    existing.externalSubscriptionID === incoming.externalSubscriptionID
-  ) {
-    return true;
-  }
-  if (
-    incoming.purchaseTokenHash &&
-    typeof existing.purchaseTokenHash === "string" &&
-    existing.purchaseTokenHash === incoming.purchaseTokenHash
-  ) {
-    return true;
-  }
-  return !incoming.externalSubscriptionID && !incoming.purchaseTokenHash;
 }
 
 function paidEntitlementWriteWouldRewindSourceEvent(
