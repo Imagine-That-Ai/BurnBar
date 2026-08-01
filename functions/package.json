@@ -96,7 +96,6 @@
     "firebase": "12.14.0",
     "firebase-tools": "15.23.0",
     "knip": "5.88.1",
-    "openburnbar-brace-expansion-cjs": "file:vendor/openburnbar/brace-expansion-cjs.tgz",
     "prettier": "3.8.3",
     "typescript": "^5.9.3",
     "vitest": "4.1.8"
@@ -111,7 +110,7 @@
     "@hono/node-server": "2.0.10",
     "fast-uri": "3.1.4",
     "hono": "4.12.31",
-    "brace-expansion@^1.1.7": "$openburnbar-brace-expansion-cjs",
+    "brace-expansion@^1.1.7": "file:vendor/openburnbar/brace-expansion-cjs.tgz",
     "brace-expansion": "^5.0.8",
     "minimatch": "^10.0.3",
     "firebase-tools@15.23.0": {
