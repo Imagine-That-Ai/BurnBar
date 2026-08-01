@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { closeSync, fstatSync, mkdtempSync, openSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -411,12 +411,16 @@ test("exact-SHA evidence is digest-sealed, private, and contains no raw provider
   const outputDirectory = join(root, "launch-evidence");
   const paths = writeLifecycleEvidence(evidence, outputDirectory);
   assert.equal(statSync(outputDirectory).mode & 0o777, 0o700);
-  assert.equal(statSync(paths.outputPath).mode & 0o777, 0o600);
   assert.equal(statSync(paths.latestPath).mode & 0o777, 0o600);
-  assert.deepEqual(
-    JSON.parse(readFileSync(paths.outputPath, "utf8")),
-    evidence,
-  );
+  // Open once and derive both the mode check and the content read from the
+  // same descriptor so there is no check-then-use window on the path.
+  const outputFd = openSync(paths.outputPath, "r");
+  try {
+    assert.equal(fstatSync(outputFd).mode & 0o777, 0o600);
+    assert.deepEqual(JSON.parse(readFileSync(outputFd, "utf8")), evidence);
+  } finally {
+    closeSync(outputFd);
+  }
 });
 
 test("digest verification rejects a tampered lifecycle result", () => {
