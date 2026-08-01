@@ -189,7 +189,7 @@
     "scripts/ci/verify-public-macos-download-trust.sh": ["028a329c12a0bb65","9689d3ebf50aa29b","e631755e79e89430","5b97563725c47faa"],
     "scripts/ci/verify-resilience-wiring.sh": ["30017d65ad4dc315","c08bc56eb78d918c","344a7bc33c448d5a","de647a463238cc3e"],
     "scripts/ci/verify-signing-profile-certificate.sh": ["4abf7e71d6284f68","371acf306d4ee40b","9ffb0a017194298d","48ba963e43a87020"],
-    "scripts/ci/verify-sqlcipher-codec.sh": ["193a0613028db45d","4f3068069990b64c","8f584efdfce1cebc","6eea9f30c843fef3"],
+    "scripts/ci/verify-sqlcipher-codec.sh": ["c3b2578932c328d2","f03cfe2695579b0a","9d45c188ca3feca9","4125276269e206b0"],
     "scripts/ci/verify-vendored-agent-source.sh": ["48ff000aa91c1c44","ba388cf6fa1a5f4f","8ca3239c3779963c","b6b9032d2a9961f6"],
     "scripts/ci/verify-windows-release-signing-preflight.sh": ["a61366e7cf919b8a","18d8a5b1c57f0999","8073c9f66d2fb40d","8d70b2fddab066df"],
     "scripts/ci/write-firebase-hosting-ci-config.mjs": ["304793a0248fb11b","b0328e2640082d3d","2feb033ae22aa984","10fb809a8ee39773"],

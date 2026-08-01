@@ -249,8 +249,21 @@ function commandJson(command, args, options) {
   );
 }
 
+// Some collectors need an opaque resource name from one command as the input
+// to a follow-up command. Redacting the first command before that lookup
+// corrupts the resource identifier (for example, Secret Manager names become
+// projects/[REDACTED]/secrets/[REDACTED]). Keep those values in memory only and
+// sanitize the completed evidence before it is written.
+function rawCommandJson(command, args, options) {
+  return run(command, [...args, "--format=json"], { ...options, json: true });
+}
+
 function gcloudJson(args, options) {
   return commandJson("gcloud", args, options);
+}
+
+function gcloudRawJson(args, options) {
+  return rawCommandJson("gcloud", args, options);
 }
 
 function firebaseJson(args, options) {
@@ -1017,8 +1030,25 @@ function collectStorageBuckets(project) {
   };
 }
 
-function collectSecrets(project) {
-  const list = gcloudJson(["secrets", "list", "--project", project], {
+export function secretIdFromResourceName(name, project, projectNumber = "") {
+  const value = String(name || "");
+  const resourceMatch = value.match(
+    /^projects\/([^/]+)\/secrets\/([^/]+)$/u,
+  );
+  let secretId = value;
+  if (resourceMatch) {
+    const allowedProjects = new Set(
+      [project, projectNumber].map(String).filter(Boolean),
+    );
+    secretId = allowedProjects.has(resourceMatch[1]) ? resourceMatch[2] : "";
+  } else if (value.includes("/")) {
+    secretId = "";
+  }
+  return /^[A-Za-z0-9_-]{1,255}$/u.test(secretId) ? secretId : null;
+}
+
+function collectSecrets(project, projectNumber) {
+  const list = gcloudRawJson(["secrets", "list", "--project", project], {
     timeout: 120_000,
   });
   if (!list.ok) return { ok: false, error: list.error, secrets: [] };
@@ -1026,15 +1056,18 @@ function collectSecrets(project) {
   const secrets = Array.isArray(list.stdout) ? list.stdout : [];
   const results = secrets.map((secret) => {
     const name = secret.name || "";
-    const secretId = name.split("/").pop();
+    const secretId = secretIdFromResourceName(name, project, projectNumber);
     const iam = secretId
-      ? gcloudJson(
+      ? gcloudRawJson(
           ["secrets", "get-iam-policy", secretId, "--project", project],
           {
             timeout: 90_000,
           },
         )
-      : { ok: false, error: "secret id missing" };
+      : {
+          ok: false,
+          error: "secret resource name did not match the requested project",
+        };
     return {
       ok: iam.ok,
       name,
@@ -1230,7 +1263,11 @@ async function collect(options) {
     ["iam", () => collectIam(options.project)],
     ["functions", () => collectFunctions(options.project, options.regions)],
     ["storageBuckets", () => collectStorageBuckets(options.project)],
-    ["secrets", () => collectSecrets(options.project)],
+    [
+      "secrets",
+      () =>
+        collectSecrets(options.project, evidence.project.projectNumber),
+    ],
     ["kms", () => collectKms(options.project, options.kmsLocations)],
   ];
 

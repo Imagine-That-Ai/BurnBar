@@ -30,8 +30,15 @@ enum CallableIrohControllerRouteDirectory {
             let bindings = try await resolve(uid, connectionId)
             return .authoritative(IrohInboundPeerPolicy(routeBindings: bindings))
         } catch {
+            // Failing here empties the inbound allowlist, so the host rejects
+            // EVERY dial — the phone shows an endless "connecting"/"reconnecting"
+            // cycle while the Mac looks perfectly healthy. `publicErrorMetadata`
+            // alone is not readable: `logMetadata` hashes every metadata value,
+            // so this line historically logged the failure without ever naming
+            // it. Put the sanitized `domain#code` in the `.public` event string.
+            let nsError = error as NSError
             AppLogger.network.error(
-                "iroh_inbound_controller_route_resolution_failed",
+                "iroh_inbound_controller_route_resolution_failed connectionId=\(connectionId) errorClass=\(nsError.domain)#\(nsError.code) transient=\(isTransientTransportFailure(error))",
                 metadata: AppLogger.publicErrorMetadata(error)
             )
             return isTransientTransportFailure(error)

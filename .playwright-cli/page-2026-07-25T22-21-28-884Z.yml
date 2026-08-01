@@ -1,0 +1,163 @@
+- generic [active] [ref=f4e1]:
+  - banner [ref=f4e2]:
+    - link "Skip to content" [ref=f4e3] [cursor=pointer]:
+      - /url: "#main"
+    - generic [ref=f4e4]:
+      - link "OpenBurnBar — home" [ref=f4e5] [cursor=pointer]:
+        - /url: /
+        - generic [ref=f4e6]:
+          - generic [ref=f4e7]: Open
+          - generic [ref=f4e8]: BurnBar
+      - generic [ref=f4e9]:
+        - button "Toggle light or dark theme" [ref=f4e10] [cursor=pointer]
+        - link "Download" [ref=f4e14] [cursor=pointer]:
+          - /url: /download
+          - text: Download
+          - generic [ref=f4e15]: →
+      - button "Open menu" [ref=f4e16] [cursor=pointer]
+  - main [ref=f4e20]:
+    - main [ref=f4e21]:
+      - generic [ref=f4e22]:
+        - generic [ref=f4e23]:
+          - link "← Compare plans" [ref=f4e24] [cursor=pointer]:
+            - /url: /pricing
+          - generic [ref=f4e25]: BurnBar Cloud
+          - heading "Finish your subscription." [level=1] [ref=f4e26]
+          - paragraph [ref=f4e27]: Sign in with the BurnBar account you use in the apps. Stripe handles payment; BurnBar binds the verified subscription to that Firebase account.
+        - generic [ref=f4e28]:
+          - generic [ref=f4e29]:
+            - generic [ref=f4e30]:
+              - generic [ref=f4e31]: Selected plan
+              - heading "BurnBar Cloud Pro" [level=2] [ref=f4e32]
+              - paragraph [ref=f4e33]: Use your Mac from your phone and let agents work under your grant.
+            - generic [ref=f4e34]:
+              - strong [ref=f4e35]: $249
+              - generic [ref=f4e36]: per year
+          - group "Billing cadence" [ref=f4e37]:
+            - button "Monthly" [ref=f4e38] [cursor=pointer]
+            - button "Annual" [pressed] [ref=f4e39] [cursor=pointer]
+          - generic [ref=f4e41]:
+            - generic [ref=f4e42]:
+              - heading "Sign in before checkout" [level=2] [ref=f4e43]
+              - paragraph [ref=f4e44]: Your Firebase UID is the durable link between web billing and every BurnBar app.
+            - generic [ref=f4e45]:
+              - button "Continue with Google" [ref=f4e46] [cursor=pointer]
+              - button "Continue with Apple" [ref=f4e53] [cursor=pointer]
+          - generic [ref=f4e57]:
+            - generic [ref=f4e58]: Payment by Stripe
+            - generic [ref=f4e59]: Firebase Auth + App Check
+            - generic [ref=f4e60]: Cancel from your billing portal
+        - paragraph [ref=f4e61]:
+          - text: Need help before buying?
+          - link "support@burnbar.ai" [ref=f4e62] [cursor=pointer]:
+            - /url: mailto:support@burnbar.ai
+  - contentinfo [ref=f4e63]:
+    - generic [ref=f4e64]:
+      - generic [ref=f4e65]:
+        - generic [ref=f4e66]:
+          - link "OpenBurnBar — home" [ref=f4e67] [cursor=pointer]:
+            - /url: /
+            - generic [ref=f4e68]:
+              - generic [ref=f4e69]: Open
+              - generic [ref=f4e70]: BurnBar
+          - paragraph [ref=f4e71]: A local-first developer tool that watches AI coding agents. macOS · iPhone · iPad · Android · Linux · daemon · CLI · editor.
+          - paragraph [ref=f4e72]: © 2026 Imagine That AI LLC. Released under the AGPL-3.0-only license.
+        - generic [ref=f4e73]:
+          - text: Product
+          - list [ref=f4e74]:
+            - listitem [ref=f4e75]:
+              - link "Overview" [ref=f4e76] [cursor=pointer]:
+                - /url: /product
+            - listitem [ref=f4e77]:
+              - link "Fire Hydrant — router" [ref=f4e78] [cursor=pointer]:
+                - /url: /router
+            - listitem [ref=f4e79]:
+              - link "Floo — phone & Mac" [ref=f4e80] [cursor=pointer]:
+                - /url: /floo
+            - listitem [ref=f4e81]:
+              - link "Agent Control" [ref=f4e82] [cursor=pointer]:
+                - /url: /control
+            - listitem [ref=f4e83]:
+              - link "Platforms" [ref=f4e84] [cursor=pointer]:
+                - /url: /platforms
+            - listitem [ref=f4e85]:
+              - link "Provider support" [ref=f4e86] [cursor=pointer]:
+                - /url: /providers
+            - listitem [ref=f4e87]:
+              - link "Why it matters" [ref=f4e88] [cursor=pointer]:
+                - /url: /benefits
+            - listitem [ref=f4e89]:
+              - link "Download" [ref=f4e90] [cursor=pointer]:
+                - /url: /download
+            - listitem [ref=f4e91]:
+              - link "Support" [ref=f4e92] [cursor=pointer]:
+                - /url: /support
+            - listitem [ref=f4e93]:
+              - link "FAQ" [ref=f4e94] [cursor=pointer]:
+                - /url: /faq
+        - generic [ref=f4e95]:
+          - text: Trust
+          - list [ref=f4e96]:
+            - listitem [ref=f4e97]:
+              - link "Open & secure" [ref=f4e98] [cursor=pointer]:
+                - /url: /trust
+            - listitem [ref=f4e99]:
+              - link "Privacy model" [ref=f4e100] [cursor=pointer]:
+                - /url: /privacy
+            - listitem [ref=f4e101]:
+              - link "What we can see" [ref=f4e102] [cursor=pointer]:
+                - /url: /privacy#data-domains
+            - listitem [ref=f4e103]:
+              - link "Security model" [ref=f4e104] [cursor=pointer]:
+                - /url: /security
+            - listitem [ref=f4e105]:
+              - link "MCP integration" [ref=f4e106] [cursor=pointer]:
+                - /url: /mcp
+            - listitem [ref=f4e107]:
+              - link "Source offer" [ref=f4e108] [cursor=pointer]:
+                - /url: /legal/source
+            - listitem [ref=f4e109]:
+              - link "Privacy policy" [ref=f4e110] [cursor=pointer]:
+                - /url: /legal/privacy-policy
+            - listitem [ref=f4e111]:
+              - link "Terms" [ref=f4e112] [cursor=pointer]:
+                - /url: /legal/terms
+        - generic [ref=f4e113]:
+          - text: Build
+          - list [ref=f4e114]:
+            - listitem [ref=f4e115]:
+              - link "GitHub" [ref=f4e116] [cursor=pointer]:
+                - /url: https://github.com/Imagine-That-Ai/BurnBar
+                - text: GitHub ↗
+            - listitem [ref=f4e117]:
+              - link "Releases" [ref=f4e118] [cursor=pointer]:
+                - /url: https://github.com/Imagine-That-Ai/BurnBar/releases
+                - text: Releases ↗
+            - listitem [ref=f4e119]:
+              - link "Provider docs" [ref=f4e120] [cursor=pointer]:
+                - /url: https://github.com/Imagine-That-Ai/BurnBar/blob/main/docs/PROVIDERS.md
+                - text: Provider docs ↗
+            - listitem [ref=f4e121]:
+              - link "Changelog" [ref=f4e122] [cursor=pointer]:
+                - /url: https://github.com/Imagine-That-Ai/BurnBar/blob/main/CHANGELOG.md
+                - text: Changelog ↗
+            - listitem [ref=f4e123]:
+              - link "Security policy" [ref=f4e124] [cursor=pointer]:
+                - /url: https://github.com/Imagine-That-Ai/BurnBar/blob/main/SECURITY.md
+                - text: Security policy ↗
+      - separator [ref=f4e125]
+      - generic [ref=f4e126]:
+        - paragraph [ref=f4e127]: burnbar.ai — built with restraint. No analytics by default; privacy-preserving usage analytics (Amplitude) are opt-in and revocable anytime. No trackers, no third-party fonts loaded remotely.
+        - generic [ref=f4e128]:
+          - generic [ref=f4e129]: privacy@imagine-that.ai
+          - generic [ref=f4e130]: ·
+          - link "support" [ref=f4e131] [cursor=pointer]:
+            - /url: /support
+          - generic [ref=f4e132]: ·
+          - link "Privacy policy" [ref=f4e133] [cursor=pointer]:
+            - /url: /legal/privacy-policy
+          - generic [ref=f4e134]: ·
+          - button "analytics" [ref=f4e135] [cursor=pointer]
+          - generic [ref=f4e136]: ·
+          - link "github" [ref=f4e137] [cursor=pointer]:
+            - /url: https://github.com/Imagine-That-Ai/BurnBar
