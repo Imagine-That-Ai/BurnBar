@@ -16,7 +16,7 @@ final class BurnBarDaemonDatabaseCipherTests: XCTestCase {
     private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     private static let testEncryptionKey = "daemon-test-" + String(repeating: "a", count: 32)
 
-    func test_releaseDaemonSigningSharesAppDesignatedRequirementWithoutRestrictedEntitlements() throws {
+    func test_releaseDaemonSigningUsesFixedDaemonIdentifierWithoutRestrictedEntitlements() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -32,8 +32,8 @@ final class BurnBarDaemonDatabaseCipherTests: XCTestCase {
         let target = String(remaining[..<targetEnd.lowerBound])
 
         XCTAssertTrue(
-            target.contains("OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.app --options runtime,library"),
-            "The daemon must share the app designated requirement so the ordinary Keychain ACL admits both."
+            target.contains("OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.daemon --options runtime,library"),
+            "The daemon must retain its fixed signing identifier."
         )
         XCTAssertFalse(
             target.contains("CODE_SIGN_ENTITLEMENTS"),
