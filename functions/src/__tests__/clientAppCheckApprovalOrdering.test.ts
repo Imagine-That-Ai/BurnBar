@@ -78,4 +78,31 @@ describe("cross-platform App Check binding order", () => {
       expect(body.indexOf("bindAppCheckAttestation(")).toBeLessThan(body.indexOf('"approveEscrowDeviceTrust"'));
     });
   }
+
+  const macSource = readFileSync(
+    resolve(repoRoot, "AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient.swift"),
+    "utf8",
+  );
+  const macPairingActions = [
+    {
+      name: "pairing public-key publication",
+      start: "static func publishIrohPairingPublicKey(",
+      end: "static func publishIrohPairingRecord(",
+      callable: '"publishIrohPairingPublicKey"',
+    },
+    {
+      name: "pairing record publication",
+      start: "static func publishIrohPairingRecord(",
+      end: "static func revokeIrohPairingRecord(",
+      callable: '"publishIrohPairingRecord"',
+    },
+  ] as const;
+
+  for (const action of macPairingActions) {
+    it(`macOS re-binds before ${action.name}`, () => {
+      const body = sourceSlice(macSource, action.start, action.end);
+      expectBindBeforeNonce(body);
+      expect(body.indexOf("bindAppCheckAttestation(")).toBeLessThan(body.indexOf(action.callable));
+    });
+  }
 });

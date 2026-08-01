@@ -759,7 +759,12 @@ enum ComputerUseSecurityCallableClient {
     ) async throws {
         _ = try requireSignedInUser()
         try await bindAppCheckAttestation()
-        let nonce = try await issueHighRiskActionNonce()
+        let nonce: String
+        do {
+            nonce = try await issueHighRiskActionNonce()
+        } catch {
+            nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
+        }
         let result = try await functions.httpsCallable("publishIrohPairingPublicKey").call([
             "deviceId": deviceId,
             "roleId": roleId,
@@ -774,7 +779,12 @@ enum ComputerUseSecurityCallableClient {
     static func publishIrohPairingRecord(deviceId: String, record: IrohPairingRecord) async throws {
         _ = try requireSignedInUser()
         try await bindAppCheckAttestation()
-        let nonce = try await issueHighRiskActionNonce()
+        let nonce: String
+        do {
+            nonce = try await issueHighRiskActionNonce()
+        } catch {
+            nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
+        }
         var payload: [String: Any] = [
             "deviceId": deviceId,
             "connectionId": record.connectionId,

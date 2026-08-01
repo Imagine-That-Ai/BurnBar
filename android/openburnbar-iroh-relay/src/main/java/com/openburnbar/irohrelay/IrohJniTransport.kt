@@ -148,7 +148,10 @@ class IrohJniTransport(
 
         private fun IrohBackendError.isRetryableBootstrapFailure(): Boolean =
             this is IrohBackendError.RuntimeFailed &&
-                detail.contains("home relay", ignoreCase = true)
+                (
+                    detail.contains("home relay", ignoreCase = true) ||
+                        detail.contains("did not come online", ignoreCase = true)
+                )
     }
 }
 

@@ -25,6 +25,26 @@ class IrohJniTransportTest {
         }
 
     @Test
+    fun startRetriesTransientEndpointOnlineTimeout() =
+        runTest {
+            val backend =
+                FakeBackend(
+                    failuresBeforeSuccess = 2,
+                    failure = IrohBackendError.RuntimeFailed("iroh endpoint did not come online within 10s"),
+                )
+            val transport =
+                IrohJniTransport(
+                    backend = backend,
+                    secretProvider = { IrohSecretKeyMaterial(ByteArray(32) { 1 }) },
+                )
+
+            val identity = transport.start()
+
+            assertEquals("fake-node", identity.nodeId)
+            assertEquals(3, backend.bootstrapCalls)
+        }
+
+    @Test
     fun startDoesNotRetryNonBootstrapRuntimeFailure() =
         runTest {
             val backend =
