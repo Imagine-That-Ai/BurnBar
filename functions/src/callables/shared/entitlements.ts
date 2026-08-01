@@ -244,6 +244,20 @@ export async function writeBurnBarProEntitlement(args: {
   // it via `doc`; the merge write leaves it untouched for everyone else.
   const writeDoc = {
     ...doc,
+    // A verified provider lifecycle replaces the mutable entitlement snapshot.
+    // Remove operator-only provenance left by a temporary support bridge so the
+    // document cannot claim both provider verification and an active operator
+    // grant at the same time. Ultra mirrors restore their own source fields
+    // below after this cleanup is applied.
+    ...(args.source === "internal_operator_grant"
+      ? {}
+      : {
+          operatorGrant: FieldValue.delete(),
+          operatorGrantedAt: FieldValue.delete(),
+          operatorGrantReason: FieldValue.delete(),
+          sourceEntitlementID: FieldValue.delete(),
+          sourceProductID: FieldValue.delete(),
+        }),
     externalSubscriptionID: args.externalSubscriptionID ?? FieldValue.delete(),
     externalCustomerID: args.externalCustomerID ?? FieldValue.delete(),
     purchaseTokenHash: args.purchaseTokenHash ?? FieldValue.delete(),

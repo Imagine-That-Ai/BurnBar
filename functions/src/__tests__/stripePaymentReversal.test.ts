@@ -13,6 +13,8 @@
  * 4. A top-up refund/dispute that arrives before fulfillment created the
  *    receipt fails the webhook (so Stripe redelivers) instead of silently
  *    dropping the reversal.
+ * 5. A verified Stripe lifecycle that adopts a matching temporary support
+ *    bridge removes the stale operator-only provenance from Firestore.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -222,6 +224,42 @@ describe("Stripe subscription payment reversal", () => {
       active: true,
       rawStatus: "active",
     });
+  });
+});
+
+describe("Stripe provider adoption", () => {
+  it("removes stale operator provenance when Stripe adopts its matching support bridge", async () => {
+    firestoreState.docs.set(ENTITLEMENT_PATH, {
+      id: BURNBAR_PRO_ENTITLEMENT_ID,
+      active: true,
+      source: "internal_operator_grant",
+      platform: "stripe",
+      externalSubscriptionID: SUBSCRIPTION_ID,
+      expiresAt: "2099-12-31T23:59:59.000Z",
+      operatorGrant: true,
+      operatorGrantedAt: "2026-06-11T14:40:30.095Z",
+      operatorGrantReason: "temporary support bridge",
+      sourceEntitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID,
+      sourceProductID: "com.openburnbar.pro.monthly",
+    });
+
+    await activeSubscriptionWrite({
+      sourceEventID: "evt_provider_adoption",
+      sourceEventCreatedMillis: 2_000,
+    });
+
+    const entitlement = firestoreState.docs.get(ENTITLEMENT_PATH);
+    expect(entitlement).toMatchObject({
+      source: "stripe_webhook_verified",
+      platform: "stripe",
+      externalSubscriptionID: SUBSCRIPTION_ID,
+      sourceEventID: "evt_provider_adoption",
+    });
+    expect(entitlement).not.toHaveProperty("operatorGrant");
+    expect(entitlement).not.toHaveProperty("operatorGrantedAt");
+    expect(entitlement).not.toHaveProperty("operatorGrantReason");
+    expect(entitlement).not.toHaveProperty("sourceEntitlementID");
+    expect(entitlement).not.toHaveProperty("sourceProductID");
   });
 });
 
