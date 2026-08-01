@@ -29,7 +29,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { FieldValue, Timestamp, type Firestore, type Transaction } from "firebase-admin/firestore";
+import { FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
 
 import type { JWSTransactionDecodedPayload } from "@apple/app-store-server-library";
 
@@ -246,9 +246,16 @@ function operatorProvenanceCleanup(): Record<string, FieldValue> {
   };
 }
 
-function writeEntitlementMirrorOnly(
-  tx: Transaction,
-  db: Firestore,
+/**
+ * The writers below are typed against the minimal transactional surface they
+ * actually use (`Ref` is inferred from the paired doc resolver), so unit tests
+ * can drive the exact production write path with a plain in-memory fake
+ * instead of an unsafe `Firestore`/`Transaction` cast. Production callers pass
+ * the real `Transaction`/`Firestore` pair unchanged.
+ */
+export function writeEntitlementMirrorOnly<Ref>(
+  tx: { set(ref: Ref, data: Record<string, unknown>, options: { merge: true }): unknown },
+  db: { doc(path: string): Ref },
   uid: string,
   entitlement: HostedQuotaEntitlementDoc,
   target: AppStoreEntitlementTarget,
@@ -259,9 +266,9 @@ function writeEntitlementMirrorOnly(
   tx.set(db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`), mirrorDoc, { merge: true });
 }
 
-function writeEntitlementDocs(
-  tx: Transaction,
-  db: Firestore,
+export function writeEntitlementDocs<Ref>(
+  tx: { set(ref: Ref, data: Record<string, unknown>, options: { merge: true }): unknown },
+  db: { doc(path: string): Ref },
   uid: string,
   entitlement: HostedQuotaEntitlementDoc,
   target: AppStoreEntitlementTarget,
