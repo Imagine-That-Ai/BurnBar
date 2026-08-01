@@ -1,13 +1,15 @@
 package com.openburnbar.ui.media
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.mutableStateOf
 import androidx.fragment.app.FragmentActivity
 import com.openburnbar.BurnBarApplication
-import com.openburnbar.data.computeruse.InMemoryPhoneControlCounterStore
+import com.openburnbar.data.computeruse.PhoneControlCounterStore
 import com.openburnbar.data.computeruse.PhoneControlSender
+import com.openburnbar.data.computeruse.SharedPreferencesPhoneControlCounterStore
 import com.openburnbar.data.media.VideoReceivePipeline
 import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardAction
 import com.openburnbar.security.enableOpenBurnBarScreenPrivacy
@@ -17,6 +19,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.sync.Mutex
 
 internal fun shouldStopMirrorOnViewerDestroy(isFinishing: Boolean, isChangingConfigurations: Boolean): Boolean = isFinishing && !isChangingConfigurations
+
+internal fun screenShareViewerPhoneControlCounterStore(context: Context): PhoneControlCounterStore =
+    SharedPreferencesPhoneControlCounterStore(context.applicationContext)
 
 /**
  * Host activity for `ScreenShareViewerScreen`. Stays alive in
@@ -28,7 +33,9 @@ internal fun shouldStopMirrorOnViewerDestroy(isFinishing: Boolean, isChangingCon
 class ScreenShareViewerActivity : FragmentActivity() {
     internal val controlScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     internal val controlMutex = Mutex()
-    internal val counterStore = InMemoryPhoneControlCounterStore()
+    internal val counterStore: PhoneControlCounterStore by lazy(LazyThreadSafetyMode.NONE) {
+        screenShareViewerPhoneControlCounterStore(applicationContext)
+    }
     internal val connectionRecovery = ScreenShareViewerConnectionRecovery()
     internal var phoneControlSender: PhoneControlSender? = null
     internal var phoneControlConnectionID: String? = null

@@ -89,6 +89,8 @@ internal object IrohPairingSelection {
 }
 
 internal object ControllerAuthStatePolicy {
+    fun shouldReconcile(previousUid: String?, nextUid: String?): Boolean = previousUid != nextUid
+
     fun isCurrent(expectedUid: String?, expectedEpoch: Long, currentUid: String?, currentEpoch: Long): Boolean =
         expectedUid == currentUid && expectedEpoch == currentEpoch
 }
@@ -299,6 +301,10 @@ class BurnBarApplication : Application() {
     private fun installAuthListener() {
         val listener = FirebaseAuth.AuthStateListener { auth ->
             val uid = auth.currentUser?.uid
+            if (!ControllerAuthStatePolicy.shouldReconcile(previousUid = controllerRouteAuthUid, nextUid = uid)) {
+                Log.i("BurnBar", "Mercury auth callback ignored for unchanged uid=${uid?.take(8) ?: "signed-out"}")
+                return@AuthStateListener
+            }
             val epoch = controllerAuthEpoch.incrementAndGet()
             val gate = IrohControllerRouteRegistrarProvider.holdAuthTransitionGate()
             val hermesGate = HermesAuthLifecycleRegistry.holdAuthTransitionGate()
@@ -658,11 +664,7 @@ internal object MediaControlCoordinatorReusePolicy {
     ): Boolean {
         if (phase == null) return false
         if (activeConnectionID != selection.connectionId) return false
-        return if (forceRestart) {
-            phase is MediaControlStreamCoordinator.Phase.Live ||
-                phase is MediaControlStreamCoordinator.Phase.Dialing
-        } else {
-            phase.isActiveOrConnecting()
-        }
+        if (forceRestart) return false
+        return phase.isActiveOrConnecting()
     }
 }

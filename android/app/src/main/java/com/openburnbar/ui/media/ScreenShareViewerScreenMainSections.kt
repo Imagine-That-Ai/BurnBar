@@ -271,7 +271,17 @@ private fun ScreenShareViewerPipelineClockEffects(params: ScreenShareViewerPipel
     val lastAutomaticReconnectAtMillis = params.lastAutomaticReconnectAtMillis
     val onLastAutomaticReconnectAtMillis = params.onLastAutomaticReconnectAtMillis
     val onReconnect = params.onReconnect
-    DisposableEffect(pipeline) { onDispose { runBlocking { pipeline.stop() } } }
+    DisposableEffect(pipeline) {
+        onDispose {
+            pipeline.surfaceLifecycleGate.retireCurrent()?.let { token ->
+                runBlocking {
+                    pipeline.surfaceLifecycleGate.runIfCurrent(token) {
+                        pipeline.stop()
+                    }
+                }
+            }
+        }
+    }
     LaunchedEffect(Unit) {
         while (true) {
             onNowMillis(System.currentTimeMillis())

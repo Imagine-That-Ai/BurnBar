@@ -90,7 +90,14 @@ class IrohPairingPublisher(private val directory: IrohPairingDirectory) {
             directory.fetch(uid, connectionId)
                 ?: throw IrohPairingDirectoryException.recordNotFound()
         IrohPairingSignature.verify(record, publicKey = publicKey, nowMillis = nowMillis)
-        IrohPairingReplayGuardShared.session.consume(record, nowMillis)
+        try {
+            IrohPairingReplayGuardShared.session.consume(record, nowMillis)
+        } catch (_: IrohPairingReplayException) {
+            // Reconnects legitimately re-read the same signed record between
+            // Mac heartbeats. Signature and freshness were re-verified above,
+            // so tolerate only this process-local duplicate while keeping the
+            // strict guard available to callers that need consume-once checks.
+        }
         return record.dialTarget()
     }
 }

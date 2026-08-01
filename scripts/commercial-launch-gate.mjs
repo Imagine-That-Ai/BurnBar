@@ -2280,6 +2280,124 @@ function checkFirebaseFunctionsInventory() {
   };
 }
 
+export function evaluateFirebaseFunctionsSourceIdentity(
+  functions,
+  candidateCommit,
+) {
+  const expectedCommit = String(candidateCommit || "")
+    .trim()
+    .toLowerCase();
+  if (!/^[a-f0-9]{40}$/u.test(expectedCommit)) {
+    return {
+      ok: false,
+      candidateCommit: expectedCommit || null,
+      count: 0,
+      exactCount: 0,
+      missingMetadata: [],
+      invalidMetadata: [],
+      mismatchedByCommit: [],
+      error: "candidate commit must be a full 40-character Git SHA",
+    };
+  }
+  if (!Array.isArray(functions) || functions.length === 0) {
+    return {
+      ok: false,
+      candidateCommit: expectedCommit,
+      count: 0,
+      exactCount: 0,
+      missingMetadata: [],
+      invalidMetadata: [],
+      mismatchedByCommit: [],
+      error: "Firebase Functions inventory is empty or malformed",
+    };
+  }
+
+  const missingMetadata = [];
+  const invalidMetadata = [];
+  const mismatched = new Map();
+  let exactCount = 0;
+  for (const fn of functions) {
+    const functionName =
+      String(fn?.name || fn?.id || "")
+        .split("/")
+        .filter(Boolean)
+        .pop() || "(unknown)";
+    const deployedCommit = String(
+      fn?.serviceConfig?.environmentVariables?.OPENBURNBAR_SOURCE_COMMIT || "",
+    )
+      .trim()
+      .toLowerCase();
+    if (!deployedCommit) {
+      missingMetadata.push(functionName);
+      continue;
+    }
+    if (!/^[a-f0-9]{40}$/u.test(deployedCommit)) {
+      invalidMetadata.push(functionName);
+      continue;
+    }
+    if (deployedCommit === expectedCommit) {
+      exactCount += 1;
+      continue;
+    }
+    const names = mismatched.get(deployedCommit) || [];
+    names.push(functionName);
+    mismatched.set(deployedCommit, names);
+  }
+
+  const mismatchedByCommit = [...mismatched.entries()]
+    .map(([commit, functionNames]) => ({
+      commit,
+      count: functionNames.length,
+      functions: functionNames.sort(),
+    }))
+    .sort((left, right) => left.commit.localeCompare(right.commit));
+  missingMetadata.sort();
+  invalidMetadata.sort();
+
+  return {
+    ok:
+      exactCount === functions.length &&
+      missingMetadata.length === 0 &&
+      invalidMetadata.length === 0 &&
+      mismatchedByCommit.length === 0,
+    candidateCommit: expectedCommit,
+    count: functions.length,
+    exactCount,
+    missingMetadata,
+    invalidMetadata,
+    mismatchedByCommit,
+  };
+}
+
+function checkFirebaseFunctionsSourceIdentity(candidateCommit) {
+  const result = run("gcloud", [
+    "functions",
+    "list",
+    "--v2",
+    "--project",
+    PROJECT,
+    "--format=json",
+  ]);
+  if (!result.ok) {
+    return {
+      ok: false,
+      candidateCommit: candidateCommit || null,
+      error: result.stderr || result.stdout || result.error,
+    };
+  }
+  let functions;
+  try {
+    functions = JSON.parse(result.stdout);
+  } catch (error) {
+    return {
+      ok: false,
+      candidateCommit: candidateCommit || null,
+      error: `invalid Firebase Functions inventory JSON: ${error.message}`,
+    };
+  }
+  return evaluateFirebaseFunctionsSourceIdentity(functions, candidateCommit);
+}
+
 function checkLaunchEvidence() {
   if (!existsSync(LAUNCH_EVIDENCE_MANIFEST)) {
     return {
@@ -2391,8 +2509,9 @@ async function main() {
   const appStore = checkAppStore();
   const opsAlerts = checkOpsAlerts();
   const billingAlerts = checkBillingAlerts();
+  const repo = checkRepo();
   const checks = {
-    repo: checkRepo(),
+    repo,
     appStore,
     appStoreServerNotifications: checkAppStoreServerNotifications(appStore),
     firebaseAppCheck: checkFirebaseAppCheckEnforcement(),
@@ -2414,6 +2533,9 @@ async function main() {
     firestoreDisasterRecovery: checkFirestoreDisasterRecovery(),
     googlePlayRtdn: checkGooglePlayRtdnReadiness(),
     firebaseFunctionsInventory: checkFirebaseFunctionsInventory(),
+    firebaseFunctionsSourceIdentity: checkFirebaseFunctionsSourceIdentity(
+      repo.head,
+    ),
     launchEvidence: checkLaunchEvidence(),
   };
   const result = {

@@ -11,6 +11,7 @@ import {
   evaluateAppStoreProductReadiness,
   evaluateCloudRunServiceReadiness,
   evaluateElderWandHostedSearchRuntime,
+  evaluateFirebaseFunctionsSourceIdentity,
   evaluateAlertDeliverabilityEvidence,
   evaluateEnvRequirements,
   evaluateHostedQuotaRunnerEndpoint,
@@ -45,6 +46,8 @@ assert.match(launchGateSource, /validateLaunchEvidenceBundle/);
 assert.match(launchGateSource, /firestoreDisasterRecovery/);
 assert.match(launchGateSource, /googlePlayRtdn/);
 assert.match(launchGateSource, /googlePlayDeveloperNotifications/);
+assert.match(launchGateSource, /firebaseFunctionsSourceIdentity/);
+assert.match(launchGateSource, /OPENBURNBAR_SOURCE_COMMIT/);
 assert.match(
   launchGateSource,
   /google-play-developer-notifications@system\.gserviceaccount\.com/,
@@ -68,6 +71,108 @@ assert.doesNotMatch(
   launchGateSource,
   /["']-H["'][\s\S]{0,120}Authorization:\s*`?Bearer/u,
 );
+
+{
+  const candidate = "a".repeat(40);
+  const exact = evaluateFirebaseFunctionsSourceIdentity(
+    [
+      {
+        name: "projects/burnbar/locations/us-central1/functions/checkout",
+        serviceConfig: {
+          environmentVariables: {
+            OPENBURNBAR_SOURCE_COMMIT: candidate,
+          },
+        },
+      },
+      {
+        name: "projects/burnbar/locations/us-central1/functions/webhook",
+        serviceConfig: {
+          environmentVariables: {
+            OPENBURNBAR_SOURCE_COMMIT: candidate.toUpperCase(),
+          },
+        },
+      },
+    ],
+    candidate,
+  );
+  assert.equal(exact.ok, true);
+  assert.equal(exact.count, 2);
+  assert.equal(exact.exactCount, 2);
+  assert.deepEqual(exact.missingMetadata, []);
+  assert.deepEqual(exact.invalidMetadata, []);
+  assert.deepEqual(exact.mismatchedByCommit, []);
+}
+
+{
+  const candidate = "a".repeat(40);
+  const stale = "b".repeat(40);
+  const evaluated = evaluateFirebaseFunctionsSourceIdentity(
+    [
+      {
+        name: "projects/burnbar/locations/us-central1/functions/exact",
+        serviceConfig: {
+          environmentVariables: {
+            OPENBURNBAR_SOURCE_COMMIT: candidate,
+          },
+        },
+      },
+      {
+        name: "projects/burnbar/locations/us-central1/functions/missing",
+        serviceConfig: { environmentVariables: {} },
+      },
+      {
+        name: "projects/burnbar/locations/us-central1/functions/staleB",
+        serviceConfig: {
+          environmentVariables: {
+            OPENBURNBAR_SOURCE_COMMIT: stale,
+          },
+        },
+      },
+      {
+        name: "projects/burnbar/locations/us-central1/functions/staleA",
+        serviceConfig: {
+          environmentVariables: {
+            OPENBURNBAR_SOURCE_COMMIT: stale,
+          },
+        },
+      },
+      {
+        name: "projects/burnbar/locations/us-central1/functions/malformed",
+        serviceConfig: {
+          environmentVariables: {
+            OPENBURNBAR_SOURCE_COMMIT: "main",
+          },
+        },
+      },
+    ],
+    candidate,
+  );
+  assert.equal(evaluated.ok, false);
+  assert.equal(evaluated.count, 5);
+  assert.equal(evaluated.exactCount, 1);
+  assert.deepEqual(evaluated.missingMetadata, ["missing"]);
+  assert.deepEqual(evaluated.invalidMetadata, ["malformed"]);
+  assert.deepEqual(evaluated.mismatchedByCommit, [
+    {
+      commit: stale,
+      count: 2,
+      functions: ["staleA", "staleB"],
+    },
+  ]);
+}
+
+{
+  const invalidCandidate = evaluateFirebaseFunctionsSourceIdentity([], "main");
+  assert.equal(invalidCandidate.ok, false);
+  assert.match(invalidCandidate.error, /full 40-character Git SHA/);
+
+  const emptyInventory = evaluateFirebaseFunctionsSourceIdentity(
+    [],
+    "a".repeat(40),
+  );
+  assert.equal(emptyInventory.ok, false);
+  assert.match(emptyInventory.error, /empty or malformed/);
+}
 
 {
   const firstPage = Array.from({ length: 100 }, (_, index) => ({
@@ -358,6 +463,7 @@ function passingChecks(overrides = {}) {
     firestoreDisasterRecovery: { ok: true },
     googlePlayRtdn: { ok: true },
     firebaseFunctionsInventory: { ok: true },
+    firebaseFunctionsSourceIdentity: { ok: true },
     launchEvidence: {
       ok: true,
       stages: {
@@ -431,6 +537,12 @@ function passingChecks(overrides = {}) {
   );
   assert.equal(
     verdict(passingChecks({ googlePlayRtdn: { ok: false } })).status,
+    "NO_GO",
+  );
+  assert.equal(
+    verdict(
+      passingChecks({ firebaseFunctionsSourceIdentity: { ok: false } }),
+    ).status,
     "NO_GO",
   );
 }

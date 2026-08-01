@@ -2,9 +2,49 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  functionListArgs,
+  run,
   sanitizeEvidenceArtifact,
   secretIdFromResourceName,
 } from "./collect-firebase-security-evidence.mjs";
+
+test("functionListArgs binds inventory collection to the requested project", () => {
+  assert.deepEqual(functionListArgs("burnbar-production", "us-central1"), [
+    "functions",
+    "list",
+    "--v2",
+    "--regions",
+    "us-central1",
+    "--project",
+    "burnbar-production",
+  ]);
+});
+
+test("run accepts JSON inventories larger than Node's default child-process buffer", () => {
+  const payloadLength = 1_100_000;
+  const result = run(
+    process.execPath,
+    [
+      "-e",
+      `process.stdout.write(JSON.stringify([{value:"x".repeat(${payloadLength})}]))`,
+    ],
+    { json: true },
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.stdout[0].value.length, payloadLength);
+});
+
+test("run bounds failed-command output instead of publishing raw inventory", () => {
+  const result = run(process.execPath, [
+    "-e",
+    'process.stdout.write("x".repeat(1_100_000)); process.exit(1)',
+  ]);
+
+  assert.equal(result.ok, false);
+  assert.ok(result.error.length < 20_000);
+  assert.doesNotMatch(result.error, /^x{1000}/);
+});
 
 test("secretIdFromResourceName preserves a live Secret Manager lookup target", () => {
   assert.equal(

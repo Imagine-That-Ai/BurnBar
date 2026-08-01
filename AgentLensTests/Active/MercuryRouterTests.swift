@@ -1136,6 +1136,47 @@ final class MercuryRouterTests: XCTestCase {
         )
     }
 
+    func testStaleControlStreamCloseCancelsPendingRequestAndBlocksLateAccept() async throws {
+        var startCount = 0
+        let staleStreamID = UUID()
+        let (router, sink) = makeRouter(
+            startScreenShare: { _, _, _, _, _, _, _, _ in
+                startCount += 1
+            }
+        )
+
+        await handleMirrorFrame(
+            mirrorRequestFrame(
+                requestID: "req_stale",
+                connectionID: "shared-mac"
+            ),
+            router: router,
+            sink: sink,
+            controlStreamID: staleStreamID,
+            remotePeerNodeID: "ios-peer"
+        )
+        let staleRequest = try XCTUnwrap(router.pendingRequest)
+
+        await router.handleControlStreamClosed(
+            connectionID: "shared-mac",
+            controlStreamID: staleStreamID,
+            removedLastStreamForConnection: false
+        )
+
+        XCTAssertNil(router.pendingRequest)
+        XCTAssertEqual(router.phase, .idle)
+
+        // The sheet action may already be queued on the main actor when the
+        // transport closes. It must not accept the detached request or write
+        // an ack through the stale stream's captured reply sender.
+        await router.acceptMirror(staleRequest)
+
+        XCTAssertEqual(startCount, 0)
+        XCTAssertEqual(router.phase, .idle)
+        let frames = await sink.frames
+        XCTAssertTrue(frames.isEmpty)
+    }
+
     func testPhoneStopAllowsDifferentDeviceToMirrorImmediately() async throws {
         var startCount = 0
         let (router, sink) = makeRouter(

@@ -7,6 +7,7 @@ import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.media.MediaControlStreamCoordinator
 import com.openburnbar.data.media.VideoReceivePipeline
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -29,6 +30,7 @@ import org.junit.Test
 class ScreenShareViewerActivityReconnectMirrorTest {
     private val status = mutableStateOf<String?>(null)
     private val coordinator = mockk<MediaControlStreamCoordinator>(relaxed = true)
+    private val pipeline = mockk<VideoReceivePipeline>(relaxed = true)
     private val activity = mockk<ScreenShareViewerActivity>(relaxed = true)
 
     @Before
@@ -47,7 +49,8 @@ class ScreenShareViewerActivityReconnectMirrorTest {
 
         every { activity.controlScope } returns CoroutineScope(Dispatchers.Unconfined)
         every { activity.controlStatus } returns status
-        every { activity.pipeline } returns VideoReceivePipeline()
+        coEvery { pipeline.restart() } returns true
+        every { activity.pipeline } returns pipeline
     }
 
     @After
@@ -62,6 +65,7 @@ class ScreenShareViewerActivityReconnectMirrorTest {
         activity.reconnectMirror()
 
         assertEquals("Mirror requested", status.value)
+        coVerify { pipeline.restart() }
         verify { activity.reconnectedMirrorRequestID = "mirror-reconnect-1" }
         verify { activity.mirrorSessionID = null }
         verify { activity.mirrorViewerRole = null }

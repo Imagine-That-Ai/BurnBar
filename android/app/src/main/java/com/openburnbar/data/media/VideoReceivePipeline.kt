@@ -47,6 +47,8 @@ class VideoReceivePipeline(
     private val onLongTermReferenceTokenDecoded: suspend (MediaFrameV2LongTermReferenceToken) -> Unit = {},
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
+    internal val surfaceLifecycleGate = SurfaceLifecycleGate<Surface>()
+
     enum class Codec(val mime: String) {
         HEVC(MediaFormat.MIMETYPE_VIDEO_HEVC),
         H264(MediaFormat.MIMETYPE_VIDEO_AVC),
@@ -67,6 +69,9 @@ class VideoReceivePipeline(
     private var resolvedCodec: Codec = codec
     private var currentGopID: UInt = UInt.MAX_VALUE
     private var renderJob: Job? = null
+    private var outputSurface: Surface? = null
+    private var outputWidthPx: Int = 0
+    private var outputHeightPx: Int = 0
     private var statsWindowStartedAtMillis: Long = 0L
     private var bytesInStatsWindow: Int = 0
 
@@ -94,7 +99,10 @@ class VideoReceivePipeline(
 
     suspend fun start(outputSurface: Surface, widthPx: Int = 1920, heightPx: Int = 1080) {
         mutex.withLock {
-            stopLocked()
+            stopLocked(clearOutputSurface = false)
+            this.outputSurface = outputSurface
+            outputWidthPx = widthPx
+            outputHeightPx = heightPx
             val selection = selectDecoder(widthPx = widthPx, heightPx = heightPx)
             try {
                 val newDecoder = createDecoder(selection, outputSurface, widthPx, heightPx)
@@ -220,7 +228,22 @@ class VideoReceivePipeline(
     }
 
     suspend fun stop() {
-        mutex.withLock { stopLocked() }
+        mutex.withLock { stopLocked(clearOutputSurface = true) }
+    }
+
+    suspend fun restart(): Boolean {
+        val restartTarget =
+            mutex.withLock {
+                val surface = outputSurface?.takeIf { it.isValid } ?: return@withLock null
+                Triple(surface, outputWidthPx, outputHeightPx)
+            } ?: return false
+        start(
+            outputSurface = restartTarget.first,
+            widthPx = restartTarget.second,
+            heightPx = restartTarget.third,
+        )
+        onKeyframeRequest()
+        return true
     }
 
     suspend fun fail(reason: String) {
@@ -230,8 +253,13 @@ class VideoReceivePipeline(
         }
     }
 
-    private fun stopLocked() {
+    private fun stopLocked(clearOutputSurface: Boolean) {
         releaseDecoderLocked()
+        if (clearOutputSurface) {
+            outputSurface = null
+            outputWidthPx = 0
+            outputHeightPx = 0
+        }
         _phase.value = Phase.Stopped
     }
 
@@ -432,5 +460,57 @@ class VideoReceivePipeline(
             frame.payload.size
 
         internal fun estimatedWireByteCount(frame: MediaFrameV2): Int = MediaFrameV2Codec.FIXED_HEADER_BYTE_COUNT + frame.metadata.size + frame.payload.size
+    }
+}
+
+internal class SurfaceLifecycleGate<T : Any> {
+    enum class Action {
+        START,
+        STOP,
+    }
+
+    data class Token<T : Any>(
+        val owner: T?,
+        val generation: Long,
+        val action: Action,
+    )
+
+    private val stateLock = Any()
+    private val operationMutex = Mutex()
+    private var generation = 0L
+    private var currentOwner: T? = null
+
+    fun claim(owner: T): Token<T> = synchronized(stateLock) {
+        currentOwner = owner
+        generation += 1
+        Token(owner = owner, generation = generation, action = Action.START)
+    }
+
+    fun retire(owner: T): Token<T>? = synchronized(stateLock) {
+        if (currentOwner !== owner) return@synchronized null
+        currentOwner = null
+        generation += 1
+        Token(owner = owner, generation = generation, action = Action.STOP)
+    }
+
+    fun retireCurrent(): Token<T>? = synchronized(stateLock) {
+        val owner = currentOwner ?: return@synchronized null
+        currentOwner = null
+        generation += 1
+        Token(owner = owner, generation = generation, action = Action.STOP)
+    }
+
+    suspend fun runIfCurrent(token: Token<T>, operation: suspend () -> Unit): Boolean = operationMutex.withLock {
+        val isCurrent =
+            synchronized(stateLock) {
+                generation == token.generation &&
+                    when (token.action) {
+                        Action.START -> currentOwner === token.owner
+                        Action.STOP -> currentOwner == null
+                    }
+            }
+        if (!isCurrent) return@withLock false
+        operation()
+        true
     }
 }

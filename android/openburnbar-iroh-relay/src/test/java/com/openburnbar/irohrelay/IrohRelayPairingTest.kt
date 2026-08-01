@@ -1,6 +1,7 @@
 package com.openburnbar.irohrelay
 
 import com.google.crypto.tink.signature.SignatureConfig
+import kotlinx.coroutines.test.runTest
 import net.i2p.crypto.eddsa.EdDSAEngine
 import net.i2p.crypto.eddsa.EdDSAPrivateKey
 import net.i2p.crypto.eddsa.EdDSAPublicKey
@@ -69,6 +70,53 @@ class IrohRelayPairingTest {
             )
         IrohPairingSignature.verify(record, publicKey = rawPublicKey, nowMillis = publishedAt + 1_000)
     }
+
+    @Test
+    fun fetchAndVerify_allowsRedialWithSameFreshRecord() =
+        runTest {
+            val publishedAt = System.currentTimeMillis()
+            val payload =
+                IrohPairingSignature.canonicalPayload(
+                    uid = "uid-redial",
+                    connectionId = "conn-redial",
+                    nodeId = "node-redial",
+                    relayURL = "https://relay.example.com",
+                    directAddresses = listOf("10.0.0.5:443"),
+                    publishedAtMillis = publishedAt,
+                    protocolVersion = IrohRelayProtocol.FRAME_PROTOCOL_VERSION,
+                )
+            val record =
+                IrohPairingRecord(
+                    uid = "uid-redial",
+                    connectionId = "conn-redial",
+                    nodeId = "node-redial",
+                    relayURL = "https://relay.example.com",
+                    directAddresses = listOf("10.0.0.5:443"),
+                    publishedAtMillis = publishedAt,
+                    signature = sign(payload),
+                )
+            val directory = InMemoryIrohPairingDirectory()
+            directory.publish(record, uid = record.uid)
+            val publisher = IrohPairingPublisher(directory)
+
+            val first =
+                publisher.fetchAndVerify(
+                    uid = record.uid,
+                    connectionId = record.connectionId,
+                    publicKey = rawPublicKey,
+                    nowMillis = publishedAt + 1_000,
+                )
+            val redial =
+                publisher.fetchAndVerify(
+                    uid = record.uid,
+                    connectionId = record.connectionId,
+                    publicKey = rawPublicKey,
+                    nowMillis = publishedAt + 2_000,
+                )
+
+            assertEquals(first, redial)
+            assertEquals("node-redial", redial.nodeId)
+        }
 
     @Test
     fun verify_rejects_record_with_wrong_signature() {

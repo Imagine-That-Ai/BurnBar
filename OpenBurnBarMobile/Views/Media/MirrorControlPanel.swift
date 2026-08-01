@@ -424,6 +424,10 @@ struct MirrorControlPanel: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
+        .accessibilityElement()
+        .accessibilityIdentifier("mercury.controls.group.\(group.rawValue)")
+        .accessibilityLabel(group.hint)
+        .accessibilityAddTraits(.isButton)
     }
 
     // MARK: - Pop Out Option List & UI

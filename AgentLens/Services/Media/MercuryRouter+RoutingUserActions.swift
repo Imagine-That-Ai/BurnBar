@@ -21,7 +21,10 @@ extension MercuryRouter {
         _ request: PendingRequest,
         cancelExpiryTask: Bool = true
     ) -> Bool {
-        guard pendingRequest?.id == request.id,
+        guard let current = pendingRequest,
+              current.id == request.id,
+              current.frame.connectionId == request.frame.connectionId,
+              current.controlStreamID == request.controlStreamID,
               case .ringing(let requestID, _, _) = phase,
               requestID == request.id else {
             return false

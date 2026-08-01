@@ -224,12 +224,12 @@ class MediaControlStreamCoordinator(
 
     suspend fun stop() {
         val job: Job?
+        val stream: IrohRelayStream?
         mutex.withLock {
             job = supervisorJob
             supervisorJob = null
-            val stream = currentStream
+            stream = currentStream
             currentStream = null
-            stream?.runCatching { close() }
             val pending = pendingLive.toList()
             pendingLive.clear()
             pending.forEach { it.completeExceptionally(CancellationException("control stream stopped")) }
@@ -241,6 +241,8 @@ class MediaControlStreamCoordinator(
             _activePair.value = null
         }
         job?.cancel()
+        stream?.runCatching { close() }
+        job?.join()
     }
 
     suspend fun send(frame: HermesRealtimeRelayFrame) {

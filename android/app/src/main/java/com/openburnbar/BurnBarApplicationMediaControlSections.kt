@@ -1,8 +1,26 @@
 package com.openburnbar
 
 import android.util.Log
+import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.media.MediaControlStreamCoordinator
 import kotlinx.coroutines.sync.withLock
+
+internal fun durableAndroidPeerDeviceId(deviceId: String): String {
+    val normalized = deviceId.trim()
+    require(normalized.startsWith("android-") && normalized.length > "android-".length) {
+        "Mercury requires this installation's durable Android escrow device identity."
+    }
+    return normalized
+}
+
+internal fun canReuseVerifiedCoordinatorTarget(
+    cachedConnectionID: String?,
+    cachedPublishedAtMillis: Long?,
+    cachedTargetPresent: Boolean,
+    selection: IrohPairingSelection.Candidate,
+): Boolean = cachedTargetPresent &&
+    cachedConnectionID == selection.connectionId &&
+    cachedPublishedAtMillis == selection.publishedAtMillis
 
 internal suspend fun BurnBarApplication.ensureMediaControlCoordinatorManaged(
     uid: String,
@@ -55,9 +73,26 @@ private suspend fun BurnBarApplication.rebuildMediaControlCoordinator(
         "BurnBar",
         "Mercury coordinator rebuild connectionID=$connectionId previousPhase=${existingPhase?.mercuryLogLabel() ?: "none"}",
     )
-    val target = fetchVerifiedPairingTarget(uid = uid, connectionId = connectionId)
+    val cachedTarget = activeCoordinatorTarget
+    val target =
+        if (
+            canReuseVerifiedCoordinatorTarget(
+                cachedConnectionID = activeCoordinatorConnection,
+                cachedPublishedAtMillis = activeCoordinatorPublishedAtMillis,
+                cachedTargetPresent = cachedTarget != null,
+                selection = selection,
+            )
+        ) {
+            Log.i("BurnBar", "Mercury coordinator rebuild reusing verified target connectionID=$connectionId")
+            checkNotNull(cachedTarget)
+        } else {
+            fetchVerifiedPairingTarget(uid = uid, connectionId = connectionId)
+        }
     existing?.stop()
-    controlTransportPool.shutdown()
+    // A coordinator rebuild replaces only the control bi-stream. The retained
+    // transport owns the shared native endpoint and controller-route identity;
+    // shutting it down here invalidates unrelated iroh work and can leave the
+    // replacement coordinator with EndpointNotInitialized.
     val dialer = MediaControlStreamCoordinator.StreamDialer { dialedUid, dialedConnection ->
         val dialTarget = activeCoordinatorTarget
             ?: fetchVerifiedPairingTarget(uid = dialedUid, connectionId = dialedConnection)
@@ -70,6 +105,9 @@ private suspend fun BurnBarApplication.rebuildMediaControlCoordinator(
     val coordinator = MediaControlStreamCoordinator(
         dialer = dialer,
         receiver = BurnBarApplication.fileTransferService,
+        peerDeviceIdProvider = {
+            durableAndroidPeerDeviceId(AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId)
+        },
         controlAuthorityPeerNodeIdProvider = {
             runCatching {
                 com.openburnbar.data.computeruse.PhoneControlSigningKeyStore(this@rebuildMediaControlCoordinator)

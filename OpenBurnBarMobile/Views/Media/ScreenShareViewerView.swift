@@ -334,6 +334,8 @@ struct ScreenShareViewerView: View {
                         .contentShape(Rectangle())
                         .gesture(controlSurfaceGesture(in: proxy.size, contentRect: contentRect, viewport: visibleViewport))
                         .simultaneousGesture(controlMagnifyGesture(in: proxy.size))
+                        .accessibilityElement()
+                        .accessibilityIdentifier("mercury.screen.controlSurface")
                         .accessibilityLabel("Mac screen control surface")
                 }
 

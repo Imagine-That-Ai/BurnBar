@@ -1,7 +1,10 @@
 package com.openburnbar.irohrelay
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -95,6 +98,55 @@ class IrohJniTransportTest {
             assertTrue(backend.streamClosed)
         }
 
+    @Test
+    fun repeatedStartRebootstrapsWhenTheNativeEndpointWasExternallyTornDown() =
+        runTest {
+            val backend = FakeBackend(failuresBeforeSuccess = 0)
+            val transport = transport(backend)
+
+            transport.start()
+            backend.externallyDeinitialize()
+            val recovered = transport.start()
+
+            assertEquals("fake-node", recovered.nodeId)
+            assertEquals(2, backend.bootstrapCalls)
+            assertEquals(1, backend.identityCalls)
+        }
+
+    @Test
+    fun repeatedStartHealthChecksAStillLiveNativeEndpointWithoutRebootstrapping() =
+        runTest {
+            val backend = FakeBackend(failuresBeforeSuccess = 0)
+            val transport = transport(backend)
+
+            transport.start()
+            val retained = transport.start()
+
+            assertEquals("fake-node", retained.nodeId)
+            assertEquals(1, backend.bootstrapCalls)
+            assertEquals(1, backend.identityCalls)
+        }
+
+    @Test
+    fun startWaitsForNativeShutdownBeforeRebootstrapping() =
+        runTest {
+            val backend = FakeBackend(failuresBeforeSuccess = 0, blockShutdown = true)
+            val transport = transport(backend)
+            transport.start()
+
+            val shutdown = async { transport.shutdown() }
+            backend.shutdownEntered.await()
+            val restart = async { transport.start() }
+
+            assertFalse(restart.isCompleted)
+            backend.allowShutdown.complete(Unit)
+            shutdown.await()
+            val recovered = restart.await()
+
+            assertEquals("fake-node", recovered.nodeId)
+            assertEquals(2, backend.bootstrapCalls)
+        }
+
     private fun transport(backend: IrohEndpointBackend) =
         IrohJniTransport(
             backend = backend,
@@ -106,9 +158,14 @@ class IrohJniTransportTest {
         private val failure: IrohBackendError =
             IrohBackendError.RuntimeFailed("iroh endpoint did not select a home relay within 10s"),
         private val connectRemoteNodeId: String? = null,
+        private val blockShutdown: Boolean = false,
     ) : IrohEndpointBackend {
         var bootstrapCalls = 0
+        var identityCalls = 0
         var streamClosed = false
+        private var initialized = false
+        val shutdownEntered = CompletableDeferred<Unit>()
+        val allowShutdown = CompletableDeferred<Unit>()
 
         override suspend fun bootstrap(
             secret: ByteArray,
@@ -116,6 +173,7 @@ class IrohJniTransportTest {
         ): IrohEndpointIdentity {
             bootstrapCalls += 1
             if (bootstrapCalls <= failuresBeforeSuccess) throw failure
+            initialized = true
             return IrohEndpointIdentity(
                 nodeId = "fake-node",
                 rawPublicKey = ByteArray(32) { 2 },
@@ -123,7 +181,11 @@ class IrohJniTransportTest {
             )
         }
 
-        override suspend fun identity(): IrohEndpointIdentity = IrohEndpointIdentity("fake-node", ByteArray(32) { 2 })
+        override suspend fun identity(): IrohEndpointIdentity {
+            identityCalls += 1
+            if (!initialized) throw IrohBackendError.NotInitialized
+            return IrohEndpointIdentity("fake-node", ByteArray(32) { 2 })
+        }
 
         override suspend fun connect(
             target: IrohDialTarget,
@@ -147,6 +209,16 @@ class IrohJniTransportTest {
             throw IrohBackendError.AcceptFailed("unused")
         }
 
-        override suspend fun shutdown() {}
+        override suspend fun shutdown() {
+            shutdownEntered.complete(Unit)
+            if (blockShutdown) {
+                allowShutdown.await()
+            }
+            initialized = false
+        }
+
+        fun externallyDeinitialize() {
+            initialized = false
+        }
     }
 }

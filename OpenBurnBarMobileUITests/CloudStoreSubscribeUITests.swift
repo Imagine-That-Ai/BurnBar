@@ -135,6 +135,8 @@ final class PhysicalTouchIDPromptDismissUITests: XCTestCase {
 
 @MainActor
 final class PhysicalIPadMercuryE2EUITests: XCTestCase {
+    private let controlTouchIDTimeout: TimeInterval = 120
+
     private var configuredPeerName: String? {
         let configured = ProcessInfo.processInfo.environment["OPENBURNBAR_UI_TEST_PEER_NAME"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -250,6 +252,180 @@ final class PhysicalIPadMercuryE2EUITests: XCTestCase {
         attachScreenshot(named: "04-reconnected")
     }
 
+    func testPhysicalControlPointerScrollKeyboardStopReconnect() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(
+            waitForTouchIDPromptToClear(timeout: controlTouchIDTimeout),
+            "Touch ID remained on screen. Match Touch ID on the physical iPad so Mercury can use its control identity."
+        )
+
+        if !waitForAgentsRoute(in: app, timeout: 8) {
+            let sidebarAgents = app.buttons["sidebar.destination.agents"].firstMatch
+            // A signed-in physical iPad can spend tens of seconds restoring
+            // Firebase-backed dashboard state after a cold launch. Wait for
+            // the real sidebar instead of prematurely relaunching via a deep
+            // link while the branded launch splash is still active.
+            if sidebarAgents.waitForExistence(timeout: 90) {
+                sidebarAgents.coordinate(
+                    withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+                ).tap()
+            } else {
+                app.open(URL(string: "burnbar://hermes")!)
+            }
+        }
+        if !waitForAgentsRoute(in: app, timeout: 20) {
+            // The deep-link relaunch can finish restoring the regular iPad
+            // split-view hierarchy without selecting Agents. Prefer that real
+            // sidebar destination when it appears; the Aurora tab is only the
+            // compact-width fallback and correctly does not exist on iPad.
+            let sidebarAgents = app.buttons["sidebar.destination.agents"].firstMatch
+            if sidebarAgents.waitForExistence(timeout: 20) {
+                sidebarAgents.coordinate(
+                    withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+                ).tap()
+            } else {
+                let hermesTab = app.buttons["auroraTab.hermes"].firstMatch
+                XCTAssertTrue(
+                    hermesTab.waitForExistence(timeout: 20),
+                    "Neither the iPad Agents sidebar destination nor the compact Hermes tab appeared. \(app.debugDescription)"
+                )
+                hermesTab.coordinate(
+                    withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+                ).tap()
+            }
+        }
+        XCTAssertTrue(waitForAgentsRoute(in: app, timeout: 20))
+
+        let pairedMacTile = app.descendants(matching: .any)
+            .matching(identifier: "agent.tile.paired-mac")
+            .firstMatch
+        XCTAssertTrue(
+            pairedMacTile.waitForExistence(timeout: 45),
+            "The paired Mac tile did not appear. \(app.debugDescription)"
+        )
+        pairedMacTile.tap()
+
+        let liveSheet = app.scrollViews.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Mercury Live for")
+        ).firstMatch
+        XCTAssertTrue(liveSheet.waitForExistence(timeout: 45))
+
+        try requestMirrorForControl(in: app)
+        XCTAssertTrue(waitForStreamingVideo(in: app, timeout: 180))
+
+        let controlSurface = app.descendants(matching: .any)
+            .matching(identifier: "mercury.screen.controlSurface")
+            .firstMatch
+        XCTAssertTrue(
+            controlSurface.waitForExistence(timeout: 90),
+            "Mercury streamed frames but Mac control never became live. \(app.debugDescription)"
+        )
+
+        controlSurface.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.24, dy: 0.50)
+        ).tap()
+        XCTAssertTrue(waitForTouchIDPromptToClear(timeout: controlTouchIDTimeout))
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        attachScreenshot(named: "control-01-direct-tap")
+
+        let scrollStart = controlSurface.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.03, dy: 0.72)
+        )
+        let scrollEnd = controlSurface.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.03, dy: 0.34)
+        )
+        scrollStart.press(forDuration: 0.08, thenDragTo: scrollEnd)
+        XCTAssertTrue(waitForTouchIDPromptToClear(timeout: controlTouchIDTimeout))
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        attachScreenshot(named: "control-02-scroll")
+
+        let openControls = app.buttons["Open mirror controls"].firstMatch
+        XCTAssertTrue(openControls.waitForExistence(timeout: 20))
+        openControls.tap()
+        XCTAssertTrue(
+            waitForTouchIDPromptToClear(timeout: controlTouchIDTimeout),
+            "Touch ID remained on screen while opening Mercury controls."
+        )
+
+        let modeGroup = app.descendants(matching: .any)
+            .matching(identifier: "mercury.controls.group.mode")
+            .firstMatch
+        XCTAssertTrue(modeGroup.waitForExistence(timeout: 20))
+        modeGroup.tap()
+
+        let trackpad = app.descendants(matching: .any)
+            .matching(identifier: "mercury.trackpad.surface")
+            .firstMatch
+        XCTAssertTrue(
+            trackpad.waitForExistence(timeout: 20),
+            "The Glass Trackpad did not become accessible after selecting Trackpad mode."
+        )
+        let pointerStart = trackpad.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.35, dy: 0.55)
+        )
+        let pointerEnd = trackpad.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.65, dy: 0.40)
+        )
+        pointerStart.press(forDuration: 0.08, thenDragTo: pointerEnd)
+        XCTAssertTrue(waitForTouchIDPromptToClear(timeout: controlTouchIDTimeout))
+        trackpad.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.55, dy: 0.55)
+        ).tap()
+        XCTAssertTrue(waitForTouchIDPromptToClear(timeout: controlTouchIDTimeout))
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        attachScreenshot(named: "control-03-pointer-move-click")
+
+        let keyboardGroup = app.descendants(matching: .any)
+            .matching(identifier: "mercury.controls.group.keyboard")
+            .firstMatch
+        if !keyboardGroup.exists {
+            // Tapping the Glass Trackpad intentionally collapses the controls
+            // tray so the Mac screen stays unobstructed. Reopen the in-app
+            // tray before selecting the keyboard group.
+            XCTAssertTrue(openControls.waitForExistence(timeout: 20))
+            openControls.tap()
+            XCTAssertTrue(
+                waitForTouchIDPromptToClear(timeout: controlTouchIDTimeout),
+                "Touch ID remained on screen while reopening Mercury controls for the keyboard."
+            )
+        }
+        XCTAssertTrue(
+            keyboardGroup.waitForExistence(timeout: 20),
+            "The keyboard control did not reappear after reopening the mirror controls."
+        )
+        keyboardGroup.tap()
+        XCTAssertTrue(
+            app.keyboards.firstMatch.waitForExistence(timeout: 20),
+            "The Mercury remote keyboard did not become first responder."
+        )
+        app.typeText("K")
+        XCTAssertTrue(waitForTouchIDPromptToClear(timeout: controlTouchIDTimeout))
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        attachScreenshot(named: "control-04-keyboard")
+
+        let done = app.toolbars.buttons["Done"].firstMatch
+        if done.exists, done.isHittable {
+            done.tap()
+        }
+
+        closeMirror(in: app)
+        XCTAssertTrue(
+            waitForStreamingVideoToStop(in: app, timeout: 45),
+            "The previous Mercury stream never left Streaming after Close."
+        )
+        let ask = app.buttons["Ask to mirror Mac screen"].firstMatch
+        XCTAssertTrue(
+            waitForElementToBecomeHittable(ask, timeout: 45),
+            "The fresh mirror request button did not become hittable after the previous stream stopped."
+        )
+        attachScreenshot(named: "control-05-stopped")
+
+        try requestMirrorForControl(in: app)
+        XCTAssertTrue(waitForStreamingVideo(in: app, timeout: 180))
+        attachScreenshot(named: "control-06-reconnected")
+    }
+
     private func waitForAgentsRoute(
         in app: XCUIApplication,
         timeout: TimeInterval
@@ -284,6 +460,35 @@ final class PhysicalIPadMercuryE2EUITests: XCTestCase {
         // real input QA still requires a live biometric match.
         RunLoop.current.run(until: Date().addingTimeInterval(1))
         dismissTouchIDPromptIfPresent(timeout: 2)
+    }
+
+    private func requestMirrorForControl(in app: XCUIApplication) throws {
+        let ask = app.buttons["Ask to mirror Mac screen"].firstMatch
+        XCTAssertTrue(
+            waitForElementToBecomeHittable(ask, timeout: 45),
+            "The mirror request button never became hittable."
+        )
+        XCTAssertTrue(ask.isEnabled)
+        ask.tap()
+        XCTAssertTrue(
+            waitForTouchIDPromptToClear(timeout: controlTouchIDTimeout),
+            "Touch ID remained on screen while preparing Mercury control."
+        )
+    }
+
+    private func waitForTouchIDPromptToClear(timeout: TimeInterval) -> Bool {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let alert = springboard.alerts[
+            "com.apple.localauthentication.ax.authentication.alert"
+        ].firstMatch
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if !alert.exists {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return !alert.exists
     }
 
     private func dismissTouchIDPromptIfPresent(timeout: TimeInterval = 0) {
@@ -325,12 +530,51 @@ final class PhysicalIPadMercuryE2EUITests: XCTestCase {
         return video.exists && video.value as? String == "Streaming"
     }
 
+    private func waitForStreamingVideoToStop(
+        in app: XCUIApplication,
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let video = app.descendants(matching: .any).matching(
+                NSPredicate(format: "identifier == %@", "mercury.screen.video")
+            ).firstMatch
+            if !video.exists || video.value as? String != "Streaming" {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+
+        let video = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier == %@", "mercury.screen.video")
+        ).firstMatch
+        return !video.exists || video.value as? String != "Streaming"
+    }
+
+    private func waitForElementToBecomeHittable(
+        _ element: XCUIElement,
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists, element.isHittable {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return element.exists && element.isHittable
+    }
+
     private func closeMirror(in app: XCUIApplication) {
         let close = app.buttons["Close mirror"].firstMatch
         if !close.exists {
             let openControls = app.buttons["Open mirror controls"].firstMatch
             XCTAssertTrue(openControls.waitForExistence(timeout: 20))
             openControls.tap()
+            XCTAssertTrue(
+                waitForTouchIDPromptToClear(timeout: controlTouchIDTimeout),
+                "Touch ID remained on screen while opening Mercury controls to stop mirroring."
+            )
         }
         XCTAssertTrue(close.waitForExistence(timeout: 20))
         close.tap()

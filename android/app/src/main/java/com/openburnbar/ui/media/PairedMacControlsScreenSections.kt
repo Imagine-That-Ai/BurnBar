@@ -556,7 +556,7 @@ private suspend fun handleRemoteUnlockMirrorRetry(binding: PairedMacControlsEffe
 private fun PairedMacControlsMirrorTimeoutEffect(binding: PairedMacControlsEffectsBinding) {
     LaunchedEffect(binding.pendingRequestID) {
         val requestID = binding.pendingRequestID ?: return@LaunchedEffect
-        delay(15_000)
+        delay(MIRROR_ACK_TIMEOUT_MS)
         if (binding.pendingRequestID == requestID) {
             binding.onPendingRequestIDChange(null)
             binding.onStatusMessageChange(MIRROR_NO_RESPONSE_MESSAGE)

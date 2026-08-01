@@ -24,15 +24,26 @@ import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 
 internal const val MIRROR_REQUEST_TIMEOUT_MS = 20_000L
+internal const val MIRROR_PEER_READY_TIMEOUT_MS = 5_000L
+
+// The Mac keeps its incoming mirror approval open for 20 seconds. Android must
+// keep the request correlation alive longer so the host's terminal accepted or
+// expired acknowledgement can still launch/close the correct viewer state.
+internal const val MIRROR_ACK_TIMEOUT_MS = 25_000L
 internal const val REMOTE_UNLOCK_SESSION_TTL_SECONDS = 600L
 internal const val REMOTE_UNLOCK_SESSION_REQUIRED = "remote_unlock_session_required"
 internal const val MERCURY_READY_PREVIEW_LABEL = "MERCURY READY"
 internal const val MIRROR_NO_RESPONSE_MESSAGE = "No response from the Mac. Open BurnBar on the Mac, then try again."
 internal const val CALL_NO_RESPONSE_MESSAGE = "No call response from the Mac. Open BurnBar on the Mac, then try again."
+internal const val MIRROR_LOCAL_NOT_READY_MESSAGE =
+    "Mercury could not open a control stream to the Mac."
+internal const val MIRROR_PEER_NOT_READY_MESSAGE =
+    "The Mac did not finish opening Mercury. Keep BurnBar open on the Mac, then try again."
 
 internal data class PairedMacControlsUiState(
     val phase: MediaControlStreamCoordinator.Phase,
@@ -162,6 +173,23 @@ internal fun pairedMacRequesterDisplayName(): String = FirebaseAuth.getInstance(
     ?.takeIf { it.isNotBlank() }
     ?: "Android"
 
+internal suspend fun <T> withMirrorRequestTimeout(timeoutMillis: Long, operation: suspend () -> T): T = withTimeout(timeoutMillis) { operation() }
+
+internal suspend fun prepareCoordinatorForMirrorRequest(
+    connectionID: String,
+    ensureStream: suspend (connectionID: String, forceRestart: Boolean) -> Unit,
+    currentCoordinator: () -> MediaControlStreamCoordinator?,
+): MediaControlStreamCoordinator {
+    // A live coordinator has already classified its exact Mac-side control
+    // stream and exchanged presence heartbeats on it. Rebuilding here creates
+    // a second lease immediately before the mirror frame, which can leave the
+    // request queued on the retiring stream even though readiness succeeded.
+    // Let ensureResponsive() close/reconnect a genuinely stale stream instead.
+    ensureStream(connectionID, false)
+    return currentCoordinator()
+        ?: error("Mercury did not create a control coordinator.")
+}
+
 internal fun resolveRequestedConnectionID(connectionID: String?, activePair: MediaControlStreamCoordinator.ActivePair?): String? = connectionID
     ?.trim()
     ?.takeIf { it.isNotBlank() && !it.startsWith("paired-mac:") }
@@ -170,28 +198,39 @@ internal fun resolveRequestedConnectionID(connectionID: String?, activePair: Med
 internal suspend fun executeMirrorRequest(input: PairedMacControlsMirrorRequestInput): PairedMacControlsMirrorRequestResult {
     val name = pairedMacRequesterDisplayName()
     return runCatching {
-        val activeCoordinator = input.coordinator
-        val targetCoordinator =
-            if (activeCoordinator != null && input.phase is MediaControlStreamCoordinator.Phase.Live) {
-                activeCoordinator
-            } else {
-                val connection =
-                    resolveRequestedConnectionID(input.connectionID, input.activePair)
-                        ?: error("Open this Mac from Hermes Square so Android can target the paired Mac relay.")
-                val application =
-                    input.app
-                        ?: error("BurnBar is not ready to start Mercury yet.")
-                Log.i("BurnBar", "Ask to Mirror recovering Mercury for connectionID=$connection")
-                application.ensureMediaControlStream(
-                    connectionID = connection,
-                    forceRestart = true,
-                )
-                BurnBarApplication.mediaControlCoordinator
-                    ?: error("Mercury did not create a control coordinator.")
-            }
+        val connection =
+            resolveRequestedConnectionID(input.connectionID, input.activePair)
+                ?: error("Open this Mac from Hermes Square so Android can target the paired Mac relay.")
+        val application =
+            input.app
+                ?: error("BurnBar is not ready to start Mercury yet.")
+        Log.i("BurnBar", "Ask to Mirror using current Mercury control lease connectionID=$connection")
+        lateinit var targetCoordinator: MediaControlStreamCoordinator
         val requestID =
-            withTimeout(MIRROR_REQUEST_TIMEOUT_MS) {
-                targetCoordinator.requestMirror(requesterDisplayName = name)
+            withMirrorRequestTimeout(MIRROR_REQUEST_TIMEOUT_MS) {
+                targetCoordinator = prepareCoordinatorForMirrorRequest(
+                    connectionID = connection,
+                    ensureStream = application::ensureMediaControlStream,
+                    currentCoordinator = { BurnBarApplication.mediaControlCoordinator },
+                )
+                requestMirrorAfterPeerReady(
+                    awaitLocalReady = {
+                        targetCoordinator.phase.first { phase ->
+                            phase is MediaControlStreamCoordinator.Phase.Live ||
+                                phase is MediaControlStreamCoordinator.Phase.Failed ||
+                                phase is MediaControlStreamCoordinator.Phase.Stopped
+                        } is MediaControlStreamCoordinator.Phase.Live
+                    },
+                    ensurePeerReady = {
+                        targetCoordinator.ensureResponsive(
+                            freshnessIntervalMillis = 0L,
+                            probeTimeoutMillis = MIRROR_PEER_READY_TIMEOUT_MS,
+                        )
+                    },
+                    sendMirror = {
+                        targetCoordinator.requestMirror(requesterDisplayName = name)
+                    },
+                )
             }
         PairedMacControlsMirrorRequestResult(
             coordinator = targetCoordinator,
@@ -217,6 +256,16 @@ internal suspend fun executeMirrorRequest(input: PairedMacControlsMirrorRequestI
             },
         )
     }
+}
+
+internal suspend fun requestMirrorAfterPeerReady(
+    awaitLocalReady: suspend () -> Boolean,
+    ensurePeerReady: suspend () -> Boolean,
+    sendMirror: suspend () -> String,
+): String {
+    check(awaitLocalReady()) { MIRROR_LOCAL_NOT_READY_MESSAGE }
+    check(ensurePeerReady()) { MIRROR_PEER_NOT_READY_MESSAGE }
+    return sendMirror()
 }
 
 internal fun evaluateCheckMercury(input: PairedMacControlsCheckMercuryInput): PairedMacControlsCheckMercuryResult = when {
