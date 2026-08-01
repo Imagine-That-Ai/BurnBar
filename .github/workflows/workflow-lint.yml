@@ -102,6 +102,9 @@ on:
       - "scripts/ci/verify-release-tag-safety.mjs"
       - "scripts/ci/verify-release-tag-safety.test.mjs"
       - "scripts/ci/verify-release-tag-safety.functional.test.mjs"
+      - "scripts/ci/google-play-publication.mjs"
+      - "scripts/ci/google-play-publication.test.mjs"
+      - "docs/runbooks/google-play-publishing.md"
       - "scripts/ci/release-dry-run-attestation.mjs"
       - "scripts/ci/release-dry-run-attestation.test.mjs"
       - "scripts/ops/run-firestore-restore-drill.sh"
@@ -213,6 +216,9 @@ on:
       - "scripts/ci/verify-release-tag-safety.mjs"
       - "scripts/ci/verify-release-tag-safety.test.mjs"
       - "scripts/ci/verify-release-tag-safety.functional.test.mjs"
+      - "scripts/ci/google-play-publication.mjs"
+      - "scripts/ci/google-play-publication.test.mjs"
+      - "docs/runbooks/google-play-publishing.md"
       - "scripts/ci/release-dry-run-attestation.mjs"
       - "scripts/ci/release-dry-run-attestation.test.mjs"
       - "scripts/ops/run-firestore-restore-drill.sh"
@@ -296,6 +302,9 @@ jobs:
 
       - name: Self-test release attestation verifier
         run: bash scripts/ci/verify-release-attestations.test.sh
+
+      - name: Self-test protected Google Play publisher
+        run: node --test scripts/ci/google-play-publication.test.mjs
 
       - name: Self-test Firestore restore drill env validation
         run: bash scripts/ops/run-firestore-restore-drill.test.sh
