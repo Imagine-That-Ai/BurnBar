@@ -1,192 +1,95 @@
 /**
  * A verified Apple lifecycle that adopts an entitlement previously carried by
- * a temporary operator support bridge must remove the stale operator-only
- * provenance (operatorGrant / operatorGrantedAt / operatorGrantReason and the
- * bridge's sourceEntitlementID / sourceProductID) from BOTH the source doc and
- * the BurnBar mirror doc, matching the cleanup `writeBurnBarProEntitlement`
- * applies on the Stripe / Google Play path. The mirror re-asserts its own
- * sourceEntitlementID / sourceProductID after the cleanup.
+ * a temporary operator support bridge must remove stale operator provenance
+ * from the source and mirror docs. The mirror then re-asserts its legitimate
+ * sourceEntitlementID / sourceProductID.
  */
-import { describe, expect, it, vi } from "vitest";
-import type { Firestore } from "firebase-admin/firestore";
-import type { StatusResponse } from "@apple/app-store-server-library";
+import { describe, expect, it } from "vitest";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 
-import type { AppStoreConfig } from "../types.js";
-import { reconcileEntitlement } from "../appstore/reconciler.js";
-import { AppleJWSVerifier, type DecodedTransaction } from "../appstore/verifier.js";
+import type { HostedQuotaEntitlementDoc } from "../types.js";
+import { appStoreEntitlementTarget, buildAppStoreEntitlementWritePayloads } from "../appstore/reconciler.js";
 import { getConfig } from "../config.js";
-
-const BUNDLE_ID = "com.openburnbar.app";
-const UID = "uid-appstore-adoption-1";
-const ORIGINAL_TRANSACTION_ID = "2000000000000";
 
 type Doc = Record<string, unknown>;
 
-function fakeFirestore(): { docs: Map<string, Doc>; db: Firestore } {
-  const docs = new Map<string, Doc>();
+const OPERATOR_PROVENANCE = {
+  operatorGrant: true,
+  operatorGrantedAt: "2026-06-11T14:40:30.095Z",
+  operatorGrantReason: "temporary support bridge",
+  sourceEntitlementID: "burnbar_ultra",
+  sourceProductID: "com.openburnbar.pro.monthly",
+};
 
-  class FakeDocSnapshot {
-    constructor(private readonly value: Doc | undefined) {}
-
-    get exists() {
-      return this.value !== undefined;
-    }
-
-    data() {
-      return this.value === undefined ? undefined : { ...this.value };
-    }
-
-    get(field: string) {
-      return this.value === undefined ? undefined : this.value[field];
-    }
-  }
-
-  class FakeDocRef {
-    constructor(readonly path: string) {}
-
-    collection(name: string) {
-      return {
-        doc: (id: string) => new FakeDocRef(`${this.path}/${name}/${id}`),
-      };
-    }
-
-    async get() {
-      return new FakeDocSnapshot(docs.get(this.path));
-    }
-
-    set(data: Doc, options?: { merge?: boolean }) {
-      const next = options?.merge ? { ...(docs.get(this.path) ?? {}) } : {};
-      for (const [key, value] of Object.entries(data)) {
-        if (typeof value === "object" && value !== null && value.constructor.name === "DeleteTransform") {
-          delete next[key];
-        } else {
-          next[key] = value;
-        }
-      }
-      docs.set(this.path, next);
-      return Promise.resolve();
-    }
-
-    create(data: Doc) {
-      docs.set(this.path, { ...data });
-      return Promise.resolve();
+function applyMerge(existing: Doc, update: Doc): Doc {
+  const merged = { ...existing };
+  const deleteSentinel = FieldValue.delete();
+  for (const [key, value] of Object.entries(update)) {
+    if (value instanceof FieldValue && value.isEqual(deleteSentinel)) {
+      delete merged[key];
+    } else {
+      merged[key] = value;
     }
   }
-
-  const db = {
-    doc: (path: string) => new FakeDocRef(path),
-    runTransaction: async <T>(
-      fn: (transaction: {
-        get: (ref: FakeDocRef) => ReturnType<FakeDocRef["get"]>;
-        set: (ref: FakeDocRef, data: Doc, options?: { merge?: boolean }) => void;
-      }) => Promise<T>,
-    ): Promise<T> =>
-      fn({
-        get: (ref) => ref.get(),
-        set: (ref, data, options) => {
-          void ref.set(data, options);
-        },
-      }),
-  };
-
-  // @ts-expect-error reason: the fake implements the Firestore surface reconcileEntitlement exercises
-  return { docs, db };
+  return merged;
 }
 
-function appStoreConfig(): AppStoreConfig {
+function verifiedHostedQuotaEntitlement(productID: string): HostedQuotaEntitlementDoc {
   return {
-    bundleId: BUNDLE_ID,
-    appAppleId: 1234567890,
+    id: "hosted_quota_sync",
+    active: true,
+    productID,
+    transactionID: "2000000000001",
+    originalTransactionID: "2000000000000",
     environment: "Production",
-    enableOnlineChecks: true,
-    autoFallbackEnvironment: true,
-    asc: {
-      issuerId: "issuer-1",
-      keyId: "key-1",
-      privateKeyP8: "test-key-material",
-    },
+    source: "apple_jws_verified",
+    expiresAt: "2030-01-01T00:00:00.000Z",
+    expireAt: Timestamp.fromMillis(Date.parse("2030-01-01T00:00:00.000Z")),
+    signedTransactionHash: "verified-jws-sha256",
+    signedDateMs: Date.parse("2026-07-22T00:00:00.000Z"),
+    lastVerifiedAt: "2026-07-22T00:00:00.000Z",
+    schemaVersion: 2,
+    verificationVersion: 2,
+    updatedAt: "2026-07-22T00:00:00.000Z",
   };
 }
 
-function transaction(productID: string): DecodedTransaction {
-  const payload = {
-    bundleId: BUNDLE_ID,
-    productId: productID,
-    transactionId: "2000000000001",
-    originalTransactionId: ORIGINAL_TRANSACTION_ID,
-    signedDate: Date.parse("2026-07-22T00:00:00.000Z"),
-    expiresDate: Date.now() + 30 * 24 * 60 * 60 * 1000,
-  } satisfies DecodedTransaction["payload"];
-
-  return {
-    raw: "jws-production",
-    environment: "Production",
-    payload,
-  } satisfies DecodedTransaction;
-}
-
-describe("App Store provider adoption", () => {
-  it("removes stale operator provenance from the source and mirror docs on a verified reconcile", async () => {
+describe("App Store provider adoption write payloads", () => {
+  it("removes all bridge provenance from the source and restores only legitimate mirror provenance", () => {
     const productID = getConfig().hostedQuotaProductID;
-    const { docs, db } = fakeFirestore();
-    const sourcePath = `users/${UID}/entitlements/hosted_quota_sync`;
-    const mirrorPath = `users/${UID}/entitlements/burnbar_pro`;
+    const entitlement = verifiedHostedQuotaEntitlement(productID);
+    const target = appStoreEntitlementTarget(productID);
+    const payloads = buildAppStoreEntitlementWritePayloads(entitlement, target);
 
-    const operatorProvenance = {
-      operatorGrant: true,
-      operatorGrantedAt: "2026-06-11T14:40:30.095Z",
-      operatorGrantReason: "temporary support bridge",
-      sourceEntitlementID: "burnbar_ultra",
-      sourceProductID: "com.openburnbar.pro.monthly",
+    const staleSource = {
+      id: target.sourceEntitlementID,
+      source: "internal_operator_grant",
+      ...OPERATOR_PROVENANCE,
     };
-    docs.set(sourcePath, {
-      id: "hosted_quota_sync",
-      active: true,
+    const staleMirror = {
+      id: target.mirrorEntitlementID,
       source: "internal_operator_grant",
-      originalTransactionID: ORIGINAL_TRANSACTION_ID,
-      ...operatorProvenance,
-    });
-    docs.set(mirrorPath, {
-      id: "burnbar_pro",
-      active: true,
-      source: "internal_operator_grant",
-      ...operatorProvenance,
-    });
+      ...OPERATOR_PROVENANCE,
+    };
 
-    const emptyStatus = { data: [] } satisfies StatusResponse;
-    const fetchLive = vi.fn(async () => ({ status: emptyStatus, pairs: [] }));
-    const verifier = new AppleJWSVerifier(appStoreConfig());
-    vi.spyOn(verifier, "verifyTransaction").mockResolvedValue(transaction(productID));
-
-    const result = await reconcileEntitlement(
-      db,
-      appStoreConfig(),
-      {
-        signedTransactionJWS: "header.payload.signature",
-        claimedUid: UID,
-        source: "client_callable",
-        productID,
-      },
-      { verifier, fetchLive },
-    );
-    expect(result.changed).toBe(true);
-
-    const sourceDoc = docs.get(sourcePath);
+    const sourceDoc = applyMerge(staleSource, payloads.sourceDoc);
     expect(sourceDoc).toMatchObject({
+      id: target.sourceEntitlementID,
       active: true,
       source: "apple_jws_verified",
       productID,
     });
-    for (const field of Object.keys(operatorProvenance)) {
+    for (const field of Object.keys(OPERATOR_PROVENANCE)) {
       expect(sourceDoc).not.toHaveProperty(field);
     }
 
-    const mirrorDoc = docs.get(mirrorPath);
+    expect(payloads.mirrorDoc).toBeDefined();
+    const mirrorDoc = applyMerge(staleMirror, payloads.mirrorDoc ?? {});
     expect(mirrorDoc).toMatchObject({
+      id: target.mirrorEntitlementID,
       active: true,
       source: "apple_jws_verified",
-      // The mirror re-asserts its OWN provenance after the cleanup.
-      sourceEntitlementID: "hosted_quota_sync",
+      sourceEntitlementID: target.sourceEntitlementID,
       sourceProductID: productID,
     });
     expect(mirrorDoc).not.toHaveProperty("operatorGrant");

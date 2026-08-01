@@ -63,7 +63,7 @@ const BURNBAR_ULTRA_ENTITLEMENT_ID = "burnbar_ultra";
 const HOSTED_QUOTA_ENTITLEMENT_ID = "hosted_quota_sync";
 const ORIGINAL_TRANSACTION_OWNER_LOOKUP_LIMIT = 50;
 
-interface AppStoreEntitlementTarget {
+export interface AppStoreEntitlementTarget {
   sourceEntitlementID: string;
   mirrorEntitlementID: string;
 }
@@ -254,11 +254,9 @@ function writeEntitlementMirrorOnly(
   target: AppStoreEntitlementTarget,
 ): void {
   if (target.sourceEntitlementID === target.mirrorEntitlementID) return;
-  tx.set(
-    db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`),
-    { ...operatorProvenanceCleanup(), ...buildBurnBarEntitlementMirror(entitlement, target) },
-    { merge: true },
-  );
+  const { mirrorDoc } = buildAppStoreEntitlementWritePayloads(entitlement, target);
+  if (!mirrorDoc) return;
+  tx.set(db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`), mirrorDoc, { merge: true });
 }
 
 function writeEntitlementDocs(
@@ -269,14 +267,24 @@ function writeEntitlementDocs(
   target: AppStoreEntitlementTarget,
 ): void {
   const sourceRef = db.doc(`users/${uid}/entitlements/${target.sourceEntitlementID}`);
+  const { sourceDoc, mirrorDoc } = buildAppStoreEntitlementWritePayloads(entitlement, target);
+  tx.set(sourceRef, sourceDoc, { merge: true });
+  if (mirrorDoc) {
+    tx.set(db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`), mirrorDoc, { merge: true });
+  }
+}
+
+/** Builds the exact source and mirror payloads consumed by the writer. */
+export function buildAppStoreEntitlementWritePayloads(
+  entitlement: HostedQuotaEntitlementDoc,
+  target: AppStoreEntitlementTarget,
+) {
   const sourceDoc = { ...operatorProvenanceCleanup(), ...stripUndefinedObject(entitlement) };
   const mirrorDoc = { ...operatorProvenanceCleanup(), ...buildBurnBarEntitlementMirror(entitlement, target) };
   if (target.sourceEntitlementID === target.mirrorEntitlementID) {
-    tx.set(sourceRef, stripUndefinedObject({ ...sourceDoc, ...mirrorDoc }), { merge: true });
-    return;
+    return { sourceDoc: stripUndefinedObject({ ...sourceDoc, ...mirrorDoc }) };
   }
-  tx.set(sourceRef, sourceDoc, { merge: true });
-  tx.set(db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`), mirrorDoc, { merge: true });
+  return { sourceDoc, mirrorDoc };
 }
 
 function buildBurnBarEntitlementMirror(
