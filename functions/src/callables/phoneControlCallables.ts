@@ -386,12 +386,7 @@ export const issuePhoneControlEnrollmentGrant = onCallProduction(
 
     const hostDeviceId = boundedTrimmedString(request.data.hostDeviceId, "hostDeviceId", 160, true);
     const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);
-    const controllerDeviceId = boundedTrimmedString(
-      request.data.controllerDeviceId,
-      "controllerDeviceId",
-      160,
-      true,
-    );
+    const controllerDeviceId = boundedTrimmedString(request.data.controllerDeviceId, "controllerDeviceId", 160, true);
     const controllerPeerNodeId = boundedTrimmedString(
       request.data.controllerPeerNodeId,
       "controllerPeerNodeId",
@@ -512,7 +507,10 @@ export const publishPhoneControlAuthority = onCallProduction(
       }
       const existingController = await transaction.get(controllerRef);
       if (existingController.exists && existingController.get("deviceId") !== deviceId) {
-        throw new HttpsError("permission-denied", "Phone-control authority is already bound to another trusted device.");
+        throw new HttpsError(
+          "permission-denied",
+          "Phone-control authority is already bound to another trusted device.",
+        );
       }
       const isExistingAuthorityRenewal = allowlist.includes(deviceId) && existingController.exists;
       if (!isExistingAuthorityRenewal && allowlist.length === IROH_CONTROLLER_DEVICE_LIMIT) {
@@ -527,14 +525,12 @@ export const publishPhoneControlAuthority = onCallProduction(
           grant.get("connectionId") !== connectionId ||
           grant.get("controllerDeviceId") !== deviceId ||
           grant.get("controllerPeerNodeId") !== peerNodeId ||
+          grant.get("issuedByDeviceId") !== pairing.get("publishedByDeviceId") ||
           typeof grant.get("grantNonce") !== "string" ||
           typeof grantExpiresAtMillis !== "number" ||
           grantExpiresAtMillis < Date.now()
         ) {
-          throw new HttpsError(
-            "permission-denied",
-            "Phone-control authority requires a fresh approval from this Mac.",
-          );
+          throw new HttpsError("permission-denied", "Phone-control authority requires a fresh approval from this Mac.");
         }
         transaction.set(
           enrollmentGrantRef,

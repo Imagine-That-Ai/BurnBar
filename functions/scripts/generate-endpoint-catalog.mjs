@@ -100,7 +100,7 @@ const CATALOG_OVERRIDES = {
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["sourceDeviceId", "connectionId", "authorityPeerNodeId", "transportNodeId"],
     ownershipCheck:
-      "handler scopes every document path to request.auth.uid and transactionally joins the signed pairing, trusted host, sole trusted controller device, and key-derived controller authority before issuing a one-minute challenge",
+      "handler scopes every document path to request.auth.uid and transactionally joins the signed pairing, trusted host, matching authorized controller device, and key-derived controller authority before issuing a one-minute challenge",
     handlerModule: "callables/irohControllerRouteCallables.ts",
     bolaCoverage: [
       {
@@ -141,7 +141,7 @@ const CATALOG_OVERRIDES = {
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["sourceDeviceId", "connectionId"],
     ownershipCheck:
-      "handler derives the tenant from request.auth.uid and only advances the generation of the route bound to the pairing's sole trusted controller device",
+      "handler derives the tenant from request.auth.uid and only advances the generation of the route bound to the requesting authorized controller device",
     handlerModule: "callables/irohControllerRouteCallables.ts",
     bolaCoverage: [
       {
