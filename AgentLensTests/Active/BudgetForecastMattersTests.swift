@@ -86,7 +86,16 @@ final class BudgetForecastMattersTests: XCTestCase {
     }
 
     func test_seededLedger_computesRealSpendAndStaysAvailable() async throws {
-        let now = Date()
+        // Anchor the reference to noon of the current day so the rows seeded 1-2 hours
+        // earlier can never spill into the previous period. With a raw `Date()`, a run in
+        // the first two hours of a month (e.g. CI at 00:28 on the 1st) put both rows in
+        // the prior month, so the month-window sum was legitimately $0 and this failed.
+        let calendar = Calendar.current
+        let now = calendar.date(
+            byAdding: .hour,
+            value: 12,
+            to: calendar.startOfDay(for: Date())
+        ) ?? Date()
         let queue = try await makeQueueWithLedger(rows: [
             (cost: 30, startTime: now.addingTimeInterval(-3_600)),
             (cost: 12, startTime: now.addingTimeInterval(-7_200))
