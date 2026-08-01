@@ -96,6 +96,12 @@ describe("cross-platform App Check binding order", () => {
       end: "static func revokeIrohPairingRecord(",
       callable: '"publishIrohPairingRecord"',
     },
+    {
+      name: "phone-control enrollment grant issuance",
+      start: "static func issuePhoneControlEnrollmentGrant(",
+      end: "static func resolveActiveIrohControllerRoutes(",
+      callable: '"issuePhoneControlEnrollmentGrant"',
+    },
   ] as const;
 
   for (const action of macPairingActions) {
