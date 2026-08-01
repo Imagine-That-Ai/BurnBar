@@ -338,6 +338,20 @@ function seedTrustedDeviceAndPairing() {
   store.set(`users/${UID}/iroh_pairing/${CONN}`, { id: CONN });
 }
 
+function seedPhoneControlEnrollmentGrant(peerNodeId: string) {
+  store.set(`users/${UID}/iroh_pairing/${CONN}/controller_enrollment_grants/${DEVICE}`, {
+    connectionId: CONN,
+    controllerDeviceId: DEVICE,
+    controllerPeerNodeId: peerNodeId,
+    grantNonce: `grant-${peerNodeId}`,
+    status: "pending",
+    issuedByDeviceId: "mac-1",
+    issuedAtMillis: Date.now(),
+    expiresAtMillis: Date.now() + 60_000,
+    schemaVersion: 1,
+  });
+}
+
 function ed25519Key(): { base64: string; peerNodeId: string } {
   const bytes = randomBytes(32);
   return { base64: bytes.toString("base64"), peerNodeId: `ios-phone-${bytes.subarray(0, 12).toString("hex")}` };
@@ -411,6 +425,7 @@ describe("F2 publishPhoneControlAuthority keyKind", () => {
 
   it("publishes a legacy Ed25519 controller unchanged", async () => {
     const key = ed25519Key();
+    seedPhoneControlEnrollmentGrant(key.peerNodeId);
     const res = await invokeCallable<{ ok: boolean; peerNodeId: string }>(publishPhoneControlAuthority, {
       deviceId: DEVICE,
       connectionId: CONN,
@@ -428,6 +443,7 @@ describe("F2 publishPhoneControlAuthority keyKind", () => {
 
   it("publishes a Secure-Enclave P-256 controller", async () => {
     const key = seP256Key();
+    seedPhoneControlEnrollmentGrant(key.peerNodeId);
     const res = await invokeCallable<{ ok: boolean }>(publishPhoneControlAuthority, {
       deviceId: DEVICE,
       connectionId: CONN,
@@ -474,6 +490,7 @@ describe("F2 publishPhoneControlAuthority keyKind", () => {
 
   it("rejects a controller publish that conflicts with the trusted device peer binding", async () => {
     const key = seP256Key();
+    seedPhoneControlEnrollmentGrant(key.peerNodeId);
     store.set(`users/${UID}/escrow_devices/${DEVICE}`, {
       platform: "iOS",
       trustState: "trusted",
@@ -665,6 +682,7 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
     });
     // Publish a controller + grant authority for the device, then revoke it.
     const key = ed25519Key();
+    seedPhoneControlEnrollmentGrant(key.peerNodeId);
     await invokeCallable(publishPhoneControlAuthority, {
       deviceId: DEVICE,
       connectionId: CONN,

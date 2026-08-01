@@ -352,6 +352,29 @@ final class DevicesStore {
         do { try await trustGateway.bootstrapApproveSelf(); await load() } catch let CloudGatewayError.classified(c) { lastError = c } catch { lastError = .other(message: error.localizedDescription) }
     }
 
+    func approve(_ device: DeviceRecord) async {
+        guard !device.isCurrentDevice, device.trustState == .pending else {
+            lastError = .other(message: "Only a different pending device can be approved.")
+            return
+        }
+        guard device.hasVerifiedSafetyCode else {
+            lastError = .other(
+                message: "This device has not published a verified safety code yet."
+            )
+            return
+        }
+        actionInFlightFor = device.id
+        defer { actionInFlightFor = nil }
+        do {
+            try await trustGateway.approve(deviceID: device.id)
+            await load()
+        } catch let CloudGatewayError.classified(classification) {
+            lastError = classification
+        } catch {
+            lastError = .other(message: error.localizedDescription)
+        }
+    }
+
     func renameSelf(_ newName: String) async {
         actionInFlightFor = currentDevice?.id; defer { actionInFlightFor = nil }
         do { try await trustGateway.renameSelf(newName); await load() } catch let CloudGatewayError.classified(c) { lastError = c } catch { lastError = .other(message: error.localizedDescription) }

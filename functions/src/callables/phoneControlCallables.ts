@@ -6,7 +6,7 @@
  * Extracted verbatim from `computerUseSecurity.ts` (U6 split).
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { FieldValue, type DocumentReference, type Transaction } from "firebase-admin/firestore";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
@@ -26,6 +26,7 @@ import { boundedTrimmedString } from "./shared/validators.js";
 import { recordOrUndefined } from "../guards.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import {
+  IROH_CONTROLLER_DEVICE_LIMIT,
   IROH_HOST_ESCROW_PLATFORMS,
   PHONE_CONTROL_ESCROW_PLATFORMS,
   RELAY_AUTH_ENCRYPTION,
@@ -47,6 +48,7 @@ import { requireApprovedLinuxAppCheckIrohHost } from "./linuxAppCheckDevices.js"
 const RELAY_SENDER_KEY_PUBLISH_ACTION_KIND = "relay_sender_key_publish";
 const RELAY_SENDER_PROOF_PROTOCOL_VERSION = "3";
 const TRUSTED_DEVICE_PEER_NODE_ID_LIMIT = 16;
+const PHONE_CONTROL_ENROLLMENT_GRANT_TTL_MS = 2 * 60 * 1000;
 
 async function requireApprovedIrohHostMutationDevice(
   request: CallableRequest,
@@ -359,6 +361,101 @@ export const revokeIrohPairingRecord = onCallProduction(
   },
 );
 
+export const issuePhoneControlEnrollmentGrant = onCallProduction(
+  "issuePhoneControlEnrollmentGrant",
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      hostDeviceId?: unknown;
+      connectionId?: unknown;
+      controllerDeviceId?: unknown;
+      controllerPeerNodeId?: unknown;
+      nonce?: unknown;
+    }>,
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before approving phone-control enrollment.");
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce, {
+      allowLowerTrustDesktop: true,
+    });
+    await assertActiveBurnBarCloudProEntitlement(uid);
+
+    const hostDeviceId = boundedTrimmedString(request.data.hostDeviceId, "hostDeviceId", 160, true);
+    const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);
+    const controllerDeviceId = boundedTrimmedString(
+      request.data.controllerDeviceId,
+      "controllerDeviceId",
+      160,
+      true,
+    );
+    const controllerPeerNodeId = boundedTrimmedString(
+      request.data.controllerPeerNodeId,
+      "controllerPeerNodeId",
+      160,
+      true,
+    );
+    await requireApprovedIrohHostMutationDevice(request, uid, hostDeviceId);
+    await requireTrustedEscrowDevice(uid, controllerDeviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
+
+    const issuedAtMillis = Date.now();
+    const expiresAtMillis = issuedAtMillis + PHONE_CONTROL_ENROLLMENT_GRANT_TTL_MS;
+    const grantNonce = randomUUID();
+    const pairingRef = db.doc(`users/${uid}/iroh_pairing/${connectionId}`);
+    const grantRef = db.doc(
+      `users/${uid}/iroh_pairing/${connectionId}/controller_enrollment_grants/${controllerDeviceId}`,
+    );
+    await db.runTransaction(async (transaction) => {
+      const pairing = await transaction.get(pairingRef);
+      if (!pairing.exists) {
+        throw new HttpsError("failed-precondition", "Phone-control enrollment requires an active iroh pairing.");
+      }
+      if (pairing.get("publishedByDeviceId") !== hostDeviceId) {
+        throw new HttpsError(
+          "permission-denied",
+          "Only the trusted host that published this iroh pairing may approve a controller.",
+        );
+      }
+      transaction.set(
+        grantRef,
+        {
+          connectionId,
+          controllerDeviceId,
+          controllerPeerNodeId,
+          grantNonce,
+          status: "pending",
+          issuedByDeviceId: hostDeviceId,
+          issuedAtMillis,
+          expiresAtMillis,
+          schemaVersion: 1,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: false },
+      );
+    });
+
+    logInfo({
+      event: "callable_info",
+      message: "phone_control_enrollment_grant_issued",
+      connection_id: connectionId,
+      controller_device_id: controllerDeviceId,
+      controller_peer_node_id: controllerPeerNodeId,
+      host_device_id: hostDeviceId,
+    });
+    return {
+      ok: true,
+      connectionId,
+      controllerDeviceId,
+      controllerPeerNodeId,
+      grantNonce,
+      expiresAtMillis,
+    };
+  },
+);
+
 export const publishPhoneControlAuthority = onCallProduction(
   "publishPhoneControlAuthority",
   {
@@ -401,18 +498,56 @@ export const publishPhoneControlAuthority = onCallProduction(
 
     const pairingRef = db.doc(`users/${uid}/iroh_pairing/${connectionId}`);
     const controllerRef = db.doc(`users/${uid}/iroh_pairing/${connectionId}/controllers/${peerNodeId}`);
+    const enrollmentGrantRef = db.doc(
+      `users/${uid}/iroh_pairing/${connectionId}/controller_enrollment_grants/${deviceId}`,
+    );
     await db.runTransaction(async (transaction) => {
       const pairing = await transaction.get(pairingRef);
       if (!pairing.exists) {
         throw new HttpsError("failed-precondition", "Phone-control authority must reference an existing iroh pairing.");
       }
       const allowlist = normalizedControllerDeviceAllowlist(pairing.get("authorizedControllerDeviceIds"));
-      let nextAllowlist = allowlist;
-      if (allowlist.length === 0) {
-        nextAllowlist = [deviceId];
-      } else if (allowlist.length !== 1 || allowlist[0] !== deviceId) {
-        throw new HttpsError("permission-denied", "Phone-control authority is not authorized for this iroh pairing.");
+      if (allowlist.length > IROH_CONTROLLER_DEVICE_LIMIT) {
+        throw new HttpsError("failed-precondition", "Phone-control authority list exceeds the supported device limit.");
       }
+      const existingController = await transaction.get(controllerRef);
+      if (existingController.exists && existingController.get("deviceId") !== deviceId) {
+        throw new HttpsError("permission-denied", "Phone-control authority is already bound to another trusted device.");
+      }
+      const isExistingAuthorityRenewal = allowlist.includes(deviceId) && existingController.exists;
+      if (!isExistingAuthorityRenewal && allowlist.length === IROH_CONTROLLER_DEVICE_LIMIT) {
+        throw new HttpsError("resource-exhausted", "This iroh pairing has reached its trusted controller limit.");
+      }
+      if (!isExistingAuthorityRenewal) {
+        const grant = await transaction.get(enrollmentGrantRef);
+        const grantExpiresAtMillis = grant.get("expiresAtMillis");
+        if (
+          !grant.exists ||
+          grant.get("status") !== "pending" ||
+          grant.get("connectionId") !== connectionId ||
+          grant.get("controllerDeviceId") !== deviceId ||
+          grant.get("controllerPeerNodeId") !== peerNodeId ||
+          typeof grant.get("grantNonce") !== "string" ||
+          typeof grantExpiresAtMillis !== "number" ||
+          grantExpiresAtMillis < Date.now()
+        ) {
+          throw new HttpsError(
+            "permission-denied",
+            "Phone-control authority requires a fresh approval from this Mac.",
+          );
+        }
+        transaction.set(
+          enrollmentGrantRef,
+          {
+            status: "consumed",
+            consumedAtMillis: Date.now(),
+            consumedByPeerNodeId: peerNodeId,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
+      const nextAllowlist = allowlist.includes(deviceId) ? allowlist : [...allowlist, deviceId];
       await stageTrustedEscrowDevicePeerNodeBinding({
         transaction,
         uid,

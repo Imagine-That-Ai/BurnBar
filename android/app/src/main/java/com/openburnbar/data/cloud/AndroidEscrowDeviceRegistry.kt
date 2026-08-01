@@ -107,6 +107,32 @@ class AndroidEscrowDeviceRegistry(
         )
     }
 
+    suspend fun approveDevice(
+        uid: String,
+        targetDeviceId: String,
+        approverKeypair: AndroidCloudVaultDeviceKeypair = AndroidCloudVaultDeviceKeypair.loadOrCreate(),
+    ) {
+        require(targetDeviceId.isNotBlank() && targetDeviceId != approverKeypair.deviceId) {
+            "A different pending device is required for cross-device approval."
+        }
+        val approver = registerSelf(uid = uid, keypair = approverKeypair)
+        check(approver.trustState == TRUSTED) {
+            "This Android device must be trusted before it can approve another device."
+        }
+        val trustChain =
+            buildTrustChainProof(
+                uid = uid,
+                targetDeviceId = targetDeviceId,
+                approverDeviceId = approverKeypair.deviceId,
+                approverKeyVersion = approverKeypair.keyVersion,
+            )
+        securityClient.approveEscrowDeviceTrust(
+            deviceId = targetDeviceId,
+            approverDeviceId = approverKeypair.deviceId,
+            trustChain = trustChain.asMap(),
+        )
+    }
+
     companion object {
         const val PENDING = "pending"
         const val TRUSTED = "trusted"

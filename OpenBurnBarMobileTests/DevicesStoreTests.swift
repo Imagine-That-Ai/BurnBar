@@ -410,6 +410,46 @@ final class DevicesStoreTests: XCTestCase {
         XCTAssertEqual(store.staleDuplicates.count, 300)
     }
 
+    func testApprovePendingDeviceUsesGatewayAndRefreshes() async throws {
+        let targetKey = P256.KeyAgreement.PrivateKey().publicKey.x963Representation
+        let target = DeviceRecord(
+            id: "pending-mac",
+            displayName: "Pending Mac",
+            platform: "macOS",
+            trustState: .pending,
+            publicKeyFingerprint: Data(SHA256.hash(data: targetKey)).base64EncodedString(),
+            publicKeyData: targetKey.base64EncodedString()
+        )
+        let reader = FakeDevicesCloudReader(devices: [Self.currentDevice(), target])
+        let gateway = FakeDeviceTrustGateway()
+        let store = DevicesStore(reader: reader, trustGateway: gateway)
+        await store.load()
+
+        await store.approve(target)
+
+        XCTAssertEqual(gateway.approvedDeviceIDs, ["pending-mac"])
+        XCTAssertEqual(reader.loadDevicesCallCount, 2)
+        XCTAssertNil(store.lastError)
+    }
+
+    func testApproveFailsClosedWithoutVerifiedSafetyCode() async {
+        let target = DeviceRecord(
+            id: "pending-mac",
+            displayName: "Pending Mac",
+            platform: "macOS",
+            trustState: .pending
+        )
+        let reader = FakeDevicesCloudReader(devices: [Self.currentDevice(), target])
+        let gateway = FakeDeviceTrustGateway()
+        let store = DevicesStore(reader: reader, trustGateway: gateway)
+        await store.load()
+
+        await store.approve(target)
+
+        XCTAssertTrue(gateway.approvedDeviceIDs.isEmpty)
+        XCTAssertNotNil(store.lastError)
+    }
+
     func testTrustedDeviceWinsOverNewerPendingDuplicate() async {
         let now = Date(timeIntervalSinceReferenceDate: 20_000)
         let reader = FakeDevicesCloudReader(devices: [
@@ -566,6 +606,7 @@ private actor BlockingLinuxAppCheckDeviceManager: LinuxAppCheckDeviceManaging {
 @MainActor
 private final class FakeDevicesCloudReader: CloudReader {
     private let devices: [DeviceRecord]
+    private(set) var loadDevicesCallCount = 0
 
     init(devices: [DeviceRecord]) {
         self.devices = devices
@@ -580,7 +621,8 @@ private final class FakeDevicesCloudReader: CloudReader {
     }
 
     func loadDevices() async throws -> [DeviceRecord] {
-        devices
+        loadDevicesCallCount += 1
+        return devices
     }
 
     func loadAvailableEnvelopes() async throws -> [AvailableEnvelope] {
@@ -598,7 +640,12 @@ private final class FakeDevicesCloudReader: CloudReader {
 
 @MainActor
 private final class FakeDeviceTrustGateway: DeviceTrustGateway {
+    private(set) var approvedDeviceIDs: [String] = []
+
     func bootstrapApproveSelf() async throws {}
+    func approve(deviceID: String) async throws {
+        approvedDeviceIDs.append(deviceID)
+    }
     func renameSelf(_ newName: String) async throws {}
     func revoke(deviceID: String) async throws {}
 }

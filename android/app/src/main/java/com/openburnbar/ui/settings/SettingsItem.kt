@@ -62,6 +62,7 @@ enum class SettingsSection(val displayTitle: String) {
  */
 enum class SettingsPageRoute {
     ROOT,
+    CONNECTED_DEVICES,
     SMART_DISPLAYS,
     MENU_BAR_PREFS,
     THEME_PREFS,

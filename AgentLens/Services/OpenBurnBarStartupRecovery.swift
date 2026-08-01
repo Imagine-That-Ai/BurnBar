@@ -688,6 +688,14 @@ final class OpenBurnBarRuntimeContext {
                 guard let self else { return nil }
                 self.startComputerUseServices()
                 return self.computerUseRuntimeController?.coordinator.phoneValidator
+            },
+            phoneControlEnrollmentGrantIssuer: { connectionID, controllerDeviceID, controllerPeerNodeID in
+                try await ComputerUseSecurityCallableClient.issuePhoneControlEnrollmentGrant(
+                    hostDeviceId: MacLiveDeviceTrustGateway.loadOrCreateDeviceId(),
+                    connectionId: connectionID,
+                    controllerDeviceId: controllerDeviceID,
+                    controllerPeerNodeId: controllerPeerNodeID
+                )
             }
         )
         #else

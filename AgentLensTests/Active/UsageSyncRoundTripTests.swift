@@ -899,7 +899,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertTrue(unsyncedAfterAppend.isEmpty)
     }
 
-    func test_firestoreOnlyProviderAccountUpload_mergesAndPreservesExistingDocuments() async throws {
+    func test_firestoreOnlyProviderAccountUpload_replacesLegacyFieldsWithCanonicalSchema() async throws {
         let now = Date(timeIntervalSince1970: 1_700_020_000)
         fakeGateway.setDocumentData([
             "legacyMarker": "preserve-me"
@@ -927,7 +927,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         let docs = fakeGateway.documents(under: "users/test-uid-1/provider_accounts")
         XCTAssertEqual(docs.count, 2)
         let anthropic = try XCTUnwrap(docs["users/test-uid-1/provider_accounts/anthropic-main"])
-        XCTAssertEqual(anthropic["legacyMarker"] as? String, "preserve-me")
+        XCTAssertNil(anthropic["legacyMarker"])
         XCTAssertEqual(anthropic["label"] as? String, "Anthropic Main")
         XCTAssertNotNil(docs["users/test-uid-1/provider_accounts/codex-main"])
     }

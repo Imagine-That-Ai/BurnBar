@@ -103,3 +103,225 @@ final class CloudStoreSubscribeUITests: XCTestCase {
         return element.exists
     }
 }
+
+@MainActor
+final class PhysicalTouchIDPromptDismissUITests: XCTestCase {
+    func testDismissVisibleTouchIDPrompt() throws {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let cancel = springboard.buttons[
+            "com.apple.localauthentication.ax.authentication.button.cancel"
+        ].firstMatch
+
+        if cancel.waitForExistence(timeout: 5), cancel.isHittable {
+            cancel.tap()
+            return
+        }
+
+        let alert = springboard.alerts[
+            "com.apple.localauthentication.ax.authentication.alert"
+        ].firstMatch
+        guard alert.waitForExistence(timeout: 2) else {
+            throw XCTSkip("No LocalAuthentication prompt is visible.")
+        }
+
+        // Physical-device LocalAuthentication overlays can expose duplicate,
+        // inaccessible Cancel elements. Only after proving the alert exists,
+        // use its stable lower action area as a narrow UI-test fallback.
+        springboard.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.575)
+        ).tap()
+    }
+}
+
+@MainActor
+final class PhysicalIPadMercuryE2EUITests: XCTestCase {
+    private var configuredPeerName: String? {
+        let configured = ProcessInfo.processInfo.environment["OPENBURNBAR_UI_TEST_PEER_NAME"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let configured, !configured.isEmpty {
+            return configured
+        }
+        return nil
+    }
+
+    private var sustainedStreamingSeconds: TimeInterval {
+        let configured = ProcessInfo.processInfo.environment[
+            "OPENBURNBAR_UI_TEST_SUSTAINED_SECONDS"
+        ]
+        guard let configured,
+              let seconds = TimeInterval(configured),
+              seconds >= 0
+        else {
+            return 190
+        }
+        return seconds
+    }
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    func testMirrorStopReconnect() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        if !waitForAgentsRoute(in: app, timeout: 8) {
+            let sidebarAgents = app.buttons["sidebar.destination.agents"].firstMatch
+            if sidebarAgents.waitForExistence(timeout: 20), sidebarAgents.isHittable {
+                sidebarAgents.tap()
+            } else {
+                // Compact-width fallback for running the same physical test on
+                // an iPhone without weakening the iPad path.
+                app.open(URL(string: "burnbar://hermes")!)
+            }
+        }
+        if !waitForAgentsRoute(in: app, timeout: 20) {
+            let hermesTab = app.buttons["auroraTab.hermes"].firstMatch
+            XCTAssertTrue(
+                hermesTab.waitForExistence(timeout: 20) && hermesTab.isHittable,
+                "Agents route did not appear and the compact navigation control was not hittable. \(app.debugDescription)"
+            )
+            hermesTab.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+            ).tap()
+        }
+        XCTAssertTrue(
+            waitForAgentsRoute(in: app, timeout: 20),
+            "Agents screen did not appear. \(app.debugDescription)"
+        )
+
+        let pairedMacTile = app.descendants(matching: .any)
+            .matching(identifier: "agent.tile.paired-mac")
+            .firstMatch
+        let peer: XCUIElement
+        if pairedMacTile.waitForExistence(timeout: 45) {
+            peer = pairedMacTile
+        } else if let configuredPeerName {
+            peer = app.descendants(matching: .any).matching(
+                NSPredicate(format: "label BEGINSWITH %@", configuredPeerName)
+            ).firstMatch
+        } else {
+            peer = pairedMacTile
+        }
+        XCTAssertTrue(
+            peer.waitForExistence(timeout: 45),
+            "The paired Mac tile did not appear. \(app.debugDescription)"
+        )
+        peer.tap()
+
+        let liveSheet = app.scrollViews.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Mercury Live for")
+        ).firstMatch
+        XCTAssertTrue(liveSheet.waitForExistence(timeout: 45))
+
+        try requestMirror(in: app)
+        XCTAssertTrue(waitForStreamingVideo(in: app, timeout: 180))
+        attachScreenshot(named: "01-connected")
+        RunLoop.current.run(
+            until: Date().addingTimeInterval(sustainedStreamingSeconds)
+        )
+        attachScreenshot(named: "02-connected-later")
+
+        closeMirror(in: app)
+
+        let ask = app.buttons["Ask to mirror Mac screen"].firstMatch
+        XCTAssertTrue(ask.waitForExistence(timeout: 45))
+        attachScreenshot(named: "03-disconnected")
+
+        try requestMirror(in: app)
+        XCTAssertTrue(waitForStreamingVideo(in: app, timeout: 180))
+        attachScreenshot(named: "04-reconnected")
+    }
+
+    private func waitForAgentsRoute(
+        in app: XCUIApplication,
+        timeout: TimeInterval
+    ) -> Bool {
+        let agentsScreen = app.descendants(matching: .any)
+            .matching(identifier: "screen.agents")
+            .firstMatch
+        let agentsNavigationBar = app.navigationBars["Agents"].firstMatch
+        let pairedMacTile = app.descendants(matching: .any)
+            .matching(identifier: "agent.tile.paired-mac")
+            .firstMatch
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if agentsScreen.exists || agentsNavigationBar.exists || pairedMacTile.exists {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return agentsScreen.exists || agentsNavigationBar.exists || pairedMacTile.exists
+    }
+
+    private func requestMirror(in app: XCUIApplication) throws {
+        let ask = app.buttons["Ask to mirror Mac screen"].firstMatch
+        XCTAssertTrue(ask.waitForExistence(timeout: 45))
+        XCTAssertTrue(ask.isEnabled)
+        ask.tap()
+
+        // The production Secure Enclave key may request Touch ID while
+        // deriving an optional controller identity. Cancelling this prompt
+        // keeps the mirror request read-only and allows frame/reconnect QA;
+        // real input QA still requires a live biometric match.
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        dismissTouchIDPromptIfPresent()
+    }
+
+    private func dismissTouchIDPromptIfPresent() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let alert = springboard.alerts[
+            "com.apple.localauthentication.ax.authentication.alert"
+        ].firstMatch
+        guard alert.exists else { return }
+
+        let cancel = springboard.buttons[
+            "com.apple.localauthentication.ax.authentication.button.cancel"
+        ].firstMatch
+        if cancel.exists, cancel.isHittable {
+            cancel.tap()
+            return
+        }
+
+        springboard.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.575)
+        ).tap()
+    }
+
+    private func waitForStreamingVideo(
+        in app: XCUIApplication,
+        timeout: TimeInterval
+    ) -> Bool {
+        let video = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier == %@", "mercury.screen.video")
+        ).firstMatch
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if video.exists, video.value as? String == "Streaming" {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        attachScreenshot(named: "streaming-timeout")
+        return video.exists && video.value as? String == "Streaming"
+    }
+
+    private func closeMirror(in app: XCUIApplication) {
+        let close = app.buttons["Close mirror"].firstMatch
+        if !close.exists {
+            let openControls = app.buttons["Open mirror controls"].firstMatch
+            XCTAssertTrue(openControls.waitForExistence(timeout: 20))
+            openControls.tap()
+        }
+        XCTAssertTrue(close.waitForExistence(timeout: 20))
+        close.tap()
+    }
+
+    private func attachScreenshot(named name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+}

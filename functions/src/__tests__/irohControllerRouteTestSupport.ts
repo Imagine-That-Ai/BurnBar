@@ -1,4 +1,4 @@
-import { generateKeyPairSync, randomBytes, sign, type KeyObject } from "node:crypto";
+import { createHash, generateKeyPairSync, randomBytes, sign, type KeyObject } from "node:crypto";
 
 const BASE32_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
 
@@ -151,6 +151,43 @@ export function seedRouteTrustGraph(args: {
     signature: sign(null, canonicalPairing, host.privateKey).toString("base64"),
     publishedByDeviceId: args.hostDeviceId,
     authorizedControllerDeviceIds: [args.sourceDeviceId],
+  });
+  args.store.set(`users/${args.uid}/iroh_pairing/${args.connectionId}/controllers/${authorityPeerNodeId}`, {
+    id: authorityPeerNodeId,
+    connectionId: args.connectionId,
+    peerNodeId: authorityPeerNodeId,
+    deviceId: args.sourceDeviceId,
+    publicKeyBase64: authorityPublic.toString("base64"),
+    signingKeyKind: "ed25519",
+  });
+  return { authority, authorityPeerNodeId, transport, transportNodeId };
+}
+
+export function seedAdditionalRouteController(args: {
+  connectionId: string;
+  sourceDeviceId: string;
+  store: Map<string, Record<string, unknown>>;
+  uid: string;
+}) {
+  const authority = generateKeyPairSync("ed25519");
+  const authorityPublic = rawEd25519PublicKey(authority.publicKey);
+  const authorityPeerNodeId = `android-phone-${createHash("sha256").update(authorityPublic).digest("hex").slice(0, 24)}`;
+  const transport = generateKeyPairSync("ed25519");
+  const transportNodeId = rawEd25519PublicKey(transport.publicKey).toString("hex");
+  const pairingPath = `users/${args.uid}/iroh_pairing/${args.connectionId}`;
+  const pairing = requireRecord(args.store.get(pairingPath), "pairing");
+  const allowlist = Array.isArray(pairing.authorizedControllerDeviceIds)
+    ? pairing.authorizedControllerDeviceIds
+    : [];
+  args.store.set(pairingPath, {
+    ...pairing,
+    authorizedControllerDeviceIds: [...allowlist, args.sourceDeviceId],
+  });
+  args.store.set(`users/${args.uid}/escrow_devices/${args.sourceDeviceId}`, {
+    deviceId: args.sourceDeviceId,
+    platform: "Android",
+    trustState: "trusted",
+    peerNodeId: authorityPeerNodeId,
   });
   args.store.set(`users/${args.uid}/iroh_pairing/${args.connectionId}/controllers/${authorityPeerNodeId}`, {
     id: authorityPeerNodeId,

@@ -6,7 +6,7 @@ import SwiftUI
 /// Single source of truth for "this process is hosting XCTest, not a real user."
 /// Keeps test hosts from starting heavyweight scene/bootstrap work before XCTest connects.
 enum OpenBurnBarRuntime {
-    @MainActor private static var harnessHostActivity: NSObjectProtocol?
+    @MainActor private static var applicationHostActivity: NSObjectProtocol?
 
     /// True when the current process is an XCTest host. Detected via the well-known
     /// XCTest environment variables that Apple injects into the test runner.
@@ -132,34 +132,31 @@ enum OpenBurnBarRuntime {
         ProcessInfo.processInfo.environment["OPENBURNBAR_UITEST_OPEN_SETTINGS"] == "1"
     }
 
-    /// Harness-launched live-scene processes must remain alive even when AppKit
-    /// sees no active window. The iroh relay smoke starts the menu-bar app from
-    /// a shell, so automatic termination can otherwise kill the host right after
-    /// the first relay publish.
-    static var shouldDisableAutomaticTerminationForHarness: Bool {
-        shouldDisableAutomaticTerminationForHarness(environment: ProcessInfo.processInfo.environment)
+    /// OpenBurnBar is a menu-bar and background-service host, so closing its
+    /// last visible window must not terminate the process. The XCTest stub scene
+    /// is the only exception: keeping that host alive would outlive the runner.
+    static var shouldDisableAutomaticTerminationForApplication: Bool {
+        shouldDisableAutomaticTerminationForApplication(
+            shouldUseTestStubScene: shouldUseTestStubScene
+        )
     }
 
-    static func shouldDisableAutomaticTerminationForHarness(environment: [String: String]) -> Bool {
-        environment["OPENBURNBAR_FORCE_LIVE_SCENE"] == "1"
-            || environment["OPENBURNBAR_E2E_HOLD_OPEN"] == "1"
-    }
-
-    @MainActor
-    static func beginHarnessHostActivityIfNeeded() {
-        beginHarnessHostActivityIfNeeded(environment: ProcessInfo.processInfo.environment)
+    static func shouldDisableAutomaticTerminationForApplication(
+        shouldUseTestStubScene: Bool
+    ) -> Bool {
+        !shouldUseTestStubScene
     }
 
     @MainActor
-    static func beginHarnessHostActivityIfNeeded(environment: [String: String]) {
-        guard shouldDisableAutomaticTerminationForHarness(environment: environment),
-              harnessHostActivity == nil else { return }
+    static func beginApplicationHostActivityIfNeeded() {
+        guard shouldDisableAutomaticTerminationForApplication,
+              applicationHostActivity == nil else { return }
         let processInfo = ProcessInfo.processInfo
         processInfo.disableSuddenTermination()
-        processInfo.disableAutomaticTermination("OpenBurnBar E2E relay host is active")
-        harnessHostActivity = processInfo.beginActivity(
+        processInfo.disableAutomaticTermination("OpenBurnBar background services are active")
+        applicationHostActivity = processInfo.beginActivity(
             options: [.automaticTerminationDisabled, .suddenTerminationDisabled],
-            reason: "OpenBurnBar E2E relay host is active"
+            reason: "OpenBurnBar background services are active"
         )
     }
 
@@ -429,7 +426,7 @@ struct OpenBurnBarApp: App {
         // sequences statements freely, where `@SceneBuilder` would try to type
         // each one as a Scene component.
         installCommandRouter()
-        OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
+        OpenBurnBarRuntime.beginApplicationHostActivityIfNeeded()
         openUITestDashboardIfNeeded()
         presentStartupRecoveryIfNeeded()
         // The AppDelegate owns the live status item + popover via AppKit

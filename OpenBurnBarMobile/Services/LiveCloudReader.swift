@@ -490,6 +490,19 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
         )
     }
 
+    func approve(deviceID targetDeviceID: String) async throws {
+        guard uid != nil else { throw CloudGatewayError.classified(.notAuthenticated) }
+        guard targetDeviceID != deviceId else {
+            throw CloudGatewayError.classified(
+                .other(message: "Use the bootstrap approval flow for this device.")
+            )
+        }
+        try await ComputerUseSecurityCallableClient.approveEscrowDeviceTrust(
+            deviceId: targetDeviceID,
+            approverDeviceId: deviceId
+        )
+    }
+
     func trustSelfForComputerUseControl() async throws {
         guard uid != nil else { throw CloudGatewayError.classified(.notAuthenticated) }
         await registerSelfIfNeeded()

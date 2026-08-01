@@ -2935,7 +2935,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
   {
     exportedName: "revokeIrohControllerRoute",
     trigger: "callable",
-    authMethod: "Firebase Auth, App Check, a single-use high-risk nonce, and the trusted sole controller device",
+    authMethod: "Firebase Auth, App Check, a single-use high-risk nonce, and the trusted authorized controller device",
     appCheck: "required",
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["sourceDeviceId", "connectionId"],

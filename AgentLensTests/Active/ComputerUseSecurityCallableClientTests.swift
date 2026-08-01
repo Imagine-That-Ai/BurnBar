@@ -192,6 +192,45 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
         XCTAssertEqual(routes[0].generation, 4)
     }
 
+    func testParsesMultipleFreshActiveIrohControllerRoutes() throws {
+        let now: Int64 = 1_700_000_000_000
+        let firstNodeID = String(repeating: "a", count: 64)
+        let secondNodeID = String(repeating: "b", count: 64)
+        let routes = try ComputerUseSecurityCallableClient.parseActiveIrohControllerRoutes(
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": NSNumber(value: now),
+                "routes": [
+                    [
+                        "connectionId": "connection-1",
+                        "sourceDeviceId": "ios-device-1",
+                        "transportNodeId": firstNodeID,
+                        "authorityPeerNodeId": "ios-phone-authority-1",
+                        "generation": NSNumber(value: 4),
+                        "registeredAtMillis": NSNumber(value: now - 1_000),
+                        "expiresAtMillis": NSNumber(value: now + 60_000)
+                    ],
+                    [
+                        "connectionId": "connection-1",
+                        "sourceDeviceId": "android-device-1",
+                        "transportNodeId": secondNodeID,
+                        "authorityPeerNodeId": "android-phone-authority-1",
+                        "generation": NSNumber(value: 2),
+                        "registeredAtMillis": NSNumber(value: now - 500),
+                        "expiresAtMillis": NSNumber(value: now + 90_000)
+                    ]
+                ]
+            ],
+            expectedUID: "user-1",
+            expectedConnectionId: "connection-1",
+            nowMillis: now
+        )
+
+        XCTAssertEqual(routes.map(\.sourceDeviceId), ["ios-device-1", "android-device-1"])
+        XCTAssertEqual(routes.map(\.transportNodeId), [firstNodeID, secondNodeID])
+    }
+
     func testRejectsAmbiguousStaleOrMismatchedIrohControllerRouteResponse() {
         let now: Int64 = 1_700_000_000_000
         let route: [String: Any] = [
@@ -205,7 +244,30 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
         ]
         let invalidResponses: [[String: Any]] = [
             ["uid": "user-other", "connectionId": "connection-1", "resolvedAtMillis": now, "routes": [route]],
-            ["uid": "user-1", "connectionId": "connection-1", "resolvedAtMillis": now, "routes": [route, route]],
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": now,
+                "routes": [
+                    route,
+                    route.merging([
+                        "transportNodeId": String(repeating: "b", count: 64),
+                        "authorityPeerNodeId": "ios-phone-authority-2"
+                    ]) { _, replacement in replacement }
+                ]
+            ],
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": now,
+                "routes": [
+                    route,
+                    route.merging([
+                        "sourceDeviceId": "android-device-1",
+                        "authorityPeerNodeId": "android-phone-authority-1"
+                    ]) { _, replacement in replacement }
+                ]
+            ],
             ["uid": "user-1", "connectionId": "connection-1", "resolvedAtMillis": now - 60_001, "routes": [route]],
             ["uid": "user-1", "connectionId": "connection-other", "resolvedAtMillis": now, "routes": [route]],
             [

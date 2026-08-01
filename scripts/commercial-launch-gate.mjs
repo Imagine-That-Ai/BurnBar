@@ -178,15 +178,16 @@ const REQUIRED_CODEQL_CHECKS = [
   "Analyze (javascript-typescript)",
   "Analyze (python)",
 ];
-const REQUIRED_MAIN_GATE_CHECK = "openburnbar-pr";
+const REQUIRED_MAIN_GATE_CHECK = "BurnBar CI Gate";
 const GITHUB_ACTIONS_APP_SLUG = "github-actions";
 const REQUIRED_MAIN_GATE_WORKFLOW_PATHS = [
-  ".github/workflows/openburnbar-pr-harness.yml",
+  ".github/workflows/burnbar-ci-gate.yml",
 ];
 const REQUIRED_CODEQL_WORKFLOW_PATHS = [
   ".github/workflows/codeql.yml",
   ".github/workflows/codeql-pr.yml",
 ];
+const CHECK_RUNS_PAGE_SIZE = 100;
 const REQUIRED_GITHUB_SECURITY_SETTINGS = [
   "dependabot_security_updates",
   "secret_scanning",
@@ -1035,9 +1036,97 @@ export function evaluateLatestMergedPrForMain({ mainSha, merged }) {
   return {
     ok: true,
     pr: merged.number,
+    mainSha,
     headSha: merged.head.sha,
-    checkedSha: mainSha,
+    checkedSha: merged.head.sha,
     mergeCommitSha: merged.merge_commit_sha,
+  };
+}
+
+export function evaluateMergedPrHeadTreeBinding({
+  mainSha,
+  headSha,
+  mainTreeSha,
+  headTreeSha,
+}) {
+  if (!mainSha || !headSha || !mainTreeSha || !headTreeSha) {
+    return {
+      ok: false,
+      mainSha: mainSha || null,
+      headSha: headSha || null,
+      mainTreeSha: mainTreeSha || null,
+      headTreeSha: headTreeSha || null,
+      error: "main/PR tree binding is incomplete",
+    };
+  }
+  if (mainTreeSha !== headTreeSha) {
+    return {
+      ok: false,
+      mainSha,
+      headSha,
+      mainTreeSha,
+      headTreeSha,
+      reason:
+        "the current main tree differs from the merged PR head tree; PR-head checks cannot certify the shipped main content",
+    };
+  }
+  return {
+    ok: true,
+    mainSha,
+    headSha,
+    mainTreeSha,
+    headTreeSha,
+    binding: "exact-git-tree",
+  };
+}
+
+export function selectMainOrMergedPrHeadCheck({
+  mainSha,
+  mainCheck,
+  latestPr,
+  mergedPrHeadCheck,
+}) {
+  // A present-but-pending, failed, or untrusted main check must fail closed.
+  // Only a structurally absent main check may use the exact merged PR head as
+  // evidence, and latestMergedPrForMainSha must first prove both that the PR
+  // produced the current origin/main commit and that both commits resolve to
+  // the exact same Git tree. Commit ancestry alone is not a shipped-content
+  // attestation.
+  if (mainCheck?.trust !== "missing-check-run") {
+    return {
+      ...mainCheck,
+      evidenceSource: "main",
+      checkedSha: mainSha,
+      fallbackUsed: false,
+    };
+  }
+
+  if (latestPr?.ok !== true || latestPr?.treeBinding?.ok !== true) {
+    return {
+      ...mainCheck,
+      ok: false,
+      evidenceSource: "main",
+      checkedSha: mainSha,
+      fallbackUsed: false,
+      fallbackError:
+        latestPr?.reason ||
+        latestPr?.error ||
+        latestPr?.treeBinding?.reason ||
+        latestPr?.treeBinding?.error ||
+        "latest merged PR could not be tied to origin/main",
+    };
+  }
+
+  return {
+    ...mergedPrHeadCheck,
+    evidenceSource: "merged-pr-head",
+    checkedSha: latestPr.headSha,
+    fallbackUsed: true,
+    pr: latestPr.pr,
+    mainSha,
+    mergeCommitSha: latestPr.mergeCommitSha,
+    treeBinding: latestPr.treeBinding,
+    mainCheck,
   };
 }
 
@@ -1094,6 +1183,158 @@ function checkGitHubSecuritySettings() {
   };
 }
 
+function latestMergedPrForMainSha(mainSha) {
+  const pulls = run("gh", [
+    "api",
+    "-H",
+    "Accept: application/vnd.github+json",
+    `/repos/${REPO}/pulls?state=closed&sort=updated&direction=desc&per_page=20`,
+  ]);
+  if (!pulls.ok) {
+    return {
+      ok: false,
+      error: pulls.stderr || pulls.stdout || pulls.error,
+    };
+  }
+  const merged = JSON.parse(pulls.stdout).find((pr) => pr.merged_at);
+  const latestPr = evaluateLatestMergedPrForMain({ mainSha, merged });
+  if (!latestPr.ok) return latestPr;
+
+  const mainCommit = ghJSON(`/repos/${REPO}/git/commits/${mainSha}`);
+  const headCommit = ghJSON(`/repos/${REPO}/git/commits/${latestPr.headSha}`);
+  const mainTreeSha =
+    mainCommit.ok && typeof mainCommit.value?.tree?.sha === "string"
+      ? mainCommit.value.tree.sha
+      : null;
+  const headTreeSha =
+    headCommit.ok && typeof headCommit.value?.tree?.sha === "string"
+      ? headCommit.value.tree.sha
+      : null;
+  const treeBinding = evaluateMergedPrHeadTreeBinding({
+    mainSha,
+    headSha: latestPr.headSha,
+    mainTreeSha,
+    headTreeSha,
+  });
+  if (!treeBinding.ok) {
+    return {
+      ...latestPr,
+      ok: false,
+      treeBinding,
+      error:
+        treeBinding.error ||
+        treeBinding.reason ||
+        mainCommit.error ||
+        headCommit.error ||
+        "could not bind merged PR head to the current main tree",
+    };
+  }
+  return { ...latestPr, treeBinding };
+}
+
+export function collectCompleteCheckRunPages(pages) {
+  if (!Array.isArray(pages) || pages.length === 0) {
+    return { ok: false, error: "check-runs response contained no pages" };
+  }
+  const totalCount = pages[0]?.total_count;
+  if (!Number.isInteger(totalCount) || totalCount < 0) {
+    return { ok: false, error: "check-runs response has invalid total_count" };
+  }
+
+  const byID = new Map();
+  for (const [index, page] of pages.entries()) {
+    if (page?.total_count !== totalCount) {
+      return {
+        ok: false,
+        error:
+          `check-runs total_count changed while paginating ` +
+          `(page 1: ${totalCount}, page ${index + 1}: ${page?.total_count})`,
+      };
+    }
+    if (!Array.isArray(page.check_runs)) {
+      return {
+        ok: false,
+        error: `check-runs page ${index + 1} has no check_runs array`,
+      };
+    }
+    for (const check of page.check_runs) {
+      if (!Number.isInteger(check?.id)) {
+        return {
+          ok: false,
+          error: `check-runs page ${index + 1} contains a check without an id`,
+        };
+      }
+      byID.set(check.id, check);
+    }
+  }
+
+  if (byID.size !== totalCount) {
+    return {
+      ok: false,
+      totalCount,
+      receivedUniqueCheckRuns: byID.size,
+      error:
+        `incomplete check-runs pagination: expected ${totalCount}, ` +
+        `received ${byID.size} unique checks`,
+    };
+  }
+  return {
+    ok: true,
+    totalCount,
+    pagesFetched: pages.length,
+    checkRuns: [...byID.values()],
+  };
+}
+
+function checkRunsForSha(sha) {
+  const pages = [];
+  let pageCount = 1;
+  for (let page = 1; page <= pageCount; page += 1) {
+    const runs = run("gh", [
+      "api",
+      "-H",
+      "Accept: application/vnd.github+json",
+      `/repos/${REPO}/commits/${sha}/check-runs?per_page=${CHECK_RUNS_PAGE_SIZE}&page=${page}`,
+    ]);
+    if (!runs.ok) {
+      return {
+        ok: false,
+        sha,
+        page,
+        error: runs.stderr || runs.stdout || runs.error,
+      };
+    }
+    let payload;
+    try {
+      payload = JSON.parse(runs.stdout);
+    } catch (error) {
+      return {
+        ok: false,
+        sha,
+        page,
+        error: `invalid check-runs JSON: ${error.message}`,
+      };
+    }
+    pages.push(payload);
+    if (page === 1) {
+      const totalCount = payload?.total_count;
+      if (!Number.isInteger(totalCount) || totalCount < 0) {
+        return {
+          ok: false,
+          sha,
+          page,
+          error: "check-runs response has invalid total_count",
+        };
+      }
+      pageCount = Math.max(
+        1,
+        Math.ceil(totalCount / CHECK_RUNS_PAGE_SIZE),
+      );
+    }
+  }
+  return { sha, ...collectCompleteCheckRunPages(pages) };
+}
+
 function checkLatestMergedPrGate() {
   const originMain = run("git", ["rev-parse", "origin/main"]);
   if (!originMain.ok) {
@@ -1103,29 +1344,14 @@ function checkLatestMergedPrGate() {
     };
   }
   const mainSha = originMain.stdout.trim();
-  const pulls = run("gh", [
-    "api",
-    "-H",
-    "Accept: application/vnd.github+json",
-    `/repos/${REPO}/pulls?state=closed&sort=updated&direction=desc&per_page=20`,
-  ]);
-  if (!pulls.ok) return { ok: false, error: pulls.stderr || pulls.stdout };
-  const merged = JSON.parse(pulls.stdout).find((pr) => pr.merged_at);
-  const latestPr = evaluateLatestMergedPrForMain({ mainSha, merged });
+  const latestPr = latestMergedPrForMainSha(mainSha);
   if (!latestPr.ok) return latestPr;
 
   const checkedSha = latestPr.checkedSha;
-  const runs = run("gh", [
-    "api",
-    "-H",
-    "Accept: application/vnd.github+json",
-    `/repos/${REPO}/commits/${checkedSha}/check-runs?per_page=100`,
-  ]);
-  if (!runs.ok)
-    return { ok: false, pr: merged.number, error: runs.stderr || runs.stdout };
-  const checkRuns = JSON.parse(runs.stdout).check_runs || [];
+  const runs = checkRunsForSha(checkedSha);
+  if (!runs.ok) return { ...runs, pr: latestPr.pr, mainSha };
   const required = findTrustedCheckRun(
-    checkRuns,
+    runs.checkRuns,
     REQUIRED_MAIN_GATE_CHECK,
     checkedSha,
     REQUIRED_MAIN_GATE_WORKFLOW_PATHS,
@@ -1133,9 +1359,12 @@ function checkLatestMergedPrGate() {
   return {
     ok: required.ok === true,
     pr: latestPr.pr,
+    mainSha,
     headSha: latestPr.headSha,
     mergeCommitSha: latestPr.mergeCommitSha,
+    treeBinding: latestPr.treeBinding,
     checkedSha,
+    evidenceSource: "merged-pr-head",
     openburnbarPr: required,
   };
 }
@@ -1149,23 +1378,48 @@ function checkMainRequiredGate() {
     };
   }
   const sha = originMain.stdout.trim();
-  const runs = run("gh", [
-    "api",
-    "-H",
-    "Accept: application/vnd.github+json",
-    `/repos/${REPO}/commits/${sha}/check-runs?per_page=100`,
-  ]);
-  if (!runs.ok) return { ok: false, sha, error: runs.stderr || runs.stdout };
-  const checkRuns = JSON.parse(runs.stdout).check_runs || [];
-  const required = findTrustedCheckRun(
-    checkRuns,
+  const mainRuns = checkRunsForSha(sha);
+  if (!mainRuns.ok) return mainRuns;
+  const mainCheck = findTrustedCheckRun(
+    mainRuns.checkRuns,
     REQUIRED_MAIN_GATE_CHECK,
     sha,
     REQUIRED_MAIN_GATE_WORKFLOW_PATHS,
   );
+  let latestPr = null;
+  let mergedPrHeadCheck = null;
+  if (mainCheck.trust === "missing-check-run") {
+    latestPr = latestMergedPrForMainSha(sha);
+    if (latestPr.ok) {
+      const headRuns = checkRunsForSha(latestPr.headSha);
+      if (!headRuns.ok) {
+        return {
+          ...headRuns,
+          mainSha: sha,
+          mainCheck,
+          latestMergedPr: latestPr,
+        };
+      }
+      mergedPrHeadCheck = findTrustedCheckRun(
+        headRuns.checkRuns,
+        REQUIRED_MAIN_GATE_CHECK,
+        latestPr.headSha,
+        REQUIRED_MAIN_GATE_WORKFLOW_PATHS,
+      );
+    }
+  }
+  const required = selectMainOrMergedPrHeadCheck({
+    mainSha: sha,
+    mainCheck,
+    latestPr,
+    mergedPrHeadCheck,
+  });
   return {
     ok: required.ok === true,
     sha,
+    checkedSha: required.checkedSha,
+    evidenceSource: required.evidenceSource,
+    latestMergedPr: latestPr,
     openburnbarPr: required,
   };
 }
@@ -1179,27 +1433,60 @@ function checkMainCodeQL() {
     };
   }
   const sha = originMain.stdout.trim();
-  const runs = run("gh", [
-    "api",
-    "-H",
-    "Accept: application/vnd.github+json",
-    `/repos/${REPO}/commits/${sha}/check-runs?per_page=100`,
-  ]);
-  if (!runs.ok) return { ok: false, sha, error: runs.stderr || runs.stdout };
+  const mainRuns = checkRunsForSha(sha);
+  if (!mainRuns.ok) return mainRuns;
 
-  const checkRuns = JSON.parse(runs.stdout).check_runs || [];
-  const checks = REQUIRED_CODEQL_CHECKS.map((name) => {
-    const check = findTrustedCheckRun(
-      checkRuns,
+  const mainChecks = REQUIRED_CODEQL_CHECKS.map((name) => ({
+    name,
+    check: findTrustedCheckRun(
+      mainRuns.checkRuns,
       name,
       sha,
       REQUIRED_CODEQL_WORKFLOW_PATHS,
-    );
-    return { name, ...check };
+    ),
+  }));
+  const needsMergedPrHead = mainChecks.some(
+    ({ check }) => check.trust === "missing-check-run",
+  );
+  let latestPr = null;
+  let headCheckRuns = [];
+  if (needsMergedPrHead) {
+    latestPr = latestMergedPrForMainSha(sha);
+    if (latestPr.ok) {
+      const headRuns = checkRunsForSha(latestPr.headSha);
+      if (!headRuns.ok) {
+        return {
+          ...headRuns,
+          mainSha: sha,
+          mainChecks,
+          latestMergedPr: latestPr,
+        };
+      }
+      headCheckRuns = headRuns.checkRuns;
+    }
+  }
+  const checks = mainChecks.map(({ name, check: mainCheck }) => {
+    const mergedPrHeadCheck =
+      mainCheck.trust === "missing-check-run" && latestPr?.ok === true
+        ? findTrustedCheckRun(
+            headCheckRuns,
+            name,
+            latestPr.headSha,
+            REQUIRED_CODEQL_WORKFLOW_PATHS,
+          )
+        : null;
+    const selected = selectMainOrMergedPrHeadCheck({
+      mainSha: sha,
+      mainCheck,
+      latestPr,
+      mergedPrHeadCheck,
+    });
+    return { name, ...selected };
   });
   return {
     ok: checks.every((check) => check.ok === true),
     sha,
+    latestMergedPr: latestPr,
     checks,
   };
 }

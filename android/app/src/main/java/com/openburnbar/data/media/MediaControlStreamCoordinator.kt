@@ -108,6 +108,7 @@ class MediaControlStreamCoordinator(
     )
 
     private val mutex = Mutex()
+    private val outboundSendMutex = Mutex()
     private var supervisorJob: Job? = null
     private var currentStream: IrohRelayStream? = null
     private var activeUID: String? = null
@@ -244,7 +245,13 @@ class MediaControlStreamCoordinator(
 
     suspend fun send(frame: HermesRealtimeRelayFrame) {
         val stream = awaitLiveStream()
-        stream.send(frame)
+        sendSerialized(stream, frame)
+    }
+
+    internal suspend fun sendSerialized(stream: IrohRelayStream, frame: HermesRealtimeRelayFrame) {
+        outboundSendMutex.withLock {
+            stream.send(frame)
+        }
     }
 
     internal suspend fun inboundRouteIsLive(expectedStream: IrohRelayStream, uid: String, connectionID: String): Boolean = mutex.withLock {
@@ -258,7 +265,7 @@ class MediaControlStreamCoordinator(
         check(inboundRouteIsLive(expectedStream, uid, connectionID)) {
             "The exact Mercury challenge stream is no longer live."
         }
-        expectedStream.send(frame)
+        sendSerialized(expectedStream, frame)
     }
 
     suspend fun ensureResponsive(freshnessIntervalMillis: Long = 2_000L, probeTimeoutMillis: Long = 1_000L): Boolean {
@@ -279,7 +286,7 @@ class MediaControlStreamCoordinator(
         val beforeProbe = _lastPeerHeartbeatAtMillis.value
         return try {
             val sentAtMillis = System.currentTimeMillis()
-            stream.send(makeMercuryPresenceHeartbeat(uid = uid, connectionID = connectionID))
+            sendSerialized(stream, makeMercuryPresenceHeartbeat(uid = uid, connectionID = connectionID))
             pendingHeartbeatSentAtMillis = sentAtMillis
 
             val replied = withTimeoutOrNull(probeTimeoutMillis.coerceAtLeast(1L)) {
@@ -456,7 +463,7 @@ class MediaControlStreamCoordinator(
                     connectionId = connectionID,
                     media = HermesRealtimeRelayMediaPayload(streamClass = MediaStreamClass.CONTROL.raw),
                 )
-                stream.send(classifyFrame)
+                sendSerialized(stream, classifyFrame)
                 mutex.withLock { currentStream = stream }
                 _consecutiveDialFailures.value = 0
                 attempt = 0

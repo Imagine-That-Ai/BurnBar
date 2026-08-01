@@ -11,6 +11,7 @@ import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
+import com.openburnbar.data.cloud.AndroidEscrowDeviceSafetyCode
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import java.security.MessageDigest
 import java.util.Date
@@ -31,7 +32,16 @@ data class DeviceRecord(
     val trustState: DeviceTrustState = DeviceTrustState.PENDING,
     val lastSeen: Date? = null,
     val isCurrentDevice: Boolean = false,
-)
+    val keyVersion: Int? = null,
+    val publicKeyFingerprint: String? = null,
+    val publicKeyData: String? = null,
+) {
+    val safetyCode: String?
+        get() = AndroidEscrowDeviceSafetyCode.format(publicKeyData)
+
+    val hasVerifiedSafetyCode: Boolean
+        get() = AndroidEscrowDeviceSafetyCode.isFingerprintBoundTo(publicKeyFingerprint, publicKeyData)
+}
 
 class DevicesStore(
     context: Context? = null,
@@ -105,14 +115,35 @@ class DevicesStore(
                     }
                 val escrowDevices =
                     try {
-                        db.collection("users").document(uid)
+                        val userRef = db.collection("users").document(uid)
+                        val escrowSnapshot = userRef
                             .collection("escrow_devices")
                             .get().await()
-                            .documents
-                            .mapNotNull { doc ->
-                                val data = doc.data ?: return@mapNotNull null
-                                escrowDeviceRecord(doc.id, data, currentEscrowDeviceID)
+                        val escrowPublicKeys =
+                            runCatching {
+                                userRef.collection("escrow_public_keys")
+                                    .get().await()
+                                    .documents
+                                    .associate { document ->
+                                        document.id to (document.getString("publicKeyData") ?: "")
+                                    }
+                            }.getOrElse { error ->
+                                Log.w("BurnBar", "Escrow public-key load failed; approval stays disabled", error)
+                                emptyMap()
                             }
+                        escrowSnapshot.documents.mapNotNull { doc ->
+                            val data = doc.data ?: return@mapNotNull null
+                            val keyVersion = (data["keyVersion"] as? Number)?.toInt()
+                            val publicKeyData =
+                                keyVersion?.let { escrowPublicKeys["${doc.id}_$it"] }
+                                    ?.takeIf { it.isNotBlank() }
+                            escrowDeviceRecord(
+                                documentID = doc.id,
+                                data = data,
+                                currentEscrowDeviceID = currentEscrowDeviceID,
+                                publicKeyData = publicKeyData,
+                            )
+                        }
                     } catch (e: FirebaseException) {
                         Log.w("BurnBar", "Escrow devices load failed; showing presence devices as pending", e)
                         emptyList()
@@ -145,6 +176,32 @@ class DevicesStore(
                 load()
             } catch (e: FirebaseException) {
                 _lastError.value = e.message
+            } finally {
+                _actionInFlightFor.value = null
+            }
+        }
+    }
+
+    fun approve(device: DeviceRecord) {
+        viewModelScope.launch {
+            _actionInFlightFor.value = device.id
+            _lastError.value = null
+            try {
+                require(!device.isCurrentDevice && device.trustState == DeviceTrustState.PENDING) {
+                    "Only a different pending device can be approved."
+                }
+                require(device.hasVerifiedSafetyCode) {
+                    "This device has not published a verified safety code yet."
+                }
+                val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+                    ?: error("Sign in before approving a device.")
+                escrowRegistry.approveDevice(
+                    uid = uid,
+                    targetDeviceId = device.escrowID ?: device.id,
+                )
+                load()
+            } catch (error: Exception) {
+                _lastError.value = error.message
             } finally {
                 _actionInFlightFor.value = null
             }
@@ -267,7 +324,12 @@ class DevicesStore(
             )
         }
 
-        internal fun escrowDeviceRecord(documentID: String, data: Map<String, Any?>, currentEscrowDeviceID: String?): DeviceRecord {
+        internal fun escrowDeviceRecord(
+            documentID: String,
+            data: Map<String, Any?>,
+            currentEscrowDeviceID: String?,
+            publicKeyData: String? = null,
+        ): DeviceRecord {
             val id = deviceID(documentID, data)
             return DeviceRecord(
                 id = id,
@@ -277,6 +339,9 @@ class DevicesStore(
                 trustState = deviceTrustState(data),
                 lastSeen = deviceActivityDate(data),
                 isCurrentDevice = id == currentEscrowDeviceID,
+                keyVersion = (data["keyVersion"] as? Number)?.toInt(),
+                publicKeyFingerprint = data["publicKeyFingerprint"] as? String,
+                publicKeyData = publicKeyData,
             )
         }
 
@@ -400,6 +465,9 @@ class DevicesStore(
                 trustState = escrow.trustState,
                 lastSeen = latestDate(presence.lastSeen, escrow.lastSeen),
                 isCurrentDevice = presence.isCurrentDevice || escrow.isCurrentDevice,
+                keyVersion = escrow.keyVersion,
+                publicKeyFingerprint = escrow.publicKeyFingerprint,
+                publicKeyData = escrow.publicKeyData,
             )
         }
 

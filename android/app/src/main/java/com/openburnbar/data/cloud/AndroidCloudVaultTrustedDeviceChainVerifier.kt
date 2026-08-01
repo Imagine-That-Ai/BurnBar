@@ -153,7 +153,7 @@ internal fun decodeCanonicalEscrowPublicKeyData(publicKeyBase64: String, context
     return publicKeyData
 }
 
-private fun requireP256Point(publicKey: java.security.PublicKey, context: String) {
+internal fun requireP256Point(publicKey: java.security.PublicKey, context: String) {
     val ecPublicKey = publicKey as? ECPublicKey
         ?: error("$context escrow public key is invalid.")
     val field = ecPublicKey.params.curve.field as? ECFieldFp

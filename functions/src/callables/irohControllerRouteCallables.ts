@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-import { FieldValue, Timestamp, type Transaction } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 
 import { db } from "../adminRuntime.js";
@@ -9,7 +9,7 @@ import { getConfig } from "../config.js";
 import { logInfo, onCallProduction } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import {
-  IROH_HOST_ESCROW_PLATFORMS,
+  IROH_CONTROLLER_DEVICE_LIMIT,
   PHONE_CONTROL_ESCROW_PLATFORMS,
   boundedFirestoreDocumentId,
   boundedInteger,
@@ -20,14 +20,17 @@ import {
   IROH_CONTROLLER_ROUTE_CHALLENGE_TTL_MS,
   IROH_CONTROLLER_ROUTE_TTL_MS,
   irohControllerRouteProofPayload,
-  requireActiveIrohPairing,
   requireEligibleIrohControllerTransportRenewal,
   requireIrohControllerRouteProofKind,
   requireIrohTransportNodeId,
-  requireVerifiedControllerAuthority,
   verifyIrohControllerAuthorityProof,
   verifyIrohControllerRouteProof,
 } from "./irohControllerRouteSecurity.js";
+import {
+  readAndVerifyIrohControllerRouteJoin,
+  requireTrustedIrohRouteDevice,
+  type VerifiedIrohControllerRouteJoin,
+} from "./irohControllerRouteTrust.js";
 import { assertActiveBurnBarCloudProEntitlement } from "./shared.js";
 
 const ROUTE_SCHEMA_VERSION = 2;
@@ -49,103 +52,6 @@ function requireRecord(
   const data = snapshot.exists ? snapshot.data() : undefined;
   if (!data) throw new HttpsError("failed-precondition", message);
   return data;
-}
-
-function requireTrustedDeviceRecord(
-  device: Record<string, unknown>,
-  deviceId: string,
-  allowedPlatforms: ReadonlySet<string>,
-): void {
-  if (
-    device.trustState !== "trusted" ||
-    typeof device.platform !== "string" ||
-    !allowedPlatforms.has(device.platform) ||
-    (device.deviceId != null && device.deviceId !== deviceId)
-  ) {
-    throw new HttpsError("permission-denied", "Controller route requires a trusted same-user native device.");
-  }
-}
-
-async function readRouteJoin(
-  transaction: Transaction,
-  uid: string,
-  connectionId: string,
-  sourceDeviceId: string,
-  authorityPeerNodeId: string,
-): Promise<{
-  pairing: Record<string, unknown>;
-  hostKey: Record<string, unknown>;
-  hostDevice: Record<string, unknown>;
-  sourceDevice: Record<string, unknown>;
-  controller: Record<string, unknown>;
-}> {
-  const pairingRef = db.doc(`users/${uid}/iroh_pairing/${connectionId}`);
-  const hostKeyRef = db.doc(`users/${uid}/iroh_pairing_keys/host`);
-  const sourceDeviceRef = db.doc(`users/${uid}/escrow_devices/${sourceDeviceId}`);
-  const controllerRef = db.doc(`users/${uid}/iroh_pairing/${connectionId}/controllers/${authorityPeerNodeId}`);
-  const pairingSnapshot = await transaction.get(pairingRef);
-  const pairing = requireRecord(pairingSnapshot, "Active iroh pairing not found.");
-  const hostDeviceId = boundedFirestoreDocumentId(pairing.publishedByDeviceId, "pairing.publishedByDeviceId", 160);
-  const hostDeviceRef = db.doc(`users/${uid}/escrow_devices/${hostDeviceId}`);
-  const hostKey = requireRecord(await transaction.get(hostKeyRef), "Iroh host trust root not found.");
-  const hostDevice = requireRecord(await transaction.get(hostDeviceRef), "Trusted iroh host device not found.");
-  const sourceDevice = requireRecord(await transaction.get(sourceDeviceRef), "Trusted controller device not found.");
-  const controller = requireRecord(await transaction.get(controllerRef), "Controller authority not found.");
-  return { pairing, hostKey, hostDevice, sourceDevice, controller };
-}
-
-function verifyRouteJoin(args: {
-  uid: string;
-  connectionId: string;
-  sourceDeviceId: string;
-  authorityPeerNodeId: string;
-  join: {
-    pairing: Record<string, unknown>;
-    hostKey: Record<string, unknown>;
-    hostDevice: Record<string, unknown>;
-    sourceDevice: Record<string, unknown>;
-    controller: Record<string, unknown>;
-  };
-  nowMillis: number;
-}): {
-  authorityPublicKeySHA256: string;
-  authorityPublicKey: Buffer;
-  authorityKeyKind: "ed25519" | "se-p256";
-  pairingPublishedAtMillis: number;
-} {
-  const allowlist = normalizedControllerDeviceAllowlist(args.join.pairing.authorizedControllerDeviceIds);
-  if (allowlist.length !== 1 || allowlist[0] !== args.sourceDeviceId) {
-    throw new HttpsError("permission-denied", "Iroh pairing does not have one unambiguous controller device.");
-  }
-  requireTrustedDeviceRecord(args.join.sourceDevice, args.sourceDeviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
-  if (args.join.sourceDevice.peerNodeId !== args.authorityPeerNodeId) {
-    throw new HttpsError("permission-denied", "Controller authority is not the device's current peer binding.");
-  }
-  const hostDeviceId = boundedFirestoreDocumentId(
-    args.join.pairing.publishedByDeviceId,
-    "pairing.publishedByDeviceId",
-    160,
-  );
-  requireTrustedDeviceRecord(args.join.hostDevice, hostDeviceId, IROH_HOST_ESCROW_PLATFORMS);
-  const pairing = requireActiveIrohPairing({
-    uid: args.uid,
-    connectionId: args.connectionId,
-    pairing: args.join.pairing,
-    hostKey: args.join.hostKey,
-    nowMillis: args.nowMillis,
-  });
-  const authority = requireVerifiedControllerAuthority({
-    connectionId: args.connectionId,
-    sourceDeviceId: args.sourceDeviceId,
-    authorityPeerNodeId: args.authorityPeerNodeId,
-    controller: args.join.controller,
-  });
-  return {
-    authorityPublicKeySHA256: authority.authorityPublicKeySHA256,
-    authorityPublicKey: authority.authorityPublicKey,
-    authorityKeyKind: authority.authorityKeyKind,
-    pairingPublishedAtMillis: pairing.publishedAtMillis,
-  };
 }
 
 export const issueIrohControllerRouteChallenge = onCallProduction(
@@ -187,13 +93,12 @@ export const issueIrohControllerRouteChallenge = onCallProduction(
     const challengeRef = db.doc(`users/${uid}/iroh_controller_route_challenges/${challengeId}`);
 
     const result = await db.runTransaction(async (transaction) => {
-      const join = await readRouteJoin(transaction, uid, connectionId, sourceDeviceId, authorityPeerNodeId);
-      const verified = verifyRouteJoin({
+      const verified = await readAndVerifyIrohControllerRouteJoin({
+        transaction,
         uid,
         connectionId,
         sourceDeviceId,
         authorityPeerNodeId,
-        join,
         nowMillis: issuedAtMillis,
       });
       const existingRoute = await transaction.get(routeRef);
@@ -361,13 +266,12 @@ export const registerIrohControllerRoute = onCallProduction(
         throw new HttpsError("permission-denied", "Controller route does not prove possession of transportNodeId.");
       }
 
-      const join = await readRouteJoin(transaction, uid, connectionId, sourceDeviceId, authorityPeerNodeId);
-      const verified = verifyRouteJoin({
+      const verified = await readAndVerifyIrohControllerRouteJoin({
+        transaction,
         uid,
         connectionId,
         sourceDeviceId,
         authorityPeerNodeId,
-        join,
         nowMillis,
       });
       const routeRef = db.doc(`users/${uid}/iroh_pairing/${connectionId}/controller_routes/${sourceDeviceId}`);
@@ -491,14 +395,14 @@ export const revokeIrohControllerRoute = onCallProduction(
         "Iroh pairing not found.",
       );
       const allowlist = normalizedControllerDeviceAllowlist(pairing.authorizedControllerDeviceIds);
-      if (allowlist.length !== 1 || allowlist[0] !== sourceDeviceId) {
-        throw new HttpsError("permission-denied", "Only the active controller device may revoke this route.");
+      if (allowlist.length > IROH_CONTROLLER_DEVICE_LIMIT || !allowlist.includes(sourceDeviceId)) {
+        throw new HttpsError("permission-denied", "Only an authorized controller device may revoke its route.");
       }
       const sourceDevice = requireRecord(
         await transaction.get(db.doc(`users/${uid}/escrow_devices/${sourceDeviceId}`)),
         "Trusted controller device not found.",
       );
-      requireTrustedDeviceRecord(sourceDevice, sourceDeviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
+      requireTrustedIrohRouteDevice(sourceDevice, sourceDeviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
       const route = await transaction.get(routeRef);
       const priorGeneration = route.exists
         ? (boundedInteger(route.get("generation"), "route.generation", 1, MAX_GENERATION, true) ?? 0)
@@ -545,74 +449,91 @@ export const resolveActiveIrohControllerRoutes = onCallProduction(
     const nowMillis = Date.now();
     const result = await db.runTransaction(async (transaction) => {
       const pairingSnapshot = await transaction.get(db.doc(`users/${uid}/iroh_pairing/${connectionId}`));
-      if (!pairingSnapshot.exists) return null;
+      if (!pairingSnapshot.exists) return [];
       const pairing = pairingSnapshot.data();
       if (!pairing) {
         throw new HttpsError("failed-precondition", "Iroh pairing record is malformed.");
       }
       const allowlist = normalizedControllerDeviceAllowlist(pairing.authorizedControllerDeviceIds);
-      if (allowlist.length !== 1) {
-        return null;
+      if (allowlist.length === 0 || allowlist.length > IROH_CONTROLLER_DEVICE_LIMIT) {
+        return [];
       }
-      const sourceDeviceId = allowlist[0];
-      const routeSnapshot = await transaction.get(
-        db.doc(`users/${uid}/iroh_pairing/${connectionId}/controller_routes/${sourceDeviceId}`),
-      );
-      if (!routeSnapshot.exists) return null;
-      const route = routeSnapshot.data();
-      if (!route) {
-        throw new HttpsError("failed-precondition", "Verified iroh controller route is malformed.");
-      }
-      if (route.status === "revoked") return null;
-      if (route.status !== "active") {
-        throw new HttpsError("failed-precondition", "Verified iroh controller route has an invalid status.");
-      }
-      if (route.connectionId !== connectionId || route.sourceDeviceId !== sourceDeviceId) {
-        throw new HttpsError("permission-denied", "Verified iroh controller route ownership is inconsistent.");
-      }
-      const authorityPeerNodeId = boundedFirestoreDocumentId(route.authorityPeerNodeId, "authorityPeerNodeId", 160);
-      const transportNodeId = requireIrohTransportNodeId(route.transportNodeId).nodeId;
-      const generation = boundedInteger(route.generation, "route.generation", 1, MAX_GENERATION, true) ?? 0;
-      const registeredAtMillis =
-        boundedInteger(route.registeredAtMillis, "route.registeredAtMillis", 1, Number.MAX_SAFE_INTEGER, true) ?? 0;
-      const expiresAtMillis =
-        boundedInteger(route.expiresAtMillis, "route.expiresAtMillis", 1, Number.MAX_SAFE_INTEGER, true) ?? 0;
-      if (expiresAtMillis <= nowMillis) return null;
-      let verified: ReturnType<typeof verifyRouteJoin>;
-      try {
-        const join = await readRouteJoin(transaction, uid, connectionId, sourceDeviceId, authorityPeerNodeId);
-        verified = verifyRouteJoin({
-          uid,
+      const activeRoutes: Array<{
+        connectionId: string;
+        sourceDeviceId: string;
+        transportNodeId: string;
+        authorityPeerNodeId: string;
+        generation: number;
+        registeredAtMillis: number;
+        expiresAtMillis: number;
+      }> = [];
+      const transportNodeIds = new Set<string>();
+      const ambiguousTransportNodeIds = new Set<string>();
+      for (const sourceDeviceId of allowlist) {
+        const routeSnapshot = await transaction.get(
+          db.doc(`users/${uid}/iroh_pairing/${connectionId}/controller_routes/${sourceDeviceId}`),
+        );
+        if (!routeSnapshot.exists) continue;
+        const route = routeSnapshot.data();
+        if (!route) {
+          throw new HttpsError("failed-precondition", "Verified iroh controller route is malformed.");
+        }
+        if (route.status === "revoked") continue;
+        if (route.status !== "active") {
+          throw new HttpsError("failed-precondition", "Verified iroh controller route has an invalid status.");
+        }
+        if (route.connectionId !== connectionId || route.sourceDeviceId !== sourceDeviceId) {
+          throw new HttpsError("permission-denied", "Verified iroh controller route ownership is inconsistent.");
+        }
+        const authorityPeerNodeId = boundedFirestoreDocumentId(route.authorityPeerNodeId, "authorityPeerNodeId", 160);
+        const transportNodeId = requireIrohTransportNodeId(route.transportNodeId).nodeId;
+        const generation = boundedInteger(route.generation, "route.generation", 1, MAX_GENERATION, true) ?? 0;
+        const registeredAtMillis =
+          boundedInteger(route.registeredAtMillis, "route.registeredAtMillis", 1, Number.MAX_SAFE_INTEGER, true) ?? 0;
+        const expiresAtMillis =
+          boundedInteger(route.expiresAtMillis, "route.expiresAtMillis", 1, Number.MAX_SAFE_INTEGER, true) ?? 0;
+        if (expiresAtMillis <= nowMillis) continue;
+        let verified: VerifiedIrohControllerRouteJoin;
+        try {
+          verified = await readAndVerifyIrohControllerRouteJoin({
+            transaction,
+            uid,
+            connectionId,
+            sourceDeviceId,
+            authorityPeerNodeId,
+            nowMillis,
+          });
+        } catch (error) {
+          if (
+            error instanceof HttpsError &&
+            (error.code === "permission-denied" ||
+              error.code === "failed-precondition" ||
+              error.code === "invalid-argument")
+          ) {
+            continue;
+          }
+          throw error;
+        }
+        if (route.authorityPublicKeySHA256 !== verified.authorityPublicKeySHA256) {
+          continue;
+        }
+        if (transportNodeIds.has(transportNodeId)) {
+          ambiguousTransportNodeIds.add(transportNodeId);
+        } else {
+          transportNodeIds.add(transportNodeId);
+        }
+        activeRoutes.push({
           connectionId,
           sourceDeviceId,
+          transportNodeId,
           authorityPeerNodeId,
-          join,
-          nowMillis,
+          generation,
+          registeredAtMillis,
+          expiresAtMillis,
         });
-      } catch (error) {
-        if (
-          error instanceof HttpsError &&
-          (error.code === "permission-denied" ||
-            error.code === "failed-precondition" ||
-            error.code === "invalid-argument")
-        ) {
-          return null;
-        }
-        throw error;
       }
-      if (route.authorityPublicKeySHA256 !== verified.authorityPublicKeySHA256) {
-        return null;
-      }
-      return {
-        connectionId,
-        sourceDeviceId,
-        transportNodeId,
-        authorityPeerNodeId,
-        generation,
-        registeredAtMillis,
-        expiresAtMillis,
-      };
+      return activeRoutes.filter((route) => !ambiguousTransportNodeIds.has(route.transportNodeId));
     });
-    return { uid, connectionId, resolvedAtMillis: nowMillis, routes: result ? [result] : [] };
+    return { uid, connectionId, resolvedAtMillis: nowMillis, routes: result };
   },
 );

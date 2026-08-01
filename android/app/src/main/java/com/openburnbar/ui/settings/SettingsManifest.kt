@@ -54,7 +54,7 @@ object SettingsManifest {
             SettingsItem(
                 id = "root.connectedDevices",
                 section = SettingsSection.DEVICES,
-                pageRoute = SettingsPageRoute.ROOT,
+                pageRoute = SettingsPageRoute.CONNECTED_DEVICES,
                 anchorId = SettingsAnchor.CONNECTED_DEVICES,
                 title = "Connected Devices",
                 subtitle = "Manage which devices can read your data",

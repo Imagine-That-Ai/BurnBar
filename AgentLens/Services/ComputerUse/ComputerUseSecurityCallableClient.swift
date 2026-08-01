@@ -818,6 +818,28 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
+    static func issuePhoneControlEnrollmentGrant(
+        hostDeviceId: String,
+        connectionId: String,
+        controllerDeviceId: String,
+        controllerPeerNodeId: String
+    ) async throws {
+        _ = try requireSignedInUser()
+        try await bindAppCheckAttestation()
+        let nonce = try await issueHighRiskActionNonce()
+        let result = try await functions.httpsCallable("issuePhoneControlEnrollmentGrant").call([
+            "hostDeviceId": hostDeviceId,
+            "connectionId": connectionId,
+            "controllerDeviceId": controllerDeviceId,
+            "controllerPeerNodeId": controllerPeerNodeId,
+            "nonce": nonce
+        ])
+        guard let dict = result.data as? [String: Any],
+              dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Phone-control enrollment approval failed.")
+        }
+    }
+
     static func resolveActiveIrohControllerRoutes(
         uid: String,
         connectionId: String,
@@ -848,6 +870,7 @@ enum ComputerUseSecurityCallableClient {
         expectedConnectionId: String,
         nowMillis: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)
     ) throws -> [IrohControllerRouteBinding] {
+        let maximumControllerRoutes = 16
         let response = try decodeCallableJSON(
             ActiveIrohControllerRoutesResponse.self,
             from: raw,
@@ -858,27 +881,35 @@ enum ComputerUseSecurityCallableClient {
               let resolvedAtMillis = response.resolvedAtMillis,
               resolvedAtMillis >= nowMillis - 60_000,
               resolvedAtMillis <= nowMillis + 30_000,
-              response.routes.count <= 1 else {
+              response.routes.count <= maximumControllerRoutes else {
             throw ClientError.invalidResponse("Active iroh controller-route resolution was malformed or stale.")
         }
-        guard let route = response.routes.first else { return [] }
-        guard
-            route.connectionId == expectedConnectionId,
-            route.generation > 0,
-            route.registeredAtMillis <= resolvedAtMillis,
-            route.expiresAtMillis > resolvedAtMillis,
-            route.expiresAtMillis > nowMillis,
-            let binding = IrohControllerRouteBinding(
-                sourceDeviceId: route.sourceDeviceId,
-                transportNodeId: route.transportNodeId,
-                authorityPeerNodeId: route.authorityPeerNodeId,
-                generation: route.generation,
-                registeredAtMillis: route.registeredAtMillis,
-                expiresAtMillis: route.expiresAtMillis
-            ) else {
-            throw ClientError.invalidResponse("Active iroh controller-route resolution was malformed or stale.")
+        var sourceDeviceIDs = Set<String>()
+        var transportNodeIDs = Set<String>()
+        var bindings: [IrohControllerRouteBinding] = []
+        bindings.reserveCapacity(response.routes.count)
+        for route in response.routes {
+            guard
+                route.connectionId == expectedConnectionId,
+                route.generation > 0,
+                route.registeredAtMillis <= resolvedAtMillis,
+                route.expiresAtMillis > resolvedAtMillis,
+                route.expiresAtMillis > nowMillis,
+                sourceDeviceIDs.insert(route.sourceDeviceId).inserted,
+                let binding = IrohControllerRouteBinding(
+                    sourceDeviceId: route.sourceDeviceId,
+                    transportNodeId: route.transportNodeId,
+                    authorityPeerNodeId: route.authorityPeerNodeId,
+                    generation: route.generation,
+                    registeredAtMillis: route.registeredAtMillis,
+                    expiresAtMillis: route.expiresAtMillis
+                ),
+                transportNodeIDs.insert(binding.transportNodeId).inserted else {
+                throw ClientError.invalidResponse("Active iroh controller-route resolution was malformed or stale.")
+            }
+            bindings.append(binding)
         }
-        return [binding]
+        return bindings
     }
 
     private struct ActiveIrohControllerRoutesResponse: Decodable {

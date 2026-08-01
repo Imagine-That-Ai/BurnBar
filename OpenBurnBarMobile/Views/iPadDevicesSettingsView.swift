@@ -10,6 +10,7 @@ struct iPadDevicesSettingsView: View {
     @State private var showRevokeConfirmation = false
     @State private var showCleanupConfirmation = false
     @State private var deviceToRevoke: DeviceRecord?
+    @State private var deviceToApprove: DeviceRecord?
     @State private var linuxDeviceToApprove: LinuxAppCheckDeviceRecord?
     @State private var linuxDeviceToRevoke: LinuxAppCheckDeviceRecord?
     @State private var isReprobingHermes = false
@@ -84,6 +85,16 @@ struct iPadDevicesSettingsView: View {
                     Task { await store.bootstrapApproveSelf() }
                 },
                 onCancel: { showSafetyCompareSheet = false }
+            )
+        }
+        .sheet(item: $deviceToApprove) { device in
+            DeviceTrustSafetyCompareSheet(
+                device: device,
+                onConfirm: {
+                    deviceToApprove = nil
+                    Task { await store.approve(device) }
+                },
+                onCancel: { deviceToApprove = nil }
             )
         }
         .alert("Revoke Device?", isPresented: $showRevokeConfirmation) {
@@ -233,14 +244,40 @@ struct iPadDevicesSettingsView: View {
                         }
                         Spacer()
                         trustBadge(for: device.trustState)
-                        Button {
-                            deviceToRevoke = device
-                            showRevokeConfirmation = true
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(MobileTheme.Colors.error)
+                        if store.actionInFlightFor == device.id {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityLabel("Updating \(device.displayName)")
+                        } else {
+                            switch device.trustState {
+                            case .pending:
+                                Button {
+                                    deviceToApprove = device
+                                } label: {
+                                    Label("Approve", systemImage: "checkmark.shield")
+                                }
+                                .disabled(
+                                    store.actionInFlightFor != nil
+                                        || !device.hasVerifiedSafetyCode
+                                )
+                                .accessibilityIdentifier(
+                                    "devicesSync.approve.\(device.id)"
+                                )
+                            case .trusted:
+                                Button {
+                                    deviceToRevoke = device
+                                    showRevokeConfirmation = true
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(MobileTheme.Colors.error)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Revoke \(device.displayName)")
+                                .disabled(store.actionInFlightFor != nil)
+                            case .current, .revoked:
+                                EmptyView()
+                            }
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -670,12 +707,10 @@ struct iPadDevicesSettingsView: View {
 
 // MARK: - Device Trust Safety-Code Compare
 
-/// Stream 6 — the "Compare this code on your other device" confirmation step
-/// shown before a device is approved (only when the safety-code compare feature
-/// flag is ON). Renders the device's stored fingerprint as a grouped safety code
-/// using the shared formatter so this device and the approving device display
-/// byte-identical codes. UX only — confirmation calls the same unchanged approve
-/// path; server-side fingerprint enforcement is a later PR.
+/// "Compare this code on your other device" confirmation shown before
+/// cross-device approval. The shared formatter renders the server-verified
+/// fingerprint identically on both devices; approval remains fail-closed unless
+/// that verified safety code is present.
 struct DeviceTrustSafetyCompareSheet: View {
     let device: DeviceRecord?
     let onConfirm: () -> Void
