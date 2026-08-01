@@ -5,15 +5,54 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 import { loadStagingFirebasePublicConfig } from "../../website/scripts/staging-firebase-public-config.mjs";
+import {
+  assertExactDeployment,
+  buildLifecycleEvidence,
+  executeStagingStripeLifecycle,
+  writeLifecycleEvidence,
+} from "./staging-stripe-lifecycle-core.mjs";
 
 const CONFIRMATION = "burnbar-staging-commercial-lifecycle";
-const args = process.argv.slice(2);
-const confirmIndex = args.indexOf("--confirm");
-if (confirmIndex === -1 || args[confirmIndex + 1] !== CONFIRMATION) {
-  throw new Error(
-    `Refusing to mutate staging without --confirm ${CONFIRMATION}`,
-  );
+const FULL_GIT_SHA = /^[0-9a-f]{40}$/u;
+const DEFAULT_EVIDENCE_DIRECTORY = "launch-evidence";
+
+function parseArgs(argv) {
+  const options = {
+    confirmation: "",
+    expectedSha: "",
+    evidenceDirectory: DEFAULT_EVIDENCE_DIRECTORY,
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (
+      arg === "--confirm" ||
+      arg === "--expected-sha" ||
+      arg === "--evidence-dir"
+    ) {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error(`${arg} requires a value`);
+      }
+      if (arg === "--confirm") options.confirmation = value;
+      if (arg === "--expected-sha") options.expectedSha = value;
+      if (arg === "--evidence-dir") options.evidenceDirectory = value;
+      index += 1;
+      continue;
+    }
+    throw new Error(`Unknown argument: ${arg}`);
+  }
+  if (options.confirmation !== CONFIRMATION) {
+    throw new Error(
+      `Refusing to mutate staging without --confirm ${CONFIRMATION}`,
+    );
+  }
+  if (!FULL_GIT_SHA.test(options.expectedSha)) {
+    throw new Error("--expected-sha must be the full deployed candidate SHA");
+  }
+  return options;
 }
+
+const options = parseArgs(process.argv.slice(2));
 
 const PROJECT_ID = "burnbar-staging";
 const STAGING_FIREBASE_PUBLIC_CONFIG = loadStagingFirebasePublicConfig();
@@ -25,6 +64,11 @@ const STRIPE_PROJECT = "openburnbar";
 const STRIPE_ACCOUNT = "acct_1REg6cCFamvUJU7y";
 const FUNCTIONS_ORIGIN = `https://us-central1-${PROJECT_ID}.cloudfunctions.net`;
 const TEST_DISPLAY_NAME = "commercial-lifecycle-2026-07-26";
+const BILLING_FUNCTIONS = [
+  "createStripeBurnBarProCheckoutSession",
+  "createStripeBurnBarProPortalSession",
+  "stripeBurnBarProWebhook",
+];
 const POLL_ATTEMPTS = 30;
 const POLL_DELAY_MS = 2_000;
 
@@ -50,6 +94,56 @@ function run(command, commandArgs) {
       STRIPE_CLI_TELEMETRY_OPTOUT: "1",
     },
   }).trim();
+}
+
+function localCandidate(expectedSha) {
+  const sha = run("git", ["rev-parse", "HEAD"]);
+  assert.equal(
+    sha,
+    expectedSha,
+    "The local checkout does not match --expected-sha",
+  );
+  const dirtyFiles = run("git", ["status", "--porcelain"]);
+  assert.equal(
+    dirtyFiles,
+    "",
+    "Refusing to produce exact-SHA evidence from a dirty checkout",
+  );
+  return {
+    sha,
+    tree: run("git", ["rev-parse", "HEAD^{tree}"]),
+    clean: true,
+  };
+}
+
+function deployedFunction(name, expectedSha) {
+  const description = JSON.parse(
+    run("gcloud", [
+      "functions",
+      "describe",
+      name,
+      "--gen2",
+      "--region",
+      "us-central1",
+      "--project",
+      PROJECT_ID,
+      "--format=json",
+    ]),
+  );
+  const environment = description.serviceConfig?.environmentVariables ?? {};
+  const deployment = {
+    name,
+    state: description.state,
+    revision: description.serviceConfig?.revision,
+    sourceCommit: environment.OPENBURNBAR_SOURCE_COMMIT,
+    functionVersion: environment.FUNCTION_VERSION,
+  };
+  assert.equal(
+    deployment.sourceCommit,
+    expectedSha,
+    `${name} is not deployed from --expected-sha`,
+  );
+  return deployment;
 }
 
 function gcloudAccessToken() {
@@ -272,7 +366,7 @@ async function retry(label, operation) {
   );
 }
 
-async function findStripeEvent(type, objectID) {
+async function findStripeEvent({ type, objectID, predicate = () => true }) {
   return retry(`${type} event`, async () => {
     const events = runStripe("get", [
       "/v1/events",
@@ -281,7 +375,9 @@ async function findStripeEvent(type, objectID) {
       "--data",
       "limit=20",
     ]);
-    return events.data?.find((event) => event.data?.object?.id === objectID);
+    return events.data?.find(
+      (event) => event.data?.object?.id === objectID && predicate(event),
+    );
   });
 }
 
@@ -343,6 +439,11 @@ async function cleanupFirestore() {
 }
 
 try {
+  const candidate = localCandidate(options.expectedSha);
+  const deployments = BILLING_FUNCTIONS.map((name) =>
+    deployedFunction(name, options.expectedSha),
+  );
+  assertExactDeployment(deployments, options.expectedSha);
   const stripeAccount = runStripe("get", ["/v1/account"]);
   assert.equal(stripeAccount.id, STRIPE_ACCOUNT);
 
@@ -358,188 +459,171 @@ try {
   const appCheckToken = await createDebugToken();
   await createAnonymousUser();
 
-  const checkout = await callFunction(
-    "createStripeBurnBarProCheckoutSession",
-    {
-      successUrl:
-        "https://burnbar-staging.web.app/subscribe?tier=cloud&cadence=monthly&status=success",
-      cancelUrl:
-        "https://burnbar-staging.web.app/subscribe?tier=cloud&cadence=monthly&status=cancelled",
-      tier: "cloud",
-      cadence: "monthly",
-    },
-    appCheckToken,
-  );
-  assert.match(checkout.sessionId, /^cs_test_/u);
-  const checkoutURL = new URL(checkout.url);
-  assert.equal(checkoutURL.protocol, "https:");
-  assert.ok(
-    checkoutURL.hostname === "checkout.stripe.com" ||
-      checkoutURL.hostname === "pay.burnbar.ai",
-    `Unexpected Stripe Checkout host: ${checkoutURL.hostname}`,
-  );
-
-  const openSession = runStripe("get", [
-    `/v1/checkout/sessions/${checkout.sessionId}`,
-  ]);
-  assert.equal(openSession.status, "open");
-  assert.equal(openSession.mode, "subscription");
-  assert.ok(Number.isSafeInteger(openSession.amount_total));
-  assert.ok(openSession.amount_total > 0);
-  stripeCustomerID = openSession.customer;
-  assert.match(stripeCustomerID, /^cus_/u);
-
-  const paymentMethod = runStripe("post", [
-    "/v1/payment_methods",
-    "--data",
-    "type=card",
-    "--data",
-    "card[token]=tok_visa",
-    "--data",
-    "billing_details[name]=BurnBar Commercial Lifecycle",
-    "--data",
-    "billing_details[email]=commercial-lifecycle@burnbar.invalid",
-    "--data",
-    "billing_details[address][line1]=100 SW Main St",
-    "--data",
-    "billing_details[address][city]=Portland",
-    "--data",
-    "billing_details[address][state]=OR",
-    "--data",
-    "billing_details[address][postal_code]=97204",
-    "--data",
-    "billing_details[address][country]=US",
-  ]);
-  assert.match(paymentMethod.id, /^pm_/u);
-
-  const confirmation = runStripe("post", [
-    `/v1/payment_pages/${checkout.sessionId}/confirm`,
-    "--data",
-    `payment_method=${paymentMethod.id}`,
-    "--data",
-    `expected_amount=${openSession.amount_total}`,
-  ]);
-  if (confirmation.error) {
-    throw new Error(
-      `Stripe Checkout confirmation failed: ${confirmation.error.message ?? "unknown error"}`,
-    );
-  }
-
-  const completedSession = await retry(
-    "completed Checkout Session",
-    async () => {
+  const proof = await executeStagingStripeLifecycle({
+    getStripeAccount: () => stripeAccount,
+    createCheckout: () =>
+      callFunction(
+        "createStripeBurnBarProCheckoutSession",
+        {
+          successUrl:
+            "https://burnbar-staging.web.app/subscribe?tier=cloud&cadence=monthly&status=success",
+          cancelUrl:
+            "https://burnbar-staging.web.app/subscribe?tier=cloud&cadence=monthly&status=cancelled",
+          tier: "cloud",
+          cadence: "monthly",
+        },
+        appCheckToken,
+      ),
+    getCheckoutSession: (checkoutSessionID) => {
       const session = runStripe("get", [
-        `/v1/checkout/sessions/${checkout.sessionId}`,
+        `/v1/checkout/sessions/${checkoutSessionID}`,
       ]);
-      return session.status === "complete" && session.subscription
-        ? session
-        : null;
+      if (typeof session.customer === "string") {
+        stripeCustomerID = session.customer;
+      }
+      return session;
     },
-  );
-  stripeSubscriptionID = completedSession.subscription;
-  assert.match(stripeSubscriptionID, /^sub_/u);
-  cleanupStripeSubscriptionID = stripeSubscriptionID;
-
-  const checkoutEvent = await findStripeEvent(
-    "checkout.session.completed",
-    checkout.sessionId,
-  );
-  await waitForWebhookLedger(checkoutEvent.id);
-  const activeEntitlement = await waitForEntitlement(true);
-  assert.equal(activeEntitlement.platform, "stripe");
-  assert.equal(activeEntitlement.externalSubscriptionID, stripeSubscriptionID);
-  assert.equal(activeEntitlement.externalCustomerID, stripeCustomerID);
-
-  const portal = await callFunction(
-    "createStripeBurnBarProPortalSession",
-    {
-      returnUrl:
-        "https://burnbar-staging.web.app/subscribe?tier=cloud&cadence=monthly",
+    createPaymentMethod: () =>
+      runStripe("post", [
+        "/v1/payment_methods",
+        "--data",
+        "type=card",
+        "--data",
+        "card[token]=tok_visa",
+        "--data",
+        "billing_details[name]=BurnBar Commercial Lifecycle",
+        "--data",
+        "billing_details[email]=commercial-lifecycle@burnbar.invalid",
+        "--data",
+        "billing_details[address][line1]=100 SW Main St",
+        "--data",
+        "billing_details[address][city]=Portland",
+        "--data",
+        "billing_details[address][state]=OR",
+        "--data",
+        "billing_details[address][postal_code]=97204",
+        "--data",
+        "billing_details[address][country]=US",
+      ]),
+    confirmCheckout: ({
+      checkoutSessionID,
+      paymentMethodID,
+      expectedAmount,
+    }) => {
+      const confirmation = runStripe("post", [
+        `/v1/payment_pages/${checkoutSessionID}/confirm`,
+        "--data",
+        `payment_method=${paymentMethodID}`,
+        "--data",
+        `expected_amount=${expectedAmount}`,
+      ]);
+      if (confirmation.error) {
+        throw new Error(
+          `Stripe Checkout confirmation failed: ${confirmation.error.message ?? "unknown error"}`,
+        );
+      }
+      return confirmation;
     },
-    appCheckToken,
-  );
-  const portalURL = new URL(portal.url);
-  assert.equal(portalURL.protocol, "https:");
-  assert.ok(
-    /(?:^|\.)stripe\.com$/u.test(portalURL.hostname) ||
-      portalURL.hostname === "pay.burnbar.ai",
-    `Unexpected Stripe billing portal host: ${portalURL.hostname}`,
-  );
-
-  const charges = runStripe("get", [
-    "/v1/charges",
-    "--data",
-    `customer=${stripeCustomerID}`,
-    "--data",
-    "limit=10",
-  ]);
-  const charge = charges.data?.find(
-    (candidate) => candidate.paid === true && candidate.refunded !== true,
-  );
-  assert.match(charge?.id ?? "", /^ch_/u);
-
-  const refund = runStripe("post", [
-    "/v1/refunds",
-    "--data",
-    `charge=${charge.id}`,
-  ]);
-  assert.match(refund.id, /^re_/u);
-
-  const refundEvent = await findStripeEvent("charge.refunded", charge.id);
-  await waitForWebhookLedger(refundEvent.id);
-  const reversedEntitlement = await waitForEntitlement(false);
-  assert.equal(reversedEntitlement.rawStatus, "active:payment_reversed");
-  const reversalMarker = await retry("Stripe payment-reversal marker", () =>
-    readFirestoreDocument(
-      `stripe_payment_reversals/${cleanupStripeSubscriptionID}`,
-    ),
-  );
-  assert.equal(reversalMarker.reversed, true);
-  assert.equal(reversalMarker.reason, "fully_refunded");
-
-  const cancelled = runStripe("delete", [
-    `/v1/subscriptions/${stripeSubscriptionID}`,
-    "--confirm",
-  ]);
-  assert.equal(cancelled.status, "canceled");
-
-  const cancellationEvent = await findStripeEvent(
-    "customer.subscription.deleted",
-    stripeSubscriptionID,
-  );
-  await waitForWebhookLedger(cancellationEvent.id);
-  const inactiveEntitlement = await waitForEntitlement(false);
-  assert.equal(inactiveEntitlement.rawStatus, "canceled");
-  stripeSubscriptionID = "";
-
-  const deletedCustomer = runStripe("delete", [
-    `/v1/customers/${stripeCustomerID}`,
-    "--confirm",
-  ]);
-  assert.equal(deletedCustomer.deleted, true);
-  const customerDeletionEvent = await findStripeEvent(
-    "customer.deleted",
-    stripeCustomerID,
-  );
-  await waitForWebhookLedger(customerDeletionEvent.id);
-  stripeCustomerDeleted = true;
+    waitForCompletedCheckout: (checkoutSessionID) =>
+      retry("completed Checkout Session", async () => {
+        const session = runStripe("get", [
+          `/v1/checkout/sessions/${checkoutSessionID}`,
+        ]);
+        if (
+          session.status !== "complete" ||
+          typeof session.subscription !== "string"
+        ) {
+          return null;
+        }
+        stripeSubscriptionID = session.subscription;
+        cleanupStripeSubscriptionID = session.subscription;
+        return session;
+      }),
+    findStripeEvent,
+    waitForWebhookLedger,
+    waitForEntitlement,
+    createPortalSession: () =>
+      callFunction(
+        "createStripeBurnBarProPortalSession",
+        {
+          returnUrl:
+            "https://burnbar-staging.web.app/subscribe?tier=cloud&cadence=monthly",
+        },
+        appCheckToken,
+      ),
+    scheduleCancellation: (subscriptionID) =>
+      runStripe("post", [
+        `/v1/subscriptions/${subscriptionID}`,
+        "--data",
+        "cancel_at_period_end=true",
+      ]),
+    findPaidCharge: (customerID) => {
+      const charges = runStripe("get", [
+        "/v1/charges",
+        "--data",
+        `customer=${customerID}`,
+        "--data",
+        "limit=10",
+      ]);
+      return charges.data?.find(
+        (candidateCharge) =>
+          candidateCharge.paid === true && candidateCharge.refunded !== true,
+      );
+    },
+    createRefund: (chargeID) =>
+      runStripe("post", ["/v1/refunds", "--data", `charge=${chargeID}`]),
+    waitForPaymentReversal: (subscriptionID) =>
+      retry("Stripe payment-reversal marker", () =>
+        readFirestoreDocument(`stripe_payment_reversals/${subscriptionID}`),
+      ),
+    deleteSubscription: (subscriptionID) => {
+      const deleted = runStripe("delete", [
+        `/v1/subscriptions/${subscriptionID}`,
+        "--confirm",
+      ]);
+      stripeSubscriptionID = "";
+      return deleted;
+    },
+    deleteCustomer: (customerID) => {
+      const deleted = runStripe("delete", [
+        `/v1/customers/${customerID}`,
+        "--confirm",
+      ]);
+      stripeCustomerDeleted = deleted.deleted === true;
+      return deleted;
+    },
+  });
 
   await cleanupFirestore();
   await deleteAuthUser();
 
+  const evidence = buildLifecycleEvidence({
+    candidate,
+    deployments,
+    proof,
+  });
+  const evidencePaths = writeLifecycleEvidence(
+    evidence,
+    options.evidenceDirectory,
+  );
   lifecycleComplete = true;
   console.log(
     JSON.stringify(
       {
+        schema: evidence.schema,
+        ok: true,
         project: PROJECT_ID,
         stripeAccount: STRIPE_ACCOUNT,
+        candidateSha: candidate.sha,
+        candidateTree: candidate.tree,
         checkout: "completed",
         webhookLedger: "processed",
-        entitlement: "active_then_canceled",
+        entitlement: "active_then_cancel_scheduled_then_payment_reversed",
         billingPortal: "session_created",
         refund: "reconciled",
-        cancellation: "reconciled",
+        cancellation: "scheduled_at_period_end_then_cleaned_up",
         cleanup: "completed",
+        evidence: evidencePaths,
       },
       null,
       2,
