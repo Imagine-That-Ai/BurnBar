@@ -479,16 +479,16 @@ private fun PairedMacControlsScreenLayout(state: PairedMacControlsUiState, actio
 @Composable
 internal fun PairedMacControlsScreenEffects(binding: PairedMacControlsEffectsBinding) {
     PairedMacControlsConnectionEffect(binding)
-    PairedMacControlsApprovalRecoveryEffect(binding)
+    PairedMacControlsActionRecoveryEffect(binding)
     PairedMacControlsMirrorAckEffect(binding)
     PairedMacControlsMirrorTimeoutEffect(binding)
     PairedMacControlsCallEffects(binding)
 }
 
 @Composable
-private fun PairedMacControlsApprovalRecoveryEffect(binding: PairedMacControlsEffectsBinding) {
+private fun PairedMacControlsActionRecoveryEffect(binding: PairedMacControlsEffectsBinding) {
     LaunchedEffect(binding.phase, binding.statusMessage) {
-        if (shouldClearTrustedDeviceApprovalStatus(binding.statusMessage, binding.phase)) {
+        if (shouldClearMercuryActionRequiredStatus(binding.statusMessage, binding.phase)) {
             binding.onStatusMessageChange(null)
         }
     }
@@ -711,7 +711,7 @@ private fun PairedMacControlsDockButtons(state: PairedMacControlsUiState, action
     val mirrorEnabled =
         state.pendingRequestID == null &&
             !state.recoveringMercury &&
-            !state.phase.requiresTrustedDeviceApproval()
+            !state.phase.requiresOperatorAction()
     val callEnabled = state.pendingCallRequestID == null
     val scales = rememberPairedMacDockButtonScales(state.usePremiumSOTAUX)
 
@@ -1014,7 +1014,7 @@ private fun rememberPairedMacButtonScale(interactionSource: MutableInteractionSo
 
 private fun pairedMacPhaseDotColor(phase: MediaControlStreamCoordinator.Phase): Color = when {
     phase is MediaControlStreamCoordinator.Phase.Live -> AuroraColors.successDark
-    phase.requiresTrustedDeviceApproval() -> AuroraColors.amber
+    phase.requiresOperatorAction() -> AuroraColors.amber
     phase is MediaControlStreamCoordinator.Phase.Dialing ||
         phase is MediaControlStreamCoordinator.Phase.Reconnecting -> AuroraColors.amber
     phase is MediaControlStreamCoordinator.Phase.Failed -> AuroraColors.errorDark
@@ -1024,6 +1024,7 @@ private fun pairedMacPhaseDotColor(phase: MediaControlStreamCoordinator.Phase): 
 private fun pairedMacPhaseStatusLabel(phase: MediaControlStreamCoordinator.Phase): String = when {
     phase is MediaControlStreamCoordinator.Phase.Live -> "Live"
     phase.requiresTrustedDeviceApproval() -> "Approval needed"
+    phase.requiresFreshMacPairing() -> "Open Mac"
     phase is MediaControlStreamCoordinator.Phase.Dialing ||
         phase is MediaControlStreamCoordinator.Phase.Reconnecting -> "Connecting"
     phase is MediaControlStreamCoordinator.Phase.Failed -> "Error"

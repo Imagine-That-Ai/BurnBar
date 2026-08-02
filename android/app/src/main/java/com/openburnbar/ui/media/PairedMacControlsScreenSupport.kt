@@ -49,6 +49,10 @@ internal const val TRUSTED_DEVICE_APPROVAL_REQUIRED =
 internal const val TRUSTED_DEVICE_APPROVAL_MESSAGE =
     "Approval needed. On your Mac, open OpenBurnBar → Settings → Devices & Sync → Trusted Devices, " +
         "then approve this Android. Mercury reconnects automatically after approval."
+internal const val IROH_PAIRING_STALE_REQUIRED = "Iroh pairing is stale or from the future."
+internal const val IROH_PAIRING_STALE_MESSAGE =
+    "Secure pairing expired. Open OpenBurnBar on your Mac and keep it running. " +
+        "Mercury reconnects automatically after the Mac refreshes the pairing."
 
 internal data class PairedMacControlsUiState(
     val phase: MediaControlStreamCoordinator.Phase,
@@ -283,9 +287,9 @@ internal fun evaluateCheckMercury(input: PairedMacControlsCheckMercuryInput): Pa
             "Mercury is not started yet. Open BurnBar on the Mac and wait for the paired Mac tile to show online.",
             shouldRestartMercury = false,
         )
-    input.phase.requiresTrustedDeviceApproval() ->
+    input.phase.actionRequiredMessage() != null ->
         PairedMacControlsCheckMercuryResult(
-            immediateStatusMessage = TRUSTED_DEVICE_APPROVAL_MESSAGE,
+            immediateStatusMessage = requireNotNull(input.phase.actionRequiredMessage()),
             shouldRestartMercury = false,
         )
     input.phase !is MediaControlStreamCoordinator.Phase.Live -> {
@@ -507,26 +511,39 @@ private suspend fun signRemoteUnlockSession(
     )
 }
 
+private fun MediaControlStreamCoordinator.Phase.lastFailureReason(): String? = when (this) {
+    is MediaControlStreamCoordinator.Phase.Failed -> reason
+    is MediaControlStreamCoordinator.Phase.Reconnecting -> lastFailureReason
+    else -> null
+}
+
 internal fun MediaControlStreamCoordinator.Phase.requiresTrustedDeviceApproval(): Boolean {
-    val reason =
-        when (this) {
-            is MediaControlStreamCoordinator.Phase.Failed -> reason
-            is MediaControlStreamCoordinator.Phase.Reconnecting -> lastFailureReason
-            else -> null
-        }
+    val reason = lastFailureReason()
     return reason?.contains("requires a trusted device", ignoreCase = true) == true
 }
 
-internal fun MediaControlStreamCoordinator.Phase.actionRequiredMessage(): String? = TRUSTED_DEVICE_APPROVAL_MESSAGE
-    .takeIf { requiresTrustedDeviceApproval() }
+internal fun MediaControlStreamCoordinator.Phase.requiresFreshMacPairing(): Boolean {
+    val reason = lastFailureReason()
+    return reason?.contains("pairing is stale or from the future", ignoreCase = true) == true
+}
+
+internal fun MediaControlStreamCoordinator.Phase.requiresOperatorAction(): Boolean = requiresTrustedDeviceApproval() ||
+    requiresFreshMacPairing()
+
+internal fun MediaControlStreamCoordinator.Phase.actionRequiredMessage(): String? = when {
+    requiresTrustedDeviceApproval() -> TRUSTED_DEVICE_APPROVAL_MESSAGE
+    requiresFreshMacPairing() -> IROH_PAIRING_STALE_MESSAGE
+    else -> null
+}
 
 /**
- * The approval banner is sticky local state once Check Mercury (or Call Mac)
- * stores it; clear it as soon as the coordinator recovers so a live Mercury
- * never keeps showing "Approval needed".
+ * Action-required copy is sticky local state once Check Mercury (or Call Mac)
+ * stores it. Clear it as soon as the coordinator recovers so a live Mercury
+ * never keeps showing stale approval or Mac-pairing instructions.
  */
-internal fun shouldClearTrustedDeviceApprovalStatus(statusMessage: String?, phase: MediaControlStreamCoordinator.Phase): Boolean =
-    statusMessage == TRUSTED_DEVICE_APPROVAL_MESSAGE && !phase.requiresTrustedDeviceApproval()
+internal fun shouldClearMercuryActionRequiredStatus(statusMessage: String?, phase: MediaControlStreamCoordinator.Phase): Boolean =
+    statusMessage in setOf(TRUSTED_DEVICE_APPROVAL_MESSAGE, IROH_PAIRING_STALE_MESSAGE) &&
+        !phase.requiresOperatorAction()
 
 internal fun MediaControlStreamCoordinator.Phase.userMessage(): String {
     actionRequiredMessage()?.let { return it }
