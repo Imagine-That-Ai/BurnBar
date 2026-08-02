@@ -427,6 +427,14 @@ test("protected signer has no user-supplied evidence surface and revalidates tru
   assert.match(signer, /--expected-evaluator-commit "\$GITHUB_SHA"/u);
   assert.doesNotMatch(signer, /^\s+ref: main$/mu);
   assert.match(signer, /actions\/attest-build-provenance@[0-9a-f]{40}/u);
+  assert.match(
+    signer,
+    /name: domain-core-protected-verification-\$\{\{ inputs\.candidate_commit \}\}[\s\S]*path: \$\{\{ runner\.temp \}\}\/candidate-bundle\/protected-verification\.json/u,
+  );
+  assert.match(
+    hostingDeploy,
+    /artifact_name="domain-core-protected-verification-\$\{CANDIDATE_COMMIT\}"/u,
+  );
   assert.doesNotMatch(
     signer,
     /jobs_json|bundle_json|run_json|eligible_for_attestation.*==/iu,

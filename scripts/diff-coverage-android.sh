@@ -219,6 +219,83 @@ for line in git_output.splitlines():
         for ln in range(start, start + count):
             file_blocks[current].append(ln)
 
+def comment_only_lines(rel_path):
+    """Return source line numbers containing only whitespace/comments.
+
+    JaCoCo intentionally emits no executable-line entry for KDoc and ordinary
+    comments. A documentation-only production diff therefore has strong
+    evidence that there is nothing to cover, but only after we lex the source
+    and prove every added line is outside strings and executable code.
+    """
+    path = os.path.join(repo_root, rel_path)
+    with open(path, encoding="utf-8") as handle:
+        source_lines = handle.read().splitlines()
+
+    result = set()
+    block_depth = 0
+    in_triple_string = False
+
+    for line_number, source_line in enumerate(source_lines, start=1):
+        index = 0
+        has_code = in_triple_string
+
+        while index < len(source_line):
+            if in_triple_string:
+                closing = source_line.find('"""', index)
+                if closing < 0:
+                    index = len(source_line)
+                    continue
+                in_triple_string = False
+                index = closing + 3
+                continue
+
+            if block_depth > 0:
+                if source_line.startswith("/*", index):
+                    block_depth += 1
+                    index += 2
+                elif source_line.startswith("*/", index):
+                    block_depth -= 1
+                    index += 2
+                else:
+                    index += 1
+                continue
+
+            if source_line[index].isspace():
+                index += 1
+                continue
+            if source_line.startswith("//", index):
+                break
+            if source_line.startswith("/*", index):
+                block_depth = 1
+                index += 2
+                continue
+            if source_line.startswith('"""', index):
+                has_code = True
+                in_triple_string = True
+                index += 3
+                continue
+            if source_line[index] in {'"', "'"}:
+                has_code = True
+                quote = source_line[index]
+                index += 1
+                while index < len(source_line):
+                    if source_line[index] == "\\":
+                        index += 2
+                        continue
+                    if source_line[index] == quote:
+                        index += 1
+                        break
+                    index += 1
+                continue
+
+            has_code = True
+            index += 1
+
+        if not has_code:
+            result.add(line_number)
+
+    return result
+
 # Build a package-qualified coverage map. JaCoCo sourcefile names are not
 # unique: different packages and modules routinely contain Foo.kt. The
 # package/name key must resolve to exactly one changed repo path.
@@ -278,6 +355,16 @@ for rel_path in changed:
             "coveredLines": 0,
             "percent": 100.0,
             "method": "deletion_only",
+            "sourceIdentity": identity,
+        })
+        continue
+    if changed_lines.issubset(comment_only_lines(rel_path)):
+        details.append({
+            "file": rel_path,
+            "executableLines": 0,
+            "coveredLines": 0,
+            "percent": 100.0,
+            "method": "comment_only",
             "sourceIdentity": identity,
         })
         continue

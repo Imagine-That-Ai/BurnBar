@@ -1035,7 +1035,7 @@ assertIncludes(
   "CLI session writer uses sealed codec",
 );
 assertSectionNotIncludes(
-  "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CLIAgentSessionRecord.swift",
+  "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CLIAgentSessionRecord.swift",
   "public static func encodeSealed(",
   "public static func encodeMessage",
   '"title"',
@@ -1050,7 +1050,7 @@ for (const field of [
   '"customTitle"',
 ]) {
   assertSectionNotIncludes(
-    "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CLIAgentSessionRecord.swift",
+    "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CLIAgentSessionRecord.swift",
     "public static func encodeSealed(",
     "public static func encodeMessage",
     field,
@@ -1259,9 +1259,18 @@ assertIncludes(
   'public static let aadContextPrefix = "OpenBurnBar-CloudVault-aad-v2"',
   "Swift CloudVault must use the six-part aad-v2 context",
 );
-assertIncludes(
+assertSectionIncludes(
   "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift",
-  "\\(field)|\\(schemaVersion)|\\(purpose)",
+  "public var stringValue: String",
+  "public var legacyV1StringValue: String",
+  "schemaVersion: schemaVersion",
+  "Swift CloudVault AAD must bind field, schemaVersion, and purpose",
+);
+assertSectionIncludes(
+  "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift",
+  "public var stringValue: String",
+  "public var legacyV1StringValue: String",
+  "purpose: purpose",
   "Swift CloudVault AAD must bind field, schemaVersion, and purpose",
 );
 assertIncludes(
@@ -1292,7 +1301,7 @@ assertIncludesAny(
 );
 assertIncludes(
   "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt",
-  "|$schemaVersion|$purpose",
+  "CloudVaultDomainCore.aadV2(uid, collection, docID, field, schemaVersion, purpose)",
   "Android CloudVault AAD must bind field, schemaVersion, and purpose",
 );
 assertIncludes(
@@ -1300,9 +1309,18 @@ assertIncludes(
   'private const val SEALED_PAYLOAD_AAD_CONTEXT = "OpenBurnBar-CloudVaultSealedPayload-v2"',
   "Android CloudVault must publish the sealedPayload v2 AAD context",
 );
-assertIncludes(
+assertSectionIncludes(
   "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt",
-  "cipher.updateAAD(sealedPayloadAAD(",
+  "internal fun sealPayloadWithNonce(",
+  "fun sealSignalPayload(",
+  "sealedPayloadAAD(",
+  "Android CloudVault sealedPayload v2 must authenticate envelope metadata as AAD",
+);
+assertSectionIncludes(
+  "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt",
+  "internal fun sealPayloadWithNonce(",
+  "fun sealSignalPayload(",
+  "CloudVaultDomainCore.aesSealCombined(",
   "Android CloudVault sealedPayload v2 must authenticate envelope metadata as AAD",
 );
 assertSectionIncludes(
@@ -1903,6 +1921,16 @@ for (const relayLogSurface of [
     `${relayLogSurface} must log fixed error classes/codes instead of plaintext exception descriptions`,
   );
 }
+assertIncludes(
+  "AgentLens/Services/IrohRelay/HermesIrohRelayHostClient.swift",
+  "errorCode=\\(Self.publicErrorCode(error))",
+  "macOS iroh relay startup failures must log a fixed public error code",
+);
+assertNotIncludes(
+  "AgentLens/Services/IrohRelay/HermesIrohRelayHostClient.swift",
+  "publicErrorDetail",
+  "macOS iroh relay startup failures must not log backend-provided plaintext detail",
+);
 assertIncludes(
   "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesIrohRelayTransport.kt",
   "publicRelayErrorMessage(frame.payload?.errorCode)",
