@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { VerificationStatus } from "@apple/app-store-server-library";
-import type { Response } from "express";
 
 import {
   appStoreNotificationReconcileFailureResponse,
   appStoreNotificationVerifyFailureResponse,
   respondToAppStoreNotificationVerifyFailure,
 } from "../appstore/notifications.js";
+import type { NotificationHttpResponder } from "../appstore/notifications.js";
 import { EntitlementReconcileError } from "../appstore/reconciler.js";
 import { JWSVerificationFailure } from "../appstore/verifier.js";
 
@@ -15,9 +15,9 @@ interface CapturedResponse {
   body?: unknown;
 }
 
-function responseRecorder(): { response: Response; captured: CapturedResponse } {
+function responseRecorder(): { response: NotificationHttpResponder; captured: CapturedResponse } {
   const captured: CapturedResponse = {};
-  const response = {
+  const response: NotificationHttpResponder = {
     status(statusCode: number) {
       captured.statusCode = statusCode;
       return response;
@@ -26,8 +26,20 @@ function responseRecorder(): { response: Response; captured: CapturedResponse } 
       captured.body = body;
       return response;
     },
-  } as unknown as Response;
+  };
   return { response, captured };
+}
+
+/**
+ * Build a `JWSVerificationFailure` carrying a status value this library
+ * version does not know about, as a future library version could produce
+ * at runtime. `VerificationStatus` is a closed numeric enum, so the value
+ * is injected via `Reflect.set` instead of an unsafe type assertion.
+ */
+function futureVerificationFailure(status: number, message: string): JWSVerificationFailure {
+  const failure = new JWSVerificationFailure(VerificationStatus.FAILURE, message);
+  Reflect.set(failure, "status", status);
+  return failure;
 }
 
 const TERMINAL_JWS_STATUSES = [
@@ -67,7 +79,7 @@ describe("App Store notification JWS verification failure responses", () => {
 
   it("keeps impossible or future verifier statuses retryable instead of silently discarding the notification", () => {
     const impossible = new JWSVerificationFailure(VerificationStatus.OK, "unexpected success status");
-    const future = new JWSVerificationFailure(999 as VerificationStatus, "unknown future status");
+    const future = futureVerificationFailure(999, "unknown future status");
 
     expect(appStoreNotificationVerifyFailureResponse(impossible)).toEqual({
       statusCode: 500,

@@ -95,7 +95,17 @@ function extractSignedPayload(req: Request, res: Response): string | undefined {
  * Every verification failure remains fail-closed: no failure path returns 2xx
  * or reaches entitlement reconciliation.
  */
-export function respondToAppStoreNotificationVerifyFailure(res: Response, err: unknown): void {
+/**
+ * Minimal structural slice of `express.Response` the verify-failure
+ * responder needs. Narrowing the parameter keeps the express call site
+ * unchanged while letting tests supply a recorder without unsafe casts.
+ */
+export interface NotificationHttpResponder {
+  status(statusCode: number): NotificationHttpResponder;
+  json(body: unknown): NotificationHttpResponder;
+}
+
+export function respondToAppStoreNotificationVerifyFailure(res: NotificationHttpResponder, err: unknown): void {
   const failure = appStoreNotificationVerifyFailureResponse(err);
   logError({
     event: "appstore.notifications.verify_failed",
