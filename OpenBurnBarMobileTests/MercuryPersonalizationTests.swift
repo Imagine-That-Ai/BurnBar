@@ -162,6 +162,20 @@ final class MercuryPersonalizationTests: XCTestCase {
         XCTAssertEqual(reloaded.totalCount(for: "mac-r"), 1)
     }
 
+    func testTransferHistoryDebouncedPersistenceCompletesOffMainActor() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mercury-history-debounced-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let store = MercuryTransferHistoryStore(fileURL: tempURL)
+        store.append(makeEntry(id: "debounced", connectionID: "mac-async"))
+
+        try await Task.sleep(for: .milliseconds(500))
+
+        let reloaded = MercuryTransferHistoryStore(fileURL: tempURL)
+        XCTAssertEqual(reloaded.entries.map(\.id), ["debounced"])
+    }
+
     func testTransferHistoryRecentScopesByConnectionID() {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("mercury-history-scope-\(UUID().uuidString).json")
