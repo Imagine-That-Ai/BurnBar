@@ -82,12 +82,19 @@ export function normalizeAppImageHostLaunchPaths(appDir) {
       }
       if (!entry.isFile()) continue;
       if (!(entry.name.endsWith('.desktop') || entry.name === 'AppRun')) continue;
-      const original = fs.readFileSync(full, 'utf8');
-      const pattern = entry.name === 'AppRun' ? absolutePackagedAppRunExec : absolutePackagedDesktopExec;
-      const updated = original.replace(pattern, 'openburnbar-linux-desktop');
-      if (updated !== original) {
-        fs.writeFileSync(full, updated, { mode: fs.statSync(full).mode });
-        rewritten.push(path.relative(root, full).split(path.sep).join('/'));
+      const fd = fs.openSync(full, 'r+');
+      try {
+        if (!fs.fstatSync(fd).isFile()) continue;
+        const original = fs.readFileSync(fd, 'utf8');
+        const pattern = entry.name === 'AppRun' ? absolutePackagedAppRunExec : absolutePackagedDesktopExec;
+        const updated = original.replace(pattern, 'openburnbar-linux-desktop');
+        if (updated !== original) {
+          fs.ftruncateSync(fd, 0);
+          fs.writeSync(fd, updated, 0, 'utf8');
+          rewritten.push(path.relative(root, full).split(path.sep).join('/'));
+        }
+      } finally {
+        fs.closeSync(fd);
       }
     }
   };
