@@ -1,6 +1,11 @@
 self-hosted-runner:
   # Labels of self-hosted runner in array of strings.
   labels:
+    # Exact host that owns the USB-paired physical iPad (ImagineThat-CI-M4-MacMini-macOS).
+    - p16-physical-ipad
+    # Retained so historical / external workflow snippets that still pin these
+    # labels do not fail actionlint when revived; live P-16 producer uses
+    # p16-physical-ipad only.
     - m5max
     - ios
     - p16-physical-ipad
