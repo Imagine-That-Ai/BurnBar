@@ -132,9 +132,9 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
           <div class="step__card">
             <h3>Download &amp; open the DMG</h3>
             <p>
-              The public macOS DMG is served from GitHub Releases while OpenBurnBar's branded
-              direct-download host is being republished. This link targets the signed, notarized,
-              smoke-tested {SITE.macReleaseLatest} GitHub Release asset.
+              The macOS DMG is served from OpenBurnBar's first-party download host. This link
+              targets the signed, notarized, smoke-tested {SITE.macReleaseLatest} release whose checksum
+              matches the immutable GitHub Release asset.
             </p>
             {
               hasMacUpdateFeed && (
@@ -427,10 +427,8 @@ npm run build</code></pre>
             <li>{SITE.macMin} or later</li>
             <li>Apple Silicon Mac</li>
             <li>~120 MB on disk</li>
-            <li>Current public button uses the GitHub Release DMG fallback</li>
-            <li>
-              Branded direct-download releases are Developer ID signed, notarized, and stapled
-            </li>
+            <li>First-party download host with immutable release provenance</li>
+            <li>Developer ID signed, notarized, and stapled</li>
             <li>Direct-download releases publish checksums, SBOM, and Sparkle metadata</li>
           </ul>
         </article>
