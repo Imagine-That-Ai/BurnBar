@@ -19,7 +19,6 @@
     "desktopEntry": "packaging/linux/openburnbar.desktop",
     "safeModeDesktopEntry": "packaging/linux/openburnbar-safe-mode.desktop",
     "tauriInstalledDesktopTemplate": "packaging/linux/tauri-installed.desktop",
-    "tauriAppimageDesktopTemplate": "packaging/linux/tauri-appimage.desktop",
     "autostartEntry": "packaging/linux/autostart/openburnbar.desktop",
     "systemdUserService": "packaging/linux/openburnbar-daemon.service",
     "daemonLaunchScript": "packaging/linux/openburnbar-daemon-launch.sh",
