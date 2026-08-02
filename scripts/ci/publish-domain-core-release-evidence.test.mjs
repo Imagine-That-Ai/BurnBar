@@ -172,6 +172,86 @@ function windowsFixture({ artifactOnly = false } = {}) {
   };
 }
 
+function iosFixture() {
+  const files = fixture();
+  const artifact = join(files.directory, "OpenBurnBar-1.2.3-iOS.xcarchive.zip");
+  writeFileSync(artifact, "signed-ios-archive-bytes");
+  const receipt = {
+    schemaVersion: 1,
+    status: "processed",
+    processedStatus: "complete",
+    deliveryId: "delivery-0001",
+    archiveSha256: sha(readFileSync(artifact)),
+    ipaSha256: "1".repeat(64),
+    uploadResponseSha256: "2".repeat(64),
+    statusResponseSha256: "3".repeat(64),
+    release: { version: "1.2.3", tag: "v1.2.3", commit: ACTIVATION_COMMIT },
+    candidate: CANDIDATE,
+    activation: ACTIVATION,
+    loadedRustIdentity: {
+      schemaVersion: 1,
+      verificationKind: "ios-loaded-rust-slice-identity",
+      bundleId: "com.openburnbar.mobile",
+      version: "1.2.3",
+      buildNumber: "42",
+      executable: "OpenBurnBarMobile",
+      architectures: ["arm64"],
+      executableSha256: "4".repeat(64),
+      identitySectionSha256: "5".repeat(64),
+      identitySymbols: [
+        "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
+        "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+        "uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit",
+        "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
+        "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version",
+      ],
+      candidate: CANDIDATE,
+      observed: CANDIDATE,
+    },
+  };
+  const predicate = {
+    ...files.predicate,
+    consumer: "ios",
+    domain: "cloudVault",
+    artifactKind: "ios-app-store-archive",
+    target: "ios-universal",
+    appStoreConnectReceipt: receipt,
+    publicProfile: {
+      ...files.predicate.publicProfile,
+      domain: "cloudVault",
+    },
+    rollbackArtifact: {
+      ...files.predicate.rollbackArtifact,
+    },
+    artifact: {
+      fileName: basename(artifact),
+      sha256: sha(readFileSync(artifact)),
+    },
+  };
+  writeFileSync(files.predicatePath, `${JSON.stringify(predicate, null, 2)}\n`);
+  return {
+    ...files,
+    artifact,
+    predicate,
+    receipt,
+    manifest: {
+      ...files.manifest,
+      consumer: "ios",
+      signerWorkflow:
+        ".github/workflows/domain-core-ios-release-evidence.yml",
+      artifactPath: artifact,
+      bundles: [
+        {
+          ...files.manifest.bundles[0],
+          domain: "cloudVault",
+          assetName:
+            "OpenBurnBar-1.2.3-iOS-cloudVault-domain-core-attestation.sigstore.json",
+        },
+      ],
+    },
+  };
+}
+
 class FakeClient {
   constructor(
     predicate,
@@ -511,6 +591,97 @@ test("rejects inconsistent or non-native artifact-only controls", () => {
           releaseState: "published",
         }),
       /native publication controls/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("validates an exact iOS predicate that binds its App Store Connect receipt", () => {
+  const files = iosFixture();
+  try {
+    const manifest = validateManifest(files.manifest);
+    assert.equal(manifest.consumer, "ios");
+    assert.deepEqual(
+      manifest.bundles[0].predicate.appStoreConnectReceipt,
+      files.receipt,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects an iOS predicate without its App Store Connect receipt", () => {
+  const files = iosFixture();
+  try {
+    const { appStoreConnectReceipt, ...withoutReceipt } = files.predicate;
+    assert.ok(appStoreConnectReceipt);
+    writeFileSync(
+      files.predicatePath,
+      `${JSON.stringify(withoutReceipt, null, 2)}\n`,
+    );
+    assert.throws(
+      () => validateManifest(files.manifest),
+      /must contain exactly/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects an iOS receipt that does not bind the exact release archive", () => {
+  const cases = [
+    ["archiveSha256", "0".repeat(64)],
+    ["status", "pending"],
+    ["release", { version: "1.2.3", tag: "v1.2.3", commit: "b".repeat(40) }],
+    ["candidate", { ...CANDIDATE, coreVersion: "0.4.0" }],
+    [
+      "activation",
+      { ...ACTIVATION, changedPathsSha256: "0".repeat(64) },
+    ],
+  ];
+  for (const [field, value] of cases) {
+    const files = iosFixture();
+    try {
+      const tampered = {
+        ...files.predicate,
+        appStoreConnectReceipt: { ...files.receipt, [field]: value },
+      };
+      writeFileSync(
+        files.predicatePath,
+        `${JSON.stringify(tampered, null, 2)}\n`,
+      );
+      assert.throws(
+        () => validateManifest(files.manifest),
+        /does not bind the processed App Store Connect receipt|activation commit does not bind/u,
+        `tampered ${field} must be rejected`,
+      );
+    } finally {
+      rmSync(files.directory, { recursive: true, force: true });
+    }
+  }
+});
+
+test("rejects an iOS receipt whose loaded Rust slice does not match the candidate", () => {
+  const files = iosFixture();
+  try {
+    const tampered = {
+      ...files.predicate,
+      appStoreConnectReceipt: {
+        ...files.receipt,
+        loadedRustIdentity: {
+          ...files.receipt.loadedRustIdentity,
+          observed: { ...CANDIDATE, candidateCommit: "b".repeat(40) },
+        },
+      },
+    };
+    writeFileSync(
+      files.predicatePath,
+      `${JSON.stringify(tampered, null, 2)}\n`,
+    );
+    assert.throws(
+      () => validateManifest(files.manifest),
+      /does not bind the processed App Store Connect receipt/u,
     );
   } finally {
     rmSync(files.directory, { recursive: true, force: true });

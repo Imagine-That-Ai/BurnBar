@@ -7,6 +7,12 @@ project_path="$repo_root/OpenBurnBar.xcodeproj"
 lockfile_path="$repo_root/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 cache_dir="$repo_root/.spm-cache"
 
+# The committed graph deliberately pins source-built Firestore. Firebase's
+# default binary graph uses grpc-binary, which crashes on the supported iOS 27
+# runtime. This verifier must therefore resolve the same safe graph regardless
+# of the caller's inherited environment.
+export FIREBASE_SOURCE_FIRESTORE=1
+
 if [[ ! -f "$lockfile_path" ]]; then
   echo "Missing app SwiftPM lockfile at $lockfile_path" >&2
   exit 1
