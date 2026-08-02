@@ -13,7 +13,7 @@ import kotlinx.serialization.json.Json
  *
  * Field names are pinned to the Swift property names so the JSON round-trips
  * byte-for-byte across surfaces:
- *   `OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CLIAgentSessionRecord.swift`.
+ *   `OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CLIAgentSessionRecord.swift`.
  *
  * Dates arrive as ISO-8601 strings (Swift `.iso8601` strategy); we keep them as
  * `String` here and convert to epoch millis in [toSessionRecord] so we never
