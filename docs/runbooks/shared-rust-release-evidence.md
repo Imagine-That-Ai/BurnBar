@@ -234,10 +234,18 @@ Apple and Android use one combined publication manifest and one state machine:
    byte-for-byte, and cryptographically verify every evidence bundle; and
 8. recheck the final tag, target, metadata, state, and exact asset-name set,
    then perform one explicit `--draft=false` edit with explicit prerelease and
-   latest state.
+   non-latest state for normal tag publication;
+9. on an explicit stable `workflow_dispatch` with `promote=true`, download and
+   verify every asset in the already-published release, bind the audited bytes
+   to GitHub's asset IDs, sizes, and SHA-256 digests, and recheck the exact
+   release identity immediately before mutation; and
+10. perform the sole promotion mutation (`gh release edit ... --latest`), then
+    require GitHub's `releases/latest` endpoint to return that same release with
+    the unchanged audited asset identities before live-feed verification.
 
 Stable and prerelease releases use the same state machine. Prereleases are
-always non-latest; only an explicitly promoted stable release may become latest.
+always non-latest; tag pushes and ordinary retries are also non-latest. Only an
+explicitly promoted stable release may become latest.
 Under the exclusive-writer boundary below, no partial release is published, and
 no attestation is generated against bytes other than the DMG or AAB that will
 be published.
