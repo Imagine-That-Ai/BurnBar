@@ -31,7 +31,7 @@ internal suspend fun MediaControlStreamCoordinator.runMercuryInboundReadLoop(str
         inboundPhase.value = MediaControlStreamCoordinator.Phase.Reconnecting(
             nextAttemptInMillis = inboundInitialBackoffMillis,
         )
-        inboundLogWarning(
+        logWarning(
             "Mercury control read failed connectionID=$connectionID error=${t.message}",
             t,
         )

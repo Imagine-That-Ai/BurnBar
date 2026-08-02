@@ -542,7 +542,7 @@ class MediaControlStreamCoordinator(
         runCatching { Log.i(TAG, message) }
     }
 
-    private fun logWarning(message: String, error: Throwable) {
+    internal fun logWarning(message: String, error: Throwable) {
         runCatching { Log.w(TAG, message, error) }
     }
 
@@ -574,7 +574,6 @@ class MediaControlStreamCoordinator(
     internal val inboundFrameChunkAssembler get() = frameChunkAssembler
     internal val inboundMediaPacketCodec get() = mediaPacketCodec
     internal val inboundMediaFrameV2Codec get() = mediaFrameV2Codec
-    internal fun inboundLogWarning(message: String, error: Throwable) = logWarning(message, error)
 
     private companion object {
         private const val TAG = "BurnBar"
