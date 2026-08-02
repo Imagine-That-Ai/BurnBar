@@ -6,9 +6,11 @@ import {
   appStoreNotificationVerifyFailureResponse,
   respondToAppStoreNotificationVerifyFailure,
 } from "../appstore/notifications.js";
-import type { NotificationHttpResponder } from "../appstore/notifications.js";
 import { EntitlementReconcileError } from "../appstore/reconciler.js";
 import { JWSVerificationFailure } from "../appstore/verifier.js";
+
+/** Structural responder slice the production responder accepts. */
+type NotificationHttpResponder = Parameters<typeof respondToAppStoreNotificationVerifyFailure>[0];
 
 interface CapturedResponse {
   statusCode?: number;
@@ -20,11 +22,12 @@ function responseRecorder(): { response: NotificationHttpResponder; captured: Ca
   const response: NotificationHttpResponder = {
     status(statusCode: number) {
       captured.statusCode = statusCode;
-      return response;
-    },
-    json(body: unknown) {
-      captured.body = body;
-      return response;
+      return {
+        json(body: unknown) {
+          captured.body = body;
+          return undefined;
+        },
+      };
     },
   };
   return { response, captured };

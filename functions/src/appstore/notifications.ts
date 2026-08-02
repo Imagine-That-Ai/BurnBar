@@ -96,16 +96,17 @@ function extractSignedPayload(req: Request, res: Response): string | undefined {
  * or reaches entitlement reconciliation.
  */
 /**
- * Minimal structural slice of `express.Response` the verify-failure
- * responder needs. Narrowing the parameter keeps the express call site
- * unchanged while letting tests supply a recorder without unsafe casts.
+ * The `res` parameter is the minimal structural slice of
+ * `express.Response` this responder needs (kept inline: an exported named
+ * interface would count against the hand-maintained schema surface budget,
+ * and a private named one breaks declaration emit). Narrowing the parameter
+ * keeps the express call site unchanged while letting tests supply a
+ * recorder without unsafe casts.
  */
-export interface NotificationHttpResponder {
-  status(statusCode: number): NotificationHttpResponder;
-  json(body: unknown): NotificationHttpResponder;
-}
-
-export function respondToAppStoreNotificationVerifyFailure(res: NotificationHttpResponder, err: unknown): void {
+export function respondToAppStoreNotificationVerifyFailure(
+  res: { status(statusCode: number): { json(body: unknown): unknown } },
+  err: unknown,
+): void {
   const failure = appStoreNotificationVerifyFailureResponse(err);
   logError({
     event: "appstore.notifications.verify_failed",
