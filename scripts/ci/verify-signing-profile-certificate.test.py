@@ -86,9 +86,7 @@ class SigningProfileCertificateTests(unittest.TestCase):
         )
         for mutation in mutations:
             with self.subTest(mutation=mutation):
-                self.assertFalse(
-                    VERIFIER.allows_legacy_v1029_profile_membership_exception(**mutation)
-                )
+                self.assertFalse(VERIFIER.allows_legacy_v1029_profile_membership_exception(**mutation))
 
     def test_rejects_partial_legacy_context(self) -> None:
         result = self.run_gate(
