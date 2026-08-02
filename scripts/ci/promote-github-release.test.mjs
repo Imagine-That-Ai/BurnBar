@@ -14,18 +14,21 @@ import {
   auditExistingRelease,
   expectedReleaseAssets,
   promoteAuditedRelease,
+  verifyDomainCoreBundles,
 } from "./promote-github-release.mjs";
 
 const REPOSITORY = "Imagine-That-Ai/BurnBar";
 const VERSION = "1.2.3";
 const TAG = `v${VERSION}`;
 const COMMIT = "a".repeat(40);
+const PUBLIC_PROFILE = "public-production";
+const ROLLBACK_PROFILE = "public-production-rollback";
 
 function hash(algorithm, value) {
   return createHash(algorithm).update(value).digest("hex");
 }
 
-function fixture() {
+function fixture(domainCoreProfile = PUBLIC_PROFILE) {
   const directory = mkdtempSync(join(tmpdir(), "release-promotion-test-"));
   const notesPath = join(directory, "notes.md");
   const assetDirectory = join(directory, "assets");
@@ -46,7 +49,7 @@ function fixture() {
   put(dmg, "signed-dmg");
   put(zip, "signed-zip");
   put(android, "signed-aab");
-  put(ios, "signed-ios-archive");
+  if (domainCoreProfile === PUBLIC_PROFILE) put(ios, "signed-ios-archive");
   put(source, "corresponding-source");
   put(rollback, "rollback");
   put("appcast.xml", "");
@@ -90,15 +93,17 @@ function fixture() {
       sparkleEdSignaturePresent: true,
     })}\n`,
   );
-  put(
-    `OpenBurnBar-${VERSION}-iOS-app-store-connect-receipt.json`,
-    `${JSON.stringify({
-      schemaVersion: 1,
-      status: "processed",
-      archiveSha256: hash("sha256", assets.get(ios)),
-      release: { version: VERSION, tag: TAG, commit: COMMIT },
-    })}\n`,
-  );
+  if (domainCoreProfile === PUBLIC_PROFILE) {
+    put(
+      `OpenBurnBar-${VERSION}-iOS-app-store-connect-receipt.json`,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        status: "processed",
+        archiveSha256: hash("sha256", assets.get(ios)),
+        release: { version: VERSION, tag: TAG, commit: COMMIT },
+      })}\n`,
+    );
+  }
   put(
     `${source}.sha256`,
     `${hash("sha256", assets.get(source))}  /tmp/${source}\n`,
@@ -115,7 +120,8 @@ function fixture() {
       .join("\n")}\n`,
   );
 
-  for (const name of expectedReleaseAssets(VERSION).required) {
+  for (const name of expectedReleaseAssets(VERSION, domainCoreProfile)
+    .required) {
     if (!assets.has(name)) put(name, `fixture:${name}`);
   }
 
@@ -126,6 +132,7 @@ function fixture() {
     assetDirectory,
     receiptPath,
     assets,
+    domainCoreProfile,
   };
 }
 
@@ -199,8 +206,8 @@ class FakeClient {
   }
 }
 
-function withFixture(callback) {
-  const files = fixture();
+function withFixture(callback, domainCoreProfile = PUBLIC_PROFILE) {
+  const files = fixture(domainCoreProfile);
   try {
     callback(files);
   } finally {
@@ -208,7 +215,12 @@ function withFixture(callback) {
   }
 }
 
-function audit(files, client, domainCoreVerifier = () => {}) {
+function audit(
+  files,
+  client,
+  domainCoreVerifier = () => {},
+  domainCoreProfile = files.domainCoreProfile,
+) {
   return auditExistingRelease(
     {
       tag: TAG,
@@ -216,6 +228,7 @@ function audit(files, client, domainCoreVerifier = () => {}) {
       notesPath: files.notesPath,
       assetDirectory: files.assetDirectory,
       receiptPath: files.receiptPath,
+      domainCoreProfile,
     },
     { client, domainCoreVerifier },
   );
@@ -345,6 +358,63 @@ test("release drift after audit blocks latest promotion", () => {
       /release changed after its promotion audit/u,
     );
     assert.deepEqual(mutations(client), []);
+  });
+});
+
+test("a governed rollback release without domain-core evidence audits and promotes", () => {
+  withFixture((files) => {
+    const client = new FakeClient(files);
+    const result = audit(files, client, verifyDomainCoreBundles);
+    assert.equal(
+      result.release.identity.assets.some((asset) =>
+        asset.name.includes("-domain-core"),
+      ),
+      false,
+    );
+    assert.equal(
+      JSON.parse(readFileSync(files.receiptPath, "utf8")).domainCoreProfile,
+      ROLLBACK_PROFILE,
+    );
+    client.calls.length = 0;
+    assert.deepEqual(promoteAuditedRelease(files.receiptPath, { client }), {
+      promoted: true,
+      promotionApplied: true,
+    });
+  }, ROLLBACK_PROFILE);
+});
+
+test("a declared profile that mismatches the published asset set fails closed", () => {
+  // public-production declared for a rollback-shaped release: every missing
+  // domain-core evidence asset blocks the audit.
+  withFixture((files) => {
+    const client = new FakeClient(files);
+    assert.throws(
+      () => audit(files, client, () => {}, PUBLIC_PROFILE),
+      /asset set mismatch/u,
+    );
+    assert.equal(mutations(client).length, 0);
+  }, ROLLBACK_PROFILE);
+
+  // rollback declared for a fully evidenced release: every published bundle is
+  // still downloaded and cryptographically verified, never skipped.
+  withFixture((files) => {
+    const client = new FakeClient(files);
+    assert.throws(
+      () => audit(files, client, verifyDomainCoreBundles, ROLLBACK_PROFILE),
+      /unsupported fake command: attestation/u,
+    );
+    assert.equal(mutations(client).length, 0);
+  });
+});
+
+test("an ungoverned domain-core profile is rejected before any release lookup", () => {
+  withFixture((files) => {
+    const client = new FakeClient(files);
+    assert.throws(
+      () => audit(files, client, () => {}, "public-canary"),
+      /governed public-production/u,
+    );
+    assert.equal(client.calls.length, 0);
   });
 });
 

@@ -14,7 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exact published tag, metadata, attestations, asset bytes, GitHub asset IDs,
   sizes, and SHA-256 digests before the sole `--latest` mutation. The workflow
   then proves GitHub's latest endpoint still returns that unchanged release
-  before validating the live updater feed.
+  before validating the live updater feed. The audit binds the governed
+  `domain_core_profile`: a rollback release promotes without the native
+  domain-core evidence it never publishes (anything present is still verified),
+  a published legacy GPG checksum signature must verify against the audited
+  checksums file, and iOS release predicates now validate their embedded App
+  Store Connect receipt end to end.
 
 ### Fixed - Stripe entitlement reconciliation
 

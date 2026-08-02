@@ -227,6 +227,18 @@ and rechecks the exact release metadata. Only then may it perform the single
 before the live Sparkle feed gate runs. A missing, substituted, extra, or
 concurrently changed asset blocks promotion.
 
+The `domain_core_profile` input must declare the governed profile the release
+was published under. `public-production` (the default) requires the complete
+native domain-core evidence set: the Apple, Android, and iOS Sigstore bundles,
+the iOS archive, and the App Store Connect receipt. `public-production-rollback`
+promotes a governed all-legacy rollback release, which publishes no native
+domain-core evidence; any evidence asset that is present is still fully
+verified. A declared profile that does not match the published asset set fails
+closed before any mutation. When `checksums-vVERSION.txt.asc` is published, the
+promotion lane verifies the detached GPG signature against the audited
+checksums file and fails if `RELEASE_SIGNING_KEY` is not configured to verify
+it.
+
 Before approving a promoted release, verify that the tag still points at the
 current `origin/main` tip. If `main` advances after the tag is cut, cancel the
 run before publication and cut a new patch tag from the newest main. Do not ship

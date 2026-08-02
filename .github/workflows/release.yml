@@ -162,7 +162,32 @@ jobs:
             --commit "${{ steps.release.outputs.release_commit }}" \
             --notes "${{ steps.release.outputs.notes_path }}" \
             --asset-dir "${{ steps.release.outputs.asset_dir }}" \
-            --receipt "${{ steps.release.outputs.receipt_path }}"
+            --receipt "${{ steps.release.outputs.receipt_path }}" \
+            --domain-core-profile "${{ inputs.domain_core_profile }}"
+
+      - name: Verify legacy GPG checksum signature (when published)
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          VERSION: ${{ steps.release.outputs.version }}
+          ASSET_DIR: ${{ steps.release.outputs.asset_dir }}
+        run: |
+          set -euo pipefail
+          checksums="$ASSET_DIR/checksums-v${VERSION}.txt"
+          signature="${checksums}.asc"
+          if [[ ! -f "$signature" ]]; then
+            echo "No legacy GPG checksum signature is published; keyless Sigstore blob attestations remain the required provenance control."
+            exit 0
+          fi
+          if [[ -z "${RELEASE_SIGNING_KEY:-}" ]]; then
+            echo "::error::checksums-v${VERSION}.txt.asc is published but RELEASE_SIGNING_KEY is not configured; the promotion cannot verify the detached signature."
+            exit 1
+          fi
+          keyring="$RUNNER_TEMP/release-promotion-gnupg"
+          mkdir -p "$keyring"
+          chmod 700 "$keyring"
+          echo "$RELEASE_SIGNING_KEY" | base64 --decode | gpg --homedir "$keyring" --import --batch --passphrase ""
+          gpg --homedir "$keyring" --batch --verify "$signature" "$checksums"
+          echo "Checksum GPG signature verified against the audited checksums file."
 
       - name: Verify release Sigstore provenance against exact tag identity
         env:

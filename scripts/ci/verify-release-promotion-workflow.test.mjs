@@ -72,6 +72,7 @@ test("remote audit and every public-trust check precede the sole promotion comma
   const promotion = job("release-promotion");
   const orderedMarkers = [
     "promote-github-release.mjs audit",
+    "gpg --homedir \"$keyring\" --batch --verify",
     "verify-release-attestations.sh",
     "cosign verify-blob-attestation",
     "verify-apple-appcheck-release-artifact.sh",
@@ -89,6 +90,22 @@ test("remote audit and every public-trust check precede the sole promotion comma
     1,
     "release workflow must expose exactly one promotion command",
   );
+});
+
+test("the audit binds the operator-declared governed domain-core profile", () => {
+  assert.match(
+    job("release-promotion"),
+    /--domain-core-profile "\$\{\{ inputs\.domain_core_profile \}\}"/u,
+  );
+});
+
+test("a published legacy GPG checksum signature must verify before promotion", () => {
+  const promotion = job("release-promotion");
+  assert.match(
+    promotion,
+    /checksums-v\$\{VERSION\}\.txt\.asc is published but RELEASE_SIGNING_KEY is not configured/u,
+  );
+  assert.match(promotion, /gpg --homedir "\$keyring" --batch --verify "\$signature" "\$checksums"/u);
 });
 
 test("live feed verification follows the exact successful promotion", () => {

@@ -19,6 +19,10 @@ import {
   regularFile,
   safeAssetName,
 } from "../lib/domain-core-release-evidence.mjs";
+import {
+  DOMAIN_CORE_PUBLIC_PROFILE,
+  DOMAIN_CORE_ROLLBACK_PROFILE,
+} from "../lib/domain-core-native-release.mjs";
 import { validateManifest } from "./publish-domain-core-release-evidence.mjs";
 
 const COMMIT = /^[0-9a-f]{40}$/u;
@@ -188,13 +192,30 @@ function generalProvenanceSubjects(version) {
   ];
 }
 
-export function expectedReleaseAssets(version) {
+export function validateDomainCoreProfile(domainCoreProfile) {
+  if (
+    domainCoreProfile !== DOMAIN_CORE_PUBLIC_PROFILE &&
+    domainCoreProfile !== DOMAIN_CORE_ROLLBACK_PROFILE
+  ) {
+    throw new Error(
+      "promotion requires a governed public-production or public-production-rollback domain-core profile",
+    );
+  }
+  return domainCoreProfile;
+}
+
+export function domainCoreBundleAssetName(consumer, version, domain) {
+  return consumer === "ios"
+    ? `OpenBurnBar-${version}-iOS-${domain}-domain-core-attestation.sigstore.json`
+    : `OpenBurnBar-${version}-${consumer}-${domain}-domain-core.sigstore.json`;
+}
+
+export function expectedReleaseAssets(version, domainCoreProfile) {
+  validateDomainCoreProfile(domainCoreProfile);
   const required = new Set([
     `OpenBurnBar-${version}-macOS.dmg`,
     `OpenBurnBar-${version}-macOS.zip`,
     `OpenBurnBar-${version}-Android.aab`,
-    `OpenBurnBar-${version}-iOS.xcarchive.zip`,
-    `OpenBurnBar-${version}-iOS-app-store-connect-receipt.json`,
     `OpenBurnBar-${version}-corresponding-source.tar.gz`,
     `OpenBurnBar-${version}-corresponding-source.tar.gz.sha256`,
     `OpenBurnBar-${version}-legacy-rollback.zip`,
@@ -215,27 +236,38 @@ export function expectedReleaseAssets(version) {
   required.add(`${rollback}.predicate.json`);
   required.add(`${rollback}.sigstore.json`);
 
-  for (const consumer of ["apple", "android"]) {
+  // Domain-core evidence exists exactly when the release was published with a
+  // Rust-active public-production profile. A governed public-production-rollback
+  // release publishes the legacy artifacts with no native domain-core evidence
+  // and no App Store iOS lane, so those assets become verify-if-present.
+  const domainCoreEvidence = new Set([
+    `OpenBurnBar-${version}-iOS.xcarchive.zip`,
+    `OpenBurnBar-${version}-iOS-app-store-connect-receipt.json`,
+  ]);
+  for (const consumer of ["apple", "android", "ios"]) {
     for (const domain of RELEASE_CONSUMERS[consumer].domains) {
-      required.add(
-        `OpenBurnBar-${version}-${consumer}-${domain}-domain-core.sigstore.json`,
+      domainCoreEvidence.add(
+        domainCoreBundleAssetName(consumer, version, domain),
       );
     }
   }
-  for (const domain of RELEASE_CONSUMERS.ios.domains) {
-    required.add(
-      `OpenBurnBar-${version}-iOS-${domain}-domain-core-attestation.sigstore.json`,
-    );
+
+  const optional = new Set([`checksums-v${version}.txt.asc`]);
+  for (const name of domainCoreEvidence) {
+    (domainCoreProfile === DOMAIN_CORE_ROLLBACK_PROFILE
+      ? optional
+      : required
+    ).add(name);
   }
 
-  return {
-    required,
-    optional: new Set([`checksums-v${version}.txt.asc`]),
-  };
+  return { required, optional };
 }
 
-function requireExactAssetSet(version, assets) {
-  const { required, optional } = expectedReleaseAssets(version);
+function requireExactAssetSet(version, assets, domainCoreProfile) {
+  const { required, optional } = expectedReleaseAssets(
+    version,
+    domainCoreProfile,
+  );
   const names = new Set(assets.keys());
   const missing = [...required].filter((name) => !names.has(name));
   const unexpected = [...names].filter(
@@ -401,15 +433,20 @@ function verifyUpdateMetadata(expected, downloads) {
     throw new Error("release-metadata.json does not bind the exact release");
   }
 
+  const iosReceiptName = `OpenBurnBar-${expected.version}-iOS-app-store-connect-receipt.json`;
+  const iosArchiveName = `OpenBurnBar-${expected.version}-iOS.xcarchive.zip`;
+  if (
+    expected.domainCoreProfile === DOMAIN_CORE_ROLLBACK_PROFILE &&
+    !downloads.has(iosReceiptName) &&
+    !downloads.has(iosArchiveName)
+  ) {
+    // A governed rollback release has no App Store iOS lane; when neither iOS
+    // asset was published there is nothing to bind.
+    return;
+  }
   const iosReceipt = objectValue(
     parseJson(
-      readFileSync(
-        requiredPath(
-          downloads,
-          `OpenBurnBar-${expected.version}-iOS-app-store-connect-receipt.json`,
-        ),
-        "utf8",
-      ),
+      readFileSync(requiredPath(downloads, iosReceiptName), "utf8"),
       "App Store Connect receipt",
     ),
     "App Store Connect receipt",
@@ -421,13 +458,7 @@ function verifyUpdateMetadata(expected, downloads) {
     iosReceipt.release?.tag !== expected.tag ||
     iosReceipt.release?.commit !== expected.commit ||
     iosReceipt.archiveSha256 !==
-      hashFile(
-        "sha256",
-        requiredPath(
-          downloads,
-          `OpenBurnBar-${expected.version}-iOS.xcarchive.zip`,
-        ),
-      )
+      hashFile("sha256", requiredPath(downloads, iosArchiveName))
   ) {
     throw new Error(
       "App Store Connect receipt does not bind the exact processed iOS archive",
@@ -477,17 +508,29 @@ export function verifyDomainCoreBundles(
   predicateDirectory,
 ) {
   mkdirSync(predicateDirectory, { recursive: true });
+  const rollbackProfile =
+    validateDomainCoreProfile(expected.domainCoreProfile) ===
+    DOMAIN_CORE_ROLLBACK_PROFILE;
   for (const consumer of ["apple", "android", "ios"]) {
     const contract = RELEASE_CONSUMERS[consumer];
+    const bundleNames = contract.domains.map((domain) => [
+      domain,
+      domainCoreBundleAssetName(consumer, expected.version, domain),
+    ]);
+    if (
+      rollbackProfile &&
+      bundleNames.every(([, assetName]) => !downloads.has(assetName))
+    ) {
+      // A governed rollback release publishes no domain-core evidence for this
+      // consumer; anything that is present is still verified below.
+      continue;
+    }
     const artifactPath = requiredPath(
       downloads,
       contract.fileName(expected.version),
     );
-    for (const domain of contract.domains) {
-      const assetName =
-        consumer === "ios"
-          ? `OpenBurnBar-${expected.version}-iOS-${domain}-domain-core-attestation.sigstore.json`
-          : `OpenBurnBar-${expected.version}-${consumer}-${domain}-domain-core.sigstore.json`;
+    for (const [domain, assetName] of bundleNames) {
+      if (rollbackProfile && !downloads.has(assetName)) continue;
       const bundlePath = requiredPath(downloads, assetName);
       const predicates = verifiedPredicates(
         client,
@@ -541,7 +584,12 @@ export function verifyDomainCoreBundles(
   }
 }
 
-function validateExpectedCoordinates({ tag, commit, notesPath }) {
+function validateExpectedCoordinates({
+  tag,
+  commit,
+  notesPath,
+  domainCoreProfile,
+}) {
   const match = typeof tag === "string" ? STABLE_TAG.exec(tag) : null;
   if (!match) {
     throw new Error("promotion tag must be stable canonical SemVer");
@@ -556,6 +604,7 @@ function validateExpectedCoordinates({ tag, commit, notesPath }) {
     version: match[1],
     commit,
     notesSha256: hashBytes("sha256", Buffer.from(notes)),
+    domainCoreProfile: validateDomainCoreProfile(domainCoreProfile),
   };
 }
 
@@ -567,6 +616,7 @@ function receiptContents(expected, release) {
     version: expected.version,
     commit: expected.commit,
     notesSha256: expected.notesSha256,
+    domainCoreProfile: expected.domainCoreProfile,
     releaseIdentity: release.identity,
   };
 }
@@ -583,17 +633,26 @@ function writeReceipt(path, receipt) {
 }
 
 export function auditExistingRelease(
-  { tag, commit, notesPath, assetDirectory, receiptPath },
+  { tag, commit, notesPath, assetDirectory, receiptPath, domainCoreProfile },
   {
     client = createGhClient(),
     domainCoreVerifier = verifyDomainCoreBundles,
   } = {},
 ) {
-  const expected = validateExpectedCoordinates({ tag, commit, notesPath });
+  const expected = validateExpectedCoordinates({
+    tag,
+    commit,
+    notesPath,
+    domainCoreProfile,
+  });
   const directory = resolve(assetDirectory);
   prepareAssetDirectory(directory);
   const release = lookupRelease(client, expected);
-  requireExactAssetSet(expected.version, release.assets);
+  requireExactAssetSet(
+    expected.version,
+    release.assets,
+    expected.domainCoreProfile,
+  );
   const downloads = downloadAssets(client, expected, release, directory);
   verifyChecksums(expected.version, downloads);
   verifyUpdateMetadata(expected, downloads);
@@ -605,7 +664,11 @@ export function auditExistingRelease(
   );
 
   const final = lookupRelease(client, expected);
-  requireExactAssetSet(expected.version, final.assets);
+  requireExactAssetSet(
+    expected.version,
+    final.assets,
+    expected.domainCoreProfile,
+  );
   if (!sameIdentity(release.identity, final.identity)) {
     throw new Error("release changed during the promotion audit");
   }
@@ -626,10 +689,12 @@ function validateReceipt(raw) {
       "version",
       "commit",
       "notesSha256",
+      "domainCoreProfile",
       "releaseIdentity",
     ],
     "release promotion receipt",
   );
+  validateDomainCoreProfile(value.domainCoreProfile);
   if (
     value.schemaVersion !== RECEIPT_SCHEMA_VERSION ||
     value.repository !== DOMAIN_CORE_REPOSITORY ||
@@ -667,6 +732,7 @@ function validateReceipt(raw) {
   requireExactAssetSet(
     value.version,
     new Map(assets.map((asset) => [asset.name, asset])),
+    value.domainCoreProfile,
   );
   return {
     repository: DOMAIN_CORE_REPOSITORY,
@@ -674,6 +740,7 @@ function validateReceipt(raw) {
     version: value.version,
     commit: value.commit,
     notesSha256: value.notesSha256,
+    domainCoreProfile: value.domainCoreProfile,
     identity: releaseIdentity(identity.releaseID, assets),
   };
 }
@@ -740,13 +807,20 @@ function parseArguments(argv) {
   const command = argv[0];
   const required =
     command === "audit"
-      ? ["--tag", "--commit", "--notes", "--asset-dir", "--receipt"]
+      ? [
+          "--tag",
+          "--commit",
+          "--notes",
+          "--asset-dir",
+          "--receipt",
+          "--domain-core-profile",
+        ]
       : command === "promote"
         ? ["--receipt"]
         : null;
   if (!required || argv.length !== 1 + required.length * 2) {
     throw new Error(
-      "usage: audit --tag TAG --commit SHA --notes PATH --asset-dir DIR --receipt PATH | promote --receipt PATH",
+      "usage: audit --tag TAG --commit SHA --notes PATH --asset-dir DIR --receipt PATH --domain-core-profile PROFILE | promote --receipt PATH",
     );
   }
   const values = new Map();
@@ -771,6 +845,7 @@ export function run(argv) {
           notesPath: values.get("--notes"),
           assetDirectory: values.get("--asset-dir"),
           receiptPath: values.get("--receipt"),
+          domainCoreProfile: values.get("--domain-core-profile"),
         })
       : promoteAuditedRelease(values.get("--receipt"));
   const printable =
