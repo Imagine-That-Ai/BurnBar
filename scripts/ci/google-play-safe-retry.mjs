@@ -505,11 +505,20 @@ export async function publishGooglePlayRelease({
       const noOpEditId = publicationEditId;
       await deleteEditQuietly({ ...common, editId: publicationEditId });
       publicationEditId = "";
+      const readbackEdit = await insertEdit(common);
+      readbackEditId = readbackEdit.editId;
+      const readbackTrack = await getTrack({
+        ...common,
+        editId: readbackEditId,
+        track: publication.track,
+      });
       const readback = assertTrackReadback(
-        priorTrack,
+        readbackTrack,
         publication.expectedVersionCode,
         plan.readbackStatus,
       );
+      await deleteEditQuietly({ ...common, editId: readbackEditId });
+      readbackEditId = "";
       return {
         schemaVersion: 1,
         action: "already_current",
@@ -537,7 +546,8 @@ export async function publishGooglePlayRelease({
           uploadedBundle: null,
           trackUpdate: null,
           commit: null,
-          readbackTrack: priorTrack,
+          readbackEdit: readbackEdit.response,
+          readbackTrack,
         },
       };
     }

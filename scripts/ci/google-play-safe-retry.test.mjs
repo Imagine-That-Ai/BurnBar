@@ -183,9 +183,52 @@ test("exact completed release is a checksum-verified no-op", async () => {
   assert.equal(result.uploaded, false);
   assert.equal(result.committed, false);
   assert.equal(result.readback.status, "completed");
-  assert.ok(fake.calls.some(({ method }) => method === "DELETE"));
+  assert.ok(
+    fake.calls.some(
+      ({ method, path }) =>
+        method === "GET" && path.endsWith("/edits/edit-2/tracks/internal"),
+    ),
+  );
+  assert.ok(
+    fake.calls.some(
+      ({ method, path }) =>
+        method === "DELETE" && path.endsWith("/edits/edit-2"),
+    ),
+  );
   assert.ok(!fake.calls.some(({ method }) => method === "PUT"));
   assert.ok(!fake.calls.some(({ path }) => path.endsWith(":commit")));
+});
+
+test("no-op fails closed when the track changed after the initial read", async () => {
+  const fake = fakeGooglePlay({
+    bundles: [{ versionCode: 41, sha256: AAB_SHA256 }],
+    initialTrack: {
+      track: "internal",
+      releases: [
+        {
+          name: "OpenBurnBar 1.2.3",
+          status: "completed",
+          versionCodes: ["41"],
+        },
+      ],
+    },
+    committedTrack: {
+      track: "internal",
+      releases: [{ status: "completed", versionCodes: ["42"] }],
+    },
+  });
+  await assert.rejects(
+    publish(fake),
+    /readback unexpectedly contains newer version code 42/u,
+  );
+  assert.ok(!fake.calls.some(({ method }) => method === "PUT"));
+  assert.ok(!fake.calls.some(({ path }) => path.endsWith(":commit")));
+  assert.ok(
+    fake.calls.some(
+      ({ method, path }) =>
+        method === "DELETE" && path.endsWith("/edits/edit-2"),
+    ),
+  );
 });
 
 test("completed no-op refuses when Play cannot prove the existing bundle bytes", async () => {

@@ -97,10 +97,10 @@ jobs:
       version_code: ${{ steps.inspect.outputs.version_code }}
       aab_sha256: ${{ steps.inspect.outputs.aab_sha256 }}
     steps:
-      - name: Check out trusted workflow and exact release history
+      - name: Check out the exact approved workflow revision
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
-          ref: main
+          ref: ${{ github.workflow_sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -118,6 +118,11 @@ jobs:
           if [[ "$GITHUB_WORKFLOW_REF" != "$expected_workflow_ref" ]]; then
             echo "::error::Google Play publishing must execute the reviewed workflow from protected main."
             echo "::error::Expected $expected_workflow_ref, got $GITHUB_WORKFLOW_REF."
+            exit 1
+          fi
+          checked_out_commit="$(git rev-parse HEAD)"
+          if [[ "$checked_out_commit" != "$GITHUB_WORKFLOW_SHA" ]]; then
+            echo "::error::Checked-out commit $checked_out_commit does not match the executing workflow revision $GITHUB_WORKFLOW_SHA."
             exit 1
           fi
           if [[ ! "$TAG" =~ ^v[0-9]{1,3}\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?(\+[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then

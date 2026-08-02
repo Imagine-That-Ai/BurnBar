@@ -110,7 +110,11 @@ test("workflow has a protected two-job trust boundary and safe defaults", () => 
   assert.match(workflow, /default: internal/u);
   assert.match(workflow, /default: true/u);
   assert.match(workflow, /group: google-play-\$\{\{ inputs\.tag \}\}-\$\{\{ inputs\.track \}\}/u);
-  assert.match(workflow, /ref: main/u);
+  assert.match(workflow, /ref: \$\{\{ github\.workflow_sha \}\}/u);
+  assert.match(
+    workflow,
+    /"\$checked_out_commit" != "\$GITHUB_WORKFLOW_SHA"/u,
+  );
   assert.match(workflow, /environment: release/u);
   assert.match(workflow, /if: \$\{\{ needs\.prepare-google-play-publication\.result == 'success' && inputs\.dry_run == false \}\}/u);
   assert.match(workflow, /GOOGLE_PLAY_SERVICE_ACCOUNT_JSON/u);
