@@ -101,6 +101,7 @@
         "postInstallScript": "../../../packaging/linux/openburnbar-cli-migrate.sh"
       },
       "appimage": {
+        "desktopTemplate": "../../../packaging/linux/tauri-appimage.desktop",
         "files": {
           "/usr/libexec/openburnbar/text-expansion-engine": "../../../packaging/linux/openburnbar-text-expansion-engine.py",
           "/usr/share/ibus/component/openburnbar.xml": "../../../packaging/linux/ibus-openburnbar.xml",

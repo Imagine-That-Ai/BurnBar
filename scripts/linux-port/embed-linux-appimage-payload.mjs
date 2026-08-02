@@ -49,6 +49,52 @@ function requireRegularResource(candidate, label, expectedMode) {
   }
 }
 
+const absolutePackagedDesktopExec = /(?<=[= \t])\/usr\/bin\/openburnbar-linux-desktop(?=[\s%]|$)/gu;
+const absolutePackagedAppRunExec = /(?<=[= \t"'])\/usr\/bin\/openburnbar-linux-desktop(?=[\s"']|$)/gu;
+
+/**
+ * Installed deb/rpm/AUR launchers intentionally pin Exec=/usr/bin/... so PATH
+ * cannot shadow the package. AppImage extract-and-run resolves that absolute
+ * path on the host, so rewrite in-AppDir launchers to the basename (or
+ * $APPDIR-relative form) before the squashfs is rebuilt.
+ */
+export function normalizeAppImageHostLaunchPaths(appDir) {
+  const root = path.resolve(appDir);
+  requirePath(root, 'AppImage root', 'directory');
+
+  const desktopBinary = path.join(root, linuxAppImagePeerExecutableRelativePath);
+  const productBinary = path.join(root, 'usr/bin/OpenBurnBar');
+  if (!fs.existsSync(desktopBinary)) {
+    if (!fs.existsSync(productBinary)) {
+      throw new Error(`AppImage GUI executable missing: ${desktopBinary}`);
+    }
+    fs.copyFileSync(productBinary, desktopBinary);
+    fs.chmodSync(desktopBinary, 0o755);
+  }
+
+  const rewritten = [];
+  const visit = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(full);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (!(entry.name.endsWith('.desktop') || entry.name === 'AppRun')) continue;
+      const original = fs.readFileSync(full, 'utf8');
+      const pattern = entry.name === 'AppRun' ? absolutePackagedAppRunExec : absolutePackagedDesktopExec;
+      const updated = original.replace(pattern, 'openburnbar-linux-desktop');
+      if (updated !== original) {
+        fs.writeFileSync(full, updated, { mode: fs.statSync(full).mode });
+        rewritten.push(path.relative(root, full).split(path.sep).join('/'));
+      }
+    }
+  };
+  visit(root);
+  return { desktopBinary, rewritten };
+}
+
 export function validatePayload(payloadRoot) {
   const root = path.resolve(payloadRoot);
   for (const entry of requiredPayloadPaths) {
@@ -127,6 +173,7 @@ function copyFileRange(source, destination, bytes = null) {
 
 function assertEmbeddedPayload(appDir, { requirePeerManifest }) {
   const required = [
+    'usr/bin/openburnbar-linux-desktop',
     'usr/bin/openburnbar-cli',
     'usr/bin/openburnbar-daemon',
     'usr/libexec/openburnbar-daemon-launch',
@@ -230,6 +277,7 @@ export function prepareLinuxAppImagePeerManifest({ appImage, env = process.env }
       String(findAppImageFilesystemOffset(image)),
       image
     ], { cwd: work, env: appImageEnv });
+    normalizeAppImageHostLaunchPaths(appDir);
     const executable = path.join(appDir, linuxAppImagePeerExecutableRelativePath);
     const manifest = createLinuxAppImagePeerManifest({ executable });
     return { manifest, manifestBytes: serializeLinuxAppImagePeerManifest(manifest) };
@@ -280,6 +328,7 @@ export function embedLinuxAppImagePayload({
       image
     ], { cwd: work, env: appImageEnv });
     requirePath(appDir, 'extracted AppImage root', 'directory');
+    normalizeAppImageHostLaunchPaths(appDir);
 
     fs.mkdirSync(path.join(appDir, 'usr/bin'), { recursive: true });
     fs.copyFileSync(path.join(payload, 'openburnbar-cli'), path.join(appDir, 'usr/bin/openburnbar-cli'));

@@ -24,16 +24,25 @@ test('DEB and RPM bundles install the canonical XDG autostart entry', () => {
       `${format} bundle must install the canonical autostart source`
     );
   }
+  const appimage = config.bundle?.linux?.appimage;
+  assert.equal(
+    appimage?.desktopTemplate,
+    '../../../packaging/linux/tauri-appimage.desktop',
+    'AppImage must use a PATH-relative desktop template for extract-and-run'
+  );
 });
 
 test('installed desktop launchers cannot be shadowed through PATH', () => {
   const generated = read('packaging/linux/tauri-installed.desktop');
+  const appimage = read('packaging/linux/tauri-appimage.desktop');
   const standard = read('packaging/linux/openburnbar.desktop');
   const safeMode = read('packaging/linux/openburnbar-safe-mode.desktop');
   const arch = read('packaging/linux/aur/openburnbar.desktop');
   const archSafeMode = read('packaging/linux/aur/openburnbar-safe-mode.desktop');
 
   assert.match(generated, /^Exec=\/usr\/bin\/\{\{exec\}\}$/mu);
+  assert.match(appimage, /^Exec=\{\{exec\}\}$/mu);
+  assert.doesNotMatch(appimage, /\/usr\/bin\/\{\{exec\}\}/u);
   for (const desktop of [standard, arch]) {
     assert.match(desktop, /^Exec=\/usr\/bin\/openburnbar-linux-desktop %U$/mu);
   }
