@@ -359,7 +359,7 @@ jobs:
           set -euo pipefail
           test -n "${GOOGLE_APPLICATION_CREDENTIALS:-}"
           "$FIREBASE_TOOLS_BIN" deploy \
-            --only hosting:marketing \
+            --only hosting \
             --project "$FIREBASE_PROJECT" \
             --config "$FIREBASE_CONFIG_PATH" \
             --non-interactive

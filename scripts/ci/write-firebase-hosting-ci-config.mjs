@@ -251,6 +251,8 @@ function buildStagingHostingConfig(firebaseJson) {
   }
 
   const marketing = structuredClone(productionMarketing);
+  delete marketing.target;
+  marketing.site = "burnbar-staging";
   const globalHeaders = marketing.headers?.find(
     (entry) => entry.source === "**",
   );
