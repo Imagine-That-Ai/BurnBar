@@ -82,6 +82,7 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
             "subject-path: ${{ runner.temp }}/candidate-bundle/domain-core-candidate-bundle.json",
             "${{ steps.attest.outputs.bundle-path }}",
             "domain-core-protected-attestation-",
+            "domain-core-protected-verification-${{ inputs.candidate_commit }}",
             "retention-days: 90",
         ):
             self.assertIn(marker, source)

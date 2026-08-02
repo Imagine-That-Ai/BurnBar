@@ -185,3 +185,11 @@ jobs:
             ${{ runner.temp }}/candidate-bundle/protected-verification.json
           if-no-files-found: error
           retention-days: 90
+
+      - name: Upload hosting-consumable protected verification receipt
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-protected-verification-${{ inputs.candidate_commit }}
+          path: ${{ runner.temp }}/candidate-bundle/protected-verification.json
+          if-no-files-found: error
+          retention-days: 90
