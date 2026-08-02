@@ -314,16 +314,16 @@ jobs:
           RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}
         run: |
           set -euo pipefail
+          # The embedded Console profile stays candidate-scoped (no release
+          # block): verify-domain-core-build-profile-artifact.mjs builds
+          # candidate-only expectations for --console-dir, and the release tag
+          # is bound separately by the release gate and deployment identity.
           profile_args=(
             --profile "$DOMAIN_CORE_PROFILE"
             --expected-candidate-commit "$CANDIDATE_COMMIT"
           )
           if [[ -n "$RELEASE_TAG" ]]; then
-            profile_args+=(
-              --expected-release-commit "$RELEASE_COMMIT"
-              --expected-release-version "${RELEASE_TAG#v}"
-              --expected-release-tag "$RELEASE_TAG"
-            )
+            profile_args+=(--expected-release-commit "$RELEASE_COMMIT")
           fi
           node scripts/ci/resolve-domain-core-build-profile.mjs "${profile_args[@]}" --format github-env-web >> "$GITHUB_ENV"
           node scripts/ci/resolve-domain-core-build-profile.mjs "${profile_args[@]}" --format json --output "$RUNNER_TEMP/domain-core-build-profile.json"
