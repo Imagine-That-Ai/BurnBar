@@ -60,7 +60,7 @@ function devicesOutput({ available = true, offline = false, duplicate = false } 
 
 function runner({
   id = 129,
-  name = "ImagineThat-CI-M5Max-macOS",
+  name = "ImagineThat-CI-M4-MacMini-macOS",
   os = "macOS",
   status = "online",
   busy = false,
@@ -282,7 +282,7 @@ test("runner parser requires real macOS OS state, every label, online status, an
     runner({ id: 131, name: "Spoofed OS", os: "Linux" }),
     runner({ id: 132, name: "Missing label", labels: REQUIRED_RUNNER_LABELS.slice(0, -1) }),
   ]));
-  assert.deepEqual(parsed.eligible, [{ id: 129, name: "ImagineThat-CI-M5Max-macOS" }]);
+  assert.deepEqual(parsed.eligible, [{ id: 129, name: "ImagineThat-CI-M4-MacMini-macOS" }]);
   assert.equal(parsed.labelMatchCount, 2);
   assert.throws(
     () => parseOrganizationRunnersOutput(runnersOutput([
@@ -293,7 +293,7 @@ test("runner parser requires real macOS OS state, every label, online status, an
   );
   assert.throws(
     () => parseOrganizationRunnersOutput(runnersOutput([
-      runner({ labels: [...REQUIRED_RUNNER_LABELS, "IOS"] }),
+      runner({ labels: [...REQUIRED_RUNNER_LABELS, "MACOS"] }),
     ])),
     /duplicate label/u,
   );

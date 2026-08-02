@@ -17,12 +17,14 @@ export const REQUIRED_VARIABLES = Object.freeze([
   "OPENBURNBAR_P16_MACOS_COORDINATION_ROOT",
   "OPENBURNBAR_P16_LINUX_COORDINATION_ROOT",
 ]);
+// Pin P-16 to the Mac that owns the paired physical iPad. Do not use
+ // aspirational hardware labels (for example m5max) that no online runner
+ // currently carries — that queues forever against an unreachable selector.
 export const REQUIRED_RUNNER_LABELS = Object.freeze([
   "self-hosted",
   "macOS",
   "ARM64",
-  "m5max",
-  "ios",
+  "p16-physical-ipad",
 ]);
 
 const UUID = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/iu;
