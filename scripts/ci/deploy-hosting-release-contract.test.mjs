@@ -141,19 +141,20 @@ test("main path omits unconditional --expected-release-* flags", () => {
   );
 });
 
-test("stable path includes complete non-empty release coordinates inside conditional", () => {
+test("stable path binds only the release commit inside the conditional, keeping the profile candidate-scoped", () => {
   const block = stepBlock(
     WORKFLOW,
     "Resolve signed public domain-core profile",
   );
   assert.ok(block);
-  // Inside the conditional guard, all three release flags must be present
-  // with non-empty variable references (not literal empty strings).
+  // Inside the conditional guard, only --expected-release-commit is passed so
+  // the resolver re-derives activation P from release R. Version/tag must NOT
+  // be passed: they would embed a `release` block into the Console profile,
+  // which the candidate-only --console-dir verification then rejects. The tag
+  // is bound separately by the release gate and deployment identity.
   const lines = block.split("\n");
   let inConditional = false;
   let foundCommit = false;
-  let foundVersion = false;
-  let foundTag = false;
   for (const line of lines) {
     if (line.includes('if [[ -n "$RELEASE_TAG" ]]')) {
       inConditional = true;
@@ -163,21 +164,24 @@ test("stable path includes complete non-empty release coordinates inside conditi
       inConditional = false;
       continue;
     }
-    if (inConditional) {
-      if (/--expected-release-commit\s+"\$RELEASE_COMMIT"/.test(line))
-        foundCommit = true;
-      if (/--expected-release-version\s+"\$\{RELEASE_TAG#v\}"/.test(line))
-        foundVersion = true;
-      if (/--expected-release-tag\s+"\$RELEASE_TAG"/.test(line))
-        foundTag = true;
+    if (
+      inConditional &&
+      /--expected-release-commit\s+"\$RELEASE_COMMIT"/.test(line)
+    ) {
+      foundCommit = true;
     }
   }
   assert.ok(foundCommit, "stable path must include --expected-release-commit");
-  assert.ok(
-    foundVersion,
-    "stable path must include --expected-release-version",
+  assert.doesNotMatch(
+    block,
+    /--expected-release-version/,
+    "profile resolution must not pass --expected-release-version",
   );
-  assert.ok(foundTag, "stable path must include --expected-release-tag");
+  assert.doesNotMatch(
+    block,
+    /--expected-release-tag/,
+    "profile resolution must not pass --expected-release-tag",
+  );
 });
 
 test("staging step verifies against CANDIDATE_COMMIT, not RELEASE_COMMIT", () => {

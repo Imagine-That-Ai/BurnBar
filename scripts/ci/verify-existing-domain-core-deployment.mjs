@@ -30,10 +30,11 @@ function authoritativeCandidateFromReleaseGate(releaseGate, releaseCommit) {
     typeof candidateCommit !== "string" ||
     !FULL_SHA.test(candidateCommit) ||
     releaseGate?.activation?.candidateCommit !== candidateCommit ||
-    releaseGate?.activation?.activationCommit !== releaseCommit ||
+    releaseGate?.activation?.releaseCommit !== releaseCommit ||
+    !FULL_SHA.test(releaseGate?.activation?.activationCommit ?? "") ||
     releaseGate?.rollbackArtifact?.candidate?.candidateCommit !== candidateCommit ||
     releaseGate?.rollbackArtifact?.activation?.candidateCommit !== candidateCommit ||
-    releaseGate?.rollbackArtifact?.activation?.activationCommit !== releaseCommit
+    releaseGate?.rollbackArtifact?.activation?.releaseCommit !== releaseCommit
   ) {
     throw new Error("authoritative protected release gate is invalid");
   }
