@@ -301,6 +301,24 @@ final class MercuryPersonalizationTests: XCTestCase {
         }
     }
 
+    func testWallpaperAccentSamplerRejectsOversizedAdvertisedDimensions() throws {
+        // A tiny, highly compressible payload can advertise enormous source
+        // dimensions while staying under the encoded-byte cap. The sampler
+        // must reject it from the image properties alone, before decoding.
+        let oversized = try pngAdvertisingDimensions(width: 20_000, height: 20_000)
+        XCTAssertLessThanOrEqual(oversized.count, 512 * 1_024)
+        XCTAssertNil(WallpaperAccentSampler.dominantAccent(fromImageData: oversized))
+        XCTAssertNil(
+            WallpaperAccentSampler.dominantAccent(
+                fromBase64: oversized.base64EncodedString()
+            )
+        )
+
+        // One oversized axis is enough to reject.
+        let wide = try pngAdvertisingDimensions(width: 20_000, height: 1)
+        XCTAssertNil(WallpaperAccentSampler.dominantAccent(fromImageData: wide))
+    }
+
     func testWallpaperAccentSamplerWeightsPartiallyTransparentPixelsByAlpha() throws {
         let alphaWeightedPNG = try encodedImage(
             width: 2,
@@ -360,6 +378,38 @@ final class MercuryPersonalizationTests: XCTestCase {
         CGImageDestinationAddImage(destination, image, nil)
         XCTAssertTrue(CGImageDestinationFinalize(destination))
         return Data(bytes: output.bytes, count: output.length)
+    }
+
+    /// Returns the 1x1 red PNG with its IHDR width/height rewritten (and the
+    /// chunk CRC fixed up) so ImageIO reports the advertised dimensions from
+    /// the header even though the pixel data never matches them.
+    private func pngAdvertisingDimensions(width: UInt32, height: UInt32) throws -> Data {
+        var data = try XCTUnwrap(Data(base64Encoded: Self.redPixelPNGBase64))
+        // PNG layout: 8-byte signature, 4-byte IHDR length, 4-byte "IHDR"
+        // type (offsets 12-15), 13 bytes of IHDR data (width at 16, height
+        // at 20), then a 4-byte CRC over type + data (offsets 29-32).
+        XCTAssertGreaterThan(data.count, 33)
+        func writeBigEndian(_ value: UInt32, at offset: Int) {
+            data[offset] = UInt8((value >> 24) & 0xFF)
+            data[offset + 1] = UInt8((value >> 16) & 0xFF)
+            data[offset + 2] = UInt8((value >> 8) & 0xFF)
+            data[offset + 3] = UInt8(value & 0xFF)
+        }
+        writeBigEndian(width, at: 16)
+        writeBigEndian(height, at: 20)
+        writeBigEndian(Self.crc32(data[12..<29]), at: 29)
+        return data
+    }
+
+    private static func crc32(_ bytes: Data) -> UInt32 {
+        var crc: UInt32 = 0xFFFF_FFFF
+        for byte in bytes {
+            crc ^= UInt32(byte)
+            for _ in 0..<8 {
+                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB8_8320 : crc >> 1
+            }
+        }
+        return crc ^ 0xFFFF_FFFF
     }
 
     private func makeEntry(id: String, connectionID: String) -> MercuryTransferHistoryEntry {

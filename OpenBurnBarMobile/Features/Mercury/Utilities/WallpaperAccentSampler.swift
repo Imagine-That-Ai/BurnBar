@@ -22,6 +22,13 @@ enum WallpaperAccentSampler {
     private static let maximumBase64Characters =
         ((maximumEncodedImageBytes + 2) / 3) * 4
     private static let maximumSampleDimension = 64
+    /// Upper bound on the *source* pixel dimensions we are willing to
+    /// decode. The Mac side already blurs and downscales wallpapers, so
+    /// anything advertising more than this is hostile or corrupt. A
+    /// highly compressible PNG can stay under the encoded-byte cap while
+    /// claiming enormous dimensions; `kCGImageSourceThumbnailMaxPixelSize`
+    /// bounds only the output, not the decoder work on the source.
+    private static let maximumSourcePixelDimension = 4_096
 
     /// Returns a SwiftUI `Color` for the given base64 payload, or `nil`
     /// when the payload is empty/invalid. Callers should fall back to
@@ -60,6 +67,10 @@ enum WallpaperAccentSampler {
             return nil
         }
 
+        guard hasAcceptableSourceDimensions(source) else {
+            return nil
+        }
+
         let thumbnailOptions: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
@@ -71,6 +82,28 @@ enum WallpaperAccentSampler {
             0,
             thumbnailOptions as CFDictionary
         )
+    }
+
+    /// Rejects sources whose advertised pixel dimensions exceed
+    /// `maximumSourcePixelDimension`, before any pixel decoding happens.
+    /// Fails closed: images that do not report dimensions are rejected.
+    private static func hasAcceptableSourceDimensions(_ source: CGImageSource) -> Bool {
+        let propertyOptions: [CFString: Any] = [
+            kCGImageSourceShouldCache: false
+        ]
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(
+            source,
+            0,
+            propertyOptions as CFDictionary
+        ) as? [CFString: Any],
+              let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+              let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue else {
+            return false
+        }
+        return width > 0
+            && height > 0
+            && width <= maximumSourcePixelDimension
+            && height <= maximumSourcePixelDimension
     }
 
     private static func averageRGB(from image: CGImage) -> (r: Double, g: Double, b: Double)? {
