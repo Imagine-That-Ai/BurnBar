@@ -23,6 +23,9 @@ const AGENT_OPERATION_PATHS = [
   /^docs\/runbooks\/.*\.md$/,
 ];
 
+const ALERT_DELIVERY_EVIDENCE_PATH =
+  /^launch-evidence\/alert-channel-verified(?:-alert-delivery-drill-[^/]+)?\.json$/;
+
 const CONCRETE_VALUE_KEYS = [
   "appleDeviceId",
   "appStoreIssuerId",
@@ -115,6 +118,36 @@ const AGENT_OPERATION_RULES = [
   },
 ];
 
+const ALERT_DELIVERY_EVIDENCE_RULES = [
+  {
+    id: "alert-channel-name",
+    reason: "raw alert notification-channel identity",
+    pattern:
+      /["']name["']\s*:\s*["'](?!<redacted-notification-channel>["'])[^"']{3,}["']/i,
+  },
+  {
+    id: "alert-channel-target",
+    reason: "raw alert notification endpoint",
+    pattern:
+      /["']target["']\s*:\s*["'](?!<redacted-alert-target>["'])[^"']{3,}["']/i,
+  },
+  {
+    id: "alert-channel-operator",
+    reason: "raw alert-delivery operator identity",
+    pattern:
+      /["']verifiedBy["']\s*:\s*["'](?!<redacted-operator>["'])[^"']{3,}["']/i,
+  },
+  {
+    id: "alert-channel-evidence-url",
+    reason: "raw alert incident or mailbox URL",
+    pattern: /["']evidenceUri["']\s*:\s*["']https?:\/\/[^"']+["']/i,
+  },
+];
+
+const STRICT_REDACTION_RULE_IDS = new Set(
+  ALERT_DELIVERY_EVIDENCE_RULES.map((rule) => rule.id),
+);
+
 function pathMatches(path, patterns) {
   return patterns.some((pattern) => pattern.test(path));
 }
@@ -153,13 +186,21 @@ export function scanText(path, text) {
   if (pathMatches(path, AGENT_OPERATION_PATHS)) {
     rules.push(...AGENT_OPERATION_RULES);
   }
+  if (ALERT_DELIVERY_EVIDENCE_PATH.test(path)) {
+    rules.push(...ALERT_DELIVERY_EVIDENCE_RULES);
+  }
   if (rules.length === 0) return violations;
 
   const lines = text.split(/\r?\n/u);
   lines.forEach((line, index) => {
     for (const rule of rules) {
       if (!rule.pattern.test(line)) continue;
-      if (rule.id !== "direct-main-push" && rule.id !== "branch-protection-disable" && lineLooksRedacted(line)) {
+      if (
+        rule.id !== "direct-main-push" &&
+        rule.id !== "branch-protection-disable" &&
+        !STRICT_REDACTION_RULE_IDS.has(rule.id) &&
+        lineLooksRedacted(line)
+      ) {
         continue;
       }
       violations.push({

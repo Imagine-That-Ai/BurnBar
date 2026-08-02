@@ -28,6 +28,12 @@ import {
   requiredVerifiableAlertChannels,
   verdict,
 } from "./commercial-launch-gate.mjs";
+import {
+  REDACTED_CHANNEL_NAME_PLACEHOLDER,
+  REDACTED_CHANNEL_TARGET_PLACEHOLDER,
+  REDACTED_OPERATOR_PLACEHOLDER,
+  alertDeliveryChannelFingerprint,
+} from "./lib/alert-delivery-drill.mjs";
 
 const launchGateSource = readFileSync(
   new URL("./commercial-launch-gate.mjs", import.meta.url),
@@ -935,17 +941,20 @@ function passingChecks(overrides = {}) {
     required.map((channel) => channel.name),
     ["projects/burnbar/notificationChannels/email"],
   );
+  const requiredChannelFingerprint = alertDeliveryChannelFingerprint(required[0]);
 
   const fresh = evaluateAlertDeliverabilityEvidence(
     {
       generatedAt: "2026-06-17T12:00:00.000Z",
       channels: [
         {
-          name: "projects/burnbar/notificationChannels/email",
+          name: REDACTED_CHANNEL_NAME_PLACEHOLDER,
+          channelFingerprint: requiredChannelFingerprint,
           type: "email",
+          target: REDACTED_CHANNEL_TARGET_PLACEHOLDER,
           deliveryConfirmed: true,
           deliveredAt: "2026-06-17T11:58:00.000Z",
-          verifiedBy: "operator",
+          verifiedBy: REDACTED_OPERATOR_PLACEHOLDER,
         },
       ],
     },
@@ -953,6 +962,31 @@ function passingChecks(overrides = {}) {
     { now: new Date("2026-06-17T12:30:00.000Z"), ttlHours: 168 },
   );
   assert.equal(fresh.ok, true);
+  assert.equal(fresh.requiredChannels[0].channelFingerprint, requiredChannelFingerprint);
+
+  const wrongFingerprint = evaluateAlertDeliverabilityEvidence(
+    {
+      generatedAt: "2026-06-17T12:00:00.000Z",
+      channels: [
+        {
+          name: REDACTED_CHANNEL_NAME_PLACEHOLDER,
+          channelFingerprint: alertDeliveryChannelFingerprint({
+            ...required[0],
+            target: "different@burnbar.ai",
+          }),
+          type: "email",
+          target: REDACTED_CHANNEL_TARGET_PLACEHOLDER,
+          deliveryConfirmed: true,
+          deliveredAt: "2026-06-17T11:58:00.000Z",
+          verifiedBy: REDACTED_OPERATOR_PLACEHOLDER,
+        },
+      ],
+    },
+    required,
+    { now: new Date("2026-06-17T12:30:00.000Z"), ttlHours: 168 },
+  );
+  assert.equal(wrongFingerprint.ok, false);
+  assert.match(wrongFingerprint.failures.join("\n"), /missing from evidence/);
 
   const stale = evaluateAlertDeliverabilityEvidence(
     {
