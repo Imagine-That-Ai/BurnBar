@@ -270,6 +270,7 @@ jobs:
           aab="OpenBurnBar-${VERSION}-Android.aab"
           mv "$input/$aab" "$stage/$aab"
           mv "$input/attestation-verification.json" "$stage/attestation-verification.json"
+          cp scripts/ci/google-play-safe-retry.mjs "$stage/google-play-safe-retry.mjs"
           node scripts/ci/google-play-publication.mjs prepare \
             --artifact "$stage/$aab" \
             --tag "$TAG" \
@@ -288,7 +289,7 @@ jobs:
             --run-id "$GITHUB_RUN_ID" \
             --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --output "$stage/google-play-publication.json"
-          (cd "$stage" && sha256sum "$aab" attestation-verification.json google-play-publication.json > SHA256SUMS)
+          (cd "$stage" && sha256sum "$aab" attestation-verification.json google-play-publication.json google-play-safe-retry.mjs > SHA256SUMS)
           artifact_name="google-play-prepared-${COMMIT}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
 
@@ -393,7 +394,7 @@ jobs:
           access_token_scopes: https://www.googleapis.com/auth/androidpublisher
           create_credentials_file: false
 
-      - name: Upload bundle and commit one Android Publisher edit
+      - name: Safely publish or verify the exact existing release
         id: publish
         env:
           ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
@@ -402,71 +403,19 @@ jobs:
           set +x
           stage="$RUNNER_TEMP/google-play-prepared"
           manifest="$stage/google-play-publication.json"
-          package_name="$(jq -er '.publication.packageName' "$manifest")"
-          track="$(jq -er '.publication.track' "$manifest")"
-          release_status="$(jq -er '.publication.releaseStatus' "$manifest")"
-          version_name="$(jq -er '.release.versionName' "$manifest")"
-          expected_version_code="$(jq -er '.release.versionCode | tostring' "$manifest")"
           aab="$stage/$(jq -er '.artifact.fileName' "$manifest")"
-          api="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$package_name"
-          upload_api="https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$package_name"
-          token_config="$(mktemp "$RUNNER_TEMP/google-play-curl.XXXXXX")"
-          chmod 600 "$token_config"
-          printf 'header = "Authorization: Bearer %s"\n' "$ACCESS_TOKEN" > "$token_config"
-          unset ACCESS_TOKEN
-          edit_id=""
-          committed=false
-          cleanup() {
-            status=$?
-            if [[ "$committed" != "true" && -n "$edit_id" ]]; then
-              curl --config "$token_config" --fail-with-body --silent --show-error \
-                --connect-timeout 30 --max-time 120 \
-                --request DELETE "$api/edits/$edit_id" >/dev/null 2>&1 || true
-            fi
-            rm -f "$token_config"
-            exit "$status"
-          }
-          trap cleanup EXIT
-
-          curl --config "$token_config" --fail-with-body --silent --show-error \
-            --connect-timeout 30 --max-time 120 \
-            --request POST --header "Content-Type: application/json" \
-            --data-binary '{}' "$api/edits" > "$RUNNER_TEMP/google-play-edit.json"
-          edit_id="$(jq -er '.id | select(type == "string" and length > 0)' "$RUNNER_TEMP/google-play-edit.json")"
-
-          curl --config "$token_config" --fail-with-body --silent --show-error \
-            --connect-timeout 30 --max-time 600 \
-            --request POST --header "Content-Type: application/octet-stream" \
-            --data-binary "@$aab" \
-            "$upload_api/edits/$edit_id/bundles?uploadType=media" \
-            > "$RUNNER_TEMP/google-play-bundle.json"
-          uploaded_version_code="$(jq -er '.versionCode | tostring' "$RUNNER_TEMP/google-play-bundle.json")"
-          if [[ "$uploaded_version_code" != "$expected_version_code" ]]; then
-            echo "::error::Google Play returned versionCode $uploaded_version_code; expected $expected_version_code."
-            exit 1
-          fi
-
-          jq -n \
-            --arg name "OpenBurnBar $version_name" \
-            --arg versionCode "$uploaded_version_code" \
-            --arg status "$release_status" \
-            '{releases: [{name: $name, versionCodes: [$versionCode], status: $status}]}' \
-            > "$RUNNER_TEMP/google-play-track-request.json"
-          curl --config "$token_config" --fail-with-body --silent --show-error \
-            --connect-timeout 30 --max-time 120 \
-            --request PUT --header "Content-Type: application/json" \
-            --data-binary "@$RUNNER_TEMP/google-play-track-request.json" \
-            "$api/edits/$edit_id/tracks/$track" > "$RUNNER_TEMP/google-play-track.json"
-
-          curl --config "$token_config" --fail-with-body --silent --show-error \
-            --connect-timeout 30 --max-time 120 \
-            --request POST "$api/edits/$edit_id:commit" > "$RUNNER_TEMP/google-play-commit.json"
-          committed=true
-          trap - EXIT
-          rm -f "$token_config"
+          provider_result="$RUNNER_TEMP/google-play-provider-result.json"
+          node "$stage/google-play-safe-retry.mjs" \
+            --manifest "$manifest" \
+            --aab "$aab" \
+            --output "$provider_result"
+          edit_id="$(jq -r '.committedEditId // ""' "$provider_result")"
+          version_code="$(jq -er '.versionCode | tostring' "$provider_result")"
+          action="$(jq -er '.action' "$provider_result")"
           {
             echo "edit_id=$edit_id"
-            echo "version_code=$uploaded_version_code"
+            echo "version_code=$version_code"
+            echo "action=$action"
           } >> "$GITHUB_OUTPUT"
 
       - name: Write durable Google Play receipt
@@ -483,19 +432,18 @@ jobs:
           receipt="$receipt_dir/google-play-upload-receipt.json"
           jq -n \
             --slurpfile manifest "$manifest" \
-            --slurpfile bundle "$RUNNER_TEMP/google-play-bundle.json" \
-            --slurpfile track "$RUNNER_TEMP/google-play-track.json" \
-            --slurpfile commitResponse "$RUNNER_TEMP/google-play-commit.json" \
+            --slurpfile provider "$RUNNER_TEMP/google-play-provider-result.json" \
             --arg editId "$EDIT_ID" \
             --arg versionCode "$VERSION_CODE" \
-            --arg committedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg recordedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --arg runId "$GITHUB_RUN_ID" \
             --arg runAttempt "$GITHUB_RUN_ATTEMPT" '{
               schemaVersion: 1,
               provider: "google-play-android-publisher-v3",
               packageName: $manifest[0].publication.packageName,
               track: $manifest[0].publication.track,
-              releaseStatus: $manifest[0].publication.releaseStatus,
+              requestedReleaseStatus: $manifest[0].publication.releaseStatus,
+              releaseStatus: $provider[0].readback.status,
               tag: $manifest[0].release.tag,
               commit: $manifest[0].release.commit,
               versionName: $manifest[0].release.versionName,
@@ -503,13 +451,15 @@ jobs:
               aabSha256: $manifest[0].artifact.sha256,
               uploadCertificateSha256: $manifest[0].artifact.uploadCertificateSha256,
               editId: $editId,
-              committedAt: $committedAt,
+              recordedAt: $recordedAt,
+              committedAt: (if $provider[0].committed then $recordedAt else null end),
               workflowRun: {id: $runId, attempt: $runAttempt},
-              providerResponses: {
-                bundle: $bundle[0],
-                track: $track[0],
-                commit: $commitResponse[0]
-              }
+              action: $provider[0].action,
+              uploaded: $provider[0].uploaded,
+              committed: $provider[0].committed,
+              priorVersionCodes: $provider[0].priorVersionCodes,
+              readback: $provider[0].readback,
+              providerResponses: $provider[0].providerResponses
             }' > "$receipt"
           artifact_name="google-play-receipt-${{ needs.prepare-google-play-publication.outputs.commit }}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
@@ -526,16 +476,26 @@ jobs:
         env:
           EDIT_ID: ${{ steps.publish.outputs.edit_id }}
           VERSION_CODE: ${{ steps.publish.outputs.version_code }}
+          ACTION: ${{ steps.publish.outputs.action }}
           TAG: ${{ needs.prepare-google-play-publication.outputs.tag }}
           COMMIT: ${{ needs.prepare-google-play-publication.outputs.commit }}
           TRACK: ${{ inputs.track }}
         run: |
           {
-            echo "## Google Play publication committed"
+            if [[ "$ACTION" == "already_current" ]]; then
+              echo "## Google Play publication already current"
+            else
+              echo "## Google Play publication committed"
+            fi
             echo
             echo "- Tag: \`$TAG\`"
             echo "- Commit: \`$COMMIT\`"
             echo "- Track: \`$TRACK\`"
             echo "- Version code: \`$VERSION_CODE\`"
-            echo "- Edit ID: \`$EDIT_ID\`"
+            echo "- Action: \`$ACTION\`"
+            if [[ -n "$EDIT_ID" ]]; then
+              echo "- Committed edit ID: \`$EDIT_ID\`"
+            else
+              echo "- Store mutation: none (exact completed release already current)"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

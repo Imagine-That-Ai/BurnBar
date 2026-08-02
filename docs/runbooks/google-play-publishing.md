@@ -44,22 +44,32 @@ are restricted to `internal`. The workflow never promotes an existing release
 between tracks; it explicitly updates only the requested track in a fresh
 Android Publisher edit.
 
-The credentialed job downloads only the checksum-sealed AAB and manifest. It
-does not check out repository code. It creates one edit, uploads the exact AAB,
-updates the requested track, and commits the edit. Any failure before commit
-attempts to delete the edit.
+The credentialed job downloads only the checksum-sealed AAB, manifest, and
+publisher. It does not check out repository code. Before mutating the requested
+track, the publisher reads the existing bundles and track state. It refuses a
+version-code rollback, refuses to replace an unrelated mutable release
+(`draft`, `inProgress`, or `halted`), and verifies the SHA-256 before reusing an
+existing bundle. If the exact completed release is already present, the run is
+a verified no-op. Otherwise it uploads only when needed, commits one edit, then
+opens a fresh edit and reads the track back to verify the exact version and
+status. Any uncommitted publication or readback edit is deleted on exit.
 
 ## Evidence and rollback
 
-- Successful live runs retain `google-play-receipt-*` for 400 days. The receipt
-  binds the provider edit, package, track, release status, tag, commit, version,
-  AAB SHA-256, upload certificate, workflow run, and provider responses.
+- Successful live runs, including verified no-ops, retain
+  `google-play-receipt-*` for 400 days. The receipt binds the action, provider
+  edit when committed, package, track, requested and observed release status,
+  tag, commit, version, AAB SHA-256, upload certificate, workflow run, track
+  readback, and provider responses.
 - Dry-runs retain `google-play-prepared-*` for 90 days.
 - Google Play version codes are immutable. Rollback means publishing a new,
   higher-versionCode AAB that restores the desired behavior; never reuse or
   replace an existing version code.
 - If a run fails before commit, inspect the workflow logs and confirm no edit was
-  committed. Re-run validation before retrying a live publication.
+  committed. Re-run validation before retrying a live publication. If the
+  provider accepted the commit but the fresh readback fails, stop and inspect
+  the Play Console state before retrying; the receipt is intentionally not
+  emitted unless readback succeeds.
 
 ## Reusable invocation
 
