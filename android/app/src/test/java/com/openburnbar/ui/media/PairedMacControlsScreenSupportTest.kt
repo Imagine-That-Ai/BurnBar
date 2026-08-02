@@ -88,6 +88,96 @@ class PairedMacControlsScreenSupportTest {
     }
 
     @Test
+    fun `trusted device approval failure stays actionable and does not restart`() {
+        val coordinator = mockk<MediaControlStreamCoordinator>()
+        val phase =
+            MediaControlStreamCoordinator.Phase.Reconnecting(
+                nextAttemptInMillis = 2_000L,
+                lastFailureReason = TRUSTED_DEVICE_APPROVAL_REQUIRED,
+            )
+
+        val result =
+            evaluateCheckMercury(
+                PairedMacControlsCheckMercuryInput(
+                    coordinator = coordinator,
+                    phase = phase,
+                    connectionID = "conn-7",
+                    activePair = activePair,
+                    app = mockk(),
+                ),
+            )
+
+        assertTrue(phase.requiresTrustedDeviceApproval())
+        assertEquals(TRUSTED_DEVICE_APPROVAL_MESSAGE, phase.userMessage())
+        assertTrue(phase.userMessage().contains("reconnects automatically"))
+        assertEquals(TRUSTED_DEVICE_APPROVAL_MESSAGE, result.immediateStatusMessage)
+        assertFalse(result.shouldRestartMercury)
+    }
+
+    @Test
+    fun `trusted device approval detection tolerates callable error decoration`() {
+        val phase =
+            MediaControlStreamCoordinator.Phase.Failed(
+                "PERMISSION_DENIED: Request requires a trusted device before publishing this trust root.",
+            )
+
+        assertTrue(phase.requiresTrustedDeviceApproval())
+        assertEquals(TRUSTED_DEVICE_APPROVAL_MESSAGE, phase.actionRequiredMessage())
+    }
+
+    @Test
+    fun `stale pairing stays actionable and does not trigger a pointless restart`() {
+        val phase =
+            MediaControlStreamCoordinator.Phase.Reconnecting(
+                nextAttemptInMillis = 12_000L,
+                lastFailureReason = "FAILED_PRECONDITION: $IROH_PAIRING_STALE_REQUIRED",
+            )
+
+        val result =
+            evaluateCheckMercury(
+                PairedMacControlsCheckMercuryInput(
+                    coordinator = mockk(),
+                    phase = phase,
+                    connectionID = "conn-7",
+                    activePair = activePair,
+                    app = mockk(),
+                ),
+            )
+
+        assertTrue(phase.requiresFreshMacPairing())
+        assertTrue(phase.requiresOperatorAction())
+        assertEquals(IROH_PAIRING_STALE_MESSAGE, phase.actionRequiredMessage())
+        assertTrue(requireNotNull(result.immediateStatusMessage).contains("Open OpenBurnBar on your Mac"))
+        assertTrue(result.immediateStatusMessage.contains("reconnects automatically"))
+        assertFalse(result.shouldRestartMercury)
+    }
+
+    @Test
+    fun `action banner clears once mercury recovers and only then`() {
+        val approvalPhase =
+            MediaControlStreamCoordinator.Phase.Reconnecting(
+                nextAttemptInMillis = 2_000L,
+                lastFailureReason = TRUSTED_DEVICE_APPROVAL_REQUIRED,
+            )
+        val stalePairingPhase =
+            MediaControlStreamCoordinator.Phase.Reconnecting(
+                nextAttemptInMillis = 2_000L,
+                lastFailureReason = IROH_PAIRING_STALE_REQUIRED,
+            )
+
+        // While approval is still pending, the stored banner stays put.
+        assertFalse(shouldClearMercuryActionRequiredStatus(TRUSTED_DEVICE_APPROVAL_MESSAGE, approvalPhase))
+        assertFalse(shouldClearMercuryActionRequiredStatus(IROH_PAIRING_STALE_MESSAGE, stalePairingPhase))
+        // The Mac approved the device and Mercury went live: drop the sticky
+        // approval copy so the screen stops claiming approval is needed.
+        assertTrue(shouldClearMercuryActionRequiredStatus(TRUSTED_DEVICE_APPROVAL_MESSAGE, MediaControlStreamCoordinator.Phase.Live))
+        assertTrue(shouldClearMercuryActionRequiredStatus(IROH_PAIRING_STALE_MESSAGE, MediaControlStreamCoordinator.Phase.Live))
+        // Other status copy is never cleared by the recovery effect.
+        assertFalse(shouldClearMercuryActionRequiredStatus("Mercury retry started.", MediaControlStreamCoordinator.Phase.Live))
+        assertFalse(shouldClearMercuryActionRequiredStatus(null, MediaControlStreamCoordinator.Phase.Live))
+    }
+
+    @Test
     fun `a live coordinator reports ready and never restarts`() {
         val result = evaluateCheckMercury(
             PairedMacControlsCheckMercuryInput(

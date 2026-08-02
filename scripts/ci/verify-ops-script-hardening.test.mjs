@@ -46,7 +46,16 @@ assert.ok(
 );
 
 const windowsManifest = read("windows/app/OpenBurnBar.App/app.manifest");
-const windowsVersion = windowsManifest.match(/assemblyIdentity[\s\S]*?version="(\d+\.\d+\.\d+)\.\d+"/)?.[1];
+const expectedWindowsAssemblyVersion = "1.0.39.0";
+const windowsVersionFull = windowsManifest.match(
+  /assemblyIdentity[\s\S]*?version="(\d+\.\d+\.\d+\.\d+)"/,
+)?.[1];
+assert.equal(
+  windowsVersionFull,
+  expectedWindowsAssemblyVersion,
+  `Windows app manifest must declare the next release identity ${expectedWindowsAssemblyVersion}`,
+);
+const windowsVersion = windowsVersionFull.split(".").slice(0, 3).join(".");
 assert.ok(windowsVersion, "Windows app manifest must expose an X.Y.Z release version");
 const windowsVersionParts = windowsVersion.split(".").map(Number);
 const mismatchedWindowsVersion = `${windowsVersionParts[0]}.${windowsVersionParts[1]}.${windowsVersionParts[2] + 1}`;
@@ -93,6 +102,15 @@ assert.doesNotMatch(
 
 const windowsReleaseWorkflow = read(".github/workflows/openburnbar-release-windows.yml");
 const windowsEngineWorkflow = read(".github/workflows/openburnbar-engine-windows.yml");
+const windowsVersionArgumentSets =
+  windowsReleaseWorkflow.match(
+    /-p:Version="\$VERSION" -p:AssemblyVersion="\$\{VERSION\}\.0" \\\n\s+-p:FileVersion="\$\{VERSION\}\.0" -p:InformationalVersion="\$VERSION"/g,
+  ) ?? [];
+assert.equal(
+  windowsVersionArgumentSets.length,
+  4,
+  "the app, CLI, watchdog, and privileged-input publishes must all derive package, assembly, file, and informational versions from the authorized Windows release tag",
+);
 assert.match(
   windowsReleaseWorkflow,
   /OPENBURNBAR_EXPECTED_WINDOWS_VERSION: \$\{\{ needs\.resolve-release\.outputs\.version \}\}/,

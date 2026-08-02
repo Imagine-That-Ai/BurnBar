@@ -7,7 +7,10 @@ namespace OpenBurnBar.Integrations.Mercury.Tests;
 
 public sealed class MercuryConsentStoreTests
 {
-    private static readonly DateTimeOffset Now = new(2026, 7, 3, 12, 0, 0, TimeSpan.Zero);
+    // Anchored to the real clock: the store constructor prunes with
+    // DateTimeOffset.UtcNow, so a fixed calendar date silently expires once the
+    // wall clock passes date + GrantTtl and turns reload tests into time bombs.
+    private static readonly DateTimeOffset Now = DateTimeOffset.UtcNow;
 
     private const string Conn = "conn-1";
     private const string Viewer = "viewer-1";

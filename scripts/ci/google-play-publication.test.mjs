@@ -110,7 +110,11 @@ test("workflow has a protected two-job trust boundary and safe defaults", () => 
   assert.match(workflow, /default: internal/u);
   assert.match(workflow, /default: true/u);
   assert.match(workflow, /group: google-play-\$\{\{ inputs\.tag \}\}-\$\{\{ inputs\.track \}\}/u);
-  assert.match(workflow, /ref: main/u);
+  assert.match(workflow, /ref: \$\{\{ github\.workflow_sha \}\}/u);
+  assert.match(
+    workflow,
+    /"\$checked_out_commit" != "\$GITHUB_WORKFLOW_SHA"/u,
+  );
   assert.match(workflow, /environment: release/u);
   assert.match(workflow, /if: \$\{\{ needs\.prepare-google-play-publication\.result == 'success' && inputs\.dry_run == false \}\}/u);
   assert.match(workflow, /GOOGLE_PLAY_SERVICE_ACCOUNT_JSON/u);
@@ -129,8 +133,15 @@ test("credentialed job does not check out or consume repository scripts", () => 
   assert.doesNotMatch(publishJob, /scripts\/ci|scripts\/lib/u);
   assert.match(publishJob, /actions\/download-artifact/u);
   assert.match(publishJob, /sha256sum --check --strict/u);
-  assert.match(publishJob, /DELETE/u);
-  assert.match(publishJob, /edits\/\$edit_id:commit/u);
+  assert.match(
+    publishJob,
+    /node "\$stage\/google-play-safe-retry\.mjs"/u,
+  );
+  assert.match(
+    publishJob,
+    /google-play-provider-result\.json/u,
+  );
+  assert.doesNotMatch(publishJob, /curl .*androidpublisher/u);
 });
 
 test("prepare job has no publisher credential or release environment", () => {
@@ -142,4 +153,12 @@ test("prepare job has no publisher credential or release environment", () => {
   assert.match(prepareJob, /com\.openburnbar/u);
   assert.match(prepareJob, /android:versionCode/u);
   assert.match(prepareJob, /android-upload-certificate\.sha256/u);
+  assert.match(
+    prepareJob,
+    /cp scripts\/ci\/google-play-safe-retry\.mjs "\$stage\/google-play-safe-retry\.mjs"/u,
+  );
+  assert.match(
+    prepareJob,
+    /sha256sum .*google-play-safe-retry\.mjs > SHA256SUMS/u,
+  );
 });

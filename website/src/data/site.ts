@@ -108,14 +108,14 @@ export const SITE = {
     ],
     legacyProductIds: ["com.openburnbar.hostedQuotaSync.cloud.monthly"]
   },
-  // Public macOS download. Use GitHub Releases while downloads.burnbar.ai DNS/R2 is offline.
-  // Do not point this at downloads.burnbar.ai unless DNS/R2 and the matching DMG are live.
+  // Public macOS download and update feeds. The first-party host is backed by
+  // the verified openburnbar-downloads R2 bucket.
   macReleaseLatest: "1.0.29",
   macReleaseFile: "OpenBurnBar-1.0.29-macOS.dmg",
   macAppcastFile: "appcast.xml",
   macUpdateFeedFile: "latest-macos.json",
-  macDownloadBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.29",
-  macUpdateBaseUrl: "",
+  macDownloadBaseUrl: "https://downloads.burnbar.ai",
+  macUpdateBaseUrl: "https://downloads.burnbar.ai",
   macMin: "macOS 14 Sonoma",
   // Public Linux download. First release ships aarch64/ARM64 artifacts from the
   // ubuntu-24.04-arm release lane; served from GitHub Releases under the Linux-only
