@@ -71,7 +71,7 @@ is_gitleaks_scan_candidate() {
   esac
 
   local mime
-  mime="$(/usr/bin/file -b --mime-type "$path" 2>/dev/null || true)"
+  mime="$(/usr/bin/file -b --mime-type -- "$path" 2>/dev/null || true)"
   case "$mime" in
     text/*|application/json|application/json-seq|application/ld+json|application/javascript|application/x-javascript|application/xml|application/x-empty|application/x-httpd-php|application/x-ndjson|application/x-perl|application/x-php|application/x-python|application/x-ruby|application/x-sh|application/x-shellscript|application/x-toml|application/x-yaml|application/yaml|inode/x-empty)
       return 0
@@ -89,13 +89,13 @@ copy_publishable_file() {
   local src="$1"
   local rel="$2"
 
-  mkdir -p "$scan_root/$(dirname "$rel")"
-  cp -pP "$src" "$scan_root/$rel"
+  mkdir -p "$scan_root/$(dirname -- "$rel")"
+  cp -pP -- "$src" "$scan_root/$rel"
   copied_file_count=$((copied_file_count + 1))
 
   if is_gitleaks_scan_candidate "$src"; then
-    mkdir -p "$gitleaks_scan_root/$(dirname "$rel")"
-    cp -pP "$src" "$gitleaks_scan_root/$rel"
+    mkdir -p "$gitleaks_scan_root/$(dirname -- "$rel")"
+    cp -pP -- "$src" "$gitleaks_scan_root/$rel"
     gitleaks_file_count=$((gitleaks_file_count + 1))
   fi
 }
