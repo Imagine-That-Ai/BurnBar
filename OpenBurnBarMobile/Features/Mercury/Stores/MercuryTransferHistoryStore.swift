@@ -69,11 +69,11 @@ final class MercuryTransferHistoryStore: ObservableObject {
 
     private func schedulePersist() {
         pendingWrite?.cancel()
-        let snapshot = entries
-        let url = fileURL
-        let work = DispatchWorkItem {
-            Self.write(snapshot, to: url)
-        }
+        let snapshot = MercuryTransferHistoryPersistence.Snapshot(
+            entries: entries,
+            fileURL: fileURL
+        )
+        let work = MercuryTransferHistoryPersistence.makeWriteWorkItem(snapshot)
         pendingWrite = work
         writeQueue.asyncAfter(deadline: .now() + .milliseconds(250), execute: work)
     }
@@ -83,24 +83,7 @@ final class MercuryTransferHistoryStore: ObservableObject {
     func flush() {
         pendingWrite?.cancel()
         pendingWrite = nil
-        Self.write(entries, to: fileURL)
-    }
-
-    private static func write(_ entries: [MercuryTransferHistoryEntry], to url: URL) {
-        do {
-            try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(entries)
-            try data.write(to: url, options: .atomic)
-        } catch {
-            // Best-effort — losing one debounced write is preferable to
-            // crashing the app.
-        }
+        MercuryTransferHistoryPersistence.write(entries, to: fileURL)
     }
 
     private static func load(from url: URL) -> [MercuryTransferHistoryEntry] {
@@ -124,5 +107,38 @@ final class MercuryTransferHistoryStore: ObservableObject {
         return base
             .appendingPathComponent("OpenBurnBarMobile", isDirectory: true)
             .appendingPathComponent("mercury-transfers.json")
+    }
+}
+
+/// File I/O is intentionally outside the main-actor store. Work items are
+/// created here so their closures cannot inherit `MercuryTransferHistoryStore`
+/// actor isolation when they execute on the persistence queue.
+private enum MercuryTransferHistoryPersistence {
+    struct Snapshot: Sendable {
+        let entries: [MercuryTransferHistoryEntry]
+        let fileURL: URL
+    }
+
+    static func makeWriteWorkItem(_ snapshot: Snapshot) -> DispatchWorkItem {
+        DispatchWorkItem {
+            write(snapshot.entries, to: snapshot.fileURL)
+        }
+    }
+
+    static func write(_ entries: [MercuryTransferHistoryEntry], to url: URL) {
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(entries)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            // Best-effort — losing one debounced write is preferable to
+            // crashing the app.
+        }
     }
 }
