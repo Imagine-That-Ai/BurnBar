@@ -132,12 +132,29 @@ struct HermesSquareSplitLayout: View {
             WebsiteBackgroundView(accent: .purple, visibility: .prominent).ignoresSafeArea()
         }
         .task {
+            // Refresh the relay catalog before Mercury starts polling it.
+            // The iPad split layout can be the first Hermes surface opened
+            // after sign-in, so its in-memory connection list may still be
+            // empty even though the paired Mac is online in Firestore.
+            await hermesService.refreshConnections(refreshSelectedConnection: false)
             HermesIrohRelayTransport.shared.mediaPresenceHeartbeatHandler = { heartbeat in
                 await MainActor.run {
                     mercuryPeerSource.ingestHeartbeat(heartbeat)
                 }
             }
             mercuryPeerSource.start()
+            // A Mac can publish its relay after Agents is already visible
+            // (for example immediately after the desktop app wakes). Keep
+            // discovery fresh instead of permanently polling an empty
+            // in-memory snapshot.
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .seconds(30))
+                } catch {
+                    return
+                }
+                await hermesService.refreshConnections(refreshSelectedConnection: false)
+            }
         }
         .task(id: AssistantPendingThread.shared.hermes) {
             consumePendingHermesThread()

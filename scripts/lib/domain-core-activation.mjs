@@ -23,11 +23,30 @@ const REQUIRED_EXACT = new Set([
 const OPTIONAL_EXACT = new Set([
   "config/domain-core-control-plane-manifest.json",
 ]);
-const ALLOWED_PREFIXES = [
+const ATTESTED_SOURCE_PREFIX = "crates/openburnbar-domain-core/";
+// Deployed domain-core artifacts (vendored bindings, wasm packages, and the
+// prebuilt Android/Apple binaries) are what production actually executes. The
+// promotion sidecars pin the Rust *source* fingerprint, not the artifact
+// bytes, so an incidental protected-main commit that swaps one of these files
+// between candidate C and release R would ship unattested code while every
+// digest check still passes. Treat them like attested Rust source: fail
+// closed whenever a path-disjoint commit touches them.
+export const DEPLOYED_ARTIFACT_PREFIXES = Object.freeze([
+  "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/",
+  "Vendor/OpenBurnBarDomainCore.xcframework/",
+  "Vendor/openburnbar-domain-core.aar",
+  "android/openburnbar-domain-core/src/main/java/uniffi/",
+  "apps/console/vendor/openburnbar-domain-core-wasm/",
+  "functions/vendor/openburnbar/domain-core-wasm/",
+]);
+const AUTHORITY_EVIDENCE_PREFIXES = [
   "config/domain-core-legacy-deletion-receipts/",
   "config/domain-core-promotion-attestations/",
   "config/domain-core-promotion-bundles/",
   "config/domain-core-promotion-provenance/",
+];
+const ALLOWED_PREFIXES = [
+  ...AUTHORITY_EVIDENCE_PREFIXES,
   "docs/runbooks/shared-rust-",
   "docs/SHARED_RUST_DOMAIN_",
 ];
@@ -57,6 +76,99 @@ function git(repoRoot, args) {
   return execFileSync("git", ["-C", repoRoot, ...args], {
     encoding: "utf8",
   }).trim();
+}
+
+function latestFirstParentCommitChangingPath(repoRoot, releaseCommit, path) {
+  requireRepoRelativePath(path);
+  const revision = git(repoRoot, [
+    "rev-list",
+    "--first-parent",
+    "-n",
+    "1",
+    releaseCommit,
+    "--",
+    path,
+  ]);
+  if (revision === "") {
+    throw new Error(
+      `activation authority path has no committed history: ${path}`,
+    );
+  }
+  return commit(revision, `${path} activation commit`);
+}
+
+function resolveActivationAuthorityCommit(repoRoot, releaseCommit) {
+  const authorityCommits = [...REQUIRED_EXACT].map((path) =>
+    latestFirstParentCommitChangingPath(repoRoot, releaseCommit, path),
+  );
+  if (new Set(authorityCommits).size !== 1) {
+    throw new Error(
+      "activation authority files must resolve to the same first-parent commit",
+    );
+  }
+  return authorityCommits[0];
+}
+
+function requireNoAuthorityDriftAfterActivation({
+  repoRoot,
+  activationCommit,
+  releaseCommit,
+  paths,
+  prefixes = [],
+}) {
+  if (activationCommit === releaseCommit) return;
+  try {
+    execFileSync("git", [
+      "-C",
+      repoRoot,
+      "merge-base",
+      "--is-ancestor",
+      activationCommit,
+      releaseCommit,
+    ]);
+  } catch {
+    throw new Error(
+      "domain-core activation commit must be an ancestor of release commit",
+    );
+  }
+  const protectedPaths = [...new Set(paths)].sort();
+  const protectedSet = new Set(protectedPaths);
+  const protectedPrefixes = [...new Set(prefixes)].sort();
+  const changed = new Set();
+  const revisions = git(repoRoot, [
+    "rev-list",
+    "--first-parent",
+    "--reverse",
+    `${activationCommit}..${releaseCommit}`,
+  ])
+    .split("\n")
+    .filter(Boolean);
+  for (const revision of revisions) {
+    const parent = git(repoRoot, ["rev-parse", `${revision}^1`]);
+    const revisionPaths = git(repoRoot, [
+      "diff",
+      "--name-only",
+      "--diff-filter=ACDMRTUXB",
+      `${parent}..${revision}`,
+    ])
+      .split("\n")
+      .filter(Boolean);
+    for (const path of revisionPaths) {
+      if (
+        protectedSet.has(path) ||
+        protectedPrefixes.some((prefix) => path.startsWith(prefix))
+      ) {
+        changed.add(path);
+      }
+    }
+  }
+  if (changed.size > 0) {
+    throw new Error(
+      `domain-core activation authority drift after activation: ${[...changed]
+        .sort()
+        .join(", ")}`,
+    );
+  }
 }
 
 function provenanceError() {
@@ -109,12 +221,7 @@ function sha256GitBlob(repoRoot, revision, path) {
   requireRepoRelativePath(path);
   let blob;
   try {
-    blob = execFileSync("git", [
-      "-C",
-      repoRoot,
-      "show",
-      `${revision}:${path}`,
-    ]);
+    blob = execFileSync("git", ["-C", repoRoot, "show", `${revision}:${path}`]);
   } catch {
     throw provenanceError();
   }
@@ -131,7 +238,9 @@ function requireCleanCheckout(repoRoot) {
 
 function requireExactCheckout(repoRoot, expectedCommit) {
   if (git(repoRoot, ["rev-parse", "HEAD"]) !== expectedCommit) {
-    throw new Error("signed domain-core activation checkout must match the activation commit");
+    throw new Error(
+      "signed domain-core activation checkout must match the activation commit",
+    );
   }
   requireCleanCheckout(repoRoot);
 }
@@ -198,63 +307,24 @@ export function activationChangedPaths(
   candidateCommit,
   activationCommit,
 ) {
-  const candidate = commit(candidateCommit, "candidate commit");
-  const activation = commit(activationCommit, "activation commit");
-  if (candidate === activation) {
-    throw new Error("activation diff must not be empty");
-  }
-  try {
-    execFileSync("git", [
-      "-C",
-      repoRoot,
-      "merge-base",
-      "--is-ancestor",
-      candidate,
-      activation,
-    ]);
-  } catch {
-    throw new Error(
-      "candidate commit must be an ancestor of activation commit",
-    );
-  }
-  const paths = git(repoRoot, [
-    "diff",
-    "--name-only",
-    "--diff-filter=ACDMRTUXB",
-    `${candidate}..${activation}`,
-  ])
-    .split("\n")
-    .filter(Boolean)
-    .sort();
-  if (paths.length === 0) throw new Error("activation diff must not be empty");
-  const forbidden = paths.filter(
-    (path) =>
-      !REQUIRED_EXACT.has(path) &&
-      !OPTIONAL_EXACT.has(path) &&
-      !ALLOWED_PREFIXES.some((prefix) => path.startsWith(prefix)),
-  );
-  if (forbidden.length > 0) {
-    throw new Error(
-      `activation diff contains forbidden paths: ${forbidden.join(", ")}`,
-    );
-  }
-  for (const required of REQUIRED_EXACT) {
-    if (!paths.includes(required)) {
-      throw new Error(`activation diff must include ${required}`);
-    }
-  }
-  return paths;
+  return firstParentActivationChangedPaths({
+    repoRoot,
+    candidateCommit,
+    activationCommit,
+    label: "activation",
+  });
 }
 
-export function annullableActivationChangedPaths(
+function firstParentActivationChangedPaths({
   repoRoot,
   candidateCommit,
   activationCommit,
-) {
+  label,
+}) {
   const candidate = commit(candidateCommit, "candidate commit");
   const activation = commit(activationCommit, "activation commit");
   if (candidate === activation) {
-    throw new Error("annullable activation diff must not be empty");
+    throw new Error(`${label} diff must not be empty`);
   }
   try {
     execFileSync("git", [
@@ -266,9 +336,7 @@ export function annullableActivationChangedPaths(
       activation,
     ]);
   } catch {
-    throw new Error(
-      "candidate commit must be an ancestor of annullable activation commit",
-    );
+    throw new Error(`candidate commit must be an ancestor of ${label} commit`);
   }
   const activationCommits = git(repoRoot, [
     "rev-list",
@@ -288,7 +356,7 @@ export function annullableActivationChangedPaths(
       revision,
     ]).split(/\s+/u);
     if (lineage.length < 2) {
-      throw new Error("annullable activation commit must have a parent");
+      throw new Error(`${label} commit must have a parent`);
     }
     const commitPaths = git(repoRoot, [
       "diff",
@@ -308,7 +376,21 @@ export function annullableActivationChangedPaths(
     if (commitForbidden.length > 0) {
       if (revision === activation) {
         throw new Error(
-          `annullable activation final diff contains forbidden paths: ${commitForbidden.join(", ")}`,
+          `${label} final diff contains forbidden paths: ${commitForbidden.join(", ")}`,
+        );
+      }
+      if (commitPaths.some((path) => path.startsWith(ATTESTED_SOURCE_PREFIX))) {
+        throw new Error(
+          `${label} incidental protected-main commit ${revision} must not change attested Rust source`,
+        );
+      }
+      if (
+        commitPaths.some((path) =>
+          DEPLOYED_ARTIFACT_PREFIXES.some((prefix) => path.startsWith(prefix)),
+        )
+      ) {
+        throw new Error(
+          `${label} incidental protected-main commit ${revision} must not change deployed domain-core artifacts`,
         );
       }
       // A commit is incidental only when it changes no activation-authority
@@ -316,15 +398,16 @@ export function annullableActivationChangedPaths(
       // annulment closure, so fail closed.
       if (commitForbidden.length !== commitPaths.length) {
         throw new Error(
-          `annullable incidental protected-main commit ${revision} must not change activation authority paths`,
+          `${label} incidental protected-main commit ${revision} must not change activation authority paths`,
         );
       }
       for (const path of commitPaths) incidentalPaths.add(path);
     }
   }
-  // Annulment-only recovery binds the full candidate..activation diff while
-  // excluding paths proven to come solely from incidental protected-main
-  // commits. Normal release activation remains strict and never uses this path.
+  // Bind the full candidate..activation closure while excluding paths proven
+  // to come solely from separate, path-disjoint protected-main commits. The
+  // activation commit itself remains path-restricted and mixed commits fail
+  // closed, so an unrelated main advance cannot become activation authority.
   const paths = git(repoRoot, [
     "diff",
     "--name-only",
@@ -335,7 +418,7 @@ export function annullableActivationChangedPaths(
     .filter((path) => path && !incidentalPaths.has(path))
     .sort();
   if (paths.length === 0) {
-    throw new Error("annullable activation diff must not be empty");
+    throw new Error(`${label} diff must not be empty`);
   }
   const forbidden = paths.filter(
     (path) =>
@@ -345,15 +428,28 @@ export function annullableActivationChangedPaths(
   );
   if (forbidden.length > 0) {
     throw new Error(
-      `annullable activation suffix contains forbidden paths: ${forbidden.join(", ")}`,
+      `${label} suffix contains forbidden paths: ${forbidden.join(", ")}`,
     );
   }
   for (const required of REQUIRED_EXACT) {
     if (!paths.includes(required)) {
-      throw new Error(`annullable activation diff must include ${required}`);
+      throw new Error(`${label} diff must include ${required}`);
     }
   }
   return paths;
+}
+
+export function annullableActivationChangedPaths(
+  repoRoot,
+  candidateCommit,
+  activationCommit,
+) {
+  return firstParentActivationChangedPaths({
+    repoRoot,
+    candidateCommit,
+    activationCommit,
+    label: "annullable activation",
+  });
 }
 
 export function validateDomainCoreActivation({
@@ -424,6 +520,63 @@ export function validateDomainCoreActivation({
     sourceSha256: candidate.sourceSha256,
     changedPathsSha256,
   };
+}
+
+// Validate the activation closure against a release checkout R whose HEAD may
+// have advanced past activation P on protected main. The activation commit is
+// re-derived from the committed authority files (the same single-authority
+// resolution used by resolveActiveDomainCoreActivation), never trusted from
+// the release coordinates: a release commit R is release-authoritative but is
+// not itself the activation authority once path-disjoint protected-main
+// commits land after P. Post-activation drift of the activation closure paths
+// and the deployed domain-core artifacts stays fail-closed across P..R.
+export function validateDomainCoreReleaseActivation({
+  repoRoot,
+  candidateCommit,
+  releaseCommit,
+  requireHead = true,
+}) {
+  const release = commit(releaseCommit, "release commit");
+  if (requireHead && git(repoRoot, ["rev-parse", "HEAD"]) !== release) {
+    throw new Error(
+      "release commit must equal the exact release checkout HEAD",
+    );
+  }
+  const activationSha = resolveActivationAuthorityCommit(repoRoot, release);
+  const activation = validateDomainCoreActivation({
+    repoRoot,
+    candidateCommit,
+    activationCommit: activationSha,
+    requireHead: false,
+  });
+  // Post-activation drift protects the authority files and the activation's
+  // append-only evidence (receipts, attestations, bundles, provenance) — the
+  // same set resolveActiveDomainCoreActivation pins across P..R. The trusted
+  // control-plane manifest and runbook docs legitimately keep evolving with
+  // ordinary protected-main work after activation, so they stay unprotected.
+  const protectedPaths = new Set(REQUIRED_EXACT);
+  if (activation.active) {
+    for (const path of activationChangedPaths(
+      repoRoot,
+      activation.candidateCommit,
+      activationSha,
+    )) {
+      if (
+        REQUIRED_EXACT.has(path) ||
+        AUTHORITY_EVIDENCE_PREFIXES.some((prefix) => path.startsWith(prefix))
+      ) {
+        protectedPaths.add(path);
+      }
+    }
+  }
+  requireNoAuthorityDriftAfterActivation({
+    repoRoot,
+    activationCommit: activationSha,
+    releaseCommit: release,
+    paths: protectedPaths,
+    prefixes: activation.active ? DEPLOYED_ARTIFACT_PREFIXES : [],
+  });
+  return { ...activation, releaseCommit: release };
 }
 
 export function validateDomainCoreAnnullableActivation({
@@ -543,8 +696,7 @@ function verifyProtectedAttestationProvenance({
     "sourceRunId",
     "sourceRunAttempt",
   ]);
-  const expectedBundlePath =
-    `config/domain-core-promotion-bundles/${authorityScope}/${authorityGeneration}.json`;
+  const expectedBundlePath = `config/domain-core-promotion-bundles/${authorityScope}/${authorityGeneration}.json`;
   if (
     requireRepoRelativePath(unsignedBundle.path) !== expectedBundlePath ||
     typeof unsignedBundle.sha256 !== "string" ||
@@ -571,8 +723,7 @@ function verifyProtectedAttestationProvenance({
     "policySha256",
     "evaluatorSha256",
   ]);
-  const expectedProvenancePath =
-    `config/domain-core-promotion-provenance/${authorityScope}/${authorityGeneration}.json`;
+  const expectedProvenancePath = `config/domain-core-promotion-provenance/${authorityScope}/${authorityGeneration}.json`;
   if (
     requireRepoRelativePath(provenance.path) !== expectedProvenancePath ||
     typeof provenance.sha256 !== "string" ||
@@ -658,7 +809,6 @@ function verifyProtectedAttestationProvenance({
   return { verifiedCandidate, provenance };
 }
 
-
 function verifySupersededAuthority({
   repoRoot,
   activationCommit,
@@ -679,8 +829,7 @@ function verifySupersededAuthority({
     stable_release: "stable_release.json",
   }[link.transition];
   if (fileName === undefined) throw provenanceError();
-  const expectedPath =
-    `config/domain-core-legacy-deletion-receipts/${rowId}/${authorityGeneration - 1}/${fileName}`;
+  const expectedPath = `config/domain-core-legacy-deletion-receipts/${rowId}/${authorityGeneration - 1}/${fileName}`;
   if (
     requireRepoRelativePath(link.path) !== expectedPath ||
     typeof link.sha256 !== "string" ||
@@ -705,12 +854,16 @@ function verifySupersededAuthority({
     !Number.isFinite(previousApprovedAt) ||
     previousApprovedAt >= Date.parse(approvedAt)
   ) {
-    throw new Error("promotion supersession does not identify the previous active authority");
+    throw new Error(
+      "promotion supersession does not identify the previous active authority",
+    );
   }
   if (link.transition === "rollback") {
     const activatedAt = Date.parse(previous?.rollback?.activatedAt);
     if (!Number.isFinite(activatedAt) || activatedAt > previousApprovedAt) {
-      throw new Error("previous rollback activation cannot follow rollback approval");
+      throw new Error(
+        "previous rollback activation cannot follow rollback approval",
+      );
     }
   }
   if (link.transition === "annulment") {
@@ -736,8 +889,7 @@ function verifySupersededAuthority({
       "sourceSha256",
       "changedPathsSha256",
     ]);
-    const previousPromotionPath =
-      `config/domain-core-legacy-deletion-receipts/${rowId}/${authorityGeneration - 1}/promotion.json`;
+    const previousPromotionPath = `config/domain-core-legacy-deletion-receipts/${rowId}/${authorityGeneration - 1}/promotion.json`;
     if (
       payload.promotionReceiptSha256 !==
         sha256GitBlob(repoRoot, activationCommit, previousPromotionPath) ||
@@ -803,8 +955,7 @@ function verifyPromotionReceipt({
   authorityGeneration,
   pointer,
 }) {
-  const expectedReceiptPath =
-    `config/domain-core-legacy-deletion-receipts/${rowId}/${authorityGeneration}/promotion.json`;
+  const expectedReceiptPath = `config/domain-core-legacy-deletion-receipts/${rowId}/${authorityGeneration}/promotion.json`;
   if (requireRepoRelativePath(pointer) !== expectedReceiptPath) {
     throw new Error(`${rowId}: promotion receipt path mismatch`);
   }
@@ -857,8 +1008,7 @@ function verifyPromotionReceipt({
     "sha256",
     "supersedes",
   ]);
-  const expectedAttestationPath =
-    `config/domain-core-promotion-attestations/${authorityScope}/${authorityGeneration}.json`;
+  const expectedAttestationPath = `config/domain-core-promotion-attestations/${authorityScope}/${authorityGeneration}.json`;
   if (
     requireRepoRelativePath(attestationPointer.path) !==
       expectedAttestationPath ||
@@ -895,21 +1045,26 @@ export function resolveActiveDomainCoreActivation({
 }) {
   const releaseCommit = commit(activationCommit, "activation commit");
   requireExactCheckout(repoRoot, releaseCommit);
-  const profiles = gitJson(
+  const authorityActivationCommit = resolveActivationAuthorityCommit(
     repoRoot,
     releaseCommit,
+  );
+  const profiles = gitJson(
+    repoRoot,
+    authorityActivationCommit,
     "config/domain-core-build-profiles.json",
     "domain-core build profiles",
   );
   const ledger = gitJson(
     repoRoot,
-    releaseCommit,
+    authorityActivationCommit,
     "config/domain-core-legacy-deletion.json",
     "domain-core authority ledger",
   );
   const rows = new Map(ledger.rows.map((row) => [row.id, row]));
   const candidates = new Set();
   const domains = [];
+  const protectedAuthorityPaths = new Set(REQUIRED_EXACT);
   for (const [domain, rowIds] of Object.entries(DOMAIN_ROWS)) {
     if (profiles.profiles?.["public-production"]?.modes?.[domain] !== "rust")
       continue;
@@ -929,27 +1084,35 @@ export function resolveActiveDomainCoreActivation({
       const authorityScope = DOMAIN_SCOPES[domain];
       const { receipt, attestationPath } = verifyPromotionReceipt({
         repoRoot,
-        activationCommit: releaseCommit,
+        activationCommit: authorityActivationCommit,
         rowId,
         authorityScope,
         authorityGeneration,
         pointer,
       });
+      protectedAuthorityPaths.add(pointer);
+      const supersedesPath = receipt.promotionAttestation.supersedes?.path;
+      if (typeof supersedesPath === "string") {
+        protectedAuthorityPaths.add(supersedesPath);
+      }
       const attestation = gitJson(
         repoRoot,
-        releaseCommit,
+        authorityActivationCommit,
         attestationPath,
         `${rowId} promotion attestation`,
       );
       const { verifiedCandidate, provenance } =
         verifyProtectedAttestationProvenance({
           repoRoot,
-          activationCommit: releaseCommit,
+          activationCommit: authorityActivationCommit,
           authorityScope,
           authorityGeneration,
           attestation,
           verifyArtifactIdentity,
         });
+      protectedAuthorityPaths.add(attestationPath);
+      protectedAuthorityPaths.add(attestation.unsignedBundle.path);
+      protectedAuthorityPaths.add(provenance.path);
       if (receipt.commit !== verifiedCandidate.candidateCommit) {
         throw new Error(`${rowId}: promotion receipt candidate mismatch`);
       }
@@ -979,12 +1142,20 @@ export function resolveActiveDomainCoreActivation({
       }
     }
   }
+  requireNoAuthorityDriftAfterActivation({
+    repoRoot,
+    activationCommit: authorityActivationCommit,
+    releaseCommit,
+    paths: protectedAuthorityPaths,
+    prefixes: candidates.size > 0 ? DEPLOYED_ARTIFACT_PREFIXES : [],
+  });
   if (candidates.size === 0) {
     return {
       ...validateDomainCoreActivation({
         repoRoot,
-        candidateCommit: releaseCommit,
-        activationCommit: releaseCommit,
+        candidateCommit: authorityActivationCommit,
+        activationCommit: authorityActivationCommit,
+        requireHead: false,
       }),
       domains: [],
     };
@@ -999,7 +1170,8 @@ export function resolveActiveDomainCoreActivation({
     ...validateDomainCoreActivation({
       repoRoot,
       candidateCommit: [...candidates][0],
-      activationCommit: releaseCommit,
+      activationCommit: authorityActivationCommit,
+      requireHead: false,
     }),
     domains,
   };

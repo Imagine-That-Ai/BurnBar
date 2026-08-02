@@ -36,8 +36,8 @@ class PhoneControlCounterStoreTest {
         every { context.getSharedPreferences(any(), any()) } returns preferences
         val stores =
             listOf(
-                SharedPreferencesPhoneControlCounterStore(context),
-                SharedPreferencesPhoneControlCounterStore(context),
+                SharedPreferencesPhoneControlCounterStore(context, missingCounterBaseline = { 0L }),
+                SharedPreferencesPhoneControlCounterStore(context, missingCounterBaseline = { 0L }),
             )
 
         val allocated =
@@ -49,5 +49,43 @@ class PhoneControlCounterStoreTest {
 
         assertEquals((1L..100L).toList(), allocated.sorted())
         assertEquals(100L, persisted.get())
+    }
+
+    @Test
+    fun missingDurableCounterMigratesAboveMonotonicBaselineAndSurvivesRecreation() {
+        val persisted = AtomicLong(0)
+        val preferences = mockk<SharedPreferences>()
+        every { preferences.getLong(any(), any()) } answers { persisted.get() }
+        every { preferences.edit() } answers {
+            val editor = mockk<SharedPreferences.Editor>()
+            var pending = 0L
+            every { editor.putLong(any(), any()) } answers {
+                pending = secondArg()
+                editor
+            }
+            every { editor.commit() } answers {
+                persisted.set(pending)
+                true
+            }
+            editor
+        }
+        val context = mockk<Context>()
+        every { context.applicationContext } returns context
+        every { context.getSharedPreferences(any(), any()) } returns preferences
+
+        val firstActivityStore =
+            SharedPreferencesPhoneControlCounterStore(
+                context,
+                missingCounterBaseline = { 10_000L },
+            )
+        val recreatedActivityStore =
+            SharedPreferencesPhoneControlCounterStore(
+                context,
+                missingCounterBaseline = { 20_000L },
+            )
+
+        assertEquals(10_001L, firstActivityStore.nextCounter("android-phone"))
+        assertEquals(10_002L, recreatedActivityStore.nextCounter("android-phone"))
+        assertEquals(10_002L, persisted.get())
     }
 }

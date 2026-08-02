@@ -22,6 +22,7 @@
 # Prerequisites:
 #   - firebase CLI installed and authenticated
 #   - FIREBASE_PROJECT environment variable set (or uses .firebaserc default)
+#   - SENTRY_DSN set to the production Functions Sentry ingest DSN
 #   - Git tags fetched: git fetch --tags
 
 set -euo pipefail
@@ -103,6 +104,7 @@ if ! git rev-parse "refs/tags/${TARGET_TAG}" &>/dev/null; then
   echo "ERROR: Tag '${TARGET_TAG}' not found. Run 'git fetch --tags' and retry." >&2
   exit 1
 fi
+TARGET_COMMIT="$(git rev-parse "refs/tags/${TARGET_TAG}^{commit}")"
 
 # Freshness guard: an auto-selected target older than the window is refused
 # unless --allow-stale is passed. An explicit tag argument is always honored.
@@ -124,6 +126,7 @@ echo ""
 echo "=== Rollback Plan ==="
 echo "  From:   ${CURRENT_TAG}"
 echo "  To:     ${TARGET_TAG}"
+echo "  Commit: ${TARGET_COMMIT}"
 echo "  Config: functions/.env.burnbar.production (committed, reviewed)"
 echo ""
 
@@ -145,6 +148,24 @@ if [[ "$DRY_RUN" == "true" ]]; then
   echo "DRY RUN: No changes made."
   exit 0
 fi
+
+# Production deploys fail closed when Sentry is unavailable. Source rollback
+# must preserve the same contract rather than silently shipping a dark runtime.
+if [[ -z "${SENTRY_DSN:-}" ]]; then
+  echo "ERROR: SENTRY_DSN is required for a production Functions rollback." >&2
+  echo "       Export the production Functions DSN used by deploy-production.yml and retry." >&2
+  exit 1
+fi
+if [[ "${SENTRY_ENVIRONMENT:-production}" != "production" ]]; then
+  echo "ERROR: SENTRY_ENVIRONMENT must be 'production' for a production Functions rollback." >&2
+  exit 1
+fi
+if [[ ! -f "scripts/ci/sentry_dsn.py" ]]; then
+  echo "ERROR: Missing scripts/ci/sentry_dsn.py — refusing an unvalidated Sentry rollback config." >&2
+  exit 1
+fi
+SENTRY_DSN="$(SENTRY_DSN="$SENTRY_DSN" python3 scripts/ci/sentry_dsn.py validate SENTRY_DSN)"
+SENTRY_ENVIRONMENT="production"
 
 # ── Confirm rollback ──────────────────────────────────────────────────────
 
@@ -177,17 +198,28 @@ fi
 ROLLBACK_BRANCH="rollback/${TARGET_TAG}-$(date +%Y%m%d%H%M%S)"
 echo "==> Creating rollback branch: ${ROLLBACK_BRANCH}"
 git checkout -b "$ROLLBACK_BRANCH" "refs/tags/${TARGET_TAG}"
+if [[ "$(git rev-parse HEAD)" != "$TARGET_COMMIT" ]]; then
+  echo "ERROR: Rollback checkout does not match the resolved target commit." >&2
+  exit 1
+fi
 
 # Materialize the current reviewed runtime config into the deploy env file so
 # the rolled-back functions deploy with the same non-secret IDs/URLs the live
-# deploy lane uses — never empty config from a year-old tree.
+# deploy lane uses — never empty config from a year-old tree. Dynamic release
+# identity and Sentry values mirror deploy-production.yml exactly.
 echo "==> Applying production runtime config (${PROD_CONFIG})..."
 {
   cat "$PROD_CONFIG_SNAPSHOT"
   echo ""
   echo "FUNCTION_VERSION=${TARGET_TAG}"
+  echo "OPENBURNBAR_SOURCE_COMMIT=${TARGET_COMMIT}"
+  echo "SENTRY_DSN=${SENTRY_DSN}"
+  echo "SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT}"
 } > "functions/.env.burnbar"
 rm -f "$PROD_CONFIG_SNAPSHOT"
+export FUNCTION_VERSION="$TARGET_TAG"
+export OPENBURNBAR_SOURCE_COMMIT="$TARGET_COMMIT"
+export SENTRY_ENVIRONMENT
 
 echo "==> Building functions for rollback..."
 npm ci --prefix functions

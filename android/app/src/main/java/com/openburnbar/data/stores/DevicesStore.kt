@@ -11,6 +11,7 @@ import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
+import com.openburnbar.data.cloud.AndroidEscrowDeviceSafetyCode
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import java.security.MessageDigest
 import java.util.Date
@@ -31,7 +32,28 @@ data class DeviceRecord(
     val trustState: DeviceTrustState = DeviceTrustState.PENDING,
     val lastSeen: Date? = null,
     val isCurrentDevice: Boolean = false,
-)
+    val keyVersion: Int? = null,
+    val publicKeyFingerprint: String? = null,
+    val publicKeyData: String? = null,
+) {
+    /**
+     * Durable registration identity used for list diffing and destructive actions. Names and
+     * platforms are user-visible metadata and are never unique enough to identify a registration.
+     */
+    val stableIdentity: String
+        get() = escrowID?.takeIf { it.isNotBlank() }
+            ?: presenceID?.takeIf { it.isNotBlank() }
+            ?: id
+
+    val revocationDeviceID: String
+        get() = escrowID?.takeIf { it.isNotBlank() } ?: id
+
+    val safetyCode: String?
+        get() = AndroidEscrowDeviceSafetyCode.format(publicKeyData)
+
+    val hasVerifiedSafetyCode: Boolean
+        get() = AndroidEscrowDeviceSafetyCode.isFingerprintBoundTo(publicKeyFingerprint, publicKeyData)
+}
 
 class DevicesStore(
     context: Context? = null,
@@ -103,20 +125,7 @@ class DevicesStore(
                         val data = doc.data ?: return@mapNotNull null
                         generalDeviceRecord(doc.id, data, currentPresenceDeviceID)
                     }
-                val escrowDevices =
-                    try {
-                        db.collection("users").document(uid)
-                            .collection("escrow_devices")
-                            .get().await()
-                            .documents
-                            .mapNotNull { doc ->
-                                val data = doc.data ?: return@mapNotNull null
-                                escrowDeviceRecord(doc.id, data, currentEscrowDeviceID)
-                            }
-                    } catch (e: FirebaseException) {
-                        Log.w("BurnBar", "Escrow devices load failed; showing presence devices as pending", e)
-                        emptyList()
-                    }
+                val escrowDevices = loadEscrowDevices(uid = uid, currentEscrowDeviceID = currentEscrowDeviceID)
                 rawDevices = mergeDeviceRecords(generalDevices, escrowDevices)
                 _devices.value = deduplicated(rawDevices)
                 // RR-5 pickup-on-launch: finish any pending Cloud Vault rotation this device is a
@@ -136,9 +145,44 @@ class DevicesStore(
 
     private var pendingRotationPickupDone = false
 
+    private suspend fun loadEscrowDevices(uid: String, currentEscrowDeviceID: String?): List<DeviceRecord> = try {
+        val userRef = db.collection("users").document(uid)
+        val escrowSnapshot = userRef
+            .collection("escrow_devices")
+            .get().await()
+        val escrowPublicKeys =
+            runCatching {
+                userRef.collection("escrow_public_keys")
+                    .get().await()
+                    .documents
+                    .associate { document ->
+                        document.id to (document.getString("publicKeyData") ?: "")
+                    }
+            }.getOrElse { error ->
+                Log.w("BurnBar", "Escrow public-key load failed; approval stays disabled", error)
+                emptyMap()
+            }
+        escrowSnapshot.documents.mapNotNull { doc ->
+            val data = doc.data ?: return@mapNotNull null
+            val keyVersion = (data["keyVersion"] as? Number)?.toInt()
+            val publicKeyData =
+                keyVersion?.let { escrowPublicKeys["${doc.id}_$it"] }
+                    ?.takeIf { it.isNotBlank() }
+            escrowDeviceRecord(
+                documentID = doc.id,
+                data = data,
+                currentEscrowDeviceID = currentEscrowDeviceID,
+                publicKeyData = publicKeyData,
+            )
+        }
+    } catch (e: FirebaseException) {
+        Log.w("BurnBar", "Escrow devices load failed; showing presence devices as pending", e)
+        emptyList()
+    }
+
     fun bootstrapApproveSelf() {
         viewModelScope.launch {
-            _actionInFlightFor.value = currentDevice?.id
+            _actionInFlightFor.value = currentDevice?.stableIdentity
             try {
                 val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
                 escrowRegistry.trustSelf(uid = uid)
@@ -151,9 +195,39 @@ class DevicesStore(
         }
     }
 
+    fun approve(device: DeviceRecord) {
+        viewModelScope.launch {
+            _actionInFlightFor.value = device.stableIdentity
+            _lastError.value = null
+            try {
+                require(!device.isCurrentDevice && device.trustState == DeviceTrustState.PENDING) {
+                    "Only a different pending device can be approved."
+                }
+                require(device.hasVerifiedSafetyCode) {
+                    "This device has not published a verified safety code yet."
+                }
+                val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+                    ?: error("Sign in before approving a device.")
+                escrowRegistry.approveDevice(
+                    uid = uid,
+                    targetDeviceId = device.escrowID ?: device.id,
+                )
+                load()
+            } catch (error: FirebaseException) {
+                _lastError.value = error.message
+            } catch (error: IllegalArgumentException) {
+                _lastError.value = error.message
+            } catch (error: IllegalStateException) {
+                _lastError.value = error.message
+            } finally {
+                _actionInFlightFor.value = null
+            }
+        }
+    }
+
     fun renameSelf(newName: String) {
         viewModelScope.launch {
-            _actionInFlightFor.value = currentDevice?.id
+            _actionInFlightFor.value = currentDevice?.stableIdentity
             try {
                 val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
                 val deviceId = currentDevice?.presenceID ?: return@launch
@@ -178,24 +252,10 @@ class DevicesStore(
 
     fun revoke(device: DeviceRecord) {
         viewModelScope.launch {
-            _actionInFlightFor.value = device.id
+            _actionInFlightFor.value = device.stableIdentity
+            _lastError.value = null
             try {
-                // RR-5: pass THIS (surviving) device's escrow id so the server's
-                // cloudVaultRotationRequired signal drives the local rotation chain (re-key, wrap to
-                // survivors, rotateCloudVaultKey, document rewrap) instead of being discarded.
-                val rotatingDeviceId =
-                    runCatching { com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId }.getOrNull()
-                val result =
-                    securityClient.revokeEscrowDeviceTrust(
-                        device.escrowID ?: device.id,
-                        rotatingDeviceId = rotatingDeviceId,
-                    )
-                if (result.cloudVaultRotationRequired && !result.cloudVaultRotationCompleted) {
-                    _lastError.value =
-                        result.cloudVaultRotationFailureMessage
-                            ?: result.cloudVaultRotationBlockedReason
-                            ?: "Cloud Vault rotation is required but did not complete."
-                }
+                revokeDeviceAndRotate(device)
                 load()
             } catch (e: FirebaseException) {
                 _lastError.value = e.message
@@ -204,6 +264,26 @@ class DevicesStore(
             } finally {
                 _actionInFlightFor.value = null
             }
+        }
+    }
+
+    private suspend fun revokeDeviceAndRotate(device: DeviceRecord) {
+        // RR-5: pass THIS (surviving) device's escrow id so the server's
+        // cloudVaultRotationRequired signal drives the local rotation chain (re-key, wrap to
+        // survivors, rotateCloudVaultKey, document rewrap) instead of being discarded.
+        val rotatingDeviceId =
+            runCatching { AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId }.getOrNull()
+        val result =
+            securityClient.revokeEscrowDeviceTrust(
+                device.revocationDeviceID,
+                rotatingDeviceId = rotatingDeviceId,
+            )
+        if (result.cloudVaultRotationRequired && !result.cloudVaultRotationCompleted) {
+            throw IllegalStateException(
+                result.cloudVaultRotationFailureMessage
+                    ?: result.cloudVaultRotationBlockedReason
+                    ?: "Cloud Vault rotation is required but did not complete.",
+            )
         }
     }
 
@@ -225,8 +305,19 @@ class DevicesStore(
     fun revokeStaleDuplicates() {
         viewModelScope.launch {
             val stale = staleDuplicates
-            for (device in stale) {
-                revoke(device)
+            _lastError.value = null
+            try {
+                revokeSequentially(stale) { device ->
+                    _actionInFlightFor.value = device.stableIdentity
+                    revokeDeviceAndRotate(device)
+                }
+                load()
+            } catch (e: FirebaseException) {
+                _lastError.value = e.message
+            } catch (e: IllegalStateException) {
+                _lastError.value = e.message
+            } finally {
+                _actionInFlightFor.value = null
             }
         }
     }
@@ -267,7 +358,12 @@ class DevicesStore(
             )
         }
 
-        internal fun escrowDeviceRecord(documentID: String, data: Map<String, Any?>, currentEscrowDeviceID: String?): DeviceRecord {
+        internal fun escrowDeviceRecord(
+            documentID: String,
+            data: Map<String, Any?>,
+            currentEscrowDeviceID: String?,
+            publicKeyData: String? = null,
+        ): DeviceRecord {
             val id = deviceID(documentID, data)
             return DeviceRecord(
                 id = id,
@@ -277,6 +373,9 @@ class DevicesStore(
                 trustState = deviceTrustState(data),
                 lastSeen = deviceActivityDate(data),
                 isCurrentDevice = id == currentEscrowDeviceID,
+                keyVersion = (data["keyVersion"] as? Number)?.toInt(),
+                publicKeyFingerprint = data["publicKeyFingerprint"] as? String,
+                publicKeyData = publicKeyData,
             )
         }
 
@@ -327,12 +426,16 @@ class DevicesStore(
 
         internal fun deduplicated(records: List<DeviceRecord>): List<DeviceRecord> {
             val groups =
-                records.groupBy {
-                    "${it.displayName.lowercase().trim()}\u001F${it.platform.lowercase()}"
-                }
+                records.groupBy(DeviceRecord::stableIdentity)
             return groups.values
                 .map { bucket -> bucket.maxWithOrNull(::compareDevicePriority) ?: bucket.first() }
                 .sortedByDescending { it.lastSeen ?: Date(0) }
+        }
+
+        internal suspend fun revokeSequentially(devices: List<DeviceRecord>, revokeOne: suspend (DeviceRecord) -> Unit) {
+            for (device in devices) {
+                revokeOne(device)
+            }
         }
 
         private fun deviceID(documentID: String, data: Map<String, Any?>): String = (data["deviceId"] as? String)
@@ -400,6 +503,9 @@ class DevicesStore(
                 trustState = escrow.trustState,
                 lastSeen = latestDate(presence.lastSeen, escrow.lastSeen),
                 isCurrentDevice = presence.isCurrentDevice || escrow.isCurrentDevice,
+                keyVersion = escrow.keyVersion,
+                publicKeyFingerprint = escrow.publicKeyFingerprint,
+                publicKeyData = escrow.publicKeyData,
             )
         }
 

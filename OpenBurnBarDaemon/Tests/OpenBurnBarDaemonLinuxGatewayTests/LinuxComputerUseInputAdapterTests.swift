@@ -159,18 +159,24 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
             }
         )
 
+        // Gate the probe on the cancellation having been issued so the test
+        // is deterministic: the task proceeds past the stream only after
+        // `task.cancel()` ran (either the cancellation terminates the
+        // iteration or the post-cancel `finish()` does), guaranteeing the
+        // pre-probe cancellation check in `probeWaylandPortal()` fires.
+        let (cancelIssued, cancelIssuedContinuation) = AsyncStream<Void>.makeStream()
         let task = Task {
-            try await adapter.probeWaylandPortal()
+            for await _ in cancelIssued {}
+            return try await adapter.probeWaylandPortal()
         }
         task.cancel()
+        cancelIssuedContinuation.finish()
 
         do {
             _ = try await task.value
             XCTFail("a cancelled portal probe must not report a capability")
         } catch is CancellationError {
-            // The cancellation can race a very fast probe; the post-probe
-            // cancellation check still guarantees no capability is returned.
-            XCTAssertTrue(probeCalled.lastExecutable == nil || probeCalled.lastExecutable == "/usr/bin/gdbus")
+            XCTAssertNil(probeCalled.lastExecutable, "a pre-probe cancellation must never reach the portal broker")
         } catch {
             XCTFail("unexpected cancellation error: \(error)")
         }

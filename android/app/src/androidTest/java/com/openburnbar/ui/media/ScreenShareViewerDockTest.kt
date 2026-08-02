@@ -3,6 +3,7 @@ package com.openburnbar.ui.media
 import android.graphics.Color as AndroidColor
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -10,22 +11,27 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.openburnbar.data.media.VideoReceivePipeline
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -106,13 +112,44 @@ class ScreenShareViewerDockTest {
 
         composeRule.onNodeWithContentDescription("Keys").performClick()
         composeRule.onNodeWithContentDescription("Type on Mac").performClick()
-        composeRule.waitUntil(timeoutMillis = 5_000) { isImeVisible() }
+        // Samsung may briefly place a focus-stealing system overlay above a
+        // freshly installed instrumentation target. Mercury must recover as
+        // soon as the app regains window focus.
+        composeRule.waitUntil(timeoutMillis = 10_000) { isImeVisible() }
 
         Espresso.pressBack()
         composeRule.waitUntil(timeoutMillis = 5_000) { !isImeVisible() }
 
         composeRule.onNodeWithContentDescription("Type on Mac").performClick()
-        composeRule.waitUntil(timeoutMillis = 5_000) { isImeVisible() }
+        composeRule.waitUntil(timeoutMillis = 10_000) { isImeVisible() }
+    }
+
+    @Test
+    fun remoteKeyboardBridgeDoesNotStealBottomLeftMirrorTap() {
+        val mirrorTapCount = AtomicInteger(0)
+        composeRule.setContent {
+            MaterialTheme {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .clickable { mirrorTapCount.incrementAndGet() },
+                    )
+                    RemoteKeyboardCaptureField(
+                        modifier = Modifier.align(Alignment.BottomStart),
+                        onText = {},
+                        onKey = {},
+                        onDismiss = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onRoot().performTouchInput {
+            click(Offset(x = 24f, y = height - 24f))
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) { mirrorTapCount.get() == 1 }
     }
 
     @Test

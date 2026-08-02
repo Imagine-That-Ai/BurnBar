@@ -359,14 +359,13 @@ internal suspend fun ScreenShareViewerActivity.ensurePhoneControlSender(): Phone
         // authority key and every signed envelope stay the same key.
         val identity = keyStore.signingIdentity()
         val peerNodeId = keyStore.peerNodeId(identity)
-        phoneControlSender
-            ?.takeIf { phoneControlConnectionID == pair.connectionID }
-            ?.let { sender ->
-                val sealSession = establishControlSealAndClassify(coordinator, pair, peerNodeId)
-                if (phoneControlSenderSealed == (sealSession != null)) {
-                    return@withLock sender
-                }
-            }
+        reusablePhoneControlSender(
+            sender = phoneControlSender,
+            senderConnectionID = phoneControlConnectionID,
+            activeConnectionID = pair.connectionID,
+            senderSealed = phoneControlSenderSealed,
+            activeSealPresent = ControlSealSessionEstablisher.activeSession(pair.connectionID) != null,
+        )?.let { return@withLock it }
         var device = AndroidEscrowDeviceRegistry().registerSelf(uid = pair.uid)
         if (device.trustState != AndroidEscrowDeviceRegistry.TRUSTED) {
             AndroidEscrowDeviceRegistry().trustSelf(uid = pair.uid)
@@ -403,6 +402,23 @@ internal suspend fun ScreenShareViewerActivity.ensurePhoneControlSender(): Phone
             BurnBarApplication.activePhoneControlSender = it
         }
     }
+}
+
+/**
+ * A cached sender owns the frame sink that was classified for its control-seal
+ * session. Reclassifying while reusing that sender rotates the live seal
+ * between sequential input intents and can make every intent after the first
+ * unreadable to the Mac.
+ */
+internal fun reusablePhoneControlSender(
+    sender: PhoneControlSender?,
+    senderConnectionID: String?,
+    activeConnectionID: String,
+    senderSealed: Boolean,
+    activeSealPresent: Boolean,
+): PhoneControlSender? = sender?.takeIf {
+    senderConnectionID == activeConnectionID &&
+        senderSealed == activeSealPresent
 }
 
 /**
@@ -465,6 +481,9 @@ internal fun ScreenShareViewerActivity.reconnectMirror() {
     bindCoordinatorHandlers()
     controlScope.launch {
         runCatching {
+            check(pipeline.restart()) {
+                "Mercury video surface is not ready to restart."
+            }
             val coordinator =
                 BurnBarApplication.mediaControlCoordinator
                     ?: error("Mercury control coordinator is not available.")

@@ -1294,6 +1294,14 @@ jobs:
       - name: Verify shared domain core release artifact
         run: test -d Vendor/OpenBurnBarDomainCore.xcframework
 
+      - name: Prepare Mercury Iroh XCFramework for release app
+        env:
+          IROH_BUILD_PROFILE: release
+        run: bash scripts/build-iroh-xcframework.sh
+
+      - name: Verify Mercury Iroh release artifact
+        run: bash scripts/ci/verify-iroh-release-artifact.sh
+
       - name: Archive and export signed iOS app
         if: needs.release-preflight.outputs.is_prerelease == 'false'
         id: ios-archive

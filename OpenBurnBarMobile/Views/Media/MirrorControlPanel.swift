@@ -178,32 +178,33 @@ struct MirrorControlPanel: View {
     private var collapsedHandle: some View {
         HStack(spacing: 8) {
             // Chevron: draggable upwards or tappable to expand vertically
-            Image(systemName: "chevron.up")
-                .font(.system(size: 15, weight: .black))
-                .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(Color.white.opacity(0.12), in: Circle())
-                .contentShape(Circle())
-                .gesture(
-                    DragGesture(minimumDistance: 4)
-                        .onChanged { value in
-                            let dy = value.translation.height
-                            if dy < -8 { // Dragging upwards to the top
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                                    expansionDirection = .upward
-                                    trayExpanded = true
-                                }
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                    expansionDirection = .upward
+                    trayExpanded = true
+                }
+            } label: {
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 15, weight: .black))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(Color.white.opacity(0.12), in: Circle())
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open mirror controls")
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 4)
+                    .onChanged { value in
+                        let dy = value.translation.height
+                        if dy < -8 { // Dragging upwards to the top
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                expansionDirection = .upward
+                                trayExpanded = true
                             }
                         }
-                )
-                .simultaneousGesture(
-                    TapGesture().onEnded {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                            expansionDirection = .upward
-                            trayExpanded = true
-                        }
                     }
-                )
+            )
 
             // Cog: cutely colored settings cog that opens the panel sideways on tap
             Button {
@@ -236,6 +237,7 @@ struct MirrorControlPanel: View {
                     )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Open mirror controls sideways")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -422,6 +424,10 @@ struct MirrorControlPanel: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
+        .accessibilityElement()
+        .accessibilityIdentifier("mercury.controls.group.\(group.rawValue)")
+        .accessibilityLabel(group.hint)
+        .accessibilityAddTraits(.isButton)
     }
 
     // MARK: - Pop Out Option List & UI

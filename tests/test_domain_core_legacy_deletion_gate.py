@@ -725,7 +725,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         ):
             GATE.validate_build_profile_catalog(weakened)
 
-    def test_annullable_activation_handles_intervening_main_change_without_relaxing_release(self) -> None:
+    def test_activation_closures_share_first_parent_incidental_semantics(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory).resolve()
             (repo / "crates/openburnbar-domain-core").mkdir(parents=True)
@@ -781,12 +781,18 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                 check=True,
             )
             activation = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
-            with self.assertRaisesRegex(GATE.GateError, "only profile"):
-                GATE.validate_activation_closure(repo, candidate, activation)
+            # The strict release closure shares the annullable first-parent
+            # semantics: a path-disjoint protected-main advance between C and P
+            # is incidental, never blocks release activation, and both closures
+            # bind the identical changedPathsSha256 that the JS resolver
+            # (scripts/lib/domain-core-activation.mjs) derives.
+            release_proof = GATE.validate_activation_closure(repo, candidate, activation)
             proof = GATE.validate_annullable_activation_closure(repo, candidate, activation)
+            self.assertEqual(release_proof, proof)
             self.assertEqual(proof["candidateCommit"], candidate)
             self.assertEqual(proof["activationCommit"], activation)
             changed = GATE.annullable_activation_changed_paths(repo, candidate, activation)
+            self.assertEqual(GATE.activation_changed_paths(repo, candidate, activation), changed)
             self.assertNotIn("functions/.env.burnbar.production", changed)
             # Evidence committed before the unrelated protected-main advance
             # must remain part of the validated annulment closure.
@@ -816,6 +822,11 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                 "annullable incidental protected-main commit .* must not change activation authority paths",
             ):
                 GATE.annullable_activation_changed_paths(repo, candidate, mixed_activation)
+            with self.assertRaisesRegex(
+                GATE.GateError,
+                "activation incidental protected-main commit .* must not change activation authority paths",
+            ):
+                GATE.activation_changed_paths(repo, candidate, mixed_activation)
             subprocess.run(["git", "reset", "-q", "--hard", activation], cwd=repo, check=True)
 
             (repo / "crates/openburnbar-domain-core/src.rs").write_text("fn drift() {}\n")
@@ -824,6 +835,43 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             drift = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
             with self.assertRaisesRegex(GATE.GateError, "may end only"):
                 GATE.validate_annullable_activation_closure(repo, candidate, drift)
+            subprocess.run(["git", "reset", "-q", "--hard", activation], cwd=repo, check=True)
+
+            # An incidental protected-main commit that swaps attested Rust
+            # source must fail closed for both closures.
+            (repo / "crates/openburnbar-domain-core/src.rs").write_text("fn incidental() {}\n")
+            (repo / "functions/.env.burnbar.production").write_text("MIN_INSTANCES=3\n")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "incidental rust drift"], cwd=repo, check=True)
+            (repo / "config/domain-core-legacy-deletion.json").write_text('{"state":"promotion_after_rust_drift"}\n')
+            (repo / GATE.BUILD_PROFILE_PATH).write_text(json.dumps(profiles) + "\n\n")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "activation after rust drift"], cwd=repo, check=True)
+            rust_drift = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            with self.assertRaisesRegex(GATE.GateError, "must not change attested Rust source"):
+                GATE.activation_changed_paths(repo, candidate, rust_drift)
+            with self.assertRaisesRegex(GATE.GateError, "must not change attested Rust source"):
+                GATE.annullable_activation_changed_paths(repo, candidate, rust_drift)
+            subprocess.run(["git", "reset", "-q", "--hard", activation], cwd=repo, check=True)
+
+            # An incidental protected-main commit that swaps a deployed
+            # domain-core artifact (vendored wasm, bindings, prebuilt binaries)
+            # must fail closed for both closures: the promotion sidecars pin
+            # only the Rust source fingerprint, not the artifact bytes.
+            wasm_path = repo / "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm"
+            wasm_path.parent.mkdir(parents=True)
+            wasm_path.write_bytes(b"\x00asm swapped")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "incidental artifact swap"], cwd=repo, check=True)
+            (repo / "config/domain-core-legacy-deletion.json").write_text('{"state":"promotion_after_artifact_swap"}\n')
+            (repo / GATE.BUILD_PROFILE_PATH).write_text(json.dumps(profiles) + "\n\n\n")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "activation after artifact swap"], cwd=repo, check=True)
+            artifact_drift = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            with self.assertRaisesRegex(GATE.GateError, "must not change deployed domain-core artifacts"):
+                GATE.activation_changed_paths(repo, candidate, artifact_drift)
+            with self.assertRaisesRegex(GATE.GateError, "must not change deployed domain-core artifacts"):
+                GATE.annullable_activation_changed_paths(repo, candidate, artifact_drift)
 
     def test_historical_activation_closure_accepts_trusted_manifest_refresh(self) -> None:
         candidate = "3efe9feecb4bb10ca67b21109914b2f0f8e40601"

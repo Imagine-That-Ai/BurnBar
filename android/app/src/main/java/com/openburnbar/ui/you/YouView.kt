@@ -49,7 +49,15 @@ import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 
-private enum class YouSubScreen { Root, SmartDisplays, MenuBarPrefs, ChatTiles, Settings, ComputerUse }
+private enum class YouSubScreen {
+    Root,
+    ConnectedDevices,
+    SmartDisplays,
+    MenuBarPrefs,
+    ChatTiles,
+    Settings,
+    ComputerUse,
+}
 
 @Composable
 fun YouView(
@@ -77,6 +85,7 @@ fun YouView(
                     ),
                     navigation =
                     YouRootNavigation(
+                        onOpenConnectedDevices = { subScreen = YouSubScreen.ConnectedDevices },
                         onOpenSmartDisplays = { subScreen = YouSubScreen.SmartDisplays },
                         onOpenMenuBarPrefs = { subScreen = YouSubScreen.MenuBarPrefs },
                         onOpenChatTiles = { subScreen = YouSubScreen.ChatTiles },
@@ -84,11 +93,17 @@ fun YouView(
                         onOpenControlCenter = youRootOpenControlCenterHandler(LocalContext.current),
                     ),
                 )
+            YouSubScreen.ConnectedDevices ->
+                ConnectedDevicesScreen(
+                    store = devicesStore,
+                    onBack = { subScreen = YouSubScreen.Root },
+                )
             YouSubScreen.SmartDisplays -> SmartDisplayView(onBack = { subScreen = YouSubScreen.Root })
             YouSubScreen.MenuBarPrefs -> MenuBarPrefsView(onBack = { subScreen = YouSubScreen.Root })
             YouSubScreen.ChatTiles -> com.openburnbar.ui.hermes.ChatTilesSettingsScreen(onBack = { subScreen = YouSubScreen.Root })
             YouSubScreen.Settings ->
                 SettingsRootScreen(
+                    devicesStore = devicesStore,
                     onBack = { subScreen = YouSubScreen.Root },
                     onComputerUse = { subScreen = YouSubScreen.ComputerUse },
                     onMenuBarPrefs = { onBack -> MenuBarPrefsView(onBack = onBack) },

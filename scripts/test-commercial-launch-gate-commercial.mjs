@@ -11,6 +11,7 @@ import {
   evaluateAppStoreProductReadiness,
   evaluateCloudRunServiceReadiness,
   evaluateElderWandHostedSearchRuntime,
+  evaluateFirebaseFunctionsSourceIdentity,
   evaluateAlertDeliverabilityEvidence,
   evaluateEnvRequirements,
   evaluateHostedQuotaRunnerEndpoint,
@@ -19,7 +20,10 @@ import {
   evaluateRemoteConfigDefaults,
   evaluateRequiredProductIDs,
   evaluateLatestMergedPrForMain,
+  evaluateMergedPrHeadTreeBinding,
   evaluateTrustedGitHubActionsCheckRun,
+  selectMainOrMergedPrHeadCheck,
+  collectCompleteCheckRunPages,
   actionsRunIdFromCheckRun,
   requiredVerifiableAlertChannels,
   verdict,
@@ -48,6 +52,8 @@ assert.match(launchGateSource, /validateLaunchEvidenceBundle/);
 assert.match(launchGateSource, /firestoreDisasterRecovery/);
 assert.match(launchGateSource, /googlePlayRtdn/);
 assert.match(launchGateSource, /googlePlayDeveloperNotifications/);
+assert.match(launchGateSource, /firebaseFunctionsSourceIdentity/);
+assert.match(launchGateSource, /OPENBURNBAR_SOURCE_COMMIT/);
 assert.match(
   launchGateSource,
   /google-play-developer-notifications@system\.gserviceaccount\.com/,
@@ -55,6 +61,14 @@ assert.match(
 assert.match(launchGateSource, /alertDeliverability/);
 assert.match(launchGateSource, /openburnbar-hosted-mcp/);
 assert.match(launchGateSource, /HOSTED_QUOTA_RUNNER_ALLOWED_HOSTS/);
+assert.match(
+  launchGateSource,
+  /const REQUIRED_MAIN_GATE_CHECK = "BurnBar CI Gate"/,
+);
+assert.match(
+  launchGateSource,
+  /\.github\/workflows\/burnbar-ci-gate\.yml/,
+);
 assert.doesNotMatch(
   launchGateSource,
   /run\(\s*["']curl["']\s*,\s*\[[\s\S]{0,900}Authorization:\s*`?Bearer/u,
@@ -63,6 +77,143 @@ assert.doesNotMatch(
   launchGateSource,
   /["']-H["'][\s\S]{0,120}Authorization:\s*`?Bearer/u,
 );
+
+{
+  const candidate = "a".repeat(40);
+  const exact = evaluateFirebaseFunctionsSourceIdentity(
+    [
+      {
+        name: "projects/burnbar/locations/us-central1/functions/checkout",
+        serviceConfig: {
+          environmentVariables: {
+            OPENBURNBAR_SOURCE_COMMIT: candidate,
+          },
+        },
+      },
+      {
+        name: "projects/burnbar/locations/us-central1/functions/webhook",
+        serviceConfig: {
+          environmentVariables: {
+            OPENBURNBAR_SOURCE_COMMIT: candidate.toUpperCase(),
+          },
+        },
+      },
+    ],
+    candidate,
+  );
+  assert.equal(exact.ok, true);
+  assert.equal(exact.count, 2);
+  assert.equal(exact.exactCount, 2);
+  assert.deepEqual(exact.missingMetadata, []);
+  assert.deepEqual(exact.invalidMetadata, []);
+  assert.deepEqual(exact.mismatchedByCommit, []);
+}
+
+{
+  const candidate = "a".repeat(40);
+  const stale = "b".repeat(40);
+  const evaluated = evaluateFirebaseFunctionsSourceIdentity(
+    [
+      {
+        name: "projects/burnbar/locations/us-central1/functions/exact",
+        serviceConfig: {
+          environmentVariables: {
+            OPENBURNBAR_SOURCE_COMMIT: candidate,
+          },
+        },
+      },
+      {
+        name: "projects/burnbar/locations/us-central1/functions/missing",
+        serviceConfig: { environmentVariables: {} },
+      },
+      {
+        name: "projects/burnbar/locations/us-central1/functions/staleB",
+        serviceConfig: {
+          environmentVariables: {
+            OPENBURNBAR_SOURCE_COMMIT: stale,
+          },
+        },
+      },
+      {
+        name: "projects/burnbar/locations/us-central1/functions/staleA",
+        serviceConfig: {
+          environmentVariables: {
+            OPENBURNBAR_SOURCE_COMMIT: stale,
+          },
+        },
+      },
+      {
+        name: "projects/burnbar/locations/us-central1/functions/malformed",
+        serviceConfig: {
+          environmentVariables: {
+            OPENBURNBAR_SOURCE_COMMIT: "main",
+          },
+        },
+      },
+    ],
+    candidate,
+  );
+  assert.equal(evaluated.ok, false);
+  assert.equal(evaluated.count, 5);
+  assert.equal(evaluated.exactCount, 1);
+  assert.deepEqual(evaluated.missingMetadata, ["missing"]);
+  assert.deepEqual(evaluated.invalidMetadata, ["malformed"]);
+  assert.deepEqual(evaluated.mismatchedByCommit, [
+    {
+      commit: stale,
+      count: 2,
+      functions: ["staleA", "staleB"],
+    },
+  ]);
+}
+
+{
+  const invalidCandidate = evaluateFirebaseFunctionsSourceIdentity([], "main");
+  assert.equal(invalidCandidate.ok, false);
+  assert.match(invalidCandidate.error, /full 40-character Git SHA/);
+
+  const emptyInventory = evaluateFirebaseFunctionsSourceIdentity(
+    [],
+    "a".repeat(40),
+  );
+  assert.equal(emptyInventory.ok, false);
+  assert.match(emptyInventory.error, /empty or malformed/);
+}
+
+{
+  const firstPage = Array.from({ length: 100 }, (_, index) => ({
+    id: index + 1,
+    name: `check-${index + 1}`,
+  }));
+  const requiredOnSecondPage = {
+    id: 101,
+    name: "BurnBar CI Gate",
+  };
+  const complete = collectCompleteCheckRunPages([
+    { total_count: 101, check_runs: firstPage },
+    { total_count: 101, check_runs: [requiredOnSecondPage] },
+  ]);
+  assert.equal(complete.ok, true);
+  assert.equal(complete.pagesFetched, 2);
+  assert.equal(complete.checkRuns.length, 101);
+  assert.equal(
+    complete.checkRuns.find((check) => check.name === "BurnBar CI Gate")?.id,
+    101,
+  );
+
+  const incomplete = collectCompleteCheckRunPages([
+    { total_count: 101, check_runs: firstPage },
+  ]);
+  assert.equal(incomplete.ok, false);
+  assert.match(incomplete.error, /incomplete check-runs pagination/);
+
+  const changingTotal = collectCompleteCheckRunPages([
+    { total_count: 101, check_runs: firstPage },
+    { total_count: 102, check_runs: [requiredOnSecondPage] },
+  ]);
+  assert.equal(changingTotal.ok, false);
+  assert.match(changingTotal.error, /total_count changed while paginating/);
+}
 
 {
   const trustedCheck = {
@@ -127,17 +278,37 @@ assert.doesNotMatch(
 }
 
 {
-  assert.equal(
-    evaluateLatestMergedPrForMain({
-      mainSha: "merge-sha",
-      merged: {
-        number: 835,
-        head: { sha: "head-sha" },
-        merge_commit_sha: "merge-sha",
-      },
-    }).ok,
-    true,
-  );
+  const latestMergedPr = evaluateLatestMergedPrForMain({
+    mainSha: "merge-sha",
+    merged: {
+      number: 835,
+      head: { sha: "head-sha" },
+      merge_commit_sha: "merge-sha",
+    },
+  });
+  assert.equal(latestMergedPr.ok, true);
+  assert.equal(latestMergedPr.mainSha, "merge-sha");
+  assert.equal(latestMergedPr.checkedSha, "head-sha");
+  const exactTreeBinding = evaluateMergedPrHeadTreeBinding({
+    mainSha: "merge-sha",
+    headSha: "head-sha",
+    mainTreeSha: "tree-sha",
+    headTreeSha: "tree-sha",
+  });
+  assert.equal(exactTreeBinding.ok, true);
+  assert.equal(exactTreeBinding.binding, "exact-git-tree");
+  const treeBoundLatestMergedPr = {
+    ...latestMergedPr,
+    treeBinding: exactTreeBinding,
+  };
+  const mismatchedTreeBinding = evaluateMergedPrHeadTreeBinding({
+    mainSha: "merge-sha",
+    headSha: "head-sha",
+    mainTreeSha: "main-tree",
+    headTreeSha: "head-tree",
+  });
+  assert.equal(mismatchedTreeBinding.ok, false);
+  assert.match(mismatchedTreeBinding.reason, /differs from the merged PR head tree/);
   const directMain = evaluateLatestMergedPrForMain({
     mainSha: "direct-main-sha",
     merged: {
@@ -149,6 +320,93 @@ assert.doesNotMatch(
   assert.equal(directMain.ok, false);
   assert.match(
     directMain.reason,
+    /origin\/main has advanced past the latest merged PR/,
+  );
+
+  const missingMainCheck = {
+    ok: false,
+    status: "missing",
+    conclusion: null,
+    trust: "missing-check-run",
+  };
+  const trustedMergedPrHeadCheck = {
+    ok: true,
+    status: "completed",
+    conclusion: "success",
+    trust: "trusted",
+    headSha: "head-sha",
+  };
+  const fallback = selectMainOrMergedPrHeadCheck({
+    mainSha: "merge-sha",
+    mainCheck: missingMainCheck,
+    latestPr: treeBoundLatestMergedPr,
+    mergedPrHeadCheck: trustedMergedPrHeadCheck,
+  });
+  assert.equal(fallback.ok, true);
+  assert.equal(fallback.evidenceSource, "merged-pr-head");
+  assert.equal(fallback.checkedSha, "head-sha");
+  assert.equal(fallback.mergeCommitSha, "merge-sha");
+  assert.equal(fallback.treeBinding.binding, "exact-git-tree");
+  assert.equal(fallback.fallbackUsed, true);
+
+  const unboundHeadDoesNotFallback = selectMainOrMergedPrHeadCheck({
+    mainSha: "merge-sha",
+    mainCheck: missingMainCheck,
+    latestPr: latestMergedPr,
+    mergedPrHeadCheck: trustedMergedPrHeadCheck,
+  });
+  assert.equal(unboundHeadDoesNotFallback.ok, false);
+  assert.equal(unboundHeadDoesNotFallback.evidenceSource, "main");
+  assert.match(
+    unboundHeadDoesNotFallback.fallbackError,
+    /latest merged PR could not be tied to origin\/main/,
+  );
+
+  const trustedMainCheck = {
+    ok: true,
+    status: "completed",
+    conclusion: "success",
+    trust: "trusted",
+    headSha: "merge-sha",
+  };
+  const mainEvidenceWins = selectMainOrMergedPrHeadCheck({
+    mainSha: "merge-sha",
+    mainCheck: trustedMainCheck,
+    latestPr: treeBoundLatestMergedPr,
+    mergedPrHeadCheck: trustedMergedPrHeadCheck,
+  });
+  assert.equal(mainEvidenceWins.ok, true);
+  assert.equal(mainEvidenceWins.evidenceSource, "main");
+  assert.equal(mainEvidenceWins.checkedSha, "merge-sha");
+  assert.equal(mainEvidenceWins.fallbackUsed, false);
+
+  const pendingMainCheck = {
+    ok: false,
+    status: "in_progress",
+    conclusion: null,
+    trust: "check-not-successful",
+  };
+  const pendingDoesNotFallback = selectMainOrMergedPrHeadCheck({
+    mainSha: "merge-sha",
+    mainCheck: pendingMainCheck,
+    latestPr: treeBoundLatestMergedPr,
+    mergedPrHeadCheck: trustedMergedPrHeadCheck,
+  });
+  assert.equal(pendingDoesNotFallback.ok, false);
+  assert.equal(pendingDoesNotFallback.evidenceSource, "main");
+  assert.equal(pendingDoesNotFallback.checkedSha, "merge-sha");
+  assert.equal(pendingDoesNotFallback.fallbackUsed, false);
+
+  const ancestryMismatchDoesNotFallback = selectMainOrMergedPrHeadCheck({
+    mainSha: "direct-main-sha",
+    mainCheck: missingMainCheck,
+    latestPr: directMain,
+    mergedPrHeadCheck: trustedMergedPrHeadCheck,
+  });
+  assert.equal(ancestryMismatchDoesNotFallback.ok, false);
+  assert.equal(ancestryMismatchDoesNotFallback.evidenceSource, "main");
+  assert.match(
+    ancestryMismatchDoesNotFallback.fallbackError,
     /origin\/main has advanced past the latest merged PR/,
   );
 }
@@ -211,6 +469,7 @@ function passingChecks(overrides = {}) {
     firestoreDisasterRecovery: { ok: true },
     googlePlayRtdn: { ok: true },
     firebaseFunctionsInventory: { ok: true },
+    firebaseFunctionsSourceIdentity: { ok: true },
     launchEvidence: {
       ok: true,
       stages: {
@@ -284,6 +543,12 @@ function passingChecks(overrides = {}) {
   );
   assert.equal(
     verdict(passingChecks({ googlePlayRtdn: { ok: false } })).status,
+    "NO_GO",
+  );
+  assert.equal(
+    verdict(
+      passingChecks({ firebaseFunctionsSourceIdentity: { ok: false } }),
+    ).status,
     "NO_GO",
   );
 }

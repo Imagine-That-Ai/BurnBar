@@ -22,6 +22,8 @@ const DEFAULT_KMS_LOCATIONS = [
   "us-east4",
   "northamerica-northeast1",
 ];
+const DEFAULT_COMMAND_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
+const MAX_COMMAND_ERROR_LENGTH = 16_384;
 
 function usage() {
   console.log(`Usage: node scripts/ops/collect-firebase-security-evidence.mjs [options]
@@ -208,13 +210,20 @@ function redact(value) {
   );
 }
 
-function run(command, args, options = {}) {
+function boundedCommandError(value) {
+  const redacted = redactString(value);
+  if (redacted.length <= MAX_COMMAND_ERROR_LENGTH) return redacted;
+  return `${redacted.slice(0, MAX_COMMAND_ERROR_LENGTH)}\n[TRUNCATED_COMMAND_ERROR]`;
+}
+
+export function run(command, args, options = {}) {
   try {
     const stdout = execFileSync(command, args, {
       cwd: repoRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       timeout: options.timeout ?? 120_000,
+      maxBuffer: options.maxBuffer ?? DEFAULT_COMMAND_MAX_BUFFER_BYTES,
       env: { ...process.env, ...(options.env || {}) },
     });
     const trimmed = stdout.trim();
@@ -237,7 +246,9 @@ function run(command, args, options = {}) {
     return {
       ok: false,
       command: [command, ...args],
-      error: redactString(stderr || stdout || error.message || String(error)),
+      error: boundedCommandError(
+        stderr || error.message || stdout || String(error),
+      ),
       exitCode: typeof error.status === "number" ? error.status : null,
     };
   }
@@ -926,15 +937,26 @@ function collectIam(project) {
   };
 }
 
+export function functionListArgs(project, region) {
+  return [
+    "functions",
+    "list",
+    "--v2",
+    "--regions",
+    region,
+    "--project",
+    project,
+  ];
+}
+
 function collectFunctions(project, regions) {
   return {
     ok: true,
     regions: Object.fromEntries(
       regions.map((region) => {
-        const result = gcloudJson(
-          ["functions", "list", "--v2", "--regions", region],
-          { timeout: 120_000 },
-        );
+        const result = gcloudJson(functionListArgs(project, region), {
+          timeout: 120_000,
+        });
         const functions =
           result.ok && Array.isArray(result.stdout)
             ? result.stdout.map((fn) => ({

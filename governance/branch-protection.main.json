@@ -10,7 +10,8 @@
       "Firestore Security Rules Tests",
       "Functions (security vitest)",
       "OSV Scanner (open source vulnerabilities)",
-      "Secret Detection (gitleaks)"
+      "Secret Detection (gitleaks)",
+      "Domain Core Trusted Deletion Guard"
     ]
   },
   "_pending_required_status_checks": {

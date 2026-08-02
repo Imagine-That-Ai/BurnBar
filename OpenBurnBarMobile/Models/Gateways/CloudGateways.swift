@@ -122,6 +122,7 @@ public struct DeviceRecord: Sendable, Equatable, Identifiable {
 @MainActor
 public protocol DeviceTrustGateway: AnyObject {
     func bootstrapApproveSelf() async throws
+    func approve(deviceID: String) async throws
     func renameSelf(_ newName: String) async throws
     func revoke(deviceID: String) async throws
 }

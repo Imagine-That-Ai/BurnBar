@@ -1,10 +1,203 @@
 package com.openburnbar.data.cloud
 
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FirebaseFirestore
+import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
+import io.mockk.Runs
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
+import io.mockk.just
+import io.mockk.mockk
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AndroidEscrowDeviceRegistryTest {
+    @Test
+    fun registerSelfSkipsRegistrationCallableWhenDeviceAlreadyTrusted() {
+        val securityClient = mockk<ComputerUseSecurityCallableClient>()
+
+        val registration = runRegisterSelf(
+            existingTrustState = AndroidEscrowDeviceRegistry.TRUSTED,
+            securityClient = securityClient,
+        )
+
+        assertEquals(AndroidEscrowDeviceRegistry.TRUSTED, registration.trustState)
+        coVerify(exactly = 0) {
+            securityClient.registerEscrowDevice(any(), any(), any(), any(), any(), any())
+        }
+    }
+
+    @Test
+    fun registerSelfInvokesRegistrationCallableWhenDeviceIsNotTrusted() {
+        val securityClient = mockk<ComputerUseSecurityCallableClient>()
+        coEvery {
+            securityClient.registerEscrowDevice(any(), any(), any(), any(), any(), any())
+        } just Runs
+
+        val registration = runRegisterSelf(existingTrustState = null, securityClient = securityClient)
+
+        assertEquals(AndroidEscrowDeviceRegistry.PENDING, registration.trustState)
+        coVerify(exactly = 1) {
+            securityClient.registerEscrowDevice(
+                deviceId = eq(TEST_DEVICE_ID),
+                deviceName = any(),
+                platform = eq("Android"),
+                appVersion = isNull(),
+                publicKeyFingerprint = eq(testPublicKey.fingerprint),
+                keyVersion = eq(TEST_KEY_VERSION),
+            )
+        }
+    }
+
+    @Test
+    fun registerSelfInvokesRegistrationCallableWhenDeviceIsPending() {
+        val securityClient = mockk<ComputerUseSecurityCallableClient>()
+        coEvery {
+            securityClient.registerEscrowDevice(any(), any(), any(), any(), any(), any())
+        } just Runs
+
+        val registration = runRegisterSelf(
+            existingTrustState = AndroidEscrowDeviceRegistry.PENDING,
+            securityClient = securityClient,
+        )
+
+        assertEquals(AndroidEscrowDeviceRegistry.PENDING, registration.trustState)
+        coVerify(exactly = 1) {
+            securityClient.registerEscrowDevice(any(), any(), any(), any(), any(), any())
+        }
+    }
+
+    private fun runRegisterSelf(existingTrustState: String?, securityClient: ComputerUseSecurityCallableClient): AndroidEscrowDeviceRegistration {
+        val keypair = mockk<AndroidCloudVaultDeviceKeypair> {
+            every { deviceId } returns TEST_DEVICE_ID
+            every { publicKeyFingerprint } returns testPublicKey.fingerprint
+            every { keyVersion } returns TEST_KEY_VERSION
+            every { publicKeyData } returns testPublicKeyBytes
+        }
+        val firestore = makeFirestore(existingTrustState = existingTrustState)
+        mockkObject(AndroidSignalIdentityKeyStore)
+        return try {
+            every {
+                AndroidSignalIdentityKeyStore.loadOrCreate(any(), any())
+            } throws IllegalStateException("Signal identity store is unavailable in JVM tests.")
+            runBlocking {
+                AndroidEscrowDeviceRegistry(firestore = firestore, securityClient = securityClient)
+                    .registerSelf(uid = TEST_UID, keypair = keypair)
+            }
+        } finally {
+            unmockkObject(AndroidSignalIdentityKeyStore)
+        }
+    }
+
+    private fun makeFirestore(existingTrustState: String?): FirebaseFirestore {
+        val deviceSnapshot = mockk<DocumentSnapshot> {
+            every { getString("trustState") } returns existingTrustState
+            every { data } returns mapOf(
+                "trustState" to existingTrustState,
+                "platform" to "Android",
+                "publicKeyFingerprint" to testPublicKey.fingerprint,
+                "keyVersion" to TEST_KEY_VERSION.toLong(),
+            )
+        }
+        val deviceRef = mockk<DocumentReference> {
+            every { get() } returns Tasks.forResult(deviceSnapshot)
+        }
+        val publicKeySnapshot = mockk<DocumentSnapshot> {
+            every { exists() } returns true
+            every { data } returns mapOf(
+                "deviceId" to TEST_DEVICE_ID,
+                "publicKeyData" to testPublicKey.dataBase64,
+                "publicKeyFingerprint" to testPublicKey.fingerprint,
+                "keyVersion" to TEST_KEY_VERSION.toLong(),
+                "algorithm" to AndroidEscrowDeviceRegistry.ESCROW_PUBLIC_KEY_ALGORITHM,
+            )
+        }
+        val publicKeyRef = mockk<DocumentReference> {
+            every { get() } returns Tasks.forResult(publicKeySnapshot)
+        }
+        val escrowDevicesCollection = mockk<CollectionReference> {
+            every { document(TEST_DEVICE_ID) } returns deviceRef
+        }
+        val publicKeysCollection = mockk<CollectionReference> {
+            every { document("${TEST_DEVICE_ID}_$TEST_KEY_VERSION") } returns publicKeyRef
+        }
+        val userRef = mockk<DocumentReference> {
+            every { collection("escrow_devices") } returns escrowDevicesCollection
+            every { collection("escrow_public_keys") } returns publicKeysCollection
+        }
+        val usersCollection = mockk<CollectionReference> {
+            every { document(TEST_UID) } returns userRef
+        }
+        return mockk<FirebaseFirestore> {
+            every { collection("users") } returns usersCollection
+        }
+    }
+
+    @Test
+    fun trustedDeviceMatcherAcceptsSameAndroidKey() {
+        assertTrue(
+            AndroidEscrowDeviceRegistry.trustedDeviceDocumentMatches(
+                data = mapOf(
+                    "trustState" to AndroidEscrowDeviceRegistry.TRUSTED,
+                    "platform" to "Android",
+                    "publicKeyFingerprint" to "fingerprint",
+                    "keyVersion" to 1L,
+                ),
+                publicKeyFingerprint = "fingerprint",
+                keyVersion = 1,
+            ),
+        )
+    }
+
+    @Test
+    fun trustedDeviceMatcherRejectsKeyOrTrustDrift() {
+        val baseline =
+            mapOf(
+                "trustState" to AndroidEscrowDeviceRegistry.TRUSTED,
+                "platform" to "Android",
+                "publicKeyFingerprint" to "fingerprint",
+                "keyVersion" to 1,
+            )
+
+        assertFalse(
+            AndroidEscrowDeviceRegistry.trustedDeviceDocumentMatches(
+                data = baseline + ("publicKeyFingerprint" to "different"),
+                publicKeyFingerprint = "fingerprint",
+                keyVersion = 1,
+            ),
+        )
+        assertFalse(
+            AndroidEscrowDeviceRegistry.trustedDeviceDocumentMatches(
+                data = baseline + ("keyVersion" to 2),
+                publicKeyFingerprint = "fingerprint",
+                keyVersion = 1,
+            ),
+        )
+        assertFalse(
+            AndroidEscrowDeviceRegistry.trustedDeviceDocumentMatches(
+                data = baseline + ("platform" to "iOS"),
+                publicKeyFingerprint = "fingerprint",
+                keyVersion = 1,
+            ),
+        )
+        assertFalse(
+            AndroidEscrowDeviceRegistry.trustedDeviceDocumentMatches(
+                data = baseline + ("trustState" to AndroidEscrowDeviceRegistry.PENDING),
+                publicKeyFingerprint = "fingerprint",
+                keyVersion = 1,
+            ),
+        )
+    }
+
     @Test
     fun publicKeyDocumentMatcherAcceptsExactDocument() {
         val publicKey = publicKeyMaterial(seed = 1)
@@ -157,11 +350,25 @@ class AndroidEscrowDeviceRegistryTest {
     )
 
     private fun publicKeyMaterial(seed: Int): PublicKeyMaterial {
-        val bytes = ByteArray(65) { index -> ((seed + index) and 0xFF).toByte() }
-        bytes[0] = 0x04
+        val bytes = publicKeyBytes(seed = seed)
         return PublicKeyMaterial(
             dataBase64 = CloudVaultCryptoSupport.encodeBase64(bytes),
             fingerprint = CloudVaultCrypto.sha256Base64(bytes),
         )
+    }
+
+    private val testPublicKeyBytes = publicKeyBytes(seed = 1)
+    private val testPublicKey = publicKeyMaterial(seed = 1)
+
+    private fun publicKeyBytes(seed: Int): ByteArray {
+        val bytes = ByteArray(65) { index -> ((seed + index) and 0xFF).toByte() }
+        bytes[0] = 0x04
+        return bytes
+    }
+
+    private companion object {
+        const val TEST_UID = "test-uid"
+        const val TEST_DEVICE_ID = "android-test-device"
+        const val TEST_KEY_VERSION = 1
     }
 }

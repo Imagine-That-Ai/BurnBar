@@ -17,6 +17,7 @@ interface Props {
   pathname?: string;
   noindex?: boolean;
   transactional?: boolean;
+  ambientEffects?: boolean;
 }
 
 const {
@@ -25,7 +26,8 @@ const {
   ogImage = "/og/default.png",
   pathname,
   noindex = false,
-  transactional = false
+  transactional = false,
+  ambientEffects = true
 } = Astro.props;
 
 // Firebase Hosting serves these pages without a trailing slash
@@ -137,24 +139,30 @@ const fullTitle =
     }
   </head>
   <body data-transactional-page={transactional ? "" : undefined}>
-    <!-- Interactive Token Ember Swarm Canvas Background (DARK theme) -->
-    <canvas
-      id="bgCanvas"
-      style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 0;"
-    ></canvas>
+    {
+      ambientEffects && (
+        <>
+          <!-- Interactive Token Ember Swarm Canvas Background (DARK theme) -->
+          <canvas
+            id="bgCanvas"
+            style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 0;"
+          />
 
-    <!-- Dot-logo constellation background (LIGHT theme) -->
-    <canvas
-      id="bgDots"
-      style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 0;"
-    ></canvas>
+          <!-- Dot-logo constellation background (LIGHT theme) -->
+          <canvas
+            id="bgDots"
+            style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 0;"
+          />
 
-    <!-- Easter-egg FX overlay: logo storm (dark) / cloud token rain (light) /
-         boundary "you've reached the end" tokens. Idles until summoned. -->
-    <canvas
-      id="bgFx"
-      style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 60;"
-    ></canvas>
+          <!-- Easter-egg FX overlay: logo storm (dark) / cloud token rain (light) /
+               boundary "you've reached the end" tokens. Idles until summoned. -->
+          <canvas
+            id="bgFx"
+            style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 60;"
+          />
+        </>
+      )
+    }
 
     <Header />
     <main id="main">

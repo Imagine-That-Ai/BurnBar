@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -270,7 +271,17 @@ private fun ScreenShareViewerPipelineClockEffects(params: ScreenShareViewerPipel
     val lastAutomaticReconnectAtMillis = params.lastAutomaticReconnectAtMillis
     val onLastAutomaticReconnectAtMillis = params.onLastAutomaticReconnectAtMillis
     val onReconnect = params.onReconnect
-    DisposableEffect(pipeline) { onDispose { runBlocking { pipeline.stop() } } }
+    DisposableEffect(pipeline) {
+        onDispose {
+            pipeline.surfaceLifecycleGate.retireCurrent()?.let { token ->
+                runBlocking {
+                    pipeline.surfaceLifecycleGate.runIfCurrent(token) {
+                        pipeline.stop()
+                    }
+                }
+            }
+        }
+    }
     LaunchedEffect(Unit) {
         while (true) {
             onNowMillis(System.currentTimeMillis())
@@ -394,6 +405,7 @@ private fun BoxScope.ScreenShareViewerToolsDockLayer(
         modifier =
         Modifier
             .align(Alignment.BottomCenter)
+            .navigationBarsPadding()
             .padding(horizontal = 14.dp, vertical = 18.dp)
             .graphicsLayer {
                 scaleX = uiState.trayScale

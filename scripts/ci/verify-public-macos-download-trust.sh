@@ -195,6 +195,13 @@ if [[ ! -s "$dmg_path" ]]; then
   exit 1
 fi
 
+download_sha256="$(shasum -a 256 "$dmg_path" | awk '{print toupper($1)}')"
+if [[ ! "$download_sha256" =~ ^[0-9A-F]{64}$ ]]; then
+  echo "::error::Unable to calculate a valid SHA-256 digest for $download_url." >&2
+  exit 1
+fi
+echo "Downloaded public macOS DMG SHA256=$download_sha256"
+
 fail_gate "Gatekeeper DMG assessment" \
   spctl -a -vv -t open --context context:primary-signature "$dmg_path"
 fail_gate "DMG notarization staple validation" \
@@ -270,7 +277,9 @@ if ! grep -q "${expected_team_id}\\.\\*\\|${expected_app_identifier}" <<<"$profi
 fi
 bash "$repo_root/scripts/ci/verify-signing-profile-certificate.sh" \
   "$app_path" \
-  "$embedded_profile"
+  "$embedded_profile" \
+  "$download_sha256" \
+  "$expected_version"
 
 signature="$(
   codesign -dv --verbose=4 "$app_path" 2>&1 || true

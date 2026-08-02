@@ -192,6 +192,45 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
         XCTAssertEqual(routes[0].generation, 4)
     }
 
+    func testParsesMultipleFreshActiveIrohControllerRoutes() throws {
+        let now: Int64 = 1_700_000_000_000
+        let firstNodeID = String(repeating: "a", count: 64)
+        let secondNodeID = String(repeating: "b", count: 64)
+        let routes = try ComputerUseSecurityCallableClient.parseActiveIrohControllerRoutes(
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": NSNumber(value: now),
+                "routes": [
+                    [
+                        "connectionId": "connection-1",
+                        "sourceDeviceId": "ios-device-1",
+                        "transportNodeId": firstNodeID,
+                        "authorityPeerNodeId": "ios-phone-authority-1",
+                        "generation": NSNumber(value: 4),
+                        "registeredAtMillis": NSNumber(value: now - 1_000),
+                        "expiresAtMillis": NSNumber(value: now + 60_000)
+                    ],
+                    [
+                        "connectionId": "connection-1",
+                        "sourceDeviceId": "android-device-1",
+                        "transportNodeId": secondNodeID,
+                        "authorityPeerNodeId": "android-phone-authority-1",
+                        "generation": NSNumber(value: 2),
+                        "registeredAtMillis": NSNumber(value: now - 500),
+                        "expiresAtMillis": NSNumber(value: now + 90_000)
+                    ]
+                ]
+            ],
+            expectedUID: "user-1",
+            expectedConnectionId: "connection-1",
+            nowMillis: now
+        )
+
+        XCTAssertEqual(routes.map(\.sourceDeviceId), ["ios-device-1", "android-device-1"])
+        XCTAssertEqual(routes.map(\.transportNodeId), [firstNodeID, secondNodeID])
+    }
+
     func testRejectsAmbiguousStaleOrMismatchedIrohControllerRouteResponse() {
         let now: Int64 = 1_700_000_000_000
         let route: [String: Any] = [
@@ -205,7 +244,30 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
         ]
         let invalidResponses: [[String: Any]] = [
             ["uid": "user-other", "connectionId": "connection-1", "resolvedAtMillis": now, "routes": [route]],
-            ["uid": "user-1", "connectionId": "connection-1", "resolvedAtMillis": now, "routes": [route, route]],
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": now,
+                "routes": [
+                    route,
+                    route.merging([
+                        "transportNodeId": String(repeating: "b", count: 64),
+                        "authorityPeerNodeId": "ios-phone-authority-2"
+                    ]) { _, replacement in replacement }
+                ]
+            ],
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": now,
+                "routes": [
+                    route,
+                    route.merging([
+                        "sourceDeviceId": "android-device-1",
+                        "authorityPeerNodeId": "android-phone-authority-1"
+                    ]) { _, replacement in replacement }
+                ]
+            ],
             ["uid": "user-1", "connectionId": "connection-1", "resolvedAtMillis": now - 60_001, "routes": [route]],
             ["uid": "user-1", "connectionId": "connection-other", "resolvedAtMillis": now, "routes": [route]],
             [
@@ -813,6 +875,118 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
                 capture.markedFailureMessage = error.localizedDescription
             }
         )
+    }
+
+    // MARK: - High-risk nonce mint with App Check binding-conflict recovery
+
+    private func functionsError(code: FunctionsErrorCode, message: String) -> NSError {
+        NSError(
+            domain: FunctionsErrorDomain,
+            code: code.rawValue,
+            userInfo: [NSLocalizedDescriptionKey: message]
+        )
+    }
+
+    func testReboundHighRiskActionNonceRebindsThenRemintsAfterBindingConflict() async throws {
+        var rebindCount = 0
+        var mintCount = 0
+        var rebindHappenedBeforeMint = false
+        let conflict = functionsError(
+            code: .permissionDenied,
+            message: "App Check binding mismatch for this app instance."
+        )
+
+        let nonce = try await ComputerUseSecurityCallableClient.reboundHighRiskActionNonce(
+            afterBindingConflict: conflict,
+            rebindAttestation: { rebindCount += 1 },
+            issueNonce: {
+                rebindHappenedBeforeMint = rebindCount == 1
+                mintCount += 1
+                return "nonce-after-rebind"
+            }
+        )
+
+        XCTAssertEqual(nonce, "nonce-after-rebind")
+        XCTAssertEqual(rebindCount, 1)
+        XCTAssertEqual(mintCount, 1)
+        XCTAssertTrue(rebindHappenedBeforeMint)
+    }
+
+    func testReboundHighRiskActionNonceRethrowsNonConflictErrorsWithoutRebinding() async {
+        var rebindCount = 0
+        var mintCount = 0
+        let unrelated = functionsError(code: .notFound, message: "App Check binding mismatch")
+
+        await XCTAssertThrowsErrorAsync({
+            try await ComputerUseSecurityCallableClient.reboundHighRiskActionNonce(
+                afterBindingConflict: unrelated,
+                rebindAttestation: { rebindCount += 1 },
+                issueNonce: {
+                    mintCount += 1
+                    return "unreachable"
+                }
+            )
+        }, { error in
+            XCTAssertEqual((error as NSError).code, FunctionsErrorCode.notFound.rawValue)
+        })
+
+        XCTAssertEqual(rebindCount, 0)
+        XCTAssertEqual(mintCount, 0)
+    }
+
+    func testReboundHighRiskActionNoncePropagatesPersistentConflictAfterSingleRetry() async {
+        var rebindCount = 0
+        var mintCount = 0
+        let conflict = functionsError(
+            code: .failedPrecondition,
+            message: "Call bindAppCheckAttestation before high-risk actions."
+        )
+
+        await XCTAssertThrowsErrorAsync({
+            try await ComputerUseSecurityCallableClient.reboundHighRiskActionNonce(
+                afterBindingConflict: conflict,
+                rebindAttestation: { rebindCount += 1 },
+                issueNonce: {
+                    mintCount += 1
+                    throw conflict
+                }
+            )
+        }, { error in
+            XCTAssertEqual((error as NSError).code, FunctionsErrorCode.failedPrecondition.rawValue)
+        })
+
+        XCTAssertEqual(rebindCount, 1)
+        XCTAssertEqual(mintCount, 1)
+    }
+
+    func testAppCheckBindingConflictErrorRequiresFunctionsBindingGateSignature() {
+        XCTAssertTrue(ComputerUseSecurityCallableClient.isAppCheckBindingConflictError(
+            functionsError(code: .permissionDenied, message: "App Check binding mismatch")
+        ))
+        XCTAssertTrue(ComputerUseSecurityCallableClient.isAppCheckBindingConflictError(
+            functionsError(code: .failedPrecondition, message: "Call bindAppCheckAttestation before this action.")
+        ))
+
+        // Right code, unrelated message: not a binding conflict.
+        XCTAssertFalse(ComputerUseSecurityCallableClient.isAppCheckBindingConflictError(
+            functionsError(code: .permissionDenied, message: "Caller lacks the owner role.")
+        ))
+        // Right message, non-gate code: not a binding conflict.
+        XCTAssertFalse(ComputerUseSecurityCallableClient.isAppCheckBindingConflictError(
+            functionsError(code: .notFound, message: "App Check binding mismatch")
+        ))
+        // Non-Functions domain: not a binding conflict.
+        XCTAssertFalse(ComputerUseSecurityCallableClient.isAppCheckBindingConflictError(
+            NSError(
+                domain: NSURLErrorDomain,
+                code: NSURLErrorTimedOut,
+                userInfo: [NSLocalizedDescriptionKey: "App Check timed out"]
+            )
+        ))
+        // Client-side error type: not a binding conflict.
+        XCTAssertFalse(ComputerUseSecurityCallableClient.isAppCheckBindingConflictError(
+            ComputerUseSecurityCallableClient.ClientError.invalidResponse("App Check")
+        ))
     }
 }
 

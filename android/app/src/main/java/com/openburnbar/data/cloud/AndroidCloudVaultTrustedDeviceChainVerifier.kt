@@ -3,10 +3,8 @@ package com.openburnbar.data.cloud
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
-import java.math.BigInteger
 import java.security.KeyPairGenerator
 import java.security.interfaces.ECPublicKey
-import java.security.spec.ECFieldFp
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.ECParameterSpec
 import kotlinx.coroutines.tasks.await
@@ -151,28 +149,6 @@ internal fun decodeCanonicalEscrowPublicKeyData(publicKeyBase64: String, context
         "$context escrow public key is invalid."
     }
     return publicKeyData
-}
-
-private fun requireP256Point(publicKey: java.security.PublicKey, context: String) {
-    val ecPublicKey = publicKey as? ECPublicKey
-        ?: error("$context escrow public key is invalid.")
-    val field = ecPublicKey.params.curve.field as? ECFieldFp
-        ?: error("$context escrow public key is invalid.")
-    val p = field.p
-    val x = ecPublicKey.w.affineX
-    val y = ecPublicKey.w.affineY
-    check(x.signum() >= 0 && y.signum() >= 0 && x < p && y < p) {
-        "$context escrow public key is invalid."
-    }
-    val curve = ecPublicKey.params.curve
-    val left = y.modPow(BigInteger.valueOf(2), p)
-    val right = x.modPow(BigInteger.valueOf(3), p)
-        .add(curve.a.multiply(x))
-        .add(curve.b)
-        .mod(p)
-    check(left == right) {
-        "$context escrow public key is invalid."
-    }
 }
 
 private suspend fun loadSignalIdentityMaterial(userRef: DocumentReference, deviceId: String, keyVersion: Int): TrustedSignalIdentityMaterial {

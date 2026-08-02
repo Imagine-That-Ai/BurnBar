@@ -9,6 +9,8 @@ import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import java.util.Date
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -170,7 +172,7 @@ class DevicesStoreTest {
     }
 
     @Test
-    fun `dedupe prefers the active reinstall over stale trusted history`() {
+    fun `same-name Android registrations remain distinct across reinstalls`() {
         val staleTrusted =
             DeviceRecord(
                 id = "old-install",
@@ -192,12 +194,15 @@ class DevicesStoreTest {
 
         val visible = DevicesStore.deduplicated(listOf(staleTrusted, freshPending))
 
-        assertEquals("new-install", visible.single().id)
-        assertEquals(DeviceTrustState.PENDING, visible.single().trustState)
+        assertEquals(listOf("new-install", "old-install"), visible.map { it.id })
+        assertEquals(
+            listOf(DeviceTrustState.PENDING, DeviceTrustState.TRUSTED),
+            visible.map { it.trustState },
+        )
     }
 
     @Test
-    fun `dedupe never lets a revoked record mask an active one at equal freshness`() {
+    fun `same-name active and revoked registrations retain their stable identities`() {
         val revoked =
             DeviceRecord(
                 id = "revoked-install",
@@ -219,8 +224,43 @@ class DevicesStoreTest {
 
         val visible = DevicesStore.deduplicated(listOf(revoked, trusted))
 
-        assertEquals("trusted-install", visible.single().id)
-        assertEquals(DeviceTrustState.TRUSTED, visible.single().trustState)
+        assertEquals(setOf("revoked-install", "trusted-install"), visible.map { it.id }.toSet())
+        assertEquals(setOf("revoked-install", "trusted-install"), visible.map { it.stableIdentity }.toSet())
+    }
+
+    @Test
+    fun `bulk revocation awaits each device rotation before starting the next`() = runTest {
+        val devices =
+            listOf(
+                DeviceRecord(id = "first", escrowID = "escrow-first"),
+                DeviceRecord(id = "second", escrowID = "escrow-second"),
+                DeviceRecord(id = "third", escrowID = "escrow-third"),
+            )
+        val events = mutableListOf<String>()
+        var activeRevocations = 0
+        var maximumConcurrentRevocations = 0
+
+        DevicesStore.revokeSequentially(devices) { device ->
+            events += "start:${device.revocationDeviceID}"
+            activeRevocations += 1
+            maximumConcurrentRevocations = maxOf(maximumConcurrentRevocations, activeRevocations)
+            delay(1)
+            events += "finish:${device.revocationDeviceID}"
+            activeRevocations -= 1
+        }
+
+        assertEquals(1, maximumConcurrentRevocations)
+        assertEquals(
+            listOf(
+                "start:escrow-first",
+                "finish:escrow-first",
+                "start:escrow-second",
+                "finish:escrow-second",
+                "start:escrow-third",
+                "finish:escrow-third",
+            ),
+            events,
+        )
     }
 
     @Test

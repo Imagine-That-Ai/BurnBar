@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Mercury release build reliability
+
+- **Made clean Mercury XCFramework release builds deterministic across current
+  Apple toolchains**: the cross-target builder keeps host proc-macro dylibs
+  intact, strips debug data only from the final packaged archives, isolates its
+  Cargo target directory, and serializes Cargo by default.
+
+### Fixed - Trusted device identity control
+
+- **Kept every distinct trusted-device registration visible and independently
+  revocable**: a phone reinstall or identity rotation can no longer hide a stale
+  trusted registration behind the replacement device's matching name and
+  platform. Trusted Devices now shows a short identity suffix for precise,
+  accessible revocation.
+
 ### Fixed - Android Mercury keyboard reliability
 
 - **Made the screen-share keyboard reliably open and reopen on Android**:

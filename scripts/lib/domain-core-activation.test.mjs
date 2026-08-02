@@ -1,17 +1,26 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import {
+  activationChangedPaths,
   annullableActivationChangedPaths,
   domainCoreActivationReceiptClosure,
   resolveActiveDomainCoreActivation,
   validateDomainCoreAnnullableActivation,
   validateDomainCoreActivation,
+  validateDomainCoreReleaseActivation,
 } from "./domain-core-activation.mjs";
 
 function git(root, ...args) {
@@ -22,6 +31,8 @@ function git(root, ...args) {
 
 function fixture({
   interveningMainChange = false,
+  interveningSourceChange = false,
+  interveningArtifactChange = false,
   mixedInterveningMainChange = false,
   evidenceBeforeMainChange = false,
 } = {}) {
@@ -56,7 +67,10 @@ function fixture({
   const candidate = git(root, "rev-parse", "HEAD");
   if (evidenceBeforeMainChange) {
     mkdirSync(
-      join(root, "config/domain-core-legacy-deletion-receipts/quota.codex_usage/2"),
+      join(
+        root,
+        "config/domain-core-legacy-deletion-receipts/quota.codex_usage/2",
+      ),
       { recursive: true },
     );
     writeFileSync(
@@ -77,6 +91,31 @@ function fixture({
     );
     git(root, "add", ".");
     git(root, "commit", "-qm", "unrelated protected main advance");
+  }
+  if (interveningSourceChange) {
+    mkdirSync(join(root, "crates/openburnbar-domain-core/domain-core/src"), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(root, "crates/openburnbar-domain-core/domain-core/src/lib.rs"),
+      "pub fn changed() {}\n",
+    );
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "intervening source drift");
+  }
+  if (interveningArtifactChange) {
+    mkdirSync(join(root, "functions/vendor/openburnbar/domain-core-wasm"), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(
+        root,
+        "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm",
+      ),
+      "swapped wasm bytes\n",
+    );
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "intervening deployed artifact swap");
   }
   if (mixedInterveningMainChange) {
     mkdirSync(join(root, "functions"), { recursive: true });
@@ -116,18 +155,9 @@ test("accepts candidate C plus path-restricted activation P", () => {
   assert.equal(proof.activationCommit, value.activation);
 });
 
-test("annullable activation handles an unrelated protected-main advance without relaxing release validation", () => {
+test("activation handles an unrelated protected-main advance without relaxing the final activation commit", () => {
   const value = fixture({ interveningMainChange: true });
-  assert.throws(
-    () =>
-      validateDomainCoreActivation({
-        repoRoot: value.root,
-        candidateCommit: value.candidate,
-        activationCommit: value.activation,
-      }),
-    /forbidden paths/u,
-  );
-  const proof = validateDomainCoreAnnullableActivation({
+  const proof = validateDomainCoreActivation({
     repoRoot: value.root,
     candidateCommit: value.candidate,
     activationCommit: value.activation,
@@ -135,11 +165,160 @@ test("annullable activation handles an unrelated protected-main advance without 
   assert.equal(proof.candidateCommit, value.candidate);
   assert.equal(proof.activationCommit, value.activation);
   assert.ok(
-    !annullableActivationChangedPaths(
+    !activationChangedPaths(
       value.root,
       value.candidate,
       value.activation,
     ).includes("functions/.env.burnbar.production"),
+  );
+});
+
+test("activation rejects an intervening protected-main commit that changes attested Rust source", () => {
+  const value = fixture({ interveningSourceChange: true });
+  assert.throws(
+    () =>
+      validateDomainCoreActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        activationCommit: value.activation,
+      }),
+    /activation incidental protected-main commit .* must not change attested Rust source/u,
+  );
+});
+
+test("activation rejects an intervening protected-main commit that swaps deployed domain-core artifacts", () => {
+  // Promotion sidecars pin the Rust source fingerprint, not the deployed
+  // artifact bytes, so an incidental commit swapping a vendored artifact
+  // between C and P would ship unattested code and must fail closed.
+  const value = fixture({ interveningArtifactChange: true });
+  assert.throws(
+    () =>
+      validateDomainCoreActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        activationCommit: value.activation,
+      }),
+    /activation incidental protected-main commit .* must not change deployed domain-core artifacts/u,
+  );
+});
+
+test("release activation resolves activation P when protected main advances before the release is cut", () => {
+  // The ca605df1 shape: after activation P, protected main lands a commit
+  // that mixes an unrelated path with a trusted control-plane manifest
+  // refresh. The release commit R at HEAD is not the activation commit; the
+  // resolver must re-derive P from the authority files and accept R.
+  const value = fixture({ interveningMainChange: true });
+  writeFileSync(
+    join(value.root, "functions/.env.burnbar.production"),
+    "MIN_INSTANCES=2\n",
+  );
+  writeFileSync(
+    join(value.root, "config/domain-core-control-plane-manifest.json"),
+    "release control plane\n",
+  );
+  git(value.root, "add", ".");
+  git(value.root, "commit", "-qm", "post-activation mixed main advance");
+  const release = git(value.root, "rev-parse", "HEAD");
+  const proof = validateDomainCoreReleaseActivation({
+    repoRoot: value.root,
+    candidateCommit: value.candidate,
+    releaseCommit: release,
+  });
+  assert.equal(proof.active, true);
+  assert.equal(proof.candidateCommit, value.candidate);
+  assert.equal(proof.activationCommit, value.activation);
+  assert.equal(proof.releaseCommit, release);
+  const direct = validateDomainCoreActivation({
+    repoRoot: value.root,
+    candidateCommit: value.candidate,
+    activationCommit: value.activation,
+    requireHead: false,
+  });
+  assert.equal(proof.changedPathsSha256, direct.changedPathsSha256);
+});
+
+test("release activation requires the release commit to equal the checkout HEAD", () => {
+  const value = fixture({ interveningMainChange: true });
+  writeFileSync(
+    join(value.root, "functions/.env.burnbar.production"),
+    "MIN_INSTANCES=2\n",
+  );
+  git(value.root, "add", ".");
+  git(value.root, "commit", "-qm", "post-activation main advance");
+  assert.throws(
+    () =>
+      validateDomainCoreReleaseActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        releaseCommit: value.activation,
+      }),
+    /release commit must equal the exact release checkout HEAD/u,
+  );
+});
+
+test("release activation rejects post-activation drift of a single authority file", () => {
+  const value = fixture();
+  writeFileSync(
+    join(value.root, "config/domain-core-build-profiles.json"),
+    "rust drifted\n",
+  );
+  git(value.root, "add", ".");
+  git(value.root, "commit", "-qm", "post-activation authority drift");
+  assert.throws(
+    () =>
+      validateDomainCoreReleaseActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        releaseCommit: git(value.root, "rev-parse", "HEAD"),
+      }),
+    /activation authority files must resolve to the same first-parent commit/u,
+  );
+});
+
+test("release activation rejects post-activation drift of deployed domain-core artifacts", () => {
+  const value = fixture();
+  mkdirSync(join(value.root, "functions/vendor/openburnbar/domain-core-wasm"), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(
+      value.root,
+      "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm",
+    ),
+    "swapped wasm bytes\n",
+  );
+  git(value.root, "add", ".");
+  git(value.root, "commit", "-qm", "post-activation artifact swap");
+  assert.throws(
+    () =>
+      validateDomainCoreReleaseActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        releaseCommit: git(value.root, "rev-parse", "HEAD"),
+      }),
+    /domain-core activation authority drift after activation/u,
+  );
+});
+
+test("release activation rejects post-activation drift of activation evidence", () => {
+  const value = fixture({ evidenceBeforeMainChange: true });
+  writeFileSync(
+    join(
+      value.root,
+      "config/domain-core-legacy-deletion-receipts/quota.codex_usage/2/promotion.json",
+    ),
+    '{"tampered":true}\n',
+  );
+  git(value.root, "add", ".");
+  git(value.root, "commit", "-qm", "post-activation evidence tamper");
+  assert.throws(
+    () =>
+      validateDomainCoreReleaseActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        releaseCommit: git(value.root, "rev-parse", "HEAD"),
+      }),
+    /domain-core activation authority drift after activation/u,
   );
 });
 
@@ -195,12 +374,21 @@ test("rejects an intervening protected-main commit that mixes unrelated and acti
   const value = fixture({ mixedInterveningMainChange: true });
   assert.throws(
     () =>
+      validateDomainCoreActivation({
+        repoRoot: value.root,
+        candidateCommit: value.candidate,
+        activationCommit: value.activation,
+      }),
+    /activation incidental protected-main commit .* must not change activation authority paths/u,
+  );
+  assert.throws(
+    () =>
       validateDomainCoreAnnullableActivation({
         repoRoot: value.root,
         candidateCommit: value.candidate,
         activationCommit: value.activation,
       }),
-    /annullable incidental protected-main commit .* must not change activation authority paths/u,
+    /annullable activation incidental protected-main commit .* must not change activation authority paths/u,
   );
 });
 
@@ -389,22 +577,26 @@ test("re-attests every active domain across two incremental release epochs", () 
         cloudVaultSearch: "cloudvault-search",
       }[domain] ?? domain;
     const manifest = JSON.parse(
-      git(root, "show", `${candidate}:crates/openburnbar-domain-core/union-abi-manifest.json`),
+      git(
+        root,
+        "show",
+        `${candidate}:crates/openburnbar-domain-core/union-abi-manifest.json`,
+      ),
     );
-    const bundlePath =
-      `config/domain-core-promotion-bundles/${scope}/${generation}.json`;
-    const provenancePath =
-      `config/domain-core-promotion-provenance/${scope}/${generation}.json`;
+    const bundlePath = `config/domain-core-promotion-bundles/${scope}/${generation}.json`;
+    const provenancePath = `config/domain-core-promotion-provenance/${scope}/${generation}.json`;
     mkdirSync(join(root, bundlePath, ".."), { recursive: true });
     mkdirSync(join(root, provenancePath, ".."), { recursive: true });
-    writeFileSync(join(root, bundlePath), JSON.stringify({ domain, generation }));
+    writeFileSync(
+      join(root, bundlePath),
+      JSON.stringify({ domain, generation }),
+    );
     writeFileSync(
       join(root, provenancePath),
       JSON.stringify({ domain, generation, kind: "sigstore-fixture" }),
     );
     const generatedAt = `2026-01-${String(generation + 1).padStart(2, "0")}T00:00:00Z`;
-    const attestationPath =
-      `config/domain-core-promotion-attestations/${scope}/${generation}.json`;
+    const attestationPath = `config/domain-core-promotion-attestations/${scope}/${generation}.json`;
     mkdirSync(join(root, attestationPath, ".."), { recursive: true });
     writeFileSync(
       join(root, attestationPath),
@@ -457,8 +649,7 @@ test("re-attests every active domain across two incremental release epochs", () 
       row.authorityGeneration = generation;
       let supersedes = null;
       if (generation > 1) {
-        const previousPath =
-          `config/domain-core-legacy-deletion-receipts/${id}/${generation - 1}/stable_release.json`;
+        const previousPath = `config/domain-core-legacy-deletion-receipts/${id}/${generation - 1}/stable_release.json`;
         mkdirSync(join(root, previousPath, ".."), { recursive: true });
         writeFileSync(
           join(root, previousPath),
@@ -479,8 +670,7 @@ test("re-attests every active domain across two incremental release epochs", () 
             .digest("hex"),
         };
       }
-      const receiptPath =
-        `config/domain-core-legacy-deletion-receipts/${id}/${generation}/promotion.json`;
+      const receiptPath = `config/domain-core-legacy-deletion-receipts/${id}/${generation}/promotion.json`;
       mkdirSync(join(root, receiptPath, ".."), { recursive: true });
       writeFileSync(
         join(root, receiptPath),
@@ -518,7 +708,10 @@ test("re-attests every active domain across two incremental release epochs", () 
   mkdirSync(join(root, "scripts/lib"), { recursive: true });
   writeFileSync(
     join(root, "config/domain-core-promotion-policy.json"),
-    JSON.stringify({ schemaVersion: 3, authority: "unsigned-candidate-evaluation" }),
+    JSON.stringify({
+      schemaVersion: 3,
+      authority: "unsigned-candidate-evaluation",
+    }),
   );
   writeFileSync(
     join(root, "scripts/lib/domain-core-deterministic-candidate-bundle.mjs"),
@@ -541,7 +734,10 @@ test("re-attests every active domain across two incremental release epochs", () 
     verifyArtifactIdentity: false,
   });
   assert.equal(resolved.candidateCommit, candidateOne);
-  assert.deepEqual(resolved.domains.map(({ domain }) => domain), ["quota"]);
+  assert.deepEqual(
+    resolved.domains.map(({ domain }) => domain),
+    ["quota"],
+  );
 
   writeFileSync(
     join(root, "crates/openburnbar-domain-core/union-abi-manifest.json"),
@@ -590,7 +786,10 @@ test("release resolver recognizes only the fail-closed activation-annulment supe
     "promotion after annulment must attest a fresh replacement candidate",
     "promotion after annulment must descend from the advanced main commit",
   ]) {
-    assert.match(source, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
+    assert.match(
+      source,
+      new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"),
+    );
   }
 });
 
@@ -695,7 +894,8 @@ function activationAuthorityFixture() {
     candidate,
     "scripts/lib/domain-core-deterministic-candidate-bundle.mjs",
   );
-  const attestationPath = "config/domain-core-promotion-attestations/quota/1.json";
+  const attestationPath =
+    "config/domain-core-promotion-attestations/quota/1.json";
   function buildValidAttestation(commit) {
     const bundlePath = "config/domain-core-promotion-bundles/quota/1.json";
     const provenancePath =
@@ -735,8 +935,7 @@ function activationAuthorityFixture() {
       },
       status: "attested",
       generatedAt: "2026-01-02T00:00:00Z",
-      evidenceUri:
-        "https://github.com/Imagine-That-Ai/BurnBar/attestations/1",
+      evidenceUri: "https://github.com/Imagine-That-Ai/BurnBar/attestations/1",
     };
   }
   function writeAttestation(attestation) {
@@ -748,8 +947,7 @@ function activationAuthorityFixture() {
     for (const id of rowIds) {
       const row = ledger.rows.find((item) => item.id === id);
       row.authorityGeneration = 1;
-      const receiptPath =
-        `config/domain-core-legacy-deletion-receipts/${id}/1/promotion.json`;
+      const receiptPath = `config/domain-core-legacy-deletion-receipts/${id}/1/promotion.json`;
       mkdirSync(join(root, receiptPath, ".."), { recursive: true });
       writeFileSync(
         join(root, receiptPath),
@@ -802,9 +1000,13 @@ function writeJson(root, relPath, value) {
   writeFileSync(join(root, relPath), JSON.stringify(value));
 }
 
-function recommit(root, { refreshAttestationDigest = true } = {}) {
+function recommit(
+  root,
+  { refreshAttestationDigest = true, refreshActivationAuthority = true } = {},
+) {
+  let ledger;
   if (refreshAttestationDigest) {
-    const ledger = readJson(root, "config/domain-core-legacy-deletion.json");
+    ledger = readJson(root, "config/domain-core-legacy-deletion.json");
     for (const row of ledger.rows) {
       const receiptPath = row?.receipts?.promotion;
       if (typeof receiptPath !== "string") continue;
@@ -816,6 +1018,26 @@ function recommit(root, { refreshAttestationDigest = true } = {}) {
       );
       writeJson(root, receiptPath, receipt);
     }
+  }
+  if (refreshActivationAuthority) {
+    const profilesPath = join(root, "config/domain-core-build-profiles.json");
+    const ledgerPath = join(root, "config/domain-core-legacy-deletion.json");
+    const profiles = readJson(root, "config/domain-core-build-profiles.json");
+    ledger ??= readJson(root, "config/domain-core-legacy-deletion.json");
+    const profilesPretty = `${JSON.stringify(profiles, null, 2)}\n`;
+    const ledgerPretty = `${JSON.stringify(ledger, null, 2)}\n`;
+    writeFileSync(
+      profilesPath,
+      readFileSync(profilesPath, "utf8") === profilesPretty
+        ? JSON.stringify(profiles)
+        : profilesPretty,
+    );
+    writeFileSync(
+      ledgerPath,
+      readFileSync(ledgerPath, "utf8") === ledgerPretty
+        ? JSON.stringify(ledger)
+        : ledgerPretty,
+    );
   }
   git(root, "add", ".");
   git(root, "commit", "--allow-empty", "-qm", "tampered attestation material");
@@ -829,6 +1051,77 @@ function resolve(root, activation) {
     verifyArtifactIdentity: false,
   });
 }
+
+test("release resolver accepts an unrelated commit after the protected activation", () => {
+  const fx = activationAuthorityFixture();
+  mkdirSync(join(fx.root, "website/src"), { recursive: true });
+  writeFileSync(
+    join(fx.root, "website/src/pricing-copy.txt"),
+    "annual billing copy\n",
+  );
+  git(fx.root, "add", ".");
+  git(fx.root, "commit", "-qm", "unrelated website release");
+  const release = git(fx.root, "rev-parse", "HEAD");
+
+  const resolved = resolve(fx.root, release);
+
+  assert.equal(resolved.candidateCommit, fx.candidate);
+  assert.equal(resolved.activationCommit, fx.activation);
+});
+
+test("release resolver rejects promotion-attestation drift after activation", () => {
+  const fx = activationAuthorityFixture();
+  const attestation = readJson(fx.root, fx.attestationPath);
+  attestation.generatedAt = "2026-01-03T00:00:00Z";
+  writeJson(fx.root, fx.attestationPath, attestation);
+  const release = recommit(fx.root, {
+    refreshActivationAuthority: false,
+  });
+
+  assert.throws(
+    () => resolve(fx.root, release),
+    /domain-core activation authority drift after activation/u,
+  );
+});
+
+test("release resolver rejects digest-consistent bundle drift after activation", () => {
+  const fx = activationAuthorityFixture();
+  const attestation = readJson(fx.root, fx.attestationPath);
+  const bundlePath = attestation.unsignedBundle.path;
+  writeFileSync(
+    join(fx.root, bundlePath),
+    '{"bundle":"tampered-after-activation"}',
+  );
+  attestation.unsignedBundle.sha256 = sha256Bytes(
+    readFileSync(join(fx.root, bundlePath)),
+  );
+  writeJson(fx.root, fx.attestationPath, attestation);
+  const release = recommit(fx.root, {
+    refreshActivationAuthority: false,
+  });
+
+  assert.throws(
+    () => resolve(fx.root, release),
+    /domain-core activation authority drift after activation/u,
+  );
+});
+
+test("release resolver requires both activation authority files to identify one commit", () => {
+  const fx = activationAuthorityFixture();
+  const ledger = readJson(fx.root, "config/domain-core-legacy-deletion.json");
+  writeFileSync(
+    join(fx.root, "config/domain-core-legacy-deletion.json"),
+    `${JSON.stringify(ledger, null, 2)}\n`,
+  );
+  git(fx.root, "add", ".");
+  git(fx.root, "commit", "-qm", "rewrite only one activation authority file");
+  const release = git(fx.root, "rev-parse", "HEAD");
+
+  assert.throws(
+    () => resolve(fx.root, release),
+    /activation authority files must resolve to the same first-parent commit/u,
+  );
+});
 
 test("rejects attestation with a forged candidate commit even when ancestry and identity match", () => {
   const fx = activationAuthorityFixture();
@@ -864,10 +1157,7 @@ test("rejects attestation with a non-integer signer run id", () => {
   attestation.provenance.signerRunId = 0;
   writeJson(fx.root, fx.attestationPath, attestation);
   const activation = recommit(fx.root);
-  assert.throws(
-    () => resolve(fx.root, activation),
-    /attestation signer run/u,
-  );
+  assert.throws(() => resolve(fx.root, activation), /attestation signer run/u);
 });
 
 test("rejects attestation with a non-integer signer run attempt", () => {
@@ -876,10 +1166,7 @@ test("rejects attestation with a non-integer signer run attempt", () => {
   attestation.provenance.signerRunAttempt = "1";
   writeJson(fx.root, fx.attestationPath, attestation);
   const activation = recommit(fx.root);
-  assert.throws(
-    () => resolve(fx.root, activation),
-    /attestation signer run/u,
-  );
+  assert.throws(() => resolve(fx.root, activation), /attestation signer run/u);
 });
 
 test("rejects attestation with a wrong signer workflow", () => {
@@ -1104,7 +1391,10 @@ test("rejects attestation when trusted-main T is an ancestor of candidate C even
   );
   writeFileSync(
     join(root, "config/domain-core-promotion-policy.json"),
-    JSON.stringify({ schemaVersion: 3, authority: "unsigned-candidate-evaluation" }),
+    JSON.stringify({
+      schemaVersion: 3,
+      authority: "unsigned-candidate-evaluation",
+    }),
   );
   writeFileSync(
     join(root, "scripts/lib/domain-core-deterministic-candidate-bundle.mjs"),
@@ -1222,9 +1512,7 @@ function attestWithArtifacts(fx, { bundleBytes, provenanceBytes } = {}) {
   const bundleRel = "config/domain-core-promotion-bundles/quota/1.json";
   const provenanceRel = "config/domain-core-promotion-provenance/quota/1.json";
   const bundle = Buffer.from(bundleBytes ?? '{"bundle":"quota-1"}');
-  const provenance = Buffer.from(
-    provenanceBytes ?? '{"provenance":"quota-1"}',
-  );
+  const provenance = Buffer.from(provenanceBytes ?? '{"provenance":"quota-1"}');
   mkdirSync(join(fx.root, bundleRel, ".."), { recursive: true });
   mkdirSync(join(fx.root, provenanceRel, ".."), { recursive: true });
   writeFileSync(join(fx.root, bundleRel), bundle);
@@ -1409,7 +1697,7 @@ test("rejects attestation when the bundle file bytes are tampered after the dige
   const tamperedActivation = git(fx.root, "rev-parse", "HEAD");
   assert.throws(
     () => resolve(fx.root, tamperedActivation),
-    /attestation unsigned bundle digest mismatch/u,
+    /domain-core activation authority drift after activation/u,
   );
 });
 
@@ -1423,7 +1711,7 @@ test("rejects attestation when the provenance file bytes are tampered after the 
   const tamperedActivation = git(fx.root, "rev-parse", "HEAD");
   assert.throws(
     () => resolve(fx.root, tamperedActivation),
-    /attestation provenance digest mismatch/u,
+    /domain-core activation authority drift after activation/u,
   );
 });
 
@@ -1489,7 +1777,8 @@ test("rejects attestation whose unsignedBundle.path is a symlink substituting fo
   // pointing at an attacker-controlled file.  O_NOFOLLOW + lstat-identity
   // must reject the symlink component / leaf substitution.
   const bundleRel = "config/domain-core-promotion-bundles/quota/1.json";
-  const attackerRel = "config/domain-core-promotion-bundles/quota/attacker.json";
+  const attackerRel =
+    "config/domain-core-promotion-bundles/quota/attacker.json";
   mkdirSync(join(fx.root, bundleRel, ".."), { recursive: true });
   writeFileSync(join(fx.root, attackerRel), '{"bundle":"attacker"}');
   writeFileSync(join(fx.root, bundleRel), '{"bundle":"legit"}');

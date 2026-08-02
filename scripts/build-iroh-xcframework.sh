@@ -5,6 +5,7 @@
 #   ./scripts/build-iroh-xcframework.sh                 # release build, all targets
 #   IROH_BUILD_PROFILE=debug ./scripts/build-iroh-xcframework.sh
 #   IROH_BUILD_TARGETS="aarch64-apple-darwin" ./scripts/build-iroh-xcframework.sh
+#   IROH_BUILD_JOBS=4 ./scripts/build-iroh-xcframework.sh
 #
 # Requires:
 #   * rustup with the targets installed (we install on demand)
@@ -25,8 +26,10 @@ SWIFT_PKG_DIR="${ROOT_DIR}/OpenBurnBarCore/Sources/OpenBurnBarIroh"
 GENERATED_DIR="${SWIFT_PKG_DIR}/Generated"
 HEADERS_DIR="${ROOT_DIR}/build/iroh-xcframework-headers"
 UNIFFI_HELPER_DIR="${ROOT_DIR}/build/uniffi-bindgen-swift-helper"
+CARGO_TARGET_ROOT="${IROH_CARGO_TARGET_DIR:-${CRATE_DIR}/target}"
 
 PROFILE="${IROH_BUILD_PROFILE:-release}"
+BUILD_JOBS="${IROH_BUILD_JOBS:-1}"
 PROFILE_FLAG=""
 PROFILE_DIR="release"
 if [[ "${PROFILE}" == "debug" ]]; then
@@ -115,16 +118,25 @@ EOF
 
 build_target() {
   local target="$1"
+  local archive="${CARGO_TARGET_ROOT}/${target}/${PROFILE_DIR}/libopenburnbar_iroh.a"
   ensure_rust_target "${target}"
   log "cargo build ${PROFILE} ${target}"
   (
     cd "${CRATE_DIR}"
+    CARGO_TARGET_DIR="${CARGO_TARGET_ROOT}" \
+    CARGO_PROFILE_RELEASE_STRIP=none \
     MACOSX_DEPLOYMENT_TARGET=14.0 \
     IPHONEOS_DEPLOYMENT_TARGET=17.0 \
     IPHONE_SIMULATOR_DEPLOYMENT_TARGET=17.0 \
     PATH="${HOME}/.cargo/bin:${PATH}" \
-      "${CARGO_BIN}" build ${PROFILE_FLAG} --target "${target}"
+      "${CARGO_BIN}" build ${PROFILE_FLAG} --target "${target}" --jobs "${BUILD_JOBS}"
   )
+  if [[ "${PROFILE_DIR}" == "release" ]]; then
+    # Cargo profile stripping also touches host proc-macro dylibs. Current Apple
+    # toolchains can remove their registrar or emit an invalid Mach-O image, so
+    # strip debug data only from the packaged target archive.
+    xcrun strip -S "${archive}"
+  fi
 }
 
 mkdir -p "${VENDOR_DIR}" "${GENERATED_DIR}" "${HEADERS_DIR}"
@@ -138,19 +150,22 @@ done
 # from the iroh-introspection point of view.
 log "generating swift bindings via pinned UniFFI helper"
 ensure_uniffi_bindgen_swift_helper
-HOST_DYLIB="${CRATE_DIR}/target/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_iroh.dylib"
+HOST_DYLIB="${CARGO_TARGET_ROOT}/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_iroh.dylib"
 if [[ ! -f "${HOST_DYLIB}" ]]; then
-  HOST_DYLIB="${CRATE_DIR}/target/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_iroh.a"
+  HOST_DYLIB="${CARGO_TARGET_ROOT}/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_iroh.a"
 fi
 rm -rf "${GENERATED_DIR}"
 mkdir -p "${GENERATED_DIR}"
 (
   cd "${CRATE_DIR}"
+  CARGO_TARGET_DIR="${CARGO_TARGET_ROOT}" \
+  CARGO_PROFILE_RELEASE_STRIP=none \
   UNIFFI_LIBRARY_PATH="${HOST_DYLIB}" \
   UNIFFI_OUT_DIR="${GENERATED_DIR}" \
   UNIFFI_MODULE_NAME="openburnbar_irohFFI" \
   PATH="${HOME}/.cargo/bin:${PATH}" \
-    "${CARGO_BIN}" run --manifest-path "${UNIFFI_HELPER_DIR}/Cargo.toml" --release --quiet
+    "${CARGO_BIN}" run --manifest-path "${UNIFFI_HELPER_DIR}/Cargo.toml" \
+      --release --quiet --jobs "${BUILD_JOBS}"
 )
 if compgen -G "${GENERATED_DIR}/*.modulemap" >/dev/null; then
   perl -0pi -e 's/framework module /module /g' "${GENERATED_DIR}/"*.modulemap
@@ -181,7 +196,7 @@ package_static_for_target() {
   esac
   local out_dir="${ARCHS_DIR}/${platform_id}"
   mkdir -p "${out_dir}/Headers"
-  cp "${CRATE_DIR}/target/${target}/${PROFILE_DIR}/libopenburnbar_iroh.a" \
+  cp "${CARGO_TARGET_ROOT}/${target}/${PROFILE_DIR}/libopenburnbar_iroh.a" \
      "${out_dir}/libopenburnbar_iroh.a"
   if compgen -G "${GENERATED_DIR}/*.h" >/dev/null; then
     cp "${GENERATED_DIR}/"*.h "${out_dir}/Headers/"
@@ -200,8 +215,8 @@ if printf '%s\n' "${TARGETS[@]}" | grep -q "aarch64-apple-ios-sim" \
   SIM_DIR="${ARCHS_DIR}/ios-simulator"
   mkdir -p "${SIM_DIR}/Headers"
   lipo -create \
-    "${CRATE_DIR}/target/aarch64-apple-ios-sim/${PROFILE_DIR}/libopenburnbar_iroh.a" \
-    "${CRATE_DIR}/target/x86_64-apple-ios/${PROFILE_DIR}/libopenburnbar_iroh.a" \
+    "${CARGO_TARGET_ROOT}/aarch64-apple-ios-sim/${PROFILE_DIR}/libopenburnbar_iroh.a" \
+    "${CARGO_TARGET_ROOT}/x86_64-apple-ios/${PROFILE_DIR}/libopenburnbar_iroh.a" \
     -output "${SIM_DIR}/libopenburnbar_iroh.a"
   if compgen -G "${GENERATED_DIR}/*.h" >/dev/null; then
     cp "${GENERATED_DIR}/"*.h "${SIM_DIR}/Headers/"
@@ -226,6 +241,10 @@ log "assembling xcframework"
 xcodebuild -create-xcframework \
   "${build_xcframework_args[@]}" \
   -output "${XCFRAMEWORK}"
+
+# Record the cargo profile so the release preflight
+# (scripts/ci/verify-iroh-release-artifact.sh) can reject debug archives.
+printf '%s\n' "${PROFILE_DIR}" > "${XCFRAMEWORK}/openburnbar-iroh-build-profile"
 
 log "DONE: ${XCFRAMEWORK}"
 log "swift bindings: ${GENERATED_DIR}"

@@ -35,7 +35,7 @@ const releaseDocs = read("docs/RELEASE_MACOS.md");
 // update this audited live URL in the same PR, after the replacement artifact is
 // published and manually verified.
 const AUDITED_LIVE_MAC_DOWNLOAD_URL =
-  "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.26/OpenBurnBar-1.0.26-macOS.dmg";
+  "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.29/OpenBurnBar-1.0.29-macOS.dmg";
 
 const TRUSTED_GITHUB_RELEASE_PATH =
   /^\/Imagine-That-Ai\/BurnBar\/releases\/download\/[^/]+(?:\/OpenBurnBar-[A-Za-z0-9._-]+-macOS\.dmg)?$/;
@@ -146,7 +146,21 @@ if (macUpdateBaseUrlRaw) {
 
 assert.match(downloadPage, /public macOS DMG is served from GitHub Releases/);
 assert.match(downloadPage, /branded\s+direct-download host is being republished/);
-assert.match(downloadPage, /<h1 class="pagehead__h">Get OpenBurnBar<\/h1>/);
+assert.match(
+  downloadPage,
+  /<BaseLayout[\s\S]*?ambientEffects=\{false\}[\s\S]*?>/,
+  "download page must suppress ambient canvases so platform choices stay visually unobstructed"
+);
+assert.match(
+  downloadPage,
+  /<h1 class="pagehead__h" data-pretext-native>[\s\S]*?<span>Get<\/span>[\s\S]*?<span class="pagehead__product">OpenBurnBar<\/span>[\s\S]*?<\/h1>/,
+  "download hero must keep the product name as one non-breaking visual unit"
+);
+assert.match(
+  downloadPage,
+  /\.pagehead__product \{[^}]*white-space: nowrap;/,
+  "download hero product name must not split mid-word on narrow screens"
+);
 assert.doesNotMatch(
   downloadPage,
   /Get OpenBurnBar\.<\/h1>/,

@@ -74,8 +74,94 @@ sign_pair() {
 
 expect_failure() {
   local description="$1"
+  local expected_message="${2:-}"
   if "$verifier" "$app" >"$tmpdir/failure.log" 2>&1; then
     echo "FAIL: verifier accepted $description" >&2
+    exit 1
+  fi
+  if [[ -n "$expected_message" ]] && ! grep -Fq "$expected_message" "$tmpdir/failure.log"; then
+    echo "FAIL: verifier rejected $description for the wrong reason; expected '$expected_message'." >&2
+    cat "$tmpdir/failure.log" >&2
+    exit 1
+  fi
+}
+
+mkdir -p "$tmpdir/mock-bin"
+cat > "$tmpdir/mock-bin/codesign" <<'MOCK_CODESIGN'
+#!/usr/bin/env bash
+set -euo pipefail
+
+path="${!#}"
+name="$(basename "$path")"
+scenario="${MOCK_CODESIGN_SCENARIO:-valid}"
+
+if [[ "$*" == *"--verify"* ]]; then
+  exit 0
+fi
+if [[ "$*" == *"--entitlements"* ]]; then
+  printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict/></plist>'
+  exit 0
+fi
+if [[ "$*" == *"-dr"* ]]; then
+  printf '%s\n' 'designated => identifier "com.openburnbar.app" and anchor apple generic'
+  exit 0
+fi
+if [[ "$*" != *"-d"* ]]; then
+  echo "unexpected mock codesign invocation: $*" >&2
+  exit 64
+fi
+
+case "$name" in
+  OpenBurnBar.app)
+    identifier="com.openburnbar.app"
+    team="TEAMAPP001"
+    ;;
+  OpenBurnBarDaemon)
+    identifier="com.openburnbar.app"
+    team="$([[ "$scenario" == "mismatched_team" ]] && printf TEAMDAEM01 || printf TEAMAPP001)"
+    ;;
+  OpenBurnBarPrivilegedInputKillSwitchWatchdog)
+    identifier="com.openburnbar.privileged-input-killswitch-watchdog"
+    team="TEAMAPP001"
+    ;;
+  *)
+    echo "unexpected mock signing target: $path" >&2
+    exit 64
+    ;;
+esac
+
+printf 'Identifier=%s\n' "$identifier"
+if [[ "$scenario" != "missing_team" ]]; then
+  printf 'TeamIdentifier=%s\n' "$team"
+fi
+printf '%s\n' 'Format=Mach-O thin (arm64)' 'CodeDirectory v=20500 size=1 flags=0x12000(runtime,library-validation)'
+if [[ "$name" == "OpenBurnBarDaemon" && "$scenario" == "mismatched_authority" ]]; then
+  printf '%s\n' \
+    'Authority=Developer ID Application: Different Signer (TEAMAPP001)' \
+    'Authority=Developer ID Certification Authority' \
+    'Authority=Apple Root CA'
+else
+  printf '%s\n' \
+    'Authority=Developer ID Application: Test Signer (TEAMAPP001)' \
+    'Authority=Developer ID Certification Authority' \
+    'Authority=Apple Root CA'
+fi
+printf '%s\n' 'Timestamp=release-test' 'Signature size=9000'
+MOCK_CODESIGN
+chmod +x "$tmpdir/mock-bin/codesign"
+
+expect_mocked_failure() {
+  local scenario="$1"
+  local expected_message="$2"
+  local description="$3"
+  if PATH="$tmpdir/mock-bin:$PATH" MOCK_CODESIGN_SCENARIO="$scenario" \
+    "$verifier" "$app" >"$tmpdir/mock-failure.log" 2>&1; then
+    echo "FAIL: verifier accepted $description" >&2
+    exit 1
+  fi
+  if ! grep -Fq "$expected_message" "$tmpdir/mock-failure.log"; then
+    echo "FAIL: verifier rejected $description for the wrong reason; expected '$expected_message'." >&2
+    cat "$tmpdir/mock-failure.log" >&2
     exit 1
   fi
 }
@@ -83,11 +169,17 @@ expect_failure() {
 sign_pair com.openburnbar.app
 "$verifier" "$app" >/dev/null
 
-sign_pair com.openburnbar.daemon
-expect_failure "a different daemon signing identifier"
+codesign --force --sign - --options runtime,library --identifier wrong.app.identifier "$app" >/dev/null
+expect_failure \
+  "an incorrect app signing identifier" \
+  "ERROR: App must use the com.openburnbar.app signing identifier; found 'wrong.app.identifier'."
 
-# Shipped releases on the legacy allowlist may keep the pre-split-brain
-# com.openburnbar.daemon identifier; everything else stays rejected.
+sign_pair com.openburnbar.app
+codesign --force --sign - --identifier com.openburnbar.app "$app" >/dev/null
+expect_failure "an app without hardened runtime and library validation"
+
+# Shipped releases on the legacy allowlist may keep the pre-shared
+# com.openburnbar.daemon identifier; new builds may not.
 write_info_plist 1.0.29
 sign_pair com.openburnbar.daemon
 "$verifier" "$app" >/dev/null
@@ -107,6 +199,20 @@ sign_pair com.openburnbar.app
 codesign --force --sign - --identifier wrong.watchdog.identifier "$watchdog" >/dev/null
 codesign --force --sign - --options runtime,library --identifier com.openburnbar.app "$app" >/dev/null
 expect_failure "an ad-hoc or incorrectly identified kill-switch watchdog"
+
+sign_pair com.openburnbar.app
+expect_mocked_failure \
+  mismatched_team \
+  "ERROR: App and daemon are signed by different teams; app='TEAMAPP001' daemon='TEAMDAEM01'." \
+  "different app and daemon Team IDs"
+expect_mocked_failure \
+  missing_team \
+  "ERROR: App and daemon are signed by different teams; app='missing' daemon='missing'." \
+  "missing app and daemon Team IDs"
+expect_mocked_failure \
+  mismatched_authority \
+  "ERROR: App and daemon must have the same ordered signing-certificate authority chain." \
+  "different app and daemon certificate authority chains"
 
 cat > "$tmpdir/daemon.c" <<'C'
 int main(void) { return 7; }
