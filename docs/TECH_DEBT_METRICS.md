@@ -23,7 +23,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 4023 | ≤ 5000 | ≤ 3500 |
 | `functions/src/types.ts` LOC (barrel) | 8 | stable (re-export) | — |
 | `functions/src/types/legacy.ts` LOC | 19 | shrinking (TypeSpec migration) | — |
-| `functions/src/index.ts` LOC | 229 | modularize | — |
+| `functions/src/index.ts` LOC | 230 | modularize | — |
 | `import SwiftUI` in Services/ | 0 | 0 | 0 |
 | Phase 1 security register open items (`docs/governance/PHASE1_SECURITY_REGISTER.md`) | 0 | ≤ 3 | 0 |
 | Rust `unwrap()`/`expect()` in `crates/{burnbar-remote,openburnbar-iroh}` | 0 | 0 | 0 |

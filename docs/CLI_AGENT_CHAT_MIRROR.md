@@ -33,7 +33,7 @@ that omit the field decode as `native_chat`.
 Path: `users/{uid}/cli_sessions/{threadID}`.
 
 The document body is encoded by
-[`CLIAgentSessionCodec`](../OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CLIAgentSessionRecord.swift).
+[`CLIAgentSessionCodec`](../OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CLIAgentSessionRecord.swift).
 Current sealed fields:
 
 | Field | Type | Notes |
