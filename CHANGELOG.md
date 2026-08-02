@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Audited GitHub release promotion
+
+- **Made stable release promotion a verified second phase**: tag publication
+  remains explicitly non-latest, while a `promote=true` retry must audit the
+  exact published tag, metadata, attestations, asset bytes, GitHub asset IDs,
+  sizes, and SHA-256 digests before the sole `--latest` mutation. The workflow
+  then proves GitHub's latest endpoint still returns that unchanged release
+  before validating the live updater feed.
+
 ### Fixed - Stripe entitlement reconciliation
 
 - **Made temporary Stripe-bound operator grants yield to the verified lifecycle

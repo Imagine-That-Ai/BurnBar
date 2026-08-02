@@ -142,9 +142,10 @@ scripts/tag-release.sh 0.2.1
 # 7. Push the hotfix branch (for reference)
 git push origin hotfix/0.2.1
 
-# 8. After release workflow completes, verify and promote
+# 8. After the non-latest release workflow completes, promote through the
+#    audited workflow path (never bypass it with a direct release edit)
 gh release view v0.2.1
-gh release edit v0.2.1 --latest
+gh workflow run release.yml --ref v0.2.1 -f tag=v0.2.1 -f promote=true
 ```
 
 ## Checksum Verification

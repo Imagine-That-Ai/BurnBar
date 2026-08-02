@@ -191,7 +191,10 @@ The workflow will:
 13. Write release metadata JSON with version, commit, timestamp, update feed, and runner metadata
 14. Upload the DMG, ZIP, update feeds, checksums, optional checksum signature, SBOM, Sigstore bundles/predicates, and metadata as Actions artifacts
 15. Run release smoke from the uploaded DMG artifact, including app launch and authenticated daemon health
-16. Publish a GitHub Release with the same downloaded artifacts and mark it as the repository's latest release
+16. Publish a GitHub Release with the same downloaded artifacts as explicitly
+    non-latest. A separate `workflow_dispatch` with `promote=true` audits the
+    already-published tag, metadata, attestations, and every asset byte before
+    making that exact release GitHub's latest release.
 
 `notarytool` and `stapler` are wrapped by
 `scripts/ci/release-command-watchdog.py` in release CI. Apple's `--timeout` flag
@@ -203,6 +206,26 @@ protected release job timeout.
 Run the release workflow from the release tag ref (for example
 `gh workflow run release.yml --ref v1.0.5 ...`) so the Sigstore certificate
 identity is bound to `refs/tags/v1.0.5`, not the moving default branch.
+
+Tag-triggered publication and ordinary manual retries always pass
+`--latest=false`; publishing assets must never silently repoint the public
+updater channel. After the non-latest release is published and independently
+approved, promote it by dispatching the same workflow from the immutable tag:
+
+```bash
+gh workflow run release.yml \
+  --ref v1.0.5 \
+  -f tag=v1.0.5 \
+  -f promote=true
+```
+
+The promotion retry downloads and verifies the complete existing asset set,
+checks each GitHub asset ID, size, and SHA-256 digest against the audited bytes,
+and rechecks the exact release metadata. Only then may it perform the single
+`gh release edit ... --latest` mutation. The workflow finally verifies that
+`releases/latest` resolves to the same release and unchanged asset identities
+before the live Sparkle feed gate runs. A missing, substituted, extra, or
+concurrently changed asset blocks promotion.
 
 Before approving a promoted release, verify that the tag still points at the
 current `origin/main` tip. If `main` advances after the tag is cut, cancel the
@@ -323,7 +346,11 @@ python3 -m json.tool sbom-v0.2.0.spdx.json | head -30
 ## Manual rerun path
 
 Use `workflow_dispatch` on `.github/workflows/release.yml` and provide an existing `v*` tag.
-The workflow checks out that exact tag before building. This is intended for release recovery without creating a new tag.
+The workflow checks out that exact tag before building. This is intended for
+release recovery without creating a new tag. Leave `promote=false` for
+packaging or publication recovery. Set `promote=true` only after the stable,
+already-published release is ready for the public updater channel; prerelease
+tags are rejected and cannot become latest.
 
 ## Release environment and tag protection
 
