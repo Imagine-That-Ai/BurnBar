@@ -24,6 +24,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -110,6 +112,26 @@ class MediaControlStreamCoordinatorTest {
         assertTrue(requestIndex >= 0)
         assertTrue(replyIndex > requestIndex)
         assertEquals(1, stream.maxConcurrentSendCount.get())
+    }
+
+    @Test
+    fun reconnectingPhase_preservesLastDialFailureForActionableUi() = runTest {
+        val failure = "This mutation requires a trusted device for the requested trust root."
+        val coordinator =
+            MediaControlStreamCoordinator(
+                dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> error(failure) },
+                scope = backgroundScope,
+                initialBackoffMillis = 60_000L,
+                maxBackoffMillis = 60_000L,
+            )
+
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+
+        val phase =
+            coordinator.phase
+                .filterIsInstance<MediaControlStreamCoordinator.Phase.Reconnecting>()
+                .first()
+        assertEquals(failure, phase.lastFailureReason)
     }
 
     @Test

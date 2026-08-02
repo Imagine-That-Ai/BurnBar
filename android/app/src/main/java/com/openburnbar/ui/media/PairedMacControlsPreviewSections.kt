@@ -380,6 +380,7 @@ private fun macScreenPreviewWallpaper(): Brush = Brush.linearGradient(
 )
 
 private fun pairedMacTerminalStatusLine(phase: MediaControlStreamCoordinator.Phase): String = when {
+    phase.requiresTrustedDeviceApproval() -> ">> [APPROVAL] Approve this Android in OpenBurnBar on your Mac."
     phase is MediaControlStreamCoordinator.Phase.Idle -> ">> [IDLE] Waiting for connection request..."
     phase is MediaControlStreamCoordinator.Phase.Dialing -> ">> [DIALING] Initiating Iroh secure tunnel..."
     phase is MediaControlStreamCoordinator.Phase.Stopped -> ">> [STOPPED] Daemon inactive. Open Mac app to start."
