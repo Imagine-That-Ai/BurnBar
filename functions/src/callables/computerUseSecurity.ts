@@ -54,6 +54,7 @@ export {
   publishIrohPairingPublicKey,
   publishIrohPairingRecord,
   revokeIrohPairingRecord,
+  issuePhoneControlEnrollmentGrant,
   publishPhoneControlAuthority,
   publishRelaySenderKey,
 } from "./phoneControlCallables.js";

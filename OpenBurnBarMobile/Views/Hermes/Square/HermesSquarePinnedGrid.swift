@@ -120,6 +120,7 @@ private struct PinnedCell: View {
             .frame(height: cellHeight)
             .contentShape(RoundedRectangle(cornerRadius: 12))
             .accessibilityLabel("\(identity.displayName) — \(identity.availability.displayLabel)")
+            .accessibilityIdentifier(accessibilityIdentifier)
             .gesture(
                 LongPressGesture(minimumDuration: 0.45)
                     .onEnded { _ in onLongPress() }
@@ -131,6 +132,13 @@ private struct PinnedCell: View {
                         onTap()
                     }
             )
+    }
+
+    private var accessibilityIdentifier: String {
+        if identity.id.hasPrefix("device://paired-mac/") {
+            return "agent.tile.paired-mac"
+        }
+        return "agent.tile.\(identity.id)"
     }
 
     @ViewBuilder

@@ -260,6 +260,66 @@ final class MacFileTransferSecurityTests: XCTestCase {
         MacMediaActiveSessionRegistry.shared.resetForTesting()
     }
 
+    func testMountControlStreamRoutesExactCloseAfterRegistryAlreadyRemovedLease() async {
+        let backend = QuarantineBlobBackend()
+        let registry = MediaControlStreamRegistry(pollIntervalNanoseconds: 10_000_000)
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mac-file-transfer-stale-close-\(UUID().uuidString)", isDirectory: true)
+        let service = MediaFileTransferService(
+            backend: backend,
+            configuration: .init(
+                storeDirectoryURL: temp.appendingPathComponent("store", isDirectory: true),
+                inboxDirectoryURL: temp.appendingPathComponent("inbox", isDirectory: true),
+                secretKeyProvider: { Data(repeating: 0x42, count: 32) }
+            )
+        )
+        let adapter = MacFileTransferService(
+            service: service,
+            settingsProvider: { true },
+            controlStreams: registry
+        )
+        let stream = CloseBlockingIrohStream()
+        let closeEvents = ControlStreamCloseEventLedger()
+        adapter.setMercuryControlStreamCloseHandler { uid, connectionID, controlStreamID, removedLast in
+            await closeEvents.record(
+                uid: uid,
+                connectionID: connectionID,
+                controlStreamID: controlStreamID,
+                removedLastStreamForConnection: removedLast
+            )
+        }
+
+        let mountTask = Task {
+            await adapter.mountControlStream(
+                stream,
+                uid: "uid-1",
+                connectionID: "shared-mac"
+            )
+        }
+
+        for _ in 0..<100 {
+            if await registry.activeStreamCount() == 1 { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        let mountedStreamCount = await registry.activeStreamCount()
+        XCTAssertEqual(mountedStreamCount, 1)
+
+        // Simulate policy/reconnect cleanup winning the race before the
+        // mounted read loop reaches its own lease invalidation.
+        let invalidated = await registry.invalidate(uid: "uid-1", connectionID: "shared-mac")
+        XCTAssertTrue(invalidated)
+        await mountTask.value
+
+        let events = await closeEvents.snapshot()
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events.first?.uid, "uid-1")
+        XCTAssertEqual(events.first?.connectionID, "shared-mac")
+        XCTAssertNotNil(events.first?.controlStreamID)
+        XCTAssertEqual(events.first?.removedLastStreamForConnection, false)
+
+        try? FileManager.default.removeItem(at: temp)
+    }
+
     func testInboundAdvertiseSealsReceivedBytesAtRestWhenSessionKeyAvailable() async throws {
         MacMediaActiveSessionRegistry.shared.resetForTesting()
 
@@ -664,6 +724,55 @@ private actor FileTransferRecordingIrohStream: IrohRelayStream {
 
     func sentFrames() -> [HermesRealtimeRelayFrame] {
         storedFrames
+    }
+}
+
+private actor CloseBlockingIrohStream: IrohRelayStream {
+    nonisolated let remotePeerNodeId: String? = "ios-peer"
+    private var isClosed = false
+
+    func send(_: HermesRealtimeRelayFrame) async throws {}
+
+    func receive() async throws -> HermesRealtimeRelayFrame? {
+        while !isClosed {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return nil
+    }
+
+    func close() async {
+        isClosed = true
+    }
+}
+
+private actor ControlStreamCloseEventLedger {
+    struct Event: Sendable {
+        let uid: String
+        let connectionID: String
+        let controlStreamID: UUID
+        let removedLastStreamForConnection: Bool
+    }
+
+    private var events: [Event] = []
+
+    func record(
+        uid: String,
+        connectionID: String,
+        controlStreamID: UUID,
+        removedLastStreamForConnection: Bool
+    ) {
+        events.append(
+            Event(
+                uid: uid,
+                connectionID: connectionID,
+                controlStreamID: controlStreamID,
+                removedLastStreamForConnection: removedLastStreamForConnection
+            )
+        )
+    }
+
+    func snapshot() -> [Event] {
+        events
     }
 }
 

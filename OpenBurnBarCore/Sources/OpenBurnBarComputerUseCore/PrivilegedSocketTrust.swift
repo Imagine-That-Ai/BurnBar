@@ -204,15 +204,31 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
         _ code: SecCode,
         requirementString: String = privilegedPeerDesignatedRequirement
     ) throws -> String {
-        // M-9: enforce hardened runtime + library validation programmatically —
-        // see `privilegedPeerDesignatedRequirement` for why these cannot live in
-        // the requirement string.
+        let requirement = try codeRequirement(requirementString)
+
+        // This path authenticates a process that is already running and bound to
+        // the accepted socket's kernel-issued audit token. Use the dynamic-code
+        // validator so each short-lived daemon RPC verifies the live executable
+        // without recursively hashing the app bundle's resources again.
+        //
+        // On-disk install/launch validation intentionally remains on
+        // `SecStaticCodeCheckValidity` below because it must detect resource and
+        // bundle mutation before execution.
+        let validity = SecCodeCheckValidity(code, [], requirement)
+        guard validity == errSecSuccess else {
+            throw PrivilegedSocketTrustError.codeSignatureInvalid(status: validity)
+        }
+
+        // Signing-information extraction is imported as a static-code API in
+        // Swift. Converting the already-validated live code here does not run
+        // the expensive static validity check again.
         var staticCode: SecStaticCode?
         let staticStatus = SecCodeCopyStaticCode(code, [], &staticCode)
         guard staticStatus == errSecSuccess, let staticCode else {
             throw PrivilegedSocketTrustError.codeSignatureInvalid(status: staticStatus)
         }
-        return try validateStaticCode(staticCode, requirementString: requirementString)
+
+        return try validatedIdentifierAndFlags(from: staticCode)
     }
 
     /// `requirementString` is injectable for tests only; production callers use
@@ -222,6 +238,17 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
         _ staticCode: SecStaticCode,
         requirementString: String = privilegedPeerDesignatedRequirement
     ) throws -> String {
+        let requirement = try codeRequirement(requirementString)
+
+        let validity = SecStaticCodeCheckValidity(staticCode, [], requirement)
+        guard validity == errSecSuccess else {
+            throw PrivilegedSocketTrustError.codeSignatureInvalid(status: validity)
+        }
+
+        return try validatedIdentifierAndFlags(from: staticCode)
+    }
+
+    private static func codeRequirement(_ requirementString: String) throws -> SecRequirement {
         var requirement: SecRequirement?
         let requirementStatus = SecRequirementCreateWithString(
             requirementString as CFString,
@@ -231,14 +258,12 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
         guard requirementStatus == errSecSuccess, let requirement else {
             throw PrivilegedSocketTrustError.codeSignatureInvalid(status: requirementStatus)
         }
+        return requirement
+    }
 
-        let validity = SecStaticCodeCheckValidity(staticCode, [], requirement)
-        guard validity == errSecSuccess else {
-            throw PrivilegedSocketTrustError.codeSignatureInvalid(status: validity)
-        }
-
+    private static func validatedIdentifierAndFlags(from code: SecStaticCode) throws -> String {
         var infoCF: CFDictionary?
-        let infoStatus = SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: 0), &infoCF)
+        let infoStatus = SecCodeCopySigningInformation(code, SecCSFlags(rawValue: 0), &infoCF)
         guard infoStatus == errSecSuccess,
               let info = infoCF as? [String: Any],
               let identifier = info[kSecCodeInfoIdentifier as String] as? String,

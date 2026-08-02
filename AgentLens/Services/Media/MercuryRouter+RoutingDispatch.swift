@@ -35,7 +35,11 @@ extension MercuryRouter {
         let pendingCallClosed = pendingCall.map {
             request($0, matchesClosedConnectionID: connectionID, controlStreamID: controlStreamID)
         } ?? false
-        if pendingMirrorClosed { pendingRequest = nil }
+        if pendingMirrorClosed {
+            pendingMirrorRequestExpiryTask?.cancel()
+            pendingMirrorRequestExpiryTask = nil
+            pendingRequest = nil
+        }
         if pendingCallClosed { pendingCall = nil }
 
         let closedViewer = viewer(matchingConnectionID: connectionID, controlStreamID: controlStreamID)

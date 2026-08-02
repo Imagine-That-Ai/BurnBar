@@ -22,6 +22,7 @@ const relayTopUp = SITE.pricing.topUps[1]!;
 <BaseLayout
   title="Pricing"
   description="OpenBurnBar pricing — Local at $0, BurnBar Cloud at $7.99/mo, Cloud Pro at $24.99/mo, Ultra at $59.99/mo. Annual plans save ~18%."
+  ambientEffects={false}
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
@@ -233,6 +234,14 @@ const relayTopUp = SITE.pricing.topUps[1]!;
     color: var(--text-base);
     font-size: 0.95rem;
     line-height: 1.55;
+  }
+  :global(:root[data-theme="light"]) .defs > div {
+    border-color: var(--ink-line);
+    border-top-color: var(--ink-line-bright);
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow:
+      0 1px 2px rgba(22, 19, 14, 0.04),
+      0 22px 46px -34px rgba(22, 19, 14, 0.4);
   }
   @media (max-width: 720px) {
     .defs > div {

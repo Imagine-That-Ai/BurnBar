@@ -176,14 +176,13 @@ final class OpenBurnBarRuntimeTests: XCTestCase {
         ))
     }
 
-    func test_shouldDisableAutomaticTerminationForHarness_honorsE2EEnvironment() {
-        XCTAssertTrue(OpenBurnBarRuntime.shouldDisableAutomaticTerminationForHarness(
-            environment: ["OPENBURNBAR_FORCE_LIVE_SCENE": "1"]
+    func test_shouldDisableAutomaticTerminationForApplication_keepsLiveMenuBarHostAlive() {
+        XCTAssertTrue(OpenBurnBarRuntime.shouldDisableAutomaticTerminationForApplication(
+            shouldUseTestStubScene: false
         ))
-        XCTAssertTrue(OpenBurnBarRuntime.shouldDisableAutomaticTerminationForHarness(
-            environment: ["OPENBURNBAR_E2E_HOLD_OPEN": "1"]
+        XCTAssertFalse(OpenBurnBarRuntime.shouldDisableAutomaticTerminationForApplication(
+            shouldUseTestStubScene: true
         ))
-        XCTAssertFalse(OpenBurnBarRuntime.shouldDisableAutomaticTerminationForHarness(environment: [:]))
     }
 
     func test_statusItemClickPolicy_opensOnMouseDownAndIgnoresMouseUp() {

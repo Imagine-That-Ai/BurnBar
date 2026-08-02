@@ -155,6 +155,31 @@ enum ComputerUseSecurityCallableClient {
         return nonce
     }
 
+    /// Auth custom claims are account-level, so another signed-in platform can overwrite the
+    /// `obb_app_check` binding between our bind and the nonce mint. Re-run the full
+    /// bind -> claims refresh -> nonce sequence once when the mint is rejected at the
+    /// App Check binding gate; rethrow every other failure unchanged.
+    static func reboundHighRiskActionNonce(
+        afterBindingConflict error: Error,
+        rebindAttestation: () async throws -> Void = { try await bindAppCheckAttestation() }, // cov:ignore -- live App Check rebind + Auth claims refresh; the recovery decision is unit-tested with injected closures
+        issueNonce: () async throws -> String = { try await issueHighRiskActionNonce() } // cov:ignore -- live Firebase nonce mint
+    ) async throws -> String {
+        guard isAppCheckBindingConflictError(error) else { throw error }
+        try await rebindAttestation()
+        return try await issueNonce()
+    }
+
+    static func isAppCheckBindingConflictError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        guard nsError.domain == FunctionsErrorDomain,
+              let code = FunctionsErrorCode(rawValue: nsError.code),
+              code == .permissionDenied || code == .failedPrecondition else {
+            return false
+        }
+        let message = nsError.localizedDescription
+        return message.contains("App Check") || message.contains("bindAppCheckAttestation")
+    }
+
     /// Registers a pending escrow device via the server-only callable (clients cannot elevate trust).
     static func registerEscrowDevice(
         deviceId: String,
@@ -165,7 +190,15 @@ enum ComputerUseSecurityCallableClient {
         keyVersion: Int? = nil
     ) async throws {
         _ = try requireSignedInUser()
-        let nonce = try await issueHighRiskActionNonce()
+        // cov:ignore-start -- live Firebase attestation bind + nonce mint; the binding-conflict recovery decision is unit-tested with injected closures in ComputerUseSecurityCallableClientTests
+        try await bindAppCheckAttestation()
+        let nonce: String
+        do {
+            nonce = try await issueHighRiskActionNonce()
+        } catch {
+            nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
+        }
+        // cov:ignore-end
         var payload: [String: Any] = [
             "deviceId": deviceId,
             "deviceName": deviceName,
@@ -192,13 +225,21 @@ enum ComputerUseSecurityCallableClient {
     /// Elevates an escrow device to `trusted` via the server-only callable (Firestore rules block client writes).
     static func approveEscrowDeviceTrust(deviceId: String, approverDeviceId: String? = nil) async throws {
         let uid = try requireSignedInUser().uid
+        try await bindAppCheckAttestation() // cov:ignore -- live Firebase attestation bind before protected trust-chain writes
         let resolvedApproverDeviceId = approverDeviceId?.isEmpty == false ? approverDeviceId! : deviceId
         let trustChain = try await buildTrustChainProof(
             uid: uid,
             targetDeviceId: deviceId,
             approverDeviceId: resolvedApproverDeviceId
         )
-        let nonce = try await issueHighRiskActionNonce()
+        // cov:ignore-start -- live Firebase nonce mint; the binding-conflict recovery decision is unit-tested with injected closures in ComputerUseSecurityCallableClientTests
+        let nonce: String
+        do {
+            nonce = try await issueHighRiskActionNonce()
+        } catch {
+            nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
+        }
+        // cov:ignore-end
         var payload: [String: Any] = [
             "deviceId": deviceId,
             "nonce": nonce,
@@ -718,7 +759,14 @@ enum ComputerUseSecurityCallableClient {
     ) async throws {
         _ = try requireSignedInUser()
         try await bindAppCheckAttestation()
-        let nonce = try await issueHighRiskActionNonce()
+        // cov:ignore-start -- live Firebase nonce mint; the binding-conflict recovery decision is unit-tested with injected closures in ComputerUseSecurityCallableClientTests
+        let nonce: String
+        do {
+            nonce = try await issueHighRiskActionNonce()
+        } catch {
+            nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
+        }
+        // cov:ignore-end
         let result = try await functions.httpsCallable("publishIrohPairingPublicKey").call([
             "deviceId": deviceId,
             "roleId": roleId,
@@ -733,7 +781,14 @@ enum ComputerUseSecurityCallableClient {
     static func publishIrohPairingRecord(deviceId: String, record: IrohPairingRecord) async throws {
         _ = try requireSignedInUser()
         try await bindAppCheckAttestation()
-        let nonce = try await issueHighRiskActionNonce()
+        // cov:ignore-start -- live Firebase nonce mint; the binding-conflict recovery decision is unit-tested with injected closures in ComputerUseSecurityCallableClientTests
+        let nonce: String
+        do {
+            nonce = try await issueHighRiskActionNonce()
+        } catch {
+            nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
+        }
+        // cov:ignore-end
         var payload: [String: Any] = [
             "deviceId": deviceId,
             "connectionId": record.connectionId,
@@ -767,6 +822,35 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
+    static func issuePhoneControlEnrollmentGrant(
+        hostDeviceId: String,
+        connectionId: String,
+        controllerDeviceId: String,
+        controllerPeerNodeId: String
+    ) async throws {
+        // cov:ignore-start -- live Firebase App Check bind, nonce mint, and callable invocation; the binding-conflict recovery decision is unit-tested with injected closures in ComputerUseSecurityCallableClientTests, and the router-side grant wiring is covered by MercuryRouterTests
+        _ = try requireSignedInUser()
+        try await bindAppCheckAttestation()
+        let nonce: String
+        do {
+            nonce = try await issueHighRiskActionNonce()
+        } catch {
+            nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
+        }
+        let result = try await functions.httpsCallable("issuePhoneControlEnrollmentGrant").call([
+            "hostDeviceId": hostDeviceId,
+            "connectionId": connectionId,
+            "controllerDeviceId": controllerDeviceId,
+            "controllerPeerNodeId": controllerPeerNodeId,
+            "nonce": nonce
+        ])
+        guard let dict = result.data as? [String: Any],
+              dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Phone-control enrollment approval failed.")
+        }
+        // cov:ignore-end
+    }
+
     static func resolveActiveIrohControllerRoutes(
         uid: String,
         connectionId: String,
@@ -797,6 +881,7 @@ enum ComputerUseSecurityCallableClient {
         expectedConnectionId: String,
         nowMillis: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)
     ) throws -> [IrohControllerRouteBinding] {
+        let maximumControllerRoutes = 16
         let response = try decodeCallableJSON(
             ActiveIrohControllerRoutesResponse.self,
             from: raw,
@@ -807,27 +892,35 @@ enum ComputerUseSecurityCallableClient {
               let resolvedAtMillis = response.resolvedAtMillis,
               resolvedAtMillis >= nowMillis - 60_000,
               resolvedAtMillis <= nowMillis + 30_000,
-              response.routes.count <= 1 else {
+              response.routes.count <= maximumControllerRoutes else {
             throw ClientError.invalidResponse("Active iroh controller-route resolution was malformed or stale.")
         }
-        guard let route = response.routes.first else { return [] }
-        guard
-            route.connectionId == expectedConnectionId,
-            route.generation > 0,
-            route.registeredAtMillis <= resolvedAtMillis,
-            route.expiresAtMillis > resolvedAtMillis,
-            route.expiresAtMillis > nowMillis,
-            let binding = IrohControllerRouteBinding(
-                sourceDeviceId: route.sourceDeviceId,
-                transportNodeId: route.transportNodeId,
-                authorityPeerNodeId: route.authorityPeerNodeId,
-                generation: route.generation,
-                registeredAtMillis: route.registeredAtMillis,
-                expiresAtMillis: route.expiresAtMillis
-            ) else {
-            throw ClientError.invalidResponse("Active iroh controller-route resolution was malformed or stale.")
+        var sourceDeviceIDs = Set<String>()
+        var transportNodeIDs = Set<String>()
+        var bindings: [IrohControllerRouteBinding] = []
+        bindings.reserveCapacity(response.routes.count)
+        for route in response.routes {
+            guard
+                route.connectionId == expectedConnectionId,
+                route.generation > 0,
+                route.registeredAtMillis <= resolvedAtMillis,
+                route.expiresAtMillis > resolvedAtMillis,
+                route.expiresAtMillis > nowMillis,
+                sourceDeviceIDs.insert(route.sourceDeviceId).inserted,
+                let binding = IrohControllerRouteBinding(
+                    sourceDeviceId: route.sourceDeviceId,
+                    transportNodeId: route.transportNodeId,
+                    authorityPeerNodeId: route.authorityPeerNodeId,
+                    generation: route.generation,
+                    registeredAtMillis: route.registeredAtMillis,
+                    expiresAtMillis: route.expiresAtMillis
+                ),
+                transportNodeIDs.insert(binding.transportNodeId).inserted else {
+                throw ClientError.invalidResponse("Active iroh controller-route resolution was malformed or stale.")
+            }
+            bindings.append(binding)
         }
-        return [binding]
+        return bindings
     }
 
     private struct ActiveIrohControllerRoutesResponse: Decodable {

@@ -97,6 +97,31 @@ bundle before any session state is created. The transport is currently unwired; 
 wiring **must** supply the anchor. The protocol address is intentionally **not** re-keyed, to
 keep the cross-platform interop KAT fixtures byte-compatible.
 
+### F7 — multi-controller route membership is host-approved and pairing-scoped
+
+A trusted iOS, iPadOS, or Android escrow device cannot append itself to an arbitrary
+same-account host pairing. The Mac that published the pairing must issue a
+short-lived enrollment grant after the visible Mercury approval. The server binds
+that grant to the connection id, controller device id, derived controller peer id,
+expiry, and a single-use nonce; `publishPhoneControlAuthority` consumes it in the
+same transaction that appends the controller.
+
+An already-enrolled controller may refresh the same authority without another
+ceremony. A new device or rotated controller key requires another host-issued grant.
+The list remains bounded to sixteen devices; one controller cannot replace, remove,
+or reuse another controller's device or authority binding. Device revocation removes
+that device from every pairing and tombstones its active routes.
+
+This pairing-scoped transport admission remains only one layer:
+
+- the Mac pins the controller key and rejects unapproved key changes;
+- a new peer requires the visible Mac Mercury Accept flow;
+- phone trust is downgrade-only for the session; elevation remains Mac-only;
+- deny regions, session grants, replay checks, rate limits, kill switches, and local
+  consent remain mandatory before OS input injection;
+- Remote Unlock retains its separate signed trusted-device session and host-readiness
+  checks.
+
 ### F4 — relay/transport integrity
 
 Two halves, both now addressed:
@@ -149,3 +174,6 @@ build + the Remote-Unlock regression must be confirmed via
 - Escrow-device trust is bound to the device's real key.
 - Operators whose controller key legitimately rotates (app reinstall) must re-pair once — the
   correct, secure behavior for a key change.
+- Trusted mobile devices can discover multiple same-account host pairings, but each
+  Mac remains the authority for enrolling that controller and granting mirror/control
+  consent.

@@ -37,8 +37,10 @@ const signedProfile = (name) =>
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, "..", "..");
 const VERIFIER_REL = "scripts/ci/verify-domain-core-build-profile-artifact.mjs";
+const RESOLVER_REL = "scripts/ci/resolve-domain-core-build-profile.mjs";
 const VERIFIER_SUPPORT_RELS = [
   VERIFIER_REL,
+  RESOLVER_REL,
   "scripts/lib/domain-core-activation.mjs",
   "scripts/lib/domain-core-artifact-profile.mjs",
   "scripts/lib/domain-core-build-profile.mjs",
@@ -68,7 +70,10 @@ function fixtureGit(root, ...args) {
  * (forbidden) paths, so the release-bound C != P verification path must be
  * exercised against a fixture rather than the live checkout.
  */
-function activationFixture() {
+function activationFixture({
+  postActivationMainAdvance = false,
+  postActivationArtifactSwap = false,
+} = {}) {
   const root = mkdtempSync(join(tmpdir(), "resolve-profile-activation-"));
   for (const relativePath of VERIFIER_SUPPORT_RELS) {
     const destination = join(root, relativePath);
@@ -103,13 +108,44 @@ function activationFixture() {
   );
   fixtureGit(root, "add", ".");
   fixtureGit(root, "commit", "-qm", "activation P");
-  const releaseCommit = fixtureGit(root, "rev-parse", "HEAD");
+  const activationCommit = fixtureGit(root, "rev-parse", "HEAD");
   assert.notEqual(
     candidateCommit,
-    releaseCommit,
+    activationCommit,
     "fixture requires distinct C and P",
   );
-  return { root, candidateCommit, releaseCommit, manifest };
+  if (postActivationMainAdvance) {
+    // The ca605df1 shape: protected main advances past activation P with a
+    // commit mixing an unrelated path and a trusted control-plane manifest
+    // refresh before the release commit R is cut.
+    mkdirSync(join(root, "functions"), { recursive: true });
+    writeFileSync(
+      join(root, "functions/.env.burnbar.production"),
+      "MIN_INSTANCES=1\n",
+    );
+    writeFileSync(
+      join(root, "config/domain-core-control-plane-manifest.json"),
+      "release control plane\n",
+    );
+    fixtureGit(root, "add", ".");
+    fixtureGit(root, "commit", "-qm", "post-activation mixed main advance");
+  }
+  if (postActivationArtifactSwap) {
+    mkdirSync(join(root, "functions/vendor/openburnbar/domain-core-wasm"), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(
+        root,
+        "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm",
+      ),
+      "swapped wasm bytes\n",
+    );
+    fixtureGit(root, "add", ".");
+    fixtureGit(root, "commit", "-qm", "post-activation artifact swap");
+  }
+  const releaseCommit = fixtureGit(root, "rev-parse", "HEAD");
+  return { root, candidateCommit, activationCommit, releaseCommit, manifest };
 }
 
 test("canonical profiles satisfy signed artifact invariants", () => {
@@ -761,4 +797,111 @@ test("active Rust release still enforces candidate/release commit separation", (
     separated.release.commit,
     separated.candidateIdentity.candidateCommit,
   );
+});
+
+test("release checkout past activation P still resolves the signed candidate identity", () => {
+  // Deploy workflows pass the release HEAD R as --expected-release-commit.
+  // R is not the activation commit once protected main advances past P, so
+  // both the profile resolver and the artifact verifier must re-derive P
+  // from the committed authority files instead of validating C..R.
+  const fx = activationFixture({ postActivationMainAdvance: true });
+  assert.notEqual(fx.activationCommit, fx.releaseCommit);
+  const temporaryRoot = mkdtempSync(
+    join(tmpdir(), "openburnbar-release-past-activation-"),
+  );
+  const functionsDirectory = join(temporaryRoot, "functions");
+  const generatedDirectory = join(functionsDirectory, "generated");
+  const expected = resolveDomainCoreBuildProfile(catalog, "public-production", {
+    candidateCommit: fx.candidateCommit,
+    coreVersion: fx.manifest.coreVersion,
+    abiVersion: fx.manifest.abiVersion,
+    sourceSha256: fx.manifest.sourceSha256,
+  });
+  mkdirSync(generatedDirectory, { recursive: true });
+  writeFileSync(
+    join(generatedDirectory, "domainCoreCandidateReceipt.js"),
+    profileFunctionsJavaScript(expected),
+    "utf8",
+  );
+
+  try {
+    const resolved = spawnSync(
+      process.execPath,
+      [
+        join(fx.root, RESOLVER_REL),
+        "--profile",
+        "public-production",
+        "--expected-candidate-commit",
+        fx.candidateCommit,
+        "--expected-release-commit",
+        fx.releaseCommit,
+        "--format",
+        "json",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(resolved.status, 0, resolved.stderr || resolved.stdout);
+    const profile = JSON.parse(resolved.stdout);
+    assert.equal(profile.candidateIdentity.candidateCommit, fx.candidateCommit);
+    assert.equal(
+      profile.candidateIdentity.sourceSha256,
+      fx.manifest.sourceSha256,
+    );
+
+    const verified = spawnSync(
+      process.execPath,
+      [
+        join(fx.root, VERIFIER_REL),
+        "--profile",
+        "public-production",
+        "--expected-candidate-commit",
+        fx.candidateCommit,
+        "--expected-release-commit",
+        fx.releaseCommit,
+        "--expected-release-version",
+        "1.2.3",
+        "--expected-release-tag",
+        "v1.2.3",
+        "--functions-dir",
+        functionsDirectory,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(verified.status, 0, verified.stderr || verified.stdout);
+    assert.match(
+      verified.stdout,
+      /domain-core artifact profile verified: public-production/,
+    );
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true });
+    rmSync(fx.root, { recursive: true, force: true });
+  }
+});
+
+test("release checkout rejects post-activation deployed artifact drift", () => {
+  const fx = activationFixture({ postActivationArtifactSwap: true });
+  try {
+    const resolved = spawnSync(
+      process.execPath,
+      [
+        join(fx.root, RESOLVER_REL),
+        "--profile",
+        "public-production",
+        "--expected-candidate-commit",
+        fx.candidateCommit,
+        "--expected-release-commit",
+        fx.releaseCommit,
+        "--format",
+        "json",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.notEqual(resolved.status, 0);
+    assert.match(
+      resolved.stderr,
+      /domain-core activation authority drift after activation/,
+    );
+  } finally {
+    rmSync(fx.root, { recursive: true, force: true });
+  }
 });

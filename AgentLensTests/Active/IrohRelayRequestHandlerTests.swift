@@ -2,6 +2,7 @@ import XCTest
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
+import Security
 @testable import OpenBurnBar
 
 final class IrohRelayRequestHandlerTests: XCTestCase {
@@ -19,6 +20,70 @@ final class IrohRelayRequestHandlerTests: XCTestCase {
         XCTAssertFalse(key?.isEmpty ?? true)
         // A second read loads the persisted key rather than regenerating.
         XCTAssertEqual(store.publicKeyBase64, key)
+    }
+
+    func test_irohPairingKeyStore_keychainAccessDeniedFailsClosedWithoutSavingReplacement() {
+        let keychain = IrohPairingFaultInjectingKeychainStore(
+            loadError: IrohRotatingKeychainSecretStoreError.accessDenied(
+                errSecInteractionNotAllowed
+            )
+        )
+        let store = IrohPairingKeyStore(
+            service: "ai.openburnbar.iroh-pairing.test.denied",
+            account: "primary",
+            keychain: keychain
+        )
+
+        XCTAssertThrowsError(try store.keypair()) { error in
+            XCTAssertEqual(
+                error as? IrohPairingKeyStoreError,
+                .keychainAccessDenied(errSecInteractionNotAllowed)
+            )
+        }
+        XCTAssertEqual(keychain.saveCallCount, 0)
+        XCTAssertNil(store.publicKeyBase64)
+        XCTAssertEqual(
+            keychain.saveCallCount,
+            0,
+            "A denied read must never create or publish a replacement verifier root."
+        )
+    }
+
+    func test_irohPairingKeyStore_malformedStoredKeyFailsClosedWithoutSavingReplacement() {
+        let keychain = IrohPairingFaultInjectingKeychainStore(
+            loadedData: Data(repeating: 0xA5, count: 31)
+        )
+        let store = IrohPairingKeyStore(
+            service: "ai.openburnbar.iroh-pairing.test.malformed",
+            account: "primary",
+            keychain: keychain
+        )
+
+        XCTAssertThrowsError(try store.keypair()) { error in
+            XCTAssertEqual(error as? IrohPairingKeyStoreError, .invalidKey)
+        }
+        XCTAssertEqual(
+            keychain.saveCallCount,
+            0,
+            "Malformed persisted identity data must not trigger silent rotation."
+        )
+    }
+
+    func test_irohPairingKeyStoreError_descriptionsNameTheFailureAndPreserveIdentity() {
+        XCTAssertEqual(
+            IrohPairingKeyStoreError.keychainAccessDenied(errSecInteractionNotAllowed).errorDescription,
+            "OpenBurnBar could not access its Mercury pairing identity in the macOS Keychain "
+                + "(\(errSecInteractionNotAllowed)). Unlock this Mac and try again; the identity was not rotated."
+        )
+        XCTAssertEqual(
+            IrohPairingKeyStoreError.keychainStatus(errSecItemNotFound).errorDescription,
+            "OpenBurnBar could not read its Mercury pairing identity from the macOS Keychain "
+                + "(\(errSecItemNotFound))."
+        )
+        XCTAssertEqual(
+            IrohPairingKeyStoreError.invalidKey.errorDescription,
+            "OpenBurnBar's Mercury pairing identity in the macOS Keychain is invalid. The identity was not rotated."
+        )
     }
 
     func test_usesBurnBarGatewayForOpenAICompatibleRelaySurface() {
@@ -272,6 +337,31 @@ final class IrohRelayRequestHandlerTests: XCTestCase {
     }
 }
 
+private final class IrohPairingFaultInjectingKeychainStore:
+    IrohPairingKeychainSecretStoring,
+    @unchecked Sendable {
+    private let loadedData: Data?
+    private let loadError: Error?
+    private(set) var saveCallCount = 0
+
+    init(loadedData: Data? = nil, loadError: Error? = nil) {
+        self.loadedData = loadedData
+        self.loadError = loadError
+    }
+
+    func load() throws -> Data? {
+        if let loadError {
+            throw loadError
+        }
+        return loadedData
+    }
+
+    func save(_ data: Data) throws {
+        _ = data
+        saveCallCount += 1
+    }
+}
+
 private actor MediaControlRegistrarRecorder {
     struct Registration: Sendable {
         let uid: String
@@ -310,6 +400,13 @@ private actor HandlerRecordingIrohStream: IrohRelayStream {
 
 @MainActor
 final class HermesIrohRelayHostClientRuntimeTests: XCTestCase {
+    /// A run of recoverable peer-close accept failures must not tear down an
+    /// endpoint that holds peer-independent health evidence (here: a completed
+    /// `accept` immediately before the burst). Without such evidence the same
+    /// burst rebuilds the endpoint after the bounded limit, because a wedged
+    /// acceptor produces the identical failure signature; that direction is
+    /// covered by `test_repeatedRecoverablePeerAcceptFailures_rebuildEndpoint`
+    /// in `HermesIrohRelayHostClientMattersTests`.
     func testRecoverablePeerAcceptFailuresDoNotRebuildAndDropActiveEndpoint() async throws {
         let suiteName = "hermes.iroh.host.test.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -322,7 +419,7 @@ final class HermesIrohRelayHostClientRuntimeTests: XCTestCase {
         let auditLogger = RecordingIrohTransportAuditLogger()
         let first = TestIrohRelayTransport(
             nodeId: "node-first",
-            acceptBehavior: .failThenPark(
+            acceptBehavior: .acceptOneThenFailThenPark(
                 .streamRejected("iroh stream failed: connection lost"),
                 failures: 4
             )
@@ -350,8 +447,10 @@ final class HermesIrohRelayHostClientRuntimeTests: XCTestCase {
 
         let started = await client.start(uid: "uid-1", connectionID: "connection-1")
         XCTAssertTrue(started)
+        // 1 completed accept (health evidence) + 4 recoverable failures, which
+        // crosses the rebuild limit, + the parked accept that follows.
         try await waitUntil(timeout: 3) {
-            first.acceptCount >= 5
+            first.acceptCount >= 6
         }
 
         let record = try await directory.fetch(uid: "uid-1", connectionId: "connection-1")
@@ -445,6 +544,9 @@ private final class TestIrohRelayTransport: IrohRelayTransport, @unchecked Senda
     enum AcceptBehavior: Sendable {
         case fail(IrohRelayTransportError)
         case failThenPark(IrohRelayTransportError, failures: Int)
+        /// First `accept` hands back a stream (peer-independent acceptor-health
+        /// evidence), the next `failures` calls throw, then the loop parks.
+        case acceptOneThenFailThenPark(IrohRelayTransportError, failures: Int)
         case park
     }
 
@@ -480,6 +582,17 @@ private final class TestIrohRelayTransport: IrohRelayTransport, @unchecked Senda
             throw error
         case .failThenPark(let error, let failures):
             if acceptCount <= failures {
+                throw error
+            }
+            while !Task.isCancelled {
+                try await Task.sleep(nanoseconds: 100_000_000)
+            }
+            throw IrohRelayTransportError.shutdown
+        case .acceptOneThenFailThenPark(let error, let failures):
+            if acceptCount == 1 {
+                return HandlerRecordingIrohStream(frames: [])
+            }
+            if acceptCount <= failures + 1 {
                 throw error
             }
             while !Task.isCancelled {

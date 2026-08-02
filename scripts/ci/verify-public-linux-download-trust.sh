@@ -99,10 +99,30 @@ if (!files[0].endsWith(".AppImage") || !files[1].endsWith(".deb") || !files[2].e
 }
 if (!files[3].endsWith(".pem")) throw new Error("SITE.linuxPubKeyFile must be a PEM public key");
 
-const feedURL = process.env.OPENBURNBAR_LINUX_UPDATE_FEED_URL || "https://downloads.burnbar.ai/latest-linux.json";
-const parsedFeed = new URL(feedURL);
-if (parsedFeed.protocol !== "https:" || parsedFeed.username || parsedFeed.password) {
-  throw new Error("Linux update feed URL must be an https URL without credentials");
+function optionalStringField(name) {
+  const property = siteObject.properties.find(
+    (entry) => ts.isPropertyAssignment(entry) && propertyNameText(entry.name) === name,
+  );
+  if (!property) return "";
+  const value = unwrap(property.initializer);
+  if (!ts.isStringLiteral(value) && !ts.isNoSubstitutionTemplateLiteral(value)) {
+    throw new Error(`SITE.${name} must be a literal string`);
+  }
+  return value.text;
+}
+
+// The signed update feed lives on the first-party download host. While that
+// host is offline (SITE.linuxUpdateBaseUrl is empty — same policy as
+// macUpdateBaseUrl), the feed is not published anywhere, so feed verification
+// is skipped rather than failing every site.ts change on a dead hostname.
+const updateBase = optionalStringField("linuxUpdateBaseUrl").replace(/\/+$/, "");
+const feedURL = process.env.OPENBURNBAR_LINUX_UPDATE_FEED_URL
+  || (updateBase ? `${updateBase}/latest-linux.json` : "");
+if (feedURL) {
+  const parsedFeed = new URL(feedURL);
+  if (parsedFeed.protocol !== "https:" || parsedFeed.username || parsedFeed.password) {
+    throw new Error("Linux update feed URL must be an https URL without credentials");
+  }
 }
 
 console.log(base);
@@ -151,9 +171,10 @@ for artifact in "$appimage_file" "$deb_file" "$rpm_file"; do
     -in "$tmpdir/$artifact" -sigfile "$tmpdir/$artifact.ed25519.sig" >/dev/null
 done
 
-echo "Verifying signed Linux update feed: $feed_url"
-node "$repo_root/scripts/linux-port/check-linux-update-feed.mjs" --url "$feed_url"
-node --input-type=module - "$feed_url" "$expected_version" <<'NODE'
+if [[ -n "$feed_url" ]]; then
+  echo "Verifying signed Linux update feed: $feed_url"
+  node "$repo_root/scripts/linux-port/check-linux-update-feed.mjs" --url "$feed_url"
+  node --input-type=module - "$feed_url" "$expected_version" <<'NODE'
 const [url, expectedVersion] = process.argv.slice(2);
 const response = await fetch(url, { redirect: "follow", headers: { Accept: "application/json" } });
 if (!response.ok) throw new Error(`Linux update feed returned HTTP ${response.status}`);
@@ -162,5 +183,8 @@ if (document.version !== expectedVersion) {
   throw new Error(`SITE.linuxReleaseLatest (${expectedVersion}) does not match the public feed version (${document.version})`);
 }
 NODE
+else
+  echo "Skipping signed Linux update feed verification: SITE.linuxUpdateBaseUrl is empty (feed host offline; artifact signatures above remain fail-closed)."
+fi
 
 echo "Public Linux download trust verification passed for ${expected_version}."

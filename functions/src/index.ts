@@ -176,6 +176,7 @@ export {
   publishIrohPairingPublicKey,
   publishIrohPairingRecord,
   revokeIrohPairingRecord,
+  issuePhoneControlEnrollmentGrant,
   publishPhoneControlAuthority,
   issueIrohControllerRouteChallenge,
   registerIrohControllerRoute,

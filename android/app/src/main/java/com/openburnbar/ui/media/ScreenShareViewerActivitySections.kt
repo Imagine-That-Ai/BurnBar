@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 internal fun ScreenShareViewerActivityContent(activity: ScreenShareViewerActivity) {
     val ui = rememberScreenShareViewerActivityUiState(activity)
     ScreenShareViewerActivityFocusContextEffect(ui)
+    ScreenShareViewerActivityControlPhaseEffect(activity, ui)
     ScreenShareViewerActivityMirrorAckEffect(activity, ui)
     ScreenShareViewerActivityControlDeniedEffect(activity, ui)
     ScreenShareViewerActivityClipboardEffect(activity, ui)
@@ -26,6 +27,20 @@ internal fun ScreenShareViewerActivityContent(activity: ScreenShareViewerActivit
         pipeline = activity.pipeline,
         options = activity.screenShareViewerScreenOptions(ui),
     )
+}
+
+@Composable
+private fun ScreenShareViewerActivityControlPhaseEffect(activity: ScreenShareViewerActivity, ui: ScreenShareViewerActivityUiState) {
+    LaunchedEffect(ui.controlPhase) {
+        if (
+            activity.connectionRecovery.shouldRebindMirror(
+                phase = ui.controlPhase,
+                hasActiveMirrorRequest = !activity.mirrorRequestID.isNullOrBlank(),
+            )
+        ) {
+            activity.reconnectMirror()
+        }
+    }
 }
 
 @Composable

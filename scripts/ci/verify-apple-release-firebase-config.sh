@@ -82,7 +82,12 @@ if not apps:
     raise SystemExit(1)
 
 for app in apps:
-    plist = app / "Contents" / "Resources" / "GoogleService-Info.plist"
+    # macOS app resources live under Contents/Resources, while iOS/iPadOS
+    # app resources are copied directly into the bundle root.
+    if (app / "Contents").is_dir():
+        plist = app / "Contents" / "Resources" / "GoogleService-Info.plist"
+    else:
+        plist = app / "GoogleService-Info.plist"
     if not plist.is_file():
         failed = True
         print(

@@ -24,6 +24,7 @@ final class ProviderAccountSyncService: Sendable {
 
         do {
             let accounts = try await context.dataStore.fetchProviderAccounts()
+                .filter(Self.isClientWritableAccount)
             guard !accounts.isEmpty else { return }
 
             let batch = context.firestoreGateway.batch()
@@ -31,7 +32,12 @@ final class ProviderAccountSyncService: Sendable {
 
             for account in accounts {
                 let docRef = collectionRef.document(sanitizeDocumentIDPart(account.id))
-                batch.setData(encodeAccount(account, deviceId: deviceId), forDocument: docRef, merge: true)
+                // Client-writable provider-account documents use an exact
+                // Firestore rules allowlist. Replacing the document removes
+                // legacy fields such as `deviceId` / `syncedAt` that would
+                // otherwise survive a merge and make the resulting document
+                // fail the current schema validation.
+                batch.setData(encodeAccount(account, deviceId: deviceId), forDocument: docRef, merge: false)
             }
 
             try await withCloudSyncRetry(
@@ -96,6 +102,18 @@ final class ProviderAccountSyncService: Sendable {
             return deviceId
         case .cloudRefreshable, .serverPrivate:
             return nil
+        }
+    }
+
+    private nonisolated static func isClientWritableAccount(_ account: ProviderAccountDoc) -> Bool {
+        switch account.storageScope {
+        case .localOnly, .deviceKeychain:
+            return true
+        case .cloudRefreshable, .serverPrivate:
+            // Firestore rules keep refresh-sweep accounts server-owned. Including
+            // one in this batch rejects every local-account write with
+            // permission-denied, so never enqueue server-managed metadata here.
+            return false
         }
     }
 

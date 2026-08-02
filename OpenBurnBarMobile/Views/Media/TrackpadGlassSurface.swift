@@ -138,6 +138,10 @@ struct TrackpadGlassSurface: View {
             )
         }
         .ignoresSafeArea()
+        .accessibilityElement()
+        .accessibilityIdentifier("mercury.trackpad.surface")
+        .accessibilityLabel("Glass Trackpad")
+        .accessibilityHint("Drag to move the Mac pointer, tap to click, or swipe vertically to scroll")
     }
 
     private func triggerLightHaptic() {

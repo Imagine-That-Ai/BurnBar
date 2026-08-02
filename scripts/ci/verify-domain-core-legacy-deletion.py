@@ -268,6 +268,19 @@ ACTIVATION_ALLOWED_PREFIXES = (
     "docs/runbooks/shared-rust-",
     "docs/SHARED_RUST_DOMAIN_",
 )
+ACTIVATION_ATTESTED_SOURCE_PREFIX = "crates/openburnbar-domain-core/"
+# Mirror of DEPLOYED_ARTIFACT_PREFIXES in scripts/lib/domain-core-activation.mjs.
+# Promotion sidecars pin the Rust source fingerprint, not the deployed artifact
+# bytes, so incidental protected-main commits must never touch the vendored
+# bindings, wasm packages, or prebuilt binaries that production executes.
+DEPLOYED_ARTIFACT_PREFIXES = (
+    "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/",
+    "Vendor/OpenBurnBarDomainCore.xcframework/",
+    "Vendor/openburnbar-domain-core.aar",
+    "android/openburnbar-domain-core/src/main/java/uniffi/",
+    "apps/console/vendor/openburnbar-domain-core-wasm/",
+    "functions/vendor/openburnbar/domain-core-wasm/",
+)
 GUARD_WORKFLOW_PATH = ".github/workflows/domain-core-deletion-guard.yml"
 GUARD_VERIFIER_PATH = "scripts/ci/verify-domain-core-legacy-deletion.py"
 SENSITIVE_EXACT_PATHS = frozenset(
@@ -3925,54 +3938,31 @@ def core_version_at_commit(repo_root: Path, commit: str) -> str:
     return version
 
 
-def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_commit: str) -> list[str]:
-    require_ancestor(repo_root, candidate_commit, activation_commit, "domain-core activation")
-    changed = [
-        line
-        for line in git_output(
-            repo_root,
-            [
-                "diff",
-                "--name-only",
-                "--diff-filter=ACDMRTUXB",
-                f"{candidate_commit}..{activation_commit}",
-            ],
-            "domain-core activation diff",
-        ).splitlines()
-        if line
-    ]
-    if not changed:
-        raise GateError("domain-core activation commit must change the committed authority profile and receipts")
-    forbidden = sorted(
-        path
-        for path in changed
-        if path not in ACTIVATION_ALLOWED_EXACT_PATHS
-        and not any(path.startswith(prefix) for prefix in ACTIVATION_ALLOWED_PREFIXES)
-    )
-    if forbidden:
-        raise GateError(
-            "domain-core activation may change only profile, trusted manifest, append-only authority artifacts, and runbooks: "
-            + ", ".join(forbidden)
-        )
-    if BUILD_PROFILE_PATH not in changed or "config/domain-core-legacy-deletion.json" not in changed:
-        raise GateError("domain-core activation must atomically change the public profile and authority ledger")
-    return sorted(changed)
-
-
-def annullable_activation_changed_paths(
+def _first_parent_activation_changed_paths(
     repo_root: Path,
     candidate_commit: str,
     activation_commit: str,
+    *,
+    label: str,
+    incidental_label: str,
 ) -> list[str]:
-    require_ancestor(repo_root, candidate_commit, activation_commit, "domain-core annullable activation")
+    # Mirror of firstParentActivationChangedPaths in
+    # scripts/lib/domain-core-activation.mjs. The strict release closure and
+    # the annulment closure share one first-parent walk so both sides of the
+    # gate (and the JS resolver) bind the identical path set — and therefore
+    # the identical changedPathsSha256 — for a given candidate..activation
+    # range. Path-disjoint protected-main commits are excluded as incidental;
+    # the activation commit itself stays path-restricted; mixed commits,
+    # attested Rust source drift, and deployed-artifact drift fail closed.
+    require_ancestor(repo_root, candidate_commit, activation_commit, f"domain-core {label}")
     if candidate_commit == activation_commit:
-        raise GateError("domain-core annullable activation commit must be distinct from the candidate commit")
+        raise GateError(f"domain-core {label} commit must be distinct from the candidate commit")
     activation_commits = [
         line
         for line in git_output(
             repo_root,
             ["rev-list", "--first-parent", "--reverse", f"{candidate_commit}..{activation_commit}"],
-            "domain-core annullable activation first-parent history",
+            f"domain-core {label} first-parent history",
         ).splitlines()
         if line
     ]
@@ -3981,10 +3971,10 @@ def annullable_activation_changed_paths(
         commit_lineage = git_output(
             repo_root,
             ["rev-list", "--parents", "-n", "1", commit],
-            "domain-core annullable activation parent",
+            f"domain-core {label} parent",
         ).split()
         if len(commit_lineage) < 2:
-            raise GateError("domain-core annullable activation commit must have a parent")
+            raise GateError(f"domain-core {label} commit must have a parent")
         commit_paths = [
             line
             for line in git_output(
@@ -3995,7 +3985,7 @@ def annullable_activation_changed_paths(
                     "--diff-filter=ACDMRTUXB",
                     f"{commit_lineage[1]}..{commit}",
                 ],
-                "domain-core annullable activation commit diff",
+                f"domain-core {label} commit diff",
             ).splitlines()
             if line
         ]
@@ -4008,21 +3998,28 @@ def annullable_activation_changed_paths(
         if commit_forbidden:
             if commit == activation_commit:
                 raise GateError(
-                    "domain-core annullable activation may end only with profile, trusted manifest, append-only authority artifacts, and runbooks: "
+                    f"domain-core {label} may end only with profile, trusted manifest, append-only authority artifacts, and runbooks: "
                     + ", ".join(commit_forbidden)
+                )
+            if any(path.startswith(ACTIVATION_ATTESTED_SOURCE_PREFIX) for path in commit_paths):
+                raise GateError(
+                    f"domain-core {incidental_label} protected-main commit {commit} "
+                    "must not change attested Rust source"
+                )
+            if any(path.startswith(prefix) for path in commit_paths for prefix in DEPLOYED_ARTIFACT_PREFIXES):
+                raise GateError(
+                    f"domain-core {incidental_label} protected-main commit {commit} "
+                    "must not change deployed domain-core artifacts"
                 )
             # A commit is incidental only when it changes no activation-authority
             # path. A mixed commit would silently drop authority changes from the
-            # annulment closure, so fail closed.
+            # activation closure, so fail closed.
             if len(commit_forbidden) != len(commit_paths):
                 raise GateError(
-                    f"domain-core annullable incidental protected-main commit {commit} "
+                    f"domain-core {incidental_label} protected-main commit {commit} "
                     "must not change activation authority paths"
                 )
             incidental_paths.update(commit_paths)
-    # Annulment-only recovery binds the full candidate..activation diff while
-    # excluding paths proven to come solely from incidental protected-main
-    # commits. Normal release activation remains strict and never uses this path.
     changed = [
         line
         for line in git_output(
@@ -4033,14 +4030,12 @@ def annullable_activation_changed_paths(
                 "--diff-filter=ACDMRTUXB",
                 f"{candidate_commit}..{activation_commit}",
             ],
-            "domain-core annullable activation diff",
+            f"domain-core {label} diff",
         ).splitlines()
         if line and line not in incidental_paths
     ]
     if not changed:
-        raise GateError(
-            "domain-core annullable activation commit must change the committed authority profile and receipts"
-        )
+        raise GateError(f"domain-core {label} commit must change the committed authority profile and receipts")
     forbidden = sorted(
         path
         for path in changed
@@ -4049,14 +4044,36 @@ def annullable_activation_changed_paths(
     )
     if forbidden:
         raise GateError(
-            "domain-core annullable activation suffix may change only profile, trusted manifest, append-only authority artifacts, and runbooks: "
+            f"domain-core {label} suffix may change only profile, trusted manifest, append-only authority artifacts, and runbooks: "
             + ", ".join(forbidden)
         )
     if BUILD_PROFILE_PATH not in changed or "config/domain-core-legacy-deletion.json" not in changed:
-        raise GateError(
-            "domain-core annullable activation must atomically change the public profile and authority ledger"
-        )
+        raise GateError(f"domain-core {label} must atomically change the public profile and authority ledger")
     return sorted(changed)
+
+
+def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_commit: str) -> list[str]:
+    return _first_parent_activation_changed_paths(
+        repo_root,
+        candidate_commit,
+        activation_commit,
+        label="activation",
+        incidental_label="activation incidental",
+    )
+
+
+def annullable_activation_changed_paths(
+    repo_root: Path,
+    candidate_commit: str,
+    activation_commit: str,
+) -> list[str]:
+    return _first_parent_activation_changed_paths(
+        repo_root,
+        candidate_commit,
+        activation_commit,
+        label="annullable activation",
+        incidental_label="annullable incidental",
+    )
 
 
 def validate_activation_closure(

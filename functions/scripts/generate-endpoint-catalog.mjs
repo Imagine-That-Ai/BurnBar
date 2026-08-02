@@ -73,13 +73,34 @@ const CATALOG_OVERRIDES = {
     ],
     highRiskComputerUse: false,
   },
+  issuePhoneControlEnrollmentGrant: {
+    authMethod:
+      "Firebase Auth, App Check, Cloud Pro entitlement, a single-use high-risk nonce, and the trusted host device that published the pairing",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["hostDeviceId", "connectionId", "controllerDeviceId", "controllerPeerNodeId"],
+    ownershipCheck:
+      "handler scopes every path to request.auth.uid, verifies the caller is the pairing's trusted publishing host and the target is a trusted mobile device, then writes a pairing-scoped short-lived single-use enrollment grant",
+    handlerModule: "callables/phoneControlCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/phoneControlPairingBinding.test.ts",
+        test: "a different trusted Mac cannot issue a controller grant for another host's pairing",
+        kind: "runtime-cross-user",
+        covers: ["issuePhoneControlEnrollmentGrant"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   issueIrohControllerRouteChallenge: {
     authMethod: "Firebase Auth, App Check, Cloud Pro entitlement, and a single-use high-risk nonce",
     appCheck: "required",
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["sourceDeviceId", "connectionId", "authorityPeerNodeId", "transportNodeId"],
     ownershipCheck:
-      "handler scopes every document path to request.auth.uid and transactionally joins the signed pairing, trusted host, sole trusted controller device, and key-derived controller authority before issuing a one-minute challenge",
+      "handler scopes every document path to request.auth.uid and transactionally joins the signed pairing, trusted host, matching authorized controller device, and key-derived controller authority before issuing a one-minute challenge",
     handlerModule: "callables/irohControllerRouteCallables.ts",
     bolaCoverage: [
       {
@@ -115,12 +136,12 @@ const CATALOG_OVERRIDES = {
     highRiskComputerUse: false,
   },
   revokeIrohControllerRoute: {
-    authMethod: "Firebase Auth, App Check, a single-use high-risk nonce, and the trusted sole controller device",
+    authMethod: "Firebase Auth, App Check, a single-use high-risk nonce, and the trusted authorized controller device",
     appCheck: "required",
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["sourceDeviceId", "connectionId"],
     ownershipCheck:
-      "handler derives the tenant from request.auth.uid and only advances the generation of the route bound to the pairing's sole trusted controller device",
+      "handler derives the tenant from request.auth.uid and only advances the generation of the route bound to the requesting authorized controller device",
     handlerModule: "callables/irohControllerRouteCallables.ts",
     bolaCoverage: [
       {

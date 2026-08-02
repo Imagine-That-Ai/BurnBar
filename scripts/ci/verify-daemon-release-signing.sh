@@ -23,6 +23,10 @@ designated_requirement() {
     | head -n 1
 }
 
+authority_chain() {
+  sed -n 's/^Authority=//p'
+}
+
 codesign --verify --strict --verbose=2 "$app_path"
 codesign --verify --strict --verbose=2 "$daemon_path"
 
@@ -30,17 +34,17 @@ app_identifier="$(signature_field "$app_path" Identifier)"
 daemon_identifier="$(signature_field "$daemon_path" Identifier)"
 app_team_id="$(signature_field "$app_path" TeamIdentifier)"
 daemon_team_id="$(signature_field "$daemon_path" TeamIdentifier)"
+app_signature="$(codesign -d --verbose=4 "$app_path" 2>&1)"
 daemon_signature="$(codesign -d --verbose=4 "$daemon_path" 2>&1)"
 watchdog_signature="$(codesign -d --verbose=4 "$watchdog_path" 2>&1)"
+app_authority_chain="$(authority_chain <<<"$app_signature")"
+daemon_authority_chain="$(authority_chain <<<"$daemon_signature")"
 
 # Releases shipped before the shared daemon signing identifier landed
-# (split-brain M4, merged 2026-07-25) sign the daemon as com.openburnbar.daemon.
-# The public download trust gate still has to verify those exact, already
-# notarized artifacts, so accept only that identifier for the explicit shipped
-# version allowlist below. Every other gate (team match, hardened runtime,
-# library validation, bare entitlements, watchdog trust, launch contract) stays
-# enforced. Drop this allowlist once the public download pin moves to a build
-# signed with the shared com.openburnbar.app identifier.
+# sign the daemon as com.openburnbar.daemon. The public trust gate still has
+# to verify those immutable artifacts, so accept that identifier only for the
+# exact shipped-version allowlist. Every new build must share the app's
+# designated requirement so the daemon can read the database-key Keychain ACL.
 legacy_daemon_identifier="com.openburnbar.daemon"
 legacy_daemon_identifier_versions=" 1.0.24 1.0.25 1.0.26 1.0.29 "
 
@@ -63,12 +67,25 @@ fi
 if [[ "$legacy_daemon_signing" == "true" ]]; then
   echo "WARN: accepting legacy daemon signing identifier '$legacy_daemon_identifier' for shipped release $app_version."
 fi
-if [[ "$daemon_team_id" != "$app_team_id" ]]; then
+if [[ -z "$app_team_id" || -z "$daemon_team_id" || "$daemon_team_id" != "$app_team_id" ]]; then
   echo "ERROR: App and daemon are signed by different teams; app='${app_team_id:-missing}' daemon='${daemon_team_id:-missing}'." >&2
   exit 1
 fi
 if [[ -n "$expected_team_id" && "$app_team_id" != "$expected_team_id" ]]; then
   echo "ERROR: App and daemon must be signed by team $expected_team_id; found '${app_team_id:-missing}'." >&2
+  exit 1
+fi
+if [[ -n "$app_authority_chain" || -n "$daemon_authority_chain" ]]; then
+  if [[ -z "$app_authority_chain" || -z "$daemon_authority_chain" || "$daemon_authority_chain" != "$app_authority_chain" ]]; then
+    echo "ERROR: App and daemon must have the same ordered signing-certificate authority chain." >&2
+    echo "app authorities: ${app_authority_chain:-missing}" >&2
+    echo "daemon authorities: ${daemon_authority_chain:-missing}" >&2
+    exit 1
+  fi
+fi
+if ! grep -q 'flags=.*runtime' <<<"$app_signature" || ! grep -q 'flags=.*library-validation' <<<"$app_signature"; then
+  echo "ERROR: App must use hardened runtime and library validation so the daemon can authenticate its RPC peer." >&2
+  printf '%s\n' "$app_signature" >&2
   exit 1
 fi
 if ! grep -q 'flags=.*runtime' <<<"$daemon_signature" || ! grep -q 'flags=.*library-validation' <<<"$daemon_signature"; then
@@ -115,9 +132,6 @@ if [[ "$app_team_id" != "not set" ]]; then
   app_requirement="$(designated_requirement "$app_path")"
   daemon_requirement="$(designated_requirement "$daemon_path")"
   if [[ "$legacy_daemon_signing" == "true" ]]; then
-    # Legacy releases cannot share the app designated requirement because the
-    # signing identifiers differ by construction; require the daemon to at
-    # least pin its own legacy identifier so the requirement is not degenerate.
     if [[ -z "$daemon_requirement" || "$daemon_requirement" != *"$legacy_daemon_identifier"* ]]; then
       echo "ERROR: Legacy daemon designated requirement is missing or does not pin $legacy_daemon_identifier." >&2
       echo "daemon: ${daemon_requirement:-missing}" >&2

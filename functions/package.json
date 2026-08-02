@@ -35,7 +35,7 @@
     "test:fcm-android": "npm run build && node scripts/test-fcm-android.mjs",
     "generate:bola-seeds": "node scripts/generate-bola-victim-seeds.mjs",
     "test:bola": "bash scripts/test-bola-matrix.sh",
-    "test:security": "node --test scripts/generated-literal-parser.test.mjs scripts/sync-bola-tier2-proofs.test.mjs && vitest run src/__tests__/googlePlayTokenClaims.test.ts src/__tests__/publicRateLimit.test.ts src/__tests__/irohPairingFreshness.test.ts src/__tests__/appCheckAttestationBinding.test.ts src/__tests__/endpointAuthorizationMatrix.test.ts src/__tests__/hermesGatewayAttachmentInit.test.ts src/__tests__/highRiskOwnerActionCallableGuards.test.ts src/__tests__/highRiskOwnerAction.test.ts src/__tests__/trustedDeviceActionProof.test.ts src/__tests__/bolaCoverageValidators.test.ts && npm run test:bola",
+    "test:security": "node --test scripts/generated-literal-parser.test.mjs scripts/sync-bola-tier2-proofs.test.mjs && vitest run src/__tests__/googlePlayTokenClaims.test.ts src/__tests__/publicRateLimit.test.ts src/__tests__/irohPairingFreshness.test.ts src/__tests__/appCheckAttestationBinding.test.ts src/__tests__/clientAppCheckApprovalOrdering.test.ts src/__tests__/endpointAuthorizationMatrix.test.ts src/__tests__/hermesGatewayAttachmentInit.test.ts src/__tests__/highRiskOwnerActionCallableGuards.test.ts src/__tests__/highRiskOwnerAction.test.ts src/__tests__/trustedDeviceActionProof.test.ts src/__tests__/bolaCoverageValidators.test.ts && npm run test:bola",
     "test:agent-notifications": "npm run build && node scripts/test-agent-notifications.mjs",
     "test:providers": "npm run build && node scripts/test-providers.mjs && node scripts/test-mimo-probe-fixture.mjs && node scripts/test-provider-account-schema.mjs",
     "test:conversation-query": "npm run build && node scripts/test-conversation-query.mjs",
@@ -96,7 +96,6 @@
     "firebase": "12.14.0",
     "firebase-tools": "15.23.0",
     "knip": "5.88.1",
-    "openburnbar-brace-expansion-cjs": "file:vendor/openburnbar/brace-expansion-cjs.tgz",
     "prettier": "3.8.3",
     "typescript": "^5.9.3",
     "vitest": "4.1.8"
@@ -111,7 +110,7 @@
     "@hono/node-server": "2.0.10",
     "fast-uri": "3.1.4",
     "hono": "4.12.31",
-    "brace-expansion@^1.1.7": "$openburnbar-brace-expansion-cjs",
+    "brace-expansion@^1.1.7": "file:vendor/openburnbar/brace-expansion-cjs.tgz",
     "brace-expansion": "^5.0.8",
     "minimatch": "^10.0.3",
     "firebase-tools@15.23.0": {

@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -217,7 +218,9 @@ private fun ScreenShareViewerSmartZoomFollowEffect(params: ScreenShareViewerSmar
 
 @Composable
 private fun ScreenShareViewerAutoTypeEffect(params: ScreenShareViewerAutoTypeParams) {
-    var openedAutomatically by remember { mutableStateOf(false) }
+    // Saved alongside typingOpen so a restored automatic keyboard keeps its
+    // automatic-focus lifecycle after activity recreation.
+    var openedAutomatically by rememberSaveable { mutableStateOf(false) }
     val latestFocusContext = params.latestFocusContext
     val autoKeyboardOnTextFocus = params.autoKeyboardOnTextFocus
     val controlMode = params.controlMode
@@ -247,26 +250,14 @@ private fun ScreenShareViewerAutoTypeEffect(params: ScreenShareViewerAutoTypePar
             manualDismissUntilMillis = autoTypeManualDismissUntilMillis,
             nowMillis = now,
         )
-        when {
-            ScreenShareAutoTypeFollowPolicy.shouldOpen(autoTypeInput) -> {
-                openedAutomatically = true
-                onTypingOpenChange(true)
-                if (controlMode == ScreenMirrorControlMode.VIEW) {
-                    onControlModeNameChange(ScreenMirrorControlMode.TOUCH.name)
-                }
-            }
-            typingOpen && !standardControlEnabled -> {
-                openedAutomatically = false
-                onTypingOpenChange(false)
-            }
-            ScreenShareAutoTypeFollowPolicy.shouldCloseAutomatically(
-                input = autoTypeInput,
-                openedAutomatically = openedAutomatically,
-            ) -> {
-                openedAutomatically = false
-                onTypingOpenChange(false)
-            }
-            !typingOpen -> openedAutomatically = false
+        val transition = ScreenShareAutoTypeFollowPolicy.transition(
+            input = autoTypeInput,
+            openedAutomatically = openedAutomatically,
+        )
+        openedAutomatically = transition.openedAutomatically
+        transition.typingOpen?.let(onTypingOpenChange)
+        if (transition.promoteControlModeToTouch) {
+            onControlModeNameChange(ScreenMirrorControlMode.TOUCH.name)
         }
     }
 }
@@ -280,7 +271,17 @@ private fun ScreenShareViewerPipelineClockEffects(params: ScreenShareViewerPipel
     val lastAutomaticReconnectAtMillis = params.lastAutomaticReconnectAtMillis
     val onLastAutomaticReconnectAtMillis = params.onLastAutomaticReconnectAtMillis
     val onReconnect = params.onReconnect
-    DisposableEffect(pipeline) { onDispose { runBlocking { pipeline.stop() } } }
+    DisposableEffect(pipeline) {
+        onDispose {
+            pipeline.surfaceLifecycleGate.retireCurrent()?.let { token ->
+                runBlocking {
+                    pipeline.surfaceLifecycleGate.runIfCurrent(token) {
+                        pipeline.stop()
+                    }
+                }
+            }
+        }
+    }
     LaunchedEffect(Unit) {
         while (true) {
             onNowMillis(System.currentTimeMillis())
@@ -404,6 +405,7 @@ private fun BoxScope.ScreenShareViewerToolsDockLayer(
         modifier =
         Modifier
             .align(Alignment.BottomCenter)
+            .navigationBarsPadding()
             .padding(horizontal = 14.dp, vertical = 18.dp)
             .graphicsLayer {
                 scaleX = uiState.trayScale

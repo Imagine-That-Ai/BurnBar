@@ -143,6 +143,18 @@ class ScreenShareInputPolicyTest {
     }
 
     @Test
+    fun terminalDecoderFailureRecoversAutomatically() {
+        assertTrue(
+            screenShareNeedsAutomaticRecovery(
+                phase = VideoReceivePipeline.Phase.Failed("codec terminal error"),
+                stats = VideoReceivePipeline.Stats(),
+                nowMillis = 20_000L,
+                lastPeerHeartbeatAtMillis = 19_000L,
+            ),
+        )
+    }
+
+    @Test
     fun remoteKeyboardDiffExtractsInsertedAndDeletedText() {
         assertEquals(
             RemoteKeyboardDiff(insertedText = "lo", deletedCount = 0),

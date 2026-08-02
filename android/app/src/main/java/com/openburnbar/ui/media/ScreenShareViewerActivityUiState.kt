@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.computeruse.RemoteUnlockSavedCredentialStore
+import com.openburnbar.data.media.MediaControlStreamCoordinator
 import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardResponse
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
@@ -16,6 +17,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockResult
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockState
 
 internal data class ScreenShareViewerActivityRelaySnapshot(
+    val controlPhase: MediaControlStreamCoordinator.Phase,
     val lastPeerHeartbeatAtMillis: Long,
     val lastRoundTripMillis: Int?,
     val lastMirrorAck: HermesRealtimeRelayMirrorAck?,
@@ -36,6 +38,7 @@ internal class ScreenShareViewerActivityUiState(
     val relay: ScreenShareViewerActivityRelaySnapshot,
     val locals: ScreenShareViewerActivityUiLocals,
 ) {
+    val controlPhase: MediaControlStreamCoordinator.Phase get() = relay.controlPhase
     val lastPeerHeartbeatAtMillis: Long get() = relay.lastPeerHeartbeatAtMillis
     val lastRoundTripMillis: Int? get() = relay.lastRoundTripMillis
     val lastMirrorAck: HermesRealtimeRelayMirrorAck? get() = relay.lastMirrorAck
@@ -57,6 +60,9 @@ internal class ScreenShareViewerActivityUiState(
 
 @Composable
 internal fun rememberScreenShareViewerActivityUiState(activity: ScreenShareViewerActivity): ScreenShareViewerActivityUiState {
+    val phaseFlow = BurnBarApplication.mediaControlCoordinator?.phase
+    val controlPhase by phaseFlow?.collectAsState()
+        ?: remember { mutableStateOf<MediaControlStreamCoordinator.Phase>(MediaControlStreamCoordinator.Phase.Idle) }
     val heartbeatFlow = BurnBarApplication.mediaControlCoordinator?.lastPeerHeartbeatAtMillis
     val lastPeerHeartbeatAtMillis by heartbeatFlow?.collectAsState()
         ?: remember { mutableStateOf(0L) }
@@ -85,6 +91,7 @@ internal fun rememberScreenShareViewerActivityUiState(activity: ScreenShareViewe
     return ScreenShareViewerActivityUiState(
         relay =
         ScreenShareViewerActivityRelaySnapshot(
+            controlPhase = controlPhase,
             lastPeerHeartbeatAtMillis = lastPeerHeartbeatAtMillis,
             lastRoundTripMillis = lastRoundTripMillis,
             lastMirrorAck = lastMirrorAck,
