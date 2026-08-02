@@ -221,23 +221,43 @@ class FakeClient {
   constructor(files, state = "draft") {
     this.files = files;
     this.state = state;
+    this.latest = false;
     this.assets = new Map();
+    this.assetIDs = new Map();
+    this.nextAssetID = 1000;
     this.calls = [];
     this.uploadHook = undefined;
     this.downloadHook = undefined;
     this.lookupHook = undefined;
+    this.latestLookupHook = undefined;
     this.editHook = undefined;
+  }
+
+  asset(name, bytes) {
+    if (!this.assetIDs.has(name)) {
+      this.assetIDs.set(name, this.nextAssetID);
+      this.nextAssetID += 1;
+    }
+    return {
+      id: this.assetIDs.get(name),
+      name,
+      size: bytes.length,
+      digest: `sha256:${sha(bytes)}`,
+    };
   }
 
   release() {
     return {
+      id: 9001,
       tag_name: this.files.raw.tag,
       target_commitish: RELEASE_COMMIT,
       name: this.files.raw.title,
       body: readFileSync(this.files.raw.notesPath, "utf8"),
       draft: this.state === "draft",
       prerelease: this.files.raw.prerelease,
-      assets: [...this.assets.keys()].map((name) => ({ name })),
+      assets: [...this.assets.entries()].map(([name, bytes]) =>
+        this.asset(name, bytes),
+      ),
     };
   }
 
@@ -262,6 +282,16 @@ class FakeClient {
         stdout: JSON.stringify({ sha: RELEASE_COMMIT }),
         stderr: "",
       };
+    }
+    if (args[0] === "api" && args[1].endsWith("/releases/latest")) {
+      if (this.latestLookupHook) {
+        const result = this.latestLookupHook(this);
+        if (result) return result;
+      }
+      if (this.state !== "published" || !this.latest) {
+        return { status: 1, stdout: "", stderr: "HTTP 404" };
+      }
+      return { status: 0, stdout: JSON.stringify(this.release()), stderr: "" };
     }
     if (args[0] === "api" && args[1].includes("/releases/tags/")) {
       if (this.lookupHook) this.lookupHook(this);
@@ -301,6 +331,8 @@ class FakeClient {
     if (args[0] === "release" && args[1] === "edit") {
       if (this.editHook) return this.editHook(args, this);
       this.state = args.includes("--draft=true") ? "draft" : "published";
+      if (args.includes("--latest")) this.latest = true;
+      if (args.includes("--latest=false")) this.latest = false;
       return { status: 0, stdout: "", stderr: "" };
     }
     if (allowFailure) return { status: 1, stdout: "", stderr: "unsupported" };
@@ -369,6 +401,8 @@ test("stages the complete stable set create-only and publishes exactly once last
     const edit = mutations(client).at(-1);
     assert.equal(edit.includes("--draft=false"), true);
     assert.equal(edit.includes("--prerelease=false"), true);
+    assert.equal(edit.includes("--latest=false"), true);
+    assert.equal(edit.includes("--latest"), false);
     assert.equal(
       client.calls.some((args) => args.includes("--clobber")),
       false,
@@ -420,9 +454,95 @@ test("complete published retry is strictly read-only", () => {
   });
 });
 
-test("published missing DMG or different general bytes fails with zero mutation", () => {
+test("published promotion audits every exact asset before the sole latest mutation", () => {
+  withFixture({}, (files) => {
+    files.publication.promote = true;
+    const client = new FakeClient(files, "published");
+    seedExact(client, files.publication);
+    assert.deepEqual(
+      publishAppleAndroidRelease(files.publication, { client }),
+      {
+        published: false,
+        uploaded: [],
+        readOnly: false,
+        promoted: true,
+        promotionApplied: true,
+      },
+    );
+
+    const editIndex = client.calls.findIndex(
+      (args) => args[0] === "release" && args[1] === "edit",
+    );
+    assert.notEqual(editIndex, -1);
+    assert.deepEqual(
+      new Set(
+        client.calls
+          .slice(0, editIndex)
+          .filter(
+            (args) => args[0] === "release" && args[1] === "download",
+          )
+          .map((args) => args[args.indexOf("--pattern") + 1]),
+      ),
+      new Set(files.names),
+    );
+    assert.deepEqual(mutations(client), [
+      [
+        "release",
+        "edit",
+        files.raw.tag,
+        "--repo",
+        files.raw.repository,
+        "--latest",
+      ],
+    ]);
+    assert.equal(
+      client.calls.some(
+        (args) => args[0] === "api" && args[1].endsWith("/releases/latest"),
+      ),
+      true,
+    );
+  });
+});
+
+test("published promotion is idempotent when the exact release is already latest", () => {
+  withFixture({}, (files) => {
+    files.publication.promote = true;
+    const client = new FakeClient(files, "published");
+    seedExact(client, files.publication);
+    client.latest = true;
+    client.editHook = () => ({
+      status: 1,
+      stdout: "",
+      stderr: "concurrent promotion",
+    });
+    const result = publishAppleAndroidRelease(files.publication, { client });
+    assert.equal(result.promoted, true);
+    assert.equal(result.promotionApplied, false);
+  });
+});
+
+test("published promotion detects release substitution after the latest mutation", () => {
+  withFixture({}, (files) => {
+    files.publication.promote = true;
+    const client = new FakeClient(files, "published");
+    seedExact(client, files.publication);
+    client.editHook = (_args, instance) => {
+      instance.latest = true;
+      instance.assets.set(files.names.at(-1), Buffer.from("substituted"));
+      return { status: 0, stdout: "", stderr: "" };
+    };
+    assert.throws(
+      () => publishAppleAndroidRelease(files.publication, { client }),
+      /latest release verification changed the audited release or asset identity/u,
+    );
+    assert.equal(mutations(client).length, 1);
+  });
+});
+
+test("published missing DMG or different general bytes blocks promotion with zero mutation", () => {
   withFixture({}, (files) => {
     for (const mode of ["missing-dmg", "different-zip"]) {
+      files.publication.promote = true;
       const client = new FakeClient(files, "published");
       seedExact(client, files.publication);
       if (mode === "missing-dmg") client.assets.delete(files.names[0]);

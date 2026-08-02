@@ -74,8 +74,188 @@ env:
   FIREBASE_SOURCE_FIRESTORE: "1"
 
 jobs:
+  release-promotion:
+    name: Audit and promote existing stable release
+    if: github.event_name == 'workflow_dispatch' && inputs.promote
+    runs-on: macos-26
+    timeout-minutes: 75
+    environment: release
+    permissions:
+      attestations: read
+      contents: write
+    steps:
+      - name: Check out exact release tag
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Resolve immutable stable release coordinates
+        id: release
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          TAG_NAME="$INPUT_TAG"
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]{1,3}\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Promotion requires a stable vMAJOR.MINOR.PATCH[+build] tag."
+            exit 1
+          fi
+          tag_ref="refs/tags/${TAG_NAME}"
+          if [[ "$GITHUB_REF" != "$tag_ref" ]]; then
+            echo "::error::promote=true for ${TAG_NAME} must run from ${tag_ref}, not ${GITHUB_REF}."
+            exit 1
+          fi
+          git fetch --force origin "+${tag_ref}:${tag_ref}"
+          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
+          release_commit="$(git rev-list -n 1 "${tag_ref}^{commit}")"
+          test -n "$release_commit"
+          test "$(git rev-parse HEAD)" = "$release_commit"
+          test "$GITHUB_SHA" = "$release_commit"
+          if ! git merge-base --is-ancestor "$release_commit" origin/main; then
+            echo "::error::Release tag ${TAG_NAME} is not reachable from origin/main."
+            exit 1
+          fi
+
+          version="${TAG_NAME#v}"
+          notes="$RUNNER_TEMP/release-promotion-notes.md"
+          awk -v ver="$version" '
+            /^## / {
+              if (found) { exit }
+              if ($0 ~ "\\[" ver "\\]") { found=1; next }
+            }
+            found { print }
+          ' CHANGELOG.md > "$notes"
+          if [[ ! -s "$notes" ]]; then
+            cp CHANGELOG.md "$notes"
+          fi
+
+          {
+            echo "tag_name=$TAG_NAME"
+            echo "version=$version"
+            echo "release_commit=$release_commit"
+            echo "notes_path=$notes"
+            echo "asset_dir=$RUNNER_TEMP/release-promotion-assets"
+            echo "receipt_path=$RUNNER_TEMP/release-promotion-receipt.json"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install public trust verifier dependencies
+        run: npm ci --prefix website --ignore-scripts
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2 (node24-native)
+
+      - name: Audit exact published release, asset set, digests, feeds, and native attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/ci/promote-github-release.mjs audit \
+            --tag "${{ steps.release.outputs.tag_name }}" \
+            --commit "${{ steps.release.outputs.release_commit }}" \
+            --notes "${{ steps.release.outputs.notes_path }}" \
+            --asset-dir "${{ steps.release.outputs.asset_dir }}" \
+            --receipt "${{ steps.release.outputs.receipt_path }}" \
+            --domain-core-profile "${{ inputs.domain_core_profile }}"
+
+      - name: Verify legacy GPG checksum signature (when published)
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          VERSION: ${{ steps.release.outputs.version }}
+          ASSET_DIR: ${{ steps.release.outputs.asset_dir }}
+        run: |
+          set -euo pipefail
+          checksums="$ASSET_DIR/checksums-v${VERSION}.txt"
+          signature="${checksums}.asc"
+          if [[ ! -f "$signature" ]]; then
+            echo "No legacy GPG checksum signature is published; keyless Sigstore blob attestations remain the required provenance control."
+            exit 0
+          fi
+          if [[ -z "${RELEASE_SIGNING_KEY:-}" ]]; then
+            echo "::error::checksums-v${VERSION}.txt.asc is published but RELEASE_SIGNING_KEY is not configured; the promotion cannot verify the detached signature."
+            exit 1
+          fi
+          keyring="$RUNNER_TEMP/release-promotion-gnupg"
+          mkdir -p "$keyring"
+          chmod 700 "$keyring"
+          echo "$RELEASE_SIGNING_KEY" | base64 --decode | gpg --homedir "$keyring" --import --batch --passphrase ""
+          gpg --homedir "$keyring" --batch --verify "$signature" "$checksums"
+          echo "Checksum GPG signature verified against the audited checksums file."
+
+      - name: Verify release Sigstore provenance against exact tag identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          bash scripts/ci/verify-release-attestations.sh
+          "${{ steps.release.outputs.tag_name }}"
+
+      - name: Verify rollback bundle Sigstore provenance
+        env:
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+          VERSION: ${{ steps.release.outputs.version }}
+          ASSET_DIR: ${{ steps.release.outputs.asset_dir }}
+        run: |
+          set -euo pipefail
+          rollback="$ASSET_DIR/OpenBurnBar-${VERSION}-legacy-rollback.zip"
+          bundle="${rollback}.sigstore.json"
+          test -s "$rollback"
+          test -s "$bundle"
+          cosign verify-blob-attestation \
+            --bundle "$bundle" \
+            --type https://openburnbar.dev/attestations/domain-core-rollback-artifact/v1 \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG_NAME}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "$rollback" >/dev/null
+
+      - name: Verify exact macOS release bundle and App Check wiring
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          ASSET_DIR: ${{ steps.release.outputs.asset_dir }}
+        run: |
+          bash scripts/ci/verify-apple-appcheck-release-artifact.sh \
+            "$ASSET_DIR/OpenBurnBar-${VERSION}-macOS.dmg" \
+            "$ASSET_DIR/OpenBurnBar-${VERSION}-macOS.zip"
+
+      - name: Verify exact-tag public macOS signing, notarization, and identity
+        env:
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          site_config="$RUNNER_TEMP/release-promotion-site.ts"
+          node --input-type=module - "$site_config" "$TAG_NAME" "$VERSION" <<'NODE'
+          import { writeFileSync } from "node:fs";
+
+          const [path, tag, version] = process.argv.slice(2);
+          const base = `https://github.com/Imagine-That-Ai/BurnBar/releases/download/${tag}`;
+          const file = `OpenBurnBar-${version}-macOS.dmg`;
+          writeFileSync(
+            path,
+            `export const SITE = ${JSON.stringify({
+              macDownloadBaseUrl: base,
+              macReleaseFile: file,
+              macReleaseLatest: version,
+            })} as const;\n`,
+          );
+          NODE
+          bash scripts/ci/verify-public-macos-download-trust.sh "$site_config"
+
+      - name: Promote only the unchanged audited release to GitHub latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          node scripts/ci/promote-github-release.mjs promote
+          --receipt "${{ steps.release.outputs.receipt_path }}"
+
   release-functions-gate:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs.promote)
     name: Release Functions Gate
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -117,7 +297,7 @@ jobs:
         run: bash scripts/ci/test-storage-rules.sh
 
   release-extension-gate:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs.promote)
     name: Release Extension and TS Gate
     runs-on: macos-26
     timeout-minutes: 35
@@ -147,7 +327,7 @@ jobs:
         run: ./scripts/test-openburnbar-extension-host.sh
 
   release-supply-chain-gate:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs.promote)
     name: Release Supply Chain Gate
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -182,7 +362,7 @@ jobs:
   # are only exposed to jobs bound to the release environment, so a fail-hard
   # APPLE_*/Sparkle check here would break setups that scope them there.
   release-preflight:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs.promote)
     name: Release Preflight
     runs-on: macos-26
     timeout-minutes: 30
@@ -2990,7 +3170,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.release-preflight.outputs.tag_name }}
           COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
-          PROMOTE: ${{ github.event_name == 'workflow_dispatch' && inputs.promote && needs.release-preflight.outputs.is_prerelease == 'false' && 'true' || 'false' }}
+          # Publication never repoints the public update channel. Promotion is
+          # a separate remote-artifact audit in the release-promotion job.
+          PROMOTE: "false"
         run: |
           set -euo pipefail
           asset_args=()
@@ -3083,24 +3265,28 @@ jobs:
   # pinned in Info.plist. A release whose own update feed is broken fails here.
   verify-live-update-feed:
     name: Verify live update feed
-    needs: [release-preflight, domain-core-native-release-evidence]
-    # Tag pushes intentionally publish stable assets without repointing
-    # `releases/latest`. Only an explicit promote=true dispatch changes the
-    # update channel, so only that promoted run can truthfully verify the live
-    # updater feed for this release.
-    if: ${{ needs.release-preflight.outputs.is_prerelease == 'false' && github.event_name == 'workflow_dispatch' && inputs.promote == true }}
+    needs: [release-promotion]
+    # Only the dedicated remote-artifact promotion lane may repoint
+    # `releases/latest`; verify the public alias after that exact audit and
+    # mutation completes.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.promote == true && needs.release-promotion.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
 
       - name: Fetch and verify published feed, appcast, and DMG signature
         env:
-          VERSION: ${{ needs.release-preflight.outputs.version }}
+          TAG_NAME: ${{ inputs.tag }}
           OPENBURNBAR_MAC_UPDATE_BASE_URL: ${{ vars.OPENBURNBAR_MAC_UPDATE_BASE_URL }}
         run: |
           set -euo pipefail
+          VERSION="${TAG_NAME#v}"
+          export VERSION
           BASE_URL="${OPENBURNBAR_MAC_UPDATE_BASE_URL:-https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download}"
           BASE_URL="${BASE_URL%/}"
           WORKDIR="$(mktemp -d)"

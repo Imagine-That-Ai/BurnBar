@@ -32,6 +32,11 @@ make_fixture() {
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${FIREBASE_SOURCE_FIRESTORE:-}" != "1" ]]; then
+  echo "lockfile verifier did not force the source-built Firestore graph" >&2
+  exit 87
+fi
+
 attempt=0
 if [[ -f "$FAKE_ATTEMPT_FILE" ]]; then
   attempt="$(cat "$FAKE_ATTEMPT_FILE")"
@@ -95,7 +100,8 @@ run_fixture() {
   local expected="$root/expected.Package.resolved"
   local attempts="$root/attempts"
   printf 'committed-lockfile\n' >"$expected"
-  PATH="$root/fake-bin:$PATH" \
+  FIREBASE_SOURCE_FIRESTORE=0 \
+    PATH="$root/fake-bin:$PATH" \
     FAKE_MODE="$mode" \
     FAKE_LOCKFILE_PATH="$lockfile" \
     FAKE_EXPECTED_LOCKFILE_PATH="$expected" \

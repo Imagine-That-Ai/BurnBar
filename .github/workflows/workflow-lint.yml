@@ -99,6 +99,13 @@ on:
       - "scripts/ci/verify-jscpd-report.test.mjs"
       - "scripts/ci/verify-release-attestations.sh"
       - "scripts/ci/verify-release-attestations.test.sh"
+      - "scripts/ci/create-apple-android-release-publication.mjs"
+      - "scripts/ci/create-apple-android-release-publication.test.mjs"
+      - "scripts/ci/publish-apple-android-release.mjs"
+      - "scripts/ci/publish-apple-android-release.test.mjs"
+      - "scripts/ci/promote-github-release.mjs"
+      - "scripts/ci/promote-github-release.test.mjs"
+      - "scripts/ci/verify-release-promotion-workflow.test.mjs"
       - "scripts/ci/verify-release-tag-safety.mjs"
       - "scripts/ci/verify-release-tag-safety.test.mjs"
       - "scripts/ci/verify-release-tag-safety.functional.test.mjs"
@@ -213,6 +220,13 @@ on:
       - "scripts/ci/verify-jscpd-report.test.mjs"
       - "scripts/ci/verify-release-attestations.sh"
       - "scripts/ci/verify-release-attestations.test.sh"
+      - "scripts/ci/create-apple-android-release-publication.mjs"
+      - "scripts/ci/create-apple-android-release-publication.test.mjs"
+      - "scripts/ci/publish-apple-android-release.mjs"
+      - "scripts/ci/publish-apple-android-release.test.mjs"
+      - "scripts/ci/promote-github-release.mjs"
+      - "scripts/ci/promote-github-release.test.mjs"
+      - "scripts/ci/verify-release-promotion-workflow.test.mjs"
       - "scripts/ci/verify-release-tag-safety.mjs"
       - "scripts/ci/verify-release-tag-safety.test.mjs"
       - "scripts/ci/verify-release-tag-safety.functional.test.mjs"
@@ -305,6 +319,14 @@ jobs:
 
       - name: Self-test protected Google Play publisher
         run: node --test scripts/ci/google-play-publication.test.mjs
+
+      - name: Self-test audited GitHub release promotion
+        run: |
+          node --test \
+            scripts/ci/create-apple-android-release-publication.test.mjs \
+            scripts/ci/publish-apple-android-release.test.mjs \
+            scripts/ci/promote-github-release.test.mjs \
+            scripts/ci/verify-release-promotion-workflow.test.mjs
 
       - name: Self-test Firestore restore drill env validation
         run: bash scripts/ops/run-firestore-restore-drill.test.sh
