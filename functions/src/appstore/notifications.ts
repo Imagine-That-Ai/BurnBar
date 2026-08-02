@@ -28,6 +28,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import type { Request } from "firebase-functions/v2/https";
 import type { Response } from "express";
 import { getFirestore } from "firebase-admin/firestore";
+import { VerificationStatus } from "@apple/app-store-server-library";
 
 import { APP_STORE_SECRETS, loadAppStoreRuntimeConfig } from "./config.js";
 import { EntitlementReconcileError, reconcileEntitlement } from "./reconciler.js";
@@ -86,31 +87,73 @@ function extractSignedPayload(req: Request, res: Response): string | undefined {
 
 /**
  * Translate a `verifyNotification` rejection into its HTTP response.
- * Distinguishes "you sent us garbage" (4xx) from "we screwed up" (5xx):
- * Apple treats 4xx as terminal — no retry. That's right for a payload
- * that fails chain verification: it would never become valid on retry.
+ * Distinguishes terminal signature/identity failures (4xx) from transient
+ * verifier infrastructure failures (5xx). In particular, Apple's verifier
+ * reports OCSP/network failures as `RETRYABLE_VERIFICATION_FAILURE`; returning
+ * 4xx for that status would discard a valid notification during an outage.
+ *
+ * Every verification failure remains fail-closed: no failure path returns 2xx
+ * or reaches entitlement reconciliation.
  */
-function respondToVerifyFailure(res: Response, err: unknown): void {
+export function respondToAppStoreNotificationVerifyFailure(res: Response, err: unknown): void {
+  const failure = appStoreNotificationVerifyFailureResponse(err);
   logError({
     event: "appstore.notifications.verify_failed",
     message: errorMessage(err),
     kind: err instanceof JWSVerificationFailure ? `jws.${err.status}` : "unknown",
+    retryable: failure.statusCode >= 500,
   });
-  if (err instanceof JWSVerificationFailure) {
-    res.status(400).json({ error: "jws_invalid" });
-    return;
-  }
-  res.status(500).json({ error: "internal" });
+  res.status(failure.statusCode).json(failure.body);
 }
 
-interface ReconcileFailureHttpResponse {
+interface NotificationFailureHttpResponse {
   statusCode: number;
   body: Record<string, unknown>;
 }
 
+/**
+ * Classify verifier failures using the status contract from Apple's official
+ * server library. Only its explicit retryable status is safe to retry. Known
+ * signature, certificate, environment, and app-identity failures are terminal.
+ * Impossible or future/unknown statuses fail closed with 5xx so we do not
+ * silently discard a notification under a library-version mismatch.
+ */
+export function appStoreNotificationVerifyFailureResponse(err: unknown): NotificationFailureHttpResponse {
+  if (!(err instanceof JWSVerificationFailure)) {
+    return {
+      statusCode: 500,
+      body: { error: "internal" },
+    };
+  }
+
+  switch (err.status) {
+    case VerificationStatus.RETRYABLE_VERIFICATION_FAILURE:
+      return {
+        statusCode: 503,
+        body: { error: "jws_verification_unavailable" },
+      };
+    case VerificationStatus.VERIFICATION_FAILURE:
+    case VerificationStatus.INVALID_APP_IDENTIFIER:
+    case VerificationStatus.INVALID_ENVIRONMENT:
+    case VerificationStatus.INVALID_CHAIN_LENGTH:
+    case VerificationStatus.INVALID_CERTIFICATE:
+    case VerificationStatus.FAILURE:
+      return {
+        statusCode: 400,
+        body: { error: "jws_invalid" },
+      };
+    case VerificationStatus.OK:
+    default:
+      return {
+        statusCode: 500,
+        body: { error: "internal" },
+      };
+  }
+}
+
 const RETRYABLE_RECONCILE_ERROR_CODES = new Set(["asc_live_status_unavailable"]);
 
-export function appStoreNotificationReconcileFailureResponse(err: unknown): ReconcileFailureHttpResponse {
+export function appStoreNotificationReconcileFailureResponse(err: unknown): NotificationFailureHttpResponse {
   if (err instanceof EntitlementReconcileError) {
     if (RETRYABLE_RECONCILE_ERROR_CODES.has(err.code)) {
       return {
@@ -170,7 +213,7 @@ export const appStoreServerNotificationsV2 = onRequest(
     try {
       notification = await verifier.verifyNotification(rawSignedPayload);
     } catch (err) {
-      respondToVerifyFailure(res, err);
+      respondToAppStoreNotificationVerifyFailure(res, err);
       return;
     }
 
