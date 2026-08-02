@@ -77,6 +77,9 @@ jobs:
       - name: Install gitleaks
         run: go install github.com/zricethezav/gitleaks/v8@v8.28.0
 
+      - name: Self-test publishable-tree path handling
+        run: bash scripts/security/__tests__/scan-publishable-tree.test.sh
+
       - name: Verify gitleaks allowlist boundary
         run: node scripts/ci/verify-gitleaks-allowlist-boundary.mjs
 

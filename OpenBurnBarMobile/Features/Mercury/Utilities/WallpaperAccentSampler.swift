@@ -1,28 +1,34 @@
 import Foundation
 import SwiftUI
-import CoreImage
-#if canImport(UIKit)
-import UIKit
-#endif
+import CoreGraphics
+import ImageIO
 
 /// Samples the dominant accent color from a Mac wallpaper payload.
 ///
 /// The input is a base64-encoded JPEG/PNG (the same field that
 /// `MercuryPeer.blurredWallpaperBase64` carries — already blurred and
-/// downscaled by the Mac side, typically <50KB). We use Core Image's
-/// `CIAreaAverage` filter to compute a single-pixel average, then bump
-/// saturation a bit so the resulting color reads as an accent rather
-/// than a muddy backdrop.
+/// downscaled by the Mac side, typically <50KB). ImageIO first decodes a
+/// bounded thumbnail without caching the full image, then Core Graphics
+/// renders it into a small deterministic RGBA buffer. Finally, we average
+/// the visible pixels and bump saturation a bit so the resulting color
+/// reads as an accent rather than a muddy backdrop.
 ///
 /// Why not k-means or histogram quantization? The wallpaper is already
 /// blurred to one dominant tone — average is cheap, deterministic, and
 /// good enough. We trade a tiny amount of fidelity for fast, predictable
 /// results that play well with the personalization cache.
 enum WallpaperAccentSampler {
-    private static let areaAverageContext = CIContext(options: [
-        .workingColorSpace: NSNull(),
-        .useSoftwareRenderer: true
-    ])
+    private static let maximumEncodedImageBytes = 512 * 1_024
+    private static let maximumBase64Characters =
+        ((maximumEncodedImageBytes + 2) / 3) * 4
+    private static let maximumSampleDimension = 64
+    /// Upper bound on the *source* pixel dimensions we are willing to
+    /// decode. The Mac side already blurs and downscales wallpapers, so
+    /// anything advertising more than this is hostile or corrupt. A
+    /// highly compressible PNG can stay under the encoded-byte cap while
+    /// claiming enormous dimensions; `kCGImageSourceThumbnailMaxPixelSize`
+    /// bounds only the output, not the decoder work on the source.
+    private static let maximumSourcePixelDimension = 4_096
 
     /// Returns a SwiftUI `Color` for the given base64 payload, or `nil`
     /// when the payload is empty/invalid. Callers should fall back to
@@ -31,7 +37,9 @@ enum WallpaperAccentSampler {
     static func dominantAccent(fromBase64 base64: String?) -> Color? {
         guard let base64,
               !base64.isEmpty,
-              let data = Data(base64Encoded: base64) else {
+              base64.utf8.count <= maximumBase64Characters,
+              let data = Data(base64Encoded: base64),
+              data.count <= maximumEncodedImageBytes else {
             return nil
         }
         return dominantAccent(fromImageData: data)
@@ -39,51 +47,118 @@ enum WallpaperAccentSampler {
 
     @MainActor
     static func dominantAccent(fromImageData data: Data) -> Color? {
-        #if canImport(UIKit)
-        guard let image = UIImage(data: data),
-              let cgImage = image.cgImage else {
+        guard !data.isEmpty,
+              data.count <= maximumEncodedImageBytes,
+              let image = downsampledImage(from: data),
+              let average = averageRGB(from: image) else {
             return nil
         }
-        let ciImage = CIImage(cgImage: cgImage)
-        return dominantAccent(from: ciImage)
-        #else
-        return nil
-        #endif
+        return punchUp(r: average.r, g: average.g, b: average.b)
     }
 
-    /// Internal seam — public for testing.
-    @MainActor
-    static func dominantAccent(from ciImage: CIImage) -> Color? {
-        let extent = ciImage.extent
-        guard extent.width > 0, extent.height > 0 else { return nil }
-        let extentVector = CIVector(
-            x: extent.origin.x,
-            y: extent.origin.y,
-            z: extent.size.width,
-            w: extent.size.height
-        )
-        guard let filter = CIFilter(
-            name: "CIAreaAverage",
-            parameters: [kCIInputImageKey: ciImage, kCIInputExtentKey: extentVector]
-        ),
-        let outputImage = filter.outputImage else {
+    private static func downsampledImage(from data: Data) -> CGImage? {
+        let sourceOptions: [CFString: Any] = [
+            kCGImageSourceShouldCache: false
+        ]
+        guard let source = CGImageSourceCreateWithData(
+            data as CFData,
+            sourceOptions as CFDictionary
+        ) else {
             return nil
         }
 
-        var bitmap = [UInt8](repeating: 0, count: 4)
-        areaAverageContext.render(
-            outputImage,
-            toBitmap: &bitmap,
-            rowBytes: 4,
-            bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-            format: .RGBA8,
-            colorSpace: CGColorSpaceCreateDeviceRGB()
-        )
+        guard hasAcceptableSourceDimensions(source) else {
+            return nil
+        }
 
-        let r = Double(bitmap[0]) / 255.0
-        let g = Double(bitmap[1]) / 255.0
-        let b = Double(bitmap[2]) / 255.0
-        return punchUp(r: r, g: g, b: b)
+        let thumbnailOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maximumSampleDimension,
+            kCGImageSourceShouldCacheImmediately: true
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(
+            source,
+            0,
+            thumbnailOptions as CFDictionary
+        )
+    }
+
+    /// Rejects sources whose advertised pixel dimensions exceed
+    /// `maximumSourcePixelDimension`, before any pixel decoding happens.
+    /// Fails closed: images that do not report dimensions are rejected.
+    private static func hasAcceptableSourceDimensions(_ source: CGImageSource) -> Bool {
+        let propertyOptions: [CFString: Any] = [
+            kCGImageSourceShouldCache: false
+        ]
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(
+            source,
+            0,
+            propertyOptions as CFDictionary
+        ) as? [CFString: Any],
+              let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+              let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue else {
+            return false
+        }
+        return width > 0
+            && height > 0
+            && width <= maximumSourcePixelDimension
+            && height <= maximumSourcePixelDimension
+    }
+
+    private static func averageRGB(from image: CGImage) -> (r: Double, g: Double, b: Double)? {
+        let width = image.width
+        let height = image.height
+        guard width > 0, height > 0 else { return nil }
+
+        let bytesPerPixel = 4
+        let bytesPerRow = width * bytesPerPixel
+        var bitmap = [UInt8](repeating: 0, count: bytesPerRow * height)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+            ?? CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo.byteOrder32Big.rawValue
+            | CGImageAlphaInfo.premultipliedLast.rawValue
+        let didRender = bitmap.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo
+            ) else {
+                return false
+            }
+            context.setBlendMode(.copy)
+            context.interpolationQuality = .high
+            context.draw(
+                image,
+                in: CGRect(x: 0, y: 0, width: width, height: height)
+            )
+            return true
+        }
+        guard didRender else { return nil }
+
+        var redTotal = 0.0
+        var greenTotal = 0.0
+        var blueTotal = 0.0
+        var alphaTotal = 0.0
+        for pixelOffset in stride(from: 0, to: bitmap.count, by: bytesPerPixel) {
+            let alpha = Double(bitmap[pixelOffset + 3]) / 255.0
+            guard alpha > 0 else { continue }
+            redTotal += Double(bitmap[pixelOffset])
+            greenTotal += Double(bitmap[pixelOffset + 1])
+            blueTotal += Double(bitmap[pixelOffset + 2])
+            alphaTotal += alpha
+        }
+        guard alphaTotal > 0 else { return nil }
+
+        return (
+            r: min(redTotal / alphaTotal / 255.0, 1.0),
+            g: min(greenTotal / alphaTotal / 255.0, 1.0),
+            b: min(blueTotal / alphaTotal / 255.0, 1.0)
+        )
     }
 
     /// Push the sampled tone toward a presentable accent: clamp luminance

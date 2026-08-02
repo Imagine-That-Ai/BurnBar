@@ -31,6 +31,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected Type state so one tap reopens it, with JVM policy coverage and a
   physical-Samsung open, dismiss, and reopen regression test.
 
+### Fixed - Audited GitHub release promotion
+
+- **Made stable release promotion a verified second phase**: tag publication
+  remains explicitly non-latest, while a `promote=true` retry must audit the
+  exact published tag, metadata, attestations, asset bytes, GitHub asset IDs,
+  sizes, and SHA-256 digests before the sole `--latest` mutation. The workflow
+  then proves GitHub's latest endpoint still returns that unchanged release
+  before validating the live updater feed. The audit binds the governed
+  `domain_core_profile`: a rollback release promotes without the native
+  domain-core evidence it never publishes (anything present is still verified),
+  a published legacy GPG checksum signature must verify against the audited
+  checksums file, and iOS release predicates now validate their embedded App
+  Store Connect receipt end to end.
+
 ### Fixed - Stripe entitlement reconciliation
 
 - **Made temporary Stripe-bound operator grants yield to the verified lifecycle

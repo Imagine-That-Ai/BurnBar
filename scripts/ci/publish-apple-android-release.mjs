@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   copyFileSync,
   mkdirSync,
@@ -184,9 +185,43 @@ function resolveTag(client, publication) {
   }
 }
 
+function releaseAsset(raw, label) {
+  const value = objectValue(raw, label);
+  const name = safeAssetName(value.name, `${label} name`);
+  if (!Number.isSafeInteger(value.id) || value.id <= 0) {
+    throw new Error(`${label} id must be a positive integer`);
+  }
+  if (!Number.isSafeInteger(value.size) || value.size < 0) {
+    throw new Error(`${label} size must be a non-negative integer`);
+  }
+  if (
+    typeof value.digest !== "string" ||
+    !/^sha256:[0-9a-f]{64}$/iu.test(value.digest)
+  ) {
+    throw new Error(`${label} digest must be a GitHub SHA-256 digest`);
+  }
+  return {
+    id: value.id,
+    name,
+    size: value.size,
+    digest: value.digest.toLowerCase(),
+  };
+}
+
+function releaseIdentity(releaseID, assets) {
+  return JSON.stringify({
+    releaseID,
+    assets: assets
+      .map(({ id, name, size, digest }) => ({ id, name, size, digest }))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+  });
+}
+
 function parseRelease(raw, publication) {
   const value = objectValue(raw, "release lookup");
   if (
+    !Number.isSafeInteger(value.id) ||
+    value.id <= 0 ||
     value.tag_name !== publication.tag ||
     value.target_commitish !== publication.commit ||
     value.name !== publication.title ||
@@ -199,15 +234,19 @@ function parseRelease(raw, publication) {
       "GitHub release metadata does not match the exact publication",
     );
   }
-  const names = value.assets.map((asset) => asset?.name);
-  if (
-    names.some((name) => typeof name !== "string") ||
-    new Set(names).size !== names.length
-  ) {
+  const assets = value.assets.map((asset, index) =>
+    releaseAsset(asset, `GitHub release assets[${index}]`),
+  );
+  const names = assets.map((asset) => asset.name);
+  if (new Set(names).size !== names.length) {
     throw new Error("GitHub release assets are invalid or duplicated");
   }
-  for (const name of names) safeAssetName(name, "GitHub release asset");
-  return { state: value.draft ? "draft" : "published", names: new Set(names) };
+  return {
+    state: value.draft ? "draft" : "published",
+    names: new Set(names),
+    assets: new Map(assets.map((asset) => [asset.name, asset])),
+    identity: releaseIdentity(value.id, assets),
+  };
 }
 
 function lookupRelease(client, publication, { allowAbsent = false } = {}) {
@@ -222,6 +261,22 @@ function lookupRelease(client, publication, { allowAbsent = false } = {}) {
     throw new Error(`GitHub release lookup failed: ${detail.trim()}`);
   }
   return parseRelease(parseJson(result.stdout, "release lookup"), publication);
+}
+
+function lookupLatestRelease(client, publication) {
+  resolveTag(client, publication);
+  const result = client.run(
+    ["api", `repos/${publication.repository}/releases/latest`],
+    { allowFailure: true },
+  );
+  if (result.status !== 0) {
+    const detail = `${result.stderr || ""}\n${result.stdout || ""}`;
+    throw new Error(`GitHub latest release lookup failed: ${detail.trim()}`);
+  }
+  return parseRelease(
+    parseJson(result.stdout, "latest release lookup"),
+    publication,
+  );
 }
 
 function requireAssetNames(publication, names, { complete }) {
@@ -303,6 +358,27 @@ function verifyOrAdoptExisting(client, asset, downloaded, stagedPath) {
   }
 }
 
+function verifyGitHubAssetDigest(remote, path) {
+  const bytes = readFileSync(path);
+  if (bytes.length !== remote.size) {
+    throw new Error(
+      `release asset ${remote.name} size ${bytes.length} does not match GitHub metadata ${remote.size}`,
+    );
+  }
+  const digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+  if (digest !== remote.digest) {
+    throw new Error(
+      `release asset ${remote.name} digest does not match GitHub metadata`,
+    );
+  }
+}
+
+function requireSameReleaseIdentity(expected, actual, context) {
+  if (expected.identity !== actual.identity) {
+    throw new Error(`${context} changed the audited release or asset identity`);
+  }
+}
+
 function auditCompleteRelease(client, publication, staged, directory) {
   const release = lookupRelease(client, publication);
   if (release.state !== "published") {
@@ -319,11 +395,60 @@ function auditCompleteRelease(client, publication, staged, directory) {
       directory,
     );
     verifyOrAdoptExisting(client, asset, downloaded, staged.get(asset.name));
+    verifyGitHubAssetDigest(release.assets.get(asset.name), downloaded);
   }
   const final = lookupRelease(client, publication);
   if (final.state !== "published")
     throw new Error("release state changed during audit");
   requireAssetNames(publication, final.names, { complete: true });
+  requireSameReleaseIdentity(release, final, "release asset audit");
+  return final;
+}
+
+function requireExactLatestRelease(client, publication, audited) {
+  const latest = lookupLatestRelease(client, publication);
+  if (latest.state !== "published") {
+    throw new Error("GitHub latest release is not published");
+  }
+  requireAssetNames(publication, latest.names, { complete: true });
+  requireSameReleaseIdentity(audited, latest, "latest release verification");
+}
+
+function promoteAuditedRelease(client, publication, audited) {
+  const current = lookupRelease(client, publication);
+  if (current.state !== "published") {
+    throw new Error("release left published state before latest promotion");
+  }
+  requireAssetNames(publication, current.names, { complete: true });
+  requireSameReleaseIdentity(
+    audited,
+    current,
+    "latest promotion precondition",
+  );
+
+  const result = client.run(
+    [
+      "release",
+      "edit",
+      publication.tag,
+      "--repo",
+      publication.repository,
+      "--latest",
+    ],
+    { allowFailure: true },
+  );
+  try {
+    requireExactLatestRelease(client, publication, audited);
+  } catch (error) {
+    if (result.status !== 0) {
+      const detail = (result.stderr || result.stdout || "unknown failure").trim();
+      throw new Error(
+        `latest promotion failed: ${detail}; ${error.message}`,
+      );
+    }
+    throw error;
+  }
+  return result.status === 0;
 }
 
 function publishDraft(client, publication) {
@@ -390,12 +515,26 @@ export function publishAppleAndroidRelease(
 
     if (release.state === "published") {
       requireAssetNames(publication, release.names, { complete: true });
-      auditCompleteRelease(
+      const audited = auditCompleteRelease(
         client,
         publication,
         staged,
         join(workspace, "published"),
       );
+      if (publication.promote) {
+        const promotionApplied = promoteAuditedRelease(
+          client,
+          publication,
+          audited,
+        );
+        return {
+          published: false,
+          uploaded: [],
+          readOnly: false,
+          promoted: true,
+          promotionApplied,
+        };
+      }
       return { published: false, uploaded: [], readOnly: true };
     }
 
@@ -473,12 +612,15 @@ export function publishAppleAndroidRelease(
       }
     }
     try {
-      auditCompleteRelease(
+      const audited = auditCompleteRelease(
         client,
         publication,
         staged,
         join(workspace, "post-publish"),
       );
+      if (publication.promote) {
+        requireExactLatestRelease(client, publication, audited);
+      }
     } catch (error) {
       if (result.status === 0) {
         const redraft = redraftAfterFailedAudit(client, publication);
