@@ -3,8 +3,10 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
-  existsSync,
-  lstatSync,
+  closeSync,
+  constants as fsConstants,
+  fstatSync,
+  openSync,
   readFileSync,
   writeFileSync,
 } from "node:fs";
@@ -210,24 +212,39 @@ function validateManifest(manifest, aabPath) {
 }
 
 function readRegularAab(aabPath) {
-  if (!existsSync(aabPath)) {
-    throw new Error(`Android App Bundle does not exist: ${aabPath}`);
-  }
-  const stat = lstatSync(aabPath);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.size <= 0) {
-    throw new Error(
-      `Android App Bundle must be a non-empty regular file: ${aabPath}`,
-    );
-  }
   if (!aabPath.endsWith(".aab")) {
     throw new Error(`Android App Bundle must end in .aab: ${aabPath}`);
   }
-  const bytes = readFileSync(aabPath);
-  return {
-    bytes,
-    sizeBytes: stat.size,
-    sha256: createHash("sha256").update(bytes).digest("hex"),
-  };
+  let fd;
+  try {
+    fd = openSync(aabPath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      throw new Error(`Android App Bundle does not exist: ${aabPath}`);
+    }
+    if (error?.code === "ELOOP") {
+      throw new Error(
+        `Android App Bundle must be a non-empty regular file: ${aabPath}`,
+      );
+    }
+    throw error;
+  }
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.size <= 0) {
+      throw new Error(
+        `Android App Bundle must be a non-empty regular file: ${aabPath}`,
+      );
+    }
+    const bytes = readFileSync(fd);
+    return {
+      bytes,
+      sizeBytes: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    };
+  } finally {
+    closeSync(fd);
+  }
 }
 
 function encodedPath(value) {
