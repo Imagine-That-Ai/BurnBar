@@ -104,6 +104,27 @@ enough. The `Public macOS Download Trust` workflow runs this check automatically
 when `website/src/data/site.ts` changes, so a future button update cannot
 silently point users at an unsigned, unstapled, or Keychain-broken DMG.
 
+### Temporary v1.0.29 profile-certificate exception
+
+The immutable public `v1.0.29` DMG predates the current certificate/profile
+pairing: its app is signed by one valid Developer ID certificate while its
+embedded all-devices profile lists a different certificate from the same
+release setup. The public-download verifier may bypass only that profile
+certificate-membership comparison when every value below matches exactly:
+
+- Version: `1.0.29`
+- DMG SHA-256: `fc0926b4e7ae0c9e155d9be6711a06119f7a2fff2f7df8448fd34ca052db9d96`
+- Bundle signer SHA-256: `2B5CCCC3256C4FE179A7C34614152AE3B940D21EB9193F36D312BAAD82C762BB`
+- Sole profile certificate SHA-256: `F6D16CF680A35D2C27805517469FC6427CDFFFD3D2207C13FFF13CC0F10F6A6A`
+
+The exception does not bypass the DMG digest check, Gatekeeper, notarization,
+stapling, deep signature validation, Developer ID/team identity, entitlements,
+Firebase configuration, App Check scan, Keychain profile authorization, daemon
+launch/signing verification, or final Gatekeeper execution assessment. Normal
+release packaging still invokes the certificate verifier without legacy
+artifact context and therefore remains fail-closed. Remove the exception and
+its tests as soon as the public download moves away from `v1.0.29`.
+
 Release artifacts must also include the shipped Firebase client plist and the
 app's `MAC_APP_DIRECT` provisioning profile. The plist is client configuration,
 not a private signing secret. The profile authorizes Firebase Auth's macOS
