@@ -98,6 +98,7 @@ const gate = {
     ...candidate,
     activationCommit: commit,
     changedPathsSha256: "f".repeat(64),
+    releaseCommit: commit,
   },
   sourceRun: {
     repository: "Imagine-That-Ai/BurnBar",
@@ -123,6 +124,7 @@ const gate = {
       ...candidate,
       activationCommit: commit,
       changedPathsSha256: "f".repeat(64),
+      releaseCommit: commit,
     },
   },
 };
