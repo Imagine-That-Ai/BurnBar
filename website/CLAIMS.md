@@ -199,8 +199,8 @@ treats Kimi as exact, which matches the running code.
 | ECIES (P-256 + AES-GCM) cross-device credential escrow                                        | `docs/THREAT_MODEL.md:201-230`                                                                                                                                                         |
 | App Store JWS verified against pinned Apple root CAs                                          | `docs/THREAT_MODEL.md:242-250`                                                                                                                                                         |
 | Owner-scoped Firestore rules + secret-field-name denylist                                     | `docs/THREAT_MODEL.md:140,221`, `firestore.rules`                                                                                                                                      |
-| Direct-download releases signed + notarized + stapled                                         | `docs/RELEASE_MACOS.md:42-55`; current `/download` button is an emergency GitHub Release fallback until the branded direct-download lane is republished                                |
-| Direct-download per-release SBOM + checksums + provenance JSON                                | `docs/RELEASE_MACOS.md:43-83`; public fallback asset provenance is GitHub Release asset metadata                                                                                        |
+| Direct-download releases signed + notarized + stapled                                        | `docs/RELEASE_MACOS.md:42-55`; the `/download` button serves the first-party `downloads.burnbar.ai` host (Cloudflare R2 custom domain, verified live 2026-08-02)                        |
+| Direct-download per-release SBOM + checksums + provenance JSON                                | `docs/RELEASE_MACOS.md:43-83`; branded-host assets verified SHA-256-identical to the immutable GitHub v1.0.29 release assets (2026-08-02)                                               |
 | **Known limit:** direct-download macOS app is not sandboxed; Mac App Store build is sandboxed | `docs/THREAT_MODEL.md:113-124`, `docs/RELEASE_MACOS.md`                                                                                                                                |
 | **Known limit:** Provider API calls aren't certificate-pinned                                 | `docs/reviews/SECURITY_PRIVACY_REVIEW.md:94`                                                                                                                                                        |
 | **Known limit:** Cursor connector tunnel routes through Cloudflare                            | `docs/THREAT_MODEL.md:152-156`                                                                                                                                                         |
@@ -213,8 +213,8 @@ treats Kimi as exact, which matches the running code.
 
 | Claim                                        | Source                                                                                                                                                                                                                                                                                                                           |
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Current public macOS DMG                     | `website/src/data/site.ts`; `https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.29/OpenBurnBar-1.0.29-macOS.dmg`                                                                                                                                                                                                  |
-| Branded direct-download lane pending         | `website/src/data/site.ts`, `docs/RELEASE_MACOS.md`; restore `downloads.burnbar.ai` only after DNS/R2, signed/notarized artifacts, and the live provenance guard pass                                                                                                                                                             |
+| Current public macOS DMG                     | `website/src/data/site.ts`; `https://downloads.burnbar.ai/OpenBurnBar-1.0.29-macOS.dmg` — SHA-256 verified against the immutable GitHub v1.0.29 release asset (2026-08-02)                                                                                                                                                        |
+| Branded direct-download lane live            | `website/src/data/site.ts`, `docs/RELEASE_MACOS.md`; `downloads.burnbar.ai` is an Active Cloudflare R2 custom domain (bucket `openburnbar-downloads`); `website/scripts/test-download-provenance.mjs` pins and live-checks the branded DMG URL                                                                                    |
 | macOS Sonoma min                             | `README.md:272`, `homebrew/burnbar.rb:22`                                                                                                                                                                                                                                                                                        |
 | iOS on the App Store (v1.0, 2026-05-26)      | iTunes Lookup API for `com.openburnbar.app` (checked 2026-07-11); store page https://apps.apple.com/us/app/openburnbar/id6766366964                                                                                                                                                                                              |
 | Editor extension source-only                 | `extensions/openburnbar/README.md:7-10`                                                                                                                                                                                                                                                                                          |
@@ -222,9 +222,9 @@ treats Kimi as exact, which matches the running code.
 | Homebrew tap not yet published               | `QUICKSTART.md:46`. Site doesn't list a brew command — intentional                                                                                                                                                                                                                                                               |
 
 Before website deployment, `npm run test:download-provenance --prefix website` must prove the
-exact customer-facing DMG URL is live. Do not replace the GitHub Release URL with
-`downloads.burnbar.ai` until the notarized direct-download artifacts and branded host are
-actually published.
+exact customer-facing DMG URL is live. The audited URL is pinned to
+`https://downloads.burnbar.ai/OpenBurnBar-1.0.29-macOS.dmg`; changing the public DMG URL must
+update that pin in the same PR, after the replacement artifact is published and verified.
 
 ---
 
@@ -243,10 +243,10 @@ These are the recurring **[verify]** flags above, collected:
 1. **Canonical GitHub URL.** README + Homebrew formula say `Ajnunezg/BurnBar`. `git remote -v` says `Imagine-That-Ai/BurnBar`. Both repos exist publicly; only the latter has shipped release artifacts. Pick one and align everything.
 2. **iOS launch status.** Resolved 2026-07-11 — the app is live (v1.0, released 2026-05-26); `SITE.iosStatus` now reads "on the App Store" and `SITE.iosAppStoreUrl` links the store page.
 3. **Store price tiers.** Site advertises Cloud at $7.99/month or $79/year, Cloud Pro at $24.99/month or $249/year, and both top-ups at $4.99. Confirm Apple, Play, and Stripe live products match; if stores set different local prices, decide whether to footnote.
-4. **Marketing version.** `SITE.macReleaseLatest` / `SITE.macReleaseFile` currently target the
-   published `v1.0.29` GitHub DMG as the public macOS download. Restore the branded
-   `downloads.burnbar.ai` host only after the notarized direct-download pipeline publishes
-   matching live assets.
+4. **Marketing version.** Resolved 2026-08-02 — the branded `downloads.burnbar.ai` host is
+   live (Active Cloudflare R2 custom domain) and `SITE.macDownloadBaseUrl` /
+   `SITE.macUpdateBaseUrl` now point at it; every v1.0.29 artifact was streamed through the
+   branded host and SHA-256-matched against the immutable GitHub release assets.
 5. **Sentry / encryption-key recovery / HTTP-gateway TLS** — `docs/reviews/SECURITY_PRIVACY_REVIEW.md` notes a few items the team intended to fix. Re-read against the current shipping build before publishing the security page.
 6. **Trademark clearance for "OpenBurnBar"** remains an unchecked legal-owner item in `docs/OSS_LAUNCH_CHECKLIST.md:148`. Public-facing app, repository, and website surfaces already use the name, so this is a current release-risk review—not a future "before going public" task. Automated repository checks cannot substitute for counsel/owner sign-off.
 7. **Team plan copy** — kept off the page until built.
