@@ -372,7 +372,7 @@ if [[ -d "$helpers_dir" ]]; then
   )
 fi
 sign_one "$helpers_dir/libOpenBurnBarCore.dylib"
-sign_one "$helpers_dir/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"
+sign_one "$helpers_dir/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.app"
 sign_one "$helpers_dir/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"
 sign_one "$helpers_dir/OpenBurnBarVirtualHIDBridge" "runtime,library" "com.openburnbar.virtual-hid-bridge"
 sign_one \
@@ -396,7 +396,7 @@ codesign --force --timestamp --options runtime,library \
 bash scripts/ci/verify-signing-profile-certificate.sh "$app_path" "$app_profile"
 codesign --verify --deep --strict --verbose=2 "$app_path"
 assert_peer_signature "$app_path" "com.openburnbar.app"
-assert_peer_signature "$helpers_dir/OpenBurnBarDaemon" "com.openburnbar.daemon"
+assert_peer_signature "$helpers_dir/OpenBurnBarDaemon" "com.openburnbar.app"
 assert_peer_signature "$helpers_dir/OpenBurnBarCLI" "com.openburnbar.cli"
 assert_peer_signature "$helpers_dir/OpenBurnBarVirtualHIDBridge" "com.openburnbar.virtual-hid-bridge"
 assert_peer_signature "$helpers_dir/OpenBurnBarPrivilegedInputExecution" "com.openburnbar.privileged-input-execution"

@@ -569,14 +569,14 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert 'bash scripts/ci/smoke-openburnbar-release-dmg.sh "$DMG_PATH"' in workflow
     assert "swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarCLI" in workflow
     assert '--identifier "$identifier"' in workflow
-    assert 'sign_one "$HELPERS_DIR/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"' in workflow
+    assert 'sign_one "$HELPERS_DIR/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.app"' in workflow
     assert 'sign_one "$HELPERS_DIR/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"' in workflow
     assert "com.openburnbar.privileged-input-execution" in workflow
     assert "com.openburnbar.virtual-hid-bridge" in workflow
     assert "--options runtime,library" in workflow
     assert "codesign --force --timestamp --deep --options runtime,library" not in workflow
     assert "assert_peer_signature" in workflow
-    assert 'assert_peer_signature "$HELPERS_DIR/OpenBurnBarDaemon" "com.openburnbar.daemon"' in workflow
+    assert 'assert_peer_signature "$HELPERS_DIR/OpenBurnBarDaemon" "com.openburnbar.app"' in workflow
     assert 'assert_peer_signature "$HELPERS_DIR/OpenBurnBarCLI" "com.openburnbar.cli"' in workflow
     assert (
         'bash scripts/ci/verify-daemon-release-signing.sh "$APP_PATH" "$APP_PROFILE_TEAM_ID"'
@@ -708,7 +708,7 @@ def test_local_app_signing_uses_same_privileged_peer_policy_as_release():
     script = (ROOT / "scripts/sign-openburnbar-local.sh").read_text(encoding="utf-8")
 
     assert (
-        'sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"'
+        'sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.app"'
         in script
     )
     assert 'sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"' in script
@@ -718,7 +718,7 @@ def test_local_app_signing_uses_same_privileged_peer_policy_as_release():
     assert "--options runtime,library" in script
     assert "assert_peer_signature" in script
     assert 'assert_peer_signature "$APP_BUNDLE" "com.openburnbar.app"' in script
-    assert 'assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "com.openburnbar.daemon"' in script
+    assert 'assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "com.openburnbar.app"' in script
     assert 'assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI" "com.openburnbar.cli"' in script
     assert (
         'bash scripts/ci/verify-daemon-release-signing.sh "$APP_BUNDLE" "$TEAM_ID"'

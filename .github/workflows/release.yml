@@ -1713,7 +1713,7 @@ jobs:
           fi
 
           sign_one "$HELPERS_DIR/libOpenBurnBarCore.dylib"
-          sign_one "$HELPERS_DIR/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"
+          sign_one "$HELPERS_DIR/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.app"
           sign_one "$HELPERS_DIR/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"
           sign_one_with_entitlements \
             "$HELPERS_DIR/OpenBurnBarPrivilegedInputExecution" \
@@ -1739,7 +1739,7 @@ jobs:
           bash scripts/ci/verify-signing-profile-certificate.sh "$APP_PATH" "$APP_PROFILE"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           assert_peer_signature "$APP_PATH" "com.openburnbar.app"
-          assert_peer_signature "$HELPERS_DIR/OpenBurnBarDaemon" "com.openburnbar.daemon"
+          assert_peer_signature "$HELPERS_DIR/OpenBurnBarDaemon" "com.openburnbar.app"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarCLI" "com.openburnbar.cli"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputExecution" "com.openburnbar.privileged-input-execution"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarVirtualHIDBridge" "com.openburnbar.virtual-hid-bridge"

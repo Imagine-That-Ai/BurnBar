@@ -118,7 +118,7 @@ require_pattern 'exactVersion: 4\.16\.0' project.yml "project.yml must pin SQLCi
 require_pattern 'product: SQLCipher' project.yml "OpenBurnBar targets must link the SQLCipher product"
 require_pattern 'SQLITE_HAS_CODEC' project.yml "OpenBurnBar targets must define SQLITE_HAS_CODEC"
 require_pattern 'path: Vendor/GRDB-SQLCipher' project.yml "project.yml must use the vendored SQLCipher-backed GRDB package"
-require_pattern 'OTHER_CODE_SIGN_FLAGS: --identifier com\.openburnbar\.daemon --options runtime,library' project.yml "daemon must retain its fixed signing identifier"
+require_pattern 'OTHER_CODE_SIGN_FLAGS: --identifier com\.openburnbar\.app --options runtime,library' project.yml "daemon must share the app designated requirement for the database-key Keychain ACL"
 require_pattern 'verify-daemon-release-signing\.sh' scripts/build-macos-website-release.sh "website release must run the daemon signing and executable gate"
 require_pattern 'verify-daemon-release-signing\.sh' scripts/ci/verify-public-macos-download-trust.sh "public artifact verification must launch-check the signed daemon"
 require_pattern 'keychain-access-groups' scripts/ci/verify-daemon-release-signing.sh "daemon verifier must reject restricted Keychain entitlements on the bare helper"
