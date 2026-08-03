@@ -1,7 +1,7 @@
 {
   "name": "@openburnbar/website",
   "version": "1.0.0",
-  "description": "OpenBurnBar launch website — burnbar.ai",
+  "description": "OpenBurnBar launch website \u2014 burnbar.ai",
   "private": true,
   "type": "module",
   "scripts": {
@@ -89,7 +89,7 @@
     "yaml": "^2.8.3",
     "esbuild": "0.28.1",
     "fast-uri": "3.1.4",
-    "brace-expansion": "^5.0.8",
+    "brace-expansion": "^5.0.9",
     "minimatch": "^10.0.3"
   },
   "engines": {
