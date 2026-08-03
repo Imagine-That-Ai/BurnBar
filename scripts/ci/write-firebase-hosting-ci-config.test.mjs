@@ -159,7 +159,8 @@ test("staging hosting emits only the marketing site with a noindex boundary", ()
 
     const config = JSON.parse(readFileSync(output, "utf8"));
     assert.equal(config.hosting.length, 1);
-    assert.equal(config.hosting[0].target, "marketing");
+    assert.equal(config.hosting[0].target, undefined);
+    assert.equal(config.hosting[0].site, "burnbar-staging");
     assert.equal(config.hosting[0].public, "website/dist");
     assert.equal(JSON.stringify(config).includes("predeploy"), false);
     assert.ok(

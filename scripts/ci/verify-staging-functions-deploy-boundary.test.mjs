@@ -221,9 +221,9 @@ try {
     ),
   );
   expectFailure(
-    "unscoped Hosting deploy",
+    "target-dependent Hosting deploy",
     trustedPath,
-    pristineTrusted.replace("--only hosting:marketing", "--only hosting"),
+    pristineTrusted.replace("--only hosting", "--only hosting:marketing"),
   );
   expectFailure(
     "missing Hosting rewrite preflight",

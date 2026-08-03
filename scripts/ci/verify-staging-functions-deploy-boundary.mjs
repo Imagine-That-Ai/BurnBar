@@ -208,8 +208,9 @@ requireText(
 );
 requireText(
   trusted,
-  "--only hosting:marketing",
-  "trusted Hosting deployment must remain scoped to the marketing target",
+  `            --only hosting \\
+            --project "$FIREBASE_PROJECT"`,
+  "trusted Hosting deployment must deploy the single explicit staging site without target lookup",
 );
 requireText(
   trusted,
