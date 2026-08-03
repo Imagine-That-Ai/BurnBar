@@ -1,7 +1,7 @@
 {
   "name": "openburnbar-functions",
   "version": "1.0.0",
-  "description": "OpenBurnBar Cloud Functions v2 backend — provider credential vault, quota refresh, and usage rollups.",
+  "description": "OpenBurnBar Cloud Functions v2 backend \u2014 provider credential vault, quota refresh, and usage rollups.",
   "engines": {
     "node": "22"
   },
@@ -111,7 +111,7 @@
     "fast-uri": "3.1.4",
     "hono": "4.12.31",
     "brace-expansion@^1.1.7": "file:vendor/openburnbar/brace-expansion-cjs.tgz",
-    "brace-expansion": "^5.0.8",
+    "brace-expansion": "^5.0.9",
     "minimatch": "^10.0.3",
     "firebase-tools@15.23.0": {
       "minimatch@^3.0.4": "3.1.5",
