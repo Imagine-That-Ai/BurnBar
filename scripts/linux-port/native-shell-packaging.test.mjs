@@ -24,6 +24,12 @@ test('DEB and RPM bundles install the canonical XDG autostart entry', () => {
       `${format} bundle must install the canonical autostart source`
     );
   }
+  const appimage = config.bundle?.linux?.appimage;
+  assert.ok(appimage, 'AppImage bundle config is required');
+  assert.ok(
+    !('desktopTemplate' in appimage),
+    "Tauri's AppImageConfig rejects desktopTemplate; extract-and-run portability is enforced by embed-linux-appimage-payload.mjs"
+  );
 });
 
 test('installed desktop launchers cannot be shadowed through PATH', () => {
