@@ -1348,27 +1348,71 @@ function checkLatestMergedPrGate() {
     };
   }
   const mainSha = originMain.stdout.trim();
-  const latestPr = latestMergedPrForMainSha(mainSha);
-  if (!latestPr.ok) return latestPr;
 
-  const checkedSha = latestPr.checkedSha;
-  const runs = checkRunsForSha(checkedSha);
-  if (!runs.ok) return { ...runs, pr: latestPr.pr, mainSha };
-  const required = findTrustedCheckRun(
-    runs.checkRuns,
+  // Prefer checks that already ran on origin/main itself (workflow_dispatch /
+  // push). Multi-PR squash stacks routinely make main's tree diverge from the
+  // latest PR head tree, so PR-head fallback is only valid under exact tree
+  // binding — same rule as checkMainRequiredGate.
+  const mainRuns = checkRunsForSha(mainSha);
+  if (!mainRuns.ok) return mainRuns;
+  const mainCheck = findTrustedCheckRun(
+    mainRuns.checkRuns,
     REQUIRED_MAIN_GATE_CHECK,
-    checkedSha,
+    mainSha,
     REQUIRED_MAIN_GATE_WORKFLOW_PATHS,
   );
+
+  let latestPr = null;
+  let mergedPrHeadCheck = null;
+  if (mainCheck.trust === "missing-check-run") {
+    latestPr = latestMergedPrForMainSha(mainSha);
+    if (latestPr.ok) {
+      const headRuns = checkRunsForSha(latestPr.headSha);
+      if (!headRuns.ok) {
+        return {
+          ...headRuns,
+          mainSha,
+          mainCheck,
+          latestMergedPr: latestPr,
+        };
+      }
+      mergedPrHeadCheck = findTrustedCheckRun(
+        headRuns.checkRuns,
+        REQUIRED_MAIN_GATE_CHECK,
+        latestPr.headSha,
+        REQUIRED_MAIN_GATE_WORKFLOW_PATHS,
+      );
+    } else {
+      // Surface the tree-binding / ancestry failure when main has no gate yet.
+      return {
+        ok: false,
+        mainSha,
+        mainCheck,
+        latestMergedPr: latestPr,
+        error:
+          latestPr.error ||
+          latestPr.reason ||
+          latestPr.treeBinding?.reason ||
+          "BurnBar CI Gate missing on main and latest merged PR cannot certify it",
+      };
+    }
+  }
+
+  const required = selectMainOrMergedPrHeadCheck({
+    mainSha,
+    mainCheck,
+    latestPr,
+    mergedPrHeadCheck,
+  });
   return {
     ok: required.ok === true,
-    pr: latestPr.pr,
+    pr: latestPr?.pr ?? null,
     mainSha,
-    headSha: latestPr.headSha,
-    mergeCommitSha: latestPr.mergeCommitSha,
-    treeBinding: latestPr.treeBinding,
-    checkedSha,
-    evidenceSource: "merged-pr-head",
+    headSha: latestPr?.headSha ?? null,
+    mergeCommitSha: latestPr?.mergeCommitSha ?? null,
+    treeBinding: latestPr?.treeBinding ?? null,
+    checkedSha: required.checkedSha,
+    evidenceSource: required.evidenceSource,
     openburnbarPr: required,
   };
 }
