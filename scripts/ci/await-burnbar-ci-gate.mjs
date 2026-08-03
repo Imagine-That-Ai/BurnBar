@@ -4,9 +4,15 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const PASSING = new Set(["success", "neutral", "skipped"]);
+// Cancelled is intentionally NOT a hard failure during the poll loop.
+// Merge-queue and concurrency cancellations routinely supersede a check run
+// before its replacement is registered; treating cancelled as terminal after a
+// short grace ejected healthy merge-group candidates (e.g. PR #2154) while
+// AgentLens/macOS jobs were still queued. Cancelled stays pending until a
+// non-cancelled terminal result arrives or the overall evaluator deadline
+// expires (fail-closed at timeout).
 const FAILING = new Set([
   "failure",
-  "cancelled",
   "timed_out",
   "action_required",
   "startup_failure",
@@ -18,8 +24,7 @@ export function resolveObservedSha(environment = process.env) {
 }
 
 export function evaluateGate(required, observations, options = {}) {
-  const nowMs = options.nowMs ?? Date.now();
-  const cancelledGraceMs = options.cancelledGraceMs ?? 0;
+  const treatCancelledAsFailed = options.treatCancelledAsFailed === true;
   const missing = [];
   const pending = [];
   const failed = [];
@@ -28,18 +33,21 @@ export function evaluateGate(required, observations, options = {}) {
     const item = observations.get(context);
     if (!item) missing.push(context);
     else if (PASSING.has(item.conclusion)) passed.push(context);
-    else if (
-      item.conclusion === "cancelled" &&
-      item.completedAt &&
-      Number.isFinite(Date.parse(item.completedAt)) &&
-      nowMs - Date.parse(item.completedAt) < cancelledGraceMs
-    ) {
-      pending.push({
-        context,
-        status: "replacement_pending",
-        url: item.url,
-      });
-    }     else if (FAILING.has(item.conclusion))
+    else if (item.conclusion === "cancelled") {
+      if (treatCancelledAsFailed) {
+        failed.push({
+          context,
+          conclusion: item.conclusion,
+          url: item.url,
+        });
+      } else {
+        pending.push({
+          context,
+          status: "replacement_pending",
+          url: item.url,
+        });
+      }
+    } else if (FAILING.has(item.conclusion))
       failed.push({ context, conclusion: item.conclusion, url: item.url });
     else
       pending.push({
@@ -202,9 +210,6 @@ async function main() {
     const state = evaluateGate(
       config.required_contexts,
       await collectObservations(repository, sha, token),
-      {
-        cancelledGraceMs: Number(config.cancelled_grace_seconds ?? 0) * 1000,
-      },
     );
     if (state.failed.length > 0) {
       console.error(JSON.stringify(state, null, 2));
@@ -226,8 +231,19 @@ async function main() {
             })
           : null;
       if (allowanceMs === null || Date.now() >= allowanceMs) {
+        // At the hard deadline, cancelled replacements that never arrived
+        // become terminal failures so the gate still fails closed.
+        const timedOut = evaluateGate(
+          config.required_contexts,
+          await collectObservations(repository, sha, token),
+          { treatCancelledAsFailed: true },
+        );
         console.error(
-          JSON.stringify({ error: "CI gate timed out", ...state }, null, 2),
+          JSON.stringify(
+            { error: "CI gate timed out", ...timedOut },
+            null,
+            2,
+          ),
         );
         process.exitCode = 1;
         return;
