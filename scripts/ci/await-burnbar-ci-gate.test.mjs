@@ -281,6 +281,23 @@ test("gate only treats cancelled as failed when the hard deadline asks for it", 
   ]);
 });
 
+test("deadline re-check treats a fully completed state as a pass, not a timeout", () => {
+  // A required check can complete between the deadline observation and the
+  // refreshed read taken to classify the timeout. That refreshed state must
+  // evaluate ready so the gate returns success instead of ejecting a healthy
+  // candidate with a forced timeout failure.
+  const state = evaluateGate(
+    ["build", "late-finisher"],
+    new Map([
+      ["build", { conclusion: "success" }],
+      ["late-finisher", { conclusion: "success" }],
+    ]),
+    { treatCancelledAsFailed: true },
+  );
+  assert.equal(state.ready, true);
+  assert.equal(state.failed.length, 0);
+});
+
 test("gate waits for missing and in-progress contexts", () => {
   const state = evaluateGate(
     ["missing", "running"],

@@ -238,6 +238,15 @@ async function main() {
           await collectObservations(repository, sha, token),
           { treatCancelledAsFailed: true },
         );
+        // The refreshed read can observe a final check completing between the
+        // first observation and the deadline re-check; a fully ready state is
+        // a pass, not a timeout.
+        if (timedOut.ready) {
+          console.log(
+            `All ${timedOut.passed.length} component contexts passed for ${sha}.`,
+          );
+          return;
+        }
         console.error(
           JSON.stringify(
             { error: "CI gate timed out", ...timedOut },
