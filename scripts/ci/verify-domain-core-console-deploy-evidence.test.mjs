@@ -62,6 +62,7 @@ function fixture(profileName = "public-production") {
       ...CANDIDATE,
       activationCommit: COMMIT,
       changedPathsSha256: "f".repeat(64),
+      releaseCommit: COMMIT,
     },
     sourceRun: {
       repository: "Imagine-That-Ai/BurnBar",
@@ -90,6 +91,7 @@ function fixture(profileName = "public-production") {
         ...CANDIDATE,
         activationCommit: COMMIT,
         changedPathsSha256: "f".repeat(64),
+        releaseCommit: COMMIT,
       },
     },
   };

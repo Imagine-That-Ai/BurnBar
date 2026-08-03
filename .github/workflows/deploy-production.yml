@@ -251,16 +251,12 @@ jobs:
             --profile "$DOMAIN_CORE_PROFILE" \
             --expected-candidate-commit "$CANDIDATE_COMMIT" \
             --expected-release-commit "$RELEASE_COMMIT" \
-            --expected-release-version "${RELEASE_TAG#v}" \
-            --expected-release-tag "$RELEASE_TAG" \
             --format json \
             --output "$profile"
           node scripts/ci/resolve-domain-core-build-profile.mjs \
             --profile "$DOMAIN_CORE_PROFILE" \
             --expected-candidate-commit "$CANDIDATE_COMMIT" \
             --expected-release-commit "$RELEASE_COMMIT" \
-            --expected-release-version "${RELEASE_TAG#v}" \
-            --expected-release-tag "$RELEASE_TAG" \
             --format github-env \
             --output "$RUNNER_TEMP/domain-core-functions.env"
           node - "$profile" "$GITHUB_OUTPUT" <<'NODE'

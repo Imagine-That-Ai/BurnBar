@@ -164,9 +164,13 @@ function validateReleaseGate(raw, profile, releaseCommit) {
       "release gate candidate does not match the Functions profile",
     );
   }
+  // The gate re-derives activation P from the committed authority files, so
+  // activationCommit is P (an ancestor of the release commit R) and the
+  // release commit binds through activation.releaseCommit.
   if (
     gate.activation?.candidateCommit !== gateCandidate.candidateCommit ||
-    gate.activation?.activationCommit !== releaseCommit ||
+    gate.activation?.releaseCommit !== releaseCommit ||
+    !/^[0-9a-f]{40}$/u.test(gate.activation?.activationCommit ?? "") ||
     gate.activation?.coreVersion !== gateCandidate.coreVersion ||
     gate.activation?.abiVersion !== gateCandidate.abiVersion ||
     gate.activation?.sourceSha256 !== gateCandidate.sourceSha256 ||

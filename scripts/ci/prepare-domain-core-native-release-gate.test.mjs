@@ -296,8 +296,10 @@ test("full gate resolves the signed public profile against the exact candidate",
       ],
       {
         command,
-        activationVerifier: () =>
-          JSON.parse(readFileSync(activationPath, "utf8")),
+        activationVerifier: () => ({
+          ...JSON.parse(readFileSync(activationPath, "utf8")),
+          releaseCommit: RELEASE_COMMIT,
+        }),
       },
     );
     assert.equal(result.profileName, "public-production");
