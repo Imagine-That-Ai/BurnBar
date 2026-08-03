@@ -277,8 +277,8 @@
     "vitest": "4.1.8"
   },
   "dependencies": {
-    "@sentry/node": "10.58.0",
-    "globals": "17.6.0"
+    "@sentry/node": "10.69.0",
+    "globals": "17.8.0"
   },
   "overrides": {
     "serialize-javascript": "^7.0.0",
