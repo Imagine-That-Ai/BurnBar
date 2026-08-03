@@ -132,6 +132,15 @@ def test_product_release_workflows_invoke_release_preflight():
     assert "--allow-owner-emergency-approval" in release_body
     assert '--expected-release-tag "${{ steps.version.outputs.tag_name }}"' in release_body
     assert "--allow-owner-emergency-approval" not in deploy_body
+    # Real tag deploys still run the full product preflight; dry-runs keep only
+    # source-provenance so they can prove tag/candidate binding before counsel
+    # and runtime readiness are GO.
+    assert "if: steps.tag.outputs.dry_run != 'true'" in deploy_body
+    product_step = deploy_body.split("- name: BurnBar product release preflight", 1)[1]
+    product_step = product_step.split("- name:", 1)[0]
+    assert "if: steps.tag.outputs.dry_run != 'true'" in product_step
+    assert "check_burnbar_release_preflight.py" in product_step
+    assert "--source-provenance-only" not in product_step
 
     hosting_body = (ROOT / ".github/workflows/deploy-hosting.yml").read_text(encoding="utf-8")
     assert "check_burnbar_release_preflight.py" not in hosting_body

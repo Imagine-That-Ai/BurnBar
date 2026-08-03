@@ -551,7 +551,12 @@ jobs:
       - name: BurnBar source provenance preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
 
+      # Product preflight (runtime readiness + signed counsel / owner-emergency
+      # legal) is required for real tag deploys only. Dry-runs prove tag binding,
+      # domain-core release-gate resolution, and source integrity without claiming
+      # the product lane is launch-ready.
       - name: BurnBar product release preflight
+        if: steps.tag.outputs.dry_run != 'true'
         run: python3 scripts/ci/check_burnbar_release_preflight.py
 
       - name: Verify dry-run attestations
