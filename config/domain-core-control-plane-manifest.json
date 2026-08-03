@@ -64,7 +64,7 @@
     "scripts/build-iroh-xcframework.sh": ["6b2f0aa378306786","07c0b754f255148b","76f0780670946f10","d0e10704a834e116"],
     "scripts/build-macos-website-release.sh": ["6e268ca66fe41f2a","c476cb2396da8248","ab93b697c7b4f9d8","16bd52a252228401"],
     "scripts/check-openburnbar-app-swiftpm-lock.sh": ["ed6637aa5cabb164","e80f440a97f418f5","a48017d45218be44","e132944ac47b72e3"],
-    "scripts/ci/await-burnbar-ci-gate.mjs": ["5d80cb0189d92315","dbe5a35d43894c95","4ed4fe3f2cd5e2b9","697fe8e0d127bbde"],
+    "scripts/ci/await-burnbar-ci-gate.mjs": ["704080b2f9849fe8","92387eac849144d7","486bd8676aa9cd40","289d5e1f0862137e"],
     "scripts/ci/build-corresponding-source-archive.sh": ["5230387c630b59bd","ff0f62c93074d3eb","87dfed46bdd81309","cd4812a7f9820cb2"],
     "scripts/ci/canonical-candidate-commit.mjs": ["8a9db0bfd3a9f12f","d7fa2991f790596b","9cc518ba486a967d","a1d7bb0d92038b35"],
     "scripts/ci/check-callable-validation.mjs": ["2741d3121d279727","c1ef0318a20852f8","819d6ed3c89d362d","aa8fb448faa10b9f"],

@@ -15,8 +15,11 @@ test("workflow executes trusted base code and observes the exact candidate", () 
     new URL("../../.github/workflows/burnbar-ci-gate.yml", import.meta.url),
     "utf8",
   );
-  assert.match(workflow, /\n  pull_request:\n/);
+  // pull_request was intentionally removed 2026-07-31; only the trusted
+  // pull_request_target + merge_group + workflow_dispatch triggers remain.
+  assert.doesNotMatch(workflow, /\n  pull_request:\n/);
   assert.match(workflow, /\n  pull_request_target:\n/);
+  assert.match(workflow, /\n  merge_group:\n/);
   assert.match(
     workflow,
     /ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.merge_group\.base_sha \|\| github\.sha \}\}/,
@@ -224,8 +227,7 @@ test("gate fails closed on terminal failures", () => {
   ]);
 });
 
-test("gate briefly waits for a replacement after a superseded run is cancelled", () => {
-  const nowMs = Date.parse("2026-07-26T21:45:36Z");
+test("gate waits for a replacement after a superseded run is cancelled", () => {
   const state = evaluateGate(
     ["build"],
     new Map([
@@ -238,7 +240,6 @@ test("gate briefly waits for a replacement after a superseded run is cancelled",
         },
       ],
     ]),
-    { nowMs, cancelledGraceMs: 120_000 },
   );
   assert.equal(state.failed.length, 0);
   assert.deepEqual(state.pending, [
@@ -250,29 +251,51 @@ test("gate briefly waits for a replacement after a superseded run is cancelled",
   ]);
 });
 
-test("gate fails closed when no replacement appears before the cancellation grace expires", () => {
-  const nowMs = Date.parse("2026-07-26T21:48:00Z");
-  const state = evaluateGate(
-    ["build"],
-    new Map([
-      [
-        "build",
-        {
-          conclusion: "cancelled",
-          completedAt: "2026-07-26T21:45:08Z",
-          url: "cancelled-run",
-        },
-      ],
-    ]),
-    { nowMs, cancelledGraceMs: 120_000 },
-  );
-  assert.deepEqual(state.failed, [
+test("gate only treats cancelled as failed when the hard deadline asks for it", () => {
+  const observations = new Map([
+    [
+      "build",
+      {
+        conclusion: "cancelled",
+        completedAt: "2026-07-26T21:45:08Z",
+        url: "cancelled-run",
+      },
+    ],
+  ]);
+  // During the normal poll loop, cancelled stays pending so merge-group
+  // concurrency cancellations can be replaced without ejecting the PR.
+  const pendingState = evaluateGate(["build"], observations);
+  assert.equal(pendingState.failed.length, 0);
+  assert.equal(pendingState.pending[0].status, "replacement_pending");
+
+  // At the overall evaluator timeout the gate still fails closed.
+  const timedOut = evaluateGate(["build"], observations, {
+    treatCancelledAsFailed: true,
+  });
+  assert.deepEqual(timedOut.failed, [
     {
       context: "build",
       conclusion: "cancelled",
       url: "cancelled-run",
     },
   ]);
+});
+
+test("deadline re-check treats a fully completed state as a pass, not a timeout", () => {
+  // A required check can complete between the deadline observation and the
+  // refreshed read taken to classify the timeout. That refreshed state must
+  // evaluate ready so the gate returns success instead of ejecting a healthy
+  // candidate with a forced timeout failure.
+  const state = evaluateGate(
+    ["build", "late-finisher"],
+    new Map([
+      ["build", { conclusion: "success" }],
+      ["late-finisher", { conclusion: "success" }],
+    ]),
+    { treatCancelledAsFailed: true },
+  );
+  assert.equal(state.ready, true);
+  assert.equal(state.failed.length, 0);
 });
 
 test("gate waits for missing and in-progress contexts", () => {
