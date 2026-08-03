@@ -42,7 +42,7 @@
     "crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs": ["e39b66bbbcf1cb45","1500ae1c46599f69","226cb1ddcf13e5b5","4a2d9aa7ef05d0c4"],
     "crates/openburnbar-domain-core/union-abi-manifest.json": ["dc8432ac0306800d","a4c3884a5887997d","e0e015b8c8637f6b","9444eb27c8103509"],
     "functions/package-lock.json": ["4822b8df5fd1b6e0","24f7db0de1f0dbb3","3a7974c83250b98c","54e58911ebae9186"],
-    "functions/package.json": ["6de8e63c0c00141c","eb5f8ddb09d2be52","9126b578f5b0027f","4c042d75f2ef16fe"],
+    "functions/package.json": ["3a316da5995cc3de","2da3c6c6c98d727b","9ce9d29cf44d4c2a","acdaf6b0d698a5dc"],
     "functions/src/__tests__/pricing.test.ts": ["eae593b02a6f4c02","1b1f0f15cd953fb4","469e396bdebb85b7","525e141f60321c07"],
     "functions/src/domainCoreBuildProfile.ts": ["347deeb959da35cc","f600f6b7951ee1af","76e255627b439f77","5ed3d5e06acf95f4"],
     "functions/src/domainCorePricing.ts": ["bf40005c046bd32b","0a2c5cdcede3709a","ee5d1b2f38514724","6523f50461885f63"],
