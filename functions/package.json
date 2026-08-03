@@ -109,7 +109,7 @@
     "@opentelemetry/core": "2.8.0",
     "@hono/node-server": "2.0.10",
     "fast-uri": "3.1.5",
-    "hono": "4.12.31",
+    "hono": "4.12.34",
     "brace-expansion@^1.1.7": "file:vendor/openburnbar/brace-expansion-cjs.tgz",
     "brace-expansion": "^5.0.9",
     "minimatch": "^10.0.3",
