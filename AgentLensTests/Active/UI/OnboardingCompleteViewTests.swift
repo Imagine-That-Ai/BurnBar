@@ -103,6 +103,28 @@ final class OnboardingCompleteViewTests: XCTestCase {
         )
     }
 
+    /// Exercises the real 520x620 `OnboardingWizardView` viewport through
+    /// `ImageRenderer`, which performs genuine SwiftUI layout (including the
+    /// GeometryReader-driven viewport centering) without ViewInspector's
+    /// unsafeBitCast tree walk that crashed the arm64e XCTest host.
+    func test_layout_rendersAtWizardViewportDimensions() throws {
+        let store = try makeIsolatedStore()
+        let view = OnboardingCompleteView(
+            dataStore: store,
+            selectedProviders: [AppAgentProvider.claudeCode],
+            onOpenDashboard: {},
+            onDismiss: {}
+        )
+        .frame(width: 520, height: 620)
+
+        let renderer = ImageRenderer(content: view)
+        renderer.proposedSize = ProposedViewSize(width: 520, height: 620)
+
+        let image = try XCTUnwrap(renderer.nsImage)
+        XCTAssertEqual(image.size.width, 520, accuracy: 1)
+        XCTAssertEqual(image.size.height, 620, accuracy: 1)
+    }
+
     private func makeIsolatedStore() throws -> DataStore {
         try DataStore(databaseQueue: DatabaseQueue(), refreshOnInit: false)
     }

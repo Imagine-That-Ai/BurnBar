@@ -53,54 +53,58 @@ struct OnboardingCompleteView: View {
 
     var body: some View {
         VStack(spacing: DesignSystem.Spacing.xl) {
-            // Prefer flexible frame centering over GeometryReader so layout stays
-            // simple for accessibility and avoids the ViewInspector host crash.
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: DesignSystem.Spacing.xl) {
-                    Spacer(minLength: 0)
+            // Center the hero within the scroll viewport by sizing the content to
+            // the available height. This runtime GeometryReader is safe: the host
+            // crash came from ViewInspector walking this tree in XCTest, and
+            // OnboardingCompleteViewTests is ViewInspector-free by design.
+            GeometryReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: DesignSystem.Spacing.xl) {
+                        Spacer(minLength: 0)
 
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 56))
-                        .foregroundStyle(DesignSystem.Colors.success)
-                        .scaleEffect(checkmarkScale)
-                        .opacity(checkmarkOpacity)
-                        .accessibilityHidden(true)
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 56))
+                            .foregroundStyle(DesignSystem.Colors.success)
+                            .scaleEffect(checkmarkScale)
+                            .opacity(checkmarkOpacity)
+                            .accessibilityHidden(true)
 
-                    VStack(spacing: DesignSystem.Spacing.sm) {
-                        Text(summary.headline)
-                            .font(DesignSystem.Typography.headline)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            .multilineTextAlignment(.center)
+                        VStack(spacing: DesignSystem.Spacing.sm) {
+                            Text(summary.headline)
+                                .font(DesignSystem.Typography.headline)
+                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                .multilineTextAlignment(.center)
 
-                        Text(summary.body)
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
+                            Text(summary.body)
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
 
-                        if summary.showsEmptyHistoryNotice {
-                            HStack(spacing: DesignSystem.Spacing.xs) {
-                                Image(systemName: "info.circle")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(DesignSystem.Colors.warning)
-                                Text("No historical sessions were found. Your dashboard may look empty until your agents log new activity. You can trigger a manual scan anytime from the toolbar.")
-                                    .font(DesignSystem.Typography.tiny)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                                    .multilineTextAlignment(.center)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            .padding(.horizontal, DesignSystem.Spacing.md)
-                            .padding(.vertical, DesignSystem.Spacing.sm)
-                            .background {
-                                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                                    .fill(DesignSystem.Colors.warning.opacity(0.06))
+                            if summary.showsEmptyHistoryNotice {
+                                HStack(spacing: DesignSystem.Spacing.xs) {
+                                    Image(systemName: "info.circle")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(DesignSystem.Colors.warning)
+                                    Text("No historical sessions were found. Your dashboard may look empty until your agents log new activity. You can trigger a manual scan anytime from the toolbar.")
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        .multilineTextAlignment(.center)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .padding(.horizontal, DesignSystem.Spacing.md)
+                                .padding(.vertical, DesignSystem.Spacing.sm)
+                                .background {
+                                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                                        .fill(DesignSystem.Colors.warning.opacity(0.06))
+                                }
                             }
                         }
-                    }
 
-                    Spacer(minLength: 0)
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: proxy.size.height)
                 }
-                .frame(maxWidth: .infinity, minHeight: 280)
             }
 
             VStack(spacing: DesignSystem.Spacing.sm) {
