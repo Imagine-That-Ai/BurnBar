@@ -202,19 +202,21 @@ isolated_test_filters=(
     "OpenBurnBarTests/MediaSessionCoordinatorTests/testStartScreenShareRollsBackAfterCaptureStartFailureAndCanRetry"
     "OpenBurnBarTests/MemoryActivationEndToEndTests"
     "OpenBurnBarTests/MemoryCitationJumpThreadResolutionTests"
+    "OpenBurnBarTests/MemoryCloudSyncDomainTests"
     "OpenBurnBarTests/ProjectionChunkerTests"
     "OpenBurnBarTests/ProjectionPipelineServiceTests"
     "OpenBurnBarTests/ProjectionPipelineServiceMattersTests"
     "OpenBurnBarTests/ProjectionStoreLifecycleTests"
 )
-isolated_test_expected_count=128
+isolated_test_expected_count=132
 main_skip_test_filters=()
 run_isolated_test_phase=0
 if ((${#test_filters[@]} == 1)) && [[ "${test_filters[0]}" == "OpenBurnBarTests" ]]; then
     # These tests pass together in a fresh host but are contaminated by
     # process-global media/StoreKit/GRDB state after the monolithic run.
-    # Keep the complete memory-activation and projection surfaces mandatory in
-    # one clean XCTest process so newly added tests cannot inherit that state.
+    # Keep the complete state-sensitive memory, citation, cloud-sync, and
+    # projection surfaces mandatory in one clean XCTest process so newly added
+    # tests cannot inherit that state.
     main_skip_test_filters=("${isolated_test_filters[@]}")
     run_isolated_test_phase=1
 fi
