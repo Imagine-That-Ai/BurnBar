@@ -1531,7 +1531,7 @@ export function SettingsDetailPane({
     }));
   }, []);
 
-  let content: ReactNode = null;
+  let content: ReactNode;
 
   if (activeTab === 'home') {
     content = (
