@@ -131,7 +131,15 @@ def test_product_release_workflows_invoke_release_preflight():
     assert "check_burnbar_release_preflight.py" in release_body
     assert "--allow-owner-emergency-approval" in release_body
     assert '--expected-release-tag "${{ steps.version.outputs.tag_name }}"' in release_body
-    assert "--allow-owner-emergency-approval" not in deploy_body
+    assert "owner_emergency_release:" in deploy_body
+    assert "INPUT_OWNER_EMERGENCY_RELEASE" in deploy_body
+    assert "OWNER_EMERGENCY_RELEASE=\"false\"" in deploy_body
+    assert 'EVENT_NAME" == "workflow_dispatch"' in deploy_body
+    assert 'OWNER_EMERGENCY_RELEASE" == "true" && "$IS_DRY_RUN" == "true"' in deploy_body
+    assert "owner_emergency_release is only valid for a real tag-bound production deploy" in deploy_body
+    assert "--allow-owner-emergency-approval" in deploy_body
+    assert "--allow-owner-emergency-runtime-hold" in deploy_body
+    assert '--expected-release-tag "$RELEASE_TAG"' in deploy_body
     # Real tag deploys still run the full product preflight; dry-runs keep only
     # source-provenance so they can prove tag/candidate binding before counsel
     # and runtime readiness are GO.
@@ -141,6 +149,8 @@ def test_product_release_workflows_invoke_release_preflight():
     assert "if: steps.tag.outputs.dry_run != 'true'" in product_step
     assert "check_burnbar_release_preflight.py" in product_step
     assert "--source-provenance-only" not in product_step
+    assert 'if [[ "$OWNER_EMERGENCY_RELEASE" == "true" ]]' in product_step
+    assert "python3 scripts/ci/check_burnbar_release_preflight.py" in product_step
 
     hosting_body = (ROOT / ".github/workflows/deploy-hosting.yml").read_text(encoding="utf-8")
     assert "check_burnbar_release_preflight.py" not in hosting_body

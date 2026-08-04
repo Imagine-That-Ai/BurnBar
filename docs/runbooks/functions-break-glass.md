@@ -10,6 +10,12 @@ deliberate controls; this lane exists so an outage never forces an *ad-hoc,
 undocumented* bypass. Every break-glass use is logged, bounded, and reviewed
 after the fact.
 
+For an owner-authorized, tag-bound public release that intentionally defers a
+recorded runtime-readiness hold, use the reviewed
+[`owner-emergency-production-release.md`](owner-emergency-production-release.md)
+lane instead. It keeps the normal WIF/OIDC deploy, immutable evidence, and
+post-deploy health verification; it is not a break-glass deploy.
+
 ## Decision ladder (try in order)
 
 1. **Rollback first.** If the incident was introduced by a recent deploy,

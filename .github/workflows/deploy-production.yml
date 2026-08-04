@@ -18,6 +18,11 @@ on:
         required: false
         type: boolean
         default: false
+      owner_emergency_release:
+        description: "Manual tag-only owner authorization: accept a tag-bound emergency legal packet and defer the recorded runtime-readiness hold"
+        required: false
+        type: boolean
+        default: false
       candidate_sha:
         description: "Full SHA of the release candidate on origin/main (dry_run only)"
         required: false
@@ -73,6 +78,7 @@ jobs:
       commit: ${{ steps.tag.outputs.commit }}
       candidate_commit: ${{ steps.domain-core-profile.outputs.candidate_commit }}
       dry_run: ${{ steps.tag.outputs.dry_run }}
+      owner_emergency_release: ${{ steps.tag.outputs.owner_emergency_release }}
       stable_release: ${{ steps.tag.outputs.stable_release }}
       domain_core_profile: ${{ steps.tag.outputs.domain_core_profile }}
       core_version: ${{ steps.domain-core-profile.outputs.core_version }}
@@ -107,6 +113,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.tag }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_OWNER_EMERGENCY_RELEASE: ${{ inputs.owner_emergency_release }}
           INPUT_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           INPUT_DOMAIN_CORE_PROFILE: ${{ inputs.domain_core_profile }}
           REF_NAME: ${{ github.ref_name }}
@@ -116,6 +123,15 @@ jobs:
           IS_DRY_RUN="false"
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_DRY_RUN" == "true" ]]; then
             IS_DRY_RUN="true"
+          fi
+
+          OWNER_EMERGENCY_RELEASE="false"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_OWNER_EMERGENCY_RELEASE" == "true" ]]; then
+            OWNER_EMERGENCY_RELEASE="true"
+          fi
+          if [[ "$OWNER_EMERGENCY_RELEASE" == "true" && "$IS_DRY_RUN" == "true" ]]; then
+            echo "::error::owner_emergency_release is only valid for a real tag-bound production deploy, not a dry-run."
+            exit 1
           fi
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_TAG" ]]; then
@@ -221,6 +237,7 @@ jobs:
             echo "tag=$TAG"
             echo "commit=$commit"
             echo "dry_run=$IS_DRY_RUN"
+            echo "owner_emergency_release=$OWNER_EMERGENCY_RELEASE"
             echo "stable_release=$([[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]] && echo true || echo false)"
             echo "domain_core_profile=$DOMAIN_CORE_PROFILE"
           } >> "$GITHUB_OUTPUT"
@@ -551,13 +568,28 @@ jobs:
       - name: BurnBar source provenance preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
 
-      # Product preflight (runtime readiness + signed counsel / owner-emergency
-      # legal) is required for real tag deploys only. Dry-runs prove tag binding,
-      # domain-core release-gate resolution, and source integrity without claiming
-      # the product lane is launch-ready.
+      # Product preflight is required for real tag deploys only. Normal deploys
+      # require runtime readiness plus signed counsel. A manual tag-bound dispatch
+      # may explicitly select the repository's structured owner-emergency lane;
+      # that lane preserves source integrity and validates the exact release-tag
+      # attestation while recording (not falsifying) the deferred runtime hold.
+      # Dry-runs prove tag binding, domain-core release-gate resolution, and source
+      # integrity without claiming the product lane is launch-ready.
       - name: BurnBar product release preflight
         if: steps.tag.outputs.dry_run != 'true'
-        run: python3 scripts/ci/check_burnbar_release_preflight.py
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          OWNER_EMERGENCY_RELEASE: ${{ steps.tag.outputs.owner_emergency_release }}
+        run: |
+          set -euo pipefail
+          if [[ "$OWNER_EMERGENCY_RELEASE" == "true" ]]; then
+            python3 scripts/ci/check_burnbar_release_preflight.py \
+              --allow-owner-emergency-approval \
+              --allow-owner-emergency-runtime-hold \
+              --expected-release-tag "$RELEASE_TAG"
+          else
+            python3 scripts/ci/check_burnbar_release_preflight.py
+          fi
 
       - name: Verify dry-run attestations
         if: steps.tag.outputs.dry_run != 'true'
@@ -664,6 +696,7 @@ jobs:
       commit: ${{ needs.prepare-functions-deploy.outputs.commit }}
       candidate_commit: ${{ needs.prepare-functions-deploy.outputs.candidate_commit }}
       dry_run: ${{ needs.prepare-functions-deploy.outputs.dry_run }}
+      owner_emergency_release: ${{ needs.prepare-functions-deploy.outputs.owner_emergency_release }}
       stable_release: ${{ needs.prepare-functions-deploy.outputs.stable_release }}
       domain_core_profile: ${{ needs.prepare-functions-deploy.outputs.domain_core_profile }}
       core_version: ${{ needs.prepare-functions-deploy.outputs.core_version }}
@@ -991,6 +1024,7 @@ jobs:
             echo "## Production Functions deploy"
             echo "- Tag: ${{ needs.prepare-functions-deploy.outputs.tag }}"
             echo "- Dry run: ${{ needs.prepare-functions-deploy.outputs.dry_run }}"
+            echo "- Owner-emergency release: ${{ needs.prepare-functions-deploy.outputs.owner_emergency_release }}"
             echo "- FUNCTION_VERSION: ${{ needs.prepare-functions-deploy.outputs.tag }}"
             echo "- Domain core profile: ${{ needs.prepare-functions-deploy.outputs.domain_core_profile }}"
             echo "- Protected signer: run ${{ needs.prepare-functions-deploy.outputs.signer_run_id }}, attempt ${{ needs.prepare-functions-deploy.outputs.signer_run_attempt }}"
