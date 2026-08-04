@@ -8,7 +8,9 @@ test('generated Linux pet catalog mirrors every bundled 3D pet definition', asyn
   const rebuilt = await buildCatalogFromDirectory();
   assert.deepEqual(generated, rebuilt);
   assert.equal(generated.schema, 'linux-pet-catalog/1');
-  assert.equal(generated.pets.length, 110);
+  assert.equal(generated.pets.length, 114);
   assert.equal(new Set(generated.pets.map((pet) => pet.id)).size, generated.pets.length);
-  assert.ok(generated.pets.every((pet) => /^[A-Za-z0-9][A-Za-z0-9._-]*\.glb$/u.test(pet.glb)));
+  assert.ok(generated.pets.some((pet) => pet.id === 'claudecode' && pet.defaultForm === 'atlas2d' && pet.atlas));
+  assert.ok(generated.pets.some((pet) => pet.id === 'go-gopher' && pet.defaultForm === 'model3d' && pet.glb));
+  assert.ok(generated.pets.every((pet) => pet.glb === undefined || /^[A-Za-z0-9][A-Za-z0-9._-]*\.glb$/u.test(pet.glb)));
 });

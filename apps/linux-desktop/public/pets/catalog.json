@@ -1,14 +1,12 @@
 {
   "schema": "linux-pet-catalog/1",
-  "source": "AgentLens/PetCompanion/Resources/Models",
+  "source": "AgentLens/PetCompanion/Resources/{Models,Pets}",
   "pets": [
     {
       "id": "ada-lovelace-algorithm-quill",
       "displayName": "Ada Lovelace",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (ada-lovelace-algorithm-quill-actions.glb).",
-      "glb": "ada-lovelace-algorithm-quill-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -29,15 +27,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "ada-lovelace-algorithm-quill-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "alan-kay-smalltalk-paintbrush",
       "displayName": "Alan Kay",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (alan-kay-smalltalk-paintbrush-actions.glb).",
-      "glb": "alan-kay-smalltalk-paintbrush-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -58,15 +57,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "alan-kay-smalltalk-paintbrush-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "alan-turing-rotor-decoder",
       "displayName": "Alan Turing",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (alan-turing-rotor-decoder-actions.glb).",
-      "glb": "alan-turing-rotor-decoder-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -87,15 +87,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "alan-turing-rotor-decoder-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-alexandr-wang",
       "displayName": "Alexandr Wang",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-alexandr-wang-actions.glb).",
-      "glb": "modern-alexandr-wang-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -116,15 +117,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-alexandr-wang-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "an-wang-core-memory-magnet",
       "displayName": "An Wang",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (an-wang-core-memory-magnet-actions.glb).",
-      "glb": "an-wang-core-memory-magnet-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -145,15 +147,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "an-wang-core-memory-magnet-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-karpathy",
       "displayName": "Andrej Karpathy",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-karpathy-actions.glb).",
-      "glb": "modern-karpathy-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -174,15 +177,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-karpathy-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "obama",
       "displayName": "Barack Obama",
       "group": "Leaders",
       "description": "Synced from Imagine That's 3D pet manifest (obama-actions.glb).",
-      "glb": "obama-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -203,15 +207,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "obama-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "barbara-liskov-substitution-mop",
       "displayName": "Barbara Liskov",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (barbara-liskov-substitution-mop-actions.glb).",
-      "glb": "barbara-liskov-substitution-mop-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -232,15 +237,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "barbara-liskov-substitution-mop-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "clinton",
       "displayName": "Bill Clinton",
       "group": "Leaders",
       "description": "Synced from Imagine That's 3D pet manifest (clinton-actions.glb).",
-      "glb": "clinton-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -261,15 +267,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "clinton-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "founder-gates",
       "displayName": "Bill Gates",
       "group": "Founders",
       "description": "Synced from Imagine That's 3D pet manifest (founder-gates-actions.glb).",
-      "glb": "founder-gates-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -290,15 +297,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "founder-gates-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "bjarne-stroustrup-cpp-chomper",
       "displayName": "Bjarne Stroustrup",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (bjarne-stroustrup-cpp-chomper-actions.glb).",
-      "glb": "bjarne-stroustrup-cpp-chomper-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -319,15 +327,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "bjarne-stroustrup-cpp-chomper-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "blaise-pascal-calculator-scoop",
       "displayName": "Blaise Pascal",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (blaise-pascal-calculator-scoop-actions.glb).",
-      "glb": "blaise-pascal-calculator-scoop-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -348,15 +357,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "blaise-pascal-calculator-scoop-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-chesky",
       "displayName": "Brian Chesky",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-chesky-actions.glb).",
-      "glb": "modern-chesky-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -377,15 +387,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-chesky-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "charles-babbage-gear-broom",
       "displayName": "Charles Babbage",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (charles-babbage-gear-broom-actions.glb).",
-      "glb": "charles-babbage-gear-broom-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -406,15 +417,113 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "charles-babbage-gear-broom-actions.glb",
+      "modelKind": "rigged"
+    },
+    {
+      "id": "claudecode",
+      "displayName": "Claude Code",
+      "group": "Legends",
+      "description": "Scuttles along the baseline, raking loose debris into tidy piles with its claws — then carries the piles off the edge of the screen.",
+      "clipNames": [],
+      "defaultForm": "atlas2d",
+      "glb": "claudecode-crab.glb",
+      "modelKind": "static",
+      "atlas": {
+        "image": "claudecode/spritesheet.webp",
+        "grid": {
+          "cols": 8,
+          "rows": 9
+        },
+        "cell": {
+          "w": 192,
+          "h": 208
+        },
+        "anchor": {
+          "x": 96,
+          "y": 196
+        },
+        "defaultState": "idle",
+        "states": {
+          "idle": {
+            "row": 0,
+            "frames": 8,
+            "fps": 8,
+            "loop": true,
+            "hero": false
+          },
+          "scuttle": {
+            "row": 1,
+            "frames": 8,
+            "fps": 10,
+            "loop": true,
+            "hero": false
+          },
+          "pinch_sweep": {
+            "row": 2,
+            "frames": 8,
+            "fps": 10,
+            "loop": true,
+            "hero": true
+          },
+          "claw_scoop": {
+            "row": 3,
+            "frames": 8,
+            "fps": 9,
+            "loop": false,
+            "hero": false
+          },
+          "burrow": {
+            "row": 4,
+            "frames": 8,
+            "fps": 8,
+            "loop": false,
+            "hero": false
+          },
+          "snip": {
+            "row": 5,
+            "frames": 8,
+            "fps": 11,
+            "loop": true,
+            "hero": false
+          },
+          "cheer": {
+            "row": 6,
+            "frames": 8,
+            "fps": 11,
+            "loop": false,
+            "hero": false
+          },
+          "sleep": {
+            "row": 7,
+            "frames": 8,
+            "fps": 6,
+            "loop": true,
+            "hero": false
+          },
+          "alert": {
+            "row": 8,
+            "frames": 8,
+            "fps": 10,
+            "loop": false,
+            "hero": false
+          }
+        },
+        "sockets": {
+          "contact": {
+            "fx": 0.82,
+            "fy": 0.18
+          }
+        }
+      }
     },
     {
       "id": "claude-shannon-entropy-vac",
       "displayName": "Claude Shannon",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (claude-shannon-entropy-vac-actions.glb).",
-      "glb": "claude-shannon-entropy-vac-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -435,15 +544,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "claude-shannon-entropy-vac-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "curie",
       "displayName": "Curie",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (curie-actions.glb).",
-      "glb": "curie-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -464,15 +574,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "curie-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-amodei",
       "displayName": "Dario Amodei",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-amodei-actions.glb).",
-      "glb": "modern-amodei-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -493,15 +604,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-amodei-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "davinci",
       "displayName": "Davinci",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (davinci-actions.glb).",
-      "glb": "davinci-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -522,15 +634,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "davinci-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-hassabis",
       "displayName": "Demis Hassabis",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-hassabis-actions.glb).",
-      "glb": "modern-hassabis-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -551,15 +664,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-hassabis-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "dennis-ritchie-c-squeegee",
       "displayName": "Dennis Ritchie",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (dennis-ritchie-c-squeegee-actions.glb).",
-      "glb": "dennis-ritchie-c-squeegee-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -580,15 +694,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "dennis-ritchie-c-squeegee-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "donald-knuth-tex-blotter",
       "displayName": "Donald Knuth",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (donald-knuth-tex-blotter-actions.glb).",
-      "glb": "donald-knuth-tex-blotter-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -609,15 +724,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "donald-knuth-tex-blotter-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "trump",
       "displayName": "Donald Trump",
       "group": "Leaders",
       "description": "Synced from Imagine That's 3D pet manifest (trump-actions.glb).",
-      "glb": "trump-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -638,15 +754,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "trump-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "douglas-engelbart-mouse-roller",
       "displayName": "Douglas Engelbart",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (douglas-engelbart-mouse-roller-actions.glb).",
-      "glb": "douglas-engelbart-mouse-roller-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -667,15 +784,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "douglas-engelbart-mouse-roller-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "edison",
       "displayName": "Edison",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (edison-actions.glb).",
-      "glb": "edison-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -696,15 +814,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "edison-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "edsger-dijkstra-shortest-broom",
       "displayName": "Edsger Dijkstra",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (edsger-dijkstra-shortest-broom-actions.glb).",
-      "glb": "edsger-dijkstra-shortest-broom-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -725,15 +844,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "edsger-dijkstra-shortest-broom-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "einstein",
       "displayName": "Einstein",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (einstein-actions.glb).",
-      "glb": "einstein-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -754,15 +874,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "einstein-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "founder-musk",
       "displayName": "Elon Musk",
       "group": "Founders",
       "description": "Synced from Imagine That's 3D pet manifest (founder-musk-actions.glb).",
-      "glb": "founder-musk-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -783,15 +904,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "founder-musk-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-spiegel",
       "displayName": "Evan Spiegel",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-spiegel-actions.glb).",
-      "glb": "modern-spiegel-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -812,15 +934,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-spiegel-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "evelyn-boyd-granville-orbit-dipper",
       "displayName": "Evelyn Boyd",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (evelyn-boyd-granville-orbit-dipper-actions.glb).",
-      "glb": "evelyn-boyd-granville-orbit-dipper-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -841,15 +964,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "evelyn-boyd-granville-orbit-dipper-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-feifei",
       "displayName": "Fei-Fei Li",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-feifei-actions.glb).",
-      "glb": "modern-feifei-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -870,15 +994,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-feifei-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "frances-allen-optimizer-broom",
       "displayName": "Frances Allen",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (frances-allen-optimizer-broom-actions.glb).",
-      "glb": "frances-allen-optimizer-broom-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -899,15 +1024,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "frances-allen-optimizer-broom-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "franklin",
       "displayName": "Franklin",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (franklin-actions.glb).",
-      "glb": "franklin-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -928,15 +1054,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "franklin-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-hinton",
       "displayName": "Geoffrey Hinton",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-hinton-actions.glb).",
-      "glb": "modern-hinton-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -957,15 +1084,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-hinton-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "george-boole-logic-magnet",
       "displayName": "George Boole",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (george-boole-logic-magnet-actions.glb).",
-      "glb": "george-boole-logic-magnet-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -986,15 +1114,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "george-boole-logic-magnet-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "bush",
       "displayName": "George W. Bush",
       "group": "Leaders",
       "description": "Synced from Imagine That's 3D pet manifest (bush-actions.glb).",
-      "glb": "bush-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1015,15 +1144,121 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "bush-actions.glb",
+      "modelKind": "rigged"
+    },
+    {
+      "id": "goose",
+      "displayName": "Goose",
+      "group": "Legends",
+      "description": "Waddles along the baseline, honking and pecking loose debris into a tidy row, wings beating it forward.",
+      "clipNames": [],
+      "defaultForm": "atlas2d",
+      "atlas": {
+        "image": "goose/spritesheet.webp",
+        "grid": {
+          "cols": 8,
+          "rows": 9
+        },
+        "cell": {
+          "w": 192,
+          "h": 208
+        },
+        "anchor": {
+          "x": 96,
+          "y": 196
+        },
+        "defaultState": "idle",
+        "states": {
+          "idle": {
+            "row": 0,
+            "frames": 8,
+            "fps": 8,
+            "loop": true,
+            "hero": false
+          },
+          "waddle": {
+            "row": 1,
+            "frames": 8,
+            "fps": 9,
+            "loop": true,
+            "hero": false
+          },
+          "peck_sweep": {
+            "row": 2,
+            "frames": 8,
+            "fps": 10,
+            "loop": true,
+            "hero": true
+          },
+          "honk": {
+            "row": 3,
+            "frames": 8,
+            "fps": 9,
+            "loop": false,
+            "hero": false
+          },
+          "flap": {
+            "row": 4,
+            "frames": 8,
+            "fps": 11,
+            "loop": true,
+            "hero": false
+          },
+          "charge": {
+            "row": 5,
+            "frames": 8,
+            "fps": 12,
+            "loop": true,
+            "hero": false
+          },
+          "cheer": {
+            "row": 6,
+            "frames": 8,
+            "fps": 11,
+            "loop": false,
+            "hero": false
+          },
+          "sleep": {
+            "row": 7,
+            "frames": 8,
+            "fps": 6,
+            "loop": true,
+            "hero": false
+          },
+          "alert": {
+            "row": 8,
+            "frames": 8,
+            "fps": 10,
+            "loop": false,
+            "hero": false
+          }
+        },
+        "sockets": {
+          "contact": {
+            "fx": 0.78,
+            "fy": 0.2
+          }
+        }
+      }
+    },
+    {
+      "id": "go-gopher",
+      "displayName": "Gopher",
+      "group": "Legends",
+      "description": "A static 3D mascot. Demonstrates the SceneKit backend loading a single-mesh GLB with no animation clips (idle = gentle host-driven bob).",
+      "clipNames": [],
+      "defaultForm": "model3d",
+      "glb": "go-gopher.glb",
+      "modelKind": "static"
     },
     {
       "id": "grace-hopper-bugnet",
       "displayName": "Grace Hopper",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (grace-hopper-bugnet-actions.glb).",
-      "glb": "grace-hopper-bugnet-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1044,15 +1279,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "grace-hopper-bugnet-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "guido-van-rossum-indent-broom",
       "displayName": "Guido Van",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (guido-van-rossum-indent-broom-actions.glb).",
-      "glb": "guido-van-rossum-indent-broom-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1073,15 +1309,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "guido-van-rossum-indent-broom-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "hedy-lamarr-frequency-net",
       "displayName": "Hedy Lamarr",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (hedy-lamarr-frequency-net-actions.glb).",
-      "glb": "hedy-lamarr-frequency-net-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1102,15 +1339,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "hedy-lamarr-frequency-net-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "herman-hollerith-punchcard-pan",
       "displayName": "Herman Hollerith",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (herman-hollerith-punchcard-pan-actions.glb).",
-      "glb": "herman-hollerith-punchcard-pan-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1131,15 +1369,111 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "herman-hollerith-punchcard-pan-actions.glb",
+      "modelKind": "rigged"
+    },
+    {
+      "id": "huggingface",
+      "displayName": "Hugging Face",
+      "group": "Legends",
+      "description": "Bounces along the baseline and scoops whole columns of debris up between its two welcoming hands.",
+      "clipNames": [],
+      "defaultForm": "atlas2d",
+      "atlas": {
+        "image": "huggingface/spritesheet.webp",
+        "grid": {
+          "cols": 8,
+          "rows": 9
+        },
+        "cell": {
+          "w": 192,
+          "h": 208
+        },
+        "anchor": {
+          "x": 96,
+          "y": 196
+        },
+        "defaultState": "idle",
+        "states": {
+          "idle": {
+            "row": 0,
+            "frames": 8,
+            "fps": 8,
+            "loop": true,
+            "hero": false
+          },
+          "bounce": {
+            "row": 1,
+            "frames": 8,
+            "fps": 9,
+            "loop": true,
+            "hero": false
+          },
+          "hand_scoop": {
+            "row": 2,
+            "frames": 8,
+            "fps": 10,
+            "loop": true,
+            "hero": true
+          },
+          "hug": {
+            "row": 3,
+            "frames": 8,
+            "fps": 9,
+            "loop": false,
+            "hero": false
+          },
+          "wave": {
+            "row": 4,
+            "frames": 8,
+            "fps": 8,
+            "loop": true,
+            "hero": false
+          },
+          "roll": {
+            "row": 5,
+            "frames": 8,
+            "fps": 11,
+            "loop": true,
+            "hero": false
+          },
+          "cheer": {
+            "row": 6,
+            "frames": 8,
+            "fps": 11,
+            "loop": false,
+            "hero": false
+          },
+          "sleep": {
+            "row": 7,
+            "frames": 8,
+            "fps": 6,
+            "loop": true,
+            "hero": false
+          },
+          "alert": {
+            "row": 8,
+            "frames": 8,
+            "fps": 10,
+            "loop": false,
+            "hero": false
+          }
+        },
+        "sockets": {
+          "contact": {
+            "fx": 0.8,
+            "fy": 0.16
+          }
+        }
+      }
     },
     {
       "id": "modern-ilya",
       "displayName": "Ilya Sutskever",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-ilya-actions.glb).",
-      "glb": "modern-ilya-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1160,15 +1494,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-ilya-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "james-gosling-coffee-vac",
       "displayName": "James Gosling",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (james-gosling-coffee-vac-actions.glb).",
-      "glb": "james-gosling-coffee-vac-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1189,15 +1524,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "james-gosling-coffee-vac-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "jean-bartik-eniac-cable-broom",
       "displayName": "Jean Bartik",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (jean-bartik-eniac-cable-broom-actions.glb).",
-      "glb": "jean-bartik-eniac-cable-broom-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1218,15 +1554,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "jean-bartik-eniac-cable-broom-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "founder-bezos",
       "displayName": "Jeff Bezos",
       "group": "Founders",
       "description": "Synced from Imagine That's 3D pet manifest (founder-bezos-actions.glb).",
-      "glb": "founder-bezos-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1247,15 +1584,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "founder-bezos-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "founder-huang",
       "displayName": "Jensen Huang",
       "group": "Founders",
       "description": "Synced from Imagine That's 3D pet manifest (founder-huang-actions.glb).",
-      "glb": "founder-huang-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1276,15 +1614,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "founder-huang-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "joan-clarke-bombe-rotor-net",
       "displayName": "Joan Clarke",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (joan-clarke-bombe-rotor-net-actions.glb).",
-      "glb": "joan-clarke-bombe-rotor-net-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1305,15 +1644,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "joan-clarke-bombe-rotor-net-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "john-atanasoff-abc-prism-scoop",
       "displayName": "John Atanasoff",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (john-atanasoff-abc-prism-scoop-actions.glb).",
-      "glb": "john-atanasoff-abc-prism-scoop-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1334,15 +1674,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "john-atanasoff-abc-prism-scoop-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "john-backus-fortran-scoop",
       "displayName": "John Backus",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (john-backus-fortran-scoop-actions.glb).",
-      "glb": "john-backus-fortran-scoop-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1363,15 +1704,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "john-backus-fortran-scoop-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-john-collison",
       "displayName": "John Collison",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-john-collison-actions.glb).",
-      "glb": "modern-john-collison-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1392,15 +1734,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-john-collison-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "john-mccarthy-lisp-parens",
       "displayName": "John McCarthy",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (john-mccarthy-lisp-parens-actions.glb).",
-      "glb": "john-mccarthy-lisp-parens-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1421,15 +1764,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "john-mccarthy-lisp-parens-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "john-tukey-bit-firefly-jar",
       "displayName": "John Tukey",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (john-tukey-bit-firefly-jar-actions.glb).",
-      "glb": "john-tukey-bit-firefly-jar-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1450,15 +1794,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "john-tukey-bit-firefly-jar-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "john-von-neumann-self-dustpan",
       "displayName": "John von Neumann",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (john-von-neumann-self-dustpan-actions.glb).",
-      "glb": "john-von-neumann-self-dustpan-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1479,15 +1824,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "john-von-neumann-self-dustpan-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "katherine-johnson-trajectory-dipper",
       "displayName": "Katherine Johnson",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (katherine-johnson-trajectory-dipper-actions.glb).",
-      "glb": "katherine-johnson-trajectory-dipper-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1508,15 +1854,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "katherine-johnson-trajectory-dipper-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kathleen-booth-assembly-quill",
       "displayName": "Kathleen Booth",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (kathleen-booth-assembly-quill-actions.glb).",
-      "glb": "kathleen-booth-assembly-quill-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1537,15 +1884,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kathleen-booth-assembly-quill-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-acorn-hedgehog",
       "displayName": "Kawaii Acorn Hedgehog",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-acorn-hedgehog-actions.glb).",
-      "glb": "kawaii-acorn-hedgehog-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1566,15 +1914,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-acorn-hedgehog-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-attractor-kitten",
       "displayName": "Kawaii Attractor Kitten",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-attractor-kitten-actions.glb).",
-      "glb": "kawaii-attractor-kitten-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1595,15 +1944,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-attractor-kitten-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-aurora-fox",
       "displayName": "Kawaii Aurora Fox",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-aurora-fox-actions.glb).",
-      "glb": "kawaii-aurora-fox-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1624,15 +1974,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-aurora-fox-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-aurora-fox-rx",
       "displayName": "Kawaii Aurora Fox Rx",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-aurora-fox-rx-actions.glb).",
-      "glb": "kawaii-aurora-fox-rx-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1653,15 +2004,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-aurora-fox-rx-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-boid-sparrow",
       "displayName": "Kawaii Boid Sparrow",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-boid-sparrow-actions.glb).",
-      "glb": "kawaii-boid-sparrow-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1682,15 +2034,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-boid-sparrow-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-cloud-lamb",
       "displayName": "Kawaii Cloud Lamb",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-cloud-lamb-actions.glb).",
-      "glb": "kawaii-cloud-lamb-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1711,15 +2064,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-cloud-lamb-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-constellation-fawn",
       "displayName": "Kawaii Constellation Fawn",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-constellation-fawn-actions.glb).",
-      "glb": "kawaii-constellation-fawn-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1740,15 +2094,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-constellation-fawn-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-crystal-cat",
       "displayName": "Kawaii Crystal Cat",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-crystal-cat-actions.glb).",
-      "glb": "kawaii-crystal-cat-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1769,15 +2124,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-crystal-cat-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-fluid-otter",
       "displayName": "Kawaii Fluid Otter",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-fluid-otter-actions.glb).",
-      "glb": "kawaii-fluid-otter-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1798,15 +2154,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-fluid-otter-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-gyroid-bun",
       "displayName": "Kawaii Gyroid Bun",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-gyroid-bun-actions.glb).",
-      "glb": "kawaii-gyroid-bun-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1827,15 +2184,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-gyroid-bun-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-halftone-pup",
       "displayName": "Kawaii Halftone Pup",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-halftone-pup-actions.glb).",
-      "glb": "kawaii-halftone-pup-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1856,15 +2214,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-halftone-pup-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-leaf-otter",
       "displayName": "Kawaii Leaf Otter",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-leaf-otter-actions.glb).",
-      "glb": "kawaii-leaf-otter-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1885,15 +2244,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-leaf-otter-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-moire-moth",
       "displayName": "Kawaii Moire Moth",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-moire-moth-actions.glb).",
-      "glb": "kawaii-moire-moth-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1914,15 +2274,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-moire-moth-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-mossback-fox",
       "displayName": "Kawaii Mossback Fox",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-mossback-fox-actions.glb).",
-      "glb": "kawaii-mossback-fox-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1943,15 +2304,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-mossback-fox-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-mushroom-cat",
       "displayName": "Kawaii Mushroom Cat",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-mushroom-cat-actions.glb).",
-      "glb": "kawaii-mushroom-cat-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -1972,15 +2334,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-mushroom-cat-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-mycelium-sprite",
       "displayName": "Kawaii Mycelium Sprite",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-mycelium-sprite-actions.glb).",
-      "glb": "kawaii-mycelium-sprite-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2001,15 +2364,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-mycelium-sprite-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-neural-sprite",
       "displayName": "Kawaii Neural Sprite",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-neural-sprite-actions.glb).",
-      "glb": "kawaii-neural-sprite-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2030,15 +2394,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-neural-sprite-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-oilslick-duckling",
       "displayName": "Kawaii Oilslick Duckling",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-oilslick-duckling-actions.glb).",
-      "glb": "kawaii-oilslick-duckling-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2059,15 +2424,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-oilslick-duckling-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-origami-crane",
       "displayName": "Kawaii Origami Crane",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-origami-crane-actions.glb).",
-      "glb": "kawaii-origami-crane-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2088,15 +2454,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-origami-crane-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-plasma-hamster",
       "displayName": "Kawaii Plasma Hamster",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-plasma-hamster-actions.glb).",
-      "glb": "kawaii-plasma-hamster-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2117,15 +2484,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-plasma-hamster-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-spectral-newt",
       "displayName": "Kawaii Spectral Newt",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-spectral-newt-actions.glb).",
-      "glb": "kawaii-spectral-newt-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2146,15 +2514,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-spectral-newt-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-synth-fox",
       "displayName": "Kawaii Synth Fox",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-synth-fox-actions.glb).",
-      "glb": "kawaii-synth-fox-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2175,15 +2544,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-synth-fox-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "kawaii-voxel-fox",
       "displayName": "Kawaii Voxel Fox",
       "group": "Kawaii Animals",
       "description": "Synced from Imagine That's 3D pet manifest (kawaii-voxel-fox-actions.glb).",
-      "glb": "kawaii-voxel-fox-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2204,15 +2574,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "kawaii-voxel-fox-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "ken-thompson-pipe-vac",
       "displayName": "Ken Thompson",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (ken-thompson-pipe-vac-actions.glb).",
-      "glb": "ken-thompson-pipe-vac-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2233,15 +2604,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "ken-thompson-pipe-vac-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "konrad-zuse-z3-relay-scoop",
       "displayName": "Konrad Zuse",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (konrad-zuse-z3-relay-scoop-actions.glb).",
-      "glb": "konrad-zuse-z3-relay-scoop-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2262,15 +2634,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "konrad-zuse-z3-relay-scoop-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "labubu",
       "displayName": "Labubu",
       "group": "Toys",
       "description": "Synced from Imagine That's 3D pet manifest (labubu-actions.glb).",
-      "glb": "labubu-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2291,15 +2664,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "labubu-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-lex",
       "displayName": "Lex Fridman",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-lex-actions.glb).",
-      "glb": "modern-lex-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2320,15 +2694,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-lex-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "linus-torvalds-kernel-roller",
       "displayName": "Linus Torvalds",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (linus-torvalds-kernel-roller-actions.glb).",
-      "glb": "linus-torvalds-kernel-roller-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2349,15 +2724,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "linus-torvalds-kernel-roller-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-lisa-su",
       "displayName": "Lisa Su",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-lisa-su-actions.glb).",
-      "glb": "modern-lisa-su-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2378,15 +2754,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-lisa-su-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-benioff",
       "displayName": "Marc Benioff",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-benioff-actions.glb).",
-      "glb": "modern-benioff-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2407,15 +2784,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-benioff-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "margaret-hamilton-stack-scoop",
       "displayName": "Margaret Hamilton",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (margaret-hamilton-stack-scoop-actions.glb).",
-      "glb": "margaret-hamilton-stack-scoop-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2436,15 +2814,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "margaret-hamilton-stack-scoop-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "founder-zuckerberg",
       "displayName": "Mark Zuckerberg",
       "group": "Founders",
       "description": "Synced from Imagine That's 3D pet manifest (founder-zuckerberg-actions.glb).",
-      "glb": "founder-zuckerberg-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2465,15 +2844,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "founder-zuckerberg-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-mkbhd",
       "displayName": "Marques Brownlee",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-mkbhd-actions.glb).",
-      "glb": "modern-mkbhd-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2494,15 +2874,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-mkbhd-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-truell",
       "displayName": "Michael Truell",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-truell-actions.glb).",
-      "glb": "modern-truell-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2523,15 +2904,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-truell-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-mira",
       "displayName": "Mira Murati",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-mira-actions.glb).",
-      "glb": "modern-mira-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2552,15 +2934,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-mira-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-mrbeast",
       "displayName": "MrBeast",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-mrbeast-actions.glb).",
-      "glb": "modern-mrbeast-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2581,15 +2964,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-mrbeast-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "newton",
       "displayName": "Newton",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (newton-actions.glb).",
-      "glb": "newton-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2610,15 +2994,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "newton-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "niklaus-wirth-pascal-broom",
       "displayName": "Niklaus Wirth",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (niklaus-wirth-pascal-broom-actions.glb).",
-      "glb": "niklaus-wirth-pascal-broom-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2639,15 +3024,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "niklaus-wirth-pascal-broom-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-palmer-luckey",
       "displayName": "Palmer Luckey",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-palmer-luckey-actions.glb).",
-      "glb": "modern-palmer-luckey-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2668,15 +3054,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-palmer-luckey-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-patrick-collison",
       "displayName": "Patrick Collison",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-patrick-collison-actions.glb).",
-      "glb": "modern-patrick-collison-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2697,15 +3084,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-patrick-collison-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "philip-emeagwali-parallel-swarm",
       "displayName": "Philip Emeagwali",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (philip-emeagwali-parallel-swarm-actions.glb).",
-      "glb": "philip-emeagwali-parallel-swarm-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2726,15 +3114,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "philip-emeagwali-parallel-swarm-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "radia-perlman-spanning-net",
       "displayName": "Radia Perlman",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (radia-perlman-spanning-net-actions.glb).",
-      "glb": "radia-perlman-spanning-net-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2755,15 +3144,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "radia-perlman-spanning-net-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "robert-noyce-silicon-magnet",
       "displayName": "Robert Noyce",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (robert-noyce-silicon-magnet-actions.glb).",
-      "glb": "robert-noyce-silicon-magnet-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2784,15 +3174,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "robert-noyce-silicon-magnet-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "founder-altman",
       "displayName": "Sam Altman",
       "group": "Founders",
       "description": "Synced from Imagine That's 3D pet manifest (founder-altman-actions.glb).",
-      "glb": "founder-altman-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2813,15 +3204,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "founder-altman-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "founder-nadella",
       "displayName": "Satya Nadella",
       "group": "Founders",
       "description": "Synced from Imagine That's 3D pet manifest (founder-nadella-actions.glb).",
-      "glb": "founder-nadella-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2842,15 +3234,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "founder-nadella-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "seymour-cray-supercool-scoop",
       "displayName": "Seymour Cray",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (seymour-cray-supercool-scoop-actions.glb).",
-      "glb": "seymour-cray-supercool-scoop-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2871,15 +3264,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "seymour-cray-supercool-scoop-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "shakuntala-devi-mental-abacus",
       "displayName": "Shakuntala Devi",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (shakuntala-devi-mental-abacus-actions.glb).",
-      "glb": "shakuntala-devi-mental-abacus-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2900,15 +3294,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "shakuntala-devi-mental-abacus-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "smiski",
       "displayName": "Smiski",
       "group": "Toys",
       "description": "Synced from Imagine That's 3D pet manifest (smiski-actions.glb).",
-      "glb": "smiski-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2929,15 +3324,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "smiski-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "founder-jobs",
       "displayName": "Steve Jobs",
       "group": "Founders",
       "description": "Synced from Imagine That's 3D pet manifest (founder-jobs-actions.glb).",
-      "glb": "founder-jobs-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2958,15 +3354,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "founder-jobs-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-woz",
       "displayName": "Steve Wozniak",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-woz-actions.glb).",
-      "glb": "modern-woz-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -2987,15 +3384,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-woz-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "founder-pichai",
       "displayName": "Sundar Pichai",
       "group": "Founders",
       "description": "Synced from Imagine That's 3D pet manifest (founder-pichai-actions.glb).",
-      "glb": "founder-pichai-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -3016,15 +3414,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "founder-pichai-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "tesla",
       "displayName": "Tesla",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (tesla-actions.glb).",
-      "glb": "tesla-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -3045,26 +3444,28 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "tesla-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-tibo",
       "displayName": "Tibo Sottiaux",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-tibo.glb).",
-      "glb": "modern-tibo.glb",
-      "modelKind": "static",
       "clipNames": [
         "idle"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-tibo.glb",
+      "modelKind": "static"
     },
     {
       "id": "tim-berners-lee-hyperlink-mop",
       "displayName": "Tim Berners-Lee",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (tim-berners-lee-hyperlink-mop-actions.glb).",
-      "glb": "tim-berners-lee-hyperlink-mop-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -3085,15 +3486,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "tim-berners-lee-hyperlink-mop-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-cook",
       "displayName": "Tim Cook",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-cook-actions.glb).",
-      "glb": "modern-cook-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -3114,15 +3516,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-cook-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "tommy-flowers-colossus-suction",
       "displayName": "Tommy Flowers",
       "group": "Legends",
       "description": "Synced from Imagine That's 3D pet manifest (tommy-flowers-colossus-suction-actions.glb).",
-      "glb": "tommy-flowers-colossus-suction-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -3143,15 +3546,16 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "tommy-flowers-colossus-suction-actions.glb",
+      "modelKind": "rigged"
     },
     {
       "id": "modern-lecun",
       "displayName": "Yann LeCun",
       "group": "Modern Icons",
       "description": "Synced from Imagine That's 3D pet manifest (modern-lecun-actions.glb).",
-      "glb": "modern-lecun-actions.glb",
-      "modelKind": "rigged",
       "clipNames": [
         "idle",
         "walk",
@@ -3172,7 +3576,10 @@
         "no",
         "surprised",
         "confused"
-      ]
+      ],
+      "defaultForm": "model3d",
+      "glb": "modern-lecun-actions.glb",
+      "modelKind": "rigged"
     }
   ]
 }

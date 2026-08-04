@@ -1,4 +1,4 @@
-import type { LinuxShellBridge, PetAssetResponse } from './tauriBridge.js';
+import type { LinuxShellBridge, PetAssetResponse, PetAtlasResponse } from './tauriBridge.js';
 import { isCapabilityAbsentError } from './tauriBridgePlatformDecoders.js';
 import { DEFAULT_PET_GLB } from './petCatalog.js';
 
@@ -16,6 +16,19 @@ function validateAssetResponse(requestedGLB: string, response: PetAssetResponse)
   const buffer = decodeBase64(response.dataBase64);
   if (buffer.byteLength !== response.byteLength) throw new Error('Pet asset response length is invalid.');
   return buffer;
+}
+
+function validateAtlasResponse(
+  petID: string,
+  imageName: string,
+  response: PetAtlasResponse
+): { buffer: ArrayBuffer; mimeType: string } {
+  if (response.petId !== petID || response.imageName !== imageName) {
+    throw new Error('Pet atlas response does not match the request.');
+  }
+  const buffer = decodeBase64(response.dataBase64);
+  if (buffer.byteLength !== response.byteLength) throw new Error('Pet atlas response length is invalid.');
+  return { buffer, mimeType: response.mimeType };
 }
 
 export async function readPetAsset(bridge: LinuxShellBridge | null, glbName: string): Promise<ArrayBuffer> {
@@ -40,4 +53,17 @@ export async function readPetAsset(bridge: LinuxShellBridge | null, glbName: str
   const response = await fetch(`/pets/${encodeURIComponent(glbName)}`);
   if (!response.ok) throw new Error(`Unable to load pet asset: ${response.status}`);
   return response.arrayBuffer();
+}
+
+export async function readPetAtlasAsset(
+  bridge: LinuxShellBridge | null,
+  petID: string,
+  imageName: string
+): Promise<{ buffer: ArrayBuffer; mimeType: string }> {
+  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(petID)) throw new Error('Pet atlas id is invalid.');
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:webp|png)$/iu.test(imageName)) {
+    throw new Error('Pet atlas image name is invalid.');
+  }
+  if (!bridge?.petAtlasRead) throw new Error('The pet atlas requires the packaged Linux shell.');
+  return validateAtlasResponse(petID, imageName, await bridge.petAtlasRead(petID, imageName));
 }
