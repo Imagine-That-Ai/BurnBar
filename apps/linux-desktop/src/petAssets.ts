@@ -1,4 +1,5 @@
 import type { LinuxShellBridge, PetAssetResponse } from './tauriBridge.js';
+import { isCapabilityAbsentError } from './tauriBridgePlatformDecoders.js';
 import { DEFAULT_PET_GLB } from './petCatalog.js';
 
 const SAFE_GLB = /^[A-Za-z0-9][A-Za-z0-9._-]*\.glb$/u;
@@ -19,7 +20,16 @@ function validateAssetResponse(requestedGLB: string, response: PetAssetResponse)
 
 export async function readPetAsset(bridge: LinuxShellBridge | null, glbName: string): Promise<ArrayBuffer> {
   if (!SAFE_GLB.test(glbName)) throw new Error('Pet asset name is invalid.');
-  if (bridge?.petAssetRead) return validateAssetResponse(glbName, await bridge.petAssetRead(glbName));
+  if (bridge?.petAssetRead) {
+    try {
+      return validateAssetResponse(glbName, await bridge.petAssetRead(glbName));
+    } catch (error) {
+      // Shared hosts (Windows WebView2) expose the bridge surface but answer
+      // pet_asset_read with a capability-absent error. Degrade to the committed
+      // default asset instead of failing the whole companion runtime.
+      if (!isCapabilityAbsentError(error)) throw error;
+    }
+  }
 
   // Browser preview and fixture mode retain the one small committed asset so
   // the route remains inspectable without pretending that all packaged model

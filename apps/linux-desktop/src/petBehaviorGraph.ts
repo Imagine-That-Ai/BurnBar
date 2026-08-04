@@ -10,10 +10,13 @@ export type PetBehaviorGraph = {
   nodes: PetBehaviorNode[];
 };
 
-export function buildPetBehaviorGraph(tier: 'overlay-pass-through' | 'draggable-contained'): PetBehaviorGraph {
+export function buildPetBehaviorGraph(
+  tier: 'overlay-pass-through' | 'draggable-contained',
+  gltfAsset = '/pets/kawaii-aurora-fox-actions.glb'
+): PetBehaviorGraph {
   const tierLimit = tier === 'draggable-contained' ? 'tier-gnome-contained' : 'tier-overlay-ok';
   return {
-    gltfAsset: '/pets/kawaii-aurora-fox-actions.glb',
+    gltfAsset,
     nodes: [
       { id: 'idle-bob', label: 'Idle bob', kind: 'idle', next: ['react-wave', tierLimit] },
       { id: 'react-wave', label: 'React wave', kind: 'react', next: ['idle-bob'] },

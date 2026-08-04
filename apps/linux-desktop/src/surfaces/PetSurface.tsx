@@ -18,6 +18,7 @@ import {
 import { mountPetGltfRuntime, stopPetGltfRuntime } from '../petGltfRuntime.js';
 import {
   DEFAULT_PET_GLB,
+  PET_SELECTION_STORAGE_KEY,
   filterPetCatalog,
   loadPetCatalog,
   persistSelectedPetID,
@@ -99,9 +100,9 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
   const [petPickerOpen, setPetPickerOpen] = useState(false);
   const [petSearch, setPetSearch] = useState('');
   const [petGroup, setPetGroup] = useState<string | null>(null);
-  const graph = buildPetBehaviorGraph(capability.tier);
   const containedFallback = !capability.actions.overlay.supported;
   const selectedPet = petCatalog.length ? resolveSelectedPet(petCatalog, selectedPetID) : null;
+  const graph = buildPetBehaviorGraph(capability.tier, `/pets/${selectedPet?.glb ?? DEFAULT_PET_GLB}`);
   const pickerPets = filterPetCatalog(petCatalog, petSearch, petGroup);
   const pickerGroups = petGroupNames(petCatalog);
 
@@ -174,6 +175,18 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
       stopPetGltfRuntime();
     };
   }, [bridge, petCatalogState, selectedPet?.glb]);
+
+  // Avatar choices persist to localStorage; other same-origin pet surfaces
+  // (the native companion child window, an open dashboard route) observe the
+  // change through the storage event so every surface renders the same pet.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== PET_SELECTION_STORAGE_KEY) return;
+      setSelectedPetID(readSelectedPetID());
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   const choosePet = useCallback((pet: LinuxPetCatalogEntry) => {
     setSelectedPetID(pet.id);
