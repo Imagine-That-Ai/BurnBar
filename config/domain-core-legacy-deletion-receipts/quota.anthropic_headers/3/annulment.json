@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 2,
+  "rowId": "quota.anthropic_headers",
+  "authorityGeneration": 3,
+  "transition": "annulment",
+  "status": "active",
+  "evidence": [
+    "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/30761241774"
+  ],
+  "approvedBy": "@Ajnunezg",
+  "approvedAt": "2026-08-04T07:25:56Z",
+  "commit": "b77c5ba64669baeccbe99a4cd31540621e4278d5",
+  "activationAnnulment": {
+    "promotionReceiptSha256": "1a30b05b9695953189e2274717a55214ee9a7078a67df62bd023cdbbf9f4b42f",
+    "candidate": {
+      "candidateCommit": "99ba1f66b02d4721077bbce652b84c2304bacf7c",
+      "coreVersion": "0.1.0",
+      "abiVersion": 3,
+      "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+    },
+    "activation": {
+      "candidateCommit": "99ba1f66b02d4721077bbce652b84c2304bacf7c",
+      "activationCommit": "12207a40804b663adc8fe3314902eac78cda33ca",
+      "coreVersion": "0.1.0",
+      "abiVersion": 3,
+      "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c",
+      "changedPathsSha256": "26736bd167cf95469754adb1d9f9e5f857ec4bd7418d4e8622ffa81d844939c0"
+    },
+    "advancedMainCommit": "b77c5ba64669baeccbe99a4cd31540621e4278d5",
+    "reason": "release_train_advanced_before_stable_receipt",
+    "replacementCandidateRequired": true
+  }
+}
