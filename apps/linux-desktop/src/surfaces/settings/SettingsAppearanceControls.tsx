@@ -46,7 +46,7 @@ function handleRadioKeyDown(
   setValue: (id: string) => void,
   buttonRefs: MutableRefObject<Record<string, HTMLButtonElement | null>>
 ): void {
-  let nextIndex: number | null = null;
+  let nextIndex: number;
   switch (event.key) {
     case 'ArrowRight':
     case 'ArrowDown':
