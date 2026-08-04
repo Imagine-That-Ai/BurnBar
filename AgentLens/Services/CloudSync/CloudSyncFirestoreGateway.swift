@@ -11,6 +11,15 @@ protocol CloudSyncFirestoreGateway: AnyObject, Sendable {
     func runTransaction(
         _ updateBlock: @escaping (CloudSyncTransactionGateway) throws -> Bool
     ) async throws -> Bool
+    /// Raw SDK handle for APIs whose signatures require a `Firestore` value
+    /// (e.g. `MacCloudVaultSignalPayloads` / `MacCloudVaultKeyAccess`). Only the
+    /// live gateway owns a real handle; fakes return `nil` so tests never
+    /// resolve the global singleton.
+    func rawSignalPayloadFirestore() -> Firestore?
+}
+
+extension CloudSyncFirestoreGateway {
+    func rawSignalPayloadFirestore() -> Firestore? { nil }
 }
 
 protocol CloudSyncCollectionGateway: AnyObject, Sendable {
@@ -109,6 +118,10 @@ final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked
                 continuation.resume(returning: (result as? NSNumber)?.boolValue ?? false)
             })
         }
+    }
+
+    func rawSignalPayloadFirestore() -> Firestore? {
+        firestore
     }
 
     private var firestore: Firestore {
