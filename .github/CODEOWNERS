@@ -3,83 +3,83 @@
 # Default co-owners for everything. With branch protection requiring one
 # code-owner approval and no standing bypass, either writer's PR needs the other
 # writer's review without deadlocking routine paths.
-* @Ajnunezg @emilio3435
+* @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
 
 # Swift app
-AgentLens/ @Ajnunezg @emilio3435
+AgentLens/ @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
 
 # Swift packages
-OpenBurnBarCore/ @Ajnunezg @emilio3435
-OpenBurnBarDaemon/ @Ajnunezg @emilio3435
-OpenBurnBarDaemon/Sources/OpenBurnBarDaemonExecutable/ @Ajnunezg @emilio3435
+OpenBurnBarCore/ @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+OpenBurnBarDaemon/ @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemonExecutable/ @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
 
 # Windows port tree (WinUI app / PAL / native shim / tests)
-windows/ @Ajnunezg @emilio3435
+windows/ @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
 
 # Editor extension
-extensions/openburnbar/ @Ajnunezg @emilio3435
+extensions/openburnbar/ @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
 
 # CI/CD
-.github/workflows/ @Ajnunezg @emilio3435
+.github/workflows/ @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
 
 # Infrastructure
-firestore.rules @Ajnunezg @emilio3435
-firestore.indexes.json @Ajnunezg @emilio3435
-project.yml @Ajnunezg @emilio3435
+firestore.rules @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+firestore.indexes.json @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+project.yml @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
 
 # Security-sensitive trees — explicit rules so review routing is intentional
 # for the highest-risk surfaces (closes OPUS-F-012). Keep this block last:
 # GitHub CODEOWNERS uses the final matching rule.
-.github/CODEOWNERS @Ajnunezg @emilio3435
-.github/workflows/ @Ajnunezg @emilio3435
-functions/src/security/ @Ajnunezg @emilio3435
-functions/src/auth.ts @Ajnunezg @emilio3435
-functions/src/appCheckAttestation.ts @Ajnunezg @emilio3435
-functions/src/ssrfGuard.ts @Ajnunezg @emilio3435
-functions/src/logging.ts @Ajnunezg @emilio3435
-functions/src/resilienceHelpers.ts @Ajnunezg @emilio3435
-functions/src/providers/httpClient.ts @Ajnunezg @emilio3435
-functions/src/computerUseRemoteConfig.ts @Ajnunezg @emilio3435
-functions/src/callables/dataExport.ts @Ajnunezg @emilio3435
-functions/src/callables/dataDeletion.ts @Ajnunezg @emilio3435
-functions/src/callables/accountDeletion.ts @Ajnunezg @emilio3435
-functions/src/callables/auditLog.ts @Ajnunezg @emilio3435
-functions/src/callables/stripe* @Ajnunezg @emilio3435
-functions/src/callables/shared/validators.ts @Ajnunezg @emilio3435
-functions/src/callables/publicRateLimit.ts @Ajnunezg @emilio3435
-functions/src/hermesGateway.ts @Ajnunezg @emilio3435
-AgentLens/Services/CloudVaultCrypto.swift @Ajnunezg @emilio3435
-AgentLens/Services/DataStore/DatabaseEncryptionService.swift @Ajnunezg @emilio3435
-OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ @Ajnunezg @emilio3435
-OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift @Ajnunezg @emilio3435
-OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/*Signal*.swift @Ajnunezg @emilio3435
-OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/*HPKE*.swift @Ajnunezg @emilio3435
-OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/DaemonLocalAuthProofVerifier.swift @Ajnunezg @emilio3435
-scripts/ci/ @Ajnunezg @emilio3435
-scripts/ci/verify-security-claims.sh @Ajnunezg @emilio3435
-scripts/ci/check-privacy-invariants.mjs @Ajnunezg @emilio3435
-Vendor/libsignal @Ajnunezg @emilio3435
-Vendor/libsignal/ @Ajnunezg @emilio3435
-Vendor/GRDB-SQLCipher/ @Ajnunezg @emilio3435
-budgets/ @Ajnunezg @emilio3435
-docs/security/ @Ajnunezg @emilio3435
-firebase.json @Ajnunezg @emilio3435
-.firebaserc @Ajnunezg @emilio3435
-.github/workflows/deploy-hosting.yml @Ajnunezg @emilio3435
-.github/workflows/deploy-production.yml @Ajnunezg @emilio3435
-.github/workflows/deploy-firestore.yml @Ajnunezg @emilio3435
-website/package.json @Ajnunezg @emilio3435
-apps/console/package.json @Ajnunezg @emilio3435
-functions/package.json @Ajnunezg @emilio3435
-functions/package-lock.json @Ajnunezg @emilio3435
-scripts/ci/prepare-firebase-tools.sh @Ajnunezg @emilio3435
-scripts/ci/write-firebase-hosting-ci-config.mjs @Ajnunezg @emilio3435
-scripts/ci/verify-production-deploy-auth.sh @Ajnunezg @emilio3435
-scripts/ci/verify-production-deploy-auth.test.sh @Ajnunezg @emilio3435
+.github/CODEOWNERS @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+.github/workflows/ @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/security/ @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/auth.ts @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/appCheckAttestation.ts @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/ssrfGuard.ts @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/logging.ts @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/resilienceHelpers.ts @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/providers/httpClient.ts @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/computerUseRemoteConfig.ts @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/callables/dataExport.ts @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/callables/dataDeletion.ts @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/callables/accountDeletion.ts @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/callables/auditLog.ts @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/callables/stripe* @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/callables/shared/validators.ts @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/callables/publicRateLimit.ts @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/src/hermesGateway.ts @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+AgentLens/Services/CloudVaultCrypto.swift @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+AgentLens/Services/DataStore/DatabaseEncryptionService.swift @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/*Signal*.swift @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/*HPKE*.swift @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/DaemonLocalAuthProofVerifier.swift @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+scripts/ci/ @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+scripts/ci/verify-security-claims.sh @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+scripts/ci/check-privacy-invariants.mjs @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+Vendor/libsignal @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+Vendor/libsignal/ @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+Vendor/GRDB-SQLCipher/ @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+budgets/ @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+docs/security/ @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+firebase.json @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+.firebaserc @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+.github/workflows/deploy-hosting.yml @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+.github/workflows/deploy-production.yml @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+.github/workflows/deploy-firestore.yml @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+website/package.json @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+apps/console/package.json @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/package.json @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+functions/package-lock.json @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+scripts/ci/prepare-firebase-tools.sh @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+scripts/ci/write-firebase-hosting-ci-config.mjs @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+scripts/ci/verify-production-deploy-auth.sh @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+scripts/ci/verify-production-deploy-auth.test.sh @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
 # Scanner governance — gitleaks config controls which secrets the scanner
 # suppresses; must route to security owners (closes P-SEC-4 governance gap).
-.gitleaks.toml @Ajnunezg @emilio3435
-.gitleaksignore @Ajnunezg @emilio3435
-firestore.rules @Ajnunezg @emilio3435
-firestore.indexes.json @Ajnunezg @emilio3435
-project.yml @Ajnunezg @emilio3435
+.gitleaks.toml @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+.gitleaksignore @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+firestore.rules @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+firestore.indexes.json @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
+project.yml @Ajnunezg @emilio3435 @burnbar-factory-control[bot]
