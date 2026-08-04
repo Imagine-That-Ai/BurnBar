@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "generatedAt": "2026-08-04T06:58:00Z",
+  "privacy": "proof_only_no_plaintext_keys_or_user_data",
+  "candidateReleaseTag": "v1.0.30",
+  "testedSourceCommit": "b77c5ba64669baeccbe99a4cd31540621e4278d5",
+  "officialLibsignalPin": {
+    "tag": "v0.94.4",
+    "tagObject": "03c449017b57eccbda715b8b018dce5dff603ac6",
+    "commit": "46d867c986f66201e34e7ae20ce423eec742bf3f"
+  },
+  "integrityProofs": [
+    {
+      "id": "pin_metadata",
+      "status": "passed",
+      "command": "bash scripts/ci/verify-libsignal-pin.sh",
+      "result": "PASS: libsignal pin metadata is internally consistent",
+      "artifactPaths": [
+        "third_party/libsignal/manifest.json",
+        "scripts/ci/verify-libsignal-pin.sh"
+      ]
+    },
+    {
+      "id": "fork_delta",
+      "status": "passed",
+      "command": "bash scripts/ci/verify-libsignal-submodule-delta.sh",
+      "result": "PASS: only the four allow-listed Swift build/integration files differ from official v0.94.4; no Rust, JNI, or Node crypto-core divergence",
+      "artifactPaths": [
+        "third_party/libsignal/manifest.json",
+        "scripts/ci/verify-libsignal-submodule-delta.sh",
+        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/ffi/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/jni/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/node/Cargo.toml"
+      ]
+    }
+  ],
+  "bindings": {
+    "swift": {
+      "status": "passed",
+      "bridge": "official libsignal Rust shared bridge through the Swift FFI package",
+      "command": "swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-release-rust-bridge-swift --disable-swift-testing --filter OpenBurnBarSignalCoreTests",
+      "result": "26 tests executed, 1 intentionally skipped fixture generator, 0 failures",
+      "artifactPaths": [
+        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/ffi/Cargo.toml",
+        "Vendor/libsignal/swift/Package.swift",
+        "OpenBurnBarCore/Package.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OBBSignalProtocolStoreSessionTests.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OBBSignalInteropKatTests.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CryptoKitAtRestInteropTests.swift"
+      ]
+    },
+    "kotlinAndroid": {
+      "status": "passed",
+      "bridge": "official libsignal Rust shared bridge through org.signal JNI 0.94.4",
+      "command": "cd android && ./gradlew :app:testDebugUnitTest --tests '*AndroidSignalSession*' --tests '*AndroidSignalInteropKatTest' --tests '*AndroidCloudVaultSignalPayloadsTest' --tests '*AndroidSignalIdentityKeyStoreTest' --no-daemon",
+      "result": "BUILD SUCCESSFUL",
+      "artifactPaths": [
+        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/jni/Cargo.toml",
+        "android/app/build.gradle.kts",
+        "android/app/src/test/java/com/openburnbar/data/cloud/signalsession/AndroidSignalSessionRoundTripTest.kt",
+        "android/app/src/test/java/com/openburnbar/data/cloud/signalsession/AndroidSignalInteropKatTest.kt",
+        "android/app/src/test/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloadsTest.kt",
+        "android/app/src/test/java/com/openburnbar/data/cloud/AndroidSignalIdentityKeyStoreTest.kt"
+      ]
+    },
+    "node": {
+      "status": "passed",
+      "bridge": "official libsignal Rust shared bridge through @signalapp/libsignal-client 0.94.4",
+      "command": "npm test --prefix packages/libsignal-bridge",
+      "result": "5 tests passed, 0 failures",
+      "artifactPaths": [
+        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/node/Cargo.toml",
+        "packages/libsignal-bridge/package.json",
+        "packages/libsignal-bridge/src/protocolHarness.ts",
+        "packages/libsignal-bridge/src/protocolHarness.test.ts"
+      ]
+    }
+  }
+}
