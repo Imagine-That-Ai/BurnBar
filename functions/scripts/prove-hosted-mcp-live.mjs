@@ -2,7 +2,8 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import admin from "firebase-admin";
+import { getApps, initializeApp } from "firebase-admin/app";
+import { FieldValue, getFirestore, Timestamp } from "firebase-admin/firestore";
 
 function parseArgs(argv) {
   const parsed = {};
@@ -108,11 +109,11 @@ async function proveControlled(missingAuthStatus) {
   }
 
   const projectId = args.project ?? process.env.GOOGLE_CLOUD_PROJECT ?? "burnbar";
-  if (admin.apps.length === 0) admin.initializeApp({ projectId });
-  const db = admin.firestore();
+  if (getApps().length === 0) initializeApp({ projectId });
+  const db = getFirestore();
   const proofId = args.proofId ?? `remote-mcp-proof-${Date.now()}`;
   const clientId = "live-proof-client";
-  const expires = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 60 * 60 * 1000));
+  const expires = Timestamp.fromDate(new Date(Date.now() + 60 * 60 * 1000));
   const users = {
     paidA: `${proofId}-paid-a`,
     paidB: `${proofId}-paid-b`,
@@ -141,20 +142,20 @@ async function proveControlled(missingAuthStatus) {
         clientType: "proof",
         allowedScopes: allScopes,
         grantMode: "local_decrypt_shim",
-        createdAt: admin.firestore.Timestamp.now(),
-        updatedAt: admin.firestore.Timestamp.now(),
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
         schemaVersion: 1
       });
     }
-    await db.doc(`users/${users.revoked}/remote_mcp_clients/${clientId}`).set({ revokedAt: admin.firestore.Timestamp.now() }, { merge: true });
+    await db.doc(`users/${users.revoked}/remote_mcp_clients/${clientId}`).set({ revokedAt: Timestamp.now() }, { merge: true });
     await db.doc(`users/${users.unpaid}/remote_mcp_clients/${clientId}`).set({
       clientId,
       displayName: "Unpaid proof client",
       clientType: "proof",
       allowedScopes: allScopes,
       grantMode: "local_decrypt_shim",
-      createdAt: admin.firestore.Timestamp.now(),
-      updatedAt: admin.firestore.Timestamp.now(),
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
       schemaVersion: 1
     });
     await db.doc(`users/${users.paidB}/cloud_search_documents/${targetDoc}`).set({
@@ -165,7 +166,7 @@ async function proveControlled(missingAuthStatus) {
       projectName: "proof",
       provider: "proof",
       sealedTitle: sealed("sealed-title-b"),
-      createdAt: admin.firestore.Timestamp.now()
+      createdAt: Timestamp.now()
     });
     await db.doc(`users/${users.paidA}/cloud_search_index_manifest/current`).set({
       schemaVersion: 1,
@@ -186,7 +187,7 @@ async function proveControlled(missingAuthStatus) {
       projectName: "proof",
       provider: "proof",
       sealedTitle: sealed("sealed-title"),
-      createdAt: admin.firestore.Timestamp.now()
+      createdAt: Timestamp.now()
     });
     await db.doc(`users/${users.paidA}/cloud_search_chunks/${searchChunk}`).set({
       documentID: searchDoc,
