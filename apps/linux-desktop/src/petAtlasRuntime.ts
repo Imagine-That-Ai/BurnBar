@@ -9,6 +9,7 @@ export type PetAtlasFrame = {
 
 let activePetAtlasRuntimeStop: (() => void) | null = null;
 let activePetAtlasSetState: ((requestedState: string) => void) | null = null;
+let requestedPetAtlasState: string | null = null;
 
 export function resolvePetAtlasState(
   atlas: PetAtlasDefinition,
@@ -37,8 +38,14 @@ export function resolvePetAtlasState(
   return { name: fallbackName, descriptor: atlas.states[fallbackName] };
 }
 
-/** Change the active atlas animation without replacing the decoded asset. */
+/**
+ * Change the active atlas animation without replacing the decoded asset. The
+ * requested logical state is retained so a runtime that mounts later (initial
+ * atlas load, or switching pets mid-response) starts from the current
+ * interaction state instead of silently falling back to its default idle.
+ */
 export function setPetAtlasState(requestedState: string): void {
+  requestedPetAtlasState = requestedState;
   activePetAtlasSetState?.(requestedState);
 }
 
@@ -94,7 +101,7 @@ export async function mountPetAtlasRuntime(
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Pet atlas canvas is unavailable.');
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let state = resolvePetAtlasState(atlas, atlas.defaultState);
+    let state = resolvePetAtlasState(atlas, requestedPetAtlasState ?? atlas.defaultState);
     let frameCount = Math.max(1, state.descriptor.frames);
     let frame = 0;
     let lastFrameAt = 0;

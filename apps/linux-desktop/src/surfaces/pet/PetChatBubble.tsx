@@ -1,12 +1,14 @@
 import {
   useEffect,
   useId,
+  useRef,
   useState,
   type ChangeEvent,
   type DragEvent,
   type FormEvent,
   type KeyboardEvent
 } from 'react';
+import { prefersReducedMotion } from '../../a11y.js';
 import { expandInAppBuffer } from '../../textExpansionStore.js';
 import { readTextExpansionConsent } from '../../textExpansionConsent.js';
 import { useChatStore } from '../../state/chatStore.js';
@@ -26,7 +28,7 @@ export type PetChatBubbleProps = {
   onClose: () => void;
   onOpenFullChat: () => void;
   onReact?: () => void;
-  onStateChange?: (state: 'listen' | 'think' | 'speak' | 'react' | 'alert') => void;
+  onStateChange?: (state: 'listen' | 'think' | 'speak' | 'react' | 'alert' | 'idle') => void;
 };
 
 function messageText(message: ChatMessage, streaming: boolean): string {
@@ -72,20 +74,37 @@ export function PetChatBubble({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reacting, setReacting] = useState(false);
   const [dropActive, setDropActive] = useState(false);
+  const reactHoldTimerRef = useRef<number | null>(null);
   const fileInputId = useId();
 
+  useEffect(() => () => {
+    if (reactHoldTimerRef.current) window.clearTimeout(reactHoldTimerRef.current);
+  }, []);
+
+  // Streaming outranks the submit busy flag: `submit` keeps `busy` true for
+  // the whole awaited turn, so checking `busy` first would hold `think` and
+  // never surface the `speak` response animation. A held `react` outranks the
+  // idle fallback so the one-shot reaction row can finish before `listen`
+  // replaces it.
   useEffect(() => {
-    if (busy) {
-      onStateChange?.('think');
-    } else if (streaming) {
+    if (streaming) {
       onStateChange?.('speak');
-    } else if (streamPhase === 'error') {
+    } else if (busy) {
+      onStateChange?.('think');
+    } else if (streamPhase === 'error' || attachmentError) {
       onStateChange?.('alert');
-    } else {
+    } else if (!reacting) {
       onStateChange?.('listen');
     }
-  }, [busy, onStateChange, streamPhase, streaming]);
+  }, [attachmentError, busy, onStateChange, reacting, streamPhase, streaming]);
+
+  // Closing the bubble must not strand the atlas in its last chat state
+  // (e.g. looping `think` after a close during an active turn).
+  useEffect(() => () => {
+    onStateChange?.('idle');
+  }, [onStateChange]);
 
   useEffect(() => {
     if (!droppedFile) return;
@@ -153,6 +172,12 @@ export function PetChatBubble({
       setPendingAttachment(null);
       setStatus('Reply received.');
       onStateChange?.('react');
+      setReacting(true);
+      if (reactHoldTimerRef.current) window.clearTimeout(reactHoldTimerRef.current);
+      reactHoldTimerRef.current = window.setTimeout(() => {
+        setReacting(false);
+        reactHoldTimerRef.current = null;
+      }, prefersReducedMotion() ? 1200 : 2000);
       onReact?.();
     } catch (error) {
       setStatus(null);

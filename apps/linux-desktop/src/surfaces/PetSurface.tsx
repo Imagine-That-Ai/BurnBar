@@ -54,6 +54,7 @@ type ContainedPetDrag = {
   startY: number;
   origin: ContainedPetOffset;
   last: ContainedPetOffset;
+  animating: boolean;
 };
 
 const CONTAINED_PET_OFFSET_LIMIT = { x: 96, y: 64 } as const;
@@ -217,14 +218,26 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
     setContainedActionStatus(`${pet.displayName} is now your Linux companion.`);
   }, []);
 
+  // Movement selects the pet's closest travel-style atlas row, then settles
+  // back to idle shortly after the interaction ends.
+  const settlePetMovementState = useCallback(() => {
+    if (petStateResetTimerRef.current) window.clearTimeout(petStateResetTimerRef.current);
+    petStateResetTimerRef.current = window.setTimeout(() => {
+      setPetAtlasState('idle');
+      petStateResetTimerRef.current = null;
+    }, prefersReducedMotion() ? 600 : 1200);
+  }, []);
+
   const moveContainedPet = useCallback((offset: ContainedPetOffset, source: 'keyboard' | 'pointer') => {
     const next = clampContainedPetOffset(offset);
     setContainedPetOffset(next);
+    setPetAtlasState('wander');
+    settlePetMovementState();
     setContainedActionStatus(
       `Contained preview moved ${source === 'keyboard' ? 'with the keyboard' : 'with pointer drag'} ` +
         `(${containedPetOffsetLabel(next)}). Press Home to reset.`
     );
-  }, []);
+  }, [settlePetMovementState]);
 
   const handleContainedKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
@@ -260,7 +273,8 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
         startX: event.clientX,
         startY: event.clientY,
         origin: containedPetOffset,
-        last: containedPetOffset
+        last: containedPetOffset,
+        animating: false
       };
     },
     [containedFallback, containedPetOffset]
@@ -278,11 +292,22 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
         startX: event.clientX,
         startY: event.clientY,
         origin: containedPetOffset,
-        last: containedPetOffset
+        last: containedPetOffset,
+        animating: false
       };
     },
     [containedFallback, containedPetOffset]
   );
+
+  const animateContainedDrag = useCallback((drag: ContainedPetDrag) => {
+    if (drag.animating) return;
+    drag.animating = true;
+    if (petStateResetTimerRef.current) {
+      window.clearTimeout(petStateResetTimerRef.current);
+      petStateResetTimerRef.current = null;
+    }
+    setPetAtlasState('drag');
+  }, []);
 
   const handleContainedPointerMove = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
@@ -293,9 +318,10 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
         y: drag.origin.y + event.clientY - drag.startY
       });
       drag.last = next;
+      animateContainedDrag(drag);
       setContainedPetOffset(next);
     },
-    []
+    [animateContainedDrag]
   );
 
   const handleContainedMouseMove = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
@@ -306,32 +332,35 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
       y: drag.origin.y + event.clientY - drag.startY
     });
     drag.last = next;
+    animateContainedDrag(drag);
     setContainedPetOffset(next);
-  }, []);
+  }, [animateContainedDrag]);
 
   const finishContainedPointerDrag = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const drag = containedPetDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     containedPetDragRef.current = null;
+    if (drag.animating) settlePetMovementState();
     if (drag.last.x !== drag.origin.x || drag.last.y !== drag.origin.y) {
       setContainedActionStatus(
         `Contained preview moved with pointer drag (${containedPetOffsetLabel(drag.last)}). Press Home to reset.`
       );
     }
-  }, []);
+  }, [settlePetMovementState]);
 
   const finishContainedMouseDrag = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     const drag = containedPetDragRef.current;
     if (!drag || drag.pointerId !== -1) return;
     containedPetDragRef.current = null;
+    if (drag.animating) settlePetMovementState();
     if (drag.last.x !== drag.origin.x || drag.last.y !== drag.origin.y) {
       setContainedActionStatus(
         `Contained preview moved with pointer drag (${containedPetOffsetLabel(drag.last)}). Press Home to reset.`
       );
     }
     event.preventDefault();
-  }, []);
+  }, [settlePetMovementState]);
 
   const waveAtPet = useCallback(() => {
     setPetAtlasState('react');
@@ -344,7 +373,7 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
     window.setTimeout(() => setReactWaveActive(false), prefersReducedMotion() ? 1200 : 2000);
   }, []);
 
-  const handlePetStateChange = useCallback((state: 'listen' | 'think' | 'speak' | 'react' | 'alert') => {
+  const handlePetStateChange = useCallback((state: 'listen' | 'think' | 'speak' | 'react' | 'alert' | 'idle') => {
     setPetAtlasState(state);
   }, []);
 
