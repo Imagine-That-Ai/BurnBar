@@ -65,7 +65,7 @@ export const FREE_TO_CLOUD_TRIGGERS: UpsellTrigger[] = [
     action: "Hosted Remote MCP grant request",
     paywall: "BurnBar Cloud",
     featureGroup: "Group A",
-  }
+  },
 ];
 
 export const CLOUD_TO_CLOUD_PRO_TRIGGERS: UpsellTrigger[] = [
@@ -108,7 +108,7 @@ export const CLOUD_TO_CLOUD_PRO_TRIGGERS: UpsellTrigger[] = [
     action: "hosted-action balance exhausted",
     paywall: "BurnBar Cloud Pro",
     featureGroup: "Group B",
-  }
+  },
 ];
 
 export const LAUNCH_POSTS: LaunchPost[] = [
@@ -150,7 +150,7 @@ export const LAUNCH_POSTS: LaunchPost[] = [
     headline: "OpenBurnBar is ready for paid cloud workflows",
     body: "The free local app remains the foundation. BurnBar Cloud adds sync, backup, search, and agent memory across devices. BurnBar Cloud Pro adds Floo and Agent Control with included monthly allowance and prepaid top-ups.",
     cta: "Upgrade when you need sync or control",
-  }
+  },
 ];
 
 export const LAUNCH_UPSELL_TRIGGERS = [
