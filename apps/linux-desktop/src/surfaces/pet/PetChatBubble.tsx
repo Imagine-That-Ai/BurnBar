@@ -10,6 +10,7 @@ import {
 import { expandInAppBuffer } from '../../textExpansionStore.js';
 import { readTextExpansionConsent } from '../../textExpansionConsent.js';
 import { useChatStore } from '../../state/chatStore.js';
+import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useShellStore } from '../../state/shellStore.js';
 import {
   CHAT_ATTACHMENT_ACCEPT,
@@ -57,6 +58,8 @@ export function PetChatBubble({
 }: PetChatBubbleProps) {
   const fixtureMode = useShellStore((state) => state.fixtureMode);
   const bridge = useShellStore((state) => state.bridge);
+  const load = useChatStore((state) => state.load);
+  const loading = useChatStore((state) => state.loading);
   const messages = useChatStore((state) => state.messages);
   const streaming = useChatStore((state) => state.streaming);
   const streamPhase = useChatStore((state) => state.streamPhase);
@@ -72,6 +75,12 @@ export function PetChatBubble({
   const [busy, setBusy] = useState(false);
   const [dropActive, setDropActive] = useState(false);
   const fileInputId = useId();
+
+  // The bubble can mount in its own `?window=pet-companion` WebView where the
+  // chat store is empty. Hydrate through the same lane as ChatSurface so the
+  // composer resumes the daemon-backed active thread and backend instead of
+  // silently starting a fresh default-backend conversation.
+  useLaneLoad(load);
 
   useEffect(() => {
     if (!droppedFile) return;
@@ -113,7 +122,7 @@ export function PetChatBubble({
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     const text = draft.trim();
-    if (!text || busy || streaming) return;
+    if (!text || busy || streaming || loading) return;
 
     setBusy(true);
     setAttachmentError(null);
@@ -147,7 +156,7 @@ export function PetChatBubble({
   };
 
   const visibleMessages = messages.slice(-8);
-  const sendDisabled = busy || streaming || draft.trim().length === 0;
+  const sendDisabled = busy || streaming || loading || draft.trim().length === 0;
 
   return (
     <section
@@ -195,6 +204,8 @@ export function PetChatBubble({
               </p>
             );
           })
+        ) : loading ? (
+          <p className="pet-chat-empty">Resuming your conversation…</p>
         ) : (
           <p className="pet-chat-empty">Ask your companion about a run, provider, or file.</p>
         )}
