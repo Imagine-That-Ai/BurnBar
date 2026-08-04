@@ -476,4 +476,33 @@ describe('PetSurface', () => {
     expect(stage.getAttribute('data-pet-id')).toBe('ada-lovelace');
     expect(localStorage.getItem('openburnbar.linux.pet.selection.v1')).toBe('ada-lovelace');
   });
+
+  it('reports the selected model in the glTF diagnostic instead of the hard-coded default', async () => {
+    render(<PetSurface />);
+    expect(await screen.findByText('glTF: /pets/kawaii-aurora-fox-actions.glb')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /choose pet/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /ada lovelace/i }));
+    expect(await screen.findByText('glTF: /pets/ada-lovelace-actions.glb')).toBeTruthy();
+    expect(screen.queryByText('glTF: /pets/kawaii-aurora-fox-actions.glb')).toBeNull();
+  });
+
+  it('follows avatar selections persisted by another pet surface via storage events', async () => {
+    render(<PetSurface companionMode />);
+    const stage = await screen.findByRole('img', { name: /aurora fox/i });
+    expect(stage.getAttribute('data-pet-id')).toBe('kawaii-aurora-fox');
+
+    localStorage.setItem('openburnbar.linux.pet.selection.v1', 'ada-lovelace');
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'openburnbar.linux.pet.selection.v1',
+          newValue: 'ada-lovelace'
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('img', { name: /ada lovelace/i }).getAttribute('data-pet-id')).toBe('ada-lovelace');
+    });
+  });
 });
