@@ -143,6 +143,8 @@ jobs:
       contents: read
     env:
       FUNCTION_TARGETS: ${{ inputs.function_targets }}
+    outputs:
+      resolved_function_targets: ${{ steps.scope-functions.outputs.function_targets }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
@@ -157,6 +159,7 @@ jobs:
           cache-dependency-path: functions/package-lock.json
 
       - name: Validate, test, and scope candidate Functions without credentials
+        id: scope-functions
         run: |
           set -euo pipefail
           if [[ -n "${FUNCTION_TARGETS:-}" ]] &&
@@ -220,5 +223,8 @@ jobs:
       hosting_artifact: staging-hosting-${{ github.sha }}
       deploy_functions: ${{ inputs.deploy_functions }}
       functions_artifact: staging-functions-${{ github.sha }}
-      function_targets: ${{ inputs.function_targets }}
+      # The candidate build resolves a blank input to the reviewed staging
+      # manifest, so the trusted deploy always receives explicit selectors and
+      # never runs an unscoped `--only functions` deployment.
+      function_targets: ${{ needs.build-functions-candidate.outputs.resolved_function_targets }}
     secrets: inherit

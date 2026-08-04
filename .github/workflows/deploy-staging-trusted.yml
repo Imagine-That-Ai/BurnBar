@@ -94,6 +94,12 @@ jobs:
             [[ "$FUNCTIONS_ARTIFACT" == "staging-functions-$CANDIDATE_SHA" ]] || {
               echo "::error::Functions artifact identity does not match candidate SHA."; exit 1;
             }
+            # The candidate artifact is always scoped to explicit reviewed
+            # targets, so an unscoped deploy would ask the non-interactive
+            # Firebase CLI to delete every other remote function and abort.
+            [[ -n "${FUNCTION_TARGETS:-}" ]] || {
+              echo "::error::deploy_functions requires the resolved function_targets selectors from the candidate build."; exit 1;
+            }
           fi
           if [[ -n "${FUNCTION_TARGETS:-}" ]] &&
              [[ ! "$FUNCTION_TARGETS" =~ ^functions:[A-Za-z][A-Za-z0-9_-]*(,functions:[A-Za-z][A-Za-z0-9_-]*)*$ ]]; then
@@ -243,10 +249,7 @@ jobs:
           } > "$env_temp"
           mv "$env_temp" "$env_file"
           trap - EXIT
-          deploy_scope="functions"
-          if [[ -n "${FUNCTION_TARGETS:-}" ]]; then
-            deploy_scope="$FUNCTION_TARGETS"
-          fi
+          deploy_scope="$FUNCTION_TARGETS"
           "$FIREBASE_TOOLS_BIN" deploy \
             --only "$deploy_scope" \
             --project "$FIREBASE_PROJECT" \
@@ -383,5 +386,5 @@ jobs:
             echo "- Project: \`$FIREBASE_PROJECT\`"
             echo "- Hosting included: \`$DEPLOY_HOSTING\`"
             echo "- Functions included: \`$DEPLOY_FUNCTIONS\`"
-            echo "- Function targets: \`${FUNCTION_TARGETS:-all}\`"
+            echo "- Function targets: \`${FUNCTION_TARGETS:-none}\`"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -136,6 +136,11 @@ reject(
   /^\s{10,}[^\n]*\$\{\{\s*inputs\.function_targets\s*\}\}/mu,
   "function_targets must not be interpolated directly into a candidate run script",
 );
+requireText(
+  caller,
+  "function_targets: ${{ needs.build-functions-candidate.outputs.resolved_function_targets }}",
+  "trusted deployment must receive the resolved manifest selectors, never a blank all-functions scope",
+);
 
 requireText(
   trusted,
@@ -205,6 +210,18 @@ requireText(
           mv "$env_temp" "$env_file"
           trap - EXIT`,
   "trusted Functions deployment must atomically replace the project dotenv without truncating its reviewed source",
+);
+requireText(
+  trusted,
+  `            [[ -n "\${FUNCTION_TARGETS:-}" ]] || {
+              echo "::error::deploy_functions requires the resolved function_targets selectors from the candidate build."; exit 1;
+            }`,
+  "trusted Functions deployment must fail closed on a blank deploy scope",
+);
+reject(
+  trusted,
+  /deploy_scope="functions"/u,
+  "trusted Functions deployment must never fall back to the unscoped functions deploy target",
 );
 requireText(
   trusted,
