@@ -105,4 +105,27 @@ describe('PetChatBubble', () => {
     ]);
     expect(screen.queryByTestId('pet-chat-pending-attachment')).toBeNull();
   });
+
+  it('emits companion behavior states as the user focuses and completes a turn', async () => {
+    const onStateChange = vi.fn();
+    const sendMessage = vi.fn(async () => {});
+    useChatStore.setState({ sendMessage } as Partial<ChatState>);
+
+    render(
+      <PetChatBubble
+        onClose={vi.fn()}
+        onOpenFullChat={vi.fn()}
+        onStateChange={onStateChange}
+      />
+    );
+
+    fireEvent.focus(screen.getByLabelText('Companion message'));
+    fireEvent.change(screen.getByLabelText('Companion message'), { target: { value: 'Hello companion' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send companion message' }));
+
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledWith('Hello companion', undefined));
+    expect(onStateChange).toHaveBeenCalledWith('listen');
+    expect(onStateChange).toHaveBeenCalledWith('think');
+    expect(onStateChange).toHaveBeenCalledWith('react');
+  });
 });

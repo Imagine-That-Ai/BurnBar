@@ -26,6 +26,7 @@ export type PetChatBubbleProps = {
   onClose: () => void;
   onOpenFullChat: () => void;
   onReact?: () => void;
+  onStateChange?: (state: 'listen' | 'think' | 'speak' | 'react' | 'alert') => void;
 };
 
 function messageText(message: ChatMessage, streaming: boolean): string {
@@ -53,7 +54,8 @@ export function PetChatBubble({
   onDroppedFileConsumed,
   onClose,
   onOpenFullChat,
-  onReact
+  onReact,
+  onStateChange
 }: PetChatBubbleProps) {
   const fixtureMode = useShellStore((state) => state.fixtureMode);
   const bridge = useShellStore((state) => state.bridge);
@@ -72,6 +74,18 @@ export function PetChatBubble({
   const [busy, setBusy] = useState(false);
   const [dropActive, setDropActive] = useState(false);
   const fileInputId = useId();
+
+  useEffect(() => {
+    if (busy) {
+      onStateChange?.('think');
+    } else if (streaming) {
+      onStateChange?.('speak');
+    } else if (streamPhase === 'error') {
+      onStateChange?.('alert');
+    } else {
+      onStateChange?.('listen');
+    }
+  }, [busy, onStateChange, streamPhase, streaming]);
 
   useEffect(() => {
     if (!droppedFile) return;
@@ -118,6 +132,7 @@ export function PetChatBubble({
     setBusy(true);
     setAttachmentError(null);
     setStatus('Sending…');
+    onStateChange?.('think');
     try {
       const uploaded = pendingAttachment
         ? await uploadChatAttachmentForSend(
@@ -137,6 +152,7 @@ export function PetChatBubble({
       setDraft('');
       setPendingAttachment(null);
       setStatus('Reply received.');
+      onStateChange?.('react');
       onReact?.();
     } catch (error) {
       setStatus(null);
@@ -224,13 +240,14 @@ export function PetChatBubble({
           <label className="sr-only" htmlFor={`${fileInputId}-message`}>
             Companion message
           </label>
-          <textarea
+      <textarea
             id={`${fileInputId}-message`}
             value={draft}
             rows={1}
             placeholder="Ask your companion…"
-            disabled={busy || streaming}
-            onChange={(event) => handleDraftChange(event.currentTarget.value)}
+        disabled={busy || streaming}
+        onFocus={() => onStateChange?.('listen')}
+        onChange={(event) => handleDraftChange(event.currentTarget.value)}
             onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
