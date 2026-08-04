@@ -21,6 +21,21 @@ linux_native_swift_scratch_root() {
     printf '%s\n' "$temporary_root"
 }
 
+assert_linux_native_host() {
+    local platform="${1:-}"
+    if [[ "$platform" == "Linux" ]]; then
+        return 0
+    fi
+
+    cat >&2 <<'EOF'
+Linux native behavior tests require a Linux userspace. Run this script inside
+the pinned tools/linux-toolchain container, on a Linux host, or in the Linux
+VM. The Linux-only XCTest classes are not compiled on macOS, so continuing
+here would produce a misleading zero-test filter failure.
+EOF
+    return 78
+}
+
 run_xctest_attempt() {
     local binary="$1"
     local selector="$2"
@@ -603,6 +618,8 @@ daemon_linux_tests=(
 )
 
 main() {
+    assert_linux_native_host "$(uname -s)"
+
     local scratch_root
     scratch_root="$(linux_native_swift_scratch_root)"
     echo "Linux Swift scratch root: $scratch_root" >&2
