@@ -183,7 +183,10 @@ The `pull_request_target`-based `Domain Core Trusted Deletion Guard` comes from 
 - missing consumer evidence or retained signed rollback artifact;
 - an unqualified, stale, self-authored, or mismatched deletion review;
 - target absence before `legacy_deleted` or target presence afterward;
-- a deletion PR that is a fork, targets a branch other than official `main`, or lacks qualified approval on its exact current head.
+- a deletion PR that comes from a fork or lacks qualified approval on its exact current head;
+- a merge-queue evaluation whose base ref is anything other than `refs/heads/main`.
+
+Internal same-repo PRs that target a branch other than official `main` (stacked PRs) are the one deliberate exception: the guard emits an explicit neutral pass without evaluating. The `pull_request_target` "trusted" checkout for such a PR is the unreviewed base branch, not default-branch code, so evaluating there proves nothing. Enforcement is unchanged at the boundary that matters: the base branch's own PR into `main` and the merge queue evaluate the full accumulated diff with genuinely trusted default-branch code. The same-repo base and head repository assertions run before the neutral pass, so fork PRs gain nothing from it.
 
 The source-absence gate scans the whole declared source root for deleted symbols and literals, rejects deleted paths still referenced by tracked build graphs, and verifies exact identity receipts against the final XCFramework, AAR, native Windows and Linux binaries, browser WASM, Node WASM, and C# native artifact. Symbol-only absence is not sufficient.
 
