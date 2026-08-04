@@ -7,6 +7,7 @@ import OpenBurnBarSignalCore
 
 enum MobileCloudVaultSignalPayloadError: LocalizedError {
     case signalIdentityUnavailable(domainID: String)
+    case signalEnvelopeRequired(domainID: String)
     case invalidSignalEnvelope
     case signalBindingMismatch
     case trustedDeviceMissingSignalIdentity(deviceId: String, keyVersion: Int)
@@ -16,6 +17,8 @@ enum MobileCloudVaultSignalPayloadError: LocalizedError {
         switch self {
         case .signalIdentityUnavailable(let domainID):
             return "Signal identity is unavailable for \(domainID)."
+        case .signalEnvelopeRequired(let domainID):
+            return "Signal envelope is required for \(domainID)."
         case .invalidSignalEnvelope:
             return "Signal envelope is invalid."
         case .signalBindingMismatch:
@@ -123,6 +126,20 @@ enum MobileCloudVaultSignalPayloads {
 
     static func signalSealingIsRequired(domainID: String) -> Bool {
         signalActivationState(domainID: domainID) == .required
+    }
+
+    /// Required-mode producer guard. The activation state can change between
+    /// the caller's first read and the sealing helper's read (for example while
+    /// Remote Config is refreshing). A nil result must never turn that race into
+    /// a legacy write.
+    static func requireEnvelopeIfRequired(
+        payload: [String: Any],
+        state: ActivationState,
+        domainID: String
+    ) throws {
+        guard state != .required || payload["signalEnvelope"] != nil else {
+            throw MobileCloudVaultSignalPayloadError.signalEnvelopeRequired(domainID: domainID)
+        }
     }
 
     static func signalActivationState(domainID: String) -> ActivationState {

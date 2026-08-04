@@ -109,6 +109,7 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         supportsSignalEnvelope
             && agentSupportsSignalEnvelope != false
             && agentSignalPrekeyBundle != nil
+            && phoneSignalPrekeyBundle != nil
     }
 
     /// Treat an unset `oversightMode` as the safe `supervised` default so the

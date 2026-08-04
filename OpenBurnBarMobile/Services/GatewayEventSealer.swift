@@ -231,7 +231,7 @@ enum GatewayEventSealer {
     /// Official libsignal v4 Gateway producer. The caller supplies the durable
     /// session actor and the server-claimed, identity-pinned peer bundle; this
     /// method never falls back to HPKE or the legacy custom ratchet.
-    nonisolated static func sealGatewayEventSignalPayload(
+    static func sealGatewayEventSignalPayload(
         into payload: inout [String: Any],
         text: String,
         senderDisplayName: String,
@@ -241,10 +241,9 @@ enum GatewayEventSealer {
         uid: String,
         provider: any GatewaySignalSessionProvider,
         kind: String? = nil,
-        extraSealedFields: [String: String] = [:]
+        extraSealedFields: [String: Any] = [:]
     ) async throws {
-        let extraSealedValues = extraSealedFields.mapValues { $0 as Any }
-        try validateExtraSealedFields(extraSealedValues)
+        try validateExtraSealedFields(extraSealedFields)
         var privatePayload: [String: Any] = [
             "text": text,
             "destinationId": gatewayDestinationID(in: payload),
@@ -254,7 +253,7 @@ enum GatewayEventSealer {
         ]
         if let modelId, !modelId.isEmpty { privatePayload["modelId"] = modelId }
         if let kind, !kind.isEmpty { privatePayload["kind"] = kind }
-        try applyExtraSealedFields(extraSealedValues, to: &privatePayload)
+        try applyExtraSealedFields(extraSealedFields, to: &privatePayload)
         let plaintext = try JSONSerialization.data(withJSONObject: privatePayload)
         let signalEnvelopeData = try await provider.seal(
             plaintext: plaintext,

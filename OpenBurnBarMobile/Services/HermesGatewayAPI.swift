@@ -5,6 +5,7 @@ import FirebaseCore
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 // MARK: - Hermes Gateway API
 
@@ -51,7 +52,8 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         phoneRelayPublicKey: String? = nil,
         phoneRelayKeyVersion: Int? = nil,
         phoneRelayEncryption: String? = nil,
-        phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle? = nil
+        phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle? = nil,
+        phoneSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc? = nil
     ) async throws -> HermesGatewayClientRecord {
         let callable = try functionsClient().httpsCallable("approveHermesGatewayDeviceGrant")
         var payload: [String: Any] = [
@@ -90,6 +92,20 @@ final class HermesGatewayAPI: HermesGatewayRepository {
             payload["phoneRatchetSignedPreKeyId"] = phoneRatchetPrekeyBundle.signedPreKeyID
             payload["phoneRatchetSignedPreKeySignature"] = phoneRatchetPrekeyBundle.signedPreKeySignatureBase64
             payload["phoneSupportsRatchetV1"] = true
+        }
+        if let phoneSignalPrekeyBundle {
+            let encoded = try JSONEncoder().encode(phoneSignalPrekeyBundle)
+            guard
+                let object = try JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+            else {
+                throw FunctionsError.gatewaySignalUnavailable
+            }
+            payload["phoneSignalPrekeyBundle"] = object
+            // `sanitizeGatewayRelayEnvelopeCapabilities` parses the approving
+            // endpoint's capability bit from the shared `supportsSignalEnvelope`
+            // field. The callable persists it as `phoneSupportsSignalEnvelope`
+            // only after it has parsed and negotiated the phone request.
+            payload["supportsSignalEnvelope"] = true
         }
 
         try await prepareHermesGatewayApprovalContext()
@@ -213,7 +229,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         if let resolvedTargetClientId = Self.trimmedClientID(targetClientId) {
             payload["targetClientId"] = resolvedTargetClientId
         }
-        try Self.applyGatewayEventSeal(
+        try await Self.applyGatewayEventSeal(
             into: &payload,
             text: text,
             senderDisplayName: senderDisplayName,
@@ -285,7 +301,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
             // We now also stamp top-level `kind` inside the sealed payload so the
             // receiving agent dispatches it as a control (not chat text) per the
             // E2EE remediation requirement.
-            try Self.applyGatewayEventSeal(
+            try await Self.applyGatewayEventSeal(
                 into: &payload,
                 text: "",
                 senderDisplayName: senderDisplayName,
@@ -330,11 +346,34 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore(),
         kind: String? = nil,
         extraSealedFields: [String: Any] = [:]
-    ) throws {
+    ) async throws {
         guard FirebaseApp.app() != nil,
               let uid = Auth.auth().currentUser?.uid,
               !uid.isEmpty else {
             throw FunctionsError.gatewayTargetMissingRelayKey
+        }
+        guard let targetClient else {
+            throw FunctionsError.gatewayTargetMissingRelayKey
+        }
+        if targetClient.canSignalToAgent {
+            let session = try HermesGatewaySignalRuntime.session(
+                uid: uid,
+                targetClient: targetClient,
+                deviceId: MobileDeviceIdentity.loadOrCreateDeviceId()
+            )
+            try await GatewayEventSealer.sealGatewayEventSignalPayload(
+                into: &payload,
+                text: text,
+                senderDisplayName: senderDisplayName,
+                threadId: threadId,
+                modelId: modelId,
+                targetClient: targetClient,
+                uid: uid,
+                provider: session.provider,
+                kind: kind,
+                extraSealedFields: extraSealedFields
+            )
+            return
         }
         try FunctionsRepository.sealGatewayEventPayload(
             into: &payload,
@@ -370,7 +409,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
                 "mode": mode,
                 "senderId": "burnbar-ios"
             ]
-            try Self.applyGatewayEventSeal(
+            try await Self.applyGatewayEventSeal(
                 into: &payload,
                 text: "",
                 senderDisplayName: "OpenBurnBar iPhone",
@@ -430,7 +469,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
             "choice": choice,
             "senderId": "burnbar-ios"
         ]
-        try Self.applyGatewayEventSeal(
+        try await Self.applyGatewayEventSeal(
             into: &payload,
             text: "",
             senderDisplayName: "OpenBurnBar iPhone",

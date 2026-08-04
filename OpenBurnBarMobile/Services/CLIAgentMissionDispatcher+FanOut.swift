@@ -47,6 +47,10 @@ extension CLIAgentMissionDispatcher {
         guard FirebaseApp.app() != nil else { throw DispatchError.firebaseUnavailable }
         guard let uid = Auth.auth().currentUser?.uid else { throw DispatchError.notSignedIn }
         guard runtimeTokens.count >= 1 else { throw DispatchError.tooFewRuntimes }
+        let signalActivationState = MobileCloudVaultSignalPayloads.signalActivationState(domainID: "conversations_chat")
+        guard signalActivationState == .off || runtimeTokens.count <= 100 else {
+            throw DispatchError.tooManyRuntimes
+        }
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else { throw DispatchError.emptyPrompt }
 
@@ -201,6 +205,11 @@ extension CLIAgentMissionDispatcher {
                     if signalState == .required { throw error }
                 }
             }
+            try MobileCloudVaultSignalPayloads.requireEnvelopeIfRequired(
+                payload: payload,
+                state: signalState,
+                domainID: "conversations_chat"
+            )
             let requestRef = db
                 .collection("users").document(uid)
                 .collection("cli_agent_mission_requests").document(missionID)
@@ -236,21 +245,39 @@ extension CLIAgentMissionDispatcher {
 
         // Persist Signal children only after the group + initial events are
         // durable. If a callable fails mid-way, compensate by marking the
-        // already-committed group cancelled (best-effort) so the partially
-        // created fan-out is visibly terminal instead of silently waiting on
-        // children that will never arrive, then surface the failure.
+        // already-committed group cancelled (best-effort) so the fan-out is
+        // visibly terminal instead of silently waiting on children that will
+        // never arrive. The callable accepts the complete child set and commits
+        // it in one server-side batch, so no partial child set can be exposed.
         do {
-            for staged in stagedSignalChildren {
+            if !stagedSignalChildren.isEmpty {
                 _ = try await Functions.functions()
                     .httpsCallable("writeSignalAtRestDocument")
                     .call([
-                        "collection": "cli_agent_mission_requests",
-                        "docId": staged.missionID,
-                        "data": staged.payload,
+                        "documents": stagedSignalChildren.map { staged in
+                            [
+                                "collection": "cli_agent_mission_requests",
+                                "docId": staged.missionID,
+                                "data": staged.payload
+                            ]
+                        }
                     ])
             }
         } catch {
-            try? await groupRef.updateData(["phase": MissionGroupPhase.cancelled.rawValue])
+            let cleanup = db.batch()
+            for staged in stagedSignalChildren {
+                cleanup.deleteDocument(
+                    db.collection("users").document(uid)
+                        .collection("cli_agent_mission_requests").document(staged.missionID)
+                        .collection("events").document("000001")
+                )
+            }
+            cleanup.setData(
+                ["phase": MissionGroupPhase.cancelled.rawValue],
+                forDocument: groupRef,
+                merge: true
+            )
+            try? await cleanup.commit()
             throw error
         }
         return FanOutDispatchResult(groupID: groupID, childMissionIDs: childMissionIDs)

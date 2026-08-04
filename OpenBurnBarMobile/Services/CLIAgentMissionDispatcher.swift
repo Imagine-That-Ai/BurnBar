@@ -105,6 +105,11 @@ final class CLIAgentMissionDispatcher {
                 if signalState == .required { throw error }
             }
         }
+        try MobileCloudVaultSignalPayloads.requireEnvelopeIfRequired(
+            payload: payload,
+            state: signalState,
+            domainID: "conversations_chat"
+        )
         let signalWrite = signalState != .off && payload["signalEnvelope"] != nil
         if signalWrite {
             var callablePayload = payload
@@ -114,7 +119,7 @@ final class CLIAgentMissionDispatcher {
                 .call([
                     "collection": "cli_agent_mission_requests",
                     "docId": id,
-                    "data": callablePayload,
+                    "data": callablePayload
                 ])
         }
         let requestRef = db
@@ -309,6 +314,7 @@ final class CLIAgentMissionDispatcher {
         case notSignedIn
         case emptyPrompt
         case tooFewRuntimes
+        case tooManyRuntimes
         case wandRoutingUnavailable(String)
         case missionSnapshotUnavailable(String)
 
@@ -322,6 +328,8 @@ final class CLIAgentMissionDispatcher {
                 return "Mission prompt was empty."
             case .tooFewRuntimes:
                 return "The Wand needs at least 1 agent."
+            case .tooManyRuntimes:
+                return "Signal fan-out supports at most 100 agents per dispatch."
             case let .wandRoutingUnavailable(message):
                 return message
             case let .missionSnapshotUnavailable(requestID):

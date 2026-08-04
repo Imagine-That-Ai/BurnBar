@@ -441,16 +441,16 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
   const agentRatchetOnRecord = pinnedAgentRatchetIdentity !== undefined || agentRatchetWrite != null;
   const phoneRatchetOnRecord = grant.client.phoneSupportsRatchetV1 === true;
   const supportsRatchetV1 = agentRatchetOnRecord && phoneRatchetOnRecord ? true : undefined;
-  // Required mode hard-requires the AGENT lane; the phone lane is enforced
-  // only once the phone ADVERTISED Signal support at approval (the shipped iOS
-  // approval flow cannot publish a phone PQXDH bundle yet, so an unconditional
-  // phone requirement would take every existing iOS pairing offline the moment
-  // OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED flips on).
+  // Required mode is fail-closed for both endpoints. A runtime update cannot
+  // preserve a one-sided or plaintext-capable pairing after the flag is raised:
+  // the agent and the phone must both advertise Signal v4 and retain their
+  // pinned official-libsignal PQXDH bundles.
   if (
     gatewaySignalRequiredMode() &&
     (agentCapabilities?.supportsSignalEnvelope !== true ||
       !(grant.client.agentSignalPrekeyBundle || agentSignalPrekeyBundleWrite) ||
-      (grant.client.phoneSupportsSignalEnvelope === true && !grant.client.phoneSignalPrekeyBundle))
+      grant.client.phoneSupportsSignalEnvelope !== true ||
+      !grant.client.phoneSignalPrekeyBundle)
   ) {
     throw new HttpsError(
       "failed-precondition",

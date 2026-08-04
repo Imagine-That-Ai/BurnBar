@@ -11,6 +11,7 @@ type SignalAtRestDocumentRequest = {
   collection?: unknown;
   docId?: unknown;
   data?: unknown;
+  documents?: unknown;
 };
 
 const MISSION_COLLECTION = "cli_agent_mission_requests";
@@ -53,6 +54,35 @@ function requireMissionPublicShape(data: Record<string, unknown>, docId: string)
   }
 }
 
+function parseSignalDocument(
+  raw: unknown,
+  uid: string,
+): { collection: typeof MISSION_COLLECTION; docId: string; data: Record<string, unknown> } {
+  const input = recordOrUndefined(raw);
+  if (!input) throw new HttpsError("invalid-argument", "Signal document must be an object.");
+  const collection = input.collection === MISSION_COLLECTION
+    ? MISSION_COLLECTION
+    : (() => { throw new HttpsError("invalid-argument", "Unsupported Signal at-rest collection."); })();
+  const docId = boundedIdentifier(input.docId, "docId");
+  const data = recordOrUndefined(input.data);
+  if (!data) throw new HttpsError("invalid-argument", "data must be an object.");
+  requireMissionPublicShape(data, docId);
+  const envelope = assertSignalAtRestEnvelopeForWrite(data.signalEnvelope, {
+    uid,
+    collection,
+    docId,
+    field: "signalEnvelope",
+  }).envelope;
+  if (requiredAtRestWrites() && ("contentSealed" in data || "sealedPayload" in data)) {
+    throw new HttpsError("failed-precondition", "Signal at-rest required mode rejects legacy siblings.");
+  }
+  return {
+    collection,
+    docId,
+    data: { ...data, signalEnvelope: envelope },
+  };
+}
+
 export const writeSignalAtRestDocument = onCallProduction<SignalAtRestDocumentRequest, { ok: true }>(
   "writeSignalAtRestDocument",
   {
@@ -64,32 +94,30 @@ export const writeSignalAtRestDocument = onCallProduction<SignalAtRestDocumentRe
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Authentication is required.");
 
-    const input = request.data ?? {};
-    const collection = input.collection === MISSION_COLLECTION
-      ? MISSION_COLLECTION
-      : (() => { throw new HttpsError("invalid-argument", "Unsupported Signal at-rest collection."); })();
-    const docId = boundedIdentifier(input.docId, "docId");
-    const data = recordOrUndefined(input.data);
-    if (!data) throw new HttpsError("invalid-argument", "data must be an object.");
-    requireMissionPublicShape(data, docId);
-
-    const envelope = assertSignalAtRestEnvelopeForWrite(data.signalEnvelope, {
-      uid,
-      collection,
-      docId,
-      field: "signalEnvelope",
-    }).envelope;
-
-    if (requiredAtRestWrites() && ("contentSealed" in data || "sealedPayload" in data)) {
-      throw new HttpsError("failed-precondition", "Signal at-rest required mode rejects legacy siblings.");
+    const input = recordOrUndefined(request.data) ?? {};
+    const rawDocuments = input.documents;
+    const documents = rawDocuments === undefined
+      ? [parseSignalDocument(input, uid)]
+      : (() => {
+          if (!Array.isArray(rawDocuments) || rawDocuments.length === 0 || rawDocuments.length > 100) {
+            throw new HttpsError("invalid-argument", "documents must contain between 1 and 100 entries.");
+          }
+          return rawDocuments.map((entry) => parseSignalDocument(entry, uid));
+        })();
+    const batch = db.batch();
+    for (const document of documents) {
+      const persisted: Record<string, unknown> = { ...document.data, updatedAt: Timestamp.now() };
+      batch.set(
+        db.collection("users").doc(uid).collection(document.collection).doc(document.docId),
+        persisted,
+      );
     }
-
-    const persisted: Record<string, unknown> = { ...data, signalEnvelope: envelope, updatedAt: Timestamp.now() };
-    await db.collection("users").doc(uid).collection(collection).doc(docId).set(persisted);
+    await batch.commit();
     logInfo({
       event: "signal_at_rest_document_written",
-      collection,
-      schema_version: typeof data.schemaVersion === "number" ? data.schemaVersion : 0,
+      collection: MISSION_COLLECTION,
+      documents: documents.length,
+      schema_version: typeof documents[0].data.schemaVersion === "number" ? documents[0].data.schemaVersion : 0,
       required_mode: requiredAtRestWrites(),
     });
     return { ok: true };

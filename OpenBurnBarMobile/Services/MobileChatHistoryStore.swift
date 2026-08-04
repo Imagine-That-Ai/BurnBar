@@ -755,6 +755,11 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
             }
             logger.error("Signal at-rest seal failed; retaining staged legacy fallback: \(String(describing: error), privacy: .public)")
         }
+        try MobileCloudVaultSignalPayloads.requireEnvelopeIfRequired(
+            payload: payload,
+            state: MobileCloudVaultSignalPayloads.signalActivationState(domainID: "conversations_chat"),
+            domainID: "conversations_chat"
+        )
         try await Self.collection(for: db, uid: uid).document(thread.id).setData(payload, merge: false)
     }
 
@@ -932,6 +937,10 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         signalIdentity: OpenBurnBarSignalIdentityKeypair? = nil,
         trustedSenderPublicKeys: [String: Data] = [:]
     ) -> MobileChatThread? {
+        let signalRequired = MobileCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat")
+        if signalRequired && (data["signalEnvelope"] == nil || uid == nil) {
+            return nil
+        }
         if data["signalEnvelope"] != nil, let uid {
             do {
                 if let payload = try MobileCloudVaultSignalPayloads.openSignalPayloadIfPresent(
@@ -962,6 +971,7 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
                 // `sealedPayload` alongside the optional Signal envelope until
                 // Phase-E activation. If Signal open is unavailable or malformed,
                 // fall through to the legacy opener instead of dropping the thread.
+                if signalRequired { return nil }
             }
         }
         if data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil {

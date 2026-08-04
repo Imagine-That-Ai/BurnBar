@@ -331,6 +331,11 @@ final class AgentIdentityRegistry {
                     if signalState == .required { throw error }
                 }
             }
+            try MobileCloudVaultSignalPayloads.requireEnvelopeIfRequired(
+                payload: publicData,
+                state: signalState,
+                domainID: "conversations_chat"
+            )
             try await firestoreProvider()
                 .collection("users").document(uid)
                 .collection("agent_identities").document(documentID)

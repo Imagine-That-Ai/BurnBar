@@ -265,6 +265,11 @@ final class ApprovalPolicyStore {
                     if signalState == .required { throw error }
                 }
             }
+            try MobileCloudVaultSignalPayloads.requireEnvelopeIfRequired(
+                payload: signalPayload,
+                state: signalState,
+                domainID: "conversations_chat"
+            )
             payload = signalPayload
         } catch {
             lastCloudError = error.localizedDescription
@@ -411,8 +416,8 @@ final class ApprovalPolicyStore {
            let signalPolicy = try? JSONDecoder().decode(ApprovalPolicy.self, from: signalPlaintext) {
             return signalPolicy
         }
-        if data["signalEnvelope"] != nil,
-           MobileCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat") {
+        if MobileCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat"),
+           signalPlaintext == nil {
             return nil
         }
         guard

@@ -4,6 +4,8 @@ import {
   parseGatewaySignalPrekeyBundle,
   sameGatewaySignalIdentity,
 } from "../hermesGatewaySignalPrekeys.js";
+import { parsePhoneSignalPairing } from "../callables/hermesGatewayApproveSignal.js";
+import { sanitizeGatewayRelayEnvelopeCapabilities } from "../hermesGatewayEnvelope.js";
 import type { HermesGatewaySignalPrekeyBundleDoc } from "../types/generated/hermes-gateway.js";
 
 function validBundle(overrides: Partial<HermesGatewaySignalPrekeyBundleDoc> = {}): HermesGatewaySignalPrekeyBundleDoc {
@@ -108,5 +110,18 @@ describe("Hermes Gateway Signal PQXDH prekey bundle parser", () => {
     );
     expect(sameGatewaySignalIdentity(pinned, validBundle({ registrationId: 7 }))).toBe(false);
     expect(sameGatewaySignalIdentity(pinned, validBundle({ deviceId: 2 }))).toBe(false);
+  });
+
+  it("requires a phone PQXDH bundle whenever the phone advertises Signal capability", () => {
+    const capabilities: ReturnType<typeof sanitizeGatewayRelayEnvelopeCapabilities> = {
+      supportsRelayEnvelopeVersions: [1, 2, 3],
+      preferredRelayEnvelopeVersion: 3,
+      supportsHpkeV3: true,
+      supportsSignalEnvelope: true,
+    };
+    expect(() => parsePhoneSignalPairing({}, capabilities)).toThrow(/missing_phone_signal_prekey_bundle/);
+
+    const bundle = validBundle();
+    expect(parsePhoneSignalPairing({ phoneSignalPrekeyBundle: bundle }, capabilities)).toEqual(bundle);
   });
 });

@@ -172,6 +172,11 @@ final class AgentSubscriptionTopicStore {
                 if signalState == .required { throw error }
             }
         }
+        try MobileCloudVaultSignalPayloads.requireEnvelopeIfRequired(
+            payload: payload,
+            state: signalState,
+            domainID: "conversations_chat"
+        )
         payload["updatedAt"] = FieldValue.serverTimestamp()
         // Merge writes must actively remove legacy plaintext fields; otherwise
         // Firestore evaluates the post-merge document as sealed+plaintext and
@@ -432,8 +437,8 @@ final class AgentSubscriptionTopicStore {
            let signalTopic = try? JSONDecoder().decode(SubscriptionTopic.self, from: signalPlaintext) {
             return signalTopic
         }
-        if data["signalEnvelope"] != nil,
-           MobileCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat") {
+        if MobileCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat"),
+           signalPlaintext == nil {
             return nil
         }
         // Open the sealed graph edge, falling back to legacy plaintext for

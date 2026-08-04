@@ -17,7 +17,6 @@ import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
 import {
   canonicalHermesGatewayUserCode,
   gatewayPlaintextWriteAllowed,
-  gatewaySignalRequiredMode,
   gatewayTokenExpiryISO,
   generateHermesGatewayBearerToken,
   hashHermesGatewayBearerToken,
@@ -41,6 +40,10 @@ import type {
   HermesGatewaySignalPrekeyBundleDoc,
 } from "../types/generated/hermes-gateway.js";
 import { parseGatewaySignalPrekeyBundle } from "../hermesGatewaySignalPrekeys.js";
+import {
+  parsePhoneSignalPairing,
+  signalPairingNeedsRequiredFailure,
+} from "./hermesGatewayApproveSignal.js";
 import { assertCallableApprovalNotLocked, recordCallableApprovalFailure } from "./publicRateLimit.js";
 import { nowISO } from "./shared.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
@@ -422,15 +425,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
       const phoneRatchet = parseRatchetPrekeyBundle(requestData, "phone", (message) => {
         throw new HttpsError("invalid-argument", message);
       });
-      const phoneSignalPrekeyBundle = parseGatewaySignalPrekeyBundle(requestData, "phone", (message) => {
-        throw new HttpsError("invalid-argument", message);
-      });
-      if (phoneCapabilities?.supportsSignalEnvelope === true && !phoneSignalPrekeyBundle) {
-        throw new HttpsError(
-          "invalid-argument",
-          "missing_phone_signal_prekey_bundle: Signal-capable pairings require a PQXDH bundle.",
-        );
-      }
+      const phoneSignalPrekeyBundle = parsePhoneSignalPairing(requestData, phoneCapabilities);
 
       const session = await resolvePairingSession(uid, userCode);
       const agentClientSigningPublicKey = requireCallableGatewayClientSigningPublicKey(
@@ -452,19 +447,15 @@ export const approveHermesGatewayDeviceGrant = onCall(
           ? negotiateGatewayRelayEnvelopeCapabilities(agentRelay.agentCapabilities, phoneCapabilities)
           : undefined;
       const supportsRatchetV1 = agentRelay.agentRatchet != null && phoneRatchet != null ? true : undefined;
-      // Required mode hard-requires the AGENT lane (the Hermes agent publishes
-      // its PQXDH bundle at device/start). The shipped iOS approval flow does
-      // not publish a phone PQXDH bundle yet, so the phone lane is enforced
-      // only once the phone ADVERTISES Signal support (the capability check
-      // above already forces the bundle in that case). Hard-requiring the
-      // phone bundle unconditionally would reject every iOS pairing the moment
-      // OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED flips on.
-      if (
-        gatewaySignalRequiredMode() &&
-        (agentRelay.agentCapabilities?.supportsSignalEnvelope !== true ||
-          !agentRelay.agentSignalPrekeyBundle ||
-          (phoneCapabilities?.supportsSignalEnvelope === true && !phoneSignalPrekeyBundle))
-      ) {
+      const signalPairingCapable =
+        agentRelay.agentCapabilities?.supportsSignalEnvelope === true &&
+        !!agentRelay.agentSignalPrekeyBundle &&
+        phoneCapabilities?.supportsSignalEnvelope === true &&
+        !!phoneSignalPrekeyBundle;
+      // Required mode never mints a one-way or plaintext-only client. Both
+      // endpoints must advertise the v4 capability and publish the official
+      // PQXDH bundle used to establish their native libsignal session.
+      if (signalPairingNeedsRequiredFailure(agentRelay, phoneCapabilities, phoneSignalPrekeyBundle)) {
         await recordCallableApprovalFailure(uid, "hermes_gateway_approve_fail");
         throw new HttpsError(
           "failed-precondition",
@@ -473,7 +464,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
       }
       // A pairing that cannot seal in BOTH directions is refused so no plaintext-
       // only client is ever minted.
-      if (!relayCapable && !gatewayPlaintextWriteAllowed(false)) {
+      if (!relayCapable && !signalPairingCapable && !gatewayPlaintextWriteAllowed(false)) {
         await recordCallableApprovalFailure(uid, "hermes_gateway_approve_fail");
         throw new HttpsError(
           "failed-precondition",

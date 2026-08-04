@@ -175,6 +175,11 @@ final class RollbackService {
                 if signalState == .required { throw error }
             }
         }
+        try MobileCloudVaultSignalPayloads.requireEnvelopeIfRequired(
+            payload: payload,
+            state: signalState,
+            domainID: "conversations_chat"
+        )
         try await ref.setData(payload)
         return request
     }
@@ -238,8 +243,7 @@ final class RollbackService {
            let object = try? JSONSerialization.jsonObject(with: signalPlaintext),
            let dictionary = object as? [String: Any] {
             signal = dictionary
-        } else if data["signalEnvelope"] != nil,
-                  MobileCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat") {
+        } else if MobileCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat") {
             return nil
         }
         let source = signal.isEmpty ? data : signal

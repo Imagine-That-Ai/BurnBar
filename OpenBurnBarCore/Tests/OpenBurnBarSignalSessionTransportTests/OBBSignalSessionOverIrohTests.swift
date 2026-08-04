@@ -141,8 +141,35 @@ final class OBBSignalSessionOverIrohTests: XCTestCase {
         XCTAssertEqual(envelope.keyDelivery.signalMessageType, Int(CiphertextMessage.MessageType.preKey.rawValue))
         XCTAssertNotNil(envelope.keyDelivery.signalMessageB64)
 
-        let plaintext = try await bob.decryptGatewayEnvelope(envelope, from: aliceAddress)
-        XCTAssertEqual(plaintext, Data("gateway v4 text".utf8))
+        // The same concrete provider used by a shipping client must be able to
+        // reopen the canonical envelope after it has crossed Firestore. This
+        // also proves the provider's identity pin is enforced on the open path,
+        // not only while establishing the outbound session.
+        let alicePrekeys = try OBBSignalPreKeyGenerator.generatePreKeys(
+            identityKeypair: aliceStore.identityKeypair,
+            preKeyId: 61001,
+            signedPreKeyId: 61,
+            kyberPreKeyId: 61
+        )
+        try OBBSignalPreKeyGenerator.storePreKeys(alicePrekeys, into: aliceStore, context: NullContext())
+        let claimedAliceBundle = try claimedBundle(
+            uid: uid,
+            peer: alicePeer,
+            store: aliceStore,
+            prekeys: alicePrekeys
+        )
+        let provider = OBBSignalSessionGatewayEnvelopeProvider(
+            transport: bob,
+            peerBundle: claimedAliceBundle,
+            pinnedIdentityPublicKey: Data(aliceStore.identityKeypair.publicKey.serialize())
+        )
+        let reopened = try await provider.open(
+            envelopeData: JSONEncoder().encode(envelope),
+            uid: uid,
+            clientId: "client-1",
+            slotId: "text"
+        )
+        XCTAssertEqual(reopened, Data("gateway v4 text".utf8))
     }
 
     func testPeerMappingIsDeterministic() throws {
