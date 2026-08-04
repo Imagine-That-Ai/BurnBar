@@ -68,6 +68,7 @@ export function PetChatBubble({
   const streaming = useChatStore((state) => state.streaming);
   const streamPhase = useChatStore((state) => state.streamPhase);
   const streamError = useChatStore((state) => state.streamError);
+  const gatewayStatus = useChatStore((state) => state.gatewayStatus);
   const modelLabel = useChatStore((state) => state.modelLabel);
   const sendMessage = useChatStore((state) => state.sendMessage);
   const startNewChat = useChatStore((state) => state.startNewChat);
@@ -81,6 +82,11 @@ export function PetChatBubble({
   const [dropActive, setDropActive] = useState(false);
   const reactHoldTimerRef = useRef<number | null>(null);
   const fileInputId = useId();
+  const messagesRef = useRef<HTMLDivElement | null>(null);
+  // Whether the user is pinned to the newest message. Manual scrollback
+  // (deliberately reading older messages) suspends auto-scroll until the
+  // user returns to the bottom of the transcript.
+  const pinnedToLatestRef = useRef(true);
 
   // The bubble can mount in its own `?window=pet-companion` WebView where the
   // chat store is empty. Hydrate through the same lane as ChatSurface so the
@@ -115,17 +121,36 @@ export function PetChatBubble({
     onStateChange?.('idle');
   }, [onStateChange]);
 
+  // Keep the newest message in view when the bubble opens and while a
+  // response streams, unless the user has intentionally scrolled back.
+  useEffect(() => {
+    const container = messagesRef.current;
+    if (!container || !pinnedToLatestRef.current) return;
+    container.scrollTop = container.scrollHeight;
+  }, [messages, streaming]);
+
   useEffect(() => {
     if (!droppedFile) return;
+    if (busy || streaming) {
+      setStatus('Wait for the current response before attaching another file.');
+      onDroppedFileConsumed?.();
+      return;
+    }
     const inspected = inspectChatAttachment(droppedFile);
     setAttachmentError(inspected.error);
     setPendingAttachment(inspected.attachment);
     setStatus(inspected.attachment ? `Attached ${inspected.attachment.name}.` : null);
     onDroppedFileConsumed?.();
-  }, [droppedFile, onDroppedFileConsumed]);
+  }, [droppedFile, onDroppedFileConsumed, busy, streaming]);
 
   const stageFile = (file: File | undefined) => {
     if (!file) return;
+    // An in-flight submit has already captured its attachment; replacing the
+    // staged file now would be silently discarded when that send completes.
+    if (busy || streaming) {
+      setStatus('Wait for the current response before attaching another file.');
+      return;
+    }
     const inspected = inspectChatAttachment(file);
     setAttachmentError(inspected.error);
     setPendingAttachment(inspected.attachment);
@@ -152,10 +177,21 @@ export function PetChatBubble({
     setDraft(value);
   };
 
+  // Mirror ChatSurface's live-composer readiness gate: an attachment turn
+  // persists bytes in the daemon registry before sendMessage() runs its own
+  // gateway checks, so sends stay blocked until the gateway is reachable.
+  const gatewayBlocked = !fixtureMode && gatewayStatus !== 'reachable';
+  const gatewayBlockedReason =
+    gatewayStatus === 'disabled'
+      ? 'Gateway chat is disabled in daemon health.'
+      : gatewayStatus === 'unreachable'
+        ? 'Gateway health check failed.'
+        : 'Checking gateway health…';
+
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     const text = draft.trim();
-    if (!text || busy || streaming || loading) return;
+    if (!text || busy || streaming || loading || gatewayBlocked) return;
 
     setBusy(true);
     setAttachmentError(null);
@@ -172,9 +208,15 @@ export function PetChatBubble({
         : null;
       await sendMessage(text, uploaded ? [uploaded] : undefined);
       const result = useChatStore.getState();
-      if (result.streamPhase === 'error') {
-        setStatus(null);
-        setAttachmentError(result.streamError ?? 'The companion could not complete that message.');
+      if (result.streamPhase !== 'done') {
+        // Only a completed stream consumes the turn. Keep the draft and the
+        // staged attachment so a stopped or failed response can be retried.
+        if (result.streamPhase === 'error') {
+          setStatus(null);
+          setAttachmentError(result.streamError ?? 'The companion could not complete that message.');
+        } else {
+          setStatus('Response stopped. Your message is still staged.');
+        }
         return;
       }
       setDraft('');
@@ -197,7 +239,8 @@ export function PetChatBubble({
   };
 
   const visibleMessages = messages.slice(-8);
-  const sendDisabled = busy || streaming || loading || draft.trim().length === 0;
+  const sendDisabled = busy || streaming || loading || gatewayBlocked || draft.trim().length === 0;
+  const attachDisabled = busy || streaming;
 
   return (
     <section
@@ -206,13 +249,13 @@ export function PetChatBubble({
       aria-label="Companion chat"
       data-drop-active={dropActive ? 'true' : 'false'}
       onDragEnter={(event) => {
-        if (carriesFiles(event.dataTransfer)) setDropActive(true);
+        if (carriesFiles(event.dataTransfer) && !attachDisabled) setDropActive(true);
       }}
       onDragOver={(event) => {
         if (carriesFiles(event.dataTransfer)) {
           event.preventDefault();
-          event.dataTransfer.dropEffect = 'copy';
-          setDropActive(true);
+          event.dataTransfer.dropEffect = attachDisabled ? 'none' : 'copy';
+          if (!attachDisabled) setDropActive(true);
         }
       }}
       onDragLeave={() => setDropActive(false)}
@@ -233,7 +276,18 @@ export function PetChatBubble({
         </div>
       </header>
 
-      <div className="pet-chat-messages" aria-live="polite" data-testid="pet-chat-messages">
+      <div
+        className="pet-chat-messages"
+        aria-live="polite"
+        data-testid="pet-chat-messages"
+        ref={messagesRef}
+        onScroll={() => {
+          const container = messagesRef.current;
+          if (!container) return;
+          pinnedToLatestRef.current =
+            container.scrollHeight - container.scrollTop - container.clientHeight < 24;
+        }}
+      >
         {visibleMessages.length > 0 ? (
           visibleMessages.map((message) => {
             const text = messageText(message, streaming);
@@ -259,7 +313,7 @@ export function PetChatBubble({
             className="pet-chat-attach"
             aria-label="Attach files to companion chat"
             title="Attach a bounded document, image, or audio file"
-            disabled={busy || streaming}
+            disabled={attachDisabled}
             onClick={() => document.getElementById(fileInputId)?.click()}
           >
             +
@@ -270,7 +324,7 @@ export function PetChatBubble({
             type="file"
             accept={CHAT_ATTACHMENT_ACCEPT.join(',')}
             aria-label="Companion chat attachment"
-            disabled={busy || streaming}
+            disabled={attachDisabled}
             onChange={handleFileChange}
           />
           <label className="sr-only" htmlFor={`${fileInputId}-message`}>
@@ -318,16 +372,29 @@ export function PetChatBubble({
         ) : null}
       </form>
 
+      {gatewayBlocked ? (
+        <p className="pet-chat-status" role="status" data-testid="pet-chat-gateway-blocked">
+          {gatewayBlockedReason}
+        </p>
+      ) : null}
       {status ? <p className="pet-chat-status" role="status">{status}</p> : null}
       {attachmentError ? <p className="pet-chat-error" role="alert">{attachmentError}</p> : null}
       {streamError && streamPhase === 'error' ? <p className="pet-chat-error" role="alert">{streamError}</p> : null}
 
-      <button type="button" className="pet-chat-new" onClick={() => {
-        startNewChat();
-        setDraft('');
-        setPendingAttachment(null);
-        setStatus('New companion conversation ready.');
-      }}>
+      <button
+        type="button"
+        className="pet-chat-new"
+        // A pending upload's submit closure would otherwise send its captured
+        // text and attachment into the freshly created thread, and during
+        // streaming startNewChat() refuses while the UI claims success.
+        disabled={busy || streaming}
+        onClick={() => {
+          startNewChat();
+          setDraft('');
+          setPendingAttachment(null);
+          setStatus('New companion conversation ready.');
+        }}
+      >
         New companion conversation
       </button>
     </section>
