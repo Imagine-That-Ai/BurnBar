@@ -1,7 +1,7 @@
 {
   "name": "@openburnbar/website",
   "version": "1.0.0",
-  "description": "OpenBurnBar launch website \u2014 burnbar.ai",
+  "description": "OpenBurnBar launch website — burnbar.ai",
   "private": true,
   "type": "module",
   "scripts": {
@@ -71,7 +71,7 @@
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "astro": "^7.1.6",
     "firebase": "12.17.0",
-    "typescript": "^7.0.2"
+    "typescript": "^5.9.3"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "8.65.0",
@@ -93,7 +93,7 @@
     "minimatch": "^10.0.3"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.22.3"
   },
   "license": "AGPL-3.0-only"
 }
