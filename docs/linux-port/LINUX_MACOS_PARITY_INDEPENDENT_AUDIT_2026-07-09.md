@@ -3303,8 +3303,18 @@ open.
 **Implementation update (2026-07-23):** `51612362fd` adds native-child close and
 re-summon behavior plus a keyboard-accessible Wave/Open chat toolbar in the
 companion child. Focused pet, bridge, and window coverage is 74/74. Linux still
-does not claim macOS-level attachment drops, avatar selection, or compositor
-behavior without live proof.
+does not claim macOS-level avatar selection or compositor behavior without live
+proof.
+
+**Implementation update (2026-08-04, isolated parity slice):** the Linux route
+and companion child now expose a compact daemon-backed chat bubble. A supported
+file dropped on the pet opens that bubble and stages the file through the same
+bounded attachment inspection, gateway-capability check, and
+`chat_attachment_upload` boundary used by the main chat composer. Unsupported
+and oversized files fail visibly before upload. This closes the source-level
+chat/file-drop workflow gap, but it is not yet a signed installed proof and does
+not claim macOS avatar selection, persona/local-floor behavior, or compositor
+parity.
 
 - **Difference:** macOS has an animated desktop companion with mature overlay
   behavior and interaction. Linux now mounts the bundled glTF mesh/animation,

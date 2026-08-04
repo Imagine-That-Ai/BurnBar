@@ -1,4 +1,9 @@
-import type { ChatAttachmentUploadRequest } from '../../tauriBridge.js';
+import type {
+  ChatAttachmentUploadRequest,
+  ChatAttachmentUploadResult,
+  LinuxShellBridge
+} from '../../tauriBridge.js';
+import type { PendingChatAttachment } from './chatAttachmentDraft.js';
 
 /**
  * MIME types the Linux daemon can retain as attachment metadata. Binary sends
@@ -120,6 +125,39 @@ export async function attachmentUploadRequest(
   }
   const contentBase64 = globalThis.btoa(binary);
   return { fileName: fileName.trim(), mimeType: canonicalMimeType, contentBase64 };
+}
+
+/**
+ * Upload one staged attachment through the same daemon-owned boundary used by
+ * the main composer. The pet bubble must not grow a second path-policy or
+ * gateway-capability implementation.
+ */
+export async function uploadChatAttachmentForSend(
+  bridge: LinuxShellBridge | null,
+  fixtureMode: boolean,
+  model: string,
+  attachment: PendingChatAttachment
+): Promise<ChatAttachmentUploadResult> {
+  if (fixtureMode || !bridge) {
+    throw new Error('Attachment transport requires the packaged Linux daemon.');
+  }
+
+  const request = await attachmentUploadRequest(attachment.file, attachment.name, attachment.type);
+  const canonicalMimeType = canonicalAttachmentMimeType(request.fileName, request.mimeType);
+  if (!canonicalMimeType) {
+    throw new Error(gatewayAttachmentUnsupportedMessage(request.mimeType));
+  }
+
+  if (requiresGatewayAttachmentCapability(canonicalMimeType)) {
+    const capability = await bridge.gatewayAttachmentCapability?.(model.trim() || 'hermes', canonicalMimeType);
+    if (!capability || capability.state !== 'supported') {
+      throw new Error(gatewayAttachmentUnsupportedMessage(canonicalMimeType));
+    }
+  } else if (!isGatewayReadableAttachment(canonicalMimeType)) {
+    throw new Error(gatewayAttachmentUnsupportedMessage(canonicalMimeType));
+  }
+
+  return bridge.chatAttachmentUpload({ ...request, mimeType: canonicalMimeType });
 }
 
 async function readFileBytes(file: File): Promise<ArrayBuffer> {

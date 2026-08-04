@@ -11,11 +11,7 @@ import {
 } from './chatTypes.js';
 import { ChatWorkspacePanel } from './ChatWorkspacePanel.js';
 import {
-  attachmentUploadRequest,
-  canonicalAttachmentMimeType,
-  gatewayAttachmentUnsupportedMessage,
-  isGatewayReadableAttachment,
-  requiresGatewayAttachmentCapability
+  uploadChatAttachmentForSend
 } from './chatAttachment.js';
 import { closeChatPopoutWindow, isChatPopoutWindow, openChatPopoutWindow } from './chatWindow.js';
 import type { PendingChatAttachment } from './Composer.js';
@@ -121,29 +117,12 @@ export function ChatSurface() {
     attachment?: PendingChatAttachment
   ): Promise<boolean> => {
     if (attachment) {
-      if (fixtureMode || !bridge) {
-        throw new Error('Attachment transport requires the packaged Linux daemon.');
-      }
-      const request = await attachmentUploadRequest(attachment.file, attachment.name, attachment.type);
-      const canonicalMimeType = canonicalAttachmentMimeType(request.fileName, request.mimeType);
-      if (!canonicalMimeType) {
-        throw new Error(gatewayAttachmentUnsupportedMessage(canonicalMimeType ?? request.mimeType));
-      }
-      if (requiresGatewayAttachmentCapability(canonicalMimeType)) {
-        const capability = await bridge.gatewayAttachmentCapability?.(
-          useChatStore.getState().modelLabel.trim() || 'hermes',
-          canonicalMimeType
-        );
-        // Do this before upload/chat_message_append. Binary and PDF payloads
-        // are only safe when the daemon catalog explicitly authorizes the
-        // selected model; older shells fail closed when the command is absent.
-        if (!capability || capability.state !== 'supported') {
-          throw new Error(gatewayAttachmentUnsupportedMessage(canonicalMimeType));
-        }
-      } else if (!isGatewayReadableAttachment(canonicalMimeType)) {
-        throw new Error(gatewayAttachmentUnsupportedMessage(canonicalMimeType));
-      }
-      const uploaded = await bridge.chatAttachmentUpload({ ...request, mimeType: canonicalMimeType });
+      const uploaded = await uploadChatAttachmentForSend(
+        bridge,
+        fixtureMode,
+        useChatStore.getState().modelLabel.trim() || 'hermes',
+        attachment
+      );
       await sendMessage(text, [uploaded]);
     } else {
       await sendMessage(text);

@@ -369,6 +369,24 @@ describe('PetSurface', () => {
     expect(document.querySelector('.pet-action-status')?.textContent).toMatch(/selection cleared/i);
   });
 
+  it('opens companion chat and stages a dropped file from the pet surface', async () => {
+    render(<PetSurface />);
+    fireEvent.click(await screen.findByRole('button', { name: /chat with companion/i }));
+    const surface = document.querySelector('.pet-surface');
+    expect(surface).toBeTruthy();
+
+    fireEvent.drop(surface!, {
+      dataTransfer: {
+        types: ['Files'],
+        files: [new File(['hello'], 'notes.md', { type: 'text/markdown' })]
+      }
+    });
+
+    expect(await screen.findByTestId('pet-chat-pending-attachment')).toHaveProperty('textContent', expect.stringContaining('notes.md'));
+    expect(surface?.getAttribute('data-pet-chat-open')).toBe('true');
+    expect(document.querySelector('.pet-action-status')?.textContent).toMatch(/dropped notes.md/i);
+  });
+
   it('shows role=alert when runtime mount fails', async () => {
     mountMock.mockRejectedValueOnce(new Error('asset fetch failed'));
     render(<PetSurface />);

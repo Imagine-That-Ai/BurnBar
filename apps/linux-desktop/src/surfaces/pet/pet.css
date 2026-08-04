@@ -4,6 +4,11 @@
   gap: var(--space-4);
 }
 
+.pet-surface[data-pet-drop-active='true'] .pet-stage {
+  border-color: var(--color-mercury-bright);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-mercury-bright) 24%, transparent);
+}
+
 /* The native child is transparent and intentionally compact. Keep only the
  * GLB stage visible there; the full capability matrix remains in the main
  * shell so a pass-through child cannot trap controls behind an ignored window.
