@@ -28,7 +28,11 @@ function groupFor(definition) {
 }
 
 function normalizedGLBName(value) {
-  const name = path.basename(String(value));
+  // Only append the optional extension. Never strip path components here:
+  // a definition such as "../other.glb" or "nested/other.glb" must reach
+  // the SAFE_GLB validation intact so it is rejected instead of silently
+  // rebinding the pet to a different asset that shares the basename.
+  const name = String(value);
   return name.toLowerCase().endsWith('.glb') ? name : `${name}.glb`;
 }
 
