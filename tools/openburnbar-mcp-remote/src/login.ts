@@ -122,17 +122,21 @@ export async function runLoginFlow(): Promise<void> {
   // allowed custom/loopback host), never an attacker-supplied server.
   const mcpEndpoint = validatedMcpEndpoint(rawEndpoint).href;
 
-  let startUrl = "";
-  let pollUrl = "";
-  if (mcpEndpoint.includes("/us-central1/")) {
-    const base = mcpEndpoint.substring(0, mcpEndpoint.indexOf("/mcp"));
-    startUrl = `${base}/startCliLink`;
-    pollUrl = `${base}/pollCliLink`;
-  } else {
-    const base = mcpEndpoint.replace(/\/mcp$/, "");
-    startUrl = `${base}/api/cli-link/start`;
-    pollUrl = `${base}/api/cli-link/poll`;
-  }
+  const { startUrl, pollUrl } = mcpEndpoint.includes("/us-central1/")
+    ? (() => {
+        const base = mcpEndpoint.substring(0, mcpEndpoint.indexOf("/mcp"));
+        return {
+          startUrl: `${base}/startCliLink`,
+          pollUrl: `${base}/pollCliLink`,
+        };
+      })()
+    : (() => {
+        const base = mcpEndpoint.replace(/\/mcp$/, "");
+        return {
+          startUrl: `${base}/api/cli-link/start`,
+          pollUrl: `${base}/api/cli-link/poll`,
+        };
+      })();
 
   let displayName = "CLI Session";
   try {
