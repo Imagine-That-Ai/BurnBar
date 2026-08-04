@@ -10,7 +10,7 @@
     "OBB": "lib/index.js"
   },
   "engines": {
-    "node": "22"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "build": "tsc",
@@ -22,7 +22,7 @@
     "@types/node": "^26.1.2",
     "eslint": "10.8.0",
     "globals": "17.8.0",
-    "typescript": "^7.0.2",
+    "typescript": "^5.9.3",
     "typescript-eslint": "8.65.0"
   },
   "license": "AGPL-3.0-only",
