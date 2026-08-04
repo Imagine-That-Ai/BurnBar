@@ -108,7 +108,7 @@ export class DaemonSubscriptionSupervisor {
   private async runTick(generation: number): Promise<void> {
     if (this.stopped || generation !== this.lifecycleGeneration || this.running) return;
     this.running = true;
-    let succeeded = false;
+    let succeeded: boolean;
     try {
       if (!this.isOnline()) {
         succeeded = true;
