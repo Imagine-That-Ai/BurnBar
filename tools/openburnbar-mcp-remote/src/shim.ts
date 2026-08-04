@@ -99,12 +99,9 @@ export async function forwardMcpMessage(message: unknown, endpoint = process.env
   }
   // Pensieve: embed + cloak a natural-language knowledge query on device before
   // it leaves the machine (query text never hits the network).
-  let outgoing = message;
-  let knowledgePostFilter;
+  let prepared: Awaited<ReturnType<typeof prepareKnowledgeRequest>>;
   try {
-    const prepared = await prepareKnowledgeRequest(message);
-    outgoing = prepared.message;
-    knowledgePostFilter = prepared.postFilter;
+    prepared = await prepareKnowledgeRequest(message);
   } catch (err) {
     return {
       jsonrpc: "2.0",
@@ -115,6 +112,7 @@ export async function forwardMcpMessage(message: unknown, endpoint = process.env
       }
     };
   }
+  const { message: outgoing, postFilter: knowledgePostFilter } = prepared;
   const requestBody = JSON.stringify(outgoing);
   let activeToken = token;
   let res = await postMcp(target, activeToken, requestBody);
