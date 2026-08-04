@@ -66,7 +66,7 @@ export class DaemonHealthSupervisor {
   private async runProbe(): Promise<void> {
     if (this.stopped || this.running) return;
     this.running = true;
-    let healthy = false;
+    let healthy: boolean;
     try {
       healthy = await this.probe();
     } catch {
