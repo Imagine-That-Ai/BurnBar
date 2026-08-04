@@ -11,7 +11,7 @@ echo "=== Clean-machine extension install verification ==="
 
 # Check prerequisites
 if ! command -v node >/dev/null 2>&1; then
-  echo "FAIL: node not found. Install Node.js 18+ (see .nvmrc for pinned version)." >&2
+  echo "FAIL: node not found. Install Node.js 22.13+ (see .nvmrc for pinned version)." >&2
   exit 1
 fi
 
@@ -20,9 +20,12 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 1
 fi
 
-node_version=$(node --version | sed 's/^v//' | cut -d. -f1)
-if [[ "$node_version" -lt 18 ]]; then
-  echo "FAIL: Node.js $node_version is too old. Requires 18+." >&2
+node_version=$(node --version | sed 's/^v//')
+node_major=${node_version%%.*}
+node_rest=${node_version#*.}
+node_minor=${node_rest%%.*}
+if [[ "$node_major" -lt 22 || ( "$node_major" -eq 22 && "$node_minor" -lt 13 ) ]]; then
+  echo "FAIL: Node.js $node_version is too old. Requires Node.js 22.13+." >&2
   exit 1
 fi
 
