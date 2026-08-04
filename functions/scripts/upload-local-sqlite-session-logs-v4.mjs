@@ -16,7 +16,8 @@ import crypto from "node:crypto";
 import os from "node:os";
 import process from "node:process";
 
-import admin from "firebase-admin";
+import { getApps, initializeApp } from "firebase-admin/app";
+import { FieldValue, getFirestore, Timestamp } from "firebase-admin/firestore";
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || "burnbar";
 const STORAGE_BUCKET = process.env.OPENBURNBAR_STORAGE_BUCKET || "burnbar-hosted-mcp-bodies-246956661961";
@@ -547,7 +548,7 @@ function localPendingCount(sqlitePath, contains, includeSynced) {
 function dateOrNull(value) {
   if (!value) return null;
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : admin.firestore.Timestamp.fromDate(date);
+  return Number.isNaN(date.getTime()) ? null : Timestamp.fromDate(date);
 }
 
 function safeDocID(deviceId, recordId) {
@@ -664,8 +665,8 @@ async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
     chunkHashVersion: 2,
     chunkMetadataVersion: 1,
     cloudSearchIndexVersion: INDEX_VERSION,
-    cloudSearchIndexedAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    cloudSearchIndexedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
     model,
     totalTokens: Number(row.userWordCount || 0) + Number(row.assistantWordCount || 0),
     costUSD: 0,
@@ -699,7 +700,7 @@ async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
       tokenHashVersion: 1,
       semanticHashVersion: 1,
       commitID: COMMIT_ID,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
       schemaVersion: 1,
     },
   });
@@ -740,7 +741,7 @@ async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
       tokenHashVersion: 1,
       semanticHashVersion: 1,
       commitID: COMMIT_ID,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
       schemaVersion: 1,
     };
     writes.push({ ref: db.collection(`users/${uid}/cloud_search_chunks`).doc(chunkID), data: chunkData });
@@ -754,7 +755,7 @@ async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
       deviceId,
       indexVersion: INDEX_VERSION,
       activeCommitID: COMMIT_ID,
-      lastCommittedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastCommittedAt: FieldValue.serverTimestamp(),
       schemaVersion: 1,
     },
   });
@@ -768,8 +769,8 @@ async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
 
 async function main() {
   const args = parseArgs(process.argv);
-  admin.initializeApp({ projectId: PROJECT_ID, storageBucket: STORAGE_BUCKET });
-  const db = admin.firestore();
+  initializeApp({ projectId: PROJECT_ID, storageBucket: STORAGE_BUCKET });
+  const db = getFirestore();
   const bucket = admin.storage().bucket();
   const vaultKey = await loadVaultKey({ db, uid: args.uid, deviceId: args.deviceId });
   const startingPending = localPendingCount(args.sqlitePath, args.contains, args.includeSynced);
