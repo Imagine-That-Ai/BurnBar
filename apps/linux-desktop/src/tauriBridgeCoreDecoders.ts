@@ -995,7 +995,7 @@ export function decodeChatAttachmentMetadata(
       return decodeChatAttachmentUpload(rawAttachment);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      throw new Error(`${label}[${index}]: ${detail}`);
+      throw new Error(`${label}[${index}]: ${detail}`, { cause: error });
     }
   });
 }
