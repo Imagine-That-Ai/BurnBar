@@ -139,16 +139,16 @@ export function makeDb() {
 // --- Device-side derivation (mirrors what PensieveKnowledgeChunker must ship) ---
 export const PLAINTEXT = "deploy the daemon before midnight";
 export const SOURCE_PATH = "/Users/alberto/Documents/Windsurf/BurnBar/docs/secret-runbook.md";
-export const SOURCE_SLUG = "burnbar-docs-secret-runbook";
+const SOURCE_SLUG = "burnbar-docs-secret-runbook";
 export const KNOWN_PLAINTEXT_SHA256 = createHash("sha256").update(PLAINTEXT, "utf8").digest("hex");
 
 /** HKDF-derive a per-user dedup key from the vault key, then HMAC the value. */
-export function vaultKeyedHmac(vaultKey: Buffer, label: string, value: string): string {
+function vaultKeyedHmac(vaultKey: Buffer, label: string, value: string): string {
   const dedupKey = Buffer.from(hkdfSync("sha256", vaultKey, Buffer.alloc(0), `pensieve-dedup:${label}`, 32));
   return createHmac("sha256", dedupKey).update(value, "utf8").digest("hex");
 }
 
-export function sealedText(tag: string) {
+function sealedText(tag: string) {
   // requireSealedText demands base64 nonce/ciphertext/tag (opaque to the server).
   const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
   return {
