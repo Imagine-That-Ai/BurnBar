@@ -132,6 +132,9 @@ final class OBBSignalSessionOverIrohTests: XCTestCase {
             claimSignalPrekeyBundle: { claimedBobBundle }
         )
         XCTAssertEqual(envelope.mode, "transport")
+        // The shared TS sanitizer hard-requires relayKeyVersion == 4 on every
+        // transport envelope; a nil stamp makes Functions reject the event.
+        XCTAssertEqual(envelope.relayKeyVersion, HermesRelayCrypto.gatewayRelayKeyVersionSignalV4)
         XCTAssertEqual(envelope.binding.scope, "gateway")
         XCTAssertEqual(envelope.binding.clientId, "client-1")
         XCTAssertEqual(envelope.keyDelivery.scheme, "signal-doubleratchet-pqxdh-v1")

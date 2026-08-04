@@ -406,7 +406,7 @@ public actor OBBSignalSessionCipherTransport {
         return FirestoreGatewaySignalEnvelopeDoc(
             signalEnvelopeFormatVersion: 1,
             mode: "transport",
-            relayKeyVersion: nil,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionSignalV4,
             relayEncryption: "signal-doubleratchet-pqxdh-v1",
             ciphertextLayer: FirestoreGatewaySignalCiphertextLayerDoc(
                 payloadCiphertextB64: ciphertextB64,

@@ -95,7 +95,8 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
                     deviceID: deviceId,
                     vaultKey: vaultKey
                 )
-            payload["source"] = "macos-agentlens"
+            // NOTE: no `source` producer marker here — the text_snippets Firestore
+            // allowlists (legacy validator and Signal mirror gate) reject it.
             if let signalResolvedKey {
                 payload = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
                     to: payload,

@@ -131,6 +131,15 @@ extension CLIAgentMissionDispatcher {
         )
         batch.setData(groupPayload, forDocument: groupRef, merge: false)
 
+        // Signal children are persisted through the `writeSignalAtRestDocument`
+        // callable (Firestore rules deny direct `signalEnvelope` writes on
+        // `cli_agent_mission_requests`), which cannot join the client batch.
+        // Stage them here and run the callables ONLY AFTER the group + events
+        // batch commits, so a Mac listener can never claim a child while its
+        // parent group and initial event exist only in an uncommitted batch,
+        // and a batch failure leaves nothing behind.
+        var stagedSignalChildren: [(missionID: String, payload: [String: Any])] = []
+
         // Child missions: each gets the existing payload plus group hints +
         // optional persona scope.
         for (index, runtimeToken) in runtimeTokens.enumerated() {
@@ -199,13 +208,7 @@ extension CLIAgentMissionDispatcher {
             if signalWrite {
                 var callablePayload = payload
                 callablePayload["updatedAt"] = ISO8601DateFormatter().string(from: Date())
-                _ = try await Functions.functions()
-                    .httpsCallable("writeSignalAtRestDocument")
-                    .call([
-                        "collection": "cli_agent_mission_requests",
-                        "docId": missionID,
-                        "data": callablePayload,
-                    ])
+                stagedSignalChildren.append((missionID: missionID, payload: callablePayload))
             } else {
                 batch.setData(
                     payload,
@@ -230,6 +233,26 @@ extension CLIAgentMissionDispatcher {
         }
 
         try await batch.commit()
+
+        // Persist Signal children only after the group + initial events are
+        // durable. If a callable fails mid-way, compensate by marking the
+        // already-committed group cancelled (best-effort) so the partially
+        // created fan-out is visibly terminal instead of silently waiting on
+        // children that will never arrive, then surface the failure.
+        do {
+            for staged in stagedSignalChildren {
+                _ = try await Functions.functions()
+                    .httpsCallable("writeSignalAtRestDocument")
+                    .call([
+                        "collection": "cli_agent_mission_requests",
+                        "docId": staged.missionID,
+                        "data": staged.payload,
+                    ])
+            }
+        } catch {
+            try? await groupRef.updateData(["phase": MissionGroupPhase.cancelled.rawValue])
+            throw error
+        }
         return FanOutDispatchResult(groupID: groupID, childMissionIDs: childMissionIDs)
     }
 

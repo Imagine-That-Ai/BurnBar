@@ -252,21 +252,30 @@ final class RollbackService {
                 vaultKey: vaultKey
             ),
             let scope = try? JSONDecoder().decode(RollbackScope.self, from: Data(scopeRaw.utf8)),
-            let statusRaw = source["status"] as? String,
+            // MUTABLE rollback state lives on the LIVE document: the Mac claim
+            // path updates top-level `status`, `resolvedAt`, and
+            // `sealedErrorMessage` without resealing the Signal envelope (the
+            // envelope is created once at request time with `status: pending`).
+            // Prefer the live fields so an `in_flight`/resolved request never
+            // decodes as pending off the stale envelope; the Signal payload is
+            // authoritative only for the private immutable fields and is the
+            // fallback for docs the Mac has not touched yet.
+            let statusRaw = (data["status"] as? String) ?? (source["status"] as? String),
             // Route through the tolerant resolver so the legacy camelCase
             // `"inFlight"` wire value (and `cancelled`) decode; a genuinely
             // unknown status still drops the row via the guard.
             let status = RollbackRequest.Status(wireValue: statusRaw)
         else { return nil }
         let requestedAt = (source["requestedAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
-        let resolvedAt = (source["resolvedAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
+        let resolvedAt = ((data["resolvedAt"] as? String) ?? (source["resolvedAt"] as? String))
+            .flatMap { ISO8601DateFormatter().date(from: $0) }
         let requestedBy = (source["requestedBy"] as? String) ?? "unknown"
         let errorMessage = openSealedString(
-            data: signal.isEmpty ? data : ["errorMessage": source["errorMessage"] as Any],
+            data: data,
             sealedField: "sealedErrorMessage",
             legacyField: "errorMessage",
             vaultKey: vaultKey
-        )
+        ) ?? (signal["errorMessage"] as? String)
         return RollbackRequest(
             id: documentID,
             sessionID: sessionID,

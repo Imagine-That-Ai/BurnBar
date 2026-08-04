@@ -452,16 +452,23 @@ export const approveHermesGatewayDeviceGrant = onCall(
           ? negotiateGatewayRelayEnvelopeCapabilities(agentRelay.agentCapabilities, phoneCapabilities)
           : undefined;
       const supportsRatchetV1 = agentRelay.agentRatchet != null && phoneRatchet != null ? true : undefined;
+      // Required mode hard-requires the AGENT lane (the Hermes agent publishes
+      // its PQXDH bundle at device/start). The shipped iOS approval flow does
+      // not publish a phone PQXDH bundle yet, so the phone lane is enforced
+      // only once the phone ADVERTISES Signal support (the capability check
+      // above already forces the bundle in that case). Hard-requiring the
+      // phone bundle unconditionally would reject every iOS pairing the moment
+      // OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED flips on.
       if (
         gatewaySignalRequiredMode() &&
-        (negotiatedCapabilities?.supportsSignalEnvelope !== true ||
+        (agentRelay.agentCapabilities?.supportsSignalEnvelope !== true ||
           !agentRelay.agentSignalPrekeyBundle ||
-          !phoneSignalPrekeyBundle)
+          (phoneCapabilities?.supportsSignalEnvelope === true && !phoneSignalPrekeyBundle))
       ) {
         await recordCallableApprovalFailure(uid, "hermes_gateway_approve_fail");
         throw new HttpsError(
           "failed-precondition",
-          "signal_pairing_required: both endpoints must negotiate Signal v4 and publish official-libsignal PQXDH bundles.",
+          "signal_pairing_required: the agent must advertise Signal v4 and publish an official-libsignal PQXDH bundle (and a Signal-capable phone must publish its own).",
         );
       }
       // A pairing that cannot seal in BOTH directions is refused so no plaintext-

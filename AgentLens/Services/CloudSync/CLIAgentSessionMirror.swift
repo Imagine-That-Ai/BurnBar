@@ -124,14 +124,15 @@ final class CLIAgentSessionMirror: Sendable {
                 deviceId: account.4,
                 firestore: firestore
             )
-            var legacyPayload = try CLIAgentSessionCodec.encodeSealed(
+            let legacyPayload = try CLIAgentSessionCodec.encodeSealed(
                 record,
                 vaultKey: resolvedKey.keyData,
                 vaultKeyID: resolvedKey.vaultKeyID,
                 uid: uid,
                 documentID: documentID
             )
-            legacyPayload["source"] = "macos-agentlens"
+            // NOTE: no `source` producer marker here — the cli_sessions Firestore
+            // allowlists (legacy validator and Signal mirror gate) reject it.
             let payload = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
                 to: legacyPayload,
                 domainID: "conversations_chat",
@@ -189,14 +190,15 @@ final class CLIAgentSessionMirror: Sendable {
                 deviceId: account.4,
                 firestore: firestore
             )
-            var legacyPayload = try CLIAgentSessionCodec.encodeSealed(
+            let legacyPayload = try CLIAgentSessionCodec.encodeSealed(
                 record,
                 vaultKey: resolvedKey.keyData,
                 vaultKeyID: resolvedKey.vaultKeyID,
                 uid: uid,
                 documentID: documentID
             )
-            legacyPayload["source"] = "macos-agentlens"
+            // NOTE: no `source` producer marker here — the cli_sessions Firestore
+            // allowlists (legacy validator and Signal mirror gate) reject it.
             let payload = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
                 to: legacyPayload,
                 domainID: "conversations_chat",

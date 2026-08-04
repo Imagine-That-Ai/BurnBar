@@ -152,6 +152,10 @@ function envelopeFromCiphertext(ciphertext, binding, senderIdentityKeyId) {
   return {
     signalEnvelopeFormatVersion: 1,
     mode: 'transport',
+    // The shared sanitizer (SIGNAL_RELAY_KEY_VERSION) hard-requires 4 on every
+    // transport envelope; omitting it makes requireProductionGatewaySignalEnvelope
+    // reject agent replies and attachment manifests.
+    relayKeyVersion: 4,
     relayEncryption: 'signal-doubleratchet-pqxdh-v1',
     ciphertextLayer: { payloadCiphertextB64: bodyB64, payloadAADLabel: 'hermes-gateway-v4', schemaVersion: 1 },
     keyDelivery: { scheme: 'signal-doubleratchet-pqxdh-v1', signalMessageType: ciphertext.type, signalMessageB64: bodyB64, senderIdentityKeyId },

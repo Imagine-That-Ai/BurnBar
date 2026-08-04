@@ -53,6 +53,8 @@ test("official sidecar seals, opens, and survives restart", async () => {
       plaintextB64: Buffer.from(JSON.stringify({ text: "first" })).toString("base64"),
     });
     assert.equal(first.ok, true);
+    // The shared sanitizer hard-requires relayKeyVersion 4 on transport envelopes.
+    assert.equal(first.envelope.relayKeyVersion, 4);
     const opened = await b.request({
       op: "open",
       peerUid: "sidecar-test-user",

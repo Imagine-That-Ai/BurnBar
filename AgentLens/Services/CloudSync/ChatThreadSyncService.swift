@@ -155,7 +155,8 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
                     data["sealedSchemaVersion"] = 2
                     data["vaultKeyID"] = resolvedKey.vaultKeyID
                     data["sealedPayload"] = CloudVaultCrypto.sealedPayloadDictionary(sealedPayload)
-                    data["source"] = "macos-agentlens"
+                    // NOTE: no `source` producer marker here — the chat_threads Firestore
+                    // allowlists (`validChatThreadKeys` and the Signal mirror gate) reject it.
                     data = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
                         to: data,
                         domainID: "conversations_chat",

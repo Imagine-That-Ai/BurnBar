@@ -33,6 +33,15 @@ private const val MISSION_REQUEST_SCHEMA_VERSION = 3
 private const val SIGNAL_CLI_DOMAIN = "conversations_chat"
 
 /**
+ * Flip to true only once Android missions persist Signal envelopes through the
+ * `writeSignalAtRestDocument` callable. Direct `signalEnvelope` batch writes to
+ * `cli_agent_mission_requests` are denied by Firestore rules (the collection has no
+ * exact direct-Signal rules match and `validCliAgentMissionRequestKeys()` rejects the
+ * field), so the dual-write must stay off until the callable routing lands.
+ */
+private val MISSION_SIGNAL_CALLABLE_ROUTING_ENABLED = false
+
+/**
  * Carries the at-rest Signal sealing context into the (non-suspend) mission payload
  * factories. Resolved in the suspend dispatch path ONLY when the domain gate is on, so
  * a null context (the default everywhere) means production stays fully inert. Matches the
@@ -405,6 +414,15 @@ class CLIAgentMissionDispatcher(
      * identity and fetches the trusted-device recipient set only when the gate is on.
      */
     private suspend fun resolveSignalContext(uid: String, docId: String): CLISignalSealContext? {
+        // DISABLED until Android missions route through the `writeSignalAtRestDocument`
+        // callable. `cli_agent_mission_requests` has no exact direct-Signal Firestore
+        // rules match and `validCliAgentMissionRequestKeys()` rejects `signalEnvelope`,
+        // so attaching the envelope to this dispatcher's direct batch writes would get
+        // every Android mission and fan-out dispatch denied the moment the Remote
+        // Config flag flips on. iOS reaches this collection via the callable boundary;
+        // Android stays legacy-only (AES-GCM sealedPayload, already end-to-end) until
+        // it adopts the same callable path.
+        if (!MISSION_SIGNAL_CALLABLE_ROUTING_ENABLED) return null
         if (!AndroidCloudVaultSignalPayloads.signalSealingIsEnabled(SIGNAL_CLI_DOMAIN)) return null
         // BEST-EFFORT at-rest Signal sealing. The legacy AES-GCM sealedPayload is the FLOOR
         // (buildSealed always writes it); the additive signalEnvelope is added only when this

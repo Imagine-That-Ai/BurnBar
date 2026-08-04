@@ -441,15 +441,20 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
   const agentRatchetOnRecord = pinnedAgentRatchetIdentity !== undefined || agentRatchetWrite != null;
   const phoneRatchetOnRecord = grant.client.phoneSupportsRatchetV1 === true;
   const supportsRatchetV1 = agentRatchetOnRecord && phoneRatchetOnRecord ? true : undefined;
+  // Required mode hard-requires the AGENT lane; the phone lane is enforced
+  // only once the phone ADVERTISED Signal support at approval (the shipped iOS
+  // approval flow cannot publish a phone PQXDH bundle yet, so an unconditional
+  // phone requirement would take every existing iOS pairing offline the moment
+  // OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED flips on).
   if (
     gatewaySignalRequiredMode() &&
-    (negotiatedCapabilities?.supportsSignalEnvelope !== true ||
+    (agentCapabilities?.supportsSignalEnvelope !== true ||
       !(grant.client.agentSignalPrekeyBundle || agentSignalPrekeyBundleWrite) ||
-      !grant.client.phoneSignalPrekeyBundle)
+      (grant.client.phoneSupportsSignalEnvelope === true && !grant.client.phoneSignalPrekeyBundle))
   ) {
     throw new HttpsError(
       "failed-precondition",
-      "signal_runtime_required: the paired phone and agent must both advertise Signal v4 with pinned PQXDH bundles.",
+      "signal_runtime_required: the agent runtime must advertise Signal v4 with a pinned PQXDH bundle (and a Signal-capable phone must have one pinned).",
     );
   }
   await db.doc(`users/${grant.uid}/hermes_gateway_clients/${grant.client.id}`).set(
