@@ -40,12 +40,13 @@
     "eslint": "10.8.0",
     "globals": "17.8.0",
     "typescript-eslint": "8.65.0",
-    "typescript": "^7.0.2",
+    "typescript": "^5.9.3",
     "vite": "^8.2.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "esbuild": "0.28.1"
   },
   "engines": {
-    "node": ">=20.18.0"
+    "node": ">=22.22.2"
   },
   "license": "AGPL-3.0-only",
   "overrides": {
