@@ -344,6 +344,7 @@ jobs:
             --lockfile=services/hermes-realtime-relay/package-lock.json
             --lockfile=services/hosted-mcp/package-lock.json
             --lockfile=tools/app-store-connect/package-lock.json
+            --lockfile=tools/hermes-platform-burnbar/signal-runtime/package-lock.json
             --lockfile=tools/openburnbar-mcp-remote/package-lock.json
             --lockfile=tools/schema-sync/package-lock.json
             --lockfile=website/package-lock.json
