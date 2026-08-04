@@ -9,6 +9,7 @@ import com.openburnbar.data.assistants.CLIAgentMissionRequestPayloadFactory.Meta
 import com.openburnbar.data.assistants.CLIAgentMissionRequestPayloadFactory.PayloadInput
 import com.openburnbar.data.assistants.CLIAgentMissionRequestPayloadFactory.Permissions
 import com.openburnbar.data.assistants.SkillRunDeliveryMode
+import com.openburnbar.data.assistants.signalCallablePayload
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -156,5 +157,32 @@ class CLIAgentMissionRequestPayloadFactoryTest {
 
         assertEquals("codex", payload["requestedRuntime"])
         assertEquals("gpt-5.5", payload["requestedModelID"])
+    }
+
+    @Test
+    fun `Signal callable payload strips legacy siblings and server timestamps`() {
+        val payload =
+            mapOf<String, Any>(
+                "id" to "mission-signal",
+                "missionKind" to "chat",
+                "requestedRuntime" to "codex",
+                "source" to "android-chat",
+                "status" to "pending",
+                "schemaVersion" to MISSION_SCHEMA_VERSION,
+                "signalEnvelope" to mapOf("mode" to "at-rest"),
+                "contentSealed" to true,
+                "sealedSchemaVersion" to 2,
+                "vaultKeyID" to "vault-1",
+                "sealedPayload" to mapOf("ciphertext" to "legacy"),
+                "updatedAt" to "server-timestamp-sentinel",
+            )
+
+        val callable = signalCallablePayload(payload)
+
+        assertEquals(mapOf("mode" to "at-rest"), callable?.get("signalEnvelope"))
+        assertFalse(callable.orEmpty().containsKey("contentSealed"))
+        assertFalse(callable.orEmpty().containsKey("sealedPayload"))
+        assertFalse(callable.orEmpty().containsKey("updatedAt"))
+        assertEquals(null, signalCallablePayload(payload - "signalEnvelope"))
     }
 }

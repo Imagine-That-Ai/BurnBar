@@ -5,6 +5,7 @@ import FirebaseCore
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 // AUDIT(@unchecked Sendable): immutable bridged NSDictionary of untyped callable
 // data. sendable-allowlist: firestore-any-payload
@@ -508,9 +509,28 @@ final class FunctionsRepository: HermesGatewayRepository {
         phoneRelayPublicKey: String? = nil,
         phoneRelayKeyVersion: Int? = nil,
         phoneRelayEncryption: String? = nil,
-        phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle? = nil
+        phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle? = nil,
+        phoneSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc? = nil
     ) async throws -> HermesGatewayClientRecord {
-        try await hermesGateway.approveHermesGatewayDeviceGrant(
+        // The Gateway v4 lane is not an advertisement-only capability: every
+        // production pairing must publish the official libsignal/PQXDH bundle
+        // whose private halves are persisted in the device store. Keep this
+        // authenticated construction in the real Firebase adapter so hermetic
+        // protocol mocks can still exercise relay/ratchet plumbing without a
+        // configured Firebase app.
+        let signalBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc
+        if let phoneSignalPrekeyBundle {
+            signalBundle = phoneSignalPrekeyBundle
+        } else {
+            guard let uid = Auth.auth().currentUser?.uid, !uid.isEmpty else {
+                throw FunctionsError.gatewayApprovalNotAuthenticated
+            }
+            signalBundle = try HermesGatewaySignalRuntime.loadOrCreateBundle(
+                uid: uid,
+                deviceId: MobileDeviceIdentity.loadOrCreateDeviceId()
+            )
+        }
+        return try await hermesGateway.approveHermesGatewayDeviceGrant(
             userCode: userCode,
             displayName: displayName,
             destinationId: destinationId,
@@ -518,7 +538,8 @@ final class FunctionsRepository: HermesGatewayRepository {
             phoneRelayPublicKey: phoneRelayPublicKey,
             phoneRelayKeyVersion: phoneRelayKeyVersion,
             phoneRelayEncryption: phoneRelayEncryption,
-            phoneRatchetPrekeyBundle: phoneRatchetPrekeyBundle
+            phoneRatchetPrekeyBundle: phoneRatchetPrekeyBundle,
+            phoneSignalPrekeyBundle: signalBundle
         )
     }
 
@@ -557,6 +578,32 @@ final class FunctionsRepository: HermesGatewayRepository {
             targetClient: targetClient,
             targetClientId: targetClientId,
             senderDisplayName: senderDisplayName
+        )
+    }
+
+    func enqueueHermesGatewaySignalEvent(
+        text: String,
+        destinationId: String = "burnbar:home",
+        threadId: String = "burnbar-ios-e2e",
+        targetClient: HermesGatewayClientRecord,
+        uid: String,
+        provider: any GatewaySignalSessionProvider,
+        senderDisplayName: String = "OpenBurnBar iPhone",
+        kind: String? = nil,
+        modelId: String? = nil,
+        extraSealedFields: [String: String] = [:]
+    ) async throws -> HermesGatewayQueuedEvent {
+        try await hermesGateway.enqueueHermesGatewaySignalEvent(
+            text: text,
+            destinationId: destinationId,
+            threadId: threadId,
+            targetClient: targetClient,
+            uid: uid,
+            provider: provider,
+            senderDisplayName: senderDisplayName,
+            kind: kind,
+            modelId: modelId,
+            extraSealedFields: extraSealedFields
         )
     }
 
@@ -752,6 +799,7 @@ enum FunctionsError: Error, LocalizedError, Equatable {
     case responseDecodingFailed(String)
     case firebaseUnavailable
     case gatewayTargetMissingRelayKey
+    case gatewaySignalUnavailable
     case gatewayRelayKeyChanged
     case gatewayAttachmentUnreadable
     case gatewayApprovalNotAuthenticated
@@ -769,6 +817,8 @@ enum FunctionsError: Error, LocalizedError, Equatable {
             // Benefit-first, jargon-free per the copy policy: messages stay
             // private, so they can only send once the Mac is ready.
             return "Update OpenBurnBar on your Mac, then reconnect Hermes. Messages here stay private to your devices, so they can only be sent once that Mac is ready."
+        case .gatewaySignalUnavailable:
+            return "This Hermes connection is ready for private messaging, but its secure session could not be prepared. Reconnect Hermes on both devices, then try again."
         case .gatewayRelayKeyChanged:
             // No transport/security jargon ("relay key", "man-in-the-middle"):
             // calm, action-first copy that protects the user and names the fix.

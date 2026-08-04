@@ -1090,11 +1090,12 @@ service cloud.firestore {
     }
 
     // ---- Signal at-rest CloudVault envelopes ------------------------------------
-    // Client-direct writes MUST NOT include `signalEnvelope`. Firestore rules cannot
-    // iterate and deep-validate every recipient wrap or verify senderAuth signatures,
-    // so production Signal-at-rest producers must route through an Admin/callable path
-    // that sanitizes the full envelope before persisting. This keeps the backend
-    // zero-plaintext while avoiding a shallow-rules validation bypass.
+    // Legacy per-collection validators keep using `forbidsDirectSignalEnvelope`
+    // so their compatibility path cannot accidentally accept a mixed shape. The
+    // ten exact Signal mirror matches below authorize a separately validated,
+    // path-bound `signalEnvelope` with no cleartext private fields. Rules cannot
+    // verify Ed25519 signatures or iterate every recipient wrap; the Admin/callable
+    // path validates every wrap, while clients verify sender auth cryptographically.
     function forbidsDirectSignalEnvelope() {
       return !("signalEnvelope" in request.resource.data);
     }
@@ -1140,6 +1141,82 @@ service cloud.firestore {
         && value.size() <= maxLen
         && value.size() % 4 == 0
         && value.matches("^[A-Za-z0-9+/]*={0,2}$");
+    }
+
+    // Direct-client Signal at-rest writes are allowed only through the exact
+    // owner-scoped mirror gate below. Rules cannot verify Ed25519 signatures or
+    // iterate every wrap, but they can enforce the zero-plaintext outer shape,
+    // exact path binding, sender-auth wire lengths, and collection allowlists.
+    // The Admin/callable path remains stricter and validates every wrap.
+    function validDirectSignalAtRestEnvelope(userId, collectionId, documentId) {
+      let value = ("signalEnvelope" in request.resource.data)
+        ? request.resource.data.signalEnvelope
+        : {};
+      return value is map
+        && value.keys().hasOnly([
+          "signalEnvelopeFormatVersion", "mode", "relayEncryption",
+          "ciphertextLayer", "keyDelivery", "binding", "senderAuth"
+        ])
+        && value.signalEnvelopeFormatVersion == 1
+        && value.mode == "at-rest"
+        && value.relayEncryption == "signal-hpke-identity-seal-v1"
+        && value.ciphertextLayer is map
+        && value.ciphertextLayer.keys().hasOnly(["payloadCiphertextB64", "payloadAADLabel", "schemaVersion"])
+        && value.ciphertextLayer.payloadCiphertextB64 is string
+        && value.ciphertextLayer.payloadCiphertextB64.size() > 0
+        && value.ciphertextLayer.payloadCiphertextB64.size() <= 1100000
+        && value.ciphertextLayer.payloadCiphertextB64.size() % 4 == 0
+        && value.ciphertextLayer.payloadCiphertextB64.matches("^[A-Za-z0-9+/]*={0,2}$")
+        && value.ciphertextLayer.payloadAADLabel is string
+        && value.ciphertextLayer.payloadAADLabel.size() > 0
+        && value.ciphertextLayer.payloadAADLabel.size() <= 120
+        && value.ciphertextLayer.payloadAADLabel.matches("^[A-Za-z0-9:_-]+$")
+        && value.ciphertextLayer.schemaVersion == 1
+        && value.keyDelivery is map
+        && value.keyDelivery.keys().hasOnly(["scheme", "wraps", "contentKeyLength"])
+        && value.keyDelivery.scheme == "signal-hpke-identity-seal-v1"
+        && value.keyDelivery.contentKeyLength == 32
+        && value.keyDelivery.wraps is list
+        && value.keyDelivery.wraps.size() >= 1
+        && value.keyDelivery.wraps.size() <= 32
+        && value.binding is map
+        && value.binding.keys().hasOnly(["uid", "scope", "collection", "docId", "field", "mode", "formatVersion"])
+        && value.binding.uid == userId
+        && value.binding.scope == "cloudvault"
+        && value.binding.collection == collectionId
+        && value.binding.docId == documentId
+        && value.binding.field == "signalEnvelope"
+        && value.binding.mode == "at-rest"
+        && value.binding.formatVersion == 1
+        && value.senderAuth is map
+        && value.senderAuth.keys().hasOnly(["senderIdentityKeyId", "senderIdentityKeyB64", "signatureB64", "signatureVersion"])
+        && value.senderAuth.senderIdentityKeyId is string
+        && value.senderAuth.senderIdentityKeyId.size() > 0
+        && value.senderAuth.senderIdentityKeyId.size() <= 160
+        && value.senderAuth.senderIdentityKeyB64 is string
+        && value.senderAuth.senderIdentityKeyB64.size() == 44
+        && value.senderAuth.senderIdentityKeyB64.matches("^[A-Za-z0-9+/]*={0,2}$")
+        && value.senderAuth.signatureB64 is string
+        && value.senderAuth.signatureB64.size() == 88
+        && value.senderAuth.signatureB64.matches("^[A-Za-z0-9+/]*={0,2}$")
+        && value.senderAuth.signatureVersion == 1;
+    }
+
+    // Fast, collection-scoped validator used only from the ten exact match
+    // blocks below. Keep this function small: calling a dynamic ten-way branch
+    // from the catch-all user-document match exhausts Firestore's expression
+    // budget even for unrelated writes.
+    function validSignalAtRestMirrorWrite(userId, collectionId, documentId, allowedKeys) {
+      return ("signalEnvelope" in request.resource.data)
+        ? (
+          ownerWritableNonSecret(userId)
+          && ((collectionId == "conversations" || collectionId == "chat_threads")
+            ? hasActiveHostedQuotaEntitlement(userId)
+            : true)
+          && validDirectSignalAtRestEnvelope(userId, collectionId, documentId)
+          && request.resource.data.keys().hasOnly(allowedKeys)
+        )
+        : false;
     }
 
     function matchesCurrentVaultKey(userId, vaultKeyID) {
@@ -1833,6 +1910,82 @@ service cloud.firestore {
         && ownsUserNamespace(userId)
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields();
+
+
+    }
+
+    // Signal-at-rest direct-client mirrors. These are deliberately separate
+    // matches so unrelated user writes do not evaluate ten collection schemas.
+    match /users/{userId}/conversations/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "conversations", documentId, [
+        "id", "deviceId", "provider", "sessionId", "messageCount", "userWordCount", "assistantWordCount",
+        "startTime", "endTime", "updatedAt", "sourceType", "version", "deletedAt", "source",
+        "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "signalEnvelope"
+      ]) && ("id" in request.resource.data) && request.resource.data.id == documentId;
+    }
+
+    match /users/{userId}/chat_threads/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "chat_threads", documentId, [
+        "threadId", "messageCount", "createdAt", "updatedAt", "deviceId", "contentIncluded",
+        "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "signalEnvelope"
+      ]) && ("threadId" in request.resource.data) && request.resource.data.threadId == documentId;
+    }
+
+    match /users/{userId}/mobile_assistant_chats/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "mobile_assistant_chats", documentId, [
+        "id", "runtime", "createdAt", "updatedAt", "messageCount", "contentSealed", "sealedSchemaVersion",
+        "vaultKeyID", "sealedPayload", "labelColorHex", "isPinned", "priorityOrder", "lastMessageRole",
+        "lastAssistantMessageID", "signalEnvelope"
+      ]) && ("id" in request.resource.data) && request.resource.data.id == documentId;
+    }
+
+    match /users/{userId}/cli_sessions/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "cli_sessions", documentId, [
+        "id", "agent", "sourceKind", "createdAt", "updatedAt", "endedAt", "schemaVersion", "contentSealed",
+        "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "messageCount", "lastMessageRole",
+        "lastAssistantMessageID", "tokenUsage", "encryptedTranscriptAvailable", "labelColorHex", "isPinned",
+        "priorityOrder", "signalEnvelope"
+      ]) && ("id" in request.resource.data) && request.resource.data.id == documentId;
+    }
+
+    match /users/{userId}/text_snippets/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "text_snippets", documentId, [
+        "id", "uid", "sourceDeviceID", "triggerHash", "mode", "isEnabled", "revision", "createdAt", "updatedAt",
+        "deletedAt", "schemaVersion", "encryption", "sealedTitle", "sealedTrigger", "sealedBody", "sealedScope",
+        "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "signalEnvelope"
+      ]) && ("id" in request.resource.data) && request.resource.data.id == documentId
+        && ("uid" in request.resource.data) && request.resource.data.uid == userId;
+    }
+
+    match /users/{userId}/rollback_requests/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "rollback_requests", documentId, [
+        "id", "sessionID", "requestedAt", "requestedBy", "status", "resolvedAt", "schemaVersion", "source",
+        "sealedScope", "sealedErrorMessage", "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "signalEnvelope"
+      ]) && ("id" in request.resource.data) && request.resource.data.id == documentId;
+    }
+
+    match /users/{userId}/approval_policies/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "approval_policies", documentId, [
+        "decision", "missionKind", "toolName", "runtimeID", "createdAt", "expiresAt", "matchCount", "schemaVersion",
+        "sealedDisplayLabel", "sealedFileGlob", "sealedTargetProject", "projectKeyHash", "fileGlobHash",
+        "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "signalEnvelope"
+      ]) && ("decision" in request.resource.data) && request.resource.data.decision in ["approve", "deny"];
+    }
+
+    match /users/{userId}/agent_identities/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "agent_identities", documentId, [
+        "id", "runtimeID", "glyph", "paletteHex", "tier", "availability", "installSource", "capabilities",
+        "dispatchTransport", "lastSevenDays", "lastRefreshedAt", "updatedAt", "sealedDisplayName", "sealedTagline",
+        "sealedPersonas", "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "signalEnvelope"
+      ]) && ("id" in request.resource.data) && request.resource.data.id == documentId;
+    }
+
+    match /users/{userId}/subscription_topics/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "subscription_topics", documentId, [
+        "cadence", "consentGivenAt", "isMuted", "deliveryMode", "minimumEventImportance", "deliveryCountThisMonth",
+        "lastDeliveredAt", "updatedAt", "sealedAgentURI", "sealedTopicID", "sealedDisplayName", "sealedDescription",
+        "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "signalEnvelope"
+      ]);
     }
 
     // Usage rows seal the project name into `sealedProjectName` (with an opaque

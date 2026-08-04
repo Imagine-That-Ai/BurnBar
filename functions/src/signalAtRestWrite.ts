@@ -26,6 +26,7 @@
 import {
   bindingToAAD,
   sanitizeCloudVaultSignalEnvelope,
+  sanitizeSignalEnvelopeStrict,
   type CloudVaultSignalEnvelope,
 } from "@openburnbar/signal-envelope-contracts";
 
@@ -80,7 +81,10 @@ export function validateSignalAtRestEnvelopeForWrite(
   // Deep structural validation incl. per-wrap base64/kind/id — the part Firestore
   // rules cannot do. Returns undefined for any non-strict-at-rest shape (plaintext,
   // transport, polluted keys, oversize, bad base64, gateway binding, …).
-  const envelope = sanitizeCloudVaultSignalEnvelope(value);
+  const strictEnvelope = sanitizeSignalEnvelopeStrict(value, "at-rest");
+  const envelope = strictEnvelope && strictEnvelope.binding.scope === "cloudvault" && strictEnvelope.senderAuth
+    ? sanitizeCloudVaultSignalEnvelope(strictEnvelope)
+    : undefined;
   if (!envelope) return { ok: false, reason: "invalid-envelope-shape" };
 
   // Path-binding (L37): compare the binding against caller-derived EXPECTED

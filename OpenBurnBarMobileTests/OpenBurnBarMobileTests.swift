@@ -5,6 +5,7 @@ import FirebaseAuth
 import FirebaseFirestore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 @testable import OpenBurnBarMobile
@@ -4826,6 +4827,7 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         let phoneRelayKeyVersion: Int?
         let phoneRelayEncryption: String?
         let phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle?
+        let phoneSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc?
     }
 
     struct OversightModeChange: Equatable {
@@ -4866,7 +4868,8 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         phoneRelayPublicKey: String?,
         phoneRelayKeyVersion: Int?,
         phoneRelayEncryption: String?,
-        phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle?
+        phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle?,
+        phoneSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc?
     ) async throws -> HermesGatewayClientRecord {
         if let approvalError {
             throw approvalError
@@ -4877,7 +4880,8 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
                 phoneRelayPublicKey: phoneRelayPublicKey,
                 phoneRelayKeyVersion: phoneRelayKeyVersion,
                 phoneRelayEncryption: phoneRelayEncryption,
-                phoneRatchetPrekeyBundle: phoneRatchetPrekeyBundle
+                phoneRatchetPrekeyBundle: phoneRatchetPrekeyBundle,
+                phoneSignalPrekeyBundle: phoneSignalPrekeyBundle
             )
         )
         let client = HermesGatewayClientRecord(

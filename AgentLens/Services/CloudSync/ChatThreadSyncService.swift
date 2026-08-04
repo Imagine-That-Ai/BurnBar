@@ -155,32 +155,20 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
                     data["sealedSchemaVersion"] = 2
                     data["vaultKeyID"] = resolvedKey.vaultKeyID
                     data["sealedPayload"] = CloudVaultCrypto.sealedPayloadDictionary(sealedPayload)
-                    // L41/at-rest Signal dual-write (item 3). The legacy AES-GCM sealedPayload
-                    // above is the FLOOR; the additive Signal envelope is BEST-EFFORT and gated
-                    // by the conversations_chat sealingScheme. On ANY seal failure we log and
-                    // write legacy-only (legacy is already E2EE) rather than abort the record or
-                    // batch, and clear a stale envelope so it can never outlive its sealedPayload.
-                    do {
-                        if let signalEnvelope = try await MacCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
-                            domainID: "conversations_chat",
-                            uid: uid,
-                            firestore: Firestore.firestore(),
-                            collection: "chat_threads",
-                            docId: docId,
-                            plaintext: payloadData,
-                            resolvedKey: resolvedKey
-                        ) {
-                            data["signalEnvelope"] = signalEnvelope
-                        } else {
-                            data["signalEnvelope"] = FieldValue.delete()
-                        }
-                    } catch {
-                        AppLogger.sync.error(
-                            "chat_thread_signal_seal_failed_legacy_only",
-                            metadata: ["accountUid": uid, "docId": docId, "error": String(describing: error)]
-                        )
-                        data["signalEnvelope"] = FieldValue.delete()
-                    }
+                    // NOTE: no `source` producer marker here — the chat_threads Firestore
+                    // allowlists (`validChatThreadKeys` and the Signal mirror gate) reject it.
+                    data = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
+                        to: data,
+                        domainID: "conversations_chat",
+                        uid: uid,
+                        firestore: Firestore.firestore(),
+                        collection: "chat_threads",
+                        docId: docId,
+                        plaintext: payloadData,
+                        resolvedKey: resolvedKey,
+                        legacyPrivateFields: ["sealedPayload", "sealedSchemaVersion", "vaultKeyID", "contentSealed"],
+                        mergeWrite: true
+                    )
                     data["title"] = FieldValue.delete()
                     data["preview"] = FieldValue.delete()
                     data["messages"] = FieldValue.delete()

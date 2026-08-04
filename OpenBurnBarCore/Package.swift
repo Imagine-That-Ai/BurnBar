@@ -478,6 +478,7 @@ let signalCoreFallbackExcludes: [String] = hasLibSignalSwiftPackage ? [] : [
 
 let signalSessionTransportDependencies: [Target.Dependency] = [
     "OpenBurnBarCore",
+    "OpenBurnBarFirestoreModels",
     "OpenBurnBarIrohRelay",
     "OpenBurnBarSignalCore"
 ] + (hasLibSignalSwiftPackage ? [

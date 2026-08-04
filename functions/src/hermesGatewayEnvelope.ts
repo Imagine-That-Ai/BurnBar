@@ -321,6 +321,14 @@ export function requireProductionGatewaySignalEnvelope(raw: unknown, fieldName: 
   return envelope;
 }
 
+export function gatewaySignalAttachmentBindingMatches(
+  envelope: GatewaySignalEnvelopeDoc,
+  attachmentId: string,
+): boolean {
+  const slotId = envelope.binding?.slotId;
+  return typeof slotId === "string" && slotId === `attachment-manifest:${attachmentId}`;
+}
+
 const RELAY_BASE64_PATTERN = /^[A-Za-z0-9+/=]+$/u;
 
 function parsedRelayKeyVersion(raw: unknown): number {
@@ -576,6 +584,9 @@ function resolveSupportsSignalEnvelope(
 ): boolean {
   if (rawSupportsSignalEnvelope != null && typeof rawSupportsSignalEnvelope !== "boolean") {
     throwError("supportsSignalEnvelope must be a boolean.");
+  }
+  if (gatewaySignalEnvelopeV4Disabled() && rawSupportsSignalEnvelope === true) {
+    throwError("supportsSignalEnvelope is disabled by the Signal envelope v4 hard kill switch.");
   }
   if (gatewaySignalRequiredMode() && rawSupportsSignalEnvelope !== true) {
     throwError("supportsSignalEnvelope=true is required in Signal-required gateway mode.");

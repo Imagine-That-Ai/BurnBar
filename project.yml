@@ -421,6 +421,10 @@ targets:
         product: OpenBurnBarComputerUseCore
       - package: OpenBurnBarCore
         product: OpenBurnBarSignalCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarSignalSessionTransport
+      - package: OpenBurnBarCore
+        product: OpenBurnBarFirestoreModels
       # Core-decomposition: explicit sibling products so the OpenBurnBarTests app test target can
       # `@testable import` them to reach INTERNAL symbols that moved out of the Core monolith
       # (Quota: WarpQuotaAdapter.candidateLogFiles, AntigravityQuotaAdapter.referenceDate*,
@@ -1035,6 +1039,10 @@ targets:
         product: OpenBurnBarComputerUseCore
       - package: OpenBurnBarCore
         product: OpenBurnBarSignalCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarSignalSessionTransport
+      - package: OpenBurnBarCore
+        product: OpenBurnBarFirestoreModels
       - package: DebugBridge
         product: DebugBridgeCore
       - package: DebugBridge

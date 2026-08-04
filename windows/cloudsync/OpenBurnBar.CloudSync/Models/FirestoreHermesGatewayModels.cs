@@ -92,7 +92,35 @@ public sealed record FirestoreGatewaySignalEnvelopeDoc
     [JsonPropertyName("relayEncryption")] public required string RelayEncryption { get; init; }
     [JsonPropertyName("ciphertextLayer")] public required FirestoreGatewaySignalCiphertextLayerDoc CiphertextLayer { get; init; }
     [JsonPropertyName("keyDelivery")] public required FirestoreGatewaySignalKeyDeliveryDoc KeyDelivery { get; init; }
+    [JsonPropertyName("senderAuth")] public FirestoreGatewaySignalAtRestSenderAuthDoc? SenderAuth { get; init; }
     [JsonPropertyName("binding")] public required FirestoreGatewaySignalBindingDoc Binding { get; init; }
+}
+
+public sealed record FirestoreGatewaySignalAtRestSenderAuthDoc
+{
+    [JsonPropertyName("signatureVersion")] public required long SignatureVersion { get; init; }
+    [JsonPropertyName("senderIdentityKeyId")] public required string SenderIdentityKeyId { get; init; }
+    [JsonPropertyName("senderIdentityKeyB64")] public required string SenderIdentityKeyB64 { get; init; }
+    [JsonPropertyName("signatureB64")] public required string SignatureB64 { get; init; }
+}
+
+public sealed record FirestoreHermesGatewaySignalPrekeyBundleDoc
+{
+    [JsonPropertyName("version")] public required long Version { get; init; }
+    [JsonPropertyName("bundleId")] public required string BundleId { get; init; }
+    [JsonPropertyName("identityKeyId")] public required string IdentityKeyId { get; init; }
+    [JsonPropertyName("identityKeyB64")] public required string IdentityKeyB64 { get; init; }
+    [JsonPropertyName("registrationId")] public required long RegistrationId { get; init; }
+    [JsonPropertyName("deviceId")] public required long DeviceId { get; init; }
+    [JsonPropertyName("signedPreKeyId")] public required long SignedPreKeyId { get; init; }
+    [JsonPropertyName("signedPreKeyPublicB64")] public required string SignedPreKeyPublicB64 { get; init; }
+    [JsonPropertyName("signedPreKeySignatureB64")] public required string SignedPreKeySignatureB64 { get; init; }
+    [JsonPropertyName("oneTimePreKeyId")] public required long OneTimePreKeyId { get; init; }
+    [JsonPropertyName("oneTimePreKeyPublicB64")] public required string OneTimePreKeyPublicB64 { get; init; }
+    [JsonPropertyName("kyberPreKeyId")] public required long KyberPreKeyId { get; init; }
+    [JsonPropertyName("kyberPreKeyPublicB64")] public required string KyberPreKeyPublicB64 { get; init; }
+    [JsonPropertyName("kyberPreKeySignatureB64")] public required string KyberPreKeySignatureB64 { get; init; }
+    [JsonPropertyName("generatedAt")] public required string GeneratedAt { get; init; }
 }
 
 public sealed record FirestoreHermesGatewayClientDoc
@@ -119,6 +147,7 @@ public sealed record FirestoreHermesGatewayClientDoc
     [JsonPropertyName("agentPreferredRelayEnvelopeVersion")] public long? AgentPreferredRelayEnvelopeVersion { get; init; }
     [JsonPropertyName("agentSupportsHpkeV3")] public bool? AgentSupportsHpkeV3 { get; init; }
     [JsonPropertyName("agentSupportsSignalEnvelope")] public bool? AgentSupportsSignalEnvelope { get; init; }
+    [JsonPropertyName("agentSignalPrekeyBundle")] public FirestoreHermesGatewaySignalPrekeyBundleDoc? AgentSignalPrekeyBundle { get; init; }
     [JsonPropertyName("agentPlatform")] public string? AgentPlatform { get; init; }
     [JsonPropertyName("agentAppBuild")] public string? AgentAppBuild { get; init; }
     [JsonPropertyName("phoneRelayPublicKey")] public string? PhoneRelayPublicKey { get; init; }
@@ -128,6 +157,7 @@ public sealed record FirestoreHermesGatewayClientDoc
     [JsonPropertyName("phonePreferredRelayEnvelopeVersion")] public long? PhonePreferredRelayEnvelopeVersion { get; init; }
     [JsonPropertyName("phoneSupportsHpkeV3")] public bool? PhoneSupportsHpkeV3 { get; init; }
     [JsonPropertyName("phoneSupportsSignalEnvelope")] public bool? PhoneSupportsSignalEnvelope { get; init; }
+    [JsonPropertyName("phoneSignalPrekeyBundle")] public FirestoreHermesGatewaySignalPrekeyBundleDoc? PhoneSignalPrekeyBundle { get; init; }
     [JsonPropertyName("phonePlatform")] public string? PhonePlatform { get; init; }
     [JsonPropertyName("phoneAppBuild")] public string? PhoneAppBuild { get; init; }
     [JsonPropertyName("agentRatchetIdentityPublicKey")] public string? AgentRatchetIdentityPublicKey { get; init; }

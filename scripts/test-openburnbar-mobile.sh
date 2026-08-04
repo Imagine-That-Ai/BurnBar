@@ -203,6 +203,17 @@ cache_default="${mobile_scratch_root:+$mobile_scratch_root/swiftpm-cache}"
 [[ -n "$cache_default" ]] || cache_default="$repo_root/.spm-cache-new"
 cache_dir="$(resolve_mobile_root "SwiftPM cache" OPENBURNBAR_MOBILE_SWIFTPM_CACHE_ROOT "$cache_default")" || exit $?
 
+# OpenBurnBarCore's package manifest resolves `../Vendor/libsignal` relative to
+# its SwiftPM checkout. Isolated caches otherwise compile the deliberate
+# unavailable Signal stub and hide real app integration failures.
+if [[ -f "$repo_root/Vendor/libsignal/swift/Package.swift" ]]; then
+    signal_vendor_cache="$cache_dir/checkouts/Vendor/libsignal"
+    if [[ ! -f "$signal_vendor_cache/swift/Package.swift" ]]; then
+        mkdir -p "$cache_dir/checkouts/Vendor"
+        cp -R "$repo_root/Vendor/libsignal" "$signal_vendor_cache"
+    fi
+fi
+
 artifact_default="${mobile_scratch_root:+$mobile_scratch_root/artifacts}"
 [[ -n "$artifact_default" ]] || artifact_default="$repo_root/.derived-data"
 artifact_root="$(resolve_mobile_root "mobile test artifact root" OPENBURNBAR_MOBILE_TEST_ARTIFACT_ROOT "$artifact_default")" || exit $?

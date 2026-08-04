@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import LibSignalClient
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 import OpenBurnBarIrohRelay
 import OpenBurnBarSignalCore
 
@@ -14,6 +15,7 @@ public enum OBBSignalSessionTransportError: LocalizedError, Equatable {
     /// F6: the directory-advertised identity key does not match the key the
     /// caller pinned out-of-band. Fail closed before establishing a session.
     case identityPinMismatch
+    case invalidEnvelopeBinding
 
     public var errorDescription: String? {
         switch self {
@@ -29,6 +31,8 @@ public enum OBBSignalSessionTransportError: LocalizedError, Equatable {
             return "Unsupported Signal session message type \(type)."
         case .identityPinMismatch:
             return "Remote identity key does not match the pinned key; refusing to establish a session."
+        case .invalidEnvelopeBinding:
+            return "Signal gateway envelope is bound to a different client or slot."
         }
     }
 }
@@ -268,6 +272,18 @@ public struct OBBSignalSessionReceivedMessage: Equatable, Sendable {
     }
 }
 
+public struct OBBSignalGatewayEnvelopeContext: Equatable, Sendable {
+    public let uid: String
+    public let clientId: String
+    public let slotId: String
+
+    public init(uid: String, clientId: String, slotId: String) {
+        self.uid = uid
+        self.clientId = clientId
+        self.slotId = slotId
+    }
+}
+
 /// Drives one peer's side of an end-to-end-encrypted Signal session over an iroh
 /// relay stream. Actor-isolated so the libsignal Double Ratchet state (`store`)
 /// is mutated under compiler-enforced serialization — out-of-order
@@ -347,6 +363,122 @@ public actor OBBSignalSessionCipherTransport {
         return frame
     }
 
+    /// Establish or reuse the official libsignal session and return a Gateway
+    /// v4 transport envelope without touching a relay stream. Callers must
+    /// persist the returned session state through `store`.
+    public func sealGatewayEnvelope(
+        _ plaintext: Data,
+        context envelopeContext: OBBSignalGatewayEnvelopeContext,
+        claimSignalPrekeyBundle: ClaimSignalPreKeyBundle,
+        pinnedIdentityPublicKey: Data? = nil,
+        remoteAddress: ProtocolAddress? = nil,
+        storeContext: StoreContext = NullContext()
+    ) async throws -> FirestoreGatewaySignalEnvelopeDoc {
+        let address: ProtocolAddress
+        if let remoteAddress {
+            address = remoteAddress
+        } else {
+            let claimed = try await claimSignalPrekeyBundle()
+            let remote = try OBBSignalRemoteBundleDecoder.decode(
+                claimed,
+                pinnedIdentityPublicKey: pinnedIdentityPublicKey
+            )
+            try processPreKeyBundle(
+                remote.bundle,
+                for: remote.address,
+                ourAddress: localAddress,
+                sessionStore: store,
+                identityStore: store,
+                context: storeContext
+            )
+            address = remote.address
+        }
+        let ciphertext = try signalEncrypt(
+            message: Array(plaintext),
+            for: address,
+            localAddress: localAddress,
+            sessionStore: store,
+            identityStore: store,
+            context: storeContext
+        )
+        let ciphertextB64 = ciphertext.serialize().base64EncodedString()
+        let senderIdentityKeyId = SHA256.hash(data: store.identityKeypair.publicKey.serialize())
+            .prefix(16)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return FirestoreGatewaySignalEnvelopeDoc(
+            signalEnvelopeFormatVersion: 1,
+            mode: "transport",
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionSignalV4,
+            relayEncryption: "signal-doubleratchet-pqxdh-v1",
+            ciphertextLayer: FirestoreGatewaySignalCiphertextLayerDoc(
+                payloadCiphertextB64: ciphertextB64,
+                payloadAADLabel: "gateway-v4-signal",
+                schemaVersion: 1
+            ),
+            keyDelivery: FirestoreGatewaySignalKeyDeliveryDoc(
+                scheme: "signal-doubleratchet-pqxdh-v1",
+                signalMessageType: Int(ciphertext.messageType.rawValue),
+                signalMessageB64: ciphertextB64,
+                senderIdentityKeyId: senderIdentityKeyId,
+                ratchetEpochHint: nil,
+                wraps: nil,
+                contentKeyLength: nil
+            ),
+            binding: FirestoreGatewaySignalBindingDoc(
+                uid: envelopeContext.uid,
+                scope: "gateway",
+                clientId: envelopeContext.clientId,
+                collection: nil,
+                docId: nil,
+                field: nil,
+                slotId: envelopeContext.slotId,
+                mode: "transport",
+                formatVersion: 1
+            ),
+            senderAuth: nil
+        )
+    }
+
+    /// Decode a Gateway v4 envelope through the same official session actor.
+    public func decryptGatewayEnvelope(
+        _ envelope: FirestoreGatewaySignalEnvelopeDoc,
+        from remoteAddress: ProtocolAddress,
+        context: StoreContext = NullContext()
+    ) throws -> Data {
+        guard
+            let messageType = envelope.keyDelivery.signalMessageType,
+            let ciphertextB64 = envelope.keyDelivery.signalMessageB64,
+            let ciphertext = Data(base64Encoded: ciphertextB64),
+            envelope.mode == "transport",
+            envelope.binding.scope == "gateway"
+        else { throw OBBSignalSessionTransportError.missingSignalCiphertext }
+        if messageType == Int(CiphertextMessage.MessageType.preKey.rawValue) {
+            return Data(try signalDecryptPreKey(
+                message: try PreKeySignalMessage(bytes: ciphertext),
+                from: remoteAddress,
+                localAddress: localAddress,
+                sessionStore: store,
+                identityStore: store,
+                preKeyStore: store,
+                signedPreKeyStore: store,
+                kyberPreKeyStore: store,
+                context: context
+            ))
+        }
+        guard messageType == Int(CiphertextMessage.MessageType.whisper.rawValue) else {
+            throw OBBSignalSessionTransportError.unsupportedSignalMessageType(messageType)
+        }
+        return Data(try signalDecrypt(
+            message: try SignalMessage(bytes: ciphertext),
+            from: remoteAddress,
+            to: localAddress,
+            sessionStore: store,
+            identityStore: store,
+            context: context
+        ))
+    }
+
     public func receive(
         from stream: any IrohRelayStream,
         remoteAddress: ProtocolAddress,
@@ -416,6 +548,66 @@ public actor OBBSignalSessionCipherTransport {
             requestId: requestId,
             signalSessionCiphertextB64: ciphertext.serialize().base64EncodedString(),
             signalMessageType: Int(ciphertext.messageType.rawValue)
+        )
+    }
+}
+
+public struct OBBSignalSessionGatewayEnvelopeProvider: OBBSignalGatewayEnvelopeProvider {
+    private let transport: OBBSignalSessionCipherTransport
+    private let peerBundle: OBBSignalClaimedPreKeyBundle
+    private let pinnedIdentityPublicKey: Data?
+
+    public init(
+        transport: OBBSignalSessionCipherTransport,
+        peerBundle: OBBSignalClaimedPreKeyBundle,
+        pinnedIdentityPublicKey: Data? = nil
+    ) {
+        self.transport = transport
+        self.peerBundle = peerBundle
+        self.pinnedIdentityPublicKey = pinnedIdentityPublicKey
+    }
+
+    public func seal(
+        plaintext: Data,
+        uid: String,
+        clientId: String,
+        slotId: String
+    ) async throws -> Data {
+        let envelope = try await transport.sealGatewayEnvelope(
+            plaintext,
+            context: OBBSignalGatewayEnvelopeContext(uid: uid, clientId: clientId, slotId: slotId),
+            claimSignalPrekeyBundle: { peerBundle },
+            pinnedIdentityPublicKey: pinnedIdentityPublicKey
+        )
+        return try JSONEncoder().encode(envelope)
+    }
+
+    /// Open an inbound Gateway v4 envelope with the same durable session actor
+    /// used for outbound writes. The claimed peer bundle is decoded and pinned
+    /// before libsignal sees the ciphertext; this prevents a server-controlled
+    /// bundle swap from creating a new trusted session on the read path.
+    public func open(
+        envelopeData: Data,
+        uid: String,
+        clientId: String,
+        slotId: String
+    ) async throws -> Data {
+        let envelope = try JSONDecoder().decode(FirestoreGatewaySignalEnvelopeDoc.self, from: envelopeData)
+        guard
+            envelope.binding.uid == uid,
+            envelope.binding.clientId == clientId,
+            envelope.binding.slotId == slotId,
+            envelope.binding.scope == "gateway"
+        else {
+            throw OBBSignalSessionTransportError.invalidEnvelopeBinding
+        }
+        let remote = try OBBSignalRemoteBundleDecoder.decode(
+            peerBundle,
+            pinnedIdentityPublicKey: pinnedIdentityPublicKey
+        )
+        return try await transport.decryptGatewayEnvelope(
+            envelope,
+            from: remote.address
         )
     }
 }

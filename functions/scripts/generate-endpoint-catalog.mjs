@@ -870,6 +870,60 @@ const CATALOG_OVERRIDES = {
   },
 };
 
+const SIGNAL_MIGRATION_TRIGGER_NAMES = [
+  "onSignalMigrationAgentIdentityWritten",
+  "onSignalMigrationApprovalPolicyWritten",
+  "onSignalMigrationChatThreadWritten",
+  "onSignalMigrationCliSessionWritten",
+  "onSignalMigrationConversationWritten",
+  "onSignalMigrationMissionRequestWritten",
+  "onSignalMigrationMobileAssistantChatWritten",
+  "onSignalMigrationRollbackRequestWritten",
+  "onSignalMigrationSubscriptionTopicWritten",
+  "onSignalMigrationTextSnippetWritten",
+];
+
+for (const exportedName of SIGNAL_MIGRATION_TRIGGER_NAMES) {
+  CATALOG_OVERRIDES[exportedName] = {
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions Firestore trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "trigger document path and server-side uid field",
+    objectIdsFromClient: [],
+    ownershipCheck: "trigger reads only the user-scoped source document and writes aggregate migration telemetry",
+    handlerModule: "signalMigrationTelemetry.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: [exportedName],
+      },
+    ],
+    highRiskComputerUse: false,
+  };
+}
+
+CATALOG_OVERRIDES.writeSignalAtRestDocument = {
+  authMethod: "Firebase Auth with callable-level user-path and Signal-envelope validation",
+  appCheck: "required",
+  tenantSource: "request.auth.uid",
+  objectIdsFromClient: [],
+  ownershipCheck: "handler derives the user path from request.auth.uid, allows only approved collections, and atomically writes validated Signal envelopes",
+  handlerModule: "callables/writeSignalAtRestDocument.ts",
+  bolaCoverage: [
+    {
+      file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+      test: "rejects unauthenticated callable access",
+      kind: "auth-only",
+      covers: ["writeSignalAtRestDocument"],
+      expectedOutcome: "throws",
+      expectedCode: "unauthenticated",
+    },
+  ],
+  highRiskComputerUse: false,
+};
+
 function defaultEntry(exportedName) {
   return {
     exportedName,

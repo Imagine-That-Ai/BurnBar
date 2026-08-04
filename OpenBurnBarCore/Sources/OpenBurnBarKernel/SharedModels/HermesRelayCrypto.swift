@@ -122,6 +122,13 @@ public enum HermesRelayCrypto {
     /// for existing paired peers; v3 is emitted only when the peer advertises v3
     /// capability, so the migration never downgrades a v2 link or breaks pairing.
     public static let gatewayRelayKeyVersionV3 = 3
+    /// Envelope `relayKeyVersion` for the **gateway** Signal v4 transport
+    /// migration (official libsignal PQXDH + Double Ratchet). This is the value
+    /// the shared TS sanitizer (`SIGNAL_RELAY_KEY_VERSION` in
+    /// `packages/signal-envelope-contracts/src/index.ts`) hard-requires on every
+    /// transport-mode Signal envelope; producers must stamp it or Functions
+    /// rejects the event.
+    public static let gatewayRelayKeyVersionSignalV4 = 4
     /// Envelope `relayEncryption` marker for the v3 suite — DHKEM(P-256,
     /// HKDF-SHA256) / HKDF-SHA256 / AES-256-GCM in HPKE Auth mode. Mirrors the
     /// Python `HPKE_ALGORITHM` constant (`gateway/crypto/relay_e2ee.py`) byte

@@ -29,6 +29,7 @@ export const AUDIT_DIRS = [
   "services/hermes-realtime-relay",
   "services/hosted-mcp",
   "tools/app-store-connect",
+  "tools/hermes-platform-burnbar/signal-runtime",
   "tools/openburnbar-mcp-remote",
   "tools/schema-sync",
   "website",

@@ -97,6 +97,13 @@ model GatewaySignalAtRestKeyDeliveryDoc {
   contentKeyLength: 32;
 }
 
+model GatewaySignalAtRestSenderAuthDoc {
+  senderIdentityKeyId: string;
+  senderIdentityKeyB64: string;
+  signatureB64: string;
+  signatureVersion: 1;
+}
+
 model GatewaySignalEnvelopeDoc {
   signalEnvelopeFormatVersion: int32;
   mode: GatewaySignalEnvelopeMode;
@@ -105,6 +112,31 @@ model GatewaySignalEnvelopeDoc {
   ciphertextLayer: GatewaySignalCiphertextLayerDoc;
   keyDelivery: GatewaySignalTransportKeyDeliveryDoc | GatewaySignalAtRestKeyDeliveryDoc;
   binding: GatewaySignalBindingDoc;
+  senderAuth?: GatewaySignalAtRestSenderAuthDoc;
+}
+
+/**
+ * Public PQXDH material exchanged only between the two endpoints of one
+ * approved Hermes Gateway pairing. Private keys and serialized session state
+ * never leave the producing device. A fresh bundle replaces only the one-time
+ * material; identityKeyId/identityKeyB64 are pinned for the life of the pairing.
+ */
+model HermesGatewaySignalPrekeyBundleDoc {
+  version: 1;
+  bundleId: string;
+  identityKeyId: string;
+  identityKeyB64: string;
+  registrationId: int32;
+  deviceId: int32;
+  signedPreKeyId: int32;
+  signedPreKeyPublicB64: string;
+  signedPreKeySignatureB64: string;
+  oneTimePreKeyId: int32;
+  oneTimePreKeyPublicB64: string;
+  kyberPreKeyId: int32;
+  kyberPreKeyPublicB64: string;
+  kyberPreKeySignatureB64: string;
+  generatedAt: string;
 }
 
 model HermesGatewayClientDoc {
@@ -130,6 +162,7 @@ model HermesGatewayClientDoc {
   agentPreferredRelayEnvelopeVersion?: int32;
   agentSupportsHpkeV3?: boolean;
   agentSupportsSignalEnvelope?: boolean;
+  agentSignalPrekeyBundle?: HermesGatewaySignalPrekeyBundleDoc;
   agentPlatform?: string;
   agentAppBuild?: string;
   phoneRelayPublicKey?: string;
@@ -139,6 +172,7 @@ model HermesGatewayClientDoc {
   phonePreferredRelayEnvelopeVersion?: int32;
   phoneSupportsHpkeV3?: boolean;
   phoneSupportsSignalEnvelope?: boolean;
+  phoneSignalPrekeyBundle?: HermesGatewaySignalPrekeyBundleDoc;
   phonePlatform?: string;
   phoneAppBuild?: string;
   agentRatchetIdentityPublicKey?: string;

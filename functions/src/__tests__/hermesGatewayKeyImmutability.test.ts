@@ -105,6 +105,26 @@ const PINNED_AGENT_KEY = Buffer.concat([Buffer.from([0x04]), Buffer.alloc(64, 7)
 const ATTACKER_AGENT_KEY = Buffer.concat([Buffer.from([0x04]), Buffer.alloc(64, 9)]).toString("base64");
 const PHONE_KEY = Buffer.concat([Buffer.from([0x04]), Buffer.alloc(64, 3)]).toString("base64");
 
+function signalPrekeyBundle(identityByte: number, identityKeyId = "sig_identity_pinned_0001") {
+  return {
+    version: 1,
+    bundleId: "sig_bundle_runtime_0001",
+    identityKeyId,
+    identityKeyB64: Buffer.alloc(33, identityByte).toString("base64"),
+    registrationId: 12_345,
+    deviceId: 1,
+    signedPreKeyId: 101,
+    signedPreKeyPublicB64: Buffer.alloc(33, 2).toString("base64"),
+    signedPreKeySignatureB64: Buffer.alloc(64, 3).toString("base64"),
+    oneTimePreKeyId: 201,
+    oneTimePreKeyPublicB64: Buffer.alloc(33, 4).toString("base64"),
+    kyberPreKeyId: 301,
+    kyberPreKeyPublicB64: Buffer.alloc(1_569, 5).toString("base64"),
+    kyberPreKeySignatureB64: Buffer.alloc(64, 6).toString("base64"),
+    generatedAt: "2026-08-04T00:00:00.000Z",
+  };
+}
+
 const UID = "userA";
 const CLIENT_ID = "hgw_runtime_client";
 const TOKEN = `obb_hgw_${"A".repeat(20)}`;
@@ -305,6 +325,27 @@ describe("burnBarHermesGateway /runtime — relay-key immutability (pin-only TOF
     expect(client.agentRelayPublicKey).not.toBe(ATTACKER_AGENT_KEY);
     // Routine /runtime fields still update.
     expect(client.runtimeModelId).toBe("minimax-m2.7");
+  });
+
+  it("REFUSES to rotate the pinned official-libsignal identity through /runtime", async () => {
+    const { burnBarHermesGateway } = await import("../callables/hermesGateway.js");
+    const { hashHermesGatewayBearerToken } = await import("../hermesGateway.js");
+    const tokenHash = hashHermesGatewayBearerToken(TOKEN);
+    await seedPairedClient(tokenHash, PINNED_AGENT_KEY);
+    const pinnedBundle = signalPrekeyBundle(1);
+    storedClient().agentSignalPrekeyBundle = pinnedBundle;
+
+    const substitutedBundle = signalPrekeyBundle(9, "sig_identity_attacker_0001");
+    const res = fakeRes();
+    await runHttpHandler(
+      burnBarHermesGateway,
+      runtimeRequest({ agentSignalPrekeyBundle: substitutedBundle }),
+      res,
+    );
+
+    expect(res._status).toBe(412);
+    expect(record(res._body, "response body").detail).toContain("agent_signal_identity_immutable");
+    expect(storedClient().agentSignalPrekeyBundle).toEqual(pinnedBundle);
   });
 
   it("ESTABLISHES the agent key on first pairing when none is pinned yet (TOFU)", async () => {

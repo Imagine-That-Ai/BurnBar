@@ -394,12 +394,23 @@ public enum CLIAgentSessionCodec {
                 field: sealedPayloadField
             )
             let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey, aadContext: aadContext)
-            let record = try JSONDecoder.openBurnBarCloudPayload.decode(CLIAgentSessionRecord.self, from: payload)
-            guard record.schemaVersion <= CLIAgentSessionRecord.currentSchemaVersion else { return nil }
-            return record.id.isEmpty ? nil : record
+            return decodePrivatePayload(payload)
         } catch {
             return nil
         }
+    }
+
+    public static func encodePrivatePayload(_ record: CLIAgentSessionRecord) throws -> Data {
+        try JSONEncoder.openBurnBarCloudPayload.encode(record)
+    }
+
+    public static func decodePrivatePayload(_ payload: Data) -> CLIAgentSessionRecord? {
+        guard let record = try? JSONDecoder.openBurnBarCloudPayload.decode(CLIAgentSessionRecord.self, from: payload),
+              record.schemaVersion <= CLIAgentSessionRecord.currentSchemaVersion,
+              !record.id.isEmpty else {
+            return nil
+        }
+        return record
     }
 
     /// Encode a `CLIAgentSessionRecord` to the dictionary form
@@ -455,7 +466,7 @@ public enum CLIAgentSessionCodec {
         uid: String,
         documentID: String
     ) throws -> [String: Any] {
-        let payload = try JSONEncoder.openBurnBarCloudPayload.encode(record)
+        let payload = try encodePrivatePayload(record)
         let aadContext = try CloudVaultAADContext(
             uid: uid,
             collection: "cli_sessions",

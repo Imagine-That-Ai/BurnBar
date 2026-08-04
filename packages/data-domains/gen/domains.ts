@@ -106,6 +106,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "title": "Conversations & Chat",
     "icon": "bubble.left.and.bubble.right.fill",
     "encryptionTier": "end_to_end",
+    "sealingScheme": "signal-hpke-identity-seal-v1",
     "summary": "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, rollback scope/diagnostics, approval rules, agent personas, subscription graph edges, and conversation recall metadata are sealed on-device before Firestore receives them.",
     "serverSees": [
       "provider/runtime identifiers",
@@ -144,7 +145,13 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "conversations",
       "chat_threads",
       "mobile_assistant_chats",
-      "cli_agent_mission_requests"
+      "cli_sessions",
+      "cli_agent_mission_requests",
+      "text_snippets",
+      "rollback_requests",
+      "approval_policies",
+      "agent_identities",
+      "subscription_topics"
     ],
     "storagePaths": [],
     "countSource": "chat_threads",

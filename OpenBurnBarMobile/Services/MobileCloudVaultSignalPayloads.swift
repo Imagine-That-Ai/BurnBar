@@ -1,3 +1,4 @@
+import FirebaseCore
 import FirebaseFirestore
 import FirebaseRemoteConfig
 import Foundation
@@ -6,6 +7,7 @@ import OpenBurnBarSignalCore
 
 enum MobileCloudVaultSignalPayloadError: LocalizedError {
     case signalIdentityUnavailable(domainID: String)
+    case signalEnvelopeRequired(domainID: String)
     case invalidSignalEnvelope
     case signalBindingMismatch
     case trustedDeviceMissingSignalIdentity(deviceId: String, keyVersion: Int)
@@ -15,6 +17,8 @@ enum MobileCloudVaultSignalPayloadError: LocalizedError {
         switch self {
         case .signalIdentityUnavailable(let domainID):
             return "Signal identity is unavailable for \(domainID)."
+        case .signalEnvelopeRequired(let domainID):
+            return "Signal envelope is required for \(domainID)."
         case .invalidSignalEnvelope:
             return "Signal envelope is invalid."
         case .signalBindingMismatch:
@@ -28,6 +32,12 @@ enum MobileCloudVaultSignalPayloadError: LocalizedError {
 }
 
 enum MobileCloudVaultSignalPayloads {
+    enum ActivationState: Equatable {
+        case off
+        case enabled
+        case required
+    }
+
     static func signalEnvelopeIfEnabled(
         domainID: String,
         uid: String,
@@ -38,9 +48,13 @@ enum MobileCloudVaultSignalPayloads {
         plaintext: Data,
         resolvedKey: MobileCloudVaultResolvedKey
     ) async throws -> [String: Any]? {
-        guard signalSealingIsEnabled(domainID: domainID) else { return nil }
+        let state = signalActivationState(domainID: domainID)
+        guard state != .off else { return nil }
         guard let signalIdentity = resolvedKey.signalIdentity else {
-            throw MobileCloudVaultSignalPayloadError.signalIdentityUnavailable(domainID: domainID)
+            if state == .required {
+                throw MobileCloudVaultSignalPayloadError.signalIdentityUnavailable(domainID: domainID)
+            }
+            return nil
         }
 
         let binding = CloudVaultSignalBinding(
@@ -107,16 +121,47 @@ enum MobileCloudVaultSignalPayloads {
     }
 
     static func signalSealingIsEnabled(domainID: String) -> Bool {
+        signalActivationState(domainID: domainID) != .off
+    }
+
+    static func signalSealingIsRequired(domainID: String) -> Bool {
+        signalActivationState(domainID: domainID) == .required
+    }
+
+    /// Required-mode producer guard. The activation state can change between
+    /// the caller's first read and the sealing helper's read (for example while
+    /// Remote Config is refreshing). A nil result must never turn that race into
+    /// a legacy write.
+    static func requireEnvelopeIfRequired(
+        payload: [String: Any],
+        state: ActivationState,
+        domainID: String
+    ) throws {
+        guard state != .required || payload["signalEnvelope"] != nil else {
+            throw MobileCloudVaultSignalPayloadError.signalEnvelopeRequired(domainID: domainID)
+        }
+    }
+
+    static func signalActivationState(domainID: String) -> ActivationState {
         guard DataDomains.domain(domainID)?.sealingScheme == CloudVaultCrypto.signalAtRestEncryption else {
-            return false
+            return .off
+        }
+        guard FirebaseApp.app() != nil else { return .off }
+        let remoteConfig = RemoteConfig.remoteConfig()
+        if remoteConfig.configValue(forKey: "signal_at_rest_v1_hard_kill").boolValue
+            || remoteConfig.configValue(forKey: "signal_at_rest_\(domainID)_hard_kill").boolValue {
+            return .off
         }
         // Kill switch: even when the registry scheme is set, at-rest sealing stays OFF until
         // the per-domain Remote Config flag is enabled — enabling staged % rollout and an
         // instant server-side revert without an app release. Defaults false (RC boolValue
         // default), so a deployed-but-unramped flip is inert.
-        return RemoteConfig.remoteConfig()
-            .configValue(forKey: "signal_at_rest_\(domainID)_enabled")
-            .boolValue
+        guard remoteConfig.configValue(forKey: "signal_at_rest_\(domainID)_enabled").boolValue else {
+            return .off
+        }
+        return remoteConfig.configValue(forKey: "signal_at_rest_\(domainID)_required").boolValue
+            ? .required
+            : .enabled
     }
 
     /// Best-effort PINNED trusted-sender public keys for READ-time sender-auth verification:

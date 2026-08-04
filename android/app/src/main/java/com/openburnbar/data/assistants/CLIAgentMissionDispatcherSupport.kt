@@ -40,6 +40,30 @@ internal data class FanOutChildWriteRequest(
     val signalRecipients: List<CloudVaultSignalRecipient> = emptyList(),
 )
 
+internal data class SignalMissionWrite(
+    val missionID: String,
+    val payload: Map<String, Any>,
+)
+
+/**
+ * The Signal callable owns the mission document write when at-rest Signal is
+ * active. Removing the legacy AES siblings is deliberate: it keeps required
+ * mode valid and prevents a direct Firestore batch from creating an unsealed
+ * child before the callable has authenticated and validated the envelope.
+ */
+internal fun signalCallablePayload(payload: Map<String, Any>): Map<String, Any>? {
+    if (payload["signalEnvelope"] == null) return null
+    return payload.toMutableMap().apply {
+        remove("contentSealed")
+        remove("sealedSchemaVersion")
+        remove("vaultKeyID")
+        remove("sealedPayload")
+        // FieldValue.serverTimestamp() cannot cross the callable JSON boundary;
+        // the callable stamps updatedAt authoritatively on the server.
+        remove("updatedAt")
+    }
+}
+
 internal fun planFanOutDispatch(title: String, prompt: String, runtimeTokens: List<String>): FanOutDispatchPlan {
     val trimmedPrompt = prompt.trim()
     val trimmedTitle = title.trim().ifBlank { "Fan-out mission" }
@@ -89,7 +113,8 @@ internal fun fanOutGroupPayload(
     )
 }
 
-internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest) {
+internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest): List<SignalMissionWrite> {
+    val signalWrites = mutableListOf<SignalMissionWrite>()
     request.runtimeTokens.forEachIndexed { index, runtimeToken ->
         val missionID = request.plan.childMissionIDs[index]
         val payloadInput =
@@ -133,7 +158,15 @@ internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest) {
         val requestRef =
             request.firestore.collection("users").document(request.uid)
                 .collection("cli_agent_mission_requests").document(missionID)
-        request.batch.set(requestRef, childPayload.toMap())
+        val signalPayload = signalCallablePayload(childPayload)
+        if (request.signalIdentity != null && signalPayload == null) {
+            throw DispatchException("Signal at-rest activation produced no mission envelope for $missionID.")
+        }
+        if (signalPayload != null) {
+            signalWrites += SignalMissionWrite(missionID = missionID, payload = signalPayload)
+        } else {
+            request.batch.set(requestRef, childPayload.toMap())
+        }
         request.batch.set(
             requestRef.collection("events").document("000001"),
             CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
@@ -143,4 +176,5 @@ internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest) {
             ),
         )
     }
+    return signalWrites
 }

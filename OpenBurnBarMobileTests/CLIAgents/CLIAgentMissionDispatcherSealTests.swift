@@ -12,6 +12,38 @@ import OpenBurnBarSignalCore
 @MainActor
 final class CLIAgentMissionDispatcherSealTests: XCTestCase {
 
+    func test_requiredSignalProducerRejectsMissingEnvelope() {
+        XCTAssertThrowsError(
+            try MobileCloudVaultSignalPayloads.requireEnvelopeIfRequired(
+                payload: ["sealedPayload": "legacy"],
+                state: .required,
+                domainID: "conversations_chat"
+            )
+        ) { error in
+            guard case MobileCloudVaultSignalPayloadError.signalEnvelopeRequired(let domainID) = error else {
+                return XCTFail("Expected signalEnvelopeRequired, got \(error)")
+            }
+            XCTAssertEqual(domainID, "conversations_chat")
+        }
+    }
+
+    func test_requiredSignalProducerAcceptsSignalEnvelopeAndOptionalModeAllowsLegacy() throws {
+        XCTAssertNoThrow(
+            try MobileCloudVaultSignalPayloads.requireEnvelopeIfRequired(
+                payload: ["signalEnvelope": ["relayKeyVersion": 4]],
+                state: .required,
+                domainID: "conversations_chat"
+            )
+        )
+        XCTAssertNoThrow(
+            try MobileCloudVaultSignalPayloads.requireEnvelopeIfRequired(
+                payload: ["sealedPayload": "legacy"],
+                state: .enabled,
+                domainID: "conversations_chat"
+            )
+        )
+    }
+
     func test_wandSelectionCanonicalizesExactRuntimeSetWithoutFallback() {
         XCTAssertEqual(
             FanOutComposerSheet.canonicalRuntimeTokens(["codex", "claude"]),
