@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim@sha256:53ada149d435c38b14476cb57e4a7da73c15595aba79bd6971b547ceb6d018bf AS build
+FROM node:26-bookworm-slim@sha256:9e6f9357d371591e32ab6f2d8a26d63bdd0d17c29eee3f4f3e7e454d9634bf73 AS build
 WORKDIR /repo
 
 # Build from the repository root context. hosted-mcp depends on local
@@ -17,7 +17,7 @@ COPY services/hosted-mcp/src services/hosted-mcp/src
 RUN npm ci --prefix services/hosted-mcp
 RUN npm --prefix services/hosted-mcp run build
 
-FROM node:22-bookworm-slim@sha256:53ada149d435c38b14476cb57e4a7da73c15595aba79bd6971b547ceb6d018bf
+FROM node:26-bookworm-slim@sha256:9e6f9357d371591e32ab6f2d8a26d63bdd0d17c29eee3f4f3e7e454d9634bf73
 ENV NODE_ENV=production
 WORKDIR /repo
 
