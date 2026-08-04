@@ -1,11 +1,30 @@
+export type PetAtlasState = {
+  row: number;
+  frames: number;
+  fps: number;
+  loop: boolean;
+  hero: boolean;
+};
+
+export type PetAtlasDefinition = {
+  image: string;
+  grid: { cols: number; rows: number };
+  cell: { w: number; h: number };
+  anchor: { x: number; y: number };
+  defaultState: string;
+  states: Record<string, PetAtlasState>;
+};
+
 export type LinuxPetCatalogEntry = {
   id: string;
   displayName: string;
   group: string;
   description: string;
-  glb: string;
-  modelKind: string;
+  defaultForm: 'model3d' | 'atlas2d';
+  glb?: string;
+  modelKind?: string;
   clipNames: string[];
+  atlas?: PetAtlasDefinition;
 };
 
 export type LinuxPetCatalogDocument = {
@@ -21,6 +40,7 @@ export const DEFAULT_PET_GLB = 'kawaii-aurora-fox-actions.glb';
 
 const SAFE_ID = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
 const SAFE_GLB = /^[A-Za-z0-9][A-Za-z0-9._-]*\.glb$/u;
+const SAFE_ATLAS_IMAGE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\/[A-Za-z0-9][A-Za-z0-9._-]*\.(?:webp|png)$/iu;
 export const PET_GROUP_ORDER = ['Family', 'Founders', 'Legends', 'Modern Icons', 'Kawaii Animals', 'Meshy'];
 
 function requiredString(value: unknown, label: string): string {
@@ -44,9 +64,91 @@ export function parsePetCatalog(raw: unknown): LinuxPetCatalogDocument {
     }
     const pet = rawPet as Record<string, unknown>;
     const id = requiredString(pet.id, `entry ${index} id`);
-    const glb = requiredString(pet.glb, `${id} GLB`);
     if (!SAFE_ID.test(id) || seen.has(id)) throw new Error(`Pet catalog id is unsafe or duplicated: ${id}`);
-    if (!SAFE_GLB.test(glb)) throw new Error(`${id} GLB name is unsafe.`);
+    const defaultForm = pet.defaultForm;
+    if (defaultForm !== 'model3d' && defaultForm !== 'atlas2d') {
+      throw new Error(`${id} default form is unsupported.`);
+    }
+    const glb = typeof pet.glb === 'string' && pet.glb.length > 0 ? pet.glb : undefined;
+    if (glb && !SAFE_GLB.test(glb)) throw new Error(`${id} GLB name is unsafe.`);
+    const rawAtlas = pet.atlas;
+    let atlas: PetAtlasDefinition | undefined;
+    if (rawAtlas !== undefined) {
+      if (!rawAtlas || typeof rawAtlas !== 'object' || Array.isArray(rawAtlas)) {
+        throw new Error(`${id} atlas definition is invalid.`);
+      }
+      const atlasValue = rawAtlas as Record<string, unknown>;
+      const image = requiredString(atlasValue.image, `${id} atlas image`);
+      const grid = atlasValue.grid as Record<string, unknown> | undefined;
+      const cell = atlasValue.cell as Record<string, unknown> | undefined;
+      const anchor = atlasValue.anchor as Record<string, unknown> | undefined;
+      const statesValue = atlasValue.states;
+      if (
+        !SAFE_ATLAS_IMAGE.test(image) ||
+        image.split('/')[0] !== id ||
+        !grid ||
+        !cell ||
+        !anchor ||
+        typeof grid.cols !== 'number' ||
+        typeof grid.rows !== 'number' ||
+        !Number.isInteger(grid.cols) ||
+        !Number.isInteger(grid.rows) ||
+        grid.cols < 1 ||
+        grid.rows < 1 ||
+        typeof cell.w !== 'number' ||
+        typeof cell.h !== 'number' ||
+        cell.w <= 0 ||
+        cell.h <= 0 ||
+        typeof anchor.x !== 'number' ||
+        typeof anchor.y !== 'number' ||
+        anchor.x <= 0 ||
+        anchor.y <= 0 ||
+        !statesValue ||
+        typeof statesValue !== 'object' ||
+        Array.isArray(statesValue)
+      ) {
+        throw new Error(`${id} atlas geometry is invalid.`);
+      }
+      const states = Object.fromEntries(
+        Object.entries(statesValue as Record<string, unknown>).map(([name, rawState]) => {
+          if (!rawState || typeof rawState !== 'object' || Array.isArray(rawState)) {
+            throw new Error(`${id} atlas state ${name} is invalid.`);
+          }
+          const state = rawState as Record<string, unknown>;
+          if (
+            !Number.isInteger(state.row) ||
+            !Number.isInteger(state.frames) ||
+            !Number.isInteger(state.fps) ||
+            Number(state.row) < 0 ||
+            Number(state.row) >= Number(grid.rows) ||
+            Number(state.frames) < 1 ||
+            Number(state.frames) > Number(grid.cols) ||
+            Number(state.fps) < 1
+          ) {
+            throw new Error(`${id} atlas state ${name} has invalid timing.`);
+          }
+          return [name, {
+            row: Number(state.row),
+            frames: Number(state.frames),
+            fps: Number(state.fps),
+            loop: state.loop !== false,
+            hero: state.hero === true
+          } satisfies PetAtlasState];
+        })
+      ) as Record<string, PetAtlasState>;
+      if (!states.idle) throw new Error(`${id} atlas is missing idle state.`);
+      const defaultState = requiredString(atlasValue.defaultState, `${id} atlas default state`);
+      if (!states[defaultState]) throw new Error(`${id} atlas default state is missing.`);
+      atlas = {
+        image,
+        grid: { cols: Number(grid.cols), rows: Number(grid.rows) },
+        cell: { w: Number(cell.w), h: Number(cell.h) },
+        anchor: { x: Number(anchor.x), y: Number(anchor.y) },
+        defaultState,
+        states
+      };
+    }
+    if (!glb && !atlas) throw new Error(`${id} has no supported form.`);
     seen.add(id);
     const clipNames = Array.isArray(pet.clipNames)
       ? pet.clipNames.filter((clip): clip is string => typeof clip === 'string' && clip.length > 0)
@@ -56,9 +158,11 @@ export function parsePetCatalog(raw: unknown): LinuxPetCatalogDocument {
       displayName: requiredString(pet.displayName, `${id} display name`),
       group: requiredString(pet.group, `${id} group`),
       description: typeof pet.description === 'string' ? pet.description : '',
-      glb,
-      modelKind: typeof pet.modelKind === 'string' && pet.modelKind.trim() ? pet.modelKind : 'rigged',
-      clipNames
+      defaultForm,
+      ...(glb ? { glb } : {}),
+      ...(typeof pet.modelKind === 'string' && pet.modelKind.trim() ? { modelKind: pet.modelKind } : {}),
+      clipNames,
+      ...(atlas ? { atlas } : {})
     } satisfies LinuxPetCatalogEntry;
   });
 

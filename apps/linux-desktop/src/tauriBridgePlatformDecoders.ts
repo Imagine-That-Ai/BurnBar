@@ -21,6 +21,7 @@ import type {
   LinuxLaunchAtLoginStatus,
   PetCompanionStatus,
   PetAssetResponse,
+  PetAtlasResponse,
   MercuryDevicePlatform,
   MercurySessionKind,
   MercurySessionState,
@@ -672,6 +673,27 @@ export function decodePetAssetResponse(raw: RawJsonValue): PetAssetResponse {
     throw new Error('pet asset bytes are outside the safety bound');
   }
   return { schemaVersion, glbName, byteLength, sha256, dataBase64 };
+}
+
+export function decodePetAtlasResponse(raw: RawJsonValue): PetAtlasResponse {
+  const value = requireObject(raw, 'pet atlas response');
+  const schemaVersion = Math.trunc(num(pick(value, 'schemaVersion', 'schema_version'), 0));
+  if (schemaVersion !== 1) throw new Error(`pet atlas schema is unsupported: ${schemaVersion}`);
+  const petId = requireString(pick(value, 'petId', 'pet_id'), 'pet atlas pet id');
+  const imageName = requireString(pick(value, 'imageName', 'image_name'), 'pet atlas image name');
+  const mimeType = requireString(pick(value, 'mimeType', 'mime_type'), 'pet atlas mime type');
+  if (mimeType !== 'image/webp' && mimeType !== 'image/png') throw new Error('pet atlas mime type is invalid');
+  const byteLength = Math.trunc(num(pick(value, 'byteLength', 'byte_length'), -1));
+  if (byteLength < 0 || byteLength > 8 * 1024 * 1024) {
+    throw new Error('pet atlas byte length is outside the safety bound');
+  }
+  const sha256 = requireString(pick(value, 'sha256'), 'pet atlas digest');
+  if (!/^[0-9a-f]{64}$/u.test(sha256)) throw new Error('pet atlas digest is invalid');
+  const dataBase64 = requireString(pick(value, 'dataBase64', 'data_base64'), 'pet atlas bytes');
+  if (!dataBase64 || dataBase64.length > 12 * 1024 * 1024) {
+    throw new Error('pet atlas bytes are outside the safety bound');
+  }
+  return { schemaVersion, petId, imageName, mimeType, byteLength, sha256, dataBase64 };
 }
 
 export function normalizeMercuryPlatform(raw: string): MercuryDevicePlatform {

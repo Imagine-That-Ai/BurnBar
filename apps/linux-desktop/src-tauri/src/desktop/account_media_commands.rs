@@ -651,6 +651,7 @@ fn pet_companion_status() -> PetCompanionStatus {
 // the same source assets in the Tauri resource directory and reads only the
 // selected GLB over IPC, avoiding a second 305 MB copy in the web bundle.
 const PET_ASSET_MAX_BYTES: u64 = 16 * 1024 * 1024;
+const PET_ATLAS_MAX_BYTES: u64 = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -662,17 +663,42 @@ struct PetAssetResponse {
     data_base64: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PetAtlasResponse {
+    schema_version: u32,
+    pet_id: String,
+    image_name: String,
+    mime_type: String,
+    byte_length: usize,
+    sha256: String,
+    data_base64: String,
+}
+
+fn pet_component_is_safe(value: &str) -> bool {
+    !value.is_empty()
+        && Path::new(value).components().count() == 1
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-'))
+}
+
+fn pet_id_is_safe(pet_id: &str) -> bool {
+    pet_component_is_safe(pet_id)
+        && pet_id.chars().next().is_some_and(|character| character.is_ascii_lowercase())
+}
+
 fn pet_asset_name_is_safe(glb_name: &str) -> bool {
-    let path = Path::new(glb_name);
-    if path.extension().and_then(|extension| extension.to_str()) != Some("glb") {
-        return false;
-    }
-    if path.components().count() != 1 {
-        return false;
-    }
-    glb_name
-        .chars()
-        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-'))
+    pet_component_is_safe(glb_name)
+        && Path::new(glb_name).extension().and_then(|extension| extension.to_str()) == Some("glb")
+}
+
+fn pet_atlas_image_name_is_safe(image_name: &str) -> bool {
+    pet_component_is_safe(image_name)
+        && matches!(
+            Path::new(image_name).extension().and_then(|extension| extension.to_str()),
+            Some("webp") | Some("png")
+        )
 }
 
 fn pet_models_root(app: &AppHandle) -> Result<PathBuf, String> {
@@ -714,6 +740,55 @@ fn pet_asset_path(root: &Path, glb_name: &str) -> Result<PathBuf, String> {
     Ok(canonical_candidate)
 }
 
+fn pet_atlas_root(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let packaged = resource_dir.join("pet-atlas");
+        if packaged.is_dir() {
+            return Ok(packaged);
+        }
+    }
+    let source_tree = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../AgentLens/PetCompanion/Resources/Pets");
+    if source_tree.is_dir() {
+        return Ok(source_tree);
+    }
+    Err("The packaged PetCompanion atlas resources are unavailable.".to_string())
+}
+
+fn pet_atlas_path(root: &Path, pet_id: &str, image_name: &str) -> Result<PathBuf, String> {
+    if !pet_id_is_safe(pet_id) || !pet_atlas_image_name_is_safe(image_name) {
+        return Err("Pet atlas resource name is invalid.".to_string());
+    }
+    let canonical_root = root
+        .canonicalize()
+        .map_err(|error| format!("Pet atlas resource root is unavailable: {error}"))?;
+    let pet_directory = root.join(pet_id);
+    let pet_metadata = fs::symlink_metadata(&pet_directory)
+        .map_err(|_| "The requested pet atlas is not bundled.".to_string())?;
+    if pet_metadata.file_type().is_symlink() || !pet_metadata.is_dir() {
+        return Err("The requested pet atlas is not a regular bundled directory.".to_string());
+    }
+    let canonical_pet_directory = pet_directory
+        .canonicalize()
+        .map_err(|error| format!("The requested pet atlas cannot be resolved: {error}"))?;
+    if canonical_pet_directory.parent() != Some(canonical_root.as_path()) {
+        return Err("The requested pet atlas is outside the bundled resource directory.".to_string());
+    }
+    let candidate = pet_directory.join(image_name);
+    let metadata = fs::symlink_metadata(&candidate)
+        .map_err(|_| "The requested pet atlas image is not bundled.".to_string())?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("The requested pet atlas image is not a regular bundled file.".to_string());
+    }
+    let canonical_candidate = candidate
+        .canonicalize()
+        .map_err(|error| format!("The requested pet atlas image cannot be resolved: {error}"))?;
+    if canonical_candidate.parent() != Some(canonical_pet_directory.as_path()) {
+        return Err("The requested pet atlas image is outside its pet directory.".to_string());
+    }
+    Ok(canonical_candidate)
+}
+
 #[tauri::command]
 fn pet_asset_read(app: AppHandle, glb_name: String) -> Result<PetAssetResponse, String> {
     let root = pet_models_root(&app)?;
@@ -730,6 +805,39 @@ fn pet_asset_read(app: AppHandle, glb_name: String) -> Result<PetAssetResponse, 
     Ok(PetAssetResponse {
         schema_version: 1,
         glb_name,
+        byte_length: bytes.len(),
+        sha256: format!("{digest:x}"),
+        data_base64: BASE64_STANDARD.encode(bytes),
+    })
+}
+
+#[tauri::command]
+fn pet_atlas_read(
+    app: AppHandle,
+    pet_id: String,
+    image_name: String,
+) -> Result<PetAtlasResponse, String> {
+    let root = pet_atlas_root(&app)?;
+    let path = pet_atlas_path(&root, &pet_id, &image_name)?;
+    let metadata = fs::metadata(&path).map_err(|error| error.to_string())?;
+    if metadata.len() > PET_ATLAS_MAX_BYTES {
+        return Err(format!(
+            "Pet atlas image exceeds the {} MiB safety limit.",
+            PET_ATLAS_MAX_BYTES / (1024 * 1024)
+        ));
+    }
+    let bytes = fs::read(&path).map_err(|error| format!("Pet atlas image read failed: {error}"))?;
+    let digest = Sha256::digest(&bytes);
+    let mime_type = match Path::new(&image_name).extension().and_then(|extension| extension.to_str()) {
+        Some("png") => "image/png",
+        Some("webp") => "image/webp",
+        _ => return Err("Pet atlas image type is unsupported.".to_string()),
+    };
+    Ok(PetAtlasResponse {
+        schema_version: 1,
+        pet_id,
+        image_name,
+        mime_type: mime_type.to_string(),
         byte_length: bytes.len(),
         sha256: format!("{digest:x}"),
         data_base64: BASE64_STANDARD.encode(bytes),
