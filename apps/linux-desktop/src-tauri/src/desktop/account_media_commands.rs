@@ -645,6 +645,97 @@ fn pet_companion_status() -> PetCompanionStatus {
     )
 }
 
+// ───────────────── P30: packaged pet model resources ─────────────────
+//
+// The macOS app enumerates the bundled PetCompanion model catalog. Linux keeps
+// the same source assets in the Tauri resource directory and reads only the
+// selected GLB over IPC, avoiding a second 305 MB copy in the web bundle.
+const PET_ASSET_MAX_BYTES: u64 = 16 * 1024 * 1024;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PetAssetResponse {
+    schema_version: u32,
+    glb_name: String,
+    byte_length: usize,
+    sha256: String,
+    data_base64: String,
+}
+
+fn pet_asset_name_is_safe(glb_name: &str) -> bool {
+    let path = Path::new(glb_name);
+    if path.extension().and_then(|extension| extension.to_str()) != Some("glb") {
+        return false;
+    }
+    if path.components().count() != 1 {
+        return false;
+    }
+    glb_name
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-'))
+}
+
+fn pet_models_root(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let packaged = resource_dir.join("pet-models");
+        if packaged.is_dir() {
+            return Ok(packaged);
+        }
+    }
+
+    let source_tree = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../AgentLens/PetCompanion/Resources/Models");
+    if source_tree.is_dir() {
+        return Ok(source_tree);
+    }
+
+    Err("The packaged PetCompanion model resources are unavailable.".to_string())
+}
+
+fn pet_asset_path(root: &Path, glb_name: &str) -> Result<PathBuf, String> {
+    if !pet_asset_name_is_safe(glb_name) {
+        return Err("Pet asset name is invalid.".to_string());
+    }
+    let canonical_root = root
+        .canonicalize()
+        .map_err(|error| format!("Pet model resource root is unavailable: {error}"))?;
+    let candidate = root.join(glb_name);
+    let metadata = fs::symlink_metadata(&candidate)
+        .map_err(|_| "The requested pet asset is not bundled.".to_string())?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("The requested pet asset is not a regular bundled file.".to_string());
+    }
+    let canonical_candidate = candidate
+        .canonicalize()
+        .map_err(|error| format!("The requested pet asset cannot be resolved: {error}"))?;
+    if canonical_candidate.parent() != Some(canonical_root.as_path()) {
+        return Err("The requested pet asset is outside the bundled model directory.".to_string());
+    }
+    Ok(canonical_candidate)
+}
+
+#[tauri::command]
+fn pet_asset_read(app: AppHandle, glb_name: String) -> Result<PetAssetResponse, String> {
+    let root = pet_models_root(&app)?;
+    let path = pet_asset_path(&root, &glb_name)?;
+    let metadata = fs::metadata(&path).map_err(|error| error.to_string())?;
+    if metadata.len() > PET_ASSET_MAX_BYTES {
+        return Err(format!(
+            "Pet asset exceeds the {} MiB safety limit.",
+            PET_ASSET_MAX_BYTES / (1024 * 1024)
+        ));
+    }
+    let bytes = fs::read(&path).map_err(|error| format!("Pet asset read failed: {error}"))?;
+    let digest = Sha256::digest(&bytes);
+    Ok(PetAssetResponse {
+        schema_version: 1,
+        glb_name,
+        byte_length: bytes.len(),
+        sha256: format!("{digest:x}"),
+        data_base64: BASE64_STANDARD.encode(bytes),
+    })
+}
+
 // ───────────────── P12: Mercury media ─────────────────
 #[tauri::command]
 fn media_status() -> Result<serde_json::Value, String> {

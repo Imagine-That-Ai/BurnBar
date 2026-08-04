@@ -40,6 +40,21 @@ known platform divergences.
 > are not complete. These are separate numbers: source progress is real, but
 > it is not release certification.
 >
+> **Continuation update (2026-08-04, Linux pet parity):** the isolated branch
+> `codex/linux-pet-catalog-20260804` adds the next coherent P-30 unit. A
+> deterministic generator derives `apps/linux-desktop/public/pets/catalog.json`
+> from the 110 committed macOS `Resources/Models/*/petdef.json` definitions;
+> the Linux route adds searchable/grouped selection with persisted avatar state;
+> and the Tauri shell packages the existing model directory under `pet-models`
+> and exposes a bounded, allowlisted `pet_asset_read` command. This keeps the
+> web bundle small while making the selected 3D asset identical to the macOS
+> source asset. Verification is green: frontend **113 files / 1,049 tests**,
+> TypeScript, ESLint, production bundle verification, catalog generator test,
+> no-suppression gate, and Tauri Rust **163/163**. This is source-level proof;
+> the 2D atlas/form pipeline, thumbnail rendering, persona/local-floor behavior,
+> compositor receipts, signed candidate, and seven-environment certification
+> remain release gates.
+>
 > **Implementation continuation (2026-07-21):** `dd78a83bef` and `9d6363fbd9`
 > expand Linux local usage ingestion from the Copilot-only default to all 18
 > currently implemented core parser identities with XDG-native editor paths.

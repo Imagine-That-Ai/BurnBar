@@ -1101,6 +1101,26 @@
     }
 
     #[test]
+    fn pet_asset_reader_accepts_only_root_level_glbs() {
+        assert!(pet_asset_name_is_safe("kawaii-aurora-fox-actions.glb"));
+        assert!(!pet_asset_name_is_safe("../secret.glb"));
+        assert!(!pet_asset_name_is_safe("nested/pet.glb"));
+        assert!(!pet_asset_name_is_safe("pet.gltf"));
+        assert!(!pet_asset_name_is_safe("pet.glb/extra"));
+    }
+
+    #[test]
+    fn pet_asset_path_rejects_symlinks_and_out_of_root_paths() {
+        let root = std::env::temp_dir().join(format!("openburnbar-pet-root-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let asset = root.join("pet.glb");
+        fs::write(&asset, b"glTF").unwrap();
+        assert_eq!(pet_asset_path(&root, "pet.glb").unwrap(), asset.canonicalize().unwrap());
+        assert!(pet_asset_path(&root, "../pet.glb").is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn computer_use_approval_release_wire_requires_signed_phone_authority() {
         let result = computer_use_approval_respond_wire(
             ComputerUseApprovalRespondParams {
