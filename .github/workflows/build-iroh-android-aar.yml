@@ -53,7 +53,7 @@ jobs:
       - name: Install rust toolchain
         # Keep in sync with crates/openburnbar-iroh/rust-toolchain.toml and the
         # iroh xcframework lane so both platforms build on the same rustc.
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1, pinned via toolchain below
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # v1, pinned via toolchain below
         with:
           toolchain: "1.96.0"
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android

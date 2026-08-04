@@ -141,7 +141,7 @@ jobs:
             10.0.x
 
       - name: Install Rust toolchain for shared domain core
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # v1
         with:
           toolchain: "1.96.0"
 
@@ -422,7 +422,7 @@ jobs:
             10.0.x
 
       - name: Install Rust toolchain for shared domain core
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # v1
         with:
           toolchain: "1.96.0"
 
