@@ -220,7 +220,7 @@ function renderPointCloud(canvas: HTMLCanvasElement, points: GltfPoint[], reduce
   };
 }
 
-export async function mountPetGltfRuntime(host: HTMLElement, assetUrl: string): Promise<ParsedGlb> {
+export async function mountPetGltfRuntime(host: HTMLElement, asset: string | ArrayBuffer): Promise<ParsedGlb> {
   activePetRuntimeStop?.();
   activePetRuntimeStop = null;
   host.replaceChildren();
@@ -231,9 +231,15 @@ export async function mountPetGltfRuntime(host: HTMLElement, assetUrl: string): 
   caption.className = 'muted pet-runtime-caption';
   host.append(canvas, caption);
 
-  const response = await fetch(assetUrl);
-  if (!response.ok) throw new Error(`Unable to load pet asset: ${response.status}`);
-  const parsed = parseGlb(await response.arrayBuffer());
+  const buffer =
+    typeof asset === 'string'
+      ? await (async () => {
+          const response = await fetch(asset);
+          if (!response.ok) throw new Error(`Unable to load pet asset: ${response.status}`);
+          return response.arrayBuffer();
+        })()
+      : asset;
+  const parsed = parseGlb(buffer);
   const points = parsed.points.length ? parsed.points : fallbackPoints();
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   activePetRuntimeStop = renderPointCloud(canvas, points, reducedMotion);

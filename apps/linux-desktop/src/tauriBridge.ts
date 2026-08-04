@@ -108,6 +108,7 @@ import {
   decodeDesktopWallpaperStatus,
   decodeLaunchAtLoginStatus,
   decodePetCompanionStatus,
+  decodePetAssetResponse,
   isCapabilityAbsentError,
   mapMercuryMediaStatus,
   mapMercurySessionState,
@@ -153,6 +154,7 @@ export {
   decodeNativeShortcutStatus,
   decodeDesktopWallpaperStatus,
   decodePetCompanionStatus,
+  decodePetAssetResponse,
   defaultNotificationConfig
 } from './tauriBridgePlatformDecoders.js';
 
@@ -432,6 +434,8 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       decodeLaunchAtLoginStatus(await invoke<RawJsonValue>('launch_at_login_set', { enabled })),
     petCompanionStatus: async () =>
       decodePetCompanionStatus(await invoke<RawJsonValue>('pet_companion_status')),
+    petAssetRead: async (glbName) =>
+      decodePetAssetResponse(await invoke<RawJsonValue>('pet_asset_read', { glbName })),
     // P29 — authenticated daemon-owned encrypted text-expansion storage.
     textExpansionList: async () => {
       const raw = await invoke<RawJsonValue>('text_expansion_list');

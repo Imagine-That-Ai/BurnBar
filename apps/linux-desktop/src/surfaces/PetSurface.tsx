@@ -17,6 +17,17 @@ import {
 } from '../petCompanion.js';
 import { mountPetGltfRuntime, stopPetGltfRuntime } from '../petGltfRuntime.js';
 import {
+  DEFAULT_PET_GLB,
+  filterPetCatalog,
+  loadPetCatalog,
+  persistSelectedPetID,
+  petGroupNames,
+  readSelectedPetID,
+  resolveSelectedPet,
+  type LinuxPetCatalogEntry
+} from '../petCatalog.js';
+import { readPetAsset } from '../petAssets.js';
+import {
   closePetCompanionWindow,
   openPetCompanionWindow,
   setPetCompanionClickThrough,
@@ -29,8 +40,6 @@ import { BehaviorGraphView } from './pet/BehaviorGraphView.js';
 import { PetChatBubble } from './pet/PetChatBubble.js';
 import { TierMatrixTable } from './pet/TierMatrixTable.js';
 import './pet/pet.css';
-
-const PET_ASSET_URL = '/pets/kawaii-aurora-fox-actions.glb';
 
 type ContainedPetOffset = {
   x: number;
@@ -83,8 +92,18 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
   const [petChatOpen, setPetChatOpen] = useState(false);
   const [petDroppedFile, setPetDroppedFile] = useState<File | null>(null);
   const [petDropActive, setPetDropActive] = useState(false);
+  const [petCatalog, setPetCatalog] = useState<LinuxPetCatalogEntry[]>([]);
+  const [petCatalogState, setPetCatalogState] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const [petCatalogError, setPetCatalogError] = useState<string | null>(null);
+  const [selectedPetID, setSelectedPetID] = useState(() => readSelectedPetID());
+  const [petPickerOpen, setPetPickerOpen] = useState(false);
+  const [petSearch, setPetSearch] = useState('');
+  const [petGroup, setPetGroup] = useState<string | null>(null);
   const graph = buildPetBehaviorGraph(capability.tier);
   const containedFallback = !capability.actions.overlay.supported;
+  const selectedPet = petCatalog.length ? resolveSelectedPet(petCatalog, selectedPetID) : null;
+  const pickerPets = filterPetCatalog(petCatalog, petSearch, petGroup);
+  const pickerGroups = petGroupNames(petCatalog);
 
   useEffect(() => {
     setCapability(probePetCapability(runtimeCapabilities, petNativeContractFromStatus(nativeStatus)));
@@ -109,12 +128,38 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
   }, [bridge]);
 
   useEffect(() => {
+    let cancelled = false;
+    setPetCatalogState('loading');
+    setPetCatalogError(null);
+    void loadPetCatalog()
+      .then((document) => {
+        if (cancelled) return;
+        setPetCatalog(document.pets);
+        const resolved = resolveSelectedPet(document.pets, readSelectedPetID());
+        setSelectedPetID(resolved.id);
+        persistSelectedPetID(resolved.id);
+        setPetCatalogState('loaded');
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setPetCatalogState('error');
+        setPetCatalogError(error instanceof Error ? error.message : 'Pet catalog failed to load.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     const host = runtimeHostRef.current;
     if (!host) return;
+    if (petCatalogState === 'loading') return;
     let cancelled = false;
     setRuntimeState('loading');
     setRuntimeError(null);
-    void mountPetGltfRuntime(host, PET_ASSET_URL)
+    const glbName = selectedPet?.glb ?? DEFAULT_PET_GLB;
+    void readPetAsset(bridge, glbName)
+      .then((buffer) => mountPetGltfRuntime(host, buffer))
       .then(() => {
         if (cancelled) return;
         setRuntimeState('loaded');
@@ -128,6 +173,15 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
       cancelled = true;
       stopPetGltfRuntime();
     };
+  }, [bridge, petCatalogState, selectedPet?.glb]);
+
+  const choosePet = useCallback((pet: LinuxPetCatalogEntry) => {
+    setSelectedPetID(pet.id);
+    persistSelectedPetID(pet.id);
+    setPetPickerOpen(false);
+    setPetSearch('');
+    setPetGroup(null);
+    setContainedActionStatus(`${pet.displayName} is now your Linux companion.`);
   }, []);
 
   const moveContainedPet = useCallback((offset: ContainedPetOffset, source: 'keyboard' | 'pointer') => {
@@ -370,7 +424,7 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
         ref={stageRef}
         className={stageClasses}
         role="img"
-        aria-label={`Pet companion contained preview${containedPetSelected ? ', selected' : ''}`}
+        aria-label={`Pet companion contained preview${selectedPet ? `: ${selectedPet.displayName}` : ''}${containedPetSelected ? ', selected' : ''}`}
         aria-describedby={containedFallback ? 'pet-contained-move-help' : undefined}
         aria-keyshortcuts={containedFallback ? 'ArrowLeft ArrowRight ArrowUp ArrowDown Home' : undefined}
         tabIndex={containedFallback ? 0 : -1}
@@ -386,6 +440,7 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
         data-capability-state={capability.state}
         data-input-passthrough={companionWindow?.clickThrough ? 'true' : 'false'}
         data-pet-runtime={runtimeState}
+        data-pet-id={selectedPet?.id ?? 'catalog-loading'}
         data-pet-summoned={containedPetSummoned ? 'true' : 'false'}
         data-pet-selected={containedPetSelected ? 'true' : 'false'}
         data-contained-fallback={containedFallback ? 'true' : 'false'}
@@ -422,6 +477,14 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
           <button
             type="button"
             className="pet-action-button"
+            aria-expanded={petPickerOpen}
+            onClick={() => setPetPickerOpen((open) => !open)}
+          >
+            {petPickerOpen ? 'Close pet library' : 'Choose pet'}
+          </button>
+          <button
+            type="button"
+            className="pet-action-button"
             aria-expanded={petChatOpen}
             onClick={() => setPetChatOpen((open) => !open)}
           >
@@ -435,6 +498,14 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
         <div className="pet-actions">
           <button type="button" className="pet-wave-button" onClick={waveAtPet}>
             Wave at preview
+          </button>
+          <button
+            type="button"
+            className="pet-action-button"
+            aria-expanded={petPickerOpen}
+            onClick={() => setPetPickerOpen((open) => !open)}
+          >
+            {petPickerOpen ? 'Close pet library' : 'Choose pet'}
           </button>
           <button
             type="button"
@@ -483,6 +554,89 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
           ) : null}
         </div>
       )}
+      {petPickerOpen ? (
+        <section className="pet-picker" aria-label="Pet library">
+          <div className="pet-picker-header">
+            <div>
+              <h2>Pet library</h2>
+              <p className="muted">
+                {selectedPet ? `Selected: ${selectedPet.displayName}` : 'Choose a bundled companion'}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="pet-picker-close"
+              onClick={() => setPetPickerOpen(false)}
+              aria-label="Close pet library"
+            >
+              ×
+            </button>
+          </div>
+          <label className="pet-picker-search">
+            <span>Search pets</span>
+            <input
+              type="search"
+              value={petSearch}
+              onChange={(event) => setPetSearch(event.target.value)}
+              placeholder="Search by name or group"
+            />
+          </label>
+          {petCatalogState === 'loading' ? <p role="status">Loading bundled pets…</p> : null}
+          {petCatalogState === 'error' ? (
+            <p className="pet-picker-error" role="alert">
+              {petCatalogError ?? 'The bundled pet catalog is unavailable.'}
+            </p>
+          ) : null}
+          {petCatalogState === 'loaded' ? (
+            <>
+              <div className="pet-picker-groups" role="toolbar" aria-label="Pet groups">
+                <button
+                  type="button"
+                  className={petGroup === null ? 'is-selected' : ''}
+                  aria-pressed={petGroup === null}
+                  onClick={() => setPetGroup(null)}
+                >
+                  All <span>{petCatalog.length}</span>
+                </button>
+                {pickerGroups.map((groupName) => {
+                  const count = petCatalog.filter((pet) => pet.group === groupName).length;
+                  return (
+                    <button
+                      type="button"
+                      key={groupName}
+                      className={petGroup === groupName ? 'is-selected' : ''}
+                      aria-pressed={petGroup === groupName}
+                      onClick={() => setPetGroup(petGroup === groupName ? null : groupName)}
+                    >
+                      {groupName} <span>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="pet-picker-grid" role="list" aria-label="Bundled pets">
+                {pickerPets.map((pet) => (
+                  <button
+                    type="button"
+                    key={pet.id}
+                    className={`pet-picker-card${selectedPet?.id === pet.id ? ' is-selected' : ''}`}
+                    aria-pressed={selectedPet?.id === pet.id}
+                    onClick={() => choosePet(pet)}
+                  >
+                    <span className="pet-picker-card-mark" aria-hidden="true">
+                      {pet.displayName.slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="pet-picker-card-copy">
+                      <strong>{pet.displayName}</strong>
+                      <small>{pet.group}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {pickerPets.length === 0 ? <p className="muted">No bundled pets match that search.</p> : null}
+            </>
+          ) : null}
+        </section>
+      ) : null}
       {petChatOpen ? (
         <PetChatBubble
           droppedFile={petDroppedFile}

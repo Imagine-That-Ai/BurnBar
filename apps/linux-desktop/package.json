@@ -6,6 +6,7 @@
   "description": "OpenBurnBar Linux desktop shell (Tauri + WebView)",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node ../../scripts/linux-port/generate-linux-pet-catalog.mjs",
     "build": "vite build && node ../../scripts/linux-port/verify-linux-production-bundle.mjs",
     "preview": "vite preview",
     "test": "vitest run",

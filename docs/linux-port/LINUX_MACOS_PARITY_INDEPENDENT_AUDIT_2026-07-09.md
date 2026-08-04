@@ -3316,6 +3316,14 @@ chat/file-drop workflow gap, but it is not yet a signed installed proof and does
 not claim macOS avatar selection, persona/local-floor behavior, or compositor
 parity.
 
+**Implementation update (2026-08-04, follow-on catalog slice):** Linux now
+generates a validated catalog from the 110 committed macOS 3D `petdef.json`
+resources, exposes macOS-shaped search/group filtering and persisted avatar
+selection, and reads the selected GLB through a bounded Tauri resource command.
+The source-level 3D catalog/selection gap is closed. Legacy macOS 2D atlas
+forms, thumbnail rendering, persona/local-floor behavior, compositor receipts,
+and signed installed proof remain open.
+
 - **Difference:** macOS has an animated desktop companion with mature overlay
   behavior and interaction. Linux now mounts the bundled glTF mesh/animation,
   provides an accessible draggable contained fallback, and gates the native X11
@@ -3325,9 +3333,10 @@ parity.
   click-through, and restart behavior can still regress; missing interactions
   also leave the companion less useful than macOS.
 - **Recommended solution:** certify the existing X11 child and fixed-marker
-  summon contract, then add native selection/chat/file interactions and
-  multi-monitor behavior where the desktop contract supports them. Keep the
-  explicitly labeled contained fallback for Wayland/unknown sessions.
+  summon contract, then extend the shared 3D catalog with thumbnail/form
+  rendering and add native selection/chat/file interactions and multi-monitor
+  behavior where the desktop contract supports them. Keep the explicitly
+  labeled contained fallback for Wayland/unknown sessions.
 - **Priority:** **High**.
 - **Implementation notes:** maintain a compositor capability matrix; use reduced
   motion and GPU budgets; do not claim click-through from environment variables

@@ -665,6 +665,7 @@ pub fn run() {
             linux_cloud_sync_run,
             session_env,
             pet_companion_status,
+            pet_asset_read,
             media_status,
             media_session_state,
             media_accept_call,
