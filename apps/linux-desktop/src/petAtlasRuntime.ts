@@ -8,6 +8,7 @@ export type PetAtlasFrame = {
 };
 
 let activePetAtlasRuntimeStop: (() => void) | null = null;
+let activePetAtlasSetState: ((requestedState: string) => void) | null = null;
 
 export function resolvePetAtlasState(
   atlas: PetAtlasDefinition,
@@ -19,17 +20,26 @@ export function resolvePetAtlasState(
     wander: ['travel', 'scuttle', 'waddle', 'bounce', 'walk'],
     drag: ['travel', 'scuttle', 'waddle', 'bounce', 'walk'],
     listen: ['listen', 'alert', 'idle'],
-    think: ['work', 'pinch_sweep', 'claw_scoop', 'idle'],
-    speak: ['work', 'pinch_sweep', 'idle'],
+    think: ['work', 'pinch_sweep', 'claw_scoop', 'peck_sweep', 'hand_scoop', 'idle'],
+    speak: ['speak', 'honk', 'wave', 'snip', 'work', 'pinch_sweep', 'hand_scoop', 'idle'],
     react: ['cheer', 'alert', 'idle']
   };
   for (const candidate of aliases[requestedState] ?? []) {
     const descriptor = atlas.states[candidate];
     if (descriptor) return { name: candidate, descriptor };
   }
-  const fallback = atlas.states[atlas.defaultState] ?? atlas.states.idle ?? Object.values(atlas.states)[0];
-  if (!fallback) throw new Error('Pet atlas has no renderable states.');
-  return { name: atlas.defaultState in atlas.states ? atlas.defaultState : 'idle', descriptor: fallback };
+  const fallbackName = atlas.defaultState in atlas.states
+    ? atlas.defaultState
+    : atlas.states.idle
+      ? 'idle'
+      : Object.keys(atlas.states)[0];
+  if (!fallbackName || !atlas.states[fallbackName]) throw new Error('Pet atlas has no renderable states.');
+  return { name: fallbackName, descriptor: atlas.states[fallbackName] };
+}
+
+/** Change the active atlas animation without replacing the decoded asset. */
+export function setPetAtlasState(requestedState: string): void {
+  activePetAtlasSetState?.(requestedState);
 }
 
 export function petAtlasFrameRect(
@@ -84,8 +94,8 @@ export async function mountPetAtlasRuntime(
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Pet atlas canvas is unavailable.');
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const state = resolvePetAtlasState(atlas, atlas.defaultState);
-    const frameCount = Math.max(1, state.descriptor.frames);
+    let state = resolvePetAtlasState(atlas, atlas.defaultState);
+    let frameCount = Math.max(1, state.descriptor.frames);
     let frame = 0;
     let lastFrameAt = 0;
     let animationFrame = 0;
@@ -102,23 +112,48 @@ export async function mountPetAtlasRuntime(
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.imageSmoothingEnabled = false;
       context.drawImage(image, rect.x, rect.y, rect.width, rect.height, 0, 0, canvas.width, canvas.height);
-      if (!reducedMotion && state.descriptor.loop) {
+      if (!reducedMotion) {
         const frameDuration = 1000 / Math.max(1, state.descriptor.fps);
-        if (!lastFrameAt || timestamp - lastFrameAt >= frameDuration) {
-          frame = (frame + 1) % frameCount;
-          lastFrameAt = timestamp;
+        if (timestamp - lastFrameAt >= frameDuration) {
+          if (frame < frameCount - 1) {
+            frame += 1;
+            lastFrameAt = timestamp;
+          } else if (state.descriptor.loop) {
+            frame = 0;
+            lastFrameAt = timestamp;
+          } else {
+            animationFrame = 0;
+            return;
+          }
         }
         animationFrame = window.requestAnimationFrame(draw);
       }
+    };
+
+    const describeState = (): void => {
+      caption.textContent = `2D atlas loaded ${state.name} animation; ${frameCount} frames at ${state.descriptor.fps} fps.`;
+    };
+
+    activePetAtlasSetState = (requestedState: string) => {
+      if (stopped) return;
+      state = resolvePetAtlasState(atlas, requestedState);
+      frameCount = Math.max(1, state.descriptor.frames);
+      frame = 0;
+      lastFrameAt = performance.now();
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      animationFrame = 0;
+      describeState();
+      draw(lastFrameAt);
     };
     activePetAtlasRuntimeStop = () => {
       stopped = true;
       if (animationFrame) window.cancelAnimationFrame(animationFrame);
       if (objectURL) URL.revokeObjectURL(objectURL);
+      activePetAtlasSetState = null;
       activePetAtlasRuntimeStop = null;
     };
     draw(0);
-    caption.textContent = `2D atlas loaded ${state.name} animation; ${frameCount} frames at ${state.descriptor.fps} fps.`;
+    describeState();
   } catch (error) {
     if (objectURL) URL.revokeObjectURL(objectURL);
     throw error;
@@ -127,5 +162,6 @@ export async function mountPetAtlasRuntime(
 
 export function stopPetAtlasRuntime(): void {
   activePetAtlasRuntimeStop?.();
+  activePetAtlasSetState = null;
   activePetAtlasRuntimeStop = null;
 }

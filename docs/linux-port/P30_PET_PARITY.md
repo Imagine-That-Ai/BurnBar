@@ -7,9 +7,10 @@ unique entries, including 112 GLB-backed entries and three atlas forms (two
 atlas-only plus one hybrid). The installed-candidate proof package is not yet
 registered in the product workflow, and Tier A parity remains blocked until the
 exact signed candidate passes all seven compositor and architecture
-environments. macOS's offscreen 3D thumbnail pipeline, persona/local-floor
-behavior, behavior-driven state transitions, and compositor receipts remain
-open.
+environments. macOS's offscreen 3D thumbnail pipeline and persona/local-floor
+behavior remain open; the atlas runtime now consumes the companion's logical
+conversation and movement states at source level, while compositor receipts
+remain open.
 
 ## Difference
 
@@ -103,8 +104,10 @@ claim to close the full macOS feature gap.
 - The Linux picker matches the macOS library's practical controls: search,
   category groups, selected-state semantics, persisted avatar choice, and
   default-form selection. The selected legacy atlas form now renders through
-  a bounded Canvas2D frame runtime. The offscreen 3D thumbnail pipeline and
-  thumbnail-backed picker cards remain open.
+  a bounded Canvas2D frame runtime. Companion focus, thinking, speaking,
+  reaction, and movement events now select the closest source-defined atlas
+  rows. The offscreen 3D thumbnail pipeline and thumbnail-backed picker cards
+  remain open.
 - The verifier rejects screenshot or AT-SPI replay, forged click-through,
   optimistic Wayland capability, missing focus/status/shortcut metadata,
   failed relaunch, package substitution, and incomplete process restoration.
