@@ -47,20 +47,40 @@ export const ARCH_NONINTERACTIVE_PROVIDER_PACKAGES = Object.freeze([
   'ttf-dejavu'
 ]);
 
+// Package payload archives (dpkg-deb --fsys-tarfile, rpm2cpio) stream the
+// entire uncompressed payload through stdout, and the bundled pet model and
+// atlas resources already push that payload past 512 MiB. Keep enough
+// headroom that a legitimately built payload never trips the buffer limit.
+const PAYLOAD_MAX_BUFFER = 2 * 1024 * 1024 * 1024;
+
+// Error messages must stay well under V8's maximum string length even when a
+// failing binary produced hundreds of megabytes of stdout, so only the tail
+// of each stream is stringified for diagnostics.
+const ERROR_OUTPUT_TAIL_BYTES = 16 * 1024;
+
+function boundedOutputTail(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) return '';
+  const tail = buffer.subarray(-ERROR_OUTPUT_TAIL_BYTES);
+  const prefix = buffer.length > tail.length
+    ? `[truncated ${buffer.length - tail.length} bytes]\n`
+    : '';
+  return `${prefix}${tail.toString('utf8')}`;
+}
+
 function runBinary(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
     encoding: 'buffer',
     input: options.input,
-    maxBuffer: 512 * 1024 * 1024,
+    maxBuffer: PAYLOAD_MAX_BUFFER,
     env: options.env ?? process.env
   });
   if (result.error || (result.status ?? 1) !== 0) {
     throw new Error([
       `${command} ${args.join(' ')} failed`,
       result.error?.message,
-      result.stdout?.toString('utf8'),
-      result.stderr?.toString('utf8')
+      boundedOutputTail(result.stdout),
+      boundedOutputTail(result.stderr)
     ].filter(Boolean).join('\n'));
   }
   return result.stdout;

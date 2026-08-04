@@ -71,7 +71,11 @@ function run(command, args, options = {}) {
     env: { ...childEnvironment, ...(options.env ?? {}) },
     encoding: options.encoding ?? 'utf8',
     input: options.input,
-    maxBuffer: 512 * 1024 * 1024
+    // dpkg-deb --fsys-tarfile streams the whole uncompressed payload through
+    // stdout, and the bundled pet model and atlas resources already push that
+    // payload past 512 MiB. Keep headroom so legitimate payloads never trip
+    // the buffer limit.
+    maxBuffer: 2 * 1024 * 1024 * 1024
   });
   if (result.error || (result.status ?? 1) !== 0) {
     throw new Error([

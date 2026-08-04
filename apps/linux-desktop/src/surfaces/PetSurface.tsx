@@ -159,15 +159,21 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
     let cancelled = false;
     setRuntimeState('loading');
     setRuntimeError(null);
-    const atlas = selectedPet?.atlas;
+    // A hybrid entry carries both forms; the catalog's declared default form
+    // decides which one mounts.
+    const atlas = selectedPet?.defaultForm === 'atlas2d' ? selectedPet.atlas : undefined;
     const atlasResource = atlas?.image.split('/');
     const loadRuntime = atlas && selectedPet && atlasResource?.length === 2
-      ? readPetAtlasAsset(bridge, atlasResource[0]!, atlasResource[1]!).then(({ buffer, mimeType }) =>
-          mountPetAtlasRuntime(host, buffer, atlas, mimeType)
-        )
-      : readPetAsset(bridge, selectedPet?.glb ?? DEFAULT_PET_GLB).then((buffer) =>
-          mountPetGltfRuntime(host, buffer)
-        );
+      ? readPetAtlasAsset(bridge, atlasResource[0]!, atlasResource[1]!).then(({ buffer, mimeType }) => {
+          // A stale load must never displace the runtime a newer selection
+          // mounted; the newer effect's cleanup already stopped this one.
+          if (cancelled) return;
+          return mountPetAtlasRuntime(host, buffer, atlas, mimeType);
+        })
+      : readPetAsset(bridge, selectedPet?.glb ?? DEFAULT_PET_GLB).then((buffer) => {
+          if (cancelled) return;
+          return mountPetGltfRuntime(host, buffer);
+        });
     void loadRuntime
       .then(() => {
         if (cancelled) return;
@@ -183,7 +189,7 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
       stopPetGltfRuntime();
       stopPetAtlasRuntime();
     };
-  }, [bridge, petCatalogState, selectedPet?.id, selectedPet?.glb, selectedPet?.atlas?.image]);
+  }, [bridge, petCatalogState, selectedPet?.id, selectedPet?.glb, selectedPet?.defaultForm, selectedPet?.atlas?.image]);
 
   // Avatar choices persist to localStorage; other same-origin pet surfaces
   // (the native companion child window, an open dashboard route) observe the
