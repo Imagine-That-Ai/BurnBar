@@ -90,26 +90,50 @@ export async function mountPetAtlasRuntime(
     let lastFrameAt = 0;
     let animationFrame = 0;
     let stopped = false;
+    let rendered = false;
 
     const draw = (timestamp: number): void => {
       if (stopped) return;
-      const rect = petAtlasFrameRect(atlas, state.name, frame);
-      const displayWidth = Math.max(1, Math.round(canvas.clientWidth || rect.width));
-      const displayHeight = Math.max(1, Math.round(canvas.clientHeight || rect.height));
+      const displayWidth = Math.max(1, Math.round(canvas.clientWidth || atlas.cell.w));
+      const displayHeight = Math.max(1, Math.round(canvas.clientHeight || atlas.cell.h));
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.round(displayWidth * dpr);
-      canvas.height = Math.round(displayHeight * dpr);
-      context.clearRect(0, 0, canvas.width, canvas.height);
-      context.imageSmoothingEnabled = false;
-      context.drawImage(image, rect.x, rect.y, rect.width, rect.height, 0, 0, canvas.width, canvas.height);
-      if (!reducedMotion && state.descriptor.loop) {
+      const backingWidth = Math.round(displayWidth * dpr);
+      const backingHeight = Math.round(displayHeight * dpr);
+      // Only reallocate the backing store when the display size actually
+      // changed, and only redraw when a new frame is due, so a 60 Hz display
+      // does not repaint a 6-12 fps atlas on every refresh.
+      let needsRedraw = !rendered || canvas.width !== backingWidth || canvas.height !== backingHeight;
+      if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
+        canvas.width = backingWidth;
+        canvas.height = backingHeight;
+      }
+      const animating = !reducedMotion && state.descriptor.loop;
+      if (animating) {
         const frameDuration = 1000 / Math.max(1, state.descriptor.fps);
-        if (!lastFrameAt || timestamp - lastFrameAt >= frameDuration) {
+        if (!lastFrameAt) {
+          lastFrameAt = timestamp;
+        } else if (timestamp - lastFrameAt >= frameDuration) {
           frame = (frame + 1) % frameCount;
           lastFrameAt = timestamp;
+          needsRedraw = true;
         }
-        animationFrame = window.requestAnimationFrame(draw);
       }
+      if (needsRedraw) {
+        const rect = petAtlasFrameRect(atlas, state.name, frame);
+        // Aspect-fit the source frame inside the canvas so shared atlas pets
+        // keep the macOS renderer's geometry instead of stretching to fill
+        // the 16:7 viewport.
+        const scale = Math.min(canvas.width / rect.width, canvas.height / rect.height);
+        const drawWidth = Math.max(1, Math.round(rect.width * scale));
+        const drawHeight = Math.max(1, Math.round(rect.height * scale));
+        const drawX = Math.round((canvas.width - drawWidth) / 2);
+        const drawY = Math.round((canvas.height - drawHeight) / 2);
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.imageSmoothingEnabled = false;
+        context.drawImage(image, rect.x, rect.y, rect.width, rect.height, drawX, drawY, drawWidth, drawHeight);
+        rendered = true;
+      }
+      if (animating) animationFrame = window.requestAnimationFrame(draw);
     };
     activePetAtlasRuntimeStop = () => {
       stopped = true;
