@@ -125,7 +125,7 @@
     },
     "OpenBurnBarSignalSessionTransport": {
       "maxFiles": 3,
-      "maxLines": 540
+      "maxLines": 802
     },
     "OpenBurnBarFirestoreModels": {
       "maxFiles": 18,
