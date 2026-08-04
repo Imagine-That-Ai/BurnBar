@@ -110,6 +110,12 @@ describe('PetChatBubble', () => {
     fireEvent.change(screen.getByLabelText('Companion message'), {
       target: { value: 'Review this file' }
     });
+    // The bubble hydrates the daemon-backed thread on mount; sending stays
+    // disabled until that resume completes.
+    await waitFor(() => {
+      const send = screen.getByRole('button', { name: 'Send companion message' }) as HTMLButtonElement;
+      expect(send.disabled).toBe(false);
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Send companion message' }));
 
     await waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
