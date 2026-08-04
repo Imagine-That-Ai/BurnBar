@@ -2,6 +2,13 @@ name: Domain Core trusted deletion guard
 
 # This required context is intentionally unfiltered: every PR must emit it, and the
 # trusted evaluator decides whether the candidate touches a governed deletion surface.
+#
+# Stacked PRs (an internal branch targeting another internal non-main branch) emit a
+# neutral pass instead of evaluating: the "trusted" checkout for such a PR would be the
+# unreviewed base branch, not default-branch code, so evaluation there proves nothing.
+# Enforcement is NOT lost: nothing reaches main without the base branch's own PR into
+# main (and the merge queue), where this guard evaluates the full accumulated diff with
+# genuinely trusted default-branch code.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -79,7 +86,10 @@ jobs:
           if [[ "${{ github.event_name }}" == "pull_request_target" ]]; then
             test "${{ github.event.pull_request.base.repo.full_name }}" = "$GITHUB_REPOSITORY"
             test "${{ github.event.pull_request.head.repo.full_name }}" = "$GITHUB_REPOSITORY"
-            test "${{ github.event.pull_request.base.ref }}" = "main"
+            if [[ "${{ github.event.pull_request.base.ref }}" != "main" ]]; then
+              echo "::notice::Internal stacked PR (base '${{ github.event.pull_request.base.ref }}' is not main): emitting a neutral pass. The trusted deletion guard enforces at the main boundary, where the base branch's own PR into main evaluates the full accumulated diff with trusted default-branch code."
+              exit 0
+            fi
           else
             test "${{ github.event.merge_group.base_ref }}" = "refs/heads/main"
           fi
