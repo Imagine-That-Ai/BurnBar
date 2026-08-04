@@ -27,7 +27,8 @@
     "targets": "all",
     "icon": ["icons/icon.png"],
     "resources": {
-      "../../../AgentLens/PetCompanion/Resources/Models/": "pet-models"
+      "../../../AgentLens/PetCompanion/Resources/Models/": "pet-models",
+      "../../../AgentLens/PetCompanion/Resources/Pets/": "pet-atlas"
     },
     "linux": {
       "deb": {

@@ -1107,6 +1107,10 @@
         assert!(!pet_asset_name_is_safe("nested/pet.glb"));
         assert!(!pet_asset_name_is_safe("pet.gltf"));
         assert!(!pet_asset_name_is_safe("pet.glb/extra"));
+        assert!(pet_id_is_safe("claudecode"));
+        assert!(pet_atlas_image_name_is_safe("spritesheet.webp"));
+        assert!(!pet_atlas_image_name_is_safe("../spritesheet.webp"));
+        assert!(!pet_atlas_image_name_is_safe("spritesheet.jpg"));
     }
 
     #[test]
@@ -1117,6 +1121,19 @@
         fs::write(&asset, b"glTF").unwrap();
         assert_eq!(pet_asset_path(&root, "pet.glb").unwrap(), asset.canonicalize().unwrap());
         assert!(pet_asset_path(&root, "../pet.glb").is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn pet_atlas_path_stays_inside_the_selected_pet_directory() {
+        let root = std::env::temp_dir().join(format!("openburnbar-pet-atlas-root-{}", uuid::Uuid::new_v4()));
+        let pet = root.join("claudecode");
+        fs::create_dir_all(&pet).unwrap();
+        let image = pet.join("spritesheet.webp");
+        fs::write(&image, b"RIFF").unwrap();
+        assert_eq!(pet_atlas_path(&root, "claudecode", "spritesheet.webp").unwrap(), image.canonicalize().unwrap());
+        assert!(pet_atlas_path(&root, "claudecode", "../spritesheet.webp").is_err());
+        assert!(pet_atlas_path(&root, "../escape", "spritesheet.webp").is_err());
         let _ = fs::remove_dir_all(root);
     }
 

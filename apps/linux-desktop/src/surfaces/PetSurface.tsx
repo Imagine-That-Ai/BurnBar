@@ -16,6 +16,7 @@ import {
   type PetCapabilityProbe
 } from '../petCompanion.js';
 import { mountPetGltfRuntime, stopPetGltfRuntime } from '../petGltfRuntime.js';
+import { mountPetAtlasRuntime, stopPetAtlasRuntime } from '../petAtlasRuntime.js';
 import {
   DEFAULT_PET_GLB,
   PET_SELECTION_STORAGE_KEY,
@@ -27,7 +28,7 @@ import {
   resolveSelectedPet,
   type LinuxPetCatalogEntry
 } from '../petCatalog.js';
-import { readPetAsset } from '../petAssets.js';
+import { readPetAsset, readPetAtlasAsset } from '../petAssets.js';
 import {
   closePetCompanionWindow,
   openPetCompanionWindow,
@@ -70,7 +71,7 @@ function containedPetOffsetLabel(offset: ContainedPetOffset): string {
 }
 
 /**
- * Pet companion surface. The GLB runtime mounts imperatively into the route
+ * Pet companion surface. The selected GLB or legacy 2D atlas runtime mounts imperatively into the route
  * preview; the native runtime capability manifest decides whether an overlay
  * tier can be advertised. Environment variables are never treated as proof.
  */
@@ -158,9 +159,16 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
     let cancelled = false;
     setRuntimeState('loading');
     setRuntimeError(null);
-    const glbName = selectedPet?.glb ?? DEFAULT_PET_GLB;
-    void readPetAsset(bridge, glbName)
-      .then((buffer) => mountPetGltfRuntime(host, buffer))
+    const atlas = selectedPet?.atlas;
+    const atlasResource = atlas?.image.split('/');
+    const loadRuntime = atlas && selectedPet && atlasResource?.length === 2
+      ? readPetAtlasAsset(bridge, atlasResource[0]!, atlasResource[1]!).then(({ buffer, mimeType }) =>
+          mountPetAtlasRuntime(host, buffer, atlas, mimeType)
+        )
+      : readPetAsset(bridge, selectedPet?.glb ?? DEFAULT_PET_GLB).then((buffer) =>
+          mountPetGltfRuntime(host, buffer)
+        );
+    void loadRuntime
       .then(() => {
         if (cancelled) return;
         setRuntimeState('loaded');
@@ -173,8 +181,9 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
     return () => {
       cancelled = true;
       stopPetGltfRuntime();
+      stopPetAtlasRuntime();
     };
-  }, [bridge, petCatalogState, selectedPet?.glb]);
+  }, [bridge, petCatalogState, selectedPet?.id, selectedPet?.glb, selectedPet?.atlas?.image]);
 
   // Avatar choices persist to localStorage; other same-origin pet surfaces
   // (the native companion child window, an open dashboard route) observe the
@@ -473,7 +482,7 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
           : {})}
       >
         <div ref={runtimeHostRef} className="pet-stage-viewport">
-          {runtimeState === 'loading' ? 'Loading GLB pet runtime...' : null}
+          {runtimeState === 'loading' ? 'Loading pet runtime...' : null}
         </div>
       </div>
       {containedFallback ? (

@@ -61,14 +61,15 @@ test('Tauri release packaging enables the embedded frontend protocol', () => {
   assert.equal(config.build?.beforeBuildCommand, 'npm run build');
 });
 
-test('Tauri release packaging includes the shared PetCompanion model resources', () => {
+test('Tauri release packaging includes the shared PetCompanion model and atlas resources', () => {
   const config = JSON.parse(read('apps/linux-desktop/src-tauri/tauri.conf.json'));
-  assert.deepEqual(config.bundle?.resources, {
-    '../../../AgentLens/PetCompanion/Resources/Models/': 'pet-models'
-  });
   const catalog = JSON.parse(read('apps/linux-desktop/public/pets/catalog.json'));
   assert.equal(catalog.schema, 'linux-pet-catalog/1');
-  assert.equal(catalog.pets.length, 110);
+  assert.equal(catalog.pets.length, 114);
+  assert.deepEqual(config.bundle?.resources, {
+    '../../../AgentLens/PetCompanion/Resources/Models/': 'pet-models',
+    '../../../AgentLens/PetCompanion/Resources/Pets/': 'pet-atlas'
+  });
 });
 
 test('Tauri codegen watches every frontend asset for in-place edits', () => {

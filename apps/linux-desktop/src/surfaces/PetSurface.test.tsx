@@ -73,6 +73,7 @@ function stubPetCatalogFetch(): void {
                 displayName: 'Aurora Fox',
                 group: 'Kawaii Animals',
                 description: '',
+                defaultForm: 'model3d',
                 glb: 'kawaii-aurora-fox-actions.glb',
                 modelKind: 'rigged',
                 clipNames: ['idle']
@@ -82,6 +83,7 @@ function stubPetCatalogFetch(): void {
                 displayName: 'Ada Lovelace',
                 group: 'Legends',
                 description: '',
+                defaultForm: 'model3d',
                 glb: 'ada-lovelace-actions.glb',
                 modelKind: 'rigged',
                 clipNames: ['idle']
