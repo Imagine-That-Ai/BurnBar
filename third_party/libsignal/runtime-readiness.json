@@ -6,8 +6,15 @@
     "tagObject": "03c449017b57eccbda715b8b018dce5dff603ac6",
     "commit": "46d867c986f66201e34e7ae20ce423eec742bf3f"
   },
-  "blockingReason": "Signal phase2 is merged to main and Swift/Kotlin/CryptoKit proof tests pass, but final launch readiness still requires gateway write cutover evidence, migration telemetry, physical-device Phase-E activation evidence, real iroh QA, and counsel approval.",
+  "blockingReason": "The pinned official libsignal Rust bridge and Swift/Kotlin/Node bindings are verified, but final launch readiness still requires gateway text/control and attachment write cutover evidence, private-domain Signal activation evidence, migration telemetry, physical-device Phase-E evidence, real iroh QA, and counsel approval.",
   "completedEvidence": [
+    {
+      "id": "rust_core_bridge",
+      "status": "complete",
+      "proof": "The official libsignal v0.94.4 Rust shared bridge is consumed through its Swift FFI, Kotlin/Android JNI, and Node bindings at one verified pin. Representative protocol, interop, at-rest, replay, and identity tests pass on all three consumers, and the vendored fork has no crypto-core divergence.",
+      "command": "bash scripts/ci/verify-libsignal-pin.sh && bash scripts/ci/verify-libsignal-submodule-delta.sh && npm test --prefix packages/libsignal-bridge && swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-release-rust-bridge-swift --disable-swift-testing --filter OpenBurnBarSignalCoreTests && cd android && ./gradlew :app:testDebugUnitTest --tests '*AndroidSignalSession*' --tests '*AndroidSignalInteropKatTest' --tests '*AndroidCloudVaultSignalPayloadsTest' --tests '*AndroidSignalIdentityKeyStoreTest' --no-daemon",
+      "evidencePath": "launch-evidence/libsignal-rust-core-bridge-v1.0.30.json"
+    },
     {
       "id": "node_protocol_harness",
       "status": "complete",
@@ -48,7 +55,7 @@
   "requiredGates": [
     {
       "id": "rust_core_bridge",
-      "status": "pending",
+      "status": "complete",
       "proof": "Shared Rust libsignal adapter with stable FFI contracts for Swift, Kotlin, and Node."
     },
     {
@@ -92,6 +99,6 @@
       "proof": "Counsel signs off before public app-store, direct-download, extension, npm, Docker, or hosted-service release that links libsignal."
     }
   ],
-  "generatedAt": "2026-06-06T16:47:17.942Z",
+  "generatedAt": "2026-08-04T06:58:00Z",
   "mergedMainEvidence": "launch-evidence/signal-phase2-main-merge-evidence-20260606T164717Z.json"
 }
