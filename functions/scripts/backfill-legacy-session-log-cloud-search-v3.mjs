@@ -16,7 +16,8 @@ import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import process from "node:process";
 
-import admin from "firebase-admin";
+import { getApps, initializeApp } from "firebase-admin/app";
+import { FieldValue, getFirestore, Timestamp } from "firebase-admin/firestore";
 
 import { buildCloudSearchPostingEdges } from "../lib/callables/encryptedSearchIndex.js";
 
@@ -532,8 +533,8 @@ async function commitBatch(db, writes, apply) {
 
 async function main() {
   const args = parseArgs(process.argv);
-  admin.initializeApp({ projectId: PROJECT_ID, storageBucket: STORAGE_BUCKET });
-  const db = admin.firestore();
+  initializeApp({ projectId: PROJECT_ID, storageBucket: STORAGE_BUCKET });
+  const db = getFirestore();
   const bucket = admin.storage().bucket();
   const uid = args.uid;
   const deviceId = args.deviceId;
@@ -628,8 +629,8 @@ async function main() {
         chunkHashVersion: 2,
         chunkMetadataVersion: 1,
         cloudSearchIndexVersion: INDEX_VERSION,
-        cloudSearchIndexedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        cloudSearchIndexedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       },
     });
     writes.push({
@@ -654,7 +655,7 @@ async function main() {
         tokenHashVersion: 1,
         semanticHashVersion: 1,
         commitID: COMMIT_ID,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
         schemaVersion: 1,
       },
     });
@@ -695,7 +696,7 @@ async function main() {
         tokenHashVersion: 1,
         semanticHashVersion: 1,
         commitID: COMMIT_ID,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
         schemaVersion: 1,
       };
       writes.push({ ref: db.collection(`users/${uid}/cloud_search_chunks`).doc(chunkID), data: chunkData });
@@ -716,7 +717,7 @@ async function main() {
             sealedSnippet,
             indexVersion: INDEX_VERSION,
             commitID: COMMIT_ID,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
           },
           tokenHashes: tokenHashList,
           semanticHashes: semanticHashList,
@@ -737,7 +738,7 @@ async function main() {
         deviceId,
         indexVersion: INDEX_VERSION,
         activeCommitID: COMMIT_ID,
-        lastCommittedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastCommittedAt: FieldValue.serverTimestamp(),
         schemaVersion: 1,
       },
     });
