@@ -1,9 +1,10 @@
 # P-30 Linux pet companion capability slice
 
-**Status:** implementation and an installed-candidate proof package are ready.
-The proof is not yet registered in the product workflow, and Tier A parity
-remains blocked until the exact signed candidate passes all seven compositor
-and architecture environments.
+**Status:** the compositor-aware implementation and the Linux-native companion
+chat/file-drop slice are ready at source level. The installed-candidate proof
+package is not yet registered in the product workflow, and Tier A parity remains
+blocked until the exact signed candidate passes all seven compositor and
+architecture environments.
 
 ## Difference
 
@@ -13,8 +14,12 @@ accept interaction, and be summoned without turning the dashboard into the
 companion itself. The Linux shell has a route-contained animated GLB preview,
 an X11-only Tauri companion child, the native `Ctrl+Alt+Super+P` summon chord,
 explicit click-through enable/restore, contained selection/clear, and bounded
-pointer and keyboard repositioning. Wayland correctly remains contained. Pet
-chat and file drop are still outside the P-30 installed proof claim.
+pointer and keyboard repositioning, and a compact daemon-backed companion chat
+bubble. Dropping a supported file on the pet opens the bubble and stages the
+attachment through the same bounded upload policy as the full chat composer;
+the full chat pop-out remains available. Wayland correctly remains contained.
+Avatar selection, macOS-style persona/local-floor behavior, and installed proof
+of the chat/drop flow remain outside the current P-30 certification claim.
 
 The old Linux route inferred overlay support from `XDG_SESSION_TYPE` and
 `XDG_CURRENT_DESKTOP`, which could label KDE/Sway/other Wayland sessions as
@@ -38,8 +43,9 @@ desktop overlay.
    pass-through. A manifest entry by itself is not proof.
 4. `degraded`, `unavailable`, missing, or failed probes render the contained
    draggable fallback and explain the substitute.
-5. Keep selection/clear and repositioning available in the contained fallback;
-   keep chat/file-drop explicitly outside the native capability claim.
+5. Keep selection/clear, repositioning, contained chat, and bounded file-drop
+   staging available in the contained fallback; never turn them into an
+   unproven desktop-overlay claim.
 6. Promote only after the installed evidence harness proves the same signed
    candidate across GNOME X11, GNOME Wayland, KDE Wayland, and Sway on the
    required architectures.
@@ -68,6 +74,12 @@ claim to close the full macOS feature gap.
   candidate run, digest, version, environment, and HEAD.
 - `scripts/linux-port/capture-p30-pet-proof.mjs` emits the closure artifact and
   registration descriptor only after the full session validates.
+- `PetChatBubble` reuses the daemon-authoritative `useChatStore`, the existing
+  gateway capability checks, and `chat_attachment_upload`; it does not create a
+  second credential, transcript, or filesystem-path boundary.
+- `PetSurface` accepts picker and drag-and-drop files through the shared
+  `inspectChatAttachment()` policy. Unsupported types and files over 10 MiB are
+  rejected visibly before any bytes cross the bridge.
 - The verifier rejects screenshot or AT-SPI replay, forged click-through,
   optimistic Wayland capability, missing focus/status/shortcut metadata,
   failed relaunch, package substitution, and incomplete process restoration.
@@ -80,13 +92,13 @@ claim to close the full macOS feature gap.
 Automated checks for this slice:
 
 - `node --test scripts/linux-port/p30-native-pet-probes.test.mjs scripts/linux-port/p30-pet-proof.test.mjs`
-- `npx vitest run src/petCompanion.test.ts src/surfaces/PetSurface.test.tsx src/surfaces/SurfaceRouter.test.tsx --reporter=dot`
+- `npx vitest run src/petCompanion.test.ts src/surfaces/PetSurface.test.tsx src/surfaces/pet/PetChatBubble.test.tsx src/surfaces/SurfaceRouter.test.tsx --reporter=dot`
 - `npx tsc --noEmit`
 - `npm run build`
 - `node scripts/verify-linux-bundle.mjs`
 - `cargo test --manifest-path src-tauri/Cargo.toml`
 - `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`
-- `node scripts/check-linux-macos-diff.mjs`
+- `node --test scripts/linux-port/run-platform-differential.test.mjs`
 
 Installed-app checks still required before promotion:
 
@@ -98,9 +110,12 @@ Installed-app checks still required before promotion:
    child is claimed, and the focused contained summon remains usable.
 4. Select and clear the pet, reposition it with pointer and keyboard, reset it
    with Home, and verify each live status plus focused AT-SPI node.
-5. Relaunch and verify a new PID, the same honest compositor tier, cleared stale
+5. Open companion chat, send a text turn, drop a supported Markdown/text file,
+   confirm the staged attachment is visible before sending, and verify
+   unsupported/oversized files are rejected without upload.
+6. Relaunch and verify a new PID, the same honest compositor tier, cleared stale
    interaction state, distinct screenshots/AT-SPI snapshots, and exact daemon
    and desktop process restoration.
-6. Materialize and capture against the signed candidate, then run the P-30
+7. Materialize and capture against the signed candidate, then run the P-30
    product validator in all seven support environments. Registration and
    certification remain separate integration steps.

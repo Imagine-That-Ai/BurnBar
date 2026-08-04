@@ -1,0 +1,282 @@
+import {
+  useEffect,
+  useId,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type FormEvent,
+  type KeyboardEvent
+} from 'react';
+import { expandInAppBuffer } from '../../textExpansionStore.js';
+import { readTextExpansionConsent } from '../../textExpansionConsent.js';
+import { useChatStore } from '../../state/chatStore.js';
+import { useShellStore } from '../../state/shellStore.js';
+import {
+  CHAT_ATTACHMENT_ACCEPT,
+  inspectChatAttachment,
+  type PendingChatAttachment
+} from '../chat/chatAttachmentDraft.js';
+import { uploadChatAttachmentForSend } from '../chat/chatAttachment.js';
+import type { ChatMessage } from '../../state/chatStore.js';
+import './pet-chat-bubble.css';
+
+export type PetChatBubbleProps = {
+  droppedFile?: File | null;
+  onDroppedFileConsumed?: () => void;
+  onClose: () => void;
+  onOpenFullChat: () => void;
+  onReact?: () => void;
+};
+
+function messageText(message: ChatMessage, streaming: boolean): string {
+  if (message.text.trim()) return message.text;
+  if (streaming && message.role === 'assistant') return 'Thinking…';
+  return message.role === 'thinking' ? 'Thinking…' : '';
+}
+
+function messageClass(message: ChatMessage): string {
+  return `pet-chat-message pet-chat-message--${message.role}`;
+}
+
+function carriesFiles(dataTransfer: DataTransfer): boolean {
+  return Array.from(dataTransfer.types).includes('Files');
+}
+
+/**
+ * Compact Linux-native companion chat. It intentionally reuses the daemon
+ * chat store and upload boundary instead of creating a second conversation or
+ * credential path. A dropped file is staged here, then sent through exactly
+ * the same bounded policy as the full chat composer.
+ */
+export function PetChatBubble({
+  droppedFile = null,
+  onDroppedFileConsumed,
+  onClose,
+  onOpenFullChat,
+  onReact
+}: PetChatBubbleProps) {
+  const fixtureMode = useShellStore((state) => state.fixtureMode);
+  const bridge = useShellStore((state) => state.bridge);
+  const messages = useChatStore((state) => state.messages);
+  const streaming = useChatStore((state) => state.streaming);
+  const streamPhase = useChatStore((state) => state.streamPhase);
+  const streamError = useChatStore((state) => state.streamError);
+  const modelLabel = useChatStore((state) => state.modelLabel);
+  const sendMessage = useChatStore((state) => state.sendMessage);
+  const startNewChat = useChatStore((state) => state.startNewChat);
+  const stopStreaming = useChatStore((state) => state.stopStreaming);
+  const [draft, setDraft] = useState('');
+  const [pendingAttachment, setPendingAttachment] = useState<PendingChatAttachment | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [dropActive, setDropActive] = useState(false);
+  const fileInputId = useId();
+
+  useEffect(() => {
+    if (!droppedFile) return;
+    const inspected = inspectChatAttachment(droppedFile);
+    setAttachmentError(inspected.error);
+    setPendingAttachment(inspected.attachment);
+    setStatus(inspected.attachment ? `Attached ${inspected.attachment.name}.` : null);
+    onDroppedFileConsumed?.();
+  }, [droppedFile, onDroppedFileConsumed]);
+
+  const stageFile = (file: File | undefined) => {
+    if (!file) return;
+    const inspected = inspectChatAttachment(file);
+    setAttachmentError(inspected.error);
+    setPendingAttachment(inspected.attachment);
+    setStatus(inspected.attachment ? `Attached ${inspected.attachment.name}.` : null);
+  };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    stageFile(event.currentTarget.files?.[0]);
+    event.currentTarget.value = '';
+  };
+
+  const handleDrop = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDropActive(false);
+    stageFile(event.dataTransfer.files?.[0]);
+  };
+
+  const handleDraftChange = (value: string) => {
+    if (readTextExpansionConsent()?.inAppOnly) {
+      setDraft(expandInAppBuffer(value).output);
+      return;
+    }
+    setDraft(value);
+  };
+
+  const submit = async (event?: FormEvent) => {
+    event?.preventDefault();
+    const text = draft.trim();
+    if (!text || busy || streaming) return;
+
+    setBusy(true);
+    setAttachmentError(null);
+    setStatus('Sending…');
+    try {
+      const uploaded = pendingAttachment
+        ? await uploadChatAttachmentForSend(
+            bridge,
+            fixtureMode,
+            modelLabel.trim() || 'hermes',
+            pendingAttachment
+          )
+        : null;
+      await sendMessage(text, uploaded ? [uploaded] : undefined);
+      const result = useChatStore.getState();
+      if (result.streamPhase === 'error') {
+        setStatus(null);
+        setAttachmentError(result.streamError ?? 'The companion could not complete that message.');
+        return;
+      }
+      setDraft('');
+      setPendingAttachment(null);
+      setStatus('Reply received.');
+      onReact?.();
+    } catch (error) {
+      setStatus(null);
+      setAttachmentError(error instanceof Error ? error.message : 'The companion message failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const visibleMessages = messages.slice(-8);
+  const sendDisabled = busy || streaming || draft.trim().length === 0;
+
+  return (
+    <section
+      className="pet-chat-bubble"
+      role="dialog"
+      aria-label="Companion chat"
+      data-drop-active={dropActive ? 'true' : 'false'}
+      onDragEnter={(event) => {
+        if (carriesFiles(event.dataTransfer)) setDropActive(true);
+      }}
+      onDragOver={(event) => {
+        if (carriesFiles(event.dataTransfer)) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+          setDropActive(true);
+        }
+      }}
+      onDragLeave={() => setDropActive(false)}
+      onDrop={handleDrop}
+    >
+      <header className="pet-chat-bubble-header">
+        <div>
+          <strong>Companion chat</strong>
+          <span>Uses the active Linux chat backend</span>
+        </div>
+        <div className="pet-chat-bubble-header-actions">
+          <button type="button" className="pet-chat-bubble-link" onClick={onOpenFullChat}>
+            Open full chat
+          </button>
+          <button type="button" className="pet-chat-bubble-close" onClick={onClose} aria-label="Close companion chat">
+            ×
+          </button>
+        </div>
+      </header>
+
+      <div className="pet-chat-messages" aria-live="polite" data-testid="pet-chat-messages">
+        {visibleMessages.length > 0 ? (
+          visibleMessages.map((message) => {
+            const text = messageText(message, streaming);
+            if (!text) return null;
+            return (
+              <p className={messageClass(message)} key={message.id}>
+                <span className="sr-only">{message.role}: </span>
+                {text}
+              </p>
+            );
+          })
+        ) : (
+          <p className="pet-chat-empty">Ask your companion about a run, provider, or file.</p>
+        )}
+      </div>
+
+      <form className="pet-chat-composer" onSubmit={submit}>
+        <div className="pet-chat-composer-row">
+          <button
+            type="button"
+            className="pet-chat-attach"
+            aria-label="Attach files to companion chat"
+            title="Attach a bounded document, image, or audio file"
+            disabled={busy || streaming}
+            onClick={() => document.getElementById(fileInputId)?.click()}
+          >
+            +
+          </button>
+          <input
+            id={fileInputId}
+            className="pet-chat-file-input"
+            type="file"
+            accept={CHAT_ATTACHMENT_ACCEPT.join(',')}
+            aria-label="Companion chat attachment"
+            disabled={busy || streaming}
+            onChange={handleFileChange}
+          />
+          <label className="sr-only" htmlFor={`${fileInputId}-message`}>
+            Companion message
+          </label>
+          <textarea
+            id={`${fileInputId}-message`}
+            value={draft}
+            rows={1}
+            placeholder="Ask your companion…"
+            disabled={busy || streaming}
+            onChange={(event) => handleDraftChange(event.currentTarget.value)}
+            onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                void submit();
+              }
+            }}
+          />
+          {streaming ? (
+            <button type="button" className="pet-chat-stop" onClick={stopStreaming} aria-label="Stop companion response">
+              Stop
+            </button>
+          ) : (
+            <button type="submit" className="pet-chat-send" disabled={sendDisabled} aria-label="Send companion message">
+              ↑
+            </button>
+          )}
+        </div>
+        {pendingAttachment ? (
+          <div className="pet-chat-attachment" data-testid="pet-chat-pending-attachment">
+            <span>{pendingAttachment.name}</span>
+            <button
+              type="button"
+              aria-label={`Remove companion attachment ${pendingAttachment.name}`}
+              onClick={() => {
+                setPendingAttachment(null);
+                setStatus(null);
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        ) : null}
+      </form>
+
+      {status ? <p className="pet-chat-status" role="status">{status}</p> : null}
+      {attachmentError ? <p className="pet-chat-error" role="alert">{attachmentError}</p> : null}
+      {streamError && streamPhase === 'error' ? <p className="pet-chat-error" role="alert">{streamError}</p> : null}
+
+      <button type="button" className="pet-chat-new" onClick={() => {
+        startNewChat();
+        setDraft('');
+        setPendingAttachment(null);
+        setStatus('New companion conversation ready.');
+      }}>
+        New companion conversation
+      </button>
+    </section>
+  );
+}

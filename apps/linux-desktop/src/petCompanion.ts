@@ -86,7 +86,7 @@ const UNSUPPORTED_ACTIONS: Record<Exclude<PetAction, 'overlay' | 'click-through'
   selection: {
     supported: false,
     state: 'unavailable',
-    reason: 'No canonical Linux companion selection, chat, or file-drop command is registered.',
+    reason: 'No canonical Linux native desktop selection command is registered.',
     source: 'native-contract-inventory'
   }
 };
@@ -102,7 +102,7 @@ const CONTAINED_ACTIONS: Record<PetContainedAction, PetActionCapability> = {
     supported: true,
     state: 'available',
     reason:
-      'Selects the contained pet preview in the OpenBurnBar window; native desktop selection remains unavailable.',
+      'Selects the contained pet preview in the OpenBurnBar window; native desktop selection remains unavailable. Companion chat and file drops are available in the contained surface.',
     source: 'linux-contained-surface'
   }
 };
