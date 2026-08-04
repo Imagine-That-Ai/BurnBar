@@ -64,35 +64,19 @@ final class ConversationSyncService: CloudSyncDomain, Sendable {
                     docId: docId,
                     vaultKey: vaultKey
                 )
-                // L41/at-rest Signal dual-write (item 3). The legacy AES-GCM sealedPayload
-                // is the FLOOR and is already in `data`; the additive Signal envelope is
-                // BEST-EFFORT and gated by the conversations_chat sealingScheme. On ANY seal
-                // failure (e.g. a trusted device without a published identity) we log and
-                // write legacy-only for THIS record rather than abort it or the whole batch —
-                // legacy is already end-to-end so no confidentiality is lost. We also clear a
-                // stale envelope (merge:true) so a signalEnvelope can never outlive its
-                // sealedPayload after a gate-off / rollback / consent-revoke.
-                do {
-                    if let signalEnvelope = try await MacCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
-                        domainID: "conversations_chat",
-                        uid: uid,
-                        firestore: Firestore.firestore(),
-                        collection: "conversations",
-                        docId: docId,
-                        plaintext: ConversationCloudSealer.encodePlaintext(ConversationCloudPrivatePayload(record: record)),
-                        resolvedKey: vaultKey
-                    ) {
-                        data["signalEnvelope"] = signalEnvelope
-                    } else {
-                        data["signalEnvelope"] = FieldValue.delete()
-                    }
-                } catch {
-                    AppLogger.sync.error(
-                        "conversation_signal_seal_failed_legacy_only",
-                        metadata: ["accountUid": uid, "docId": docId, "error": String(describing: error)]
-                    )
-                    data["signalEnvelope"] = FieldValue.delete()
-                }
+                data["source"] = "macos-agentlens"
+                data = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
+                    to: data,
+                    domainID: "conversations_chat",
+                    uid: uid,
+                    firestore: Firestore.firestore(),
+                    collection: "conversations",
+                    docId: docId,
+                    plaintext: ConversationCloudSealer.encodePlaintext(ConversationCloudPrivatePayload(record: record)),
+                    resolvedKey: vaultKey,
+                    legacyPrivateFields: ["sealedPayload", "sealedSchemaVersion", "vaultKeyID", "contentSealed"],
+                    mergeWrite: true
+                )
                 batch.setData(data, forDocument: docRef, merge: true)
             }
 

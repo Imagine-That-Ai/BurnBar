@@ -1,3 +1,6 @@
+import FirebaseAuth
+import FirebaseCore
+import FirebaseFirestore
 import Foundation
 import Observation
 import OpenBurnBarCore
@@ -36,8 +39,13 @@ final class AgentIdentityRegistry {
 
     private static let userInstallsKey = "square.installedManifests.v1"
     static let pairedMacURIPrefix = "device://paired-mac/"
+    private let firestoreProvider: () -> Firestore
 
-    init(seed: [AgentIdentity] = AgentIdentity.defaultBuiltIns) {
+    init(
+        seed: [AgentIdentity] = AgentIdentity.defaultBuiltIns,
+        firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() }
+    ) {
+        self.firestoreProvider = firestoreProvider
         self.userInstalledManifests = Self.loadUserInstalls()
         self.identities = seed + userInstalledManifests.map { manifest in
             AgentIdentity(fromManifest: manifest, installSource: .userInstalled(manifestURL: manifest.agentURI))
@@ -250,6 +258,7 @@ final class AgentIdentityRegistry {
             installSource: .userInstalled(manifestURL: manifest.agentURI)
         )
         identities.append(identity)
+        Task { await cloudUpsert(identity) }
         return identity
     }
 
@@ -257,9 +266,11 @@ final class AgentIdentityRegistry {
     func uninstall(uri: String) {
         guard let idx = identities.firstIndex(where: { $0.id == uri }) else { return }
         guard identities[idx].installSource.canBeUninstalled else { return }
+        let removed = identities[idx]
         identities.remove(at: idx)
         userInstalledManifests.removeAll { $0.agentURI == uri }
         Self.saveUserInstalls(userInstalledManifests)
+        Task { await cloudDelete(removed) }
     }
 
     /// Update the persisted personas for an agent. Used by the brand-zone
@@ -283,6 +294,64 @@ final class AgentIdentityRegistry {
             lastRefreshedAt: Date(),
             tagline: existing.tagline
         )
+        Task { await cloudUpsert(identities[idx]) }
+    }
+
+    private func cloudUpsert(_ identity: AgentIdentity) async {
+        guard FirebaseApp.app() != nil, let uid = Auth.auth().currentUser?.uid else { return }
+        do {
+            let resolvedKey = try await MobileCloudVaultKeyAccess.keyForWriting(
+                uid: uid,
+                firestore: firestoreProvider()
+            )
+            guard let token = CloudVaultCrypto.projectKeyHash(for: identity.id, keyData: resolvedKey.keyData) else { return }
+            let documentID = "ai_\(token)"
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let privateData = try encoder.encode(identity)
+            guard var publicData = try JSONSerialization.jsonObject(with: privateData) as? [String: Any] else { return }
+            for key in ["displayName", "personas", "tagline"] { publicData.removeValue(forKey: key) }
+            publicData["id"] = documentID
+            publicData["updatedAt"] = FieldValue.serverTimestamp()
+            let signalState = MobileCloudVaultSignalPayloads.signalActivationState(domainID: "conversations_chat")
+            if signalState != .off {
+                do {
+                    if let envelope = try await MobileCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
+                        domainID: "conversations_chat",
+                        uid: uid,
+                        firestore: firestoreProvider(),
+                        collection: "agent_identities",
+                        docId: documentID,
+                        plaintext: privateData,
+                        resolvedKey: resolvedKey
+                    ) {
+                        publicData["signalEnvelope"] = envelope
+                    }
+                } catch {
+                    if signalState == .required { throw error }
+                }
+            }
+            try await firestoreProvider()
+                .collection("users").document(uid)
+                .collection("agent_identities").document(documentID)
+                .setData(publicData, merge: false)
+        } catch {
+            refreshError = error.localizedDescription
+        }
+    }
+
+    private func cloudDelete(_ identity: AgentIdentity) async {
+        guard FirebaseApp.app() != nil, let uid = Auth.auth().currentUser?.uid else { return }
+        do {
+            guard let key = try await MobileCloudVaultKeyAccess
+                .keyForReading(uid: uid, firestore: firestoreProvider())?.keyData,
+                  let token = CloudVaultCrypto.projectKeyHash(for: identity.id, keyData: key) else { return }
+            try await firestoreProvider()
+                .collection("users").document(uid)
+                .collection("agent_identities").document("ai_\(token)").delete()
+        } catch {
+            refreshError = error.localizedDescription
+        }
     }
 
     // MARK: - Persistence

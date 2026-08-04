@@ -74,6 +74,13 @@ export interface GatewaySignalAtRestKeyDeliveryDoc {
   contentKeyLength: 32;
 }
 
+export interface GatewaySignalAtRestSenderAuthDoc {
+  senderIdentityKeyId: string;
+  senderIdentityKeyB64: string;
+  signatureB64: string;
+  signatureVersion: 1;
+}
+
 export interface GatewaySignalEnvelopeDoc {
   signalEnvelopeFormatVersion: number;
   mode: "transport" | "at-rest";
@@ -82,6 +89,25 @@ export interface GatewaySignalEnvelopeDoc {
   ciphertextLayer: GatewaySignalCiphertextLayerDoc;
   keyDelivery: GatewaySignalTransportKeyDeliveryDoc | GatewaySignalAtRestKeyDeliveryDoc;
   binding: GatewaySignalBindingDoc;
+  senderAuth?: GatewaySignalAtRestSenderAuthDoc;
+}
+
+export interface HermesGatewaySignalPrekeyBundleDoc {
+  version: 1;
+  bundleId: string;
+  identityKeyId: string;
+  identityKeyB64: string;
+  registrationId: number;
+  deviceId: number;
+  signedPreKeyId: number;
+  signedPreKeyPublicB64: string;
+  signedPreKeySignatureB64: string;
+  oneTimePreKeyId: number;
+  oneTimePreKeyPublicB64: string;
+  kyberPreKeyId: number;
+  kyberPreKeyPublicB64: string;
+  kyberPreKeySignatureB64: string;
+  generatedAt: string;
 }
 
 export interface HermesGatewayClientDoc {
@@ -107,6 +133,7 @@ export interface HermesGatewayClientDoc {
   agentPreferredRelayEnvelopeVersion?: number;
   agentSupportsHpkeV3?: boolean;
   agentSupportsSignalEnvelope?: boolean;
+  agentSignalPrekeyBundle?: HermesGatewaySignalPrekeyBundleDoc;
   agentPlatform?: string;
   agentAppBuild?: string;
   phoneRelayPublicKey?: string;
@@ -116,6 +143,7 @@ export interface HermesGatewayClientDoc {
   phonePreferredRelayEnvelopeVersion?: number;
   phoneSupportsHpkeV3?: boolean;
   phoneSupportsSignalEnvelope?: boolean;
+  phoneSignalPrekeyBundle?: HermesGatewaySignalPrekeyBundleDoc;
   phonePlatform?: string;
   phoneAppBuild?: string;
   agentRatchetIdentityPublicKey?: string;

@@ -1,6 +1,7 @@
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
+import FirebaseFunctions
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
@@ -82,18 +83,51 @@ final class CLIAgentMissionDispatcher {
             vaultKey: resolvedKey.keyData,
             vaultKeyID: resolvedKey.vaultKeyID
         )
-        // Firestore rules reserve Signal envelopes for a validating Admin/callable
-        // path. Direct clients always send the path-bound CloudVault seal only.
-        payload.removeValue(forKey: "signalEnvelope")
+        let signalState = MobileCloudVaultSignalPayloads.signalActivationState(domainID: "conversations_chat")
+        if signalState != .off {
+            do {
+                if let envelope = try await CLIAgentMissionCloudSealer.signalEnvelopeIfEnabled(
+                    from: payload,
+                    uid: uid,
+                    firestore: db,
+                    collection: "cli_agent_mission_requests",
+                    docId: id,
+                    resolvedKey: resolvedKey
+                ) {
+                    payload["signalEnvelope"] = envelope
+                    if signalState == .required {
+                        for key in ["contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload"] {
+                            payload.removeValue(forKey: key)
+                        }
+                    }
+                }
+            } catch {
+                if signalState == .required { throw error }
+            }
+        }
+        let signalWrite = signalState != .off && payload["signalEnvelope"] != nil
+        if signalWrite {
+            var callablePayload = payload
+            callablePayload["updatedAt"] = ISO8601DateFormatter().string(from: Date())
+            _ = try await Functions.functions()
+                .httpsCallable("writeSignalAtRestDocument")
+                .call([
+                    "collection": "cli_agent_mission_requests",
+                    "docId": id,
+                    "data": callablePayload,
+                ])
+        }
         let requestRef = db
             .collection("users").document(uid)
             .collection("cli_agent_mission_requests").document(id)
         let batch = db.batch()
-        batch.setData(
-            payload,
-            forDocument: requestRef,
-            merge: false
-        )
+        if !signalWrite {
+            batch.setData(
+                payload,
+                forDocument: requestRef,
+                merge: false
+            )
+        }
         batch.setData(
             try CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
                 label: isChatRequest ? "Chat" : "Mission",

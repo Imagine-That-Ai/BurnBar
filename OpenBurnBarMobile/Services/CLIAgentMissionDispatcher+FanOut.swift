@@ -1,6 +1,7 @@
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
+import FirebaseFunctions
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
@@ -169,17 +170,49 @@ extension CLIAgentMissionDispatcher {
             if let envelope = personaScopeByRuntime[runtimeToken] {
                 payload["personaID"] = envelope.personaID
             }
-            // Direct Firestore writes carry only the path-bound CloudVault seal;
-            // Signal envelopes are reserved for the validating server path.
-            payload.removeValue(forKey: "signalEnvelope")
+            let signalState = MobileCloudVaultSignalPayloads.signalActivationState(domainID: "conversations_chat")
+            if signalState != .off {
+                do {
+                    if let envelope = try await CLIAgentMissionCloudSealer.signalEnvelopeIfEnabled(
+                        from: payload,
+                        uid: uid,
+                        firestore: db,
+                        collection: "cli_agent_mission_requests",
+                        docId: missionID,
+                        resolvedKey: resolvedKey
+                    ) {
+                        payload["signalEnvelope"] = envelope
+                        if signalState == .required {
+                            for key in ["contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload"] {
+                                payload.removeValue(forKey: key)
+                            }
+                        }
+                    }
+                } catch {
+                    if signalState == .required { throw error }
+                }
+            }
             let requestRef = db
                 .collection("users").document(uid)
                 .collection("cli_agent_mission_requests").document(missionID)
-            batch.setData(
-                payload,
-                forDocument: requestRef,
-                merge: false
-            )
+            let signalWrite = signalState != .off && payload["signalEnvelope"] != nil
+            if signalWrite {
+                var callablePayload = payload
+                callablePayload["updatedAt"] = ISO8601DateFormatter().string(from: Date())
+                _ = try await Functions.functions()
+                    .httpsCallable("writeSignalAtRestDocument")
+                    .call([
+                        "collection": "cli_agent_mission_requests",
+                        "docId": missionID,
+                        "data": callablePayload,
+                    ])
+            } else {
+                batch.setData(
+                    payload,
+                    forDocument: requestRef,
+                    merge: false
+                )
+            }
             batch.setData(
                 try CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
                     sourceSkillID: sourceSkillID,

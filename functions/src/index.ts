@@ -72,6 +72,7 @@ export {
   respondHermesGatewayApproval,
   reapHermesGatewayApprovals,
 } from "./callables/hermesGateway.js";
+export { writeSignalAtRestDocument } from "./callables/writeSignalAtRestDocument.js";
 
 export {
   createPiAgentPairing,
@@ -206,6 +207,19 @@ export {
   anchorAuditLogHeads,
   latestRouterRundown,
 } from "./scheduledExports.js";
+
+export {
+  onSignalMigrationConversationWritten,
+  onSignalMigrationChatThreadWritten,
+  onSignalMigrationMobileAssistantChatWritten,
+  onSignalMigrationCliSessionWritten,
+  onSignalMigrationMissionRequestWritten,
+  onSignalMigrationTextSnippetWritten,
+  onSignalMigrationRollbackRequestWritten,
+  onSignalMigrationApprovalPolicyWritten,
+  onSignalMigrationAgentIdentityWritten,
+  onSignalMigrationSubscriptionTopicWritten,
+} from "./signalMigrationTelemetry.js";
 
 export {
   beginEntitlementBinding,

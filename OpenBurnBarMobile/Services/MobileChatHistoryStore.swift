@@ -730,12 +730,8 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         if let assistant = thread.messages.last(where: { $0.role == "assistant" }) {
             payload["lastAssistantMessageID"] = assistant.id
         }
-        // At-rest Signal dual-write (item 3). The legacy AES-GCM sealedPayload above is the
-        // FLOOR; the additive Signal envelope is BEST-EFFORT and gated by the
-        // conversations_chat sealingScheme. On ANY seal failure (e.g. a trusted device
-        // without a published identity) log and write legacy-only rather than abort the
-        // upsert — legacy is already end-to-end so no confidentiality is lost. (merge:false
-        // below fully overwrites the doc, so an omitted envelope is implicitly cleared.)
+        // At-rest Signal rollout: enabled mode dual-writes; required mode writes
+        // Signal-only and aborts if a trusted identity/envelope is unavailable.
         do {
             if let signalEnvelope = try await MobileCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
                 domainID: "conversations_chat",
@@ -747,9 +743,17 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
                 resolvedKey: resolvedKey
             ) {
                 payload["signalEnvelope"] = signalEnvelope
+                if MobileCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat") {
+                    for key in ["contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload"] {
+                        payload.removeValue(forKey: key)
+                    }
+                }
             }
         } catch {
-            logger.error("Signal at-rest seal failed; writing legacy-only: \(String(describing: error), privacy: .public)")
+            if MobileCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat") {
+                throw error
+            }
+            logger.error("Signal at-rest seal failed; retaining staged legacy fallback: \(String(describing: error), privacy: .public)")
         }
         try await Self.collection(for: db, uid: uid).document(thread.id).setData(payload, merge: false)
     }

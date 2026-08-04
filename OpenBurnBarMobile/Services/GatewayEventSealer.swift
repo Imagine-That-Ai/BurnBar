@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import OpenBurnBarCore
+typealias GatewaySignalSessionProvider = OBBSignalGatewayEnvelopeProvider
 
 /// E2EE sealing core for phone→agent Hermes Gateway events, extracted
 /// mechanically from `FunctionsRepository` (tech-debt finding-67) so the
@@ -225,6 +226,50 @@ enum GatewayEventSealer {
         // this wire field.
         payload["eventId"] = eventId
         payload["relayEnvelope"] = relayEnvelope
+    }
+
+    /// Official libsignal v4 Gateway producer. The caller supplies the durable
+    /// session actor and the server-claimed, identity-pinned peer bundle; this
+    /// method never falls back to HPKE or the legacy custom ratchet.
+    nonisolated static func sealGatewayEventSignalPayload(
+        into payload: inout [String: Any],
+        text: String,
+        senderDisplayName: String,
+        threadId: String,
+        modelId: String?,
+        targetClient: HermesGatewayClientRecord,
+        uid: String,
+        provider: any GatewaySignalSessionProvider,
+        kind: String? = nil,
+        extraSealedFields: [String: String] = [:]
+    ) async throws {
+        let extraSealedValues = extraSealedFields.mapValues { $0 as Any }
+        try validateExtraSealedFields(extraSealedValues)
+        var privatePayload: [String: Any] = [
+            "text": text,
+            "destinationId": gatewayDestinationID(in: payload),
+            "senderDisplayName": senderDisplayName,
+            "threadId": threadId,
+            "eventSchemaVersion": 1
+        ]
+        if let modelId, !modelId.isEmpty { privatePayload["modelId"] = modelId }
+        if let kind, !kind.isEmpty { privatePayload["kind"] = kind }
+        try applyExtraSealedFields(extraSealedValues, to: &privatePayload)
+        let plaintext = try JSONSerialization.data(withJSONObject: privatePayload)
+        let signalEnvelopeData = try await provider.seal(
+            plaintext: plaintext,
+            uid: uid,
+            clientId: targetClient.id,
+            slotId: kind ?? "message"
+        )
+        guard let signalEnvelope = try JSONSerialization.jsonObject(with: signalEnvelopeData) as? [String: Any] else {
+            throw FunctionsError.gatewayInvalidSealedControlPayload
+        }
+        for key in ["text", "senderDisplayName", "threadId", "modelId", "kind", "relayEnvelope", "ratchetEnvelope"] {
+            payload.removeValue(forKey: key)
+        }
+        payload["eventId"] = "evt_\(UUID().uuidString.lowercased())"
+        payload["signalEnvelope"] = signalEnvelope
     }
 
     nonisolated static func sealGatewayEventRatchetPayload(

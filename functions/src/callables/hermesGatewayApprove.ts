@@ -17,6 +17,7 @@ import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
 import {
   canonicalHermesGatewayUserCode,
   gatewayPlaintextWriteAllowed,
+  gatewaySignalRequiredMode,
   gatewayTokenExpiryISO,
   generateHermesGatewayBearerToken,
   hashHermesGatewayBearerToken,
@@ -35,7 +36,11 @@ import {
   type HermesGatewayScope,
 } from "../hermesGateway.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
-import type { HermesGatewayClientDoc } from "../types/generated/hermes-gateway.js";
+import type {
+  HermesGatewayClientDoc,
+  HermesGatewaySignalPrekeyBundleDoc,
+} from "../types/generated/hermes-gateway.js";
+import { parseGatewaySignalPrekeyBundle } from "../hermesGatewaySignalPrekeys.js";
 import { assertCallableApprovalNotLocked, recordCallableApprovalFailure } from "./publicRateLimit.js";
 import { nowISO } from "./shared.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
@@ -88,6 +93,7 @@ interface AgentSessionRelay {
   agentRelayEncryption: string | undefined;
   agentCapabilities: HermesGatewayRelayEnvelopeCapabilities | undefined;
   agentRatchet: ParsedRatchetPrekeyBundle | undefined;
+  agentSignalPrekeyBundle: HermesGatewaySignalPrekeyBundleDoc | undefined;
 }
 
 /**
@@ -133,7 +139,23 @@ function deriveAgentSessionRelay(session: Record<string, unknown>): AgentSession
       throw new HttpsError("failed-precondition", `invalid_agent_ratchet_prekey: ${message}`);
     },
   );
-  return { agentRelayPublicKey, agentRelayKeyVersion, agentRelayEncryption, agentCapabilities, agentRatchet };
+  const agentSignalPrekeyBundle = parseGatewaySignalPrekeyBundle(session, "agent", (message) => {
+    throw new HttpsError("failed-precondition", `invalid_agent_signal_prekey_bundle: ${message}`);
+  });
+  if (agentCapabilities?.supportsSignalEnvelope === true && !agentSignalPrekeyBundle) {
+    throw new HttpsError(
+      "failed-precondition",
+      "missing_agent_signal_prekey_bundle: Signal-capable pairings require a PQXDH bundle.",
+    );
+  }
+  return {
+    agentRelayPublicKey,
+    agentRelayKeyVersion,
+    agentRelayEncryption,
+    agentCapabilities,
+    agentRatchet,
+    agentSignalPrekeyBundle,
+  };
 }
 
 interface ApprovedClientBuildInput {
@@ -153,6 +175,7 @@ interface ApprovedClientBuildInput {
   phoneRelay: ParsedRelayPublicKey | undefined;
   phoneCapabilities: HermesGatewayRelayEnvelopeCapabilities | undefined;
   phoneRatchet: ParsedRatchetPrekeyBundle | undefined;
+  phoneSignalPrekeyBundle: HermesGatewaySignalPrekeyBundleDoc | undefined;
   negotiatedCapabilities: HermesGatewayRelayEnvelopeCapabilities | undefined;
   supportsRatchetV1: boolean | undefined;
   relayCapable: boolean;
@@ -169,6 +192,7 @@ function agentRelayClientFields(agentRelay: AgentSessionRelay): Partial<HermesGa
     agentPreferredRelayEnvelopeVersion: agentCapabilities?.preferredRelayEnvelopeVersion,
     agentSupportsHpkeV3: agentCapabilities?.supportsHpkeV3,
     agentSupportsSignalEnvelope: agentCapabilities?.supportsSignalEnvelope,
+    agentSignalPrekeyBundle: agentRelay.agentSignalPrekeyBundle,
     agentPlatform: agentCapabilities?.platform,
     agentAppBuild: agentCapabilities?.appBuild,
   };
@@ -178,6 +202,7 @@ function agentRelayClientFields(agentRelay: AgentSessionRelay): Partial<HermesGa
 function phoneRelayClientFields(
   phoneRelay: ParsedRelayPublicKey | undefined,
   phoneCapabilities: HermesGatewayRelayEnvelopeCapabilities | undefined,
+  phoneSignalPrekeyBundle: HermesGatewaySignalPrekeyBundleDoc | undefined,
 ): Partial<HermesGatewayClientDoc> {
   return {
     phoneRelayPublicKey: phoneRelay?.publicKey,
@@ -187,6 +212,7 @@ function phoneRelayClientFields(
     phonePreferredRelayEnvelopeVersion: phoneCapabilities?.preferredRelayEnvelopeVersion,
     phoneSupportsHpkeV3: phoneCapabilities?.supportsHpkeV3,
     phoneSupportsSignalEnvelope: phoneCapabilities?.supportsSignalEnvelope,
+    phoneSignalPrekeyBundle,
     phonePlatform: phoneCapabilities?.platform,
     phoneAppBuild: phoneCapabilities?.appBuild,
   };
@@ -229,7 +255,14 @@ function ratchetClientFields(
 
 /** Assemble the new client doc minted on pairing approval. A pure builder. */
 function buildApprovedClientDoc(input: ApprovedClientBuildInput): HermesGatewayClientDoc {
-  const { agentRelay, phoneRelay, phoneCapabilities, phoneRatchet, negotiatedCapabilities } = input;
+  const {
+    agentRelay,
+    phoneRelay,
+    phoneCapabilities,
+    phoneRatchet,
+    phoneSignalPrekeyBundle,
+    negotiatedCapabilities,
+  } = input;
   return {
     id: input.clientId,
     uid: input.uid,
@@ -245,7 +278,7 @@ function buildApprovedClientDoc(input: ApprovedClientBuildInput): HermesGatewayC
     homeDestinationId: input.homeDestinationId,
     expiresAt: input.tokenExpiresAt,
     ...agentRelayClientFields(agentRelay),
-    ...phoneRelayClientFields(phoneRelay, phoneCapabilities),
+    ...phoneRelayClientFields(phoneRelay, phoneCapabilities, phoneSignalPrekeyBundle),
     ...negotiatedRelayClientFields(negotiatedCapabilities),
     ...ratchetClientFields(agentRelay.agentRatchet, phoneRatchet, input.supportsRatchetV1),
     relayCapable: input.relayCapable ? true : undefined,
@@ -273,10 +306,11 @@ async function persistApprovedPairing(input: {
   sessionRef: ReturnType<typeof db.doc>;
   phoneRelay: ParsedRelayPublicKey | undefined;
   phoneRatchet: ParsedRatchetPrekeyBundle | undefined;
+  phoneSignalPrekeyBundle: HermesGatewaySignalPrekeyBundleDoc | undefined;
   supportsRatchetV1: boolean | undefined;
   relayCapable: boolean;
 }): Promise<void> {
-  const { phoneRelay, phoneRatchet } = input;
+  const { phoneRelay, phoneRatchet, phoneSignalPrekeyBundle } = input;
   await ensureDefaultDestination(input.uid, input.now);
   await Promise.all([
     db.doc(`users/${input.uid}/hermes_gateway_clients/${input.clientId}`).set(input.clientDoc, { merge: false }),
@@ -300,6 +334,7 @@ async function persistApprovedPairing(input: {
         phoneRelayPublicKey: phoneRelay?.publicKey,
         phoneRelayKeyVersion: phoneRelay?.keyVersion,
         phoneRelayEncryption: phoneRelay?.encryption,
+        phoneSignalPrekeyBundle,
         phoneRatchetIdentityPublicKey: phoneRatchet?.identityPublicKey,
         phoneRatchetSigningPublicKey: phoneRatchet?.signingPublicKey,
         phoneRatchetSignedPreKeyPublicKey: phoneRatchet?.signedPreKeyPublicKey,
@@ -344,6 +379,9 @@ export const approveHermesGatewayDeviceGrant = onCall(
         phoneRatchetSignedPreKeyId?: unknown;
         phoneRatchetSignedPreKeySignature?: unknown;
         phoneSupportsRatchetV1?: unknown;
+        supportsSignalEnvelope?: unknown;
+        phoneSignalPrekeyBundle?: unknown;
+        signalPrekeyBundle?: unknown;
         ratchetIdentityPublicKey?: unknown;
         ratchetSigningPublicKey?: unknown;
         ratchetSignedPreKeyPublicKey?: unknown;
@@ -384,6 +422,15 @@ export const approveHermesGatewayDeviceGrant = onCall(
       const phoneRatchet = parseRatchetPrekeyBundle(requestData, "phone", (message) => {
         throw new HttpsError("invalid-argument", message);
       });
+      const phoneSignalPrekeyBundle = parseGatewaySignalPrekeyBundle(requestData, "phone", (message) => {
+        throw new HttpsError("invalid-argument", message);
+      });
+      if (phoneCapabilities?.supportsSignalEnvelope === true && !phoneSignalPrekeyBundle) {
+        throw new HttpsError(
+          "invalid-argument",
+          "missing_phone_signal_prekey_bundle: Signal-capable pairings require a PQXDH bundle.",
+        );
+      }
 
       const session = await resolvePairingSession(uid, userCode);
       const agentClientSigningPublicKey = requireCallableGatewayClientSigningPublicKey(
@@ -405,6 +452,18 @@ export const approveHermesGatewayDeviceGrant = onCall(
           ? negotiateGatewayRelayEnvelopeCapabilities(agentRelay.agentCapabilities, phoneCapabilities)
           : undefined;
       const supportsRatchetV1 = agentRelay.agentRatchet != null && phoneRatchet != null ? true : undefined;
+      if (
+        gatewaySignalRequiredMode() &&
+        (negotiatedCapabilities?.supportsSignalEnvelope !== true ||
+          !agentRelay.agentSignalPrekeyBundle ||
+          !phoneSignalPrekeyBundle)
+      ) {
+        await recordCallableApprovalFailure(uid, "hermes_gateway_approve_fail");
+        throw new HttpsError(
+          "failed-precondition",
+          "signal_pairing_required: both endpoints must negotiate Signal v4 and publish official-libsignal PQXDH bundles.",
+        );
+      }
       // A pairing that cannot seal in BOTH directions is refused so no plaintext-
       // only client is ever minted.
       if (!relayCapable && !gatewayPlaintextWriteAllowed(false)) {
@@ -443,6 +502,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
         phoneRelay,
         phoneCapabilities,
         phoneRatchet,
+        phoneSignalPrekeyBundle,
         negotiatedCapabilities,
         supportsRatchetV1,
         relayCapable,
@@ -462,6 +522,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
         sessionRef: session.ref,
         phoneRelay,
         phoneRatchet,
+        phoneSignalPrekeyBundle,
         supportsRatchetV1,
         relayCapable,
       });

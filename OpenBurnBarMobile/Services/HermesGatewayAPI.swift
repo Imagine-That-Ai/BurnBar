@@ -225,6 +225,41 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         return try Self.decodeHermesGatewayValue(HermesGatewayQueuedEvent.self, from: result.data)
     }
 
+    func enqueueHermesGatewaySignalEvent(
+        text: String,
+        destinationId: String = "burnbar:home",
+        threadId: String = "burnbar-ios-e2e",
+        targetClient: HermesGatewayClientRecord,
+        uid: String,
+        provider: any GatewaySignalSessionProvider,
+        senderDisplayName: String = "OpenBurnBar iPhone",
+        kind: String? = nil,
+        modelId: String? = nil,
+        extraSealedFields: [String: String] = [:]
+    ) async throws -> HermesGatewayQueuedEvent {
+        let callable = try functionsClient().httpsCallable("enqueueHermesGatewayEvent")
+        var payload: [String: Any] = [
+            "destinationId": destinationId,
+            "senderId": "burnbar-ios",
+            "eventKind": kind ?? "message",
+            "targetClientId": targetClient.id
+        ]
+        try await GatewayEventSealer.sealGatewayEventSignalPayload(
+            into: &payload,
+            text: text,
+            senderDisplayName: senderDisplayName,
+            threadId: threadId,
+            modelId: modelId,
+            targetClient: targetClient,
+            uid: uid,
+            provider: provider,
+            kind: kind,
+            extraSealedFields: extraSealedFields
+        )
+        let result = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
+        return try Self.decodeHermesGatewayValue(HermesGatewayQueuedEvent.self, from: result.data)
+    }
+
     func enqueueHermesGatewayModelSwitch(
         modelId: String,
         destinationId: String = "burnbar:home",

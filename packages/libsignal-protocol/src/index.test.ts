@@ -20,6 +20,8 @@ import {
   generateIdentity,
   generatePreKeys,
   buildPreKeyBundle,
+  publishedPreKeyBundle,
+  preKeyBundleFromPublished,
   createInMemoryStores,
   establishSession,
   encrypt,
@@ -88,6 +90,18 @@ async function establishAliceToBob(): Promise<{
 
   return { alice, bob, bobKyberPreKeyId: bobIds.kyberPreKeyId };
 }
+
+test('(0) published Gateway bundle round-trips through the native PreKeyBundle', async () => {
+  const bob = makeParty('bundle-bob', 1);
+  const ids = { preKeyId: 9001, signedPreKeyId: 9002, kyberPreKeyId: 9003 };
+  const generated = await generatePreKeys(bob.identity, bob.stores, ids);
+  const published = publishedPreKeyBundle(bob.identity, bob.address.deviceId(), 'bundle-bob_1', 'bundle-1', generated, '2026-01-01T00:00:00.000Z');
+  const nativeBundle = preKeyBundleFromPublished(published);
+  assert.equal(nativeBundle.registrationId(), published.registrationId);
+  assert.equal(nativeBundle.deviceId(), published.deviceId);
+  assert.equal(nativeBundle.preKeyId(), published.oneTimePreKeyId);
+  assert.equal(nativeBundle.kyberPreKeyId(), published.kyberPreKeyId);
+});
 
 test('(1) full X3DH+PQXDH establishment and bidirectional round-trip', async () => {
   const { alice, bob, bobKyberPreKeyId } = await establishAliceToBob();

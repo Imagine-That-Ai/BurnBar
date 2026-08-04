@@ -1,0 +1,10 @@
+{
+  "name": "@openburnbar/hermes-signal-runtime",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": { "start": "node sidecar.mjs", "test": "node --test sidecar.test.mjs" },
+  "dependencies": {
+    "@openburnbar/libsignal-protocol": "file:../../../packages/libsignal-protocol"
+  }
+}

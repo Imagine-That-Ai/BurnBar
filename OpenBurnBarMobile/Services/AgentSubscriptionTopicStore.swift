@@ -66,10 +66,32 @@ final class AgentSubscriptionTopicStore {
             let snapshot = try await collection(uid: uid)
                 .order(by: "consentGivenAt", descending: true)
                 .getDocuments()
-            let vaultKey = try? await MobileCloudVaultKeyAccess
-                .keyForReading(uid: uid, firestore: firestoreProvider())?.keyData
-            topics = snapshot.documents.compactMap {
-                Self.decodeTopic(documentID: $0.documentID, data: $0.data(), vaultKey: vaultKey)
+            let resolvedKey = try? await MobileCloudVaultKeyAccess
+                .keyForReading(uid: uid, firestore: firestoreProvider())
+            let trustedKeys: [String: Data] = if let identity = resolvedKey?.signalIdentity {
+                await MobileCloudVaultSignalPayloads.trustedSenderPublicKeys(
+                    uid: uid,
+                    firestore: firestoreProvider(),
+                    localIdentity: identity
+                )
+            } else { [:] }
+            topics = snapshot.documents.compactMap { document in
+                let privateData = try? resolvedKey.flatMap { key in
+                    try MobileCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                        document.data(),
+                        uid: uid,
+                        collection: "subscription_topics",
+                        docId: document.documentID,
+                        signalIdentity: key.signalIdentity,
+                        trustedSenderPublicKeys: trustedKeys
+                    )
+                }
+                return Self.decodeTopic(
+                    documentID: document.documentID,
+                    data: document.data(),
+                    vaultKey: resolvedKey?.keyData,
+                    signalPlaintext: privateData ?? nil
+                )
             }
             lastError = nil
         } catch {
@@ -117,10 +139,39 @@ final class AgentSubscriptionTopicStore {
 
     func upsert(_ topic: SubscriptionTopic) async throws {
         let uid = try currentUserID()
-        let vaultKey = try await MobileCloudVaultKeyAccess
+        let resolvedKey = try await MobileCloudVaultKeyAccess
             .keyForWriting(uid: uid, firestore: firestoreProvider())
-            .keyData
+        let vaultKey = resolvedKey.keyData
         var payload = try Self.encodeTopic(topic, vaultKey: vaultKey)
+        let signalState = MobileCloudVaultSignalPayloads.signalActivationState(domainID: "conversations_chat")
+        if signalState != .off {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let plaintext = try encoder.encode(topic)
+            do {
+                if let envelope = try await MobileCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
+                    domainID: "conversations_chat",
+                    uid: uid,
+                    firestore: firestoreProvider(),
+                    collection: "subscription_topics",
+                    docId: try Self.documentID(agentURI: topic.agentURI, topicID: topic.topicID, vaultKey: vaultKey),
+                    plaintext: plaintext,
+                    resolvedKey: resolvedKey
+                ) {
+                    payload["signalEnvelope"] = envelope
+                    if signalState == .required {
+                        for key in [
+                            "sealedAgentURI", "sealedTopicID", "sealedDisplayName", "sealedDescription",
+                            "sealedPayload", "encryption"
+                        ] {
+                            payload[key] = FieldValue.delete()
+                        }
+                    }
+                }
+            } catch {
+                if signalState == .required { throw error }
+            }
+        }
         payload["updatedAt"] = FieldValue.serverTimestamp()
         // Merge writes must actively remove legacy plaintext fields; otherwise
         // Firestore evaluates the post-merge document as sealed+plaintext and
@@ -245,10 +296,32 @@ final class AgentSubscriptionTopicStore {
                     guard let snapshot else { return }
                     // Resolve the vault key once per fire so sealed display
                     // text can be opened; legacy plaintext still decodes when nil.
-                    let vaultKey = try? await MobileCloudVaultKeyAccess
-                        .keyForReading(uid: uid, firestore: self.firestoreProvider())?.keyData
-                    self.topics = snapshot.documents.compactMap {
-                        Self.decodeTopic(documentID: $0.documentID, data: $0.data(), vaultKey: vaultKey)
+                    let resolvedKey = try? await MobileCloudVaultKeyAccess
+                        .keyForReading(uid: uid, firestore: self.firestoreProvider())
+                    let trustedKeys: [String: Data] = if let identity = resolvedKey?.signalIdentity {
+                        await MobileCloudVaultSignalPayloads.trustedSenderPublicKeys(
+                            uid: uid,
+                            firestore: self.firestoreProvider(),
+                            localIdentity: identity
+                        )
+                    } else { [:] }
+                    self.topics = snapshot.documents.compactMap { document in
+                        let privateData = try? resolvedKey.flatMap { key in
+                            try MobileCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                                document.data(),
+                                uid: uid,
+                                collection: "subscription_topics",
+                                docId: document.documentID,
+                                signalIdentity: key.signalIdentity,
+                                trustedSenderPublicKeys: trustedKeys
+                            )
+                        }
+                        return Self.decodeTopic(
+                            documentID: document.documentID,
+                            data: document.data(),
+                            vaultKey: resolvedKey?.keyData,
+                            signalPlaintext: privateData ?? nil
+                        )
                     }
                     self.lastError = nil
                 }
@@ -349,7 +422,20 @@ final class AgentSubscriptionTopicStore {
             .sorted()
     }
 
-    static func decodeTopic(documentID: String, data: [String: Any], vaultKey: Data?) -> SubscriptionTopic? {
+    static func decodeTopic(
+        documentID: String,
+        data: [String: Any],
+        vaultKey: Data?,
+        signalPlaintext: Data? = nil
+    ) -> SubscriptionTopic? {
+        if let signalPlaintext,
+           let signalTopic = try? JSONDecoder().decode(SubscriptionTopic.self, from: signalPlaintext) {
+            return signalTopic
+        }
+        if data["signalEnvelope"] != nil,
+           MobileCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat") {
+            return nil
+        }
         // Open the sealed graph edge, falling back to legacy plaintext for
         // pre-migration / in-flight documents.
         let agentURI = (openSealedString(

@@ -8,6 +8,7 @@ import {
 } from "../signalAtRestWrite.js";
 
 const b64 = (s: string): string => Buffer.from(s, "utf8").toString("base64");
+const fixedB64 = (length: number, value = 7): string => Buffer.alloc(length, value).toString("base64");
 
 const EXPECTED: SignalAtRestExpectedBinding = {
   uid: "uid-1",
@@ -60,6 +61,12 @@ function atRestEnvelope(overrides: Overrides = {}): Record<string, unknown> {
       mode: "at-rest",
       formatVersion: 1,
       ...overrides.binding,
+    },
+    senderAuth: {
+      senderIdentityKeyId: "sender-device-1",
+      senderIdentityKeyB64: fixedB64(33),
+      signatureB64: fixedB64(64),
+      signatureVersion: 1,
     },
     ...overrides.envelope,
   };
@@ -144,16 +151,13 @@ describe("validateSignalAtRestEnvelopeForWrite (L23 + L37 admin)", () => {
     ).toBe(false);
   });
 
-  it("STRIPS additive pollution from the persisted envelope — callers write result.envelope, never the raw input", () => {
+  it("rejects additive pollution before persistence", () => {
     const result = validateSignalAtRestEnvelopeForWrite(
       atRestEnvelope({ envelope: { smuggled: "x" }, ciphertextLayer: { smuggled: "y" } }),
       EXPECTED,
     );
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect("smuggled" in result.envelope).toBe(false);
-      expect("smuggled" in result.envelope.ciphertextLayer).toBe(false);
-    }
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("invalid-envelope-shape");
   });
 
   it("assert* throws SignalAtRestWriteError carrying the reason, and returns the envelope on success", () => {

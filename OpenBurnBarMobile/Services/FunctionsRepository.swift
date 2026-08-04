@@ -5,6 +5,7 @@ import FirebaseCore
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 // AUDIT(@unchecked Sendable): immutable bridged NSDictionary of untyped callable
 // data. sendable-allowlist: firestore-any-payload
@@ -557,6 +558,32 @@ final class FunctionsRepository: HermesGatewayRepository {
             targetClient: targetClient,
             targetClientId: targetClientId,
             senderDisplayName: senderDisplayName
+        )
+    }
+
+    func enqueueHermesGatewaySignalEvent(
+        text: String,
+        destinationId: String = "burnbar:home",
+        threadId: String = "burnbar-ios-e2e",
+        targetClient: HermesGatewayClientRecord,
+        uid: String,
+        provider: any GatewaySignalSessionProvider,
+        senderDisplayName: String = "OpenBurnBar iPhone",
+        kind: String? = nil,
+        modelId: String? = nil,
+        extraSealedFields: [String: String] = [:]
+    ) async throws -> HermesGatewayQueuedEvent {
+        try await hermesGateway.enqueueHermesGatewaySignalEvent(
+            text: text,
+            destinationId: destinationId,
+            threadId: threadId,
+            targetClient: targetClient,
+            uid: uid,
+            provider: provider,
+            senderDisplayName: senderDisplayName,
+            kind: kind,
+            modelId: modelId,
+            extraSealedFields: extraSealedFields
         )
     }
 

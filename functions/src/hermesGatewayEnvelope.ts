@@ -321,6 +321,14 @@ export function requireProductionGatewaySignalEnvelope(raw: unknown, fieldName: 
   return envelope;
 }
 
+export function gatewaySignalAttachmentBindingMatches(
+  envelope: GatewaySignalEnvelopeDoc,
+  attachmentId: string,
+): boolean {
+  const slotId = envelope.binding?.slotId;
+  return typeof slotId === "string" && slotId === `attachment-manifest:${attachmentId}`;
+}
+
 const RELAY_BASE64_PATTERN = /^[A-Za-z0-9+/=]+$/u;
 
 function parsedRelayKeyVersion(raw: unknown): number {

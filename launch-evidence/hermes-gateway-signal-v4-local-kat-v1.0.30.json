@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "candidateRelease": "v1.0.30",
+  "classification": "local_kat_not_production_release_evidence",
+  "testedSourceCommit": "9a163994b0442142a0648a88dabc55896d69fc18",
+  "capturedAt": "2026-08-04T10:28:43Z",
+  "privacy": "proof_only_no_plaintext_keys_or_user_data",
+  "checks": [
+    {
+      "id": "swift_gateway_v4_loopback",
+      "command": "swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-signal-runtime-core --filter testGatewayV4EnvelopeRoundTripUsesSignalCiphertext",
+      "result": "PASS",
+      "scope": "official libsignal Swift PQXDH/Double Ratchet loopback; no physical device"
+    },
+    {
+      "id": "hermes_sidecar_pqxdh_restart",
+      "command": "npm --prefix tools/hermes-platform-burnbar/signal-runtime test",
+      "result": "PASS",
+      "scope": "official native bridge, two isolated encrypted state directories, restart continuation"
+    },
+    {
+      "id": "python_adapter_signal_smoke",
+      "command": "uv run --with httpx --with cryptography python adapter sidecar smoke",
+      "result": "PASS",
+      "scope": "Python JSON-lines adapter to native sidecar; envelope emitted with no plaintext sibling"
+    },
+    {
+      "id": "attachment_binding_contract",
+      "command": "npm --prefix functions run build && vitest hermesGatewaySignalEnvelope/hermesGatewayAttachmentInit",
+      "result": "PASS",
+      "scope": "attachment-manifest:<id> binding and opaque body route contract"
+    },
+    {
+      "id": "cloudvault_rules_and_telemetry",
+      "command": "npm --prefix functions run test:firestore-rules; PYTHONPATH=. uv run --with pytest pytest tests/test_signal_migration_evidence.py tests/test_libsignal_runtime_readiness.py; node --test scripts/ops/collect-signal-migration-evidence.test.mjs",
+      "result": "PASS",
+      "scope": "60/60 rules, 18 Python evidence tests, aggregate-only collector tests"
+    }
+  ],
+  "limitations": [
+    "This artifact does not prove physical-device Signal activation.",
+    "This artifact does not prove production migration traffic or telemetry.",
+    "This artifact does not satisfy external counsel/store-distribution approval.",
+    "The strict runtime readiness status remains not_ready."
+  ]
+}

@@ -34,6 +34,13 @@
       "command": "npm test --prefix packages/signal-envelope-contracts && npm run build --prefix functions && cd functions && npx vitest run src/__tests__/hermesGatewaySignalEnvelope.test.ts src/__tests__/dataExport.test.ts src/__tests__/hermesGatewaySealedEvent.test.ts --reporter=verbose && npm run test:hermes-gateway --prefix ../functions && npm test --prefix ../services/hosted-mcp && npm test --prefix ../services/hermes-realtime-relay"
     },
     {
+      "id": "hermes_gateway_signal_v4_local_kat",
+      "status": "complete",
+      "proof": "Swift official-libsignal Gateway loopback, native Hermes sidecar PQXDH/Double Ratchet restart, Python adapter smoke, attachment binding, and CloudVault rules/telemetry tests pass. This is local implementation evidence only; it does not prove physical-device activation, production migration traffic, or counsel approval.",
+      "command": "swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-signal-runtime-core --filter testGatewayV4EnvelopeRoundTripUsesSignalCiphertext && npm --prefix tools/hermes-platform-burnbar/signal-runtime test && npm --prefix functions run build && cd functions && npx vitest run src/__tests__/hermesGatewaySignalEnvelope.test.ts src/__tests__/hermesGatewayAttachmentInit.test.ts && cd .. && npm --prefix functions run test:firestore-rules && PYTHONPATH=. uv run --with pytest pytest tests/test_signal_migration_evidence.py tests/test_libsignal_runtime_readiness.py && node --test scripts/ops/collect-signal-migration-evidence.test.mjs",
+      "evidencePath": "launch-evidence/hermes-gateway-signal-v4-local-kat-v1.0.30.json"
+    },
+    {
       "id": "swift_round_trips",
       "status": "complete",
       "proof": "Merged main passes Swift official-libsignal X3DH/PQXDH session round-trip, persistence reload, iroh loopback session transport, and CryptoKit-opens-libsignal HPKE at-rest KAT.",

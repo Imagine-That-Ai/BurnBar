@@ -1,3 +1,4 @@
+import FirebaseCore
 import FirebaseFirestore
 import FirebaseRemoteConfig
 import Foundation
@@ -27,22 +28,47 @@ enum MacCloudVaultSignalPayloadError: LocalizedError {
     }
 }
 
+enum MacCloudVaultSignalActivationState: Equatable {
+    case off
+    case enabled
+    case required
+}
+
 /// macOS counterpart of iOS `MobileCloudVaultSignalPayloads` — produces + opens at-rest
 /// Signal `signalEnvelope` payloads for the AgentLens (Mac) chat/conversation write/read
 /// paths. Gated on the data-domain `sealingScheme`, so it is fully inert in production
 /// until the registry is flipped (item 5). Mirrors the already-shipped Pensieve seal path
 /// in `KnowledgeSyncService` (Firestore resolved via `Firestore.firestore()` directly).
 enum MacCloudVaultSignalPayloads {
+    static func activationState(
+        hasSignalScheme: Bool,
+        enabled: Bool,
+        required: Bool,
+        hardKill: Bool
+    ) -> MacCloudVaultSignalActivationState {
+        guard hasSignalScheme, enabled, !hardKill else { return .off }
+        return required ? .required : .enabled
+    }
+
+    static func activationState(domainID: String) -> MacCloudVaultSignalActivationState {
+        guard FirebaseApp.app() != nil else { return .off }
+        let config = RemoteConfig.remoteConfig()
+        let hardKill = config.configValue(forKey: "signal_at_rest_v1_hard_kill").boolValue
+            || config.configValue(forKey: "signal_at_rest_\(domainID)_hard_kill").boolValue
+        return activationState(
+            hasSignalScheme: DataDomains.domain(domainID)?.sealingScheme == CloudVaultCrypto.signalAtRestEncryption,
+            enabled: config.configValue(forKey: "signal_at_rest_\(domainID)_enabled").boolValue,
+            required: config.configValue(forKey: "signal_at_rest_\(domainID)_required").boolValue,
+            hardKill: hardKill
+        )
+    }
+
     static func signalSealingIsEnabled(domainID: String) -> Bool {
-        guard DataDomains.domain(domainID)?.sealingScheme == CloudVaultCrypto.signalAtRestEncryption else {
-            return false
-        }
-        // Kill switch: scheme set in the registry is necessary but not sufficient — at-rest
-        // sealing stays OFF until the per-domain Remote Config flag is enabled (staged rollout
-        // + instant server-side revert without an app release). Defaults false.
-        return RemoteConfig.remoteConfig()
-            .configValue(forKey: "signal_at_rest_\(domainID)_enabled")
-            .boolValue
+        activationState(domainID: domainID) != .off
+    }
+
+    static func signalSealingIsRequired(domainID: String) -> Bool {
+        activationState(domainID: domainID) == .required
     }
 
     /// Seal `plaintext` to the local identity + every trusted device, returning the Firestore
@@ -73,6 +99,70 @@ enum MacCloudVaultSignalPayloads {
             senderIdentityPrivateKey: signalIdentity.privateKeyData
         )
         return try CloudVaultCrypto.signalEnvelopeDictionary(envelope)
+    }
+
+    static func applyingSignalEnvelope(
+        to legacyPayload: [String: Any],
+        domainID: String,
+        uid: String,
+        firestore: Firestore,
+        collection: String,
+        docId: String,
+        field: String = "signalEnvelope",
+        plaintext: Data,
+        resolvedKey: CloudVaultResolvedKey,
+        legacyPrivateFields: Set<String>,
+        mergeWrite: Bool
+    ) async throws -> [String: Any] {
+        var payload = legacyPayload
+        let state = activationState(domainID: domainID)
+        guard state != .off else {
+            if mergeWrite {
+                payload[field] = FieldValue.delete()
+            } else {
+                payload.removeValue(forKey: field)
+            }
+            return payload
+        }
+
+        let envelope: [String: Any]
+        do {
+            guard let sealed = try await signalEnvelopeIfEnabled(
+                domainID: domainID,
+                uid: uid,
+                firestore: firestore,
+                collection: collection,
+                docId: docId,
+                field: field,
+                plaintext: plaintext,
+                resolvedKey: resolvedKey
+            ) else {
+                throw MacCloudVaultSignalPayloadError.signalIdentityUnavailable(domainID: domainID)
+            }
+            envelope = sealed
+        } catch {
+            guard state == .required else {
+                if mergeWrite {
+                    payload[field] = FieldValue.delete()
+                } else {
+                    payload.removeValue(forKey: field)
+                }
+                return payload
+            }
+            throw error
+        }
+
+        payload[field] = envelope
+        if state == .required {
+            for legacyField in legacyPrivateFields {
+                if mergeWrite {
+                    payload[legacyField] = FieldValue.delete()
+                } else {
+                    payload.removeValue(forKey: legacyField)
+                }
+            }
+        }
+        return payload
     }
 
     /// Signal-first open with a relocation guard; nil when no envelope present (caller falls
