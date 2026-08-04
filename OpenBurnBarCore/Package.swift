@@ -465,7 +465,7 @@ let signalCoreDependencies: [Target.Dependency] = [
 
 let signalCoreSources: [String]? = hasLibSignalSwiftPackage
     ? nil
-    : ["OpenBurnBarSignalCoreUnavailable.swift", "OBBSignalGatewayEnvelopeProvider.swift"]
+    : ["OpenBurnBarSignalCoreUnavailable.swift"]
 
 let signalCoreFallbackExcludes: [String] = hasLibSignalSwiftPackage ? [] : [
     "CloudVaultDeviceTrustChain.swift",

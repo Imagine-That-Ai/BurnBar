@@ -593,9 +593,10 @@ sealed-sender session establishment and envelope-binding verification paths, mea
 ceiling. Session transport is that target's sole responsibility, so the ceiling moves to
 802 LOC (the standard measured 1.25x for non-destination siblings); the 3-file ceiling is
 unchanged. The same change had landed the type-erased `OBBSignalGatewayEnvelopeProvider`
-protocol in the dissolving main target; it now lives in `OpenBurnBarSignalCore` (compiled
-in both the libsignal-backed and fallback configurations), keeping the main target at its
-11-file / 127-line shim-only baseline.
+protocol in the dissolving main target; as a Foundation-only contract it now lives in
+`OpenBurnBarKernel/Contracts` (compiled in every manifest configuration and re-exported
+through the umbrella, so `import OpenBurnBarCore` consumers keep resolving it), keeping
+the main target at its 11-file / 127-line shim-only baseline.
 
 ### Whole-program composition proof (verbatim results)
 
