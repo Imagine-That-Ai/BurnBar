@@ -420,12 +420,13 @@ export function installMemoryHook(options: InstallHookOptions = {}): string {
     throw new Error(`Hook install for harness "${harness}" is not yet supported; use the Mac daemon watch instead.`);
   }
 
-  let settings: Record<string, unknown> = {};
-  try {
-    settings = JSON.parse(readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
-  } catch {
-    settings = {};
-  }
+  const settings: Record<string, unknown> = (() => {
+    try {
+      return JSON.parse(readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  })();
   const hooks = (settings.hooks as Record<string, unknown>) ?? {};
   const sessionEnd = Array.isArray(hooks.SessionEnd) ? (hooks.SessionEnd as Array<Record<string, unknown>>) : [];
 
