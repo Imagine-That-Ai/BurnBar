@@ -20,6 +20,7 @@ import type {
   DesktopWallpaperStatus,
   LinuxLaunchAtLoginStatus,
   PetCompanionStatus,
+  PetAssetResponse,
   MercuryDevicePlatform,
   MercurySessionKind,
   MercurySessionState,
@@ -653,6 +654,24 @@ export function decodePetCompanionStatus(raw: RawJsonValue): PetCompanionStatus 
     reason: requireString(pick(value, 'reason'), 'pet companion reason'),
     source: requireString(pick(value, 'source'), 'pet companion source')
   };
+}
+
+export function decodePetAssetResponse(raw: RawJsonValue): PetAssetResponse {
+  const value = requireObject(raw, 'pet asset response');
+  const schemaVersion = Math.trunc(num(pick(value, 'schemaVersion', 'schema_version'), 0));
+  if (schemaVersion !== 1) throw new Error(`pet asset schema is unsupported: ${schemaVersion}`);
+  const glbName = requireString(pick(value, 'glbName', 'glb_name'), 'pet asset name');
+  const byteLength = Math.trunc(num(pick(value, 'byteLength', 'byte_length'), -1));
+  if (byteLength < 0 || byteLength > 16 * 1024 * 1024) {
+    throw new Error('pet asset byte length is outside the safety bound');
+  }
+  const sha256 = requireString(pick(value, 'sha256'), 'pet asset digest');
+  if (!/^[0-9a-f]{64}$/u.test(sha256)) throw new Error('pet asset digest is invalid');
+  const dataBase64 = requireString(pick(value, 'dataBase64', 'data_base64'), 'pet asset bytes');
+  if (!dataBase64 || dataBase64.length > 24 * 1024 * 1024) {
+    throw new Error('pet asset bytes are outside the safety bound');
+  }
+  return { schemaVersion, glbName, byteLength, sha256, dataBase64 };
 }
 
 export function normalizeMercuryPlatform(raw: string): MercuryDevicePlatform {

@@ -1081,6 +1081,14 @@ export type PetCompanionStatus = {
   source: string;
 };
 
+export type PetAssetResponse = {
+  schemaVersion: number;
+  glbName: string;
+  byteLength: number;
+  sha256: string;
+  dataBase64: string;
+};
+
 // ─────────────────────────── P11: session env ─────────────────────────────
 
 export type SessionEnv = { XDG_SESSION_TYPE?: string; XDG_CURRENT_DESKTOP?: string };
@@ -1790,6 +1798,8 @@ export interface LinuxShellBridge {
   launchAtLoginSet?(enabled: boolean): Promise<LinuxLaunchAtLoginStatus>;
   /** Optional on older packaged shells; native X11-only companion contract. */
   petCompanionStatus?(): Promise<PetCompanionStatus>;
+  /** Optional on older packaged shells; reads one allowlisted bundled GLB. */
+  petAssetRead?(glbName: string): Promise<PetAssetResponse>;
   textExpansionList?(): Promise<TextExpansionSnapshot>;
   textExpansionUpsert?(snippet: TextExpansionWireSnippet): Promise<TextExpansionWireSnippet>;
   textExpansionDelete?(id: string): Promise<TextExpansionSnapshot>;
