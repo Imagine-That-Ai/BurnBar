@@ -16,7 +16,7 @@ import {
   type PetCapabilityProbe
 } from '../petCompanion.js';
 import { mountPetGltfRuntime, stopPetGltfRuntime } from '../petGltfRuntime.js';
-import { mountPetAtlasRuntime, stopPetAtlasRuntime } from '../petAtlasRuntime.js';
+import { mountPetAtlasRuntime, setPetAtlasState, stopPetAtlasRuntime } from '../petAtlasRuntime.js';
 import {
   DEFAULT_PET_GLB,
   PET_SELECTION_STORAGE_KEY,
@@ -101,11 +101,16 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
   const [petPickerOpen, setPetPickerOpen] = useState(false);
   const [petSearch, setPetSearch] = useState('');
   const [petGroup, setPetGroup] = useState<string | null>(null);
+  const petStateResetTimerRef = useRef<number | null>(null);
   const containedFallback = !capability.actions.overlay.supported;
   const selectedPet = petCatalog.length ? resolveSelectedPet(petCatalog, selectedPetID) : null;
   const graph = buildPetBehaviorGraph(capability.tier, `/pets/${selectedPet?.glb ?? DEFAULT_PET_GLB}`);
   const pickerPets = filterPetCatalog(petCatalog, petSearch, petGroup);
   const pickerGroups = petGroupNames(petCatalog);
+
+  useEffect(() => () => {
+    if (petStateResetTimerRef.current) window.clearTimeout(petStateResetTimerRef.current);
+  }, []);
 
   useEffect(() => {
     setCapability(probePetCapability(runtimeCapabilities, petNativeContractFromStatus(nativeStatus)));
@@ -329,8 +334,18 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
   }, []);
 
   const waveAtPet = useCallback(() => {
+    setPetAtlasState('react');
     setReactWaveActive(true);
+    if (petStateResetTimerRef.current) window.clearTimeout(petStateResetTimerRef.current);
+    petStateResetTimerRef.current = window.setTimeout(() => {
+      setPetAtlasState('idle');
+      petStateResetTimerRef.current = null;
+    }, prefersReducedMotion() ? 1200 : 2000);
     window.setTimeout(() => setReactWaveActive(false), prefersReducedMotion() ? 1200 : 2000);
+  }, []);
+
+  const handlePetStateChange = useCallback((state: 'listen' | 'think' | 'speak' | 'react' | 'alert') => {
+    setPetAtlasState(state);
   }, []);
 
   const summonContainedPet = useCallback(() => {
@@ -424,6 +439,7 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
     if (!file) return;
     setPetDroppedFile(file);
     setPetChatOpen(true);
+    setPetAtlasState('listen');
     setContainedActionStatus(`Dropped ${file.name} onto the companion. Review it in chat before sending.`);
   }, []);
 
@@ -672,6 +688,7 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
           onClose={() => setPetChatOpen(false)}
           onOpenFullChat={() => void openCompanionChat()}
           onReact={waveAtPet}
+          onStateChange={handlePetStateChange}
         />
       ) : null}
       {containedActionStatus ? (
