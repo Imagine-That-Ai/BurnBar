@@ -48,12 +48,15 @@ known platform divergences.
 > entries from the shared macOS `Resources/Models` and `Resources/Pets`
 > definitions; the selected 112 GLB-backed entries use `pet_asset_read`, while
 > the three atlas forms use the bounded `pet_atlas_read` command and a
-> Canvas2D row/frame runtime with reduced-motion handling. Verification is
-> green: frontend **114 files / 1,051 tests**, TypeScript, ESLint, production
-> bundle verification, catalog/packaging tests, no-suppression gate, and Tauri
-> Rust **164/164**. This is source-level proof; the macOS offscreen 3D
-> thumbnail pipeline, persona/local-floor behavior, compositor receipts,
-> signed candidate, and seven-environment certification remain release gates.
+> Canvas2D row/frame runtime with reduced-motion handling. A follow-on
+> behavior slice now drives atlas rows from real companion focus, thinking,
+> speaking, reaction, and movement events instead of leaving atlas pets in a
+> permanent idle state. Verification is green: frontend **115 files / 1,060
+> tests**, TypeScript, ESLint, production bundle verification, focused pet
+> behavior coverage, catalog/packaging tests, and no-suppression checks. This
+> is source-level proof; the macOS offscreen 3D thumbnail pipeline,
+> persona/local-floor behavior, compositor receipts, signed candidate, and
+> seven-environment certification remain release gates.
 >
 > **Implementation continuation (2026-07-21):** `dd78a83bef` and `9d6363fbd9`
 > expand Linux local usage ingestion from the Copilot-only default to all 18

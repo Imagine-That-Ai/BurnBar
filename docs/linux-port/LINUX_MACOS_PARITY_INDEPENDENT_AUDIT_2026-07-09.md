@@ -3333,6 +3333,16 @@ Canvas2D runtime, including reduced-motion behavior and logical-state aliases.
 The offscreen 3D thumbnail pipeline, persona/local-floor behavior, compositor
 receipts, and signed installed proof remain open.
 
+**Implementation update (2026-08-04, atlas behavior continuation):** Linux now
+maps the existing companion chat lifecycle to the closest shared atlas rows:
+focus enters `listen`, a submitted turn enters `think`, streaming enters
+`speak`, a completed reply enters `react`, errors enter `alert`, and movement
+or wave actions use the selected pet's travel/reaction rows. One-shot atlas
+rows now advance through their frames before stopping, and reduced-motion mode
+still renders a stable first frame. The macOS offscreen 3D thumbnail pipeline,
+persona/local-floor behavior, compositor receipts, and signed installed proof
+remain open.
+
 - **Difference:** macOS has an animated desktop companion with mature overlay
   behavior and interaction. Linux now mounts the bundled glTF mesh/animation,
   provides an accessible draggable contained fallback, and gates the native X11
