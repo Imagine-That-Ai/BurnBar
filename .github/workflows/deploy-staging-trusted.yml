@@ -223,7 +223,8 @@ jobs:
           if [[ "$deploy_status" -ne 0 ]]; then
             if grep -q "409" "$deploy_log" && grep -qi "Requested entity already exists" "$deploy_log"; then
               echo "::warning::Firestore rules release hit 409; running targeted repair"
-              node scripts/ci/repair-firestore-rules-release.mjs "$FIREBASE_PROJECT"
+              node scripts/ci/repair-firestore-rules-release.mjs "$FIREBASE_PROJECT" \
+                "$RUNNER_TEMP/staging-deploy/firestore.rules"
             else
               cat "$deploy_log"
               exit "$deploy_status"

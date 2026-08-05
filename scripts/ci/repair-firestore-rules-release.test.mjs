@@ -8,9 +8,12 @@
  */
 import assert from "node:assert/strict";
 
+import { resolve } from "node:path";
+
 import {
   is409ReleaseError,
   repairFirestoreRelease,
+  resolveRulesSourcePath,
 } from "./repair-firestore-rules-release.mjs";
 
 const PROJECT = "burnbar";
@@ -483,12 +486,63 @@ async function testIdempotent() {
   ok(label);
 }
 
+function testResolveRulesSourcePath() {
+  const label = "rules source path: CLI arg > env var > repo checkout default";
+
+  const repoRoot = "/repo";
+  const baseArgv = ["node", "repair-firestore-rules-release.mjs", "burnbar"];
+
+  // Explicit CLI argument wins (the trusted staging deploy passes the
+  // candidate copy it actually shipped, not trusted main's firestore.rules).
+  assert.equal(
+    resolveRulesSourcePath({
+      argv: [...baseArgv, "/tmp/staging-deploy/firestore.rules"],
+      env: { FIRESTORE_RULES_PATH: "/elsewhere/firestore.rules" },
+      repoRoot,
+    }),
+    "/tmp/staging-deploy/firestore.rules",
+    "CLI rulesPath argument must take precedence",
+  );
+
+  // Env var is used when no CLI argument is given.
+  assert.equal(
+    resolveRulesSourcePath({
+      argv: baseArgv,
+      env: { FIRESTORE_RULES_PATH: "/elsewhere/firestore.rules" },
+      repoRoot,
+    }),
+    "/elsewhere/firestore.rules",
+    "FIRESTORE_RULES_PATH must be used when no CLI argument is given",
+  );
+
+  // Default: repo checkout's firestore.rules.
+  assert.equal(
+    resolveRulesSourcePath({ argv: baseArgv, env: {}, repoRoot }),
+    "/repo/firestore.rules",
+    "must default to the repo checkout's firestore.rules",
+  );
+
+  // Relative paths resolve against cwd, matching readFileSync semantics.
+  assert.equal(
+    resolveRulesSourcePath({
+      argv: [...baseArgv, "staging-deploy/firestore.rules"],
+      env: {},
+      repoRoot,
+    }),
+    resolve("staging-deploy/firestore.rules"),
+    "relative rulesPath must resolve against cwd",
+  );
+
+  ok(label);
+}
+
 // ─── Run all tests ────────────────────────────────────────────────────────
 
 async function run() {
   console.log("Self-test: repair-firestore-rules-release.mjs\n");
 
   testNon409Detection();
+  testResolveRulesSourcePath();
 
   for (const [name, fn] of [
     ["test409Repair", test409Repair],
