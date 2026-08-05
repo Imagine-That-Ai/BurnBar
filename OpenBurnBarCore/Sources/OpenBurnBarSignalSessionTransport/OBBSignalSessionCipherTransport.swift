@@ -1,6 +1,11 @@
 import Foundation
 import LibSignalClient
 import OpenBurnBarCore
+#if canImport(CryptoKit)
+import CryptoKit
+#elseif canImport(Crypto)
+import Crypto
+#endif
 import OpenBurnBarFirestoreModels
 import OpenBurnBarIrohRelay
 @_exported import OpenBurnBarSignalCore
