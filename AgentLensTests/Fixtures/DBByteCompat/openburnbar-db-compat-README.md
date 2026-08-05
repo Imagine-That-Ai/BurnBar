@@ -1,3 +1,9 @@
+> **Pending refresh (v58).** The migrator endpoint moved to `v58_ai_inbox`
+> (the AI Inbox tables). The committed `.sqlcipher` fixture is still the v57
+> capture, so it must be regenerated with the command below and renamed to
+> `openburnbar-db-compat-v58.sqlcipher` before the byte-compat suite passes.
+> The vector JSON and `expectedSchemaEndpoint` have already been updated.
+
 # DB byte-compat de-risk kit (`VAL-P0-DB-009`)
 
 Fixtures anchoring the Windows-port DB byte-compat contract (R2). See

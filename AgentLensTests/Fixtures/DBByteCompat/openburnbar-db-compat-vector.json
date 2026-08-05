@@ -1,52 +1,52 @@
 {
-  "ftsQueries" : [
+  "ftsQueries": [
     {
-      "label" : "porter-stem-run",
-      "match" : "run",
-      "orderedRows" : [
+      "label": "porter-stem-run",
+      "match": "run",
+      "orderedRows": [
         {
-          "conversationID" : "conv-beta-run",
-          "snippet" : "<b>running</b> shoes and <b>running</b> gear make <b>running</b> feel like a…"
+          "conversationID": "conv-beta-run",
+          "snippet": "<b>running</b> shoes and <b>running</b> gear make <b>running</b> feel like a\u2026"
         },
         {
-          "conversationID" : "conv-alpha-fox",
-          "snippet" : "the quick brown fox <b>runs</b> across the yard"
+          "conversationID": "conv-alpha-fox",
+          "snippet": "the quick brown fox <b>runs</b> across the yard"
         }
       ]
     },
     {
-      "label" : "case-fold-title",
-      "match" : "GAMMA",
-      "orderedRows" : [
+      "label": "case-fold-title",
+      "match": "GAMMA",
+      "orderedRows": [
         {
-          "conversationID" : "conv-gamma-db",
-          "snippet" : "database encryption keeps your data safe at rest"
+          "conversationID": "conv-gamma-db",
+          "snippet": "database encryption keeps your data safe at rest"
         }
       ]
     },
     {
-      "label" : "fulltext-database",
-      "match" : "database",
-      "orderedRows" : [
+      "label": "fulltext-database",
+      "match": "database",
+      "orderedRows": [
         {
-          "conversationID" : "conv-gamma-db",
-          "snippet" : "<b>database</b> encryption keeps your data safe at rest"
+          "conversationID": "conv-gamma-db",
+          "snippet": "<b>database</b> encryption keeps your data safe at rest"
         }
       ]
     },
     {
-      "label" : "porter-stem-shoe",
-      "match" : "shoe",
-      "orderedRows" : [
+      "label": "porter-stem-shoe",
+      "match": "shoe",
+      "orderedRows": [
         {
-          "conversationID" : "conv-beta-run",
-          "snippet" : "running <b>shoes</b> and running gear make running feel like a…"
+          "conversationID": "conv-beta-run",
+          "snippet": "running <b>shoes</b> and running gear make running feel like a\u2026"
         }
       ]
     }
   ],
-  "migrationCount" : 58,
-  "schemaEndpoint" : "v57_execution_source_attribution",
-  "schemaHashSHA256" : "01cc2f514f88f7921b5b05088afc4fed3cda6e43a5a5b1328eb07460c47ce2b3",
-  "sqlcipherPin" : "SQLCipher.swift 4.16.0 (Vendor/GRDB-SQLCipher)"
+  "migrationCount": 58,
+  "schemaEndpoint": "v58_ai_inbox",
+  "schemaHashSHA256": "01cc2f514f88f7921b5b05088afc4fed3cda6e43a5a5b1328eb07460c47ce2b3",
+  "sqlcipherPin": "SQLCipher.swift 4.16.0 (Vendor/GRDB-SQLCipher)"
 }

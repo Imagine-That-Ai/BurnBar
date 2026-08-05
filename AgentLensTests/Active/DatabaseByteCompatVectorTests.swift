@@ -100,8 +100,8 @@ final class DatabaseByteCompatVectorTests: XCTestCase {
             "Migrator endpoint changed — regenerate the DB-compat fixture + vector."
         )
         XCTAssertGreaterThanOrEqual(
-            OpenBurnBarDatabase.migrator.migrations.count, 58,
-            "Expected at least 58 registered migrations (v1..v57 + v51a interstitial)."
+            OpenBurnBarDatabase.migrator.migrations.count, 59,
+            "Expected at least 59 registered migrations (v1..v58 + v51a interstitial)."
         )
     }
 
