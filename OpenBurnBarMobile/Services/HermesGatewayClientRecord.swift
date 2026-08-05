@@ -427,7 +427,7 @@ extension HermesGatewayClientRecord {
     }
 
     private static func signalPrekeyBundle(_ raw: Any?) -> FirestoreHermesGatewaySignalPrekeyBundleDoc? {
-        guard let map = raw as? [String: Any],
+        guard let map = raw as? NSDictionary,
               JSONSerialization.isValidJSONObject(map),
               let data = try? JSONSerialization.data(withJSONObject: map),
               let bundle = try? JSONDecoder().decode(FirestoreHermesGatewaySignalPrekeyBundleDoc.self, from: data)

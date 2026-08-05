@@ -665,7 +665,7 @@ private final class RemoteMCPClientStore: ObservableObject {
                     }
 
                     self.clients = (snapshot?.documents ?? [])
-                        .compactMap { Self.decode(documentID: $0.documentID, data: $0.data()) }
+                        .compactMap { Self.decode(documentID: $0.documentID, data: $0.data() as NSDictionary) }
                         .sorted { lhs, rhs in
                             (lhs.lastUsedAt ?? lhs.createdAt ?? .distantPast) > (rhs.lastUsedAt ?? rhs.createdAt ?? .distantPast)
                         }
@@ -673,7 +673,7 @@ private final class RemoteMCPClientStore: ObservableObject {
             }
     }
 
-    private static func decode(documentID: String, data: [String: Any]) -> RemoteMCPClientRecord {
+    private static func decode(documentID: String, data: NSDictionary) -> RemoteMCPClientRecord {
         let clientID = (data["clientId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let displayName = (data["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let clientType = (data["clientType"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)

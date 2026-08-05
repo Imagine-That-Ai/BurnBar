@@ -24,5 +24,18 @@ public struct OBBSignalSessionGatewayEnvelopeProvider: OBBSignalGatewayEnvelopeP
             userInfo: [NSLocalizedDescriptionKey: OpenBurnBarSignalCoreAvailability.unavailableReason]
         )
     }
+
+    public func open(
+        envelopeData: Data,
+        uid: String,
+        clientId: String,
+        slotId: String
+    ) async throws -> Data {
+        throw NSError(
+            domain: "OpenBurnBarSignalSessionTransport",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: OpenBurnBarSignalCoreAvailability.unavailableReason]
+        )
+    }
 }
 #endif

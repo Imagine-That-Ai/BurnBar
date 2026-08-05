@@ -112,7 +112,9 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
             ?? (relayEnvelope?["relayKeyVersion"] as? Int)
             ?? (data["relayKeyVersion"] as? NSNumber)?.intValue
             ?? (data["relayKeyVersion"] as? Int)
-        self.signalEnvelopeData = Self.encodeSignalEnvelope(Self.dictionary(data["signalEnvelope"]))
+        self.signalEnvelopeData = Self.encodeSignalEnvelope(
+            Self.dictionary(data["signalEnvelope"]).map { $0 as NSDictionary }
+        )
         let ratchetEnvelope = Self.dictionary(data["ratchetEnvelope"])
         let ratchetHeader = Self.dictionary(ratchetEnvelope?["header"])
         self.ratchetEnvelope = Self.decodeRatchetEnvelope(ratchetEnvelope)
@@ -501,7 +503,7 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
         return try? JSONDecoder().decode(HermesRatchetEnvelope.self, from: data)
     }
 
-    static func decodeSignalEnvelope(_ raw: [String: Any]?) -> FirestoreGatewaySignalEnvelopeDoc? {
+    static func decodeSignalEnvelope(_ raw: NSDictionary?) -> FirestoreGatewaySignalEnvelopeDoc? {
         guard let raw,
               JSONSerialization.isValidJSONObject(raw),
               let data = try? JSONSerialization.data(withJSONObject: raw)
@@ -509,7 +511,7 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
         return try? JSONDecoder().decode(FirestoreGatewaySignalEnvelopeDoc.self, from: data)
     }
 
-    static func encodeSignalEnvelope(_ raw: [String: Any]?) -> Data? {
+    static func encodeSignalEnvelope(_ raw: NSDictionary?) -> Data? {
         guard let raw,
               JSONSerialization.isValidJSONObject(raw)
         else { return nil }

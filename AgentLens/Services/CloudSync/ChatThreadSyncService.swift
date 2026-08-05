@@ -157,8 +157,8 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
                     data["sealedPayload"] = CloudVaultCrypto.sealedPayloadDictionary(sealedPayload)
                     // NOTE: no `source` producer marker here — the chat_threads Firestore
                     // allowlists (`validChatThreadKeys` and the Signal mirror gate) reject it.
-                    data = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
-                        to: data,
+                    let signalData = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
+                        to: data as NSDictionary,
                         domainID: "conversations_chat",
                         uid: uid,
                         firestore: Firestore.firestore(),
@@ -169,6 +169,7 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
                         legacyPrivateFields: ["sealedPayload", "sealedSchemaVersion", "vaultKeyID", "contentSealed"],
                         mergeWrite: true
                     )
+                    data = CloudSyncFirestoreLiveGateway.firestoreData(signalData)
                     data["title"] = FieldValue.delete()
                     data["preview"] = FieldValue.delete()
                     data["messages"] = FieldValue.delete()
