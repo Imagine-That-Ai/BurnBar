@@ -157,6 +157,21 @@ jobs:
           OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR="$GITHUB_WORKSPACE/.derived-data/macos-idle-occlusion-gate"
           ./scripts/test-openburnbar-app.sh
 
+      - name: Upload app test xcresult bundles (hang/failure diagnostics)
+        # When a test exceeds its execution-time allowance, XCTest attaches the
+        # hung process's thread backtraces to the attempt's xcresult. Without
+        # this upload those bundles die with the runner, leaving a 10-minute
+        # hang undiagnosable from the streamed log alone.
+        if: failure()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: openburnbar-app-test-xcresults
+          path: |
+            .derived-data/macos-idle-occlusion-gate/*.xcresult
+            .derived-data/test-openburnbar-app-attempts.jsonl
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Guard against zero-test false greens
         run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult"
 
