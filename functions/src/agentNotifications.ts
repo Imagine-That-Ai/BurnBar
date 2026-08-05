@@ -44,7 +44,7 @@ const AGENT_FANOUT_SWEEP_BATCH_LIMIT = 50;
 
 export const AGENT_NOTIFICATION_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-export type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat" | "ai_inbox_item";
+type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat" | "ai_inbox_item";
 
 const NOTIFICATION_SOURCE_KINDS: readonly AgentNotificationSourceKind[] = [
   "cli_session",
@@ -53,7 +53,7 @@ const NOTIFICATION_SOURCE_KINDS: readonly AgentNotificationSourceKind[] = [
 ];
 
 function isNotificationSourceKind(raw: unknown): raw is AgentNotificationSourceKind {
-  return NOTIFICATION_SOURCE_KINDS.includes(raw as AgentNotificationSourceKind);
+  return NOTIFICATION_SOURCE_KINDS.some((kind) => kind === raw);
 }
 
 interface AgentReplyMessage {
@@ -64,7 +64,7 @@ interface AgentReplyMessage {
   isError?: boolean;
 }
 
-export interface AgentReplyNotificationEvent {
+interface AgentReplyNotificationEvent {
   id: string;
   uid: string;
   sourceKind: AgentNotificationSourceKind;

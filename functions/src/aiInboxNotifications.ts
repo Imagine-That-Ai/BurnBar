@@ -33,17 +33,13 @@
 
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 
-import {
-  createNotificationEvent,
-  fanoutAgentReplyEvent,
-  type AgentNotificationSourceKind,
-} from "./agentNotifications.js";
+import { createNotificationEvent, fanoutAgentReplyEvent } from "./agentNotifications.js";
 import { isRecord } from "./guards.js";
 import { logInfo } from "./logging.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const REGION = FUNCTIONS_REGION;
-const SOURCE_KIND: AgentNotificationSourceKind = "ai_inbox_item";
+const SOURCE_KIND = "ai_inbox_item";
 
 /**
  * Only P1 raises a push. The Kernel's `BurnBarInboxPriority` documents P1 as

@@ -254,7 +254,6 @@ describe("inbox events ride the shared durable-event machinery", () => {
  * only path that matters: recovery.
  */
 async function parseEventForSweeper(event: Record<string, unknown>): Promise<boolean> {
-  const { sweepStuckAgentReplyEvents } = await import("../agentNotifications.js");
   const eventRef = {
     async get() {
       return { exists: true, data: () => event };
@@ -287,17 +286,31 @@ async function parseEventForSweeper(event: Record<string, unknown>): Promise<boo
       };
       return query;
     },
-  } as unknown as FirebaseFirestore.Firestore;
+  };
 
-  const tally = await sweepStuckAgentReplyEvents({
-    firestore,
-    messaging: {
-      async send() {
-        return "ok";
-      },
-    },
-    now: NOW + 10 * 60_000,
+  // Route the double through a mocked `getFirestore`, the same seam
+  // `agentNotifications.test.ts` uses, so no unsafe cast is needed to
+  // impersonate the full Firestore surface.
+  vi.resetModules();
+  vi.doMock("firebase-admin/firestore", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("firebase-admin/firestore")>();
+    return { ...actual, getFirestore: () => firestore };
   });
+  let tally: Awaited<ReturnType<typeof import("../agentNotifications.js").sweepStuckAgentReplyEvents>>;
+  try {
+    const { sweepStuckAgentReplyEvents } = await import("../agentNotifications.js");
+    tally = await sweepStuckAgentReplyEvents({
+      messaging: {
+        async send() {
+          return "ok";
+        },
+      },
+      now: NOW + 10 * 60_000,
+    });
+  } finally {
+    vi.doUnmock("firebase-admin/firestore");
+    vi.resetModules();
+  }
   // `skipped` is what an unparseable document produces; anything else means the
   // sweeper understood the event and acted on it.
   return tally.skipped === 0;

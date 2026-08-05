@@ -1,6 +1,6 @@
 import Foundation
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - AI Inbox reads and user state
 
@@ -287,7 +287,7 @@ extension ControlPlaneStore {
             }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            return (try? decoder.decode(BurnBarInboxItemPayload.self, from: data)) ?? BurnBarInboxItemPayload()
+            return (try? decoder.decode(BurnBarInboxItemPayload.self, from: data)) ?? BurnBarInboxItemPayload() // try?-ok(corrupt payload_json degrades to an empty payload)
         }()
 
         let summary = BurnBarInboxItemSummary(

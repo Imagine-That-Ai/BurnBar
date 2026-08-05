@@ -150,10 +150,11 @@ class AIInboxRefreshPartsTest {
         // incomplete, with nothing on screen to say so.
         val future = sealedDocument().toMutableMap().apply { this["kind"] = "some_future_detector" }
 
-        val item = parseAIInboxDocument(future, "item-1", uid, vaultKey)
+        val item = requireNotNull(parseAIInboxDocument(future, "item-1", uid, vaultKey)) {
+            "An unrecognized kind must not drop the item"
+        }
 
-        assertNotNull("An unrecognized kind must not drop the item", item)
-        assertEquals(AIInboxItemKind.SYSTEM, item!!.kind)
+        assertEquals(AIInboxItemKind.SYSTEM, item.kind)
         // Everything except the category survives intact.
         assertEquals("CI is burning cycles on the iOS lane", item.title)
         assertEquals(AIInboxPriority.P2, item.priority)
@@ -218,10 +219,9 @@ class AIInboxRefreshPartsTest {
         // of view, so they must not diverge.
         val document = sealedDocument().toMutableMap().apply { remove("kind") }
 
-        val item = parseAIInboxDocument(document, "item-1", uid, vaultKey)
+        val item = requireNotNull(parseAIInboxDocument(document, "item-1", uid, vaultKey))
 
-        assertNotNull(item)
-        assertEquals(AIInboxItemKind.SYSTEM, item!!.kind)
+        assertEquals(AIInboxItemKind.SYSTEM, item.kind)
     }
 
     @Test

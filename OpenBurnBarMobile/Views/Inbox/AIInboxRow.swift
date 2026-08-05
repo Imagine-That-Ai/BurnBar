@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarHermes
+import OpenBurnBarKernel
 
 // MARK: - AI Inbox presentation vocabulary
 //

@@ -158,7 +158,8 @@ final class AIInboxCrossPlatformContractTests: XCTestCase {
             throw XCTSkip("firestore.rules is not reachable from this environment.")
         }
         guard let start = rules.range(of: "function validAIInboxItemState()") else {
-            return XCTFail("Missing validAIInboxItemState() in firestore.rules")
+            XCTFail("Missing validAIInboxItemState() in firestore.rules")
+            return
         }
         let block = String(rules[start.upperBound...].prefix(2_000))
 
@@ -187,11 +188,13 @@ final class AIInboxCrossPlatformContractTests: XCTestCase {
             ("AIInboxItemState", Self.expectedStates)
         ] {
             guard let start = kotlin.range(of: "enum class \(enumName)") else {
-                return XCTFail("Missing Kotlin enum \(enumName)")
+                XCTFail("Missing Kotlin enum \(enumName)")
+                return
             }
             let remainder = kotlin[start.upperBound...]
             guard let end = remainder.range(of: "\n}") else {
-                return XCTFail("Could not delimit Kotlin enum \(enumName)")
+                XCTFail("Could not delimit Kotlin enum \(enumName)")
+                return
             }
             let body = String(remainder[..<end.lowerBound])
             let tokens = Set(

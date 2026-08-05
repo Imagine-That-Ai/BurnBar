@@ -256,7 +256,7 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
     private static func snippetFromSignalPayload(_ payload: Data) -> TextExpansionSnippet? {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(TextExpansionSnippet.self, from: payload)
+        return try? decoder.decode(TextExpansionSnippet.self, from: payload) // try?-ok(undecodable signal payload is skipped, caller treats nil as absent)
     }
 
     private static func snippet(from data: [String: Any], documentID: String, vaultKey: Data) throws -> TextExpansionSnippet? {

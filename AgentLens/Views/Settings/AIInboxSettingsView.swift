@@ -1,5 +1,5 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Settings for the AI Inbox.
 ///

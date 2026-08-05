@@ -266,9 +266,7 @@ class CLIAgentMissionDispatcher(
         deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
         parentHermesThreadID: String? = null,
     ): FanOutDispatchResult {
-        val uid =
-            auth.currentUser?.uid
-                ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
+        val uid = requireSignedInUid()
         val trimmedPrompt = prompt.trim()
         validateFanOutDispatch(runtimeTokens, trimmedPrompt)
 
@@ -324,15 +322,28 @@ class CLIAgentMissionDispatcher(
         )
 
         batch.commit().await()
-        if (signalWrites.isNotEmpty()) {
-            try {
-                writeSignalMissionDocuments(uid = uid, writes = signalWrites)
-            } catch (error: Exception) {
-                cleanupFanOutAfterSignalFailure(uid = uid, groupRef = groupRef, writes = signalWrites)
-                throw DispatchException("Signal fan-out could not be committed atomically: ${error.message ?: "callable failed"}")
-            }
-        }
+        commitFanOutSignalWrites(uid = uid, groupRef = groupRef, signalWrites = signalWrites)
         return FanOutDispatchResult(groupID = plan.groupID, childMissionIDs = plan.childMissionIDs)
+    }
+
+    private fun requireSignedInUid(): String =
+        auth.currentUser?.uid ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
+
+    private suspend fun commitFanOutSignalWrites(
+        uid: String,
+        groupRef: com.google.firebase.firestore.DocumentReference,
+        signalWrites: List<SignalMissionWrite>,
+    ) {
+        if (signalWrites.isEmpty()) return
+        try {
+            writeSignalMissionDocuments(signalWrites)
+        } catch (expected: Exception) {
+            cleanupFanOutAfterSignalFailure(uid = uid, groupRef = groupRef, writes = signalWrites)
+            throw DispatchException(
+                "Signal fan-out could not be committed atomically: ${expected.message ?: "callable failed"}",
+                expected,
+            )
+        }
     }
 
     private fun validateFanOutDispatch(runtimeTokens: List<String>, trimmedPrompt: String) {
@@ -370,7 +381,7 @@ class CLIAgentMissionDispatcher(
         parentHermesThreadID: String? = null,
         presentationMode: CLIAgentChatPresentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
     ): String {
-        val uid = auth.currentUser?.uid ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
+        val uid = requireSignedInUid()
         val trimmedPrompt = prompt.trim()
         if (trimmedPrompt.isBlank()) throw DispatchException("Mission prompt was empty.")
 
@@ -412,33 +423,52 @@ class CLIAgentMissionDispatcher(
             }
             .set(
                 requestRef.collection("events").document("000001"),
-                CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
-                    label = if (missionKind.trim().equals("chat", ignoreCase = true)) "Chat" else "Mission",
-                    source =
-                    sourceSurface?.trim()?.takeIf { it.isNotEmpty() }
-                        ?: if (missionKind.trim().equals("chat", ignoreCase = true)) "android-chat" else "android",
-                    sourceSkillID = sourceSkillID,
-                    deliveryMode = deliveryMode,
-                    key = resolvedKey,
-                ),
+                sealedInitialQueuedEvent(missionKind, sourceSurface, sourceSkillID, deliveryMode, resolvedKey),
             )
             .commit()
             .await()
         if (signalWrite != null) {
-            try {
-                writeSignalMissionDocuments(
-                    uid = uid,
-                    writes = listOf(SignalMissionWrite(missionID = id, payload = signalWrite)),
-                )
-            } catch (error: Exception) {
-                runCatching { requestRef.collection("events").document("000001").delete().await() }
-                throw DispatchException("Signal mission could not be committed: ${error.message ?: "callable failed"}")
-            }
+            commitSignalMissionWrite(requestRef = requestRef, missionID = id, payload = signalWrite)
         }
         return id
     }
 
-    private suspend fun writeSignalMissionDocuments(uid: String, writes: List<SignalMissionWrite>) {
+    private fun sealedInitialQueuedEvent(
+        missionKind: String,
+        sourceSurface: String?,
+        sourceSkillID: String?,
+        deliveryMode: SkillRunDeliveryMode,
+        key: AndroidCloudVaultResolvedKey,
+    ): Map<String, Any> {
+        val isChat = missionKind.trim().equals("chat", ignoreCase = true)
+        return CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
+            label = if (isChat) "Chat" else "Mission",
+            source =
+            sourceSurface?.trim()?.takeIf { it.isNotEmpty() }
+                ?: if (isChat) "android-chat" else "android",
+            sourceSkillID = sourceSkillID,
+            deliveryMode = deliveryMode,
+            key = key,
+        )
+    }
+
+    private suspend fun commitSignalMissionWrite(
+        requestRef: com.google.firebase.firestore.DocumentReference,
+        missionID: String,
+        payload: Map<String, Any>,
+    ) {
+        try {
+            writeSignalMissionDocuments(listOf(SignalMissionWrite(missionID = missionID, payload = payload)))
+        } catch (expected: Exception) {
+            runCatching { requestRef.collection("events").document("000001").delete().await() }
+            throw DispatchException(
+                "Signal mission could not be committed: ${expected.message ?: "callable failed"}",
+                expected,
+            )
+        }
+    }
+
+    private suspend fun writeSignalMissionDocuments(writes: List<SignalMissionWrite>) {
         if (writes.isEmpty()) return
         val documents = writes.map { write ->
             mapOf(
@@ -503,9 +533,12 @@ class CLIAgentMissionDispatcher(
                 localIdentity = identity,
                 otherRecipients = recipients,
             )
-        } catch (error: Exception) {
-            Log.e("CLIAgentMissionDispatcher", "Signal at-rest seal context failed; refusing mission fallback", error)
-            throw DispatchException("Private mission session could not be prepared: ${error.message ?: "Signal setup failed"}")
+        } catch (expected: Exception) {
+            Log.e("CLIAgentMissionDispatcher", "Signal at-rest seal context failed; refusing mission fallback", expected)
+            throw DispatchException(
+                "Private mission session could not be prepared: ${expected.message ?: "Signal setup failed"}",
+                expected,
+            )
         }
     }
 
@@ -915,7 +948,7 @@ object CLIAgentMissionRequestPayloadFactory {
     }
 }
 
-class DispatchException(message: String) : Exception(message)
+class DispatchException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 data class CLIAgentMissionSnapshot(
     val id: String,

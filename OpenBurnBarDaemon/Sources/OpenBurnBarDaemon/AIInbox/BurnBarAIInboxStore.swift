@@ -658,8 +658,8 @@ final class BurnBarAIInboxStore: @unchecked Sendable {
             for row in rows {
                 hasher.combine(row.string(0))
                 hasher.combine(String(row.int(1)))
-                if let indexedAt = row.date(2), latest == nil || indexedAt > latest! {
-                    latest = indexedAt
+                if let indexedAt = row.date(2) {
+                    latest = max(latest ?? indexedAt, indexedAt)
                 }
             }
             return (latest, hasher.finalize())

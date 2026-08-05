@@ -136,7 +136,12 @@ const PLANNED_CEILINGS = {
   // Linux parity adds daemon-owned cloud/privacy/trusted-device/media contracts
   // after the assistant-model extraction. Keep the ceiling below the next
   // monolith while accounting for those cross-platform authority surfaces.
-  OpenBurnBarKernel: { maxFiles: 185, maxLines: 47000 },
+  // AI Inbox (PR #2186) adds the shared mirror-record/state contracts
+  // (AIInboxMirrorRecord + cross-client sync models) that every client and the
+  // daemon consume, so Kernel is their owning module; the ceiling covers the
+  // measured 47746 LOC plus bounded headroom (<160 lines), same idiom as
+  // Operation 10 above, instead of creating an artificial leaf target.
+  OpenBurnBarKernel: { maxFiles: 185, maxLines: 47900 },
   OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1200 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
   // The final local-parser catalog adds bounded corpus parsers for the Linux

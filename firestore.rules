@@ -2426,6 +2426,7 @@ service cloud.firestore {
       }
 
       function validCliAgentMissionRequest() {
+        let d = request.resource.data;
         return validCliAgentMissionRequestKeys()
         && request.resource.data.id is string
         && request.resource.data.id.size() <= 512

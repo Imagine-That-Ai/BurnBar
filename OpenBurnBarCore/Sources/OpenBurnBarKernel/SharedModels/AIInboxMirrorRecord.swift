@@ -412,11 +412,15 @@ public enum AIInboxMirrorCodec {
 
     static func dateValue(_ raw: Any?) -> Date? {
         if let date = raw as? Date { return date }
+        #if canImport(ObjectiveC)
         // `Timestamp` is duck-typed via its `dateValue()` selector so the Kernel
-        // does not need to import FirebaseFirestore.
+        // does not need to import FirebaseFirestore. Firestore's `Timestamp`
+        // only exists on Apple platforms, so the ObjC-runtime probe is compiled
+        // out on Linux/Windows where `Selector`/`perform` are unavailable.
         if let convertible = raw as? NSObject, convertible.responds(to: Selector(("dateValue"))) {
             return convertible.perform(Selector(("dateValue")))?.takeUnretainedValue() as? Date
         }
+        #endif
         if let seconds = raw as? Double { return Date(timeIntervalSince1970: seconds) }
         if let string = raw as? String {
             return ISO8601DateFormatter().date(from: string)
