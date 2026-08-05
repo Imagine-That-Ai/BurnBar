@@ -159,6 +159,13 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .databaseRecoveryStatus: "daemon.database.recovery.status",
         .databaseRecoveryBundleExport: "daemon.database.recovery_bundle.export",
         .databaseRecoveryBundleImport: "daemon.database.recovery_bundle.import",
+        // AI Inbox — daemon-resident proactive analyst (see BurnBarRPCContracts).
+        .inboxList: "daemon.inbox.list",
+        .inboxGet: "daemon.inbox.get",
+        .inboxRunsRecent: "daemon.inbox.runs.recent",
+        .inboxConfigGet: "daemon.inbox.config.get",
+        .inboxConfigUpdate: "daemon.inbox.config.update",
+        .inboxRunNow: "daemon.inbox.run_now",
         .runResume: "run.resume",
         .daemonMediaSessionState: "daemon.media.session.state",
         .daemonMediaCallAccept: "daemon.media.call.accept",
