@@ -481,6 +481,41 @@ cd OpenBurnBarDaemon && swift test --filter AIInbox
 
 ---
 
+## Deploying the mirror
+
+The mobile inbox reads `users/{uid}/ai_inbox_items`. Until `firestore.rules` is
+deployed, **every mirror write returns `PERMISSION_DENIED`** and the phone shows
+an empty inbox with no error — the failure is silent, so verify the deploy rather
+than assuming it.
+
+`.github/workflows/deploy-firestore.yml` handles it: a push touching
+`firestore.rules` triggers the job, gated on the `production` environment. It is
+a merge-time action requiring production credentials, not something to run from a
+laptop.
+
+**Check whether a deploy is pending:**
+
+```bash
+node scripts/ci/check-firestore-deploy-drift.mjs
+```
+
+It compares the repo's rules hash against what is live and names the project to
+deploy to. A non-zero exit means the deployed rules are behind.
+
+**Pre-deploy gates, all runnable locally:**
+
+```bash
+node scripts/ci/check-firestore-rules-size.mjs      # 60.6% of the source limit
+node packages/data-domains/driftcheck.mjs           # every subcollection registered
+cd firestore-rules-tests && npm test                # emulator suite
+```
+
+Note that rules drift at this repo predates the inbox — the hash was already
+behind before these collections existed. Deploying is therefore a broader
+prerequisite than this feature, and worth confirming independently.
+
+---
+
 ## Operating notes
 
 - **Nothing appears?** The inbox is off by default. Turn it on in settings; the
