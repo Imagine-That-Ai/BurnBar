@@ -7594,12 +7594,9 @@
 				C73E119D13462D8CC6BCAB7B /* AgentsLandingSummaryTests.swift */,
 				F6B3DDA5DABE43BC61E87EB4 /* AgentToolBrokerReauthTests.swift */,
 				BA1D0770DF59ABB462A4CA28 /* AgentToolBrokerShellAuditTests.swift */,
-				68AC11C8F775E2143DEA37BE /* AIInboxSyncServiceTests.swift */,
 				EDE8D996A19F5ED1EA4DF8BA /* AIInboxControlPlaneStoreTests.swift */,
+				68AC11C8F775E2143DEA37BE /* AIInboxSyncServiceTests.swift */,
 				EA70505A4CE25CDE75268A35 /* AIInboxViewFormattingTests.swift */,
-				6F17AA5743A5FB265AD26CBA /* InboxConversationJumpResolverTests.swift */,
-				7DA2043FA0F98AAFE43A1633 /* InboxMemoryApprovalHandlerTests.swift */,
-				417FA5E128B3F96BB9CF537C /* InboxModelTests.swift */,
 				13877983678150831808F277 /* AmplitudeTransportTests.swift */,
 				F79CC91791F451A54D958D02 /* AnalyticsConsentStoreTests.swift */,
 				7423075731FC53EEE2ACA0F1 /* AnalyticsCoreTests.swift */,
@@ -7719,6 +7716,9 @@
 				3351549C3B915EF5B773FE90 /* HomeAssistantRecoveryProvisionerTests.swift */,
 				E093982D59C7145F3CAD829D /* HomeAssistantRecoveryWizardModelTests.swift */,
 				D6E9F1997A5F06A69D36D811 /* HybridRetrievalServiceTests.swift */,
+				6F17AA5743A5FB265AD26CBA /* InboxConversationJumpResolverTests.swift */,
+				7DA2043FA0F98AAFE43A1633 /* InboxMemoryApprovalHandlerTests.swift */,
+				417FA5E128B3F96BB9CF537C /* InboxModelTests.swift */,
 				6E583BD74E55836C6219EB0A /* IncrementalConversationIndexingTests.swift */,
 				9561B798437FB856D7AD76B6 /* InsightBriefStartupTests.swift */,
 				6F1869FC40FA48A87F094C4E /* InsightChartAccessibilityTests.swift */,
@@ -11496,7 +11496,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				13BB7E99237098D2216400F3 /* AIInboxControlPlaneStoreTests.swift in Sources */,
 				2ABA12C7315A7378CB80C91A /* AIInboxSyncServiceTests.swift in Sources */,
+				2948A04B54B368EAC9EA6380 /* AIInboxViewFormattingTests.swift in Sources */,
 				BA605669D40615DE735A79BB /* AWTRIXClientTests.swift in Sources */,
 				53F7BFE4D4496D8953075B74 /* AccountManagerMattersTests.swift in Sources */,
 				C41B55BF646A664F19724F18 /* AdaptiveColorSnapshotTests.swift in Sources */,
@@ -11669,6 +11671,9 @@
 				9210EF71AF8A2160BFFBB9C1 /* HomeAssistantRecoveryProvisionerTests.swift in Sources */,
 				C5AC1A9E439996E543998FFE /* HomeAssistantRecoveryWizardModelTests.swift in Sources */,
 				B039C64448A5BD4DDC176141 /* HybridRetrievalServiceTests.swift in Sources */,
+				100B7B2D22134CBA99BF275C /* InboxConversationJumpResolverTests.swift in Sources */,
+				A070DFE91B806BFA7044386C /* InboxMemoryApprovalHandlerTests.swift in Sources */,
+				B3E7DC69B82CEF30B8233A6F /* InboxModelTests.swift in Sources */,
 				5D4FBA9366F898CE37F0F90F /* IncomingCallSheetTests.swift in Sources */,
 				010337919E4D85F3415C42E1 /* IncrementalConversationIndexingTests.swift in Sources */,
 				D3AA8FDA744A0B499FBF9993 /* InsightBriefCardTests.swift in Sources */,
@@ -11887,11 +11892,6 @@
 				F8D4C1B60D03AA9112548BE8 /* WorkflowInsightRollupServiceTests.swift in Sources */,
 				8216F88657712626917F15AC /* XAIQuotaAdapterTests.swift in Sources */,
 				C78213F160506461F0B67AF2 /* ZAIQuotaAdapterCredentialReadTests.swift in Sources */,
-				13BB7E99237098D2216400F3 /* AIInboxControlPlaneStoreTests.swift in Sources */,
-				2948A04B54B368EAC9EA6380 /* AIInboxViewFormattingTests.swift in Sources */,
-				100B7B2D22134CBA99BF275C /* InboxConversationJumpResolverTests.swift in Sources */,
-				A070DFE91B806BFA7044386C /* InboxMemoryApprovalHandlerTests.swift in Sources */,
-				B3E7DC69B82CEF30B8233A6F /* InboxModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
