@@ -13,13 +13,8 @@ final class HermesConnectionSecretStore: HermesConnectionSecretStoring {
 
     func save(_ value: String, connectionID: String) throws {
         let data = Data(value.utf8)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: connectionID
-        ]
-        let attrs: [String: Any] = [kSecValueData as String: data]
-        let status = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
+        let query = KeychainGenericPasswordQuery.base(service: keychainService, account: connectionID)
+        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if status == errSecItemNotFound {
             var create = query
             create[kSecValueData as String] = data
@@ -32,12 +27,7 @@ final class HermesConnectionSecretStore: HermesConnectionSecretStoring {
     }
 
     func load(connectionID: String) throws -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: connectionID,
-            kSecReturnData as String: true
-        ]
+        let query = KeychainGenericPasswordQuery.read(service: keychainService, account: connectionID)
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         if status == errSecItemNotFound { return nil }
@@ -49,11 +39,7 @@ final class HermesConnectionSecretStore: HermesConnectionSecretStoring {
     }
 
     func delete(connectionID: String) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: connectionID
-        ]
+        let query = KeychainGenericPasswordQuery.base(service: keychainService, account: connectionID)
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw HermesServiceError.keychain(status)

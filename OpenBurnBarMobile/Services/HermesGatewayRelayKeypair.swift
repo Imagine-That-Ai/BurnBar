@@ -472,27 +472,35 @@ enum HermesGatewayRatchetChatLane {
     }
 }
 
+/// Shared builders for the two `kSecClassGenericPassword` query shapes that
+/// every keychain-backed store in this target repeats. Centralizing the raw
+/// `[String: Any]` literals keeps the untyped keychain boundary in one place.
+enum KeychainGenericPasswordQuery {
+    /// `class + service + account` — the shape `SecItemUpdate`, `SecItemDelete`,
+    /// and create-copies start from.
+    static func base(service: String, account: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+    }
+
+    /// `base` plus single-item data return — the `SecItemCopyMatching` shape.
+    static func read(service: String, account: String) -> [String: Any] {
+        var query = base(service: service, account: account)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        return query
+    }
+}
+
 enum HermesGatewayRatchetSessionStore {
     private static let service = "com.openburnbar.mobile.hermes-gateway-ratchet-session"
     private static let indexPrefix = "current-chat-session"
 
     static func load(sessionID: String) throws -> HermesRatchetSessionState? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: sessionID,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess else {
-            throw HermesGatewayRelayKeypairError.keychainError(status: Int(status))
-        }
-        guard let data = item as? Data else {
-            throw HermesGatewayRelayKeypairError.keychainError(status: Int(errSecDecode))
-        }
+        guard let data = try loadData(account: sessionID) else { return nil }
         return try JSONDecoder().decode(HermesRatchetSessionState.self, from: data)
     }
 
@@ -518,13 +526,7 @@ enum HermesGatewayRatchetSessionStore {
     }
 
     private static func loadData(account: String) throws -> Data? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
+        let query = KeychainGenericPasswordQuery.read(service: service, account: account)
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecItemNotFound { return nil }
@@ -538,11 +540,7 @@ enum HermesGatewayRatchetSessionStore {
     }
 
     private static func saveData(_ data: Data, account: String) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
+        let query = KeychainGenericPasswordQuery.base(service: service, account: account)
         let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if updateStatus == errSecItemNotFound {
             var create = query
@@ -560,11 +558,7 @@ enum HermesGatewayRatchetSessionStore {
     }
 
     static func delete(sessionID: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: sessionID
-        ]
+        let query = KeychainGenericPasswordQuery.base(service: service, account: sessionID)
         SecItemDelete(query as CFDictionary)
     }
 }
@@ -597,13 +591,7 @@ struct HermesGatewayKeychainPinBacking: HermesGatewayPinBacking {
     static let service = "com.openburnbar.mobile.hermes-gateway-agent-pin"
 
     func load(account: String) -> HermesGatewayPinLoad {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
+        let query = KeychainGenericPasswordQuery.read(service: Self.service, account: account)
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         switch status {
@@ -624,11 +612,7 @@ struct HermesGatewayKeychainPinBacking: HermesGatewayPinBacking {
     @discardableResult
     func save(_ value: String, account: String) -> OSStatus {
         let data = Data(value.utf8)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: account
-        ]
+        let query = KeychainGenericPasswordQuery.base(service: Self.service, account: account)
         let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if updateStatus == errSecItemNotFound {
             var create = query
@@ -640,11 +624,7 @@ struct HermesGatewayKeychainPinBacking: HermesGatewayPinBacking {
     }
 
     func delete(account: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: account
-        ]
+        let query = KeychainGenericPasswordQuery.base(service: Self.service, account: account)
         SecItemDelete(query as CFDictionary)
     }
 }
@@ -1115,13 +1095,7 @@ enum HermesGatewaySignalRuntime {
     }
 
     private static func loadMetadata(account: String) throws -> HermesGatewaySignalPrekeyMetadata? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: metadataService,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
+        let query = KeychainGenericPasswordQuery.read(service: metadataService, account: account)
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecItemNotFound { return nil }
@@ -1140,11 +1114,7 @@ enum HermesGatewaySignalRuntime {
         account: String
     ) throws {
         let data = try JSONEncoder().encode(metadata)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: metadataService,
-            kSecAttrAccount as String: account
-        ]
+        let query = KeychainGenericPasswordQuery.base(service: metadataService, account: account)
         SecItemDelete(query as CFDictionary)
         var record = query
         record[kSecValueData as String] = data

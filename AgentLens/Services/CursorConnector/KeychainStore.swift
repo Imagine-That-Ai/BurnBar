@@ -104,12 +104,18 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
         self.security = security
     }
 
-    func set(_ value: Data, service: String, account: String) throws {
-        let query: [String: Any] = [
+    /// The `class + service + account` generic-password shape all three
+    /// operations below start from.
+    private static func genericPasswordQuery(service: String, account: String) -> [String: Any] {
+        [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
+    }
+
+    func set(_ value: Data, service: String, account: String) throws {
+        let query = Self.genericPasswordQuery(service: service, account: account)
 
         let attributes: [String: Any] = [
             kSecValueData as String: value,
@@ -135,13 +141,9 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
     }
 
     func data(for service: String, account: String, allowUserInteraction: Bool) throws -> Data? {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
+        var query = Self.genericPasswordQuery(service: service, account: account)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
         if !allowUserInteraction {
             query[kSecUseAuthenticationContext as String] = Self.nonInteractiveContext
         }
@@ -170,11 +172,7 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
     }
 
     func delete(service: String, account: String) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
+        let query = Self.genericPasswordQuery(service: service, account: account)
         let status = security.runWithDisabledInteraction {
             security.delete(query: query as CFDictionary)
         }
