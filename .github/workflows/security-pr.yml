@@ -201,10 +201,22 @@ jobs:
   remote-installer-policy:
     name: Remote Installer Policy
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    # 3 minutes covers the scan itself, but a full clone of this repo's 8.6 GiB
+    # history repeatedly consumed the entire budget and cancelled the job in
+    # actions/checkout (run 31025374942: 3m10s in checkout, zero work done).
+    # The blobless sparse fetch below removes that failure mode; the headroom
+    # keeps a slow fetch from being reported as a policy violation.
+    timeout-minutes: 8
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
+        with:
+          # The scanner walks `git ls-files .github scripts .agents` only.
+          filter: blob:none
+          sparse-checkout: |
+            .github
+            scripts
+            .agents
 
       - name: Self-test remote installer policy
         run: bash scripts/ci/verify-no-remote-shell-installers.test.sh
@@ -245,10 +257,19 @@ jobs:
   codeowners-security-trees:
     name: CODEOWNERS Security Trees
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    # See remote-installer-policy above: a full-history clone alone exceeded the
+    # old 3-minute cap (run 31025374942: cancelled after 3m22s in checkout).
+    timeout-minutes: 8
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
+        with:
+          # The verifier only reads .github/CODEOWNERS and the tracked
+          # .github/** and scripts/** trees it asserts coverage for.
+          filter: blob:none
+          sparse-checkout: |
+            .github
+            scripts
 
       - name: Verify security-sensitive CODEOWNERS rules
         run: bash scripts/ci/verify-codeowners-security-trees.sh
