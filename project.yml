@@ -1031,6 +1031,11 @@ targets:
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
         product: OpenBurnBarAnalytics
+      # Linked narrowly so Inbox views can import OpenBurnBarHermes directly for
+      # HermesInlineMarkdown/HermesAtomParser instead of reaching through the
+      # OpenBurnBarCore umbrella (docs/CORE_DECOMPOSITION_PROGRAM.md).
+      - package: OpenBurnBarCore
+        product: OpenBurnBarHermes
       - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
       - package: OpenBurnBarCore

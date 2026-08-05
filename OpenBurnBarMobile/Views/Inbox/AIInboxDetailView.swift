@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import OpenBurnBarHermes
 import OpenBurnBarKernel
 
 // MARK: - AI Inbox detail
