@@ -170,6 +170,27 @@ final class MercuryRouterTests: XCTestCase {
         }
     }
 
+    /// Waits until the consent store holds `expectedGrants` grants.
+    ///
+    /// Assigning `rememberAcceptedMirrorPeers` writes through to `UserDefaults`,
+    /// which posts `didChangeNotification`, which schedules the store's
+    /// `synchronizeFromDefaults()` on the main queue. That handler re-reads the
+    /// persisted grant ledger and replaces the in-memory array — so a grant
+    /// created before the handler runs can be observed as absent by a test that
+    /// reads `grants` right away. Settling first makes the read deterministic
+    /// without weakening what the test asserts.
+    private func settleConsentStore(
+        _ consentStore: MercuryConsentStore,
+        expectedGrants: Int,
+        timeout: TimeInterval = 2
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if consentStore.grants.count == expectedGrants { return }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
     private func makeIsolatedDefaults() -> UserDefaults {
         let suite = UserDefaults(suiteName: "mercury.test.\(UUID().uuidString)")!
         suite.removePersistentDomain(forName: suite.dictionaryRepresentation().keys.first ?? "")
@@ -670,7 +691,14 @@ final class MercuryRouterTests: XCTestCase {
     }
 
     func testExistingPeerGrantAutoAcceptDoesNotRenewGrant() async throws {
-        var now = Date(timeIntervalSince1970: 1_700_000_000)
+        // Anchored to the real clock rather than a fixed 2023 epoch. The router
+        // consults `canAutoAccept(now:)` with this injected clock, but the
+        // store's UserDefaults observer calls `synchronizeFromDefaults()` with a
+        // defaulted `Date()` — so a grant dated in the real past is pruned by
+        // that path before the assertion can read it. Starting from now keeps
+        // the grant live under BOTH clocks while preserving what this test is
+        // about: a fixed TTL that auto-accept must not slide forward.
+        var now = Date()
         let (router, sink, consentStore) = makeRouterWithConsentStore(
             startScreenShare: { _, _, _, _, _, _, _, _ in },
             clock: { now }
@@ -684,6 +712,7 @@ final class MercuryRouterTests: XCTestCase {
             requesterName: "Alberto's iPhone",
             now: now
         )
+        await settleConsentStore(consentStore, expectedGrants: 1)
         let firstExpiry = try XCTUnwrap(consentStore.grants.first?.expiresAt)
 
         // Auto-accept inside the fixed TTL succeeds but must NOT slide the
@@ -700,8 +729,15 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(frames.last?.media?.mirrorAck?.decision, .accepted)
     }
 
-    func testExpiredPeerGrantRingsAgainInsteadOfAutoAccepting() async {
-        var now = Date(timeIntervalSince1970: 1_700_000_000)
+    func testExpiredPeerGrantRingsAgainInsteadOfAutoAccepting() async throws {
+        // Anchored to the real clock for the same reason as
+        // `testExistingPeerGrantAutoAcceptDoesNotRenewGrant`. It matters more
+        // here: with a 2023 epoch this test passed for the wrong reason — the
+        // grant was pruned by a real-clock code path, which is indistinguishable
+        // from the TTL expiry it means to assert. Anchoring to now means the
+        // grant is provably live before the clock advance, so ringing afterwards
+        // can only be caused by the TTL.
+        var now = Date()
         let (router, sink, consentStore) = makeRouterWithConsentStore(
             startScreenShare: { _, _, _, _, _, _, _, _ in },
             clock: { now }
@@ -714,6 +750,17 @@ final class MercuryRouterTests: XCTestCase {
             remotePeerNodeId: "ios-peer",
             requesterName: "Alberto's iPhone",
             now: now
+        )
+        await settleConsentStore(consentStore, expectedGrants: 1)
+        XCTAssertTrue(
+            consentStore.canAutoAccept(
+                connectionId: "c",
+                viewerDeviceId: "iphone-1",
+                controlAuthorityPeerNodeId: "ios-peer",
+                remotePeerNodeId: "ios-peer",
+                now: now
+            ),
+            "the grant must be live before the clock advance, or the ringing below proves nothing"
         )
 
         // Past the fixed TTL the grant is gone; the request must ring again.

@@ -284,6 +284,23 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
         ), "turning the preference off must immediately stop auto-accepts")
     }
 
+    /// Polls the main queue until the store has processed the external opt-out,
+    /// or the deadline expires. Returning on timeout (rather than failing here)
+    /// keeps the failure attributed to the assertions that follow, which say
+    /// what actually went wrong.
+    private func waitForStoreToObserveOptOut(
+        _ store: MercuryConsentStore,
+        timeout: TimeInterval = 2
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if !store.rememberAcceptedMirrorPeers, store.grants.isEmpty { return }
+            // Yields the main queue so the store's `.receive(on: .main)` hop and
+            // its follow-on `Task { @MainActor }` can both run.
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
     func test_externalSettingsOptOutImmediatelyUpdatesLiveStoreAndClearsGrants() async {
         let liveStore = MercuryConsentStore(defaults: defaults)
         liveStore.rememberAcceptedMirrorPeers = true
@@ -298,7 +315,14 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
 
         defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
         NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: defaults)
-        await Task.yield()
+
+        // The store observes defaults through Combine with `.receive(on:
+        // DispatchQueue.main)` and then hops again into `Task { @MainActor }`.
+        // A single `Task.yield()` cannot drain either hop from this @MainActor
+        // test body, so wait on the observable effect instead of guessing at a
+        // yield count — deterministic, and it fails loudly if the observer is
+        // ever disconnected rather than passing on a lucky interleaving.
+        await waitForStoreToObserveOptOut(liveStore)
 
         XCTAssertFalse(liveStore.rememberAcceptedMirrorPeers)
         XCTAssertTrue(liveStore.grants.isEmpty)
