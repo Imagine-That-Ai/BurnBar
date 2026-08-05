@@ -160,6 +160,10 @@ var packageProductsBase: [Product] = [
         targets: ["OpenBurnBarAssistantModels"]
     ),
     .library(
+        name: "OpenBurnBarInboxModels",
+        targets: ["OpenBurnBarInboxModels"]
+    ),
+    .library(
         name: "OpenBurnBarDomainCoreRuntime",
         targets: ["OpenBurnBarDomainCoreRuntime"]
     ),
@@ -1062,6 +1066,14 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarAssistantModels",
             dependencies: ["OpenBurnBarPlatformSupport"]
         ),
+        // AI Inbox wire contracts and the Firestore mirror record form a
+        // Foundation-only leaf, following the assistant-model precedent in
+        // docs/CORE_DECOMPOSITION_PROGRAM.md. Kernel re-exports it so existing
+        // `import OpenBurnBarKernel` consumers keep the same public surface.
+        .target(
+            name: "OpenBurnBarInboxModels",
+            dependencies: ["OpenBurnBarPlatformSupport"]
+        ),
         // Phase-1 K1 kernel (see the OpenBurnBarKernel product comment above).
         // remediation(typespec-strangler): the generated Firestore canon stays
         // linked into the production graph — the `import OpenBurnBarFirestoreModels`
@@ -1073,6 +1085,7 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarKernel",
             dependencies: [
                 "OpenBurnBarAssistantModels",
+                "OpenBurnBarInboxModels",
                 "OpenBurnBarPlatformSupport",
                 "OpenBurnBarDomainCoreRuntime",
                 "OpenBurnBarFirestoreModels",

@@ -99,8 +99,11 @@ internal fun MercuryFcmService.buildAIInboxNotification(routing: AIInboxNotifica
             action = Intent.ACTION_VIEW
             data = Uri.parse(routing.deepLink)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            setPackage(packageName)
         }
+    // Pinned on its own line, outside the `apply` block, matching
+    // MercuryFcmServiceSupport: the explicit-PendingIntent gate verifies the
+    // package pin as a directly greppable statement per intent variable.
+    openIntent.setPackage(packageName)
     val openPending =
         PendingIntent.getActivity(
             this,

@@ -42,6 +42,11 @@
       "maxLines": 2700,
       "planned": true
     },
+    "OpenBurnBarInboxModels": {
+      "maxFiles": 5,
+      "maxLines": 1000,
+      "planned": true
+    },
     "OpenBurnBarKernel": {
       "maxFiles": 185,
       "maxLines": 47000,
