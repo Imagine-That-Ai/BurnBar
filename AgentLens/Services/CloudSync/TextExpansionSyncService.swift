@@ -111,7 +111,7 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
                     to: payload,
                     domainID: "conversations_chat",
                     uid: uid,
-                    firestore: signalPayloadFirestore(),
+                    firestore: try signalPayloadFirestore(),
                     collection: "text_snippets",
                     docId: snippet.id,
                     plaintext: try Self.signalPlaintext(snippet),
