@@ -329,11 +329,7 @@ class CLIAgentMissionDispatcher(
      * fan-out scaffolding is rolled back so no half-dispatched group survives; cancellation
      * and fatal errors propagate untouched.
      */
-    private suspend fun commitFanOutSignalWrites(
-        uid: String,
-        groupRef: com.google.firebase.firestore.DocumentReference,
-        writes: List<SignalMissionWrite>,
-    ) {
+    private suspend fun commitFanOutSignalWrites(uid: String, groupRef: com.google.firebase.firestore.DocumentReference, writes: List<SignalMissionWrite>) {
         if (writes.isEmpty()) return
         val failure = runCatching { writeSignalMissionDocuments(writes) }.exceptionOrNull() ?: return
         if (failure is CancellationException || failure !is Exception) throw failure
@@ -453,11 +449,7 @@ class CLIAgentMissionDispatcher(
      * Commit a staged single Signal mission document through the callable. On failure the
      * queued scaffolding event is rolled back; cancellation and fatal errors propagate untouched.
      */
-    private suspend fun commitSingleSignalMission(
-        requestRef: com.google.firebase.firestore.DocumentReference,
-        missionID: String,
-        payload: Map<String, Any>,
-    ) {
+    private suspend fun commitSingleSignalMission(requestRef: com.google.firebase.firestore.DocumentReference, missionID: String, payload: Map<String, Any>) {
         val failure =
             runCatching {
                 writeSignalMissionDocuments(listOf(SignalMissionWrite(missionID = missionID, payload = payload)))

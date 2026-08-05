@@ -137,11 +137,7 @@ internal fun sealedFanOutGroupPayload(
     key = key,
 )
 
-private fun fanOutChildPayloadInput(
-    request: FanOutChildWriteRequest,
-    missionID: String,
-    runtimeToken: String,
-): CLIMissionPayloadInput = CLIMissionPayloadInput(
+private fun fanOutChildPayloadInput(request: FanOutChildWriteRequest, missionID: String, runtimeToken: String): CLIMissionPayloadInput = CLIMissionPayloadInput(
     core = CLIMissionPayloadCore(missionID, "${request.plan.trimmedTitle} · $runtimeToken", request.plan.trimmedPrompt, request.missionKind),
     execution = CLIMissionPayloadExecution(
         requestedRuntime = runtimeToken,
