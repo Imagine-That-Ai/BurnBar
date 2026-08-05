@@ -239,10 +239,12 @@ final class AIInboxEvidencePackBuilderTests: XCTestCase {
         }
         let now = Date()
         try seedConversation(id: "conv-remote", endedAt: now.addingTimeInterval(-300), fullText: "Pushed the fix.")
+        // The keys must pin the subcommand, not just the state flag: the
+        // issue fetch also carries "--state open" on its command line.
         let githubRunner = ScriptedInboxProcessRunner(results: [
             ("auth status", ScriptedInboxProcessRunner.success("")),
-            ("--state open", ScriptedInboxProcessRunner.success(Self.openPullRequestJSON)),
-            ("--state merged", ScriptedInboxProcessRunner.success("[]")),
+            ("pr list --repo octo/repo --state open", ScriptedInboxProcessRunner.success(Self.openPullRequestJSON)),
+            ("pr list --repo octo/repo --state merged", ScriptedInboxProcessRunner.success("[]")),
             ("issue list", ScriptedInboxProcessRunner.success("[]")),
             ("actions/runs", ScriptedInboxProcessRunner.success(Self.workflowRunsJSON))
         ])

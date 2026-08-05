@@ -279,10 +279,12 @@ final class BurnBarGitHubCLIClientParsingTests: XCTestCase {
         guard BurnBarAIInboxProcessRunner.locate("gh") != nil else {
             throw XCTSkip("The availability probe requires a gh binary on this machine")
         }
+        // The keys must pin the subcommand, not just the state flag: the
+        // issue fetch also carries "--state open" on its command line.
         let runner = ScriptedInboxProcessRunner(results: [
             ("auth status", ScriptedInboxProcessRunner.success("")),
-            ("--state open", ScriptedInboxProcessRunner.success(Self.openPullRequestJSON)),
-            ("--state merged", ScriptedInboxProcessRunner.success(Self.mergedPullRequestJSON)),
+            ("pr list --repo octo/repo --state open", ScriptedInboxProcessRunner.success(Self.openPullRequestJSON)),
+            ("pr list --repo octo/repo --state merged", ScriptedInboxProcessRunner.success(Self.mergedPullRequestJSON)),
             ("issue list", ScriptedInboxProcessRunner.success(Self.issueJSON)),
             ("actions/runs", ScriptedInboxProcessRunner.success(Self.workflowRunsJSON))
         ])
