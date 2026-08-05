@@ -872,7 +872,13 @@ jobs:
           filter: blob:none
           # There is no workspace root manifest: each crate under crates/ owns
           # its Cargo.toml, Cargo.lock, deny.toml, and rust-toolchain.toml.
-          sparse-checkout: crates
+          # openburnbar-domain-core additionally compiles repo-root KAT
+          # fixtures into its tests via include_str!(../../../../tests/
+          # fixtures/domain-core/...), so clippy --all-targets needs them
+          # present (run 31042545006 failed without them).
+          sparse-checkout: |
+            crates
+            tests/fixtures/domain-core
 
       - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1, pinned via toolchain below
         with:
