@@ -181,7 +181,7 @@ struct BurnBarAIInboxChangeGate: Sendable {
                 }
                 guard modified >= since else { continue }
                 recentCount += 1
-                newest = max(newest ?? modified, modified)
+                newest = newest.map { Swift.max($0, modified) } ?? modified
             }
             hasher.combine(root)
             hasher.combine(recentCount)

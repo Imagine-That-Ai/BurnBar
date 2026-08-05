@@ -22,6 +22,15 @@ export const pendingIntentContracts = [
     sink: "getActivity",
   },
   {
+    // AI Inbox push tap-target: opens the deep-linked item in MainActivity.
+    // Explicit component, direct package pin, and FLAG_IMMUTABLE, so a hostile
+    // app cannot intercept the intent or mutate the item it resolves to.
+    file: "android/app/src/main/java/com/openburnbar/services/media/AIInboxNotificationRouting.kt",
+    variable: "openIntent",
+    component: "MainActivity",
+    sink: "getActivity",
+  },
+  {
     file: "android/app/src/main/java/com/openburnbar/services/media/MercuryFcmServiceSupport.kt",
     variable: "replyIntent",
     component: "AgentReplyNotificationReceiver",

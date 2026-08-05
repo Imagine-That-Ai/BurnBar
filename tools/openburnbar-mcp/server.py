@@ -3265,9 +3265,7 @@ def burnbar_inbox_get(item_id: str) -> str:
         return json.dumps({"item": None, "error": f"no inbox item with id {item_id!r}"}, indent=2)
 
     summary = item.get("summary") or {}
-    summary["title"] = _wrap_untrusted_snippet(
-        summary.get("title"), source_tool="burnbar_inbox_get", record_id=item_id
-    )
+    summary["title"] = _wrap_untrusted_snippet(summary.get("title"), source_tool="burnbar_inbox_get", record_id=item_id)
     item["summary"] = summary
     item["summaryMarkdown"] = _wrap_untrusted_snippet(
         item.get("summaryMarkdown"), source_tool="burnbar_inbox_get", record_id=item_id

@@ -23,6 +23,17 @@ vi.mock("firebase-functions/logger", () => ({
   debug: vi.fn(),
 }));
 
+// Hoisted so the module factory below can close over it: the sweeper resolves
+// Firestore through `getFirestore()`, so replacing that is how a test double
+// gets in without casting a literal to the full `Firestore` interface.
+const { getFirestoreMock } = vi.hoisted(() => ({ getFirestoreMock: vi.fn() }));
+
+vi.mock("firebase-admin/firestore", async () => {
+  const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
+  return { ...actual, getFirestore: getFirestoreMock };
+});
+vi.mock("firebase-admin/messaging", () => ({ getMessaging: () => ({ send: vi.fn() }) }));
+
 import { buildFcmMessage, shouldSuppressForDevice } from "../agentNotifications.js";
 import { inboxAlertRouting, inboxEventIdFor, inboxKindLabel } from "../aiInboxNotifications.js";
 
@@ -254,6 +265,7 @@ describe("inbox events ride the shared durable-event machinery", () => {
  * only path that matters: recovery.
  */
 async function parseEventForSweeper(event: Record<string, unknown>): Promise<boolean> {
+  const { sweepStuckAgentReplyEvents } = await import("../agentNotifications.js");
   const eventRef = {
     async get() {
       return { exists: true, data: () => event };
@@ -262,7 +274,11 @@ async function parseEventForSweeper(event: Record<string, unknown>): Promise<boo
       /* status write */
     },
   };
-  const firestore = {
+  // Injected through the `getFirestore` module mock rather than passed as a
+  // typed argument. That mirrors agentNotifications.test.ts and keeps the
+  // double honest: a literal cannot satisfy the full `Firestore` interface, and
+  // forcing it with `as unknown as` is what the unsafe-cast gate forbids.
+  const firestoreDouble = vi.fn(() => ({
     collection: () => ({
       doc: () => ({
         collection: (name: string) =>
@@ -286,31 +302,17 @@ async function parseEventForSweeper(event: Record<string, unknown>): Promise<boo
       };
       return query;
     },
-  };
+  }));
+  getFirestoreMock.mockImplementation(firestoreDouble);
 
-  // Route the double through a mocked `getFirestore`, the same seam
-  // `agentNotifications.test.ts` uses, so no unsafe cast is needed to
-  // impersonate the full Firestore surface.
-  vi.resetModules();
-  vi.doMock("firebase-admin/firestore", async (importOriginal) => {
-    const actual = await importOriginal<typeof import("firebase-admin/firestore")>();
-    return { ...actual, getFirestore: () => firestore };
-  });
-  let tally: Awaited<ReturnType<typeof import("../agentNotifications.js").sweepStuckAgentReplyEvents>>;
-  try {
-    const { sweepStuckAgentReplyEvents } = await import("../agentNotifications.js");
-    tally = await sweepStuckAgentReplyEvents({
-      messaging: {
-        async send() {
-          return "ok";
-        },
+  const tally = await sweepStuckAgentReplyEvents({
+    messaging: {
+      async send() {
+        return "ok";
       },
-      now: NOW + 10 * 60_000,
-    });
-  } finally {
-    vi.doUnmock("firebase-admin/firestore");
-    vi.resetModules();
-  }
+    },
+    now: NOW + 10 * 60_000,
+  });
   // `skipped` is what an unparseable document produces; anything else means the
   // sweeper understood the event and acted on it.
   return tally.skipped === 0;

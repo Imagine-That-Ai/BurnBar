@@ -1,12 +1,11 @@
 {
-  "note": "OpenBurnBarCore main-target membership snapshot (per-file line counts) + per-sibling {files, LOC} ceilings (docs/CORE_DECOMPOSITION_PROGRAM.md). Deny-gate: no NEW .swift file may be added to OpenBurnBarCore/Sources/OpenBurnBarCore/ (new code lands in a sibling target); main-target totals may only shrink AND no individual baselined main-target file may grow (per-file check — a removed big file cannot mask regrowth in another file); no sibling may exceed its ceiling (decomposition-destination siblings use a PLANNED end-state ceiling that --update never ratchets down, others use 1.25x measured). Shrink is non-fatal (run --update to ratchet down). Regenerate via scripts/debt/check-core-target-membership-budget.sh --update.",
+  "note": "OpenBurnBarCore main-target membership snapshot (per-file line counts) + per-sibling {files, LOC} ceilings (docs/CORE_DECOMPOSITION_PROGRAM.md). Deny-gate: no NEW .swift file may be added to OpenBurnBarCore/Sources/OpenBurnBarCore/ (new code lands in a sibling target); main-target totals may only shrink AND no individual baselined main-target file may grow (per-file check \u2014 a removed big file cannot mask regrowth in another file); no sibling may exceed its ceiling (decomposition-destination siblings use a PLANNED end-state ceiling that --update never ratchets down, others use 1.25x measured). Shrink is non-fatal (run --update to ratchet down). Regenerate via scripts/debt/check-core-target-membership-budget.sh --update.",
   "main": {
     "target": "OpenBurnBarCore",
-    "totalLines": 140,
-    "fileCount": 12,
+    "totalLines": 127,
+    "fileCount": 11,
     "files": [
       "OpenBurnBarCore/Sources/OpenBurnBarCore/KernelReexport.swift",
-      "OpenBurnBarCore/Sources/OpenBurnBarCore/OBBSignalGatewayEnvelopeProvider.swift",
       "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarHermesReexport.swift",
       "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarInsightsReexport.swift",
       "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarLaunchServicesReexport.swift",
@@ -20,7 +19,6 @@
     ],
     "fileLines": {
       "OpenBurnBarCore/Sources/OpenBurnBarCore/KernelReexport.swift": 11,
-      "OpenBurnBarCore/Sources/OpenBurnBarCore/OBBSignalGatewayEnvelopeProvider.swift": 13,
       "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarHermesReexport.swift": 10,
       "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarInsightsReexport.swift": 14,
       "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarLaunchServicesReexport.swift": 14,
@@ -44,9 +42,14 @@
       "maxLines": 2700,
       "planned": true
     },
+    "OpenBurnBarInboxModels": {
+      "maxFiles": 5,
+      "maxLines": 1000,
+      "planned": true
+    },
     "OpenBurnBarKernel": {
       "maxFiles": 185,
-      "maxLines": 47900,
+      "maxLines": 47000,
       "planned": true
     },
     "OpenBurnBarParserSupport": {
@@ -111,7 +114,7 @@
     },
     "OpenBurnBarComputerUseCore": {
       "maxFiles": 74,
-      "maxLines": 15368
+      "maxLines": 15324
     },
     "OpenBurnBarMedia": {
       "maxFiles": 25,
@@ -119,19 +122,19 @@
     },
     "OpenBurnBarIrohRelay": {
       "maxFiles": 19,
-      "maxLines": 2722
+      "maxLines": 2688
     },
     "OpenBurnBarSignalCore": {
       "maxFiles": 9,
-      "maxLines": 2154
+      "maxLines": 2415
     },
     "OpenBurnBarSignalSessionTransport": {
       "maxFiles": 3,
-      "maxLines": 802
+      "maxLines": 650
     },
     "OpenBurnBarFirestoreModels": {
       "maxFiles": 18,
-      "maxLines": 832
+      "maxLines": 703
     },
     "OpenBurnBarAnalytics": {
       "maxFiles": 12,
@@ -142,8 +145,8 @@
       "maxLines": 3227
     },
     "OpenBurnBarData": {
-      "maxFiles": 23,
-      "maxLines": 5205
+      "maxFiles": 20,
+      "maxLines": 4920
     },
     "BurnBarRemoteEngine": {
       "maxFiles": 2,
@@ -151,7 +154,7 @@
     },
     "OpenBurnBarCoreCAbi": {
       "maxFiles": 7,
-      "maxLines": 1085
+      "maxLines": 1098
     }
   }
 }

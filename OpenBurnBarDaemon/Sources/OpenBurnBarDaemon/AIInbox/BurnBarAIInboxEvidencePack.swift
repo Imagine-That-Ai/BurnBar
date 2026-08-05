@@ -240,7 +240,7 @@ struct BurnBarAIInboxEvidencePackBuilder: Sendable {
                 ), values.isRegularFile == true, let modified = values.contentModificationDate else {
                     continue
                 }
-                newest = max(newest ?? modified, modified)
+                newest = newest.map { Swift.max($0, modified) } ?? modified
             }
         }
         return newest

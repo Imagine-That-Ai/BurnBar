@@ -1031,6 +1031,11 @@ targets:
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
         product: OpenBurnBarAnalytics
+      # Linked narrowly so Inbox views can import OpenBurnBarHermes directly for
+      # HermesInlineMarkdown/HermesAtomParser instead of reaching through the
+      # OpenBurnBarCore umbrella (docs/CORE_DECOMPOSITION_PROGRAM.md).
+      - package: OpenBurnBarCore
+        product: OpenBurnBarHermes
       - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
       - package: OpenBurnBarCore
@@ -1043,13 +1048,6 @@ targets:
         product: OpenBurnBarSignalSessionTransport
       - package: OpenBurnBarCore
         product: OpenBurnBarFirestoreModels
-      # AI Inbox: mobile Inbox surfaces import the narrow Kernel product
-      # (shared Inbox models) and Hermes (atom parser + inline markdown)
-      # directly instead of the OpenBurnBarCore umbrella.
-      - package: OpenBurnBarCore
-        product: OpenBurnBarKernel
-      - package: OpenBurnBarCore
-        product: OpenBurnBarHermes
       - package: DebugBridge
         product: DebugBridgeCore
       - package: DebugBridge

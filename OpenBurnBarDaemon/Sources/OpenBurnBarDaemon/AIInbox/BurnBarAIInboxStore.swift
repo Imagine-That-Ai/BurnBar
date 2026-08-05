@@ -659,7 +659,7 @@ final class BurnBarAIInboxStore: @unchecked Sendable {
                 hasher.combine(row.string(0))
                 hasher.combine(String(row.int(1)))
                 if let indexedAt = row.date(2) {
-                    latest = max(latest ?? indexedAt, indexedAt)
+                    latest = latest.map { Swift.max($0, indexedAt) } ?? indexedAt
                 }
             }
             return (latest, hasher.finalize())

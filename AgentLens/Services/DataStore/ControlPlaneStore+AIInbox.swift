@@ -287,7 +287,7 @@ extension ControlPlaneStore {
             }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            return (try? decoder.decode(BurnBarInboxItemPayload.self, from: data)) ?? BurnBarInboxItemPayload() // try?-ok(corrupt payload_json degrades to an empty payload)
+            return (try? decoder.decode(BurnBarInboxItemPayload.self, from: data)) ?? BurnBarInboxItemPayload() // try?-ok(legacy or partial rows decode to an empty payload)
         }()
 
         let summary = BurnBarInboxItemSummary(

@@ -189,12 +189,12 @@ final class AIInboxCrossPlatformContractTests: XCTestCase {
         ] {
             guard let start = kotlin.range(of: "enum class \(enumName)") else {
                 XCTFail("Missing Kotlin enum \(enumName)")
-                return
+                continue
             }
             let remainder = kotlin[start.upperBound...]
             guard let end = remainder.range(of: "\n}") else {
                 XCTFail("Could not delimit Kotlin enum \(enumName)")
-                return
+                continue
             }
             let body = String(remainder[..<end.lowerBound])
             let tokens = Set(
