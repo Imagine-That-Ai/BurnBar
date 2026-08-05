@@ -505,4 +505,85 @@ final class InboxModelTests: XCTestCase {
             XCTAssertEqual(section.id, section.rawValue)
         }
     }
+
+    // MARK: - Failure and freshness edge cases
+
+    /// A snooze deadline that has already elapsed must return the row to the
+    /// default list. Asserting only the future-dated case would pass even if
+    /// `isSnoozed` compared against `.distantFuture`, leaving snoozed items
+    /// hidden forever.
+    func testAnElapsedSnoozeReturnsTheRowToTheActiveList() async {
+        let harness = InboxModelHarness()
+        await harness.setRows([
+            makeRow(id: "expired", snoozedUntil: Date().addingTimeInterval(-600)),
+            makeRow(id: "active", snoozedUntil: Date().addingTimeInterval(600))
+        ])
+        let model = makeModel(harness)
+
+        await model.load()
+
+        XCTAssertEqual(model.visibleRows.map(\.id), ["expired"])
+        XCTAssertFalse(model.rows.first { $0.id == "expired" }?.isHidden ?? true)
+        XCTAssertTrue(model.rows.first { $0.id == "active" }?.isHidden ?? false)
+    }
+
+    /// The marker read happens before the row read, so a failing marker must
+    /// surface an error without paying for the expensive query.
+    func testAFailingMarkerReportsAnErrorWithoutReadingRows() async {
+        let harness = InboxModelHarness()
+        await harness.setRows([makeRow(id: "a")])
+        await harness.setMarkerFails(true)
+        let model = makeModel(harness)
+
+        await model.load()
+
+        let rowReads = await harness.loadRowsCallCount
+        XCTAssertEqual(rowReads, 0)
+        XCTAssertFalse(model.isLoading)
+        XCTAssertTrue(model.rows.isEmpty)
+        XCTAssertEqual(
+            model.errorMessage,
+            "The inbox has not been set up yet. It appears once the OpenBurnBar daemon has run at least once.",
+            "a missing table on the marker read is still first-run guidance, not raw SQL"
+        )
+    }
+
+    /// `load` must ask for the current filter's states rather than always
+    /// widening to every state, which is what keeps the default list scoped to
+    /// open items.
+    func testLoadRequestsTheCurrentFilterStates() async {
+        let harness = InboxModelHarness()
+        await harness.setRows([
+            makeRow(id: "open", state: .new),
+            makeRow(id: "closed", state: .resolved)
+        ])
+        let model = makeModel(harness)
+
+        await model.load()
+        XCTAssertEqual(model.rows.map(\.id), ["open"], "the active filter asks for open states only")
+
+        model.filter = .resolved
+        await model.load(force: true)
+        XCTAssertEqual(model.rows.map(\.id), ["closed"], "the resolved filter asks for closed states")
+    }
+
+    /// Telemetry is decoration: a failure must degrade to an empty run list and
+    /// leave the inbox usable, never propagate.
+    func testATelemetryFailureDegradesToAnEmptyRunList() async {
+        let harness = InboxModelHarness()
+        await harness.setRuns([makeRun(tickID: "tick-9")])
+        let model = makeModel(harness)
+
+        await model.loadTelemetry()
+        XCTAssertTrue(model.hasEverRun)
+        XCTAssertEqual(model.latestRun?.tickID, "tick-9")
+
+        await harness.setRuns([])
+        await model.loadTelemetry()
+
+        XCTAssertFalse(model.hasEverRun)
+        XCTAssertNil(model.latestRun)
+        XCTAssertNil(model.errorMessage, "telemetry never raises a user-facing error")
+    }
+
 }
