@@ -100,9 +100,30 @@ class MainActivity : FragmentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         MainActivityIntentActions.stashPendingPromptFromIntent(intent)
+        routeDeepLink(intent)
         MainActivityE2EMissionActions.launchFromIntent(this, intent)
         MainActivityE2EHermesActions.launchFromIntent(this, intent)
         MainActivityE2EComputerUseActions.launchFromIntent(this, intent)
+    }
+
+    /**
+     * Captures the item id carried by a `burnbar://inbox/{itemId}` link.
+     *
+     * Navigation owns the *destination*: both `burnbar://inbox` and
+     * `burnbar://inbox/{itemId}` are declared as `navDeepLink` patterns on the
+     * Inbox composable (see `BurnBarNavHostSections.kt`), so Navigation matches
+     * the launch intent and lands on the tab for free.
+     *
+     * What Navigation cannot do is *select the row*: the id addresses a
+     * Firestore document that has not been fetched or decrypted yet when the
+     * intent is routed. So the id is stashed here and
+     * [com.openburnbar.ui.inbox.InboxScreen] claims it once its rows exist.
+     */
+    private fun routeDeepLink(intent: Intent?) {
+        when (val route = BurnBarDeepLink.parseIntent(intent)) {
+            is BurnBarDeepLinkRoute.Inbox -> InboxPendingItem.stash(route.itemId)
+            null -> Unit
+        }
     }
 
     companion object {

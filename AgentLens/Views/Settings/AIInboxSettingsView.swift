@@ -1,0 +1,480 @@
+import SwiftUI
+import OpenBurnBarCore
+
+/// Settings for the AI Inbox.
+///
+/// Two things this screen must do well, because they are the whole trust story:
+///
+///   1. **Make the egress decision legible.** The default sends nothing off the
+///      device, and the copy says exactly what each mode does rather than making
+///      the user infer it from a switch label.
+///   2. **Show what it actually costs.** Live tick telemetry — how often it ran,
+///      how often it skipped, what it spent today — so the background analyst is
+///      never a black box the user has to trust blindly.
+///
+/// Config is daemon-owned state, so every write round-trips through
+/// `daemon.inbox.config.update` and the screen renders the value the daemon
+/// *stored* (which is re-clamped), never the value it optimistically sent.
+struct AIInboxSettingsView: View {
+    @State private var model = AIInboxSettingsModel()
+
+    /// Defaults to `true` to match `AIInboxSyncService.isEnabled`, which treats
+    /// an absent value as enabled. Declaring the same default here keeps the
+    /// switch from rendering "off" while the mirror is in fact running.
+    @AppStorage(AIInboxSyncService.preferenceKey) private var cloudMirrorEnabled = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+            header
+
+            if let unavailable = model.unavailableReason {
+                unavailableBanner(unavailable)
+            } else {
+                enableSection
+                if model.config.enabled {
+                    Divider().background(DesignSystem.Colors.border)
+                    egressSection
+                    Divider().background(DesignSystem.Colors.border)
+                    budgetSection
+                    Divider().background(DesignSystem.Colors.border)
+                    cadenceSection
+                    Divider().background(DesignSystem.Colors.border)
+                    sourcesSection
+                    Divider().background(DesignSystem.Colors.border)
+                    telemetrySection
+                }
+            }
+        }
+        .padding(.horizontal, DesignSystem.Spacing.lg)
+        .task { await model.load() }
+        .accessibilityIdentifier(OBBAccessibilityID.settingsRow("ai-inbox"))
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "tray.full")
+                    .foregroundStyle(DesignSystem.Colors.ember)
+                Text("AI Inbox")
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Spacer()
+                if model.isSaving {
+                    ProgressView().controlSize(.small)
+                }
+            }
+            Text("A background analyst that reads your recent agent sessions, checks them against your workspace and GitHub, and tells you what needs attention.")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let errorMessage = model.errorMessage {
+                Text(errorMessage)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func unavailableBanner(_ reason: String) -> some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(DesignSystem.Colors.warning)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("The AI Inbox is not available yet")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(reason)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(DesignSystem.Spacing.sm)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm)
+                .fill(DesignSystem.Colors.warning.opacity(0.10))
+        )
+    }
+
+    // MARK: - Sections
+
+    private var enableSection: some View {
+        SettingsToggle(
+            title: "Run the AI Inbox",
+            subtitle: "Wakes every few minutes. When nothing has changed it does nothing and costs nothing.",
+            isOn: model.binding(\.enabled) { config, value in config.with(enabled: value) }
+        )
+    }
+
+    private var egressSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("What leaves this Mac")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+            Picker("", selection: model.binding(\.egressMode) { config, value in
+                config.with(egressMode: value)
+            }) {
+                Text("Nothing").tag(BurnBarInboxEgressMode.off)
+                Text("Local only").tag(BurnBarInboxEgressMode.local)
+                Text("Cloud models").tag(BurnBarInboxEgressMode.cloud)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            Text(Self.egressExplanation(model.config.egressMode))
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Plain-language consequences, not feature names. The user is deciding where
+    /// their conversation text is allowed to go.
+    static func egressExplanation(_ mode: BurnBarInboxEgressMode) -> String {
+        switch mode {
+        case .off:
+            return "No conversation text leaves this Mac, ever. You still get every alert — the pattern detection is arithmetic, not AI — but the written summaries are plain rather than composed."
+        case .local:
+            return "Summaries are written by a model running on this machine or your local network (Ollama). Nothing reaches a cloud provider."
+        case .cloud:
+            return "Redacted excerpts may be sent to the configured providers to write summaries and double-check findings. Secrets are stripped before anything is sent, and an excerpt that still trips the scanner is withheld entirely."
+        }
+    }
+
+    private var budgetSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack {
+                Text("Daily budget")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Spacer()
+                Text(model.config.dailyBudgetUSD > 0
+                     ? String(format: "$%.2f", model.config.dailyBudgetUSD)
+                     : "No limit")
+                    .font(DesignSystem.Typography.mono)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+            }
+
+            Slider(
+                value: model.binding(\.dailyBudgetUSD) { config, value in
+                    config.with(dailyBudgetUSD: value)
+                },
+                in: 0...10,
+                step: 0.25
+            )
+
+            Text(model.config.dailyBudgetUSD > 0
+                 ? "When the inbox reaches this, it stops writing summaries for the day and keeps detecting. Typical use lands well under a dollar."
+                 : "No cap. The inbox will keep writing summaries regardless of spend.")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let spend = model.todaySpendUSD {
+                ProgressView(
+                    value: model.config.dailyBudgetUSD > 0
+                        ? min(spend / model.config.dailyBudgetUSD, 1)
+                        : 0
+                )
+                .tint(spend >= model.config.dailyBudgetUSD && model.config.dailyBudgetUSD > 0
+                      ? DesignSystem.Colors.warning
+                      : DesignSystem.Colors.ember)
+                Text(String(format: "Spent today: $%.4f", spend))
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+        }
+    }
+
+    private var cadenceSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack {
+                Text("Check every")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Spacer()
+                Text(Self.cadenceLabel(model.config.tickSeconds))
+                    .font(DesignSystem.Typography.mono)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+            }
+
+            Slider(
+                value: Binding(
+                    get: { Double(model.config.tickSeconds) },
+                    set: { seconds in
+                        model.update { $0.with(tickSeconds: Int(seconds)) }
+                    }
+                ),
+                in: Double(BurnBarInboxConfig.minimumTickSeconds)...1_800,
+                step: 60
+            )
+
+            Text("A check with nothing new costs nothing, so a shorter interval mostly means fresher alerts rather than more spend.")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    static func cadenceLabel(_ seconds: Int) -> String {
+        seconds < 120 ? "\(seconds)s" : "\(seconds / 60) min"
+    }
+
+    private var sourcesSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            SettingsToggle(
+                title: "Check GitHub",
+                subtitle: "Uses the `gh` CLI you already signed in to, so OpenBurnBar stores no GitHub token of its own. Lets the inbox tell you whether promised work actually shipped.",
+                isOn: model.binding(\.githubEnabled) { config, value in config.with(githubEnabled: value) }
+            )
+
+            SettingsToggle(
+                title: "Notify me about urgent items",
+                subtitle: "Only the top priority band, and at most once an hour for the same thing.",
+                isOn: model.binding(\.notifyOnP1) { config, value in config.with(notifyOnP1: value) }
+            )
+
+            // Not daemon config: the mirror runs in the app (the only process
+            // with Firebase auth), so this is a local preference rather than a
+            // `daemon.inbox.config.update` round trip. It is surfaced here
+            // because it is the one inbox switch with an off-device
+            // consequence, and a privacy control the user cannot find is not a
+            // control.
+            SettingsToggle(
+                title: "Sync the inbox to my phone",
+                subtitle: """
+                    Mirrors items to your other signed-in devices so you can read them while this Mac is asleep. \
+                    Titles, summaries, and evidence are encrypted before they leave — only routing metadata \
+                    (kind, priority, timestamps) is readable by the server. Turn this off to keep the inbox on this Mac only.
+                    """,
+                isOn: $cloudMirrorEnabled
+            )
+        }
+    }
+
+    private var telemetrySection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack {
+                Text("Recent checks")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Spacer()
+                Button { Task { await model.runNow() } } label: {
+                    Text(model.isRunningNow ? "Analyzing…" : "Analyze now")
+                        .font(DesignSystem.Typography.tiny)
+                }
+                .buttonStyle(.bordered)
+                .disabled(model.isRunningNow)
+            }
+
+            if model.runs.isEmpty {
+                Text("No checks yet. The first one runs within the interval above.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            } else {
+                // The skip ratio is the number that proves the cost story, so it
+                // gets stated outright rather than left to be inferred.
+                Text(model.skipSummary)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                ForEach(model.runs.prefix(6)) { run in
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Circle()
+                            .fill(Self.runTint(run))
+                            .frame(width: 6, height: 6)
+                        Text(run.startedAt, style: .time)
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                        Text(Self.runLabel(run))
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        Spacer(minLength: 0)
+                        if run.costUSD > 0 {
+                            Text(String(format: "$%.4f", run.costUSD))
+                                .font(DesignSystem.Typography.monoTiny)
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    static func runTint(_ run: BurnBarInboxRunTelemetry) -> Color {
+        switch run.gateResult {
+        case .skippedUnchanged, .skippedDisabled: return DesignSystem.Colors.textMuted
+        case .failed: return DesignSystem.Colors.warning
+        case .localChanged, .remotePhase, .forced: return DesignSystem.Colors.ember
+        }
+    }
+
+    static func runLabel(_ run: BurnBarInboxRunTelemetry) -> String {
+        switch run.gateResult {
+        case .skippedUnchanged: return "nothing had changed"
+        case .skippedDisabled: return "turned off"
+        case .failed: return run.error.map { "failed — \($0.prefix(60))" } ?? "failed"
+        case .localChanged, .remotePhase, .forced:
+            var parts: [String] = []
+            if run.itemsNew > 0 { parts.append("\(run.itemsNew) new") }
+            if run.itemsUpdated > 0 { parts.append("\(run.itemsUpdated) updated") }
+            if run.itemsResolved > 0 { parts.append("\(run.itemsResolved) resolved") }
+            if run.llmCalls == 0 { parts.append("no model calls") }
+            return parts.isEmpty ? "analyzed, nothing to report" : parts.joined(separator: ", ")
+        }
+    }
+}
+
+// MARK: - Model
+
+/// Owns the daemon round trips for the settings screen.
+@Observable
+@MainActor
+final class AIInboxSettingsModel {
+    private(set) var config = BurnBarInboxConfig()
+    private(set) var runs: [BurnBarInboxRunTelemetry] = []
+    private(set) var todaySpendUSD: Double?
+    private(set) var isSaving = false
+    private(set) var isRunningNow = false
+    private(set) var unavailableReason: String?
+    var errorMessage: String?
+
+    private var saveTask: Task<Void, Never>?
+
+    func load() async {
+        do {
+            let socketURL = try Self.socketURL()
+            let loaded = try OpenBurnBarDaemonSocketClient.inboxConfiguration(at: socketURL)
+            config = loaded
+            unavailableReason = nil
+            await loadTelemetry()
+        } catch {
+            unavailableReason = Self.friendlyUnavailable(error)
+        }
+    }
+
+    func loadTelemetry() async {
+        guard let socketURL = try? Self.socketURL() else { return }
+        guard let response = try? OpenBurnBarDaemonSocketClient.inboxRuns(at: socketURL) else { return }
+        runs = response.runs
+        todaySpendUSD = response.todaySpendUSD
+    }
+
+    /// Fraction of recent checks that cost nothing — the honest answer to
+    /// "is this thing burning money in the background?".
+    var skipSummary: String {
+        let skipped = runs.filter {
+            $0.gateResult == .skippedUnchanged || $0.gateResult == .skippedDisabled
+        }.count
+        guard runs.isEmpty == false else { return "" }
+        let percent = Int((Double(skipped) / Double(runs.count) * 100).rounded())
+        let spend = runs.reduce(0.0) { $0 + $1.costUSD }
+        return "\(percent)% of the last \(runs.count) checks found nothing to do" +
+            (spend > 0 ? String(format: " · $%.4f total", spend) : " · no spend")
+    }
+
+    /// A binding that writes through the daemon and renders what it stored.
+    func binding<Value>(
+        _ keyPath: KeyPath<BurnBarInboxConfig, Value>,
+        apply: @escaping (BurnBarInboxConfig, Value) -> BurnBarInboxConfig
+    ) -> Binding<Value> {
+        Binding(
+            get: { self.config[keyPath: keyPath] },
+            set: { newValue in self.update { apply($0, newValue) } }
+        )
+    }
+
+    func update(_ transform: (BurnBarInboxConfig) -> BurnBarInboxConfig) {
+        let next = transform(config)
+        config = next
+        // Coalesce rapid edits (a slider drag is dozens of sets) into one write.
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            await self?.persist(next)
+        }
+    }
+
+    private func persist(_ next: BurnBarInboxConfig) async {
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            let socketURL = try Self.socketURL()
+            // Render what the daemon stored, not what we sent: values are clamped
+            // on write, so the two can legitimately differ.
+            config = try OpenBurnBarDaemonSocketClient.updateInboxConfiguration(next, at: socketURL)
+            errorMessage = nil
+        } catch {
+            errorMessage = "Could not save: \(error.localizedDescription)"
+        }
+    }
+
+    func runNow() async {
+        isRunningNow = true
+        defer { isRunningNow = false }
+        do {
+            let socketURL = try Self.socketURL()
+            let response = try OpenBurnBarDaemonSocketClient.runInboxNow(force: true, at: socketURL)
+            if response.accepted == false {
+                errorMessage = response.reason
+            } else {
+                errorMessage = nil
+            }
+            await loadTelemetry()
+        } catch {
+            errorMessage = "Could not start a check: \(error.localizedDescription)"
+        }
+    }
+
+    private static func socketURL() throws -> URL {
+        OpenBurnBarDaemonRuntimePaths.live().socketURL
+    }
+
+    private static func friendlyUnavailable(_ error: Error) -> String {
+        let description = error.localizedDescription
+        if description.contains("OPENBURNBAR_INDEX_DATABASE_PATH") {
+            return "The OpenBurnBar daemon is running without an index database, so it cannot analyze anything yet."
+        }
+        return "The OpenBurnBar daemon is not reachable right now. The inbox becomes available once it is running."
+    }
+}
+
+// MARK: - Config mutation helpers
+
+extension BurnBarInboxConfig {
+    /// `BurnBarInboxConfig` is immutable (every value is clamped in `init`), so
+    /// the settings screen edits it by rebuilding. These wrappers keep the call
+    /// sites readable and guarantee the clamps always run.
+    func with(
+        enabled: Bool? = nil,
+        egressMode: BurnBarInboxEgressMode? = nil,
+        tickSeconds: Int? = nil,
+        dailyBudgetUSD: Double? = nil,
+        githubEnabled: Bool? = nil,
+        notifyOnP1: Bool? = nil
+    ) -> BurnBarInboxConfig {
+        BurnBarInboxConfig(
+            enabled: enabled ?? self.enabled,
+            egressMode: egressMode ?? self.egressMode,
+            tickSeconds: tickSeconds ?? self.tickSeconds,
+            remotePhaseEveryNTicks: remotePhaseEveryNTicks,
+            dailyBudgetUSD: dailyBudgetUSD ?? self.dailyBudgetUSD,
+            maxVerifierCallsPerTick: maxVerifierCallsPerTick,
+            perTickPromptTokenCap: perTickPromptTokenCap,
+            analystProviderID: analystProviderID,
+            analystModel: analystModel,
+            verifierProviderID: verifierProviderID,
+            verifierModel: verifierModel,
+            githubEnabled: githubEnabled ?? self.githubEnabled,
+            notifyOnP1: notifyOnP1 ?? self.notifyOnP1,
+            lookbackMinutes: lookbackMinutes
+        )
+    }
+}

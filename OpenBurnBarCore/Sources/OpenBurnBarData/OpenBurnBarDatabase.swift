@@ -109,6 +109,7 @@ final class OpenBurnBarDatabase: Sendable {
         registerSearchChunksFTSRowidMigration(on: &migrator)
         registerParserCheckpointFileManifestMigration(on: &migrator)
         registerExecutionSourceAttributionMigration(on: &migrator)
+        registerAIInboxMigration(on: &migrator)
         return migrator
     }
 }

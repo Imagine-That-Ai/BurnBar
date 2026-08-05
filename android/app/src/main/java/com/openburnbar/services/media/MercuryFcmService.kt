@@ -55,6 +55,10 @@ class MercuryFcmService : FirebaseMessagingService() {
             serviceScope.launch { postAgentReplyNotification(data) }
             return
         }
+        if (type == "ai_inbox_item") {
+            postAIInboxNotification(data)
+            return
+        }
         if (type != "media_incoming_call") return
         serviceScope.launch {
             val routing = resolveIncomingCallRouting(data) ?: return@launch
@@ -159,8 +163,28 @@ class MercuryFcmService : FirebaseMessagingService() {
         manager.createNotificationChannel(channel)
     }
 
+    /**
+     * Its own channel, not the agent-reply one: inbox alerts and chat replies
+     * are different enough that a user who mutes one should keep the other.
+     */
+    internal fun ensureInboxChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        if (manager.getNotificationChannel(INBOX_CHANNEL_ID) != null) return
+        val channel =
+            NotificationChannel(
+                INBOX_CHANNEL_ID,
+                "Inbox alerts",
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = "Urgent findings from the OpenBurnBar AI Inbox"
+            }
+        manager.createNotificationChannel(channel)
+    }
+
     companion object {
         const val NOTIFICATION_ID = 0x4D435A02
         const val AGENT_REPLY_CHANNEL_ID = "agent_replies"
+        const val INBOX_CHANNEL_ID = "burnbar_inbox"
     }
 }

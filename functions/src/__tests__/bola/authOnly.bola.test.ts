@@ -96,11 +96,13 @@ export const PLATFORM_TRIGGER_ENDPOINTS = [
   "reapHermesGatewayApprovals",
   "onCliSessionAgentReplyNotification",
   "onMobileAssistantAgentReplyNotification",
+  "onAIInboxItemNotification",
   "onKnowledgeRepoPush",
   "sendFcmOutbound",
   "sendVoIPOutbound",
   "stripeBurnBarProWebhook",
   "appStoreServerNotificationsV2",
+  "googlePlayDeveloperNotifications",
 ] as const;
 
 export const PUBLIC_HEALTH_ENDPOINTS = ["healthCheck", "healthLive", "healthReady", "startCliLink"] as const;

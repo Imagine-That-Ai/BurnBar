@@ -102,6 +102,44 @@ struct DashboardDetailView: View {
                         description: Text("Open Memory from the main dashboard to review extracted memories.")
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .inbox:
+                    // Unlike memory review, the inbox needs only `DataStore`,
+                    // which this context has — so it renders fully here.
+                    // Memory approval is omitted (no memory store in scope), and
+                    // the detail view degrades to read-only proposals.
+                    InboxView(
+                        model: InboxModel(
+                            loadRows: { [dataStore] states in
+                                try await dataStore.fetchAIInboxRows(states: states)
+                            },
+                            loadMarker: { [dataStore] in try await dataStore.aiInboxChangeMarker() },
+                            markRead: { [dataStore] id in try await dataStore.markAIInboxItemRead(id: id) },
+                            markUnread: { [dataStore] id in try await dataStore.markAIInboxItemUnread(id: id) },
+                            setArchived: { [dataStore] id, archived in
+                                try await dataStore.setAIInboxItemArchived(id: id, archived: archived)
+                            },
+                            snooze: { [dataStore] id, until in
+                                try await dataStore.snoozeAIInboxItem(id: id, until: until)
+                            },
+                            setFeedback: { [dataStore] id, feedback in
+                                try await dataStore.setAIInboxItemFeedback(id: id, feedback: feedback)
+                            },
+                            markAllRead: { [dataStore] in try await dataStore.markAllAIInboxItemsRead() },
+                            loadRuns: { [dataStore] in try await dataStore.fetchAIInboxRuns() }
+                        ),
+                        onOpenSessionLog: { conversationID in
+                            Task { @MainActor in
+                                let resolver = InboxConversationJumpResolver(dataStore: dataStore)
+                                if let target = await resolver.jumpTarget(conversationID: conversationID) {
+                                    onOpenSessionLogs(target)
+                                } else {
+                                    onNavigate(.sessionLogs)
+                                }
+                            }
+                        },
+                        onOpenSettings: onOpenSettings
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .chat:
                     DashboardChatWorkspaceView(
                         controller: chatController,

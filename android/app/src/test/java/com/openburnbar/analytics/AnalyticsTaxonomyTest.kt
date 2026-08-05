@@ -169,6 +169,7 @@ class AnalyticsTaxonomyTest {
         assertEquals(AnalyticsSurface.DASHBOARD_ACTIVITY, AnalyticsSurface.forRoute("burn"))
         assertEquals(AnalyticsSurface.INSIGHTS, AnalyticsSurface.forRoute("insights"))
         assertEquals(AnalyticsSurface.CHAT, AnalyticsSurface.forRoute("hermes"))
+        assertEquals(AnalyticsSurface.INBOX, AnalyticsSurface.forRoute("inbox"))
         assertEquals(AnalyticsSurface.ACCOUNT, AnalyticsSurface.forRoute("you"))
         assertEquals(AnalyticsSurface.SETTINGS, AnalyticsSurface.forRoute("settings"))
     }

@@ -6,7 +6,12 @@ import androidx.compose.runtime.mutableStateOf
 internal object GlobalVisualSettingsTabs {
     private const val KEY_PRIMARY_TABS = "primaryTabs"
     private const val KEY_SECONDARY_TABS = "secondaryTabs"
-    private const val DEFAULT_PRIMARY_TABS = "pulse,burn,insights,streams,agents"
+
+    // `inbox` sits third: after the two numbers surfaces the user opens on
+    // purpose, and ahead of everything they browse. It is the one tab whose
+    // content arrives without being asked for, so it has to be reachable
+    // without a scan.
+    private const val DEFAULT_PRIMARY_TABS = "pulse,burn,inbox,insights,streams,agents"
     private const val DEFAULT_SECONDARY_TABS = "you,providers,devices,settings"
 
     private val _primaryTabs = mutableStateOf(DEFAULT_PRIMARY_TABS)

@@ -681,10 +681,10 @@
             }
           ],
           "pricing": {
-            "inputPerMToken": 1,
-            "outputPerMToken": 6,
-            "cacheCreationPerMToken": 1.25,
-            "cacheReadPerMToken": 0.1
+            "inputPerMToken": 0.2,
+            "outputPerMToken": 1.2,
+            "cacheCreationPerMToken": 0.25,
+            "cacheReadPerMToken": 0.02
           },
           "capabilityClassID": "openai:gpt-5.6-luna",
           "capabilityClassRank": 80
@@ -3156,10 +3156,11 @@
       "models": [
         {
           "id": "deepseek-chat",
-          "displayName": "DeepSeek Chat",
+          "displayName": "DeepSeek Chat (V4 Flash)",
           "visibility": "public",
           "aliases": [
-            "deepseek-v4-flash"
+            "deepseek-v4-flash",
+            "deepseek-v4-flash-0731"
           ],
           "matchers": [
             {
@@ -3179,9 +3180,9 @@
             }
           ],
           "pricing": {
-            "inputPerMToken": 0.28,
-            "outputPerMToken": 0.42,
-            "cacheReadPerMToken": 0.028
+            "inputPerMToken": 0.14,
+            "outputPerMToken": 0.28,
+            "cacheReadPerMToken": 0.0028
           }
         },
         {

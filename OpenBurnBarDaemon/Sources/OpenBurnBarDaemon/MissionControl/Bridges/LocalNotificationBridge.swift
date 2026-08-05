@@ -236,12 +236,23 @@ actor BurnBarLocalNotificationBridge {
     init() {}
 #endif
 
-    func deliver(title: String, body: String) async throws {
+    func deliver(
+        title: String,
+        body: String,
+        deepLink: String? = nil,
+        category: String? = nil
+    ) async throws {
         #if canImport(Darwin)
-        let userInfo: [String: String] = [
+        // `category` lets the app route: agent-completion alerts honour the
+        // Pixel Clock settings, while an AI Inbox alert carries its own opt-in
+        // and must not be suppressed by an unrelated toggle. `deepLink` makes the
+        // notification land on the thing it is about.
+        var userInfo: [String: String] = [
             OpenBurnBarDistributedNotifications.titleKey: title,
             OpenBurnBarDistributedNotifications.bodyKey: body
         ]
+        if let deepLink { userInfo[OpenBurnBarDistributedNotifications.deepLinkKey] = deepLink }
+        if let category { userInfo[OpenBurnBarDistributedNotifications.categoryKey] = category }
         DistributedNotificationCenter.default().postNotificationName(
             OpenBurnBarDistributedNotifications.daemonLocalNotificationName,
             object: nil,

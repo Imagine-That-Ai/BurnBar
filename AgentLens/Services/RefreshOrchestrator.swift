@@ -196,6 +196,7 @@ actor RefreshOrchestrator {
             await coordinator.syncConversationMetadata()
             await coordinator.syncSessionLogs()
             await coordinator.syncTextExpansionSnippets()
+            await coordinator.syncAIInbox()
             await coordinator.syncRoamingProfile()
             await coordinator.syncCollaborationArtifacts()
         } else if let cloudSync {
@@ -203,6 +204,7 @@ actor RefreshOrchestrator {
             await cloudSync.uploadPendingConversations()
             await cloudSync.uploadPendingSessionLogs()
             await cloudSync.syncTextExpansionSnippets()
+            await cloudSync.syncAIInbox()
             await cloudSync.syncRoamingProfile()
             await cloudSync.syncSharedArtifacts()
         }
