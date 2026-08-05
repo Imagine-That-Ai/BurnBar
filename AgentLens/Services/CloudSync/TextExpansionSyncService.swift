@@ -256,7 +256,7 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
     private static func snippetFromSignalPayload(_ payload: Data) -> TextExpansionSnippet? {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(TextExpansionSnippet.self, from: payload) // try?-ok(optional decode contract, caller skips undecodable payloads)
+        return try? decoder.decode(TextExpansionSnippet.self, from: payload) // try?-ok(optional decode contract, caller skips undecodable payloads) cov:ignore -- runs only after opening a live signalEnvelope, which needs a real Signal identity the unit lane cannot mint
     }
 
     private static func snippet(from data: [String: Any], documentID: String, vaultKey: Data) throws -> TextExpansionSnippet? {

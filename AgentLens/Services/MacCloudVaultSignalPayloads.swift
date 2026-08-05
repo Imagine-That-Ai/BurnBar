@@ -105,7 +105,11 @@ enum MacCloudVaultSignalPayloads {
         to legacyPayload: [String: Any],
         domainID: String,
         uid: String,
-        firestore: Firestore,
+        // Lazy on purpose: `Firestore.firestore()` raises FIRIllegalStateException when
+        // FirebaseApp is not configured (e.g. unit tests without GoogleService-Info.plist),
+        // so the instance must only be resolved after the activation gate says the
+        // domain's Signal seal path is ON (which requires a configured FirebaseApp).
+        firestore: @autoclosure () throws -> Firestore,
         collection: String,
         docId: String,
         field: String = "signalEnvelope",
@@ -130,7 +134,7 @@ enum MacCloudVaultSignalPayloads {
             guard let sealed = try await signalEnvelopeIfEnabled(
                 domainID: domainID,
                 uid: uid,
-                firestore: firestore,
+                firestore: try firestore(), // cov:ignore -- reachable only when the Signal gate is ON, which requires a configured FirebaseApp + RemoteConfig flags the unit lane never has
                 collection: collection,
                 docId: docId,
                 field: field,
