@@ -126,6 +126,15 @@ final class ConversationSyncRoundTripTests: XCTestCase {
         )
     }
 
+    func test_conversationCloudPayload_legacyFallbackWithoutBindingContextFailsClosed() {
+        XCTAssertNil(
+            ConversationCloudSealer.open(
+                ["signalEnvelope": ["invalid": true]],
+                keyData: nil
+            )
+        )
+    }
+
     func test_conversationDownload_readsRemoteConversationIntoLocalStore() async throws {
         let remoteDeviceId = "remote-device-2"
         let remoteDocPath = "users/test-uid-1/conversations/\(remoteDeviceId)_conv-remote-1"
