@@ -16,9 +16,9 @@ import OpenBurnBarKernel
 /// evidence you take on faith.
 @MainActor
 struct InboxConversationJumpResolver {
-    private let fetchConversation: @Sendable (String) async throws -> OpenBurnBarCore.ConversationRecord?
+    private let fetchConversation: @Sendable (String) async throws -> OpenBurnBarKernel.ConversationRecord?
 
-    init(fetchConversation: @escaping @Sendable (String) async throws -> OpenBurnBarCore.ConversationRecord?) {
+    init(fetchConversation: @escaping @Sendable (String) async throws -> OpenBurnBarKernel.ConversationRecord?) {
         self.fetchConversation = fetchConversation
     }
 

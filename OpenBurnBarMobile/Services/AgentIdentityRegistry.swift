@@ -43,7 +43,7 @@ final class AgentIdentityRegistry {
 
     init(
         seed: [AgentIdentity] = AgentIdentity.defaultBuiltIns,
-        firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() }
+        firestoreProvider: @escaping () -> Firestore = { FirestoreRepository.database }
     ) {
         self.firestoreProvider = firestoreProvider
         self.userInstalledManifests = Self.loadUserInstalls()

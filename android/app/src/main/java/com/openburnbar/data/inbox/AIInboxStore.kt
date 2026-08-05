@@ -10,6 +10,7 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
+import com.openburnbar.data.firebase.FirestoreRepository
 import java.util.Date
 import java.util.TimeZone
 import java.util.concurrent.atomic.AtomicReference
@@ -47,7 +48,7 @@ enum class AIInboxSnoozeInterval(val label: String, val millis: Long) {
 }
 
 class AIInboxStore(
-    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val firestore: FirebaseFirestore = FirestoreRepository.database(),
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
     private val timeZone: TimeZone = TimeZone.getDefault(),
 ) : ViewModel() {
@@ -265,9 +266,11 @@ class AIInboxStore(
                     val documents = snapshot?.documents.orEmpty()
                     val key = vaultKey.get()
                     if (key != null) {
-                        trySend(documents.mapNotNull { document ->
-                            parseAIInboxDocument(document.data.orEmpty(), document.id, uid, key)
-                        })
+                        trySend(
+                            documents.mapNotNull { document ->
+                                parseAIInboxDocument(document.data.orEmpty(), document.id, uid, key)
+                            },
+                        )
                     } else {
                         // A device approval can land while the tab is open, so a
                         // missing key is retried on every delivery: newly approved
@@ -275,9 +278,11 @@ class AIInboxStore(
                         launch {
                             val refreshed = resolveVaultKey(uid)
                             if (refreshed != null) vaultKey.set(refreshed)
-                            trySend(documents.mapNotNull { document ->
-                                parseAIInboxDocument(document.data.orEmpty(), document.id, uid, refreshed)
-                            })
+                            trySend(
+                                documents.mapNotNull { document ->
+                                    parseAIInboxDocument(document.data.orEmpty(), document.id, uid, refreshed)
+                                },
+                            )
                         }
                     }
                 }

@@ -51,7 +51,7 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
                 let resolved = try await MacCloudVaultKeyAccess.keyForWriting(
                     uid: uid,
                     deviceId: gate.account.deviceId,
-                    firestore: Firestore.firestore()
+                    firestore: CloudSyncFirestoreLiveGateway.sdkHandle
                 )
                 guard resolved.keyData == vaultKey else {
                     throw TextExpansionSignalSyncError.vaultKeyMismatch
@@ -102,7 +102,7 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
                     to: payload,
                     domainID: "conversations_chat",
                     uid: uid,
-                    firestore: Firestore.firestore(),
+                    firestore: CloudSyncFirestoreLiveGateway.sdkHandle,
                     collection: "text_snippets",
                     docId: snippet.id,
                     plaintext: try Self.signalPlaintext(snippet),
@@ -144,7 +144,7 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
             do {
                 let recipients = try await MacCloudVaultSignalPayloads.atRestRecipients(
                     uid: uid,
-                    firestore: Firestore.firestore(),
+                    firestore: CloudSyncFirestoreLiveGateway.sdkHandle,
                     localIdentity: identity
                 )
                 trustedSenders = Dictionary(

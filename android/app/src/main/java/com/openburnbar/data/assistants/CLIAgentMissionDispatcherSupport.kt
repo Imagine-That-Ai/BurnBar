@@ -113,28 +113,23 @@ internal fun fanOutGroupPayload(
     )
 }
 
-private fun fanOutChildPayloadInput(
-    request: FanOutChildWriteRequest,
-    missionID: String,
-    runtimeToken: String,
-): CLIMissionPayloadInput =
-    CLIMissionPayloadInput(
-        core = CLIMissionPayloadCore(missionID, "${request.plan.trimmedTitle} · $runtimeToken", request.plan.trimmedPrompt, request.missionKind),
-        execution = CLIMissionPayloadExecution(
-            requestedRuntime = runtimeToken,
-            targetProject = request.targetProject,
-            depth = request.depth,
-            approvalMode = request.approvalMode,
-            requestedModelID = null,
-        ),
-        permissions = CLIMissionPayloadPermissions(request.commandsAllowed, request.fileEditsAllowed),
-        metadata = CLIMissionPayloadMetadata(
-            sourceSkillID = request.sourceSkillID,
-            sourceSurface = request.sourceSurface,
-            parentHermesThreadID = request.parentHermesThreadID,
-        ),
-        experience = CLIMissionPayloadExperience(deliveryMode = request.deliveryMode),
-    )
+private fun fanOutChildPayloadInput(request: FanOutChildWriteRequest, missionID: String, runtimeToken: String): CLIMissionPayloadInput = CLIMissionPayloadInput(
+    core = CLIMissionPayloadCore(missionID, "${request.plan.trimmedTitle} · $runtimeToken", request.plan.trimmedPrompt, request.missionKind),
+    execution = CLIMissionPayloadExecution(
+        requestedRuntime = runtimeToken,
+        targetProject = request.targetProject,
+        depth = request.depth,
+        approvalMode = request.approvalMode,
+        requestedModelID = null,
+    ),
+    permissions = CLIMissionPayloadPermissions(request.commandsAllowed, request.fileEditsAllowed),
+    metadata = CLIMissionPayloadMetadata(
+        sourceSkillID = request.sourceSkillID,
+        sourceSurface = request.sourceSurface,
+        parentHermesThreadID = request.parentHermesThreadID,
+    ),
+    experience = CLIMissionPayloadExperience(deliveryMode = request.deliveryMode),
+)
 
 internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest): List<SignalMissionWrite> {
     val signalWrites = mutableListOf<SignalMissionWrite>()

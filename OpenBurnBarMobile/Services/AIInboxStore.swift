@@ -506,7 +506,7 @@ final class AIInboxStore {
 
     private func startListening(uid: String) {
         isListening = true
-        let root = Firestore.firestore().collection("users").document(uid)
+        let root = FirestoreRepository.database.collection("users").document(uid)
 
         itemsListener = root
             .collection(AIInboxMirrorCodec.collection)
@@ -594,7 +594,7 @@ final class AIInboxStore {
     private static func writeLiveItemState(documentID: String, payload: [String: Any]) async throws {
         guard FirebaseApp.app() != nil else { return }
         guard let uid = Auth.auth().currentUser?.uid, uid.isEmpty == false else { return }
-        try await Firestore.firestore()
+        try await FirestoreRepository.database
             .collection("users").document(uid)
             .collection(AIInboxMirrorCodec.stateCollection).document(documentID)
             .setData(payload, merge: true)

@@ -326,8 +326,7 @@ class CLIAgentMissionDispatcher(
         return FanOutDispatchResult(groupID = plan.groupID, childMissionIDs = plan.childMissionIDs)
     }
 
-    private fun requireSignedInUid(): String =
-        auth.currentUser?.uid ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
+    private fun requireSignedInUid(): String = auth.currentUser?.uid ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
 
     private suspend fun commitFanOutSignalWrites(
         uid: String,
@@ -452,11 +451,7 @@ class CLIAgentMissionDispatcher(
         )
     }
 
-    private suspend fun commitSignalMissionWrite(
-        requestRef: com.google.firebase.firestore.DocumentReference,
-        missionID: String,
-        payload: Map<String, Any>,
-    ) {
+    private suspend fun commitSignalMissionWrite(requestRef: com.google.firebase.firestore.DocumentReference, missionID: String, payload: Map<String, Any>) {
         try {
             writeSignalMissionDocuments(listOf(SignalMissionWrite(missionID = missionID, payload = payload)))
         } catch (expected: Exception) {

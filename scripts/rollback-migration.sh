@@ -108,6 +108,7 @@ MIGRATIONS=(
   "v55_search_chunks_fts_rowid|atomic|unapplied-only|backup-restore|Backfill search_chunks ftsRowid and sweep orphaned FTS rows for rowid-targeted deletes"
   "v56_parser_checkpoint_file_manifest|atomic|unapplied-only|backup-restore|Normalized parser checkpoint file-identity manifest"
   "v57_execution_source_attribution|atomic|unapplied-only|backup-restore|Execution-source columns, index, and evidence-backed historical attribution"
+  "v58_ai_inbox|atomic|unapplied-only|backup-restore|AI Inbox items, delivery state, and routing indexes"
 )
 
 # ── Commands ─────────────────────────────────────────────────────────────
