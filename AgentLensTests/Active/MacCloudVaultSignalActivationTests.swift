@@ -60,7 +60,7 @@ final class MacCloudVaultSignalActivationTests: XCTestCase {
 
     func test_applyingSignalEnvelope_doesNotResolveFirestoreWhenSignalIsOff() async throws {
         let payload = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
-            to: NSDictionary(dictionary: ["id": "doc-1"]),
+            to: ["id": "doc-1"],
             domainID: "conversations_chat",
             uid: "uid-1",
             firestore: Firestore.firestore(),
