@@ -76,7 +76,10 @@ struct UsageModeToolbarPicker: View {
 
 struct DashboardBackdrop: View {
     let moodBand: MoodBand
+    var kernelColorScheme: ColorScheme?
+    var onReadabilityChange: ((BackdropReadabilityProfile) -> Void)?
     @Environment(SettingsManager.self) private var settingsManager
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AppStorage(LiquidGlassTransparency.storageKey) private var rawGlassTransparency: Double = 0
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
@@ -114,6 +117,33 @@ struct DashboardBackdrop: View {
         substrateBox.resolve(kernelID: backdropKernel, selectedID: substrateID, enabled: substrateEnabled)
     }
 
+    init(
+        moodBand: MoodBand,
+        kernelColorScheme: ColorScheme? = nil,
+        onReadabilityChange: ((BackdropReadabilityProfile) -> Void)? = nil
+    ) {
+        self.moodBand = moodBand
+        self.kernelColorScheme = kernelColorScheme
+        self.onReadabilityChange = onReadabilityChange
+    }
+
+    private var nativeReadabilityProfile: BackdropReadabilityProfile {
+        BackdropReadabilityProfile.nativeFallback(
+            colorScheme: kernelColorScheme ?? colorScheme,
+            appearanceSkin: settingsManager.appearanceSkin,
+            liveBackdropActive: dynamicBackdropEnabled
+        )
+    }
+
+    private var readabilityContextID: String {
+        [
+            settingsManager.appearanceSkin.rawValue,
+            dynamicBackdropEnabled.description,
+            useKernelBackdrop.description,
+            (kernelColorScheme ?? colorScheme) == .dark ? "dark" : "light"
+        ].joined(separator: ":")
+    }
+
     var body: some View {
         ZStack {
             // cov:ignore-start -- decorative background composition is smoke-tested but not line-attributed by ViewInspector
@@ -135,7 +165,12 @@ struct DashboardBackdrop: View {
                         // swarm only when the substrate layer is explicitly enabled
                         // so the substrate picker still has a live host in kernel mode.
                         staticKernelFallback
-                        KernelBackdropView()
+                        KernelBackdropView(
+                            colorSchemeOverride: kernelColorScheme,
+                            onReadabilityChange: { profile in
+                                onReadabilityChange?(profile)
+                            }
+                        )
                             .ignoresSafeArea()
                         kernelSubstrateOverlay
                     } else if settingsManager.useConstellationBackground {
@@ -153,6 +188,9 @@ struct DashboardBackdrop: View {
                     .opacity(1 - 0.82 * clarity)
             }
             // cov:ignore-end
+        }
+        .task(id: readabilityContextID) {
+            onReadabilityChange?(nativeReadabilityProfile)
         }
     }
 

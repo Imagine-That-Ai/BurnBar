@@ -147,6 +147,10 @@ enum CLIAgentMissionCloudSealer {
         vaultKey: Data?,
         signalIdentity: OpenBurnBarSignalIdentityKeypair? = nil
     ) -> CLIAgentMissionPrivatePayload? {
+        let signalRequired = MobileCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat")
+        if signalRequired && (data["signalEnvelope"] == nil || uid == nil || documentID == nil) {
+            return nil
+        }
         if field == "sealedPayload", data["signalEnvelope"] != nil, let uid, let documentID {
             do {
                 if let payload = try MobileCloudVaultSignalPayloads.openSignalPayloadIfPresent(
@@ -172,6 +176,7 @@ enum CLIAgentMissionCloudSealer {
                 // optional Signal envelopes. A missing local Signal identity or
                 // malformed optional envelope must not make the legacy reader lose
                 // data while activation remains flag-off.
+                if signalRequired { return nil }
             }
         }
         guard let vaultKey,

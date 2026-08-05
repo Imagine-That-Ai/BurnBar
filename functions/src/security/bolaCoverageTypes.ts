@@ -3,6 +3,7 @@ export type EndpointTrigger =
   | "http"
   | "scheduled"
   | "firestore-trigger"
+  | "pubsub-trigger"
   | "task-queue"
   | "provider-webhook";
 

@@ -230,6 +230,12 @@ def install_plugin(hermes_repo: Path) -> None:
         "smoke_local.py",
     ):
         shutil.copy2(source_dir / name, target_dir / name)
+    shutil.copytree(
+        source_dir / "signal-runtime",
+        target_dir / "signal-runtime",
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("node_modules", "__pycache__", "*.pyc"),
+    )
     for name in ("legacy", "vendor"):
         shutil.copytree(
             source_dir / name,

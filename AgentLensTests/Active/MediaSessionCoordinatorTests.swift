@@ -168,6 +168,37 @@ final class MediaSessionCoordinatorTests: XCTestCase {
         XCTAssertTrue(screenCapture.didStop)
         XCTAssertTrue(encoder.didStop)
     }
+
+    func testMediaSessionErrorDescribesEveryDenialReasonForThePhone() {
+        let expectations: [(MediaCapabilityDenialReason, String)] = [
+            (.entitlementMissing, "Screen sharing requires an active Cloud Pro or Ultra subscription."),
+            (.entitlementExpired, "The screen-sharing subscription has expired."),
+            (.dailyCapReached, "The daily screen-sharing limit has been reached."),
+            (.sessionCapReached, "This screen-sharing session reached its limit."),
+            (.concurrentSessionCapReached, "Too many screen-sharing sessions are already active."),
+            (.budgetSoftCapReached, "Screen sharing is temporarily limited by the service budget."),
+            (.budgetHardCapReached, "Screen sharing is temporarily unavailable because the service budget was reached."),
+            (.killSwitchActive, "Screen sharing is temporarily disabled.")
+        ]
+        for (reason, expected) in expectations {
+            XCTAssertEqual(
+                MediaSessionError.denied(reason: reason).errorDescription,
+                expected,
+                "Denial reason \(reason) must map to an actionable phone-facing message"
+            )
+        }
+    }
+
+    func testMediaSessionErrorDescribesCaptureAndEncoderFailures() {
+        XCTAssertEqual(
+            MediaSessionError.captureFailed.errorDescription,
+            "The Mac could not start screen capture."
+        )
+        XCTAssertEqual(
+            MediaSessionError.encodeFailed.errorDescription,
+            "The Mac could not start the video encoder."
+        )
+    }
 }
 
 @MainActor

@@ -113,10 +113,14 @@ test("deterministic workflow implements every exact policy job and a fail-closed
   );
 });
 
-test("authoritative push proofs cannot be cancelled by merge-queue validation", () => {
+test("authoritative push proofs cannot be cancelled by merge-queue validation or later main pushes", () => {
+  // Push runs are keyed by commit SHA and exempt from cancel-in-progress:
+  // a second main push landing before the first run's candidate bundle
+  // completes must not cancel it, or that first commit loses the exact-main
+  // source proof deploy-production.yml requires and becomes undeployable.
   assert.match(
     core,
-    /concurrency:\n  group: domain-core-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\n  cancel-in-progress: true/u,
+    /concurrency:\n  group: domain-core-\$\{\{ github\.event_name \}\}-\$\{\{ github\.event_name == 'push' && github\.sha \|\| github\.ref \}\}\n  cancel-in-progress: \$\{\{ github\.event_name != 'push' \}\}/u,
   );
 });
 
@@ -423,6 +427,14 @@ test("protected signer has no user-supplied evidence surface and revalidates tru
   assert.match(signer, /--expected-evaluator-commit "\$GITHUB_SHA"/u);
   assert.doesNotMatch(signer, /^\s+ref: main$/mu);
   assert.match(signer, /actions\/attest-build-provenance@[0-9a-f]{40}/u);
+  assert.match(
+    signer,
+    /name: domain-core-protected-verification-\$\{\{ inputs\.candidate_commit \}\}[\s\S]*path: \$\{\{ runner\.temp \}\}\/candidate-bundle\/protected-verification\.json/u,
+  );
+  assert.match(
+    hostingDeploy,
+    /artifact_name="domain-core-protected-verification-\$\{CANDIDATE_COMMIT\}"/u,
+  );
   assert.doesNotMatch(
     signer,
     /jobs_json|bundle_json|run_json|eligible_for_attestation.*==/iu,
@@ -535,6 +547,18 @@ test("Functions preparation is uncredentialed and deploy consumes only a verifie
   assert.match(prepare, /--portable-functions-source/u);
   assert.match(
     prepare,
+    /node scripts\/ci\/prepare-functions-runtime-package\.mjs[\s\S]*--functions-dir "\$stage\/functions"/u,
+  );
+  const prepareRuntimePackage = prepare.indexOf(
+    "node scripts/ci/prepare-functions-runtime-package.mjs",
+  );
+  const artifactChecksum = prepare.indexOf(
+    'xargs -0 sha256sum > "$RUNNER_TEMP/prepared-functions-SHA256SUMS"',
+  );
+  assert.ok(prepareRuntimePackage > 0);
+  assert.ok(artifactChecksum > prepareRuntimePackage);
+  assert.match(
+    prepare,
     /- name: Prepare pinned Sentry CLI\n        if: steps\.tag\.outputs\.dry_run != 'true'/u,
   );
 
@@ -588,8 +612,8 @@ test("promotion-contracts executes native release workflow contract tests", () =
   const timeout = job.match(/^    timeout-minutes: (\d+)$/mu);
   assert.ok(timeout, "promotion-contracts must declare a timeout");
   assert.ok(
-    Number.parseInt(timeout[1], 10) >= 15,
-    "promotion-contracts timeout must tolerate both full-history checkouts",
+    Number.parseInt(timeout[1], 10) >= 60,
+    "promotion-contracts timeout must tolerate a degraded full-history checkout",
   );
   assert.match(
     job,
@@ -625,7 +649,7 @@ test("promotion-contracts cleanup removes trusted evaluator after final use and 
 
 test("promotion-contracts gives its trusted evaluator a bounded shallow checkout", () => {
   const job = workflowJob(core, "promotion-contracts");
-  assert.match(job, /timeout-minutes: 15/u);
+  assert.match(job, /timeout-minutes: 60/u);
   assert.match(
     job,
     /Check out repository[\s\S]*?ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/u,
@@ -633,6 +657,16 @@ test("promotion-contracts gives its trusted evaluator a bounded shallow checkout
   assert.match(
     job,
     /Check out trusted default-branch evaluator[\s\S]*?fetch-depth: 1[\s\S]*?sparse-checkout: scripts\/ci\/verify-domain-core-legacy-deletion\.py[\s\S]*?sparse-checkout-cone-mode: false/u,
+  );
+  assert.match(
+    job,
+    /ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.merge_group\.base_sha \|\| github\.sha \}\}/u,
+    "merge-group governance must execute the evaluator from the protected base commit",
+  );
+  assert.match(
+    job,
+    /DOMAIN_CORE_BASE_REF: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.merge_group\.base_sha \|\| github\.event\.before \|\| '' \}\}/u,
+    "merge-group governance must compare the candidate to the exact protected base",
   );
   assert.match(
     job,
@@ -745,19 +779,6 @@ function workflowTrigger(source, name) {
     : source.slice(start, start + 2 + next);
 }
 
-function workflowTriggerPaths(source, name) {
-  const trigger = workflowTrigger(source, name);
-  const lines = trigger.split("\n");
-  const start = lines.indexOf("    paths:");
-  assert.notEqual(start, -1, `missing paths for ${name} trigger`);
-  const paths = [];
-  for (const line of lines.slice(start + 1)) {
-    if (!line.startsWith('      - "')) break;
-    paths.push(JSON.parse(line.slice("      - ".length)));
-  }
-  return paths;
-}
-
 test("pull_request trigger is unfiltered and the classifier owns the Hermes adapter", () => {
   const trigger = workflowTrigger(core, "pull_request");
   assert.doesNotMatch(trigger, /^    paths:/mu);
@@ -770,6 +791,10 @@ test("pull_request trigger is unfiltered and the classifier owns the Hermes adap
 
 test("pull_request trigger cannot omit branch-control inputs", () => {
   assert.doesNotMatch(workflowTrigger(core, "pull_request"), /^    paths:/mu);
+});
+
+test("main push trigger is unfiltered so every exact-main commit gets a source proof", () => {
+  assert.doesNotMatch(workflowTrigger(core, "push"), /^    paths:/mu);
 });
 
 test("domain-core-pr-gate needs both python contract jobs before the aggregate count", () => {
@@ -797,6 +822,26 @@ test("domain-core-pr-gate aggregate count is 15 after adding both python contrac
     gate,
     /to_entries \| length == 15 and all\(\.value\.result == "success"\)/u,
     'domain-core-pr-gate must assert to_entries | length == 15 (was 13 before the two python contract jobs were added)',
+  );
+});
+
+test("domain-core-pr-gate trusts the merge-group base and budgets both full-history checkouts", () => {
+  const gate = workflowJob(core, "domain-core-pr-gate");
+  const timeout = gate.match(/^    timeout-minutes: (\d+)$/mu);
+  assert.ok(timeout, "domain-core-pr-gate must declare a timeout");
+  assert.ok(
+    Number.parseInt(timeout[1], 10) >= 60,
+    "domain-core-pr-gate must leave enough time for two degraded full-history checkouts and absence verification",
+  );
+  assert.match(
+    gate,
+    /Check out trusted default-branch absence evaluator[\s\S]*?ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.merge_group\.base_sha \|\| github\.sha \}\}/u,
+    "merge-group absence verification must run from the protected base evaluator",
+  );
+  assert.match(
+    gate,
+    /--base-ref "\$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.merge_group\.base_sha \|\| github\.event\.before \}\}"/u,
+    "the bootstrap fallback must receive the exact merge-group base",
   );
 });
 

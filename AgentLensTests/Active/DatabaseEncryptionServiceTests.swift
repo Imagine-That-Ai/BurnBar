@@ -334,6 +334,38 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         XCTAssertNil(DatabaseEncryptionService.getKey())
     }
 
+    // MARK: - UI-Test Key Path (DEBUG-only, must never ship a predictable key)
+
+    func testUITestDatabaseKey_returnsInjectedKeyWhenFlagSet() {
+        let injected = Data((0..<32).map { _ in UInt8.random(in: .min ... .max) }).base64EncodedString()
+        let key = DatabaseEncryptionService.uiTestDatabaseKey(environment: [
+            "OPENBURNBAR_UITEST": "1",
+            "OPENBURNBAR_UITEST_DB_KEY": injected
+        ])
+        XCTAssertEqual(key, injected, "An explicitly injected non-empty key must be honored under UI-test mode.")
+    }
+
+    func testUITestDatabaseKey_failsClosedWithoutInjectedKey() {
+        XCTAssertNil(
+            DatabaseEncryptionService.uiTestDatabaseKey(environment: ["OPENBURNBAR_UITEST": "1"]),
+            "With no injected key the helper must fail closed (nil), never a predictable constant."
+        )
+        XCTAssertNil(
+            DatabaseEncryptionService.uiTestDatabaseKey(environment: [
+                "OPENBURNBAR_UITEST": "1",
+                "OPENBURNBAR_UITEST_DB_KEY": ""
+            ]),
+            "An empty injected key must be treated as missing and fail closed."
+        )
+    }
+
+    func testUITestDatabaseKey_nilWhenFlagUnset() {
+        XCTAssertNil(
+            DatabaseEncryptionService.uiTestDatabaseKey(environment: ["OPENBURNBAR_UITEST_DB_KEY": "some-key"]),
+            "Without OPENBURNBAR_UITEST=1 the UI-test key path must not activate."
+        )
+    }
+
     // MARK: - Recovery Bundle Tests
 
     func testExportRecoveryBundle_roundTripsKey() throws {

@@ -5,6 +5,9 @@ import com.openburnbar.data.media.MediaControlStreamCoordinator
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import io.mockk.mockk
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -85,6 +88,96 @@ class PairedMacControlsScreenSupportTest {
     }
 
     @Test
+    fun `trusted device approval failure stays actionable and does not restart`() {
+        val coordinator = mockk<MediaControlStreamCoordinator>()
+        val phase =
+            MediaControlStreamCoordinator.Phase.Reconnecting(
+                nextAttemptInMillis = 2_000L,
+                lastFailureReason = TRUSTED_DEVICE_APPROVAL_REQUIRED,
+            )
+
+        val result =
+            evaluateCheckMercury(
+                PairedMacControlsCheckMercuryInput(
+                    coordinator = coordinator,
+                    phase = phase,
+                    connectionID = "conn-7",
+                    activePair = activePair,
+                    app = mockk(),
+                ),
+            )
+
+        assertTrue(phase.requiresTrustedDeviceApproval())
+        assertEquals(TRUSTED_DEVICE_APPROVAL_MESSAGE, phase.userMessage())
+        assertTrue(phase.userMessage().contains("reconnects automatically"))
+        assertEquals(TRUSTED_DEVICE_APPROVAL_MESSAGE, result.immediateStatusMessage)
+        assertFalse(result.shouldRestartMercury)
+    }
+
+    @Test
+    fun `trusted device approval detection tolerates callable error decoration`() {
+        val phase =
+            MediaControlStreamCoordinator.Phase.Failed(
+                "PERMISSION_DENIED: Request requires a trusted device before publishing this trust root.",
+            )
+
+        assertTrue(phase.requiresTrustedDeviceApproval())
+        assertEquals(TRUSTED_DEVICE_APPROVAL_MESSAGE, phase.actionRequiredMessage())
+    }
+
+    @Test
+    fun `stale pairing stays actionable and does not trigger a pointless restart`() {
+        val phase =
+            MediaControlStreamCoordinator.Phase.Reconnecting(
+                nextAttemptInMillis = 12_000L,
+                lastFailureReason = "FAILED_PRECONDITION: $IROH_PAIRING_STALE_REQUIRED",
+            )
+
+        val result =
+            evaluateCheckMercury(
+                PairedMacControlsCheckMercuryInput(
+                    coordinator = mockk(),
+                    phase = phase,
+                    connectionID = "conn-7",
+                    activePair = activePair,
+                    app = mockk(),
+                ),
+            )
+
+        assertTrue(phase.requiresFreshMacPairing())
+        assertTrue(phase.requiresOperatorAction())
+        assertEquals(IROH_PAIRING_STALE_MESSAGE, phase.actionRequiredMessage())
+        assertTrue(requireNotNull(result.immediateStatusMessage).contains("Open OpenBurnBar on your Mac"))
+        assertTrue(result.immediateStatusMessage.contains("reconnects automatically"))
+        assertFalse(result.shouldRestartMercury)
+    }
+
+    @Test
+    fun `action banner clears once mercury recovers and only then`() {
+        val approvalPhase =
+            MediaControlStreamCoordinator.Phase.Reconnecting(
+                nextAttemptInMillis = 2_000L,
+                lastFailureReason = TRUSTED_DEVICE_APPROVAL_REQUIRED,
+            )
+        val stalePairingPhase =
+            MediaControlStreamCoordinator.Phase.Reconnecting(
+                nextAttemptInMillis = 2_000L,
+                lastFailureReason = IROH_PAIRING_STALE_REQUIRED,
+            )
+
+        // While approval is still pending, the stored banner stays put.
+        assertFalse(shouldClearMercuryActionRequiredStatus(TRUSTED_DEVICE_APPROVAL_MESSAGE, approvalPhase))
+        assertFalse(shouldClearMercuryActionRequiredStatus(IROH_PAIRING_STALE_MESSAGE, stalePairingPhase))
+        // The Mac approved the device and Mercury went live: drop the sticky
+        // approval copy so the screen stops claiming approval is needed.
+        assertTrue(shouldClearMercuryActionRequiredStatus(TRUSTED_DEVICE_APPROVAL_MESSAGE, MediaControlStreamCoordinator.Phase.Live))
+        assertTrue(shouldClearMercuryActionRequiredStatus(IROH_PAIRING_STALE_MESSAGE, MediaControlStreamCoordinator.Phase.Live))
+        // Other status copy is never cleared by the recovery effect.
+        assertFalse(shouldClearMercuryActionRequiredStatus("Mercury retry started.", MediaControlStreamCoordinator.Phase.Live))
+        assertFalse(shouldClearMercuryActionRequiredStatus(null, MediaControlStreamCoordinator.Phase.Live))
+    }
+
+    @Test
     fun `a live coordinator reports ready and never restarts`() {
         val result = evaluateCheckMercury(
             PairedMacControlsCheckMercuryInput(
@@ -97,6 +190,131 @@ class PairedMacControlsScreenSupportTest {
         )
         assertFalse(result.shouldRestartMercury)
         assertEquals("Mercury is live. Ask to Mirror is ready.", result.immediateStatusMessage)
+    }
+
+    @Test
+    fun `mirror waits for peer readiness before sending`() = runTest {
+        val events = mutableListOf<String>()
+
+        val requestID =
+            requestMirrorAfterPeerReady(
+                awaitLocalReady = {
+                    events += "local-live"
+                    true
+                },
+                ensurePeerReady = {
+                    events += "peer-ready"
+                    true
+                },
+                sendMirror = {
+                    events += "mirror-sent"
+                    "request-1"
+                },
+            )
+
+        assertEquals("request-1", requestID)
+        assertEquals(listOf("local-live", "peer-ready", "mirror-sent"), events)
+    }
+
+    @Test
+    fun `mirror preparation preserves the currently live control lease`() = runTest {
+        val coordinator = mockk<MediaControlStreamCoordinator>()
+        val calls = mutableListOf<Pair<String, Boolean>>()
+
+        val prepared =
+            prepareCoordinatorForMirrorRequest(
+                connectionID = "conn-live",
+                ensureStream = { connectionID, forceRestart ->
+                    calls += connectionID to forceRestart
+                },
+                currentCoordinator = { coordinator },
+            )
+
+        assertEquals(coordinator, prepared)
+        assertEquals(listOf("conn-live" to false), calls)
+    }
+
+    @Test
+    fun `mirror preparation fails closed when no coordinator is available`() = runTest {
+        var forceRestart: Boolean? = null
+
+        val error =
+            runCatching {
+                prepareCoordinatorForMirrorRequest(
+                    connectionID = "conn-live",
+                    ensureStream = { _, requestedRestart -> forceRestart = requestedRestart },
+                    currentCoordinator = { null },
+                )
+            }.exceptionOrNull()
+
+        assertEquals(false, forceRestart)
+        assertTrue(error is IllegalStateException)
+        assertEquals("Mercury did not create a control coordinator.", error?.message)
+    }
+
+    @Test
+    fun `mirror does not probe or send before the local stream is live`() = runTest {
+        val events = mutableListOf<String>()
+
+        val error =
+            runCatching {
+                requestMirrorAfterPeerReady(
+                    awaitLocalReady = {
+                        events += "local-not-ready"
+                        false
+                    },
+                    ensurePeerReady = {
+                        events += "peer-ready"
+                        true
+                    },
+                    sendMirror = {
+                        events += "mirror-sent"
+                        "request-should-not-send"
+                    },
+                )
+            }.exceptionOrNull()
+
+        assertEquals(listOf("local-not-ready"), events)
+        assertTrue(error is IllegalStateException)
+        assertEquals(MIRROR_LOCAL_NOT_READY_MESSAGE, error?.message)
+    }
+
+    @Test
+    fun `mirror is not sent before the mac confirms peer readiness`() = runTest {
+        var mirrorSent = false
+
+        val error =
+            runCatching {
+                requestMirrorAfterPeerReady(
+                    awaitLocalReady = { true },
+                    ensurePeerReady = { false },
+                    sendMirror = {
+                        mirrorSent = true
+                        "request-should-not-send"
+                    },
+                )
+            }.exceptionOrNull()
+
+        assertFalse(mirrorSent)
+        assertTrue(error is IllegalStateException)
+        assertEquals(MIRROR_PEER_NOT_READY_MESSAGE, error?.message)
+    }
+
+    @Test
+    fun `mirror timeout includes a coordinator rebuild that never returns`() = runTest {
+        val events = mutableListOf<String>()
+
+        val error =
+            runCatching {
+                withMirrorRequestTimeout(timeoutMillis = 100L) {
+                    events += "rebuild-started"
+                    delay(Long.MAX_VALUE)
+                    events += "request-sent"
+                }
+            }.exceptionOrNull()
+
+        assertTrue(error is TimeoutCancellationException)
+        assertEquals(listOf("rebuild-started"), events)
     }
 
     // ── user-message maps ──
@@ -135,5 +353,19 @@ class PairedMacControlsScreenSupportTest {
         assertEquals(600L, REMOTE_UNLOCK_SESSION_TTL_SECONDS)
         assertEquals("remote_unlock_session_required", REMOTE_UNLOCK_SESSION_REQUIRED)
         assertEquals(20_000L, MIRROR_REQUEST_TIMEOUT_MS)
+        assertEquals(5_000L, MIRROR_PEER_READY_TIMEOUT_MS)
+        assertEquals(25_000L, MIRROR_ACK_TIMEOUT_MS)
+        assertTrue(MIRROR_ACK_TIMEOUT_MS > MIRROR_REQUEST_TIMEOUT_MS)
+    }
+
+    @Test
+    fun `ready and timeout copy describe Mercury accurately`() {
+        assertEquals("MERCURY READY", MERCURY_READY_PREVIEW_LABEL)
+        assertFalse(MERCURY_READY_PREVIEW_LABEL.contains("MIRRORING"))
+
+        assertEquals("No response from the Mac. Open BurnBar on the Mac, then try again.", MIRROR_NO_RESPONSE_MESSAGE)
+        assertEquals("No call response from the Mac. Open BurnBar on the Mac, then try again.", CALL_NO_RESPONSE_MESSAGE)
+        assertFalse(MIRROR_NO_RESPONSE_MESSAGE.contains("Local Network"))
+        assertFalse(CALL_NO_RESPONSE_MESSAGE.contains("Local Network"))
     }
 }

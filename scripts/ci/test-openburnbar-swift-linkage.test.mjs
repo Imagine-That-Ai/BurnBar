@@ -13,8 +13,8 @@ const signalBuilder = readFileSync(
 test("macOS Swift tests build dynamic Signal FFI before linking domain-core Rust", () => {
   assert.match(
     swiftHarness,
-    /SIGNAL_FFI_BUILD_TARGETS="\$\{host_target\}"[\s\S]*SIGNAL_FFI_BUILD_PROFILE=debug[\s\S]*build-signal-ffi-xcframework\.sh/u,
-    "the fallback must use the reviewed macOS dynamic Signal XCFramework builder",
+    /SIGNAL_FFI_BUILD_TARGETS="\$\{host_target\}"[\s\S]*SIGNAL_FFI_BUILD_PROFILE=debug[\s\S]*scripts\/lib\/prepare-signal-ffi-xcframework\.sh/u,
+    "the harness must request a host-target debug build through the reviewed shared preparer",
   );
   assert.match(swiftHarness, /arm64\) host_target="aarch64-apple-darwin"/u);
   assert.match(swiftHarness, /x86_64\) host_target="x86_64-apple-darwin"/u);
@@ -30,17 +30,54 @@ test("macOS Swift tests build dynamic Signal FFI before linking domain-core Rust
   );
 });
 
+test("warm FFI caches are validated instead of trusted on directory existence", () => {
+  // The shared cache key has single-target writers (the CodeQL Swift lanes
+  // build x86_64-only), so a restored XCFramework directory is not proof the
+  // host architecture can link it. The harness must delegate to the shared
+  // preparer, which checks the embedded target/profile metadata and rebuilds
+  // on mismatch — never early-return on a bare `-d` probe.
+  assert.match(
+    swiftHarness,
+    /scripts\/lib\/prepare-signal-ffi-xcframework\.sh/u,
+    "the harness must reuse the metadata-validating shared preparer",
+  );
+  assert.doesNotMatch(
+    swiftHarness,
+    /if \[\[ -d "\$\{macos_xcframework\}"/u,
+    "a bare directory probe trusts poisoned cache restores from single-target writers",
+  );
+});
+
 test("SwiftPM compatibility rewrite runs before a warm FFI cache can return", () => {
   const rewrite = swiftHarness.indexOf("perl -0pi -e");
-  const cacheProbe = swiftHarness.indexOf(
-    'if [[ -d "${macos_xcframework}" || -d "${legacy_xcframework}" ]]',
+  const preparer = swiftHarness.indexOf(
+    "scripts/lib/prepare-signal-ffi-xcframework.sh",
   );
   assert.ok(rewrite >= 0, "the AuthMessagesService compatibility rewrite must remain present");
-  assert.ok(cacheProbe >= 0, "the XCFramework cache probe must remain present");
+  assert.ok(preparer >= 0, "the shared FFI preparer invocation must remain present");
   assert.ok(
-    rewrite < cacheProbe,
-    "the compatibility rewrite must run before the warm-cache early return",
+    rewrite < preparer,
+    "the compatibility rewrite must run before the preparer's warm-cache early return",
   );
+});
+
+test("single-target CodeQL Swift lanes never save the shared Signal FFI key", () => {
+  for (const workflow of [
+    ".github/workflows/codeql.yml",
+    ".github/workflows/codeql-pr.yml",
+  ]) {
+    const source = readFileSync(workflow, "utf8");
+    assert.match(
+      source,
+      /uses:\s+actions\/cache\/restore@[0-9a-f]{40}[^\n]*\n\s+with:\n\s+path:\s+Vendor\/OpenBurnBarSignalFfiMac\.xcframework/u,
+      `${workflow} must restore the Signal FFI artifact without saving it`,
+    );
+    assert.doesNotMatch(
+      source,
+      /uses:\s+actions\/cache@[0-9a-f]{40}[^\n]*\n\s+with:\n\s+path:\s+Vendor\/OpenBurnBarSignalFfiMac\.xcframework/u,
+      `${workflow} builds x86_64-only and must not save under the shared superset key`,
+    );
+  }
 });
 
 test("Signal FFI caches never restore across builder-script changes", () => {
@@ -64,10 +101,10 @@ test("the selected Signal builder keeps macOS FFI dynamic", () => {
   assert.match(signalBuilder, /macOS must stay dynamic/u);
   assert.match(
     signalBuilder,
-    /stage_dynamic_target aarch64-apple-darwin macos-arm64/u,
+    /stage_dynamic_target(?:_if_needed)? aarch64-apple-darwin macos-arm64/u,
   );
   assert.match(
     signalBuilder,
-    /stage_dynamic_target x86_64-apple-darwin macos-x86_64/u,
+    /stage_dynamic_target(?:_if_needed)? x86_64-apple-darwin macos-x86_64/u,
   );
 });

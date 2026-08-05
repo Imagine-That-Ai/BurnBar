@@ -3,7 +3,6 @@ import { generateKeyPairSync, randomBytes, sign } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  base32NoPad,
   callableRequest,
   callableRunner,
   rawEd25519PublicKey,
@@ -11,25 +10,18 @@ import {
   requireNumber,
   requireRecord,
   requireRouteChallenge,
+  seedAdditionalRouteController,
   seedRouteTrustGraph,
   snapshotTenantPaths,
 } from "./irohControllerRouteTestSupport.js";
 
 const { store } = vi.hoisted(() => ({ store: new Map<string, Record<string, unknown>>() }));
+const FIELD_DELETE = { __delete: true } as const;
 
 type Ref = { path: string };
 
 function invokeCallable(callable: unknown, uid: string, data: Record<string, unknown>): Promise<unknown> {
   return callableRunner(callable)(callableRequest(uid, data));
-}
-
-function invokeCallableForApp(
-  callable: unknown,
-  uid: string,
-  appId: string,
-  data: Record<string, unknown>,
-): Promise<unknown> {
-  return callableRunner(callable)(callableRequest(uid, data, appId));
 }
 
 function snapshot(path: string) {
@@ -43,7 +35,15 @@ function snapshot(path: string) {
 }
 
 function mergeWrite(path: string, data: Record<string, unknown>, merge = false): void {
-  store.set(path, merge ? { ...(store.get(path) ?? {}), ...data } : { ...data });
+  const next = merge ? { ...(store.get(path) ?? {}) } : {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value === FIELD_DELETE) {
+      delete next[key];
+    } else {
+      next[key] = value;
+    }
+  }
+  store.set(path, next);
 }
 
 vi.mock("../adminRuntime.js", () => ({
@@ -74,7 +74,10 @@ vi.mock("../adminRuntime.js", () => ({
 }));
 
 vi.mock("firebase-admin/firestore", () => ({
-  FieldValue: { serverTimestamp: () => ({ __serverTimestamp: true }) },
+  FieldValue: {
+    delete: () => FIELD_DELETE,
+    serverTimestamp: () => ({ __serverTimestamp: true }),
+  },
   Timestamp: { fromMillis: (millis: number) => ({ toMillis: () => millis }) },
 }));
 
@@ -85,8 +88,10 @@ vi.mock("../appCheckAttestation.js", () => ({
   enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
   readAppIdFromCallableRequest: (request: { app?: { appId?: string } }) => request.app?.appId,
 }));
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../callables/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../callables/shared/entitlements.js")>(
+    "../callables/shared/entitlements.js",
+  );
   return { ...actual, assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined) };
 });
 vi.mock("../logging.js", async () => {
@@ -100,19 +105,11 @@ import {
   resolveActiveIrohControllerRoutes,
   revokeIrohControllerRoute,
 } from "../callables/irohControllerRouteCallables.js";
-import { parseEscrowPlatform } from "../callables/computerUseSecurityCodecs.js";
-import { requireIrohTransportNodeId } from "../callables/irohControllerRouteSecurity.js";
-import {
-  publishIrohPairingPublicKey,
-  publishIrohPairingRecord,
-  revokeIrohPairingRecord,
-} from "../callables/phoneControlCallables.js";
+import { revokeIrohPairingRecord } from "../callables/phoneControlCallables.js";
 
-const UID = "route-owner";
-const CONNECTION_ID = "linux-browser-cu";
-const HOST_DEVICE_ID = "linux-host-fixture";
-const SOURCE_DEVICE_ID = "phone-controller";
-const BOB_UID = "route-attacker";
+const UID = "route-owner", CONNECTION_ID = "linux-browser-cu";
+const HOST_DEVICE_ID = "linux-host-fixture", SOURCE_DEVICE_ID = "phone-controller";
+const SECOND_SOURCE_DEVICE_ID = "tablet-controller", BOB_UID = "route-attacker";
 
 function seedTrustGraph() {
   return seedRouteTrustGraph({
@@ -124,10 +121,14 @@ function seedTrustGraph() {
   });
 }
 
-async function issueChallenge(authorityPeerNodeId: string, transportNodeId: string) {
+async function issueChallenge(
+  authorityPeerNodeId: string,
+  transportNodeId: string,
+  sourceDeviceId = SOURCE_DEVICE_ID,
+) {
   return requireRouteChallenge(
     await invokeCallable(issueIrohControllerRouteChallenge, UID, {
-      sourceDeviceId: SOURCE_DEVICE_ID,
+      sourceDeviceId,
       connectionId: CONNECTION_ID,
       authorityPeerNodeId,
       transportNodeId,
@@ -155,67 +156,6 @@ async function registerChallenge(
 
 describe("verified iroh controller route registry", () => {
   beforeEach(() => store.clear());
-
-  it("admits attested Linux escrow hosts to publish the signed iroh pairing root", async () => {
-    const host = generateKeyPairSync("ed25519");
-    const hostNodeId = randomBytes(32).toString("hex");
-    store.set(`users/${UID}/escrow_devices/${HOST_DEVICE_ID}`, {
-      deviceId: HOST_DEVICE_ID,
-      platform: parseEscrowPlatform("Linux"),
-      trustState: "trusted",
-    });
-    await expect(
-      invokeCallable(publishIrohPairingPublicKey, UID, {
-        deviceId: HOST_DEVICE_ID,
-        roleId: "host",
-        publicKeyBase64: rawEd25519PublicKey(host.publicKey).toString("base64"),
-        nonce: "linux-host-key-nonce",
-      }),
-    ).resolves.toEqual({ ok: true, roleId: "host" });
-    await expect(
-      invokeCallable(publishIrohPairingRecord, UID, {
-        deviceId: HOST_DEVICE_ID,
-        connectionId: CONNECTION_ID,
-        nodeId: hostNodeId,
-        directAddresses: [],
-        publishedAtMillis: Date.now(),
-        protocolVersion: 1,
-        signature: randomBytes(64).toString("base64"),
-        nonce: "linux-host-pairing-nonce",
-      }),
-    ).resolves.toEqual({ ok: true, connectionId: CONNECTION_ID });
-    expect(store.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}`)?.publishedByDeviceId).toBe(HOST_DEVICE_ID);
-  });
-
-  it("admits an approved Linux App Check host without granting CloudVault escrow trust", async () => {
-    const host = generateKeyPairSync("ed25519");
-    const linuxAppId = "1:123:linux:route-test";
-    store.set(`users/${UID}/linux_app_check_devices/${HOST_DEVICE_ID}`, {
-      appId: linuxAppId,
-      deviceId: HOST_DEVICE_ID,
-      platform: "Linux",
-      trustState: "approved",
-    });
-    expect(store.has(`users/${UID}/escrow_devices/${HOST_DEVICE_ID}`)).toBe(false);
-    await expect(
-      invokeCallableForApp(publishIrohPairingPublicKey, UID, linuxAppId, {
-        deviceId: HOST_DEVICE_ID,
-        roleId: "host",
-        publicKeyBase64: rawEd25519PublicKey(host.publicKey).toString("base64"),
-        nonce: "approved-linux-host-nonce",
-      }),
-    ).resolves.toEqual({ ok: true, roleId: "host" });
-  });
-
-  it("normalizes legacy base32 NodeIds to current lowercase-hex iroh identity", () => {
-    const publicKey = randomBytes(32);
-    const legacyNodeId = base32NoPad(publicKey);
-    expect(requireIrohTransportNodeId(legacyNodeId)).toMatchObject({
-      nodeId: publicKey.toString("hex"),
-      wireNodeId: legacyNodeId,
-      publicKey,
-    });
-  });
 
   it("registers and resolves distinct transport, authority, and device identities", async () => {
     const fixture = seedTrustGraph();
@@ -253,6 +193,57 @@ describe("verified iroh controller route registry", () => {
       }),
     ]);
     expect(JSON.stringify(resolution)).not.toContain("publicKeyBase64");
+  });
+
+  it("registers and resolves independent routes for two trusted controller devices", async () => {
+    const phone = seedTrustGraph();
+    const tablet = seedAdditionalRouteController({
+      connectionId: CONNECTION_ID,
+      sourceDeviceId: SECOND_SOURCE_DEVICE_ID,
+      store,
+      uid: UID,
+    });
+    const phoneChallenge = await issueChallenge(phone.authorityPeerNodeId, phone.transportNodeId);
+    const tabletChallenge = await issueChallenge(
+      tablet.authorityPeerNodeId,
+      tablet.transportNodeId,
+      SECOND_SOURCE_DEVICE_ID,
+    );
+    await registerChallenge(phoneChallenge, phone.transport.privateKey, phone.authority.privateKey);
+    await registerChallenge(tabletChallenge, tablet.transport.privateKey, tablet.authority.privateKey);
+
+    const resolution = requireActiveRouteResolution(
+      await invokeCallable(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+    );
+    expect(resolution.routes).toEqual([
+      expect.objectContaining({
+        sourceDeviceId: SOURCE_DEVICE_ID,
+        transportNodeId: phone.transportNodeId,
+        authorityPeerNodeId: phone.authorityPeerNodeId,
+      }),
+      expect.objectContaining({
+        sourceDeviceId: SECOND_SOURCE_DEVICE_ID,
+        transportNodeId: tablet.transportNodeId,
+        authorityPeerNodeId: tablet.authorityPeerNodeId,
+      }),
+    ]);
+
+    await invokeCallable(revokeIrohControllerRoute, UID, {
+      sourceDeviceId: SOURCE_DEVICE_ID,
+      connectionId: CONNECTION_ID,
+      expectedUid: UID,
+      nonce: "revoke-one-of-two",
+    });
+    await expect(
+      invokeCallable(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+    ).resolves.toMatchObject({
+      routes: [
+        expect.objectContaining({
+          sourceDeviceId: SECOND_SOURCE_DEVICE_ID,
+          transportNodeId: tablet.transportNodeId,
+        }),
+      ],
+    });
   });
 
   it("renews an exact active tuple with transport proof only while preserving route identity", async () => {
@@ -390,7 +381,7 @@ describe("verified iroh controller route registry", () => {
     ).rejects.toMatchObject({ code: "aborted" });
   });
 
-  it("fails closed for stale pairing, ambiguous controllers, authority rotation, and route expiry", async () => {
+  it("fails closed for stale pairing, unauthorized controllers, authority rotation, and route expiry", async () => {
     const fixture = seedTrustGraph();
     const pairingPath = `users/${UID}/iroh_pairing/${CONNECTION_ID}`;
     store.set(pairingPath, { ...store.get(pairingPath), publishedAtMillis: Date.now() - 4 * 60 * 1000 });
@@ -402,7 +393,7 @@ describe("verified iroh controller route registry", () => {
     const fresh = seedTrustGraph();
     store.set(pairingPath, {
       ...store.get(pairingPath),
-      authorizedControllerDeviceIds: [SOURCE_DEVICE_ID, "other-phone"],
+      authorizedControllerDeviceIds: ["other-phone"],
     });
     await expect(issueChallenge(fresh.authorityPeerNodeId, fresh.transportNodeId)).rejects.toMatchObject({
       code: "permission-denied",
@@ -449,7 +440,7 @@ describe("verified iroh controller route registry", () => {
     const pairingPath = `users/${UID}/iroh_pairing/${CONNECTION_ID}`;
     store.set(pairingPath, {
       ...store.get(pairingPath),
-      authorizedControllerDeviceIds: [SOURCE_DEVICE_ID, "other-phone"],
+      authorizedControllerDeviceIds: ["other-phone"],
     });
     await expect(
       invokeCallable(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
@@ -522,6 +513,12 @@ describe("verified iroh controller route registry", () => {
         nonce: "host-pairing-revoke-nonce",
       }),
     ).resolves.toEqual({ ok: true, connectionId: CONNECTION_ID });
+    expect(store.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}`)).toMatchObject({
+      authorizedControllerDeviceIds: [SOURCE_DEVICE_ID],
+      publishedByDeviceId: HOST_DEVICE_ID,
+    });
+    expect(store.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}`)?.nodeId).toBeUndefined();
+    expect(store.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}`)?.signature).toBeUndefined();
     expect(store.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}/controller_routes/${SOURCE_DEVICE_ID}`)).toMatchObject(
       { status: "revoked", generation: 2 },
     );

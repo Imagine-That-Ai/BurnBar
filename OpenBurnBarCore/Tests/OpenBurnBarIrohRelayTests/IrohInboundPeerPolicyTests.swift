@@ -71,4 +71,31 @@ final class IrohInboundPeerPolicyTests: XCTestCase {
             atMillis: 1_500
         ))
     }
+
+    func testAllowsDistinctRoutesForMultipleTrustedControllerDevices() throws {
+        let firstNodeID = String(repeating: "a", count: 64)
+        let secondNodeID = String(repeating: "b", count: 64)
+        let first = try XCTUnwrap(IrohControllerRouteBinding(
+            sourceDeviceId: "ios-device-1",
+            transportNodeId: firstNodeID,
+            authorityPeerNodeId: "ios-phone-authority-1",
+            generation: 1,
+            registeredAtMillis: 1_000,
+            expiresAtMillis: 3_000
+        ))
+        let second = try XCTUnwrap(IrohControllerRouteBinding(
+            sourceDeviceId: "android-device-1",
+            transportNodeId: secondNodeID,
+            authorityPeerNodeId: "android-phone-authority-1",
+            generation: 2,
+            registeredAtMillis: 1_000,
+            expiresAtMillis: 3_000
+        ))
+        let policy = IrohInboundPeerPolicy(routeBindings: [first, second])
+
+        XCTAssertEqual(policy.binding(for: firstNodeID, atMillis: 2_000), first)
+        XCTAssertEqual(policy.binding(for: secondNodeID, atMillis: 2_000), second)
+        XCTAssertTrue(policy.allows(remotePeerNodeId: firstNodeID, atMillis: 2_000))
+        XCTAssertTrue(policy.allows(remotePeerNodeId: secondNodeID, atMillis: 2_000))
+    }
 }

@@ -228,6 +228,12 @@ function signalEnvelopeForKnowledgeVector(uid: string, docId: string, overrides:
       mode: "at-rest",
       formatVersion: 1,
     },
+    senderAuth: {
+      senderIdentityKeyId: "sender-device-1",
+      senderIdentityKeyB64: Buffer.alloc(33, 4).toString("base64"),
+      signatureB64: Buffer.alloc(64, 5).toString("base64"),
+      signatureVersion: 1,
+    },
     ...overrides,
   };
 }
@@ -445,16 +451,14 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
     expect([...stored.keys()].some((k) => k.startsWith("users/userRawEmbed/cloud_search_knowledge/"))).toBe(false);
   });
 
-  it("accepts an optional path-bound Signal envelope on a knowledge vector and stores the sanitized envelope", async () => {
+  it("accepts an optional path-bound Signal envelope on a knowledge vector", async () => {
     const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
     const run = callableRun(commitKnowledgeBatch);
 
     const req = commitRequestForUser("userSignal", Buffer.alloc(32, 0xe5));
     const vector = vectorForMutation(req);
     const vectorId = String(vector.dedupHash);
-    vector.signalEnvelope = signalEnvelopeForKnowledgeVector("userSignal", vectorId, {
-      plaintext: "must be stripped by the shared sanitizer before write",
-    });
+    vector.signalEnvelope = signalEnvelopeForKnowledgeVector("userSignal", vectorId);
 
     await run(req);
     const record = firstKnowledgeRecord("userSignal");
@@ -469,7 +473,20 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
         field: "sealedCiphertext",
       },
     });
-    expect(record.signalEnvelope).not.toHaveProperty("plaintext");
+  });
+
+  it("rejects a polluted optional Signal envelope before any knowledge vector write", async () => {
+    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const run = callableRun(commitKnowledgeBatch);
+
+    const req = commitRequestForUser("userSignalPolluted", Buffer.alloc(32, 0xe6));
+    const vector = vectorForMutation(req);
+    vector.signalEnvelope = signalEnvelopeForKnowledgeVector("userSignalPolluted", String(vector.dedupHash), {
+      plaintext: "must never reach an Admin SDK write",
+    });
+
+    await expect(run(req)).rejects.toThrow(/invalid-envelope-shape/);
+    expect([...stored.keys()].some((k) => k.startsWith("users/userSignalPolluted/cloud_search_knowledge/"))).toBe(false);
   });
 
   it("rejects unapproved chat_memory vectors before write", async () => {

@@ -157,6 +157,30 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private var rejectedPeerLastSeen: [String: Date] = [:]
     private static let rejectedPeerCooldown: TimeInterval = 5
     private static let rejectedPeerTableCap = 1024
+    /// An isolated peer close can surface from `accept` while the endpoint is
+    /// still healthy, but an unbounded run of them means the native acceptor is
+    /// no longer making forward progress. Rebuild after a small bounded burst
+    /// instead of keeping a stale pairing record advertised forever.
+    ///
+    /// The burst count alone is peer-controlled: the native path reports
+    /// `incoming.await` / `accept_bi` failures before Swift ever sees a peer
+    /// identity or applies `inboundPeerPolicy`, so any peer that can reach the
+    /// advertised endpoint can manufacture these errors by completing ALPN and
+    /// closing early. The rebuild therefore additionally requires the absence
+    /// of peer-independent endpoint-health evidence (active serve sessions or
+    /// a recently completed accept, see
+    /// `hasPeerIndependentEndpointHealthEvidence()`), so a hostile burst can
+    /// never tear down live chat/media sessions or force NodeId churn while
+    /// the acceptor is demonstrably serving traffic.
+    private static let recoverablePeerAcceptFailureLimit = 3
+    /// How long a completed `accept` counts as proof the native acceptor is
+    /// making forward progress. A genuinely stalled endpoint stops producing
+    /// successful accepts, so recovery is delayed by at most this window.
+    private static let peerAcceptHealthEvidenceWindow: TimeInterval = 30
+    /// Set every time `transport.accept` returns a stream (even one that the
+    /// allowlist later rejects): a completed accept is acceptor-health
+    /// evidence regardless of admission. Cleared on endpoint teardown.
+    private var lastAcceptedStreamAt: Date?
 
     nonisolated static func shouldStopForAuthenticatedUserChange(
         readyUID: String?,
@@ -166,53 +190,52 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         return authenticatedUID != readyUID
     }
 
-    /// A bounded, non-PII rendering of a transport/backend failure's own
-    /// message — the piece that actually names *why* the iroh endpoint refused
-    /// to start (bind refused, relay unreachable, no home relay, ...).
-    ///
-    /// `publicErrorClass` only yields `domain#code`, which for a Swift enum
-    /// collapses every variant to the same token and hides the payload. These
-    /// two error types are ours: their associated values are messages produced
-    /// by our own Rust/transport layer, never user content or credentials. Any
-    /// other error falls back to the class token so an unexpected type can't
-    /// leak a `localizedDescription` that might carry a path or identifier.
-    ///
-    /// The result is truncated and stripped of characters that would break log
-    /// scanning, mirroring `AppLogger.sanitizedDiagnosticToken`'s posture.
-    private nonisolated static func publicErrorDetail(_ error: Error) -> String {
-        let raw: String
+    /// Stable, non-PII code for transport/backend startup failures. Associated
+    /// values can contain peer identifiers, paths, or backend diagnostics, so
+    /// operational logs must classify the case without rendering its payload.
+    private nonisolated static func publicErrorCode(_ error: Error) -> String {
         switch error {
         case let transportError as IrohRelayTransportError:
             switch transportError {
-            case .nodeIdUnreachable(let message),
-                 .streamRejected(let message),
-                 .decodeFailed(let message):
-                raw = message
-            case .backendUnavailable, .endpointNotReady, .protocolMismatch, .timedOut, .shutdown:
-                raw = String(describing: transportError)
+            case .backendUnavailable:
+                return "transport_backend_unavailable"
+            case .endpointNotReady:
+                return "transport_endpoint_not_ready"
+            case .nodeIdUnreachable:
+                return "transport_node_unreachable"
+            case .streamRejected:
+                return "transport_stream_rejected"
+            case .protocolMismatch:
+                return "transport_protocol_mismatch"
+            case .decodeFailed:
+                return "transport_decode_failed"
+            case .timedOut:
+                return "transport_timed_out"
+            case .shutdown:
+                return "transport_shutdown"
             }
         case let backendError as IrohBackendError:
             switch backendError {
-            case .connectFailed(let message),
-                 .streamFailed(let message),
-                 .acceptFailed(let message),
-                 .shutdownFailed(let message),
-                 .runtimeFailed(let message):
-                raw = message
-            case .notInitialized, .invalidSecretKey, .invalidNodeId:
-                raw = String(describing: backendError)
+            case .notInitialized:
+                return "backend_not_initialized"
+            case .invalidSecretKey:
+                return "backend_invalid_secret_key"
+            case .invalidNodeId:
+                return "backend_invalid_node_id"
+            case .connectFailed:
+                return "backend_connect_failed"
+            case .streamFailed:
+                return "backend_stream_failed"
+            case .acceptFailed:
+                return "backend_accept_failed"
+            case .shutdownFailed:
+                return "backend_shutdown_failed"
+            case .runtimeFailed:
+                return "backend_runtime_failed"
             }
         default:
             return publicErrorClass(error)
         }
-
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: " ._:/#,()-"))
-        var output = ""
-        for scalar in raw.unicodeScalars {
-            if output.count >= 240 { break }
-            output.append(allowed.contains(scalar) ? Character(scalar) : "_")
-        }
-        return output.isEmpty ? publicErrorClass(error) : output
     }
 
     // nonisolated: a pure error-classification helper (no actor state) used from
@@ -552,7 +575,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             // was expensive to recover by hand.
             let stage = pairingPublicationAttempted ? "post_pairing_publish" : "endpoint_bootstrap"
             AppLogger.network.error(
-                "hermes_iroh_relay_start_failed connectionID=\(connectionID) stage=\(stage) errorClass=\(Self.publicErrorClass(error)) hostedRelayConfigured=\(HermesIrohHostedRelayConfig.currentURL() != nil) detail=\(Self.publicErrorDetail(error))"
+                "hermes_iroh_relay_start_failed connectionID=\(connectionID) stage=\(stage) errorClass=\(Self.publicErrorClass(error)) errorCode=\(Self.publicErrorCode(error)) hostedRelayConfigured=\(HermesIrohHostedRelayConfig.currentURL() != nil)"
             )
             // Keep the structured/Sentry breadcrumb too — the line above is for
             // a human reading `log show`, this one keeps crash-reporter parity.
@@ -688,6 +711,15 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         while !Task.isCancelled, isCurrentRuntimeOwner(owner) {
             do {
                 let stream = try await transport.accept(timeout: 30)
+                // A completed accept is acceptor progress no matter how
+                // admission turns out, so the recoverable-failure streak
+                // resets here rather than after the allowlist decision.
+                // Otherwise failures from before this accept survive an
+                // allowlist rejection and, once the health-evidence window
+                // lapses, combine with later peer-close errors to rebuild a
+                // healthy endpoint.
+                consecutiveAcceptFailures = 0
+                lastAcceptedStreamAt = now()
                 guard isCurrentRuntimeOwner(owner), isCurrentTransport(transport) else {
                     await stream.close()
                     return
@@ -748,7 +780,6 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     await stream.close()
                     continue
                 }
-                consecutiveAcceptFailures = 0
                 let handler = IrohRelayRequestHandler(
                     relayKeyStore: relayKeyStore,
                     urlSession: urlSession,
@@ -844,10 +875,34 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 return
             } catch {
                 if Self.isRecoverablePeerAcceptError(error) {
-                    consecutiveAcceptFailures = 0
+                    consecutiveAcceptFailures += 1
                     AppLogger.network.info(
-                        "hermes_iroh_relay_accept_peer_closed connectionID=\(connectionID) errorClass=\(Self.publicErrorClass(error))"
+                        "hermes_iroh_relay_accept_peer_closed connectionID=\(connectionID) consecutiveFailures=\(consecutiveAcceptFailures) errorClass=\(Self.publicErrorClass(error))"
                     )
+                    if consecutiveAcceptFailures >= Self.recoverablePeerAcceptFailureLimit {
+                        // Peer-close accept errors surface before any identity
+                        // or allowlist check, so the counter alone is
+                        // peer-manufacturable. Only rebuild when there is no
+                        // peer-independent evidence that the acceptor is
+                        // healthy; otherwise a hostile dial-and-close burst
+                        // would cancel every live serve session and churn the
+                        // published NodeId.
+                        if hasPeerIndependentEndpointHealthEvidence() {
+                            AppLogger.network.info(
+                                "hermes_iroh_relay_accept_rebuild_suppressed connectionID=\(connectionID) consecutiveFailures=\(consecutiveAcceptFailures)"
+                            )
+                        } else {
+                            await handleAcceptLoopTerminated(
+                                transport: transport,
+                                uid: uid,
+                                connectionID: connectionID,
+                                owner: owner,
+                                reason: "peer_accept_failure_limit",
+                                shouldRestart: true
+                            )
+                            return
+                        }
+                    }
                     try? await Task.sleep(nanoseconds: 200_000_000) // try?-ok(cancellation only)
                     continue
                 }
@@ -1285,6 +1340,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         lastAuthoritativePolicyLoadAt = nil
         lastAllowlistMissRefreshAt = nil
         publishedIdentity = nil
+        lastAcceptedStreamAt = nil
 
         if let transportToStop {
             await transportToStop.shutdown()
@@ -1346,6 +1402,45 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         }
     }
 
+    /// Endpoint-health evidence a remote peer cannot manufacture. Active serve
+    /// sessions only exist for allowlisted peers that completed admission, and
+    /// `lastAcceptedStreamAt` is only set when the native acceptor hands Swift
+    /// a fully accepted stream; an attacker that completes ALPN and closes
+    /// before opening a bidirectional stream produces neither. While either
+    /// signal is present, a run of pre-identity peer-close accept errors is
+    /// peer behavior, not a stalled endpoint, and must not tear the host down.
+    ///
+    /// `serveStreams` counts alongside `serveTasks`: long-lived `media.control`
+    /// streams transfer ownership out of their serve task
+    /// (`transferredStreamOwnership`), after which `releaseServeTask` drops the
+    /// task but deliberately retains the live stream. An active mirror or call
+    /// therefore holds evidence only in `serveStreams`; ignoring it would let
+    /// any reachable peer manufacture pre-identity close errors that tear down
+    /// the retained stream mid-session. Retained entries are bounded: route
+    /// expiry, de-allowlist purges, and `stop()` all remove them.
+    private func hasPeerIndependentEndpointHealthEvidence() -> Bool {
+        Self.hasPeerIndependentEndpointHealthEvidence(
+            activeServeTaskCount: serveTasks.count,
+            retainedServeStreamCount: serveStreams.count,
+            lastAcceptedStreamAt: lastAcceptedStreamAt,
+            now: now()
+        )
+    }
+
+    static func hasPeerIndependentEndpointHealthEvidence(
+        activeServeTaskCount: Int,
+        retainedServeStreamCount: Int,
+        lastAcceptedStreamAt: Date?,
+        now: Date
+    ) -> Bool {
+        if activeServeTaskCount > 0 || retainedServeStreamCount > 0 { return true }
+        if let lastAcceptedStreamAt,
+           now.timeIntervalSince(lastAcceptedStreamAt) < Self.peerAcceptHealthEvidenceWindow {
+            return true
+        }
+        return false
+    }
+
     static func isRecoverablePeerAcceptError(_ error: Error) -> Bool {
         guard let transportError = error as? IrohRelayTransportError else { return false }
         switch transportError {
@@ -1403,9 +1498,15 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         AppLogger.network.error(
             "hermes_iroh_native_backend_missing detail=OpenBurnBarIrohFFI_not_linked_Mercury_disabled_check_Vendor_OpenBurnBarIroh.xcframework"
         )
-        assertionFailure(
-            "Hermes iroh host has no native backend: OpenBurnBarIrohFFI is not linked. Mercury mirror/calls/file-transfer are disabled for this whole process. Build/link Vendor/OpenBurnBarIroh.xcframework."
-        )
+        // The unit suite exercises this exact path with an injected nil
+        // factory (HermesIrohRelayHostClientMattersTests) to pin the graceful
+        // `.backendUnavailable` contract, so the trap must not fire under
+        // XCTest — only in a real dev/QA app launch.
+        if !OpenBurnBarRuntime.isRunningTests {
+            assertionFailure(
+                "Hermes iroh host has no native backend: OpenBurnBarIrohFFI is not linked. Mercury mirror/calls/file-transfer are disabled for this whole process. Build/link Vendor/OpenBurnBarIroh.xcframework."
+            )
+        }
         return UnavailableIrohRelayTransport()
     }
 }

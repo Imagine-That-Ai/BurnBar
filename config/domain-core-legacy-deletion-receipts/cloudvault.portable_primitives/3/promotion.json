@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "rowId": "cloudvault.portable_primitives",
+  "authorityGeneration": 3,
+  "transition": "promotion",
+  "status": "active",
+  "evidence": [
+    "https://github.com/Imagine-That-Ai/BurnBar/attestations/38437922"
+  ],
+  "approvedBy": "@Ajnunezg",
+  "approvedAt": "2026-08-02T16:43:37Z",
+  "commit": "99ba1f66b02d4721077bbce652b84c2304bacf7c",
+  "promotionAttestation": {
+    "path": "config/domain-core-promotion-attestations/cloudvault/3.json",
+    "sha256": "82dea9a4af318c8ab4350b7f4bdf3123279540ecf3f32731d7d19b223a7d5b95",
+    "supersedes": {
+      "transition": "annulment",
+      "path": "config/domain-core-legacy-deletion-receipts/cloudvault.portable_primitives/2/annulment.json",
+      "sha256": "16c31a158fff985158db5f5790e35ae3a6583f6a1d34dc4e11a1d3f672ee9690"
+    }
+  }
+}

@@ -19,6 +19,57 @@ test("allows redacted launch evidence placeholders", () => {
   assert.deepEqual(scanText("launch-evidence/latest-commercial-launch-gate.json", text), []);
 });
 
+test("allows fingerprinted alert-delivery evidence with every identity field redacted", () => {
+  const text = JSON.stringify(
+    {
+      project: "<redacted-project>",
+      channels: [
+        {
+          name: "<redacted-notification-channel>",
+          channelFingerprint:
+            "sha256:a5bf8bcf8c1e0be32e3adc18bb620c6eb22a699f494baff384a0c792eb0ac194",
+          type: "email",
+          target: "<redacted-alert-target>",
+          verifiedBy: "<redacted-operator>",
+          evidenceUri: "<redacted-evidence-url>",
+        },
+      ],
+    },
+    null,
+    2,
+  );
+
+  assert.deepEqual(scanText("launch-evidence/alert-channel-verified.json", text), []);
+});
+
+test("blocks raw alert-delivery channel, endpoint, operator, and evidence URL fields", () => {
+  const text = JSON.stringify(
+    {
+      project: "prod-project-123",
+      channels: [
+        {
+          // Partial redaction must not hide the still-concrete channel id.
+          name: "projects/<redacted-project>/notificationChannels/123456789",
+          type: "email",
+          target: "operator@example.com",
+          verifiedBy: "release-operator",
+          evidenceUri: "https://console.cloud.google.com/monitoring/alerting/alerts/example",
+        },
+      ],
+    },
+    null,
+    2,
+  );
+
+  const violations = scanText("launch-evidence/alert-channel-verified.json", text);
+  const ruleIds = new Set(violations.map((violation) => violation.ruleId));
+  assert.ok(ruleIds.has("concrete-operational-value"));
+  assert.ok(ruleIds.has("alert-channel-name"));
+  assert.ok(ruleIds.has("alert-channel-target"));
+  assert.ok(ruleIds.has("alert-channel-operator"));
+  assert.ok(ruleIds.has("alert-channel-evidence-url"));
+});
+
 test("blocks concrete launch evidence identifiers", () => {
   const text = [
     '{',

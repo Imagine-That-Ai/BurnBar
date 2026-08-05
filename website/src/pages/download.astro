@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
+import DownloadPlatformIcon from "@components/DownloadPlatformIcon.astro";
 import { SITE } from "@data/site";
 
 const macDownloadBaseUrl = SITE.macDownloadBaseUrl.replace(/\/$/, "");
@@ -21,11 +22,15 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
 <BaseLayout
   title="Download"
   description="Download OpenBurnBar. macOS by direct download, iPhone & iPad on the App Store, Linux ARM64 builds, Cursor/VS Code extension source-only."
+  ambientEffects={false}
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
       <span class="eyebrow eyebrow--ember">Download</span>
-      <h1 class="pagehead__h">Get OpenBurnBar</h1>
+      <h1 class="pagehead__h" data-pretext-native>
+        <span>Get</span>
+        <span class="pagehead__product">OpenBurnBar</span>
+      </h1>
       <p class="lead pagehead__lead">
         <strong>macOS</strong>, <strong>iOS</strong>, and <strong>Linux</strong> ship today — Android
         and the editor extension are buildable from source.
@@ -34,31 +39,36 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
       <!-- At-a-glance platform grid so Linux isn't buried mid-page -->
       <div class="platgrid" aria-label="Platform availability">
         <a class="platcard platcard--live" href="#macos">
-          <span class="platcard__os">macOS</span>
+          <DownloadPlatformIcon platform="macos" />
+          <span class="sr-only">macOS</span>
           <span class="platcard__ver mono">v{SITE.macReleaseLatest}</span>
           <span class="platcard__status">Available now</span>
           <span class="platcard__cta">Download DMG →</span>
         </a>
         <a class="platcard platcard--live" href="#linux">
-          <span class="platcard__os">Linux</span>
+          <DownloadPlatformIcon platform="linux" />
+          <span class="sr-only">Linux</span>
           <span class="platcard__ver mono">v{SITE.linuxReleaseLatest} · ARM64</span>
           <span class="platcard__status">Available now</span>
           <span class="platcard__cta">AppImage · deb · rpm →</span>
         </a>
         <a class="platcard platcard--live" href="#ios">
-          <span class="platcard__os">iOS · iPadOS</span>
+          <DownloadPlatformIcon platform="ios" />
+          <span class="sr-only">iOS and iPadOS</span>
           <span class="platcard__ver mono">App Store</span>
           <span class="platcard__status">Available now</span>
           <span class="platcard__cta">Get the app →</span>
         </a>
         <a class="platcard platcard--pending" href="#editor">
-          <span class="platcard__os">Cursor · VS Code</span>
+          <DownloadPlatformIcon platform="editor" />
+          <span class="sr-only">Cursor and VS Code</span>
           <span class="platcard__ver mono">source</span>
           <span class="platcard__status">Build locally</span>
           <span class="platcard__cta">Setup guide →</span>
         </a>
         <a class="platcard platcard--pending" href="#android">
-          <span class="platcard__os">Android</span>
+          <DownloadPlatformIcon platform="android" />
+          <span class="sr-only">Android</span>
           <span class="platcard__ver mono">source</span>
           <span class="platcard__status">Play Store pending</span>
           <span class="platcard__cta">Details →</span>
@@ -66,11 +76,26 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
       </div>
 
       <nav class="jump" aria-label="Jump to platform">
-        <a class="jump--live" href="#macos">macOS</a>
-        <a class="jump--live" href="#linux">Linux</a>
-        <a class="jump--live" href="#ios">iOS · iPadOS</a>
-        <a href="#editor">Editor</a>
-        <a href="#android">Android</a>
+        <a class="jump--live" href="#macos" aria-label="Jump to macOS" title="macOS">
+          <DownloadPlatformIcon platform="macos" compact />
+        </a>
+        <a class="jump--live" href="#linux" aria-label="Jump to Linux" title="Linux">
+          <DownloadPlatformIcon platform="linux" compact />
+        </a>
+        <a
+          class="jump--live"
+          href="#ios"
+          aria-label="Jump to iPhone and iPad"
+          title="iPhone and iPad"
+        >
+          <DownloadPlatformIcon platform="ios" compact />
+        </a>
+        <a href="#editor" aria-label="Jump to Cursor and VS Code" title="Cursor and VS Code">
+          <DownloadPlatformIcon platform="editor" compact />
+        </a>
+        <a href="#android" aria-label="Jump to Android" title="Android">
+          <DownloadPlatformIcon platform="android" compact />
+        </a>
       </nav>
     </div>
   </section>
@@ -107,9 +132,9 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
           <div class="step__card">
             <h3>Download &amp; open the DMG</h3>
             <p>
-              The public macOS DMG is served from GitHub Releases while OpenBurnBar's branded
-              direct-download host is being republished. This link targets the signed, notarized,
-              smoke-tested 1.0.26 GitHub Release asset.
+              The macOS DMG is served from OpenBurnBar's first-party download host. This link
+              targets the signed, notarized, smoke-tested {SITE.macReleaseLatest} release whose checksum
+              matches the immutable GitHub Release asset.
             </p>
             {
               hasMacUpdateFeed && (
@@ -402,10 +427,8 @@ npm run build</code></pre>
             <li>{SITE.macMin} or later</li>
             <li>Apple Silicon Mac</li>
             <li>~120 MB on disk</li>
-            <li>Current public button uses the GitHub Release DMG fallback</li>
-            <li>
-              Branded direct-download releases are Developer ID signed, notarized, and stapled
-            </li>
+            <li>First-party download host with immutable release provenance</li>
+            <li>Developer ID signed, notarized, and stapled</li>
             <li>Direct-download releases publish checksums, SBOM, and Sparkle metadata</li>
           </ul>
         </article>
@@ -463,7 +486,9 @@ npm run build</code></pre>
     padding-block: var(--s-9) var(--s-6);
   }
   .pagehead__inner {
+    width: 100%;
     max-width: 60rem;
+    min-width: 0;
     margin: 0 auto;
     text-align: center;
     display: grid;
@@ -472,6 +497,12 @@ npm run build</code></pre>
   }
   .pagehead__h {
     margin-top: var(--s-3);
+  }
+  .pagehead__product {
+    display: inline-block;
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: keep-all;
   }
   .pagehead .lead,
   .pagehead__lead {
@@ -486,11 +517,14 @@ npm run build</code></pre>
     gap: var(--s-3);
     width: 100%;
     max-width: 56rem;
+    min-width: 0;
     margin-top: var(--s-6);
     text-align: left;
   }
   .platcard {
     display: grid;
+    grid-template-rows: auto auto auto 1fr;
+    justify-items: start;
     gap: 0.25rem;
     padding: 1rem 1.05rem 0.95rem;
     border-radius: var(--r-md, 12px);
@@ -508,6 +542,9 @@ npm run build</code></pre>
     transform: translateY(-2px);
     box-shadow: 0 10px 28px color-mix(in oklab, var(--ember-core) 12%, transparent);
   }
+  .platcard:hover :global(.download-platform-icon) {
+    transform: translateY(-2px) scale(1.04);
+  }
   .platcard--live {
     border-color: color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
     background: linear-gradient(
@@ -519,10 +556,9 @@ npm run build</code></pre>
   .platcard--pending {
     opacity: 0.78;
   }
-  .platcard__os {
-    font-weight: 650;
-    font-size: 1.02rem;
-    letter-spacing: -0.01em;
+  .platcard :global(.download-platform-icon) {
+    margin-bottom: 0.55rem;
+    transition: transform var(--dur-base) var(--ease);
   }
   .platcard__ver {
     font-size: 0.72rem;
@@ -557,27 +593,33 @@ npm run build</code></pre>
     margin-top: var(--s-5);
   }
   .jump a {
-    font-family: var(--font-mono);
-    font-size: 0.78rem;
-    letter-spacing: 0.02em;
-    color: var(--text-mute);
-    padding: 0.4rem 0.9rem;
-    border-radius: var(--r-pill);
-    border: 1px solid var(--ink-line);
-    background: rgba(10, 10, 15, 0.5);
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 0.85rem;
+    border: 0;
+    background: transparent;
     transition:
-      color var(--dur-base) var(--ease),
-      border-color var(--dur-base) var(--ease);
+      transform var(--dur-base) var(--ease),
+      filter var(--dur-base) var(--ease);
   }
   .jump a:hover,
   .jump a.jump--live:hover {
-    color: var(--ember-bright);
-    border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    transform: translateY(-3px);
+    filter: saturate(1.15);
   }
   .jump a.jump--live {
-    color: var(--ember-bright, var(--ember-core));
-    border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
-    background: color-mix(in oklab, var(--ember-core) 10%, transparent);
+    opacity: 1;
+  }
+
+  @media (min-width: 64rem) {
+    .pagehead__inner {
+      max-width: 68rem;
+    }
+    .platgrid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      max-width: 64rem;
+    }
   }
 
   /* ── Linux download tiles ── */
@@ -729,18 +771,23 @@ npm run build</code></pre>
     color: var(--ember-bright);
     border: 1px solid color-mix(in oklab, var(--ember-core) 45%, var(--ink-line));
     background:
-      radial-gradient(circle at 50% 35%, rgba(250, 107, 6, 0.18), transparent 70%), var(--ink-void);
-    box-shadow: inset 0 0 0 4px rgba(5, 5, 8, 0.9);
+      radial-gradient(
+        circle at 50% 35%,
+        color-mix(in oklab, var(--ember-core) 18%, transparent),
+        transparent 70%
+      ),
+      var(--glass-bg-elevated);
+    box-shadow: inset 0 0 0 4px color-mix(in oklab, var(--ink-void) 86%, transparent);
   }
   .step__card {
     padding: var(--s-4) var(--s-5);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top: 1px solid rgba(255, 255, 255, 0.14);
+    border: 1px solid var(--ink-line);
+    border-top: 1px solid var(--ink-line-bright);
     border-radius: var(--r-3);
-    background: rgba(10, 10, 15, 0.66);
+    background: var(--glass-bg-elevated);
     backdrop-filter: blur(20px) saturate(160%);
     -webkit-backdrop-filter: blur(20px) saturate(160%);
-    box-shadow: 0 14px 40px -18px rgba(0, 0, 0, 0.7);
+    box-shadow: var(--shadow-glass);
     display: grid;
     gap: var(--s-2);
     min-width: 0;
@@ -750,7 +797,7 @@ npm run build</code></pre>
   }
   .step__card:hover {
     transform: translateX(3px);
-    border-color: color-mix(in oklab, var(--ember-core) 28%, rgba(255, 255, 255, 0.08));
+    border-color: color-mix(in oklab, var(--ember-core) 28%, var(--ink-line));
   }
   .step__card h3 {
     font-family: var(--font-display);
@@ -785,10 +832,10 @@ npm run build</code></pre>
   .alt {
     margin-top: var(--s-5);
     max-width: 46rem;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top: 1px solid rgba(255, 255, 255, 0.14);
+    border: 1px solid var(--ink-line);
+    border-top: 1px solid var(--ink-line-bright);
     border-radius: var(--r-3);
-    background: rgba(10, 10, 15, 0.66);
+    background: var(--glass-bg-elevated);
     backdrop-filter: blur(20px) saturate(160%);
     -webkit-backdrop-filter: blur(20px) saturate(160%);
   }
@@ -823,13 +870,13 @@ npm run build</code></pre>
     max-width: 46rem;
     padding: var(--s-5);
     border-left: 3px solid var(--ember-bright);
-    border-top: 1px solid rgba(255, 255, 255, 0.12);
-    border-right: 1px solid rgba(255, 255, 255, 0.06);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    background: rgba(15, 10, 10, 0.66);
+    border-top: 1px solid var(--ink-line-bright);
+    border-right: 1px solid var(--ink-line);
+    border-bottom: 1px solid var(--ink-line);
+    background: color-mix(in oklab, var(--ember-core) 5%, var(--glass-bg-elevated));
     backdrop-filter: blur(20px) saturate(160%);
     -webkit-backdrop-filter: blur(20px) saturate(160%);
-    box-shadow: 0 14px 40px -18px rgba(0, 0, 0, 0.7);
+    box-shadow: var(--shadow-glass);
     border-radius: 0 var(--r-3) var(--r-3) 0;
     display: grid;
     gap: var(--s-2);
@@ -839,12 +886,26 @@ npm run build</code></pre>
   }
 
   @media (max-width: 720px) {
+    .pagehead__inner > * {
+      min-width: 0;
+      max-width: 100%;
+    }
+    .platgrid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
     .pagehead__h {
-      max-width: 11ch;
-      font-size: 2.75rem;
+      max-width: 100%;
+      font-size: clamp(2.1rem, 9vw, 2.4rem);
       letter-spacing: 0;
       overflow-wrap: normal;
       word-break: normal;
+    }
+    .pagehead__h > span {
+      display: block;
+    }
+    .pagehead__product {
+      overflow-wrap: normal;
+      word-break: keep-all;
     }
     .dlsec__head {
       flex-direction: column;
@@ -878,17 +939,17 @@ npm run build</code></pre>
   }
   .reqcard {
     padding: var(--s-5);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top: 1px solid rgba(255, 255, 255, 0.16);
+    border: 1px solid var(--ink-line);
+    border-top: 1px solid var(--ink-line-bright);
     border-radius: var(--r-3);
-    background: rgba(10, 10, 15, 0.66);
+    background: var(--glass-bg-elevated);
     backdrop-filter: blur(22px) saturate(170%);
     -webkit-backdrop-filter: blur(22px) saturate(170%);
-    box-shadow: 0 18px 48px -22px rgba(0, 0, 0, 0.7);
+    box-shadow: var(--shadow-glass);
     transition: border-color var(--dur-base) var(--ease);
   }
   .reqcard:hover {
-    border-color: color-mix(in oklab, var(--ember-core) 26%, rgba(255, 255, 255, 0.08));
+    border-color: color-mix(in oklab, var(--ember-core) 26%, var(--ink-line));
   }
   .reqcard h4 {
     font-family: var(--font-display);

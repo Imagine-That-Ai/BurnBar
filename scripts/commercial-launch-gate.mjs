@@ -24,6 +24,10 @@ import {
   evaluateFirebaseAppCheckServiceSet,
 } from "./lib/evaluate-firebase-app-check-enforcement.mjs";
 import {
+  alertDeliveryChannelFingerprint,
+  isAlertDeliveryChannelFingerprint,
+} from "./lib/alert-delivery-drill.mjs";
+import {
   VERIFIABLE_CHANNEL_TYPES,
   checkBillingAlerts,
   checkOpsAlerts,
@@ -50,6 +54,17 @@ const ALERT_DELIVERY_EVIDENCE_PATH =
 const ALERT_DELIVERY_TTL_HOURS = Number(
   process.env.OPENBURNBAR_ALERT_DELIVERY_TTL_HOURS || "168",
 );
+const GOOGLE_PLAY_RTDN_TOPIC_ID =
+  process.env.OPENBURNBAR_GOOGLE_PLAY_RTDN_TOPIC ||
+  "play-billing-notifications";
+const GOOGLE_PLAY_RTDN_TOPIC_NAME =
+  `projects/${PROJECT}/topics/${GOOGLE_PLAY_RTDN_TOPIC_ID}`;
+const GOOGLE_PLAY_RTDN_FUNCTION = "googlePlayDeveloperNotifications";
+const GOOGLE_PLAY_RTDN_PUBLISHER =
+  "serviceAccount:google-play-developer-notifications@system.gserviceaccount.com";
+const GOOGLE_PLAY_RTDN_TTL_FIELD =
+  `projects/${PROJECT}/databases/(default)/collectionGroups/` +
+  "google_play_rtdn_events/fields/expireAt";
 const LEGACY_HOSTED_QUOTA_PRODUCT_ID =
   "com.openburnbar.hostedQuotaSync.cloud.monthly";
 export const COMMERCIAL_PRODUCTS = Object.freeze({
@@ -167,15 +182,16 @@ const REQUIRED_CODEQL_CHECKS = [
   "Analyze (javascript-typescript)",
   "Analyze (python)",
 ];
-const REQUIRED_MAIN_GATE_CHECK = "openburnbar-pr";
+const REQUIRED_MAIN_GATE_CHECK = "BurnBar CI Gate";
 const GITHUB_ACTIONS_APP_SLUG = "github-actions";
 const REQUIRED_MAIN_GATE_WORKFLOW_PATHS = [
-  ".github/workflows/openburnbar-pr-harness.yml",
+  ".github/workflows/burnbar-ci-gate.yml",
 ];
 const REQUIRED_CODEQL_WORKFLOW_PATHS = [
   ".github/workflows/codeql.yml",
   ".github/workflows/codeql-pr.yml",
 ];
+const CHECK_RUNS_PAGE_SIZE = 100;
 const REQUIRED_GITHUB_SECURITY_SETTINGS = [
   "dependabot_security_updates",
   "secret_scanning",
@@ -199,9 +215,11 @@ const REQUIRED_FIREBASE_FUNCTIONS = [
   "evaluateComputerUseBudget",
   "evaluateMediaBudget",
   "computeTierCogsDaily",
+  GOOGLE_PLAY_RTDN_FUNCTION,
   "onUsageWritten",
   "performElderWandHostedSearch",
   "rebuildRollups",
+  "reconcileGooglePlayVoidedPurchasesDaily",
   "reconcileHostedEntitlementsDaily",
   "recomputeComputerUseQuotaUsage",
   "recomputeMediaQuotaUsage",
@@ -1022,9 +1040,97 @@ export function evaluateLatestMergedPrForMain({ mainSha, merged }) {
   return {
     ok: true,
     pr: merged.number,
+    mainSha,
     headSha: merged.head.sha,
-    checkedSha: mainSha,
+    checkedSha: merged.head.sha,
     mergeCommitSha: merged.merge_commit_sha,
+  };
+}
+
+export function evaluateMergedPrHeadTreeBinding({
+  mainSha,
+  headSha,
+  mainTreeSha,
+  headTreeSha,
+}) {
+  if (!mainSha || !headSha || !mainTreeSha || !headTreeSha) {
+    return {
+      ok: false,
+      mainSha: mainSha || null,
+      headSha: headSha || null,
+      mainTreeSha: mainTreeSha || null,
+      headTreeSha: headTreeSha || null,
+      error: "main/PR tree binding is incomplete",
+    };
+  }
+  if (mainTreeSha !== headTreeSha) {
+    return {
+      ok: false,
+      mainSha,
+      headSha,
+      mainTreeSha,
+      headTreeSha,
+      reason:
+        "the current main tree differs from the merged PR head tree; PR-head checks cannot certify the shipped main content",
+    };
+  }
+  return {
+    ok: true,
+    mainSha,
+    headSha,
+    mainTreeSha,
+    headTreeSha,
+    binding: "exact-git-tree",
+  };
+}
+
+export function selectMainOrMergedPrHeadCheck({
+  mainSha,
+  mainCheck,
+  latestPr,
+  mergedPrHeadCheck,
+}) {
+  // A present-but-pending, failed, or untrusted main check must fail closed.
+  // Only a structurally absent main check may use the exact merged PR head as
+  // evidence, and latestMergedPrForMainSha must first prove both that the PR
+  // produced the current origin/main commit and that both commits resolve to
+  // the exact same Git tree. Commit ancestry alone is not a shipped-content
+  // attestation.
+  if (mainCheck?.trust !== "missing-check-run") {
+    return {
+      ...mainCheck,
+      evidenceSource: "main",
+      checkedSha: mainSha,
+      fallbackUsed: false,
+    };
+  }
+
+  if (latestPr?.ok !== true || latestPr?.treeBinding?.ok !== true) {
+    return {
+      ...mainCheck,
+      ok: false,
+      evidenceSource: "main",
+      checkedSha: mainSha,
+      fallbackUsed: false,
+      fallbackError:
+        latestPr?.reason ||
+        latestPr?.error ||
+        latestPr?.treeBinding?.reason ||
+        latestPr?.treeBinding?.error ||
+        "latest merged PR could not be tied to origin/main",
+    };
+  }
+
+  return {
+    ...mergedPrHeadCheck,
+    evidenceSource: "merged-pr-head",
+    checkedSha: latestPr.headSha,
+    fallbackUsed: true,
+    pr: latestPr.pr,
+    mainSha,
+    mergeCommitSha: latestPr.mergeCommitSha,
+    treeBinding: latestPr.treeBinding,
+    mainCheck,
   };
 }
 
@@ -1081,6 +1187,158 @@ function checkGitHubSecuritySettings() {
   };
 }
 
+function latestMergedPrForMainSha(mainSha) {
+  const pulls = run("gh", [
+    "api",
+    "-H",
+    "Accept: application/vnd.github+json",
+    `/repos/${REPO}/pulls?state=closed&sort=updated&direction=desc&per_page=20`,
+  ]);
+  if (!pulls.ok) {
+    return {
+      ok: false,
+      error: pulls.stderr || pulls.stdout || pulls.error,
+    };
+  }
+  const merged = JSON.parse(pulls.stdout).find((pr) => pr.merged_at);
+  const latestPr = evaluateLatestMergedPrForMain({ mainSha, merged });
+  if (!latestPr.ok) return latestPr;
+
+  const mainCommit = ghJSON(`/repos/${REPO}/git/commits/${mainSha}`);
+  const headCommit = ghJSON(`/repos/${REPO}/git/commits/${latestPr.headSha}`);
+  const mainTreeSha =
+    mainCommit.ok && typeof mainCommit.value?.tree?.sha === "string"
+      ? mainCommit.value.tree.sha
+      : null;
+  const headTreeSha =
+    headCommit.ok && typeof headCommit.value?.tree?.sha === "string"
+      ? headCommit.value.tree.sha
+      : null;
+  const treeBinding = evaluateMergedPrHeadTreeBinding({
+    mainSha,
+    headSha: latestPr.headSha,
+    mainTreeSha,
+    headTreeSha,
+  });
+  if (!treeBinding.ok) {
+    return {
+      ...latestPr,
+      ok: false,
+      treeBinding,
+      error:
+        treeBinding.error ||
+        treeBinding.reason ||
+        mainCommit.error ||
+        headCommit.error ||
+        "could not bind merged PR head to the current main tree",
+    };
+  }
+  return { ...latestPr, treeBinding };
+}
+
+export function collectCompleteCheckRunPages(pages) {
+  if (!Array.isArray(pages) || pages.length === 0) {
+    return { ok: false, error: "check-runs response contained no pages" };
+  }
+  const totalCount = pages[0]?.total_count;
+  if (!Number.isInteger(totalCount) || totalCount < 0) {
+    return { ok: false, error: "check-runs response has invalid total_count" };
+  }
+
+  const byID = new Map();
+  for (const [index, page] of pages.entries()) {
+    if (page?.total_count !== totalCount) {
+      return {
+        ok: false,
+        error:
+          `check-runs total_count changed while paginating ` +
+          `(page 1: ${totalCount}, page ${index + 1}: ${page?.total_count})`,
+      };
+    }
+    if (!Array.isArray(page.check_runs)) {
+      return {
+        ok: false,
+        error: `check-runs page ${index + 1} has no check_runs array`,
+      };
+    }
+    for (const check of page.check_runs) {
+      if (!Number.isInteger(check?.id)) {
+        return {
+          ok: false,
+          error: `check-runs page ${index + 1} contains a check without an id`,
+        };
+      }
+      byID.set(check.id, check);
+    }
+  }
+
+  if (byID.size !== totalCount) {
+    return {
+      ok: false,
+      totalCount,
+      receivedUniqueCheckRuns: byID.size,
+      error:
+        `incomplete check-runs pagination: expected ${totalCount}, ` +
+        `received ${byID.size} unique checks`,
+    };
+  }
+  return {
+    ok: true,
+    totalCount,
+    pagesFetched: pages.length,
+    checkRuns: [...byID.values()],
+  };
+}
+
+function checkRunsForSha(sha) {
+  const pages = [];
+  let pageCount = 1;
+  for (let page = 1; page <= pageCount; page += 1) {
+    const runs = run("gh", [
+      "api",
+      "-H",
+      "Accept: application/vnd.github+json",
+      `/repos/${REPO}/commits/${sha}/check-runs?per_page=${CHECK_RUNS_PAGE_SIZE}&page=${page}`,
+    ]);
+    if (!runs.ok) {
+      return {
+        ok: false,
+        sha,
+        page,
+        error: runs.stderr || runs.stdout || runs.error,
+      };
+    }
+    let payload;
+    try {
+      payload = JSON.parse(runs.stdout);
+    } catch (error) {
+      return {
+        ok: false,
+        sha,
+        page,
+        error: `invalid check-runs JSON: ${error.message}`,
+      };
+    }
+    pages.push(payload);
+    if (page === 1) {
+      const totalCount = payload?.total_count;
+      if (!Number.isInteger(totalCount) || totalCount < 0) {
+        return {
+          ok: false,
+          sha,
+          page,
+          error: "check-runs response has invalid total_count",
+        };
+      }
+      pageCount = Math.max(
+        1,
+        Math.ceil(totalCount / CHECK_RUNS_PAGE_SIZE),
+      );
+    }
+  }
+  return { sha, ...collectCompleteCheckRunPages(pages) };
+}
+
 function checkLatestMergedPrGate() {
   const originMain = run("git", ["rev-parse", "origin/main"]);
   if (!originMain.ok) {
@@ -1090,39 +1348,71 @@ function checkLatestMergedPrGate() {
     };
   }
   const mainSha = originMain.stdout.trim();
-  const pulls = run("gh", [
-    "api",
-    "-H",
-    "Accept: application/vnd.github+json",
-    `/repos/${REPO}/pulls?state=closed&sort=updated&direction=desc&per_page=20`,
-  ]);
-  if (!pulls.ok) return { ok: false, error: pulls.stderr || pulls.stdout };
-  const merged = JSON.parse(pulls.stdout).find((pr) => pr.merged_at);
-  const latestPr = evaluateLatestMergedPrForMain({ mainSha, merged });
-  if (!latestPr.ok) return latestPr;
 
-  const checkedSha = latestPr.checkedSha;
-  const runs = run("gh", [
-    "api",
-    "-H",
-    "Accept: application/vnd.github+json",
-    `/repos/${REPO}/commits/${checkedSha}/check-runs?per_page=100`,
-  ]);
-  if (!runs.ok)
-    return { ok: false, pr: merged.number, error: runs.stderr || runs.stdout };
-  const checkRuns = JSON.parse(runs.stdout).check_runs || [];
-  const required = findTrustedCheckRun(
-    checkRuns,
+  // Prefer checks that already ran on origin/main itself (workflow_dispatch /
+  // push). Multi-PR squash stacks routinely make main's tree diverge from the
+  // latest PR head tree, so PR-head fallback is only valid under exact tree
+  // binding — same rule as checkMainRequiredGate.
+  const mainRuns = checkRunsForSha(mainSha);
+  if (!mainRuns.ok) return mainRuns;
+  const mainCheck = findTrustedCheckRun(
+    mainRuns.checkRuns,
     REQUIRED_MAIN_GATE_CHECK,
-    checkedSha,
+    mainSha,
     REQUIRED_MAIN_GATE_WORKFLOW_PATHS,
   );
+
+  let latestPr = null;
+  let mergedPrHeadCheck = null;
+  if (mainCheck.trust === "missing-check-run") {
+    latestPr = latestMergedPrForMainSha(mainSha);
+    if (latestPr.ok) {
+      const headRuns = checkRunsForSha(latestPr.headSha);
+      if (!headRuns.ok) {
+        return {
+          ...headRuns,
+          mainSha,
+          mainCheck,
+          latestMergedPr: latestPr,
+        };
+      }
+      mergedPrHeadCheck = findTrustedCheckRun(
+        headRuns.checkRuns,
+        REQUIRED_MAIN_GATE_CHECK,
+        latestPr.headSha,
+        REQUIRED_MAIN_GATE_WORKFLOW_PATHS,
+      );
+    } else {
+      // Surface the tree-binding / ancestry failure when main has no gate yet.
+      return {
+        ok: false,
+        mainSha,
+        mainCheck,
+        latestMergedPr: latestPr,
+        error:
+          latestPr.error ||
+          latestPr.reason ||
+          latestPr.treeBinding?.reason ||
+          "BurnBar CI Gate missing on main and latest merged PR cannot certify it",
+      };
+    }
+  }
+
+  const required = selectMainOrMergedPrHeadCheck({
+    mainSha,
+    mainCheck,
+    latestPr,
+    mergedPrHeadCheck,
+  });
   return {
     ok: required.ok === true,
-    pr: latestPr.pr,
-    headSha: latestPr.headSha,
-    mergeCommitSha: latestPr.mergeCommitSha,
-    checkedSha,
+    pr: latestPr?.pr ?? null,
+    mainSha,
+    headSha: latestPr?.headSha ?? null,
+    mergeCommitSha: latestPr?.mergeCommitSha ?? null,
+    treeBinding: latestPr?.treeBinding ?? null,
+    checkedSha: required.checkedSha,
+    evidenceSource: required.evidenceSource,
     openburnbarPr: required,
   };
 }
@@ -1136,23 +1426,48 @@ function checkMainRequiredGate() {
     };
   }
   const sha = originMain.stdout.trim();
-  const runs = run("gh", [
-    "api",
-    "-H",
-    "Accept: application/vnd.github+json",
-    `/repos/${REPO}/commits/${sha}/check-runs?per_page=100`,
-  ]);
-  if (!runs.ok) return { ok: false, sha, error: runs.stderr || runs.stdout };
-  const checkRuns = JSON.parse(runs.stdout).check_runs || [];
-  const required = findTrustedCheckRun(
-    checkRuns,
+  const mainRuns = checkRunsForSha(sha);
+  if (!mainRuns.ok) return mainRuns;
+  const mainCheck = findTrustedCheckRun(
+    mainRuns.checkRuns,
     REQUIRED_MAIN_GATE_CHECK,
     sha,
     REQUIRED_MAIN_GATE_WORKFLOW_PATHS,
   );
+  let latestPr = null;
+  let mergedPrHeadCheck = null;
+  if (mainCheck.trust === "missing-check-run") {
+    latestPr = latestMergedPrForMainSha(sha);
+    if (latestPr.ok) {
+      const headRuns = checkRunsForSha(latestPr.headSha);
+      if (!headRuns.ok) {
+        return {
+          ...headRuns,
+          mainSha: sha,
+          mainCheck,
+          latestMergedPr: latestPr,
+        };
+      }
+      mergedPrHeadCheck = findTrustedCheckRun(
+        headRuns.checkRuns,
+        REQUIRED_MAIN_GATE_CHECK,
+        latestPr.headSha,
+        REQUIRED_MAIN_GATE_WORKFLOW_PATHS,
+      );
+    }
+  }
+  const required = selectMainOrMergedPrHeadCheck({
+    mainSha: sha,
+    mainCheck,
+    latestPr,
+    mergedPrHeadCheck,
+  });
   return {
     ok: required.ok === true,
     sha,
+    checkedSha: required.checkedSha,
+    evidenceSource: required.evidenceSource,
+    latestMergedPr: latestPr,
     openburnbarPr: required,
   };
 }
@@ -1166,27 +1481,60 @@ function checkMainCodeQL() {
     };
   }
   const sha = originMain.stdout.trim();
-  const runs = run("gh", [
-    "api",
-    "-H",
-    "Accept: application/vnd.github+json",
-    `/repos/${REPO}/commits/${sha}/check-runs?per_page=100`,
-  ]);
-  if (!runs.ok) return { ok: false, sha, error: runs.stderr || runs.stdout };
+  const mainRuns = checkRunsForSha(sha);
+  if (!mainRuns.ok) return mainRuns;
 
-  const checkRuns = JSON.parse(runs.stdout).check_runs || [];
-  const checks = REQUIRED_CODEQL_CHECKS.map((name) => {
-    const check = findTrustedCheckRun(
-      checkRuns,
+  const mainChecks = REQUIRED_CODEQL_CHECKS.map((name) => ({
+    name,
+    check: findTrustedCheckRun(
+      mainRuns.checkRuns,
       name,
       sha,
       REQUIRED_CODEQL_WORKFLOW_PATHS,
-    );
-    return { name, ...check };
+    ),
+  }));
+  const needsMergedPrHead = mainChecks.some(
+    ({ check }) => check.trust === "missing-check-run",
+  );
+  let latestPr = null;
+  let headCheckRuns = [];
+  if (needsMergedPrHead) {
+    latestPr = latestMergedPrForMainSha(sha);
+    if (latestPr.ok) {
+      const headRuns = checkRunsForSha(latestPr.headSha);
+      if (!headRuns.ok) {
+        return {
+          ...headRuns,
+          mainSha: sha,
+          mainChecks,
+          latestMergedPr: latestPr,
+        };
+      }
+      headCheckRuns = headRuns.checkRuns;
+    }
+  }
+  const checks = mainChecks.map(({ name, check: mainCheck }) => {
+    const mergedPrHeadCheck =
+      mainCheck.trust === "missing-check-run" && latestPr?.ok === true
+        ? findTrustedCheckRun(
+            headCheckRuns,
+            name,
+            latestPr.headSha,
+            REQUIRED_CODEQL_WORKFLOW_PATHS,
+          )
+        : null;
+    const selected = selectMainOrMergedPrHeadCheck({
+      mainSha: sha,
+      mainCheck,
+      latestPr,
+      mergedPrHeadCheck,
+    });
+    return { name, ...selected };
   });
   return {
     ok: checks.every((check) => check.ok === true),
     sha,
+    latestMergedPr: latestPr,
     checks,
   };
 }
@@ -1383,15 +1731,43 @@ export function evaluateAlertDeliverabilityEvidence(evidence, requiredChannels, 
     failures.push("no verifiable alert notification channels were present in ops/billing alert checks");
   }
 
-  const evidenceByName = new Map(
-    channels
-      .filter((channel) => typeof channel?.name === "string")
-      .map((channel) => [channel.name, channel]),
-  );
+  // Published evidence carries no raw project, channel, or endpoint identity.
+  // Join it to the live GCP inventory through a deterministic SHA-256
+  // fingerprint instead. Exact raw-name matching remains only as a compatibility
+  // path for older local/private evidence.
+  const evidenceByFingerprint = new Map();
+  const legacyEvidenceByRawName = new Map();
+  for (const channel of channels) {
+    if (channel?.channelFingerprint !== undefined) {
+      if (!isAlertDeliveryChannelFingerprint(channel.channelFingerprint)) {
+        failures.push("evidence channelFingerprint is missing or invalid");
+      } else if (evidenceByFingerprint.has(channel.channelFingerprint)) {
+        failures.push(`duplicate evidence channelFingerprint: ${channel.channelFingerprint}`);
+      } else {
+        evidenceByFingerprint.set(channel.channelFingerprint, channel);
+      }
+    }
+    if (
+      typeof channel?.name === "string" &&
+      channel.name.trim() !== "" &&
+      !channel.name.includes("<redacted")
+    ) {
+      legacyEvidenceByRawName.set(channel.name, channel);
+    }
+  }
+
   const checkedChannels = (requiredChannels || []).map((required) => {
-    const channel = evidenceByName.get(required.name);
-    const deliveredAt = parseEvidenceTime(channel?.deliveredAt || channel?.confirmedAt);
     const problems = [];
+    let channelFingerprint = null;
+    try {
+      channelFingerprint = alertDeliveryChannelFingerprint(required);
+    } catch (error) {
+      problems.push(`cannot fingerprint required channel: ${error.message}`);
+    }
+    const channel =
+      (channelFingerprint && evidenceByFingerprint.get(channelFingerprint)) ||
+      legacyEvidenceByRawName.get(required.name);
+    const deliveredAt = parseEvidenceTime(channel?.deliveredAt || channel?.confirmedAt);
     if (!channel) {
       problems.push("missing from evidence");
     } else {
@@ -1410,6 +1786,7 @@ export function evaluateAlertDeliverabilityEvidence(evidence, requiredChannels, 
     failures.push(...problems.map((problem) => `${required.name}: ${problem}`));
     return {
       ...required,
+      channelFingerprint,
       deliveredAt: deliveredAt?.toISOString() || null,
       verifiedBy: channel?.verifiedBy || null,
       ok: problems.length === 0,
@@ -1671,6 +2048,11 @@ function checkCommercialBillingRuntime() {
   );
   const appStoreTopUp = deployedFunctionEnvironment("verifyCloudProTopUp");
   const webhook = deployedFunctionEnvironment("stripeBurnBarProWebhook");
+  // RTDN backstop: the daily voided-purchase sweep must be deployed so a
+  // missed Google Play refund/chargeback notification still revokes access.
+  const googlePlayVoidedSweep = deployedFunctionEnvironment(
+    "reconcileGooglePlayVoidedPurchasesDaily",
+  );
 
   const envSources = [
     checkout,
@@ -1709,6 +2091,7 @@ function checkCommercialBillingRuntime() {
       googlePlayRtdn.ok &&
       appStoreTopUp.ok &&
       webhook.ok &&
+      googlePlayVoidedSweep.ok &&
       envRequirements.ok &&
       stripeSecrets.ok,
     functions: {
@@ -1718,6 +2101,7 @@ function checkCommercialBillingRuntime() {
       googlePlayRtdn,
       appStoreTopUp,
       webhook,
+      googlePlayVoidedSweep,
     },
     envRequirements,
     stripeSecrets,
@@ -1799,6 +2183,157 @@ function checkRemoteConfigCaps() {
   }
 }
 
+function normalizedPubSubTopicName(value, project = PROJECT) {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const topic = value.trim();
+  return topic.startsWith("projects/")
+    ? topic
+    : `projects/${project}/topics/${topic}`;
+}
+
+export function evaluateGooglePlayRtdnReadiness(
+  {
+    topic,
+    iamPolicy,
+    functionDetails,
+    ttlFields,
+  },
+  options = {},
+) {
+  const project = options.project || PROJECT;
+  const topicID = options.topicID || GOOGLE_PLAY_RTDN_TOPIC_ID;
+  const expectedTopicName = `projects/${project}/topics/${topicID}`;
+  const expectedPublisher =
+    options.publisher || GOOGLE_PLAY_RTDN_PUBLISHER;
+  const expectedTtlField =
+    options.ttlField ||
+    `projects/${project}/databases/(default)/collectionGroups/` +
+      "google_play_rtdn_events/fields/expireAt";
+
+  const publisherBinding = (iamPolicy?.bindings || []).find(
+    (binding) =>
+      binding?.role === "roles/pubsub.publisher" &&
+      Array.isArray(binding.members) &&
+      binding.members.includes(expectedPublisher),
+  );
+  const triggerTopic = normalizedPubSubTopicName(
+    functionDetails?.eventTrigger?.eventFilters?.topic ||
+      functionDetails?.eventTrigger?.pubsubTopic,
+    project,
+  );
+  const configuredTopic =
+    functionDetails?.serviceConfig?.environmentVariables
+      ?.GOOGLE_PLAY_RTDN_TOPIC ?? null;
+  const ttlField = (Array.isArray(ttlFields) ? ttlFields : []).find(
+    (field) => field?.name === expectedTtlField,
+  );
+
+  const topicCheck = {
+    ok: topic?.name === expectedTopicName,
+    expected: expectedTopicName,
+    actual: topic?.name ?? null,
+  };
+  const publisherCheck = {
+    ok: Boolean(publisherBinding),
+    expected: expectedPublisher,
+    role: "roles/pubsub.publisher",
+  };
+  const functionCheck = {
+    ok:
+      functionDetails?.state === "ACTIVE" &&
+      triggerTopic === expectedTopicName &&
+      configuredTopic === topicID,
+    name: GOOGLE_PLAY_RTDN_FUNCTION,
+    state: functionDetails?.state ?? null,
+    triggerTopic,
+    expectedTriggerTopic: expectedTopicName,
+    configuredTopic,
+    expectedConfiguredTopic: topicID,
+  };
+  const ttlCheck = {
+    ok: ttlField?.ttlConfig?.state === "ACTIVE",
+    field: expectedTtlField,
+    state: ttlField?.ttlConfig?.state ?? "MISSING",
+  };
+
+  return {
+    ok:
+      topicCheck.ok &&
+      publisherCheck.ok &&
+      functionCheck.ok &&
+      ttlCheck.ok,
+    topic: topicCheck,
+    publisher: publisherCheck,
+    function: functionCheck,
+    ttl: ttlCheck,
+  };
+}
+
+function checkGooglePlayRtdnReadiness() {
+  const commands = {
+    topic: run("gcloud", [
+      "pubsub",
+      "topics",
+      "describe",
+      GOOGLE_PLAY_RTDN_TOPIC_NAME,
+      "--project",
+      PROJECT,
+      "--format=json",
+    ]),
+    iamPolicy: run("gcloud", [
+      "pubsub",
+      "topics",
+      "get-iam-policy",
+      GOOGLE_PLAY_RTDN_TOPIC_NAME,
+      "--project",
+      PROJECT,
+      "--format=json",
+    ]),
+    functionDetails: run("gcloud", [
+      "functions",
+      "describe",
+      GOOGLE_PLAY_RTDN_FUNCTION,
+      "--gen2",
+      "--region",
+      REGION,
+      "--project",
+      PROJECT,
+      "--format=json",
+    ]),
+    ttlFields: run("gcloud", [
+      "firestore",
+      "fields",
+      "ttls",
+      "list",
+      "--project",
+      PROJECT,
+      "--format=json",
+    ]),
+  };
+  const commandErrors = {};
+  const parsed = {};
+  for (const [name, result] of Object.entries(commands)) {
+    if (!result.ok) {
+      commandErrors[name] = compactCommandOutput(
+        result.stderr || result.stdout || result.error,
+      );
+      continue;
+    }
+    try {
+      parsed[name] = JSON.parse(result.stdout);
+    } catch (error) {
+      commandErrors[name] = `invalid JSON: ${error.message}`;
+    }
+  }
+
+  const evaluated = evaluateGooglePlayRtdnReadiness(parsed);
+  return {
+    ...evaluated,
+    ok: Object.keys(commandErrors).length === 0 && evaluated.ok,
+    commandErrors,
+  };
+}
+
 function checkFirebaseFunctionsInventory() {
   const result = run("firebase", [
     "functions:list",
@@ -1820,6 +2355,124 @@ function checkFirebaseFunctionsInventory() {
     missing,
     forbiddenPresent,
   };
+}
+
+export function evaluateFirebaseFunctionsSourceIdentity(
+  functions,
+  candidateCommit,
+) {
+  const expectedCommit = String(candidateCommit || "")
+    .trim()
+    .toLowerCase();
+  if (!/^[a-f0-9]{40}$/u.test(expectedCommit)) {
+    return {
+      ok: false,
+      candidateCommit: expectedCommit || null,
+      count: 0,
+      exactCount: 0,
+      missingMetadata: [],
+      invalidMetadata: [],
+      mismatchedByCommit: [],
+      error: "candidate commit must be a full 40-character Git SHA",
+    };
+  }
+  if (!Array.isArray(functions) || functions.length === 0) {
+    return {
+      ok: false,
+      candidateCommit: expectedCommit,
+      count: 0,
+      exactCount: 0,
+      missingMetadata: [],
+      invalidMetadata: [],
+      mismatchedByCommit: [],
+      error: "Firebase Functions inventory is empty or malformed",
+    };
+  }
+
+  const missingMetadata = [];
+  const invalidMetadata = [];
+  const mismatched = new Map();
+  let exactCount = 0;
+  for (const fn of functions) {
+    const functionName =
+      String(fn?.name || fn?.id || "")
+        .split("/")
+        .filter(Boolean)
+        .pop() || "(unknown)";
+    const deployedCommit = String(
+      fn?.serviceConfig?.environmentVariables?.OPENBURNBAR_SOURCE_COMMIT || "",
+    )
+      .trim()
+      .toLowerCase();
+    if (!deployedCommit) {
+      missingMetadata.push(functionName);
+      continue;
+    }
+    if (!/^[a-f0-9]{40}$/u.test(deployedCommit)) {
+      invalidMetadata.push(functionName);
+      continue;
+    }
+    if (deployedCommit === expectedCommit) {
+      exactCount += 1;
+      continue;
+    }
+    const names = mismatched.get(deployedCommit) || [];
+    names.push(functionName);
+    mismatched.set(deployedCommit, names);
+  }
+
+  const mismatchedByCommit = [...mismatched.entries()]
+    .map(([commit, functionNames]) => ({
+      commit,
+      count: functionNames.length,
+      functions: functionNames.sort(),
+    }))
+    .sort((left, right) => left.commit.localeCompare(right.commit));
+  missingMetadata.sort();
+  invalidMetadata.sort();
+
+  return {
+    ok:
+      exactCount === functions.length &&
+      missingMetadata.length === 0 &&
+      invalidMetadata.length === 0 &&
+      mismatchedByCommit.length === 0,
+    candidateCommit: expectedCommit,
+    count: functions.length,
+    exactCount,
+    missingMetadata,
+    invalidMetadata,
+    mismatchedByCommit,
+  };
+}
+
+function checkFirebaseFunctionsSourceIdentity(candidateCommit) {
+  const result = run("gcloud", [
+    "functions",
+    "list",
+    "--v2",
+    "--project",
+    PROJECT,
+    "--format=json",
+  ]);
+  if (!result.ok) {
+    return {
+      ok: false,
+      candidateCommit: candidateCommit || null,
+      error: result.stderr || result.stdout || result.error,
+    };
+  }
+  let functions;
+  try {
+    functions = JSON.parse(result.stdout);
+  } catch (error) {
+    return {
+      ok: false,
+      candidateCommit: candidateCommit || null,
+      error: `invalid Firebase Functions inventory JSON: ${error.message}`,
+    };
+  }
+  return evaluateFirebaseFunctionsSourceIdentity(functions, candidateCommit);
 }
 
 function checkLaunchEvidence() {
@@ -1933,8 +2586,9 @@ async function main() {
   const appStore = checkAppStore();
   const opsAlerts = checkOpsAlerts();
   const billingAlerts = checkBillingAlerts();
+  const repo = checkRepo();
   const checks = {
-    repo: checkRepo(),
+    repo,
     appStore,
     appStoreServerNotifications: checkAppStoreServerNotifications(appStore),
     firebaseAppCheck: checkFirebaseAppCheckEnforcement(),
@@ -1954,7 +2608,11 @@ async function main() {
     billingAlerts,
     alertDeliverability: checkAlertDeliverabilityEvidence([opsAlerts, billingAlerts]),
     firestoreDisasterRecovery: checkFirestoreDisasterRecovery(),
+    googlePlayRtdn: checkGooglePlayRtdnReadiness(),
     firebaseFunctionsInventory: checkFirebaseFunctionsInventory(),
+    firebaseFunctionsSourceIdentity: checkFirebaseFunctionsSourceIdentity(
+      repo.head,
+    ),
     launchEvidence: checkLaunchEvidence(),
   };
   const result = {

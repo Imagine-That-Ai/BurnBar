@@ -6,7 +6,7 @@ describe("endpoint authorization matrix", () => {
   it("has actionable authorization fields for every endpoint", () => {
     for (const entry of endpointAuthorizationMatrix) {
       expect(entry.trigger, entry.exportedName).toMatch(
-        /^(callable|http|scheduled|firestore-trigger|task-queue|provider-webhook)$/u,
+        /^(callable|http|scheduled|firestore-trigger|pubsub-trigger|task-queue|provider-webhook)$/u,
       );
       expect(entry.authMethod.trim(), entry.exportedName).not.toEqual("");
       expect(entry.appCheck, entry.exportedName).toMatch(/^(required|not-applicable|not-required)$/u);
@@ -23,5 +23,19 @@ describe("endpoint authorization matrix", () => {
     const names = endpointAuthorizationMatrix.map((entry) => entry.exportedName);
     const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
     expect(duplicates).toEqual([]);
+  });
+
+  it("tracks phone-control grant issuance and describes multi-controller ownership accurately", () => {
+    const enrollmentGrant = endpointAuthorizationMatrix.find(
+      (entry) => entry.exportedName === "issuePhoneControlEnrollmentGrant",
+    );
+    expect(enrollmentGrant).toMatchObject({
+      handlerModule: "callables/phoneControlCallables.ts",
+      objectIdsFromClient: ["hostDeviceId", "connectionId", "controllerDeviceId", "controllerPeerNodeId"],
+    });
+
+    for (const entry of endpointAuthorizationMatrix) {
+      expect(entry.ownershipCheck, entry.exportedName).not.toMatch(/\bsole trusted controller\b/iu);
+    }
   });
 });

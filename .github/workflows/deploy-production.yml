@@ -251,16 +251,12 @@ jobs:
             --profile "$DOMAIN_CORE_PROFILE" \
             --expected-candidate-commit "$CANDIDATE_COMMIT" \
             --expected-release-commit "$RELEASE_COMMIT" \
-            --expected-release-version "${RELEASE_TAG#v}" \
-            --expected-release-tag "$RELEASE_TAG" \
             --format json \
             --output "$profile"
           node scripts/ci/resolve-domain-core-build-profile.mjs \
             --profile "$DOMAIN_CORE_PROFILE" \
             --expected-candidate-commit "$CANDIDATE_COMMIT" \
             --expected-release-commit "$RELEASE_COMMIT" \
-            --expected-release-version "${RELEASE_TAG#v}" \
-            --expected-release-tag "$RELEASE_TAG" \
             --format github-env \
             --output "$RUNNER_TEMP/domain-core-functions.env"
           node - "$profile" "$GITHUB_OUTPUT" <<'NODE'
@@ -555,7 +551,12 @@ jobs:
       - name: BurnBar source provenance preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
 
+      # Product preflight (runtime readiness + signed counsel / owner-emergency
+      # legal) is required for real tag deploys only. Dry-runs prove tag binding,
+      # domain-core release-gate resolution, and source integrity without claiming
+      # the product lane is launch-ready.
       - name: BurnBar product release preflight
+        if: steps.tag.outputs.dry_run != 'true'
         run: python3 scripts/ci/check_burnbar_release_preflight.py
 
       - name: Verify dry-run attestations
@@ -582,6 +583,8 @@ jobs:
             --exclude 'node_modules/.bin/' \
             --exclude '.env*' \
             functions/ "$stage/functions/"
+          node scripts/ci/prepare-functions-runtime-package.mjs \
+            --functions-dir "$stage/functions"
           mkdir -p "$stage/sentry-cli"
           rsync -aL --delete \
             --exclude 'node_modules/.bin/' \

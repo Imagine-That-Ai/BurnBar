@@ -73,6 +73,7 @@ export {
   respondHermesGatewayApproval,
   reapHermesGatewayApprovals,
 } from "./callables/hermesGateway.js";
+export { writeSignalAtRestDocument } from "./callables/writeSignalAtRestDocument.js";
 
 export {
   createPiAgentPairing,
@@ -90,6 +91,7 @@ export {
   stripeBurnBarProWebhook,
 } from "./callables/stripe.js";
 export { googlePlayDeveloperNotifications } from "./googlePlayRtdn.js";
+export { reconcileGooglePlayVoidedPurchasesDaily } from "./googlePlayVoidedPurchaseReconciler.js";
 
 export {
   beginEncryptedSessionBlobUpload,
@@ -176,6 +178,7 @@ export {
   publishIrohPairingPublicKey,
   publishIrohPairingRecord,
   revokeIrohPairingRecord,
+  issuePhoneControlEnrollmentGrant,
   publishPhoneControlAuthority,
   issueIrohControllerRouteChallenge,
   registerIrohControllerRoute,
@@ -205,6 +208,19 @@ export {
   anchorAuditLogHeads,
   latestRouterRundown,
 } from "./scheduledExports.js";
+
+export {
+  onSignalMigrationConversationWritten,
+  onSignalMigrationChatThreadWritten,
+  onSignalMigrationMobileAssistantChatWritten,
+  onSignalMigrationCliSessionWritten,
+  onSignalMigrationMissionRequestWritten,
+  onSignalMigrationTextSnippetWritten,
+  onSignalMigrationRollbackRequestWritten,
+  onSignalMigrationApprovalPolicyWritten,
+  onSignalMigrationAgentIdentityWritten,
+  onSignalMigrationSubscriptionTopicWritten,
+} from "./signalMigrationTelemetry.js";
 
 export {
   beginEntitlementBinding,

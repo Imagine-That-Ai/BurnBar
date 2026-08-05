@@ -29,12 +29,31 @@ export const AUDIT_DIRS = [
   "services/hermes-realtime-relay",
   "services/hosted-mcp",
   "tools/app-store-connect",
+  "tools/hermes-platform-burnbar/signal-runtime",
   "tools/openburnbar-mcp-remote",
   "tools/schema-sync",
   "website",
 ];
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+/**
+ * Time-boxed advisory allowlist for findings with NO actionable fix.
+ *
+ * An entry only ever tolerates a finding whose ENTIRE via-chain resolves to
+ * allowlisted advisories, and only until its `expires` date (UTC): past that
+ * date the gate fails closed again, forcing re-evaluation instead of letting a
+ * suppression rot. Keep entries in sync with the osv-scanner.toml ignore list
+ * (same id, same expiry) and the rationale in docs/LINT_RATIONALE.md.
+ */
+// No advisories are currently tolerated. Every entry must be time-boxed
+// ({ reason, expires: "YYYY-MM-DD" }, keyed by GHSA id) and kept in sync with
+// the paired osv-scanner.toml ignore (same id, same expiry) plus the rationale
+// in docs/LINT_RATIONALE.md. The last entry (GHSA-mh99-v99m-4gvg,
+// brace-expansion DoS) was retired when the vendored callable shim in
+// functions/vendor/openburnbar/brace-expansion-cjs removed the final
+// vulnerable 1.x copies from the dependency tree.
+export const ADVISORY_ALLOWLIST = {};
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -52,7 +71,63 @@ function severeVulnerabilities(report) {
   );
 }
 
-export function classifyAuditResult({ dir, status, stdout, stderr, error }) {
+const GHSA_RE =
+  /GHSA-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}/i;
+
+export function activeAllowlistEntry(ghsaId, allowlist, now) {
+  const entry = allowlist[ghsaId];
+  if (!isObject(entry)) return null;
+  // An unparseable expiry is treated as already expired: fail closed.
+  const expires = Date.parse(`${entry.expires}T23:59:59Z`);
+  if (Number.isNaN(expires) || now.getTime() > expires) return null;
+  return entry;
+}
+
+/**
+ * A vulnerability entry is tolerated iff EVERY advisory object in its
+ * transitive via-chain resolves to an active allowlist entry. String vias name
+ * another vulnerable package; that package's own entry must itself be fully
+ * tolerated. Anything unresolvable (missing package, cycle, advisory without a
+ * GHSA id) fails closed.
+ */
+function isTolerated(
+  name,
+  vulnerabilities,
+  allowlist,
+  now,
+  visiting = new Set(),
+) {
+  if (visiting.has(name)) return false;
+  const vulnerability = vulnerabilities[name];
+  if (
+    !isObject(vulnerability) ||
+    !Array.isArray(vulnerability.via) ||
+    vulnerability.via.length === 0
+  ) {
+    return false;
+  }
+  visiting.add(name);
+  try {
+    for (const via of vulnerability.via) {
+      if (typeof via === "string") {
+        if (!isTolerated(via, vulnerabilities, allowlist, now, visiting))
+          return false;
+        continue;
+      }
+      if (!isObject(via)) return false;
+      const ghsa = `${via.url ?? ""}`.match(GHSA_RE);
+      if (!ghsa || !activeAllowlistEntry(ghsa[0], allowlist, now)) return false;
+    }
+    return true;
+  } finally {
+    visiting.delete(name);
+  }
+}
+
+export function classifyAuditResult(
+  { dir, status, stdout, stderr, error },
+  { allowlist = ADVISORY_ALLOWLIST, now = new Date() } = {},
+) {
   if (error) {
     return {
       ok: false,
@@ -88,13 +163,37 @@ export function classifyAuditResult({ dir, status, stdout, stderr, error }) {
   }
 
   const severe = severeVulnerabilities(report);
-  if (severe.length > 0) {
+  const vulnerabilities = isObject(report.vulnerabilities)
+    ? report.vulnerabilities
+    : {};
+  const tolerated = severe.filter(([name]) =>
+    isTolerated(name, vulnerabilities, allowlist, now),
+  );
+  const blocking = severe.filter(
+    ([name]) => !tolerated.some(([toleratedName]) => toleratedName === name),
+  );
+  if (blocking.length > 0) {
     return {
       ok: false,
       retryable: false,
       messages: [
         `High/critical vulnerabilities found in ${dir}:`,
-        ...severe.map(
+        ...blocking.map(
+          ([name, vulnerability]) => `  ${name}: ${vulnerability.severity}`,
+        ),
+      ],
+    };
+  }
+
+  if (tolerated.length > 0) {
+    // npm audit exits non-zero for these findings, but every one of them
+    // resolves to a time-boxed allowlist entry: pass, loudly.
+    return {
+      ok: true,
+      retryable: false,
+      messages: [
+        `Tolerated allowlisted advisories in ${dir} (time-boxed, see ADVISORY_ALLOWLIST):`,
+        ...tolerated.map(
           ([name, vulnerability]) => `  ${name}: ${vulnerability.severity}`,
         ),
       ],
@@ -141,7 +240,12 @@ function sleepSeconds(seconds) {
  */
 export function runWithRetries(
   attempt,
-  { attempts = AUDIT_ATTEMPTS, sleep = sleepSeconds, log = console.log, label = "npm audit" } = {},
+  {
+    attempts = AUDIT_ATTEMPTS,
+    sleep = sleepSeconds,
+    log = console.log,
+    label = "npm audit",
+  } = {},
 ) {
   let result = attempt();
   for (let index = 1; index < attempts && result.retryable; index += 1) {
@@ -181,7 +285,9 @@ function auditDirectory(repoRoot, dir) {
     return {
       ok: false,
       retryable: false,
-      messages: [`Configured npm audit directory is missing package-lock.json: ${dir}`],
+      messages: [
+        `Configured npm audit directory is missing package-lock.json: ${dir}`,
+      ],
     };
   }
 

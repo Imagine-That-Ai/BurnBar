@@ -91,11 +91,12 @@ const LIBSIGNAL_ROLLOUT_STATUS = "wired in, not activated in production";
 // ---------------------------------------------------------------------------
 // "Wired in" is evidence-checked, not asserted: the at-rest dual-write code,
 // the per-domain kill switch, the Admin-SDK validator, the rules-layer
-// direct-write block, and the bridge must all exist in-tree, or the phrase may
-// not ship. Firestore rules intentionally do NOT accept direct client
-// `signalEnvelope` writes anymore; sanctioned producers must go through the
-// Admin validator, which can deep-validate recipient wraps that rules cannot
-// iterate.
+// exact-path gate, and the bridge must all exist in-tree, or the phrase may
+// not ship. Firestore rules accept direct client `signalEnvelope` writes ONLY
+// through the exact owner/path-bound mirror gate; legacy validators keep the
+// direct-write block, and expression-budget-constrained domains (mission
+// requests) must go through the Admin/callable validator, which deep-validates
+// recipient wraps that rules cannot iterate.
 // ---------------------------------------------------------------------------
 
 const WIRED_IN_EVIDENCE = [
@@ -119,9 +120,10 @@ if (!macPayloads.includes("signal_at_rest_")) {
 const rules = readFileSync(join(REPO_ROOT, "firestore.rules"), "utf8");
 if (
   !rules.includes("function forbidsDirectSignalEnvelope") ||
-  !rules.includes('!("signalEnvelope" in request.resource.data)')
+  !rules.includes('!("signalEnvelope" in request.resource.data)') ||
+  !rules.includes("function validDirectSignalAtRestEnvelope")
 ) {
-  fail('firestore.rules no longer blocks direct signalEnvelope writes — "wired in" is unbacked');
+  fail('firestore.rules no longer path-gates direct signalEnvelope writes — "wired in" is unbacked');
 }
 const adminValidator = readFileSync(join(REPO_ROOT, "functions", "src", "signalAtRestWrite.ts"), "utf8");
 if (
@@ -140,7 +142,7 @@ const adminValidatorTests = readFileSync(
 if (
   !adminValidatorTests.includes("rejects binding relocation") ||
   !adminValidatorTests.includes("rejects deep per-wrap corruption") ||
-  !adminValidatorTests.includes("STRIPS additive pollution")
+  !adminValidatorTests.includes("rejects additive pollution")
 ) {
   fail(
     'signalAtRestWrite tests no longer prove relocation, wrap, and pollution rejection — "wired in" is unbacked'
@@ -148,12 +150,23 @@ if (
 }
 const firestoreRulesTests = readFileSync(join(REPO_ROOT, "functions", "scripts", "test-firestore-rules.mjs"), "utf8");
 if (
-  !firestoreRulesTests.includes("signalEnvelope is rejected on mobile_assistant_chats direct writes") ||
-  !firestoreRulesTests.includes("signalEnvelope is rejected on cli_agent_mission_requests direct writes") ||
-  !firestoreRulesTests.includes("signalEnvelope is rejected on chat_threads + conversations direct writes")
+  !firestoreRulesTests.includes("signalEnvelope is accepted on exact mobile_assistant_chats direct writes") ||
+  !firestoreRulesTests.includes("signalEnvelope is accepted only on exact chat_threads + conversations paths")
 ) {
   fail(
-    'Firestore rules tests no longer prove direct signalEnvelope rejection on wired collections — "wired in" is unbacked'
+    'Firestore rules tests no longer prove exact-path signalEnvelope gating (relocation/pollution rejection) on wired collections — "wired in" is unbacked'
+  );
+}
+const missionCallable = readFileSync(
+  join(REPO_ROOT, "functions", "src", "callables", "writeSignalAtRestDocument.ts"),
+  "utf8"
+);
+if (
+  !missionCallable.includes("assertSignalAtRestEnvelopeForWrite") ||
+  !missionCallable.includes("cli_agent_mission_requests")
+) {
+  fail(
+    'the mission callable boundary no longer deep-validates cli_agent_mission_requests signalEnvelope writes — "wired in" is unbacked'
   );
 }
 

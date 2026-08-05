@@ -26,7 +26,7 @@ import {
 } from "../appCheckAttestation.js";
 import { db } from "../adminRuntime.js";
 import { logInfo, logWarn, wrapCallableHandler } from "../logging.js";
-import { boundedTrimmedString } from "./shared.js";
+import { boundedTrimmedString } from "./shared/validators.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import {
   ESCROW_PLATFORMS,

@@ -283,6 +283,44 @@ final class DownloadSyncServiceRollupTotalsTests: XCTestCase {
         )
     }
 
+    // MARK: - 9. Integer-stored costUsd decodes as Double
+
+    /// Firestore stores whole-dollar totals as integer NSNumbers. The decode
+    /// path (JSONSerialization + JSONDecoder) must surface them as `Double`
+    /// rather than failing the whole rollup decode.
+    func test_fetchCloudTotal_integerStoredCostDecodesAsDouble() async throws {
+        seedRollupWithIntegerCost(100)
+
+        let downloadSync = makeDownloadSync()
+        await downloadSync.fetchCloudTotal()
+
+        XCTAssertEqual(
+            downloadSync.cloudTotalCost,
+            100.0,
+            "An integer-stored totals.costUsd must decode as Double"
+        )
+    }
+
+    // MARK: - 10. Undecodable rollup yields nil
+
+    /// A rollup doc that exists but cannot decode as `UsageRollupDoc` (here,
+    /// `totals` is a string instead of a map) must degrade to `nil` rather
+    /// than crash or report a stale or zero total.
+    func test_fetchCloudTotal_undecodableRollupReturnsNil() async throws {
+        fakeGateway.setDocumentData(
+            ["totals": "not-a-map", "schemaVersion": 1],
+            at: "users/test-uid-1/usage_rollups/90d"
+        )
+
+        let downloadSync = makeDownloadSync()
+        await downloadSync.fetchCloudTotal()
+
+        XCTAssertNil(
+            downloadSync.cloudTotalCost,
+            "An undecodable rollup must produce nil, not a crash or 0.0"
+        )
+    }
+
     // MARK: - Helpers
 
     /// Seeds a rollup doc at `users/test-uid-1/usage_rollups/90d` with the given
@@ -296,6 +334,21 @@ final class DownloadSyncServiceRollupTotalsTests: XCTestCase {
             "modelSummaries": [["provider": "cursor", "model": "gpt-4", "requests": 50, "tokens": 25000, "cost": costUsd / 2] as [String: Any]],
             "deviceSummaries": [["deviceId": "test-device-1", "requests": 50, "tokens": 25000] as [String: Any]],
             "dailyPoints": ["2026-07-15": costUsd] as [String: Any],
+            "computedAt": "2026-07-15T12:00:00.000Z",
+            "schemaVersion": 1
+        ]
+        fakeGateway.setDocumentData(data, at: "users/test-uid-1/usage_rollups/90d")
+    }
+
+    /// Seeds a rollup doc whose `totals.costUsd` is stored as an integer
+    /// NSNumber, the shape Firestore uses for whole-dollar totals.
+    private func seedRollupWithIntegerCost(_ costUsd: Int) {
+        let data: [String: Any] = [
+            "totals": ["requests": 100, "tokens": 50000, "costUsd": costUsd] as [String: Any],
+            "providerSummaries": [["provider": "cursor", "providerID": "cursor", "totalRequests": 50, "totalTokens": 25000, "totalCost": Double(costUsd) / 2] as [String: Any]],
+            "modelSummaries": [["provider": "cursor", "model": "gpt-4", "requests": 50, "tokens": 25000, "cost": Double(costUsd) / 2] as [String: Any]],
+            "deviceSummaries": [["deviceId": "test-device-1", "requests": 50, "tokens": 25000] as [String: Any]],
+            "dailyPoints": ["2026-07-15": Double(costUsd)] as [String: Any],
             "computedAt": "2026-07-15T12:00:00.000Z",
             "schemaVersion": 1
         ]

@@ -12,12 +12,13 @@ import { createHash, createPublicKey, verify as verifySignature } from "node:cry
 import { HttpsError } from "firebase-functions/v2/https";
 
 import { recordOrUndefined } from "../guards.js";
-import { boundedTrimmedString } from "./shared.js";
+import { boundedTrimmedString } from "./shared/validators.js";
 
 export const ESCROW_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android", "Linux"]);
 export const ESCROW_WEB_PLATFORM = "Web";
 export const IROH_HOST_ESCROW_PLATFORMS = new Set(["macOS", "Linux"]);
 export const PHONE_CONTROL_ESCROW_PLATFORMS = new Set(["iOS", "iPadOS", "Android"]);
+export const IROH_CONTROLLER_DEVICE_LIMIT = 16;
 export const LOCAL_AUTH_PROOF_FRESHNESS_SECONDS = 5 * 60;
 export const LOCAL_AUTH_PROOF_CLOCK_SKEW_SECONDS = 30;
 

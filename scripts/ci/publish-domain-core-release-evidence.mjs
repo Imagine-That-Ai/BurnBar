@@ -98,6 +98,99 @@ function validateActivationBinding(value, candidate, releaseCommit, label) {
   return activation;
 }
 
+function validateAppStoreConnectReceipt(
+  raw,
+  { domain, release, candidate, activation, artifactSha256 },
+) {
+  const receipt = exactObject(
+    raw,
+    [
+      "schemaVersion",
+      "status",
+      "processedStatus",
+      "deliveryId",
+      "archiveSha256",
+      "ipaSha256",
+      "uploadResponseSha256",
+      "statusResponseSha256",
+      "release",
+      "candidate",
+      "activation",
+      "loadedRustIdentity",
+    ],
+    `App Store Connect receipt for ${domain}`,
+  );
+  const loaded = exactObject(
+    receipt.loadedRustIdentity,
+    [
+      "schemaVersion",
+      "verificationKind",
+      "bundleId",
+      "version",
+      "buildNumber",
+      "executable",
+      "architectures",
+      "executableSha256",
+      "identitySectionSha256",
+      "identitySymbols",
+      "candidate",
+      "observed",
+    ],
+    `loaded Rust slice identity for ${domain}`,
+  );
+  const expectedSymbols = [
+    "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
+    "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+    "uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit",
+    "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
+    "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version",
+  ];
+  if (
+    receipt.schemaVersion !== 1 ||
+    receipt.status !== "processed" ||
+    ![
+      "complete",
+      "completed",
+      "processed",
+      "processing complete",
+      "success",
+      "succeeded",
+    ].includes(receipt.processedStatus) ||
+    typeof receipt.deliveryId !== "string" ||
+    receipt.deliveryId.length === 0 ||
+    receipt.archiveSha256 !== artifactSha256 ||
+    !SHA256.test(receipt.ipaSha256) ||
+    !SHA256.test(receipt.uploadResponseSha256) ||
+    !SHA256.test(receipt.statusResponseSha256) ||
+    !isDeepStrictEqual(receipt.release, {
+      version: release.version,
+      tag: release.tag,
+      commit: release.commit,
+    }) ||
+    !isDeepStrictEqual(receipt.candidate, candidate) ||
+    !isDeepStrictEqual(receipt.activation, activation) ||
+    loaded.schemaVersion !== 1 ||
+    loaded.verificationKind !== "ios-loaded-rust-slice-identity" ||
+    typeof loaded.bundleId !== "string" ||
+    loaded.bundleId.length === 0 ||
+    loaded.version !== release.version ||
+    typeof loaded.buildNumber !== "string" ||
+    loaded.buildNumber.length === 0 ||
+    loaded.executable !== "OpenBurnBarMobile" ||
+    !isDeepStrictEqual(loaded.architectures, ["arm64"]) ||
+    !SHA256.test(loaded.executableSha256) ||
+    !SHA256.test(loaded.identitySectionSha256) ||
+    !isDeepStrictEqual(loaded.identitySymbols, expectedSymbols) ||
+    !isDeepStrictEqual(loaded.candidate, candidate) ||
+    !isDeepStrictEqual(loaded.observed, candidate)
+  ) {
+    throw new Error(
+      `predicate for ${domain} does not bind the processed App Store Connect receipt, archive, activation, and loaded Rust slice`,
+    );
+  }
+  return receipt;
+}
+
 function validatePredicate(
   predicate,
   manifest,
@@ -122,11 +215,13 @@ function validatePredicate(
     "release",
   ];
   if (manifest.consumer === "android") predicateKeys.push("androidUniversal");
+  if (manifest.consumer === "ios") predicateKeys.push("appStoreConnectReceipt");
   const value = exactObject(
     predicate,
     predicateKeys,
     `predicate for ${domain}`,
   );
+  const artifactSha256 = sha256File(artifactPath);
   const candidate = validateDomainCoreCandidateIdentity(value.candidate);
   const activation = validateActivationBinding(
     value.activation,
@@ -207,6 +302,15 @@ function validatePredicate(
     throw new Error(
       `predicate for ${domain} does not bind its Rust-active public profile`,
     );
+  }
+  if (manifest.consumer === "ios") {
+    validateAppStoreConnectReceipt(value.appStoreConnectReceipt, {
+      domain,
+      release,
+      candidate,
+      activation,
+      artifactSha256,
+    });
   }
   const sourceRun = exactObject(
     value.sourceRun,

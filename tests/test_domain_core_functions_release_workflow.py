@@ -75,6 +75,13 @@ class DomainCoreFunctionsReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("--expected-release-version", verifier)
         self.assertIn("--expected-release-tag", verifier)
 
+    def test_selected_functions_profile_stays_release_free(self) -> None:
+        deploy = workflow(DEPLOY)["jobs"]["prepare-functions-deploy"]
+        profile = step(deploy, "Resolve exact signed Functions profile")["run"]
+        self.assertIn("--expected-release-commit", profile)
+        self.assertNotIn("--expected-release-version", profile)
+        self.assertNotIn("--expected-release-tag", profile)
+
     def test_deploy_health_and_dispatch_bind_exact_receipt(self) -> None:
         source = DEPLOY.read_text(encoding="utf-8")
         required = (

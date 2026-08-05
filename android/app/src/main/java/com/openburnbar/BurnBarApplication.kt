@@ -15,6 +15,10 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.messaging.FirebaseMessaging
 import com.openburnbar.data.budget.BudgetNotificationCenter
+import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistration
+import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
+import com.openburnbar.data.cloud.MercuryDeviceRegistrationPreflight
+import com.openburnbar.data.cloud.MercuryDeviceRegistrationState
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import com.openburnbar.data.computeruse.IrohControllerRouteRegistrarProvider
 import com.openburnbar.data.hermes.HermesAuthLifecycleRegistry
@@ -36,9 +40,13 @@ import com.openburnbar.irohrelay.OpenBurnBarIrohNativeContext
 import com.openburnbar.remote.BurnBarRemoteBridge
 import com.openburnbar.services.media.AgentReplyNotificationState
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -81,6 +89,8 @@ internal object IrohPairingSelection {
 }
 
 internal object ControllerAuthStatePolicy {
+    fun shouldReconcile(previousUid: String?, nextUid: String?): Boolean = previousUid != nextUid
+
     fun isCurrent(expectedUid: String?, expectedEpoch: Long, currentUid: String?, currentEpoch: Long): Boolean =
         expectedUid == currentUid && expectedEpoch == currentEpoch
 }
@@ -107,8 +117,19 @@ class BurnBarApplication : Application() {
         private const val DEVICE_ID_PREF_KEY = "stable_device_id"
         private const val MEDIA_CONTROL_DIAL_TIMEOUT_MILLIS = 15_000L
         private const val LOG_NODE_ID_PREFIX_LENGTH = 12
+        private const val LOG_UID_PREFIX_LENGTH = 8
 
         @Volatile internal var mediaControlCoordinator: MediaControlStreamCoordinator? = null
+
+        private val _mercuryDeviceRegistrationState =
+            MutableStateFlow<MercuryDeviceRegistrationState>(MercuryDeviceRegistrationState.Idle)
+        internal val mercuryDeviceRegistrationState: StateFlow<MercuryDeviceRegistrationState> =
+            _mercuryDeviceRegistrationState.asStateFlow()
+
+        /** Publish hook for the trust-observer extension in `BurnBarApplicationMercuryTrustSections.kt`. */
+        internal fun publishMercuryDeviceRegistrationState(state: MercuryDeviceRegistrationState) {
+            _mercuryDeviceRegistrationState.value = state
+        }
 
         // RR-7b — the live PhoneControlSender for the currently paired Mac, published by the mirror
         // surfaces (ScreenShareViewer / InlineAgentMirror) when a control stream is established and
@@ -151,9 +172,12 @@ class BurnBarApplication : Application() {
     }
 
     private var pairingListener: ListenerRegistration? = null
+
+    /** Escrow trust-state observer; lives alongside the pairing listener and shares its teardown. */
+    internal var escrowTrustListener: ListenerRegistration? = null
     private var authListener: FirebaseAuth.AuthStateListener? = null
     private var controllerRouteAuthUid: String? = null
-    private val controllerAuthTransitionLock = Mutex()
+    internal val controllerAuthTransitionLock = Mutex()
     private val controllerAuthEpoch = AtomicLong()
     internal val controlTransportPool by lazy {
         RetainedIrohControlTransportPool { relayURL ->
@@ -221,16 +245,26 @@ class BurnBarApplication : Application() {
         // iOS `MobileCloudVaultSignalPayloads.signalSealingIsEnabled`. Source-aware
         // and DEFAULT-OFF: a STATIC value (no remote value fetched, no in-app
         // default registered) resolves false, so the producer path only emits
-        // Signal envelopes once an operator explicitly flips the flag true. Any
+        // Signal envelopes once an operator explicitly flips the flag true. The
+        // global (`signal_at_rest_v1_hard_kill`) and per-domain
+        // (`signal_at_rest_<id>_hard_kill`) hard-kill flags win over the enabled
+        // flag, matching the iOS/macOS activation readers — a hard kill flips
+        // every Android producer off without touching the per-domain ramp. Any
         // Firebase failure also resolves false — Android stays fail-closed.
         com.openburnbar.data.cloud.AndroidCloudVaultSignalPayloads.signalAtRestActivationProvider = { domainID ->
             runCatching {
-                val value = com.google.firebase.remoteconfig.FirebaseRemoteConfig.getInstance()
-                    .getValue("signal_at_rest_${domainID}_enabled")
-                if (value.source == com.google.firebase.remoteconfig.FirebaseRemoteConfig.VALUE_SOURCE_STATIC) {
+                val config = com.google.firebase.remoteconfig.FirebaseRemoteConfig.getInstance()
+                val hardKill = config.getValue("signal_at_rest_v1_hard_kill").asBoolean() ||
+                    config.getValue("signal_at_rest_${domainID}_hard_kill").asBoolean()
+                if (hardKill) {
                     false
                 } else {
-                    value.asBoolean()
+                    val value = config.getValue("signal_at_rest_${domainID}_enabled")
+                    if (value.source == com.google.firebase.remoteconfig.FirebaseRemoteConfig.VALUE_SOURCE_STATIC) {
+                        false
+                    } else {
+                        value.asBoolean()
+                    }
                 }
             }.getOrDefault(false)
         }
@@ -278,6 +312,10 @@ class BurnBarApplication : Application() {
     private fun installAuthListener() {
         val listener = FirebaseAuth.AuthStateListener { auth ->
             val uid = auth.currentUser?.uid
+            if (!ControllerAuthStatePolicy.shouldReconcile(previousUid = controllerRouteAuthUid, nextUid = uid)) {
+                Log.i("BurnBar", "Mercury auth callback ignored for unchanged uid=${uid?.take(LOG_UID_PREFIX_LENGTH) ?: "signed-out"}")
+                return@AuthStateListener
+            }
             val epoch = controllerAuthEpoch.incrementAndGet()
             val gate = IrohControllerRouteRegistrarProvider.holdAuthTransitionGate()
             val hermesGate = HermesAuthLifecycleRegistry.holdAuthTransitionGate()
@@ -321,15 +359,21 @@ class BurnBarApplication : Application() {
                 if (!controllerAuthStateIsCurrent(uid = uid, epoch = epoch)) return@withLock
                 IrohControllerRouteRegistrarProvider.releaseAuthTransitionGate(gate)
                 if (uid == null) {
+                    _mercuryDeviceRegistrationState.value = MercuryDeviceRegistrationState.Idle
                     BurnBarWidgetSyncWorker.clearAndRefresh(applicationContext)
                     return@withLock
                 }
-                runCatching { ComputerUseSecurityCallableClient().bindAppCheckAttestation() }
-                    .onFailure { error ->
-                        Log.w("BurnBar", "App Check attestation bind failed: ${error.message}")
-                    }
+                val registration = registerMercuryDeviceBeforePairing(uid = uid, epoch = epoch)
+                if (registration == null) {
+                    // Don't strand this sign-in in Failed until the next auth
+                    // transition: retry the preflight with backoff.
+                    scheduleMercuryRegistrationRetry(uid = uid, epoch = epoch, attempt = 1)
+                    return@withLock
+                }
                 if (controllerAuthStateIsCurrent(uid = uid, epoch = epoch)) {
+                    // Restart first: it tears down both listeners before re-arming pairing.
                     restartPairingListener(uid = uid, epoch = epoch)
+                    observeEscrowDeviceTrust(uid = uid, epoch = epoch, deviceId = registration.deviceId)
                 }
             }
         } finally {
@@ -338,7 +382,32 @@ class BurnBarApplication : Application() {
         }
     }
 
-    private fun restartPairingListener(uid: String, epoch: Long) {
+    internal suspend fun registerMercuryDeviceBeforePairing(uid: String, epoch: Long): AndroidEscrowDeviceRegistration? {
+        val securityClient = ComputerUseSecurityCallableClient()
+        val registrationPreflight =
+            MercuryDeviceRegistrationPreflight { expectedUid ->
+                securityClient.bindAppCheckAttestation(expectedUid)
+                AndroidEscrowDeviceRegistry(securityClient = securityClient)
+                    .registerSelf(uid = expectedUid)
+            }
+        return runCatching {
+            registrationPreflight.run(uid = uid) { state ->
+                if (controllerAuthStateIsCurrent(uid = uid, epoch = epoch)) {
+                    _mercuryDeviceRegistrationState.value = state
+                }
+            }
+        }.getOrElse { registrationFailure ->
+            if (registrationFailure is CancellationException) throw registrationFailure
+            Log.w(
+                "BurnBar",
+                "Mercury Android registration preflight failed; pairing remains stopped: ${registrationFailure.message}",
+                registrationFailure,
+            )
+            null
+        }
+    }
+
+    internal fun restartPairingListener(uid: String, epoch: Long) {
         tearDownPairingListener()
         pairingListener = FirebaseFirestore.getInstance()
             .collection("users").document(uid)
@@ -381,9 +450,11 @@ class BurnBarApplication : Application() {
     private fun tearDownPairingListener() {
         pairingListener?.remove()
         pairingListener = null
+        escrowTrustListener?.remove()
+        escrowTrustListener = null
     }
 
-    private fun controllerAuthStateIsCurrent(uid: String?, epoch: Long): Boolean = ControllerAuthStatePolicy.isCurrent(
+    internal fun controllerAuthStateIsCurrent(uid: String?, epoch: Long): Boolean = ControllerAuthStatePolicy.isCurrent(
         expectedUid = uid,
         expectedEpoch = epoch,
         currentUid = FirebaseAuth.getInstance().currentUser?.uid,
@@ -604,11 +675,7 @@ internal object MediaControlCoordinatorReusePolicy {
     ): Boolean {
         if (phase == null) return false
         if (activeConnectionID != selection.connectionId) return false
-        return if (forceRestart) {
-            phase is MediaControlStreamCoordinator.Phase.Live ||
-                phase is MediaControlStreamCoordinator.Phase.Dialing
-        } else {
-            phase.isActiveOrConnecting()
-        }
+        if (forceRestart) return false
+        return phase.isActiveOrConnecting()
     }
 }

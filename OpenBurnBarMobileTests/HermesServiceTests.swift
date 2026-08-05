@@ -3624,6 +3624,7 @@ private final class AuthBoundaryGateway: AuthGateway {
 @MainActor
 private final class AuthBoundaryDeviceTrustGateway: DeviceTrustGateway {
     func bootstrapApproveSelf() async throws {}
+    func approve(deviceID: String) async throws {}
     func renameSelf(_ newName: String) async throws {}
     func revoke(deviceID: String) async throws {}
 }

@@ -5,6 +5,8 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
+import com.google.firebase.functions.FirebaseFunctions
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import com.openburnbar.data.cloud.AndroidCloudVaultResolvedKey
@@ -31,6 +33,14 @@ private const val MISSION_REQUEST_SCHEMA_VERSION = 3
 
 /** Data-domain id whose sealingScheme gates at-rest Signal sealing for CLI missions. */
 private const val SIGNAL_CLI_DOMAIN = "conversations_chat"
+
+/**
+ * Android missions persist Signal envelopes through the authenticated
+ * `writeSignalAtRestDocument` callable. Direct `signalEnvelope` batch writes to
+ * `cli_agent_mission_requests` are intentionally never attempted: Firestore rules
+ * reserve that collection for the callable boundary.
+ */
+private const val MISSION_SIGNAL_CALLABLE_ROUTING_ENABLED = true
 
 /**
  * Carries the at-rest Signal sealing context into the (non-suspend) mission payload
@@ -229,6 +239,7 @@ enum class SkillRunEventImportance(val wire: String) {
 class CLIAgentMissionDispatcher(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val functions: FirebaseFunctions = FirebaseFunctions.getInstance(),
     private val securityClient: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient(),
 ) {
     /**
@@ -285,7 +296,10 @@ class CLIAgentMissionDispatcher(
             ),
         )
         val fanOutSignal = resolveSignalContext(uid = uid, docId = plan.groupID)
-        appendFanOutChildMissionWrites(
+        if (fanOutSignal != null && runtimeTokens.size > 100) {
+            throw DispatchException("Signal fan-out supports at most 100 agents per dispatch.")
+        }
+        val signalWrites = appendFanOutChildMissionWrites(
             FanOutChildWriteRequest(
                 batch = batch,
                 firestore = firestore,
@@ -310,6 +324,14 @@ class CLIAgentMissionDispatcher(
         )
 
         batch.commit().await()
+        if (signalWrites.isNotEmpty()) {
+            try {
+                writeSignalMissionDocuments(uid = uid, writes = signalWrites)
+            } catch (error: Exception) {
+                cleanupFanOutAfterSignalFailure(uid = uid, groupRef = groupRef, writes = signalWrites)
+                throw DispatchException("Signal fan-out could not be committed atomically: ${error.message ?: "callable failed"}")
+            }
+        }
         return FanOutDispatchResult(groupID = plan.groupID, childMissionIDs = plan.childMissionIDs)
     }
 
@@ -377,11 +399,17 @@ class CLIAgentMissionDispatcher(
                 key = resolvedKey,
                 signal = signalContext,
             )
+        val signalWrite = signalCallablePayload(payload)
+        if (signalContext != null && signalWrite == null) {
+            throw DispatchException("Signal at-rest activation produced no mission envelope for $id.")
+        }
         val requestRef =
             firestore.collection("users").document(uid)
                 .collection("cli_agent_mission_requests").document(id)
         firestore.batch()
-            .set(requestRef, payload)
+            .apply {
+                if (signalWrite == null) set(requestRef, payload)
+            }
             .set(
                 requestRef.collection("events").document("000001"),
                 CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
@@ -396,7 +424,53 @@ class CLIAgentMissionDispatcher(
             )
             .commit()
             .await()
+        if (signalWrite != null) {
+            try {
+                writeSignalMissionDocuments(
+                    uid = uid,
+                    writes = listOf(SignalMissionWrite(missionID = id, payload = signalWrite)),
+                )
+            } catch (error: Exception) {
+                runCatching { requestRef.collection("events").document("000001").delete().await() }
+                throw DispatchException("Signal mission could not be committed: ${error.message ?: "callable failed"}")
+            }
+        }
         return id
+    }
+
+    private suspend fun writeSignalMissionDocuments(uid: String, writes: List<SignalMissionWrite>) {
+        if (writes.isEmpty()) return
+        val documents = writes.map { write ->
+            mapOf(
+                "collection" to "cli_agent_mission_requests",
+                "docId" to write.missionID,
+                "data" to write.payload,
+            )
+        }
+        functions.getHttpsCallable("writeSignalAtRestDocument")
+            .call(mapOf("documents" to documents))
+            .await()
+    }
+
+    private suspend fun cleanupFanOutAfterSignalFailure(
+        uid: String,
+        groupRef: com.google.firebase.firestore.DocumentReference,
+        writes: List<SignalMissionWrite>,
+    ) {
+        val cleanup = firestore.batch()
+        writes.forEach { write ->
+            cleanup.delete(
+                firestore.collection("users").document(uid)
+                    .collection("cli_agent_mission_requests").document(write.missionID)
+                    .collection("events").document("000001"),
+            )
+        }
+        cleanup.set(
+            groupRef,
+            mapOf("phase" to "failed", "updatedAt" to FieldValue.serverTimestamp()),
+            SetOptions.merge(),
+        )
+        runCatching { cleanup.commit().await() }
     }
 
     /**
@@ -405,13 +479,13 @@ class CLIAgentMissionDispatcher(
      * identity and fetches the trusted-device recipient set only when the gate is on.
      */
     private suspend fun resolveSignalContext(uid: String, docId: String): CLISignalSealContext? {
+        // The mission collection is callable-only for Signal envelopes. The direct
+        // Firestore batch still owns the group/event scaffolding; mission documents
+        // are staged for `writeSignalAtRestDocument`, which validates and commits
+        // the entire fan-out in one server-side batch.
+        if (!MISSION_SIGNAL_CALLABLE_ROUTING_ENABLED) return null
         if (!AndroidCloudVaultSignalPayloads.signalSealingIsEnabled(SIGNAL_CLI_DOMAIN)) return null
-        // BEST-EFFORT at-rest Signal sealing. The legacy AES-GCM sealedPayload is the FLOOR
-        // (buildSealed always writes it); the additive signalEnvelope is added only when this
-        // context resolves. On ANY failure (e.g. a trusted device without a published
-        // identity) return null so the mission writes legacy-only rather than failing the
-        // whole dispatch — legacy is already end-to-end so no confidentiality is lost.
-        return runCatching {
+        return try {
             val escrow = AndroidCloudVaultDeviceKeypair.loadOrCreate()
             val identity = AndroidSignalIdentityKeyStore.loadOrCreate(escrow.deviceId, escrow.keyVersion)
             AndroidSignalIdentityKeyStore.publishIfNeeded(
@@ -429,9 +503,10 @@ class CLIAgentMissionDispatcher(
                 localIdentity = identity,
                 otherRecipients = recipients,
             )
-        }.onFailure {
-            Log.w("CLIAgentMissionDispatcher", "Signal at-rest seal context failed; CLI mission writes legacy-only", it)
-        }.getOrNull()
+        } catch (error: Exception) {
+            Log.e("CLIAgentMissionDispatcher", "Signal at-rest seal context failed; refusing mission fallback", error)
+            throw DispatchException("Private mission session could not be prepared: ${error.message ?: "Signal setup failed"}")
+        }
     }
 
     fun observe(requestID: String): Flow<CLIAgentMissionSnapshot> = callbackFlow {

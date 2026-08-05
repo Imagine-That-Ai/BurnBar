@@ -447,6 +447,7 @@ class InMemoryPhoneControlCounterStore(
 
 class SharedPreferencesPhoneControlCounterStore(
     context: android.content.Context,
+    private val missingCounterBaseline: () -> Long = { System.currentTimeMillis() },
 ) : PhoneControlCounterStore {
     private val prefs =
         context.applicationContext
@@ -456,7 +457,17 @@ class SharedPreferencesPhoneControlCounterStore(
         require(peerNodeId.isNotBlank()) { "phone-control authority peer must not be blank" }
         return synchronized(processLock) {
             val key = "counter_$peerNodeId"
-            val next = (prefs.getLong(key, 0L) + 1L).coerceAtLeast(1L)
+            val persisted = prefs.getLong(key, 0L)
+            val current =
+                if (persisted > 0L) {
+                    persisted
+                } else {
+                    missingCounterBaseline().coerceAtLeast(0L)
+                }
+            check(current < Long.MAX_VALUE) {
+                "phone-control counter exhausted"
+            }
+            val next = current + 1L
             check(prefs.edit().putLong(key, next).commit()) {
                 "failed to durably persist phone-control counter"
             }

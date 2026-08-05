@@ -16,7 +16,10 @@
   "pnpm": {
     "overrides": {
       "hono": "^4.12.25",
-      "tar": "^7.5.16"
+      "tar": "^7.5.21",
+      "brace-expansion": "5.0.9",
+      "undici": "^7.28.0",
+      "@hono/node-server": "^2.0.5"
     }
   },
   "license": "AGPL-3.0-only"

@@ -65,6 +65,55 @@ final class PerfAuditScreenshotTests: XCTestCase {
         XCTAssertGreaterThan(distinct.count, 1, "\(name) rendered blank")
     }
 
+    private func XCTAssertOutsideInsetIsBlack(
+        _ image: UIImage,
+        inset: CGFloat,
+        canvasSize: CGSize,
+        name: String
+    ) throws {
+        let cgImage = try XCTUnwrap(image.cgImage)
+        let width = cgImage.width
+        let height = cgImage.height
+        var rgba = [UInt8](repeating: 0, count: width * height * 4)
+        let context = try XCTUnwrap(CGContext(
+            data: &rgba,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        let insetX = Int((inset / canvasSize.width) * CGFloat(width))
+        let insetY = Int((inset / canvasSize.height) * CGFloat(height))
+        let antialiasGuard = 3
+        let left = insetX - antialiasGuard
+        let right = width - insetX + antialiasGuard
+        let top = insetY - antialiasGuard
+        let bottom = height - insetY + antialiasGuard
+        var brightestOutsideChannel: UInt8 = 0
+
+        for y in 0..<height {
+            for x in 0..<width
+            where x < left || x >= right || y < top || y >= bottom {
+                let offset = (y * width + x) * 4
+                let brightestPixelChannel = max(
+                    rgba[offset],
+                    max(rgba[offset + 1], rgba[offset + 2])
+                )
+                brightestOutsideChannel = max(brightestOutsideChannel, brightestPixelChannel)
+            }
+        }
+
+        XCTAssertLessThanOrEqual(
+            brightestOutsideChannel,
+            1,
+            "\(name) painted glow pixels outside its proposed bounds"
+        )
+    }
+
     // MARK: - ios-013: Pulse hero burn card
 
     func testCapturePulseHeroBurnCard() throws {
@@ -118,6 +167,30 @@ final class PerfAuditScreenshotTests: XCTestCase {
             XCTAssertEqual(stops.first?.location, 0.0)
             XCTAssertEqual(stops.last?.color, .clear, "Terminal stop must be fully clear — no hard boundary")
         }
+    }
+
+    func testHeroDepthGlowStaysInsideItsBounds() throws {
+        let canvasSize = CGSize(width: 320, height: 240)
+        let inset: CGFloat = 40
+        let glow = PulseHeroDepthGlow(accent: .red, darkMode: true)
+            .frame(
+                width: canvasSize.width - (inset * 2),
+                height: canvasSize.height - (inset * 2)
+            )
+            .padding(inset)
+            .background(Color.black)
+
+        let image = try capturePNG(
+            glow,
+            size: canvasSize,
+            named: "ios-013-depth-glow-bounds-\(Self.phase).png"
+        )
+        try XCTAssertOutsideInsetIsBlack(
+            image,
+            inset: inset,
+            canvasSize: canvasSize,
+            name: "ios-013-depth-glow-bounds-\(Self.phase).png"
+        )
     }
 
     // MARK: - ios-014: verdict hero session-trace strip

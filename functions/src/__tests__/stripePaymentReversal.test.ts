@@ -1,0 +1,447 @@
+/**
+ * Covers the review-hardening behaviors around Stripe money-state:
+ * 1. A fully refunded / disputed subscription charge deactivates the
+ *    entitlement via the stripe_payment_reversals marker (and a recovery of
+ *    the SAME charge restores it).
+ * 2. The same-second webhook tie-break lets an activation supersede a
+ *    transient inactive state (incomplete -> active) while still failing
+ *    closed for terminal or unknown inactive states.
+ * 3. The Ultra -> burnbar_pro_max mirror write applies the same
+ *    downgrade/rewind guards against the MIRROR doc, so an expiring Ultra
+ *    cannot clobber an independently paid pro_max entitlement while a true
+ *    mirror still tracks Ultra lifecycle changes (including cancellation).
+ * 4. A top-up refund/dispute that arrives before fulfillment created the
+ *    receipt fails the webhook (so Stripe redelivers) instead of silently
+ *    dropping the reversal.
+ * 5. A verified Stripe lifecycle that adopts a matching temporary support
+ *    bridge removes the stale operator-only provenance from Firestore.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const firestoreState = vi.hoisted(() => {
+  type Doc = Record<string, unknown>;
+  const docs = new Map<string, Doc>();
+
+  class FakeDocSnapshot {
+    constructor(private readonly value: Doc | undefined) {}
+
+    get exists() {
+      return this.value !== undefined;
+    }
+
+    data() {
+      return this.value === undefined ? undefined : { ...this.value };
+    }
+
+    get(field: string) {
+      return this.value === undefined ? undefined : this.value[field];
+    }
+  }
+
+  class FakeDocRef {
+    constructor(readonly path: string) {}
+
+    collection(name: string) {
+      return {
+        doc: (id: string) => new FakeDocRef(`${this.path}/${name}/${id}`),
+      };
+    }
+
+    async get() {
+      return new FakeDocSnapshot(docs.get(this.path));
+    }
+
+    set(data: Doc, options?: { merge?: boolean }) {
+      const next = options?.merge ? { ...(docs.get(this.path) ?? {}) } : {};
+      for (const [key, value] of Object.entries(data)) {
+        if (typeof value === "object" && value !== null && value.constructor.name === "DeleteTransform") {
+          delete next[key];
+        } else {
+          next[key] = value;
+        }
+      }
+      docs.set(this.path, next);
+      return Promise.resolve();
+    }
+  }
+
+  const db = {
+    doc: (path: string) => new FakeDocRef(path),
+    runTransaction: async <T>(
+      fn: (transaction: {
+        get: (ref: FakeDocRef) => ReturnType<FakeDocRef["get"]>;
+        set: (ref: FakeDocRef, data: Doc, options?: { merge?: boolean }) => void;
+      }) => Promise<T>,
+    ): Promise<T> =>
+      fn({
+        get: (ref) => ref.get(),
+        set: (ref, data, options) => {
+          void ref.set(data, options);
+        },
+      }),
+  };
+
+  return { docs, db };
+});
+
+vi.mock("../adminRuntime.js", () => ({
+  auth: {},
+  db: firestoreState.db,
+}));
+
+vi.mock("../cloudProAllowanceRemoteConfig.js", () => ({
+  loadCloudProAllowanceConfig: vi.fn(async () => ({
+    includedHostedActionsMonthly: 500,
+    includedRelayGBMonthly: 50,
+    includedFusionSearchesMonthly: 100,
+    includedUltraFusionSearchesMonthly: 300,
+    actionTopUpUnit: 100,
+    relayTopUpUnitGB: 50,
+    fusionSearchTopUpUnit: 100,
+    fusionSearchLargeTopUpUnit: 500,
+    monthlyHostedActionCap: 2_000,
+    monthlyRelayGBCap: 300,
+    monthlyFusionSearchCap: 1_000,
+    monthlyUltraFusionSearchCap: 2_000,
+  })),
+}));
+
+vi.mock("../resilienceHelpers.js", () => ({
+  stripeWithResilience: vi.fn(async <T>(_name: string, fn: () => Promise<T>) => fn()),
+}));
+
+import type Stripe from "stripe";
+
+import {
+  BURNBAR_PRO_ENTITLEMENT_ID,
+  BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+  BURNBAR_ULTRA_ENTITLEMENT_ID,
+  reconcileStripeCharge,
+  writeBurnBarProEntitlement,
+} from "../callables/shared.js";
+import { reconcileStripeTopUpCharge } from "../callables/shared/stripeTopUps.js";
+
+function stripeStub<T>(stub: object = {}): T {
+  // @ts-expect-error reason: the stub implements the Stripe surface these reversal tests exercise
+  return stub;
+}
+
+const UID = "stripe-user-1";
+const SUBSCRIPTION_ID = "sub_reversal_1";
+const ENTITLEMENT_PATH = `users/${UID}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`;
+
+function activeSubscriptionWrite(overrides: Partial<Parameters<typeof writeBurnBarProEntitlement>[0]> = {}) {
+  return writeBurnBarProEntitlement({
+    uid: UID,
+    productID: "com.openburnbar.pro.monthly",
+    expiresAtMillis: Date.parse("2026-07-10T00:00:00.000Z"),
+    source: "stripe_webhook_verified",
+    platform: "stripe",
+    externalSubscriptionID: SUBSCRIPTION_ID,
+    rawStatus: "active",
+    environment: "Production",
+    activeOverride: true,
+    ...overrides,
+  });
+}
+
+beforeEach(() => {
+  firestoreState.docs.clear();
+});
+
+describe("Stripe subscription payment reversal", () => {
+  it("deactivates a subscription entitlement on a fully refunded charge and restores it when the refund fails", async () => {
+    const subscription = {
+      id: SUBSCRIPTION_ID,
+      status: "active",
+      customer: "cus_reversal_1",
+      metadata: { firebaseUID: UID },
+      current_period_end: Math.floor(Date.parse("2030-01-01T00:00:00.000Z") / 1000),
+      items: { data: [] },
+    };
+    const charge = {
+      id: "ch_reversal_1",
+      customer: "cus_reversal_1",
+      payment_intent: "pi_reversal_1",
+      amount: 2_000,
+      amount_refunded: 2_000,
+      refunded: true,
+    };
+    const stripe = stripeStub<Stripe>({
+      subscriptions: { list: vi.fn(async () => ({ data: [subscription], has_more: false })) },
+      charges: { retrieve: vi.fn(async () => charge) },
+      checkout: { sessions: { list: vi.fn(async () => ({ data: [], has_more: false })) } },
+      invoicePayments: {
+        list: vi.fn(async () => ({ data: [{ id: "inpay_1", invoice: "in_reversal_1" }], has_more: false })),
+      },
+      invoices: {
+        retrieve: vi.fn(async () => ({
+          id: "in_reversal_1",
+          customer: subscription.customer,
+          parent: {
+            type: "subscription_details",
+            subscription_details: { subscription: subscription.id, metadata: null },
+            quote_details: null,
+          },
+        })),
+      },
+    });
+
+    await reconcileStripeCharge(
+      stripe,
+      // @ts-expect-error reason: focused Stripe charge stub
+      charge,
+      { eventID: "evt_full_refund", eventCreatedMillis: 5_000 },
+    );
+
+    expect(firestoreState.docs.get(`stripe_payment_reversals/${subscription.id}`)).toMatchObject({
+      reversed: true,
+      reason: "fully_refunded",
+      chargeID: charge.id,
+    });
+    expect(firestoreState.docs.get(ENTITLEMENT_PATH)).toMatchObject({
+      active: false,
+      rawStatus: "active:payment_reversed",
+      externalSubscriptionID: subscription.id,
+    });
+
+    // The full refund later fails: Stripe re-sends the charge with the
+    // refunded amount restored, and the SAME charge's marker is cleared.
+    charge.amount_refunded = 0;
+    charge.refunded = false;
+    await reconcileStripeCharge(
+      stripe,
+      // @ts-expect-error reason: focused Stripe charge stub
+      charge,
+      { eventID: "evt_refund_failed", eventCreatedMillis: 6_000 },
+    );
+
+    expect(firestoreState.docs.get(`stripe_payment_reversals/${subscription.id}`)).toMatchObject({
+      reversed: false,
+      reason: "restored",
+    });
+    expect(firestoreState.docs.get(ENTITLEMENT_PATH)).toMatchObject({
+      active: true,
+      rawStatus: "active",
+    });
+  });
+});
+
+describe("Stripe provider adoption", () => {
+  it("removes stale operator provenance when Stripe adopts its matching support bridge", async () => {
+    firestoreState.docs.set(ENTITLEMENT_PATH, {
+      id: BURNBAR_PRO_ENTITLEMENT_ID,
+      active: true,
+      source: "internal_operator_grant",
+      platform: "stripe",
+      externalSubscriptionID: SUBSCRIPTION_ID,
+      expiresAt: "2099-12-31T23:59:59.000Z",
+      operatorGrant: true,
+      operatorGrantedAt: "2026-06-11T14:40:30.095Z",
+      operatorGrantReason: "temporary support bridge",
+      sourceEntitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID,
+      sourceProductID: "com.openburnbar.pro.monthly",
+    });
+
+    await activeSubscriptionWrite({
+      sourceEventID: "evt_provider_adoption",
+      sourceEventCreatedMillis: 2_000,
+    });
+
+    const entitlement = firestoreState.docs.get(ENTITLEMENT_PATH);
+    expect(entitlement).toMatchObject({
+      source: "stripe_webhook_verified",
+      platform: "stripe",
+      externalSubscriptionID: SUBSCRIPTION_ID,
+      sourceEventID: "evt_provider_adoption",
+    });
+    expect(entitlement).not.toHaveProperty("operatorGrant");
+    expect(entitlement).not.toHaveProperty("operatorGrantedAt");
+    expect(entitlement).not.toHaveProperty("operatorGrantReason");
+    expect(entitlement).not.toHaveProperty("sourceEntitlementID");
+    expect(entitlement).not.toHaveProperty("sourceProductID");
+  });
+});
+
+describe("same-second tie-break vs transient inactive states", () => {
+  it("allows a same-second activation to replace a transient inactive state (incomplete -> active)", async () => {
+    // Stripe emits customer.subscription.created (status=incomplete) and
+    // customer.subscription.updated (status=active) within the same second on
+    // a normal first payment; the tie-break must not strand the entitlement
+    // inactive when the incomplete event happens to apply first.
+    await activeSubscriptionWrite({
+      rawStatus: "incomplete",
+      activeOverride: false,
+      sourceEventID: "evt_incomplete",
+      sourceEventCreatedMillis: 2_000,
+    });
+
+    await activeSubscriptionWrite({
+      sourceEventID: "evt_activated",
+      sourceEventCreatedMillis: 2_000,
+    });
+
+    const entitlement = firestoreState.docs.get(ENTITLEMENT_PATH);
+    expect(entitlement?.active).toBe(true);
+    expect(entitlement?.rawStatus).toBe("active");
+    expect(entitlement?.sourceEventID).toBe("evt_activated");
+  });
+
+  it("fails closed on a same-second activation over an unknown inactive status", async () => {
+    await activeSubscriptionWrite({
+      rawStatus: "some_future_status",
+      activeOverride: false,
+      sourceEventID: "evt_unknown_status",
+      sourceEventCreatedMillis: 2_000,
+    });
+
+    await activeSubscriptionWrite({
+      sourceEventID: "evt_activation_replay",
+      sourceEventCreatedMillis: 2_000,
+    });
+
+    const entitlement = firestoreState.docs.get(ENTITLEMENT_PATH);
+    expect(entitlement?.active).toBe(false);
+    expect(entitlement?.rawStatus).toBe("some_future_status");
+    expect(entitlement?.sourceEventID).toBe("evt_unknown_status");
+  });
+});
+
+const PRO_MAX_PATH = `users/${UID}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`;
+const ULTRA_PATH = `users/${UID}/entitlements/${BURNBAR_ULTRA_ENTITLEMENT_ID}`;
+const ULTRA_SUBSCRIPTION_ID = "sub_ultra_1";
+
+function ultraSubscriptionWrite(overrides: Partial<Parameters<typeof writeBurnBarProEntitlement>[0]> = {}) {
+  return activeSubscriptionWrite({
+    entitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID,
+    productID: "com.openburnbar.ultra.monthly",
+    externalSubscriptionID: ULTRA_SUBSCRIPTION_ID,
+    ...overrides,
+  });
+}
+
+describe("Ultra -> burnbar_pro_max mirror guards", () => {
+  it("does not clobber an independently paid pro_max entitlement when Ultra deactivates", async () => {
+    // Independently purchased Cloud Pro Max (App Store), active until 2030.
+    await writeBurnBarProEntitlement({
+      uid: UID,
+      productID: "com.openburnbar.promax.yearly",
+      expiresAtMillis: Date.parse("2030-01-01T00:00:00.000Z"),
+      source: "app_store_verified",
+      platform: "ios",
+      entitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+      purchaseTokenHash: "apple-token-1",
+      rawStatus: "active",
+      environment: "Production",
+      activeOverride: true,
+    });
+
+    // A Stripe Ultra subscription for the same user is cancelled: the Ultra
+    // doc must deactivate, but the mirror write must NOT overwrite the
+    // independent pro_max entitlement (different source and subscription).
+    await ultraSubscriptionWrite({
+      rawStatus: "canceled",
+      activeOverride: false,
+      sourceEventID: "evt_ultra_canceled",
+      sourceEventCreatedMillis: 3_000,
+    });
+
+    expect(firestoreState.docs.get(ULTRA_PATH)).toMatchObject({
+      active: false,
+      rawStatus: "canceled",
+    });
+    const proMax = firestoreState.docs.get(PRO_MAX_PATH);
+    expect(proMax).toMatchObject({
+      active: true,
+      source: "app_store_verified",
+      purchaseTokenHash: "apple-token-1",
+    });
+    expect(proMax?.sourceEntitlementID).toBeUndefined();
+  });
+
+  it("keeps a true mirror in sync through the Ultra lifecycle, including cancellation", async () => {
+    await ultraSubscriptionWrite({
+      expiresAtMillis: Date.parse("2030-01-01T00:00:00.000Z"),
+      sourceEventID: "evt_ultra_active",
+      sourceEventCreatedMillis: 1_000,
+    });
+
+    expect(firestoreState.docs.get(PRO_MAX_PATH)).toMatchObject({
+      active: true,
+      sourceEntitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID,
+      externalSubscriptionID: ULTRA_SUBSCRIPTION_ID,
+    });
+
+    // Same subscription cancels later: the mirror carries the same source and
+    // subscription id, so its guards evaluate like the primary's and the
+    // deactivation propagates.
+    await ultraSubscriptionWrite({
+      rawStatus: "canceled",
+      activeOverride: false,
+      sourceEventID: "evt_ultra_canceled",
+      sourceEventCreatedMillis: 2_000,
+    });
+
+    expect(firestoreState.docs.get(ULTRA_PATH)).toMatchObject({ active: false, rawStatus: "canceled" });
+    expect(firestoreState.docs.get(PRO_MAX_PATH)).toMatchObject({
+      active: false,
+      rawStatus: "canceled",
+      sourceEntitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID,
+    });
+  });
+});
+
+describe("top-up reversal arriving before fulfillment", () => {
+  const CHARGE_ID = "ch_pending_topup_1";
+  const RECEIPT_ID = "stripe_checkout_cs_pending_topup_1";
+  const RECEIPT_PATH = `users/${UID}/billing/cloud_pro_topups/receipts/${RECEIPT_ID}`;
+  const refundedCharge = {
+    id: CHARGE_ID,
+    amount: 2_000,
+    amount_refunded: 2_000,
+    currency: "usd",
+    customer: null,
+    payment_intent: "pi_pending_topup_1",
+  };
+
+  it("fails the webhook while the receipt is absent and applies the reversal once fulfillment lands", async () => {
+    // The charge->receipt mapping resolves (fulfillment WILL create the
+    // receipt), but the paid Checkout event has not credited it yet.
+    firestoreState.docs.set(`stripe_topup_payments/charge_${CHARGE_ID}`, {
+      uid: UID,
+      receiptID: RECEIPT_ID,
+      checkoutSessionID: "cs_pending_topup_1",
+      paymentIntentID: "pi_pending_topup_1",
+      chargeID: CHARGE_ID,
+    });
+
+    await expect(
+      reconcileStripeTopUpCharge(stripeStub<Stripe>(), stripeStub<Stripe.Charge>(refundedCharge), {
+        eventID: "evt_early_refund",
+        eventCreatedMillis: 7_000,
+      }),
+    ).rejects.toThrow(/before fulfillment created the receipt/);
+
+    // Fulfillment creates the receipt; the redelivered event now reverses it.
+    firestoreState.docs.set(RECEIPT_PATH, {
+      uid: UID,
+      firstMonthKey: "2026-07",
+      latestMonthKey: "2026-07",
+      meter: "hosted_actions",
+      units: 100,
+      externalAmountMinor: 2_000,
+    });
+
+    await expect(
+      reconcileStripeTopUpCharge(stripeStub<Stripe>(), stripeStub<Stripe.Charge>(refundedCharge), {
+        eventID: "evt_early_refund",
+        eventCreatedMillis: 7_000,
+      }),
+    ).resolves.toBeUndefined();
+    expect(firestoreState.docs.get(RECEIPT_PATH)).toMatchObject({
+      refundReversedUnits: 100,
+      reversedUnits: 100,
+      reversalState: "reversed",
+    });
+  });
+});

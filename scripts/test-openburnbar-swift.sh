@@ -15,9 +15,6 @@ fi
 
 prepare_libsignal_ffi() {
   local libsignal_dir="${repo_root}/Vendor/libsignal"
-  local macos_xcframework="${repo_root}/Vendor/OpenBurnBarSignalFfiMac.xcframework"
-  local legacy_xcframework="${repo_root}/Vendor/OpenBurnBarSignalFfi.xcframework"
-  local libsignal_build_script="${libsignal_dir}/swift/build_ffi.sh"
   local auth_messages_service="${libsignal_dir}/swift/Sources/LibSignalClient/chat/AuthMessagesService.swift"
   local host_target
 
@@ -26,27 +23,6 @@ prepare_libsignal_ffi() {
   # warm cache must behave exactly like a cold build.
   if [[ -f "${auth_messages_service}" ]]; then
     perl -0pi -e 's/\bextendLifetime\(([^)]+)\)/withExtendedLifetime($1) {}/g' "${auth_messages_service}"
-  fi
-
-  if [[ -d "${macos_xcframework}" || -d "${legacy_xcframework}" ]]; then
-    echo "Using prebuilt Signal FFI XCFramework."
-    return
-  fi
-
-  if [[ ! -x "${libsignal_build_script}" ]]; then
-    if [[ -f "${repo_root}/.gitmodules" ]] && command -v git >/dev/null 2>&1; then
-      bash "${repo_root}/scripts/ci/update-submodules-with-retry.sh" Vendor/libsignal
-    fi
-  fi
-
-  if [[ ! -x "${libsignal_build_script}" ]]; then
-    echo "Missing ${libsignal_build_script}; initialize Vendor/libsignal before running Swift tests." >&2
-    exit 1
-  fi
-
-  if ! command -v protoc >/dev/null 2>&1; then
-    echo "Missing protoc; install protobuf before running Swift libsignal tests." >&2
-    exit 1
   fi
 
   case "$(uname -m)" in
@@ -58,15 +34,21 @@ prepare_libsignal_ffi() {
       ;;
   esac
 
-  # macOS must not link libsignal and domain-core as two Rust static archives:
-  # both bundle Rust std and collide on symbols such as rust_eh_personality.
-  # Reuse the production builder's reviewed cdylib/XCFramework path instead.
-  echo "Building host dynamic Signal FFI XCFramework for SwiftPM tests."
-  CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" \
-  MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-14.0}" \
+  # An existing XCFramework directory is not proof of health: several CI
+  # workflows share the Signal FFI cache key, and single-target writers (the
+  # CodeQL Swift lanes build x86_64-only) can populate it with an artifact the
+  # host architecture cannot link. Delegate to the shared preparer, which
+  # validates the target/profile metadata embedded by
+  # build-signal-ffi-xcframework.sh and rebuilds on any mismatch. The rebuild
+  # path reuses the production builder's reviewed cdylib/XCFramework flow:
+  # macOS must not link libsignal and domain-core as two Rust static archives,
+  # because both bundle Rust std and collide on symbols such as
+  # rust_eh_personality.
   SIGNAL_FFI_BUILD_TARGETS="${host_target}" \
   SIGNAL_FFI_BUILD_PROFILE=debug \
-    bash "${repo_root}/scripts/build-signal-ffi-xcframework.sh"
+  CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" \
+  MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-14.0}" \
+    bash "${repo_root}/scripts/lib/prepare-signal-ffi-xcframework.sh"
 }
 
 coverage_flags=()

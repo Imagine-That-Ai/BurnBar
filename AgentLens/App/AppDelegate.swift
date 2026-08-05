@@ -130,7 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func applicationDidFinishLaunchingOnMainActor() {
         guard enforceSingleOpenBurnBarInstance() else { return }
-        OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
+        OpenBurnBarRuntime.beginApplicationHostActivityIfNeeded()
 
         NSAppleEventManager.shared().setEventHandler(
             self,
@@ -159,6 +159,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // for — on every foreground and once right after a local revoke.
         observeCloudVaultRotationPickupTriggers()
         pickUpPendingCloudVaultRotations(force: true)
+    }
+
+    nonisolated func applicationShouldTerminateAfterLastWindowClosed(
+        _ sender: NSApplication
+    ) -> Bool {
+        false
     }
     private func installPerformanceGateVisibilityControlIfNeeded() {
         guard OpenBurnBarRuntime.isPerformanceGateLaunch,

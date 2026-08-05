@@ -33,13 +33,74 @@ function exportedNames() {
 
 /** Endpoint-specific overrides merged onto scaffold defaults during regeneration. */
 const CATALOG_OVERRIDES = {
+  googlePlayDeveloperNotifications: {
+    trigger: "pubsub-trigger",
+    authMethod: "Google Cloud Pub/Sub topic IAM and Firebase Functions platform delivery",
+    appCheck: "not-applicable",
+    tenantSource:
+      "server-owned Google Play token claim resolved from the RTDN purchase-token hash; the provider payload never supplies a uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger accepts only Pub/Sub delivery, validates the BurnBar package, hashes the purchase token, resolves the server-owned claim, and reconciles against the Google Play Developer API before updating that claim's uid",
+    handlerModule: "googlePlayRtdn.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["googlePlayDeveloperNotifications"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  reconcileGooglePlayVoidedPurchasesDaily: {
+    trigger: "scheduled",
+    authMethod: "Cloud Scheduler / Firebase Functions platform trigger",
+    appCheck: "not-applicable",
+    tenantSource:
+      "server-owned Google Play token claim resolved from the voided purchase-token hash; the provider response never supplies a uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "scheduled job lists only the configured BurnBar package, hashes each transient purchase token, resolves the server-owned claim, and routes reconciliation through the same provider-verified RTDN processor",
+    handlerModule: "googlePlayVoidedPurchaseReconciler.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["reconcileGooglePlayVoidedPurchasesDaily"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  issuePhoneControlEnrollmentGrant: {
+    authMethod:
+      "Firebase Auth, App Check, Cloud Pro entitlement, a single-use high-risk nonce, and the trusted host device that published the pairing",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["hostDeviceId", "connectionId", "controllerDeviceId", "controllerPeerNodeId"],
+    ownershipCheck:
+      "handler scopes every path to request.auth.uid, verifies the caller is the pairing's trusted publishing host and the target is a trusted mobile device, then writes a pairing-scoped short-lived single-use enrollment grant",
+    handlerModule: "callables/phoneControlCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/phoneControlPairingBinding.test.ts",
+        test: "a different trusted Mac cannot issue a controller grant for another host's pairing",
+        kind: "runtime-cross-user",
+        covers: ["issuePhoneControlEnrollmentGrant"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   issueIrohControllerRouteChallenge: {
     authMethod: "Firebase Auth, App Check, Cloud Pro entitlement, and a single-use high-risk nonce",
     appCheck: "required",
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["sourceDeviceId", "connectionId", "authorityPeerNodeId", "transportNodeId"],
     ownershipCheck:
-      "handler scopes every document path to request.auth.uid and transactionally joins the signed pairing, trusted host, sole trusted controller device, and key-derived controller authority before issuing a one-minute challenge",
+      "handler scopes every document path to request.auth.uid and transactionally joins the signed pairing, trusted host, matching authorized controller device, and key-derived controller authority before issuing a one-minute challenge",
     handlerModule: "callables/irohControllerRouteCallables.ts",
     bolaCoverage: [
       {
@@ -75,12 +136,12 @@ const CATALOG_OVERRIDES = {
     highRiskComputerUse: false,
   },
   revokeIrohControllerRoute: {
-    authMethod: "Firebase Auth, App Check, a single-use high-risk nonce, and the trusted sole controller device",
+    authMethod: "Firebase Auth, App Check, a single-use high-risk nonce, and the trusted authorized controller device",
     appCheck: "required",
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["sourceDeviceId", "connectionId"],
     ownershipCheck:
-      "handler derives the tenant from request.auth.uid and only advances the generation of the route bound to the pairing's sole trusted controller device",
+      "handler derives the tenant from request.auth.uid and only advances the generation of the route bound to the requesting authorized controller device",
     handlerModule: "callables/irohControllerRouteCallables.ts",
     bolaCoverage: [
       {
@@ -847,6 +908,60 @@ const CATALOG_OVERRIDES = {
       },
     ],
   },
+};
+
+const SIGNAL_MIGRATION_TRIGGER_NAMES = [
+  "onSignalMigrationAgentIdentityWritten",
+  "onSignalMigrationApprovalPolicyWritten",
+  "onSignalMigrationChatThreadWritten",
+  "onSignalMigrationCliSessionWritten",
+  "onSignalMigrationConversationWritten",
+  "onSignalMigrationMissionRequestWritten",
+  "onSignalMigrationMobileAssistantChatWritten",
+  "onSignalMigrationRollbackRequestWritten",
+  "onSignalMigrationSubscriptionTopicWritten",
+  "onSignalMigrationTextSnippetWritten",
+];
+
+for (const exportedName of SIGNAL_MIGRATION_TRIGGER_NAMES) {
+  CATALOG_OVERRIDES[exportedName] = {
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions Firestore trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "trigger document path and server-side uid field",
+    objectIdsFromClient: [],
+    ownershipCheck: "trigger reads only the user-scoped source document and writes aggregate migration telemetry",
+    handlerModule: "signalMigrationTelemetry.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: [exportedName],
+      },
+    ],
+    highRiskComputerUse: false,
+  };
+}
+
+CATALOG_OVERRIDES.writeSignalAtRestDocument = {
+  authMethod: "Firebase Auth with callable-level user-path and Signal-envelope validation",
+  appCheck: "required",
+  tenantSource: "request.auth.uid",
+  objectIdsFromClient: [],
+  ownershipCheck: "handler derives the user path from request.auth.uid, allows only approved collections, and atomically writes validated Signal envelopes",
+  handlerModule: "callables/writeSignalAtRestDocument.ts",
+  bolaCoverage: [
+    {
+      file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+      test: "rejects unauthenticated callable access",
+      kind: "auth-only",
+      covers: ["writeSignalAtRestDocument"],
+      expectedOutcome: "throws",
+      expectedCode: "unauthenticated",
+    },
+  ],
+  highRiskComputerUse: false,
 };
 
 function defaultEntry(exportedName) {

@@ -36,6 +36,34 @@ export async function revokeIrohPairingAndControllerRoutes(
           { merge: true },
         );
       }
+      // The pairing document mixes two different lifetimes:
+      //
+      // - endpoint advertisement fields are ephemeral and must disappear as
+      //   soon as the host stops accepting iroh streams;
+      // - authorizedControllerDeviceIds is durable user approval state.
+      //
+      // Deleting the parent removed the durable allowlist while Firestore kept
+      // its controller subdocuments. On the next host publish the parent was
+      // recreated with an empty allowlist, so every previously approved phone
+      // became an orphan and could not open the stream needed to request a new
+      // approval. Keep the parent as a non-dialable trust tombstone instead:
+      // clients require nodeId + publishedAtMillis + signature to decode a
+      // pairing record, while the next publish can recover the allowlist.
+      transaction.set(
+        pairingRef,
+        {
+          nodeId: FieldValue.delete(),
+          relayURL: FieldValue.delete(),
+          directAddresses: FieldValue.delete(),
+          publishedAtMillis: FieldValue.delete(),
+          protocolVersion: FieldValue.delete(),
+          signature: FieldValue.delete(),
+          revokedAtMillis,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      return;
     }
     transaction.delete(pairingRef);
   });

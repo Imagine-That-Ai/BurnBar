@@ -31,6 +31,10 @@ on:
       - ".github/workflows/domain-core-console-release-evidence.yml"
   workflow_dispatch:
     inputs:
+      tag:
+        description: "Future Git tag to validate during a dry-run (v*)"
+        required: false
+        type: string
       dry_run:
         description: "Build and validate immutable hosting artifacts only"
         required: false
@@ -99,6 +103,8 @@ jobs:
         id: ref
         env:
           EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
           REQUESTED_PROFILE: ${{ inputs.domain_core_profile || 'public-production' }}
         run: |
           set -euo pipefail
@@ -106,6 +112,16 @@ jobs:
           release_tag=""
           if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
             commit="$GITHUB_SHA"
+            if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_DRY_RUN" == "true" ]]; then
+              [[ "$INPUT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]] \
+                || { echo "::error::Hosting dry-run requires a future stable v* tag input."; exit 1; }
+              release_tag="$INPUT_TAG"
+              git fetch --force --tags origin
+              if git rev-parse --verify --quiet "refs/tags/$release_tag" >/dev/null; then
+                echo "::error::Future tag $release_tag already exists. Dry-run validates a candidate before tagging."
+                exit 1
+              fi
+            fi
           elif [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
             release_tag="${GITHUB_REF#refs/tags/}"
             git fetch --force --tags origin "+$GITHUB_REF:$GITHUB_REF"
@@ -298,16 +314,16 @@ jobs:
           RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}
         run: |
           set -euo pipefail
+          # The embedded Console profile stays candidate-scoped (no release
+          # block): verify-domain-core-build-profile-artifact.mjs builds
+          # candidate-only expectations for --console-dir, and the release tag
+          # is bound separately by the release gate and deployment identity.
           profile_args=(
             --profile "$DOMAIN_CORE_PROFILE"
             --expected-candidate-commit "$CANDIDATE_COMMIT"
           )
           if [[ -n "$RELEASE_TAG" ]]; then
-            profile_args+=(
-              --expected-release-commit "$RELEASE_COMMIT"
-              --expected-release-version "${RELEASE_TAG#v}"
-              --expected-release-tag "$RELEASE_TAG"
-            )
+            profile_args+=(--expected-release-commit "$RELEASE_COMMIT")
           fi
           node scripts/ci/resolve-domain-core-build-profile.mjs "${profile_args[@]}" --format github-env-web >> "$GITHUB_ENV"
           node scripts/ci/resolve-domain-core-build-profile.mjs "${profile_args[@]}" --format json --output "$RUNNER_TEMP/domain-core-build-profile.json"
@@ -431,12 +447,12 @@ jobs:
           include-hidden-files: true
 
       - name: Dry-run summary
-        if: ${{ github.event.inputs.dry_run == 'true' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
         run: echo "dry_run=true — built, stripped, hashed, and uploaded hosting artifacts; skipped production deploy"
 
   deploy-hosting:
     needs: build-hosting-artifacts
-    if: ${{ github.event.inputs.dry_run != 'true' }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
@@ -657,7 +673,7 @@ jobs:
 
   hosting-smoke-result:
     needs: [build-hosting-artifacts, deploy-hosting]
-    if: ${{ always() && github.event.inputs.dry_run != 'true' }}
+    if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

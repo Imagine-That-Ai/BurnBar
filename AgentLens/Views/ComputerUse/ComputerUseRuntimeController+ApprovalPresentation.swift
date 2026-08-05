@@ -14,6 +14,15 @@ extension ComputerUseRuntimeController {
     }
 }
 
+enum ComputerUseApprovalPanelResolutionSource: Equatable {
+    case decision
+    case windowClose
+
+    var shouldClosePanel: Bool {
+        self == .decision
+    }
+}
+
 @MainActor
 private final class ComputerUseApprovalPanelSession: NSObject, NSWindowDelegate {
     private static var liveSessions: [String: ComputerUseApprovalPanelSession] = [:]
@@ -69,7 +78,7 @@ private final class ComputerUseApprovalPanelSession: NSObject, NSWindowDelegate 
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
-        panel.isReleasedWhenClosed = true
+        panel.isReleasedWhenClosed = false
         panel.delegate = self
         panel.contentView = NSHostingView(rootView: root)
         panel.center()
@@ -82,7 +91,8 @@ private final class ComputerUseApprovalPanelSession: NSObject, NSWindowDelegate 
         Task { @MainActor [weak self] in
             self?.resolve(
                 decision: .reject,
-                note: "Approval panel was closed before a decision was made."
+                note: "Approval panel was closed before a decision was made.",
+                source: .windowClose
             )
         }
     }
@@ -97,12 +107,13 @@ private final class ComputerUseApprovalPanelSession: NSObject, NSWindowDelegate 
         case .reject: decision = .reject
         case .rejectAndHalt: decision = .rejectAndHalt
         }
-        resolve(decision: decision, note: note)
+        resolve(decision: decision, note: note, source: .decision)
     }
 
     private func resolve(
         decision: HermesRealtimeRelayApprovalResponse.Decision,
-        note: String?
+        note: String?,
+        source: ComputerUseApprovalPanelResolutionSource
     ) {
         guard !didResolve else { return }
         didResolve = true
@@ -120,8 +131,9 @@ private final class ComputerUseApprovalPanelSession: NSObject, NSWindowDelegate 
         let activePanel = panel
         panel = nil
         activePanel?.delegate = nil
-        activePanel?.contentView = nil
-        activePanel?.close()
+        if source.shouldClosePanel {
+            activePanel?.close()
+        }
 
         Self.liveSessions[request.approvalId] = nil
     }

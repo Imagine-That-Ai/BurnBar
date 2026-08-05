@@ -20,11 +20,13 @@ updates:
         update-types:
           - "minor"
           - "patch"
+          - "major"
       production-dependencies:
         dependency-type: "production"
         update-types:
           - "minor"
           - "patch"
+          - "major"
 
   - package-ecosystem: "npm"
     directory: "/functions"
@@ -37,6 +39,10 @@ updates:
     commit-message:
       prefix: "deps"
       include: "scope"
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/website"
@@ -46,6 +52,10 @@ updates:
       time: "09:00"
       timezone: "America/Los_Angeles"
     open-pull-requests-limit: 5
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/apps/console"
@@ -55,6 +65,10 @@ updates:
       time: "09:00"
       timezone: "America/Los_Angeles"
     open-pull-requests-limit: 5
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "nuget"
     directory: "/windows"
@@ -67,6 +81,10 @@ updates:
     commit-message:
       prefix: "deps"
       include: "scope"
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/firestore-rules-tests"
@@ -76,6 +94,10 @@ updates:
       time: "09:00"
       timezone: "America/Los_Angeles"
     open-pull-requests-limit: 3
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/quota-runner"
@@ -85,6 +107,10 @@ updates:
       time: "09:00"
       timezone: "America/Los_Angeles"
     open-pull-requests-limit: 3
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/services/hosted-mcp"
@@ -94,6 +120,10 @@ updates:
       time: "09:00"
       timezone: "America/Los_Angeles"
     open-pull-requests-limit: 3
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "docker"
     directory: "/services/hosted-mcp"
@@ -106,6 +136,10 @@ updates:
     commit-message:
       prefix: "deps"
       include: "scope"
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/services/hermes-realtime-relay"
@@ -115,6 +149,10 @@ updates:
       time: "09:00"
       timezone: "America/Los_Angeles"
     open-pull-requests-limit: 3
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "gradle"
     directory: "/android"
@@ -127,6 +165,10 @@ updates:
     commit-message:
       prefix: "deps"
       include: "scope"
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "cargo"
     directory: "/crates/openburnbar-iroh"
@@ -141,6 +183,11 @@ updates:
       include: "scope"
 
   # SwiftPM manifests live under each package (no Package.swift at repo root)
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+
   - package-ecosystem: "swift"
     directory: "/OpenBurnBarCore"
     schedule:
@@ -152,6 +199,10 @@ updates:
     commit-message:
       prefix: "deps"
       include: "scope"
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "swift"
     directory: "/OpenBurnBarDaemon"
@@ -188,6 +239,10 @@ updates:
   # which would disable every entry above as well. Do not "de-duplicate" this
   # with anchors; scripts/ci/verify-dependabot-config.mjs fails the build if you
   # try. Keep entries in sync by editing all of them.
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/"
@@ -203,7 +258,7 @@ updates:
     groups:
       lockfile-updates:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/apps/linux-desktop"
@@ -219,7 +274,7 @@ updates:
     groups:
       lockfile-updates:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/packages/design-tokens"
@@ -235,7 +290,7 @@ updates:
     groups:
       lockfile-updates:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/packages/entitlements"
@@ -251,7 +306,7 @@ updates:
     groups:
       lockfile-updates:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/packages/libsignal-bridge"
@@ -267,7 +322,7 @@ updates:
     groups:
       lockfile-updates:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/packages/libsignal-protocol"
@@ -283,7 +338,7 @@ updates:
     groups:
       lockfile-updates:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/packages/signal-envelope-contracts"
@@ -299,7 +354,7 @@ updates:
     groups:
       lockfile-updates:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/scripts/linux-port"
@@ -315,7 +370,7 @@ updates:
     groups:
       lockfile-updates:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/tools/app-store-connect"
@@ -331,7 +386,23 @@ updates:
     groups:
       lockfile-updates:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
+        update-types: ["minor", "patch", "major"]
+
+  - package-ecosystem: "npm"
+    directory: "/tools/hermes-platform-burnbar/signal-runtime"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/tools/openburnbar-mcp-remote"
@@ -347,7 +418,7 @@ updates:
     groups:
       lockfile-updates:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
+        update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
     directory: "/tools/schema-sync"
@@ -363,7 +434,7 @@ updates:
     groups:
       lockfile-updates:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
+        update-types: ["minor", "patch", "major"]
 
   # Security updates for GitHub Actions
   - package-ecosystem: "github-actions"
@@ -380,3 +451,8 @@ updates:
     # Pin actions to SHA for supply-chain security
     allow:
       - dependency-type: "all"
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+

@@ -110,16 +110,18 @@ class MenuBarService : Service() {
             // Different tap-targets depending on state — a streaming notif
             // jumps straight to Hermes; an idle glance lands on the dashboard.
             val tapUri = if (snap.streaming) "burnbar://hermes" else "burnbar://dashboard"
+            val intent =
+                Intent(context, MainActivity::class.java).apply {
+                    action = Intent.ACTION_VIEW
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    data = android.net.Uri.parse(tapUri)
+                }
+            intent.setPackage(context.packageName)
             val tapIntent =
                 PendingIntent.getActivity(
                     context,
                     0,
-                    Intent(context, MainActivity::class.java).apply {
-                        action = Intent.ACTION_VIEW
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                        data = android.net.Uri.parse(tapUri)
-                        setPackage(context.packageName)
-                    },
+                    intent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                 )
 

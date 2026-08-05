@@ -481,6 +481,8 @@ def validate_production_functions(text: str) -> None:
         'if [[ -n "${GITHUB_SHA:-}" && "$commit" != "$GITHUB_SHA" ]]; then',
         'git merge-base --is-ancestor "$commit" origin/main',
         'git checkout --detach "$commit"',
+        "node scripts/ci/prepare-functions-runtime-package.mjs",
+        '--functions-dir "$stage/functions"',
     ):
         if marker not in prepare_job:
             fail(f"{path} prepare-functions-deploy is missing release tag provenance guard marker {marker!r}")

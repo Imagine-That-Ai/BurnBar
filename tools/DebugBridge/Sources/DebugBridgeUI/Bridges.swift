@@ -114,9 +114,9 @@ enum ElementsBridgeImpl {
                     "x": Int(frameInWindow.origin.x),
                     "y": Int(frameInWindow.origin.y),
                     "w": Int(frameInWindow.size.width),
-                    "h": Int(frameInWindow.size.height),
+                    "h": Int(frameInWindow.size.height)
                 ],
-                "is_user_interaction_enabled": view.isUserInteractionEnabled,
+                "is_user_interaction_enabled": view.isUserInteractionEnabled
             ])
         }
 
@@ -143,9 +143,9 @@ enum ElementsBridgeImpl {
                             "x": Int(af.origin.x),
                             "y": Int(af.origin.y),
                             "w": Int(af.size.width),
-                            "h": Int(af.size.height),
+                            "h": Int(af.size.height)
                         ],
-                        "is_user_interaction_enabled": true,
+                        "is_user_interaction_enabled": true
                     ])
                 }
             }
@@ -171,9 +171,9 @@ enum ElementsBridgeImpl {
                             "x": Int(af.origin.x),
                             "y": Int(af.origin.y),
                             "w": Int(af.size.width),
-                            "h": Int(af.size.height),
+                            "h": Int(af.size.height)
                         ],
-                        "is_user_interaction_enabled": true,
+                        "is_user_interaction_enabled": true
                     ])
                 }
             }

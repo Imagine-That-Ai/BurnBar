@@ -49,6 +49,13 @@ test("control-plane manifest exhaustively covers workflow executables and local 
   assert.ok(
     discovered.includes("scripts/ci/check_agpl_legal_release_review.py"),
   );
+  for (const path of [
+    ".github/workflows/ci-impact.yml",
+    "scripts/ci/classify-ci-impact.mjs",
+    "config/domain-core-ci-paths.json",
+  ]) {
+    assert.ok(discovered.includes(path), path);
+  }
 });
 
 test("control-plane manifest rejects malformed digests", () => {
@@ -165,6 +172,34 @@ test("every loaded-identity observer, harness, binding, and union contract are t
   writeFileSync(
     resolve(candidateRoot, observerPaths[0]),
     "forged observed identity\n",
+  );
+  assert.throws(
+    () =>
+      verifyDomainCoreControlPlane({
+        trustedRoot: ROOT,
+        candidateRoot,
+        manifest: MANIFEST,
+      }),
+    /differs from trusted main/u,
+  );
+});
+
+test("Firebase CLI shim selection, archive, and rebuild inputs are trusted bytes", (context) => {
+  const shimPaths = [
+    "functions/package.json",
+    "functions/package-lock.json",
+    "functions/vendor/openburnbar/brace-expansion-cjs.tgz",
+    "functions/vendor/openburnbar/brace-expansion-cjs/README.md",
+    "functions/vendor/openburnbar/brace-expansion-cjs/index.js",
+    "functions/vendor/openburnbar/brace-expansion-cjs/package.json",
+  ];
+  for (const path of shimPaths)
+    assert.equal(MANIFEST.files[path]?.length, 4, path);
+
+  const candidateRoot = candidateCopy(context);
+  writeFileSync(
+    resolve(candidateRoot, "functions/package.json"),
+    '{"overrides":{"brace-expansion":"untrusted"}}\n',
   );
   assert.throws(
     () =>

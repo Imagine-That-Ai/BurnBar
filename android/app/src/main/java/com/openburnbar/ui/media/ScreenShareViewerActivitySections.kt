@@ -10,11 +10,13 @@ import com.openburnbar.data.computeruse.ControlSealSessionEstablisher
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockResult
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun ScreenShareViewerActivityContent(activity: ScreenShareViewerActivity) {
     val ui = rememberScreenShareViewerActivityUiState(activity)
     ScreenShareViewerActivityFocusContextEffect(ui)
+    ScreenShareViewerActivityControlPhaseEffect(activity, ui)
     ScreenShareViewerActivityMirrorAckEffect(activity, ui)
     ScreenShareViewerActivityControlDeniedEffect(activity, ui)
     ScreenShareViewerActivityClipboardEffect(activity, ui)
@@ -25,6 +27,20 @@ internal fun ScreenShareViewerActivityContent(activity: ScreenShareViewerActivit
         pipeline = activity.pipeline,
         options = activity.screenShareViewerScreenOptions(ui),
     )
+}
+
+@Composable
+private fun ScreenShareViewerActivityControlPhaseEffect(activity: ScreenShareViewerActivity, ui: ScreenShareViewerActivityUiState) {
+    LaunchedEffect(ui.controlPhase) {
+        if (
+            activity.connectionRecovery.shouldRebindMirror(
+                phase = ui.controlPhase,
+                hasActiveMirrorRequest = !activity.mirrorRequestID.isNullOrBlank(),
+            )
+        ) {
+            activity.reconnectMirror()
+        }
+    }
 }
 
 @Composable
@@ -83,13 +99,43 @@ private fun ScreenShareViewerActivitySavedCredentialEffect(activity: ScreenShare
 }
 
 internal fun ScreenShareViewerActivity.applyMirrorAck(ack: HermesRealtimeRelayMirrorAck, selectedDisplayId: androidx.compose.runtime.MutableState<String?>) {
+    if (ack.requestId != mirrorRequestID) return
     mirrorSessionID = ack.sessionId ?: mirrorSessionID
     mirrorViewerRole = ack.viewerRole ?: mirrorViewerRole
     ack.selectedDisplayId?.let { selectedDisplayId.value = it }
-    if (ack.viewerRole == "watcher") {
-        controlStatus.value = "Watching only. Another device controls the Mac."
+    when (ack.decision) {
+        HermesRealtimeRelayMirrorAck.Decision.ACCEPTED -> {
+            if (ack.viewerRole == "watcher") {
+                controlStatus.value = "Watching only. Another device controls the Mac."
+            }
+        }
+        HermesRealtimeRelayMirrorAck.Decision.DENIED,
+        HermesRealtimeRelayMirrorAck.Decision.COOLING_DOWN,
+        HermesRealtimeRelayMirrorAck.Decision.UNSUPPORTED,
+        HermesRealtimeRelayMirrorAck.Decision.BUSY,
+        -> {
+            val message = mirrorAckFailureMessage(ack)
+            controlStatus.value = message
+            controlScope.launch {
+                pipeline.fail(message)
+            }
+        }
     }
 }
+
+internal fun mirrorAckFailureMessage(ack: HermesRealtimeRelayMirrorAck): String = ack.detail?.trim()?.takeIf { it.isNotEmpty() }
+    ?: when (ack.decision) {
+        HermesRealtimeRelayMirrorAck.Decision.DENIED ->
+            "The Mac declined screen sharing."
+        HermesRealtimeRelayMirrorAck.Decision.COOLING_DOWN ->
+            "The Mac is cooling down before another screen-sharing request."
+        HermesRealtimeRelayMirrorAck.Decision.UNSUPPORTED ->
+            "The Mac could not start screen sharing."
+        HermesRealtimeRelayMirrorAck.Decision.BUSY ->
+            "The Mac is already handling another screen-sharing request."
+        HermesRealtimeRelayMirrorAck.Decision.ACCEPTED ->
+            "Screen sharing approved."
+    }
 
 internal fun ScreenShareViewerActivity.applyControlDenied(denied: HermesRealtimeRelayControlDenied) {
     controlStatus.value = controlDeniedMessage(denied)

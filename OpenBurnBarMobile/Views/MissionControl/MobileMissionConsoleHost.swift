@@ -312,6 +312,11 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
                     self?.observations.removeValue(forKey: missionID)
                 }
             )
+        } catch CLIAgentMissionDispatcher.DispatchError.firebaseUnavailable {
+            // In-memory/unit-test snapshots can be rendered without a configured
+            // Firebase app. The list listener already supplied the snapshot; a
+            // live per-mission observer is simply unavailable in this process.
+            return
         } catch {
             inlineError = error.localizedDescription
         }

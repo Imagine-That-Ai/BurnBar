@@ -13,7 +13,7 @@ import { createHash, createPublicKey, timingSafeEqual, verify as verifySignature
 import { HttpsError } from "firebase-functions/v2/https";
 
 import { recordOrUndefined } from "../guards.js";
-import { boundedTrimmedString } from "./shared.js";
+import { boundedTrimmedString } from "./shared/validators.js";
 import {
   ED25519_SPKI_DER_PREFIX,
   LOCAL_AUTH_PROOF_CLOCK_SKEW_SECONDS,

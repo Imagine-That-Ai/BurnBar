@@ -141,6 +141,31 @@ final class CLIAgentSessionCodecTests: XCTestCase {
         )
     }
 
+    func test_privatePayloadRoundTrip_usesCanonicalRecordSchema() throws {
+        let record = CLIAgentSessionRecord(
+            id: "signal-private-record",
+            agent: .droid,
+            title: "Private Signal title",
+            preview: "Private Signal preview",
+            createdAt: Date(timeIntervalSince1970: 1_730_000_000),
+            updatedAt: Date(timeIntervalSince1970: 1_730_000_060),
+            messages: [
+                CLIAgentMessage(
+                    id: "m-signal",
+                    role: .assistant,
+                    text: "Signal private transcript",
+                    timestamp: Date(timeIntervalSince1970: 1_730_000_060)
+                )
+            ]
+        )
+
+        let payload = try CLIAgentSessionCodec.encodePrivatePayload(record)
+        let decoded = try XCTUnwrap(CLIAgentSessionCodec.decodePrivatePayload(payload))
+        XCTAssertEqual(decoded.id, record.id)
+        XCTAssertEqual(decoded.title, record.title)
+        XCTAssertEqual(decoded.messages.first?.text, "Signal private transcript")
+    }
+
     func test_decodeSealed_opensLegacyGlobalAADWhenPathContextProvided() throws {
         let uid = "user-1"
         let documentID = "session-legacy"

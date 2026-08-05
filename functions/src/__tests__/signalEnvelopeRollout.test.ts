@@ -21,6 +21,7 @@ import {
   HERMES_GATEWAY_SIGNAL_REQUIRED_ENV,
   gatewaySignalEnvelopeV4Disabled,
   productionGatewaySignalEnvelopeVersions,
+  sanitizeGatewayRelayEnvelopeCapabilities,
 } from "../hermesGateway.js";
 import {
   SIGNAL_ENVELOPE_V4_ENABLED_PARAM,
@@ -72,6 +73,18 @@ describe("B3 — SIGNAL_ENVELOPE_V4_DISABLED env hard kill", () => {
     process.env[HERMES_GATEWAY_SIGNAL_ENVELOPE_V4_DISABLED_ENV] = "1";
     expect(productionGatewaySignalEnvelopeVersions().has(V4)).toBe(false);
     expect([...productionGatewaySignalEnvelopeVersions()]).toEqual([]);
+  });
+
+  it("rejects Signal capability negotiation while the hard kill is active", () => {
+    process.env[HERMES_GATEWAY_SIGNAL_REQUIRED_ENV] = "true";
+    process.env[HERMES_GATEWAY_SIGNAL_ENVELOPE_V4_DISABLED_ENV] = "1";
+
+    expect(() =>
+      sanitizeGatewayRelayEnvelopeCapabilities({
+        supportsRelayEnvelopeVersions: [2, 3],
+        supportsSignalEnvelope: true,
+      }),
+    ).toThrow(/hard kill switch/);
   });
 
   it("forces the resolved set to EXCLUDE v4 even when RC would enable it (env wins)", async () => {

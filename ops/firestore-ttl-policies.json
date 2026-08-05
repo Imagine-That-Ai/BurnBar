@@ -187,7 +187,7 @@
       "collectionGroup": "google_play_rtdn_events",
       "path": "google_play_rtdn_events/{eventId}",
       "category": "billing-ledger",
-      "growth": "One document per Google Play real-time developer notification (idempotency and reconciliation ledger).",
+      "growth": "One document per processed Google Play RTDN delivery (idempotency + lease ledger).",
       "mechanism": "firestore-ttl-field",
       "ttlField": "expireAt",
       "retentionSeconds": 7776000,
@@ -195,7 +195,7 @@
       "indexDeclared": true,
       "status": "active",
       "operatorAction": "Verify live via scripts/ci/verify-firestore-ttl-state.mjs.",
-      "rationale": "Google Play billing notifications need a bounded replay, retry, and reconciliation audit window without retaining raw purchase tokens.",
+      "rationale": "Deduplication/lease ledger for Pub/Sub RTDN deliveries, mirroring stripe_webhook_events: kept long enough to defeat replayed or redelivered events, then aged out so the collection stays bounded (one doc per delivery at negligible per-doc cost).",
       "source": "functions/src/googlePlayRtdn.ts"
     },
     {

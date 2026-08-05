@@ -192,6 +192,14 @@ class SettingsSearchEngineTest {
     }
 
     @Test
+    fun manifestFindsConnectedDevicesDetailScreen() {
+        val result = SettingsSearchEngine.search("connected devices", SettingsManifest.all).first()
+        assertEquals("root.connectedDevices", result.id)
+        assertEquals(SettingsPageRoute.CONNECTED_DEVICES, result.pageRoute)
+        assertEquals(SettingsAnchor.CONNECTED_DEVICES, result.anchorId)
+    }
+
+    @Test
     fun manifestFindsEveryProviderWithExactProviderAnchor() {
         for (provider in AgentProvider.entries) {
             val expectedId = "root.provider.${provider.key}"

@@ -1,0 +1,13 @@
+# OSV-Scanner override config for the "OSV Scanner (open source vulnerabilities)"
+# job in .github/workflows/security-pr.yml (passed via --config).
+#
+# Ignores listed here are deliberately time-boxed with ignoreUntil so the gate
+# fails closed again and forces re-evaluation instead of rotting as a permanent
+# suppression. Keep the paired npm-audit allowlist entry in
+# scripts/ci/check-npm-audit-fail-closed.mjs in sync (same id, same expiry), and
+# the rationale in docs/LINT_RATIONALE.md current.
+#
+# No vulnerabilities are currently ignored. The last entry
+# (GHSA-mh99-v99m-4gvg, brace-expansion DoS) was retired when the vendored
+# callable shim in functions/vendor/openburnbar/brace-expansion-cjs removed
+# the final vulnerable 1.x copies from the dependency tree.

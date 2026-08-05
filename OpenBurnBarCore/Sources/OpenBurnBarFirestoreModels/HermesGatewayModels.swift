@@ -40,6 +40,12 @@ public struct FirestoreGatewaySignalCiphertextLayerDoc: Codable, Sendable, Equat
     public var payloadCiphertextB64: String
     public var payloadAADLabel: String
     public var schemaVersion: Int
+
+    public init(payloadCiphertextB64: String, payloadAADLabel: String, schemaVersion: Int) {
+        self.payloadCiphertextB64 = payloadCiphertextB64
+        self.payloadAADLabel = payloadAADLabel
+        self.schemaVersion = schemaVersion
+    }
 }
 
 public struct FirestoreGatewaySignalBindingDoc: Codable, Sendable, Equatable {
@@ -52,6 +58,18 @@ public struct FirestoreGatewaySignalBindingDoc: Codable, Sendable, Equatable {
     public var slotId: String?
     public var mode: String
     public var formatVersion: Int
+
+    public init(uid: String, scope: String, clientId: String? = nil, collection: String? = nil, docId: String? = nil, field: String? = nil, slotId: String? = nil, mode: String, formatVersion: Int) {
+        self.uid = uid
+        self.scope = scope
+        self.clientId = clientId
+        self.collection = collection
+        self.docId = docId
+        self.field = field
+        self.slotId = slotId
+        self.mode = mode
+        self.formatVersion = formatVersion
+    }
 }
 
 public struct FirestoreGatewaySignalAtRestWrapDoc: Codable, Sendable, Equatable {
@@ -59,6 +77,13 @@ public struct FirestoreGatewaySignalAtRestWrapDoc: Codable, Sendable, Equatable 
     public var recipientIdentityKeyId: String
     public var recipientIdentityKeyB64: String
     public var sealedContentKeyB64: String
+
+    public init(recipientKind: String, recipientIdentityKeyId: String, recipientIdentityKeyB64: String, sealedContentKeyB64: String) {
+        self.recipientKind = recipientKind
+        self.recipientIdentityKeyId = recipientIdentityKeyId
+        self.recipientIdentityKeyB64 = recipientIdentityKeyB64
+        self.sealedContentKeyB64 = sealedContentKeyB64
+    }
 }
 
 public struct FirestoreGatewaySignalKeyDeliveryDoc: Codable, Sendable, Equatable {
@@ -69,6 +94,30 @@ public struct FirestoreGatewaySignalKeyDeliveryDoc: Codable, Sendable, Equatable
     public var ratchetEpochHint: Int?
     public var wraps: [FirestoreGatewaySignalAtRestWrapDoc]?
     public var contentKeyLength: Int?
+
+    public init(scheme: String, signalMessageType: Int? = nil, signalMessageB64: String? = nil, senderIdentityKeyId: String? = nil, ratchetEpochHint: Int? = nil, wraps: [FirestoreGatewaySignalAtRestWrapDoc]? = nil, contentKeyLength: Int? = nil) {
+        self.scheme = scheme
+        self.signalMessageType = signalMessageType
+        self.signalMessageB64 = signalMessageB64
+        self.senderIdentityKeyId = senderIdentityKeyId
+        self.ratchetEpochHint = ratchetEpochHint
+        self.wraps = wraps
+        self.contentKeyLength = contentKeyLength
+    }
+}
+
+public struct FirestoreGatewaySignalAtRestSenderAuthDoc: Codable, Sendable, Equatable {
+    public var senderIdentityKeyId: String
+    public var senderIdentityKeyB64: String
+    public var signatureB64: String
+    public var signatureVersion: Int
+
+    public init(senderIdentityKeyId: String, senderIdentityKeyB64: String, signatureB64: String, signatureVersion: Int) {
+        self.senderIdentityKeyId = senderIdentityKeyId
+        self.senderIdentityKeyB64 = senderIdentityKeyB64
+        self.signatureB64 = signatureB64
+        self.signatureVersion = signatureVersion
+    }
 }
 
 public struct FirestoreGatewaySignalEnvelopeDoc: Codable, Sendable, Equatable {
@@ -79,6 +128,54 @@ public struct FirestoreGatewaySignalEnvelopeDoc: Codable, Sendable, Equatable {
     public var ciphertextLayer: FirestoreGatewaySignalCiphertextLayerDoc
     public var keyDelivery: FirestoreGatewaySignalKeyDeliveryDoc
     public var binding: FirestoreGatewaySignalBindingDoc
+    public var senderAuth: FirestoreGatewaySignalAtRestSenderAuthDoc?
+
+    public init(signalEnvelopeFormatVersion: Int, mode: String, relayKeyVersion: Int? = nil, relayEncryption: String, ciphertextLayer: FirestoreGatewaySignalCiphertextLayerDoc, keyDelivery: FirestoreGatewaySignalKeyDeliveryDoc, binding: FirestoreGatewaySignalBindingDoc, senderAuth: FirestoreGatewaySignalAtRestSenderAuthDoc? = nil) {
+        self.signalEnvelopeFormatVersion = signalEnvelopeFormatVersion
+        self.mode = mode
+        self.relayKeyVersion = relayKeyVersion
+        self.relayEncryption = relayEncryption
+        self.ciphertextLayer = ciphertextLayer
+        self.keyDelivery = keyDelivery
+        self.binding = binding
+        self.senderAuth = senderAuth
+    }
+}
+
+public struct FirestoreHermesGatewaySignalPrekeyBundleDoc: Codable, Sendable, Equatable {
+    public var version: Int
+    public var bundleId: String
+    public var identityKeyId: String
+    public var identityKeyB64: String
+    public var registrationId: Int
+    public var deviceId: Int
+    public var signedPreKeyId: Int
+    public var signedPreKeyPublicB64: String
+    public var signedPreKeySignatureB64: String
+    public var oneTimePreKeyId: Int
+    public var oneTimePreKeyPublicB64: String
+    public var kyberPreKeyId: Int
+    public var kyberPreKeyPublicB64: String
+    public var kyberPreKeySignatureB64: String
+    public var generatedAt: String
+
+    public init(version: Int, bundleId: String, identityKeyId: String, identityKeyB64: String, registrationId: Int, deviceId: Int, signedPreKeyId: Int, signedPreKeyPublicB64: String, signedPreKeySignatureB64: String, oneTimePreKeyId: Int, oneTimePreKeyPublicB64: String, kyberPreKeyId: Int, kyberPreKeyPublicB64: String, kyberPreKeySignatureB64: String, generatedAt: String) {
+        self.version = version
+        self.bundleId = bundleId
+        self.identityKeyId = identityKeyId
+        self.identityKeyB64 = identityKeyB64
+        self.registrationId = registrationId
+        self.deviceId = deviceId
+        self.signedPreKeyId = signedPreKeyId
+        self.signedPreKeyPublicB64 = signedPreKeyPublicB64
+        self.signedPreKeySignatureB64 = signedPreKeySignatureB64
+        self.oneTimePreKeyId = oneTimePreKeyId
+        self.oneTimePreKeyPublicB64 = oneTimePreKeyPublicB64
+        self.kyberPreKeyId = kyberPreKeyId
+        self.kyberPreKeyPublicB64 = kyberPreKeyPublicB64
+        self.kyberPreKeySignatureB64 = kyberPreKeySignatureB64
+        self.generatedAt = generatedAt
+    }
 }
 
 public struct FirestoreHermesGatewayClientDoc: Codable, Sendable, Equatable {
@@ -104,6 +201,7 @@ public struct FirestoreHermesGatewayClientDoc: Codable, Sendable, Equatable {
     public var agentPreferredRelayEnvelopeVersion: Int?
     public var agentSupportsHpkeV3: Bool?
     public var agentSupportsSignalEnvelope: Bool?
+    public var agentSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc?
     public var agentPlatform: String?
     public var agentAppBuild: String?
     public var phoneRelayPublicKey: String?
@@ -113,6 +211,7 @@ public struct FirestoreHermesGatewayClientDoc: Codable, Sendable, Equatable {
     public var phonePreferredRelayEnvelopeVersion: Int?
     public var phoneSupportsHpkeV3: Bool?
     public var phoneSupportsSignalEnvelope: Bool?
+    public var phoneSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc?
     public var phonePlatform: String?
     public var phoneAppBuild: String?
     public var agentRatchetIdentityPublicKey: String?

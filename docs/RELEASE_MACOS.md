@@ -104,6 +104,27 @@ enough. The `Public macOS Download Trust` workflow runs this check automatically
 when `website/src/data/site.ts` changes, so a future button update cannot
 silently point users at an unsigned, unstapled, or Keychain-broken DMG.
 
+### Temporary v1.0.29 profile-certificate exception
+
+The immutable public `v1.0.29` DMG predates the current certificate/profile
+pairing: its app is signed by one valid Developer ID certificate while its
+embedded all-devices profile lists a different certificate from the same
+release setup. The public-download verifier may bypass only that profile
+certificate-membership comparison when every value below matches exactly:
+
+- Version: `1.0.29`
+- DMG SHA-256: `fc0926b4e7ae0c9e155d9be6711a06119f7a2fff2f7df8448fd34ca052db9d96`
+- Bundle signer SHA-256: `2B5CCCC3256C4FE179A7C34614152AE3B940D21EB9193F36D312BAAD82C762BB`
+- Sole profile certificate SHA-256: `F6D16CF680A35D2C27805517469FC6427CDFFFD3D2207C13FFF13CC0F10F6A6A`
+
+The exception does not bypass the DMG digest check, Gatekeeper, notarization,
+stapling, deep signature validation, Developer ID/team identity, entitlements,
+Firebase configuration, App Check scan, Keychain profile authorization, daemon
+launch/signing verification, or final Gatekeeper execution assessment. Normal
+release packaging still invokes the certificate verifier without legacy
+artifact context and therefore remains fail-closed. Remove the exception and
+its tests as soon as the public download moves away from `v1.0.29`.
+
 Release artifacts must also include the shipped Firebase client plist and the
 app's `MAC_APP_DIRECT` provisioning profile. The plist is client configuration,
 not a private signing secret. The profile authorizes Firebase Auth's macOS
@@ -191,7 +212,10 @@ The workflow will:
 13. Write release metadata JSON with version, commit, timestamp, update feed, and runner metadata
 14. Upload the DMG, ZIP, update feeds, checksums, optional checksum signature, SBOM, Sigstore bundles/predicates, and metadata as Actions artifacts
 15. Run release smoke from the uploaded DMG artifact, including app launch and authenticated daemon health
-16. Publish a GitHub Release with the same downloaded artifacts and mark it as the repository's latest release
+16. Publish a GitHub Release with the same downloaded artifacts as explicitly
+    non-latest. A separate `workflow_dispatch` with `promote=true` audits the
+    already-published tag, metadata, attestations, and every asset byte before
+    making that exact release GitHub's latest release.
 
 `notarytool` and `stapler` are wrapped by
 `scripts/ci/release-command-watchdog.py` in release CI. Apple's `--timeout` flag
@@ -203,6 +227,38 @@ protected release job timeout.
 Run the release workflow from the release tag ref (for example
 `gh workflow run release.yml --ref v1.0.5 ...`) so the Sigstore certificate
 identity is bound to `refs/tags/v1.0.5`, not the moving default branch.
+
+Tag-triggered publication and ordinary manual retries always pass
+`--latest=false`; publishing assets must never silently repoint the public
+updater channel. After the non-latest release is published and independently
+approved, promote it by dispatching the same workflow from the immutable tag:
+
+```bash
+gh workflow run release.yml \
+  --ref v1.0.5 \
+  -f tag=v1.0.5 \
+  -f promote=true
+```
+
+The promotion retry downloads and verifies the complete existing asset set,
+checks each GitHub asset ID, size, and SHA-256 digest against the audited bytes,
+and rechecks the exact release metadata. Only then may it perform the single
+`gh release edit ... --latest` mutation. The workflow finally verifies that
+`releases/latest` resolves to the same release and unchanged asset identities
+before the live Sparkle feed gate runs. A missing, substituted, extra, or
+concurrently changed asset blocks promotion.
+
+The `domain_core_profile` input must declare the governed profile the release
+was published under. `public-production` (the default) requires the complete
+native domain-core evidence set: the Apple, Android, and iOS Sigstore bundles,
+the iOS archive, and the App Store Connect receipt. `public-production-rollback`
+promotes a governed all-legacy rollback release, which publishes no native
+domain-core evidence; any evidence asset that is present is still fully
+verified. A declared profile that does not match the published asset set fails
+closed before any mutation. When `checksums-vVERSION.txt.asc` is published, the
+promotion lane verifies the detached GPG signature against the audited
+checksums file and fails if `RELEASE_SIGNING_KEY` is not configured to verify
+it.
 
 Before approving a promoted release, verify that the tag still points at the
 current `origin/main` tip. If `main` advances after the tag is cut, cancel the
@@ -323,7 +379,11 @@ python3 -m json.tool sbom-v0.2.0.spdx.json | head -30
 ## Manual rerun path
 
 Use `workflow_dispatch` on `.github/workflows/release.yml` and provide an existing `v*` tag.
-The workflow checks out that exact tag before building. This is intended for release recovery without creating a new tag.
+The workflow checks out that exact tag before building. This is intended for
+release recovery without creating a new tag. Leave `promote=false` for
+packaging or publication recovery. Set `promote=true` only after the stable,
+already-published release is ready for the public updater channel; prerelease
+tags are rejected and cannot become latest.
 
 ## Release environment and tag protection
 

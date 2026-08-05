@@ -41,6 +41,8 @@ class ProjectsStore(
             _error.value = null
             try {
                 _summaries.value = repo.fetchProjects()
+            } catch (e: FirestoreRepository.NotSignedInException) {
+                _error.value = e.localizedMessage
             } catch (e: FirebaseException) {
                 _error.value = e.localizedMessage
             } finally {

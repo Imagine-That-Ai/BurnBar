@@ -7,6 +7,7 @@ const state = vi.hoisted(() => {
   return {
     documents,
     writes,
+    transactionTail: Promise.resolve(),
     subscriptionsGet: vi.fn(),
     writeEntitlement: vi.fn(),
     reconcileTopUp: vi.fn(),
@@ -32,21 +33,76 @@ vi.mock("googleapis", () => ({
 
 vi.mock("../adminRuntime.js", () => ({
   db: {
-    doc: (path: string) => ({
-      get: async () => {
-        const data = state.documents.get(path);
-        return {
-          exists: data !== undefined,
-          get: (field: string) => data?.[field],
-          data: () => data,
-        };
-      },
-      set: async (data: Record<string, unknown>, options?: { merge?: boolean }) => {
-        const next = options?.merge ? { ...(state.documents.get(path) ?? {}), ...data } : data;
-        state.documents.set(path, next);
-        state.writes.push({ path, data });
-      },
-    }),
+    doc: (path: string) => {
+      const ref = {
+        path,
+        get: async () => {
+          const data = state.documents.get(path);
+          return {
+            exists: data !== undefined,
+            get: (field: string) => data?.[field],
+            data: () => data,
+          };
+        },
+        set: async (data: Record<string, unknown>, options?: { merge?: boolean }) => {
+          const next = options?.merge ? { ...(state.documents.get(path) ?? {}), ...data } : data;
+          state.documents.set(path, next);
+          state.writes.push({ path, data });
+        },
+      };
+      return ref;
+    },
+    runTransaction: async <T>(
+      operation: (transaction: {
+        get: (ref: { path: string }) => Promise<{
+          exists: boolean;
+          get: (field: string) => unknown;
+          data: () => Record<string, unknown> | undefined;
+        }>;
+        set: (
+          ref: { path: string },
+          data: Record<string, unknown>,
+          options?: { merge?: boolean },
+        ) => void;
+      }) => Promise<T>,
+    ): Promise<T> => {
+      const previous = state.transactionTail;
+      let release: () => void = () => undefined;
+      state.transactionTail = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await previous;
+      const staged: Array<{
+        path: string;
+        data: Record<string, unknown>;
+        options?: { merge?: boolean };
+      }> = [];
+      try {
+        const result = await operation({
+          get: async (ref) => {
+            const data = state.documents.get(ref.path);
+            return {
+              exists: data !== undefined,
+              get: (field: string) => data?.[field],
+              data: () => data,
+            };
+          },
+          set: (ref, data, options) => {
+            staged.push({ path: ref.path, data, options });
+          },
+        });
+        for (const write of staged) {
+          const next = write.options?.merge
+            ? { ...(state.documents.get(write.path) ?? {}), ...write.data }
+            : write.data;
+          state.documents.set(write.path, next);
+          state.writes.push({ path: write.path, data: write.data });
+        }
+        return result;
+      } finally {
+        release();
+      }
+    },
   },
 }));
 
@@ -122,6 +178,7 @@ describe("Google Play RTDN", () => {
     vi.clearAllMocks();
     state.documents.clear();
     state.writes.length = 0;
+    state.transactionTail = Promise.resolve();
     state.reconcileTopUp.mockResolvedValue({
       adjusted: true,
       reversedUnits: 100,
@@ -289,5 +346,64 @@ describe("Google Play RTDN", () => {
       { eventID: "event-duplicate" },
     );
     expect(state.writes).toHaveLength(0);
+  });
+
+  it("reserves concurrent PubSub delivery so the Developer API runs once", async () => {
+    const token = "concurrent-subscription-token";
+    const hash = tokenHash(token);
+    state.documents.set(`google_play_token_claims/${hash}`, {
+      uid: "user-concurrent",
+      productID: "cloud-monthly",
+      kind: "subscription",
+    });
+
+    let releaseDeveloperAPI: () => void = () => undefined;
+    const developerAPIGate = new Promise<void>((resolve) => {
+      releaseDeveloperAPI = resolve;
+    });
+    let signalDeveloperAPIStarted: () => void = () => undefined;
+    const developerAPIStarted = new Promise<void>((resolve) => {
+      signalDeveloperAPIStarted = resolve;
+    });
+    state.subscriptionsGet.mockImplementationOnce(async () => {
+      signalDeveloperAPIStarted();
+      await developerAPIGate;
+      return {
+        data: {
+          subscriptionState: "SUBSCRIPTION_STATE_ACTIVE",
+          lineItems: [{ productId: "cloud-monthly", expiryTime: FUTURE_EXPIRY }],
+        },
+      };
+    });
+    const payload = {
+      packageName: "com.openburnbar",
+      eventTimeMillis: String(Date.now()),
+      subscriptionNotification: {
+        notificationType: 2,
+        purchaseToken: token,
+        subscriptionId: "cloud-monthly",
+      },
+    };
+
+    const first = processGooglePlayDeveloperNotification(payload, { eventID: "event-concurrent" });
+    await developerAPIStarted;
+    // The concurrent delivery must NOT be silently acked while another worker
+    // holds the lease: if that worker crashed, an ack would lose the event.
+    // Throwing makes Pub/Sub redeliver after the lease expires.
+    await expect(
+      processGooglePlayDeveloperNotification(payload, { eventID: "event-concurrent" }),
+    ).rejects.toThrow(/being processed by another worker/);
+
+    expect(state.subscriptionsGet).toHaveBeenCalledTimes(1);
+    expect(state.documents.get(eventPath("event-concurrent"))).toMatchObject({
+      status: "processing",
+    });
+
+    releaseDeveloperAPI();
+    await first;
+    expect(state.documents.get(eventPath("event-concurrent"))).toMatchObject({
+      status: "processed",
+      uid: "user-concurrent",
+    });
   });
 });

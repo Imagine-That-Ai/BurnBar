@@ -20,10 +20,12 @@ ANDROID_DIFF_COVERAGE_ALLOWLIST_JSON="$(cat <<'JSON'
 {
   "android/app/src/main/java/com/openburnbar/BurnBarApplication.kt": "Android Application lifecycle composition: Firebase, WorkManager, media wiring, and process startup require framework/instrumented coverage; extracted registries and route/controller logic remain JVM-covered. Firebase App Check provider selection is additionally fail-closed through BuildConfig.DEBUG and verified by release compilation, artifact inspection, and Firebase contract tests.",
   "android/app/src/main/java/com/openburnbar/BurnBarApplicationMediaControlSections.kt": "Application-level media-control wiring crosses Android services and retained process state; unit-testable transport/coordinator logic remains covered separately.",
+  "android/app/src/main/java/com/openburnbar/BurnBarApplicationMercuryTrustSections.kt": "Application-level Mercury trust wiring: the Firestore escrow-trust snapshot listener and coroutine retry scheduling depend on Firebase SDK runtime and application-scope lifecycle requiring emulator/instrumented coverage; the retry backoff policy and trust-state mapping are pure and JVM-covered by MercuryRegistrationRetryPolicyTest.",
   "android/app/src/main/java/com/openburnbar/BurnBarApplicationStartupSections.kt": "Application startup orchestration depends on Android process lifecycle, Firebase initialization, and notification/service registration; owned helpers remain covered by focused JVM tests.",
   "android/app/src/main/java/com/openburnbar/MainActivityE2EComputerUseActions.kt": "Debug E2E activity hooks are Android intent/UI glue exercised by instrumented flows, not local JVM line attribution.",
   "android/app/src/main/java/com/openburnbar/MainActivityE2EComputerUseStreamSetup.kt": "Debug E2E stream setup is Android activity/intent integration glue; protocol and transport behavior remain covered by JVM/unit tests.",
   "android/app/src/main/java/com/openburnbar/MainActivity.kt": "Living Themes adds Android deep-link activity routing at the host lifecycle boundary; URI parsing and fallback selection are isolated in LivingThemeIntent and covered by JVM tests, while Activity launch dispatch requires instrumented coverage.",
+  "android/app/src/main/java/com/openburnbar/data/budget/BudgetNotificationCenter.kt": "Android notification/PendingIntent presentation boundary: redacted notification content is JVM-covered by BudgetNotificationCenterTest, while explicit-intent construction and NotificationManager delivery require framework/instrumented coverage.",
   "android/app/src/main/java/com/openburnbar/data/assistants/CLIAgentMissionDispatcher.kt": "Firebase Functions mission-dispatch integration: callable transport, auth context, and cloud error mapping require Firebase emulator/instrumented coverage; the seal/canonical payload logic remains covered by mobile and cloud tests.",
   "android/app/src/main/java/com/openburnbar/data/cloud/AndroidCloudVaultRevocationRotation.kt": "CloudVault revocation/rotation orchestration crosses Firestore transactions, trusted-device state, and Android crypto providers; pure crypto helpers remain JVM-covered, while live rotation requires emulator/instrumented coverage.",
   "android/app/src/main/java/com/openburnbar/data/computeruse/AgentWatchControlFrameReceiver.kt": "Agent-watch control-frame receiver is lifecycle and stream integration glue around Android runtime callbacks; frame signing/canonicalization logic remains covered in JVM tests.",
@@ -32,24 +34,42 @@ ANDROID_DIFF_COVERAGE_ALLOWLIST_JSON="$(cat <<'JSON'
   "android/app/src/main/java/com/openburnbar/data/computeruse/ForegroundFragmentActivityTracker.kt": "FragmentActivity foreground tracking depends on Android lifecycle callbacks; call sites and foreground gating are covered through receiver/registrar tests and instrumented UI flows.",
   "android/app/src/main/java/com/openburnbar/data/computeruse/RemoteUnlockSavedCredentialStore.kt": "Android Keystore/EncryptedSharedPreferences credential persistence cannot execute faithfully under local JVM JaCoCo; it is an Android-framework storage boundary requiring instrumented coverage.",
   "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesCompositeRelayTransport.kt": "Composite relay selection is integration glue over Firestore/iroh transports; the concrete iroh transport and retained-pool behavior remain covered by JVM tests.",
+  "android/app/src/main/java/com/openburnbar/data/media/VideoReceivePipeline.kt": "MediaCodec/Surface decode pipeline: codec configuration, async decoder callbacks, and Surface rendering require device codecs and cannot execute under local JVM JaCoCo; the pure helpers — receive stats, decoder configuration payloads, and the surface lifecycle gate — remain JVM-covered by VideoReceivePipelineStatsTest, VideoDecoderConfigurationPayloadTest, and SurfaceLifecycleGateTest.",
   "android/app/src/main/java/com/openburnbar/data/models/generated/IrohPairingModels.kt": "Generated schema mirror from shared pairing contracts; source-of-truth drift is guarded by schema sync and consumer contract tests rather than local line coverage.",
   "android/app/src/main/java/com/openburnbar/data/stores/AccountStore.kt": "FirebaseAuth-backed singleton access boundary; behavior depends on Firebase SDK runtime and is covered by higher-level account lifecycle tests.",
   "android/app/src/main/java/com/openburnbar/data/stores/AuthStore.kt": "FirebaseAuth-backed singleton access boundary; behavior depends on Firebase SDK runtime and is covered by higher-level auth lifecycle tests.",
   "android/app/src/main/java/com/openburnbar/data/stores/DevicesStore.kt": "Firestore listener store with snapshot lifecycle, coroutine cancellation, and Firebase SDK types; it needs emulator/instrumented coverage rather than local JVM line attribution.",
   "android/app/src/main/java/com/openburnbar/data/stores/UserStore.kt": "Firestore/Firebase user-store singleton access boundary; behavior depends on Firebase SDK runtime and is covered by higher-level account lifecycle tests.",
+  "android/app/src/main/java/com/openburnbar/menubar/MenuBarService.kt": "Foreground Service notification boundary: explicit-component tap PendingIntents and NotificationManager delivery are Android framework entry points that local JVM JaCoCo cannot execute; instrumented flows exercise the live notification.",
+  "android/app/src/main/java/com/openburnbar/menubar/MenuBarTileService.kt": "Quick Settings TileService is an Android framework entry point; tile lifecycle and the explicit launch PendingIntent require instrumented coverage.",
+  "android/app/src/main/java/com/openburnbar/services/media/MediaSessionForegroundService.kt": "Foreground media Service notification boundary: CallStyle notification and explicit launch PendingIntent construction require framework/instrumented coverage.",
+  "android/app/src/main/java/com/openburnbar/services/media/MercuryFcmService.kt": "FirebaseMessagingService push entry point: incoming-call full-screen notification and explicit accept/decline PendingIntent construction require framework/instrumented coverage.",
+  "android/app/src/main/java/com/openburnbar/services/media/MercuryFcmServiceSupport.kt": "FCM notification presentation glue: agent-reply Intent/NotificationCompat/RemoteInput construction depends on Android framework types unavailable to local JVM JaCoCo, and thread/call routing resolution requires the Firebase SDK runtime; delivery is exercised through instrumented push flows.",
   "android/app/src/main/java/com/openburnbar/ui/computeruse/ComputerUseAgentWatchScreen.kt": "Compose screen rendering and interaction surface; JVM unit coverage cannot prove recomposition/layout behavior, while presentation helpers remain covered by local tests.",
   "android/app/src/main/java/com/openburnbar/ui/hermes/AssistantsScreen.kt": "Compose navigation/rendering wrapper; local JVM coverage cannot prove recomposition/layout, while backing stores and formatting helpers are tested.",
   "android/app/src/main/java/com/openburnbar/ui/hermes/HermesView.kt": "Compose navigation/rendering wrapper; local JVM coverage cannot prove recomposition/layout, while backing stores and formatting helpers are tested.",
+  "android/app/src/main/java/com/openburnbar/ui/media/PairedMacControlsPreviewSections.kt": "Compose preview-only rendering section for paired-device controls; preview presentation requires screenshot or instrumented coverage, while the live control surfaces keep their own gating.",
   "android/app/src/main/java/com/openburnbar/ui/media/PairedMacControlsScreenSections.kt": "Compose rendering section for paired-device controls; interaction/layout coverage belongs to instrumented UI, while transport/control models remain unit-tested.",
   "android/app/src/main/java/com/openburnbar/ui/media/PairedMacControlsScreenSupport.kt": "Compose/UI support layer for paired-device controls; presentation behavior requires instrumented UI coverage and model/control logic remains JVM-covered.",
+  "android/app/src/main/java/com/openburnbar/ui/media/ScreenShareViewerActivity.kt": "FragmentActivity lifecycle host for the screen-share viewer; onResume/onDestroy and window wiring require instrumented coverage, while reconnect decisions remain JVM-covered by ScreenShareViewerConnectionRecoveryTest and counter persistence by ScreenShareViewerCounterStoreTest.",
+  "android/app/src/main/java/com/openburnbar/ui/media/ScreenShareViewerActivityControlSupport.kt": "Activity-scoped control transport glue: ensurePhoneControlSender and mirror reconnect require a live iroh transport and Activity lifecycle; the pure sender-reuse decision remains JVM-covered by ScreenShareViewerControlSenderReuseTest and mirror ack/reconnect policies by ScreenShareViewerActivityMirrorAckTest and ScreenShareViewerActivityReconnectMirrorTest.",
+  "android/app/src/main/java/com/openburnbar/ui/media/ScreenShareViewerActivitySections.kt": "Compose LaunchedEffect wiring for the screen-share viewer activity; the mirror rebind decision is JVM-covered in ScreenShareViewerConnectionRecoveryTest, while effect scheduling requires instrumented coverage.",
+  "android/app/src/main/java/com/openburnbar/ui/media/ScreenShareViewerActivityUiState.kt": "Compose remember/collectAsState state plumbing for the screen-share viewer; snapshot values derive from JVM-covered coordinator and store types, while state collection requires instrumented coverage.",
+  "android/app/src/main/java/com/openburnbar/ui/media/ScreenShareViewerScreenMainSections.kt": "Compose effect wiring for the screen-share viewer; auto-type open/close transitions are JVM-covered in ScreenShareAutoTypeFollowPolicy, while LaunchedEffect scheduling and rememberSaveable state plumbing require instrumented coverage.",
+  "android/app/src/main/java/com/openburnbar/ui/media/ScreenShareViewerScreenSections.kt": "Compose rendering/effect section for the screen-share viewer; keyboard dismissal decisions are JVM-covered in ScreenShareViewerScreenModels, while IME visibility, focus requests, and lifecycle-driven keyboard reopen are Android framework behavior exercised by the instrumented ScreenShareViewerDockTest.",
   "android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHost.kt": "Compose navigation host wiring; route graph rendering requires instrumented UI coverage, while route selection helpers are covered separately.",
   "android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHostSections.kt": "Compose navigation section wiring; route graph rendering requires instrumented UI coverage, while route selection helpers are covered separately.",
   "android/app/src/main/java/com/openburnbar/ui/pulse/PulseViewSections.kt": "Compose rendering wrapper; local JVM coverage cannot prove recomposition/layout, while backing data and formatting helpers are tested.",
   "android/app/src/main/java/com/openburnbar/ui/square/HermesSquareScreenSections.kt": "Compose rendering wrapper; local JVM coverage cannot prove recomposition/layout, while backing data and formatting helpers are tested.",
+  "android/app/src/main/java/com/openburnbar/ui/you/ConnectedDevicesScreen.kt": "Compose screen rendering and interaction surface for trusted-device management; recomposition, dialog, and layout behavior require the instrumented ConnectedDevicesScreenTest, while device trust, escrow registry, and store logic remain JVM-covered by AndroidEscrowDeviceRegistryTest and the safety-code tests.",
+  "android/app/src/main/java/com/openburnbar/ui/you/YouView.kt": "Compose navigation/rendering wrapper; local JVM coverage cannot prove recomposition/layout, while backing stores and formatting helpers are tested.",
+  "android/app/src/main/java/com/openburnbar/ui/you/YouViewSections.kt": "Compose navigation section wiring for the You tab; row rendering and click routing require instrumented UI coverage, while backing stores remain JVM-covered.",
   "android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/Generated/HermesRealtimeRelayGeneratedTypes.kt": "Generated relay schema mirror from shared Hermes wire contracts; drift is covered by schema/vector tests and consumers rather than local line attribution.",
   "android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/OpenBurnBarIrohFfiBridge.kt": "Reflection bridge over the optional UniFFI native AAR; availability and fallback are covered by transport tests, while real UniFFI calls require native AAR/instrumented coverage.",
   "android/app/src/main/java/com/openburnbar/ui/components/MobileKernelBackdrop.kt": "Compose Canvas backdrop rendering depends on Android graphics and frame-clock behavior; catalog identity and selection logic remain JVM-covered, while pixel output and recomposition require screenshot or instrumented coverage.",
   "android/app/src/main/java/com/openburnbar/ui/computeruse/ComputerUseAgentWatchScreen.kt": "Compose screen rendering and interaction surface; JVM unit coverage cannot prove recomposition/layout behavior, while presentation helpers remain covered by local tests.",
+  "android/app/src/main/java/com/openburnbar/ui/settings/SettingsRootScreen.kt": "Compose settings navigation router; page routing and rendering require instrumented UI coverage, while the settings manifest and search logic remain JVM-covered.",
+  "android/app/src/main/java/com/openburnbar/ui/settings/SettingsSearchResultsScreen.kt": "Compose search-results rendering; breadcrumb labels are presentation glue verified through instrumented settings flows, while search matching stays JVM-covered.",
   "android/app/src/main/java/com/openburnbar/ui/settings/SettingsRootScreenThemeSections.kt": "Settings integration is a Compose navigation and rendering boundary; catalog order and persisted kernel resolution are JVM-covered, while click routing and layout require instrumented Compose coverage.",
   "android/app/src/main/java/com/openburnbar/wallpaper/livingthemes/LivingThemePreviewView.kt": "TextureView surface lifecycle and GLES renderer ownership require a real Android SurfaceTexture; theme and FPS contracts are JVM-covered, while pause, resize, and release behavior require instrumented coverage.",
   "android/app/src/main/java/com/openburnbar/wallpaper/livingthemes/LivingThemeWallpaperService.kt": "WallpaperService engine visibility and surface callbacks are Android framework entry points unavailable to local JVM tests; selection parsing is JVM-covered and service rendering is verified on physical Android hardware.",
@@ -199,6 +219,83 @@ for line in git_output.splitlines():
         for ln in range(start, start + count):
             file_blocks[current].append(ln)
 
+def comment_only_lines(rel_path):
+    """Return source line numbers containing only whitespace/comments.
+
+    JaCoCo intentionally emits no executable-line entry for KDoc and ordinary
+    comments. A documentation-only production diff therefore has strong
+    evidence that there is nothing to cover, but only after we lex the source
+    and prove every added line is outside strings and executable code.
+    """
+    path = os.path.join(repo_root, rel_path)
+    with open(path, encoding="utf-8") as handle:
+        source_lines = handle.read().splitlines()
+
+    result = set()
+    block_depth = 0
+    in_triple_string = False
+
+    for line_number, source_line in enumerate(source_lines, start=1):
+        index = 0
+        has_code = in_triple_string
+
+        while index < len(source_line):
+            if in_triple_string:
+                closing = source_line.find('"""', index)
+                if closing < 0:
+                    index = len(source_line)
+                    continue
+                in_triple_string = False
+                index = closing + 3
+                continue
+
+            if block_depth > 0:
+                if source_line.startswith("/*", index):
+                    block_depth += 1
+                    index += 2
+                elif source_line.startswith("*/", index):
+                    block_depth -= 1
+                    index += 2
+                else:
+                    index += 1
+                continue
+
+            if source_line[index].isspace():
+                index += 1
+                continue
+            if source_line.startswith("//", index):
+                break
+            if source_line.startswith("/*", index):
+                block_depth = 1
+                index += 2
+                continue
+            if source_line.startswith('"""', index):
+                has_code = True
+                in_triple_string = True
+                index += 3
+                continue
+            if source_line[index] in {'"', "'"}:
+                has_code = True
+                quote = source_line[index]
+                index += 1
+                while index < len(source_line):
+                    if source_line[index] == "\\":
+                        index += 2
+                        continue
+                    if source_line[index] == quote:
+                        index += 1
+                        break
+                    index += 1
+                continue
+
+            has_code = True
+            index += 1
+
+        if not has_code:
+            result.add(line_number)
+
+    return result
+
 # Build a package-qualified coverage map. JaCoCo sourcefile names are not
 # unique: different packages and modules routinely contain Foo.kt. The
 # package/name key must resolve to exactly one changed repo path.
@@ -258,6 +355,16 @@ for rel_path in changed:
             "coveredLines": 0,
             "percent": 100.0,
             "method": "deletion_only",
+            "sourceIdentity": identity,
+        })
+        continue
+    if changed_lines.issubset(comment_only_lines(rel_path)):
+        details.append({
+            "file": rel_path,
+            "executableLines": 0,
+            "coveredLines": 0,
+            "percent": 100.0,
+            "method": "comment_only",
             "sourceIdentity": identity,
         })
         continue

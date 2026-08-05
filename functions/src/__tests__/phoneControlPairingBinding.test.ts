@@ -1,25 +1,26 @@
 /**
- * M-037 — phone-control authority must bind to the pairing's OWN phone, never
- * the whole account's trusted-phone set.
+ * M-037 follow-up — phone-control authority must bind each controller to the
+ * pairing through an explicit self-registration, never by materializing the
+ * whole account's trusted-phone set.
  *
  * Before this fix, `publishIrohPairingRecord` (Mac-published) materialized
  * `authorizedControllerDeviceIds` as EVERY trusted phone-platform escrow device,
  * so any trusted phone B could call `publishPhoneControlAuthority` and register
- * itself as a controller for a pairing that phone A owns — hijacking control of
- * phone A's Mac. The pairing is the Mac's connection root and carries no
- * inherent phone identity, so the controller binding is now established on first
- * claim by the phone that actually dials the pairing, and only that phone may
- * publish/refresh it afterward.
+ * itself as a controller without participating in the controller-key proof
+ * flow. The pairing is the Mac's shared connection root, so multiple trusted
+ * phones may now independently append themselves only when each publishes its
+ * own derived authority key. One phone cannot replace another phone's binding,
+ * and revocation removes only the revoked phone.
  *
  * These tests drive the REAL `publishIrohPairingRecord`, `publishPhoneControlAuthority`,
  * and `revokeEscrowDeviceTrust` handlers through `.run(request)` against an
  * in-memory Firestore double, proving:
  *   - a fresh Mac publish does NOT authorize any phone (empty allowlist);
- *   - a Mac heartbeat re-publish PRESERVES an already-claimed binding;
- *   - the first phone to publish claims the pairing as its sole controller;
- *   - a different trusted phone B is REJECTED and writes no controller record;
- *   - the claiming phone A can refresh its own authority on its pairing;
- *   - revoking phone A scrubs it from the allowlist so the pairing is re-claimable.
+ *   - a Mac heartbeat re-publish PRESERVES every explicitly registered binding;
+ *   - each trusted phone appends itself without replacing existing controllers;
+ *   - a phone cannot reuse an authority peer already bound to another device;
+ *   - each phone can refresh its own authority;
+ *   - revoking phone A scrubs only A while phone B remains authorized.
  */
 
 import { describe, expect, it, beforeEach, vi } from "vitest";
@@ -40,7 +41,22 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
       return this.ms;
     }
   }
-  const FieldValueMock = { serverTimestamp: () => ({ __serverTimestamp: true }) };
+  const FIELD_DELETE = { __delete: true } as const;
+  const FieldValueMock = {
+    delete: () => FIELD_DELETE,
+    serverTimestamp: () => ({ __serverTimestamp: true }),
+  };
+  const mergedData = (existing: Record<string, unknown>, data: Record<string, unknown>): Record<string, unknown> => {
+    const next = { ...existing };
+    for (const [key, value] of Object.entries(data)) {
+      if (value === FIELD_DELETE) {
+        delete next[key];
+      } else {
+        next[key] = value;
+      }
+    }
+    return next;
+  };
 
   const snapshotFor = (path: string) => {
     const data = store.get(path);
@@ -87,7 +103,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
     },
     async set(data: Record<string, unknown>, opts?: { merge?: boolean }) {
       const existing = opts?.merge ? (store.get(path) ?? {}) : {};
-      store.set(path, { ...existing, ...data });
+      store.set(path, mergedData(existing, data));
     },
     async delete() {
       store.delete(path);
@@ -112,7 +128,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
         set(ref: { path: string }, data: Record<string, unknown>, opts?: { merge?: boolean }) {
           writes.push(() => {
             const existing = opts?.merge ? (store.get(ref.path) ?? {}) : {};
-            store.set(ref.path, { ...existing, ...data });
+            store.set(ref.path, mergedData(existing, data));
           });
           return transaction;
         },
@@ -131,7 +147,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
         set(ref: { path: string }, data: Record<string, unknown>, opts?: { merge?: boolean }) {
           ops.push(() => {
             const existing = opts?.merge ? (store.get(ref.path) ?? {}) : {};
-            store.set(ref.path, { ...existing, ...data });
+            store.set(ref.path, mergedData(existing, data));
           });
         },
         delete(ref: { path: string }) {
@@ -157,8 +173,10 @@ vi.mock("../auth.js", () => ({
 }));
 const { configMock } = vi.hoisted(() => ({ configMock: { enforceAppCheck: true, requireHighRiskNonce: false } }));
 vi.mock("../config.js", () => ({ getConfig: () => configMock }));
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../callables/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../callables/shared/entitlements.js")>(
+    "../callables/shared/entitlements.js",
+  );
   return {
     ...actual,
     assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined),
@@ -171,11 +189,14 @@ vi.mock("../logging.js", async () => {
 vi.mock("../signalDirectoryRuntime.js", () => ({ revokeSignalSessionsForDevice: vi.fn(async () => 0) }));
 
 import {
+  issuePhoneControlEnrollmentGrant,
   publishIrohPairingRecord,
   publishPhoneControlAuthority,
   revokeEscrowDeviceTrust,
+  revokeIrohPairingRecord,
 } from "../callables/computerUseSecurity.js";
 import { APP_CHECK_ATTESTATION_CLAIM_KEY, appCheckAttestationDigestHex } from "../appCheckAttestation.js";
+import { callableRunner as bolaCallableRunner, tier2CallableProof } from "./bola/callableBolaHarness.js";
 
 const APP_ID = "1:123:ios:abc";
 const APP_CHECK_BOUND_AT_MILLIS = Date.now();
@@ -196,7 +217,10 @@ function req(data: Record<string, unknown>) {
 }
 
 function invokeCallable<TRes = unknown>(callable: unknown, data: Record<string, unknown>): Promise<TRes> {
-  const run = callable && (typeof callable === "object" || typeof callable === "function") ? Reflect.get(callable, "run") : undefined;
+  const run =
+    callable && (typeof callable === "object" || typeof callable === "function")
+      ? Reflect.get(callable, "run")
+      : undefined;
   if (typeof run !== "function") {
     throw new Error("callable test target is missing run()");
   }
@@ -230,12 +254,24 @@ function publishPhoneAuthority(deviceId: string, key: { base64: string; peerNode
   });
 }
 
-describe("M-037 phone-control authority binds to the pairing's own phone", () => {
+function issuePhoneEnrollmentGrant(controllerDeviceId: string, key: { peerNodeId: string }, hostDeviceId = MAC) {
+  return invokeCallable<{ ok: boolean; grantNonce: string; expiresAtMillis: number }>(
+    issuePhoneControlEnrollmentGrant,
+    {
+      hostDeviceId,
+      connectionId: CONN,
+      controllerDeviceId,
+      controllerPeerNodeId: key.peerNodeId,
+    },
+  );
+}
+
+describe("M-037 phone-control authority binds each trusted controller independently", () => {
   beforeEach(() => {
     store.clear();
     store.set(`users/${UID}/escrow_devices/${MAC}`, { platform: "macOS", trustState: "trusted", keyVersion: 1 });
     store.set(`users/${UID}/escrow_devices/phone-a`, { platform: "iOS", trustState: "trusted", keyVersion: 1 });
-    store.set(`users/${UID}/escrow_devices/phone-b`, { platform: "iOS", trustState: "trusted", keyVersion: 1 });
+    store.set(`users/${UID}/escrow_devices/phone-b`, { platform: "Android", trustState: "trusted", keyVersion: 1 });
   });
 
   it("a fresh Mac publish authorizes NO phone (empty allowlist)", async () => {
@@ -243,20 +279,63 @@ describe("M-037 phone-control authority binds to the pairing's own phone", () =>
     expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual([]);
   });
 
-  it("a Mac heartbeat re-publish preserves an already-claimed binding, never widening it", async () => {
+  it("a Mac heartbeat re-publish preserves every explicitly registered controller", async () => {
     await publishMacPairing();
-    await publishPhoneAuthority("phone-a", ed25519Key()); // phone A claims it
-    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual(["phone-a"]);
+    const keyA = ed25519Key();
+    const keyB = ed25519Key();
+    await issuePhoneEnrollmentGrant("phone-a", keyA);
+    await publishPhoneAuthority("phone-a", keyA);
+    await issuePhoneEnrollmentGrant("phone-b", keyB);
+    await publishPhoneAuthority("phone-b", keyB);
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual([
+      "phone-a",
+      "phone-b",
+    ]);
 
-    // Mac republishes (boot/heartbeat). The binding must survive and NOT grow to
-    // include phone B even though phone B is also a trusted phone.
+    // Mac republishes (boot/heartbeat). Explicit bindings survive, but the host
+    // still never auto-materializes unrelated trusted devices.
     await publishMacPairing();
-    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual(["phone-a"]);
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual([
+      "phone-a",
+      "phone-b",
+    ]);
   });
 
-  it("the first phone to publish claims the pairing as its sole controller", async () => {
+  it("a transient host revoke keeps controller approval while removing every dialable pairing field", async () => {
     await publishMacPairing();
     const key = ed25519Key();
+    await issuePhoneEnrollmentGrant("phone-a", key);
+    await publishPhoneAuthority("phone-a", key);
+
+    await invokeCallable(revokeIrohPairingRecord, {
+      deviceId: MAC,
+      connectionId: CONN,
+    });
+
+    const tombstone = store.get(`users/${UID}/iroh_pairing/${CONN}`);
+    expect(tombstone).toMatchObject({
+      authorizedControllerDeviceIds: ["phone-a"],
+      publishedByDeviceId: MAC,
+    });
+    expect(tombstone?.nodeId).toBeUndefined();
+    expect(tombstone?.publishedAtMillis).toBeUndefined();
+    expect(tombstone?.signature).toBeUndefined();
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}/controllers/${key.peerNodeId}`)?.deviceId).toBe("phone-a");
+
+    await publishMacPairing();
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual(["phone-a"]);
+    await expect(publishPhoneAuthority("phone-a", key)).resolves.toMatchObject({ ok: true });
+  });
+
+  it("a new phone requires a fresh grant from the Mac that owns the pairing", async () => {
+    await publishMacPairing();
+    const key = ed25519Key();
+    await expect(publishPhoneAuthority("phone-a", key)).rejects.toThrow(/fresh approval from this Mac/i);
+
+    const grant = await issuePhoneEnrollmentGrant("phone-a", key);
+    expect(grant.ok).toBe(true);
+    expect(grant.grantNonce).toEqual(expect.any(String));
+    expect(grant.expiresAtMillis).toBeGreaterThan(Date.now());
     const res = await publishPhoneAuthority("phone-a", key);
 
     expect(res.ok).toBe(true);
@@ -266,46 +345,165 @@ describe("M-037 phone-control authority binds to the pairing's own phone", () =>
     expect(controller?.appCheckAttestationHashBlake3).toBe(
       appCheckAttestationDigestHex(APP_ID, APP_CHECK_BOUND_AT_MILLIS),
     );
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}/controller_enrollment_grants/phone-a`)?.status).toBe(
+      "consumed",
+    );
   });
 
-  it("trusted phone B CANNOT publish controller authority for phone A's pairing", async () => {
+  it("a different trusted Mac cannot issue a controller grant for another host's pairing", async () => {
+    store.set(`users/${UID}/escrow_devices/mac-2`, {
+      platform: "macOS",
+      trustState: "trusted",
+      keyVersion: 1,
+    });
     await publishMacPairing();
-    await publishPhoneAuthority("phone-a", ed25519Key()); // phone A claims it first
+
+    await expect(issuePhoneEnrollmentGrant("phone-a", ed25519Key(), "mac-2")).rejects.toMatchObject({
+      code: "permission-denied",
+    });
+
+    await tier2CallableProof(store, {
+      exportedName: "issuePhoneControlEnrollmentGrant",
+      run: (request) => {
+        if (request && typeof request === "object") {
+          const auth = Reflect.get(request, "auth");
+          if (auth && typeof auth === "object") {
+            Reflect.set(auth, "token", {
+              [APP_CHECK_ATTESTATION_CLAIM_KEY]: {
+                v: 1,
+                appId: APP_ID,
+                boundAtMillis: APP_CHECK_BOUND_AT_MILLIS,
+              },
+            });
+          }
+          const app = Reflect.get(request, "app");
+          if (app && typeof app === "object") Reflect.set(app, "appId", APP_ID);
+        }
+        return bolaCallableRunner(issuePhoneControlEnrollmentGrant)(request);
+      },
+      payload: {
+        hostDeviceId: "bob-hostDeviceId",
+        connectionId: "bob-conn",
+        controllerDeviceId: "bob-controllerDeviceId",
+        controllerPeerNodeId: "bob-controllerPeerNodeId",
+      },
+      expectedOutcome: "throws",
+      expectedCode: "permission-denied",
+      strictCode: true,
+    });
+  });
+
+  it("an expired enrollment grant cannot authorize a new phone", async () => {
+    await publishMacPairing();
+    const key = ed25519Key();
+    await issuePhoneEnrollmentGrant("phone-a", key);
+    const grantPath = `users/${UID}/iroh_pairing/${CONN}/controller_enrollment_grants/phone-a`;
+    store.set(grantPath, {
+      ...store.get(grantPath),
+      expiresAtMillis: Date.now() - 1,
+    });
+
+    await expect(publishPhoneAuthority("phone-a", key)).rejects.toThrow(/fresh approval from this Mac/i);
+
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual([]);
+    expect(store.has(`users/${UID}/iroh_pairing/${CONN}/controllers/${key.peerNodeId}`)).toBe(false);
+    expect(store.get(grantPath)?.status).toBe("pending");
+  });
+
+  it("a grant from the prior host cannot survive pairing-host takeover", async () => {
+    store.set(`users/${UID}/escrow_devices/mac-2`, {
+      platform: "macOS",
+      trustState: "trusted",
+      keyVersion: 1,
+    });
+    await publishMacPairing();
+    const key = ed25519Key();
+    await issuePhoneEnrollmentGrant("phone-a", key);
+    const grantPath = `users/${UID}/iroh_pairing/${CONN}/controller_enrollment_grants/phone-a`;
+    expect(store.get(grantPath)?.issuedByDeviceId).toBe(MAC);
+
+    await publishMacPairing("mac-2");
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.publishedByDeviceId).toBe("mac-2");
+
+    await expect(publishPhoneAuthority("phone-a", key)).rejects.toThrow(/fresh approval from this Mac/i);
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual([]);
+    expect(store.has(`users/${UID}/iroh_pairing/${CONN}/controllers/${key.peerNodeId}`)).toBe(false);
+    expect(store.get(grantPath)?.status).toBe("pending");
+  });
+
+  it("a second trusted phone appends itself without replacing phone A", async () => {
+    await publishMacPairing();
+    const keyA = ed25519Key();
+    await issuePhoneEnrollmentGrant("phone-a", keyA);
+    await publishPhoneAuthority("phone-a", keyA);
 
     const keyB = ed25519Key();
-    await expect(publishPhoneAuthority("phone-b", keyB)).rejects.toThrow(/not authorized/i);
+    await issuePhoneEnrollmentGrant("phone-b", keyB);
+    await expect(publishPhoneAuthority("phone-b", keyB)).resolves.toMatchObject({ ok: true });
 
-    // Phone B wrote no controller record and was not appended to the allowlist.
-    expect(store.has(`users/${UID}/iroh_pairing/${CONN}/controllers/${keyB.peerNodeId}`)).toBe(false);
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}/controllers/${keyA.peerNodeId}`)?.deviceId).toBe("phone-a");
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}/controllers/${keyB.peerNodeId}`)?.deviceId).toBe("phone-b");
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual([
+      "phone-a",
+      "phone-b",
+    ]);
+  });
+
+  it("rejects rebinding another device's authority peer", async () => {
+    await publishMacPairing();
+    const keyA = ed25519Key();
+    await issuePhoneEnrollmentGrant("phone-a", keyA);
+    await publishPhoneAuthority("phone-a", keyA);
+
+    await issuePhoneEnrollmentGrant("phone-b", keyA);
+    await expect(publishPhoneAuthority("phone-b", keyA)).rejects.toThrow(/already bound/i);
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}/controllers/${keyA.peerNodeId}`)?.deviceId).toBe("phone-a");
     expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual(["phone-a"]);
   });
 
-  it("the claiming phone A can still refresh its own authority (legit same-pairing flow)", async () => {
+  it("phone A can refresh its own authority without dropping phone B", async () => {
     await publishMacPairing();
-    await publishPhoneAuthority("phone-a", ed25519Key());
+    const originalKeyA = ed25519Key();
+    const keyB = ed25519Key();
+    await issuePhoneEnrollmentGrant("phone-a", originalKeyA);
+    await publishPhoneAuthority("phone-a", originalKeyA);
+    await issuePhoneEnrollmentGrant("phone-b", keyB);
+    await publishPhoneAuthority("phone-b", keyB);
+
+    await expect(publishPhoneAuthority("phone-a", originalKeyA)).resolves.toMatchObject({ ok: true });
 
     const rotatedKey = ed25519Key();
+    const consumedGrantPath = `users/${UID}/iroh_pairing/${CONN}/controller_enrollment_grants/phone-a`;
+    expect(store.get(consumedGrantPath)?.status).toBe("consumed");
+    await expect(publishPhoneAuthority("phone-a", rotatedKey)).rejects.toThrow(/fresh approval from this Mac/i);
+    expect(store.get(consumedGrantPath)?.status).toBe("consumed");
+    expect(store.has(`users/${UID}/iroh_pairing/${CONN}/controllers/${rotatedKey.peerNodeId}`)).toBe(false);
+    await issuePhoneEnrollmentGrant("phone-a", rotatedKey);
     const res = await publishPhoneAuthority("phone-a", rotatedKey);
 
     expect(res.ok).toBe(true);
     expect(store.has(`users/${UID}/iroh_pairing/${CONN}/controllers/${rotatedKey.peerNodeId}`)).toBe(true);
-    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual(["phone-a"]);
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual([
+      "phone-a",
+      "phone-b",
+    ]);
   });
 
-  it("revoking the claiming phone scrubs it from the allowlist so the pairing is re-claimable", async () => {
+  it("revoking phone A removes only A while phone B remains authorized", async () => {
     await publishMacPairing();
-    await publishPhoneAuthority("phone-a", ed25519Key());
-    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual(["phone-a"]);
+    const keyA = ed25519Key();
+    const keyB = ed25519Key();
+    await issuePhoneEnrollmentGrant("phone-a", keyA);
+    await publishPhoneAuthority("phone-a", keyA);
+    await issuePhoneEnrollmentGrant("phone-b", keyB);
+    await publishPhoneAuthority("phone-b", keyB);
 
     await invokeCallable(revokeEscrowDeviceTrust, { deviceId: "phone-a" });
 
-    // Allowlist is cleared, freeing the pairing for a replacement phone.
-    expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual([]);
-
-    // A replacement phone B can now claim the freed pairing.
-    const keyB = ed25519Key();
-    const res = await publishPhoneAuthority("phone-b", keyB);
-    expect(res.ok).toBe(true);
     expect(store.get(`users/${UID}/iroh_pairing/${CONN}`)?.authorizedControllerDeviceIds).toEqual(["phone-b"]);
+    expect(store.has(`users/${UID}/iroh_pairing/${CONN}/controllers/${keyA.peerNodeId}`)).toBe(false);
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}/controllers/${keyB.peerNodeId}`)?.deviceId).toBe("phone-b");
+
+    await expect(publishPhoneAuthority("phone-b", keyB)).resolves.toMatchObject({ ok: true });
   });
 });

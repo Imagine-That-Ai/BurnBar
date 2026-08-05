@@ -40,7 +40,7 @@ test('real deb and rpm metadata and payload extraction preserve release identity
     assert.equal(stat.mode & 0o777, 0o755);
     assert.match(
       fs.readFileSync(path.join(destination, 'etc/xdg/autostart/openburnbar.desktop'), 'utf8'),
-      /Exec=openburnbar-linux-desktop --background/u
+      /Exec=\/usr\/bin\/openburnbar-linux-desktop --background/u
     );
   }
 });
@@ -81,7 +81,7 @@ function buildDeb(root, architecture) {
   fs.chmodSync(daemon, 0o755);
   fs.writeFileSync(
     path.join(packageRoot, 'etc/xdg/autostart/openburnbar.desktop'),
-    '[Desktop Entry]\nType=Application\nExec=openburnbar-linux-desktop --background\n'
+    '[Desktop Entry]\nType=Application\nExec=/usr/bin/openburnbar-linux-desktop --background\n'
   );
   const artifact = path.join(root, 'open-burn-bar.deb');
   run('dpkg-deb', ['--build', packageRoot, artifact]);
@@ -108,7 +108,7 @@ function buildRpm(root, architecture) {
     'echo fixture > %{buildroot}/usr/bin/openburnbar-daemon',
     'chmod 755 %{buildroot}/usr/bin/openburnbar-daemon',
     'mkdir -p %{buildroot}/etc/xdg/autostart',
-    "printf '[Desktop Entry]\\nType=Application\\nExec=openburnbar-linux-desktop --background\\n' > %{buildroot}/etc/xdg/autostart/openburnbar.desktop",
+    "printf '[Desktop Entry]\\nType=Application\\nExec=/usr/bin/openburnbar-linux-desktop --background\\n' > %{buildroot}/etc/xdg/autostart/openburnbar.desktop",
     'chmod 644 %{buildroot}/etc/xdg/autostart/openburnbar.desktop',
     '%files',
     '/usr/bin/openburnbar-daemon',

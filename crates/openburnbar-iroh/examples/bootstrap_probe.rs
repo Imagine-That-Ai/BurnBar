@@ -55,7 +55,10 @@ fn main() {
 
     let handle = IrohEndpointHandle::new();
     let started = std::time::Instant::now();
-    match handle.clone().bootstrap(IrohSecretKeyMaterial { raw }, relay_url) {
+    match handle
+        .clone()
+        .bootstrap(IrohSecretKeyMaterial { raw }, relay_url)
+    {
         Ok(identity) => {
             println!("BOOTSTRAP OK in {:?}", started.elapsed());
             println!("  node_id          = {}", identity.node_id);

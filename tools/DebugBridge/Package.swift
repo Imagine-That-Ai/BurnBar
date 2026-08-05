@@ -28,7 +28,7 @@ let package = Package(
     products: [
         .library(name: "DebugBridgeCore", targets: ["DebugBridgeCore"]),
         .library(name: "DebugBridgeUI", targets: ["DebugBridgeUI"]),
-        .library(name: "DebugBridgeTouch", targets: ["DebugBridgeTouch"]),
+        .library(name: "DebugBridgeTouch", targets: ["DebugBridgeTouch"])
     ],
     targets: [
         .target(
@@ -36,7 +36,7 @@ let package = Package(
             dependencies: [],
             path: "Sources/DebugBridgeCore",
             swiftSettings: [
-                .define("DEBUG", .when(configuration: .debug)),
+                .define("DEBUG", .when(configuration: .debug))
             ]
         ),
         .target(
@@ -45,13 +45,13 @@ let package = Package(
             path: "Sources/DebugBridgeTouch",
             publicHeadersPath: "include",
             cSettings: [
-                .define("DEBUG", to: "1", .when(configuration: .debug)),
+                .define("DEBUG", to: "1", .when(configuration: .debug))
             ],
             linkerSettings: [
                 // IOKit is loaded dynamically via dlopen at runtime (it's a
                 // private framework on iOS and can't be linked statically).
                 // UIKit links normally.
-                .linkedFramework("UIKit", .when(platforms: [.iOS])),
+                .linkedFramework("UIKit", .when(platforms: [.iOS]))
             ]
         ),
         .target(
@@ -59,13 +59,13 @@ let package = Package(
             dependencies: ["DebugBridgeCore", "DebugBridgeTouch"],
             path: "Sources/DebugBridgeUI",
             swiftSettings: [
-                .define("DEBUG", .when(configuration: .debug)),
+                .define("DEBUG", .when(configuration: .debug))
             ]
         ),
         .testTarget(
             name: "DebugBridgeCoreTests",
             dependencies: ["DebugBridgeCore"],
             path: "Tests/DebugBridgeCoreTests"
-        ),
+        )
     ]
 )

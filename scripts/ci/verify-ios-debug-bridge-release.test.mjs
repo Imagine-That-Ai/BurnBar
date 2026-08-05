@@ -17,7 +17,7 @@ async function makeApp({ executable = "OpenBurnBarMobile", payload = "release-bi
     `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict><key>CFBundleExecutable</key><string>${executable}</string></dict></plist>
-`
+`,
   );
   const executablePath = path.join(appPath, executable);
   await writeFile(executablePath, payload);
@@ -45,10 +45,9 @@ test("passes a clean Release app", async () => {
 });
 
 test("fails when Release conditions contain the QA opt-in", async () => {
-  const result = run(
-    await makeApp(),
-    { SWIFT_ACTIVE_COMPILATION_CONDITIONS: "GSTACK_IOS_QA" }
-  );
+  const result = run(await makeApp(), {
+    SWIFT_ACTIVE_COMPILATION_CONDITIONS: "GSTACK_IOS_QA",
+  });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /contains GSTACK_IOS_QA/);
 });
@@ -68,10 +67,9 @@ test("fails when a DebugBridge artifact is bundled", async () => {
 });
 
 test("skips non-Release builds", async () => {
-  const result = run(
-    await makeApp({ payload: "gstack-ios-qa bootstrap" }),
-    { CONFIGURATION: "Debug" }
-  );
+  const result = run(await makeApp({ payload: "gstack-ios-qa bootstrap" }), {
+    CONFIGURATION: "Debug",
+  });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /skipped for Debug/);
 });

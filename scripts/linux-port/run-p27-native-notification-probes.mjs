@@ -167,7 +167,7 @@ function autostartState() {
     .match(/^Exec=(.+)$/mu)?.[1]
     ?.trim();
   assert(
-    exec === "openburnbar-linux-desktop --background",
+    exec === "/usr/bin/openburnbar-linux-desktop --background",
     "P-27 packaged autostart Exec is not canonical",
   );
   return {

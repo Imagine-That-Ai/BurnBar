@@ -27,8 +27,9 @@ build_fixture_repo() {
   local name="$1"
   local repo="${TMP_DIR}/${name}"
   local origin="${TMP_DIR}/${name}.git"
-  mkdir -p "${repo}/scripts" "${repo}/functions"
+  mkdir -p "${repo}/scripts/ci" "${repo}/functions"
   cp scripts/rollback.sh "${repo}/scripts/rollback.sh"
+  cp scripts/ci/sentry_dsn.py "${repo}/scripts/ci/sentry_dsn.py"
   chmod +x "${repo}/scripts/rollback.sh"
   printf '%s\n' 'FIREBASE_PROJECT=burnbar-test' >"${repo}/functions/.env.burnbar.production"
 
@@ -60,8 +61,9 @@ build_stale_fixture_repo() {
   local name="$1"
   local repo="${TMP_DIR}/${name}"
   local origin="${TMP_DIR}/${name}.git"
-  mkdir -p "${repo}/scripts" "${repo}/functions"
+  mkdir -p "${repo}/scripts/ci" "${repo}/functions"
   cp scripts/rollback.sh "${repo}/scripts/rollback.sh"
+  cp scripts/ci/sentry_dsn.py "${repo}/scripts/ci/sentry_dsn.py"
   chmod +x "${repo}/scripts/rollback.sh"
   printf '%s\n' 'FIREBASE_PROJECT=burnbar-test' >"${repo}/functions/.env.burnbar.production"
 
@@ -126,6 +128,78 @@ STALE_TAG_MAX_AGE_DAYS=1 run_rollback "${stale_repo}" v1.0.0 --dry-run >"${TMP_D
 if ! grep -Fq "Target: v1.0.0" "${TMP_DIR}/explicit.out"; then
   echo "FAIL: explicit rollback target was not honored" >&2
   cat "${TMP_DIR}/explicit.out" >&2
+  exit 1
+fi
+
+missing_sentry_repo="$(build_fixture_repo missing-sentry)"
+missing_sentry_head="$(git -C "${missing_sentry_repo}" rev-parse HEAD)"
+if run_rollback "${missing_sentry_repo}" v1.0.1 --yes >"${TMP_DIR}/missing-sentry.out" 2>"${TMP_DIR}/missing-sentry.err"; then
+  echo "FAIL: production rollback accepted a missing SENTRY_DSN" >&2
+  exit 1
+fi
+if ! grep -Fq "SENTRY_DSN is required" "${TMP_DIR}/missing-sentry.err"; then
+  echo "FAIL: missing-Sentry refusal did not explain the production requirement" >&2
+  cat "${TMP_DIR}/missing-sentry.err" >&2
+  exit 1
+fi
+if [[ "$(git -C "${missing_sentry_repo}" rev-parse HEAD)" != "${missing_sentry_head}" ]]; then
+  echo "FAIL: missing-Sentry refusal mutated the fixture checkout" >&2
+  exit 1
+fi
+
+invalid_sentry_repo="$(build_fixture_repo invalid-sentry)"
+invalid_sentry_head="$(git -C "${invalid_sentry_repo}" rev-parse HEAD)"
+if SENTRY_DSN="http://public@example.ingest.sentry.io/12345" \
+  run_rollback "${invalid_sentry_repo}" v1.0.1 --yes >"${TMP_DIR}/invalid-sentry.out" 2>"${TMP_DIR}/invalid-sentry.err"; then
+  echo "FAIL: production rollback accepted an invalid SENTRY_DSN" >&2
+  exit 1
+fi
+if ! grep -Fq "SENTRY_DSN must use https" "${TMP_DIR}/invalid-sentry.err"; then
+  echo "FAIL: invalid-Sentry refusal did not report the validation error" >&2
+  cat "${TMP_DIR}/invalid-sentry.err" >&2
+  exit 1
+fi
+if [[ "$(git -C "${invalid_sentry_repo}" rev-parse HEAD)" != "${invalid_sentry_head}" ]]; then
+  echo "FAIL: invalid-Sentry refusal mutated the fixture checkout" >&2
+  exit 1
+fi
+
+execution_repo="$(build_fixture_repo execution)"
+execution_commit="$(git -C "${execution_repo}" rev-parse 'refs/tags/v1.0.1^{commit}')"
+fake_bin="${TMP_DIR}/fake-bin"
+mkdir -p "${fake_bin}"
+cat >"${fake_bin}/npm" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 0
+SH
+cat >"${fake_bin}/firebase" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == *"deploy --only functions"* ]]
+exit 0
+SH
+chmod +x "${fake_bin}/npm" "${fake_bin}/firebase"
+
+valid_sentry_dsn="https://public@example.ingest.sentry.io/12345"
+PATH="${fake_bin}:${PATH}" \
+  SENTRY_DSN="${valid_sentry_dsn}" \
+  run_rollback "${execution_repo}" v1.0.1 --yes >"${TMP_DIR}/execution.out"
+
+rollback_env="${execution_repo}/functions/.env.burnbar"
+for expected in \
+  "FUNCTION_VERSION=v1.0.1" \
+  "OPENBURNBAR_SOURCE_COMMIT=${execution_commit}" \
+  "SENTRY_DSN=${valid_sentry_dsn}" \
+  "SENTRY_ENVIRONMENT=production"; do
+  if ! grep -Fqx "${expected}" "${rollback_env}"; then
+    echo "FAIL: rollback runtime config is missing ${expected}" >&2
+    cat "${rollback_env}" >&2
+    exit 1
+  fi
+done
+if [[ "$(git -C "${execution_repo}" rev-parse HEAD)" != "${execution_commit}" ]]; then
+  echo "FAIL: rollback execution did not remain on the exact target-tag commit" >&2
   exit 1
 fi
 

@@ -61,6 +61,7 @@ export const AUTH_ONLY_CALLABLES = [
   "getProfileAvatarDownloadUrl",
   "pushLinuxCloudReplicas",
   "pullLinuxCloudReplicas",
+  "writeSignalAtRestDocument",
 ] as const;
 
 export const PLATFORM_TRIGGER_ENDPOINTS = [
@@ -92,6 +93,7 @@ export const PLATFORM_TRIGGER_ENDPOINTS = [
   "latestRouterRundown",
   "reconcileAccountErasures",
   "reconcileHostedEntitlementsDaily",
+  "reconcileGooglePlayVoidedPurchasesDaily",
   "backfillPrivacyPlaintextScheduled",
   "reapHermesGatewayApprovals",
   "onCliSessionAgentReplyNotification",
@@ -100,9 +102,19 @@ export const PLATFORM_TRIGGER_ENDPOINTS = [
   "onKnowledgeRepoPush",
   "sendFcmOutbound",
   "sendVoIPOutbound",
+  "googlePlayDeveloperNotifications",
   "stripeBurnBarProWebhook",
   "appStoreServerNotificationsV2",
-  "googlePlayDeveloperNotifications",
+  "onSignalMigrationAgentIdentityWritten",
+  "onSignalMigrationApprovalPolicyWritten",
+  "onSignalMigrationChatThreadWritten",
+  "onSignalMigrationCliSessionWritten",
+  "onSignalMigrationConversationWritten",
+  "onSignalMigrationMissionRequestWritten",
+  "onSignalMigrationMobileAssistantChatWritten",
+  "onSignalMigrationRollbackRequestWritten",
+  "onSignalMigrationSubscriptionTopicWritten",
+  "onSignalMigrationTextSnippetWritten",
 ] as const;
 
 export const PUBLIC_HEALTH_ENDPOINTS = ["healthCheck", "healthLive", "healthReady", "startCliLink"] as const;

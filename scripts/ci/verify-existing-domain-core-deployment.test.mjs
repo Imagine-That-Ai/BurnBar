@@ -218,12 +218,14 @@ function protectedReleaseGate(candidateCommitValue, releaseCommitValue) {
     activation: {
       candidateCommit: candidateCommitValue,
       activationCommit: releaseCommitValue,
+      releaseCommit: releaseCommitValue,
     },
     rollbackArtifact: {
       candidate: { candidateCommit: candidateCommitValue },
       activation: {
         candidateCommit: candidateCommitValue,
         activationCommit: releaseCommitValue,
+        releaseCommit: releaseCommitValue,
       },
     },
   };

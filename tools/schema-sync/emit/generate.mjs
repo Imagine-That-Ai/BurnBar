@@ -564,6 +564,28 @@ data class FirestoreGatewaySignalKeyDeliveryDoc(
     val contentKeyLength: Long? = null,
 )`,
       },
+      GatewaySignalAtRestSenderAuthDoc: {
+        ts: `export interface GatewaySignalAtRestSenderAuthDoc {
+  senderIdentityKeyId: string;
+  senderIdentityKeyB64: string;
+  signatureB64: string;
+  signatureVersion: 1;
+}`,
+        swift: `public struct FirestoreGatewaySignalAtRestSenderAuthDoc: Codable, Sendable, Equatable {
+    public var senderIdentityKeyId: String
+    public var senderIdentityKeyB64: String
+    public var signatureB64: String
+    public var signatureVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreGatewaySignalAtRestSenderAuthDoc(
+    val senderIdentityKeyId: String = "",
+    val senderIdentityKeyB64: String = "",
+    val signatureB64: String = "",
+    val signatureVersion: Long = 1,
+)`,
+      },
       GatewaySignalEnvelopeDoc: {
         ts: `export interface GatewaySignalEnvelopeDoc {
   signalEnvelopeFormatVersion: number;
@@ -573,6 +595,7 @@ data class FirestoreGatewaySignalKeyDeliveryDoc(
   ciphertextLayer: GatewaySignalCiphertextLayerDoc;
   keyDelivery: GatewaySignalTransportKeyDeliveryDoc | GatewaySignalAtRestKeyDeliveryDoc;
   binding: GatewaySignalBindingDoc;
+  senderAuth?: GatewaySignalAtRestSenderAuthDoc;
 }`,
         swift: `public struct FirestoreGatewaySignalEnvelopeDoc: Codable, Sendable, Equatable {
     public var signalEnvelopeFormatVersion: Int
@@ -582,6 +605,7 @@ data class FirestoreGatewaySignalKeyDeliveryDoc(
     public var ciphertextLayer: FirestoreGatewaySignalCiphertextLayerDoc
     public var keyDelivery: FirestoreGatewaySignalKeyDeliveryDoc
     public var binding: FirestoreGatewaySignalBindingDoc
+    public var senderAuth: FirestoreGatewaySignalAtRestSenderAuthDoc?
 }`,
         kotlin: `@Keep
 @IgnoreExtraProperties
@@ -593,6 +617,62 @@ data class FirestoreGatewaySignalEnvelopeDoc(
     val ciphertextLayer: FirestoreGatewaySignalCiphertextLayerDoc = FirestoreGatewaySignalCiphertextLayerDoc(),
     val keyDelivery: FirestoreGatewaySignalKeyDeliveryDoc = FirestoreGatewaySignalKeyDeliveryDoc(),
     val binding: FirestoreGatewaySignalBindingDoc = FirestoreGatewaySignalBindingDoc(),
+    val senderAuth: FirestoreGatewaySignalAtRestSenderAuthDoc? = null,
+)`,
+      },
+      HermesGatewaySignalPrekeyBundleDoc: {
+        ts: `export interface HermesGatewaySignalPrekeyBundleDoc {
+  version: 1;
+  bundleId: string;
+  identityKeyId: string;
+  identityKeyB64: string;
+  registrationId: number;
+  deviceId: number;
+  signedPreKeyId: number;
+  signedPreKeyPublicB64: string;
+  signedPreKeySignatureB64: string;
+  oneTimePreKeyId: number;
+  oneTimePreKeyPublicB64: string;
+  kyberPreKeyId: number;
+  kyberPreKeyPublicB64: string;
+  kyberPreKeySignatureB64: string;
+  generatedAt: string;
+}`,
+        swift: `public struct FirestoreHermesGatewaySignalPrekeyBundleDoc: Codable, Sendable, Equatable {
+    public var version: Int
+    public var bundleId: String
+    public var identityKeyId: String
+    public var identityKeyB64: String
+    public var registrationId: Int
+    public var deviceId: Int
+    public var signedPreKeyId: Int
+    public var signedPreKeyPublicB64: String
+    public var signedPreKeySignatureB64: String
+    public var oneTimePreKeyId: Int
+    public var oneTimePreKeyPublicB64: String
+    public var kyberPreKeyId: Int
+    public var kyberPreKeyPublicB64: String
+    public var kyberPreKeySignatureB64: String
+    public var generatedAt: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesGatewaySignalPrekeyBundleDoc(
+    val version: Long = 1,
+    val bundleId: String = "",
+    val identityKeyId: String = "",
+    val identityKeyB64: String = "",
+    val registrationId: Long = 0,
+    val deviceId: Long = 0,
+    val signedPreKeyId: Long = 0,
+    val signedPreKeyPublicB64: String = "",
+    val signedPreKeySignatureB64: String = "",
+    val oneTimePreKeyId: Long = 0,
+    val oneTimePreKeyPublicB64: String = "",
+    val kyberPreKeyId: Long = 0,
+    val kyberPreKeyPublicB64: String = "",
+    val kyberPreKeySignatureB64: String = "",
+    val generatedAt: String = "",
 )`,
       },
       HermesGatewayClientDoc: {
@@ -619,6 +699,7 @@ data class FirestoreGatewaySignalEnvelopeDoc(
   agentPreferredRelayEnvelopeVersion?: number;
   agentSupportsHpkeV3?: boolean;
   agentSupportsSignalEnvelope?: boolean;
+  agentSignalPrekeyBundle?: HermesGatewaySignalPrekeyBundleDoc;
   agentPlatform?: string;
   agentAppBuild?: string;
   phoneRelayPublicKey?: string;
@@ -628,6 +709,7 @@ data class FirestoreGatewaySignalEnvelopeDoc(
   phonePreferredRelayEnvelopeVersion?: number;
   phoneSupportsHpkeV3?: boolean;
   phoneSupportsSignalEnvelope?: boolean;
+  phoneSignalPrekeyBundle?: HermesGatewaySignalPrekeyBundleDoc;
   phonePlatform?: string;
   phoneAppBuild?: string;
   agentRatchetIdentityPublicKey?: string;
@@ -684,6 +766,7 @@ data class FirestoreGatewaySignalEnvelopeDoc(
     public var agentPreferredRelayEnvelopeVersion: Int?
     public var agentSupportsHpkeV3: Bool?
     public var agentSupportsSignalEnvelope: Bool?
+    public var agentSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc?
     public var agentPlatform: String?
     public var agentAppBuild: String?
     public var phoneRelayPublicKey: String?
@@ -693,6 +776,7 @@ data class FirestoreGatewaySignalEnvelopeDoc(
     public var phonePreferredRelayEnvelopeVersion: Int?
     public var phoneSupportsHpkeV3: Bool?
     public var phoneSupportsSignalEnvelope: Bool?
+    public var phoneSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc?
     public var phonePlatform: String?
     public var phoneAppBuild: String?
     public var agentRatchetIdentityPublicKey: String?
@@ -751,6 +835,7 @@ data class FirestoreHermesGatewayClientDoc(
     val agentPreferredRelayEnvelopeVersion: Long? = null,
     val agentSupportsHpkeV3: Boolean? = null,
     val agentSupportsSignalEnvelope: Boolean? = null,
+    val agentSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc? = null,
     val agentPlatform: String? = null,
     val agentAppBuild: String? = null,
     val phoneRelayPublicKey: String? = null,
@@ -760,6 +845,7 @@ data class FirestoreHermesGatewayClientDoc(
     val phonePreferredRelayEnvelopeVersion: Long? = null,
     val phoneSupportsHpkeV3: Boolean? = null,
     val phoneSupportsSignalEnvelope: Boolean? = null,
+    val phoneSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc? = null,
     val phonePlatform: String? = null,
     val phoneAppBuild: String? = null,
     val agentRatchetIdentityPublicKey: String? = null,
@@ -1689,11 +1775,84 @@ function emitSwift(domainId, models) {
 import Foundation
 
 `;
+  const swiftPublicInitializers = {
+    FirestoreGatewaySignalCiphertextLayerDoc: `    public init(payloadCiphertextB64: String, payloadAADLabel: String, schemaVersion: Int) {
+        self.payloadCiphertextB64 = payloadCiphertextB64
+        self.payloadAADLabel = payloadAADLabel
+        self.schemaVersion = schemaVersion
+    }`,
+    FirestoreGatewaySignalBindingDoc: `    public init(uid: String, scope: String, clientId: String? = nil, collection: String? = nil, docId: String? = nil, field: String? = nil, slotId: String? = nil, mode: String, formatVersion: Int) {
+        self.uid = uid
+        self.scope = scope
+        self.clientId = clientId
+        self.collection = collection
+        self.docId = docId
+        self.field = field
+        self.slotId = slotId
+        self.mode = mode
+        self.formatVersion = formatVersion
+    }`,
+    FirestoreGatewaySignalAtRestWrapDoc: `    public init(recipientKind: String, recipientIdentityKeyId: String, recipientIdentityKeyB64: String, sealedContentKeyB64: String) {
+        self.recipientKind = recipientKind
+        self.recipientIdentityKeyId = recipientIdentityKeyId
+        self.recipientIdentityKeyB64 = recipientIdentityKeyB64
+        self.sealedContentKeyB64 = sealedContentKeyB64
+    }`,
+    FirestoreGatewaySignalKeyDeliveryDoc: `    public init(scheme: String, signalMessageType: Int? = nil, signalMessageB64: String? = nil, senderIdentityKeyId: String? = nil, ratchetEpochHint: Int? = nil, wraps: [FirestoreGatewaySignalAtRestWrapDoc]? = nil, contentKeyLength: Int? = nil) {
+        self.scheme = scheme
+        self.signalMessageType = signalMessageType
+        self.signalMessageB64 = signalMessageB64
+        self.senderIdentityKeyId = senderIdentityKeyId
+        self.ratchetEpochHint = ratchetEpochHint
+        self.wraps = wraps
+        self.contentKeyLength = contentKeyLength
+    }`,
+    FirestoreGatewaySignalAtRestSenderAuthDoc: `    public init(senderIdentityKeyId: String, senderIdentityKeyB64: String, signatureB64: String, signatureVersion: Int) {
+        self.senderIdentityKeyId = senderIdentityKeyId
+        self.senderIdentityKeyB64 = senderIdentityKeyB64
+        self.signatureB64 = signatureB64
+        self.signatureVersion = signatureVersion
+    }`,
+    FirestoreGatewaySignalEnvelopeDoc: `    public init(signalEnvelopeFormatVersion: Int, mode: String, relayKeyVersion: Int? = nil, relayEncryption: String, ciphertextLayer: FirestoreGatewaySignalCiphertextLayerDoc, keyDelivery: FirestoreGatewaySignalKeyDeliveryDoc, binding: FirestoreGatewaySignalBindingDoc, senderAuth: FirestoreGatewaySignalAtRestSenderAuthDoc? = nil) {
+        self.signalEnvelopeFormatVersion = signalEnvelopeFormatVersion
+        self.mode = mode
+        self.relayKeyVersion = relayKeyVersion
+        self.relayEncryption = relayEncryption
+        self.ciphertextLayer = ciphertextLayer
+        self.keyDelivery = keyDelivery
+        self.binding = binding
+        self.senderAuth = senderAuth
+    }`,
+    FirestoreHermesGatewaySignalPrekeyBundleDoc: `    public init(version: Int, bundleId: String, identityKeyId: String, identityKeyB64: String, registrationId: Int, deviceId: Int, signedPreKeyId: Int, signedPreKeyPublicB64: String, signedPreKeySignatureB64: String, oneTimePreKeyId: Int, oneTimePreKeyPublicB64: String, kyberPreKeyId: Int, kyberPreKeyPublicB64: String, kyberPreKeySignatureB64: String, generatedAt: String) {
+        self.version = version
+        self.bundleId = bundleId
+        self.identityKeyId = identityKeyId
+        self.identityKeyB64 = identityKeyB64
+        self.registrationId = registrationId
+        self.deviceId = deviceId
+        self.signedPreKeyId = signedPreKeyId
+        self.signedPreKeyPublicB64 = signedPreKeyPublicB64
+        self.signedPreKeySignatureB64 = signedPreKeySignatureB64
+        self.oneTimePreKeyId = oneTimePreKeyId
+        self.oneTimePreKeyPublicB64 = oneTimePreKeyPublicB64
+        self.kyberPreKeyId = kyberPreKeyId
+        self.kyberPreKeyPublicB64 = kyberPreKeyPublicB64
+        self.kyberPreKeySignatureB64 = kyberPreKeySignatureB64
+        self.generatedAt = generatedAt
+    }`,
+  };
+  const swiftModels = Object.values(models).map((model) => {
+    const source = model.swift;
+    if (!source) return source;
+    const structMatch = source.match(/public struct (\w+)/);
+    const init = structMatch ? swiftPublicInitializers[structMatch[1]] : undefined;
+    if (!init) return source;
+    const closing = source.lastIndexOf("\n}");
+    return `${source.slice(0, closing)}\n\n${init}${source.slice(closing)}`;
+  });
   return (
     header +
-    Object.values(models)
-      .map((m) => m.swift)
-      .join("\n\n")
+    swiftModels.join("\n\n")
   );
 }
 

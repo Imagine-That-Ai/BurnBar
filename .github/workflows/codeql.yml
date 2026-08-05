@@ -19,9 +19,11 @@ name: CodeQL
 # on the *nightly* run (via "Require status checks → from any source") so
 # the daily result gates the next day's merges without blocking same-day PRs.
 
+# CI-cost hardening (2026-07-31): the push-to-main trigger re-ran the full
+# Swift analysis (~140 macOS min) on every merge (~52K macOS minutes/month).
+# Per the branch-protection note above, the NIGHTLY run is the gating result;
+# the push trigger was redundant with this workflow's own stated design.
 on:
-  push:
-    branches: [main]
   schedule:
     # 09:17 UTC daily — slightly off the hour to dodge GitHub's cron contention.
     - cron: "17 9 * * *"
@@ -99,9 +101,13 @@ jobs:
         id: signal-ffi-cache
         run: echo "sha=$(git -C Vendor/libsignal rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache macOS Signal FFI artifact
+      # Restore-only: this lane builds an x86_64-only artifact on a cache miss,
+      # so letting it save would poison the shared superset key for the arm64
+      # consumers (SwiftPM/App gates). Only ci-cache-warm.yml and full-target
+      # builders may write this key.
+      - name: Restore macOS Signal FFI artifact
         if: matrix.language == 'swift'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
         with:
           path: Vendor/OpenBurnBarSignalFfiMac.xcframework
           key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
@@ -112,13 +118,9 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install protobuf for libsignal Swift FFI
+      - name: Ensure libsignal native toolchain (protoc + cmake)
         if: matrix.language == 'swift'
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Prepare Signal FFI for Swift CodeQL
         if: matrix.language == 'swift'

@@ -1,29 +1,9 @@
 {
   "schemaVersion": "openburnbar.staging-function-targets.v1",
   "targets": {
-    "appStoreServerNotificationsV2": {
-      "module": "./appstore/notifications.js",
-      "export": "appStoreServerNotificationsV2"
-    },
-    "beginEntitlementBinding": {
-      "module": "./appstore/callable.js",
-      "export": "beginEntitlementBinding"
-    },
-    "createStripeBurnBarProCheckoutSession": {
-      "module": "./callables/stripe.js",
-      "export": "createStripeBurnBarProCheckoutSession"
-    },
-    "createStripeBurnBarProPortalSession": {
-      "module": "./callables/stripe.js",
-      "export": "createStripeBurnBarProPortalSession"
-    },
     "getWindowsRuntimeSafetyConfig": {
       "module": "./callables/windowsRuntimeSafetyConfig.js",
       "export": "getWindowsRuntimeSafetyConfig"
-    },
-    "googlePlayDeveloperNotifications": {
-      "module": "./googlePlayRtdn.js",
-      "export": "googlePlayDeveloperNotifications"
     },
     "issueWindowsAppCheckChallenge": {
       "module": "./callables/windowsAppCheck.js",
@@ -33,25 +13,45 @@
       "module": "./callables/windowsAppCheck.js",
       "export": "mintWindowsAppCheckToken"
     },
-    "reconcileHostedEntitlementsDaily": {
-      "module": "./appstore/scheduled.js",
-      "export": "reconcileHostedEntitlementsDaily"
-    },
-    "restoreHostedQuotaEntitlement": {
-      "module": "./appstore/callable.js",
-      "export": "restoreHostedQuotaEntitlement"
-    },
-    "stripeBurnBarProWebhook": {
-      "module": "./callables/stripe.js",
-      "export": "stripeBurnBarProWebhook"
-    },
     "submitDomainCoreShadowSamples": {
       "module": "./callables/domainCoreShadowEvidence.js",
       "export": "submitDomainCoreShadowSamples"
     },
-    "verifyCloudProTopUp": {
-      "module": "./appstore/callable.js",
-      "export": "verifyCloudProTopUp"
+    "burnBarHermesGateway": {
+      "module": "./callables/hermesGateway.js",
+      "export": "burnBarHermesGateway"
+    },
+    "latestRouterRundown": {
+      "module": "./routerRundown.js",
+      "export": "latestRouterRundown"
+    },
+    "startCliLink": {
+      "module": "./callables/cliLink.js",
+      "export": "startCliLink"
+    },
+    "pollCliLink": {
+      "module": "./callables/cliLink.js",
+      "export": "pollCliLink"
+    },
+    "bindAppCheckAttestation": {
+      "module": "./callables/escrowDeviceCallables.js",
+      "export": "bindAppCheckAttestation"
+    },
+    "issueHighRiskActionNonce": {
+      "module": "./callables/escrowDeviceCallables.js",
+      "export": "issueHighRiskActionNonce"
+    },
+    "publishPhoneControlAuthority": {
+      "module": "./callables/phoneControlCallables.js",
+      "export": "publishPhoneControlAuthority"
+    },
+    "createStripeBurnBarProCheckoutSession": {
+      "module": "./callables/stripe.js",
+      "export": "createStripeBurnBarProCheckoutSession"
+    },
+    "createStripeBurnBarProPortalSession": {
+      "module": "./callables/stripe.js",
+      "export": "createStripeBurnBarProPortalSession"
     },
     "verifyGooglePlayBurnBarProSubscription": {
       "module": "./callables/stripe.js",
@@ -61,9 +61,41 @@
       "module": "./callables/stripe.js",
       "export": "verifyGooglePlayCloudProTopUp"
     },
+    "stripeBurnBarProWebhook": {
+      "module": "./callables/stripe.js",
+      "export": "stripeBurnBarProWebhook"
+    },
+    "googlePlayDeveloperNotifications": {
+      "module": "./googlePlayRtdn.js",
+      "export": "googlePlayDeveloperNotifications"
+    },
+    "reconcileGooglePlayVoidedPurchasesDaily": {
+      "module": "./googlePlayVoidedPurchaseReconciler.js",
+      "export": "reconcileGooglePlayVoidedPurchasesDaily"
+    },
+    "beginEntitlementBinding": {
+      "module": "./appstore/index.js",
+      "export": "beginEntitlementBinding"
+    },
     "verifyHostedQuotaEntitlement": {
-      "module": "./appstore/callable.js",
+      "module": "./appstore/index.js",
       "export": "verifyHostedQuotaEntitlement"
+    },
+    "verifyCloudProTopUp": {
+      "module": "./appstore/index.js",
+      "export": "verifyCloudProTopUp"
+    },
+    "restoreHostedQuotaEntitlement": {
+      "module": "./appstore/index.js",
+      "export": "restoreHostedQuotaEntitlement"
+    },
+    "appStoreServerNotificationsV2": {
+      "module": "./appstore/index.js",
+      "export": "appStoreServerNotificationsV2"
+    },
+    "reconcileHostedEntitlementsDaily": {
+      "module": "./appstore/index.js",
+      "export": "reconcileHostedEntitlementsDaily"
     }
   }
 }

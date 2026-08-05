@@ -1,7 +1,9 @@
 {
   "context": "BurnBar CI Gate",
+  "cancelled_grace_seconds": 120,
   "poll_interval_seconds": 20,
-  "timeout_minutes": 150,
+  "timeout_minutes": 270,
+  "component_runtime_budget_minutes": 240,
   "required_contexts": [
     "AGENTS.md quick validation",
     "AGPL compliance",

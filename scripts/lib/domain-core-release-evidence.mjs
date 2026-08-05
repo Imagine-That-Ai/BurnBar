@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { lstatSync, readFileSync } from "node:fs";
 import { basename, isAbsolute, resolve } from "node:path";
-import { validateDomainCoreActivation } from "./domain-core-activation.mjs";
+import { validateDomainCoreReleaseActivation } from "./domain-core-activation.mjs";
 
 import { validateDomainCoreCandidateIdentity } from "./domain-core-candidate-receipt.mjs";
 
@@ -579,7 +579,7 @@ export function verifyDomainCoreReleaseGate({
   expectedReleaseVersion,
   expectedReleaseTag,
   promotionVerifier = verifyProtectedPromotionAttestation,
-  activationVerifier = validateDomainCoreActivation,
+  activationVerifier = validateDomainCoreReleaseActivation,
 }) {
   const candidateBundle = JSON.parse(
     readFileSync(regularFile(candidateBundlePath, "candidate bundle"), "utf8"),
@@ -615,11 +615,23 @@ export function verifyDomainCoreReleaseGate({
     signerRunId: protectedSignerRunId,
     signerRunAttempt: protectedSignerRunAttempt,
   });
+  // The release commit R is not the activation authority: protected main may
+  // advance past activation P with path-disjoint commits before the release
+  // is cut. Re-derive P from the committed authority files and validate the
+  // activation closure against P while keeping P..R drift fail-closed.
   const activation = activationVerifier({
     repoRoot: process.cwd(),
     candidateCommit: candidate.candidateCommit,
-    activationCommit: expectedReleaseCommit,
+    releaseCommit: expectedReleaseCommit,
   });
+  if (
+    activation?.candidateCommit !== candidate.candidateCommit ||
+    activation?.releaseCommit !== expectedReleaseCommit
+  ) {
+    throw new Error(
+      "release gate activation does not bind candidate C and release commit R",
+    );
+  }
   const rollbackPath = regularFile(rollbackArtifactPath, "rollback artifact");
   const rollbackProfile = regularFile(
     rollbackProfilePath ?? rollbackPath,

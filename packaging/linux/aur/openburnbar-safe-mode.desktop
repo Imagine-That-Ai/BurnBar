@@ -4,7 +4,7 @@ Name=OpenBurnBar (Safe Mode)
 Comment=OpenBurnBar with software GL for virtio/limited GPU hosts
 # Software GL enables WebGL2 when the host only exposes WebGL1 (virtio/Apple GPU).
 # Prefer the default openburnbar.desktop on real GPUs.
-Exec=env LIBGL_ALWAYS_SOFTWARE=1 MESA_GL_VERSION_OVERRIDE=4.5 MESA_GLSL_VERSION_OVERRIDE=450 WEBKIT_DISABLE_DMABUF_RENDERER=1 openburnbar-linux-desktop %U
+Exec=env LIBGL_ALWAYS_SOFTWARE=1 MESA_GL_VERSION_OVERRIDE=4.5 MESA_GLSL_VERSION_OVERRIDE=450 WEBKIT_DISABLE_DMABUF_RENDERER=1 /usr/bin/openburnbar-linux-desktop %U
 Icon=dev.openburnbar.OpenBurnBar
 Terminal=false
 Categories=Development;Utility;

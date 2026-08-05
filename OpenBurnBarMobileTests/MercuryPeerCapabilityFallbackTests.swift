@@ -12,6 +12,7 @@ import OpenBurnBarMedia
 /// handed back the full `macFallbackCapabilities` set for any online relay,
 /// so the Live sheet advertised `Ask to Mirror` against a Mac that could not
 /// serve it and sat on "connecting"/"reconnecting" instead of naming the fault.
+@MainActor
 final class MercuryPeerCapabilityFallbackTests: XCTestCase {
     private let referenceDate = Date(timeIntervalSince1970: 1_700_000_000)
 
@@ -24,8 +25,8 @@ final class MercuryPeerCapabilityFallbackTests: XCTestCase {
             displayName: "Alberto's MacBook Pro Hermes Relay",
             mode: .relayLink,
             status: .online,
-            capabilities: capabilities,
             realtimeRelayStatus: realtimeRelayStatus,
+            capabilities: capabilities,
             updatedAt: referenceDate
         )
     }

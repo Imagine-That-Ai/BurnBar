@@ -245,6 +245,7 @@ jobs:
   deploy-functions:
     steps:
       - name: BurnBar product release preflight
+        if: steps.tag.outputs.dry_run != 'true'
         run: python3 scripts/ci/check_burnbar_release_preflight.py
 `;
 
@@ -434,9 +435,41 @@ expect(
   GOOD_SUPPLY_CHAIN,
   1,
   GOOD_DEPLOY_PRODUCTION.replace(
-    "      - name: BurnBar product release preflight\n        run: python3 scripts/ci/check_burnbar_release_preflight.py",
-    "      - name: BurnBar product release preflight\n        if: ${{ inputs.release_hold_bypass_reason == '' }}\n        run: python3 scripts/ci/check_burnbar_release_preflight.py",
+    "        if: steps.tag.outputs.dry_run != 'true'\n",
+    "        if: ${{ inputs.release_hold_bypass_reason == '' }}\n",
   ),
+);
+
+expect(
+  "production deploy inverted dry-run preflight guard fails",
+  GOOD_RELEASE,
+  GOOD_SUPPLY_CHAIN,
+  1,
+  GOOD_DEPLOY_PRODUCTION.replace(
+    "        if: steps.tag.outputs.dry_run != 'true'\n",
+    "        if: steps.tag.outputs.dry_run == 'true'\n",
+  ),
+);
+
+expect(
+  "production deploy stacked dry-run preflight guard fails",
+  GOOD_RELEASE,
+  GOOD_SUPPLY_CHAIN,
+  1,
+  GOOD_DEPLOY_PRODUCTION.replace(
+    "        if: steps.tag.outputs.dry_run != 'true'\n",
+    "        if: steps.tag.outputs.dry_run != 'true' || inputs.force == 'true'\n",
+  ),
+);
+
+expect(
+  "release workflow dry-run skip on product preflight fails",
+  GOOD_RELEASE.replace(
+    "      - name: BurnBar product release preflight\n",
+    "      - name: BurnBar product release preflight\n        if: steps.tag.outputs.dry_run != 'true'\n",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
 );
 
 expect(

@@ -20,7 +20,7 @@ import org.junit.Test
  * the Mac switches to sealed writes.
  *
  * Source of truth:
- *   `OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CLIAgentSessionRecord.swift`.
+ *   `OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CLIAgentSessionRecord.swift`.
  */
 class CLIAgentSealedSessionPayloadTest {
     private val swiftCanonicalJson =

@@ -9,8 +9,9 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { dbAccesses, entitlementAllowedUids, firestoreDocs } = vi.hoisted(() => ({
+const { dbAccesses, deleteFieldSentinel, entitlementAllowedUids, firestoreDocs } = vi.hoisted(() => ({
   dbAccesses: new Array<string>(),
+  deleteFieldSentinel: { __deleteField: true },
   entitlementAllowedUids: new Set<string>(),
   firestoreDocs: new Map<string, Record<string, unknown>>(),
 }));
@@ -41,12 +42,21 @@ vi.mock("../adminRuntime.js", () => ({
           const data = firestoreDocs.get(path);
           return { exists: data !== undefined, get: (field: string) => data?.[field], data: () => data };
         },
-        set: (ref: { path?: string }, data: Record<string, unknown>) => {
-          if (ref.path) firestoreDocs.set(ref.path, { ...data });
-        },
         create: () => undefined,
         update: (ref: { path?: string }, data: Record<string, unknown>) => {
           if (ref.path) firestoreDocs.set(ref.path, { ...(firestoreDocs.get(ref.path) ?? {}), ...data });
+        },
+        set: (ref: { path?: string }, data: Record<string, unknown>) => {
+          if (!ref.path) return;
+          const merged = { ...(firestoreDocs.get(ref.path) ?? {}) };
+          for (const [field, value] of Object.entries(data)) {
+            if (value === deleteFieldSentinel) {
+              delete merged[field];
+            } else {
+              merged[field] = value;
+            }
+          }
+          firestoreDocs.set(ref.path, merged);
         },
         delete: (ref: { path?: string }) => {
           if (ref.path) firestoreDocs.delete(ref.path);
@@ -57,7 +67,10 @@ vi.mock("../adminRuntime.js", () => ({
 }));
 
 vi.mock("firebase-admin/firestore", () => ({
-  FieldValue: { serverTimestamp: () => ({ __serverTimestamp: true }) },
+  FieldValue: {
+    delete: () => deleteFieldSentinel,
+    serverTimestamp: () => ({ __serverTimestamp: true }),
+  },
   Timestamp: {
     now: () => ({ toMillis: () => Date.now() }),
     fromMillis: (ms: number) => ({ toMillis: () => ms }),
@@ -83,8 +96,10 @@ vi.mock("../appCheckAttestation.js", async () => {
   };
 });
 
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../callables/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../callables/shared/entitlements.js")>(
+    "../callables/shared/entitlements.js",
+  );
   const { HttpsError } = await import("firebase-functions/v2/https");
   return {
     ...actual,
@@ -98,6 +113,11 @@ vi.mock("../callables/shared.js", async () => {
     }),
   };
 });
+
+vi.mock("../sentry.js", () => ({
+  captureException: vi.fn(),
+  setSentryUser: vi.fn(),
+}));
 
 vi.mock("../logging.js", async () => {
   const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
@@ -170,7 +190,14 @@ describe("Computer Use callables require hosted Agent Control entitlement", () =
     });
     firestoreDocs.set(`users/${UID}/iroh_pairing/${CONNECTION_ID}`, {
       id: CONNECTION_ID,
+      nodeId: "a".repeat(64),
+      relayURL: "https://relay.example.test",
+      directAddresses: ["192.0.2.1:443"],
+      publishedAtMillis: Date.now(),
+      protocolVersion: 1,
+      signature: "signed-pairing",
       publishedByDeviceId: MAC_DEVICE_ID,
+      authorizedControllerDeviceIds: ["phone-approved"],
     });
     const { revokeIrohPairingRecord } = await import("../callables/computerUseSecurity.js");
 
@@ -181,7 +208,19 @@ describe("Computer Use callables require hosted Agent Control entitlement", () =
       }),
     ).resolves.toEqual({ ok: true, connectionId: CONNECTION_ID });
 
-    expect(firestoreDocs.has(`users/${UID}/iroh_pairing/${CONNECTION_ID}`)).toBe(false);
+    expect(firestoreDocs.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}`)).toMatchObject({
+      id: CONNECTION_ID,
+      publishedByDeviceId: MAC_DEVICE_ID,
+      authorizedControllerDeviceIds: ["phone-approved"],
+      revokedAtMillis: expect.any(Number),
+    });
+    const pairing = firestoreDocs.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}`);
+    expect(pairing).not.toHaveProperty("nodeId");
+    expect(pairing).not.toHaveProperty("relayURL");
+    expect(pairing).not.toHaveProperty("directAddresses");
+    expect(pairing).not.toHaveProperty("publishedAtMillis");
+    expect(pairing).not.toHaveProperty("protocolVersion");
+    expect(pairing).not.toHaveProperty("signature");
     expect(dbAccesses).toContain(`users/${UID}/escrow_devices/${MAC_DEVICE_ID}`);
   });
 });

@@ -16,6 +16,11 @@ const desktopWrapper = read('scripts/linux-port/run-shell-desktop-session.mjs');
 const toolchainDockerfile = read('tools/linux-toolchain/Dockerfile');
 const toolchainSmoke = read('tools/linux-toolchain/smoke.sh');
 const workflow = read('.github/workflows/linux-pr-gate.yml');
+const productParityWorkflow = read('.github/workflows/linux-product-parity.yml');
+const p31Producer = read('scripts/linux-port/run-p31-live-accessibility-session.mjs');
+const canonicalEnvironments = JSON.parse(read(
+  'docs/linux-port/product-parity-requirements.json'
+)).minimumSupportMatrix.map((environment) => environment.id);
 
 const REQUIRED_ROUTES = [
   'overview', 'insights', 'database', 'providers', 'projects', 'missions',
@@ -45,6 +50,9 @@ test('packaged session provisions and exercises the Linux accessibility stack', 
     'capture-atspi-tree.py',
     '--wait-for-meaningful-seconds',
     'Initial AT-SPI tree did not become meaningful',
+    'defunct_initial_atspi_subtree',
+    'atspi-readiness-recovery.json',
+    'boundedRecoveryAttempts: 1',
     'design-tokens entitlements gl-engine',
     'WEBKIT_DISABLE_DMABUF_RENDERER=1',
     'OB_XVFB_PRESTARTED=1',
@@ -60,6 +68,11 @@ test('packaged session provisions and exercises the Linux accessibility stack', 
     'physical_tab_presses=28',
     'physical_shift_tab_presses=12',
     'focus_window_and_key',
+    'count_orca_focus_events',
+    'orca-anchor-exclusions.tsv',
+    'anchor_document_focus',
+    'focus_retry_rounds < 3',
+    'events.length >= 10',
     'screenshot-linux-desktop-zoom-200-requested.png',
     'zoom-accessibility-evidence.json'
   ]) assert.ok(session.includes(marker), marker);
@@ -139,14 +152,55 @@ test('AT-SPI crawler self-test and session shell syntax pass', () => {
   ], { encoding: 'utf8' });
   assert.equal(python.status, 0, `${python.stdout}\n${python.stderr}`);
   assert.match(python.stdout, /"selfTest": "pass"/);
+  assert.match(python.stdout, /"staleRegistrationRecovery"/);
 
   const shell = spawnSync('bash', [
     '-n',
     path.join(repoRoot, 'scripts/linux-port/linux-desktop-session.sh')
   ], { encoding: 'utf8' });
   assert.equal(shell.status, 0, shell.stderr);
+
+  assert.match(
+    session,
+    /for \(field_index = 1; field_index <= NF; field_index \+= 1\)/u,
+    'the daemon-health receipt counter must use a portable AWK variable name'
+  );
+  assert.doesNotMatch(
+    session,
+    /for \(index = 1; index <= NF; index \+= 1\)/u,
+    'AWK built-in function names cannot be assigned as loop variables'
+  );
 });
 
 test('PR workflow cannot omit the accessibility contract', () => {
   assert.match(workflow, /accessibility-harness-contract\.test\.mjs/);
+});
+
+test('P-31 live accessibility certification spans the canonical real-session matrix', () => {
+  for (const environmentId of canonicalEnvironments) {
+    assert.ok(p31Producer.includes(`'${environmentId}'`), environmentId);
+  }
+  for (const marker of [
+    "scaleBackend: 'gnome'",
+    "scaleBackend: 'kscreen'",
+    "scaleBackend: 'sway'",
+    "keyboardBackend: 'xdotool'",
+    "keyboardBackend: 'ydotool'",
+    'parseKScreenOutputs',
+    'parseSwayOutputs',
+    'openburnbar-p31-webdriver-atspi-navigation-v1'
+  ]) assert.ok(p31Producer.includes(marker), marker);
+  assert.doesNotMatch(p31Producer, /P09_REQUIRED_ROUTES|run-p09-native-navigation-probes/u);
+
+  for (const marker of [
+    'ubuntu-24.04-gnome-x11-*)',
+    'ubuntu-24.04-gnome-wayland-*)',
+    'fedora-kde-wayland-*)',
+    'arch-sway-wayland-x86_64)',
+    'sudo apt-get install -y --no-install-recommends',
+    'sudo dnf install -y',
+    'sudo pacman -S --needed --noconfirm',
+    'test -n "${YDOTOOL_SOCKET:-}"',
+    '--compositor "$compositor"'
+  ]) assert.ok(productParityWorkflow.includes(marker), marker);
 });

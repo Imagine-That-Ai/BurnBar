@@ -18,7 +18,9 @@ import kotlinx.coroutines.isActive
 
 /** Inbound Mercury control bi-stream read loop and frame dispatch (extracted for detekt size limits). */
 internal suspend fun MediaControlStreamCoordinator.runMercuryInboundReadLoop(stream: IrohRelayStream, uid: String, connectionID: String) {
-    val ackSender = AndroidFileTransferService.AdvertiseSender { outbound -> stream.send(outbound) }
+    val ackSender = AndroidFileTransferService.AdvertiseSender { outbound ->
+        sendOnInboundRoute(stream, uid, connectionID, outbound)
+    }
     try {
         while (true) {
             val frame = stream.receive() ?: return
@@ -29,7 +31,7 @@ internal suspend fun MediaControlStreamCoordinator.runMercuryInboundReadLoop(str
         inboundPhase.value = MediaControlStreamCoordinator.Phase.Reconnecting(
             nextAttemptInMillis = inboundInitialBackoffMillis,
         )
-        inboundLogWarning(
+        logWarning(
             "Mercury control read failed connectionID=$connectionID error=${t.message}",
             t,
         )
@@ -136,7 +138,7 @@ private fun MediaControlStreamCoordinator.applyMercuryPresenceHeartbeat(frame: H
 internal suspend fun MediaControlStreamCoordinator.runMercuryPresenceHeartbeatLoop(stream: IrohRelayStream, uid: String, connectionID: String) {
     while (inboundScope.isActive && inboundSupervisorJob?.isActive == true) {
         val sentAtMillis = System.currentTimeMillis()
-        stream.send(makeMercuryPresenceHeartbeat(uid = uid, connectionID = connectionID))
+        sendSerialized(stream, makeMercuryPresenceHeartbeat(uid = uid, connectionID = connectionID))
         inboundPendingHeartbeatSentAtMillis = sentAtMillis
         kotlinx.coroutines.delay(inboundPresenceHeartbeatIntervalMillis)
     }

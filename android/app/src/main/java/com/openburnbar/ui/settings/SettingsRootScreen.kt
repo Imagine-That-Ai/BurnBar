@@ -7,7 +7,9 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import com.openburnbar.data.stores.DevicesStore
 import com.openburnbar.ui.smartdisplay.SmartDisplayView
+import com.openburnbar.ui.you.ConnectedDevicesScreen
 
 private const val SMART_DISPLAY_HIGHLIGHT_FADE_DELAY_MS = 1_400L
 
@@ -18,7 +20,12 @@ private const val SMART_DISPLAY_HIGHLIGHT_FADE_DELAY_MS = 1_400L
  * Wired into the You tab so the existing "Settings" row pushes here.
  */
 @Composable
-fun SettingsRootScreen(onBack: (() -> Unit)? = null, onComputerUse: (() -> Unit)? = null, onMenuBarPrefs: @Composable (onBack: () -> Unit) -> Unit) {
+fun SettingsRootScreen(
+    devicesStore: DevicesStore,
+    onBack: (() -> Unit)? = null,
+    onComputerUse: (() -> Unit)? = null,
+    onMenuBarPrefs: @Composable (onBack: () -> Unit) -> Unit,
+) {
     val router = remember { SettingsRouter() }
 
     AnimatedContent(
@@ -28,6 +35,10 @@ fun SettingsRootScreen(onBack: (() -> Unit)? = null, onComputerUse: (() -> Unit)
     ) { page ->
         when (page) {
             SettingsPageRoute.ROOT -> SettingsRootContent(router = router, onBack = onBack, onComputerUse = onComputerUse)
+            SettingsPageRoute.CONNECTED_DEVICES -> ConnectedDevicesScreen(
+                store = devicesStore,
+                onBack = { router.page = SettingsPageRoute.ROOT },
+            )
             SettingsPageRoute.SMART_DISPLAYS -> SmartDisplayDeepLinkWrapper(
                 router = router,
                 onBack = { router.page = SettingsPageRoute.ROOT },

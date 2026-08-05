@@ -786,6 +786,40 @@ const wandModes = [
     gap: var(--s-2);
     white-space: nowrap;
   }
+  :global(:root[data-theme="light"]) .wand-rail {
+    border-color: var(--ink-line);
+    background:
+      radial-gradient(60% 100% at 50% 50%, rgba(200, 83, 10, 0.05), transparent 70%),
+      rgba(255, 255, 255, 0.7);
+    box-shadow:
+      0 1px 2px rgba(22, 19, 14, 0.04),
+      0 24px 48px -36px rgba(22, 19, 14, 0.38);
+  }
+  :global(:root[data-theme="light"]) .wand-rail__node {
+    background: rgba(255, 255, 255, 0.84);
+  }
+  :global(:root[data-theme="light"]) .wand-ladder__row {
+    background: rgba(255, 255, 255, 0.76);
+  }
+  :global(:root[data-theme="light"]) .wand-ladder__row--head {
+    background: color-mix(in oklab, var(--ink-base) 72%, white);
+  }
+  :global(:root[data-theme="light"]) .wand-mode {
+    border-color: var(--ink-line);
+    border-top-color: var(--ink-line-bright);
+    background: rgba(255, 255, 255, 0.7);
+    box-shadow:
+      0 1px 2px rgba(22, 19, 14, 0.04),
+      0 22px 46px -34px rgba(22, 19, 14, 0.4);
+  }
+  :global(:root[data-theme="light"]) .wand-cta {
+    background:
+      radial-gradient(60% 80% at 80% 50%, rgba(200, 83, 10, 0.08), transparent 70%),
+      rgba(255, 255, 255, 0.72);
+    box-shadow:
+      0 1px 2px rgba(22, 19, 14, 0.04),
+      0 24px 48px -36px rgba(22, 19, 14, 0.4);
+  }
   @media (max-width: 760px) {
     .wand-cta__inner {
       grid-template-columns: 1fr;

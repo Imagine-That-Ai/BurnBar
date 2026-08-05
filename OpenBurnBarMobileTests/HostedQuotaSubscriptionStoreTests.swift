@@ -640,6 +640,54 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertEqual(service.restoreRequests.count, 0)
     }
 
+    func testSignedOutRefreshClearsPreviouslyResolvedUltraTier() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        var isSignedIn = true
+        let service = FakeHostedQuotaEntitlementService(restoreError: TestHostedQuotaError.replayUnavailable)
+        let tierReader = FakeHostedQuotaTierReader(tier: "ultra")
+        let store = makeHostedQuotaSubscriptionStore(
+            functions: service,
+            tierReader: tierReader,
+            isSignedIn: { isSignedIn }
+        )
+
+        try await store.refreshEntitlement()
+        XCTAssertEqual(store.cloudTier, .ultra)
+        XCTAssertEqual(UltraTierBridge.shared.tier, "ultra")
+
+        isSignedIn = false
+        try await store.refreshEntitlement()
+
+        XCTAssertFalse(store.isActive)
+        XCTAssertNil(store.activeProductID)
+        XCTAssertNil(store.expirationDate)
+        XCTAssertNil(store.purchaseDate)
+        XCTAssertNil(store.latestTransactionID)
+        XCTAssertNil(UltraTierBridge.shared.tier)
+        XCTAssertEqual(store.cloudTier, .none)
+    }
+
+    func testUnsupportedServerTierClearsStaleUltraState() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        UltraTierBridge.shared.tier = "ultra"
+        let service = FakeHostedQuotaEntitlementService(restoreError: TestHostedQuotaError.replayUnavailable)
+        let tierReader = FakeHostedQuotaTierReader(tier: "enterprise")
+        let store = makeHostedQuotaSubscriptionStore(
+            functions: service,
+            tierReader: tierReader,
+            isSignedIn: { true }
+        )
+
+        try await store.refreshEntitlement()
+
+        XCTAssertFalse(store.isActive)
+        XCTAssertNil(store.activeProductID)
+        XCTAssertNil(UltraTierBridge.shared.tier)
+        XCTAssertEqual(store.cloudTier, .none)
+    }
+
     func testRefreshIgnoresSandboxDirectEntitlementWhenRuntimeRejectsEnvironment() async throws {
         let session = try makeCleanStoreKitSession()
         defer { session.clearTransactions() }

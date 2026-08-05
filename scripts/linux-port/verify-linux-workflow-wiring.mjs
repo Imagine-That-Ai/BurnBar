@@ -221,6 +221,57 @@ export function verifyLinuxWorkflowWiring(input) {
     }
   };
 
+  const requireP40InstalledPrivacyContract = (body) => {
+    const stepName = "Capture P-40 installed privacy proof";
+    const start = body.indexOf(`- name: ${stepName}`);
+    const end =
+      start < 0 ? -1 : body.indexOf("\n      - name:", start + 1);
+    const block =
+      start < 0 ? "" : body.slice(start, end < 0 ? body.length : end);
+    if (!block) {
+      failures.push(
+        `product parity evidence workflow is missing executable step: ${stepName}`,
+      );
+      return;
+    }
+    const activeLines = block
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"));
+    for (const line of [
+      "if: inputs.requirement == 'P-40'",
+      "set -euo pipefail",
+      "bash scripts/linux-port/run-p40-installed-privacy-proof.sh",
+      'session_report="$input_root/p40-live-session.json"',
+      'test -f "$session_report"',
+      "node scripts/linux-port/capture-p40-privacy-proof.mjs",
+      '--session-report "$session_report"',
+      '--environment "$ENVIRONMENT_ID"',
+      '--target-head "$TARGET_HEAD"',
+      '--candidate-run-id "$CANDIDATE_RUN_ID"',
+      '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+    ]) {
+      if (!activeLines.includes(line) && !activeLines.includes(`${line} \\`)) {
+        failures.push(
+          `product parity evidence workflow ${stepName} is missing: ${line}`,
+        );
+      }
+    }
+    for (const forbidden of [
+      "continue-on-error: true",
+      "set +e",
+      "|| true",
+      "; true",
+      "run-p40-privacy-rpc-session.mjs",
+    ]) {
+      if (activeLines.some((line) => line.includes(forbidden))) {
+        failures.push(
+          `product parity evidence workflow ${stepName} permits an unsafe path: ${forbidden}`,
+        );
+      }
+    }
+  };
+
   const requireInstalledUiCaptureContract = (body, requirementId, config) => {
     const blockFor = (stepName) => {
       const start = body.indexOf(`- name: ${stepName}`);
@@ -237,7 +288,7 @@ export function verifyLinuxWorkflowWiring(input) {
       .filter((line) => line && !line.startsWith('#'));
     const required = [
       [installStep, install, [
-        "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-13' || inputs.requirement == 'P-14' || inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-17' || inputs.requirement == 'P-18' || inputs.requirement == 'P-19' || inputs.requirement == 'P-20' || inputs.requirement == 'P-21' || inputs.requirement == 'P-22' || inputs.requirement == 'P-23' || inputs.requirement == 'P-24' || inputs.requirement == 'P-25' || inputs.requirement == 'P-26' || inputs.requirement == 'P-27' || inputs.requirement == 'P-28' || inputs.requirement == 'P-29' || inputs.requirement == 'P-30' || inputs.requirement == 'P-32' || inputs.requirement == 'P-33' || inputs.requirement == 'P-35' || inputs.requirement == 'P-36'",
+        "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-13' || inputs.requirement == 'P-14' || inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-17' || inputs.requirement == 'P-18' || inputs.requirement == 'P-19' || inputs.requirement == 'P-20' || inputs.requirement == 'P-21' || inputs.requirement == 'P-22' || inputs.requirement == 'P-23' || inputs.requirement == 'P-24' || inputs.requirement == 'P-25' || inputs.requirement == 'P-26' || inputs.requirement == 'P-27' || inputs.requirement == 'P-28' || inputs.requirement == 'P-29' || inputs.requirement == 'P-30' || inputs.requirement == 'P-31' || inputs.requirement == 'P-32' || inputs.requirement == 'P-33' || inputs.requirement == 'P-35' || inputs.requirement == 'P-36'",
         'set -euo pipefail',
         'sudo apt-get install -y --reinstall "$package"',
         'sudo dnf install -y "$package"',
@@ -278,6 +329,186 @@ export function verifyLinuxWorkflowWiring(input) {
       failures.push(`product parity evidence workflow ${captureStep} must run native probe, materializer, then capture in order`);
     }
   };
+  const requireP31LiveAccessibilityContract = (body) => {
+    const prerequisiteStep = 'Provision P-31 live accessibility prerequisites';
+    const prerequisiteStart = body.indexOf(`- name: ${prerequisiteStep}`);
+    const prerequisiteEnd = prerequisiteStart < 0 ? -1
+      : body.indexOf('\n      - name:', prerequisiteStart + 1);
+    const prerequisiteBlock = prerequisiteStart < 0 ? ''
+      : body.slice(prerequisiteStart, prerequisiteEnd < 0 ? body.length : prerequisiteEnd);
+    if (!prerequisiteBlock) {
+      failures.push(`product parity evidence workflow is missing executable step: ${prerequisiteStep}`);
+    } else {
+      const prerequisiteLines = prerequisiteBlock.split('\n').map((line) => line.trim())
+        .filter((line) => line && !line.startsWith('#'));
+      for (const line of [
+        "if: inputs.requirement == 'P-31'",
+        'set -euo pipefail',
+        'case "$ENVIRONMENT_ID" in',
+        'ubuntu-24.04-gnome-x11-*)',
+        'ubuntu-24.04-gnome-wayland-*)',
+        'fedora-kde-wayland-*)',
+        'arch-sway-wayland-x86_64)',
+        '*) echo "unsupported P-31 environment: $ENVIRONMENT_ID" >&2; exit 1 ;;'
+      ]) {
+        if (!prerequisiteLines.includes(line) && !prerequisiteLines.includes(`${line} \\`)) {
+          failures.push(`product parity evidence workflow ${prerequisiteStep} is missing: ${line}`);
+        }
+      }
+      const requiredArms = [
+        ['ubuntu-24.04-gnome-x11-*)', [
+          'sudo apt-get update',
+          'sudo apt-get install -y --no-install-recommends',
+          'at-spi2-core',
+          'gnome-accessibility-themes',
+          'libglib2.0-bin',
+          'orca',
+          'python3-pyatspi',
+          'wmctrl',
+          'xdotool'
+        ]],
+        ['ubuntu-24.04-gnome-wayland-*)', [
+          'sudo apt-get update',
+          'sudo apt-get install -y --no-install-recommends',
+          'at-spi2-core',
+          'gnome-accessibility-themes',
+          'libglib2.0-bin',
+          'orca',
+          'python3-pyatspi',
+          'ydotool',
+          'ydotoold'
+        ]],
+        ['fedora-kde-wayland-*)', [
+          'sudo dnf install -y',
+          'at-spi2-core',
+          'glib2',
+          'gnome-themes-extra',
+          'gsettings-desktop-schemas',
+          'kscreen',
+          'orca',
+          'python3-pyatspi',
+          'ydotool'
+        ]],
+        ['arch-sway-wayland-x86_64)', [
+          'sudo pacman -S --needed --noconfirm',
+          'at-spi2-core',
+          'glib2',
+          'gnome-themes-extra',
+          'gsettings-desktop-schemas',
+          'orca',
+          'python-atspi',
+          'ydotool'
+        ]]
+      ];
+      for (const [arm, requiredLines] of requiredArms) {
+        const armStart = prerequisiteLines.indexOf(arm);
+        const armEnd = prerequisiteLines.indexOf(';;', armStart + 1);
+        if (armStart < 0 || armEnd < 0) {
+          failures.push(`product parity evidence workflow ${prerequisiteStep} has no complete case arm: ${arm}`);
+          continue;
+        }
+        const armLines = prerequisiteLines.slice(armStart + 1, armEnd);
+        for (const line of requiredLines) {
+          if (!armLines.includes(line) && !armLines.includes(`${line} \\`)) {
+            failures.push(
+              `product parity evidence workflow ${prerequisiteStep} ${arm} is missing: ${line}`
+            );
+          }
+        }
+      }
+      for (const forbidden of ['continue-on-error: true', 'set +e', '|| true', '; true']) {
+        if (prerequisiteLines.some((line) => line.includes(forbidden))) {
+          failures.push(`product parity evidence workflow ${prerequisiteStep} permits failure: ${forbidden}`);
+        }
+      }
+    }
+    const stepName = 'Capture P-31 installed accessibility matrix evidence';
+    const start = body.indexOf(`- name: ${stepName}`);
+    const end = start < 0 ? -1 : body.indexOf('\n      - name:', start + 1);
+    const block = start < 0 ? '' : body.slice(start, end < 0 ? body.length : end);
+    if (!block) {
+      failures.push(`product parity evidence workflow is missing executable step: ${stepName}`);
+      return;
+    }
+    const activeLines = (value) => value.split('\n').map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'));
+    const active = activeLines(block);
+    for (const line of [
+      "if: inputs.requirement == 'P-31'",
+      'set -euo pipefail',
+      'ubuntu-24.04-gnome-x11-*) compositor=Mutter ;;',
+      'ubuntu-24.04-gnome-wayland-*) compositor=Mutter ;;',
+      'fedora-kde-wayland-*) compositor=KWin ;;',
+      'arch-sway-wayland-x86_64) compositor=Sway ;;',
+      'if [[ "$ENVIRONMENT_ID" == *-wayland-* ]]; then',
+      'test -n "${YDOTOOL_SOCKET:-}"',
+      'state_home="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p31-home.XXXXXX")"',
+      'trap cleanup_p31 EXIT',
+      'chmod 700 "$state_home"',
+      'rm -rf "$input_root/p31-live" "$input_root/p31-live-session.json"',
+      'install -d -m 700 "$input_root/p31-live"',
+      'node scripts/linux-port/run-p31-live-accessibility-session.mjs',
+      '--raw-output-dir "$input_root/p31-live"',
+      '--state-home "$state_home"',
+      '--environment "$ENVIRONMENT_ID"',
+      '--target-head "$TARGET_HEAD"',
+      '--candidate-run-id "$CANDIDATE_RUN_ID"',
+      '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+      '--package-version "$PACKAGE_VERSION"',
+      '--manifest-sha256 "$MANIFEST_SHA256"',
+      '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+      '--compositor "$compositor"',
+      'session_report="$input_root/p31-live-session.json"',
+      'test -f "$session_report"',
+      'node scripts/linux-port/capture-p31-accessibility.mjs',
+      '--session-report "$session_report"'
+    ]) {
+      if (!active.includes(line) && !active.includes(`${line} \\`)) {
+        failures.push(`product parity evidence workflow ${stepName} is missing: ${line}`);
+      }
+    }
+    for (const forbidden of ['continue-on-error: true', 'set +e', '|| true', '; true']) {
+      if (active.some((line) => line.includes(forbidden))) {
+        failures.push(`product parity evidence workflow ${stepName} permits failure: ${forbidden}`);
+      }
+    }
+    const producer = block.indexOf('node scripts/linux-port/run-p31-live-accessibility-session.mjs');
+    const reportCheck = block.indexOf('test -f "$session_report"');
+    const capture = block.indexOf('node scripts/linux-port/capture-p31-accessibility.mjs');
+    if (!(producer >= 0 && producer < reportCheck && reportCheck < capture)) {
+      failures.push(`product parity evidence workflow ${stepName} must run the live producer, verify its report, then capture in order`);
+      return;
+    }
+    const producerLines = activeLines(block.slice(producer, reportCheck));
+    for (const line of [
+      '--raw-output-dir "$input_root/p31-live"',
+      '--state-home "$state_home"',
+      '--environment "$ENVIRONMENT_ID"',
+      '--target-head "$TARGET_HEAD"',
+      '--candidate-run-id "$CANDIDATE_RUN_ID"',
+      '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+      '--package-version "$PACKAGE_VERSION"',
+      '--manifest-sha256 "$MANIFEST_SHA256"',
+      '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+      '--compositor "$compositor"'
+    ]) {
+      if (!producerLines.includes(line) && !producerLines.includes(`${line} \\`)) {
+        failures.push(`product parity evidence workflow ${stepName} live producer is missing: ${line}`);
+      }
+    }
+    const captureLines = activeLines(block.slice(capture));
+    for (const line of [
+      '--session-report "$session_report"',
+      '--environment "$ENVIRONMENT_ID"',
+      '--target-head "$TARGET_HEAD"',
+      '--candidate-run-id "$CANDIDATE_RUN_ID"',
+      '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+    ]) {
+      if (!captureLines.includes(line) && !captureLines.includes(`${line} \\`)) {
+        failures.push(`product parity evidence workflow ${stepName} proof capture is missing: ${line}`);
+      }
+    }
+  };
   const requireNativeWebDriverProvisioning = (body) => {
     const stepName = 'Provision native Tauri WebDriver prerequisites';
     const start = body.indexOf(`- name: ${stepName}`);
@@ -290,7 +521,7 @@ export function verifyLinuxWorkflowWiring(input) {
     const active = block.split('\n').map((line) => line.trim())
       .filter((line) => line && !line.startsWith('#'));
     for (const line of [
-      "if: inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-27' || inputs.requirement == 'P-36'",
+      "if: inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-27' || inputs.requirement == 'P-31' || inputs.requirement == 'P-36'",
       'set -euo pipefail',
       'bash scripts/linux-port/install-tauri-webdriver-prerequisites.sh'
     ]) {
@@ -318,6 +549,7 @@ export function verifyLinuxWorkflowWiring(input) {
       '- self-hosted',
       '- macos',
       '- arm64',
+      '- p16-physical-ipad',
       'FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}',
       'bash scripts/ci/inject-firebase-config.sh',
       'P16_COORDINATION_ROOT: ${{ vars.OPENBURNBAR_P16_MACOS_COORDINATION_ROOT }}',
@@ -846,9 +1078,11 @@ export function verifyLinuxWorkflowWiring(input) {
     "if: inputs.requirement == 'P-36'",
     'Provision native Tauri WebDriver prerequisites',
     'install-tauri-webdriver-prerequisites.sh',
+    'Provision P-31 live accessibility prerequisites',
+    'python3-pyatspi',
     'capture-parity-certification-preflight.mjs',
     'capture-p34-credential-security-proof.mjs',
-    'run-p40-privacy-rpc-session.mjs',
+    'run-p40-installed-privacy-proof.sh',
     'Capture P-40 installed privacy proof',
     "if: inputs.requirement == 'P-02'",
     "if: inputs.requirement == 'P-34'",
@@ -863,6 +1097,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'capture-failure.json',
     'capture.log',
     '2>&1 | tee "$capture_log"',
+    'run-p31-live-accessibility-session.mjs',
     'capture-p31-accessibility.mjs',
     "if: inputs.requirement == 'P-31'",
     'id: p31_capture',
@@ -884,7 +1119,9 @@ export function verifyLinuxWorkflowWiring(input) {
   requireP08CaptureContract(input.productParityWorkflow);
   requireP06ArchPackageContract(input.productParityWorkflow);
   requireNativeWebDriverProvisioning(input.productParityWorkflow);
+  requireP31LiveAccessibilityContract(input.productParityWorkflow);
   requireP16PhysicalIPadProducer(input.productParityWorkflow);
+  requireP40InstalledPrivacyContract(input.productParityWorkflow);
   requireInstalledUiCaptureContract(input.productParityWorkflow, 'P-09', {
     step: 'Capture P-09 installed navigation shell proof',
     runner: 'scripts/linux-port/run-p09-native-navigation-probes.mjs',

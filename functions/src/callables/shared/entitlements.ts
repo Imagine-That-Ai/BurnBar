@@ -32,6 +32,7 @@ import {
   stripeTopUpReversalState,
   type StripeTopUpDisputeStatus,
 } from "./stripeTopUpReversal.js";
+import { sameEntitlementWriteSource } from "./entitlementWriteSource.js";
 import { nowISO, requiredIdentifier } from "./validators.js";
 
 export const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
@@ -89,6 +90,27 @@ async function activeBurnBarCloudProEntitlementTier(uid: string): Promise<BurnBa
 
 export async function assertActiveBurnBarCloudProEntitlement(uid: string): Promise<void> {
   await activeBurnBarCloudProEntitlementTier(uid);
+}
+
+/**
+ * Resolves the allowance tier for fulfilling an already-captured Cloud Pro
+ * top-up payment. Unlike {@link activeBurnBarCloudProEntitlementTier} this
+ * never throws: eligibility is asserted at purchase time (checkout-session or
+ * Play-purchase creation), and by the time the asynchronous payment webhook
+ * lands the entitlement may have lapsed or the account may be suspended — the
+ * customer's money is captured either way, so the credit must still land
+ * instead of failing the webhook forever. The tier only shapes fusion
+ * allowance defaults; with no active entitlement, fall back to the tier whose
+ * entitlement doc exists (Ultra wins), defaulting to cloud_pro.
+ */
+async function cloudProTopUpFulfillmentTier(uid: string): Promise<BurnBarCloudProEntitlementTier> {
+  const [ultraSnap, proMaxSnap] = await Promise.all([
+    db.doc(`users/${uid}/entitlements/${BURNBAR_ULTRA_ENTITLEMENT_ID}`).get(),
+    db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`).get(),
+  ]);
+  if (isActiveBurnBarUltraEntitlement(ultraSnap.data())) return "ultra";
+  if (isActiveBurnBarCloudProEntitlement(proMaxSnap.data())) return "cloud_pro";
+  return ultraSnap.exists ? "ultra" : "cloud_pro";
 }
 
 /**
@@ -222,34 +244,82 @@ export async function writeBurnBarProEntitlement(args: {
   // it via `doc`; the merge write leaves it untouched for everyone else.
   const writeDoc = {
     ...doc,
+    // A verified provider lifecycle replaces the mutable entitlement snapshot.
+    // Remove operator-only provenance left by a temporary support bridge so the
+    // document cannot claim both provider verification and an active operator
+    // grant at the same time. Ultra mirrors restore their own source fields
+    // below after this cleanup is applied.
+    ...(args.source === "internal_operator_grant"
+      ? {}
+      : {
+          operatorGrant: FieldValue.delete(),
+          operatorGrantedAt: FieldValue.delete(),
+          operatorGrantReason: FieldValue.delete(),
+          sourceEntitlementID: FieldValue.delete(),
+          sourceProductID: FieldValue.delete(),
+        }),
     externalSubscriptionID: args.externalSubscriptionID ?? FieldValue.delete(),
     externalCustomerID: args.externalCustomerID ?? FieldValue.delete(),
     purchaseTokenHash: args.purchaseTokenHash ?? FieldValue.delete(),
   };
 
+  // Shared shape for both conflict guards, evaluated against the primary doc
+  // AND (for Ultra writes) the burnbar_pro_max mirror doc.
+  const incomingGuardWrite = {
+    source: args.source,
+    expiresAtMillis: args.expiresAtMillis,
+    active,
+    externalSubscriptionID: args.externalSubscriptionID,
+    purchaseTokenHash: args.purchaseTokenHash,
+    sourceEventID: args.sourceEventID,
+    sourceEventCreatedMillis: args.sourceEventCreatedMillis,
+  };
+
   const written = await db.runTransaction(async (transaction) => {
-    const existing = await transaction.get(ref);
-    const existingData = existing.data();
+    const mirrorRef =
+      entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID
+        ? db.doc(`users/${args.uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`)
+        : undefined;
+    const existingData = (await transaction.get(ref)).data();
+    // Firestore transactions require every read to happen before any write,
+    // so the mirror doc is read up front even though its guard runs later.
+    const existingMirrorData = mirrorRef ? (await transaction.get(mirrorRef)).data() : undefined;
     if (
-      paidEntitlementWriteWouldDowngrade(existingData, {
-        source: args.source,
-        expiresAtMillis: args.expiresAtMillis,
-        active,
-        externalSubscriptionID: args.externalSubscriptionID,
-        purchaseTokenHash: args.purchaseTokenHash,
-      }) ||
-      paidEntitlementWriteWouldRewindSourceEvent(existingData, {
-        source: args.source,
-        externalSubscriptionID: args.externalSubscriptionID,
-        purchaseTokenHash: args.purchaseTokenHash,
-        sourceEventID: args.sourceEventID,
-        sourceEventCreatedMillis: args.sourceEventCreatedMillis,
-      })
+      paidEntitlementWriteWouldDowngrade(existingData, incomingGuardWrite) ||
+      paidEntitlementWriteWouldRewindSourceEvent(existingData, incomingGuardWrite)
     ) {
       return existingData || doc;
     }
 
     transaction.set(ref, writeDoc, { merge: true });
+    // Ultra mirrors into burnbar_pro_max, matching the App Store reconciler's
+    // dual-write: firestore.rules hosted-quota gates only inspect the
+    // hosted_quota_sync / burnbar_pro / burnbar_pro_max docs, so a Google Play
+    // or Stripe Ultra purchase without this mirror would be denied session
+    // backup and every other Cloud Pro Max client capability. The mirror is
+    // written in the same transaction so the pair stays consistent, and it is
+    // guarded against the MIRROR doc's own state: when burnbar_pro_max is an
+    // independently paid entitlement (different source/subscription/token),
+    // an expiring or voided Ultra write must not clobber it. A true mirror
+    // (written by this dual-write) carries the same source and subscription
+    // identifiers, so its guards evaluate exactly like the primary's and
+    // legitimate mirror updates — including cancellations — still land.
+    if (
+      mirrorRef &&
+      !paidEntitlementWriteWouldDowngrade(existingMirrorData, incomingGuardWrite) &&
+      !paidEntitlementWriteWouldRewindSourceEvent(existingMirrorData, incomingGuardWrite)
+    ) {
+      transaction.set(
+        mirrorRef,
+        {
+          ...writeDoc,
+          id: BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+          entitlementFamily: BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+          sourceEntitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID,
+        },
+        { merge: true },
+      );
+    }
     return doc;
   });
   if ((entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID || entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID) && active) {
@@ -288,36 +358,11 @@ function entitlementExpiresAtMillis(existing: Record<string, unknown>): number |
   return undefined;
 }
 
-function sameEntitlementWriteSource(
-  existing: Record<string, unknown>,
-  incoming: {
-    source: string;
-    externalSubscriptionID?: string;
-    purchaseTokenHash?: string;
-  },
-): boolean {
-  if (existing.source !== incoming.source) return false;
-  if (
-    incoming.externalSubscriptionID &&
-    typeof existing.externalSubscriptionID === "string" &&
-    existing.externalSubscriptionID === incoming.externalSubscriptionID
-  ) {
-    return true;
-  }
-  if (
-    incoming.purchaseTokenHash &&
-    typeof existing.purchaseTokenHash === "string" &&
-    existing.purchaseTokenHash === incoming.purchaseTokenHash
-  ) {
-    return true;
-  }
-  return !incoming.externalSubscriptionID && !incoming.purchaseTokenHash;
-}
-
 function paidEntitlementWriteWouldRewindSourceEvent(
   existing: Record<string, unknown> | undefined,
   incoming: {
     source: string;
+    active: boolean;
     externalSubscriptionID?: string;
     purchaseTokenHash?: string;
     sourceEventID?: string;
@@ -329,23 +374,53 @@ function paidEntitlementWriteWouldRewindSourceEvent(
   if (typeof existingEventCreatedMillis !== "number") return false;
   if (!sameEntitlementWriteSource(existing, incoming)) return false;
   if (existingEventCreatedMillis > incoming.sourceEventCreatedMillis) return true;
-  // Same-second tie-break: Stripe's event.created has second granularity, so
-  // two DIFFERENT events in the same second cannot be ordered by timestamp —
-  // a stale subscription.updated delivered in the .deleted's second used to
-  // slip past the strict > check above. Equal-timestamp writes from a
-  // different event are rejected. This is safe because the webhook writes
-  // Stripe's CURRENT subscription state, not the event's snapshot: the
-  // checkout and subscription.created/updated paths re-fetch the
-  // subscription before writing, and subscription.deleted's snapshot is the
-  // terminal state — so whichever tied event applied first already carried
-  // the authoritative state and the rejected write adds nothing. Identical
-  // event ids (redeliveries) stay idempotent and re-apply.
-  return (
-    existingEventCreatedMillis === incoming.sourceEventCreatedMillis &&
-    typeof existing.sourceEventID === "string" &&
-    typeof incoming.sourceEventID === "string" &&
-    existing.sourceEventID !== incoming.sourceEventID
-  );
+  if (
+    existingEventCreatedMillis !== incoming.sourceEventCreatedMillis ||
+    typeof existing.sourceEventID !== "string" ||
+    typeof incoming.sourceEventID !== "string" ||
+    existing.sourceEventID === incoming.sourceEventID
+  ) {
+    return false;
+  }
+
+  // Stripe's event.created has second granularity, so distinct transitions can
+  // share one timestamp. Resolve that tie by terminal-state dominance:
+  // deletion/cancellation may replace an active write, and an active write may
+  // never resurrect an entitlement whose inactive state is terminal
+  // (cancelled/expired/revoked). Transient billing states (e.g. incomplete,
+  // past_due, on-hold) are legitimately followed by activation in the same
+  // second — incomplete -> active is Stripe's normal first-payment sequence —
+  // so an active write may replace those. Unknown or missing rawStatus is
+  // treated as terminal (fail closed). Same-event redeliveries remain
+  // idempotent through the early return above.
+  if (existing.active === true) return incoming.active;
+  return !(incoming.active && isTransientInactiveEntitlementStatus(existing.rawStatus));
+}
+
+/**
+ * Inactive entitlement states that a same-second active write may legitimately
+ * supersede: they precede activation in the provider's own lifecycle rather
+ * than terminating it. Anything else (canceled, expired, revoked, unknown,
+ * missing) is treated as terminal so a stale active replay cannot resurrect a
+ * cancelled entitlement.
+ */
+function isTransientInactiveEntitlementStatus(rawStatus: unknown): boolean {
+  if (typeof rawStatus !== "string") return false;
+  switch (rawStatus) {
+    // Stripe subscription statuses that are inactive but recoverable.
+    case "incomplete":
+    case "past_due":
+    case "paused":
+    case "unpaid":
+    // Google Play subscription states that are inactive but recoverable.
+    case "SUBSCRIPTION_STATE_ON_HOLD":
+    case "SUBSCRIPTION_STATE_PAUSED":
+    case "SUBSCRIPTION_STATE_PENDING":
+    case "SUBSCRIPTION_STATE_IN_GRACE_PERIOD":
+      return true;
+    default:
+      return false;
+  }
 }
 
 function cloudProAllowanceTierForEntitlement(entitlementID: string, productID: string): BurnBarCloudProEntitlementTier {
@@ -413,7 +488,10 @@ export async function creditCloudProTopUp(args: {
   externalCurrency?: string;
   quantity?: number;
 }): Promise<{ credited: boolean; monthKey: string; units: number; kind: CloudProTopUpKind }> {
-  const tier = await activeBurnBarCloudProEntitlementTier(args.uid);
+  // Fulfillment must not re-assert entitlement/suspension state: payment is
+  // already captured, so a lapsed subscription between checkout and webhook
+  // would otherwise permanently strand a paid top-up.
+  const tier = await cloudProTopUpFulfillmentTier(args.uid);
   const monthKey = monthKeyForDate(new Date());
   const allowanceRef = db.doc(allowanceDocPath(args.uid, monthKey));
   const receiptID = requiredIdentifier(`${args.source}_${args.externalPaymentID}`, "externalPaymentID");
@@ -570,6 +648,7 @@ export async function reconcileCloudProTopUpReversal(args: {
   reversedUnits: number;
   deltaUnits: number;
   monthKey?: string;
+  receiptMissing?: boolean;
 }> {
   const receiptRef = db.doc(cloudProTopUpReceiptDocPath(args.uid, args.receiptID));
 
@@ -577,7 +656,10 @@ export async function reconcileCloudProTopUpReversal(args: {
     const receiptSnap = await transaction.get(receiptRef);
     const receipt = receiptSnap.data();
     if (!receiptSnap.exists || !receipt) {
-      return { adjusted: false, reversedUnits: 0, deltaUnits: 0 };
+      // Webhook delivery is unordered: a refund/dispute can arrive while the
+      // paid Checkout event is still creating this receipt. Surface the miss
+      // so the caller can retry instead of silently dropping the reversal.
+      return { adjusted: false, reversedUnits: 0, deltaUnits: 0, receiptMissing: true };
     }
 
     const { monthKey, units, meter, priorRefundUnits, priorDisputeUnits, priorReversedUnits } =

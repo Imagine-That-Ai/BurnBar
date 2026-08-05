@@ -44,6 +44,46 @@ internal object ScreenShareAutoTypeFollowPolicy {
 
     fun shouldCloseAutomatically(input: Input, openedAutomatically: Boolean): Boolean = openedAutomatically && shouldClose(input)
 
+    /**
+     * One auto-type step: whether typing should open/close and how the
+     * opened-automatically marker evolves. `typingOpen == null` means the
+     * keyboard state is left untouched (a manually opened keyboard stays
+     * open even without Mac text focus).
+     */
+    data class Transition(
+        val openedAutomatically: Boolean,
+        val typingOpen: Boolean?,
+        val promoteControlModeToTouch: Boolean,
+    )
+
+    fun transition(input: Input, openedAutomatically: Boolean): Transition = when {
+        shouldOpen(input) -> Transition(
+            openedAutomatically = true,
+            typingOpen = true,
+            promoteControlModeToTouch = input.controlMode == ScreenMirrorControlMode.VIEW,
+        )
+        input.typingOpen && !input.standardControlEnabled -> Transition(
+            openedAutomatically = false,
+            typingOpen = false,
+            promoteControlModeToTouch = false,
+        )
+        shouldCloseAutomatically(input, openedAutomatically) -> Transition(
+            openedAutomatically = false,
+            typingOpen = false,
+            promoteControlModeToTouch = false,
+        )
+        !input.typingOpen -> Transition(
+            openedAutomatically = false,
+            typingOpen = null,
+            promoteControlModeToTouch = false,
+        )
+        else -> Transition(
+            openedAutomatically = openedAutomatically,
+            typingOpen = null,
+            promoteControlModeToTouch = false,
+        )
+    }
+
     fun isFreshTextFocus(context: ScreenShareSmartZoomContext, selectedDisplayId: String?, nowMillis: Long): Boolean {
         val confidence = context.confidence
         val displayMatches =

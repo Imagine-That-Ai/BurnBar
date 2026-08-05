@@ -1,7 +1,6 @@
 package com.openburnbar.data.stores
 
 import android.content.Context
-import android.content.Intent
 import android.util.Log
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
@@ -11,12 +10,9 @@ import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.ApiException
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import com.google.firebase.FirebaseException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
@@ -31,9 +27,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-// GoogleSignInStatusCodes.SIGN_IN_CANCELLED; user dismissal is not an app error.
-private const val GOOGLE_SIGN_IN_CANCELLED_STATUS_CODE = 12501
 private const val DEFAULT_WEB_CLIENT_ID_RESOURCE = "default_web_client_id"
+private const val GOOGLE_CREDENTIAL_UNAVAILABLE_MESSAGE =
+    "Google sign-in isn't available on this device right now. " +
+        "Add a Google account or update Google Play services, then try again."
 
 data class AppUser(
     val uid: String = "",
@@ -60,9 +57,6 @@ class UserStore : ViewModel() {
 
     private val _isSigningIn = MutableStateFlow(false)
     val isSigningIn: StateFlow<Boolean> = _isSigningIn.asStateFlow()
-
-    private val _needsLegacyGoogleFallback = MutableStateFlow(false)
-    val needsLegacyGoogleFallback: StateFlow<Boolean> = _needsLegacyGoogleFallback.asStateFlow()
 
     /** Tracks the prior signed-in edge so the auth-state listener can emit the
      *  sign-in / sign-out conversion events exactly once per real transition. */
@@ -119,11 +113,9 @@ class UserStore : ViewModel() {
     // ═══ Google ═══
 
     /**
-     * Modern Credential Manager flow for "Sign in with Google". Replaces the
-     * deprecated `GoogleSignIn.getClient(...).signInIntent` activity-result dance
-     * with a single suspend call. The web client ID comes from the generated
-     * Firebase resource, so release builds cannot silently drift away from the
-     * shipped `google-services.json`.
+     * Credential Manager flow for the explicit "Sign in with Google" button.
+     * The web client ID comes from the generated Firebase resource, so release
+     * builds cannot silently drift away from the shipped `google-services.json`.
      */
     fun signInWithGoogle(activity: android.app.Activity) {
         viewModelScope.launch {
@@ -134,13 +126,6 @@ class UserStore : ViewModel() {
                 val serverClientId = googleServerClientId(activity) ?: return@launch
                 val request =
                     GetCredentialRequest.Builder()
-                        .addCredentialOption(
-                            GetGoogleIdOption.Builder()
-                                .setServerClientId(serverClientId)
-                                .setFilterByAuthorizedAccounts(false)
-                                .setAutoSelectEnabled(false)
-                                .build(),
-                        )
                         .addCredentialOption(
                             GetSignInWithGoogleOption.Builder(serverClientId).build(),
                         )
@@ -163,59 +148,18 @@ class UserStore : ViewModel() {
             } catch (_: GetCredentialCancellationException) {
                 // User dismissed picker — no error.
             } catch (_: NoCredentialException) {
-                Log.d("BurnBar", "Credential Manager returned no Google credential; launching legacy Google picker")
-                _needsLegacyGoogleFallback.value = true
+                _authError.value = AuthError(GOOGLE_CREDENTIAL_UNAVAILABLE_MESSAGE)
+                Log.w("BurnBar", "Credential Manager returned no Google credential")
+            } catch (e: GoogleIdTokenParsingException) {
+                _authError.value =
+                    AuthError("Google returned an invalid sign-in response. Update BurnBar and try again.")
+                Log.w("BurnBar", "Credential Manager returned an invalid Google ID token", e)
             } catch (e: GetCredentialException) {
                 _authError.value = AuthError(e.localizedMessage ?: "Google sign-in failed.")
                 Log.w("BurnBar", "Credential Manager Google sign-in failed", e)
             } catch (e: FirebaseException) {
                 _authError.value = AuthError(e.localizedMessage ?: "Google sign-in failed.")
                 Log.w("BurnBar", "Google sign-in unexpected error", e)
-            } finally {
-                _isSigningIn.value = false
-            }
-        }
-    }
-
-    fun consumeLegacyGoogleFallback() {
-        _needsLegacyGoogleFallback.value = false
-    }
-
-    fun getGoogleSignInIntent(context: Context): Intent? {
-        val serverClientId = googleServerClientId(context) ?: return null
-        val options =
-            GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestIdToken(serverClientId)
-                .requestEmail()
-                .build()
-        return GoogleSignIn.getClient(context, options).signInIntent
-    }
-
-    fun handleGoogleSignInResult(data: Intent?) {
-        viewModelScope.launch {
-            _isSigningIn.value = true
-            _authError.value = null
-            try {
-                val account = GoogleSignIn.getSignedInAccountFromIntent(data).getResult(ApiException::class.java)
-                val idToken = account.idToken
-                if (idToken.isNullOrBlank()) {
-                    _authError.value =
-                        AuthError("Google sign-in did not return an ID token. Check the Firebase web client configuration.")
-                    return@launch
-                }
-                val credential = GoogleAuthProvider.getCredential(idToken, null)
-                auth.signInWithCredential(credential).await()
-            } catch (e: ApiException) {
-                if (e.statusCode != GOOGLE_SIGN_IN_CANCELLED_STATUS_CODE) {
-                    val msg =
-                        "Google sign-in failed (status ${e.statusCode}). " +
-                            "If this is a release build, register the upload key SHA-1 in Firebase Console."
-                    _authError.value = AuthError(msg)
-                    Log.w("BurnBar", msg, e)
-                }
-            } catch (e: FirebaseException) {
-                _authError.value = AuthError(e.localizedMessage ?: "Google sign-in failed.")
-                Log.w("BurnBar", "Google sign-in exception", e)
             } finally {
                 _isSigningIn.value = false
             }

@@ -25,29 +25,37 @@ class IrohJniTransport(
 
     @Volatile private var cachedIdentity: IrohEndpointIdentity? = null
 
-    override suspend fun start(): IrohEndpointIdentity {
-        val needsBootstrap =
-            stateLock.withLock {
-                val first = !started
-                started = true
-                first
+    override suspend fun start(): IrohEndpointIdentity =
+        stateLock.withLock {
+            if (started) {
+                try {
+                    return@withLock backend.identity().also { cachedIdentity = it }
+                } catch (_: IrohBackendError.NotInitialized) {
+                    // The Rust endpoint is process-global. Another retained
+                    // transport can tear it down without changing this
+                    // wrapper's local `started` bit, so cached identity alone
+                    // is not proof that a reconnect is actually usable.
+                    started = false
+                    cachedIdentity = null
+                } catch (err: IrohBackendError) {
+                    throw surface(err)
+                }
             }
-        if (needsBootstrap) {
-            return try {
+
+            try {
                 val secret = secretProvider()
                 val identity = bootstrapWithRetry(secret)
+                started = true
                 cachedIdentity = identity
                 identity
             } catch (err: IrohBackendError) {
-                stateLock.withLock { started = false }
+                started = false
                 throw surface(err)
             } catch (err: Throwable) {
-                stateLock.withLock { started = false }
+                started = false
                 throw err
             }
         }
-        return cachedIdentity ?: backend.identity()
-    }
 
     private suspend fun bootstrapWithRetry(secret: IrohSecretKeyMaterial): IrohEndpointIdentity {
         var lastError: IrohBackendError? = null
@@ -93,17 +101,19 @@ class IrohJniTransport(
         }
     }
 
-    override suspend fun shutdown() {
-        val wasStarted =
-            stateLock.withLock {
-                val w = started
-                started = false
-                w
+    override suspend fun shutdown() =
+        stateLock.withLock {
+            if (!started) {
+                cachedIdentity = null
+                return@withLock
             }
-        if (!wasStarted) return
-        backend.shutdown()
-        cachedIdentity = null
-    }
+            started = false
+            try {
+                backend.shutdown()
+            } finally {
+                cachedIdentity = null
+            }
+        }
 
     companion object {
         private const val BOOTSTRAP_ATTEMPTS = 3
@@ -148,7 +158,10 @@ class IrohJniTransport(
 
         private fun IrohBackendError.isRetryableBootstrapFailure(): Boolean =
             this is IrohBackendError.RuntimeFailed &&
-                detail.contains("home relay", ignoreCase = true)
+                (
+                    detail.contains("home relay", ignoreCase = true) ||
+                        detail.contains("did not come online", ignoreCase = true)
+                )
     }
 }
 

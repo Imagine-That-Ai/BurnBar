@@ -147,12 +147,17 @@ assert.doesNotMatch(
   /assertActiveBurnBarCloudProEntitlement[\s\S]*isActivePremiumEntitlement\(proMaxSnap\.data\(\)\)/,
 );
 
-const sharedStripeSource = readFileSync(join(root, "src/callables/shared/stripe.ts"), "utf8");
-assert.match(sharedStripeSource, /return lineItems\.find\(\(item\) => item\.productId === productID\);/);
-assert.doesNotMatch(
-  sharedStripeSource,
-  /lineItems\.find\(\(item\) => item\.productId === productID\) \?\? lineItems\[0\]/,
+// Line-item selection lives in shared/googlePlay.ts (the duplicate helper in
+// shared/stripe.ts was removed as dead code). The invariant is unchanged:
+// products are matched by exact productId, never by a lineItems[0] fallback.
+const sharedGooglePlaySource = readFileSync(join(root, "src/callables/shared/googlePlay.ts"), "utf8");
+assert.match(
+  sharedGooglePlaySource,
+  /candidate\.target\.canonicalProductID === preferredProductID/,
 );
+assert.doesNotMatch(sharedGooglePlaySource, /\?\? lineItems\[0\]/);
+const sharedStripeSource = readFileSync(join(root, "src/callables/shared/stripe.ts"), "utf8");
+assert.doesNotMatch(sharedStripeSource, /\?\? lineItems\[0\]/);
 
 const mediaSkuSource = readFileSync(join(root, "src/callables/mediaSku.ts"), "utf8");
 assert.match(mediaSkuSource, /standalone media subscription is retired/i);

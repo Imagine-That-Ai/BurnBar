@@ -214,6 +214,167 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
         client.stop()
     }
 
+    /// Native iroh can report an individual peer closing as `connection lost`
+    /// from `accept`. One or two such failures are recoverable, but treating an
+    /// unlimited sequence as healthy wedges the host forever: the stale NodeId
+    /// remains published while no new stream can be accepted. A bounded burst
+    /// must therefore rebuild the endpoint and publish the replacement NodeId.
+    @MainActor
+    func test_repeatedRecoverablePeerAcceptFailures_rebuildEndpoint() async throws {
+        let directory = FlakyRevokeDirectory(failuresBeforeSuccess: 0)
+        let failing = StubIrohRelayTransport(
+            nodeId: "node-peer-closed",
+            acceptBehavior: .connectionLostRepeatedly
+        )
+        let parking = StubIrohRelayTransport(nodeId: "node-recovered", acceptBehavior: .park)
+        var transports: [StubIrohRelayTransport] = [failing, parking]
+        let client = makeClient(
+            directory: directory,
+            transportFactory: { _ in transports.removeFirst() }
+        )
+
+        let started = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(started)
+
+        try await waitUntil(timeout: 4) {
+            let record = try await directory.fetch(uid: self.uid, connectionId: self.connectionID)
+            return record?.nodeId == "node-recovered"
+        }
+        XCTAssertGreaterThanOrEqual(
+            failing.acceptCallCount,
+            3,
+            "The host should tolerate a bounded burst before rebuilding"
+        )
+
+        client.stop()
+    }
+
+    /// The native path reports peer-close accept failures before Swift obtains
+    /// a peer identity or applies the inbound allowlist, so any peer that can
+    /// reach the advertised endpoint can manufacture an arbitrary run of them
+    /// by completing ALPN and closing early. When the host holds
+    /// peer-independent acceptor-health evidence (here: a recently completed
+    /// `accept`), such a burst must NOT tear the endpoint down; otherwise an
+    /// unauthenticated or revoked peer could repeatedly cancel live chat/media
+    /// sessions and churn the published NodeId.
+    @MainActor
+    func test_peerAcceptFailureBurst_withHealthEvidence_doesNotRebuild() async throws {
+        let directory = FlakyRevokeDirectory(failuresBeforeSuccess: 0)
+        let transport = StubIrohRelayTransport(
+            nodeId: "node-healthy",
+            acceptBehavior: .acceptOneThenConnectionLost
+        )
+        // A decoy replacement transport: a rebuild would consume it and
+        // republish under "node-rebuilt", so it staying queued (and the
+        // directory keeping "node-healthy") proves suppression.
+        let decoy = StubIrohRelayTransport(nodeId: "node-rebuilt", acceptBehavior: .park)
+        var transports: [StubIrohRelayTransport] = [transport, decoy]
+        let client = makeClient(
+            directory: directory,
+            transportFactory: { _ in transports.removeFirst() }
+        )
+
+        let started = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(started)
+
+        // Let the hostile burst run well past the rebuild threshold.
+        try await waitUntil(timeout: 4) {
+            transport.acceptCallCount >= 6
+        }
+        let record = try await directory.fetch(uid: uid, connectionId: connectionID)
+        XCTAssertEqual(
+            record?.nodeId,
+            "node-healthy",
+            "A peer-manufactured accept-failure burst must not revoke or rotate the published NodeId"
+        )
+        XCTAssertEqual(
+            transports.count,
+            1,
+            "The original transport must stay current; a rebuild would have consumed the decoy replacement"
+        )
+
+        client.stop()
+    }
+
+    /// A completed accept must clear the recoverable-failure streak even when
+    /// the allowlist then rejects the stream. Otherwise failures accumulated
+    /// before a successful accept survive the rejection branch and, once the
+    /// 30-second health-evidence window lapses, later peer-close errors reach
+    /// the limit and rebuild an endpoint whose acceptor made intervening
+    /// progress.
+    @MainActor
+    func test_completedAcceptResetsFailureStreak_evenWhenStreamIsRejected() async throws {
+        let directory = FlakyRevokeDirectory(failuresBeforeSuccess: 0)
+        // 2 failures, then a completed accept (rejected by the empty
+        // allowlist), then 2 more failures: once the accept resets the streak,
+        // no run of 3 consecutive failures exists, so the endpoint must never
+        // rebuild.
+        let transport = StubIrohRelayTransport(
+            nodeId: "node-streak-reset",
+            acceptBehavior: .failuresThenAcceptThenFailures(before: 2, after: 2)
+        )
+        let decoy = StubIrohRelayTransport(nodeId: "node-rebuilt", acceptBehavior: .park)
+        var transports: [StubIrohRelayTransport] = [transport, decoy]
+        let clock = MutableTestClock()
+        let client = makeClient(
+            directory: directory,
+            now: { clock.now },
+            transportFactory: { _ in transports.removeFirst() }
+        )
+
+        let started = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(started)
+
+        // Once the accept has landed, expire the health-evidence window so the
+        // post-accept failures cannot hide behind `lastAcceptedStreamAt`; only
+        // the streak reset can keep the endpoint alive.
+        try await waitUntil(timeout: 4) { transport.acceptCallCount >= 3 }
+        clock.advance(by: 31)
+
+        try await waitUntil(timeout: 4) { transport.acceptCallCount >= 6 }
+        let record = try await directory.fetch(uid: uid, connectionId: connectionID)
+        XCTAssertEqual(
+            record?.nodeId,
+            "node-streak-reset",
+            "Failures from before a completed accept must not combine with later ones to rotate the NodeId"
+        )
+        XCTAssertEqual(
+            transports.count,
+            1,
+            "A rebuild would have consumed the decoy replacement transport"
+        )
+
+        client.stop()
+    }
+
+    /// Transferred `media.control` streams keep the host's endpoint-health
+    /// evidence alive: their serve task is released while the live stream is
+    /// retained, so an active mirror or call must count even when `serveTasks`
+    /// is empty and the last accept is older than the evidence window.
+    @MainActor
+    func test_healthEvidence_countsRetainedTransferredStreams() {
+        let now = Date()
+        let staleAccept = now.addingTimeInterval(-60)
+        XCTAssertTrue(
+            HermesIrohRelayHostClient.hasPeerIndependentEndpointHealthEvidence(
+                activeServeTaskCount: 0,
+                retainedServeStreamCount: 1,
+                lastAcceptedStreamAt: staleAccept,
+                now: now
+            ),
+            "A retained transferred media.control stream is an active session and must suppress rebuild"
+        )
+        XCTAssertFalse(
+            HermesIrohRelayHostClient.hasPeerIndependentEndpointHealthEvidence(
+                activeServeTaskCount: 0,
+                retainedServeStreamCount: 0,
+                lastAcceptedStreamAt: staleAccept,
+                now: now
+            ),
+            "No tasks, no retained streams, and a stale accept leave the endpoint free to rebuild"
+        )
+    }
+
     // MARK: - Helpers
 
     @MainActor
@@ -346,6 +507,19 @@ private final class LockedHostTestClock: @unchecked Sendable {
 }
 
 // MARK: - Test doubles
+
+/// Injectable wall clock so tests can expire the acceptor health-evidence
+/// window deterministically instead of sleeping through it.
+private final class MutableTestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current = Date(timeIntervalSince1970: 1_700_000_000)
+
+    var now: Date { lock.withLock { current } }
+
+    func advance(by interval: TimeInterval) {
+        lock.withLock { current = current.addingTimeInterval(interval) }
+    }
+}
 
 private actor BlockingHostTestStream: IrohRelayStream {
     nonisolated let remotePeerNodeId: String?
@@ -531,10 +705,25 @@ private final class StubIrohRelayTransport: IrohRelayTransport, @unchecked Senda
     enum AcceptBehavior: Sendable {
         case park
         case shutdownImmediately
+        case connectionLostRepeatedly
+        /// First `accept` hands back a real stream (acceptor-health evidence),
+        /// every later `accept` fails like a peer that completed ALPN and
+        /// closed before opening a bidirectional stream.
+        case acceptOneThenConnectionLost
+        /// Scripted streak-reset sequence: `before` peer-close failures, then
+        /// one completed accept (an unadmitted stream the empty allowlist
+        /// rejects), then `after` more peer-close failures, then park.
+        case failuresThenAcceptThenFailures(before: Int, after: Int)
     }
 
     private let identity: IrohEndpointIdentity
     private let acceptBehavior: AcceptBehavior
+    private let lock = NSLock()
+    private var _acceptCallCount = 0
+
+    var acceptCallCount: Int {
+        lock.withLock { _acceptCallCount }
+    }
 
     init(nodeId: String, acceptBehavior: AcceptBehavior = .park) {
         self.identity = IrohEndpointIdentity(
@@ -553,8 +742,30 @@ private final class StubIrohRelayTransport: IrohRelayTransport, @unchecked Senda
     }
 
     func accept(timeout: TimeInterval) async throws -> any IrohRelayStream {
+        let callIndex = lock.withLock { () -> Int in
+            _acceptCallCount += 1
+            return _acceptCallCount
+        }
         switch acceptBehavior {
         case .shutdownImmediately:
+            throw IrohRelayTransportError.shutdown
+        case .connectionLostRepeatedly:
+            throw IrohRelayTransportError.streamRejected("connection lost")
+        case .acceptOneThenConnectionLost:
+            if callIndex == 1 {
+                return BlockingHostTestStream(remotePeerNodeId: "unadmitted-peer")
+            }
+            throw IrohRelayTransportError.streamRejected("connection lost")
+        case .failuresThenAcceptThenFailures(let before, let after):
+            if callIndex == before + 1 {
+                return BlockingHostTestStream(remotePeerNodeId: "unadmitted-peer")
+            }
+            if callIndex <= before + 1 + after {
+                throw IrohRelayTransportError.streamRejected("connection lost")
+            }
+            while !Task.isCancelled {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
             throw IrohRelayTransportError.shutdown
         case .park:
             while !Task.isCancelled {

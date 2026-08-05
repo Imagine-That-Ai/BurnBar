@@ -65,6 +65,8 @@ final class MercuryRouterTests: XCTestCase {
         remoteUnlockReadiness: MacRemoteUnlockReadinessService? = nil,
         phoneControlAuthorityValidator: PhoneControlAuthorityValidator? = nil,
         phoneControlAuthorityRegistrationProvider: MercuryRouter.PhoneControlAuthorityRegistrationProvider? = nil,
+        phoneControlEnrollmentGrantIssuer: MercuryRouter.PhoneControlEnrollmentGrantIssuer? = nil,
+        pendingMirrorRequestTimeoutSeconds: TimeInterval = 20,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) -> (router: MercuryRouter, sink: AckSink) {
         let scoped = makeRouterWithConsentStore(
@@ -77,6 +79,8 @@ final class MercuryRouterTests: XCTestCase {
             remoteUnlockReadiness: remoteUnlockReadiness,
             phoneControlAuthorityValidator: phoneControlAuthorityValidator,
             phoneControlAuthorityRegistrationProvider: phoneControlAuthorityRegistrationProvider,
+            phoneControlEnrollmentGrantIssuer: phoneControlEnrollmentGrantIssuer,
+            pendingMirrorRequestTimeoutSeconds: pendingMirrorRequestTimeoutSeconds,
             clock: clock
         )
         return (scoped.router, scoped.sink)
@@ -92,6 +96,8 @@ final class MercuryRouterTests: XCTestCase {
         remoteUnlockReadiness: MacRemoteUnlockReadinessService? = nil,
         phoneControlAuthorityValidator: PhoneControlAuthorityValidator? = nil,
         phoneControlAuthorityRegistrationProvider: MercuryRouter.PhoneControlAuthorityRegistrationProvider? = nil,
+        phoneControlEnrollmentGrantIssuer: MercuryRouter.PhoneControlEnrollmentGrantIssuer? = nil,
+        pendingMirrorRequestTimeoutSeconds: TimeInterval = 20,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) -> (router: MercuryRouter, sink: AckSink, consentStore: MercuryConsentStore) {
         let registry = MediaControlStreamRegistry()
@@ -111,7 +117,10 @@ final class MercuryRouterTests: XCTestCase {
             screenCaptureFactory: { _, _ in RouterNoopScreenCaptureSession() },
             videoEncoderFactory: { _, _ in RouterNoopVideoEncoder() }
         )
-        let consentStore = MercuryConsentStore(defaults: makeIsolatedDefaults())
+        // The store must share the router's clock: its defaults observer
+        // prunes grants against that clock, and these tests pin `now` years
+        // away from the wall clock.
+        let consentStore = MercuryConsentStore(defaults: makeIsolatedDefaults(), clock: clock)
         if consent {
             seedTestAutoAcceptGrants(in: consentStore)
         }
@@ -133,10 +142,12 @@ final class MercuryRouterTests: XCTestCase {
                 effectivePhoneControlAuthorityValidator
             },
             phoneControlAuthorityRegistrationProvider: phoneControlAuthorityRegistrationProvider,
+            phoneControlEnrollmentGrantIssuer: phoneControlEnrollmentGrantIssuer,
             localStreamingCapabilityProvider: {
                 MercuryRouterTestFixtures.localStreamingCapabilities
             },
             cooldownSeconds: cooldownSeconds,
+            pendingMirrorRequestTimeoutSeconds: pendingMirrorRequestTimeoutSeconds,
             clock: clock
         )
         // Inject a sink factory that succeeds — exercises the
@@ -176,10 +187,20 @@ final class MercuryRouterTests: XCTestCase {
         return suite
     }
 
+    /// Polls until a frame matching `predicate` has been sent.
+    ///
+    /// The budget is wall-clock tolerance for the CI scheduler, not a behavioural
+    /// assertion: a passing run returns as soon as the frame appears, so a larger
+    /// timeout costs nothing when healthy and cannot mask a wrong frame — the
+    /// predicate still has to be satisfied. One second was too tight on the
+    /// shared macOS runners, where this suite runs alongside parallel Swift
+    /// compiles and the emitting task can be starved past the deadline
+    /// (`testControlStreamMirrorSinkEmitsHealthHeartbeatsWithoutVideoFrames`
+    /// asks for a 20 ms heartbeat and still timed out).
     private func waitForSentFrame(
         on stream: RecordingIrohStream,
         matching predicate: (HermesRealtimeRelayFrame) -> Bool,
-        timeout: TimeInterval = 1.0
+        timeout: TimeInterval = 10.0
     ) async throws -> HermesRealtimeRelayFrame {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -670,7 +691,11 @@ final class MercuryRouterTests: XCTestCase {
     }
 
     func testExistingPeerGrantAutoAcceptDoesNotRenewGrant() async throws {
-        var now = Date(timeIntervalSince1970: 1_700_000_000)
+        // Anchor the synthetic clock to the wall clock: the consent store's
+        // UserDefaults observer re-synchronizes grants against real `Date()`,
+        // so a grant minted at a fixed 2023 epoch would be purged as expired
+        // whenever that observer fires between the awaits below.
+        var now = Date()
         let (router, sink, consentStore) = makeRouterWithConsentStore(
             startScreenShare: { _, _, _, _, _, _, _, _ in },
             clock: { now }
@@ -807,6 +832,55 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(frames.last?.media?.mirrorAck?.decision, .accepted)
     }
 
+    func testAcceptMirrorIssuesPairingScopedPhoneControlEnrollmentGrant() async {
+        var issuedGrant: (connectionID: String, deviceID: String, peerNodeID: String)?
+        let (router, sink) = makeRouter(
+            startScreenShare: { _, _, _, _, _, _, _, _ in },
+            phoneControlEnrollmentGrantIssuer: { connectionID, deviceID, peerNodeID in
+                issuedGrant = (connectionID, deviceID, peerNodeID)
+            }
+        )
+
+        await handleMirrorFrame(mirrorRequestFrame(), router: router, sink: sink)
+        guard let pending = router.pendingRequest else {
+            XCTFail("expected pending request")
+            return
+        }
+        await router.acceptMirror(pending)
+
+        XCTAssertEqual(issuedGrant?.connectionID, "c")
+        XCTAssertEqual(issuedGrant?.deviceID, "iphone-1")
+        XCTAssertEqual(issuedGrant?.peerNodeID, "ios-peer")
+        let frames = await sink.frames
+        XCTAssertEqual(frames.last?.media?.mirrorAck?.decision, .accepted)
+    }
+
+    func testAcceptMirrorSurfacesEnrollmentGrantFailureAndStillAcceptsMirror() async {
+        struct EnrollmentGrantError: LocalizedError {
+            var errorDescription: String? { "grant rejected" }
+        }
+        let (router, sink) = makeRouter(
+            startScreenShare: { _, _, _, _, _, _, _, _ in },
+            phoneControlEnrollmentGrantIssuer: { _, _, _ in
+                throw EnrollmentGrantError()
+            }
+        )
+
+        await handleMirrorFrame(mirrorRequestFrame(), router: router, sink: sink)
+        guard let pending = router.pendingRequest else {
+            XCTFail("expected pending request")
+            return
+        }
+        await router.acceptMirror(pending)
+
+        XCTAssertEqual(
+            router.lastError,
+            "Mirror accepted, but phone control still needs device approval: grant rejected"
+        )
+        let frames = await sink.frames
+        XCTAssertEqual(frames.last?.media?.mirrorAck?.decision, .accepted)
+    }
+
     func testDeclineEmitsDeniedAckAndEntersCooldown() async {
         let (router, sink) = makeRouter(cooldownSeconds: 5)
         await handleMirrorFrame(mirrorRequestFrame(), router: router, sink: sink)
@@ -823,6 +897,57 @@ final class MercuryRouterTests: XCTestCase {
         } else {
             XCTFail("expected .cooldown after decline, got \(router.phase)")
         }
+    }
+
+    func testPendingMirrorRequestExpiresAndReturnsRouterToIdle() async throws {
+        let (router, sink) = makeRouter(pendingMirrorRequestTimeoutSeconds: 0.05)
+
+        await handleMirrorFrame(mirrorRequestFrame(), router: router, sink: sink)
+        XCTAssertNotNil(router.pendingRequest)
+
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        XCTAssertNil(router.pendingRequest)
+        XCTAssertEqual(router.phase, .idle)
+        let frames = await sink.frames
+        XCTAssertEqual(frames.count, 1)
+        XCTAssertEqual(frames[0].media?.mirrorAck?.decision, .denied)
+        XCTAssertEqual(frames[0].media?.mirrorAck?.detail, "Mirror request expired")
+    }
+
+    func testPendingMirrorExpiryClaimsRequestBeforeAwaitingDeniedReply() async throws {
+        let (router, _) = makeRouter(
+            startScreenShare: { _, _, _, _, _, _, _, _ in },
+            pendingMirrorRequestTimeoutSeconds: 0.03
+        )
+        let sink = BlockingAckSink()
+        let frame = mirrorRequestFrame(requestID: "deadline-race")
+
+        await router.handleFrame(
+            frame,
+            remotePeerNodeID: "ios-peer",
+            replySender: sink.sender
+        )
+        let stalePending = try XCTUnwrap(router.pendingRequest)
+
+        try await sink.waitUntilBlocked()
+        XCTAssertNil(router.pendingRequest)
+        XCTAssertEqual(router.phase, .idle)
+
+        await router.acceptMirror(stalePending)
+        XCTAssertNil(router.pendingRequest)
+        XCTAssertEqual(
+            router.phase,
+            .idle,
+            "an Accept after expiry claimed the request must be ignored"
+        )
+
+        await sink.release()
+        try await sink.waitUntilFrameCount(1)
+        let frames = await sink.frames
+        XCTAssertEqual(frames.map(\.media?.mirrorAck?.decision), [.denied])
+        XCTAssertEqual(frames.first?.media?.mirrorAck?.detail, "Mirror request expired")
+        XCTAssertEqual(router.phase, .idle)
     }
 
     func testCooldownAutoDeniesNewRequests() async {
@@ -1035,6 +1160,47 @@ final class MercuryRouterTests: XCTestCase {
             frames[0].media?.mirrorAck?.detail,
             "Mac locked or screen capture became unavailable"
         )
+    }
+
+    func testStaleControlStreamCloseCancelsPendingRequestAndBlocksLateAccept() async throws {
+        var startCount = 0
+        let staleStreamID = UUID()
+        let (router, sink) = makeRouter(
+            startScreenShare: { _, _, _, _, _, _, _, _ in
+                startCount += 1
+            }
+        )
+
+        await handleMirrorFrame(
+            mirrorRequestFrame(
+                requestID: "req_stale",
+                connectionID: "shared-mac"
+            ),
+            router: router,
+            sink: sink,
+            controlStreamID: staleStreamID,
+            remotePeerNodeID: "ios-peer"
+        )
+        let staleRequest = try XCTUnwrap(router.pendingRequest)
+
+        await router.handleControlStreamClosed(
+            connectionID: "shared-mac",
+            controlStreamID: staleStreamID,
+            removedLastStreamForConnection: false
+        )
+
+        XCTAssertNil(router.pendingRequest)
+        XCTAssertEqual(router.phase, .idle)
+
+        // The sheet action may already be queued on the main actor when the
+        // transport closes. It must not accept the detached request or write
+        // an ack through the stale stream's captured reply sender.
+        await router.acceptMirror(staleRequest)
+
+        XCTAssertEqual(startCount, 0)
+        XCTAssertEqual(router.phase, .idle)
+        let frames = await sink.frames
+        XCTAssertTrue(frames.isEmpty)
     }
 
     func testPhoneStopAllowsDifferentDeviceToMirrorImmediately() async throws {
@@ -2374,6 +2540,48 @@ private actor AckSink {
 
     nonisolated var sender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void {
         { [self] frame in await self.append(frame) }
+    }
+}
+
+private actor BlockingAckSink {
+    private var stored: [HermesRealtimeRelayFrame] = []
+    private var isBlocked = false
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    var frames: [HermesRealtimeRelayFrame] { stored }
+
+    func appendAndBlock(_ frame: HermesRealtimeRelayFrame) async {
+        stored.append(frame)
+        isBlocked = true
+        await withCheckedContinuation { continuation in
+            releaseContinuation = continuation
+        }
+    }
+
+    func waitUntilBlocked() async throws {
+        for _ in 0..<200 {
+            if isBlocked { return }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        throw NSError(domain: "MercuryRouterTests", code: 2)
+    }
+
+    func waitUntilFrameCount(_ expected: Int) async throws {
+        for _ in 0..<200 {
+            if stored.count >= expected { return }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        throw NSError(domain: "MercuryRouterTests", code: 3)
+    }
+
+    func release() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
+        isBlocked = false
+    }
+
+    nonisolated var sender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void {
+        { [self] frame in await self.appendAndBlock(frame) }
     }
 }
 

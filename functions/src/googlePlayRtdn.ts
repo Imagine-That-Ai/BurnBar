@@ -27,6 +27,7 @@ import {
 } from "./callables/shared.js";
 
 const GOOGLE_PLAY_RTDN_EVENT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+const GOOGLE_PLAY_RTDN_EVENT_LEASE_MS = 5 * 60 * 1000;
 
 interface GooglePlaySubscriptionNotification {
   version?: unknown;
@@ -49,7 +50,7 @@ interface GooglePlayVoidedPurchaseNotification {
   refundType?: unknown;
 }
 
-export interface GooglePlayDeveloperNotification {
+interface GooglePlayDeveloperNotification {
   version?: unknown;
   packageName?: unknown;
   eventTimeMillis?: unknown;
@@ -146,6 +147,43 @@ function rtdnEventBase(
     expireAt: Timestamp.fromMillis(sourceEventCreatedMillis + GOOGLE_PLAY_RTDN_EVENT_RETENTION_MS),
     schemaVersion: 1,
     ...extra,
+  });
+}
+
+type GooglePlayRtdnReservation = "reserved" | "processing" | "terminal";
+
+async function reserveGooglePlayRtdnEvent(
+  payload: GooglePlayDeveloperNotification,
+  meta: GooglePlayRtdnEventMeta,
+): Promise<GooglePlayRtdnReservation> {
+  const ref = rtdnEventRef(meta.eventID);
+  const nowMillis = Date.now();
+  return db.runTransaction(async (transaction) => {
+    const existing = await transaction.get(ref);
+    const status = existing.get("status");
+    if (terminalEventStatus(status)) return "terminal";
+
+    const leaseExpiresAt = existing.get("leaseExpiresAt");
+    const leaseExpiresAtMillis =
+      leaseExpiresAt instanceof Timestamp
+        ? leaseExpiresAt.toMillis()
+        : typeof leaseExpiresAt?.toMillis === "function"
+          ? leaseExpiresAt.toMillis()
+          : 0;
+    if (status === "processing" && leaseExpiresAtMillis > nowMillis) {
+      return "processing";
+    }
+
+    transaction.set(
+      ref,
+      rtdnEventBase(payload, meta, {
+        status: "processing",
+        processingStartedAt: Timestamp.fromMillis(nowMillis),
+        leaseExpiresAt: Timestamp.fromMillis(nowMillis + GOOGLE_PLAY_RTDN_EVENT_LEASE_MS),
+      }),
+      { merge: true },
+    );
+    return "reserved";
   });
 }
 
@@ -272,8 +310,15 @@ export async function processGooglePlayDeveloperNotification(
   meta: GooglePlayRtdnEventMeta,
 ): Promise<void> {
   const ref = rtdnEventRef(meta.eventID);
-  const existing = await ref.get();
-  if (terminalEventStatus(existing.get("status"))) return;
+  const reservation = await reserveGooglePlayRtdnEvent(payload, meta);
+  if (reservation === "terminal") return;
+  if (reservation === "processing") {
+    // Another worker holds an unexpired lease. Returning here would ack the
+    // Pub/Sub message; if that worker then crashes before finishing, the event
+    // would be lost forever. Throw instead so Pub/Sub redelivers after the
+    // lease expires and a later attempt can take over the reservation.
+    throw new Error(`google_play_rtdn_event ${meta.eventID} is being processed by another worker`);
+  }
 
   const cfg = getConfig();
   const kind = notificationKind(payload);
@@ -379,6 +424,7 @@ export async function processGooglePlayDeveloperNotification(
       .set(
         rtdnEventBase(payload, meta, {
           status: "failed",
+          leaseExpiresAt: Timestamp.now(),
           purchaseTokenHash: tokenHash,
           uid: claim.uid,
           claimKind: claim.kind,

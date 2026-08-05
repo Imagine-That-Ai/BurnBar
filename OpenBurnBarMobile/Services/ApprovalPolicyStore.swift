@@ -131,10 +131,34 @@ final class ApprovalPolicyStore {
                     // snapshot callback (which cannot await). `nil` when the key
                     // isn't escrowed onto this device yet — sealed fields then
                     // stay hidden (decode returns `nil` for them, no leak).
-                    let vaultKey = self.cachedVaultKey(uid: uid)
+                    let resolvedKey = try? await MobileCloudVaultKeyAccess
+                        .keyForReading(uid: uid, firestore: self.firestoreProvider())
+                    let trustedKeys: [String: Data] = if let identity = resolvedKey?.signalIdentity {
+                        await MobileCloudVaultSignalPayloads.trustedSenderPublicKeys(
+                            uid: uid,
+                            firestore: self.firestoreProvider(),
+                            localIdentity: identity
+                        )
+                    } else { [:] }
                     let docs = snapshot?.documents ?? []
                     let cloudPolicies = docs.compactMap { doc in
-                        Self.decode(documentID: doc.documentID, data: doc.data(), vaultKey: vaultKey, uid: uid)
+                        let signalData = try? resolvedKey.flatMap { key in
+                            try MobileCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                                doc.data(),
+                                uid: uid,
+                                collection: "approval_policies",
+                                docId: doc.documentID,
+                                signalIdentity: key.signalIdentity,
+                                trustedSenderPublicKeys: trustedKeys
+                            )
+                        }
+                        return Self.decode(
+                            documentID: doc.documentID,
+                            data: doc.data(),
+                            vaultKey: resolvedKey?.keyData,
+                            uid: uid,
+                            signalPlaintext: signalData ?? nil
+                        )
                     }
                     self.mergeCloudPolicies(cloudPolicies)
                 }
@@ -200,9 +224,9 @@ final class ApprovalPolicyStore {
 
     private func cloudUpsert(_ policy: ApprovalPolicy) async {
         guard FirebaseApp.app() != nil, let uid = Auth.auth().currentUser?.uid else { return }
-        let vaultKey: Data
+        let resolvedKey: MobileCloudVaultResolvedKey
         do {
-            vaultKey = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid).keyData
+            resolvedKey = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid)
         } catch {
             lastCloudError = error.localizedDescription
             return
@@ -210,8 +234,43 @@ final class ApprovalPolicyStore {
         let payload: [String: Any]
         let docID: String
         do {
-            docID = try Self.opaqueCloudDocumentID(forClassHash: policy.id, vaultKey: vaultKey)
-            payload = try Self.encode(policy, uid: uid, documentID: docID, vaultKey: vaultKey)
+            docID = try Self.opaqueCloudDocumentID(forClassHash: policy.id, vaultKey: resolvedKey.keyData)
+            var signalPayload = try Self.encode(policy, uid: uid, documentID: docID, vaultKey: resolvedKey.keyData)
+            let signalState = MobileCloudVaultSignalPayloads.signalActivationState(domainID: "conversations_chat")
+            if signalState != .off {
+                let encoder = JSONEncoder()
+                encoder.dateEncodingStrategy = .iso8601
+                let plaintext = try encoder.encode(policy)
+                do {
+                    if let envelope = try await MobileCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
+                        domainID: "conversations_chat",
+                        uid: uid,
+                        firestore: firestoreProvider(),
+                        collection: "approval_policies",
+                        docId: docID,
+                        plaintext: plaintext,
+                        resolvedKey: resolvedKey
+                    ) {
+                        signalPayload["signalEnvelope"] = envelope
+                        if signalState == .required {
+                            for key in [
+                                "sealedDisplayLabel", "sealedFileGlob", "sealedTargetProject",
+                                "projectKeyHash", "fileGlobHash", "encryption"
+                            ] {
+                                signalPayload.removeValue(forKey: key)
+                            }
+                        }
+                    }
+                } catch {
+                    if signalState == .required { throw error }
+                }
+            }
+            try MobileCloudVaultSignalPayloads.requireEnvelopeIfRequired(
+                payload: signalPayload,
+                state: signalState,
+                domainID: "conversations_chat"
+            )
+            payload = signalPayload
         } catch {
             lastCloudError = error.localizedDescription
             return
@@ -346,7 +405,21 @@ final class ApprovalPolicyStore {
     /// absent on this device). The `id` is recomputed by the `ApprovalPolicy`
     /// initializer from the decoded discriminators, so the in-memory class hash
     /// used for matching is unchanged even though the cloud no longer stores it.
-    static func decode(documentID: String, data: [String: Any], vaultKey: Data?, uid: String? = nil) -> ApprovalPolicy? {
+    static func decode(
+        documentID: String,
+        data: [String: Any],
+        vaultKey: Data?,
+        uid: String? = nil,
+        signalPlaintext: Data? = nil
+    ) -> ApprovalPolicy? {
+        if let signalPlaintext,
+           let signalPolicy = try? JSONDecoder().decode(ApprovalPolicy.self, from: signalPlaintext) {
+            return signalPolicy
+        }
+        if MobileCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat"),
+           signalPlaintext == nil {
+            return nil
+        }
         guard
             let label = openSealedPolicyField(
                 from: data,

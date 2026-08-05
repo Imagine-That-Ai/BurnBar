@@ -29,7 +29,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { Timestamp, type Firestore, type Transaction } from "firebase-admin/firestore";
+import { FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
 
 import type { JWSTransactionDecodedPayload } from "@apple/app-store-server-library";
 
@@ -228,37 +228,70 @@ export async function reconcileEntitlement(
   return { uid, entitlement: result.entitlement, changed: result.changed };
 }
 
-function writeEntitlementMirrorOnly(
-  tx: Transaction,
-  db: Firestore,
+/**
+ * A verified Apple lifecycle replaces the mutable entitlement snapshot.
+ * Remove operator-only provenance left by a temporary support bridge so the
+ * document cannot claim both provider verification and an active operator
+ * grant at the same time (the same cleanup `writeBurnBarProEntitlement`
+ * applies on the Stripe/Google Play path). Mirror docs re-assert their own
+ * sourceEntitlementID/sourceProductID after this cleanup is spread first.
+ */
+function operatorProvenanceCleanup(): Record<string, FieldValue> {
+  return {
+    operatorGrant: FieldValue.delete(),
+    operatorGrantedAt: FieldValue.delete(),
+    operatorGrantReason: FieldValue.delete(),
+    sourceEntitlementID: FieldValue.delete(),
+    sourceProductID: FieldValue.delete(),
+  };
+}
+
+/**
+ * The writers below are typed against the minimal transactional surface they
+ * actually use (`Ref` is inferred from the paired doc resolver), so unit tests
+ * can drive the exact production write path with a plain in-memory fake
+ * instead of an unsafe `Firestore`/`Transaction` cast. Production callers pass
+ * the real `Transaction`/`Firestore` pair unchanged.
+ */
+export function writeEntitlementMirrorOnly<Ref>(
+  tx: { set(ref: Ref, data: Record<string, unknown>, options: { merge: true }): unknown },
+  db: { doc(path: string): Ref },
   uid: string,
   entitlement: HostedQuotaEntitlementDoc,
   target: AppStoreEntitlementTarget,
 ): void {
   if (target.sourceEntitlementID === target.mirrorEntitlementID) return;
-  tx.set(
-    db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`),
-    buildBurnBarEntitlementMirror(entitlement, target),
-    { merge: true },
-  );
+  const { mirrorDoc } = buildAppStoreEntitlementWritePayloads(entitlement, target);
+  if (!mirrorDoc) return;
+  tx.set(db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`), mirrorDoc, { merge: true });
 }
 
-function writeEntitlementDocs(
-  tx: Transaction,
-  db: Firestore,
+export function writeEntitlementDocs<Ref>(
+  tx: { set(ref: Ref, data: Record<string, unknown>, options: { merge: true }): unknown },
+  db: { doc(path: string): Ref },
   uid: string,
   entitlement: HostedQuotaEntitlementDoc,
   target: AppStoreEntitlementTarget,
 ): void {
   const sourceRef = db.doc(`users/${uid}/entitlements/${target.sourceEntitlementID}`);
-  const sourceDoc = stripUndefinedObject(entitlement);
-  const mirrorDoc = buildBurnBarEntitlementMirror(entitlement, target);
-  if (target.sourceEntitlementID === target.mirrorEntitlementID) {
-    tx.set(sourceRef, stripUndefinedObject({ ...sourceDoc, ...mirrorDoc }), { merge: true });
-    return;
-  }
+  const { sourceDoc, mirrorDoc } = buildAppStoreEntitlementWritePayloads(entitlement, target);
   tx.set(sourceRef, sourceDoc, { merge: true });
-  tx.set(db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`), mirrorDoc, { merge: true });
+  if (mirrorDoc) {
+    tx.set(db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`), mirrorDoc, { merge: true });
+  }
+}
+
+/** Builds the exact source and mirror payloads consumed by the writer. */
+export function buildAppStoreEntitlementWritePayloads(
+  entitlement: HostedQuotaEntitlementDoc,
+  target: AppStoreEntitlementTarget,
+) {
+  const sourceDoc = { ...operatorProvenanceCleanup(), ...stripUndefinedObject(entitlement) };
+  const mirrorDoc = { ...operatorProvenanceCleanup(), ...buildBurnBarEntitlementMirror(entitlement, target) };
+  if (target.sourceEntitlementID === target.mirrorEntitlementID) {
+    return { sourceDoc: stripUndefinedObject({ ...sourceDoc, ...mirrorDoc }) };
+  }
+  return { sourceDoc, mirrorDoc };
 }
 
 function buildBurnBarEntitlementMirror(

@@ -138,6 +138,7 @@ function valid() {
         "      - self-hosted",
         "      - macos",
         "      - arm64",
+        "      - p16-physical-ipad",
         "    steps:",
         "      - name: Check out the exact evidence source",
         "        with:",
@@ -183,8 +184,24 @@ function valid() {
       "capture-p34-credential-security-proof.mjs",
       "resolve-p39-platform-evidence.mjs",
       "capture-p39-differential.mjs",
-      "run-p40-privacy-rpc-session.mjs",
-      "Capture P-40 installed privacy proof",
+      [
+        "      - name: Capture P-40 installed privacy proof",
+        "        if: inputs.requirement == 'P-40'",
+        "        run: |",
+        "          set -euo pipefail",
+        '          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"',
+        "          bash scripts/linux-port/run-p40-installed-privacy-proof.sh",
+        '          session_report="$input_root/p40-live-session.json"',
+        '          test -f "$session_report"',
+        "          node scripts/linux-port/capture-p40-privacy-proof.mjs \\",
+        '            --input-root "$input_root" \\',
+        '            --session-report "$session_report" \\',
+        '            --environment "$ENVIRONMENT_ID" \\',
+        '            --target-head "$TARGET_HEAD" \\',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID" \\',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+      ].join("\n"),
+      "      - name: P-40 fixture boundary",
       "if: inputs.requirement == 'P-02'",
       "if: inputs.requirement == 'P-34'",
       "if: always() && inputs.requirement == 'P-02'",
@@ -197,7 +214,10 @@ function valid() {
       "capture-failure.json",
       "capture.log",
       '2>&1 | tee "$capture_log"',
+      "run-p31-live-accessibility-session.mjs",
       "capture-p31-accessibility.mjs",
+      "Provision P-31 live accessibility prerequisites",
+      "python3-pyatspi",
       "if: inputs.requirement == 'P-31'",
       "id: p31_capture",
       '--session-report "$session_report"',
@@ -262,7 +282,7 @@ function valid() {
       ].join("\n"),
       [
         "      - name: Install signed candidate for installed feature proofs",
-        "        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-13' || inputs.requirement == 'P-14' || inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-17' || inputs.requirement == 'P-18' || inputs.requirement == 'P-19' || inputs.requirement == 'P-20' || inputs.requirement == 'P-21' || inputs.requirement == 'P-22' || inputs.requirement == 'P-23' || inputs.requirement == 'P-24' || inputs.requirement == 'P-25' || inputs.requirement == 'P-26' || inputs.requirement == 'P-27' || inputs.requirement == 'P-28' || inputs.requirement == 'P-29' || inputs.requirement == 'P-30' || inputs.requirement == 'P-32' || inputs.requirement == 'P-33' || inputs.requirement == 'P-35' || inputs.requirement == 'P-36'",
+        "        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-13' || inputs.requirement == 'P-14' || inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-17' || inputs.requirement == 'P-18' || inputs.requirement == 'P-19' || inputs.requirement == 'P-20' || inputs.requirement == 'P-21' || inputs.requirement == 'P-22' || inputs.requirement == 'P-23' || inputs.requirement == 'P-24' || inputs.requirement == 'P-25' || inputs.requirement == 'P-26' || inputs.requirement == 'P-27' || inputs.requirement == 'P-28' || inputs.requirement == 'P-29' || inputs.requirement == 'P-30' || inputs.requirement == 'P-31' || inputs.requirement == 'P-32' || inputs.requirement == 'P-33' || inputs.requirement == 'P-35' || inputs.requirement == 'P-36'",
         "        run: |",
         "          set -euo pipefail",
         '          sudo apt-get install -y --reinstall "$package"',
@@ -274,10 +294,62 @@ function valid() {
       ].join("\n"),
       [
         "      - name: Provision native Tauri WebDriver prerequisites",
-        "        if: inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-27' || inputs.requirement == 'P-36'",
+        "        if: inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-27' || inputs.requirement == 'P-31' || inputs.requirement == 'P-36'",
         "        run: |",
         "          set -euo pipefail",
         "          bash scripts/linux-port/install-tauri-webdriver-prerequisites.sh",
+      ].join("\n"),
+      [
+        "      - name: Provision P-31 live accessibility prerequisites",
+        "        if: inputs.requirement == 'P-31'",
+        "        run: |",
+        "          set -euo pipefail",
+        '          case "$ENVIRONMENT_ID" in',
+        "            ubuntu-24.04-gnome-x11-*)",
+        "              sudo apt-get update",
+        "              sudo apt-get install -y --no-install-recommends \\",
+        "                at-spi2-core \\",
+        "                gnome-accessibility-themes \\",
+        "                libglib2.0-bin \\",
+        "                orca \\",
+        "                python3-pyatspi \\",
+        "                wmctrl \\",
+        "                xdotool",
+        "              ;;",
+        "            ubuntu-24.04-gnome-wayland-*)",
+        "              sudo apt-get update",
+        "              sudo apt-get install -y --no-install-recommends \\",
+        "                at-spi2-core \\",
+        "                gnome-accessibility-themes \\",
+        "                libglib2.0-bin \\",
+        "                orca \\",
+        "                python3-pyatspi \\",
+        "                ydotool \\",
+        "                ydotoold",
+        "              ;;",
+        "            fedora-kde-wayland-*)",
+        "              sudo dnf install -y \\",
+        "                at-spi2-core \\",
+        "                glib2 \\",
+        "                gnome-themes-extra \\",
+        "                gsettings-desktop-schemas \\",
+        "                kscreen \\",
+        "                orca \\",
+        "                python3-pyatspi \\",
+        "                ydotool",
+        "              ;;",
+        "            arch-sway-wayland-x86_64)",
+        "              sudo pacman -S --needed --noconfirm \\",
+        "                at-spi2-core \\",
+        "                glib2 \\",
+        "                gnome-themes-extra \\",
+        "                gsettings-desktop-schemas \\",
+        "                orca \\",
+        "                python-atspi \\",
+        "                ydotool",
+        "              ;;",
+        '            *) echo "unsupported P-31 environment: $ENVIRONMENT_ID" >&2; exit 1 ;;',
+        "          esac",
       ].join("\n"),
       [
         "      - name: Capture P-09 installed navigation shell proof",
@@ -932,7 +1004,56 @@ function valid() {
         "          PREVIOUS_TAG: ${{ steps.p25_previous.outputs.tag }}",
         "        run: bash scripts/linux-port/run-p25-installed-update-proof-workflow.sh",
       ].join("\n"),
-      "Capture P-31 installed accessibility matrix evidence",
+      [
+        "      - name: Capture P-31 installed accessibility matrix evidence",
+        "        id: p31_capture",
+        "        if: inputs.requirement == 'P-31'",
+        "        run: |",
+        "          set -euo pipefail",
+        '          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"',
+        '          case "$ENVIRONMENT_ID" in',
+        "            ubuntu-24.04-gnome-x11-*) compositor=Mutter ;;",
+        "            ubuntu-24.04-gnome-wayland-*) compositor=Mutter ;;",
+        "            fedora-kde-wayland-*) compositor=KWin ;;",
+        "            arch-sway-wayland-x86_64) compositor=Sway ;;",
+        '            *) echo "unsupported P-31 environment: $ENVIRONMENT_ID" >&2; exit 1 ;;',
+        "          esac",
+        '          if [[ "$ENVIRONMENT_ID" == *-wayland-* ]]; then',
+        '            test -n "${YDOTOOL_SOCKET:-}" \\',
+        "              || { exit 1; }",
+        "          fi",
+        '          state_home="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p31-home.XXXXXX")"',
+        "          cleanup_p31() {",
+        "            status=$?",
+        '            rm -rf "$state_home" || status=1',
+        '            exit "$status"',
+        "          }",
+        "          trap cleanup_p31 EXIT",
+        '          chmod 700 "$state_home"',
+        '          rm -rf "$input_root/p31-live" "$input_root/p31-live-session.json"',
+        '          install -d -m 700 "$input_root/p31-live"',
+        "          node scripts/linux-port/run-p31-live-accessibility-session.mjs \\",
+        '            --output-root "$input_root" \\',
+        '            --raw-output-dir "$input_root/p31-live" \\',
+        '            --state-home "$state_home" \\',
+        '            --environment "$ENVIRONMENT_ID" \\',
+        '            --target-head "$TARGET_HEAD" \\',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID" \\',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \\',
+        '            --package-version "$PACKAGE_VERSION" \\',
+        '            --manifest-sha256 "$MANIFEST_SHA256" \\',
+        '            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256" \\',
+        '            --compositor "$compositor"',
+        '          session_report="$input_root/p31-live-session.json"',
+        '          test -f "$session_report"',
+        "          node scripts/linux-port/capture-p31-accessibility.mjs \\",
+        '            --input-root "$input_root" \\',
+        '            --session-report "$session_report" \\',
+        '            --environment "$ENVIRONMENT_ID" \\',
+        '            --target-head "$TARGET_HEAD" \\',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID" \\',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+      ].join("\n"),
       "Capture P-34 credential security proof",
       [
         "      - name: Capture P-39 Linux candidate-bound platform evidence",
@@ -1414,6 +1535,7 @@ test("P-16 physical iPad producer and Linux handshake remain exact and fail clos
     ["producer", "      - self-hosted", "      - hosted"],
     ["producer", "      - macos", "      - linux"],
     ["producer", "      - arm64", "      - x64"],
+    ["producer", "      - p16-physical-ipad", "      - no-physical-ipad"],
     ["producer", "FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}"],
     ["producer", "bash scripts/ci/inject-firebase-config.sh"],
     [
@@ -1728,7 +1850,7 @@ test("shared installed proof package and WebDriver prerequisites fail closed", (
   for (const [stepName, marker] of [
     [
       "Install signed candidate for installed feature proofs",
-      "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-13' || inputs.requirement == 'P-14' || inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-17' || inputs.requirement == 'P-18' || inputs.requirement == 'P-19' || inputs.requirement == 'P-20' || inputs.requirement == 'P-21' || inputs.requirement == 'P-22' || inputs.requirement == 'P-23' || inputs.requirement == 'P-24' || inputs.requirement == 'P-25' || inputs.requirement == 'P-26' || inputs.requirement == 'P-27' || inputs.requirement == 'P-28' || inputs.requirement == 'P-29' || inputs.requirement == 'P-30' || inputs.requirement == 'P-32' || inputs.requirement == 'P-33' || inputs.requirement == 'P-35' || inputs.requirement == 'P-36'",
+      "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-13' || inputs.requirement == 'P-14' || inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-17' || inputs.requirement == 'P-18' || inputs.requirement == 'P-19' || inputs.requirement == 'P-20' || inputs.requirement == 'P-21' || inputs.requirement == 'P-22' || inputs.requirement == 'P-23' || inputs.requirement == 'P-24' || inputs.requirement == 'P-25' || inputs.requirement == 'P-26' || inputs.requirement == 'P-27' || inputs.requirement == 'P-28' || inputs.requirement == 'P-29' || inputs.requirement == 'P-30' || inputs.requirement == 'P-31' || inputs.requirement == 'P-32' || inputs.requirement == 'P-33' || inputs.requirement == 'P-35' || inputs.requirement == 'P-36'",
     ],
     [
       "Install signed candidate for installed feature proofs",
@@ -1760,7 +1882,7 @@ test("shared installed proof package and WebDriver prerequisites fail closed", (
     ],
     [
       "Provision native Tauri WebDriver prerequisites",
-      "if: inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-27' || inputs.requirement == 'P-36'",
+      "if: inputs.requirement == 'P-15' || inputs.requirement == 'P-16' || inputs.requirement == 'P-27' || inputs.requirement == 'P-31' || inputs.requirement == 'P-36'",
     ],
     ["Provision native Tauri WebDriver prerequisites", "set -euo pipefail"],
     [
@@ -1795,6 +1917,127 @@ test("shared installed proof package and WebDriver prerequisites fail closed", (
       marker,
     );
   }
+});
+
+test("P-31 cross-environment live accessibility workflow fails closed on contract drift", () => {
+  for (const marker of [
+    "ubuntu-24.04-gnome-x11-*) compositor=Mutter ;;",
+    "ubuntu-24.04-gnome-wayland-*) compositor=Mutter ;;",
+    "fedora-kde-wayland-*) compositor=KWin ;;",
+    "arch-sway-wayland-x86_64) compositor=Sway ;;",
+    'if [[ "$ENVIRONMENT_ID" == *-wayland-* ]]; then',
+    'test -n "${YDOTOOL_SOCKET:-}"',
+    'state_home="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p31-home.XXXXXX")"',
+    'rm -rf "$input_root/p31-live" "$input_root/p31-live-session.json"',
+    'install -d -m 700 "$input_root/p31-live"',
+    "node scripts/linux-port/run-p31-live-accessibility-session.mjs",
+    '--raw-output-dir "$input_root/p31-live"',
+    '--state-home "$state_home"',
+    '--target-head "$TARGET_HEAD"',
+    '--candidate-run-id "$CANDIDATE_RUN_ID"',
+    '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+    '--package-version "$PACKAGE_VERSION"',
+    '--manifest-sha256 "$MANIFEST_SHA256"',
+    '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+    '--compositor "$compositor"',
+    'test -f "$session_report"',
+    "node scripts/linux-port/capture-p31-accessibility.mjs",
+  ]) {
+    const input = valid();
+    const stepName = "Capture P-31 installed accessibility matrix evidence";
+    const start = input.productParityWorkflow.indexOf(`      - name: ${stepName}`);
+    const end = input.productParityWorkflow.indexOf("\n      - name:", start + 1);
+    assert.ok(start >= 0 && end > start, marker);
+    const original = input.productParityWorkflow.slice(start, end);
+    const mutated = original.replace(marker, "removed-p31-live-contract");
+    assert.notEqual(mutated, original, marker);
+    input.productParityWorkflow = `${input.productParityWorkflow.slice(0, start)}${mutated}${input.productParityWorkflow.slice(end)}`;
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(
+      result.failures.some((failure) => failure.includes("P-31")),
+      marker,
+    );
+  }
+});
+
+test("P-31 distro-specific live prerequisite packages fail closed on contract drift", () => {
+  for (const [arm, marker] of [
+    ["ubuntu-24.04-gnome-x11-*)", "xdotool"],
+    ["ubuntu-24.04-gnome-x11-*)", "gnome-accessibility-themes"],
+    ["ubuntu-24.04-gnome-wayland-*)", "ydotoold"],
+    ["ubuntu-24.04-gnome-wayland-*)", "python3-pyatspi"],
+    ["fedora-kde-wayland-*)", "sudo dnf install -y"],
+    ["fedora-kde-wayland-*)", "kscreen"],
+    ["arch-sway-wayland-x86_64)", "sudo pacman -S --needed --noconfirm"],
+    ["arch-sway-wayland-x86_64)", "python-atspi"],
+  ]) {
+    const input = valid();
+    const stepName = "Provision P-31 live accessibility prerequisites";
+    const start = input.productParityWorkflow.indexOf(`      - name: ${stepName}`);
+    const end = input.productParityWorkflow.indexOf("\n      - name:", start + 1);
+    assert.ok(start >= 0 && end > start, marker);
+    const original = input.productParityWorkflow.slice(start, end);
+    const armStart = original.indexOf(arm);
+    const armEnd = original.indexOf("\n              ;;", armStart);
+    assert.ok(armStart >= 0 && armEnd > armStart, arm);
+    const armBlock = original.slice(armStart, armEnd);
+    const mutatedArm = armBlock.replace(marker, "removed-p31-prerequisite");
+    assert.notEqual(mutatedArm, armBlock, `${arm} ${marker}`);
+    const mutated = `${original.slice(0, armStart)}${mutatedArm}${original.slice(armEnd)}`;
+    assert.notEqual(mutated, original, marker);
+    input.productParityWorkflow = `${input.productParityWorkflow.slice(0, start)}${mutated}${input.productParityWorkflow.slice(end)}`;
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(
+      result.failures.some((failure) => failure.includes("P-31")),
+      marker,
+    );
+  }
+});
+
+test("P-40 installed privacy workflow cannot bypass its portable package runner", () => {
+  for (const marker of [
+    "bash scripts/linux-port/run-p40-installed-privacy-proof.sh",
+    'session_report="$input_root/p40-live-session.json"',
+    'test -f "$session_report"',
+    "node scripts/linux-port/capture-p40-privacy-proof.mjs",
+    '--session-report "$session_report"',
+    '--environment "$ENVIRONMENT_ID"',
+    '--target-head "$TARGET_HEAD"',
+    '--candidate-run-id "$CANDIDATE_RUN_ID"',
+    '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+  ]) {
+    const input = valid();
+    const stepName = "Capture P-40 installed privacy proof";
+    const start = input.productParityWorkflow.indexOf(
+      `      - name: ${stepName}`,
+    );
+    const end = input.productParityWorkflow.indexOf(
+      "\n      - name:",
+      start + 1,
+    );
+    assert.ok(start >= 0 && end > start, marker);
+    const original = input.productParityWorkflow.slice(start, end);
+    const mutated = original.replace(marker, "removed-p40-contract");
+    assert.notEqual(mutated, original, marker);
+    input.productParityWorkflow = `${input.productParityWorkflow.slice(0, start)}${mutated}${input.productParityWorkflow.slice(end)}`;
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(
+      result.failures.some((failure) => failure.includes("P-40")),
+      marker,
+    );
+  }
+
+  const input = valid();
+  input.productParityWorkflow = input.productParityWorkflow.replace(
+    "bash scripts/linux-port/run-p40-installed-privacy-proof.sh",
+    "node scripts/linux-port/run-p40-privacy-rpc-session.mjs",
+  );
+  const result = verifyLinuxWorkflowWiring(input);
+  assert.equal(result.passed, false);
+  assert.ok(result.failures.some((failure) => failure.includes("P-40")));
 });
 
 test("P-24 installed Settings workflow preserves isolated daemon, home, and process cleanup fail closed", () => {

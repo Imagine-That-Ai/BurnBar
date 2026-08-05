@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
+  normalizeAppImageHostLaunchPaths,
   requiredPayloadPaths,
   resolveLinuxAppImagePeerAttestation,
   validatePayload
@@ -171,6 +172,47 @@ test('AppImage payload validator rejects a symlinked iroh runtime', () => {
   fs.writeFileSync(path.join(root, 'cloud-auth.json'), '{"schemaVersion":1,"configured":true}');
 
   assert.throws(() => validatePayload(root), /iroh native runtime.*not a regular file/);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('AppImage host-absolute launchers are rewritten for portable extract-and-run', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-appimage-launch-'));
+  fs.mkdirSync(path.join(root, 'usr/bin'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'usr/share/applications'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'usr/bin/OpenBurnBar'), 'gui', { mode: 0o755 });
+  fs.writeFileSync(
+    path.join(root, 'usr/share/applications/dev.openburnbar.OpenBurnBar.desktop'),
+    '[Desktop Entry]\nExec=/usr/bin/openburnbar-linux-desktop %U\n'
+  );
+  fs.writeFileSync(
+    path.join(root, 'usr/share/applications/safe.desktop'),
+    'Exec=env LIBGL_ALWAYS_SOFTWARE=1 /usr/bin/openburnbar-linux-desktop %U\n'
+  );
+  fs.writeFileSync(
+    path.join(root, 'AppRun'),
+    '#!/bin/sh\nexec /usr/bin/openburnbar-linux-desktop "$@"\n',
+    { mode: 0o755 }
+  );
+
+  const result = normalizeAppImageHostLaunchPaths(root);
+  assert.equal(fs.existsSync(path.join(root, 'usr/bin/openburnbar-linux-desktop')), true);
+  assert.match(
+    fs.readFileSync(path.join(root, 'usr/share/applications/dev.openburnbar.OpenBurnBar.desktop'), 'utf8'),
+    /^Exec=openburnbar-linux-desktop %U$/mu
+  );
+  assert.match(
+    fs.readFileSync(path.join(root, 'usr/share/applications/safe.desktop'), 'utf8'),
+    /Exec=env LIBGL_ALWAYS_SOFTWARE=1 openburnbar-linux-desktop %U$/mu
+  );
+  assert.match(
+    fs.readFileSync(path.join(root, 'AppRun'), 'utf8'),
+    /^exec openburnbar-linux-desktop "\$@"$/mu
+  );
+  assert.deepEqual(result.rewritten.sort(), [
+    'AppRun',
+    'usr/share/applications/dev.openburnbar.OpenBurnBar.desktop',
+    'usr/share/applications/safe.desktop'
+  ]);
   fs.rmSync(root, { recursive: true, force: true });
 });
 

@@ -7,6 +7,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Mercury release build reliability
+
+- **Made clean Mercury XCFramework release builds deterministic across current
+  Apple toolchains**: the cross-target builder keeps host proc-macro dylibs
+  intact, strips debug data only from the final packaged archives, isolates its
+  Cargo target directory, and serializes Cargo by default.
+
+### Fixed - Trusted device identity control
+
+- **Kept every distinct trusted-device registration visible and independently
+  revocable**: a phone reinstall or identity rotation can no longer hide a stale
+  trusted registration behind the replacement device's matching name and
+  platform. Trusted Devices now shows a short identity suffix for precise,
+  accessible revocation.
+
+### Fixed - Android Mercury keyboard reliability
+
+- **Made the screen-share keyboard reliably open and reopen on Android**:
+  manually tapping Type no longer closes the keyboard merely because the Mac
+  has not reported text-field focus, while keyboards opened automatically still
+  follow the remote focus lifecycle. Dismissing the Android IME now clears the
+  selected Type state so one tap reopens it, with JVM policy coverage and a
+  physical-Samsung open, dismiss, and reopen regression test.
+
+### Fixed - Audited GitHub release promotion
+
+- **Made stable release promotion a verified second phase**: tag publication
+  remains explicitly non-latest, while a `promote=true` retry must audit the
+  exact published tag, metadata, attestations, asset bytes, GitHub asset IDs,
+  sizes, and SHA-256 digests before the sole `--latest` mutation. The workflow
+  then proves GitHub's latest endpoint still returns that unchanged release
+  before validating the live updater feed. The audit binds the governed
+  `domain_core_profile`: a rollback release promotes without the native
+  domain-core evidence it never publishes (anything present is still verified),
+  a published legacy GPG checksum signature must verify against the audited
+  checksums file, and iOS release predicates now validate their embedded App
+  Store Connect receipt end to end.
+
+### Fixed - Stripe entitlement reconciliation
+
+- **Made temporary Stripe-bound operator grants yield to the verified lifecycle
+  for that exact subscription**: the first signed webhook now replaces the
+  bridge grant with real renewal dates and restores normal cancellation,
+  refund, and dispute revocation. Grants for another subscription or platform
+  remain protected.
+
+### Fixed - Android Mercury trust recovery
+
+- **Made Android screen mirroring recover cleanly after a reinstall changes the
+  phone's trusted-device identity**: Mercury now preserves the actionable
+  approval failure throughout automatic reconnect attempts, directs the user
+  to the exact Trusted Devices screen on the Mac, disables misleading mirror
+  retries until approval is granted, and resumes automatically afterward.
+
+### Fixed - Linux packaged launcher identity
+
+- **Pinned every DEB, RPM, and Arch desktop launcher to the package-owned
+  `/usr/bin/openburnbar-linux-desktop` executable**: login autostart, normal
+  launch, safe mode, and Tauri's generated menu entry can no longer be
+  shadowed by a stale `/usr/local/bin` or user `PATH` copy. Installed tray and
+  notification proof now verifies the absolute launcher and the canonical
+  `open-burn-bar` DEB/RPM package identity.
+
+### Fixed - Full-history CI checkout reliability
+
+- **Kept fail-closed compliance, secret-scanning, and public-download gates
+  alive through slow GitHub checkouts**: the recursive-submodule
+  product-license lane and full-history gitleaks scan now have enough runtime
+  headroom to execute, while the macOS and Linux public-download change
+  detectors use blobless full-history clones plus a bounded 60-minute ceiling.
+  All four lanes now reach their security logic instead of being canceled
+  during checkout.
+- **Kept the fail-closed Domain Core PR gate alive through slow checkouts**:
+  the required `Domain Core PR Gate` lane and its `promotion-contracts`
+  prerequisite now budget 60 minutes for their full-history
+  deletion-candidate clones (which must keep blobs for ancestry and
+  historical-content proofs), and each trusted default-branch evaluator
+  checkout stays bounded to a depth-1 sparse fetch of the evaluator scripts
+  instead of a second full-history clone.
+- **Removed a monolithic macOS test-host deadlock from the required app gate**:
+  the two cross-thread memory-citation database tests now run in the existing
+  fresh-host phase, where their focused suite completes deterministically,
+  while the exact fresh-host result count rises from 126 to 128 so neither
+  test can be skipped without failing the gate.
+
+### Fixed - Z.ai cloud quota refresh
+
+- **Restored Z.ai quota refresh for both Coding Plan and standard API
+  accounts**: Coding Plan monitor requests now use Z.ai's required raw-token
+  authorization while standard API validation keeps Bearer authentication.
+  Valid accounts without a Coding Plan now return an honest empty quota
+  snapshot instead of a server error or a fabricated balance. Coding
+  Plan-only keys that the standard API rejects now pass connection
+  validation via the monitor endpoint, and transient monitor failures
+  (network errors, 5xx) propagate as refresh errors instead of overwriting
+  valid quota with an empty snapshot.
+
 ### Added - Execution-source attribution
 
 - **Split model usage by the product that executed each request** with a
@@ -179,6 +276,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Adaptive foregrounds for animated desktop backdrops** - macOS and Linux now
+  sample the effective rendered kernel at a bounded cadence and automatically select
+  a WCAG AA light or dark semantic foreground family. Crossfades, both skins, canvas
+  and CSS/native fallbacks, increased contrast, forced colors, and reduced motion use
+  deterministic scrim and hysteresis behavior without full-frame readback.
 - **Candidate-bound Shared Rust Functions releases** - production Functions
   releases now verify the exact deterministic source run, protected signer run
   and attempt, rollback bytes, selected compiled receipt, live source/version,

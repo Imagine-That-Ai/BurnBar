@@ -100,6 +100,7 @@ GoogleService-Info.plist
 
 # Local test/build artifacts
 .playwright-mcp/
+.playwright-cli/
 output/playwright/
 default.profraw
 firebase-debug.log

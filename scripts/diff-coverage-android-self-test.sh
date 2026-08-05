@@ -227,6 +227,26 @@ check "deletion-only diff passes without JaCoCo evidence" "0" "$rc"
 check "deletion-only method is reported" \
   "deletion_only" "$(json_get "$tmp_root/del-only.json" 'v["details"][0]["method"]')"
 
+# A documentation-only Kotlin change has no executable line for JaCoCo to
+# attest. Prove it is inside a real block comment before granting the safe
+# harbor; a similarly shaped string or expression remains coverage-gated.
+repo="$tmp_root/comment-only"
+new_repo "$repo"
+mkdir -p "$repo/android/app/src/main/java/sample/comment"
+printf 'package sample.comment\n/**\n * Original source-of-truth path.\n */\nfun documentedValue(): Int = 1\n' \
+  > "$repo/android/app/src/main/java/sample/comment/Documented.kt"
+git -C "$repo" add -A
+git -C "$repo" commit -qm "add documented source"
+printf 'package sample.comment\n/**\n * Updated source-of-truth path.\n */\nfun documentedValue(): Int = 1\n' \
+  > "$repo/android/app/src/main/java/sample/comment/Documented.kt"
+base="$(commit_change "$repo")"
+report="$repo/jacoco.xml"
+write_report "$report" '<package name="sample/other"><sourcefile name="Other.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/comment-only.json" "$tmp_root/comment-only.err")"
+check "comment-only diff passes without JaCoCo evidence" "0" "$rc"
+check "comment-only method is reported" \
+  "comment_only" "$(json_get "$tmp_root/comment-only.json" 'v["details"][0]["method"]')"
+
 # A deletion-only diff must NOT mask an added executable line in the
 # same hunk: if the file has both added and deleted lines, the added
 # lines still need coverage evidence.

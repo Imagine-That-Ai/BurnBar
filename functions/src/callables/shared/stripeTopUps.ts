@@ -49,12 +49,13 @@ async function stripePaymentIntentForCheckoutSession(
   stripe: Stripe,
   session: Stripe.Checkout.Session,
 ): Promise<Stripe.PaymentIntent | undefined> {
-  if (session.payment_intent && typeof session.payment_intent === "object") {
-    return session.payment_intent;
+  const sessionPaymentIntent = session.payment_intent;
+  if (sessionPaymentIntent && typeof sessionPaymentIntent === "object") {
+    return sessionPaymentIntent;
   }
-  if (typeof session.payment_intent !== "string") return undefined;
+  if (typeof sessionPaymentIntent !== "string") return undefined;
   return stripeWithResilience("payment_intents.retrieve.checkout_topup", () =>
-    stripe.paymentIntents.retrieve(session.payment_intent as string, {
+    stripe.paymentIntents.retrieve(sessionPaymentIntent, {
       expand: ["latest_charge"],
     }),
   );
@@ -203,7 +204,7 @@ export async function reconcileStripeTopUpCharge(
 ): Promise<void> {
   const mapping = await stripeTopUpPaymentMappingForCharge(stripe, charge);
   if (!mapping) return;
-  await reconcileCloudProTopUpReversal({
+  const reversal = await reconcileCloudProTopUpReversal({
     uid: mapping.uid,
     receiptID: mapping.receiptID,
     refundedAmountMinor: charge.amount_refunded,
@@ -212,4 +213,15 @@ export async function reconcileStripeTopUpCharge(
     sourceEventID: eventContext.eventID,
     sourceEventCreatedMillis: eventContext.eventCreatedMillis,
   });
+  if (reversal.receiptMissing) {
+    // Stripe delivers webhooks out of order: this refund/dispute resolved a
+    // top-up mapping (so fulfillment WILL create the receipt), but the paid
+    // Checkout event has not credited it yet. Returning success here would
+    // mark the reversal event processed and the later fulfillment would
+    // credit the full units with nothing left to reverse. Throw so the
+    // webhook reports failure and Stripe redelivers until the receipt exists.
+    throw new Error(
+      `Stripe top-up reversal for receipt ${mapping.receiptID} arrived before fulfillment created the receipt; failing so the webhook retries.`,
+    );
+  }
 }

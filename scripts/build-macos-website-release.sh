@@ -6,6 +6,7 @@ cd "$repo_root"
 source scripts/lib/resolve-repo-path.sh
 
 bash scripts/ci/verify-apple-appcheck-release-env.sh
+bash scripts/ci/verify-iroh-release-artifact.sh
 
 configuration="${OPENBURNBAR_CONFIGURATION:-Release}"
 scheme="${OPENBURNBAR_SCHEME:-OpenBurnBar}"

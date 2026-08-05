@@ -26,6 +26,11 @@ for (const source of ["/link", "/hermes/connect", "/subscribe"]) {
   assert.equal(headers.get("Cross-Origin-Embedder-Policy"), "unsafe-none");
   assert.equal(headers.get("Cross-Origin-Opener-Policy"), "same-origin-allow-popups");
   assert.equal(headers.get("Cross-Origin-Resource-Policy"), "same-origin");
+  assert.doesNotMatch(
+    headers.get("Content-Security-Policy") ?? "",
+    /http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])/u,
+    `${source} production CSP must not allow Firebase emulator endpoints`,
+  );
 }
 
 const platformPage = readFileSync(

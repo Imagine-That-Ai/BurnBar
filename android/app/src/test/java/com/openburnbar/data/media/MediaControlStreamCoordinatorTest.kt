@@ -18,10 +18,14 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayPresenceHeartbeat
 import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import com.openburnbar.irohrelay.IrohRelayStream
 import java.util.Base64
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -35,6 +39,101 @@ private const val MILLIS_3 = 1024
 private const val MILLIS_4 = 0x61
 private const val UNCOMPRESSED_POINT_PREFIX = 0x04
 class MediaControlStreamCoordinatorTest {
+    @Test
+    fun outboundWrites_serializeHeartbeatBeforeConcurrentMirrorRequest() = runTest {
+        val stream = BlockingSendStream(HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT)
+        val coordinator =
+            MediaControlStreamCoordinator(
+                dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> stream },
+                scope = backgroundScope,
+                presenceHeartbeatIntervalMillis = 60_000,
+            )
+
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+        stream.blockedSendEntered.await()
+
+        val request = async { coordinator.requestMirror("Android") }
+        kotlinx.coroutines.yield()
+
+        assertFalse(stream.sent.any { it.type == HermesRealtimeRelayFrameType.MEDIA_MIRROR_REQUEST })
+        assertEquals(1, stream.maxConcurrentSendCount.get())
+
+        stream.releaseBlockedSend.complete(Unit)
+        request.await()
+
+        assertEquals(
+            listOf(
+                HermesRealtimeRelayFrameType.MEDIA_CLASSIFY,
+                HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT,
+                HermesRealtimeRelayFrameType.MEDIA_MIRROR_REQUEST,
+            ),
+            stream.sent.take(3).map { it.type },
+        )
+        assertEquals(1, stream.maxConcurrentSendCount.get())
+    }
+
+    @Test
+    fun outboundWrites_serializeInboundReplyBehindMirrorRequest() = runTest {
+        val stream = BlockingSendStream(HermesRealtimeRelayFrameType.MEDIA_MIRROR_REQUEST)
+        val coordinator =
+            MediaControlStreamCoordinator(
+                dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> stream },
+                scope = backgroundScope,
+                presenceHeartbeatIntervalMillis = 60_000,
+            )
+
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+        val request = async { coordinator.requestMirror("Android") }
+        stream.blockedSendEntered.await()
+        val reply = async {
+            coordinator.sendOnInboundRoute(
+                expectedStream = stream,
+                uid = "uid-1",
+                connectionID = "conn-1",
+                frame =
+                HermesRealtimeRelayFrame(
+                    type = HermesRealtimeRelayFrameType.CONTROL_AGENT_GRANT_REQUEST,
+                    uid = "uid-1",
+                    connectionId = "conn-1",
+                ),
+            )
+        }
+        kotlinx.coroutines.yield()
+
+        assertFalse(stream.sent.any { it.type == HermesRealtimeRelayFrameType.CONTROL_AGENT_GRANT_REQUEST })
+        assertEquals(1, stream.maxConcurrentSendCount.get())
+
+        stream.releaseBlockedSend.complete(Unit)
+        request.await()
+        reply.await()
+
+        val requestIndex = stream.sent.indexOfFirst { it.type == HermesRealtimeRelayFrameType.MEDIA_MIRROR_REQUEST }
+        val replyIndex = stream.sent.indexOfFirst { it.type == HermesRealtimeRelayFrameType.CONTROL_AGENT_GRANT_REQUEST }
+        assertTrue(requestIndex >= 0)
+        assertTrue(replyIndex > requestIndex)
+        assertEquals(1, stream.maxConcurrentSendCount.get())
+    }
+
+    @Test
+    fun reconnectingPhase_preservesLastDialFailureForActionableUi() = runTest {
+        val failure = "This mutation requires a trusted device for the requested trust root."
+        val coordinator =
+            MediaControlStreamCoordinator(
+                dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> error(failure) },
+                scope = backgroundScope,
+                initialBackoffMillis = 60_000L,
+                maxBackoffMillis = 60_000L,
+            )
+
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+
+        val phase =
+            coordinator.phase
+                .filterIsInstance<MediaControlStreamCoordinator.Phase.Reconnecting>()
+                .first()
+        assertEquals(failure, phase.lastFailureReason)
+    }
+
     @Test
     fun requestMirror_sendsSwiftCompatibleMirrorRequestFrameAfterClassify() = runTest {
         val stream = RecordingStream()
@@ -952,6 +1051,39 @@ class MediaControlStreamCoordinatorTest {
 
         override suspend fun close() {
             closed = true
+            incoming.close()
+        }
+    }
+
+    private class BlockingSendStream(
+        private val blockedType: HermesRealtimeRelayFrameType,
+    ) : IrohRelayStream {
+        val sent = CopyOnWriteArrayList<HermesRealtimeRelayFrame>()
+        val blockedSendEntered = CompletableDeferred<Unit>()
+        val releaseBlockedSend = CompletableDeferred<Unit>()
+        val maxConcurrentSendCount = AtomicInteger()
+        private val concurrentSendCount = AtomicInteger()
+        private val incoming = Channel<HermesRealtimeRelayFrame?>(Channel.UNLIMITED)
+
+        override suspend fun authenticatedRemoteNodeId(): String = "linux-host-1"
+
+        override suspend fun send(frame: HermesRealtimeRelayFrame) {
+            val active = concurrentSendCount.incrementAndGet()
+            maxConcurrentSendCount.updateAndGet { previous -> maxOf(previous, active) }
+            try {
+                sent.add(frame)
+                if (frame.type == blockedType && !releaseBlockedSend.isCompleted) {
+                    blockedSendEntered.complete(Unit)
+                    releaseBlockedSend.await()
+                }
+            } finally {
+                concurrentSendCount.decrementAndGet()
+            }
+        }
+
+        override suspend fun receive(): HermesRealtimeRelayFrame? = incoming.receiveCatching().getOrNull()
+
+        override suspend fun close() {
             incoming.close()
         }
     }

@@ -45,6 +45,7 @@ class MediaSessionForegroundService : Service() {
             Intent(this, MainActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
+        launchIntent.setPackage(packageName)
         val launchPending =
             android.app.PendingIntent.getActivity(
                 this,

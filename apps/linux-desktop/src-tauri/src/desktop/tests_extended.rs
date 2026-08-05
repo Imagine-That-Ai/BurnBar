@@ -1231,6 +1231,128 @@
     }
 
     #[test]
+    fn tray_reconnect_ack_is_structured_owner_only_and_handler_causal() {
+        let root = std::env::temp_dir().join(format!(
+            "openburnbar-tray-reconnect-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let ack = TrayReconnectHandlerAck {
+            schema_version: 1,
+            action: "reconnect-daemon",
+            handler_event_id: "tray-health-0123456789abcdef0123456789abcdef".into(),
+            daemon_health_request_id: "health-123456789".into(),
+            status_item_logical_id: "status",
+            handler_started_epoch_ms: 100,
+            handler_completed_epoch_ms: 125,
+            daemon_connected: true,
+            status_update_succeeded: true,
+            status_label: "Daemon: connected - 1.2.3".into(),
+        };
+
+        append_tray_reconnect_handler_ack(&root, &ack).unwrap();
+        let path = root.join("tray-reconnect-handler-acks.jsonl");
+        let metadata = fs::metadata(&path).unwrap();
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+        let lines = fs::read_to_string(&path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(lines.trim()).unwrap();
+        assert_eq!(parsed["schemaVersion"], 1);
+        assert_eq!(parsed["action"], "reconnect-daemon");
+        assert_eq!(
+            parsed["handlerEventId"],
+            "tray-health-0123456789abcdef0123456789abcdef"
+        );
+        assert_eq!(parsed["daemonHealthRequestId"], "health-123456789");
+        assert_eq!(parsed["statusItemLogicalId"], "status");
+        assert_eq!(parsed["handlerStartedEpochMs"], 100);
+        assert_eq!(parsed["handlerCompletedEpochMs"], 125);
+        assert_eq!(parsed["daemonConnected"], true);
+        assert_eq!(parsed["statusUpdateSucceeded"], true);
+        assert_eq!(parsed["statusLabel"], "Daemon: connected - 1.2.3");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn daemon_health_response_requires_matching_id_and_protocol() {
+        let request_id = "health-123456789";
+        let response = serde_json::json!({
+            "id": request_id,
+            "protocolVersion": 1,
+            "result": {
+                "ok": true
+            }
+        });
+        assert_eq!(
+            validated_daemon_health_result(&response, request_id).unwrap()["ok"],
+            true
+        );
+
+        let mismatched_id = serde_json::json!({
+            "id": "health-stale",
+            "protocolVersion": 1,
+            "result": {
+                "ok": true
+            }
+        });
+        assert!(validated_daemon_health_result(&mismatched_id, request_id)
+            .unwrap_err()
+            .contains("id mismatch"));
+
+        let unsupported_protocol = serde_json::json!({
+            "id": request_id,
+            "protocolVersion": 2,
+            "result": {
+                "ok": true
+            }
+        });
+        assert!(
+            validated_daemon_health_result(&unsupported_protocol, request_id)
+                .unwrap_err()
+                .contains("protocol version")
+        );
+
+        let malformed_error_with_success = serde_json::json!({
+            "id": request_id,
+            "protocolVersion": 1,
+            "error": {
+                "message": 1
+            },
+            "result": {
+                "ok": true
+            }
+        });
+        assert!(
+            validated_daemon_health_result(&malformed_error_with_success, request_id)
+                .unwrap_err()
+                .contains("Malformed health response error")
+        );
+
+        let non_object_result = serde_json::json!({
+            "id": request_id,
+            "protocolVersion": 1,
+            "error": null,
+            "result": true
+        });
+        assert!(
+            validated_daemon_health_result(&non_object_result, request_id)
+                .unwrap_err()
+                .contains("must be an object")
+        );
+    }
+
+    #[test]
+    fn tray_daemon_status_uses_the_direct_health_result() {
+        let mut health = DaemonHealth::default();
+        assert_eq!(tray_daemon_status_text(&health), "Daemon: offline");
+        health.ok = true;
+        health.daemon_version = Some("1.2.3".into());
+        assert_eq!(
+            tray_daemon_status_text(&health),
+            "Daemon: connected - 1.2.3"
+        );
+    }
+
+    #[test]
     fn desktop_wallpaper_backend_detection_is_explicit_and_command_gated() {
         let available = |name: &str| {
             matches!(

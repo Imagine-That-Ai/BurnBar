@@ -138,7 +138,7 @@ describe('P28 SmartHub surface', () => {
     render(<SmartHubSurface />);
     fireEvent.change(screen.getByLabelText('Operation'), { target: { value: 'parity' } });
     await waitFor(() => expect(integrationsStatus).toHaveBeenCalled());
-    expect(screen.getByText('Integration status')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Integration status' })).toBeTruthy();
   });
 
   it('reports the packaged capability boundary without attempting generic shell execution', async () => {

@@ -6,26 +6,6 @@ const repoRoot = resolve(new URL("../..", import.meta.url).pathname);
 
 const workflowExpectations = [
   {
-    path: ".github/workflows/cursor-nightly-ci-repair.yml",
-    required: [
-      "Team handoff protocol:",
-      "GitHub-mediated teammates",
-      "unresolved review threads",
-      "Cursor as responsible",
-      "Do not hand it to the Codex nightly repair workflow",
-      "Cursor Bugbot, another Cursor autofix",
-      "active Codex",
-      "repair/check run",
-      "do not race it",
-      "pushed after this workflow trigger, refresh the",
-      "head, diff, reviews, and checks before deciding what remains",
-      "Cursor Approval Agent output",
-      "Cross-agent receipt",
-      "saw, reaction, status, next owner",
-      "review/comment/thread ids and commit SHAs",
-    ],
-  },
-  {
     path: ".github/workflows/codex-nightly-ci-repair.yml",
     required: [
       "Team handoff protocol:",
@@ -64,4 +44,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("PASS: Codex and Cursor repair workflows include team loop handoff prompts.");
+console.log("PASS: Codex repair workflow includes team loop handoff prompts.");

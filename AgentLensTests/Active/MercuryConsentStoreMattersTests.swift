@@ -298,7 +298,15 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
 
         defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
         NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: defaults)
-        await Task.yield()
+        // The defaults observer hops the main dispatch queue and then a
+        // MainActor task; a single yield does not deterministically cover
+        // both hops, so poll with a bounded deadline. The flag and the
+        // grants clear in the same synchronize pass, so the flag flipping
+        // means the whole external opt-out has been applied.
+        let deadline = Date().addingTimeInterval(5)
+        while liveStore.rememberAcceptedMirrorPeers, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
 
         XCTAssertFalse(liveStore.rememberAcceptedMirrorPeers)
         XCTAssertTrue(liveStore.grants.isEmpty)
@@ -367,9 +375,12 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
     }
 
     func test_autoAcceptDoesNotSlideGrantExpiryForward() {
-        let store = MercuryConsentStore(defaults: defaults)
-        store.rememberAcceptedMirrorPeers = true
+        // Pin the store's clock to the test epoch: the defaults observer
+        // prunes grants against that clock on every persist, and this test's
+        // timeline lives years away from the wall clock.
         let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let store = MercuryConsentStore(defaults: defaults, clock: { t0 })
+        store.rememberAcceptedMirrorPeers = true
         store.rememberAcceptedPeer(
             connectionId: "conn-1",
             viewerDeviceId: "device-1",

@@ -688,7 +688,17 @@ final class OpenBurnBarRuntimeContext {
                 guard let self else { return nil }
                 self.startComputerUseServices()
                 return self.computerUseRuntimeController?.coordinator.phoneValidator
+            },
+            // cov:ignore-start -- app bootstrap wiring to the live Firebase enrollment-grant callable; the router-side grant decision and failure handling are unit-tested with injected issuers in MercuryRouterTests
+            phoneControlEnrollmentGrantIssuer: { connectionID, controllerDeviceID, controllerPeerNodeID in
+                try await ComputerUseSecurityCallableClient.issuePhoneControlEnrollmentGrant(
+                    hostDeviceId: MacLiveDeviceTrustGateway.loadOrCreateDeviceId(),
+                    connectionId: connectionID,
+                    controllerDeviceId: controllerDeviceID,
+                    controllerPeerNodeId: controllerPeerNodeID
+                )
             }
+            // cov:ignore-end
         )
         #else
         let router = MercuryRouter(

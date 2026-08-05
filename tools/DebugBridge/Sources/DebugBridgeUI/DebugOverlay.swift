@@ -67,7 +67,7 @@ private struct OverlayRoot: View {
                         gradient: Gradient(colors: [
                             BrandColor.accent.opacity(0.0),
                             BrandColor.accent.opacity(0.8),
-                            BrandColor.accent.opacity(0.0),
+                            BrandColor.accent.opacity(0.0)
                         ]),
                         center: .center,
                         angle: .degrees(phase * 360)

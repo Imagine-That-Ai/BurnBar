@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "rowId": "quota.cursor_usage",
+  "authorityGeneration": 3,
+  "transition": "promotion",
+  "status": "active",
+  "evidence": [
+    "https://github.com/Imagine-That-Ai/BurnBar/attestations/38437922"
+  ],
+  "approvedBy": "@Ajnunezg",
+  "approvedAt": "2026-08-02T16:43:37Z",
+  "commit": "99ba1f66b02d4721077bbce652b84c2304bacf7c",
+  "promotionAttestation": {
+    "path": "config/domain-core-promotion-attestations/quota/3.json",
+    "sha256": "226766f516412e947fc61bf3a591ddd87eb8f84bde5d03dbfba74f5ad495c4b6",
+    "supersedes": {
+      "transition": "annulment",
+      "path": "config/domain-core-legacy-deletion-receipts/quota.cursor_usage/2/annulment.json",
+      "sha256": "a14edbcce0b8d1013b4ffabb363589fe0232d5ee53fe07b518e7c9ae1e0e733b"
+    }
+  }
+}

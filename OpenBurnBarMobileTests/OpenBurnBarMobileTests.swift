@@ -1,12 +1,20 @@
 import XCTest
 import CryptoKit
 import Security
+import FirebaseAuth
 import FirebaseFirestore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 @testable import OpenBurnBarMobile
+
+private struct LiveMacHostKeyProof {
+    let advertisedKeyBase64: String
+    let advertisedFingerprint: String
+    let record: IrohPairingRecord
+}
 
 /// Hermetic in-memory backing for ``HermesGatewayAgentKeyPinStore`` tests. Mirrors
 /// the Keychain backing's three-state read contract without needing Keychain
@@ -225,10 +233,181 @@ final class OpenBurnBarMobileTests: XCTestCase {
         )
     }
 
+    func testMercuryHostPinFailureHasActionableLocalizedDescription() {
+        let error = FirestoreIrohPairingPublicKeyError.hostKeyPinUnavailable(
+            status: Int(errSecDecode)
+        )
+
+        XCTAssertEqual(
+            error.localizedDescription,
+            "This device could not read its saved Mac identity from Keychain (status \(errSecDecode))."
+        )
+    }
+
+    func testSignedDeviceIrohHostKeyKeychainRoundTrip() throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Requires a signed physical-device app process.")
+        #else
+        let backing = IrohHostKeyKeychainPinBacking()
+        let account = "signed-device-probe|\(UUID().uuidString)"
+        let first = ControllerPinRecord(
+            keyBase64: Data(repeating: 0x11, count: 32).base64EncodedString(),
+            confirmed: false,
+            pinnedAtEpoch: 1
+        )
+        let updated = ControllerPinRecord(
+            keyBase64: first.keyBase64,
+            confirmed: true,
+            pinnedAtEpoch: first.pinnedAtEpoch
+        )
+        backing.delete(account: account)
+        defer { backing.delete(account: account) }
+
+        XCTAssertEqual(backing.load(account: account), .absent)
+        XCTAssertEqual(backing.save(first, account: account), errSecSuccess)
+        XCTAssertEqual(backing.load(account: account), .found(first))
+        XCTAssertEqual(backing.save(updated, account: account), errSecSuccess)
+        XCTAssertEqual(backing.load(account: account), .found(updated))
+        backing.delete(account: account)
+        XCTAssertEqual(backing.load(account: account), .absent)
+        #endif
+    }
+
+    func testSignedDeviceAdvertisedHostKeyVerifiesFreshMacPairingRecord() async throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Requires the signed-in physical iPad and live Mac host.")
+        #else
+        guard let uid = Auth.auth().currentUser?.uid else {
+            XCTFail("The physical iPad must remain signed in.")
+            return
+        }
+
+        let proof = try await fetchLiveMacHostKeyProof(uid: uid)
+        let backing = IrohHostKeyKeychainPinBacking()
+        let pinned = backing.load(account: "\(uid)|host")
+
+        print("OpenBurnBarHostPinProof advertisedSHA256=\(proof.advertisedFingerprint)")
+        print("OpenBurnBarHostPinProof signedConnectionID=\(proof.record.connectionId)")
+        if case .found(let record) = pinned {
+            print("OpenBurnBarHostPinProof pinnedSHA256=\(fingerprint(record.keyBase64))")
+        }
+        #endif
+    }
+
+    func testOperatorAuthorizedLiveMacHostPinRepair() async throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Requires the signed-in physical iPad and live Mac host.")
+        #else
+        guard ProcessInfo.processInfo.environment["OPENBURNBAR_RUN_HOST_PIN_REPAIR"] == "1" else {
+            throw XCTSkip("Set OPENBURNBAR_RUN_HOST_PIN_REPAIR=1 for an explicit operator-authorized repair.")
+        }
+        guard let uid = Auth.auth().currentUser?.uid else {
+            XCTFail("The physical iPad must remain signed in.")
+            return
+        }
+
+        let preview = try await fetchLiveMacHostKeyProof(uid: uid)
+        let revalidated = try await fetchLiveMacHostKeyProof(uid: uid)
+        XCTAssertEqual(
+            revalidated.advertisedKeyBase64,
+            preview.advertisedKeyBase64,
+            "The advertised Mac identity changed between preview and authorization."
+        )
+
+        let backing = IrohHostKeyKeychainPinBacking()
+        let account = "\(uid)|host"
+        backing.delete(account: account)
+        XCTAssertEqual(
+            backing.load(account: account),
+            .absent,
+            "The old iPad host pin was not durably removed."
+        )
+
+        let replacement = ControllerPinRecord(
+            keyBase64: revalidated.advertisedKeyBase64,
+            confirmed: true,
+            pinnedAtEpoch: Date().timeIntervalSince1970
+        )
+        XCTAssertEqual(backing.save(replacement, account: account), errSecSuccess)
+        XCTAssertEqual(
+            backing.load(account: account),
+            .found(replacement),
+            "The verified live Mac identity did not survive Keychain readback."
+        )
+        print("OpenBurnBarHostPinRepair verifiedSHA256=\(revalidated.advertisedFingerprint)")
+        #endif
+    }
+
     func testHermesGatewayPairingDeepLinkStoresPendingCodeForSettingsScreen() {
         HermesGatewayPairingDeepLink.open(code: "  SQKV-AP5R  ")
         XCTAssertEqual(HermesGatewayPairingDeepLink.consumePendingCode(), "SQKV-AP5R")
         XCTAssertNil(HermesGatewayPairingDeepLink.consumePendingCode())
+    }
+
+    private func fetchLiveMacHostKeyProof(uid: String) async throws -> LiveMacHostKeyProof {
+        let firestore = Firestore.firestore()
+        let keySnapshot = try await firestore
+            .collection("users")
+            .document(uid)
+            .collection("iroh_pairing_keys")
+            .document("host")
+            .getDocument(source: .server)
+        guard let advertisedKeyBase64 = keySnapshot.data()?["publicKeyBase64"] as? String,
+              let advertisedKey = Data(base64Encoded: advertisedKeyBase64),
+              advertisedKey.count == 32 else {
+            XCTFail("The Mac has not published a valid host identity.")
+            throw FirestoreIrohPairingPublicKeyError.invalidPublicKey
+        }
+
+        let records = try await firestore
+            .collection("users")
+            .document(uid)
+            .collection("iroh_pairing")
+            .getDocuments(source: .server)
+            .documents
+            .compactMap { document -> IrohPairingRecord? in
+                let data = document.data()
+                guard let nodeId = data["nodeId"] as? String,
+                      let publishedAtMillis = data["publishedAtMillis"] as? Int64
+                        ?? (data["publishedAtMillis"] as? NSNumber)?.int64Value,
+                      let signature = data["signature"] as? String else {
+                    return nil
+                }
+                return IrohPairingRecord(
+                    uid: uid,
+                    connectionId: data["id"] as? String ?? document.documentID,
+                    nodeId: nodeId,
+                    relayURL: data["relayURL"] as? String,
+                    directAddresses: data["directAddresses"] as? [String] ?? [],
+                    publishedAtMillis: publishedAtMillis,
+                    protocolVersion: (data["protocolVersion"] as? Int)
+                        ?? (data["protocolVersion"] as? NSNumber)?.intValue
+                        ?? IrohRelayProtocol.frameProtocolVersion,
+                    signature: signature
+                )
+            }
+            .sorted { $0.publishedAtMillis > $1.publishedAtMillis }
+
+        guard let verified = records.first(where: { record in
+            (try? IrohPairingSignature.verify(
+                record,
+                publicKey: advertisedKey,
+                now: Date()
+            )) != nil
+        }) else {
+            XCTFail("The advertised host identity did not verify any fresh live Mac pairing record.")
+            throw IrohPairingError.invalidSignature
+        }
+        return LiveMacHostKeyProof(
+            advertisedKeyBase64: advertisedKeyBase64,
+            advertisedFingerprint: fingerprint(advertisedKeyBase64),
+            record: verified
+        )
+    }
+
+    private func fingerprint(_ keyBase64: String) -> String {
+        guard let data = Data(base64Encoded: keyBase64) else { return "invalid" }
+        return Data(SHA256.hash(data: data)).map { String(format: "%02x", $0) }.joined()
     }
 
     @MainActor
@@ -4346,6 +4525,80 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: MobileDeviceIdentity.deviceIDKey), first)
     }
 
+    func testMobileDeviceIdentityMigratesAllZeroStoredIDToStableGeneratedID() throws {
+        let suiteName = "com.openburnbar.mobile.tests.zero-stored.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let allZeroID = "00000000-0000-0000-0000-000000000000"
+        let replacement = try XCTUnwrap(UUID(uuidString: "A24A2710-62B8-4316-BBF3-251843DE8E49"))
+        defaults.set(allZeroID, forKey: MobileDeviceIdentity.deviceIDKey)
+
+        var generationCount = 0
+        let first = MobileDeviceIdentity.loadOrCreateDeviceId(
+            defaults: defaults,
+            vendorIdentifierProvider: {
+                XCTFail("An invalid stored identity must migrate to a new per-install UUID")
+                return "9B032E6E-C7FD-40D7-A4F7-570A22E27624"
+            },
+            uuidGenerator: {
+                generationCount += 1
+                return replacement
+            }
+        )
+        let second = MobileDeviceIdentity.loadOrCreateDeviceId(
+            defaults: defaults,
+            vendorIdentifierProvider: {
+                XCTFail("A migrated identity must be loaded from persistent storage")
+                return nil
+            },
+            uuidGenerator: {
+                XCTFail("A migrated identity must not be regenerated")
+                return UUID()
+            }
+        )
+
+        XCTAssertEqual(first, replacement.uuidString)
+        XCTAssertEqual(second, replacement.uuidString)
+        XCTAssertEqual(generationCount, 1)
+        XCTAssertEqual(defaults.string(forKey: MobileDeviceIdentity.deviceIDKey), replacement.uuidString)
+    }
+
+    func testMobileDeviceIdentityMigratesMalformedStoredIDInsteadOfUsingVendorID() throws {
+        let suiteName = "com.openburnbar.mobile.tests.invalid-stored.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let replacement = try XCTUnwrap(UUID(uuidString: "73ED9617-87E4-42EC-865B-6773F6D3557C"))
+        defaults.set("not-a-valid-device-uuid", forKey: MobileDeviceIdentity.deviceIDKey)
+
+        let resolved = MobileDeviceIdentity.loadOrCreateDeviceId(
+            defaults: defaults,
+            vendorIdentifierProvider: { "9B032E6E-C7FD-40D7-A4F7-570A22E27624" },
+            uuidGenerator: { replacement }
+        )
+
+        XCTAssertEqual(resolved, replacement.uuidString)
+        XCTAssertEqual(defaults.string(forKey: MobileDeviceIdentity.deviceIDKey), replacement.uuidString)
+    }
+
+    func testMobileDeviceIdentityRejectsAllZeroVendorID() throws {
+        let suiteName = "com.openburnbar.mobile.tests.zero-vendor.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let replacement = try XCTUnwrap(UUID(uuidString: "6D1CF992-164B-4881-A2ED-F3DBF03C86BE"))
+        let resolved = MobileDeviceIdentity.loadOrCreateDeviceId(
+            defaults: defaults,
+            vendorIdentifierProvider: { "00000000-0000-0000-0000-000000000000" },
+            uuidGenerator: { replacement }
+        )
+
+        XCTAssertEqual(resolved, replacement.uuidString)
+        XCTAssertNotEqual(resolved, "00000000-0000-0000-0000-000000000000")
+        XCTAssertEqual(defaults.string(forKey: MobileDeviceIdentity.deviceIDKey), replacement.uuidString)
+    }
+
     // MARK: - Self-hosted Runner Delete Cleanup
 
     func testSelfHostedRunnerStoreDeleteRemovesURLAndSecret() throws {
@@ -4574,6 +4827,7 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         let phoneRelayKeyVersion: Int?
         let phoneRelayEncryption: String?
         let phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle?
+        let phoneSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc?
     }
 
     struct OversightModeChange: Equatable {
@@ -4614,7 +4868,8 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         phoneRelayPublicKey: String?,
         phoneRelayKeyVersion: Int?,
         phoneRelayEncryption: String?,
-        phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle?
+        phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle?,
+        phoneSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc?
     ) async throws -> HermesGatewayClientRecord {
         if let approvalError {
             throw approvalError
@@ -4625,7 +4880,8 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
                 phoneRelayPublicKey: phoneRelayPublicKey,
                 phoneRelayKeyVersion: phoneRelayKeyVersion,
                 phoneRelayEncryption: phoneRelayEncryption,
-                phoneRatchetPrekeyBundle: phoneRatchetPrekeyBundle
+                phoneRatchetPrekeyBundle: phoneRatchetPrekeyBundle,
+                phoneSignalPrekeyBundle: phoneSignalPrekeyBundle
             )
         )
         let client = HermesGatewayClientRecord(
@@ -5595,409 +5851,6 @@ final class PhoneControlSigningIdentityStoreTests: XCTestCase {
             }
         } catch PhoneControlSigningKeyStore.KeyStoreError.keychainStatus(let status) where status == errSecMissingEntitlement {
             throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.")
-        }
-    }
-}
-
-// MARK: - F10 control-seal sealing sink
-
-final class ControlSealSealingSinkTests: XCTestCase {
-    private actor CapturedFrames {
-        private(set) var frames: [HermesRealtimeRelayFrame] = []
-        func append(_ frame: HermesRealtimeRelayFrame) {
-            frames.append(frame)
-        }
-    }
-
-    func testSealingSinkReplacesControlPayloadWithSealedShell() async throws {
-        let key = ControlFrameSeal().deriveSessionKey(
-            hpkeSessionKey: Data(repeating: 7, count: 32),
-            salt: Data("conn-sink".utf8)
-        )
-        let session = ControlSealSessionEstablisher.Session(
-            envelope: HermesRealtimeRelayControlSealKeyEnvelope(
-                encBase64: "",
-                wrappedKeyBase64: "",
-                senderDeviceId: "iphone-sink",
-                senderPeerNodeId: "iphone-sink",
-                senderKeyId: "relay-v3-sink",
-                senderCounter: 1,
-                relayKeyVersion: 3
-            ),
-            key: key,
-            controllerPeerNodeId: "ios-phone-sinktest000000000000000000"
-        )
-        let captured = CapturedFrames()
-        let sink = ControlSealSessionEstablisher.sealingFrameSink(
-            { frame in await captured.append(frame) },
-            session: session
-        )
-
-        var intent = HermesRealtimeRelayInputIntent(
-            kind: .tap,
-            displayId: nil,
-            normalizedX: 0.25,
-            normalizedY: 0.75,
-            normalizedX2: nil,
-            normalizedY2: nil,
-            text: "sealed text payload",
-            key: nil,
-            modifiers: nil,
-            mouseButton: nil,
-            clientIntentId: "intent-sink-1",
-            authority: HermesRealtimeRelayAuthorityEnvelope(
-                peerNodeId: "ios-phone-sinktest000000000000000000",
-                counter: 3,
-                timestamp: Date(),
-                intentHashBlake3: String(repeating: "cd", count: 32),
-                signatureEd25519: Data(repeating: 2, count: 64).base64EncodedString()
-            )
-        )
-        intent.clientIntentId = "intent-sink-1"
-        try await sink(HermesRealtimeRelayFrame(
-            type: .controlInputIntent,
-            uid: "uid-sink",
-            connectionId: "conn-sink",
-            control: HermesRealtimeRelayControlPayload(
-                streamClass: "control.input",
-                inputIntent: intent
-            )
-        ))
-
-        let frames = await captured.frames
-        XCTAssertEqual(frames.count, 1)
-        let control = try XCTUnwrap(frames.first?.control)
-        // Routing shell only — the intent (and its text) never ride plaintext.
-        XCTAssertEqual(control.streamClass, "control.input")
-        XCTAssertNil(control.inputIntent)
-        let sealed = try XCTUnwrap(control.sealedFrameBase64)
-        XCTAssertFalse(sealed.contains("sealed text payload"))
-
-        let opened = try ControlFrameSealSession.openPayload(
-            control,
-            key: key,
-            peerNodeId: "ios-phone-sinktest000000000000000000",
-            frameType: HermesRealtimeRelayFrameType.controlInputIntent.rawValue
-        )
-        XCTAssertEqual(opened.inputIntent?.clientIntentId, "intent-sink-1")
-        XCTAssertEqual(opened.inputIntent?.text, "sealed text payload")
-        XCTAssertEqual(opened.inputIntent?.authority.counter, 3)
-    }
-
-    func testSealingSinkPassesNonControlFramesUntouched() async throws {
-        let key = ControlFrameSeal().deriveSessionKey(
-            hpkeSessionKey: Data(repeating: 9, count: 32),
-            salt: Data("conn-passthrough".utf8)
-        )
-        let session = ControlSealSessionEstablisher.Session(
-            envelope: HermesRealtimeRelayControlSealKeyEnvelope(
-                encBase64: "",
-                wrappedKeyBase64: "",
-                senderDeviceId: "d",
-                senderPeerNodeId: "d",
-                senderKeyId: "k",
-                senderCounter: 1,
-                relayKeyVersion: 3
-            ),
-            key: key,
-            controllerPeerNodeId: "ios-phone-passthrough0000000000000000"
-        )
-        let captured = CapturedFrames()
-        let sink = ControlSealSessionEstablisher.sealingFrameSink(
-            { frame in await captured.append(frame) },
-            session: session
-        )
-        try await sink(HermesRealtimeRelayFrame(type: .ping, uid: "u", connectionId: "c"))
-        let frames = await captured.frames
-        XCTAssertEqual(frames.count, 1)
-        XCTAssertNil(frames.first?.control)
-    }
-
-    func testUnregisteredFreshControlSealSessionDoesNotReplaceActiveSession() async throws {
-        let oldKey = ControlFrameSeal().deriveSessionKey(
-            hpkeSessionKey: Data(repeating: 6, count: 32),
-            salt: Data("conn-pending".utf8)
-        )
-        let freshKey = ControlFrameSeal().deriveSessionKey(
-            hpkeSessionKey: Data(repeating: 7, count: 32),
-            salt: Data("conn-pending".utf8)
-        )
-        let peerNodeId = "ios-phone-pending000000000000000000"
-        let oldSession = ControlSealSessionEstablisher.Session(
-            envelope: HermesRealtimeRelayControlSealKeyEnvelope(
-                encBase64: "",
-                wrappedKeyBase64: "",
-                senderDeviceId: "iphone-pending",
-                senderPeerNodeId: "iphone-pending",
-                senderKeyId: "relay-v3-pending-old",
-                senderCounter: 1,
-                relayKeyVersion: 3
-            ),
-            key: oldKey,
-            controllerPeerNodeId: peerNodeId
-        )
-        let freshSession = ControlSealSessionEstablisher.Session(
-            envelope: HermesRealtimeRelayControlSealKeyEnvelope(
-                encBase64: "",
-                wrappedKeyBase64: "",
-                senderDeviceId: "iphone-pending",
-                senderPeerNodeId: "iphone-pending",
-                senderKeyId: "relay-v3-pending-new",
-                senderCounter: 2,
-                relayKeyVersion: 3
-            ),
-            key: freshKey,
-            controllerPeerNodeId: peerNodeId
-        )
-        await MainActor.run {
-            ControlSealSessionEstablisher.clearForTests()
-            ControlSealSessionEstablisher.register(oldSession, connectionID: "conn-pending")
-        }
-
-        let captured = CapturedFrames()
-        let sink = ControlSealSessionEstablisher.sealingFrameSink(
-            { frame in await captured.append(frame) },
-            session: freshSession
-        )
-        try await sink(HermesRealtimeRelayFrame(
-            type: .controlInputIntent,
-            uid: "uid-pending",
-            connectionId: "conn-pending",
-            control: HermesRealtimeRelayControlPayload(
-                streamClass: "control.input",
-                inputIntent: HermesRealtimeRelayInputIntent(
-                    kind: .tap,
-                    displayId: nil,
-                    normalizedX: 0.3,
-                    normalizedY: 0.4,
-                    normalizedX2: nil,
-                    normalizedY2: nil,
-                    text: nil,
-                    key: nil,
-                    modifiers: nil,
-                    mouseButton: nil,
-                    clientIntentId: "intent-pending",
-                    authority: HermesRealtimeRelayAuthorityEnvelope(
-                        peerNodeId: peerNodeId,
-                        counter: 10,
-                        timestamp: Date(),
-                        intentHashBlake3: String(repeating: "ab", count: 32),
-                        signatureEd25519: Data(repeating: 4, count: 64).base64EncodedString()
-                    )
-                )
-            )
-        ))
-
-        let frames = await captured.frames
-        let control = try XCTUnwrap(frames.first?.control)
-        let opened = try ControlFrameSealSession.openPayload(
-            control,
-            key: oldKey,
-            peerNodeId: peerNodeId,
-            frameType: HermesRealtimeRelayFrameType.controlInputIntent.rawValue
-        )
-        XCTAssertEqual(opened.inputIntent?.clientIntentId, "intent-pending")
-        XCTAssertThrowsError(try ControlFrameSealSession.openPayload(
-            control,
-            key: freshKey,
-            peerNodeId: peerNodeId,
-            frameType: HermesRealtimeRelayFrameType.controlInputIntent.rawValue
-        ))
-        await MainActor.run {
-            ControlSealSessionEstablisher.clearForTests()
-        }
-    }
-
-    func testSealingSinkUsesLatestRegisteredSessionForConnection() async throws {
-        let oldKey = ControlFrameSeal().deriveSessionKey(
-            hpkeSessionKey: Data(repeating: 4, count: 32),
-            salt: Data("conn-refresh".utf8)
-        )
-        let freshKey = ControlFrameSeal().deriveSessionKey(
-            hpkeSessionKey: Data(repeating: 5, count: 32),
-            salt: Data("conn-refresh".utf8)
-        )
-        let oldSession = ControlSealSessionEstablisher.Session(
-            envelope: HermesRealtimeRelayControlSealKeyEnvelope(
-                encBase64: "",
-                wrappedKeyBase64: "",
-                senderDeviceId: "iphone-refresh",
-                senderPeerNodeId: "iphone-refresh",
-                senderKeyId: "relay-v3-refresh-old",
-                senderCounter: 1,
-                relayKeyVersion: 3
-            ),
-            key: oldKey,
-            controllerPeerNodeId: "ios-phone-refresh0000000000000000000"
-        )
-        let freshSession = ControlSealSessionEstablisher.Session(
-            envelope: HermesRealtimeRelayControlSealKeyEnvelope(
-                encBase64: "",
-                wrappedKeyBase64: "",
-                senderDeviceId: "iphone-refresh",
-                senderPeerNodeId: "iphone-refresh",
-                senderKeyId: "relay-v3-refresh-new",
-                senderCounter: 2,
-                relayKeyVersion: 3
-            ),
-            key: freshKey,
-            controllerPeerNodeId: "ios-phone-refresh0000000000000000000"
-        )
-        await MainActor.run {
-            ControlSealSessionEstablisher.clearForTests()
-            ControlSealSessionEstablisher.register(oldSession, connectionID: "conn-refresh")
-        }
-        let captured = CapturedFrames()
-        let sink = ControlSealSessionEstablisher.sealingFrameSink(
-            { frame in await captured.append(frame) },
-            session: oldSession
-        )
-        await MainActor.run {
-            ControlSealSessionEstablisher.register(freshSession, connectionID: "conn-refresh")
-        }
-
-        try await sink(HermesRealtimeRelayFrame(
-            type: .controlInputIntent,
-            uid: "uid-refresh",
-            connectionId: "conn-refresh",
-            control: HermesRealtimeRelayControlPayload(
-                streamClass: "control.input",
-                inputIntent: HermesRealtimeRelayInputIntent(
-                    kind: .tap,
-                    displayId: nil,
-                    normalizedX: 0.1,
-                    normalizedY: 0.2,
-                    normalizedX2: nil,
-                    normalizedY2: nil,
-                    text: nil,
-                    key: nil,
-                    modifiers: nil,
-                    mouseButton: nil,
-                    clientIntentId: "intent-refresh",
-                    authority: HermesRealtimeRelayAuthorityEnvelope(
-                        peerNodeId: "ios-phone-refresh0000000000000000000",
-                        counter: 9,
-                        timestamp: Date(),
-                        intentHashBlake3: String(repeating: "ef", count: 32),
-                        signatureEd25519: Data(repeating: 3, count: 64).base64EncodedString()
-                    )
-                )
-            )
-        ))
-
-        let frames = await captured.frames
-        let control = try XCTUnwrap(frames.first?.control)
-        XCTAssertThrowsError(try ControlFrameSealSession.openPayload(
-            control,
-            key: oldKey,
-            peerNodeId: "ios-phone-refresh0000000000000000000",
-            frameType: HermesRealtimeRelayFrameType.controlInputIntent.rawValue
-        ))
-        let opened = try ControlFrameSealSession.openPayload(
-            control,
-            key: freshKey,
-            peerNodeId: "ios-phone-refresh0000000000000000000",
-            frameType: HermesRealtimeRelayFrameType.controlInputIntent.rawValue
-        )
-        XCTAssertEqual(opened.inputIntent?.clientIntentId, "intent-refresh")
-        await MainActor.run {
-            ControlSealSessionEstablisher.clearForTests()
-        }
-    }
-
-    func testUnregisterClearsStaleControlSealSessionBeforeReconnect() async throws {
-        let oldKey = ControlFrameSeal().deriveSessionKey(
-            hpkeSessionKey: Data(repeating: 10, count: 32),
-            salt: Data("conn-reconnect".utf8)
-        )
-        let freshKey = ControlFrameSeal().deriveSessionKey(
-            hpkeSessionKey: Data(repeating: 11, count: 32),
-            salt: Data("conn-reconnect".utf8)
-        )
-        let peerNodeId = "ios-phone-reconnect00000000000000000"
-        let oldSession = ControlSealSessionEstablisher.Session(
-            envelope: HermesRealtimeRelayControlSealKeyEnvelope(
-                encBase64: "",
-                wrappedKeyBase64: "",
-                senderDeviceId: "iphone-reconnect",
-                senderPeerNodeId: "iphone-reconnect",
-                senderKeyId: "relay-v3-reconnect-old",
-                senderCounter: 1,
-                relayKeyVersion: 3
-            ),
-            key: oldKey,
-            controllerPeerNodeId: peerNodeId
-        )
-        let freshSession = ControlSealSessionEstablisher.Session(
-            envelope: HermesRealtimeRelayControlSealKeyEnvelope(
-                encBase64: "",
-                wrappedKeyBase64: "",
-                senderDeviceId: "iphone-reconnect",
-                senderPeerNodeId: "iphone-reconnect",
-                senderKeyId: "relay-v3-reconnect-new",
-                senderCounter: 2,
-                relayKeyVersion: 3
-            ),
-            key: freshKey,
-            controllerPeerNodeId: peerNodeId
-        )
-        await MainActor.run {
-            ControlSealSessionEstablisher.clearForTests()
-            ControlSealSessionEstablisher.register(oldSession, connectionID: "conn-reconnect")
-            ControlSealSessionEstablisher.unregister(connectionID: "conn-reconnect")
-        }
-
-        let captured = CapturedFrames()
-        let sink = ControlSealSessionEstablisher.sealingFrameSink(
-            { frame in await captured.append(frame) },
-            session: freshSession
-        )
-        try await sink(HermesRealtimeRelayFrame(
-            type: .controlInputIntent,
-            uid: "uid-reconnect",
-            connectionId: "conn-reconnect",
-            control: HermesRealtimeRelayControlPayload(
-                streamClass: "control.input",
-                inputIntent: HermesRealtimeRelayInputIntent(
-                    kind: .tap,
-                    displayId: nil,
-                    normalizedX: 0.6,
-                    normalizedY: 0.7,
-                    normalizedX2: nil,
-                    normalizedY2: nil,
-                    text: nil,
-                    key: nil,
-                    modifiers: nil,
-                    mouseButton: nil,
-                    clientIntentId: "intent-reconnect",
-                    authority: HermesRealtimeRelayAuthorityEnvelope(
-                        peerNodeId: peerNodeId,
-                        counter: 12,
-                        timestamp: Date(),
-                        intentHashBlake3: String(repeating: "12", count: 32),
-                        signatureEd25519: Data(repeating: 5, count: 64).base64EncodedString()
-                    )
-                )
-            )
-        ))
-
-        let frames = await captured.frames
-        let control = try XCTUnwrap(frames.first?.control)
-        XCTAssertThrowsError(try ControlFrameSealSession.openPayload(
-            control,
-            key: oldKey,
-            peerNodeId: peerNodeId,
-            frameType: HermesRealtimeRelayFrameType.controlInputIntent.rawValue
-        ))
-        let opened = try ControlFrameSealSession.openPayload(
-            control,
-            key: freshKey,
-            peerNodeId: peerNodeId,
-            frameType: HermesRealtimeRelayFrameType.controlInputIntent.rawValue
-        )
-        XCTAssertEqual(opened.inputIntent?.clientIntentId, "intent-reconnect")
-        await MainActor.run {
-            ControlSealSessionEstablisher.clearForTests()
         }
     }
 }

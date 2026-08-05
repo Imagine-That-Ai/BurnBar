@@ -16,7 +16,7 @@ export type StripeTopUpDisputeStatus =
   | "lost"
   | "prevented";
 
-export interface StripeTopUpReceiptState {
+interface StripeTopUpReceiptState {
   monthKey: string;
   units: number;
   meter: CloudProAllowanceMeter;

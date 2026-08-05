@@ -263,6 +263,10 @@ struct HermesSquareRoot: View {
             rebuildRollbackSessionsCache()
         }
         .task {
+            // Entering Agents may be the first relay-backed surface opened
+            // after authentication. Prime the catalog before the peer poller
+            // reads it so My Mac can be discovered and auto-pinned.
+            await hermesService.refreshConnections(refreshSelectedConnection: false)
             HermesIrohRelayTransport.shared.mediaPresenceHeartbeatHandler = { heartbeat in
                 await MainActor.run {
                     mercuryPeerSource.ingestHeartbeat(heartbeat)
@@ -270,6 +274,17 @@ struct HermesSquareRoot: View {
             }
             mercuryPeerSource.start()
             syncMercuryPeer(mercuryPeerSource.peer)
+            // A Mac can publish its relay after Agents is already visible.
+            // Periodically refresh discovery so the My Mac tile appears
+            // without requiring a tab switch or app relaunch.
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .seconds(30))
+                } catch {
+                    return
+                }
+                await hermesService.refreshConnections(refreshSelectedConnection: false)
+            }
         }
         .task(id: AssistantPendingThread.shared.hermes) {
             consumePendingHermesThread()

@@ -186,8 +186,8 @@ internal fun buildSettingsSystemGroup(router: SettingsRouter, onComputerUse: (()
         icon = SettingsRowIcon.Drawable(R.drawable.settings_icon_connections),
         title = "Connected Devices",
         subtitle = "Manage which devices can read your data",
-        pageRoute = SettingsPageRoute.ROOT,
-        onTap = {},
+        pageRoute = SettingsPageRoute.CONNECTED_DEVICES,
+        onTap = { router.page = SettingsPageRoute.CONNECTED_DEVICES },
     ),
     RootRow(
         anchor = SettingsAnchor.COMPUTER_USE_ROW,

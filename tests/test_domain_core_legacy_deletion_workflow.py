@@ -47,6 +47,7 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
             "Domain Core PR Gate",
             "verify-domain-core-legacy-absence.py",
             "Check out trusted default-branch evaluator",
+            "github.event.merge_group.base_sha",
             '--base-ref "$DOMAIN_CORE_BASE_REF"',
             "--verify-signed-evidence",
             "fetch-depth: 0",
@@ -81,6 +82,7 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
             "subject-path: ${{ runner.temp }}/candidate-bundle/domain-core-candidate-bundle.json",
             "${{ steps.attest.outputs.bundle-path }}",
             "domain-core-protected-attestation-",
+            "domain-core-protected-verification-${{ inputs.candidate_commit }}",
             "retention-days: 90",
         ):
             self.assertIn(marker, source)
@@ -180,7 +182,14 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
 
     def test_schemas_encode_exact_candidate_and_retained_rollback(self) -> None:
         promotion = json.loads((ROOT / "config/domain-core-promotion-attestation.schema.json").read_text())
+        ledger = json.loads((ROOT / "config/domain-core-legacy-deletion.schema.json").read_text())
         receipt = json.loads((ROOT / "config/domain-core-legacy-deletion-receipt.schema.json").read_text())
+        self.assertIn("activation_annulled", ledger["$defs"]["state"]["enum"])
+        self.assertIn("annulment", receipt["properties"]["transition"]["enum"])
+        self.assertEqual(
+            receipt["$defs"]["activationAnnulment"]["properties"]["replacementCandidateRequired"]["const"],
+            True,
+        )
         candidate = promotion["$defs"]["candidate"]
         self.assertEqual(
             candidate["required"],

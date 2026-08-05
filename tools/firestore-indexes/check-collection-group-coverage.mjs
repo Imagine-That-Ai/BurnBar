@@ -34,7 +34,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const INDEXES_PATH = join(repoRoot, "firestore.indexes.json");
-const SOURCE_ROOT = join(repoRoot, "functions", "src");
+const DEFAULT_SOURCE_ROOT = join(repoRoot, "functions", "src");
 const SKIP_DIRS = new Set(["node_modules", "__tests__", "__mocks__", "lib"]);
 
 // --- declared index model -------------------------------------------------
@@ -129,10 +129,10 @@ function resolveGroupName(arg, source) {
   return undefined;
 }
 
-function extractCallSites() {
+function extractCallSites(sourceRoot = DEFAULT_SOURCE_ROOT) {
   const sites = [];
   const problems = [];
-  for (const filePath of walkSourceFiles(SOURCE_ROOT)) {
+  for (const filePath of walkSourceFiles(sourceRoot)) {
     const source = readFileSync(filePath, "utf8");
     const relPath = relative(repoRoot, filePath);
     const pattern = /\.collectionGroup(\s*)\(/g;
@@ -260,9 +260,15 @@ if (projectFlag !== -1 && !project) {
   console.error("--project requires a project id");
   process.exit(2);
 }
+const sourceRootFlag = process.argv.indexOf("--source-root");
+const sourceRoot = sourceRootFlag !== -1 ? process.argv[sourceRootFlag + 1] : DEFAULT_SOURCE_ROOT;
+if (sourceRootFlag !== -1 && !sourceRoot) {
+  console.error("--source-root requires a directory");
+  process.exit(2);
+}
 
 const declaredModel = loadDeclared();
-const { sites, problems } = extractCallSites();
+const { sites, problems } = extractCallSites(sourceRoot);
 const uncovered = sites.filter((site) => !isCovered(site, declaredModel));
 
 for (const problem of problems) {

@@ -4,9 +4,15 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const PASSING = new Set(["success", "neutral", "skipped"]);
+// Cancelled is intentionally NOT a hard failure during the poll loop.
+// Merge-queue and concurrency cancellations routinely supersede a check run
+// before its replacement is registered; treating cancelled as terminal after a
+// short grace ejected healthy merge-group candidates (e.g. PR #2154) while
+// AgentLens/macOS jobs were still queued. Cancelled stays pending until a
+// non-cancelled terminal result arrives or the overall evaluator deadline
+// expires (fail-closed at timeout).
 const FAILING = new Set([
   "failure",
-  "cancelled",
   "timed_out",
   "action_required",
   "startup_failure",
@@ -17,7 +23,8 @@ export function resolveObservedSha(environment = process.env) {
   return environment.BURNBAR_CI_SHA || environment.GITHUB_SHA;
 }
 
-export function evaluateGate(required, observations) {
+export function evaluateGate(required, observations, options = {}) {
+  const treatCancelledAsFailed = options.treatCancelledAsFailed === true;
   const missing = [];
   const pending = [];
   const failed = [];
@@ -26,9 +33,29 @@ export function evaluateGate(required, observations) {
     const item = observations.get(context);
     if (!item) missing.push(context);
     else if (PASSING.has(item.conclusion)) passed.push(context);
-    else if (FAILING.has(item.conclusion))
+    else if (item.conclusion === "cancelled") {
+      if (treatCancelledAsFailed) {
+        failed.push({
+          context,
+          conclusion: item.conclusion,
+          url: item.url,
+        });
+      } else {
+        pending.push({
+          context,
+          status: "replacement_pending",
+          url: item.url,
+        });
+      }
+    } else if (FAILING.has(item.conclusion))
       failed.push({ context, conclusion: item.conclusion, url: item.url });
-    else pending.push({ context, status: item.status, url: item.url });
+    else
+      pending.push({
+        context,
+        status: item.status,
+        url: item.url,
+        ...(item.startedAt ? { startedAt: item.startedAt } : {}),
+      });
   }
   return {
     ready: missing.length === 0 && pending.length === 0 && failed.length === 0,
@@ -39,17 +66,73 @@ export function evaluateGate(required, observations) {
   };
 }
 
-async function githubJson(url, token) {
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
-  });
-  if (!response.ok)
-    throw new Error(`GitHub API ${response.status}: ${await response.text()}`);
-  return response.json();
+// Workflow timeout clocks start independently: this evaluator's deadline is
+// anchored to the umbrella's start, while a component such as the AgentLens
+// app suite may spend a long time behind its dependency jobs and hosted macOS
+// runner queueing before its own timeout clock even begins. Comparing static
+// execution caps therefore cannot guarantee the umbrella outlives the
+// component. Once every remaining required context is an observed, started
+// run, the wait is re-anchored to the latest observed component start plus the
+// configured per-component runtime budget and polling headroom.
+export function pendingComponentAllowanceMs(pending, options = {}) {
+  const componentBudgetMs = options.componentBudgetMs ?? 0;
+  const headroomMs = options.headroomMs ?? 0;
+  if (componentBudgetMs <= 0 || pending.length === 0) return null;
+  let latest = null;
+  for (const item of pending) {
+    if (!item.startedAt) return null;
+    const startedMs = Date.parse(item.startedAt);
+    if (!Number.isFinite(startedMs)) return null;
+    latest = Math.max(latest ?? 0, startedMs + componentBudgetMs + headroomMs);
+  }
+  return latest;
+}
+
+const sleep = (milliseconds) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+// A single transient GitHub API hiccup (a mid-poll 502, a rate-limit burst, a
+// dropped connection) must not burn hours of otherwise healthy waiting, so
+// transient failures are retried with exponential backoff before the poll
+// gives up. Non-transient responses (bad token, missing repo) still fail
+// immediately: retrying cannot fix them and would only hide a real
+// misconfiguration until the deadline.
+export function isTransientGithubStatus(status) {
+  return status === 429 || status >= 500;
+}
+
+export async function githubJson(url, token, options = {}) {
+  const attempts = options.attempts ?? 5;
+  const baseBackoffMs = options.baseBackoffMs ?? 5_000;
+  const wait = options.sleep ?? sleep;
+  for (let attempt = 1; ; attempt += 1) {
+    let response = null;
+    let failure = null;
+    try {
+      response = await fetch(url, {
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${token}`,
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      });
+    } catch (error) {
+      failure = new Error(`GitHub API request failed: ${error.message}`);
+    }
+    if (response) {
+      if (response.ok) return response.json();
+      failure = new Error(
+        `GitHub API ${response.status}: ${await response.text()}`,
+      );
+      if (!isTransientGithubStatus(response.status)) throw failure;
+    }
+    if (attempt >= attempts) throw failure;
+    const delayMs = baseBackoffMs * 2 ** (attempt - 1);
+    console.log(
+      `Transient GitHub API failure (attempt ${attempt}/${attempts}), retrying in ${delayMs / 1000}s: ${failure.message}`,
+    );
+    await wait(delayMs);
+  }
 }
 
 async function githubPages(url, key, token) {
@@ -84,6 +167,8 @@ export async function collectObservations(repository, sha, token) {
     observations.set(check.name, {
       status: check.status,
       conclusion: check.conclusion,
+      startedAt: check.started_at,
+      completedAt: check.completed_at,
       url: check.html_url,
     });
   }
@@ -106,9 +191,6 @@ export async function collectObservations(repository, sha, token) {
   return observations;
 }
 
-const sleep = (milliseconds) =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
-
 async function main() {
   const config = JSON.parse(
     readFileSync(process.argv[2] ?? "governance/burnbar-ci-gate.json", "utf8"),
@@ -121,6 +203,9 @@ async function main() {
       "GITHUB_REPOSITORY, BURNBAR_CI_SHA (or GITHUB_SHA), and GITHUB_TOKEN are required",
     );
   const deadline = Date.now() + Number(config.timeout_minutes) * 60_000;
+  const componentBudgetMs =
+    Number(config.component_runtime_budget_minutes ?? 0) * 60_000;
+  const componentHeadroomMs = 5 * 60_000;
   while (true) {
     const state = evaluateGate(
       config.required_contexts,
@@ -138,11 +223,43 @@ async function main() {
       return;
     }
     if (Date.now() >= deadline) {
-      console.error(
-        JSON.stringify({ error: "CI gate timed out", ...state }, null, 2),
+      const allowanceMs =
+        state.missing.length === 0
+          ? pendingComponentAllowanceMs(state.pending, {
+              componentBudgetMs,
+              headroomMs: componentHeadroomMs,
+            })
+          : null;
+      if (allowanceMs === null || Date.now() >= allowanceMs) {
+        // At the hard deadline, cancelled replacements that never arrived
+        // become terminal failures so the gate still fails closed.
+        const timedOut = evaluateGate(
+          config.required_contexts,
+          await collectObservations(repository, sha, token),
+          { treatCancelledAsFailed: true },
+        );
+        // The refreshed read can observe a final check completing between the
+        // first observation and the deadline re-check; a fully ready state is
+        // a pass, not a timeout.
+        if (timedOut.ready) {
+          console.log(
+            `All ${timedOut.passed.length} component contexts passed for ${sha}.`,
+          );
+          return;
+        }
+        console.error(
+          JSON.stringify(
+            { error: "CI gate timed out", ...timedOut },
+            null,
+            2,
+          ),
+        );
+        process.exitCode = 1;
+        return;
+      }
+      console.log(
+        `Deadline passed but every pending component has started; waiting until ${new Date(allowanceMs).toISOString()}.`,
       );
-      process.exitCode = 1;
-      return;
     }
     console.log(
       `Waiting: ${state.missing.length} missing, ${state.pending.length} pending, ${state.passed.length} passed.`,

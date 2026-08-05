@@ -1,5 +1,6 @@
 package com.openburnbar.data.media
 
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -63,5 +64,26 @@ class VideoReceivePipelineStatsTest {
             MediaFrameV2Codec.FIXED_HEADER_BYTE_COUNT + 5 + 12,
             VideoReceivePipeline.estimatedWireByteCount(v2),
         )
+    }
+
+    @Test
+    fun terminalMirrorFailureStopsWaitingState() = runTest {
+        val pipeline = VideoReceivePipeline()
+
+        pipeline.fail("The Mac could not start screen sharing.")
+
+        val phase = pipeline.phase.value
+        check(phase is VideoReceivePipeline.Phase.Failed) { "Expected Failed phase but was $phase" }
+        assertEquals("The Mac could not start screen sharing.", phase.reason)
+    }
+
+    @Test
+    fun stopReleasesDecoderResourcesAndEntersStoppedPhase() = runTest {
+        val pipeline = VideoReceivePipeline()
+        pipeline.noteAcceptedFrame(wireByteCount = 500_000, nowMillis = 1_800_000_000_000L)
+
+        pipeline.stop()
+
+        assertEquals(VideoReceivePipeline.Phase.Stopped, pipeline.phase.value)
     }
 }

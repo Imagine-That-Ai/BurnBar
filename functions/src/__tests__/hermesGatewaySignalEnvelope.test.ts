@@ -11,6 +11,7 @@ import {
   HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION,
   HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION,
   HERMES_GATEWAY_SUPPORTED_SIGNAL_ENVELOPE_VERSIONS,
+  gatewaySignalAttachmentBindingMatches,
   negotiateGatewayRelayEnvelopeCapabilities,
   requireGatewaySignalEnvelope,
   requireProductionGatewaySignalEnvelope,
@@ -53,6 +54,13 @@ describe("Hermes Gateway Signal envelope contract", () => {
   it("accepts and sanitizes a well-formed transport signalEnvelope", () => {
     expect(requireGatewaySignalEnvelope(signalEnvelope(), "signalEnvelope", "transport")).toEqual(signalEnvelope());
     expect(sanitizeGatewaySignalEnvelope(signalEnvelope(), "transport")).toEqual(signalEnvelope());
+  });
+
+  it("binds attachment manifests to exactly one attachment id", () => {
+    const envelope = signalEnvelope();
+    expect(gatewaySignalAttachmentBindingMatches({ ...envelope, binding: { ...envelope.binding, slotId: "attachment-manifest:att_1" } }, "att_1")).toBe(true);
+    expect(gatewaySignalAttachmentBindingMatches({ ...envelope, binding: { ...envelope.binding, slotId: "attachment-manifest:att_2" } }, "att_1")).toBe(false);
+    expect(gatewaySignalAttachmentBindingMatches({ ...envelope, binding: { ...envelope.binding, slotId: "message" } }, "att_1")).toBe(false);
   });
 
   it("rejects malformed Signal envelope downgrade and mode-confusion shapes", () => {

@@ -29,6 +29,8 @@ struct DashboardView: View {
     @Environment(NavigationCoordinator.self) var navigationCoordinator
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @State private var easterEggController = EasterEggController()
     @State private var didLogScreenView = false
     var aggregator: UsageAggregator?
@@ -64,6 +66,19 @@ struct DashboardView: View {
     @State var showContextPackSheet = false
     @AppStorage("dashboardChatPreferMaximized") var preferMaximizedChat = false
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
+    /// Last profile the live backdrop measured and published, or `nil` before
+    /// its first publish.
+    ///
+    /// Deliberately optional rather than seeded with a constant: a constant
+    /// seed is wrong for whichever skin it does not describe. Editorial/paper
+    /// counts as a live backdrop and paints a *light* canvas immediately, so a
+    /// `darkCanvasFallback` seed applied white foregrounds over white paper for
+    /// every frame before `DashboardBackdrop`'s `.task` published
+    /// `.lightCanvasFallback`. While this is `nil`,
+    /// `dashboardActiveReadabilityProfile` resolves the skin-aware
+    /// `BackdropReadabilityProfile.nativeFallback(...)` synchronously instead,
+    /// so the first frame already has the right foreground family.
+    @State private var backdropReadabilityProfile: BackdropReadabilityProfile?
     var chatController: ChatSessionController
     @State var quotaService = ProviderQuotaService.shared
     @State var missionConsoleController: MissionConsoleWindowController?
@@ -320,11 +335,24 @@ struct DashboardView: View {
 
     var body: some View {
         @Bindable var chatController = chatController
+        let activeReadabilityProfile = dashboardActiveReadabilityProfile
+        let adaptiveColors = BackdropAdaptiveColors(profile: activeReadabilityProfile)
         return VStack(spacing: 0) {
             dashboardCommandDeck
 
             NavigationSplitView(columnVisibility: $dashboardSplitVisibility) {
                 sidebarView
+                    // Contrast override for the sidebar's controls and text.
+                    // The sidebar's own `DashboardBackdrop` must NOT inherit it
+                    // — it is handed `dashboardKernelColorScheme` explicitly so
+                    // its kernel WKWebView renders the same palette as the main
+                    // backdrop instead of one derived from the sampled profile.
+                    .environment(
+                        \.colorScheme,
+                        dashboardLiveBackdropActive
+                            ? activeReadabilityProfile.interfaceColorScheme
+                            : colorScheme
+                    )
                     .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 235)
                     .background(dashboardLiveBackdropActive ? Color.clear : DesignSystem.Colors.background)
             } detail: {
@@ -344,7 +372,23 @@ struct DashboardView: View {
             )
         }
         .background {
-            DashboardBackdrop(moodBand: dataStore.moodBand)
+            DashboardBackdrop(
+                moodBand: dataStore.moodBand,
+                kernelColorScheme: dashboardKernelColorScheme,
+                onReadabilityChange: { profile in
+                    guard dashboardLiveBackdropActive else { return }
+                    backdropReadabilityProfile = profile
+                }
+            )
+            if dashboardLiveBackdropActive {
+                adaptiveColors.scrim
+                    .opacity(dashboardAdaptiveScrimOpacity)
+                    .allowsHitTesting(false)
+                    .animation(
+                        reduceMotion ? nil : .easeInOut(duration: 0.22),
+                        value: activeReadabilityProfile
+                    )
+            }
             DashboardSidebarToolbarItemRemover()
             GeometryReader { geo in
                 Color.clear
@@ -359,6 +403,14 @@ struct DashboardView: View {
         }
         .onChange(of: mainRoute) { previous, route in
             syncSidebarVisibility(for: route, previous: previous)
+        }
+        // A published profile describes one specific backdrop. When the skin,
+        // the live-backdrop toggles, or the app appearance change, it no longer
+        // does — drop it so the skin-aware native fallback covers the frames
+        // until `DashboardBackdrop`'s `.task(id:)` republishes for the new
+        // canvas, instead of e.g. carrying an aurora dark profile into paper.
+        .onChange(of: dashboardReadabilityContextID) { _, _ in
+            backdropReadabilityProfile = nil
         }
         .onAppear {
             dashboardSplitVisibility = resolvedSidebarVisibility
@@ -615,6 +667,7 @@ struct DashboardView: View {
             }
         }
         .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
+        .environment(\.backdropReadabilityProfile, activeReadabilityProfile)
         .environment(\.dashboardLiveBackdropActive, dashboardLiveBackdropActive)
         .environment(settingsManager)
     }
@@ -1223,6 +1276,59 @@ struct DashboardView: View {
             useWebsiteBackground: settingsManager.useWebsiteBackground,
             useKernelBackdrop: useKernelBackdrop
         )
+    }
+
+    /// The appearance the app is actually presenting, which is not always the
+    /// one in `\.colorScheme`.
+    ///
+    /// Two ways they diverge. `.openBurnBarPreferredColorScheme(...)` is a
+    /// preference that reaches the window a pass *after* the user forces Light
+    /// or Dark, so `colorScheme` still reports the macOS appearance on the
+    /// frames right after the flip. And the sidebar subtree deliberately
+    /// overrides `\.colorScheme` with the readability-derived interface scheme,
+    /// so anything under it reads a value chosen for contrast, not for
+    /// appearance. Backdrops (which paint the canvas the readability pass then
+    /// samples) must follow the selected appearance, so they read this.
+    var dashboardKernelColorScheme: ColorScheme {
+        settingsManager.preferredSwiftUIColorScheme ?? colorScheme
+    }
+
+    /// Identity of the canvas a published readability profile describes.
+    /// Mirrors `DashboardBackdrop.readabilityContextID`, whose `.task(id:)`
+    /// republishes on exactly these inputs.
+    var dashboardReadabilityContextID: String {
+        [
+            settingsManager.appearanceSkin.rawValue,
+            dashboardLiveBackdropActive.description,
+            useKernelBackdrop.description,
+            dashboardKernelColorScheme == .dark ? "dark" : "light"
+        ].joined(separator: ":")
+    }
+
+    var dashboardActiveReadabilityProfile: BackdropReadabilityProfile {
+        guard dashboardLiveBackdropActive else {
+            return BackdropReadabilityProfile.nativeFallback(
+                colorScheme: dashboardKernelColorScheme,
+                appearanceSkin: settingsManager.appearanceSkin,
+                liveBackdropActive: false
+            )
+        }
+        // Before the backdrop's first publish (and after a skin change resets
+        // it) the skin-aware native fallback is the correct answer, not a
+        // constant: editorial paints light paper, every other live backdrop
+        // paints a dark canvas.
+        return backdropReadabilityProfile ?? BackdropReadabilityProfile.nativeFallback(
+            colorScheme: dashboardKernelColorScheme,
+            appearanceSkin: settingsManager.appearanceSkin,
+            liveBackdropActive: true
+        )
+    }
+
+    var dashboardAdaptiveScrimOpacity: Double {
+        let measured = dashboardActiveReadabilityProfile.scrimOpacity
+        if reduceTransparency { return max(measured, 0.82) }
+        if colorSchemeContrast == .increased { return max(measured, 0.38) }
+        return measured
     }
 
     private func openSessionLogs(_ target: ConversationJumpTarget) {

@@ -49,9 +49,10 @@ jobs:
     # billed fast burst.
     runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
     # Cold cache + libsignal FFI + full xcodebuild of the app target on a hosted
-    # runner needs headroom; observed cold macos-26 runs can approach 120
-    # minutes before the 1,920-test suite and coverage upload finish.
-    timeout-minutes: 150
+    # runner needs headroom. Merge-group run 30228456168 reached the former
+    # 150-minute cap while the 1,920-test suite was still making progress, so
+    # keep enough room for the suite plus coverage upload on a cold runner.
+    timeout-minutes: 240
     needs: classify
     if: needs.classify.outputs.macos == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
@@ -83,7 +84,12 @@ jobs:
             ~/.cache/org.swift.swiftpm
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-app-spm-${{ hashFiles('**/Package.resolved') }}
+          # Anchored manifest list instead of '**/Package.resolved': the unanchored
+          # glob rescans the whole workspace when the post-job save step re-evaluates
+          # the key, and by then .spm-cache-new/.derived-data hold enough files to
+          # blow hashFiles' 120s budget (and dependency checkouts carry their own
+          # Package.resolved copies, drifting the key between restore and save).
+          key: ${{ runner.os }}-app-spm-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarCore/Package.resolved', 'OpenBurnBarDaemon/Package.resolved', 'Vendor/GRDB-SQLCipher/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-app-spm-
             ${{ runner.os }}-spm-
@@ -93,12 +99,8 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install protobuf for libsignal Swift FFI
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: macOS rAF pause prerequisite (P-PERF-3)
         # Fast deterministic tripwire and real-gate self-tests. This keeps the
@@ -231,7 +233,9 @@ jobs:
             ~/.cache/org.swift.swiftpm
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-mobile-spm-${{ hashFiles('**/Package.resolved') }}
+          # Anchored manifest list instead of '**/Package.resolved': see the app job's
+          # SPM cache key comment (post-job hashFiles timeout + key drift).
+          key: ${{ runner.os }}-mobile-spm-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarCore/Package.resolved', 'OpenBurnBarDaemon/Package.resolved', 'Vendor/GRDB-SQLCipher/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-mobile-spm-
 
@@ -240,12 +244,8 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install protobuf for libsignal Swift FFI
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Prepare Signal FFI XCFramework
         run: >-

@@ -396,6 +396,60 @@ final class ConnectionsViewModelTests: XCTestCase {
         XCTAssertTrue(model.routeEligible)
     }
 
+    // A collapsed multi-account row may be served by any backing account, so
+    // it must advertise the minimum context window and only the modalities
+    // every account supports — mirroring the daemon's
+    // `mergedModelCapabilities` instead of promising one account's superset.
+    func test_refreshProxyModelCatalog_collapseUsesConservativeCapabilityMetadata() async throws {
+        viewModel = ConnectionsViewModel(
+            wiringFactory: { RoutingClientWiring(home: self.tempHome) },
+            proxyCatalogFetcher: { _ in
+                [
+                    ProxyAdvertisedModel(
+                        modelID: "shared-model",
+                        displayName: "Shared Model",
+                        providerID: "openai-compatible",
+                        providerName: "OpenAI Compatible",
+                        accountID: "default",
+                        accountLabel: "Primary",
+                        sourceID: "provider-a#default",
+                        sourceKind: "upstream_models_endpoint",
+                        contextWindowTokens: 1_000_000,
+                        inputModalities: ["text", "image"],
+                        quotaState: "healthy",
+                        routeEligible: true,
+                        capabilities: ["openai_compat"],
+                        lastError: nil
+                    ),
+                    ProxyAdvertisedModel(
+                        modelID: "shared-model",
+                        displayName: "Shared Model",
+                        providerID: "openai-compatible",
+                        providerName: "OpenAI Compatible",
+                        accountID: "backup",
+                        accountLabel: "Reserve",
+                        sourceID: "provider-b#default",
+                        sourceKind: "upstream_models_endpoint",
+                        contextWindowTokens: 128_000,
+                        inputModalities: ["text"],
+                        quotaState: "healthy",
+                        routeEligible: true,
+                        capabilities: ["openai_compat"],
+                        lastError: nil
+                    )
+                ]
+            }
+        )
+
+        await viewModel.refreshProxyModelCatalog(settings: settings)
+
+        XCTAssertEqual(viewModel.proxyModels.count, 1)
+        let model = try XCTUnwrap(viewModel.proxyModels.first)
+        XCTAssertEqual(model.accountLabel, "Auto failover (2 accounts)")
+        XCTAssertEqual(model.contextWindowTokens, 128_000)
+        XCTAssertEqual(model.inputModalities, ["text"])
+    }
+
     func test_refreshProxyModelCatalog_keepsSameModelDistinctAcrossProviders() async {
         viewModel = ConnectionsViewModel(
             wiringFactory: { RoutingClientWiring(home: self.tempHome) },

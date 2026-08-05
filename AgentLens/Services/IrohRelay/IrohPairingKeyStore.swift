@@ -7,23 +7,25 @@ import Security
 /// Persists the Mac's Ed25519 pairing key. Public half is published to
 /// Firestore at `users/{uid}/iroh_pairing_keys/host` by
 /// `IrohPairingPublicKeyPublisher`; private half lives in the Keychain.
-/// Normal operation keeps this stable. If macOS denies access to a stale
-/// Keychain ACL item from an older/dev-signed build, the host regenerates and
-/// republishes the verifier key so iOS does not get stuck behind a prompt.
+/// This verifier root must never rotate merely because macOS temporarily
+/// denies Keychain access. Access failures therefore fail closed and leave the
+/// previously published public key untouched.
 final class IrohPairingKeyStore: Sendable {
     static let shared = IrohPairingKeyStore()
 
     private let service: String
     private let account: String
-    private let keychain: IrohRotatingKeychainSecretStore
+    private let keychain: any IrohPairingKeychainSecretStoring
 
     init(
         service: String = "ai.openburnbar.iroh-pairing",
-        account: String = "primary"
+        account: String = "primary",
+        keychain: (any IrohPairingKeychainSecretStoring)? = nil
     ) {
         self.service = service
         self.account = account
-        self.keychain = IrohRotatingKeychainSecretStore(service: service, account: account)
+        self.keychain = keychain
+            ?? IrohRotatingKeychainSecretStore(service: service, account: account)
     }
 
     func keypair() throws -> IrohPairingKeypair {
@@ -32,28 +34,15 @@ final class IrohPairingKeyStore: Sendable {
                 return existing
             }
         } catch IrohRotatingKeychainSecretStoreError.accessDenied(let status) {
-            AppLogger.network.notice(
-                "iroh_pairing_keychain_access_denied_regenerating",
+            AppLogger.network.error(
+                "iroh_pairing_keychain_access_denied_fail_closed",
                 metadata: [
                     "service": service,
                     "account": account,
                     "status": "\(status)"
                 ]
             )
-            let fresh = IrohPairingKeypair()
-            do {
-                try keychain.replace(with: fresh.signingKey.rawRepresentation)
-            } catch {
-                AppLogger.network.error(
-                    "iroh_pairing_keychain_ephemeral_fallback",
-                    metadata: [
-                        "service": service,
-                        "account": account,
-                        "errorClass": "\(String(describing: type(of: error)))"
-                    ]
-                )
-            }
-            return fresh
+            throw IrohPairingKeyStoreError.keychainAccessDenied(status)
         }
         let fresh = IrohPairingKeypair()
         try saveToKeychain(fresh)
@@ -75,7 +64,9 @@ final class IrohPairingKeyStore: Sendable {
 
     private func loadFromKeychain() throws -> IrohPairingKeypair? {
         guard let data = try keychain.load() else { return nil }
-        guard data.count == 32 else { return nil }
+        guard data.count == 32 else {
+            throw IrohPairingKeyStoreError.invalidKey
+        }
         do {
             let signingKey = try Curve25519.Signing.PrivateKey(rawRepresentation: data)
             return IrohPairingKeypair(signingKey: signingKey)
@@ -89,7 +80,26 @@ final class IrohPairingKeyStore: Sendable {
     }
 }
 
-enum IrohPairingKeyStoreError: Error, Equatable {
+protocol IrohPairingKeychainSecretStoring: Sendable {
+    func load() throws -> Data?
+    func save(_ data: Data) throws
+}
+
+extension IrohRotatingKeychainSecretStore: IrohPairingKeychainSecretStoring {}
+
+enum IrohPairingKeyStoreError: Error, Equatable, LocalizedError {
+    case keychainAccessDenied(OSStatus)
     case keychainStatus(OSStatus)
     case invalidKey
+
+    var errorDescription: String? {
+        switch self {
+        case .keychainAccessDenied(let status):
+            return "OpenBurnBar could not access its Mercury pairing identity in the macOS Keychain (\(status)). Unlock this Mac and try again; the identity was not rotated."
+        case .keychainStatus(let status):
+            return "OpenBurnBar could not read its Mercury pairing identity from the macOS Keychain (\(status))."
+        case .invalidKey:
+            return "OpenBurnBar's Mercury pairing identity in the macOS Keychain is invalid. The identity was not rotated."
+        }
+    }
 }

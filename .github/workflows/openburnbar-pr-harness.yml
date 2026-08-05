@@ -30,11 +30,13 @@ permissions:
 
 concurrency:
   group: full-harness-${{ github.event_name }}-${{ github.ref }}
-  # Main push runs are the post-merge proof lane, so they must settle instead
-  # of cancelling each other during a fast merge train. Keep cancellation for
-  # ad-hoc/manual runs where replacing stale work is harmless.
-  cancel-in-progress: ${{ github.event_name != 'push' }}
+  cancel-in-progress: true
 
+# CI-cost hardening (owner directive 2026-07-31): the per-push trigger ran the
+# full ~300-macOS-minute harness on EVERY merge to main (~25 pushes/48h =
+# ~112K macOS minutes/month) while 9 of 16 runs were cancelled or failed
+# anyway. The daily cron below remains the authoritative full-confidence lane;
+# use workflow_dispatch for an on-demand post-merge proof of a specific SHA.
 on:
   workflow_dispatch:
     inputs:
@@ -47,9 +49,6 @@ on:
     # 08:37 UTC daily. Avoid the top of the hour; GitHub documents higher
     # scheduler contention there.
     - cron: "37 8 * * *"
-  push:
-    branches:
-      - main
 
 jobs:
   platform-misc:
@@ -281,6 +280,11 @@ jobs:
             8.0.x
             10.0.x
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+
       - name: Verify Windows solution
         run: |
           if (-not (Test-Path "windows/OpenBurnBar.sln")) {
@@ -291,10 +295,15 @@ jobs:
       - name: Restore Windows solution
         run: dotnet restore windows/OpenBurnBar.sln
 
+      - name: Build native shared domain core
+        run: cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
+
       - name: Build Windows solution
         run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=x64
 
       - name: Run Windows test suite
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
         run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-full-x64.trx" --results-directory TestResults-x64
 
       - name: Upload Windows test results
@@ -396,12 +405,8 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install protobuf for libsignal Swift FFI
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Run OpenBurnBar Swift tests
         env:
@@ -443,12 +448,8 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install protobuf for libsignal Swift FFI
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Prepare Signal FFI XCFramework
         run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
@@ -593,12 +594,8 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install protobuf for libsignal Swift FFI
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Prepare Signal FFI XCFramework
         run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
@@ -658,12 +655,8 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install protobuf for libsignal Swift FFI
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Prepare Signal FFI XCFramework
         run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
@@ -796,6 +789,9 @@ jobs:
 
   path-filter:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     outputs:
       hermes_iroh: ${{ steps.filter.outputs.hermes_iroh }}
       hermes_gateway_e2ee: ${{ steps.filter.outputs.hermes_gateway_e2ee }}
@@ -809,13 +805,34 @@ jobs:
         id: filter
         env:
           FORCE_MERCURY_MEDIA_E2E: ${{ github.event_name == 'workflow_dispatch' && inputs.force_mercury_media_e2e == true }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             git fetch origin "${{ github.base_ref }}" --depth=1
             CHANGED="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
           else
-            CHANGED="$(git diff --name-only HEAD~1 HEAD || true)"
+            # Scheduled and dispatched runs must cover EVERY commit since the
+            # last completed harness run, not just HEAD~1: with the per-push
+            # trigger removed (CI-cost hardening 2026-07-31), several commits
+            # can land between daily runs and a HEAD~1 diff would silently
+            # skip targeted E2E lanes whose paths are absent from the final
+            # commit before the schedule fires.
+            BASELINE="$(gh run list \
+              --workflow openburnbar-pr-harness.yml \
+              --branch "${{ github.ref_name }}" \
+              --status completed \
+              --limit 1 \
+              --json headSha \
+              --jq '.[0].headSha // empty' 2>/dev/null || true)"
+            if [[ -n "$BASELINE" ]] && git cat-file -e "${BASELINE}^{commit}" 2>/dev/null; then
+              CHANGED="$(git diff --name-only "${BASELINE}..HEAD" || true)"
+            else
+              # Fail open: without a usable baseline (first run, force-pushed
+              # or expired SHA, API error) treat every tracked path as changed
+              # so no targeted E2E lane is silently skipped.
+              CHANGED="$(git ls-files)"
+            fi
           fi
           echo "$CHANGED" > /tmp/changed-paths.txt
           match() { grep -Eq "$1" /tmp/changed-paths.txt; }
@@ -926,12 +943,8 @@ jobs:
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
         with:
           toolchain: stable
-      - name: Install protobuf for libsignal Swift FFI
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
       - name: Hermes core Swift tests
         run: OPENBURNBAR_CORE_SWIFT_FILTER=OpenBurnBarCoreTests/Hermes OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS=1 ./scripts/test-openburnbar-swift.sh
       - uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
@@ -1006,12 +1019,8 @@ jobs:
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
         with:
           toolchain: stable
-      - name: Install protobuf for libsignal Swift FFI
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
       - name: Computer Use core tests
         run: OPENBURNBAR_CORE_SWIFT_FILTER=OpenBurnBarComputerUseCoreTests OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS=1 ./scripts/test-openburnbar-swift.sh
       - name: Install Playwright (pinned)
@@ -1074,12 +1083,8 @@ jobs:
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
         with:
           toolchain: stable
-      - name: Install protobuf for libsignal Swift FFI
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
       - name: Prepare Signal FFI XCFramework
         run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
       # The OpenBurnBarMobile target declares GoogleService-Info.plist as a

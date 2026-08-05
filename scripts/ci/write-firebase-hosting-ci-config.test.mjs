@@ -14,7 +14,10 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const generator = resolve(repoRoot, "scripts/ci/write-firebase-hosting-ci-config.mjs");
+const generator = resolve(
+  repoRoot,
+  "scripts/ci/write-firebase-hosting-ci-config.mjs",
+);
 
 function generate(args) {
   return spawnSync(process.execPath, [generator, ...args], {
@@ -108,7 +111,13 @@ test("firestore mode preserves production object form without an explicit bucket
   const directory = mkdtempSync(join(tmpdir(), "firebase-ci-config-"));
   try {
     const output = join(directory, "firebase-firestore.ci.json");
-    const result = generate(["--mode", "firestore", "--output", output, "--check"]);
+    const result = generate([
+      "--mode",
+      "firestore",
+      "--output",
+      output,
+      "--check",
+    ]);
     assert.equal(result.status, 0, result.stderr);
 
     const config = JSON.parse(readFileSync(output, "utf8"));
@@ -130,4 +139,49 @@ test("explicit bucket names fail closed on invalid input", () => {
   ]);
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /valid lowercase Cloud Storage bucket name/);
+});
+
+test("staging hosting emits only the marketing site with a noindex boundary", () => {
+  const directory = mkdtempSync(join(tmpdir(), "firebase-staging-hosting-"));
+  try {
+    const output = join(directory, "firebase-hosting.staging.json");
+    const manifest = join(directory, "firebase-hosting.staging.manifest.json");
+    const result = generate([
+      "--mode",
+      "staging-hosting",
+      "--output",
+      output,
+      "--manifest",
+      manifest,
+      "--check",
+    ]);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+
+    const config = JSON.parse(readFileSync(output, "utf8"));
+    assert.equal(config.hosting.length, 1);
+    assert.equal(config.hosting[0].target, undefined);
+    assert.equal(config.hosting[0].site, "burnbar-staging");
+    assert.equal(config.hosting[0].public, "website/dist");
+    assert.equal(JSON.stringify(config).includes("predeploy"), false);
+    assert.ok(
+      config.hosting[0].headers.some(
+        (entry) =>
+          entry.source === "**" &&
+          entry.headers.some(
+            (header) =>
+              header.key === "X-Robots-Tag" &&
+              header.value === "noindex, nofollow, noarchive",
+          ),
+      ),
+    );
+
+    const generatedManifest = JSON.parse(readFileSync(manifest, "utf8"));
+    assert.deepEqual(generatedManifest.hostingPublicDirs, {
+      marketing: "website/dist",
+    });
+    assert.equal(generatedManifest.project, "burnbar-staging");
+    assert.equal(generatedManifest.noindex, true);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

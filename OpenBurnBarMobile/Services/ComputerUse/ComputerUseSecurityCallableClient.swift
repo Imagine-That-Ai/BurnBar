@@ -331,6 +331,27 @@ enum ComputerUseSecurityCallableClient {
         return nonce
     }
 
+    /// Auth custom claims are account-level, so another signed-in platform can overwrite the
+    /// `obb_app_check` binding between our bind and the nonce mint. Re-run the full
+    /// bind -> claims refresh -> nonce sequence once when the mint is rejected at the
+    /// App Check binding gate; rethrow every other failure unchanged.
+    private static func reboundHighRiskActionNonce(afterBindingConflict error: Error) async throws -> String {
+        guard isAppCheckBindingConflictError(error) else { throw error }
+        try await bindAppCheckAttestation()
+        return try await issueHighRiskActionNonce()
+    }
+
+    private static func isAppCheckBindingConflictError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        guard nsError.domain == FunctionsErrorDomain,
+              let code = FunctionsErrorCode(rawValue: nsError.code),
+              code == .permissionDenied || code == .failedPrecondition else {
+            return false
+        }
+        let message = nsError.localizedDescription
+        return message.contains("App Check") || message.contains("bindAppCheckAttestation")
+    }
+
     static func listLinuxAppCheckDevices(approverDeviceId: String) async throws -> [LinuxAppCheckDeviceRecord] {
         try await listLinuxAppCheckDevices(
             approverDeviceId: approverDeviceId,
@@ -441,7 +462,13 @@ enum ComputerUseSecurityCallableClient {
         keyVersion: Int? = nil
     ) async throws {
         _ = try requireSignedInUser()
-        let nonce = try await issueHighRiskActionNonce()
+        try await bindAppCheckAttestation()
+        let nonce: String
+        do {
+            nonce = try await issueHighRiskActionNonce()
+        } catch {
+            nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
+        }
         var payload: [String: Any] = [
             "deviceId": deviceId,
             "deviceName": deviceName,
@@ -461,13 +488,19 @@ enum ComputerUseSecurityCallableClient {
 
     static func approveEscrowDeviceTrust(deviceId: String, approverDeviceId: String? = nil) async throws {
         let uid = try requireSignedInUser().uid
+        try await bindAppCheckAttestation()
         let resolvedApproverDeviceId = approverDeviceId?.isEmpty == false ? approverDeviceId! : deviceId
         let trustChain = try await buildTrustChainProof(
             uid: uid,
             targetDeviceId: deviceId,
             approverDeviceId: resolvedApproverDeviceId
         )
-        let nonce = try await issueHighRiskActionNonce()
+        let nonce: String
+        do {
+            nonce = try await issueHighRiskActionNonce()
+        } catch {
+            nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
+        }
         var payload: [String: Any] = [
             "deviceId": deviceId,
             "nonce": nonce,
