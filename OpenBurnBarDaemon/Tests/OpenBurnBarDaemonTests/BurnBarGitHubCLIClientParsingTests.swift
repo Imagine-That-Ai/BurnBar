@@ -288,7 +288,8 @@ final class BurnBarGitHubCLIClientParsingTests: XCTestCase {
         ])
         let client = makeClient(runner)
 
-        let snapshot = try XCTUnwrap(await client.snapshot(slug: "octo/repo", runLookback: 3 * 24 * 3_600))
+        let maybeSnapshot = await client.snapshot(slug: "octo/repo", runLookback: 3 * 24 * 3_600)
+        let snapshot = try XCTUnwrap(maybeSnapshot)
 
         XCTAssertEqual(snapshot.slug, "octo/repo")
         XCTAssertEqual(snapshot.openPullRequests.map(\.number), [12])

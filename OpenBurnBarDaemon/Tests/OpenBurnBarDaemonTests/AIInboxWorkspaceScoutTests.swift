@@ -45,7 +45,8 @@ final class AIInboxWorkspaceScoutTests: XCTestCase {
     func test_snapshotReadsFullGitStateFromCannedOutputs() async throws {
         let scout = makeScout(Self.fullGitRunner())
 
-        let snapshot = try XCTUnwrap(await scout.snapshot(for: workspaceURL.path))
+        let maybeSnapshot = await scout.snapshot(for: workspaceURL.path)
+        let snapshot = try XCTUnwrap(maybeSnapshot)
 
         XCTAssertTrue(snapshot.isGitRepository)
         XCTAssertEqual(snapshot.branch, "feature/inbox")
@@ -67,7 +68,8 @@ final class AIInboxWorkspaceScoutTests: XCTestCase {
         let runner = FakeInboxProcessRunner(responses: ["--is-inside-work-tree": "true\n"])
         let scout = makeScout(runner)
 
-        let snapshot = try XCTUnwrap(await scout.snapshot(for: workspaceURL.path))
+        let maybeSnapshot = await scout.snapshot(for: workspaceURL.path)
+        let snapshot = try XCTUnwrap(maybeSnapshot)
 
         XCTAssertTrue(snapshot.isGitRepository)
         XCTAssertNil(snapshot.branch)
