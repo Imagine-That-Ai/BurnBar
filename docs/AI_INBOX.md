@@ -472,12 +472,26 @@ strict `owner/repo` character set before being interpolated into an API path.
 
 ## Testing
 
-87 tests across six suites, all passing. Notable additions beyond the detector
-and pipeline coverage: the change gate is proven to spawn **zero** subprocesses
-(`test_gateFingerprintSpawnsNoSubprocesses`), request limits are proven to clamp
-on decode so a socket caller cannot force an unbounded scan, and the subprocess
-environment is asserted non-interactive by reading what a real child actually
-receives.
+112 daemon tests, 19 mirror-contract tests, and 39 Android JVM tests, all
+passing. Notable beyond the detector and pipeline coverage: the change gate is
+proven to spawn **zero** subprocesses (`test_gateFingerprintSpawnsNoSubprocesses`),
+request limits are proven to clamp on decode so a socket caller cannot force an
+unbounded scan, and the subprocess environment is asserted non-interactive by
+reading what a real child actually receives.
+
+Two guards are worth calling out because they defend against failures that
+produce no crash, no log, and no red build:
+
+- **`AIInboxCrossPlatformContractTests`** pins the document shape across Swift,
+  Kotlin, and `firestore.rules` — three languages no compiler checks against
+  each other. It was verified by mutation: injecting a single-token drift into
+  the rules turns the suite red, and restoring it turns it green. A parity test
+  that cannot fail is worse than none, because it reads as coverage.
+- **Forward compatibility.** An unrecognized `kind` degrades to the generic
+  notice category rather than dropping the item, because the Mac ships detectors
+  ahead of the phones that read them. `state` deliberately stays strict — an
+  unknown lifecycle state would file a row under the wrong filter, which is
+  worse than omitting it.
 
 | Suite | Covers |
 |---|---|
@@ -486,6 +500,9 @@ receives.
 | `AIInboxPipelineTests` | Citation validation rejects fabricated evidence; secrets and ungrounded citations drop memory proposals; delimiter and attribute injection are neutralized; redaction across six secret formats; unparseable verdicts are never approvals; config clamping; token budgeting; `gh` decoding. |
 | `AIInboxServiceEndToEndTests` | Full publish path: P1 item with materialized evidence, two ledger events sharing a `parentRequestID`; idempotent second tick; PR auto-resolution; GitHub outage does **not** mass-resolve; refuted findings stay suppressed; only P1 notifies; the rule-based brief is useful with no model. |
 | `AIInboxSchemaParityTests` | The three DDL copies cannot drift; the partial unique index exists and is partial. |
+| `AIInboxCrossPlatformContractTests` | Swift ↔ Kotlin ↔ `firestore.rules` agree on all 9 kinds, all 4 states, both field allowlists, the feedback vocabulary, and the AAD binding. Mutation-verified. |
+| `AIInboxMirrorCodecTests` (Core) | Sealed round trip; no plaintext leaks into the document; a document replayed under a different id or uid refuses to decrypt; unknown kind degrades, unknown state drops. |
+| `AIInboxRefreshPartsTest` (Android, JVM) | Parse, join, rank, section, filter, unread counting, forward compatibility — all with no Firebase, so the logic that decides what the user sees is testable without an emulator. |
 | `AIInboxCalibrationTests` | The learning loop needs real evidence before acting, demotes by at most one band, never silences a kind, never promotes, and lets a kind recover after decay. |
 
 ```bash
