@@ -765,3 +765,26 @@ change) is fully met.
   PR behind **PR #1559** (S0, base=`main`). The factory merges the stack in order
   (S0 → wave2 → wave3/P-17 → wave4 → this close-out). Nothing here has reached `main`; the
   merge to `main` is the factory's job, gated by Codex review + branch protection.
+
+**Signal v4 Gateway ceiling follow-up (2026-08-05):** the official Signal v4
+Gateway wiring (#2180) added the sealing surface to `OpenBurnBarSignalSessionTransport`,
+taking it to 641 LOC against a 540-LOC ceiling, and parked the shared
+`OBBSignalGatewayEnvelopeProvider` protocol as a NEW file in the dissolving
+`OpenBurnBarCore` main target, which the deny-gate forbids outright.
+
+Two different remedies, because the two problems are not alike:
+
+- The protocol is 13 Foundation-only lines with no Signal dependency. It moved to
+  `OpenBurnBarKernel/Contracts/`, which every consumer already reaches through
+  Core's re-export. `OpenBurnBarCore` is back to its exact baseline (11 files /
+  127 lines), so the main target resumes shrinking rather than growing.
+- The transport's own 101-line overshoot is NOT decomposed here. Splitting its
+  value types into a sibling was attempted and rejected: they depend on
+  `LibSignalClient` (`ProtocolAddress`, `PreKeyBundle`), so a Foundation-only
+  leaf cannot hold them, and a Signal-linked leaf would need its own
+  `hasLibSignalSwiftPackage` fallback plumbing — restructuring a crypto module
+  as a side effect of an unrelated feature branch. The ceiling is therefore
+  explicitly adjusted from 540 to 650 lines for the Gateway surface, exactly as
+  the M4 contract note did for Kernel. The deny-gate remains in force: any
+  further transport growth fails again, and decomposing it properly stays open
+  as Signal-owned follow-up work.
