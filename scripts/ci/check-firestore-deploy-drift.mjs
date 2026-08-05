@@ -3,12 +3,36 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { rulesSourceForDeploy } from "./firebase-rules-source.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const project = process.env.FIREBASE_PROJECT || process.argv[2] || "burnbar";
+
+/**
+ * Resolve the directory holding the local firestore.rules,
+ * firestore.indexes.json, and storage.rules the deploy actually shipped.
+ * Precedence: explicit CLI argument, FIRESTORE_DEPLOY_SOURCE_DIR env var,
+ * then the repo checkout root. Relative paths resolve against cwd so the
+ * caller's working directory semantics match readFileSync.
+ *
+ * The trusted staging deploy ships candidate copies from a staging directory
+ * ($RUNNER_TEMP/staging-deploy), not the trusted checkout's files, so it must
+ * pass that directory explicitly or the drift gate would compare the live
+ * release against trusted main instead of the deployed candidate artifact.
+ *
+ * @param {object} opts
+ * @param {string[]} opts.argv — process.argv
+ * @param {object} opts.env — process.env
+ * @param {string} opts.repoRoot — repository root fallback
+ * @returns {string} absolute path to the deployed local sources directory
+ */
+export function resolveLocalSourceRoot({ argv, env, repoRoot: root }) {
+  const explicit = argv[3] || env.FIRESTORE_DEPLOY_SOURCE_DIR;
+  if (explicit) return resolve(explicit);
+  return resolve(root);
+}
 
 function sha256(text) {
   return createHash("sha256").update(text).digest("hex");
@@ -201,62 +225,84 @@ function deployedFirestoreIndexes() {
   return parsed.result ?? parsed;
 }
 
-const token = accessToken();
-const localRules = rulesSourceForDeploy(
-  "firestore.rules",
-  readFileSync(resolve(repoRoot, "firestore.rules"), "utf8"),
-);
-const remoteRules = await deployedRulesForRelease(
-  `projects/${project}/releases/cloud.firestore`,
-  "firestore.rules",
-  token,
-);
-const localRulesHash = sha256(localRules.trimEnd());
-const remoteRulesHash = sha256(remoteRules.trimEnd());
-if (localRulesHash !== remoteRulesHash) {
-  throw new Error(
-    `Firestore rules drift: repo=${localRulesHash} deployed=${remoteRulesHash}. Deploy firestore.rules to ${project}.`,
+async function main() {
+  // rulesSourceForDeploy compaction is idempotent, so an already-compacted
+  // candidate copy (the trusted staging deploy compacts in place) hashes the
+  // same as a raw checkout file compacted here.
+  const sourceRoot = resolveLocalSourceRoot({
+    argv: process.argv,
+    env: process.env,
+    repoRoot,
+  });
+  const token = accessToken();
+  const localRules = rulesSourceForDeploy(
+    "firestore.rules",
+    readFileSync(resolve(sourceRoot, "firestore.rules"), "utf8"),
   );
-}
-
-const localIndexes = normalizedIndexSpec(
-  JSON.parse(readFileSync(resolve(repoRoot, "firestore.indexes.json"), "utf8")),
-);
-const remoteIndexes = normalizedIndexSpec(deployedFirestoreIndexes());
-const localIndexesHash = sha256(JSON.stringify(localIndexes));
-const remoteIndexesHash = sha256(JSON.stringify(remoteIndexes));
-if (localIndexesHash !== remoteIndexesHash) {
-  throw new Error(
-    `Firestore indexes drift: repo=${localIndexesHash} deployed=${remoteIndexesHash}. Deploy firestore.indexes.json to ${project}.`,
-  );
-}
-
-// Storage rules drift: the deploy workflow ships storage.rules, so the gate
-// must watch it too (diligence 2026-06-11 LB-3 residual: the step summary
-// claimed storage in scope while only firestore was hash-checked). One local
-// file governs every bucket release.
-const localStorageRules = readFileSync(resolve(repoRoot, "storage.rules"), "utf8");
-const localStorageHash = sha256(localStorageRules.trimEnd());
-const storageReleases = await storageReleasePaths(token);
-if (storageReleases.length === 0) {
-  throw new Error(
-    `no firebase.storage releases found for ${project}; expected at least the default bucket`,
-  );
-}
-for (const releasePath of storageReleases) {
-  const remoteStorageRules = await deployedRulesForRelease(
-    releasePath,
-    "storage.rules",
+  const remoteRules = await deployedRulesForRelease(
+    `projects/${project}/releases/cloud.firestore`,
+    "firestore.rules",
     token,
   );
-  const remoteStorageHash = sha256(remoteStorageRules.trimEnd());
-  if (localStorageHash !== remoteStorageHash) {
+  const localRulesHash = sha256(localRules.trimEnd());
+  const remoteRulesHash = sha256(remoteRules.trimEnd());
+  if (localRulesHash !== remoteRulesHash) {
     throw new Error(
-      `Storage rules drift (${releasePath}): repo=${localStorageHash} deployed=${remoteStorageHash}. Deploy storage.rules to ${project}.`,
+      `Firestore rules drift: repo=${localRulesHash} deployed=${remoteRulesHash}. Deploy firestore.rules to ${project}.`,
     );
   }
+
+  const localIndexes = normalizedIndexSpec(
+    JSON.parse(
+      readFileSync(resolve(sourceRoot, "firestore.indexes.json"), "utf8"),
+    ),
+  );
+  const remoteIndexes = normalizedIndexSpec(deployedFirestoreIndexes());
+  const localIndexesHash = sha256(JSON.stringify(localIndexes));
+  const remoteIndexesHash = sha256(JSON.stringify(remoteIndexes));
+  if (localIndexesHash !== remoteIndexesHash) {
+    throw new Error(
+      `Firestore indexes drift: repo=${localIndexesHash} deployed=${remoteIndexesHash}. Deploy firestore.indexes.json to ${project}.`,
+    );
+  }
+
+  // Storage rules drift: the deploy workflow ships storage.rules, so the gate
+  // must watch it too (diligence 2026-06-11 LB-3 residual: the step summary
+  // claimed storage in scope while only firestore was hash-checked). One local
+  // file governs every bucket release.
+  const localStorageRules = readFileSync(
+    resolve(sourceRoot, "storage.rules"),
+    "utf8",
+  );
+  const localStorageHash = sha256(localStorageRules.trimEnd());
+  const storageReleases = await storageReleasePaths(token);
+  if (storageReleases.length === 0) {
+    throw new Error(
+      `no firebase.storage releases found for ${project}; expected at least the default bucket`,
+    );
+  }
+  for (const releasePath of storageReleases) {
+    const remoteStorageRules = await deployedRulesForRelease(
+      releasePath,
+      "storage.rules",
+      token,
+    );
+    const remoteStorageHash = sha256(remoteStorageRules.trimEnd());
+    if (localStorageHash !== remoteStorageHash) {
+      throw new Error(
+        `Storage rules drift (${releasePath}): repo=${localStorageHash} deployed=${remoteStorageHash}. Deploy storage.rules to ${project}.`,
+      );
+    }
+  }
+
+  console.log(
+    `firestore deploy drift ok project=${project} rules=${localRulesHash} indexes=${localIndexesHash} storage=${localStorageHash} storageReleases=${storageReleases.length}`,
+  );
 }
 
-console.log(
-  `firestore deploy drift ok project=${project} rules=${localRulesHash} indexes=${localIndexesHash} storage=${localStorageHash} storageReleases=${storageReleases.length}`,
-);
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error(`check-firestore-deploy-drift: ${err.message}`);
+    process.exit(1);
+  });
+}

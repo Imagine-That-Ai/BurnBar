@@ -230,8 +230,12 @@ jobs:
               exit "$deploy_status"
             fi
           fi
-          node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
-          node scripts/ci/verify-firestore-ttl-state.mjs "$FIREBASE_PROJECT"
+          # Verify the live release against the exact candidate artifacts this
+          # job deployed, not the trusted checkout's main files.
+          node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT" \
+            "$RUNNER_TEMP/staging-deploy"
+          node scripts/ci/verify-firestore-ttl-state.mjs "$FIREBASE_PROJECT" \
+            "$RUNNER_TEMP/staging-deploy"
 
       - name: Deploy reviewed Functions artifact
         if: ${{ inputs.deploy_functions }}
