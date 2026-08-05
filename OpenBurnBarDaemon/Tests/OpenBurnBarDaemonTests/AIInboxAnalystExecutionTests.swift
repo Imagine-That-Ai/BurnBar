@@ -215,7 +215,8 @@ final class AIInboxAnalystExecutionTests: XCTestCase {
             XCTFail("A cloud route must be refused in local-only mode")
         } catch let error as BurnBarAIInboxAnalystError {
             guard case .egressRefused(let reason) = error else {
-                return XCTFail("Expected egressRefused, got \(error)")
+                XCTFail("Expected egressRefused, got \(error)")
+                return
             }
             XCTAssertTrue(reason.contains("api.z.ai"), "The refusal names the offending host: \(reason)")
         }

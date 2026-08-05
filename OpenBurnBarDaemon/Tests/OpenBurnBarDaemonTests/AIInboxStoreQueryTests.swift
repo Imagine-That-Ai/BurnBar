@@ -272,12 +272,14 @@ final class AIInboxStoreQueryTests: XCTestCase {
     func test_optionalDateBindsAsISOTextOrNull() {
         let date = Date(timeIntervalSince1970: 1_754_300_000)
         guard case .text(let bound) = BurnBarAIInboxStore.Bind.optionalDate(date) else {
-            return XCTFail("A present date must bind as text")
+            XCTFail("A present date must bind as text")
+            return
         }
         XCTAssertEqual(bound, BurnBarAIInboxStore.string(from: date))
 
         guard case .null = BurnBarAIInboxStore.Bind.optionalDate(nil) else {
-            return XCTFail("A missing date must bind as NULL")
+            XCTFail("A missing date must bind as NULL")
+            return
         }
     }
 

@@ -145,7 +145,8 @@ final class AIInboxProcessRunnerTests: XCTestCase {
             XCTFail("A missing executable must throw")
         } catch let error as BurnBarAIInboxProcessError {
             guard case .executableNotFound(let name) = error else {
-                return XCTFail("Expected executableNotFound, got \(error)")
+                XCTFail("Expected executableNotFound, got \(error)")
+                return
             }
             XCTAssertEqual(name, missing)
         } catch {
@@ -201,7 +202,8 @@ final class AIInboxProcessRunnerTests: XCTestCase {
             XCTFail("A command outliving its timeout must throw")
         } catch let error as BurnBarAIInboxProcessError {
             guard case .timedOut(let name) = error else {
-                return XCTFail("Expected timedOut, got \(error)")
+                XCTFail("Expected timedOut, got \(error)")
+                return
             }
             XCTAssertEqual(name, "sleep")
         } catch {

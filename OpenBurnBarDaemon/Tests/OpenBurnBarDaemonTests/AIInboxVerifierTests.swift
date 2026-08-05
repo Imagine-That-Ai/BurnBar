@@ -294,13 +294,15 @@ final class AIInboxVerifierTests: XCTestCase {
     func test_egressGuardRefusesEndpointsWithoutAResolvableHost() {
         let blank = BurnBarAIInboxEgressGuard.evaluate(baseURL: "   ", mode: .local)
         guard case .refused(let blankReason) = blank else {
-            return XCTFail("A hostless endpoint must be refused in local mode")
+            XCTFail("A hostless endpoint must be refused in local mode")
+            return
         }
         XCTAssertTrue(blankReason.contains("no resolvable host"))
 
         let pathOnly = BurnBarAIInboxEgressGuard.evaluate(baseURL: "/", mode: .local)
         guard case .refused = pathOnly else {
-            return XCTFail("A bare path must be refused in local mode")
+            XCTFail("A bare path must be refused in local mode")
+            return
         }
         XCTAssertNil(BurnBarAIInboxEgressGuard.host(from: "/"))
         XCTAssertNil(BurnBarAIInboxEgressGuard.host(from: ""))
