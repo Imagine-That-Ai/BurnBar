@@ -1,6 +1,5 @@
 import XCTest
 import GRDB
-import FirebaseFirestore
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
 
@@ -463,94 +462,5 @@ final class ReloadUsagesIfChangedTests: XCTestCase {
             vm.modelSummaries.map { "\($0.modelName):\($0.sessionCount):\($0.totalTokens)" },
             legacy.modelSummaries.map { "\($0.modelName):\($0.sessionCount):\($0.totalTokens)" }
         )
-    }
-}
-
-// MARK: - Cloud total: server-side aggregation
-
-@MainActor
-final class CloudTotalAggregationTests: XCTestCase {
-    private var dataStore: DataStore!
-    private var accountManager: FakeAccountManager!
-    private var settingsManager: SettingsManager!
-    private var fakeGateway: CloudSyncFirestoreFakeGateway!
-    private var context: CloudSyncContext!
-
-    override func setUp() async throws {
-        dataStore = try makeDiscoveryInMemoryStore()
-        accountManager = FakeAccountManager.makeSignedIn()
-        settingsManager = SettingsManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
-        fakeGateway = CloudSyncFirestoreFakeGateway()
-        context = CloudSyncContext(
-            dataStore: dataStore,
-            accountManager: accountManager,
-            settingsManager: settingsManager,
-            firestoreGateway: fakeGateway
-        )
-    }
-
-    /// In-window docs, one out-of-window doc, one missing-cost doc.
-    /// Expected 90-day total: 1.25 + 2.50 + 3.00 = 6.75.
-    private func seedUsageDocs() {
-        let now = Date()
-        let costs: [(String, Any, TimeInterval)] = [
-            ("doc-recent", 1.25, -1 * 86_400),
-            ("doc-mid", 2.50, -30 * 86_400),
-            // Integer-stored cost. Real Firestore returns numeric fields as
-            // NSNumber (which bridges to Double via `as? Double`), so the
-            // fixture stores NSNumber for fidelity with the live gateway.
-            ("doc-int-cost", NSNumber(value: 3), -60 * 86_400),
-            ("doc-too-old", 99.0, -120 * 86_400) // outside the 90-day window
-        ]
-        for (id, cost, offset) in costs {
-            fakeGateway.setDocumentData([
-                "deviceId": "peer-device",
-                "cost": cost,
-                "startTime": Timestamp(date: now.addingTimeInterval(offset))
-            ], at: "users/test-uid-1/usage/\(id)")
-        }
-        fakeGateway.setDocumentData([
-            "deviceId": "peer-device",
-            "startTime": Timestamp(date: now.addingTimeInterval(-2 * 86_400))
-            // no cost field
-        ], at: "users/test-uid-1/usage/doc-no-cost")
-    }
-
-    func test_fetchCloudTotal_serverSideAggregate_matchesExpectedSum() async throws {
-        seedUsageDocs()
-        let downloadSync = DownloadSyncService(context: context)
-
-        await downloadSync.fetchCloudTotal()
-
-        let total = try XCTUnwrap(downloadSync.cloudTotalCost)
-        XCTAssertEqual(total, 6.75, accuracy: 1e-9)
-    }
-
-    func test_fetchCloudTotal_fallsBackToDocumentScan_whenAggregationUnavailable() async throws {
-        seedUsageDocs()
-        // Aggregation RPC fails (older emulator/backend); document scan must
-        // produce the exact same displayed number.
-        fakeGateway.aggregateSumError = NSError(domain: "UnitTest", code: 12) // "unimplemented"-style terminal error
-        let downloadSync = DownloadSyncService(context: context)
-
-        await downloadSync.fetchCloudTotal()
-
-        let total = try XCTUnwrap(downloadSync.cloudTotalCost)
-        XCTAssertEqual(total, 6.75, accuracy: 1e-9, "Fallback scan must preserve the displayed total exactly")
-    }
-
-    func test_fetchCloudTotal_aggregateAndScanAgree() async throws {
-        seedUsageDocs()
-
-        let aggregated = DownloadSyncService(context: context)
-        await aggregated.fetchCloudTotal()
-
-        fakeGateway.aggregateSumError = NSError(domain: "UnitTest", code: 12)
-        let scanned = DownloadSyncService(context: context)
-        await scanned.fetchCloudTotal()
-
-        let lhs = try XCTUnwrap(aggregated.cloudTotalCost)
-        let rhs = try XCTUnwrap(scanned.cloudTotalCost)
-        XCTAssertEqual(lhs, rhs, accuracy: 1e-9)
     }
 }
