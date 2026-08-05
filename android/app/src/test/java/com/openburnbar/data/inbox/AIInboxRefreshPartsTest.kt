@@ -153,7 +153,8 @@ class AIInboxRefreshPartsTest {
         val item = parseAIInboxDocument(future, "item-1", uid, vaultKey)
 
         assertNotNull("An unrecognized kind must not drop the item", item)
-        assertEquals(AIInboxItemKind.SYSTEM, item!!.kind)
+        requireNotNull(item)
+        assertEquals(AIInboxItemKind.SYSTEM, item.kind)
         // Everything except the category survives intact.
         assertEquals("CI is burning cycles on the iOS lane", item.title)
         assertEquals(AIInboxPriority.P2, item.priority)
@@ -221,7 +222,8 @@ class AIInboxRefreshPartsTest {
         val item = parseAIInboxDocument(document, "item-1", uid, vaultKey)
 
         assertNotNull(item)
-        assertEquals(AIInboxItemKind.SYSTEM, item!!.kind)
+        requireNotNull(item)
+        assertEquals(AIInboxItemKind.SYSTEM, item.kind)
     }
 
     @Test

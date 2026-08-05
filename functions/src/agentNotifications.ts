@@ -48,14 +48,16 @@ export const AGENT_NOTIFICATION_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // this union through createNotificationEvent's parameter type.
 type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat" | "ai_inbox_item";
 
-const NOTIFICATION_SOURCE_KINDS: readonly AgentNotificationSourceKind[] = [
+// A Set<string> accepts an `unknown` narrowed to string without any cast, so
+// the membership test alone establishes the type.
+const NOTIFICATION_SOURCE_KINDS: ReadonlySet<string> = new Set<string>([
   "cli_session",
   "mobile_assistant_chat",
   "ai_inbox_item",
-];
+] satisfies readonly AgentNotificationSourceKind[]);
 
 function isNotificationSourceKind(raw: unknown): raw is AgentNotificationSourceKind {
-  return NOTIFICATION_SOURCE_KINDS.includes(raw as AgentNotificationSourceKind);
+  return typeof raw === "string" && NOTIFICATION_SOURCE_KINDS.has(raw);
 }
 
 interface AgentReplyMessage {

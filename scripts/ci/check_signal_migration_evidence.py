@@ -176,7 +176,9 @@ def validate_evidence(
         fail("byCollection keys do not match requiredCollections")
     collection_sum = zero_counts()
     for collection in sorted(EXPECTED_COLLECTIONS):
-        counts = validate_counts(require_record(by_collection[collection], f"byCollection.{collection}"), f"byCollection.{collection}")
+        counts = validate_counts(
+            require_record(by_collection[collection], f"byCollection.{collection}"), f"byCollection.{collection}"
+        )
         content_writes = counts["createWrites"] + counts["updateWrites"]
         if content_writes <= 0:
             fail(f"{collection} has no observed create/update traffic")
@@ -199,7 +201,9 @@ def validate_evidence(
         fail("byProducer keys must contain only ios/macos/android/unknown")
     producer_sum = zero_counts()
     for producer in sorted(EXPECTED_PRODUCERS):
-        counts = validate_counts(require_record(by_producer[producer], f"byProducer.{producer}"), f"byProducer.{producer}")
+        counts = validate_counts(
+            require_record(by_producer[producer], f"byProducer.{producer}"), f"byProducer.{producer}"
+        )
         if producer != "unknown" and counts["signalSealedWrites"] <= 0:
             fail(f"producer {producer} has no Signal-sealed production traffic")
         add_counts(producer_sum, counts)
