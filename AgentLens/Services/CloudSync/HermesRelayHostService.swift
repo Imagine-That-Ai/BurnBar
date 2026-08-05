@@ -11,6 +11,8 @@ import OpenBurnBarMedia
 @MainActor
 final class HermesRelayHostService {
     private static let relayHostInstallationIDDefaultsKey = "com.openburnbar.hermesRelayHostInstallationId"
+    static let activeRelayRefreshInterval: TimeInterval = 30
+    static let backgroundRelayRefreshInterval: TimeInterval = 120
 
     private let db: Firestore
     private let accountManager: AccountManager
@@ -180,12 +182,39 @@ final class HermesRelayHostService {
             )
         }
         transfer.setMercuryControlStreamCloseHandler { @Sendable _, connectionID, controlStreamID, removedLast in
-            await router.handleControlStreamClosed(
-                connectionID: connectionID,
-                controlStreamID: controlStreamID,
-                removedLastStreamForConnection: removedLast
+            await Self.handleMercuryControlStreamClose(
+                removedLastStreamForConnection: removedLast,
+                routeClose: {
+                    await router.handleControlStreamClosed(
+                        connectionID: connectionID,
+                        controlStreamID: controlStreamID,
+                        removedLastStreamForConnection: removedLast
+                    )
+                },
+                schedulePairingRefresh: { [weak self] in
+                    Task { @MainActor [weak self] in
+                        await self?.refreshPairingAfterLastControlStreamClosed(
+                            connectionID: connectionID
+                        )
+                    }
+                }
             )
         }
+    }
+
+    static func handleMercuryControlStreamClose(
+        removedLastStreamForConnection: Bool,
+        routeClose: @MainActor @Sendable () async -> Void,
+        schedulePairingRefresh: @MainActor @Sendable () -> Void
+    ) async {
+        await routeClose()
+        guard removedLastStreamForConnection else { return }
+        schedulePairingRefresh()
+    }
+
+    private func refreshPairingAfterLastControlStreamClosed(connectionID: String) async {
+        guard connectionID == self.connectionID else { return }
+        await refreshRelayHost()
     }
 
     var legacyConnectionID: String {
@@ -204,16 +233,16 @@ final class HermesRelayHostService {
 
     func start() {
         guard heartbeatTask == nil else { return }
-        // Coordinator-managed: 30 s active, 5 min in the background,
-        // paused on display sleep, gated on cloud sync being enabled.
-        // The relay host heartbeat is a Firestore write — exactly the
-        // class of background work that should not run on a sleeping
-        // laptop.
+        // Pairing records are accepted for only three minutes. Keep the
+        // background refresh safely inside that signed freshness window so a
+        // phone can reconnect after a transient stream loss without seeing an
+        // expired-but-still-advertised host record. Display sleep remains
+        // paused and cloud sync remains the enablement gate.
         BackgroundCadenceCoordinator.shared.register(
             BackgroundCadenceCoordinator.Cadence(
                 id: Self.cadenceIDHermesHeartbeat,
-                activeInterval: 30,
-                backgroundInterval: 300,
+                activeInterval: Self.activeRelayRefreshInterval,
+                backgroundInterval: Self.backgroundRelayRefreshInterval,
                 sleepInterval: nil,
                 isEnabled: { [weak self] in
                     self?.accountManager.isCloudSyncEnabled ?? false

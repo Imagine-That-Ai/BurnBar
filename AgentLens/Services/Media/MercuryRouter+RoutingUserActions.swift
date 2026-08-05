@@ -12,6 +12,7 @@ extension MercuryRouter {
 
     /// User tapped "Accept" on the incoming-call sheet.
     func acceptMirror(_ request: PendingRequest) async {
+        guard pendingRequestMatchesUserAction(request) else { return }
         if let mirrorRequest = request.frame.media?.mirrorRequest {
             consentStore.rememberAcceptedPeer(
                 connectionId: request.frame.connectionId,
@@ -25,6 +26,7 @@ extension MercuryRouter {
     }
 
     func acceptMirrorWithAgentTerminal(_ request: PendingRequest) async {
+        guard pendingRequestMatchesUserAction(request) else { return }
         if let mirrorRequest = request.frame.media?.mirrorRequest {
             consentStore.rememberAcceptedPeer(
                 connectionId: request.frame.connectionId,
@@ -39,6 +41,7 @@ extension MercuryRouter {
 
     /// User tapped "Decline" on the incoming-call sheet.
     func declineMirror(_ request: PendingRequest) async {
+        guard pendingRequestMatchesUserAction(request) else { return }
         await respond(
             requestID: request.id,
             decision: .denied,
@@ -48,6 +51,13 @@ extension MercuryRouter {
         )
         pendingRequest = nil
         startCooldown(seconds: Int(cooldownSeconds))
+    }
+
+    private func pendingRequestMatchesUserAction(_ request: PendingRequest) -> Bool {
+        guard let current = pendingRequest else { return false }
+        return current.id == request.id
+            && current.frame.connectionId == request.frame.connectionId
+            && current.controlStreamID == request.controlStreamID
     }
 
     /// User tapped "Accept" on a phone-originated call invite. This acks

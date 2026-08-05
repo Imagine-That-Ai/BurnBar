@@ -7,6 +7,29 @@ import SQLite3
 import XCTest
 
 final class BurnBarDaemonServerTests: XCTestCase {
+    /// Daemon state is redirected into a throwaway directory so these tests can
+    /// neither read nor corrupt the developer's real profile. See
+    /// `DaemonSupportDirectoryIsolation` for why this is load-bearing.
+    private var isolatedSupportDirectory: URL?
+    private var previousSupportDirectory: String?
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        let isolation = try DaemonSupportDirectoryIsolation.activate(label: "server")
+        isolatedSupportDirectory = isolation.directory
+        previousSupportDirectory = isolation.previous
+    }
+
+    override func tearDownWithError() throws {
+        DaemonSupportDirectoryIsolation.deactivate(
+            directory: isolatedSupportDirectory,
+            previous: previousSupportDirectory
+        )
+        isolatedSupportDirectory = nil
+        previousSupportDirectory = nil
+        try super.tearDownWithError()
+    }
+
     func testDaemonBootsRespondsToHealthAndCleansUpSocketOnShutdown() async throws {
         let socketPath = makeSocketPath(name: "health")
         let server = BurnBarDaemonServer(

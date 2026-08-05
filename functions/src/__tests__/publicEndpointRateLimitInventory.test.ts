@@ -28,6 +28,15 @@ const SIGNATURE_PROTECTED_WEBHOOKS = new Set([
   "stripeBurnBarProWebhook",
 ]);
 
+// Provider notifications delivered over a project-owned Pub/Sub topic rather
+// than a public HTTPS URL. These are catalogued as `provider-webhook` because
+// the trust story is the same (the provider is the only legitimate caller), but
+// they expose no internet-reachable endpoint at all: publishing to the topic
+// requires roles/pubsub.publisher on our project, which is a strictly stronger
+// control than a signature check and leaves nothing for a product-layer rate
+// limit to protect.
+const PROVIDER_TOPIC_TRIGGERS = new Set(["googlePlayDeveloperNotifications"]);
+
 // Low-cost public endpoints that are read-only / cache-backed and explicitly
 // exempted from product-layer rate limits. Any addition here must be justified
 // in the catalog's publicJustification field.
@@ -35,10 +44,7 @@ const DOCUMENTED_EXEMPTIONS = new Set<string>([]);
 
 describe("public endpoint rate-limit inventory", () => {
   const publicEntries = endpointAuthorizationCatalog.filter(
-    (e) =>
-      e.publicJustification != null ||
-      e.trigger === "http" ||
-      e.trigger === "provider-webhook",
+    (e) => e.publicJustification != null || e.trigger === "http" || e.trigger === "provider-webhook",
   );
 
   it("every public endpoint has a control", () => {
@@ -47,8 +53,9 @@ describe("public endpoint rate-limit inventory", () => {
       const name = entry.exportedName;
       const hasRateLimit = RATE_LIMITED_NAMES.has(name as (typeof RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS)[number]);
       const isWebhook = SIGNATURE_PROTECTED_WEBHOOKS.has(name);
+      const isTopicTrigger = PROVIDER_TOPIC_TRIGGERS.has(name);
       const isExempt = DOCUMENTED_EXEMPTIONS.has(name);
-      if (!hasRateLimit && !isWebhook && !isExempt) {
+      if (!hasRateLimit && !isWebhook && !isTopicTrigger && !isExempt) {
         uncontrolled.push(name);
       }
     }
@@ -72,9 +79,21 @@ describe("per-uid rate limit call-site coverage", () => {
    */
   const CALLABLES_REQUIRING_UID_RATE_LIMIT: Array<{ exportedName: string; checker: string; module: string }> = [
     { exportedName: "triggerVoIPCall", checker: "checkVoIPCallRateLimit", module: "callables/voipPush.ts" },
-    { exportedName: "searchKnowledge", checker: "checkKnowledgeSearchRateLimit", module: "callables/knowledgeSearch.ts" },
-    { exportedName: "submitAgentNotificationReply", checker: "checkAgentNotificationReplyRateLimit", module: "callables/agentNotifications.ts" },
-    { exportedName: "insightsHostedAnswer", checker: "checkHostedInsightsAnswerRateLimit", module: "insightsHostedAnswer.ts" },
+    {
+      exportedName: "searchKnowledge",
+      checker: "checkKnowledgeSearchRateLimit",
+      module: "callables/knowledgeSearch.ts",
+    },
+    {
+      exportedName: "submitAgentNotificationReply",
+      checker: "checkAgentNotificationReplyRateLimit",
+      module: "callables/agentNotifications.ts",
+    },
+    {
+      exportedName: "insightsHostedAnswer",
+      checker: "checkHostedInsightsAnswerRateLimit",
+      module: "insightsHostedAnswer.ts",
+    },
   ];
 
   for (const entry of CALLABLES_REQUIRING_UID_RATE_LIMIT) {
@@ -82,7 +101,9 @@ describe("per-uid rate limit call-site coverage", () => {
       const source = readFileSync(resolve(SRC_DIR, entry.module), "utf8");
 
       const importPattern = new RegExp(`import.*${entry.checker}.*from.*publicRateLimit`);
-      expect(importPattern.test(source), `${entry.module} must import ${entry.checker} from publicRateLimit`).toBe(true);
+      expect(importPattern.test(source), `${entry.module} must import ${entry.checker} from publicRateLimit`).toBe(
+        true,
+      );
 
       const callPattern = new RegExp(`(?:await\\s+)?${entry.checker}\\(`);
       expect(callPattern.test(source), `${entry.module} must call ${entry.checker}`).toBe(true);

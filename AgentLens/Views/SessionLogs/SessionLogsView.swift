@@ -90,7 +90,7 @@ struct SessionLogsView: View {
     private var mainLayout: some View {
         HStack(spacing: 0) {
             commandCenter
-                .frame(width: 340)
+                .frame(width: 360)
                 .frame(minHeight: 0, maxHeight: .infinity)
 
             Divider().background(DesignSystem.Colors.border)

@@ -114,12 +114,25 @@ private final class IndexedSearchHarness: @unchecked Sendable {
         try? FileManager.default.removeItem(at: tempDir)
     }
 
+    /// Seeds the fixture database.
+    ///
+    /// The key application is not optional. `BurnBarIndexedSearchService` calls
+    /// `BurnBarDaemonDatabaseCipher.applyKeyIfAvailable` right after opening, and
+    /// on a machine that has BOTH a linked SQLCipher codec and a provisioned
+    /// database key in the Keychain — i.e. any real dev Mac — that call keys the
+    /// handle. A fixture written as plaintext then reads back as ciphertext and
+    /// the service fails with "file is not a database" (SQLITE_NOTADB, 26).
+    ///
+    /// So the writer must key the handle exactly as the reader will. This is a
+    /// no-op on a stock-SQLite build or a machine with no provisioned key, which
+    /// is why the same test passed in environments without one.
     private static func createDatabase(at url: URL) throws {
         var db: OpaquePointer?
         guard sqlite3_open(url.path, &db) == SQLITE_OK, let db else {
             throw NSError(domain: "IndexedSearchHarness", code: 1)
         }
         defer { sqlite3_close(db) }
+        try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(to: db)
 
         try exec(db, """
         CREATE TABLE search_documents (

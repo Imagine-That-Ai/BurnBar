@@ -31,6 +31,15 @@ struct CompactSessionRow: View {
         return date.relativeLabel
     }
 
+    /// `~/Documents/Developer/imaginethat-llc` → `imaginethat-llc`. The full
+    /// path stays available on hover so nothing is lost.
+    private var projectLeafName: String {
+        let trimmed = record.projectName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return record.projectName }
+        let leaf = trimmed.split(separator: "/").last.map(String.init) ?? trimmed
+        return leaf.isEmpty ? trimmed : leaf
+    }
+
     private var displayTitle: String {
         if let summaryTitle = record.summaryTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
            !summaryTitle.isEmpty {
@@ -73,8 +82,11 @@ struct CompactSessionRow: View {
                     HStack(spacing: DesignSystem.Spacing.xxs) {
                         Text(displayTitle)
                             .font(DesignSystem.Typography.caption)
+                            .fontWeight(isSelected ? .semibold : .regular)
                             .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
                             .lineLimit(1)
+                            .truncationMode(.tail)
+                            .layoutPriority(1)
 
                         if let label = shortModelLabel {
                             Text(label)
@@ -93,10 +105,13 @@ struct CompactSessionRow: View {
                                 .lineLimit(1)
                             Text("·")
                         }
-                        Text(record.projectName)
+                        Text(projectLeafName)
                             .lineLimit(1)
+                            .truncationMode(.middle)
                         Text("·")
                         Text("\(record.messageCount) msgs")
+                            .monospacedDigit()
+                            .layoutPriority(1)
                     }
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -109,12 +124,19 @@ struct CompactSessionRow: View {
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
             .padding(.horizontal, DesignSystem.Spacing.sm)
-            .padding(.vertical, DesignSystem.Spacing.xs)
+            .padding(.vertical, DesignSystem.Spacing.xs + 1)
             .background(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm)
-                    .fill(isSelected ? accentColor.opacity(0.08) : Color.clear)
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(isSelected ? accentColor.opacity(0.12) : Color.clear)
             )
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(isSelected ? accentColor : Color.clear)
+                    .frame(width: 2)
+                    .padding(.vertical, 3)
+            }
             .contentShape(Rectangle())
+            .help(record.projectName)
         }
         .buttonStyle(.plain)
         .contextMenu {

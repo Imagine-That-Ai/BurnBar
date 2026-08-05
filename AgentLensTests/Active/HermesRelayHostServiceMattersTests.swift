@@ -1,6 +1,7 @@
 import XCTest
 import Security
 import OpenBurnBarCore
+import OpenBurnBarIrohRelay
 @testable import OpenBurnBar
 
 /// Focused coverage for the `try?` error-swallow sites in
@@ -17,6 +18,37 @@ import OpenBurnBarCore
 ///   when the stored bytes are genuinely unrecoverable.
 final class HermesRelayHostServiceMattersTests: XCTestCase {
     private let relayAccount = "settings.chat.hermes.relay.p256.v1"
+
+    func test_pairingRefreshCadenceStaysInsideSignedRecordFreshnessWindow() {
+        XCTAssertLessThan(
+            HermesRelayHostService.backgroundRelayRefreshInterval,
+            IrohPairingFreshness.maximumAgeSeconds
+        )
+        XCTAssertLessThanOrEqual(
+            HermesRelayHostService.activeRelayRefreshInterval,
+            HermesRelayHostService.backgroundRelayRefreshInterval
+        )
+    }
+
+    @MainActor
+    func test_controlStreamCloseRefreshesPairingOnlyAfterLastSiblingCloses() async {
+        var events: [String] = []
+
+        await HermesRelayHostService.handleMercuryControlStreamClose(
+            removedLastStreamForConnection: false,
+            routeClose: { events.append("route") },
+            schedulePairingRefresh: { events.append("schedule") }
+        )
+        XCTAssertEqual(events, ["route"])
+
+        events.removeAll()
+        await HermesRelayHostService.handleMercuryControlStreamClose(
+            removedLastStreamForConnection: true,
+            routeClose: { events.append("route") },
+            schedulePairingRefresh: { events.append("schedule") }
+        )
+        XCTAssertEqual(events, ["route", "schedule"])
+    }
 
     @MainActor
     func test_relayFallbackListenerStartsBeforePotentiallySlowConnectionPublish() async {

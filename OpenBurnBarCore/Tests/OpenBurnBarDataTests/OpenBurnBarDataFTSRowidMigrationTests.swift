@@ -20,14 +20,14 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
     func test_migrator_latestIdentifier_isV57ExecutionSourceAttribution() {
         XCTAssertEqual(
             OpenBurnBarDatabase.latestMigrationIdentifier,
-            "v57_execution_source_attribution"
+            "v58_ai_inbox"
         )
         XCTAssertTrue(
             OpenBurnBarDatabase.migrator.migrations.contains("v56_parser_checkpoint_file_manifest"),
             "registerParserCheckpointFileManifestMigration must be wired into the migrator"
         )
         XCTAssertTrue(
-            OpenBurnBarDatabase.migrator.migrations.contains("v57_execution_source_attribution"),
+            OpenBurnBarDatabase.migrator.migrations.contains("v58_ai_inbox"),
             "registerExecutionSourceAttributionMigration must be wired into the migrator"
         )
     }

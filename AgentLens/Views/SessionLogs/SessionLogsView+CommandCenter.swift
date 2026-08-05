@@ -7,27 +7,27 @@ extension SessionLogsView {
     var commandCenter: some View {
         VStack(spacing: 0) {
             statsHeader
-                .padding(.horizontal, DesignSystem.Spacing.lg)
-                .padding(.top, DesignSystem.Spacing.lg)
-                .padding(.bottom, DesignSystem.Spacing.md)
+                .padding(.horizontal, DesignSystem.Spacing.md)
+                .padding(.top, DesignSystem.Spacing.md)
+                .padding(.bottom, DesignSystem.Spacing.sm)
 
             searchBar
-                .padding(.horizontal, DesignSystem.Spacing.lg)
+                .padding(.horizontal, DesignSystem.Spacing.md)
                 .padding(.bottom, DesignSystem.Spacing.sm)
 
             filterBar
-                .padding(.horizontal, DesignSystem.Spacing.lg)
-                .padding(.bottom, hasMultipleDevices ? DesignSystem.Spacing.xs : DesignSystem.Spacing.md)
+                .padding(.horizontal, DesignSystem.Spacing.md)
+                .padding(.bottom, hasAnyDevices ? DesignSystem.Spacing.sm : DesignSystem.Spacing.md)
 
             if hasAnyDevices {
                 deviceFilterBar
-                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                    .padding(.horizontal, DesignSystem.Spacing.md)
                     .padding(.bottom, DesignSystem.Spacing.md)
             }
 
             if dataSource == .local, !visibleDegradedModes.isEmpty {
                 retrievalDegradedModeBanner
-                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                    .padding(.horizontal, DesignSystem.Spacing.md)
                     .padding(.bottom, DesignSystem.Spacing.md)
             }
 
@@ -71,40 +71,54 @@ extension SessionLogsView {
     // MARK: - Stats Header
 
     private var statsHeader: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            HStack(spacing: DesignSystem.Spacing.xs) {
+        let providerCount = Set(filteredLogs.map(\.provider)).count
+        let projectCount = Set(filteredLogs.map(\.projectName)).count
+
+        return VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.xs) {
                 Image(systemName: "scroll")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(DesignSystem.Colors.ember)
                 Text("Session Logs")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                     .textCase(.uppercase)
+                    .tracking(0.6)
+
+                Spacer(minLength: 0)
+
+                Text("\(filteredLogs.count.formatted())")
+                    .font(DesignSystem.Typography.monoSmall)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .monospacedDigit()
             }
 
-            Text("\(filteredLogs.count) log\(filteredLogs.count == 1 ? "" : "s")")
-                .font(DesignSystem.Typography.headline)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-            HStack(spacing: DesignSystem.Spacing.lg) {
-                let providerCount = Set(filteredLogs.map(\.provider)).count
-                let projectCount = Set(filteredLogs.map(\.projectName)).count
-                statPill(value: "\(providerCount)", label: "providers")
-                statPill(value: "\(projectCount)", label: "projects")
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                statPill(value: providerCount, label: "provider")
+                dotSeparator
+                statPill(value: projectCount, label: "project")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func statPill(value: String, label: String) -> some View {
+    private var dotSeparator: some View {
+        Circle()
+            .fill(DesignSystem.Colors.textMuted.opacity(0.35))
+            .frame(width: 2, height: 2)
+    }
+
+    private func statPill(value: Int, label: String) -> some View {
         HStack(spacing: DesignSystem.Spacing.xxs) {
-            Text(value)
+            Text("\(value)")
                 .font(DesignSystem.Typography.monoSmall)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-            Text(label)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .monospacedDigit()
+            Text(value == 1 ? label : label + "s")
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
         }
+        .fixedSize()
     }
 
     // MARK: - Search Bar
@@ -115,10 +129,11 @@ extension SessionLogsView {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(DesignSystem.Colors.textMuted)
 
-            TextField("Search by title, project, provider, or keyword…", text: $searchText)
+            TextField("Search sessions…", text: $searchText)
                 .font(DesignSystem.Typography.caption)
                 .textFieldStyle(.plain)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .help("Search by title, project, provider, or keyword")
 
             if !searchText.isEmpty {
                 Button {
@@ -150,22 +165,33 @@ extension SessionLogsView {
     // MARK: - Filter Bar
 
     private var filterBar: some View {
-        HStack(spacing: DesignSystem.Spacing.xs) {
-            ForEach(SessionLogSourceFilter.allCases) { filter in
-                sourceFilterButton(filter)
+        VStack(spacing: DesignSystem.Spacing.xs) {
+            // Scope segments own a full row so their labels never compress into
+            // vertical letters when the rail is narrow.
+            HStack(spacing: 2) {
+                ForEach(SessionLogSourceFilter.allCases) { filter in
+                    sourceFilterButton(filter)
+                }
             }
+            .padding(2)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.4))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .strokeBorder(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5)
+            )
 
-            Spacer()
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                groupModePicker
 
-            groupModePicker
+                Spacer(minLength: 0)
 
-            if hasMultipleDevices {
-                deviceFilterMenu
+                exportButton
+
+                dataSourceMenu
             }
-
-            exportButton
-
-            dataSourceMenu
         }
     }
 
@@ -200,17 +226,20 @@ extension SessionLogsView {
         } label: {
             Text(filter.rawValue)
                 .font(DesignSystem.Typography.tiny)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
                 .foregroundStyle(isActive ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textMuted)
-                .padding(.horizontal, DesignSystem.Spacing.md)
+                .frame(maxWidth: .infinity)
                 .padding(.vertical, DesignSystem.Spacing.xs)
                 .background(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.full, style: .continuous)
-                        .fill(isActive ? AnyShapeStyle(accent.opacity(0.18)) : AnyShapeStyle(DesignSystem.Colors.surfaceElevated.opacity(0.4)))
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(isActive ? AnyShapeStyle(accent.opacity(0.18)) : AnyShapeStyle(Color.clear))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.full, style: .continuous)
-                        .strokeBorder(isActive ? accent.opacity(0.45) : DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .strokeBorder(isActive ? accent.opacity(0.4) : Color.clear, lineWidth: 0.5)
                 )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -252,36 +281,6 @@ extension SessionLogsView {
         .help("Group by \(mode.rawValue.lowercased())")
     }
 
-    private var deviceFilterMenu: some View {
-        Menu {
-            Button {
-                withAnimation(DesignSystem.Animation.snappy) {
-                    deviceFilter = nil
-                }
-            } label: {
-                Label("All Devices", systemImage: "desktopcomputer")
-            }
-            Divider()
-            ForEach(knownDevices) { device in
-                Button {
-                    withAnimation(DesignSystem.Animation.snappy) {
-                        deviceFilter = device.deviceId
-                    }
-                } label: {
-                    Label(device.deviceName, systemImage: device.sfSymbolName)
-                }
-            }
-        } label: {
-            filterIconButton(
-                systemImage: "desktopcomputer",
-                isActive: deviceFilter != nil,
-                activeColor: DesignSystem.Colors.teal
-            )
-        }
-        .menuStyle(.borderlessButton)
-        .help(activeDeviceName)
-    }
-
     private var dataSourceMenu: some View {
         Menu {
             ForEach(SessionLogDataSource.allCases) { source in
@@ -313,11 +312,6 @@ extension SessionLogsView {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(isActive ? activeColor.opacity(0.12) : Color.clear)
             )
-    }
-
-    private var activeDeviceName: String {
-        guard let deviceFilter else { return "All Devices" }
-        return knownDevices.first { $0.deviceId == deviceFilter }?.deviceName ?? "All Devices"
     }
 
     private func filterAccent(for filter: SessionLogSourceFilter) -> Color {
@@ -460,39 +454,50 @@ extension SessionLogsView {
                 }
             }
         } label: {
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(group.accentColor)
-                    .frame(width: 12, alignment: .center)
+            HStack(spacing: DesignSystem.Spacing.xs + 2) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .frame(width: 10, alignment: .center)
 
                 if let provider = group.provider {
-                    ProviderLogoView(provider: provider, size: 16, useFallbackColor: true)
+                    ProviderLogoView(provider: provider, size: 13, useFallbackColor: true)
                 } else {
                     Image(systemName: group.systemImage)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(group.accentColor)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(group.accentColor.opacity(0.85))
+                        .frame(width: 13)
                 }
 
                 Text(group.title)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .font(DesignSystem.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .textCase(.uppercase)
+                    .tracking(0.5)
+                    .foregroundStyle(
+                        isExpanded ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textMuted
+                    )
                     .lineLimit(1)
 
-                Spacer()
+                Spacer(minLength: DesignSystem.Spacing.xs)
 
                 Text("\(group.logs.count)")
                     .font(DesignSystem.Typography.monoSmall)
-                    .foregroundStyle(group.accentColor)
-                    .padding(.horizontal, DesignSystem.Spacing.sm)
-                    .padding(.vertical, 2)
-                    .background(
-                        Capsule().fill(group.accentColor.opacity(0.12))
-                    )
+                    .monospacedDigit()
+                    .foregroundStyle(group.accentColor.opacity(0.9))
             }
-            .padding(.horizontal, DesignSystem.Spacing.lg)
-            .padding(.vertical, DesignSystem.Spacing.sm)
-            .background(DesignSystem.Colors.surface.opacity(0.95))
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.xs + 1)
+            .background(
+                DesignSystem.Colors.surface
+                    .opacity(0.96)
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(DesignSystem.Colors.border.opacity(isExpanded ? 0.0 : 0.25))
+                            .frame(height: 0.5)
+                    }
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -543,7 +548,8 @@ extension SessionLogsView {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.horizontal, DesignSystem.Spacing.sm)
+        .padding(.top, DesignSystem.Spacing.xxs)
         .padding(.bottom, DesignSystem.Spacing.sm)
         .transition(.opacity)
     }

@@ -689,8 +689,26 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
                 stderr: ""
             )
         )
+        // `/v1/models` builds a LIVE catalog, which shells out to `droid` unless a
+        // runner is injected. Without this stub the assertions below depend on
+        // whether the developer happens to have `droid` installed and what their
+        // account advertises — so the test passed on a clean machine and failed on
+        // one with a real Factory install. The model list must come from the
+        // fixture, not from the host.
+        let catalogRunner = RecordingFactoryDroidRunner(
+            result: FactoryDroidProcessResult(
+                exitCode: 0,
+                stdout: """
+                Available Models:
+                  gpt-5.5                                                   GPT-5.5
+                  glm-5.1                                                   Droid Core (GLM-5.1)
+                """,
+                stderr: ""
+            )
+        )
         let harness = try GatewayHarness(
-            factoryExecutor: FactoryDroidProviderExecutor(runner: runner, timeout: 1)
+            factoryExecutor: FactoryDroidProviderExecutor(runner: runner, timeout: 1),
+            modelCatalogDroidProcessRunner: catalogRunner
         )
         try await harness.configureFactoryProviderForGateway()
         try await harness.start()
