@@ -31,7 +31,7 @@ def test_license_posture_workflow_runs_all_release_gates() -> None:
 
     assert "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2" in workflow
     assert "actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5" in workflow
-    assert "dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1" in workflow
+    assert "dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # v1" in workflow
     assert 'toolchain: "1.96.0"' in workflow
     assert "python scripts/ci/check_burnbar_license_posture.py" in workflow
     assert "python scripts/ci/check_libsignal_runtime_readiness.py" in workflow
