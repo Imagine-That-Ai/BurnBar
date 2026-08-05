@@ -91,16 +91,18 @@ final class DashboardViewIntegrationTests: XCTestCase {
         XCTAssertFalse(view.showCommandPalette)
     }
 
-    func test_primarySectionsContainSevenRoutes() {
-        XCTAssertEqual(DashboardMainRoute.primarySections.count, 7)
+    func test_primarySectionsContainEightRoutes() {
+        XCTAssertEqual(DashboardMainRoute.primarySections.count, 8)
+        XCTAssertTrue(DashboardMainRoute.primarySections.contains(.inbox))
         XCTAssertTrue(DashboardMainRoute.primarySections.contains(.chat))
         XCTAssertTrue(DashboardMainRoute.primarySections.contains(.quota))
         XCTAssertTrue(DashboardMainRoute.primarySections.contains(.memoryReview))
     }
 
     func test_primarySectionIndexIsOneBased() {
-        XCTAssertEqual(DashboardMainRoute.chat.primarySectionIndex, 1)
-        XCTAssertEqual(DashboardMainRoute.memoryReview.primarySectionIndex, 7)
+        XCTAssertEqual(DashboardMainRoute.inbox.primarySectionIndex, 1)
+        XCTAssertEqual(DashboardMainRoute.chat.primarySectionIndex, 2)
+        XCTAssertEqual(DashboardMainRoute.memoryReview.primarySectionIndex, 8)
         XCTAssertNil(DashboardMainRoute.overview.primarySectionIndex)
     }
 }
