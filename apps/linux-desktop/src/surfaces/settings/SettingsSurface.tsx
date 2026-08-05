@@ -105,9 +105,7 @@ export function SettingsSurface() {
     setRoute('database');
   }, [setRoute]);
 
-  const body: ReactNode = loading && !config && !fixtureMode
-    ? <SettingsSkeleton />
-    : (
+  let body: ReactNode;
 
   if (loading && !config && !fixtureMode) {
     body = <SettingsSkeleton />;
@@ -137,6 +135,7 @@ export function SettingsSurface() {
         />
       </div>
     );
+  }
 
   return (
     <>
