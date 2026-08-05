@@ -113,31 +113,59 @@ internal fun fanOutGroupPayload(
     )
 }
 
+/** Seal the fan-out mission-group parent payload with the resolved vault key. */
+internal fun sealedFanOutGroupPayload(
+    plan: FanOutDispatchPlan,
+    missionKind: String,
+    targetProject: String?,
+    runtimeTokens: List<String>,
+    parallelismLimit: Int?,
+    mergeStrategy: String,
+    key: AndroidCloudVaultResolvedKey,
+): Map<String, Any> = CLIAgentMissionRequestPayloadFactory.sealGroupPayload(
+    fanOutGroupPayload(
+        plan = plan,
+        missionKind = missionKind,
+        targetProject = targetProject,
+        runtimeTokens = runtimeTokens,
+        parallelismLimit = parallelismLimit,
+        mergeStrategy = mergeStrategy,
+    ),
+    title = plan.trimmedTitle,
+    prompt = plan.trimmedPrompt,
+    targetProject = targetProject,
+    key = key,
+)
+
+private fun fanOutChildPayloadInput(
+    request: FanOutChildWriteRequest,
+    missionID: String,
+    runtimeToken: String,
+): CLIMissionPayloadInput = CLIMissionPayloadInput(
+    core = CLIMissionPayloadCore(missionID, "${request.plan.trimmedTitle} · $runtimeToken", request.plan.trimmedPrompt, request.missionKind),
+    execution = CLIMissionPayloadExecution(
+        requestedRuntime = runtimeToken,
+        targetProject = request.targetProject,
+        depth = request.depth,
+        approvalMode = request.approvalMode,
+        requestedModelID = null,
+    ),
+    permissions = CLIMissionPayloadPermissions(request.commandsAllowed, request.fileEditsAllowed),
+    metadata = CLIMissionPayloadMetadata(
+        sourceSkillID = request.sourceSkillID,
+        sourceSurface = request.sourceSurface,
+        parentHermesThreadID = request.parentHermesThreadID,
+    ),
+    experience = CLIMissionPayloadExperience(deliveryMode = request.deliveryMode),
+)
+
 internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest): List<SignalMissionWrite> {
     val signalWrites = mutableListOf<SignalMissionWrite>()
     request.runtimeTokens.forEachIndexed { index, runtimeToken ->
         val missionID = request.plan.childMissionIDs[index]
-        val payloadInput =
-            CLIMissionPayloadInput(
-                core = CLIMissionPayloadCore(missionID, "${request.plan.trimmedTitle} · $runtimeToken", request.plan.trimmedPrompt, request.missionKind),
-                execution = CLIMissionPayloadExecution(
-                    requestedRuntime = runtimeToken,
-                    targetProject = request.targetProject,
-                    depth = request.depth,
-                    approvalMode = request.approvalMode,
-                    requestedModelID = null,
-                ),
-                permissions = CLIMissionPayloadPermissions(request.commandsAllowed, request.fileEditsAllowed),
-                metadata = CLIMissionPayloadMetadata(
-                    sourceSkillID = request.sourceSkillID,
-                    sourceSurface = request.sourceSurface,
-                    parentHermesThreadID = request.parentHermesThreadID,
-                ),
-                experience = CLIMissionPayloadExperience(deliveryMode = request.deliveryMode),
-            )
         val childPayload =
             CLIAgentMissionRequestPayloadFactory.buildSealed(
-                input = payloadInput,
+                input = fanOutChildPayloadInput(request, missionID, runtimeToken),
                 key = request.key,
                 signal =
                 request.signalIdentity?.let { identity ->

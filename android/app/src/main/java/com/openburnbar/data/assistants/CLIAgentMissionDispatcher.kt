@@ -20,6 +20,7 @@ import com.openburnbar.data.cloud.SignalAtRestFallbackPolicy
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import java.time.Instant
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -280,18 +281,13 @@ class CLIAgentMissionDispatcher(
         val batch = firestore.batch()
         batch.set(
             groupRef,
-            CLIAgentMissionRequestPayloadFactory.sealGroupPayload(
-                fanOutGroupPayload(
-                    plan = plan,
-                    missionKind = missionKind,
-                    targetProject = targetProject,
-                    runtimeTokens = runtimeTokens,
-                    parallelismLimit = parallelismLimit,
-                    mergeStrategy = mergeStrategy,
-                ),
-                title = plan.trimmedTitle,
-                prompt = plan.trimmedPrompt,
+            sealedFanOutGroupPayload(
+                plan = plan,
+                missionKind = missionKind,
                 targetProject = targetProject,
+                runtimeTokens = runtimeTokens,
+                parallelismLimit = parallelismLimit,
+                mergeStrategy = mergeStrategy,
                 key = resolvedKey,
             ),
         )
@@ -324,15 +320,25 @@ class CLIAgentMissionDispatcher(
         )
 
         batch.commit().await()
-        if (signalWrites.isNotEmpty()) {
-            try {
-                writeSignalMissionDocuments(uid = uid, writes = signalWrites)
-            } catch (error: Exception) {
-                cleanupFanOutAfterSignalFailure(uid = uid, groupRef = groupRef, writes = signalWrites)
-                throw DispatchException("Signal fan-out could not be committed atomically: ${error.message ?: "callable failed"}")
-            }
-        }
+        commitFanOutSignalWrites(uid = uid, groupRef = groupRef, writes = signalWrites)
         return FanOutDispatchResult(groupID = plan.groupID, childMissionIDs = plan.childMissionIDs)
+    }
+
+    /**
+     * Commit staged Signal fan-out mission documents through the callable. On failure the
+     * fan-out scaffolding is rolled back so no half-dispatched group survives; cancellation
+     * and fatal errors propagate untouched.
+     */
+    private suspend fun commitFanOutSignalWrites(
+        uid: String,
+        groupRef: com.google.firebase.firestore.DocumentReference,
+        writes: List<SignalMissionWrite>,
+    ) {
+        if (writes.isEmpty()) return
+        val failure = runCatching { writeSignalMissionDocuments(writes) }.exceptionOrNull() ?: return
+        if (failure is CancellationException || failure !is Exception) throw failure
+        cleanupFanOutAfterSignalFailure(uid = uid, groupRef = groupRef, writes = writes)
+        throw DispatchException("Signal fan-out could not be committed atomically: ${failure.message ?: "callable failed"}", failure)
     }
 
     private fun validateFanOutDispatch(runtimeTokens: List<String>, trimmedPrompt: String) {
@@ -370,9 +376,8 @@ class CLIAgentMissionDispatcher(
         parentHermesThreadID: String? = null,
         presentationMode: CLIAgentChatPresentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
     ): String {
-        val uid = auth.currentUser?.uid ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
         val trimmedPrompt = prompt.trim()
-        if (trimmedPrompt.isBlank()) throw DispatchException("Mission prompt was empty.")
+        val uid = validateSingleDispatch(trimmedPrompt)
 
         val id = UUID.randomUUID().toString()
         val resolvedKey = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
@@ -382,15 +387,7 @@ class CLIAgentMissionDispatcher(
                 core = CLIMissionPayloadCore(id = id, title = title, prompt = trimmedPrompt, missionKind = missionKind),
                 execution = CLIMissionPayloadExecution(requestedRuntime, targetProject, depth, approvalMode, requestedModelID),
                 permissions = CLIMissionPayloadPermissions(commandsAllowed, fileEditsAllowed),
-                metadata =
-                CLIMissionPayloadMetadata(
-                    clientThreadID,
-                    parentSessionID,
-                    resumeAction,
-                    sourceSkillID,
-                    sourceSurface,
-                    parentHermesThreadID,
-                ),
+                metadata = singleDispatchMetadata(clientThreadID, parentSessionID, resumeAction, sourceSkillID, sourceSurface, parentHermesThreadID),
                 experience = CLIMissionPayloadExperience(deliveryMode, presentationMode),
             )
         val payload =
@@ -425,20 +422,52 @@ class CLIAgentMissionDispatcher(
             .commit()
             .await()
         if (signalWrite != null) {
-            try {
-                writeSignalMissionDocuments(
-                    uid = uid,
-                    writes = listOf(SignalMissionWrite(missionID = id, payload = signalWrite)),
-                )
-            } catch (error: Exception) {
-                runCatching { requestRef.collection("events").document("000001").delete().await() }
-                throw DispatchException("Signal mission could not be committed: ${error.message ?: "callable failed"}")
-            }
+            commitSingleSignalMission(requestRef = requestRef, missionID = id, payload = signalWrite)
         }
         return id
     }
 
-    private suspend fun writeSignalMissionDocuments(uid: String, writes: List<SignalMissionWrite>) {
+    private fun validateSingleDispatch(trimmedPrompt: String): String {
+        val uid = auth.currentUser?.uid ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
+        if (trimmedPrompt.isBlank()) throw DispatchException("Mission prompt was empty.")
+        return uid
+    }
+
+    private fun singleDispatchMetadata(
+        clientThreadID: String?,
+        parentSessionID: String?,
+        resumeAction: String?,
+        sourceSkillID: String?,
+        sourceSurface: String?,
+        parentHermesThreadID: String?,
+    ): CLIMissionPayloadMetadata = CLIMissionPayloadMetadata(
+        clientThreadID = clientThreadID,
+        parentSessionID = parentSessionID,
+        resumeAction = resumeAction,
+        sourceSkillID = sourceSkillID,
+        sourceSurface = sourceSurface,
+        parentHermesThreadID = parentHermesThreadID,
+    )
+
+    /**
+     * Commit a staged single Signal mission document through the callable. On failure the
+     * queued scaffolding event is rolled back; cancellation and fatal errors propagate untouched.
+     */
+    private suspend fun commitSingleSignalMission(
+        requestRef: com.google.firebase.firestore.DocumentReference,
+        missionID: String,
+        payload: Map<String, Any>,
+    ) {
+        val failure =
+            runCatching {
+                writeSignalMissionDocuments(listOf(SignalMissionWrite(missionID = missionID, payload = payload)))
+            }.exceptionOrNull() ?: return
+        if (failure is CancellationException || failure !is Exception) throw failure
+        runCatching { requestRef.collection("events").document("000001").delete().await() }
+        throw DispatchException("Signal mission could not be committed: ${failure.message ?: "callable failed"}", failure)
+    }
+
+    private suspend fun writeSignalMissionDocuments(writes: List<SignalMissionWrite>) {
         if (writes.isEmpty()) return
         val documents = writes.map { write ->
             mapOf(
@@ -485,7 +514,7 @@ class CLIAgentMissionDispatcher(
         // the entire fan-out in one server-side batch.
         if (!MISSION_SIGNAL_CALLABLE_ROUTING_ENABLED) return null
         if (!AndroidCloudVaultSignalPayloads.signalSealingIsEnabled(SIGNAL_CLI_DOMAIN)) return null
-        return try {
+        return runCatching {
             val escrow = AndroidCloudVaultDeviceKeypair.loadOrCreate()
             val identity = AndroidSignalIdentityKeyStore.loadOrCreate(escrow.deviceId, escrow.keyVersion)
             AndroidSignalIdentityKeyStore.publishIfNeeded(
@@ -503,9 +532,10 @@ class CLIAgentMissionDispatcher(
                 localIdentity = identity,
                 otherRecipients = recipients,
             )
-        } catch (error: Exception) {
+        }.getOrElse { error ->
+            if (error is CancellationException || error !is Exception) throw error
             Log.e("CLIAgentMissionDispatcher", "Signal at-rest seal context failed; refusing mission fallback", error)
-            throw DispatchException("Private mission session could not be prepared: ${error.message ?: "Signal setup failed"}")
+            throw DispatchException("Private mission session could not be prepared: ${error.message ?: "Signal setup failed"}", error)
         }
     }
 
@@ -915,7 +945,7 @@ object CLIAgentMissionRequestPayloadFactory {
     }
 }
 
-class DispatchException(message: String) : Exception(message)
+class DispatchException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 data class CLIAgentMissionSnapshot(
     val id: String,
