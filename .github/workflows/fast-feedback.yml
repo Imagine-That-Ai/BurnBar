@@ -858,9 +858,21 @@ jobs:
     needs: fast-feedback-path-filter
     if: always() && (needs.fast-feedback-path-filter.result != 'success' || needs.fast-feedback-path-filter.outputs.rust_changed != 'false')
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # 12 rather than 8: this job feeds the REQUIRED Fast Feedback Gate, and a
+    # full clone of this repo's 8.6 GiB history consumed the whole budget and
+    # cancelled it inside actions/checkout on a merge_group ref with zero Rust
+    # work done (run 31041261148: 7m59s in checkout), which fails the gate and
+    # ejects the queue candidate on infrastructure rather than on code.
+    timeout-minutes: 12
     steps:
+      # fmt/clippy/cargo-deny read only the three crates below plus the
+      # workspace manifests; history and the other ~13k files are dead weight.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          filter: blob:none
+          # There is no workspace root manifest: each crate under crates/ owns
+          # its Cargo.toml, Cargo.lock, deny.toml, and rust-toolchain.toml.
+          sparse-checkout: crates
 
       - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1, pinned via toolchain below
         with:
