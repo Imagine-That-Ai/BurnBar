@@ -553,6 +553,8 @@ function searchRequest(uid: string, modelTag: string) {
   });
 }
 
+const searchKnowledgeRun = async () => callableRun((await import("../callables/knowledgeSearch.js")).searchKnowledge);
+
 function seedVector(
   uid: string,
   vectorId: string,
@@ -576,8 +578,7 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
   afterEach(() => vi.clearAllMocks());
 
   it("searchKnowledge floors dedupHashVersion==1: a seeded v0 row is NOT served", async () => {
-    const { searchKnowledge } = await import("../callables/knowledgeSearch.js");
-    const run = callableRun(searchKnowledge);
+    const run = await searchKnowledgeRun();
 
     // A legacy v0 row whose doc id is the cleartext SHA-256 oracle, on the old tag.
     seedVector("userSearch", KNOWN_PLAINTEXT_SHA256, {
@@ -599,8 +600,7 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
   });
 
   it("searchKnowledge returns an optional Signal envelope alongside the legacy sealed fields", async () => {
-    const { searchKnowledge } = await import("../callables/knowledgeSearch.js");
-    const run = callableRun(searchKnowledge);
+    const run = await searchKnowledgeRun();
 
     seedVector("userSearchSignal", "v1-signal", {
       dedupHashVersion: 1,
@@ -629,8 +629,7 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
   });
 
   it("searchKnowledge at the new tag never returns a v0 row even on the retired tag", async () => {
-    const { searchKnowledge } = await import("../callables/knowledgeSearch.js");
-    const run = callableRun(searchKnowledge);
+    const run = await searchKnowledgeRun();
 
     // Only a v0 row exists, on the retired tag. Searching the new tag returns nothing.
     seedVector("userSearch2", KNOWN_PLAINTEXT_SHA256, {
@@ -689,6 +688,8 @@ function seedRows(uid: string, count: number, dedupHashVersion: number, idPrefix
   }
 }
 
+const commitKnowledgeRun = async () => callableRun((await import("../callables/knowledgeMemory.js")).commitKnowledgeBatch);
+
 function okFromResult(result: unknown): { ok: unknown; written: unknown; chunkCount: unknown } {
   return {
     ok: Reflect.get(Object(result), "ok"),
@@ -702,9 +703,7 @@ describe("commitKnowledgeBatch — cap aggregate excludes legacy v0 rows (re-ing
   afterEach(() => vi.clearAllMocks());
 
   it("a near-cap user whose usage is ALL orphaned v0 rows can still re-ingest a v1 chunk", async () => {
-    const { commitKnowledgeBatch, PENSIEVE_LIMITS } = await import("../callables/knowledgeMemory.js");
-    const run = callableRun(commitKnowledgeBatch);
-    const uid = "userReingest";
+    const { PENSIEVE_LIMITS } = await import("../callables/knowledgeMemory.js"); const run = await commitKnowledgeRun(); const uid = "userReingest";
 
     seedRows(uid, PENSIEVE_LIMITS.pro.chunks, 0, "v0-");
 
@@ -716,9 +715,7 @@ describe("commitKnowledgeBatch — cap aggregate excludes legacy v0 rows (re-ing
   });
 
   it("real v1 usage at the cap STILL blocks a new chunk (no undercount of live data)", async () => {
-    const { commitKnowledgeBatch, PENSIEVE_LIMITS } = await import("../callables/knowledgeMemory.js");
-    const run = callableRun(commitKnowledgeBatch);
-    const uid = "userAtCapV1";
+    const { PENSIEVE_LIMITS } = await import("../callables/knowledgeMemory.js"); const run = await commitKnowledgeRun(); const uid = "userAtCapV1";
 
     seedRows(uid, PENSIEVE_LIMITS.pro.chunks, 1, "v1-");
 
@@ -729,13 +726,8 @@ describe("commitKnowledgeBatch — cap aggregate excludes legacy v0 rows (re-ing
   });
 
   it("same-doc legacy rewrites are charged against live chunk and byte caps", async () => {
-    const { commitKnowledgeBatch, PENSIEVE_LIMITS } = await import("../callables/knowledgeMemory.js");
-    const run = callableRun(commitKnowledgeBatch);
-    const request = (uid: string, fill: number, byteCount?: number) => {
-      const req = commitRequestForUser(uid, Buffer.alloc(32, fill));
-      if (byteCount !== undefined) vectorForMutation(req).byteCount = byteCount;
-      return req;
-    };
+    const { PENSIEVE_LIMITS } = await import("../callables/knowledgeMemory.js"); const run = await commitKnowledgeRun();
+    const request = (uid: string, fill: number, byteCount?: number) => { const req = commitRequestForUser(uid, Buffer.alloc(32, fill)); if (byteCount !== undefined) vectorForMutation(req).byteCount = byteCount; return req; };
     const seedLegacy = (uid: string, req: ReturnType<typeof commitRequestForUser>, byteCount = 16) =>
       seedVector(uid, String(vectorForMutation(req).dedupHash), {
         dedupHashVersion: 0,
@@ -744,8 +736,7 @@ describe("commitKnowledgeBatch — cap aggregate excludes legacy v0 rows (re-ing
         byteCount,
       });
 
-    const chunkUid = "userLegacyRewriteChunkCap";
-    const chunkReq = request(chunkUid, 0xb8);
+    const chunkUid = "userLegacyRewriteChunkCap"; const chunkReq = request(chunkUid, 0xb8);
     seedRows(chunkUid, PENSIEVE_LIMITS.pro.chunks, 1, "v1-");
     seedLegacy(chunkUid, chunkReq);
     await expect(run(chunkReq)).rejects.toThrow(/chunk limit/i);
