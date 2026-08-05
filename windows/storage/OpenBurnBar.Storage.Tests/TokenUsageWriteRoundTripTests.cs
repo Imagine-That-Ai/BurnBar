@@ -18,15 +18,15 @@ namespace OpenBurnBar.Storage.Tests;
 /// </summary>
 public sealed class TokenUsageWriteRoundTripTests
 {
-    // Ground-truth invariants of the committed v57 fixture, observed by opening it
+    // Ground-truth invariants of the committed v58 fixture, observed by opening it
     // and reproducing DatabaseByteCompatVector.computeSchemaHash byte-for-byte.
     // Pinned as literals so corruption or an accidental migration is caught, not
     // merely self-consistency.
-    private const string FixtureName = "openburnbar-db-compat-v57.sqlcipher";
+    private const string FixtureName = "openburnbar-db-compat-v58.sqlcipher";
     private const string ExpectedSchemaHash =
-        "01cc2f514f88f7921b5b05088afc4fed3cda6e43a5a5b1328eb07460c47ce2b3";
-    private const string ExpectedMigrationEndpoint = "v57_execution_source_attribution";
-    private const long ExpectedMigrationCount = 58;
+        "fb4b69e86d9f604826cd05634f979b0461c9945244fa57a5943f4f3244c156f2";
+    private const string ExpectedMigrationEndpoint = "v58_ai_inbox";
+    private const long ExpectedMigrationCount = 59;
     private const long ExpectedUserVersion = 0;
 
     private static string FixtureSource =>
