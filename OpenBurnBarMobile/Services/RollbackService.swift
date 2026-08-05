@@ -246,11 +246,12 @@ final class RollbackService {
         } else if MobileCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat") {
             return nil
         }
-        let source = signal.count == 0 ? data : signal
+        let signalIsEmpty = signal.allKeys.isEmpty
+        let source = signalIsEmpty ? data : signal
         guard
             let sessionID = source["sessionID"] as? String,
             let scopeRaw = openSealedString(
-                data: signal.count == 0 ? data : NSDictionary(dictionary: ["scopeJSON": source["scopeJSON"] as Any]),
+                data: signalIsEmpty ? data : NSDictionary(dictionary: ["scopeJSON": source["scopeJSON"] as Any]),
                 sealedField: "sealedScope",
                 legacyField: "scopeJSON",
                 vaultKey: vaultKey
