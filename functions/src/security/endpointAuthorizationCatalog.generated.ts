@@ -1275,6 +1275,28 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
   },
   {
+    exportedName: "googlePlayDeveloperNotifications",
+    trigger: "provider-webhook",
+    authMethod: "Google Play RTDN delivered over an owned Pub/Sub topic (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "purchase-token claim resolved server-side to a uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler maps the Play-signed purchase token to an existing server-owned claim before touching any uid-scoped document",
+    handlerModule: "googlePlayRtdn.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["googlePlayDeveloperNotifications"],
+      },
+    ],
+    highRiskComputerUse: false,
+    publicJustification:
+      "Provider notification endpoint authenticated by Google Play's signed RTDN payload on a project-owned Pub/Sub topic; it accepts no client-supplied object ids.",
+  },
+  {
     exportedName: "grantMediaGrandfather",
     trigger: "callable",
     authMethod: "Firebase Auth with callable-level ownership checks",
@@ -1769,7 +1791,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     exportedName: "mintLinuxAppCheckToken",
     trigger: "callable",
     authMethod:
-      "Firebase Auth; approved per-install Ed25519 key and a durable single-use challenge (no App Check on the bootstrap path)",
+      "Firebase Auth; lower-trust Linux attestation-gated App Check token mint (no App Check on the bootstrap path)",
     appCheck: "not-required",
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["attestation.deviceId", "attestation.challengeId"],
@@ -1813,6 +1835,26 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
     publicJustification:
       "Bootstrap that MINTS an App Check token, so it cannot itself require one (chicken-and-egg). Gated by a platform attestation verifier instead; under production config no mock verifier is registered so only AC-013's real verifier can mint.",
+  },
+  {
+    exportedName: "onAIInboxItemNotification",
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions event trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "users/{uid}/ai_inbox_items/{itemId} trigger path",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger derives uid from the Firestore event path and fans out only to that user's device docs; the item body stays sealed and never enters the push payload",
+    handlerModule: "aiInboxNotifications.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["onAIInboxItemNotification"],
+      },
+    ],
+    highRiskComputerUse: false,
   },
   {
     exportedName: "onCliSessionAgentReplyNotification",

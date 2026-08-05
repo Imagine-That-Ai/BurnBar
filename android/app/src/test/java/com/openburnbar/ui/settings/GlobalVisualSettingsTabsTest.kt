@@ -17,12 +17,12 @@ import org.junit.Test
 
 /**
  * Tab-order persistence tests for [GlobalVisualSettingsTabs]: the default
- * five-primary/four-secondary layout, prefs hydration (including null reads
+ * six-primary/four-secondary layout, prefs hydration (including null reads
  * falling back to the defaults), and setters writing through the shared
  * visual-settings funnel under the right keys.
  */
 class GlobalVisualSettingsTabsTest {
-    private val defaultPrimary = "pulse,burn,insights,streams,agents"
+    private val defaultPrimary = "pulse,burn,inbox,insights,streams,agents"
     private val defaultSecondary = "you,providers,devices,settings"
 
     @Before
@@ -49,7 +49,7 @@ class GlobalVisualSettingsTabsTest {
     }
 
     @Test
-    fun `defaults describe the five primary and four secondary tabs`() {
+    fun `defaults describe the six primary and four secondary tabs`() {
         assertEquals(defaultPrimary, GlobalVisualSettingsTabs.primaryTabs.value)
         assertEquals(defaultSecondary, GlobalVisualSettingsTabs.secondaryTabs.value)
     }

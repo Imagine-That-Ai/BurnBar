@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -49,6 +50,7 @@ import com.openburnbar.ui.computeruse.ComputerUseAgentWatchScreen
 import com.openburnbar.ui.hermes.AccountScopedHermesServiceProvider
 import com.openburnbar.ui.hermes.AssistantsScreen
 import com.openburnbar.ui.hermes.rememberAccountScopedHermesService
+import com.openburnbar.ui.inbox.InboxScreen
 import com.openburnbar.ui.insights.InsightsScreen
 import com.openburnbar.ui.media.CallHUDView
 import com.openburnbar.ui.media.PairedMacControlsScreen
@@ -108,6 +110,7 @@ internal fun BurnBarContent(
     ) {
         burnBarPulseRoute(navigateToBurn, navigateToHermes, navigateToStreams)
         burnBarBurnRoute()
+        burnBarInboxRoute(navController)
         burnBarInsightsRoutes(navController, isCloudMember)
         burnBarStreamsRoute(navController, isCloudMember)
         burnBarHermesRoutes(navController, currentTier)
@@ -138,6 +141,39 @@ private fun androidx.navigation.NavGraphBuilder.burnBarBurnRoute() {
         BurnBarTab.BURN.route,
         deepLinks = listOf(navDeepLink { uriPattern = "burnbar://burn" }),
     ) { BurnView() }
+}
+
+private fun androidx.navigation.NavGraphBuilder.burnBarInboxRoute(navController: NavHostController) {
+    composable(
+        BurnBarTab.INBOX.route,
+        // Both shapes route to the same tab. The `/{itemId}` variant is what an
+        // AI Inbox P1 push emits, and WITHOUT it Navigation finds no match and
+        // silently leaves the launch intent on the start destination — the push
+        // opens the app to Pulse and the alert that fired is nowhere in sight.
+        // The id is not consumed as a nav argument: MainActivity stashes it (see
+        // `InboxPendingItem`) and `InboxScreen` claims it once its rows exist,
+        // which is the only point at which the row can actually be resolved.
+        deepLinks =
+        listOf(
+            navDeepLink { uriPattern = "burnbar://inbox" },
+            navDeepLink { uriPattern = "burnbar://inbox/{itemId}" },
+        ),
+    ) {
+        InboxScreen(
+            // Evidence and actions address other surfaces by route (`streams`,
+            // `you`, …). Routing them through the tab nav options — rather than
+            // a bare `navigate` — keeps a deep link from an inbox item behaving
+            // exactly like tapping that tab, back stack included.
+            onOpenRoute = { route ->
+                val tab = BurnBarTab.fromRoute(route)
+                if (tab != null) {
+                    navController.navigate(tab.route, burnBarTabNavOptions(navController.graph.findStartDestination().id))
+                } else {
+                    navController.navigate(route) { launchSingleTop = true }
+                }
+            },
+        )
+    }
 }
 
 private fun androidx.navigation.NavGraphBuilder.burnBarInsightsRoutes(navController: NavHostController, isCloudMember: Boolean) {

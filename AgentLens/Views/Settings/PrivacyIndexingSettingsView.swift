@@ -153,6 +153,13 @@ struct PrivacyIndexingSettingsView: View {
                 }
                 .padding(.horizontal, DesignSystem.Spacing.lg)
 
+                Divider().background(DesignSystem.Colors.border)
+
+                // The AI Inbox belongs on this screen: it is the other feature
+                // that reads conversation content, and its egress switch is the
+                // same class of decision as the toggles above.
+                AIInboxSettingsView()
+
                 if !retrievalHealthSnapshot.degradedModes.isEmpty {
                     Divider().background(DesignSystem.Colors.border)
 

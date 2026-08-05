@@ -21,6 +21,18 @@ enum OBBAccessibilityID {
     static let chartsAIToggle = "charts.aiToggle"
     static let dashboardDeckChartButton = "dashboard.deckChartButton"
 
+    static let inboxRoot = "inbox.root"
+    static let inboxDetail = "inbox.detail"
+    static let dashboardDeckInboxButton = "dashboard.deckInboxButton"
+
+    static func inboxFilterChip(_ filter: String) -> String {
+        "inbox.filter.\(normalized(filter))"
+    }
+
+    static func inboxRow(_ itemID: String) -> String {
+        "inbox.row.\(normalized(itemID))"
+    }
+
     static func settingsRow(_ section: String) -> String {
         "settings.row.\(normalized(section))"
     }

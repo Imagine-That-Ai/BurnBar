@@ -13,10 +13,15 @@ import OpenBurnBarCore
 // projects. A chip rail at the top switches between segments; each renders an
 // Aurora-tuned list backed by existing stores plus the cockpit + ProjectsStore.
 struct StreamsView: View {
+    /// Hoisted by the tab roots so the Firestore listeners survive a tab swap
+    /// (the roots' `contentForSelection` switch destroys this view tree on every
+    /// change). See `AIInboxStore.loadIfNeeded`.
+    let inbox: AIInboxStore
+
     @State private var activity = ActivityStore()
     @State private var projects = ProjectsStore()
     @State private var cockpit = ConversationCockpitStore()
-    @State private var segment: Segment = .cockpit
+    @State private var segment: Segment = .inbox
     @State private var searchText = ""
     @State private var showFilters = false
     @State private var selectedCloudConversation: CloudConversationSearchRow?
@@ -36,11 +41,16 @@ struct StreamsView: View {
     private var isCloudEntitled: Bool { cloudStore?.isActive ?? false }
 
     enum Segment: String, CaseIterable, Identifiable, Hashable {
+        /// First on purpose: the AI Inbox is the only segment that tells you
+        /// something you did not already know to look for, so it is what Streams
+        /// opens on.
+        case inbox
         case cockpit, sessions, projects, activity
         var id: String { rawValue }
         var label: String { rawValue.capitalized }
         var icon: String {
             switch self {
+            case .inbox: return "tray.full.fill"
             case .cockpit: return "rectangle.3.group.fill"
             case .sessions: return "doc.text.magnifyingglass"
             case .projects: return "folder.fill.badge.gearshape"
@@ -63,6 +73,7 @@ struct StreamsView: View {
 
                 Group {
                     switch segment {
+                    case .inbox: inboxSurface
                     case .cockpit: cockpitList
                     case .sessions: sessionsList
                     case .projects: projectsList
@@ -87,9 +98,18 @@ struct StreamsView: View {
                 }
             }
         }
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search sessions, models, projects")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: searchPrompt)
         .task(id: searchText) {
             await activity.updateSearch(query: searchText)
+        }
+        .navigationDestination(for: AIInboxDetailRoute.self) { route in
+            inboxDetail(for: route)
+        }
+        // A `burnbar://inbox` deep link lands on Streams, which may be sitting on
+        // any segment. Without this the push would open the tab and leave the
+        // user on Cockpit, one tap short of the thing they were notified about.
+        .onChange(of: inbox.focusRequestToken) { _, _ in
+            segment = .inbox
         }
         .task {
             await activity.loadInitial()
@@ -98,6 +118,10 @@ struct StreamsView: View {
         .refreshable {
             HapticBus.refreshStarted()
             switch segment {
+            // The inbox is listener-backed: a snapshot is already the newest
+            // state, so pull-to-refresh re-arms the listener rather than
+            // pretending to fetch.
+            case .inbox: inbox.loadIfNeeded()
             case .cockpit: await cockpit.runQuery(reset: true)
             case .sessions, .activity: await activity.refresh()
             case .projects: await projects.refresh()
@@ -156,6 +180,29 @@ struct StreamsView: View {
             || selectedCockpitRow != nil
             || showCockpitFilters
             || showCloudStore
+    }
+
+    // MARK: - AI Inbox
+
+    /// The Mac's AI Inbox, mirrored. `AIInboxSplitLayout` resolves one column or
+    /// two from the width it is handed, so this is the same expression on an
+    /// iPhone, a Slide Over, and a full-width iPad.
+    private var inboxSurface: some View {
+        AIInboxSplitLayout(store: inbox)
+            .padding(.bottom, listBottomPadding)
+            // Streams already owns a search field; feeding it through rather
+            // than adding a second `.searchable` keeps one search box on screen.
+            .onChange(of: searchText, initial: true) { _, query in
+                inbox.searchQuery = query
+            }
+            .task { inbox.loadIfNeeded() }
+    }
+
+    /// The compact detail push. Resolved from the live store rather than
+    /// captured at push time so an archive or a feedback tap redraws the screen
+    /// the user is looking at.
+    private func inboxDetail(for route: AIInboxDetailRoute) -> some View {
+        AIInboxDetailScreen(store: inbox, itemID: route.itemID)
     }
 
     // MARK: - Cockpit
@@ -293,6 +340,14 @@ struct StreamsView: View {
         let calendar = Calendar.current
         let grouped = Dictionary(grouping: filteredRawActivity) { calendar.startOfDay(for: ActivityStore.activityDate(for: $0)) }
         return grouped.sorted { $0.key > $1.key }.map { (day: $0.key, usages: $0.value) }
+    }
+
+    /// The search field is shared across segments, so the prompt names what the
+    /// current one actually searches.
+    private var searchPrompt: String {
+        segment == .inbox
+            ? "Search the inbox"
+            : "Search sessions, models, projects"
     }
 
     private var listBottomPadding: CGFloat {

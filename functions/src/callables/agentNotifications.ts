@@ -96,6 +96,14 @@ export const submitAgentNotificationReply = onCall(
     if (!event) {
       throw new HttpsError("failed-precondition", "Notification event is invalid.");
     }
+    // An AI Inbox alert is a finding, not a message: there is no thread for a
+    // reply to reach. `parseNotificationEvent` already rejects the inbox
+    // `sourceKind`, but that is an incidental consequence of this file's own
+    // narrower union — assert the actual invariant so a future producer that
+    // sets `replyEnabled: false` cannot slip through by choosing a known kind.
+    if (!event.replyEnabled) {
+      throw new HttpsError("failed-precondition", "This notification cannot be replied to.");
+    }
     const replyId = clientReplyId ?? `${eventId}_${safeId(deviceId ?? "device")}`;
     const now = Timestamp.now();
     const command: AgentNotificationReplyCommand = {

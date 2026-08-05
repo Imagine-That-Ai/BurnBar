@@ -712,6 +712,66 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.inbox.config.get",
+    "caseName": "inboxConfigGet",
+    "domain": "inbox",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.inbox.config",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.inbox.config.update",
+    "caseName": "inboxConfigUpdate",
+    "domain": "inbox",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable mutation response for daemon.inbox.config",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.inbox.get",
+    "caseName": "inboxGet",
+    "domain": "inbox",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.inbox",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.inbox.list",
+    "caseName": "inboxList",
+    "domain": "inbox",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.inbox",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.inbox.run_now",
+    "caseName": "inboxRunNow",
+    "domain": "inbox",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.inbox.run_now",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.inbox.runs.recent",
+    "caseName": "inboxRunsRecent",
+    "domain": "inbox",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.inbox.runs",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.media.call.accept",
     "caseName": "daemonMediaCallAccept",
     "domain": "media",

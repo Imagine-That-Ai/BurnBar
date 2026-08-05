@@ -30,6 +30,7 @@ const OWNER_READABLE_COLLECTIONS = [
   "usage", "budgetRules", "budgetEvents", "conversations",
   "chat_threads", "text_snippets", "mobile_assistant_chats",
   "cli_sessions", "cli_agent_mission_requests", "agent_import_jobs",
+  "ai_inbox_items", "ai_inbox_item_state",
   "mission_groups", "approval_policies", "rollback_requests",
   "agent_identities", "subscription_topics", "session_logs",
   "project_memory_snapshots", "cloud_search_documents",

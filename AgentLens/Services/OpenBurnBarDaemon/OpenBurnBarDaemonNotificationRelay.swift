@@ -32,15 +32,33 @@ final class OpenBurnBarDaemonLocalNotificationRelay: NSObject {
         else {
             return
         }
-        Task { [title, body] in
-            await self.deliverUserNotification(title: title, body: body)
+        let deepLink = notification.userInfo?[OpenBurnBarDistributedNotifications.deepLinkKey] as? String
+        let category = notification.userInfo?[OpenBurnBarDistributedNotifications.categoryKey] as? String
+        Task { [title, body, deepLink, category] in
+            await self.deliverUserNotification(
+                title: title,
+                body: body,
+                deepLink: deepLink,
+                category: category
+            )
         }
     }
 
-    private func deliverUserNotification(title: String, body: String) async {
+    private func deliverUserNotification(
+        title: String,
+        body: String,
+        deepLink: String? = nil,
+        category: String? = nil
+    ) async {
         guard let settingsManager else { return }
+        // The AI Inbox has its own opt-in (notify-on-P1, off-able in settings)
+        // and already rate-limits itself. Routing it through the Pixel Clock
+        // completion gate would let an unrelated toggle silently swallow an
+        // urgent alert the user explicitly asked for.
+        let isInbox = category == OpenBurnBarDistributedNotifications.Category.aiInbox
         let pixelClock = settingsManager.pixelClockConfig
-        if pixelClock.completionClockSoundEnabled,
+        if isInbox == false,
+           pixelClock.completionClockSoundEnabled,
            let completion = AgentCompletionNotificationParser.parse(title: title, body: body) {
             let controller = PixelClockController(settingsManager: settingsManager, quotaService: nil)
             controller.start()
@@ -51,7 +69,7 @@ final class OpenBurnBarDaemonLocalNotificationRelay: NSObject {
             )
         }
 
-        guard pixelClock.completionLocalNotificationsEnabled else { return }
+        guard isInbox || pixelClock.completionLocalNotificationsEnabled else { return }
 
         let center = UNUserNotificationCenter.current()
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false // try?-ok(default false fallback)
@@ -61,6 +79,11 @@ final class OpenBurnBarDaemonLocalNotificationRelay: NSObject {
         content.title = title
         content.body = body
         content.sound = .default
+        if let deepLink {
+            // Consumed by the app's URL handler when the notification is tapped,
+            // so an alert lands on the item it is about.
+            content.userInfo[OpenBurnBarDistributedNotifications.deepLinkKey] = deepLink
+        }
 
         let request = UNNotificationRequest(
             identifier: UUID().uuidString,

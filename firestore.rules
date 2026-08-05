@@ -11,6 +11,7 @@ rules_version = '2';
 // - users/{uid}/cloud_profile, sync_watermarks, sync_status, cloud_settings, recent_usage
 // - users/{uid}/cloud_search_index_manifest, remote_mcp_clients, remote_mcp_grants, remote_mcp_audit_events, remote_mcp_rate_limits
 // - users/{uid}/cli_sessions, cli_agent_mission_requests
+// - users/{uid}/ai_inbox_items, ai_inbox_item_state
 // - users/{uid}/escrow_devices, escrow_public_keys, signal_identity_public_keys, escrow_grants, escrow_envelopes, escrow_audit_events
 // - server-only: provider_account_secret_refs, users/{uid}/_rate_limits, users/{uid}/rollup_jobs
 // - public read-only: model_benchmark_snapshots, model_benchmark_source_status
@@ -1232,9 +1233,9 @@ service cloud.firestore {
     }
 
     // M-007: use this only on writers that already emit path-bound AAD. Today
-    // that is `conversations`, `chat_threads`, `mobile_assistant_chats`, and
-    // `cli_sessions`; other sealed surfaces stay on `validSealedPayloadForUser`
-    // until their clients migrate.
+    // that is `conversations`, `chat_threads`, `mobile_assistant_chats`,
+    // `cli_sessions`, and `ai_inbox_items`; other sealed surfaces stay on
+    // `validSealedPayloadForUser` until their clients migrate.
     function validPathBoundSealedPayloadForUser(userId, vaultKeyID, payload, collection, docId) {
       return matchesCurrentVaultKey(userId, vaultKeyID)
         && validPathBoundCloudSealedPayload(userId, collection, docId, payload)
@@ -1767,6 +1768,7 @@ service cloud.firestore {
         "usage", "budgetRules", "budgetEvents", "conversations",
         "chat_threads", "text_snippets", "mobile_assistant_chats",
         "cli_sessions", "cli_agent_mission_requests", "agent_import_jobs",
+        "ai_inbox_items", "ai_inbox_item_state",
         "mission_groups", "approval_policies", "rollback_requests",
         "agent_identities", "subscription_topics", "session_logs",
         "project_memory_snapshots", "cloud_search_documents",
@@ -1805,6 +1807,7 @@ service cloud.firestore {
       allow delete: if ownsUserNamespace(userId) && collectionId in [
         "usage", "budgetRules", "chat_threads", "text_snippets",
         "mobile_assistant_chats", "cli_sessions", "agent_import_jobs",
+        "ai_inbox_items", "ai_inbox_item_state",
         "mission_groups", "approval_policies", "rollback_requests",
         "agent_identities", "subscription_topics", "session_logs",
         "project_memory_snapshots", "cloud_search_documents",
@@ -2052,6 +2055,101 @@ service cloud.firestore {
 
       allow create, update: if ownerWritableNonSecret(userId)
         && validCliSessionMirror();
+    }
+
+    // AI Inbox items mirrored from the Mac so a phone can read "what happened
+    // while I wasn't watching" with the Mac asleep. Same sealed contract as
+    // `cli_sessions`: routing metadata stays top-level so mobile can sort,
+    // filter, and badge without a key; the title/body/evidence live only inside
+    // `sealedPayload`. The key list must equal `AIInboxMirrorCodec.documentKeys`
+    // — a field added there without a matching entry here is silently rejected.
+    match /users/{userId}/ai_inbox_items/{itemId} {
+      function validAIInboxMirror() {
+        return request.resource.data.keys().hasOnly([
+          "id",
+          "fingerprint",
+          "kind",
+          "priority",
+          "state",
+          "occurrenceCount",
+          "firstSeenAt",
+          "lastSeenAt",
+          "resolvedAt",
+          "modelProvenance",
+          "hasMemoryCandidates",
+          "schemaVersion",
+          "contentSealed",
+          "sealedSchemaVersion",
+          "vaultKeyID",
+          "sealedPayload",
+          "updatedAt"
+        ])
+        && request.resource.data.id == itemId
+        && request.resource.data.kind in [
+          "ci_waste",
+          "promised_not_landed",
+          "uncommitted_work",
+          "cost_anomaly",
+          "stuck_pr",
+          "index_health",
+          "brief",
+          "budget",
+          "system"
+        ]
+        && request.resource.data.state in ["new", "updated", "resolved", "expired"]
+        && request.resource.data.priority is int
+        && request.resource.data.priority >= 1
+        && request.resource.data.priority <= 4
+        && request.resource.data.occurrenceCount is int
+        && request.resource.data.occurrenceCount >= 0
+        && request.resource.data.occurrenceCount <= 100000
+        && request.resource.data.fingerprint is string
+        && request.resource.data.fingerprint.size() <= 256
+        && request.resource.data.modelProvenance is string
+        && request.resource.data.modelProvenance.size() <= 256
+        && request.resource.data.hasMemoryCandidates is bool
+        && request.resource.data.firstSeenAt is timestamp
+        && request.resource.data.lastSeenAt is timestamp
+        && (!("resolvedAt" in request.resource.data) || request.resource.data.resolvedAt is timestamp)
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.contentSealed == true
+        && request.resource.data.sealedSchemaVersion == 2
+        && validPathBoundSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload, "ai_inbox_items", itemId)
+        && forbidsSealedPlaintextContentFields();
+      }
+
+      allow create, update: if ownerWritableNonSecret(userId)
+        && validAIInboxMirror();
+    }
+
+    // Per-item user intent (read / archived / snoozed / feedback). Split from the
+    // Mac-owned item because the state is user-owned: whichever device the user
+    // acted on writes it, and every other device converges by reading it. Carries
+    // no content, so any signed-in owner device may write it — the constrained
+    // `feedback` enum keeps the field from becoming a free-text side channel.
+    match /users/{userId}/ai_inbox_item_state/{itemId} {
+      function validAIInboxItemState() {
+        return request.resource.data.keys().hasOnly([
+          "id",
+          "readAt",
+          "archivedAt",
+          "snoozedUntil",
+          "feedback",
+          "updatedAt",
+          "updatedByDeviceID"
+        ])
+        && request.resource.data.id == itemId
+        && request.resource.data.updatedAt is timestamp
+        && (!("readAt" in request.resource.data) || request.resource.data.readAt is timestamp)
+        && (!("archivedAt" in request.resource.data) || request.resource.data.archivedAt is timestamp)
+        && (!("snoozedUntil" in request.resource.data) || request.resource.data.snoozedUntil is timestamp)
+        && (!("feedback" in request.resource.data) || request.resource.data.feedback in ["useful", "not_useful", "wrong"])
+        && (!("updatedByDeviceID" in request.resource.data) || (request.resource.data.updatedByDeviceID is string && request.resource.data.updatedByDeviceID.size() <= 160));
+      }
+
+      allow create, update: if ownerWritableNonSecret(userId)
+        && validAIInboxItemState();
     }
 
     // Mobile Insights mission dispatch. iOS/iPadOS/Android create pending

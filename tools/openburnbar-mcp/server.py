@@ -3156,6 +3156,151 @@ def burnbar_spawn_resume(
     return json.dumps(payload, indent=2, default=str)
 
 
+# ---------------------------------------------------------------------------
+# AI Inbox
+#
+# The inbox is produced by the daemon (it owns the schedule, the credentials,
+# and the egress policy). These tools are read-through views onto it, routed via
+# the daemon socket rather than direct SQLite for two reasons:
+#
+#   1. When SQLCipher keying lands on the shared database, a Python `sqlite3`
+#      reader stops working entirely; the socket path keeps working.
+#   2. The daemon is the single place that decides what an "item" is, so its
+#      shape cannot drift between readers.
+#
+# There is deliberately no write tool: an agent may read the inbox, but only the
+# human approves memories and only the daemon publishes items.
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def burnbar_inbox_list(
+    states: list[str] | None = None,
+    kinds: list[str] | None = None,
+    project_id: str | None = None,
+    limit: int = 30,
+) -> str:
+    """
+    List AI Inbox items — the proactive brief OpenBurnBar assembles from recent agent
+    sessions, workspace git state, and GitHub.
+
+    `states` defaults to open items (`new`, `updated`); pass `["resolved"]` to read history.
+    `kinds` filters by item type: ci_waste, promised_not_landed, uncommitted_work,
+    cost_anomaly, stuck_pr, index_health, brief, budget, system.
+
+    Returns summaries only (no conversation text). Use burnbar_inbox_get for the full item.
+    """
+    params: dict[str, Any] = {"limit": max(1, min(int(limit), 200))}
+    if states:
+        params["states"] = states
+    if kinds:
+        params["kinds"] = kinds
+    if project_id:
+        params["projectID"] = project_id
+
+    try:
+        result = pcm.call_daemon("daemon.inbox.list", params, timeout_seconds=5.0)
+    except Exception as exc:  # noqa: BLE001 - surface any transport failure as data
+        return json.dumps(
+            {
+                "error": str(exc),
+                "hint": (
+                    "The AI Inbox is served by the OpenBurnBar daemon. Ensure the daemon is "
+                    "running and OPENBURNBAR_INDEX_DATABASE_PATH is configured."
+                ),
+            },
+            indent=2,
+        )
+
+    items = result.get("items") or []
+    for item in items:
+        # Titles are model-authored prose derived from logs. Wrap them so a
+        # downstream agent treats them as data, never as instructions.
+        item["title"] = _wrap_untrusted_snippet(
+            item.get("title"),
+            source_tool="burnbar_inbox_list",
+            record_id=str(item.get("id") or "unknown"),
+        )
+    return json.dumps(
+        {
+            "items": items,
+            "openCount": result.get("openCount", 0),
+            "nextBefore": result.get("nextBefore"),
+            "trustSignal": {
+                "untrustedContentWrapped": True,
+                "wrappedCount": len(items),
+                "sourceTool": "burnbar_inbox_list",
+            },
+        },
+        indent=2,
+        default=str,
+    )
+
+
+@mcp.tool()
+def burnbar_inbox_get(item_id: str) -> str:
+    """
+    Read one AI Inbox item in full: its markdown summary, the evidence behind it
+    (conversation ids, pull requests, workflow runs, workspace state), any proposed
+    memories, and the suggested next actions.
+
+    Requires the sensitive-read capability: item bodies are synthesized from the user's
+    own agent sessions.
+    """
+    denied = _capability_denial(
+        "burnbar_inbox_get",
+        "sensitive_read",
+        "Inbox item bodies summarize private agent sessions and require explicit sensitive-read consent.",
+    )
+    if denied:
+        return denied
+
+    try:
+        result = pcm.call_daemon("daemon.inbox.get", {"id": item_id}, timeout_seconds=5.0)
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": str(exc)}, indent=2)
+
+    item = result.get("item")
+    if not item:
+        return json.dumps({"item": None, "error": f"no inbox item with id {item_id!r}"}, indent=2)
+
+    summary = item.get("summary") or {}
+    summary["title"] = _wrap_untrusted_snippet(
+        summary.get("title"), source_tool="burnbar_inbox_get", record_id=item_id
+    )
+    item["summary"] = summary
+    item["summaryMarkdown"] = _wrap_untrusted_snippet(
+        item.get("summaryMarkdown"), source_tool="burnbar_inbox_get", record_id=item_id
+    )
+    return json.dumps(
+        {
+            "item": item,
+            "trustSignal": {
+                "untrustedContentWrapped": True,
+                "wrappedCount": 2,
+                "sourceTool": "burnbar_inbox_get",
+            },
+        },
+        indent=2,
+        default=str,
+    )
+
+
+@mcp.tool()
+def burnbar_inbox_status() -> str:
+    """
+    Report AI Inbox health: recent tick telemetry (how often it ran, whether it
+    skipped, what it spent) plus today's spend against the configured daily budget.
+
+    Useful for answering "is the background analyst actually running, and what is it costing?"
+    """
+    try:
+        result = pcm.call_daemon("daemon.inbox.runs.recent", {"limit": 20}, timeout_seconds=5.0)
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": str(exc)}, indent=2)
+    return json.dumps(result, indent=2, default=str)
+
+
 def main() -> None:
     mcp.run()
 

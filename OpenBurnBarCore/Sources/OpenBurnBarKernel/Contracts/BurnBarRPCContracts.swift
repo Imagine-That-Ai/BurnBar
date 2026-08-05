@@ -186,6 +186,14 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case databaseRecoveryStatus = "daemon.database.recovery.status"
     case databaseRecoveryBundleExport = "daemon.database.recovery_bundle.export"
     case databaseRecoveryBundleImport = "daemon.database.recovery_bundle.import"
+    /// AI Inbox — daemon-resident proactive analyst. Reads are observability
+    /// shaped; config/run mutations spend money and are classified with config.
+    case inboxList = "daemon.inbox.list"
+    case inboxGet = "daemon.inbox.get"
+    case inboxRunsRecent = "daemon.inbox.runs.recent"
+    case inboxConfigGet = "daemon.inbox.config.get"
+    case inboxConfigUpdate = "daemon.inbox.config.update"
+    case inboxRunNow = "daemon.inbox.run_now"
     case runResume = "run.resume"
 }
 

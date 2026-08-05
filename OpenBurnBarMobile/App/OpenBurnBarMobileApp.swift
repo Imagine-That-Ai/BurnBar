@@ -272,6 +272,11 @@ struct OpenBurnBarMobileApp: App {
                 object: nil,
                 userInfo: ["slug": slug]
             )
+        case AIInboxDeepLink.host:
+            // burnbar://inbox[/{itemId}] — produced by an AI Inbox P1 push. The
+            // id is opaque here; the surface decrypts the item from the sealed
+            // Firestore mirror once it claims the request.
+            AIInboxDeepLink.open(itemID: AIInboxDeepLink.itemID(from: url))
         default:
             break
         }
