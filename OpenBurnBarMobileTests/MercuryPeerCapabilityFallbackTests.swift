@@ -12,6 +12,12 @@ import OpenBurnBarMedia
 /// handed back the full `macFallbackCapabilities` set for any online relay,
 /// so the Live sheet advertised `Ask to Mirror` against a Mac that could not
 /// serve it and sat on "connecting"/"reconnecting" instead of naming the fault.
+/// `@MainActor` because the two methods under test — `MercuryPeerSource
+/// .fallbackCapabilities(for:)` and `.isRealtimeExplicitlyUnavailable(_:)` —
+/// are statics on a `@MainActor final class`, so calling them from a
+/// nonisolated `XCTestCase` method is an actor-isolation error under this
+/// target's `SWIFT_STRICT_CONCURRENCY: complete`.
+@MainActor
 final class MercuryPeerCapabilityFallbackTests: XCTestCase {
     private let referenceDate = Date(timeIntervalSince1970: 1_700_000_000)
 
@@ -19,13 +25,17 @@ final class MercuryPeerCapabilityFallbackTests: XCTestCase {
         realtimeRelayStatus: String?,
         capabilities: [String]
     ) -> HermesConnectionRecord {
+        // Argument order follows the memberwise init verbatim:
+        // `realtimeRelayStatus` is declared BEFORE `capabilities`, and Swift
+        // requires call-site order to match the declaration even when every
+        // intervening parameter is defaulted.
         HermesConnectionRecord(
             id: "relay-host-test",
             displayName: "Alberto's MacBook Pro Hermes Relay",
             mode: .relayLink,
             status: .online,
-            capabilities: capabilities,
             realtimeRelayStatus: realtimeRelayStatus,
+            capabilities: capabilities,
             updatedAt: referenceDate
         )
     }

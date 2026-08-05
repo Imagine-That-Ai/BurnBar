@@ -1035,7 +1035,7 @@ assertIncludes(
   "CLI session writer uses sealed codec",
 );
 assertSectionNotIncludes(
-  "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CLIAgentSessionRecord.swift",
+  "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CLIAgentSessionRecord.swift",
   "public static func encodeSealed(",
   "public static func encodeMessage",
   '"title"',
@@ -1050,7 +1050,7 @@ for (const field of [
   '"customTitle"',
 ]) {
   assertSectionNotIncludes(
-    "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CLIAgentSessionRecord.swift",
+    "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CLIAgentSessionRecord.swift",
     "public static func encodeSealed(",
     "public static func encodeMessage",
     field,
