@@ -16,8 +16,9 @@ import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import process from "node:process";
 
-import { getApps, initializeApp } from "firebase-admin/app";
-import { FieldValue, getFirestore, Timestamp } from "firebase-admin/firestore";
+import { initializeApp } from "firebase-admin/app";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 
 import { buildCloudSearchPostingEdges } from "../lib/callables/encryptedSearchIndex.js";
 
@@ -535,7 +536,7 @@ async function main() {
   const args = parseArgs(process.argv);
   initializeApp({ projectId: PROJECT_ID, storageBucket: STORAGE_BUCKET });
   const db = getFirestore();
-  const bucket = admin.storage().bucket();
+  const bucket = getStorage().bucket();
   const uid = args.uid;
   const deviceId = args.deviceId;
   const apply = args.apply;

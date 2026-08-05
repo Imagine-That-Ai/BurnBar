@@ -16,8 +16,9 @@ import crypto from "node:crypto";
 import os from "node:os";
 import process from "node:process";
 
-import { getApps, initializeApp } from "firebase-admin/app";
+import { initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore, Timestamp } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || "burnbar";
 const STORAGE_BUCKET = process.env.OPENBURNBAR_STORAGE_BUCKET || "burnbar-hosted-mcp-bodies-246956661961";
@@ -771,7 +772,7 @@ async function main() {
   const args = parseArgs(process.argv);
   initializeApp({ projectId: PROJECT_ID, storageBucket: STORAGE_BUCKET });
   const db = getFirestore();
-  const bucket = admin.storage().bucket();
+  const bucket = getStorage().bucket();
   const vaultKey = await loadVaultKey({ db, uid: args.uid, deviceId: args.deviceId });
   const startingPending = localPendingCount(args.sqlitePath, args.contains, args.includeSynced);
   const maxRecords = args.limit > 0 ? Math.min(args.limit, startingPending) : startingPending;
