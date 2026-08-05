@@ -308,12 +308,26 @@ public enum AIInboxMirrorCodec {
         guard let envelope = CloudVaultCrypto.sealedPayload(from: data[sealedPayloadField]) else {
             return nil
         }
-        guard let kind = (data["kind"] as? String).flatMap(BurnBarInboxItemKind.init(rawValue:)),
-              let state = (data["state"] as? String).flatMap(BurnBarInboxItemState.init(rawValue:)),
+        guard let state = (data["state"] as? String).flatMap(BurnBarInboxItemState.init(rawValue:)),
               let firstSeenAt = dateValue(data["firstSeenAt"]),
               let lastSeenAt = dateValue(data["lastSeenAt"]) else {
             return nil
         }
+        // An UNKNOWN kind degrades to `.system` rather than dropping the item.
+        //
+        // The Mac ships detectors ahead of the phones that read them: a Mac on a
+        // newer build will publish a kind an older iOS or Android client has
+        // never heard of. Dropping those items would make the inbox silently
+        // incomplete on the older device — the exact failure mode this feature
+        // exists to eliminate, and one with no error to notice.
+        //
+        // `.system` is the honest fallback: the title, priority, body, and
+        // evidence are all still meaningful, only the icon and the category
+        // label are generic. `state` is deliberately NOT lenient — an unknown
+        // lifecycle state would put the row in the wrong list, which is worse
+        // than omitting it.
+        let kind = (data["kind"] as? String)
+            .flatMap(BurnBarInboxItemKind.init(rawValue:)) ?? .system
 
         do {
             let aadContext = try CloudVaultAADContext(

@@ -144,6 +144,32 @@ class AIInboxRefreshPartsTest {
     }
 
     @Test
+    fun `an unknown kind degrades to SYSTEM rather than dropping the item`() = withBase64 {
+        // A Mac on a newer build publishes detectors this build has never heard
+        // of. Dropping those items would leave this phone's inbox silently
+        // incomplete, with nothing on screen to say so.
+        val future = sealedDocument().toMutableMap().apply { this["kind"] = "some_future_detector" }
+
+        val item = parseAIInboxDocument(future, "item-1", uid, vaultKey)
+
+        assertNotNull("An unrecognized kind must not drop the item", item)
+        assertEquals(AIInboxItemKind.SYSTEM, item!!.kind)
+        // Everything except the category survives intact.
+        assertEquals("CI is burning cycles on the iOS lane", item.title)
+        assertEquals(AIInboxPriority.P2, item.priority)
+        assertEquals(4, item.occurrenceCount)
+    }
+
+    @Test
+    fun `an unknown state still drops the item`() = withBase64 {
+        // Unlike kind, an unrecognized lifecycle state would file the row under
+        // the wrong filter — worse than omitting it.
+        val future = sealedDocument().toMutableMap().apply { this["state"] = "some_future_state" }
+
+        assertNull(parseAIInboxDocument(future, "item-1", uid, vaultKey))
+    }
+
+    @Test
     fun `refuses a document stamped with a future schema version`() = withBase64 {
         val future = sealedDocument().toMutableMap().apply { this["schemaVersion"] = AIInboxItem.CURRENT_SCHEMA_VERSION + 1 }
 
@@ -175,12 +201,27 @@ class AIInboxRefreshPartsTest {
 
     @Test
     fun `refuses documents missing required routing fields`() = withBase64 {
-        for (missing in listOf("kind", "state", "firstSeenAt", "lastSeenAt", "schemaVersion")) {
+        // `kind` is deliberately absent from this list: it degrades to SYSTEM
+        // (see the forward-compatibility tests below). The fields here are the
+        // ones with no safe default — without them the row cannot be filed into
+        // a filter, ordered against its peers, or version-checked, so showing it
+        // would be worse than omitting it.
+        for (missing in listOf("state", "firstSeenAt", "lastSeenAt", "schemaVersion")) {
             val document = sealedDocument().toMutableMap().apply { remove(missing) }
             assertNull("removing $missing should drop the item", parseAIInboxDocument(document, "item-1", uid, vaultKey))
         }
-        val badKind = sealedDocument().toMutableMap().apply { this["kind"] = "not_a_kind" }
-        assertNull(parseAIInboxDocument(badKind, "item-1", uid, vaultKey))
+    }
+
+    @Test
+    fun `a missing kind degrades exactly like an unknown one`() = withBase64 {
+        // Absent and unrecognized are the same situation from this build's point
+        // of view, so they must not diverge.
+        val document = sealedDocument().toMutableMap().apply { remove("kind") }
+
+        val item = parseAIInboxDocument(document, "item-1", uid, vaultKey)
+
+        assertNotNull(item)
+        assertEquals(AIInboxItemKind.SYSTEM, item!!.kind)
     }
 
     @Test
@@ -556,10 +597,14 @@ class AIInboxRefreshPartsTest {
     //     — OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/AIInboxMirrorRecord.swift
     //
     // These are the failure mode with no symptom. A mistyped token does not
-    // crash and does not log: `fromToken` returns null, the guard clause drops
-    // the document, and the phone shows an inbox that is simply empty — which
-    // is indistinguishable from "the Mac found nothing". Enumerating all of
-    // them here is what turns that silence into a red test.
+    // crash and does not log — `fromToken` returns null — and the phone shows an
+    // inbox that is simply empty, indistinguishable from "the Mac found
+    // nothing". Enumerating all of them here is what turns that silence into a
+    // red test.
+    //
+    // `kind` is the one token that degrades instead of dropping (unknown reads
+    // as SYSTEM), because a newer Mac legitimately publishes kinds this build
+    // has never seen. Every other token below is exact-match or bust.
 
     @Test
     fun `item kind tokens match the Swift raw values exactly`() {

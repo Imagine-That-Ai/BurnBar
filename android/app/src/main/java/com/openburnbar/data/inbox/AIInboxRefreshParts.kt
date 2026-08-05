@@ -108,7 +108,16 @@ fun parseAIInboxDocument(data: Map<String, Any?>, documentID: String, uid: Strin
     val schemaVersion = intValue(data["schemaVersion"]) ?: return null
     if (schemaVersion > AIInboxItem.CURRENT_SCHEMA_VERSION) return null
 
-    val kind = AIInboxItemKind.fromToken(data["kind"] as? String) ?: return null
+    // An UNKNOWN kind degrades to SYSTEM rather than dropping the item. The Mac
+    // ships detectors ahead of the phones that read them, so an older Android
+    // build will meet kinds it has never heard of; dropping those would make the
+    // inbox silently incomplete here with no error to notice. Title, priority,
+    // body, and evidence all still read correctly — only the icon and category
+    // label go generic. Matches `AIInboxMirrorCodec.decodeSealed` on Apple.
+    //
+    // `state` stays strict: an unknown lifecycle state would file the row under
+    // the wrong filter, which is worse than omitting it.
+    val kind = AIInboxItemKind.fromToken(data["kind"] as? String) ?: AIInboxItemKind.SYSTEM
     val state = AIInboxItemState.fromToken(data["state"] as? String) ?: return null
     val firstSeenAt = epochMillis(data["firstSeenAt"]) ?: return null
     val lastSeenAt = epochMillis(data["lastSeenAt"]) ?: return null

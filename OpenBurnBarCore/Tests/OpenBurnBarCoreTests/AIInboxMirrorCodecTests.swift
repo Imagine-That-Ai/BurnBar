@@ -270,7 +270,38 @@ final class AIInboxMirrorCodecTests: XCTestCase {
         )
     }
 
-    func test_decodeRefusesUnknownKind() throws {
+    /// Forward compatibility: a Mac running a newer build publishes detector
+    /// kinds an older phone has never heard of. Those items must still appear —
+    /// dropping them would make the inbox silently incomplete on the older
+    /// device, with nothing to indicate anything was missing.
+    func test_unknownKindDegradesToSystemRatherThanDroppingTheItem() throws {
+        var encoded = try AIInboxMirrorCodec.encodeSealed(
+            Self.makeRecord(title: "A detector from the future"),
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID,
+            uid: uid,
+            documentID: documentID
+        )
+        encoded["kind"] = "some_future_detector"
+
+        let decoded = try XCTUnwrap(
+            AIInboxMirrorCodec.decodeSealed(
+                documentID: documentID,
+                uid: uid,
+                data: encoded,
+                vaultKey: vaultKey
+            ),
+            "An unrecognized kind must not drop the item"
+        )
+        XCTAssertEqual(decoded.kind, .system, "Unknown kinds read as the generic notice category")
+        XCTAssertEqual(decoded.title, "A detector from the future", "Everything else survives intact")
+        XCTAssertEqual(decoded.priority, .p1)
+        XCTAssertFalse(decoded.payload.evidence.isEmpty)
+    }
+
+    /// Absent and unrecognized are the same situation from this build's point of
+    /// view, so they must not diverge. (Kotlin asserts the same symmetry.)
+    func test_missingKindDegradesExactlyLikeAnUnknownOne() throws {
         var encoded = try AIInboxMirrorCodec.encodeSealed(
             Self.makeRecord(),
             vaultKey: vaultKey,
@@ -278,7 +309,30 @@ final class AIInboxMirrorCodecTests: XCTestCase {
             uid: uid,
             documentID: documentID
         )
-        encoded["kind"] = "some_future_detector"
+        encoded.removeValue(forKey: "kind")
+
+        let decoded = try XCTUnwrap(
+            AIInboxMirrorCodec.decodeSealed(
+                documentID: documentID,
+                uid: uid,
+                data: encoded,
+                vaultKey: vaultKey
+            )
+        )
+        XCTAssertEqual(decoded.kind, .system)
+    }
+
+    /// `state`, unlike `kind`, stays strict: an unrecognized lifecycle state
+    /// would file the row under the wrong filter — worse than omitting it.
+    func test_unknownStateStillDropsTheItem() throws {
+        var encoded = try AIInboxMirrorCodec.encodeSealed(
+            Self.makeRecord(),
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID,
+            uid: uid,
+            documentID: documentID
+        )
+        encoded["state"] = "some_future_state"
 
         XCTAssertNil(
             AIInboxMirrorCodec.decodeSealed(
