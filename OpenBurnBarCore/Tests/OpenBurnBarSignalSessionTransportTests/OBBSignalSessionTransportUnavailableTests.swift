@@ -1,3 +1,5 @@
+import Foundation
+import OpenBurnBarSignalSessionTransport
 import XCTest
 
 final class OBBSignalSessionTransportUnavailableTests: XCTestCase {
