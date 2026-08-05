@@ -44,7 +44,9 @@ const AGENT_FANOUT_SWEEP_BATCH_LIMIT = 50;
 
 export const AGENT_NOTIFICATION_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-export type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat" | "ai_inbox_item";
+// Module-private: consumers pass string literals that are checked against
+// this union through createNotificationEvent's parameter type.
+type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat" | "ai_inbox_item";
 
 const NOTIFICATION_SOURCE_KINDS: readonly AgentNotificationSourceKind[] = [
   "cli_session",
@@ -64,7 +66,12 @@ interface AgentReplyMessage {
   isError?: boolean;
 }
 
-export interface AgentReplyNotificationEvent {
+// Module-private: every use is inside this module, and the tests derive the
+// shape structurally via Parameters<typeof buildFcmMessage>[0]["event"]
+// rather than importing the name. Keeping it unexported holds the
+// hand-maintained schema surface at its cap
+// (budgets/hand-maintained-ts-baseline.json).
+interface AgentReplyNotificationEvent {
   id: string;
   uid: string;
   sourceKind: AgentNotificationSourceKind;

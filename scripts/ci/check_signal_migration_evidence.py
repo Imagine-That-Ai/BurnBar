@@ -7,7 +7,7 @@ import argparse
 import json
 import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -62,7 +62,7 @@ def parse_time(raw: Any, label: str) -> datetime:
         parsed = datetime.fromisoformat(raw[:-1] + "+00:00")
     except ValueError as error:
         raise ValueError(f"{label} is invalid: {error}") from error
-    if parsed.tzinfo != timezone.utc:
+    if parsed.tzinfo != UTC:
         fail(f"{label} must use UTC")
     return parsed
 
@@ -128,7 +128,7 @@ def validate_evidence(
         fail("sourceCommit does not match the release source commit")
 
     captured_at = parse_time(payload.get("capturedAt"), "capturedAt")
-    current = now or datetime.now(timezone.utc)
+    current = now or datetime.now(UTC)
     if captured_at > current + timedelta(minutes=5):
         fail("capturedAt is in the future")
     if current - captured_at > timedelta(hours=max_age_hours):

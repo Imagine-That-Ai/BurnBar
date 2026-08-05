@@ -120,6 +120,8 @@ crates/openburnbar-iroh/src/lib.rs | rust-allow
 # --- Generated UniFFI Swift bindings (token-scoped) ---
 # Regenerated and drift-checked from crates/openburnbar-domain-core; never hand-edited.
 OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift | swiftlint-disable
+# Same generator, same contract: regenerated and drift-checked from crates/openburnbar-iroh.
+OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/openburnbar_iroh.swift | swiftlint-disable
 
 # --- Vendored GRDB SQLCipher fork (token-scoped) ---
 # Upstream GRDB carries SwiftLint waivers for compatibility with its own lint profile. Keep exact

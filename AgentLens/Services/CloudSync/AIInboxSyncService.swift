@@ -369,14 +369,14 @@ final class AIInboxSyncService: CloudSyncDomain, Sendable {
 
     private func loadWatermark(uid: String) -> Watermark {
         guard let data = defaults.data(forKey: Self.watermarkDefaultsKey(uid: uid)),
-              let decoded = try? JSONDecoder().decode(Watermark.self, from: data) else {
+              let decoded = try? JSONDecoder().decode(Watermark.self, from: data) else { // try?-ok(corrupt cached watermark falls back to a fresh sync)
             return Watermark()
         }
         return decoded
     }
 
     private func saveWatermark(_ watermark: Watermark, uid: String) {
-        guard let data = try? JSONEncoder().encode(watermark) else { return }
+        guard let data = try? JSONEncoder().encode(watermark) else { return } // try?-ok(watermark cache is an optimisation; a failed write only costs a re-sync)
         defaults.set(data, forKey: Self.watermarkDefaultsKey(uid: uid))
     }
 
@@ -387,7 +387,7 @@ final class AIInboxSyncService: CloudSyncDomain, Sendable {
     /// including them would defeat the gate they exist to serve.
     nonisolated static func contentHash(for row: ControlPlaneStore.AIInboxRow) -> String {
         let record = mirrorRecord(from: row)
-        let payloadDigest = (try? JSONEncoder.aiInboxWatermark.encode(record.payload))
+        let payloadDigest = (try? JSONEncoder.aiInboxWatermark.encode(record.payload)) // try?-ok(unencodable payload hashes to empty so the row still mirrors)
             .map { CloudVaultCrypto.sha256Hex($0) } ?? ""
         let parts: [String] = [
             record.id,
