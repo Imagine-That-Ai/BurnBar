@@ -275,6 +275,36 @@ COVERAGE_ALLOWLIST = {
         "and data decisions are covered by ChartsRouteTests, "
         "ChartsPageLayoutTests, and DashboardUsageViewModelTests."
     ),
+    "AgentLens/Views/Inbox/InboxView.swift": (
+        "SwiftUI inbox list rendering: liquid-glass composition, swipe/context "
+        "menus, scroll anchoring, and the animated empty state require a live "
+        "window server. Every behavior decision lives in the closure-injected "
+        "model covered by InboxModelTests (filtering, ranking, sections, "
+        "optimistic actions, deep-link selection); the row's presentation "
+        "helpers (InboxRowView.plainPreview, the InboxPresentation "
+        "icon/tint/label vocabulary) are covered by AIInboxViewFormattingTests."
+    ),
+    "AgentLens/Views/Inbox/InboxItemDetailView.swift": (
+        "SwiftUI detail layout, markdown text rendering, and "
+        "NSWorkspace/NSPasteboard evidence actions require a live window "
+        "server. The provenance formatting (friendlyModelNames) is covered by "
+        "AIInboxViewFormattingTests; the memory-approval route by "
+        "InboxMemoryApprovalHandlerTests; the evidence jump resolution by "
+        "InboxConversationJumpResolverTests."
+    ),
+    "AgentLens/Views/Settings/AIInboxSettingsView.swift": (
+        "SwiftUI settings layout plus live daemon socket round trips "
+        "(load/persist/runNow through OpenBurnBarDaemonSocketClient) cannot "
+        "execute under headless XCTest. The pure copy and formatting helpers "
+        "(egressExplanation, cadenceLabel, runTint, runLabel) and the "
+        "BurnBarInboxConfig.with clamp-preserving rebuild wrappers are covered "
+        "by AIInboxViewFormattingTests."
+    ),
+    "AgentLens/Views/Settings/PrivacyIndexingSettingsView.swift": (
+        "SwiftUI settings row wiring adding the AI Inbox entry point; renders "
+        "only under a live window server. The inbox surface it links to is "
+        "covered by InboxModelTests and AIInboxViewFormattingTests."
+    ),
     "AgentLens/Views/Components/ProviderLogoView.swift": (
         "Provider asset selection and SwiftUI image rendering require the app "
         "resource bundle; provider grouping remains covered by "
@@ -320,6 +350,26 @@ COVERAGE_ALLOWLIST = {
         "Live cloud-download listener/writer orchestration. Download policy and "
         "round-trip behavior are covered through injected sync tests; changed "
         "listener plumbing requires Firebase emulator/integration coverage."
+    ),
+    "AgentLens/Services/CloudSync/CloudSyncCoordinator.swift": (
+        "Live sync-loop scheduling glue: the changed lines register the AI "
+        "Inbox mirror in the coordinator's periodic pass, which only executes "
+        "against a signed-in Firebase account. The mirror's watermark, "
+        "sealing, state download, and pruning behavior is covered by "
+        "AIInboxSyncServiceTests through the injected fake gateway."
+    ),
+    "AgentLens/Services/CloudSyncService.swift": (
+        "Live Firestore service facade; the changed lines wire "
+        "AIInboxSyncService into the live service construction, which requires "
+        "a configured Firebase app. The sync behavior itself is covered by "
+        "AIInboxSyncServiceTests via CloudSyncContext with a fake gateway."
+    ),
+    "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonNotificationRelay.swift": (
+        "UNUserNotificationCenter authorization prompts and notification "
+        "delivery need a live notification center and app bundle identity that "
+        "headless XCTest does not have. The openburnbar://inbox deep link the "
+        "relay emits is covered by AIInboxViewFormattingTests "
+        "(NavigationCoordinator.handleDeepLink routing)."
     ),
     "AgentLens/Services/CloudSync/HermesRelayHostService.swift": (
         "Runtime iroh/Hermes host wiring: starts live relay services, media "
