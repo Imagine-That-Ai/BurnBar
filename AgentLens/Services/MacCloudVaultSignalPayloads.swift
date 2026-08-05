@@ -134,7 +134,7 @@ enum MacCloudVaultSignalPayloads {
             guard let sealed = try await signalEnvelopeIfEnabled(
                 domainID: domainID,
                 uid: uid,
-                firestore: try firestore(),
+                firestore: try firestore(), // cov:ignore -- reachable only past the .off activation guard, which requires a configured FirebaseApp + Remote Config; the OFF path never resolves the autoclosure and is unit-tested.
                 collection: collection,
                 docId: docId,
                 field: field,

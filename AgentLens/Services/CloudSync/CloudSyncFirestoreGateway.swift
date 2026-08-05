@@ -120,9 +120,11 @@ final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked
         }
     }
 
+    // cov:ignore-start -- returns the live SDK handle; resolving it requires a configured FirebaseApp, which unit tests never have. The nil default is unit-tested via CloudSyncFirestoreFakeGateway.
     func rawSignalPayloadFirestore() -> Firestore? {
         firestore
     }
+    // cov:ignore-end
 
     private var firestore: Firestore {
         firestoreOverride ?? Firestore.firestore()

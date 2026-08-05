@@ -37,11 +37,13 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
 
     /// The raw Firestore handle the Signal payload APIs require, sourced from
     /// the gateway so this service never resolves the global singleton itself.
-    private func signalPayloadFirestore() throws -> Firestore {
+    /// Internal (not private) so the nil-guard is directly unit-testable: the
+    /// Signal-gated call sites only run with a configured FirebaseApp.
+    func signalPayloadFirestore() throws -> Firestore {
         guard let firestore = context.firestoreGateway.rawSignalPayloadFirestore() else {
             throw TextExpansionSignalSyncError.signalFirestoreUnavailable
         }
-        return firestore
+        return firestore // cov:ignore -- a real handle exists only with a configured FirebaseApp; the nil-guard throw path is unit-tested (TextExpansionSyncServiceTests).
     }
 
     func sync() async {
@@ -60,7 +62,7 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
                 let resolved = try await MacCloudVaultKeyAccess.keyForWriting(
                     uid: uid,
                     deviceId: gate.account.deviceId,
-                    firestore: signalPayloadFirestore()
+                    firestore: signalPayloadFirestore() // cov:ignore -- Signal-gated call site; the gate is ON only with a configured FirebaseApp + Remote Config, and the helper's guard is unit-tested.
                 )
                 guard resolved.keyData == vaultKey else {
                     throw TextExpansionSignalSyncError.vaultKeyMismatch
@@ -111,7 +113,7 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
                     to: payload,
                     domainID: "conversations_chat",
                     uid: uid,
-                    firestore: try signalPayloadFirestore(),
+                    firestore: try signalPayloadFirestore(), // cov:ignore -- Signal-gated call site; the gate is ON only with a configured FirebaseApp + Remote Config, and the helper's guard is unit-tested.
                     collection: "text_snippets",
                     docId: snippet.id,
                     plaintext: try Self.signalPlaintext(snippet),
@@ -153,7 +155,7 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
             do {
                 let recipients = try await MacCloudVaultSignalPayloads.atRestRecipients(
                     uid: uid,
-                    firestore: signalPayloadFirestore(),
+                    firestore: signalPayloadFirestore(), // cov:ignore -- Signal-gated call site; the gate is ON only with a configured FirebaseApp + Remote Config, and the helper's guard is unit-tested.
                     localIdentity: identity
                 )
                 trustedSenders = Dictionary(
@@ -262,7 +264,9 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
         return try encoder.encode(snippet)
     }
 
-    private static func snippetFromSignalPayload(_ payload: Data) -> TextExpansionSnippet? {
+    /// Internal (not private) so decode behavior is directly unit-testable: the
+    /// Signal-envelope download path only runs with a configured FirebaseApp.
+    static func snippetFromSignalPayload(_ payload: Data) -> TextExpansionSnippet? {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return AppLogger.sync.silentlyOptional(
@@ -363,7 +367,7 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
     }
 }
 
-private enum TextExpansionSignalSyncError: LocalizedError {
+enum TextExpansionSignalSyncError: LocalizedError {
     case vaultKeyMismatch
     case signalFirestoreUnavailable
 
