@@ -226,4 +226,85 @@ final class AIInboxCIWasteDetectionTests: XCTestCase {
         XCTAssertEqual(BurnBarAIInboxDetectors.workflowDisplayName("ci.yaml"), "ci")
         XCTAssertEqual(BurnBarAIInboxDetectors.workflowDisplayName("Build and Test"), "Build and Test")
     }
+
+    // MARK: - Volume control
+
+    /// A repository with a long tail of stale PRs must not become the inbox.
+    ///
+    /// This is the failure mode that would quietly ruin the product: 30 stale
+    /// open PRs is ordinary on an active project, and because each one dedupes
+    /// on its own fingerprint, all 30 would persist tick after tick. The inbox
+    /// stops being "what needs you" and becomes a backlog listing nobody reads.
+    func test_aLongTailOfStalledPRsCollapsesIntoOneSummaryRow() throws {
+        let now = Date()
+        let stale = (1...30).map { number in
+            AIInboxFixtures.pullRequest(
+                number: number,
+                state: "OPEN",
+                updatedAt: now.addingTimeInterval(-Double(number + 6) * 86_400)
+            )
+        }
+        let pack = AIInboxFixtures.pack(
+            repositories: [
+                AIInboxFixtures.repository(slug: "Ajnunezg/BurnBar", runs: [], openPullRequests: stale)
+            ],
+            now: now
+        )
+
+        let findings = BurnBarAIInboxDetectors(now: now).detectStuckPullRequests(pack: pack)
+
+        // 5 individual + 1 summary, not 30.
+        XCTAssertEqual(findings.count, BurnBarAIInboxDetectors.maxIndividualStuckPRs + 1)
+
+        let summary = try XCTUnwrap(findings.last)
+        XCTAssertEqual(summary.metrics["additional_stalled"], "25")
+        XCTAssertTrue(summary.title.contains("25 more stalled PRs"))
+        XCTAssertLessThanOrEqual(
+            summary.evidenceIDs.count,
+            5,
+            "The summary cites a sample, not all 25"
+        )
+
+        // The summary's identity must not move with the count, or every newly
+        // stale PR mints another summary row beside the last one.
+        let fewer = AIInboxFixtures.pack(
+            repositories: [
+                AIInboxFixtures.repository(
+                    slug: "Ajnunezg/BurnBar",
+                    runs: [],
+                    openPullRequests: Array(stale.prefix(20))
+                )
+            ],
+            now: now
+        )
+        let refreshed = BurnBarAIInboxDetectors(now: now).detectStuckPullRequests(pack: fewer)
+        XCTAssertEqual(
+            refreshed.last?.fingerprint,
+            summary.fingerprint,
+            "The overflow row updates in place as the count changes"
+        )
+    }
+
+    /// Below the cap, every stalled PR still gets its own row — the summary only
+    /// appears when it is actually earning its place.
+    func test_aFewStalledPRsAreListedIndividually() {
+        let now = Date()
+        let stale = (1...3).map { number in
+            AIInboxFixtures.pullRequest(
+                number: number,
+                state: "OPEN",
+                updatedAt: now.addingTimeInterval(-Double(number + 6) * 86_400)
+            )
+        }
+        let pack = AIInboxFixtures.pack(
+            repositories: [
+                AIInboxFixtures.repository(slug: "Ajnunezg/BurnBar", runs: [], openPullRequests: stale)
+            ],
+            now: now
+        )
+
+        let findings = BurnBarAIInboxDetectors(now: now).detectStuckPullRequests(pack: pack)
+        XCTAssertEqual(findings.count, 3)
+        XCTAssertFalse(findings.contains { $0.title.contains("more stalled") })
+    }
 }

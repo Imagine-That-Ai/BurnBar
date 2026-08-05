@@ -378,15 +378,28 @@ trigger fires only on document *create*, so an occurrence bump never re-alerts.
 
 ### Platform surfaces
 
-| Platform | Surface |
-|---|---|
-| macOS | `AgentLens/Views/Inbox/` — two-pane, ⌘1 |
-| iOS | `OpenBurnBarMobile/Views/Inbox/` — single column |
-| iPadOS | same, two columns above 720pt with a draggable divider |
-| Android | `android/…/ui/inbox/` — Compose list + detail |
+| Platform | Surface | Reached from |
+|---|---|---|
+| macOS | `AgentLens/Views/Inbox/` — two-pane | Its own dashboard section (⌘1) |
+| iOS | `OpenBurnBarMobile/Views/Inbox/` — single column | **Inside Streams**, not its own tab |
+| iPadOS | same views, two columns above 720pt with a draggable divider | same |
+| Android | `android/…/ui/inbox/` — Compose list + detail | Its own nav destination |
 
 All four rank through the same `AIInboxMirrorRecord.rank` and use the same section
 grouping, so the inbox reads as one product rather than four ports.
+
+**Why iOS lives inside Streams rather than as a seventh tab.** Promoting a
+top-level destination on iOS means a new hand-drawn Aurora glyph plus edits to
+two default-tab arrays that existing users have already persisted — so the tab
+would be invisible to everyone who has ever reordered their tabs, which is the
+worst of both outcomes. Streams is already "what my agents have been doing,"
+so the inbox reads as its summary rather than a stranger. `AIInboxSplitLayout`
+resolves one column or two from the width it is handed, so the same expression
+serves an iPhone, a Slide Over, and a full-width iPad. Streams also feeds its
+existing search field through rather than adding a second one.
+
+Promote it later by adding cases to `AuroraNavDestination` and `AppDestination`
+and wiring both roots; nothing here blocks that.
 
 **Memory approval stays on the Mac.** Mobile shows proposed memories read-only and
 says so: the memory authority (PII gate, sealed body snapshots, provenance, the

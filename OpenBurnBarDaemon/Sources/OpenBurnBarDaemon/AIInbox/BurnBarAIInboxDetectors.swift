@@ -462,14 +462,39 @@ struct BurnBarAIInboxDetectors: Sendable {
 
     static let stuckPRQuietPeriod: TimeInterval = 5 * 24 * 60 * 60
 
+    /// Individual stalled PRs surfaced per repository before the rest are rolled
+    /// into one summary row.
+    ///
+    /// Without this, a repository with 30 stale open PRs — ordinary on an active
+    /// project — produces 30 items in a single tick, and the fingerprint dedupe
+    /// then keeps every one of them alive. The inbox becomes a backlog listing,
+    /// which is the opposite of "here is what needs you". Five is enough to act
+    /// on; the summary keeps the total honest.
+    static let maxIndividualStuckPRs = 5
+
     func detectStuckPullRequests(pack: BurnBarAIInboxEvidencePack) -> [BurnBarAIInboxFinding] {
         var findings: [BurnBarAIInboxFinding] = []
 
         for repository in pack.repositories {
-            for pullRequest in repository.openPullRequests where pullRequest.isDraft == false {
-                guard let updatedAt = pullRequest.updatedAt,
-                      now.timeIntervalSince(updatedAt) >= Self.stuckPRQuietPeriod else { continue }
+            // Collect first so the most actionable ones can be surfaced
+            // individually and the tail summarized, rather than emitting in
+            // whatever order the API returned.
+            let stuck = repository.openPullRequests
+                .filter { pullRequest in
+                    guard pullRequest.isDraft == false, let updatedAt = pullRequest.updatedAt else { return false }
+                    return now.timeIntervalSince(updatedAt) >= Self.stuckPRQuietPeriod
+                }
+                .sorted { lhs, rhs in
+                    // Approved-and-forgotten first: the work is done and only
+                    // needs a merge, so it is the cheapest thing to act on.
+                    let lhsApproved = lhs.reviewDecision?.uppercased() == "APPROVED"
+                    let rhsApproved = rhs.reviewDecision?.uppercased() == "APPROVED"
+                    if lhsApproved != rhsApproved { return lhsApproved }
+                    return (lhs.updatedAt ?? .distantFuture) < (rhs.updatedAt ?? .distantFuture)
+                }
 
+            for pullRequest in stuck.prefix(Self.maxIndividualStuckPRs) {
+                guard let updatedAt = pullRequest.updatedAt else { continue }
                 let days = Int(now.timeIntervalSince(updatedAt) / 86_400)
                 let approved = pullRequest.reviewDecision?.uppercased() == "APPROVED"
                 findings.append(
@@ -512,6 +537,61 @@ struct BurnBarAIInboxDetectors: Sendable {
                         deterministicVerification: BurnBarInboxVerification(
                             verdict: .deterministic,
                             reason: "Read from the pull request's own `updatedAt` timestamp.",
+                            checkedAt: now
+                        ),
+                        source: .detector
+                    )
+                )
+            }
+
+            // The tail becomes one row rather than dozens. A count the user can
+            // act on beats a list they will scroll past.
+            let remainder = stuck.count - Self.maxIndividualStuckPRs
+            if remainder > 0 {
+                let overflow = Array(stuck.dropFirst(Self.maxIndividualStuckPRs))
+                let approvedCount = overflow.filter { $0.reviewDecision?.uppercased() == "APPROVED" }.count
+                let quietDays = Int(Self.stuckPRQuietPeriod / 86_400)
+                findings.append(
+                    BurnBarAIInboxFinding(
+                        kind: .stuckPR,
+                        title: "\(remainder) more stalled PRs in \(repository.slug)",
+                        summaryMarkdown: """
+                            Beyond the ones listed separately, \(remainder) other pull \
+                            request\(remainder == 1 ? "" : "s") in `\(repository.slug)` \
+                            \(remainder == 1 ? "has" : "have") gone quiet for over \(quietDays) \
+                            days\(approvedCount > 0 ? ", \(approvedCount) of them already approved" : "").
+
+                            Listing each separately would bury the rest of your inbox, so they are \
+                            summarized here.
+                            """,
+                        priority: approvedCount > 0 ? .p3 : .p4,
+                        confidence: 0.95,
+                        evidenceIDs: overflow.prefix(5).map { "pr:\(repository.slug)#\($0.number)" },
+                        projectName: repository.slug,
+                        fingerprint: BurnBarAIInboxFinding.fingerprint(
+                            kind: .stuckPR,
+                            scope: repository.slug,
+                            // Identity, not the count — otherwise every PR that
+                            // goes stale mints a brand-new summary row.
+                            subject: "stalled-pr-overflow"
+                        ),
+                        metrics: [
+                            "additional_stalled": String(remainder),
+                            "additional_approved": String(approvedCount)
+                        ],
+                        actions: [
+                            BurnBarInboxAction(
+                                id: "open-prs",
+                                kind: .openURL,
+                                title: "Review open PRs",
+                                value: "https://github.com/\(repository.slug)/pulls",
+                                isPrimary: true
+                            )
+                        ],
+                        needsVerification: false,
+                        deterministicVerification: BurnBarInboxVerification(
+                            verdict: .deterministic,
+                            reason: "Counted from the repository's own open pull requests.",
                             checkedAt: now
                         ),
                         source: .detector
