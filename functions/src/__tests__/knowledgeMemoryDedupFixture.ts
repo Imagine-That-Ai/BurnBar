@@ -22,7 +22,11 @@ export const FIELD_DELETE = Symbol("FieldValue.delete");
 // the stored record.
 export const stored = new Map<string, Record<string, unknown>>();
 
-export type FakeRef = {
+// Not exported on purpose: exported `type`/`interface` declarations in
+// functions/src count against the hand-maintained schema-surface ratchet
+// (tools/schema-sync/check-legacy-budget.mjs), and this is a test double,
+// not a schema mirror.
+type FakeRef = {
   __path: string;
   get: () => Promise<unknown>;
   set: (data: Record<string, unknown>) => Promise<void>;
