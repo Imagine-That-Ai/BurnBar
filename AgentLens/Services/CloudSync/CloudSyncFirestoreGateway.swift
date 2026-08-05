@@ -43,11 +43,6 @@ protocol CloudSyncQueryGateway: AnyObject, Sendable {
     func order(by field: String, descending: Bool) -> CloudSyncQueryGateway
     func limit(to limit: Int) -> CloudSyncQueryGateway
     func getDocuments() async throws -> CloudSyncQuerySnapshotGateway
-    /// Server-side `SUM(field)` aggregation over the documents matching this
-    /// query. Transfers one aggregate result instead of every document —
-    /// the cloud-total fetch uses this so a 90-day usage window no longer
-    /// downloads O(document-count) payloads per sync cycle.
-    func aggregateSum(field: String) async throws -> Double
 }
 
 protocol CloudSyncWriteBatchGateway: AnyObject, Sendable {
@@ -229,12 +224,6 @@ final class CloudSyncQueryLiveGateway: CloudSyncQueryGateway, @unchecked Sendabl
     func getDocuments() async throws -> CloudSyncQuerySnapshotGateway {
         let snapshot = try await query.getDocuments()
         return CloudSyncQuerySnapshotLiveGateway(snapshot: snapshot)
-    }
-
-    func aggregateSum(field: String) async throws -> Double {
-        let sumField = AggregateField.sum(field)
-        let snapshot = try await query.aggregate([sumField]).getAggregation(source: .server)
-        return (snapshot.get(sumField) as? NSNumber)?.doubleValue ?? 0
     }
 }
 

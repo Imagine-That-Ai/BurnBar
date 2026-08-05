@@ -85,14 +85,6 @@ final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway, Sendable {
     func setDocumentData(_ data: [String: Any], at path: String) {
         store.setDocumentData(normalizeFieldValues(data), at: path)
     }
-
-    /// When non-nil, `aggregateSum` calls throw this error while
-    /// `getDocuments` keeps working — used to test the cloud-total
-    /// aggregation → document-scan fallback path in isolation.
-    var aggregateSumError: Error? {
-        get { store.aggregateSumError }
-        set { store.aggregateSumError = newValue }
-    }
 }
 
 private final class CloudSyncFirestoreFakeGatewayState: Sendable {
@@ -168,13 +160,6 @@ private final class CloudSyncFirestoreFakeGatewayState: Sendable {
 
 private final class FakeDocumentStore: Sendable {
     private let box = OSAllocatedUnfairLock<[String: [String: Any]]>(uncheckedState: [:])
-    private let aggregateSumErrorBox = OSAllocatedUnfairLock<Error?>(uncheckedState: nil)
-
-    /// Aggregate-only failure injection (see `CloudSyncFirestoreFakeGateway.aggregateSumError`).
-    var aggregateSumError: Error? {
-        get { aggregateSumErrorBox.withLockUnchecked { $0 } }
-        set { aggregateSumErrorBox.withLockUnchecked { $0 = newValue } }
-    }
 
     func documentData(at path: String) -> [String: Any]? {
         box.withLockUnchecked { $0[path] }
@@ -502,25 +487,6 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, Sendable {
             sort: sort,
             limit: limit
         )
-    }
-
-    /// Mirrors Firestore server-side SUM semantics: numeric field values of
-    /// matching documents are summed; missing/non-numeric fields contribute 0.
-    func aggregateSum(field: String) async throws -> Double {
-        if let error = nextError() { throw error }
-        if let error = store.aggregateSumError { throw error }
-        let snapshot = CloudSyncQuerySnapshotFakeGateway(
-            store: store,
-            collectionPath: collectionPath,
-            predicates: predicates,
-            sort: sort,
-            limit: limit
-        )
-        return snapshot.documents.reduce(into: 0.0) { total, document in
-            if let number = document.data()[field] as? NSNumber {
-                total += number.doubleValue
-            }
-        }
     }
 }
 

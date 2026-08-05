@@ -627,12 +627,17 @@ cost sums moved to one SQL `GROUP BY`
 (`UsageStore.driftCredentialCostTotals`), and the delete/persist steps
 return counts instead of re-fetching the whole table.
 
-**Cloud total via server aggregation.** `DownloadSyncService.
-fetchCloudTotal` issues a Firestore server-side `SUM(cost)` aggregation
-(`CloudSyncQueryGateway.aggregateSum`, Firebase SDK ≥ 10.13; repo pins
-12.x) — one aggregate result instead of O(doc-count) downloads per sync
-cycle. On aggregation failure (old emulator/backend) it falls back to the
-legacy document scan, preserving the exact displayed total either way.
+**Cloud total via precomputed rollup.** `DownloadSyncService.
+fetchCloudTotal` reads a single precomputed document,
+`users/{uid}/usage_rollups/90d`, and exposes its `totals.costUsd`
+verbatim — one document read instead of O(doc-count) downloads per sync
+cycle. A missing rollup yields `nil` rather than `0`, so "no data yet" is
+never rendered as "spent nothing".
+
+This superseded (#1799, P-PERF-1) an earlier server-side `SUM(cost)`
+aggregation with a document-scan fallback. Both the aggregation and the
+fallback are gone; `CloudSyncQueryGateway.aggregateSum` was removed once
+it had no callers left.
 
 **Ratchet.** `scripts/debt/check-usage-refresh-tick-budget.sh`
 (baseline `budgets/usage-refresh-tick-baseline.json`) freezes production
@@ -646,4 +651,5 @@ bounded==full supplemental equality + SQL/Swift drift-totals parity,
 `UsageTableWriteMarkerTests` bump/no-bump matrix incl. idle re-upsert and
 `markSynced`, `ReloadUsagesIfChangedTests` skip/reload/boundary matrix +
 tick-path-vs-legacy-full-recompute aggregate equality,
-`CloudTotalAggregationTests` aggregate==scan + fallback).
+`DownloadSyncServiceRollupTotalsTests` one-read proof, missing-rollup nil,
+verbatim cost, and both `computedAt` decode paths).
