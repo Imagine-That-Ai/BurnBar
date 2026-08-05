@@ -1,7 +1,5 @@
 #if !canImport(LibSignalClient)
 import Foundation
-import OpenBurnBarCore
-import OpenBurnBarIrohRelay
 import OpenBurnBarSignalCore
 
 public enum OpenBurnBarSignalSessionTransportAvailability: Sendable {

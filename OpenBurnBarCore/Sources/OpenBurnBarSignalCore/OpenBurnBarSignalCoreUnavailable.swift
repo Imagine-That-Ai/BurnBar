@@ -1,4 +1,3 @@
-#if !canImport(LibSignalClient)
 // cov:ignore-start -- fallback backend is compile-time excluded when LibSignalClient is linked; fail-closed behavior is covered by unavailable-backend tests
 #if canImport(CryptoKit)
 import CryptoKit
@@ -11,6 +10,19 @@ import OpenBurnBarCore
 import Security
 #endif
 
+/// Type-erased official Signal v4 Gateway sealing surface shared by app targets.
+/// Concrete transport modules return canonical JSON bytes so Swift concurrency
+/// never crosses an untyped `[String: Any]` dictionary.
+public protocol OBBSignalGatewayEnvelopeProvider: Sendable {
+    func seal(
+        plaintext: Data,
+        uid: String,
+        clientId: String,
+        slotId: String
+    ) async throws -> Data
+}
+
+#if !canImport(LibSignalClient)
 public enum OpenBurnBarSignalCoreAvailability: Sendable {
     public static let isLibSignalBacked = false
     public static let unavailableReason = "Vendor/libsignal/swift is not present; Signal envelope encryption, opening, and trust signatures are unavailable."
