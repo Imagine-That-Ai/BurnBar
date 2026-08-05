@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Thin pass-through to the AI Inbox reads/writes on `ControlPlaneStore`,
 /// matching `DataStore+ControlPlaneAccess`. Views talk to `DataStore`; the actor

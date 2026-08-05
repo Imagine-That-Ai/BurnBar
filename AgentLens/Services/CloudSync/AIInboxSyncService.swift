@@ -1,6 +1,6 @@
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - AI Inbox cloud mirror (Mac publisher)
 //

@@ -1,6 +1,6 @@
 import Foundation
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - AI Inbox item state, as the cloud mirror sees it
 

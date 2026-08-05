@@ -2,7 +2,7 @@
 @preconcurrency import FirebaseAuth
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OSLog
 
 // MARK: - AI Inbox Store

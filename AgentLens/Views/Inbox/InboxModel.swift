@@ -1,6 +1,6 @@
 import Foundation
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// View model for the AI Inbox surface.
 ///

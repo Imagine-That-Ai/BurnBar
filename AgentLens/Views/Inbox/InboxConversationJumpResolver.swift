@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Turns an inbox evidence citation into a real Session Logs jump target.
 ///

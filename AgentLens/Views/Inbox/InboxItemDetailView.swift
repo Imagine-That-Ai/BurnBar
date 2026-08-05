@@ -1,5 +1,5 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// The reading surface for one inbox item.
 ///

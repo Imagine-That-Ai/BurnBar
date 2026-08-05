@@ -1,6 +1,6 @@
 import Foundation
 import CryptoKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Routes an inbox-proposed memory into the app's existing memory authority.
 ///
