@@ -10,11 +10,26 @@
  * vault key, then HMAC the plaintext) and `slugHmac`. This test mimics that
  * device step with two distinct per-user keys, then dumps the captured stored
  * record and asserts the two security properties.
+ *
+ * The in-memory Firestore double and request builders live in
+ * knowledgeMemoryDedupFixture.ts, shared with knowledgeMemoryDedupFlagDay.test.ts.
  */
-import { createHash, createHmac, hkdfSync } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { runFakeFirestoreTransaction } from "./fakeFirestoreTransaction.js";
+import {
+  KNOWN_PLAINTEXT_SHA256,
+  PLAINTEXT,
+  SOURCE_PATH,
+  callableRequest,
+  callableRun,
+  commitRequestForUser,
+  firstKnowledgeRecord,
+  makeApprovedChatMemory,
+  manifestRecord,
+  signalEnvelopeForKnowledgeVector,
+  stored,
+  vectorForMutation,
+} from "./knowledgeMemoryDedupFixture.js";
 
 vi.mock("firebase-functions/logger", () => ({
   info: vi.fn(),
@@ -39,304 +54,30 @@ vi.mock("../callables/shared.js", async () => {
 });
 
 // Minimal firebase-admin/firestore: capture the doc payloads, stub the value
-// wrappers + aggregate the loop reads.
-const FIELD_DELETE = Symbol("FieldValue.delete");
-vi.mock("firebase-admin/firestore", () => ({
-  Timestamp: { now: () => ({ __ts: true }) },
-  FieldValue: {
-    vector: (v: number[]) => ({ __vector: v }),
-    increment: (n: number) => ({ __increment: n }),
-    delete: () => FIELD_DELETE,
-  },
-  AggregateField: {
-    count: () => ({ __count: true }),
-    sum: (f: string) => ({ __sum: f }),
-  },
-}));
-
-// In-memory Firestore double. Records every `.set()` on the knowledge collection
-// keyed by `users/{uid}/cloud_search_knowledge/{vectorId}` so the test can dump
-// the stored record.
-const stored = new Map<string, Record<string, unknown>>();
-
-type FakeRef = {
-  __path: string;
-  get: () => Promise<unknown>;
-  set: (data: Record<string, unknown>) => Promise<void>;
-  delete: () => Promise<void>;
-};
-
-function applySet(path: string, data: Record<string, unknown>) {
-  const merged = { ...stored.get(path), ...data };
-  for (const key of Object.keys(merged)) {
-    if (merged[key] === FIELD_DELETE) delete merged[key];
-  }
-  stored.set(path, merged);
-}
-
-type WherePred = { field: string; op: string; value: unknown };
-
-/** A doc snapshot shaped like a Firestore QueryDocumentSnapshot for the query path. */
-function docSnap(path: string) {
+// wrappers + aggregate the loop reads. The factories dynamically import the
+// shared fixture so the hoisted mocks stay reference-safe.
+vi.mock("firebase-admin/firestore", async () => {
+  const { FIELD_DELETE } = await import("./knowledgeMemoryDedupFixture.js");
   return {
-    id: path.split("/").pop(),
-    ref: { __path: path },
-    exists: stored.has(path),
-    data: () => stored.get(path),
-    get: (field: string) => stored.get(path)?.[field],
-  };
-}
-
-/**
- * A query double that RECORDS `where` predicates and honors them on `.get()`
- * (so the dedupHashVersion / embeddingModelVersion floors are actually tested)
- * and on `.findNearest()` (search) — mirroring the predicate-recording pattern
- * used in privacyBackfill.test.ts. `limit` caps results; `findNearest` ignores
- * vector distance (the fake just returns the filtered set, score-less).
- */
-function makeQuery(base: string, preds: WherePred[] = [], limitN = Infinity) {
-  const matchingPaths = () =>
-    [...stored.keys()].filter((path) => {
-      if (!path.startsWith(`${base}/`)) return false;
-      const data = stored.get(path) ?? {};
-      return preds.every((p) => p.op === "==" && data[p.field] === p.value);
-    });
-  const self = {
-    where: (field: string, op: string, value: unknown) => makeQuery(base, [...preds, { field, op, value }], limitN),
-    limit: (n: number) => makeQuery(base, preds, n),
-    findNearest: (_opts: unknown) => self, // distance ignored; filter set is what matters
-    // Honour the where predicates so the cap aggregate's `dedupHashVersion == 1`
-    // floor is actually exercised (count + sum(byteCount) over the matching set).
-    aggregate: (_spec: unknown) => ({
-      get: async () => {
-        const paths = matchingPaths();
-        const n = paths.length;
-        const bytes = paths.reduce((acc, path) => acc + Number(stored.get(path)?.byteCount ?? 0), 0);
-        return { data: () => ({ n, bytes }) };
-      },
-    }),
-    get: async () => {
-      const paths = matchingPaths().slice(0, limitN);
-      const docs = paths.map((path) => docSnap(path));
-      return { empty: docs.length === 0, size: docs.length, docs };
+    Timestamp: { now: () => ({ __ts: true }) },
+    FieldValue: {
+      vector: (v: number[]) => ({ __vector: v }),
+      increment: (n: number) => ({ __increment: n }),
+      delete: () => FIELD_DELETE,
+    },
+    AggregateField: {
+      count: () => ({ __count: true }),
+      sum: (f: string) => ({ __sum: f }),
     },
   };
-  return self;
-}
+});
 
-function makeDb() {
-  const docRef = (path: string): FakeRef => ({
-    __path: path,
-    get: async () => ({
-      id: path.split("/").pop(),
-      exists: stored.has(path),
-      data: () => stored.get(path),
-      get: (field: string) => stored.get(path)?.[field],
-    }),
-    set: async (data: Record<string, unknown>) => applySet(path, data),
-    delete: async () => void stored.delete(path),
-  });
-  const collectionRef = (base: string) => ({
-    doc: (id: string) => docRef(`${base}/${id}`),
-    // Unfiltered aggregate (no `.where`) counts the whole collection — the
-    // commit path no longer uses this (it floors `dedupHashVersion == 1`), but
-    // keep it consistent with the filtered makeQuery aggregate.
-    aggregate: (spec: unknown) => makeQuery(base).aggregate(spec),
-    count: () => ({
-      get: async () => {
-        const count = [...stored.keys()].filter((path) => path.startsWith(`${base}/`)).length;
-        return { data: () => ({ count }) };
-      },
-    }),
-    where: (field: string, op: string, value: unknown) => makeQuery(base, [{ field, op, value }]),
-  });
-  return {
-    doc: (path: string) => docRef(path),
-    collection: (path: string) => collectionRef(path),
-    getAll: async (...refs: FakeRef[]) => Promise.all(refs.map((r) => r.get())),
-    // Mirrors commitBatchedWrites' use of db.batch() + batch.set(ref, data).
-    batch: () => ({
-      set: (ref: FakeRef, data: Record<string, unknown>) => applySet(ref.__path, data),
-      delete: (ref: { __path: string }) => void stored.delete(ref.__path),
-      commit: async () => undefined,
-    }),
-    runTransaction: runFakeFirestoreTransaction,
-  };
-}
-
-vi.mock("../adminRuntime.js", () => ({ db: makeDb(), auth: {} }));
+vi.mock("../adminRuntime.js", async () => {
+  const { makeDb } = await import("./knowledgeMemoryDedupFixture.js");
+  return { db: makeDb(), auth: {} };
+});
 
 process.env.ENFORCE_APP_CHECK = "false";
-
-// --- Device-side derivation (mirrors what PensieveKnowledgeChunker must ship) ---
-const PLAINTEXT = "deploy the daemon before midnight";
-const SOURCE_PATH = "/Users/alberto/Documents/Windsurf/BurnBar/docs/secret-runbook.md";
-const SOURCE_SLUG = "burnbar-docs-secret-runbook";
-const KNOWN_PLAINTEXT_SHA256 = createHash("sha256").update(PLAINTEXT, "utf8").digest("hex");
-
-/** HKDF-derive a per-user dedup key from the vault key, then HMAC the value. */
-function vaultKeyedHmac(vaultKey: Buffer, label: string, value: string): string {
-  const dedupKey = Buffer.from(hkdfSync("sha256", vaultKey, Buffer.alloc(0), `pensieve-dedup:${label}`, 32));
-  return createHmac("sha256", dedupKey).update(value, "utf8").digest("hex");
-}
-
-function sealedText(tag: string) {
-  // requireSealedText demands base64 nonce/ciphertext/tag (opaque to the server).
-  const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
-  return {
-    algorithm: "AES-256-GCM",
-    keyVersion: 1,
-    nonce: b64(`${tag}-nonce`),
-    ciphertext: b64(`${tag}-ciphertext`),
-    tag: b64(`${tag}-tag`),
-  };
-}
-
-function callableRequest<T extends Record<string, unknown>>(uid: string, data: T) {
-  return { auth: { uid, token: {} }, app: { appId: "test-app" }, rawRequest: { headers: {} }, data };
-}
-
-function signalEnvelopeForKnowledgeVector(uid: string, docId: string, overrides: Record<string, unknown> = {}) {
-  const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
-  return {
-    signalEnvelopeFormatVersion: 1,
-    mode: "at-rest",
-    relayEncryption: "signal-hpke-identity-seal-v1",
-    ciphertextLayer: {
-      payloadCiphertextB64: b64("signal-payload"),
-      payloadAADLabel: "cloudvault:cloud_search_knowledge/sealedCiphertext",
-      schemaVersion: 1,
-    },
-    keyDelivery: {
-      scheme: "signal-hpke-identity-seal-v1",
-      contentKeyLength: 32,
-      wraps: [
-        {
-          recipientKind: "device",
-          recipientIdentityKeyId: "device-1",
-          recipientIdentityKeyB64: b64("identity-key"),
-          sealedContentKeyB64: b64("sealed-content-key"),
-        },
-      ],
-    },
-    binding: {
-      uid,
-      scope: "cloudvault",
-      collection: "cloud_search_knowledge",
-      docId,
-      field: "sealedCiphertext",
-      mode: "at-rest",
-      formatVersion: 1,
-    },
-    senderAuth: {
-      senderIdentityKeyId: "sender-device-1",
-      senderIdentityKeyB64: Buffer.alloc(33, 4).toString("base64"),
-      signatureB64: Buffer.alloc(64, 5).toString("base64"),
-      signatureVersion: 1,
-    },
-    ...overrides,
-  };
-}
-
-function commitRequestForUser(uid: string, vaultKey: Buffer) {
-  const dedupHash = vaultKeyedHmac(vaultKey, "content", PLAINTEXT);
-  const slugHmac = vaultKeyedHmac(vaultKey, "slug", SOURCE_SLUG);
-  return callableRequest(uid, {
-    // Legacy request alias: older clients still send the opaque source
-    // manifest id as `sourceSlug`. The server stores canonical
-    // `sourceManifestId` on the manifest doc.
-    sourceSlug: slugHmac,
-    slugHmac,
-    embeddingModelVersion: "bge-small-en-v1.5-cloak-v1",
-    vectors: [
-      {
-        cloakedVector: Array.from({ length: 384 }, (_, i) => Math.sin(i) / 7),
-        sealedCiphertext: sealedText("ct"),
-        // The real path lives ONLY inside the sealed metadata blob.
-        sealedMetadata: sealedText("md"),
-        dedupHash,
-        sourceKind: "repo_docs",
-        chunkIndex: 0,
-        byteCount: Buffer.byteLength(PLAINTEXT, "utf8"),
-      },
-    ],
-  });
-}
-
-function makeApprovedChatMemory(req: ReturnType<typeof commitRequestForUser>) {
-  const vector = vectorForMutation(req);
-  vector.sourceKind = "chat_memory";
-  vector.reviewStatus = "approved";
-  vector.provenance = {
-    schemaVersion: 1,
-    sourceKind: "chat_memory",
-    reviewStatus: "approved",
-    sourceSlugHmac: req.data.slugHmac,
-    sourceTranscriptHash: "11".repeat(32),
-    extractorKind: "claude-cli",
-    extractorPromptHash: "22".repeat(32),
-    extractorOutputHash: "33".repeat(32),
-    extractorPromptVersion: "pensieve-chat-memory-v1",
-    createdAt: "2026-06-13T00:00:00.000Z",
-    approvedAt: "2026-06-13T00:01:00.000Z",
-  };
-  return vector;
-}
-
-function callableRun(callable: unknown): (request: unknown) => Promise<unknown> {
-  const run = Reflect.get(Object(callable), "run");
-  if (typeof run !== "function") {
-    throw new Error("Expected callable to expose run()");
-  }
-  return run;
-}
-
-function firstKnowledgeRecord(uid: string): Record<string, unknown> {
-  const found = [...stored.entries()].find(([k]) => k.startsWith(`users/${uid}/cloud_search_knowledge/`));
-  if (!found) {
-    throw new Error(`Expected stored knowledge record for ${uid}`);
-  }
-  return found[1];
-}
-
-function manifestRecord(uid: string, sourceManifestId: string): Record<string, unknown> {
-  const record = stored.get(`users/${uid}/knowledge_sync_manifests/${sourceManifestId}`);
-  if (!record) {
-    throw new Error(`Expected manifest record for ${uid}/${sourceManifestId}`);
-  }
-  return record;
-}
-
-function vectorForMutation(req: ReturnType<typeof commitRequestForUser>): Record<string, unknown> {
-  const [vector] = req.data.vectors;
-  if (!vector) {
-    throw new Error("Expected request vector");
-  }
-  return vector;
-}
-
-function rawHitsFromResult(result: unknown): Array<Record<string, unknown>> {
-  const hits = Reflect.get(Object(result), "hits");
-  if (!Array.isArray(hits)) {
-    throw new Error("Expected search result hits");
-  }
-  return hits.filter((hit): hit is Record<string, unknown> => !!hit && typeof hit === "object" && !Array.isArray(hit));
-}
-
-function hitsFromResult(result: unknown): Array<{ vectorId: string }> {
-  return rawHitsFromResult(result).flatMap((hit) => {
-    const vectorId = Reflect.get(Object(hit), "vectorId");
-    return typeof vectorId === "string" ? [{ vectorId }] : [];
-  });
-}
-
-function purgeCounts(result: unknown): { deletedByVersion: unknown; deletedByRetiredTag: unknown; deleted: unknown } {
-  return {
-    deletedByVersion: Reflect.get(Object(result), "deletedByVersion"),
-    deletedByRetiredTag: Reflect.get(Object(result), "deletedByRetiredTag"),
-    deleted: Reflect.get(Object(result), "deleted"),
-  };
-}
 
 describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side channels", () => {
   beforeEach(() => stored.clear());
@@ -539,227 +280,5 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
 
     await expect(run(req)).rejects.toThrow(/binding-docid-mismatch/);
     expect([...stored.keys()].some((k) => k.startsWith("users/userSignalBad/cloud_search_knowledge/"))).toBe(false);
-  });
-});
-
-const NEW_MODEL_TAG = "bge-small-en-v1.5-vault-dedup-v1";
-const RETIRED_MODEL_TAG = "bge-small-en-v1.5";
-
-function searchRequest(uid: string, modelTag: string) {
-  return callableRequest(uid, {
-    queryVector: Array.from({ length: 384 }, (_, i) => Math.cos(i) / 9),
-    embeddingModelVersion: modelTag,
-    limit: 50,
-  });
-}
-
-function seedVector(
-  uid: string,
-  vectorId: string,
-  fields: { dedupHashVersion: number; embeddingModelVersion: string; dedupHash: string; byteCount?: number },
-) {
-  stored.set(`users/${uid}/cloud_search_knowledge/${vectorId}`, {
-    uid,
-    vectorId,
-    sealedCiphertext: sealedText("ct"),
-    sealedMetadata: sealedText("md"),
-    sourceKind: "repo_docs",
-    chunkIndex: 0,
-    byteCount: fields.byteCount ?? 16,
-    embedding: { __vector: Array.from({ length: 384 }, () => 0) },
-    ...fields,
-  });
-}
-
-describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () => {
-  beforeEach(() => stored.clear());
-  afterEach(() => vi.clearAllMocks());
-
-  it("searchKnowledge floors dedupHashVersion==1: a seeded v0 row is NOT served", async () => {
-    const { searchKnowledge } = await import("../callables/knowledgeSearch.js");
-    const run = callableRun(searchKnowledge);
-
-    // A legacy v0 row whose doc id is the cleartext SHA-256 oracle, on the old tag.
-    seedVector("userSearch", KNOWN_PLAINTEXT_SHA256, {
-      dedupHashVersion: 0,
-      embeddingModelVersion: RETIRED_MODEL_TAG,
-      dedupHash: KNOWN_PLAINTEXT_SHA256,
-    });
-    // A fresh v1 row on the new tag.
-    seedVector("userSearch", "v1doc", {
-      dedupHashVersion: 1,
-      embeddingModelVersion: NEW_MODEL_TAG,
-      dedupHash: "aa".repeat(32),
-    });
-
-    const ids = hitsFromResult(await run(searchRequest("userSearch", NEW_MODEL_TAG))).map((h) => h.vectorId);
-    // The v0 oracle row is unreachable; only the v1 row surfaces.
-    expect(ids).toContain("v1doc");
-    expect(ids).not.toContain(KNOWN_PLAINTEXT_SHA256);
-  });
-
-  it("searchKnowledge returns an optional Signal envelope alongside the legacy sealed fields", async () => {
-    const { searchKnowledge } = await import("../callables/knowledgeSearch.js");
-    const run = callableRun(searchKnowledge);
-
-    seedVector("userSearchSignal", "v1-signal", {
-      dedupHashVersion: 1,
-      embeddingModelVersion: NEW_MODEL_TAG,
-      dedupHash: "bb".repeat(32),
-    });
-    const seeded = stored.get("users/userSearchSignal/cloud_search_knowledge/v1-signal");
-    if (!seeded) throw new Error("Expected seeded Signal row");
-    seeded.signalEnvelope = signalEnvelopeForKnowledgeVector("userSearchSignal", "v1-signal");
-
-    const hits = rawHitsFromResult(await run(searchRequest("userSearchSignal", NEW_MODEL_TAG)));
-    const hit = hits.find((h) => h.vectorId === "v1-signal");
-    expect(hit).toBeTruthy();
-    expect(hit?.ciphertext).toBeTruthy();
-    expect(hit?.sealedMetadata).toBeTruthy();
-    expect(hit?.signalEnvelope).toMatchObject({
-      signalEnvelopeFormatVersion: 1,
-      mode: "at-rest",
-      binding: {
-        uid: "userSearchSignal",
-        collection: "cloud_search_knowledge",
-        docId: "v1-signal",
-        field: "sealedCiphertext",
-      },
-    });
-  });
-
-  it("searchKnowledge at the new tag never returns a v0 row even on the retired tag", async () => {
-    const { searchKnowledge } = await import("../callables/knowledgeSearch.js");
-    const run = callableRun(searchKnowledge);
-
-    // Only a v0 row exists, on the retired tag. Searching the new tag returns nothing.
-    seedVector("userSearch2", KNOWN_PLAINTEXT_SHA256, {
-      dedupHashVersion: 0,
-      embeddingModelVersion: RETIRED_MODEL_TAG,
-      dedupHash: KNOWN_PLAINTEXT_SHA256,
-    });
-    expect(hitsFromResult(await run(searchRequest("userSearch2", NEW_MODEL_TAG)))).toHaveLength(0);
-  });
-
-  it("purgeLegacyKnowledgeVectors deletes v0 + retired-tag rows, keeps v1", async () => {
-    const { purgeLegacyKnowledgeVectors } = await import("../callables/knowledgeMemory.js");
-    const run = callableRun(purgeLegacyKnowledgeVectors);
-    const uid = "userPurge";
-
-    // (a) explicit v0 row, (b) pre-versioned ancient on the retired tag (no
-    // dedupHashVersion field), (c) a live v1 row that MUST survive.
-    seedVector(uid, "v0doc", {
-      dedupHashVersion: 0,
-      embeddingModelVersion: NEW_MODEL_TAG, // even if re-tagged, v0 is deleted by version
-      dedupHash: KNOWN_PLAINTEXT_SHA256,
-    });
-    stored.set(`users/${uid}/cloud_search_knowledge/ancientDoc`, {
-      uid,
-      vectorId: "ancientDoc",
-      // No dedupHashVersion field — reached ONLY by the retired-tag predicate.
-      embeddingModelVersion: RETIRED_MODEL_TAG,
-      dedupHash: "cc".repeat(32),
-    });
-    seedVector(uid, "v1doc", {
-      dedupHashVersion: 1,
-      embeddingModelVersion: NEW_MODEL_TAG,
-      dedupHash: "dd".repeat(32),
-    });
-
-    const res = await run(callableRequest(uid, {}));
-    const counts = purgeCounts(res);
-
-    // v0 (by version) + ancient (by retired tag) deleted; v1 survives.
-    expect(stored.has(`users/${uid}/cloud_search_knowledge/v0doc`)).toBe(false);
-    expect(stored.has(`users/${uid}/cloud_search_knowledge/ancientDoc`)).toBe(false);
-    expect(stored.has(`users/${uid}/cloud_search_knowledge/v1doc`)).toBe(true);
-    expect(counts.deletedByVersion).toBe(1);
-    expect(counts.deletedByRetiredTag).toBe(1);
-    expect(counts.deleted).toBe(2);
-  });
-});
-
-function seedRows(uid: string, count: number, dedupHashVersion: number, idPrefix: string) {
-  for (let i = 0; i < count; i += 1) {
-    seedVector(uid, `${idPrefix}${i}`, {
-      dedupHashVersion,
-      embeddingModelVersion: dedupHashVersion === 1 ? NEW_MODEL_TAG : RETIRED_MODEL_TAG,
-      dedupHash: `${idPrefix}-${i}`,
-    });
-  }
-}
-
-function okFromResult(result: unknown): { ok: unknown; written: unknown; chunkCount: unknown } {
-  return {
-    ok: Reflect.get(Object(result), "ok"),
-    written: Reflect.get(Object(result), "written"),
-    chunkCount: Reflect.get(Object(result), "chunkCount"),
-  };
-}
-
-describe("commitKnowledgeBatch — cap aggregate excludes legacy v0 rows (re-ingest unblocked)", () => {
-  beforeEach(() => stored.clear());
-  afterEach(() => vi.clearAllMocks());
-
-  it("a near-cap user whose usage is ALL orphaned v0 rows can still re-ingest a v1 chunk", async () => {
-    const { commitKnowledgeBatch, PENSIEVE_LIMITS } = await import("../callables/knowledgeMemory.js");
-    const run = callableRun(commitKnowledgeBatch);
-    const uid = "userReingest";
-
-    seedRows(uid, PENSIEVE_LIMITS.pro.chunks, 0, "v0-");
-
-    const res = okFromResult(await run(commitRequestForUser(uid, Buffer.alloc(32, 0xe5))));
-    expect(res.ok).toBe(true);
-    expect(res.written).toBe(1);
-    expect(res.chunkCount).toBe(1);
-    expect([...stored.keys()].some((k) => k.startsWith(`users/${uid}/cloud_search_knowledge/v0-0`))).toBe(true);
-  });
-
-  it("real v1 usage at the cap STILL blocks a new chunk (no undercount of live data)", async () => {
-    const { commitKnowledgeBatch, PENSIEVE_LIMITS } = await import("../callables/knowledgeMemory.js");
-    const run = callableRun(commitKnowledgeBatch);
-    const uid = "userAtCapV1";
-
-    seedRows(uid, PENSIEVE_LIMITS.pro.chunks, 1, "v1-");
-
-    await expect(run(commitRequestForUser(uid, Buffer.alloc(32, 0xf6)))).rejects.toThrow(/chunk limit/i);
-    expect([...stored.keys()].filter((k) => k.startsWith(`users/${uid}/cloud_search_knowledge/`)).length).toBe(
-      PENSIEVE_LIMITS.pro.chunks,
-    );
-  });
-
-  it("same-doc legacy rewrites are charged against live chunk and byte caps", async () => {
-    const { commitKnowledgeBatch, PENSIEVE_LIMITS } = await import("../callables/knowledgeMemory.js");
-    const run = callableRun(commitKnowledgeBatch);
-    const request = (uid: string, fill: number, byteCount?: number) => {
-      const req = commitRequestForUser(uid, Buffer.alloc(32, fill));
-      if (byteCount !== undefined) vectorForMutation(req).byteCount = byteCount;
-      return req;
-    };
-    const seedLegacy = (uid: string, req: ReturnType<typeof commitRequestForUser>, byteCount = 16) =>
-      seedVector(uid, String(vectorForMutation(req).dedupHash), {
-        dedupHashVersion: 0,
-        embeddingModelVersion: RETIRED_MODEL_TAG,
-        dedupHash: "legacy-cleartext-digest",
-        byteCount,
-      });
-
-    const chunkUid = "userLegacyRewriteChunkCap";
-    const chunkReq = request(chunkUid, 0xb8);
-    seedRows(chunkUid, PENSIEVE_LIMITS.pro.chunks, 1, "v1-");
-    seedLegacy(chunkUid, chunkReq);
-    await expect(run(chunkReq)).rejects.toThrow(/chunk limit/i);
-
-    stored.clear();
-    const byteUid = "userLegacyRewriteByteCap";
-    const byteReq = request(byteUid, 0xc9, 64);
-    seedVector(byteUid, "live-near-byte-cap", {
-      dedupHashVersion: 1,
-      embeddingModelVersion: NEW_MODEL_TAG,
-      dedupHash: "live-near-byte-cap",
-      byteCount: PENSIEVE_LIMITS.pro.bytes - 8,
-    });
-    seedLegacy(byteUid, byteReq, 1024);
-    await expect(run(byteReq)).rejects.toThrow(/storage limit/i);
   });
 });
