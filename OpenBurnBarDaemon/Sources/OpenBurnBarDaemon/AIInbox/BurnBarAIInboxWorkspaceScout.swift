@@ -268,8 +268,10 @@ struct BurnBarAIInboxWorkspaceScout: Sendable {
     }
 }
 
-extension String {
+private extension String {
     /// Local convenience for the inbox's parsing paths. (`nilIfEmpty` already
-    /// exists elsewhere in this module, so it is deliberately not redefined.)
+    /// exists elsewhere in this module, so it is deliberately not redefined.
+    /// Kept file-private: the Linux credential authority declares its own
+    /// `trimmed: String?`, and an internal one would collide on Linux.)
     var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
 }

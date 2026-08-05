@@ -147,23 +147,22 @@ struct BurnBarAIInboxProcessRunner: BurnBarAIInboxProcessRunning {
 
                 // Drain both pipes concurrently. Reading them serially deadlocks
                 // as soon as the child fills the pipe we are not reading.
+                // Lock-guarded reference buffers keep the drain closures
+                // Sendable-clean under the Linux strict-concurrency compile.
                 let group = DispatchGroup()
-                let bufferLock = NSLock()
-                var outputData = Data()
-                var errorData = Data()
+                let outputCapture = BurnBarAIInboxPipeCapture()
+                let errorCapture = BurnBarAIInboxPipeCapture()
 
-                for (pipe, isStdout) in [(outputPipe, true), (errorPipe, false)] {
+                let drains: [(Pipe, BurnBarAIInboxPipeCapture, Int)] = [
+                    (outputPipe, outputCapture, Self.maxOutputBytes),
+                    (errorPipe, errorCapture, 64 * 1024)
+                ]
+                for (pipe, capture, limit) in drains {
                     group.enter()
                     DispatchQueue.global(qos: .utility).async {
                         defer { group.leave() }
                         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                        bufferLock.lock()
-                        if isStdout {
-                            outputData = data.prefix(Self.maxOutputBytes)
-                        } else {
-                            errorData = data.prefix(64 * 1024)
-                        }
-                        bufferLock.unlock()
+                        capture.store(data.prefix(limit))
                     }
                 }
 
@@ -190,13 +189,11 @@ struct BurnBarAIInboxProcessRunner: BurnBarAIInboxProcessRunning {
                     return
                 }
 
-                bufferLock.lock()
                 let result = BurnBarAIInboxProcessResult(
                     exitCode: process.terminationStatus,
-                    standardOutput: String(data: outputData, encoding: .utf8) ?? "",
-                    standardError: String(data: errorData, encoding: .utf8) ?? ""
+                    standardOutput: String(data: outputCapture.take(), encoding: .utf8) ?? "",
+                    standardError: String(data: errorCapture.take(), encoding: .utf8) ?? ""
                 )
-                bufferLock.unlock()
                 continuation.resume(returning: result)
             }
         }
@@ -239,5 +236,25 @@ struct BurnBarAIInboxProcessRunner: BurnBarAIInboxProcessRunning {
         }
         for (key, value) in overrides { environment[key] = value }
         return environment
+    }
+}
+
+/// NSLock-guarded byte buffer for the pipe-drain closures. A reference type so
+/// the `@Sendable` dispatch closures never mutate a captured `var`; the lock
+/// makes the single store/take handoff safe across the drain and wait threads.
+private final class BurnBarAIInboxPipeCapture: @unchecked Sendable {
+    private let lock = NSLock()
+    private var bytes = Data()
+
+    func store(_ data: Data) {
+        lock.lock()
+        bytes = data
+        lock.unlock()
+    }
+
+    func take() -> Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return bytes
     }
 }
