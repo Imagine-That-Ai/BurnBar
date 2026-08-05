@@ -4,7 +4,7 @@ extension OpenBurnBarDatabase {
     /// v58 — AI Inbox tables.
     ///
     /// The daemon's `BurnBarAIInboxStore` creates these same tables with
-    /// `CREATE TABLE IF NOT EXISTS` when it opens (so a profile whose app has
+    /// `IF NOT EXISTS` guards when it opens (so a profile whose app has
     /// not migrated yet still gets a working inbox). This migration is the app
     /// side of that contract: it guarantees the tables exist even on a profile
     /// where the inbox has never been enabled, so app-side reads can be written

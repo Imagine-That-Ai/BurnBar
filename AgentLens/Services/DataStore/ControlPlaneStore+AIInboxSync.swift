@@ -1,6 +1,6 @@
 import Foundation
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - AI Inbox item state, as the cloud mirror sees it
 
@@ -23,7 +23,15 @@ extension ControlPlaneStore {
         let updatedAt: Date
     }
 
-    func fetchAIInboxItemStates(limit: Int = 500) async throws -> [AIInboxItemStateRow] {
+    /// Keyset-paged: `afterItemID` resumes strictly after the given primary
+    /// key. The cloud mirror pages through the WHOLE table with this cursor;
+    /// a bare `LIMIT` would silently drop every row past the page size, and
+    /// those rows would never sync, because the per-id watermark (unlike the
+    /// download's timestamp watermark) cannot queue what it never saw. `item_id`
+    /// is the cursor rather than `updated_at` because it is unique, so a page
+    /// boundary cannot fall inside a run of equal timestamps and skip the rest
+    /// of the tie.
+    func fetchAIInboxItemStates(limit: Int = 500, afterItemID: String? = nil) async throws -> [AIInboxItemStateRow] {
         try await dbQueue.read { db in
             guard try db.tableExists("ai_inbox_item_state") else { return [] }
             return try Row.fetchAll(
@@ -31,10 +39,11 @@ extension ControlPlaneStore {
                 sql: """
                     SELECT item_id, read_at, archived_at, snoozed_until, feedback, updated_at
                     FROM ai_inbox_item_state
-                    ORDER BY updated_at DESC
-                    LIMIT ?
+                    WHERE (:after IS NULL OR item_id > :after)
+                    ORDER BY item_id ASC
+                    LIMIT :limit
                     """,
-                arguments: [max(1, limit)]
+                arguments: ["after": afterItemID, "limit": max(1, limit)]
             ).compactMap { row in
                 // A row whose `updated_at` will not parse cannot be ordered
                 // against a remote write, so it is skipped rather than mirrored

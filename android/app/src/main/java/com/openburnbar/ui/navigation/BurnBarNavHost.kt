@@ -20,6 +20,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.openburnbar.InboxPendingNavigation
 import com.openburnbar.data.stores.HostedQuotaProductDetails
 import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
 import com.openburnbar.data.stores.UserStore
@@ -198,6 +199,8 @@ fun BurnBarNavHost(
 
     val navigateTo: (BurnBarTab) -> Unit = { tab -> navigateToTab(navController, tab) }
 
+    InboxWarmDeepLinkNavigator(navController = navController, isSignedIn = currentUser.isSignedIn)
+
     Box(modifier = modifier.fillMaxSize().nestedScroll(easterEggController.nestedScrollConnection)) {
         AuroraBackdrop()
 
@@ -231,6 +234,26 @@ fun BurnBarNavHost(
 
         // TOP layer, over all content. No pointer modifier, so touches pass through.
         EasterEggOverlay(controller = easterEggController)
+    }
+}
+
+/**
+ * Moves the nav host to the Inbox tab when a WARM `burnbar://inbox` deep link
+ * asked for it.
+ *
+ * The navDeepLink machinery only inspects the LAUNCH intent, so a link
+ * delivered via `onNewIntent` never navigates on its own; MainActivity raises
+ * [InboxPendingNavigation] instead, and this claims it (once the signed-in
+ * graph exists) and moves to the Inbox tab exactly as a tab tap would.
+ * `claim()` consumes the request, so recomposition cannot re-navigate.
+ */
+@Composable
+private fun InboxWarmDeepLinkNavigator(navController: NavHostController, isSignedIn: Boolean) {
+    val requested by InboxPendingNavigation.requested.collectAsState()
+    LaunchedEffect(requested, isSignedIn) {
+        if (requested && isSignedIn && InboxPendingNavigation.claim()) {
+            navigateToTab(navController, BurnBarTab.INBOX)
+        }
     }
 }
 

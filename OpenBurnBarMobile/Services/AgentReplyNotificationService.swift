@@ -522,7 +522,14 @@ extension AgentReplyNotificationService: UNUserNotificationCenterDelegate {
     ) async {
         let userInfo = response.notification.request.content.userInfo
         if let inbox = AIInboxNotificationPayload(userInfo: userInfo) {
-            await MainActor.run { openInboxItem(inbox) }
+            // The AI_INBOX_ITEM category opts into `.customDismissAction`, so a
+            // swipe-dismiss also lands here. Only a default tap or the explicit
+            // Open action may navigate; a dismissal must stay a dismissal.
+            let actionIdentifier = response.actionIdentifier
+            if actionIdentifier == UNNotificationDefaultActionIdentifier
+                || actionIdentifier == Self.inboxOpenActionID {
+                await MainActor.run { openInboxItem(inbox) }
+            }
             return
         }
         let payload = AgentReplyNotificationPayload(userInfo: userInfo)

@@ -12,6 +12,7 @@ import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import java.util.Date
 import java.util.TimeZone
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.awaitClose
@@ -249,7 +250,7 @@ class AIInboxStore(
     // ── Listeners ──
 
     private fun listenToItems(uid: String): Flow<List<AIInboxItem>> = callbackFlow {
-        val vaultKey = resolveVaultKey(uid)
+        val vaultKey = AtomicReference(resolveVaultKey(uid))
         val listener =
             firestore.collection("users")
                 .document(uid)
@@ -261,11 +262,24 @@ class AIInboxStore(
                         close(error)
                         return@addSnapshotListener
                     }
-                    val parsed =
-                        snapshot?.documents.orEmpty().mapNotNull { document ->
-                            parseAIInboxDocument(document.data.orEmpty(), document.id, uid, vaultKey)
+                    val documents = snapshot?.documents.orEmpty()
+                    val key = vaultKey.get()
+                    if (key != null) {
+                        trySend(documents.mapNotNull { document ->
+                            parseAIInboxDocument(document.data.orEmpty(), document.id, uid, key)
+                        })
+                    } else {
+                        // A device approval can land while the tab is open, so a
+                        // missing key is retried on every delivery: newly approved
+                        // devices unseal items without a listener re-attach.
+                        launch {
+                            val refreshed = resolveVaultKey(uid)
+                            if (refreshed != null) vaultKey.set(refreshed)
+                            trySend(documents.mapNotNull { document ->
+                                parseAIInboxDocument(document.data.orEmpty(), document.id, uid, refreshed)
+                            })
                         }
-                    trySend(parsed)
+                    }
                 }
         awaitClose { listener.remove() }
     }
@@ -275,6 +289,10 @@ class AIInboxStore(
             firestore.collection("users")
                 .document(uid)
                 .collection(AIInboxMirrorCodec.STATE_COLLECTION)
+                // Newest-first so the fetch cap drops the STALEST state docs. An
+                // unordered `limit` would let Firestore pick which 400 survive,
+                // and a recently read/archived item could render as unread.
+                .orderBy("updatedAt", Query.Direction.DESCENDING)
                 .limit(INBOX_STATE_FETCH_LIMIT)
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
@@ -291,9 +309,10 @@ class AIInboxStore(
     }
 
     /**
-     * Resolves the Cloud Vault key once per listener attach. A missing key is
-     * not an error — it means this device has not been approved from a Mac or
-     * iPhone yet — but it does mean every sealed item is unopenable, so the flag
+     * Resolves the Cloud Vault key: once at listener attach, then again on each
+     * snapshot delivery while it is still missing. A missing key is not an
+     * error — it means this device has not been approved from a Mac or iPhone
+     * yet — but it does mean every sealed item is unopenable, so the flag
      * drives explicit UI rather than a silently empty list.
      */
     private suspend fun resolveVaultKey(uid: String): ByteArray? {

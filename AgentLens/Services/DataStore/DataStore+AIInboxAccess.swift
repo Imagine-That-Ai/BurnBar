@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Thin pass-through to the AI Inbox reads/writes on `ControlPlaneStore`,
 /// matching `DataStore+ControlPlaneAccess`. Views talk to `DataStore`; the actor
@@ -28,8 +28,8 @@ extension DataStore {
         try await actor.controlPlaneStore.fetchAIInboxRuns(limit: limit)
     }
 
-    func fetchAIInboxItemStates(limit: Int = 500) async throws -> [ControlPlaneStore.AIInboxItemStateRow] {
-        try await actor.controlPlaneStore.fetchAIInboxItemStates(limit: limit)
+    func fetchAIInboxItemStates(limit: Int = 500, afterItemID: String? = nil) async throws -> [ControlPlaneStore.AIInboxItemStateRow] {
+        try await actor.controlPlaneStore.fetchAIInboxItemStates(limit: limit, afterItemID: afterItemID)
     }
 
     @discardableResult

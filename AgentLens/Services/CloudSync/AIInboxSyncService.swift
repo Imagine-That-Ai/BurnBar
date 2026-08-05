@@ -1,6 +1,6 @@
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - AI Inbox cloud mirror (Mac publisher)
 //
@@ -100,8 +100,15 @@ final class AIInboxSyncService: CloudSyncDomain, Sendable {
                 .collection(AIInboxMirrorCodec.stateCollection)
 
             try await uploadItems(uid: uid, gate: gate, collection: itemCollection, stateCollection: stateCollection, watermark: &watermark)
-            try await uploadStates(deviceID: gate.account.deviceId, stateCollection: stateCollection, watermark: &watermark)
+            // Download BEFORE upload. The state upload writes with
+            // `merge: false`, so uploading first would overwrite a newer
+            // phone-written document the Mac has not applied yet; the remote
+            // write would be gone before the download could ever see it.
+            // Downloading first applies the newer remote row locally (stamping
+            // the watermark so the upload skips it), while a local row that is
+            // genuinely newer is left pending and still uploads this cycle.
             try await downloadStates(stateCollection: stateCollection, watermark: &watermark)
+            try await uploadStates(deviceID: gate.account.deviceId, stateCollection: stateCollection, watermark: &watermark)
 
             // Persisted only after every write in this cycle committed. A cycle
             // that threw partway leaves the stored watermark untouched, so the
@@ -219,7 +226,30 @@ final class AIInboxSyncService: CloudSyncDomain, Sendable {
         stateCollection: CloudSyncCollectionGateway,
         watermark: inout Watermark
     ) async throws {
-        let rows = try await context.dataStore.fetchAIInboxItemStates(limit: Self.stateSyncLimit)
+        // Keyset-paged over the WHOLE table. A single `limit` fetch would
+        // silently drop every row past the page size, and (unlike the
+        // download, whose timestamp watermark queues unseen rows for the next
+        // cycle) the per-id watermark cannot re-queue what it never saw, so
+        // those states would simply never reach the cloud.
+        var afterItemID: String?
+        while true {
+            let rows = try await context.dataStore.fetchAIInboxItemStates(
+                limit: Self.stateSyncLimit,
+                afterItemID: afterItemID
+            )
+            guard rows.isEmpty == false else { return }
+            try await uploadStatePage(rows, deviceID: deviceID, stateCollection: stateCollection, watermark: &watermark)
+            if rows.count < Self.stateSyncLimit { return }
+            afterItemID = rows.last?.id
+        }
+    }
+
+    private func uploadStatePage(
+        _ rows: [ControlPlaneStore.AIInboxItemStateRow],
+        deviceID: String,
+        stateCollection: CloudSyncCollectionGateway,
+        watermark: inout Watermark
+    ) async throws {
         let pending = rows.filter { watermark.states[$0.id] != Self.stateStamp($0.updatedAt) }
         guard pending.isEmpty == false else { return }
 
@@ -369,14 +399,14 @@ final class AIInboxSyncService: CloudSyncDomain, Sendable {
 
     private func loadWatermark(uid: String) -> Watermark {
         guard let data = defaults.data(forKey: Self.watermarkDefaultsKey(uid: uid)),
-              let decoded = try? JSONDecoder().decode(Watermark.self, from: data) else {
+              let decoded = try? JSONDecoder().decode(Watermark.self, from: data) else { // try?-ok(corrupt watermark falls back to a full resync)
             return Watermark()
         }
         return decoded
     }
 
     private func saveWatermark(_ watermark: Watermark, uid: String) {
-        guard let data = try? JSONEncoder().encode(watermark) else { return }
+        guard let data = try? JSONEncoder().encode(watermark) else { return } // try?-ok(unpersisted watermark only widens the next sync window)
         defaults.set(data, forKey: Self.watermarkDefaultsKey(uid: uid))
     }
 
@@ -387,7 +417,7 @@ final class AIInboxSyncService: CloudSyncDomain, Sendable {
     /// including them would defeat the gate they exist to serve.
     nonisolated static func contentHash(for row: ControlPlaneStore.AIInboxRow) -> String {
         let record = mirrorRecord(from: row)
-        let payloadDigest = (try? JSONEncoder.aiInboxWatermark.encode(record.payload))
+        let payloadDigest = (try? JSONEncoder.aiInboxWatermark.encode(record.payload)) // try?-ok(unencodable payload hashes empty and forces a re-upload)
             .map { CloudVaultCrypto.sha256Hex($0) } ?? ""
         let parts: [String] = [
             record.id,
@@ -413,11 +443,18 @@ final class AIInboxSyncService: CloudSyncDomain, Sendable {
         return CloudVaultCrypto.sha256Hex(parts.joined(separator: "\u{1F}"))
     }
 
-    /// Whole-second stamp. Firestore timestamps round-trip at sub-millisecond
-    /// precision, so comparing raw `Date` bit patterns would report a change on
-    /// every cycle; seconds is the resolution both sides genuinely agree on.
+    /// Millisecond-precision stamp, via the exact codec SQLite stores.
+    ///
+    /// `updated_at` is written locally at millisecond precision, so a
+    /// whole-second stamp would treat two actions landing inside the same
+    /// second (read, then archive) as one; the second change would never
+    /// upload, because its stamp already matched the watermark. Formatting
+    /// through `aiInboxTimestamp` keeps the milliseconds while staying stable
+    /// across a store round trip: parsing a stored string and re-formatting it
+    /// reproduces the identical stamp, so comparing raw `Date` bit patterns
+    /// (which differ sub-millisecond) never enters into it.
     nonisolated static func stateStamp(_ date: Date) -> String {
-        String(Int64(date.timeIntervalSince1970.rounded()))
+        ControlPlaneStore.aiInboxTimestamp(date)
     }
 
     private static func isPermissionDenied(_ error: Error) -> Bool {

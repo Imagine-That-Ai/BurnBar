@@ -127,3 +127,40 @@ object InboxPendingItem {
         _pending.value = null
     }
 }
+
+/**
+ * A request to move the nav host to the Inbox tab, raised for a WARM deep link.
+ *
+ * Navigation-Compose only matches `navDeepLink` patterns against the LAUNCH
+ * intent. When the app is already running, `onNewIntent` re-routes the link
+ * here but nothing re-runs the deep-link match, so [InboxPendingItem] gets
+ * stashed while the user stays parked on whatever tab was open and the tap
+ * appears to do nothing. The Activity raises this request instead and
+ * `BurnBarNavHost` claims it once composed, navigating with the same tab nav
+ * options a bottom-bar tap would use.
+ *
+ * `claim()` clears as it reads, so recomposition or a configuration change
+ * cannot re-navigate away from wherever the user has since gone.
+ */
+object InboxPendingNavigation {
+    private val _requested = MutableStateFlow(false)
+
+    /** Observed by the nav host so a warm-start push is not missed. */
+    val requested: StateFlow<Boolean> = _requested.asStateFlow()
+
+    fun request() {
+        _requested.value = true
+    }
+
+    /** Reads AND consumes the request; `true` exactly once per [request]. */
+    fun claim(): Boolean {
+        val value = _requested.value
+        _requested.value = false
+        return value
+    }
+
+    /** Test seam: the process-wide request must not leak between test cases. */
+    internal fun reset() {
+        _requested.value = false
+    }
+}
