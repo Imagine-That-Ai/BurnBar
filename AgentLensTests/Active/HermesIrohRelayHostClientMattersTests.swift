@@ -27,16 +27,54 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
     private let uid = "uid-revoke"
     private let connectionID = "connection-revoke"
 
+    /// A missing native backend must fail fast on every operation rather than
+    /// degrade to a loopback that silently pretends to work. The 2026-07-28
+    /// incident was exactly that silent degradation: an app shipped without
+    /// `OpenBurnBarIrohFFI` linked, and the only symptom was a Mercury tile that
+    /// never appeared — eight days later.
+    ///
+    /// This asserts the fallback transport's contract directly instead of going
+    /// through `defaultTransport(backendFactory: { nil })`. That factory calls
+    /// `assertionFailure` on the missing-backend path *by design* — a packaging
+    /// mistake should stop a dev/QA build at the point of degradation — and
+    /// `assertionFailure` traps in Debug, which is how tests build. Driving the
+    /// factory here would abort the whole test process, so it is the one thing
+    /// this test must not do.
     @MainActor
-    func test_defaultTransportWithoutNativeBackendDoesNotPublishLoopback() async {
-        let transport = HermesIrohRelayHostClient.defaultTransport(
-            backendFactory: { nil }
+    func test_transportWithoutNativeBackendFailsFastInsteadOfLoopingBack() async {
+        let transport: any IrohRelayTransport = UnavailableIrohRelayTransport()
+
+        XCTAssertFalse(
+            transport is LoopbackIrohRelayTransport,
+            "A signed Mac without the native module must not silently loop back."
         )
 
-        XCTAssertFalse(transport is LoopbackIrohRelayTransport)
         do {
             _ = try await transport.start()
             XCTFail("A signed Mac without the native iroh module must fail fast.")
+        } catch let error as IrohRelayTransportError {
+            XCTAssertEqual(error, .backendUnavailable)
+        } catch {
+            XCTFail("Unexpected missing-backend error: \(error)")
+        }
+
+        // Dial and accept must fail the same way: a caller that skips `start()`
+        // must not reach a half-open path that looks available.
+        do {
+            _ = try await transport.connect(
+                to: IrohDialTarget(nodeId: "node"),
+                timeout: 1
+            )
+            XCTFail("connect must not succeed without a native backend.")
+        } catch let error as IrohRelayTransportError {
+            XCTAssertEqual(error, .backendUnavailable)
+        } catch {
+            XCTFail("Unexpected missing-backend error: \(error)")
+        }
+
+        do {
+            _ = try await transport.accept(timeout: 1)
+            XCTFail("accept must not succeed without a native backend.")
         } catch let error as IrohRelayTransportError {
             XCTAssertEqual(error, .backendUnavailable)
         } catch {
