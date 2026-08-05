@@ -105,7 +105,7 @@ async function test409Repair() {
         NEW_RULESET,
         "PATCH body must set rulesetName to the new ruleset",
       );
-      assert.equal(body.updateMask, "rulesetName", "PATCH body must select rulesetName");
+      assert.equal(body.updateMask, undefined, "PATCH must omit the rejected updateMask field");
       releaseRuleset = body.release.rulesetName;
       return {
         status: 200,
@@ -231,7 +231,7 @@ async function testSkipsNewerUnrelatedRuleset() {
     }
     if (url === RELEASE_URL && method === "PATCH") {
       assert.equal(body.release?.rulesetName, NEW_RULESET);
-      assert.equal(body.updateMask, "rulesetName");
+      assert.equal(body.updateMask, undefined, "PATCH must omit the rejected updateMask field");
       releaseRuleset = body.release.rulesetName;
       return { status: 200, json: { name: RELEASE_URL.replace(API, ""), rulesetName: releaseRuleset } };
     }
@@ -393,7 +393,7 @@ async function testPatchFails() {
       };
     }
     if (url === RELEASE_URL && method === "PATCH") {
-      assert.equal(body.updateMask, "rulesetName");
+      assert.equal(body.updateMask, undefined, "PATCH must omit the rejected updateMask field");
       return {
         status: 403,
         json: { error: { message: "Permission denied on release update", status: "PERMISSION_DENIED" } },
