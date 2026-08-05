@@ -89,13 +89,33 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
     func testMacProjectCarriesAppCheckDebugTokenReleaseGuards() throws {
         let source = try bundledTextResource(named: "project", extension: "yml")
 
-        XCTAssertTrue(source.contains("Inject Internal Mac App Check Debug Token"))
+        // The Release guard and the artifact verifier it delegates to.
         XCTAssertTrue(source.contains("Block Mac App Check Debug Token In Release"))
-        XCTAssertTrue(source.contains("OPENBURNBAR_USE_DEBUG_APP_CHECK: \"NO\""))
-        XCTAssertTrue(source.contains("if [[ \"${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}\" != \"YES\" ]]; then"))
-        XCTAssertTrue(source.contains("FIREBASE_APP_CHECK_DEBUG_TOKEN is required when OPENBURNBAR_USE_DEBUG_APP_CHECK=YES"))
         XCTAssertTrue(source.contains("AgentLens/Resources/GoogleService-Info.plist"))
         XCTAssertTrue(source.contains("scripts/ci/verify-apple-appcheck-release-artifact.sh"))
+
+        // #1959 (July 2026 Codex remediation) deleted the build-time debug-token
+        // injection outright rather than gating it: no phase writes a debug token
+        // into the bundle, and no build setting can re-enable one. These are
+        // asserted absent so a future change cannot quietly reintroduce the
+        // injection path — the same shape as the runtime assertions in
+        // `testMacRuntimeGatesDebugAppCheckBehindSharedPolicy`.
+        XCTAssertFalse(
+            source.contains("Inject Internal Mac App Check Debug Token"),
+            "The debug-token injection phase was removed in #1959; reintroducing it would put an App Check debug token back in the build."
+        )
+        XCTAssertFalse(
+            source.contains("OPENBURNBAR_USE_DEBUG_APP_CHECK"),
+            "The opt-in build setting was removed in #1959; there must be no supported spelling that re-enables debug App Check."
+        )
+        XCTAssertFalse(
+            source.contains("FIREBASE_APP_CHECK_DEBUG_TOKEN"),
+            "No build phase should consume a debug App Check token."
+        )
+
+        // The Release guard must key off the configuration alone — reintroducing
+        // an env-var escape hatch would let a Release build opt out of the check.
+        XCTAssertTrue(source.contains("if [[ \"${CONFIGURATION:-}\" == \"Debug\" ]]; then"))
     }
 
     func testMacRuntimeGatesDebugAppCheckBehindSharedPolicy() throws {
