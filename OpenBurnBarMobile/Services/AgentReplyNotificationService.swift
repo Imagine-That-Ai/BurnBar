@@ -467,7 +467,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         AIInboxDeepLink.open(itemID: payload.itemID)
     }
 
-    private static let inboxOpenActionID = "AI_INBOX_OPEN"
+    private nonisolated static let inboxOpenActionID = "AI_INBOX_OPEN"
     private static let aiInboxCategory: UNNotificationCategory = {
         // Open-only. There is nothing to reply TO — an inbox item is a finding,
         // not a message — and `submitAgentNotificationReply` refuses events
