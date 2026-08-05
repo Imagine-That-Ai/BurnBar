@@ -1,4 +1,5 @@
 #if !canImport(LibSignalClient)
+// cov:ignore-start -- fallback envelope provider is compile-time excluded when LibSignalClient is linked, so no coverage-bearing lane can execute it; both methods unconditionally throw the OpenBurnBarSignalCoreAvailability fail-closed error, mirroring OpenBurnBarSignalCoreUnavailable.swift
 import Foundation
 import OpenBurnBarSignalCore
 
@@ -36,4 +37,5 @@ public struct OBBSignalSessionGatewayEnvelopeProvider: OBBSignalGatewayEnvelopeP
         )
     }
 }
+// cov:ignore-end
 #endif
