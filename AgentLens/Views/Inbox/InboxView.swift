@@ -510,6 +510,11 @@ struct InboxEmptyState: View {
     var action: (() -> Void)?
 
     @State private var glow = false
+    /// The empty state is the screen a user sees most — the inbox is quiet by
+    /// design — so an infinite pulse here is exactly the kind of persistent
+    /// motion Reduce Motion exists to stop. The glow settles to its midpoint
+    /// instead of animating.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: DesignSystem.Spacing.xl) {
@@ -528,14 +533,18 @@ struct InboxEmptyState: View {
                     )
                     .frame(width: 168, height: 168)
                     .blur(radius: 18)
-                    .scaleEffect(glow ? 1.06 : 0.94)
-                    .opacity(glow ? 1 : 0.7)
+                    // With Reduce Motion on, the glow never animates, so rest at
+                    // the midpoint rather than the dimmed low end of a pulse the
+                    // user will never see complete.
+                    .scaleEffect(reduceMotion ? 1.0 : (glow ? 1.06 : 0.94))
+                    .opacity(reduceMotion ? 0.85 : (glow ? 1 : 0.7))
 
                 Image(systemName: icon)
                     .font(.system(size: 56, weight: .light))
                     .foregroundStyle(DesignSystem.Colors.primaryGradient)
             }
             .onAppear {
+                guard reduceMotion == false else { return }
                 // Matches the Memory review empty state so the two inboxes
                 // breathe at the same rate.
                 withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
