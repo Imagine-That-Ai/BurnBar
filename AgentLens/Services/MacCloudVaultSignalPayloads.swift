@@ -105,7 +105,10 @@ enum MacCloudVaultSignalPayloads {
         to legacyPayload: [String: Any],
         domainID: String,
         uid: String,
-        firestore: Firestore,
+        // Lazy so call sites can pass `Firestore.firestore()` without touching the live
+        // SDK when the domain's Signal gate is OFF (e.g. fake-gateway unit tests where
+        // FirebaseApp is never configured). Mirrors `signalEnvelopeIfEnabled` above.
+        firestore: @autoclosure () throws -> Firestore,
         collection: String,
         docId: String,
         field: String = "signalEnvelope",
@@ -130,7 +133,7 @@ enum MacCloudVaultSignalPayloads {
             guard let sealed = try await signalEnvelopeIfEnabled(
                 domainID: domainID,
                 uid: uid,
-                firestore: firestore,
+                firestore: try firestore(),
                 collection: collection,
                 docId: docId,
                 field: field,
