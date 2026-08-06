@@ -7,7 +7,7 @@
     ".github/workflows/deploy-hosting.yml": ["5d0c1c67b468e6fa","6650908bfd031938","b49f6465066f9288","a063560bf7137e5c"],
     ".github/workflows/deploy-production.yml": ["7eba0c0247e256a9","9214ee55a093b644","2d0493ccbc4c988a","b43b94d77aaf6523"],
     ".github/workflows/domain-core-console-release-evidence.yml": ["86a9a8075ab1e588","433cad860078c203","6e8229b70fead6a2","789d04e32336f94f"],
-    ".github/workflows/domain-core-deletion-guard.yml": ["febb5ad55c3871ad","054fa416b9543e56","c41c52258cab2d6c","6ffe06655fb3e600"],
+    ".github/workflows/domain-core-deletion-guard.yml": ["9ecc24b899b09e94","629bf652f2366daf","ad13445ac7948331","14456436a4f56c5b"],
     ".github/workflows/domain-core-functions-release-evidence.yml": ["218047eed44ff540","f04549353a47b631","38ad37961b51293b","5c7b5ebb362059e8"],
     ".github/workflows/domain-core-ios-release-evidence.yml": ["88aeee079286789c","cf489104e8c2dbd6","e2584e9c40e1fce3","8b4005a31d271532"],
     ".github/workflows/domain-core-post-deletion-completion.yml": ["30c194fd64f2f57c","a008c34c63b079cd","d797d7fbaf0dfda2","86d6f750d86e98d3"],
