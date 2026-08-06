@@ -16,7 +16,7 @@
  * form of the "B3 deploy readback" the fix-audit flagged as release-blocking.
  *
  * Run (post-deploy, with gcloud creds):
- *   node scripts/ci/verify-firestore-ttl-state.mjs [project]
+ *   node scripts/ci/verify-firestore-ttl-state.mjs [project] [sourceDir]
  * Exit: 0 = every declared TTL is ACTIVE/CREATING; 1 = one or more missing.
  *
  * Auth mirrors scripts/ci/check-firestore-deploy-drift.mjs.
@@ -25,6 +25,8 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { resolveLocalSourceRoot } from "./check-firestore-deploy-drift.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const project = process.env.FIREBASE_PROJECT || process.argv[2] || "burnbar";
@@ -93,8 +95,16 @@ function safeFirestoreFieldPath(value) {
 }
 
 async function main() {
+  // Read the declared TTL overrides from the same local source directory the
+  // deploy shipped (trusted staging passes its candidate staging directory);
+  // default remains the repo checkout for the production deploy lanes.
+  const sourceRoot = resolveLocalSourceRoot({
+    argv: process.argv,
+    env: process.env,
+    repoRoot,
+  });
   const indexes = JSON.parse(
-    readFileSync(resolve(repoRoot, "firestore.indexes.json"), "utf8"),
+    readFileSync(resolve(sourceRoot, "firestore.indexes.json"), "utf8"),
   );
   const ttlOverrides = (indexes.fieldOverrides ?? []).filter(
     (o) => o && o.ttl === true,
