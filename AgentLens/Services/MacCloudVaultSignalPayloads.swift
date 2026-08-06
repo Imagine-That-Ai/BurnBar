@@ -101,11 +101,15 @@ enum MacCloudVaultSignalPayloads {
         return try CloudVaultCrypto.signalEnvelopeDictionary(envelope)
     }
 
+    /// `firestore` is a lazy autoclosure (matching `signalEnvelopeIfEnabled`) so callers can
+    /// pass `Firestore.firestore()` without resolving the SDK singleton when the domain's
+    /// Signal gate is OFF: unit tests never configure `FirebaseApp`, and an eager argument
+    /// would throw `FIRIllegalStateException` before the gate check runs.
     static func applyingSignalEnvelope(
         to legacyPayload: [String: Any],
         domainID: String,
         uid: String,
-        firestore: Firestore,
+        firestore: @autoclosure () throws -> Firestore,
         collection: String,
         docId: String,
         field: String = "signalEnvelope",
@@ -130,7 +134,7 @@ enum MacCloudVaultSignalPayloads {
             guard let sealed = try await signalEnvelopeIfEnabled(
                 domainID: domainID,
                 uid: uid,
-                firestore: firestore,
+                firestore: try firestore(), // cov:ignore -- reachable only past the .off activation guard, which requires a configured FirebaseApp + Remote Config; the OFF path never resolves the autoclosure and is unit-tested.
                 collection: collection,
                 docId: docId,
                 field: field,

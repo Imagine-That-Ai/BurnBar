@@ -586,6 +586,18 @@ ceilings move from 46,250 to 46,600 and from 11,800 to 12,200 respectively, cove
 measured 272/302-LOC growth with less than 160 LOC of bounded headroom per target. File
 ceilings remain unchanged.
 
+**Signal v4 Gateway runtime ceiling adjustment (2026-08-04):** the v4 Gateway and
+CloudVault runtime wiring (#2180) grew `OBBSignalSessionCipherTransport.swift` with the
+sealed-sender session establishment and envelope-binding verification paths, measuring
+`OpenBurnBarSignalSessionTransport` at 641 LOC (2 files) against its 540-LOC measured
+ceiling. Session transport is that target's sole responsibility, so the ceiling moves to
+802 LOC (the standard measured 1.25x for non-destination siblings); the 3-file ceiling is
+unchanged. The same change had landed the type-erased `OBBSignalGatewayEnvelopeProvider`
+protocol in the dissolving main target; as a Foundation-only contract it now lives in
+`OpenBurnBarKernel/Contracts` (compiled in every manifest configuration and re-exported
+through the umbrella, so `import OpenBurnBarCore` consumers keep resolving it), keeping
+the main target at its 11-file / 127-line shim-only baseline.
+
 ### Whole-program composition proof (verbatim results)
 
 Run on macOS (Apple Swift 6.4, Xcode 27.0 beta, arch arm64) from the isolated

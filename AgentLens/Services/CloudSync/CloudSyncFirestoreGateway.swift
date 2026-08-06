@@ -11,6 +11,15 @@ protocol CloudSyncFirestoreGateway: AnyObject, Sendable {
     func runTransaction(
         _ updateBlock: @escaping (CloudSyncTransactionGateway) throws -> Bool
     ) async throws -> Bool
+    /// Raw SDK handle for APIs whose signatures require a `Firestore` value
+    /// (e.g. `MacCloudVaultSignalPayloads` / `MacCloudVaultKeyAccess`). Only the
+    /// live gateway owns a real handle; fakes return `nil` so tests never
+    /// resolve the global singleton.
+    func rawSignalPayloadFirestore() -> Firestore?
+}
+
+extension CloudSyncFirestoreGateway {
+    func rawSignalPayloadFirestore() -> Firestore? { nil }
 }
 
 protocol CloudSyncCollectionGateway: AnyObject, Sendable {
@@ -110,6 +119,12 @@ final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked
             })
         }
     }
+
+    // cov:ignore-start -- returns the live SDK handle; resolving it requires a configured FirebaseApp, which unit tests never have. The nil default is unit-tested via CloudSyncFirestoreFakeGateway.
+    func rawSignalPayloadFirestore() -> Firestore? {
+        firestore
+    }
+    // cov:ignore-end
 
     private var firestore: Firestore {
         firestoreOverride ?? Firestore.firestore()
