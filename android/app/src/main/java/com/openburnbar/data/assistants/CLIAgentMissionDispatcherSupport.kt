@@ -135,7 +135,7 @@ internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest): L
     val signalWrites = mutableListOf<SignalMissionWrite>()
     request.runtimeTokens.forEachIndexed { index, runtimeToken ->
         val missionID = request.plan.childMissionIDs[index]
-        val payloadInput = fanOutChildPayloadInput(request, missionID, runtimeToken)
+        val payloadInput = fanOutChildPayloadInput(request = request, missionID = missionID, runtimeToken = runtimeToken)
         val childPayload =
             CLIAgentMissionRequestPayloadFactory.buildSealed(
                 input = payloadInput,

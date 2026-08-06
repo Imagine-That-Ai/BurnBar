@@ -2,10 +2,12 @@ package com.openburnbar.data.assistants
 
 import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.WriteBatch
 import com.google.firebase.functions.FirebaseFunctions
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
@@ -321,27 +323,27 @@ class CLIAgentMissionDispatcher(
             ),
         )
 
-        batch.commit().await()
-        commitFanOutSignalWrites(uid = uid, groupRef = groupRef, signalWrites = signalWrites)
+        commitFanOutWrites(uid = uid, groupRef = groupRef, batch = batch, signalWrites = signalWrites)
         return FanOutDispatchResult(groupID = plan.groupID, childMissionIDs = plan.childMissionIDs)
     }
 
-    private fun requireSignedInUid(): String = auth.currentUser?.uid ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
+    private fun requireSignedInUid(): String = auth.currentUser?.uid
+        ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
 
-    private suspend fun commitFanOutSignalWrites(
+    @Suppress("TooGenericExceptionCaught") // reason: ANY callable failure must trigger fan-out cleanup and fail closed, mirroring the iOS dispatcher.
+    private suspend fun commitFanOutWrites(
         uid: String,
-        groupRef: com.google.firebase.firestore.DocumentReference,
+        groupRef: DocumentReference,
+        batch: WriteBatch,
         signalWrites: List<SignalMissionWrite>,
     ) {
+        batch.commit().await()
         if (signalWrites.isEmpty()) return
         try {
             writeSignalMissionDocuments(signalWrites)
-        } catch (expected: Exception) {
+        } catch (error: Exception) {
             cleanupFanOutAfterSignalFailure(uid = uid, groupRef = groupRef, writes = signalWrites)
-            throw DispatchException(
-                "Signal fan-out could not be committed atomically: ${expected.message ?: "callable failed"}",
-                expected,
-            )
+            throw DispatchException("Signal fan-out could not be committed atomically: ${error.message ?: "callable failed"}", error)
         }
     }
 
@@ -422,7 +424,7 @@ class CLIAgentMissionDispatcher(
             }
             .set(
                 requestRef.collection("events").document("000001"),
-                sealedInitialQueuedEvent(missionKind, sourceSurface, sourceSkillID, deliveryMode, resolvedKey),
+                dispatchQueuedEventSealed(missionKind, sourceSurface, sourceSkillID, deliveryMode, resolvedKey),
             )
             .commit()
             .await()
@@ -432,7 +434,7 @@ class CLIAgentMissionDispatcher(
         return id
     }
 
-    private fun sealedInitialQueuedEvent(
+    private fun dispatchQueuedEventSealed(
         missionKind: String,
         sourceSurface: String?,
         sourceSkillID: String?,
@@ -451,15 +453,13 @@ class CLIAgentMissionDispatcher(
         )
     }
 
-    private suspend fun commitSignalMissionWrite(requestRef: com.google.firebase.firestore.DocumentReference, missionID: String, payload: Map<String, Any>) {
+    @Suppress("TooGenericExceptionCaught") // reason: ANY callable failure must roll back the queued event and fail closed, mirroring the iOS dispatcher.
+    private suspend fun commitSignalMissionWrite(requestRef: DocumentReference, missionID: String, payload: Map<String, Any>) {
         try {
             writeSignalMissionDocuments(listOf(SignalMissionWrite(missionID = missionID, payload = payload)))
-        } catch (expected: Exception) {
+        } catch (error: Exception) {
             runCatching { requestRef.collection("events").document("000001").delete().await() }
-            throw DispatchException(
-                "Signal mission could not be committed: ${expected.message ?: "callable failed"}",
-                expected,
-            )
+            throw DispatchException("Signal mission could not be committed: ${error.message ?: "callable failed"}", error)
         }
     }
 
@@ -503,6 +503,7 @@ class CLIAgentMissionDispatcher(
      * gate is off (the production default → inert). Loads/publishes the device's Signal
      * identity and fetches the trusted-device recipient set only when the gate is on.
      */
+    @Suppress("TooGenericExceptionCaught") // reason: seal-context setup must fail closed on ANY failure (no silent fallback), mirroring the iOS dispatcher.
     private suspend fun resolveSignalContext(uid: String, docId: String): CLISignalSealContext? {
         // The mission collection is callable-only for Signal envelopes. The direct
         // Firestore batch still owns the group/event scaffolding; mission documents
@@ -528,12 +529,9 @@ class CLIAgentMissionDispatcher(
                 localIdentity = identity,
                 otherRecipients = recipients,
             )
-        } catch (expected: Exception) {
-            Log.e("CLIAgentMissionDispatcher", "Signal at-rest seal context failed; refusing mission fallback", expected)
-            throw DispatchException(
-                "Private mission session could not be prepared: ${expected.message ?: "Signal setup failed"}",
-                expected,
-            )
+        } catch (error: Exception) {
+            Log.e("CLIAgentMissionDispatcher", "Signal at-rest seal context failed; refusing mission fallback", error)
+            throw DispatchException("Private mission session could not be prepared: ${error.message ?: "Signal setup failed"}", error)
         }
     }
 

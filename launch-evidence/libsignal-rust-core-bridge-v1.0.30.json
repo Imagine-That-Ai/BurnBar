@@ -4,7 +4,7 @@
   "generatedAt": "2026-08-04T06:58:00Z",
   "privacy": "proof_only_no_plaintext_keys_or_user_data",
   "candidateReleaseTag": "v1.0.30",
-  "testedSourceCommit": "31e219b71fbaaafbbfe142bf6e78f24fe892cfb0",
+  "testedSourceCommit": "67d22cd1c561ab74f11657a6b9b10d87526e8271",
   "artifactDigests": [
     {
       "path": "OpenBurnBarCore/Package.swift",
