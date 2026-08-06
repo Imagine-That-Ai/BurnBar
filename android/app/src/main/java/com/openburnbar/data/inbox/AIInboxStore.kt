@@ -252,9 +252,15 @@ class AIInboxStore(
 
     private fun listenToItems(uid: String): Flow<List<AIInboxItem>> = callbackFlow {
         val vaultKey = AtomicReference(resolveVaultKey(uid))
+        data class RawItemDocument(val id: String, val data: Map<String, Any>)
+        val latestDocuments = AtomicReference<List<RawItemDocument>>(emptyList())
+        val userRef = firestore.collection("users").document(uid)
+        fun parseDocuments(documents: List<RawItemDocument>, key: ByteArray?): List<AIInboxItem> = documents.mapNotNull { document ->
+            parseAIInboxDocument(document.data, document.id, uid, key)
+        }
+
         val listener =
-            firestore.collection("users")
-                .document(uid)
+            userRef
                 .collection(AIInboxMirrorCodec.COLLECTION)
                 .orderBy("lastSeenAt", Query.Direction.DESCENDING)
                 .limit(INBOX_ITEM_FETCH_LIMIT)
@@ -263,30 +269,38 @@ class AIInboxStore(
                         close(error)
                         return@addSnapshotListener
                     }
-                    val documents = snapshot?.documents.orEmpty()
-                    val key = vaultKey.get()
-                    if (key != null) {
-                        trySend(
-                            documents.mapNotNull { document ->
-                                parseAIInboxDocument(document.data.orEmpty(), document.id, uid, key)
-                            },
-                        )
-                    } else {
-                        // A device approval can land while the tab is open, so a
-                        // missing key is retried on every delivery: newly approved
-                        // devices unseal items without a listener re-attach.
-                        launch {
-                            val refreshed = resolveVaultKey(uid)
-                            if (refreshed != null) vaultKey.set(refreshed)
-                            trySend(
-                                documents.mapNotNull { document ->
-                                    parseAIInboxDocument(document.data.orEmpty(), document.id, uid, refreshed)
-                                },
-                            )
-                        }
+                    val documents = snapshot?.documents.orEmpty().map { document ->
+                        RawItemDocument(document.id, document.data.orEmpty())
+                    }
+                    latestDocuments.set(documents)
+                    // Re-resolve on every item snapshot. This handles a device
+                    // approval that arrives while the tab is open and a vault
+                    // rotation that changes the key used to open later items.
+                    launch {
+                        val refreshed = resolveVaultKey(uid)
+                        vaultKey.set(refreshed)
+                        trySend(parseDocuments(documents, refreshed))
                     }
                 }
-        awaitClose { listener.remove() }
+        // Item documents may not change when the vault rotates. Observe the
+        // authoritative state document too, then re-open the latest item
+        // snapshot with the newly wrapped key without waiting for another item
+        // write or forcing the user to leave and re-enter Inbox.
+        val vaultStateListener =
+            userRef.collection("cloud_vault_state")
+                .document("current")
+                .addSnapshotListener { _, error ->
+                    if (error != null) return@addSnapshotListener
+                    launch {
+                        val refreshed = resolveVaultKey(uid)
+                        vaultKey.set(refreshed)
+                        trySend(parseDocuments(latestDocuments.get(), refreshed))
+                    }
+                }
+        awaitClose {
+            listener.remove()
+            vaultStateListener.remove()
+        }
     }
 
     private fun listenToItemStates(uid: String): Flow<Map<String, AIInboxItemUserState>> = callbackFlow {
