@@ -8,9 +8,12 @@
  */
 import assert from "node:assert/strict";
 
+import { resolve } from "node:path";
+
 import {
   is409ReleaseError,
   repairFirestoreRelease,
+  resolveRulesSourcePath,
 } from "./repair-firestore-rules-release.mjs";
 
 const PROJECT = "burnbar";
@@ -105,7 +108,7 @@ async function test409Repair() {
         NEW_RULESET,
         "PATCH body must set rulesetName to the new ruleset",
       );
-      assert.equal(body.updateMask, "rulesetName", "PATCH body must select rulesetName");
+      assert.equal(body.updateMask, undefined, "PATCH must omit the rejected updateMask field");
       releaseRuleset = body.release.rulesetName;
       return {
         status: 200,
@@ -231,7 +234,7 @@ async function testSkipsNewerUnrelatedRuleset() {
     }
     if (url === RELEASE_URL && method === "PATCH") {
       assert.equal(body.release?.rulesetName, NEW_RULESET);
-      assert.equal(body.updateMask, "rulesetName");
+      assert.equal(body.updateMask, undefined, "PATCH must omit the rejected updateMask field");
       releaseRuleset = body.release.rulesetName;
       return { status: 200, json: { name: RELEASE_URL.replace(API, ""), rulesetName: releaseRuleset } };
     }
@@ -393,7 +396,7 @@ async function testPatchFails() {
       };
     }
     if (url === RELEASE_URL && method === "PATCH") {
-      assert.equal(body.updateMask, "rulesetName");
+      assert.equal(body.updateMask, undefined, "PATCH must omit the rejected updateMask field");
       return {
         status: 403,
         json: { error: { message: "Permission denied on release update", status: "PERMISSION_DENIED" } },
@@ -483,12 +486,63 @@ async function testIdempotent() {
   ok(label);
 }
 
+function testResolveRulesSourcePath() {
+  const label = "rules source path: CLI arg > env var > repo checkout default";
+
+  const repoRoot = "/repo";
+  const baseArgv = ["node", "repair-firestore-rules-release.mjs", "burnbar"];
+
+  // Explicit CLI argument wins (the trusted staging deploy passes the
+  // candidate copy it actually shipped, not trusted main's firestore.rules).
+  assert.equal(
+    resolveRulesSourcePath({
+      argv: [...baseArgv, "/tmp/staging-deploy/firestore.rules"],
+      env: { FIRESTORE_RULES_PATH: "/elsewhere/firestore.rules" },
+      repoRoot,
+    }),
+    "/tmp/staging-deploy/firestore.rules",
+    "CLI rulesPath argument must take precedence",
+  );
+
+  // Env var is used when no CLI argument is given.
+  assert.equal(
+    resolveRulesSourcePath({
+      argv: baseArgv,
+      env: { FIRESTORE_RULES_PATH: "/elsewhere/firestore.rules" },
+      repoRoot,
+    }),
+    "/elsewhere/firestore.rules",
+    "FIRESTORE_RULES_PATH must be used when no CLI argument is given",
+  );
+
+  // Default: repo checkout's firestore.rules.
+  assert.equal(
+    resolveRulesSourcePath({ argv: baseArgv, env: {}, repoRoot }),
+    "/repo/firestore.rules",
+    "must default to the repo checkout's firestore.rules",
+  );
+
+  // Relative paths resolve against cwd, matching readFileSync semantics.
+  assert.equal(
+    resolveRulesSourcePath({
+      argv: [...baseArgv, "staging-deploy/firestore.rules"],
+      env: {},
+      repoRoot,
+    }),
+    resolve("staging-deploy/firestore.rules"),
+    "relative rulesPath must resolve against cwd",
+  );
+
+  ok(label);
+}
+
 // ─── Run all tests ────────────────────────────────────────────────────────
 
 async function run() {
   console.log("Self-test: repair-firestore-rules-release.mjs\n");
 
   testNon409Detection();
+  testResolveRulesSourcePath();
 
   for (const [name, fn] of [
     ["test409Repair", test409Repair],
