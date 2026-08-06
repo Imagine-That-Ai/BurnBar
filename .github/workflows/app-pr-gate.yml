@@ -161,13 +161,16 @@ jobs:
         # When a test exceeds its execution-time allowance, XCTest attaches the
         # hung process's thread backtraces to the attempt's xcresult. Without
         # this upload those bundles die with the runner, leaving a 10-minute
-        # hang undiagnosable from the streamed log alone.
+        # hang undiagnosable from the streamed log alone. The harness copies
+        # every non-passing attempt's bundle to the diagnostics directory
+        # because the derived-data dir (where attempts are written) is deleted
+        # by the script's retry refreshes and EXIT trap before this step runs.
         if: failure()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: openburnbar-app-test-xcresults
           path: |
-            .derived-data/macos-idle-occlusion-gate/*.xcresult
+            .derived-data/test-openburnbar-app-diagnostics
             .derived-data/test-openburnbar-app-attempts.jsonl
           if-no-files-found: warn
           retention-days: 7
