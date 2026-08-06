@@ -213,13 +213,29 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          deploy_log="$(mktemp)"
+          deploy_status=0
           "$FIREBASE_TOOLS_BIN" deploy \
             --only firestore,storage \
             --project "$FIREBASE_PROJECT" \
             --config "$FIREBASE_CONFIG_PATH" \
-            --non-interactive
-          node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
-          node scripts/ci/verify-firestore-ttl-state.mjs "$FIREBASE_PROJECT"
+            --non-interactive 2>&1 | tee "$deploy_log" || deploy_status=$?
+          if [[ "$deploy_status" -ne 0 ]]; then
+            if grep -q "409" "$deploy_log" && grep -qi "Requested entity already exists" "$deploy_log"; then
+              echo "::warning::Firestore rules release hit 409; running targeted repair"
+              node scripts/ci/repair-firestore-rules-release.mjs "$FIREBASE_PROJECT" \
+                "$RUNNER_TEMP/staging-deploy/firestore.rules"
+            else
+              cat "$deploy_log"
+              exit "$deploy_status"
+            fi
+          fi
+          # Verify the live release against the exact candidate artifacts this
+          # job deployed, not the trusted checkout's main files.
+          node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT" \
+            "$RUNNER_TEMP/staging-deploy"
+          node scripts/ci/verify-firestore-ttl-state.mjs "$FIREBASE_PROJECT" \
+            "$RUNNER_TEMP/staging-deploy"
 
       - name: Deploy reviewed Functions artifact
         if: ${{ inputs.deploy_functions }}
