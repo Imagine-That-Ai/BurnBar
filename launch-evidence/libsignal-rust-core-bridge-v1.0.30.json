@@ -4,11 +4,11 @@
   "generatedAt": "2026-08-04T06:58:00Z",
   "privacy": "proof_only_no_plaintext_keys_or_user_data",
   "candidateReleaseTag": "v1.0.30",
-  "testedSourceCommit": "1589638bc5949ac41860e4ae1225ea8ebb759f1f",
+  "testedSourceCommit": "67d22cd1c561ab74f11657a6b9b10d87526e8271",
   "artifactDigests": [
     {
       "path": "OpenBurnBarCore/Package.swift",
-      "sha256": "5fe126686f012579a2c8c923fb3cbb8ee8d8f5c798c5b790edd69fb8f3451aee"
+      "sha256": "349e95a28e436e0c1a154c57215f9133dffe588a7005db6971e1f0cfd5c86ced"
     },
     {
       "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CryptoKitAtRestInteropTests.swift",
