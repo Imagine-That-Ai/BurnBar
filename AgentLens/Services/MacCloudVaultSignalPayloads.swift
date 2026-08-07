@@ -82,7 +82,7 @@ enum MacCloudVaultSignalPayloads {
         field: String = "signalEnvelope",
         plaintext: Data,
         resolvedKey: CloudVaultResolvedKey
-    ) async throws -> [String: Any]? {
+    ) async throws -> NSDictionary? {
         guard signalSealingIsEnabled(domainID: domainID) else { return nil }
         guard let signalIdentity = resolvedKey.signalIdentity else {
             throw MacCloudVaultSignalPayloadError.signalIdentityUnavailable(domainID: domainID)
@@ -98,7 +98,7 @@ enum MacCloudVaultSignalPayloads {
             senderIdentityKeyId: signalIdentity.identityKeyId,
             senderIdentityPrivateKey: signalIdentity.privateKeyData
         )
-        return try CloudVaultCrypto.signalEnvelopeDictionary(envelope)
+        return try NSDictionary(dictionary: CloudVaultCrypto.signalEnvelopeDictionary(envelope))
     }
 
     /// `firestore` is a lazy autoclosure (matching `signalEnvelopeIfEnabled`) so callers can
@@ -106,7 +106,7 @@ enum MacCloudVaultSignalPayloads {
     /// Signal gate is OFF: unit tests never configure `FirebaseApp`, and an eager argument
     /// would throw `FIRIllegalStateException` before the gate check runs.
     static func applyingSignalEnvelope(
-        to legacyPayload: [String: Any],
+        to legacyPayload: NSDictionary,
         domainID: String,
         uid: String,
         firestore: @autoclosure () throws -> Firestore,
@@ -117,19 +117,19 @@ enum MacCloudVaultSignalPayloads {
         resolvedKey: CloudVaultResolvedKey,
         legacyPrivateFields: Set<String>,
         mergeWrite: Bool
-    ) async throws -> [String: Any] {
-        var payload = legacyPayload
+    ) async throws -> NSDictionary {
+        let payload = NSMutableDictionary(dictionary: legacyPayload)
         let state = activationState(domainID: domainID)
         guard state != .off else {
             if mergeWrite {
                 payload[field] = FieldValue.delete()
             } else {
-                payload.removeValue(forKey: field)
+                payload.removeObject(forKey: field)
             }
             return payload
         }
 
-        let envelope: [String: Any]
+        let envelope: NSDictionary
         do {
             guard let sealed = try await signalEnvelopeIfEnabled(
                 domainID: domainID,
@@ -149,7 +149,7 @@ enum MacCloudVaultSignalPayloads {
                 if mergeWrite {
                     payload[field] = FieldValue.delete()
                 } else {
-                    payload.removeValue(forKey: field)
+                    payload.removeObject(forKey: field)
                 }
                 return payload
             }
@@ -162,7 +162,7 @@ enum MacCloudVaultSignalPayloads {
                 if mergeWrite {
                     payload[legacyField] = FieldValue.delete()
                 } else {
-                    payload.removeValue(forKey: legacyField)
+                    payload.removeObject(forKey: legacyField)
                 }
             }
         }

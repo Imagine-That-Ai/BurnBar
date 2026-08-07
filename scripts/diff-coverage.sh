@@ -296,11 +296,25 @@ COVERAGE_ALLOWLIST = {
         "CLIAgentMissionEventFactory paths; the remaining changed lines are "
         "callback wiring that requires emulator/integration coverage."
     ),
+    "AgentLens/Services/CloudSync/CLIAgentSessionMirror.swift": (
+        "Live Firestore CLI-session writer. The changed NSDictionary bridge and "
+        "document write execute only after Firebase account, vault-key, and "
+        "Firestore resolution; record builders and sealed codec decisions are "
+        "covered by CLIAgentSessionMirrorTests. The live writer needs emulator "
+        "or deployed-Firebase integration coverage."
+    ),
     "AgentLens/Services/CloudSync/ChatThreadSyncService.swift": (
         "Live Firestore sync service with snapshot/write callbacks. Merge and "
         "round-trip behavior is covered by ChatThreadSyncServiceTests and "
         "cloud-sync integration tests; XCTest line attribution cannot execute "
         "the live listener lifecycle deterministically."
+    ),
+    "AgentLens/Services/CloudSync/CloudSyncFirestoreGateway.swift": (
+        "The changed default Firestore resolver and live SDK adapter require a "
+        "configured Firebase app and live Firestore handle, which hermetic "
+        "XCTest intentionally does not create. The protocol bridge and "
+        "firestoreData conversion are exercised by fake-gateway cloud-sync "
+        "tests; live SDK construction needs emulator integration coverage."
     ),
     "AgentLens/Services/CloudSync/DownloadSyncService.swift": (
         "Live cloud-download listener/writer orchestration. Download policy and "
@@ -325,6 +339,20 @@ COVERAGE_ALLOWLIST = {
         "and deterministic plan builder are covered by "
         "MacEscrowCredentialProducerTests; the live collaborators require "
         "Firebase/keychain integration coverage."
+    ),
+    "AgentLens/Services/CloudSync/TextExpansionSyncService.swift": (
+        "The changed Signal-enabled upload/download path resolves a live "
+        "Firestore handle, Remote Config gate, vault key, and trusted-device "
+        "recipient set. Hermetic tests cover the inactive Signal path and "
+        "fake-gateway round trips; the enabled SDK seam requires Firebase "
+        "emulator integration coverage."
+    ),
+    "AgentLens/Services/MacCloudVaultSignalPayloads.swift": (
+        "Signal envelope production and enabled legacy-fallback handling require "
+        "a configured Firebase app plus live trusted-device Firestore reads. "
+        "Activation policy, crypto helpers, and the inactive lazy-lookup path "
+        "are covered by app tests; enabled recipient resolution needs emulator "
+        "integration coverage."
     ),
     "AgentLens/Services/DataControlCenterViewModel.swift": (
         "macOS Data & Privacy Control Center callable hub. The changed lines "

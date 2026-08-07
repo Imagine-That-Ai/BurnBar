@@ -163,7 +163,7 @@ enum ConversationCloudSealer {
         if data["signalEnvelope"] != nil {
             guard let uid, let docId else {
                 if signalRequired { return nil }
-                return openLegacy(data, keyData: keyData, uid: uid, docId: docId)
+                return openLegacy(data as NSDictionary, keyData: keyData, uid: uid, docId: docId)
             }
             do {
                 if let bytes = try MacCloudVaultSignalPayloads.openSignalPayloadIfPresent(
@@ -185,11 +185,11 @@ enum ConversationCloudSealer {
                 logger.warning("Signal conversation payload open fell back to legacy vault payload: \(String(describing: error), privacy: .private)")
             }
         }
-        return openLegacy(data, keyData: keyData, uid: uid, docId: docId)
+        return openLegacy(data as NSDictionary, keyData: keyData, uid: uid, docId: docId)
     }
 
     private static func openLegacy(
-        _ data: [String: Any],
+        _ data: NSDictionary,
         keyData: Data?,
         uid: String?,
         docId: String?

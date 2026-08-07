@@ -134,7 +134,7 @@ final class CLIAgentSessionMirror: Sendable {
             // NOTE: no `source` producer marker here — the cli_sessions Firestore
             // allowlists (legacy validator and Signal mirror gate) reject it.
             let payload = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
-                to: legacyPayload,
+                to: legacyPayload as NSDictionary,
                 domainID: "conversations_chat",
                 uid: uid,
                 firestore: firestore,
@@ -145,7 +145,7 @@ final class CLIAgentSessionMirror: Sendable {
                 legacyPrivateFields: ["sealedPayload", "sealedSchemaVersion", "vaultKeyID", "contentSealed"],
                 mergeWrite: true
             )
-            try await docRef.setData(payload, merge: true)
+            try await docRef.setData(CloudSyncFirestoreLiveGateway.firestoreData(payload), merge: true)
             logger.debug("mirrored CLI session \(threadID, privacy: .public) agent=\(record.agent.rawValue, privacy: .public) messages=\(record.messages.count)")
         } catch {
             logger.warning("CLI mirror upload failed for \(threadID, privacy: .public): \(String(describing: error), privacy: .public)")
@@ -200,7 +200,7 @@ final class CLIAgentSessionMirror: Sendable {
             // NOTE: no `source` producer marker here — the cli_sessions Firestore
             // allowlists (legacy validator and Signal mirror gate) reject it.
             let payload = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
-                to: legacyPayload,
+                to: legacyPayload as NSDictionary,
                 domainID: "conversations_chat",
                 uid: uid,
                 firestore: firestore,
@@ -211,7 +211,7 @@ final class CLIAgentSessionMirror: Sendable {
                 legacyPrivateFields: ["sealedPayload", "sealedSchemaVersion", "vaultKeyID", "contentSealed"],
                 mergeWrite: true
             )
-            try await docRef.setData(payload, merge: true)
+            try await docRef.setData(CloudSyncFirestoreLiveGateway.firestoreData(payload), merge: true)
             logger.debug("mirrored archived CLI log \(record.id, privacy: .public) agent=\(record.agent.rawValue, privacy: .public)")
         } catch {
             logger.warning("Archived CLI mirror upload failed for \(record.id, privacy: .public): \(String(describing: error), privacy: .public)")

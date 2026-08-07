@@ -295,7 +295,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         _ raw: Any?,
         accountID: String
     ) throws -> ProviderQuotaSnapshot {
-        guard let data = raw as? [String: Any] else {
+        guard let data = raw as? NSDictionary else {
             return try FirebaseCallableExecutor.decodeResponse(
                 ProviderQuotaSnapshot.self,
                 from: raw
@@ -315,7 +315,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
 
         let documentID = "\(providerID)_\(accountID)_\(sourceID)"
         let normalized = FirestoreRepository.shared.normalizeQuotaSnapshotData(
-            data,
+            data as? [String: Any] ?? [:],
             docID: documentID
         )
         return try FirebaseCallableExecutor.decodeResponse(

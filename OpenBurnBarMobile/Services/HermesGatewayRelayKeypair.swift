@@ -1,6 +1,5 @@
 import CryptoKit
 import Foundation
-import LibSignalClient
 import OpenBurnBarCore
 import OpenBurnBarFirestoreModels
 import OpenBurnBarSignalCore
@@ -28,7 +27,7 @@ protocol HermesGatewayPrivateKeyStorage: Sendable {
 
 private struct HermesGatewayKeychainPrivateKeyStorage: HermesGatewayPrivateKeyStorage {
     func loadKeyData(tag: Data) throws -> Data? {
-        let query: [String: Any] = [
+        let query: NSDictionary = [
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: tag,
             kSecReturnData as String: true,
@@ -49,7 +48,7 @@ private struct HermesGatewayKeychainPrivateKeyStorage: HermesGatewayPrivateKeySt
     }
 
     func saveKeyData(_ data: Data, tag: Data, label: String) throws {
-        let query: [String: Any] = [
+        let query: NSDictionary = [
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: tag,
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
@@ -847,6 +846,9 @@ struct HermesGatewayAgentKeyPinStore: Sendable {
 
 // MARK: - Official Gateway Signal session runtime
 
+#if canImport(LibSignalClient)
+import LibSignalClient
+
 /// The public identifiers needed to rebuild the phone's libsignal prekey
 /// bundle. Private records remain in `OBBSignalProtocolStore`; this metadata
 /// contains only IDs and is itself kept in the device Keychain so a reinstall
@@ -1146,7 +1148,7 @@ enum HermesGatewaySignalRuntime {
             kSecAttrAccount as String: account
         ]
         SecItemDelete(query as CFDictionary)
-        var record = query
+        let record = NSMutableDictionary(dictionary: query)
         record[kSecValueData as String] = data
         record[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         let status = SecItemAdd(record as CFDictionary, nil)
@@ -1184,6 +1186,30 @@ enum HermesGatewaySignalRuntime {
         return "ios-signal-\(stableHash(material).prefix(40))"
     }
 }
+
+#else
+
+/// The vendored libsignal package is optional for local/source-only builds.
+/// Keep the gateway API available, but fail closed instead of silently
+/// falling back to plaintext when the native Signal runtime is absent.
+enum HermesGatewaySignalRuntime {
+    static func loadOrCreateBundle(
+        uid: String,
+        deviceId: String
+    ) throws -> FirestoreHermesGatewaySignalPrekeyBundleDoc {
+        throw FunctionsError.gatewaySignalUnavailable
+    }
+
+    static func session(
+        uid: String,
+        targetClient: HermesGatewayClientRecord,
+        deviceId: String
+    ) throws -> HermesGatewaySignalSession {
+        throw FunctionsError.gatewaySignalUnavailable
+    }
+}
+
+#endif
 
 struct HermesGatewaySignalSession: Sendable {
     let provider: OBBSignalSessionGatewayEnvelopeProvider
