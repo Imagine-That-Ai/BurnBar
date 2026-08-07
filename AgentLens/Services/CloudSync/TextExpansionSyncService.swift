@@ -109,8 +109,8 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
             // NOTE: no `source` producer marker here — the text_snippets Firestore
             // allowlists (legacy validator and Signal mirror gate) reject it.
             if let signalResolvedKey {
-                payload = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
-                    to: payload,
+                let signalPayload = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
+                    to: payload as NSDictionary,
                     domainID: "conversations_chat",
                     uid: uid,
                     firestore: try signalPayloadFirestore(), // cov:ignore -- Signal-gated call site; the gate is ON only with a configured FirebaseApp + Remote Config, and the helper's guard is unit-tested.
@@ -123,6 +123,7 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
                     ],
                     mergeWrite: true
                 )
+                payload = CloudSyncFirestoreLiveGateway.firestoreData(signalPayload)
             }
             batch.setData(
                 payload,

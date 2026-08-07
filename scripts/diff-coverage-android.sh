@@ -227,13 +227,74 @@ for line in git_output.splitlines():
         for ln in range(start, start + count):
             file_blocks[current].append(ln)
 
-def comment_only_lines(rel_path):
-    """Return source line numbers containing only whitespace/comments.
+def consume_annotation(source_line, start):
+    """Consume a single-line Kotlin annotation starting at `start` ('@').
 
-    JaCoCo intentionally emits no executable-line entry for KDoc and ordinary
-    comments. A documentation-only production diff therefore has strong
-    evidence that there is nothing to cover, but only after we lex the source
-    and prove every added line is outside strings and executable code.
+    Returns the index just past the annotation, or None when the text is not
+    a complete single-line annotation (fail closed: unparsed text counts as
+    executable code and keeps requiring coverage evidence). Handles optional
+    use-site targets (@file:Suppress), dotted names, and balanced constant
+    argument lists containing string/char literals.
+    """
+    def read_identifier(index):
+        if index < len(source_line) and (source_line[index].isalpha() or source_line[index] == "_"):
+            index += 1
+            while index < len(source_line) and (source_line[index].isalnum() or source_line[index] == "_"):
+                index += 1
+            return index
+        return None
+
+    end = read_identifier(start + 1)
+    if end is None:
+        return None
+    if end < len(source_line) and source_line[end] == ":":
+        end = read_identifier(end + 1)
+        if end is None:
+            return None
+    while end is not None and end < len(source_line) and source_line[end] == ".":
+        end = read_identifier(end + 1)
+    if end is None:
+        return None
+    if end < len(source_line) and source_line[end] == "(":
+        depth = 1
+        index = end + 1
+        while index < len(source_line) and depth > 0:
+            char = source_line[index]
+            if char in {'"', "'"}:
+                index += 1
+                closed = False
+                while index < len(source_line):
+                    if source_line[index] == "\\":
+                        index += 2
+                        continue
+                    if source_line[index] == char:
+                        index += 1
+                        closed = True
+                        break
+                    index += 1
+                if not closed:
+                    return None
+                continue
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+            index += 1
+        if depth != 0:
+            return None
+        end = index
+    return end
+
+def non_executable_lines(rel_path):
+    """Return source line numbers containing only whitespace, comments, and
+    standalone annotations.
+
+    JaCoCo intentionally emits no executable-line entry for KDoc, ordinary
+    comments, or annotation lines (annotation arguments are compile-time
+    constants with no bytecode). A diff touching only such lines therefore
+    has strong evidence that there is nothing to cover, but only after we
+    lex the source and prove every added line is outside strings and
+    executable code.
     """
     path = os.path.join(repo_root, rel_path)
     with open(path, encoding="utf-8") as handle:
@@ -281,6 +342,14 @@ def comment_only_lines(rel_path):
                 has_code = True
                 in_triple_string = True
                 index += 3
+                continue
+            if source_line[index] == "@":
+                annotation_end = consume_annotation(source_line, index)
+                if annotation_end is None:
+                    has_code = True
+                    index += 1
+                else:
+                    index = annotation_end
                 continue
             if source_line[index] in {'"', "'"}:
                 has_code = True
@@ -366,13 +435,13 @@ for rel_path in changed:
             "sourceIdentity": identity,
         })
         continue
-    if changed_lines.issubset(comment_only_lines(rel_path)):
+    if changed_lines.issubset(non_executable_lines(rel_path)):
         details.append({
             "file": rel_path,
             "executableLines": 0,
             "coveredLines": 0,
             "percent": 100.0,
-            "method": "comment_only",
+            "method": "comment_or_annotation_only",
             "sourceIdentity": identity,
         })
         continue

@@ -98,6 +98,16 @@ final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked
         self.firestoreOverride = firestore
     }
 
+    /// Returns the live SDK handle for legacy adapters that still accept a
+    /// Firestore value instead of the gateway protocol.
+    static func defaultFirestore() -> Firestore {
+        Firestore.firestore()
+    }
+
+    static func firestoreData(_ value: NSDictionary) -> [String: Any] {
+        value as? [String: Any] ?? [:]
+    }
+
     func collection(_ collectionPath: String) -> CloudSyncCollectionGateway {
         CloudSyncCollectionLiveGateway(reference: firestore.collection(collectionPath))
     }
@@ -134,7 +144,7 @@ final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked
     // cov:ignore-end
 
     private var firestore: Firestore {
-        firestoreOverride ?? Firestore.firestore()
+        firestoreOverride ?? Self.defaultFirestore()
     }
 }
 

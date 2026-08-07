@@ -1,4 +1,5 @@
 import FirebaseFirestore
+import Foundation
 import XCTest
 @testable import OpenBurnBar
 

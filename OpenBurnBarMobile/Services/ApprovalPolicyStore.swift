@@ -154,7 +154,7 @@ final class ApprovalPolicyStore {
                         }
                         return Self.decode(
                             documentID: doc.documentID,
-                            data: doc.data(),
+                            data: doc.data() as NSDictionary,
                             vaultKey: resolvedKey?.keyData,
                             uid: uid,
                             signalPlaintext: signalData ?? nil
@@ -407,7 +407,7 @@ final class ApprovalPolicyStore {
     /// used for matching is unchanged even though the cloud no longer stores it.
     static func decode(
         documentID: String,
-        data: [String: Any],
+        data: NSDictionary,
         vaultKey: Data?,
         uid: String? = nil,
         signalPlaintext: Data? = nil
@@ -467,7 +467,7 @@ final class ApprovalPolicyStore {
     }
 
     private static func openSealedPolicyField(
-        from data: [String: Any],
+        from data: NSDictionary,
         documentID: String,
         sealedField: String,
         legacyField: String,

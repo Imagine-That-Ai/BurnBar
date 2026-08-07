@@ -245,7 +245,64 @@ write_report "$report" '<package name="sample/other"><sourcefile name="Other.kt"
 rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/comment-only.json" "$tmp_root/comment-only.err")"
 check "comment-only diff passes without JaCoCo evidence" "0" "$rc"
 check "comment-only method is reported" \
-  "comment_only" "$(json_get "$tmp_root/comment-only.json" 'v["details"][0]["method"]')"
+  "comment_or_annotation_only" "$(json_get "$tmp_root/comment-only.json" 'v["details"][0]["method"]')"
+
+# A standalone annotation line (e.g. a justified detekt @Suppress) has no
+# JaCoCo executable-line entry — annotation arguments are compile-time
+# constants with no bytecode — so an annotation-plus-comment diff has
+# nothing to attest.
+repo="$tmp_root/annotation-only"
+new_repo "$repo"
+mkdir -p "$repo/android/app/src/main/java/sample/annotated"
+printf 'package sample.annotated\nfun annotatedValue(): Int = 1\n' \
+  > "$repo/android/app/src/main/java/sample/annotated/Annotated.kt"
+git -C "$repo" add -A
+git -C "$repo" commit -qm "add annotated source"
+printf 'package sample.annotated\n// reason: fixture rationale for the suppression below.\n@Suppress("LongMethod")\nfun annotatedValue(): Int = 1\n' \
+  > "$repo/android/app/src/main/java/sample/annotated/Annotated.kt"
+base="$(commit_change "$repo")"
+report="$repo/jacoco.xml"
+write_report "$report" '<package name="sample/other"><sourcefile name="Other.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/annotation-only.json" "$tmp_root/annotation-only.err")"
+check "standalone annotation diff passes without JaCoCo evidence" "0" "$rc"
+check "annotation-only method is reported" \
+  "comment_or_annotation_only" "$(json_get "$tmp_root/annotation-only.json" 'v["details"][0]["method"]')"
+
+# An annotation followed by executable code on the same line must NOT get
+# the safe harbor: the declaration carries bytecode and stays gated.
+repo="$tmp_root/annotation-with-code"
+new_repo "$repo"
+mkdir -p "$repo/android/app/src/main/java/sample/annotatedcode"
+printf 'package sample.annotatedcode\nfun annotatedCodeValue(): Int = 1\n' \
+  > "$repo/android/app/src/main/java/sample/annotatedcode/AnnotatedCode.kt"
+git -C "$repo" add -A
+git -C "$repo" commit -qm "add source"
+printf 'package sample.annotatedcode\n@Suppress("unused") val sneaky: Int = run { 2 }\nfun annotatedCodeValue(): Int = 1\n' \
+  > "$repo/android/app/src/main/java/sample/annotatedcode/AnnotatedCode.kt"
+base="$(commit_change "$repo")"
+report="$repo/jacoco.xml"
+write_report "$report" '<package name="sample/other"><sourcefile name="Other.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/annotation-with-code.json" "$tmp_root/annotation-with-code.err")"
+check "annotation followed by code on one line still fails closed" "1" "$rc"
+check "annotation-plus-code reports no_jacoco_source for the added line" \
+  "no_jacoco_source" "$(json_get "$tmp_root/annotation-with-code.json" 'v["details"][0]["method"]')"
+
+# An unterminated annotation argument list is unparsed text and must fail
+# closed rather than be granted the non-executable safe harbor.
+repo="$tmp_root/annotation-unbalanced"
+new_repo "$repo"
+mkdir -p "$repo/android/app/src/main/java/sample/unbalanced"
+printf 'package sample.unbalanced\nfun unbalancedValue(): Int = 1\n' \
+  > "$repo/android/app/src/main/java/sample/unbalanced/Unbalanced.kt"
+git -C "$repo" add -A
+git -C "$repo" commit -qm "add source"
+printf 'package sample.unbalanced\n@Suppress(\n    "LongMethod",\n)\nfun unbalancedValue(): Int = 1\n' \
+  > "$repo/android/app/src/main/java/sample/unbalanced/Unbalanced.kt"
+base="$(commit_change "$repo")"
+report="$repo/jacoco.xml"
+write_report "$report" '<package name="sample/other"><sourcefile name="Other.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/annotation-unbalanced.json" "$tmp_root/annotation-unbalanced.err")"
+check "multi-line annotation stays coverage-gated (fail closed)" "1" "$rc"
 
 # A deletion-only diff must NOT mask an added executable line in the
 # same hunk: if the file has both added and deleted lines, the added

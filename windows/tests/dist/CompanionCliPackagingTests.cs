@@ -6,6 +6,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Xunit;
@@ -539,9 +540,32 @@ public sealed class CompanionCliPackagingTests
                 string configurationRoot = Path.Combine(projectRoot, buildRoot, platform, configuration);
                 if (Directory.Exists(configurationRoot))
                 {
-                    Directory.Delete(configurationRoot, recursive: true);
+                    DeleteDirectoryWithRetry(configurationRoot);
                 }
             }
         }
+    }
+
+    private static void DeleteDirectoryWithRetry(string path)
+    {
+        const int attempts = 6;
+        for (int attempt = 0; attempt < attempts; attempt++)
+        {
+            try
+            {
+                Directory.Delete(path, recursive: true);
+                return;
+            }
+            catch (UnauthorizedAccessException) when (attempt < attempts - 1)
+            {
+                Thread.Sleep(TimeSpan.FromMilliseconds(100 * (attempt + 1)));
+            }
+            catch (IOException) when (attempt < attempts - 1)
+            {
+                Thread.Sleep(TimeSpan.FromMilliseconds(100 * (attempt + 1)));
+            }
+        }
+
+        Directory.Delete(path, recursive: true);
     }
 }
