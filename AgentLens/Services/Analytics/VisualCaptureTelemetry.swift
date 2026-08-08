@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Privacy-preserving telemetry helper for the visual capture source toggle.
 /// All payloads are enumerated strings / booleans; no window titles, bundle IDs beyond

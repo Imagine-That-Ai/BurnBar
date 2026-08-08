@@ -1,5 +1,6 @@
+import AppKit
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Visual Capture Source Toggle
 
