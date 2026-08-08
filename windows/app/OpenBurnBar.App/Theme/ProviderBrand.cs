@@ -20,7 +20,7 @@ using System.Text;
 
 namespace OpenBurnBar.App.Theme;
 
-/// <summary>Coding-agent providers. Mirrors OpenBurnBarCore.AgentProvider (32 cases).</summary>
+/// <summary>Coding-agent providers. Mirrors OpenBurnBarCore.AgentProvider (35 cases).</summary>
 public enum AgentProviderBrand
 {
     Factory,
@@ -54,6 +54,9 @@ public enum AgentProviderBrand
     XAI,
     Mimo,
     CursorAgent,
+    Junie,
+    PrimeAgent,
+    Muse,
     OpenBurnBar,
 }
 
@@ -124,6 +127,9 @@ public static class ProviderBrand
         AgentProviderBrand.XAI => "#1A1A1A",
         AgentProviderBrand.Mimo => "#FF6900",
         AgentProviderBrand.CursorAgent => "#00E5FF",
+        AgentProviderBrand.Junie => "#48E054",
+        AgentProviderBrand.PrimeAgent => "#582CFF",
+        AgentProviderBrand.Muse => "#7A5CFF",
         AgentProviderBrand.OpenBurnBar => "#FA5053", // Colors.ember (dark)
         _ => "#8B5CF6",
     };
@@ -162,6 +168,9 @@ public static class ProviderBrand
         AgentProviderBrand.XAI => "#4A4A4A",
         AgentProviderBrand.Mimo => "#FF8533",
         AgentProviderBrand.CursorAgent => "#33ECFF",
+        AgentProviderBrand.Junie => "#6FE87F",
+        AgentProviderBrand.PrimeAgent => "#7C5CFF",
+        AgentProviderBrand.Muse => "#9A85FF",
         AgentProviderBrand.OpenBurnBar => "#FF7578",
         _ => "#FA5053",
     };

@@ -561,7 +561,10 @@ extension OpenBurnBarDatabase {
         migrator.registerMigration("v51a_drop_body_fts") { db in try db.execute(sql: "DROP TABLE IF EXISTS agent_memories_fts") }
     }
 
-    private static func providerIDForSwitcherCLIType(_ rawValue: String) -> String? {
+    /// Maps persisted switcher CLI type tokens onto catalog provider IDs used as
+    /// per-provider drain targets. Package-visible so CoreTests can pin Junie /
+    /// Prime Agent without standing up a full pre-v46 schema fixture.
+    static func providerIDForSwitcherCLIType(_ rawValue: String) -> String? {
         switch rawValue {
         case "codex":
             return "codex"
@@ -587,6 +590,10 @@ extension OpenBurnBarDatabase {
             return "kimi"
         case "pi":
             return "pi-agent"
+        case "junie":
+            return "junie"
+        case "prime-agent":
+            return "prime-agent"
         default:
             return nil
         }

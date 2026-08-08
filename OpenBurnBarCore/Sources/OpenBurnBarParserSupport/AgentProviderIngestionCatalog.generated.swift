@@ -454,6 +454,32 @@ public enum AgentProviderIngestionCatalog {
             ingestion: .localParser,
             coverageNote: "Local parser registered in ParserRegistry.",
             quotaSignal: false
+        ),
+        Entry(
+            provider: .primeAgent,
+            agentProviderCase: "primeAgent",
+            providerID: "prime-agent",
+            displayLabel: "Prime Agent",
+            aliases: ["prime", "prime-agent"],
+            linuxLogicalPath: "~/.prime/agent/sessions",
+            macOSLogicalPath: "~/.prime/agent/sessions",
+            filePattern: "*.jsonl",
+            ingestion: .localParser,
+            coverageNote: "Local parser registered in ParserRegistry.",
+            quotaSignal: false
+        ),
+        Entry(
+            provider: .muse,
+            agentProviderCase: "muse",
+            providerID: "muse",
+            displayLabel: "Muse",
+            aliases: ["muse-code", "meta-muse"],
+            linuxLogicalPath: "~/.local/share/muse/sessions",
+            macOSLogicalPath: "~/.local/share/muse/sessions",
+            filePattern: "*.jsonl",
+            ingestion: .localParser,
+            coverageNote: "Local parser registered in ParserRegistry.",
+            quotaSignal: false
         )
     ]
 

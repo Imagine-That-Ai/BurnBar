@@ -102,8 +102,8 @@ extension ProviderBrand {
             candidates.append(contentsOf: ["DeepSeekLogo", "DeepSeekProviderLogo"])
         case "mistral":
             candidates.append(contentsOf: ["MistralLogo", "MistralProviderLogo"])
-        case "meta", "llama":
-            candidates.append(contentsOf: ["MetaLogo", "MetaProviderLogo"])
+        case "meta", "llama", "muse", "metamuse", "muse-spark":
+            candidates.append(contentsOf: ["MetaLogo", "MetaProviderLogo", "MuseLogo"])
         case "cohere":
             candidates.append(contentsOf: ["CohereLogo", "CohereProviderLogo"])
         case "amazon", "aws", "bedrock":
@@ -116,6 +116,8 @@ extension ProviderBrand {
             candidates.append("MiniMaxLogo")
         case "mimo", "xiaomi", "xiaomimimo":
             candidates.append("MimoLogo")
+        case "prime", "prime-agent", "primeagent", "prime_agent", "prime agent":
+            candidates.append("PrimeAgentLogo")
         case "cursor-agent", "cursoragent":
             candidates.append("CursorLogo")
         case "moonshot", "kimi":
@@ -162,7 +164,7 @@ extension ProviderBrand {
         case "xai":         return Color(hex: "1A1A2E")
         case "deepseek":    return Color(hex: "6366F1")
         case "mistral":     return Color(hex: "FF7000")
-        case "meta":        return Color(hex: "0668E1")
+        case "meta", "muse", "metamuse": return Color(hex: "0668E1")
         case "cohere":      return Color(hex: "39594D")
         case "amazon":      return Color(hex: "FF9900")
         case "alibaba":     return Color(hex: "FF6A00")
@@ -172,6 +174,7 @@ extension ProviderBrand {
             return Color(hex: "FF6900")
         case "ollama":      return Color(hex: "8B8589")
         case "moonshot":    return Color(hex: "6366F1")
+        case "prime", "prime-agent", "primeagent": return Color(hex: "582CFF")
         case "cursor-agent", "cursoragent": return Color(hex: "00E5FF")
         case "misc":        return DesignSystem.Colors.textSecondary
         default:            return DesignSystem.Colors.textSecondary
@@ -189,7 +192,7 @@ extension ProviderBrand {
         case "xai":         return "bolt.fill"
         case "deepseek":    return "brain.head.profile"
         case "mistral":     return "wind"
-        case "meta":        return "flame.fill"
+        case "meta", "muse", "metamuse": return "brain.head.profile"
         case "cohere":      return "text.bubble.fill"
         case "amazon":      return "box.fill"
         case "alibaba":     return "cloud.fill"
@@ -197,6 +200,7 @@ extension ProviderBrand {
         case "minimax":     return "star.fill"
         case "ollama":      return "server.rack"
         case "moonshot":    return "moon.fill"
+        case "prime", "prime-agent", "primeagent": return "arrow.triangle.2.circlepath"
         case "cursor-agent", "cursoragent": return "cursor.rays"
         case "misc":        return "cube.transparent"
         default:            return "cube.transparent"

@@ -364,6 +364,8 @@ object SettingsManifest {
             AgentProvider.COPILOT -> keywords.addAll(listOf("github", "github copilot"))
             AgentProvider.ANTIGRAVITY -> keywords.addAll(listOf("antigravity", "antigravity cli", "antigravity-cli", "gemini", "deepmind"))
             AgentProvider.JUNIE -> keywords.addAll(listOf("junie", "junie cli", "jetbrains", "jetbrains junie", "jetbrains-junie"))
+            AgentProvider.PRIME_AGENT -> keywords.addAll(listOf("prime", "prime agent", "prime-agent", "prime intellect"))
+            AgentProvider.MUSE -> keywords.addAll(listOf("muse", "meta muse", "meta-muse", "muse code"))
             else -> Unit
         }
 

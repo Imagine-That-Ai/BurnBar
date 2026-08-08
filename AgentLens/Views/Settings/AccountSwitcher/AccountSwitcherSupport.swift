@@ -217,6 +217,8 @@ extension SwitcherCLIProfileType {
             return .junie
         case .omp:
             return .omp
+        case .primeAgent:
+            return .primeAgent
         }
     }
 }

@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import CryptoKit
 import Foundation
+import LocalAuthentication
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarIrohRelay
@@ -197,6 +198,10 @@ enum IrohControllerRouteRegistrarError: LocalizedError, Equatable {
     case invalidRegistrationResponse
     case backgroundRenewalRequiresBootstrap
     case routeSuperseded
+    case authorityAuthenticationUnavailable
+    case authorityAuthenticationCancelled
+    case authorityAuthenticationFailed
+    case authorityIdentityChanged
 
     var errorDescription: String? {
         switch self {
@@ -214,7 +219,103 @@ enum IrohControllerRouteRegistrarError: LocalizedError, Equatable {
             return "A background controller-route renewal unexpectedly required an authority bootstrap proof."
         case .routeSuperseded:
             return "The iroh endpoint identity changed while its controller route was registering."
+        case .authorityAuthenticationUnavailable:
+            return "Device authentication is unavailable. Enable Touch ID or Face ID, then try Mercury again."
+        case .authorityAuthenticationCancelled:
+            return "Mercury connection authentication was cancelled."
+        case .authorityAuthenticationFailed:
+            return "Mercury could not authenticate this device. Try again and approve the biometric prompt."
+        case .authorityIdentityChanged:
+            return "The phone-control security identity changed during Mercury setup. Try connecting again."
         }
+    }
+}
+
+private enum IrohControllerRouteAuthorityAuthenticator {
+    private static let reason = "Authenticate to connect Mercury securely to this Mac."
+
+    static func authenticatedIdentity(
+        matching identity: PhoneControlAuthoritySigningKey
+    ) async throws -> PhoneControlAuthoritySigningKey {
+        #if DEBUG
+        NSLog("OpenBurnBarMercury controller_route_auth_identity kind=\(identity.kind.rawValue)")
+        #endif
+        guard identity.kind == .secureEnclaveP256 else {
+            return identity
+        }
+
+        let context = LAContext()
+        var policyError: NSError?
+        guard context.canEvaluatePolicy(
+            .deviceOwnerAuthenticationWithBiometrics,
+            error: &policyError
+        ) else {
+            #if DEBUG
+            NSLog(
+                "OpenBurnBarMercury controller_route_auth_unavailable error=\(policyError?.localizedDescription ?? "unknown")"
+            )
+            #endif
+            throw IrohControllerRouteRegistrarError.authorityAuthenticationUnavailable
+        }
+
+        #if DEBUG
+        NSLog("OpenBurnBarMercury controller_route_auth_evaluate_start")
+        #endif
+        do {
+            try await withCheckedThrowingContinuation { continuation in
+                context.evaluatePolicy(
+                    .deviceOwnerAuthenticationWithBiometrics,
+                    localizedReason: reason
+                ) { success, error in
+                    #if DEBUG
+                    NSLog(
+                        "OpenBurnBarMercury controller_route_auth_evaluate_complete success=\(success) error=\(error?.localizedDescription ?? "none")"
+                    )
+                    #endif
+                    if success {
+                        continuation.resume()
+                    } else {
+                        continuation.resume(
+                            throwing: error ?? LAError(.authenticationFailed)
+                        )
+                    }
+                }
+            }
+        } catch let error as LAError {
+            switch error.code {
+            case .appCancel, .systemCancel, .userCancel:
+                throw IrohControllerRouteRegistrarError.authorityAuthenticationCancelled
+            default:
+                throw IrohControllerRouteRegistrarError.authorityAuthenticationFailed
+            }
+        } catch {
+            throw IrohControllerRouteRegistrarError.authorityAuthenticationFailed
+        }
+
+        let authenticatedIdentity: PhoneControlAuthoritySigningKey
+        do {
+            #if DEBUG
+            NSLog("OpenBurnBarMercury controller_route_auth_reload_start")
+            #endif
+            authenticatedIdentity = try PhoneControlSigningKeyStore.shared.signingIdentity(
+                authenticationContext: context
+            )
+            #if DEBUG
+            NSLog("OpenBurnBarMercury controller_route_auth_reload_complete")
+            #endif
+        } catch {
+            #if DEBUG
+            NSLog(
+                "OpenBurnBarMercury controller_route_auth_reload_failed error=\(error.localizedDescription)"
+            )
+            #endif
+            throw IrohControllerRouteRegistrarError.authorityAuthenticationFailed
+        }
+        guard authenticatedIdentity.kind == identity.kind,
+              authenticatedIdentity.publicKeyRepresentation == identity.publicKeyRepresentation else {
+            throw IrohControllerRouteRegistrarError.authorityIdentityChanged
+        }
+        return authenticatedIdentity
     }
 }
 
@@ -434,6 +535,8 @@ actor IrohControllerRouteRegistrar: IrohControllerRouteRegistering {
     private let authorityPublisher: any PhoneControlAuthorityPublishing
     private let transportSecretProvider: @Sendable () throws -> Data
     private let authorityIdentityProvider: @Sendable () throws -> PhoneControlAuthoritySigningKey
+    private let authorityBootstrapIdentityProvider:
+        @Sendable (PhoneControlAuthoritySigningKey) async throws -> PhoneControlAuthoritySigningKey
     private let authorityPeerNodeIdProvider: @Sendable (PhoneControlAuthoritySigningKey) -> String
     private let authenticatedUIDProvider: @Sendable () -> String?
     private let nowMillis: @Sendable () -> Int64
@@ -455,6 +558,11 @@ actor IrohControllerRouteRegistrar: IrohControllerRouteRegistering {
         authorityIdentityProvider: @escaping @Sendable () throws -> PhoneControlAuthoritySigningKey = {
             try PhoneControlSigningKeyStore.shared.signingIdentity()
         },
+        authorityBootstrapIdentityProvider: @escaping @Sendable (
+            PhoneControlAuthoritySigningKey
+        ) async throws -> PhoneControlAuthoritySigningKey = {
+            try await IrohControllerRouteAuthorityAuthenticator.authenticatedIdentity(matching: $0)
+        },
         authorityPeerNodeIdProvider: @escaping @Sendable (PhoneControlAuthoritySigningKey) -> String = {
             PhoneControlSigningKeyStore.shared.peerNodeId(for: $0)
         },
@@ -474,6 +582,7 @@ actor IrohControllerRouteRegistrar: IrohControllerRouteRegistering {
         self.authorityPublisher = authorityPublisher
         self.transportSecretProvider = transportSecretProvider
         self.authorityIdentityProvider = authorityIdentityProvider
+        self.authorityBootstrapIdentityProvider = authorityBootstrapIdentityProvider
         self.authorityPeerNodeIdProvider = authorityPeerNodeIdProvider
         self.authenticatedUIDProvider = authenticatedUIDProvider
         self.nowMillis = nowMillis
@@ -748,6 +857,9 @@ actor IrohControllerRouteRegistrar: IrohControllerRouteRegistering {
         }.joined()
         try requireActiveOwnership(key: key, scope: scope)
 
+        #if DEBUG
+        NSLog("OpenBurnBarMercury controller_route_authority_publish_start connectionID=\(key.connectionId)")
+        #endif
         try await authorityPublisher.publish(
             uid: key.uid,
             connectionId: key.connectionId,
@@ -756,7 +868,13 @@ actor IrohControllerRouteRegistrar: IrohControllerRouteRegistering {
             publicKeyRepresentation: authorityIdentity.publicKeyRepresentation,
             keyKind: authorityIdentity.kind
         )
+        #if DEBUG
+        NSLog("OpenBurnBarMercury controller_route_authority_publish_complete connectionID=\(key.connectionId)")
+        #endif
         try requireActiveOwnership(key: key, scope: scope)
+        #if DEBUG
+        NSLog("OpenBurnBarMercury controller_route_challenge_start connectionID=\(key.connectionId)")
+        #endif
         let challenge = try await gateway.issueChallenge(
             expectedUID: key.uid,
             sourceDeviceId: key.sourceDeviceId,
@@ -764,6 +882,9 @@ actor IrohControllerRouteRegistrar: IrohControllerRouteRegistering {
             authorityPeerNodeId: key.authorityPeerNodeId,
             transportNodeId: key.transportNodeId
         )
+        #if DEBUG
+        NSLog("OpenBurnBarMercury controller_route_challenge_complete connectionID=\(key.connectionId) proofKind=\(challenge.proofKind.rawValue)")
+        #endif
         try requireActiveOwnership(key: key, scope: scope)
         guard challenge.signatureAlgorithm == "ed25519" else {
             throw IrohControllerRouteRegistrarError.unsupportedSignatureAlgorithm(challenge.signatureAlgorithm)
@@ -792,17 +913,45 @@ actor IrohControllerRouteRegistrar: IrohControllerRouteRegistering {
             guard allowsAuthorityBootstrap else {
                 throw IrohControllerRouteRegistrarError.backgroundRenewalRequiresBootstrap
             }
-            authoritySignature = try authorityIdentity.signatureBase64(for: payload)
+            #if DEBUG
+            NSLog(
+                "OpenBurnBarMercury controller_route_bootstrap_sign_start connectionID=\(key.connectionId) authorityKind=\(authorityIdentity.kind.rawValue)"
+            )
+            #endif
+            if authorityIdentity.kind == .secureEnclaveP256 {
+                let authenticatedIdentity = try await authorityBootstrapIdentityProvider(
+                    authorityIdentity
+                )
+                guard authenticatedIdentity.kind == authorityIdentity.kind,
+                      authenticatedIdentity.publicKeyRepresentation
+                        == authorityIdentity.publicKeyRepresentation,
+                      authorityPeerNodeIdProvider(authenticatedIdentity)
+                        == key.authorityPeerNodeId else {
+                    throw IrohControllerRouteRegistrarError.authorityIdentityChanged
+                }
+                authoritySignature = try authenticatedIdentity.signatureBase64(for: payload)
+            } else {
+                authoritySignature = try authorityIdentity.signatureBase64(for: payload)
+            }
+            #if DEBUG
+            NSLog("OpenBurnBarMercury controller_route_bootstrap_sign_complete connectionID=\(key.connectionId)")
+            #endif
         case .transportRenewal:
             authoritySignature = nil
         }
         try requireActiveOwnership(key: key, scope: scope)
+        #if DEBUG
+        NSLog("OpenBurnBarMercury controller_route_register_start connectionID=\(key.connectionId)")
+        #endif
         let registration = try await gateway.register(
             expectedUID: key.uid,
             challengeId: challenge.challengeId,
             transportSignatureBase64: transportSignature,
             authoritySignatureBase64: authoritySignature
         )
+        #if DEBUG
+        NSLog("OpenBurnBarMercury controller_route_register_complete connectionID=\(key.connectionId) generation=\(registration.generation)")
+        #endif
         try requireActiveOwnership(key: key, scope: scope)
         let completionMillis = nowMillis()
         guard registration.connectionId == key.connectionId,

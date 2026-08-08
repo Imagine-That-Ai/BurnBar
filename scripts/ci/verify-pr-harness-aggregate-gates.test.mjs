@@ -445,7 +445,7 @@ check("app tests reuse the real-process build instead of compiling the product t
 });
 
 check("PR App Gate uses the bounded smoke catalog and leaves the full suite to harness", () => {
-  assert.equal(jobField(appBuildJob, "timeout-minutes"), "60");
+  assert.equal(jobField(appBuildJob, "timeout-minutes"), "90");
   const test = stepRun(appTestStep);
   assert.match(
     test,

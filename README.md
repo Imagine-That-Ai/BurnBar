@@ -70,7 +70,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 - **Chat panel** — ask questions about *your* usage data inside the dashboard. Meta? A little. Useful? Also a little. Delightful? We think so.
 - **Optional cloud sync** — sign in with **Google or Apple** (Firebase under the hood), and selected OpenBurnBar data can follow you across devices. Usage/cost metadata remains server-readable where needed for sync; chat threads, CLI session mirrors/snapshots, rollback requests, mobile assistant chats, mission prompts/results, text snippets, approval-policy labels/paths, agent identity text, subscription topic labels, and conversation recall metadata are sealed on-device before Firestore receives them. Fully opt-in; flip it off anytime and your local world keeps spinning.
 - **Hosted Remote MCP for BurnBar Pro** — paid users can connect coding agents to OpenBurnBar's hosted MCP endpoint for encrypted hosted session-memory search, with a local shim for stdio-only clients and device-side decrypt.
-- **Optional routed-provider gateway** — route selected **Z.ai**, **MiniMax**, **Ollama Cloud**, and **Factory Droid** models through a local OpenAI-shaped router for Cursor, Factory, and OpenCode. Cursor gets a tunnel because it is picky about BYOK targets; local clients use the loopback gateway directly. OpenBurnBar logs those requests so you know where the bits actually went.
+- **Optional routed-provider gateway** — route selected **Z.ai**, **MiniMax**, **Ollama Cloud**, and **Factory Droid** models through a local OpenAI-shaped router for Cursor, Factory, and OpenCode (plus `prime-agent` via `node scripts/prime-agent-openburnbar-proxy.mjs` as `openburnbar/*`). Cursor gets a tunnel because it is picky about BYOK targets; local clients use the loopback gateway directly. OpenBurnBar logs those requests so you know where the bits actually went.
 - **Daemon-backed controller runtime** — project registry, questions, followups, missions, scheduled reviews, simulator replay, mission provenance, and auto-takeover now live behind the local daemon instead of a UI-only mirror.
 - **Operational tool plane** — OpenBurnBar exposes daemon-owned connector status/actions for GitHub, Slack, Linear, PostHog, Sentry, and Gmail, plus browser tooling status/actions for the system browser and daemon-side fetch/link extraction.
 
@@ -174,6 +174,8 @@ The external launch settings that cannot be inferred from the working tree alone
 | Claude Code | Supported | `~/.claude/projects/*.jsonl` | Exact | Supported via Claude statusline bridge (5-hour / 7-day %) |
 | Factory (Droid) | Supported | `~/.factory/sessions/*.jsonl` | Exact | Estimated via plan tier + OpenBurnBar-tracked monthly Factory tokens |
 | Junie (JetBrains) | Supported | `~/.junie/sessions/<id>/events.jsonl` + `index.jsonl` | Exact (explicit usage) / Estimated (fallback) | Unavailable (no public quota API) |
+| Prime Agent (Prime Intellect) | Supported | `~/.prime/agent/sessions/*.jsonl` | Exact | Unavailable (no public quota API; exact cost from `message.usage.cost.total`) |
+| Muse (Meta) | Supported | `~/.local/share/muse/sessions/**/*.jsonl` | Exact | Unavailable (no public quota API; pricing from `model-catalog` + catalog fallback) |
 | Codex (OpenAI) | Partial | `~/.codex/state_5.sqlite` + rollout JSONL | Estimated | Supported via the latest local Codex rollout/session rate-limit snapshot |
 | Kimi (Moonshot) | Partial | `~/.kimi/sessions/*.jsonl` | Estimated | Unavailable |
 | Z.ai | Partial | via Factory sessions | Estimated | Supported via official monitor quota endpoints |
@@ -235,7 +237,7 @@ Even in trusted workspaces, `apply_patch` and `run_terminal` pause for explicit 
 
 ## Routed provider gateway
 
-OpenBurnBar can wire supported models into Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, and Claude Code without you hand-editing ghost JSON or running a sketchy proxy you found at 2am.
+OpenBurnBar can wire supported models into Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, Claude Code, and Prime Agent (`openburnbar/*` via `node scripts/prime-agent-openburnbar-proxy.mjs`) without you hand-editing ghost JSON or running a sketchy proxy you found at 2am.
 
 The play:
 
@@ -243,8 +245,8 @@ The play:
 - You pick which model IDs routed clients should believe in.
 - A local **OpenAI-compatible gateway** wakes up.
 - Cursor gets a **public HTTPS tunnel** because Cursor blocks `localhost` and private IPs for BYOK — not our rule, just our problem to solve.
-- Droid/Factory, Forge, OpenCode, Codex CLI, and Claude Code point directly at the local gateway.
-- OpenBurnBar writes the client config for Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, and Claude Code.
+- Droid/Factory, Forge, OpenCode, Codex CLI, Claude Code, and Prime Agent (`openburnbar/*`) point directly at the local gateway.
+- OpenBurnBar writes the client config for Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, Claude Code, and Prime Agent (`~/.prime/agent/models.json` via the sync script).
 - OpenBurnBar temporarily swaps Cursor's local BYOK token field to a short-lived OpenBurnBar session token while the connector is active, then restores the saved value on disconnect.
 - Routed provider API keys stay in Keychain; client config only receives the local gateway URL and gateway token.
 - Gateway usage shows up as **`OpenBurnBar Gateway`**, and exhausted upstream plans fail over only when the next route proves the same canonical model ID instead of stranding the client on a dead account or silently changing models.

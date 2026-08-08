@@ -390,6 +390,17 @@ final class HermesService {
         return transportSelector.preferredRelayConnection(selected: selectedConnection)
     }
 
+    /// Returns a currently usable Mercury relay without performing network
+    /// discovery. The Agents UI only exposes a Mac tile from this same cached
+    /// catalog, so tapping it should proceed directly to signed pairing and
+    /// dialing instead of waiting on Firestore a second time.
+    func cachedMercuryRelay(for routedConnectionID: String) -> HermesConnectionRecord? {
+        transportSelector.cachedMercuryRelay(
+            routedConnectionID: routedConnectionID,
+            selected: selectedConnection
+        )
+    }
+
     var hasPendingRelaySuggestion: Bool {
         guard let relay = suggestedRelayConnection else { return false }
         return selectedConnection.id != relay.id

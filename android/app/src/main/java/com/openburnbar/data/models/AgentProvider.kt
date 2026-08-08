@@ -21,6 +21,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
     FORGE_DEV("forge-dev", "Forge Dev", 0xFFF97316, 0xFFFB923C),
     AUGMENT("augment", "Augment", 0xFF3B82F6, 0xFF60A5FA),
     HERMES("hermes", "Hermes", 0xFFA855F7, 0xFFC084FC),
+    PRIME_AGENT("prime-agent", "Prime Agent", 0xFF582CFF, 0xFF7C5CFF),
     JUNIE("junie", "Junie", 0xFF48E054, 0xFF6FE87F),
     PI_AGENT("pi-agent", "Pi Agent", 0xFFA855F7, 0xFF7C3AED),
     GEMINI_CLI("gemini-cli", "Gemini CLI", 0xFF4285F4, 0xFF8AB4F8),
@@ -32,6 +33,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
     XAI("xai", "xAI", 0xFF1A1A1A, 0xFF4A4A4A),
     MIMO("mimo", "MiMo", 0xFFFF6900, 0xFFFF8533),
     ANTIGRAVITY("antigravity", "Antigravity", 0xFF6C63FF, 0xFF8F8AFF),
+    MUSE("muse", "Muse", 0xFF7A5CFF, 0xFF9A85FF),
     ;
 
     companion object {
@@ -43,8 +45,9 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
                 OPENCODE,
                 OPEN_CLAW,
                 HERMES,
-                JUNIE,
+                PRIME_AGENT,
                 GEMINI_CLI,
+                JUNIE,
                 ANTIGRAVITY,
                 OPEN_AI,
                 DEEP_SEEK,
@@ -66,6 +69,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
                 OLLAMA,
                 WINDSURF,
                 WARP,
+                MUSE,
             )
 
         /**
@@ -140,6 +144,13 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
                 "jetbrainsjunie" to JUNIE,
                 "jetbrains-junie" to JUNIE,
                 "juniecli" to JUNIE,
+                "prime" to PRIME_AGENT,
+                "prime-agent" to PRIME_AGENT,
+                "primeagent" to PRIME_AGENT,
+                "prime_agent" to PRIME_AGENT,
+                "muse" to MUSE,
+                "musecode" to MUSE,
+                "meta-muse" to MUSE,
             )
 
         fun chartPalette(provider: AgentProvider): List<Color> {

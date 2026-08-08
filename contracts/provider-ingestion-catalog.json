@@ -573,6 +573,44 @@
       "xdgBehavior": "home-relative",
       "symlinkBehavior": "identity-on-resolved-path",
       "quotaSignal": false
+    },
+    {
+      "providerId": "prime-agent",
+      "agentProviderCase": "primeAgent",
+      "displayLabel": "Prime Agent",
+      "aliases": [
+        "prime",
+        "prime-agent"
+      ],
+      "paths": {
+        "linux": "~/.prime/agent/sessions",
+        "macos": "~/.prime/agent/sessions"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    },
+    {
+      "providerId": "muse",
+      "agentProviderCase": "muse",
+      "displayLabel": "Muse",
+      "aliases": [
+        "muse-code",
+        "meta-muse"
+      ],
+      "paths": {
+        "linux": "~/.local/share/muse/sessions",
+        "macos": "~/.local/share/muse/sessions"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "xdg-data",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
     }
   ],
   "goldenUsageVectors": [

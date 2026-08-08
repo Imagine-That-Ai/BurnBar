@@ -93,6 +93,8 @@ enum ParserRegistry {
         parsers[.warp] = RegisteredLogParser(WarpParser())
         parsers[.ollama] = RegisteredLogParser(ModelFilterParser(modelPattern: "ollama", provider: .ollama))
         parsers[.junie] = RegisteredLogParser(JunieParser())
+        parsers[.primeAgent] = RegisteredLogParser(PrimeAgentParser())
+        parsers[.muse] = RegisteredLogParser(MuseParser())
         // MiMo quota is API-backed via Token Plan credentials. Do not attach it
         // to the shared Factory sessions tree, or Factory sessions can be counted
         // twice: once as Factory usage and again as MiMo local usage.

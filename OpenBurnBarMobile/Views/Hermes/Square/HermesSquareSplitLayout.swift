@@ -231,26 +231,16 @@ struct HermesSquareSplitLayout: View {
     private func ensureMercuryLive(connectionID: String) async {
         let resolvedID = resolvedMercuryConnectionID(for: connectionID)
         guard bootingMercuryConnectionID != resolvedID else { return }
+        #if DEBUG
+        NSLog("OpenBurnBarMercury split_ensure_start requested=\(connectionID) resolved=\(resolvedID)")
+        #endif
         bootingMercuryConnectionID = resolvedID
         mercuryBootError = nil
         defer { bootingMercuryConnectionID = nil }
 
-        await hermesService.refreshConnections(refreshSelectedConnection: false)
-
-        let relay: HermesConnectionRecord?
-        if let exact = hermesService.relayConnections.first(where: { $0.id == resolvedID }) {
-            _ = hermesService.selectConnection(exact, refresh: false)
-            relay = exact
-        } else if let selected = hermesService.relayConnections.first(where: { $0.id == hermesService.selectedConnection.id }) {
-            relay = selected
-        } else if let suggested = hermesService.suggestedRelayConnection {
-            _ = hermesService.selectConnection(suggested, refresh: false)
-            relay = suggested
-        } else {
-            relay = hermesService.suggestedRelayConnection
-            if let relay {
-                _ = hermesService.selectConnection(relay, refresh: false)
-            }
+        let relay = hermesService.cachedMercuryRelay(for: resolvedID)
+        if let relay, relay.id != hermesService.selectedConnection.id {
+            _ = hermesService.selectConnection(relay, refresh: false)
         }
 
         guard let relay else {
@@ -259,9 +249,18 @@ struct HermesSquareSplitLayout: View {
         }
 
         do {
+            #if DEBUG
+            NSLog("OpenBurnBarMercury split_ensure_media_control_start connectionID=\(relay.id)")
+            #endif
             try await HermesIrohRelayTransport.shared.ensureMediaControlStream(connectionID: relay.id)
+            #if DEBUG
+            NSLog("OpenBurnBarMercury split_ensure_media_control_returned connectionID=\(relay.id)")
+            #endif
             mercuryBootError = nil
         } catch {
+            #if DEBUG
+            NSLog("OpenBurnBarMercury split_ensure_media_control_failed connectionID=\(relay.id) error=\(error.localizedDescription)")
+            #endif
             mercuryBootError = error.localizedDescription
         }
     }

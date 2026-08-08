@@ -37,6 +37,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case mimo = "MiMo"
     case cursorAgent = "Cursor Agent"
     case junie = "Junie"
+    case primeAgent = "Prime Agent"
+    case muse = "Muse"
 
     public var id: String { rawValue }
 
@@ -52,6 +54,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .openClaude,
         .omp,
         .hermes,
+        .primeAgent,
         .geminiCLI,
         .junie,
         .antigravity,
@@ -76,7 +79,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .ollama,
         .windsurf,
         .warp,
-        .cursorAgent
+        .cursorAgent,
+        .muse
     ]
 
     /// Providers that expose a real quota/rate-limit signal either through an
@@ -156,6 +160,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .xAI
         case .cursorAgent:
             return ProviderID(rawValue: "cursor-agent")
+        case .primeAgent:
+            return ProviderID(rawValue: "prime-agent")
         default:
             return ProviderID(rawValue: persistedToken)
         }
@@ -283,6 +289,10 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .mimo
         case "junie", "jetbrains-junie", "jetbrainsjunie", "jetbrains junie":
             return .junie
+        case "prime", "prime-agent", "primeagent", "prime_agent", "prime agent":
+            return .primeAgent
+        case "muse", "muse-code", "musecode", "meta-muse", "metamuse":
+            return .muse
         default:
             if let direct = fromPersistedToken(normalized) {
                 return direct
@@ -327,6 +337,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .mimo:       return "MimoLogo"
         case .cursorAgent: return "CursorLogo"
         case .junie:      return "JunieLogo"
+        case .primeAgent: return "PrimeAgentLogo"
+        case .muse: return "MetaLogo"
         }
     }
 
@@ -366,6 +378,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .mimo: return "sparkles"
         case .cursorAgent: return "cursor.rays"
         case .junie: return "j.circle.fill"
+        case .primeAgent: return "arrow.triangle.2.circlepath"
+        case .muse: return "brain.head.profile"
         }
     }
 

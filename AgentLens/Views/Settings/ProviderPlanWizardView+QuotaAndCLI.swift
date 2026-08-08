@@ -628,6 +628,8 @@ extension ProviderPlanWizardView {
             return AgentProvider.junie.providerID
         case .omp:
             return AgentProvider.omp.providerID
+        case .primeAgent:
+            return AgentProvider.primeAgent.providerID
         }
     }
 }

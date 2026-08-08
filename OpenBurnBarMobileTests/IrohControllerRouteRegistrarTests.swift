@@ -228,6 +228,7 @@ final class IrohControllerRouteRegistrarTests: XCTestCase {
     func testP256AuthorityRenewsAutonomouslyWithTransportProofOnly() async throws {
         let clock = IrohRouteLockedClock(10_000)
         let sleeper = IrohRouteTestSleeper()
+        let authenticator = IrohRouteAuthenticationProbe()
         let transportKey = Curve25519.Signing.PrivateKey()
         let authorityKey = P256.Signing.PrivateKey()
         let authorityIdentity = PhoneControlAuthoritySigningKey.secureEnclaveP256(authorityKey)
@@ -239,6 +240,10 @@ final class IrohControllerRouteRegistrarTests: XCTestCase {
             authorityPublisher: IrohRouteFakeAuthorityPublisher(),
             transportSecretProvider: { transportKey.rawRepresentation },
             authorityIdentityProvider: { authorityIdentity },
+            authorityBootstrapIdentityProvider: { identity in
+                await authenticator.recordAuthentication()
+                return identity
+            },
             authorityPeerNodeIdProvider: { _ in "authority-p256" },
             authenticatedUIDProvider: { "user-1" },
             nowMillis: { clock.value() },
@@ -280,6 +285,8 @@ final class IrohControllerRouteRegistrarTests: XCTestCase {
         XCTAssertNil(renewalPair.authoritySignatureBase64)
         let renewedIssueCalls = await gateway.issueCallCount()
         XCTAssertEqual(renewedIssueCalls, 2)
+        let authenticationCount = await authenticator.authenticationCount()
+        XCTAssertEqual(authenticationCount, 1)
         let renewed = try await registrar.registerIfNeeded(
             uid: "user-1",
             connectionId: "connection-1",
@@ -293,8 +300,90 @@ final class IrohControllerRouteRegistrarTests: XCTestCase {
         await sleeper.resumeAll()
     }
 
+    func testP256BootstrapAuthenticatesBeforeRegisteringAuthorityProof() async throws {
+        let transportKey = Curve25519.Signing.PrivateKey()
+        let authorityIdentity = PhoneControlAuthoritySigningKey.secureEnclaveP256(
+            P256.Signing.PrivateKey()
+        )
+        let events = IrohRouteEventRecorder()
+        let gateway = IrohRouteFakeGateway(
+            registrationExpiries: [20_000],
+            events: events
+        )
+        let registrar = IrohControllerRouteRegistrar(
+            gateway: gateway,
+            authorityPublisher: IrohRouteFakeAuthorityPublisher(events: events),
+            transportSecretProvider: { transportKey.rawRepresentation },
+            authorityIdentityProvider: { authorityIdentity },
+            authorityBootstrapIdentityProvider: { identity in
+                await events.append("authenticate")
+                return identity
+            },
+            authorityPeerNodeIdProvider: { _ in "authority-p256" },
+            authenticatedUIDProvider: { "user-1" },
+            nowMillis: { 10_000 }
+        )
+
+        _ = try await registrar.registerIfNeeded(
+            uid: "user-1",
+            connectionId: "connection-1",
+            sourceDeviceId: "device-1",
+            transportIdentity: identity(for: transportKey)
+        )
+
+        let recordedEvents = await events.values()
+        XCTAssertEqual(recordedEvents, ["publish", "issue", "authenticate", "register"])
+        let signatures = await gateway.recordedSignatures()
+        XCTAssertNotNil(signatures.first?.authoritySignatureBase64)
+        await registrar.invalidateAll()
+    }
+
+    func testP256BootstrapAuthenticationCancellationFailsPromptlyWithoutRegistering() async throws {
+        let transportKey = Curve25519.Signing.PrivateKey()
+        let authorityIdentity = PhoneControlAuthoritySigningKey.secureEnclaveP256(
+            P256.Signing.PrivateKey()
+        )
+        let gateway = IrohRouteFakeGateway(registrationExpiries: [20_000])
+        let registrar = IrohControllerRouteRegistrar(
+            gateway: gateway,
+            authorityPublisher: IrohRouteFakeAuthorityPublisher(),
+            transportSecretProvider: { transportKey.rawRepresentation },
+            authorityIdentityProvider: { authorityIdentity },
+            authorityBootstrapIdentityProvider: { _ in
+                throw IrohControllerRouteRegistrarError.authorityAuthenticationCancelled
+            },
+            authorityPeerNodeIdProvider: { _ in "authority-p256" },
+            authenticatedUIDProvider: { "user-1" },
+            nowMillis: { 10_000 }
+        )
+
+        do {
+            _ = try await registrar.registerIfNeeded(
+                uid: "user-1",
+                connectionId: "connection-1",
+                sourceDeviceId: "device-1",
+                transportIdentity: identity(for: transportKey)
+            )
+            XCTFail("Cancelling bootstrap authentication must fail the connection attempt")
+        } catch {
+            XCTAssertEqual(
+                error as? IrohControllerRouteRegistrarError,
+                .authorityAuthenticationCancelled
+            )
+        }
+
+        let issueCalls = await gateway.issueCallCount()
+        let registerCalls = await gateway.registerCallCount()
+        let signatures = await gateway.recordedSignatures()
+        XCTAssertEqual(issueCalls, 1)
+        XCTAssertEqual(registerCalls, 0)
+        XCTAssertTrue(signatures.isEmpty)
+        await registrar.invalidateAll()
+    }
+
     func testBackgroundP256RenewalFailsClosedWhenServerRequestsBootstrap() async throws {
         let sleeper = IrohRouteTestSleeper()
+        let authenticator = IrohRouteAuthenticationProbe()
         let transportKey = Curve25519.Signing.PrivateKey()
         let authorityIdentity = PhoneControlAuthoritySigningKey.secureEnclaveP256(
             P256.Signing.PrivateKey()
@@ -308,6 +397,10 @@ final class IrohControllerRouteRegistrarTests: XCTestCase {
             authorityPublisher: IrohRouteFakeAuthorityPublisher(),
             transportSecretProvider: { transportKey.rawRepresentation },
             authorityIdentityProvider: { authorityIdentity },
+            authorityBootstrapIdentityProvider: { identity in
+                await authenticator.recordAuthentication()
+                return identity
+            },
             authorityPeerNodeIdProvider: { _ in "authority-p256" },
             authenticatedUIDProvider: { "user-1" },
             nowMillis: { 10_000 },
@@ -333,6 +426,8 @@ final class IrohControllerRouteRegistrarTests: XCTestCase {
         XCTAssertEqual(registerCalls, 1)
         XCTAssertEqual(signatures.count, 1)
         XCTAssertNotNil(signatures.first?.authoritySignatureBase64)
+        let authenticationCount = await authenticator.authenticationCount()
+        XCTAssertEqual(authenticationCount, 1)
 
         await registrar.invalidateAll()
         await sleeper.resumeAll()
@@ -892,6 +987,18 @@ private actor IrohRouteEventRecorder {
 
     func values() -> [String] {
         recorded
+    }
+}
+
+private actor IrohRouteAuthenticationProbe {
+    private var count = 0
+
+    func recordAuthentication() {
+        count += 1
+    }
+
+    func authenticationCount() -> Int {
+        count
     }
 }
 

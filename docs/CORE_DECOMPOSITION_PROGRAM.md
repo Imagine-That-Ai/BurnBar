@@ -598,6 +598,14 @@ protocol in the dissolving main target; as a Foundation-only contract it now liv
 through the umbrella, so `import OpenBurnBarCore` consumers keep resolving it), keeping
 the main target at its 11-file / 127-line shim-only baseline.
 
+**Prime Agent + Muse parser landing ceiling adjustment (2026-08-08):** landing first-class
+`PrimeAgentParser` / `MuseParser` providers (#2192) grew `OpenBurnBarLogParsers` to 13,915 LOC
+(34 files) and pulled shared provider/session identity into `OpenBurnBarKernel` at 47,029 LOC
+(154 files). Both clusters belong in the existing owning modules — new leaf targets would only
+duplicate parser/provider boundaries. Planned ceilings move narrowly to 47,250 and 14,100 LOC
+(~221/185 LOC of bounded headroom); file-count ceilings and the main-target shim baseline stay
+unchanged.
+
 ### Whole-program composition proof (verbatim results)
 
 Run on macOS (Apple Swift 6.4, Xcode 27.0 beta, arch arm64) from the isolated

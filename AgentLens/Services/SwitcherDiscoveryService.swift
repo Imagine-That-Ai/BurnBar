@@ -22,6 +22,7 @@ enum DiscoverySource: Equatable {
     case pi(executablePath: String?, configDirectory: String?)
     case junie(executablePath: String?, configDirectory: String?)
     case omp(executablePath: String?, configDirectory: String?)
+    case primeAgent(executablePath: String?, configDirectory: String?)
 }
 
 /// Authentication state of a discovered identity.
@@ -213,6 +214,8 @@ final class SwitcherDiscoveryService: ObservableObject {
                 source = .junie(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             case .omp:
                 source = .omp(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .primeAgent:
+                source = .primeAgent(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             }
 
             guard cliInfo.isInstalled else {
@@ -449,6 +452,18 @@ final class SwitcherDiscoveryService: ObservableObject {
                     displayLabel: "OMP",
                     configDirectory: configDirectory,
                     accountDescription: "OMP local profile"
+                ),
+                sortKey: 0
+            )
+        case .primeAgent(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .primeAgent,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "Prime Agent",
+                    configDirectory: configDirectory,
+                    accountDescription: "Prime Agent local profile"
                 ),
                 sortKey: 0
             )
@@ -998,6 +1013,8 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .junie(executablePath: CLILaunchAdapter.executablePath(for: .junie), configDirectory: nil)
         case .omp:
             return .omp(executablePath: CLILaunchAdapter.executablePath(for: .omp), configDirectory: nil)
+        case .primeAgent:
+            return .primeAgent(executablePath: CLILaunchAdapter.executablePath(for: .primeAgent), configDirectory: nil)
         }
     }
 
@@ -1031,7 +1048,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             success = true
             #endif
 
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent:
             // Quick CLI version check
             let cliType: SwitcherCLIProfileType
             switch identity.source {
@@ -1048,6 +1065,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             case .pi: cliType = .pi
             case .junie: cliType = .junie
             case .omp: cliType = .omp
+            case .primeAgent: cliType = .primeAgent
             default: cliType = .codex
             }
             let execPath = CLILaunchAdapter.executablePath(for: cliType)
@@ -1128,6 +1146,8 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .junie
         case .omp:
             return .omp
+        case .primeAgent:
+            return .primeAgent
         }
     }
 
@@ -1306,6 +1326,7 @@ extension DiscoverySource {
         case .pi: return .pi
         case .junie: return .junie
         case .omp: return .omp
+        case .primeAgent: return .primeAgent
         default: return nil
         }
     }
