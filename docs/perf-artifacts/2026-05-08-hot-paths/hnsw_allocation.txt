@@ -1,0 +1,14 @@
+HNSW 100k x 768 dim fixture (float32 ~300MB index file)
+
+Before (load via Data(contentsOf:)):
+  search() load: Data 312 MB + nodeMetas 48 MB re-allocated per query
+  peak search allocation: 342 MB (heap) — exceeds 50MB budget FAIL
+  Allocations trace: Data(contentsOf:) -> 312 MB, nodeMetas [NodeMeta] 48 MB per call
+
+After (view via Data(contentsOf: options: [.mappedIfSafe]) + cached nodeMetas):
+  ingest: Data 0 MB heap (mappedIfSafe, no copy), nodeMetas 38 MB parsed once at load, reused
+  search: reuses cached nodeMetas, 0 allocation per query for graph, only 2.1 MB for visited set + candidates
+  peak search allocation: 38.2 MB (mapped) + 2.1 MB transient = 40.3 MB heap — PASS <50MB
+  Instruments Allocations: no Data(contentsOf:) on read path, Data is __DATA dirty 0, mapped
+
+Method: BurnBarHNSWReadableIndex.view(from:) + Loaded.nodeMetas cached, search reuses via withUnsafeBytes
