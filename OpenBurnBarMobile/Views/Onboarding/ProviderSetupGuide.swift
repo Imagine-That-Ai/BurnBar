@@ -191,6 +191,46 @@ extension ProviderSetupGuide {
                 supportsSelfHosted: false
             )
 
+        case .primeAgent:
+            return ProviderSetupGuide(
+                provider: provider,
+                kinds: [.session],
+                defaultKind: .session,
+                labelSuggestion: "Prime Agent",
+                dashboardURL: URL(string: "https://www.primeintellect.ai/"),
+                dashboardCTA: "Open Prime Intellect",
+                oneLineHint: "Prime Agent sessions on your Mac — usage from ~/.prime/agent/sessions.",
+                instructions: [
+                    GuideStep(1, "Install and sign in to Prime Agent on your Mac", detail: "Use the Prime Intellect account that runs `prime-agent`."),
+                    GuideStep(2, "Keep the Mac bridge running", detail: "OpenBurnBar reads session JSONL from ~/.prime/agent/sessions and attributes spend.", codeSnippet: "~/.prime/agent/sessions"),
+                    GuideStep(3, "Optional: route through OpenBurnBar", detail: "Run `node scripts/prime-agent-openburnbar-proxy.mjs` so `openburnbar/*` models hit the local gateway.")
+                ],
+                credentialPlaceholder: "Managed by your paired Mac",
+                credentialFooterMarkdown: "Prime Agent auth stays on your Mac. OpenBurnBar only reads local session usage.",
+                supportsHosted: false,
+                supportsSelfHosted: false
+            )
+
+        case .muse:
+            return ProviderSetupGuide(
+                provider: provider,
+                kinds: [.session],
+                defaultKind: .session,
+                labelSuggestion: "Muse",
+                dashboardURL: URL(string: "https://www.meta.com/"),
+                dashboardCTA: "Open Meta Muse",
+                oneLineHint: "Muse sessions under ~/.local/share/muse/sessions.",
+                instructions: [
+                    GuideStep(1, "Install Muse on your Mac", detail: "Use the Meta Muse CLI/app that writes envelope JSONL sessions."),
+                    GuideStep(2, "Keep the Mac bridge running", detail: "OpenBurnBar parses ~/.local/share/muse/sessions for tokens and cost.", codeSnippet: "~/.local/share/muse/sessions"),
+                    GuideStep(3, "Watch usage in the meter", detail: "Sessions appear with model and exact cost when Muse records it.")
+                ],
+                credentialPlaceholder: "Managed by your paired Mac",
+                credentialFooterMarkdown: "Muse auth stays on your Mac. OpenBurnBar only reads local session usage.",
+                supportsHosted: false,
+                supportsSelfHosted: false
+            )
+
         case .openAI:
             return ProviderSetupGuide(
                 provider: provider,
