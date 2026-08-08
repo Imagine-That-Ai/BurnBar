@@ -1859,6 +1859,7 @@
 		BC3EDF492E296B06E1301F01 /* BurnBarEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A5C055040FDC9C49E85EEC8 /* BurnBarEntry.swift */; };
 		BC48BFEBE66919B9ADA0D2DB /* TextExpansionSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = C398809579449943D0D36650 /* TextExpansionSettings.swift */; };
 		7102F32D4FC0278EB234E81C /* VisualCapturePreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05253480A345B884BED725D4 /* VisualCapturePreferences.swift */; };
+		A09DC21DFB0E4E9A9239A902 /* VisualCaptureToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAAE3644E1584D469836385F /* VisualCaptureToggle.swift */; };
 		BC5F385C44FE4F67908F743B /* HermesIrohRelayTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DF6DE9B4DB59CB5DB1B4554 /* HermesIrohRelayTransport.swift */; };
 		BC64FCFDFD6FFF3B6F368764 /* pc-codex-rollout-session.jsonl in Resources */ = {isa = PBXBuildFile; fileRef = 0A7744AE0E6A41938A170AFA /* pc-codex-rollout-session.jsonl */; };
 		BC7A6B66FE75453D035B6442 /* SwitcherCLIAuthCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0141946619B22A41695EA4E /* SwitcherCLIAuthCoordinatorTests.swift */; };
@@ -4496,6 +4497,7 @@
 		C36F484FFBFEF3537A9F2E6C /* SessionLogSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLogSyncService.swift; sourceTree = "<group>"; };
 		C398809579449943D0D36650 /* TextExpansionSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextExpansionSettings.swift; sourceTree = "<group>"; };
 		05253480A345B884BED725D4 /* VisualCapturePreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualCapturePreferences.swift; sourceTree = "<group>"; };
+		FAAE3644E1584D469836385F /* VisualCaptureToggle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components/VisualCaptureToggle.swift; sourceTree = "<group>"; };
 		C3A5BE3183B942FB86928784 /* MobileProviderWizardModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileProviderWizardModelTests.swift; sourceTree = "<group>"; };
 		C3D533014BACE2B316F300AB /* FormattingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormattingTests.swift; sourceTree = "<group>"; };
 		C3E0EB2C16A28DE551F2C38A /* DomainCoreShadowEvidenceSpoolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainCoreShadowEvidenceSpoolTests.swift; sourceTree = "<group>"; };
@@ -5396,6 +5398,7 @@
 				D2FE22C34CD12C66B915925E /* CloudStoreSettingsView+Support.swift */,
 				3B29BE3882E3190E3732904A /* ConnectionsSettingsView.swift */,
 				F68CBA5018EA16CFA39285C9 /* ConnectionsSettingsView+Rows.swift */,
+				FAAE3644E1584D469836385F /* VisualCaptureToggle.swift */,
 				BE103E4277978540F8113F15 /* ConnectionsViewModel.swift */,
 				4D4B13F4358076971DE47E63 /* DaemonSettingsView.swift */,
 				0DF2C963713055A8E4A34751 /* DevicesAndSyncSettingsView.swift */,
@@ -5757,7 +5760,7 @@
 				72EF41CFAE2CACC0F592D089 /* RoutedClientWiringSettings.swift */,
 				9984046255A1770837833F0C /* SummarySettings.swift */,
 				C398809579449943D0D36650 /* TextExpansionSettings.swift */,
-				05253480A345B884BED725D4 /* VisualCapturePreferences.swift */,
+				05253480A345B884BED725D4 /* VisualCapturePreferences.swift */
 			);
 			path = Stores;
 			sourceTree = "<group>";
@@ -12787,6 +12790,7 @@
 				F57E4E42DD9C3053EF3728B6 /* TextExpansionRuntimeController.swift in Sources */,
 				BC48BFEBE66919B9ADA0D2DB /* TextExpansionSettings.swift in Sources */,
 				7102F32D4FC0278EB234E81C /* VisualCapturePreferences.swift in Sources */,
+				A09DC21DFB0E4E9A9239A902 /* VisualCaptureToggle.swift in Sources */,
 				4C67B52EBBF3AF5D2E9B0F36 /* TextExpansionSettingsView.swift in Sources */,
 				2C1BE64947D9481C29DD1C40 /* TextExpansionSnippetStore.swift in Sources */,
 				EE7C6A2BEF60EFDB9743DBC5 /* TextExpansionSyncService.swift in Sources */,

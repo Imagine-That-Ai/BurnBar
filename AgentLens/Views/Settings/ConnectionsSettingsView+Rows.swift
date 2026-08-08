@@ -121,6 +121,10 @@ struct ProviderAccountGroup: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             header
+            if let provider, SettingsManager.shared.visualCaptureSourceToggleEnabled {
+                VisualCaptureToggle(provider: provider, settingsManager: SettingsManager.shared)
+                    .settingsAnchor("agents.visualSurface.\(provider.persistedToken)")
+            }
             ForEach(accounts) { account in
                 AccountRowView(
                     account: account,
