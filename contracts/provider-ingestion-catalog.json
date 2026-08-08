@@ -486,6 +486,26 @@
       "quotaSignal": false
     },
     {
+      "providerId": "devin",
+      "agentProviderCase": "devin",
+      "displayLabel": "Devin",
+      "aliases": [
+        "devin-desktop",
+        "devin-cli",
+        "windsurf"
+      ],
+      "paths": {
+        "linux": "~/.config/Devin/sessions",
+        "macos": "~/Library/Application Support/Devin/sessions"
+      },
+      "filePattern": "*.jsonl",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry. Successor to Windsurf (Devin Desktop) per devin.ai/blog/windsurf-is-now-devin-desktop.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
+    },
+    {
       "providerId": "warp",
       "agentProviderCase": "warp",
       "displayLabel": "Warp",

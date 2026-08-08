@@ -112,10 +112,30 @@ extension ProviderBrand {
             candidates.append(contentsOf: ["QwenLogo", "AlibabaLogo", "AlibabaProviderLogo"])
         case "zai", "z-ai", "z.ai", "glm":
             candidates.append(contentsOf: ["ZaiLogo", "ZaiProviderLogo"])
+        case "zcode", "zcode-desktop", "z-code", "z.ai-desktop", "zai-desktop":
+            candidates.append(contentsOf: ["ZCodeLogo", "ZCodeDesktopLogo", "ZaiLogo", "ZaiProviderLogo"])
         case "minimax", "mini-max":
             candidates.append("MiniMaxLogo")
+        case "minimax-desktop", "minimax desktop", "minimax-agent":
+            candidates.append(contentsOf: ["MiniMaxDesktopLogo", "MiniMaxLogo"])
         case "mimo", "xiaomi", "xiaomimimo":
             candidates.append("MimoLogo")
+        case "factory-desktop", "factory desktop":
+            candidates.append(contentsOf: ["FactoryDesktopLogo", "FactoryLogo"])
+        case "devin", "devin-desktop", "devin desktop", "devin-cli", "devin cli":
+            candidates.append(contentsOf: ["DevinLogo", "DevinDesktopLogo"])
+        case "claude-desktop", "claude desktop":
+            candidates.append(contentsOf: ["ClaudeDesktopLogo", "ClaudeCodeLogo", "AnthropicLogo"])
+        case "warp-desktop", "warp desktop", "warp-terminal":
+            candidates.append(contentsOf: ["WarpDesktopLogo", "WarpLogo"])
+        case "ollama-desktop", "ollama desktop":
+            candidates.append(contentsOf: ["OllamaDesktopLogo", "OllamaLogo"])
+        case "codex-desktop", "codex desktop":
+            candidates.append(contentsOf: ["CodexDesktopLogo", "CodexLogo", "OpenAILogo"])
+        case "cursor-desktop", "cursor desktop", "cursor-ide":
+            candidates.append(contentsOf: ["CursorDesktopLogo", "CursorLogo"])
+        case "hermes-desktop", "hermes desktop", "hermes-dashboard":
+            candidates.append(contentsOf: ["HermesDesktopLogo", "HermesLogo"])
         case "prime", "prime-agent", "primeagent", "prime_agent", "prime agent":
             candidates.append("PrimeAgentLogo")
         case "cursor-agent", "cursoragent":
@@ -169,7 +189,17 @@ extension ProviderBrand {
         case "amazon":      return Color(hex: "FF9900")
         case "alibaba":     return Color(hex: "FF6A00")
         case "zai":         return Color(hex: "8B5CF6")
+        case "zcode", "zcode-desktop", "z.ai-desktop", "zai-desktop": return Color(hex: "7C3AED")
         case "minimax":     return Color(hex: "F59E0B")
+        case "minimax-desktop", "minimax-agent": return Color(hex: "F59E0B")
+        case "factory-desktop": return Color(hex: "8B5CF6")
+        case "devin", "devin-desktop", "devin-cli": return Color(hex: "0A84FF")
+        case "claude-desktop": return Color(hex: "CC785C")
+        case "warp-desktop": return Color(hex: "DDE4EA")
+        case "ollama-desktop": return Color(hex: "8B8589")
+        case "codex-desktop": return Color(hex: "2563EB")
+        case "cursor-desktop": return Color(hex: "AC8C57")
+        case "hermes-desktop": return Color(hex: "A855F7")
         case "mimo", "xiaomi", "xiaomimimo":
             return Color(hex: "FF6900")
         case "ollama":      return Color(hex: "8B8589")
@@ -197,7 +227,17 @@ extension ProviderBrand {
         case "amazon":      return "box.fill"
         case "alibaba":     return "cloud.fill"
         case "zai":         return "bolt.fill"
+        case "zcode", "zcode-desktop", "z.ai-desktop", "zai-desktop": return "bolt.fill"
         case "minimax":     return "star.fill"
+        case "minimax-desktop", "minimax-agent": return "star.fill"
+        case "factory-desktop": return "cpu.fill"
+        case "devin", "devin-desktop", "devin-cli": return "desktopcomputer"
+        case "claude-desktop": return "bubble.left.and.bubble.right.fill"
+        case "warp-desktop": return "terminal.fill"
+        case "ollama-desktop": return "server.rack"
+        case "codex-desktop": return "hammer.fill"
+        case "cursor-desktop": return "cursor.rays"
+        case "hermes-desktop": return "wind"
         case "ollama":      return "server.rack"
         case "moonshot":    return "moon.fill"
         case "prime", "prime-agent", "primeagent": return "arrow.triangle.2.circlepath"

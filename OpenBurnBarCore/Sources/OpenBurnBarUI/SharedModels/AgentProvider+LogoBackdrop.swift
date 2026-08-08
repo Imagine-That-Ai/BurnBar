@@ -15,7 +15,7 @@ public extension AgentProvider {
         if colorScheme == .dark {
             switch self {
             case .openAI, .codex, .cursor, .cursorAgent, .forgeDev, .claudeCode,
-                 .factory, .windsurf, .copilot, .aider, .ollama,
+                 .factory, .windsurf, .devin, .copilot, .aider, .ollama,
                  .openClaw, .openClaude, .omp, .geminiCLI, .antigravity, .goose, .augment, .cline,
                  .kiloCode, .rooCode, .hermes, .xAI:
                 return true
