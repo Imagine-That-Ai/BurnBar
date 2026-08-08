@@ -69,6 +69,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
                 OLLAMA,
                 WINDSURF,
                 WARP,
+                MUSE,
             )
 
         /**

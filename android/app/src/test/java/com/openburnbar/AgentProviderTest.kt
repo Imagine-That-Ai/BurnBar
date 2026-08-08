@@ -37,9 +37,10 @@ class AgentProviderTest {
         assertEquals("Junie", AgentProvider.JUNIE.displayName)
         assertEquals(0xFF48E054, AgentProvider.JUNIE.brandColor)
         assertEquals(0xFF6FE87F, AgentProvider.JUNIE.accentColor)
-        // Swarm glyph roster: Junie sits right after Hermes, mirroring Swift.
+        // Swarm glyph roster: Hermes → Prime Agent → Gemini CLI → Junie (mirrors Swift).
         val swarm = AgentProvider.swarmGlyphProviders
-        assertEquals(swarm.indexOf(AgentProvider.HERMES) + 1, swarm.indexOf(AgentProvider.JUNIE))
+        assertEquals(swarm.indexOf(AgentProvider.HERMES) + 1, swarm.indexOf(AgentProvider.PRIME_AGENT))
+        assertEquals(swarm.indexOf(AgentProvider.PRIME_AGENT) + 2, swarm.indexOf(AgentProvider.JUNIE))
     }
 
     @Test
