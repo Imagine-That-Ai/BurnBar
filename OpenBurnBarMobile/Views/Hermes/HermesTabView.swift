@@ -753,11 +753,19 @@ struct HermesChatView: View {
     }
 
     private var shouldUseGatewayModelPicker: Bool {
-        !gatewayStore.activeClients.isEmpty && (!service.isReachable || service.modelOptions.isEmpty)
+        shouldSendViaBurnBarGateway
+            || (!gatewayStore.activeClients.isEmpty
+                && service.suggestedRelayConnection == nil
+                && service.modelOptions.isEmpty)
     }
 
     private var shouldSendViaBurnBarGateway: Bool {
-        chatViewMode != .cli && !service.isReachable && !gatewayStore.activeClients.isEmpty
+        HermesChatTransportPolicy.shouldSendViaBurnBarGateway(
+            isHostReachable: service.isReachable,
+            hasSuggestedRelay: service.suggestedRelayConnection != nil,
+            hasActiveGatewayClient: !gatewayStore.activeClients.isEmpty,
+            isCLIMode: chatViewMode == .cli
+        )
     }
 
     private var gatewaySenderDisplayName: String {

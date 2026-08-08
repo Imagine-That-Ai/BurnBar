@@ -350,6 +350,29 @@ public enum CLIAuthDiscovery {
                 configDirectory: hasConfig ? configDir : normalizedNonEmpty(configDir),
                 accountDescription: hasRecordedSessions ? "Junie local sessions" : nil
             )
+        case .primeAgent:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.prime"
+            )
+            let sessionsDir = "\(configDir)/agent/sessions"
+            let hasConfig = FileManager.default.fileExists(atPath: configDir)
+            let hasRecordedSessions = directoryContainsAnyEntry(atPath: sessionsDir)
+            let hasAPIKey = hasConfig // auth.json holds backend keys router-agnostic
+            let authState: CLIAuthState = {
+                if executablePath == nil { return .notInstalled }
+                if hasRecordedSessions { return .authenticated(lastRefresh: nil) }
+                if hasAPIKey { return .authenticated(lastRefresh: nil) }
+                return .notAuthenticated
+            }()
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: hasConfig ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: hasRecordedSessions ? "Prime Agent local sessions" : nil
+            )
         }
         #endif
     }

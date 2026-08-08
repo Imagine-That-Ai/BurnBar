@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Muse (Meta) first-class provider
+
+- **Muse is now a first-class provider at parity with Hermes, Codex, and Droid**: auto-detected at `~/.local/share/muse/sessions/**/*.jsonl` with no manual config; `MuseParser` extracts per-turn `input_tokens`/`output_tokens`/`cached_tokens`/`cache_read_tokens`/`reasoning_tokens`, tool calls (`tool_batch.effect.started`), and prompts (`started`/`inbox_item_queued`) from the envelope JSONL, with microsecond `recorded_at` timestamps and subagent session support (`subagent/<uuid>/session.jsonl`). Cost uses catalog pricing for `muse-spark-1.2` (standard $1.25/$4.25/$0.15) and `muse-spark-1.2-contributor` ($0.10/$0.20/$0.002) with fallback to `ModelPricing.fallback` when the model is unknown. Handles empty logs, truncated JSONL, missing fields, and multi-model sessions. Installed Muse is auto-detected with no manual config (like Droid/Hermes/Codex).
+
+### Added - Prime Agent (Prime Intellect) first-class provider
+
+- **Prime Agent is now a first-class provider at parity with Hermes, Codex, and Droid**: auto-detected at `~/.prime/agent/sessions/*.jsonl` with no manual config; `PrimeAgentParser` extracts per-turn `input`/`output`/`cacheRead`/`cacheWrite` and exact USD cost from `message.usage.cost.total` (fallback to `ModelPricing` catalog when cost is zero). Sessions appear in the meter with correct tokens and $ cost; pricing falls back gracefully when the model is unknown. Handles empty logs, truncated JSONL, and multi-model sessions.
+
 ### Fixed - Mercury release build reliability
 
 - **Made clean Mercury XCFramework release builds deterministic across current

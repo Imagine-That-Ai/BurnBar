@@ -225,6 +225,8 @@ public enum UsageExecutionSourceResolver {
         case .warp: return known("warp", "Warp", .cli, .derivedExact)
         case .xAI: return known("grok-build", "Grok Build", .cli, .derivedExact)
         case .junie: return known("junie", "Junie", .ide, .derivedExact)
+        case .primeAgent: return known("prime-agent", "Prime Agent", .automation, .derivedExact)
+        case .muse: return known("muse", "Muse", .cli, .derivedExact)
         case .openAI, .openBurnBar, .deepSeek, .mimo: return nil
         }
     }

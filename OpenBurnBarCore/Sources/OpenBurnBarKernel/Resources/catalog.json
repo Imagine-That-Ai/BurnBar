@@ -3729,6 +3729,54 @@
             "outputPerMToken": 0.18,
             "cacheReadPerMToken": 0.09
           }
+        },
+        {
+          "id": "muse-spark-1-2-standard",
+          "displayName": "Muse Spark 1.2",
+          "visibility": "public",
+          "aliases": [
+            "muse-spark-1.2"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "muse-spark-1.2"
+              ],
+              "any": [],
+              "none": [
+                "contributor"
+              ]
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 1.25,
+            "outputPerMToken": 4.25,
+            "cacheReadPerMToken": 0.15
+          },
+          "canonicalModelID": "muse-spark-1.2"
+        },
+        {
+          "id": "muse-spark-1-2-contributor",
+          "displayName": "Muse Spark 1.2 (Contributor)",
+          "visibility": "hidden",
+          "aliases": [
+            "muse-spark-1.2-contributor"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "muse-spark-1.2-contributor"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.1,
+            "outputPerMToken": 0.2,
+            "cacheReadPerMToken": 0.002
+          },
+          "canonicalModelID": "muse-spark-1.2-contributor"
         }
       ]
     },

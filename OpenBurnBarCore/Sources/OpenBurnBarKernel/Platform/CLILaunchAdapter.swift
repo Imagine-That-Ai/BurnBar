@@ -845,6 +845,8 @@ public enum CLILaunchAdapter {
             return ["JUNIE_HOME"]
         case .omp:
             return ["OMP_HOME", "OMP_CONFIG_HOME"]
+        case .primeAgent:
+            return ["PRIME_HOME", "PRIME_AGENT_HOME"]
         }
     }
 }

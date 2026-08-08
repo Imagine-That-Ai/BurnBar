@@ -40,6 +40,8 @@
 | **OpenClaw** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **OpenClaude** | `OpenClaudeQuotaAdapter` | `.unavailable` | Install detection / `openclaude` CLI | Spawned Claude Code fork; no usage API or programmatic quota source |
 | **OMP** | `OMPQuotaAdapter` | `.exact` | `omp usage --json --redact` | Oh My Pi local CLI quota reports by provider/account/window |
+| **Prime Agent (Prime Intellect)** | `PrimeAgentParser` (local) | `.exact` | `~/.prime/agent/sessions/*.jsonl` (local jsonl: `message.usage` + `cost`) | Recursive Language Model + Continual Harness sessions; per-turn input/output/cacheRead/cacheWrite + exact USD cost; provider auto-detects underlying model (e.g. `muse-spark-1.2`, `gpt-5.6-luna`) |
+| **Muse (Meta)** | `MuseParser` (local) | `.exact` | `~/.local/share/muse/sessions/**/*.jsonl` (envelope JSONL, `model_completed` usage, `tool_batch` tools, `started` prompts; microsecond `recorded_at`) | Local session tokens + cached/read/write + reasoning + exact USD via catalog (`muse-spark-1.2` standard $1.25/$4.25/$0.15 or contributor $0.10/$0.20/$0.002); auto-detects workspace + subagent sessions |
 | **OpenRouter** | Routed via API key | `.exact` | `GET openrouter.ai/v1/activity` | Per-call exact cost in USD (no quota limits) |
 | **Anthropic** | Admin API key | `.estimated` | `GET api.anthropic.com/v1/organizations` | Org-wide messages usage report (~24h lag) |
 
@@ -96,6 +98,8 @@ without durable source evidence stay `unknown`.
 | **xAI (Grok)** | API key / Management key | `xai-…` inference key; `xai-mgmt-…` for GrokBuild balance | `Authorization: Bearer {key}` | SuperGrok pacing log + Management API; daemon gateway emits pacing events on routed xAI traffic |
 | **Grok Build CLI** | Local CLI + optional `XAI_API_KEY` | `grok` binary; sessions under `~/.grok/` | OpenBurnBar gateway block in `config.toml` | Switcher profile `Grok Build`; vendor identity stays `AgentProvider.xAI` |
 | **OMP** | Local CLI | `omp` binary | N/A | Uses installed Oh My Pi CLI; OpenBurnBar stores no provider credential |
+| **Prime Agent** | None | N/A (local file) | N/A | Reads `~/.prime/agent/sessions/*.jsonl`; sessions are Recursive Language Model + Continual Harness JSONL; `auth.json` / `models.json` hold API keys per routed backend but are not read by BurnBar |
+| **Muse** | None | N/A (local file) | N/A | Reads `~/.local/share/muse/sessions/**/*.jsonl` envelope JSONL; `~/.local/share/muse/model-catalog/*.json` holds pricing ($0.10/$0.20/$0.002 contributor, $1.25/$4.25/$0.15 standard) but is not required — catalog fallback pricing applies |
 
 ---
 
@@ -147,6 +151,8 @@ empty key by default.
 | Hermes | `~/.hermes/sessions/*.jsonl` | File read | Offline telemetry schemas parsing UI steps, duration, and local models |
 | Pi Agent | `~/.pi/sessions/*.jsonl` | File read | Scrapes conversation tokens and environment properties offline |
 | OMP | `omp usage --json --redact` | Local process | Redacted machine-readable usage reports with provider windows and quota buckets |
+| Muse | `~/.local/share/muse/sessions/**/session.jsonl` | File read | Envelope JSONL (`runtime.session` → `model_completed` with `input_tokens`/`output_tokens`/`cached_tokens`/`cache_read_tokens`/`reasoning_tokens`, `tool_batch.effect.started` tools, `started` prompts; `session-index.db` is index-only, not parsed) |
+| Prime Agent | `~/.prime/agent/sessions/*.jsonl` | File read | Flat JSONL (`type: session` + `type: message` with `message.usage.{input,output,cacheRead,cacheWrite,cost}`) |
 
 ---
 
@@ -172,6 +178,8 @@ empty key by default.
 | Hermes | Real-time on automation step | None |
 | Pi Agent | Real-time on workspace transaction | None |
 | OMP | On refresh (polled) | None |
+| Muse | Real-time on prompt interaction | None |
+| Prime Agent | Real-time on prompt interaction | None |
 
 ---
 

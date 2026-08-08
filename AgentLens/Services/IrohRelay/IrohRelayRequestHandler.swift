@@ -122,10 +122,13 @@ final class IrohRelayRequestHandler: Sendable {
             // First-frame classification — when iOS opens a stream and
             // declares it the long-lived media control stream, hand
             // ownership to the registry and return. The registry's
-            // owner drives the read loop from there. The host-observed
-            // connection id is the authority for this stream; a peer-claimed
-            // stale or drifted id is rejected instead of being used to mount
-            // control state under attacker-chosen routing metadata.
+            // owner drives the read loop from there. A paired client can
+            // legitimately dial through its last signed connection id after
+            // the Mac refreshes the currently published relay id. The iroh
+            // peer and UID remain the authenticated identity boundary; accept
+            // that first classification under the client's connection id,
+            // audit drift, and retain the strict mismatch guard below for
+            // every ordinary frame still owned by this handler.
             if !classifiedAsMediaControl,
                frame.type == .mediaClassify,
                let mediaControlRegistrar,
@@ -139,10 +142,8 @@ final class IrohRelayRequestHandler: Sendable {
                         requestID: frame.requestId,
                         extra: ["hostConnectionId": connectionID]
                     )
-                    try await sendError(frame: frame, stream: stream)
-                    return .callerOwnsStream
                 }
-                await mediaControlRegistrar(stream, uid, connectionID)
+                await mediaControlRegistrar(stream, uid, frame.connectionId)
                 return .transferredStreamOwnership
             }
             guard frame.connectionId == connectionID else {

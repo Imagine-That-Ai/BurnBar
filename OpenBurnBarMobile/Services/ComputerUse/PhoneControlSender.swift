@@ -790,8 +790,20 @@ public final class PhoneControlSigningKeyStore: Sendable {
     /// The key-kind-aware signing identity, gated by the
     /// `computer_use_phone_control_secure_enclave_key` Remote Config flag.
     public func signingIdentity() throws -> PhoneControlAuthoritySigningKey {
+        try signingIdentity(authenticationContext: nil)
+    }
+
+    /// Resolves the current signing identity while binding any Secure Enclave
+    /// private-key operation to an already-authorized Local Authentication
+    /// context. Public-key-only callers should continue using
+    /// `signingIdentity()`; user-initiated signing paths pass the exact context
+    /// that completed device-owner authentication.
+    public func signingIdentity(
+        authenticationContext: LAContext?
+    ) throws -> PhoneControlAuthoritySigningKey {
         try signingIdentity(
-            secureEnclaveEnabled: MobileComputerUseRemoteConfig.phoneControlSecureEnclaveKeyEnabled()
+            secureEnclaveEnabled: MobileComputerUseRemoteConfig.phoneControlSecureEnclaveKeyEnabled(),
+            authenticationContext: authenticationContext
         )
     }
 

@@ -1302,7 +1302,9 @@ public actor BurnBarConfigStore {
 
     private static let defaultModelVariantSeeds: [(providerID: String, baseModelID: String, levels: [BurnBarThinkingLevel])] = [
         ("anthropic", "claude-opus-4-8", [.high, .xhigh, .max]),
-        ("openai", "gpt-5.3-codex", [.low, .medium, .high, .xhigh])
+        ("openai", "gpt-5.3-codex", [.low, .medium, .high, .xhigh]),
+        ("meta", "muse-spark-1.2-contributor", [.xhigh]),
+        ("prime-agent", "muse-spark-1.2-contributor", [.xhigh])
     ]
 
     private static func mergedPreferredModelIDs(configured: [String], defaults: [String]) -> [String] {
