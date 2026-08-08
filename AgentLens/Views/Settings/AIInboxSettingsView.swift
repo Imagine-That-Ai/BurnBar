@@ -35,13 +35,11 @@ struct AIInboxSettingsView: View {
                     Divider().background(DesignSystem.Colors.border)
                     egressSection
                     Divider().background(DesignSystem.Colors.border)
-                    budgetSection
+                    AIInboxCostCockpitView(model: model)
                     Divider().background(DesignSystem.Colors.border)
                     cadenceSection
                     Divider().background(DesignSystem.Colors.border)
                     sourcesSection
-                    Divider().background(DesignSystem.Colors.border)
-                    telemetrySection
                 }
             }
         }

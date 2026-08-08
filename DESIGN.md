@@ -353,3 +353,90 @@ The static `coral`, `purple`, `teal`, `gold` in DesignSystem are currently hardc
 | 2026-05-26 | Computer Use empty state replaced with editorial onboarding card (iOS + Android) | Tapping Computer Use used to land users on a near-blank screen with only a dashed-rectangle `rectangle.dashed` icon, the monospaced line "Waiting for Mac session", and a red coral pill saying "Select an online Mac Remote Relay in Hermes to watch the agent live." — zero explanation of what Computer Use is, how to enable it, or why the surface was empty. Replaced with an editorial empty state that mirrors the Editorial Observatory voice across both platforms. **iOS:** `AgentWatchEmptyStateView` injected through `AgentWatchView`'s new generic `Placeholder` parameter (legacy dashed placeholder retained for non-You-tab hosts via `AgentWatchDefaultPlaceholder`). The view stacks five mercury-stroked sections — hero (caduceus glyph + "COMPUTER USE" eyebrow + 24pt "Let the agent drive your Mac" headline + phase badge that reads STANDBY/DIALING/RECONNECTING/LIVE/ERROR), setup checklist (3 rows with green check or red dot — Signed in / Hermes Remote Relay selected / Live session — each with a wired CTA pill), 01/02/03 ordered guide with mono ordinals + active-step accent, 2x2 capability strip (Live mirror / Tap to drive / Full audit / Panic halt) and a permissions footer explaining the wizard lives on the Mac. The legacy red coral pill overlay in `AgentWatchScreen` was removed because the same blocker now reads inline in the checklist. CTAs wire through `HermesService.connectToSuggestedRelay(refresh:)` ("Use {Mac name}" one-tap when a relay-link Mac is online) and the existing `ShowHermesChat` / `ShowSettings` notifications for cross-tab navigation. **Android:** `ComputerUseAgentWatchScreen.WatchPlaceholder` rebuilt as a vertically scrolling editorial card with the same five sections — hero with Mercury-gradient border, `HermesService(appContext).refreshRelayConnections()` to derive the suggested relay, `HermesService.selectConnection(...)` on tap, NavController-aware `onOpenHermes` / `onOpenSettings` callbacks from `BurnBarNavHost`, and `Intent(ACTION_VIEW, burnbar://hermes)` / `burnbar://you` deep-link fallbacks when called from a scope without a NavController (notably `YouView`'s `YouSubScreen.ComputerUse`). Mercury identity preserved on both sides: `mercuryGradient` for hero border + hairline, `hermesMercury` for capability cards + section headers, `hermesAureate` for CTA pills + phase badge. |
 | 2026-06-24 | Prepare Hermes wizard redesigned with state-driven "Make Gateway Reachable" action + editorial Observatory hero | The old `HermesSetupWizardView` looped `probeGateway` every 3s for 90s while displaying "Hermes Dashboard is running, but the local gateway is not reachable yet" — and offered no remediation, forcing the user to discover the "Open Hermes + Gateway" button and guess its role vs "Check Health". The wizard's mutable state was also entangled with the view, so the reachability logic was untestable. Redesigned with two structural changes. (1) Extracted all wizard state into `HermesSetupWizardController` — a `@MainActor @Observable` state machine with dependency-injected `HermesSetupWizardDependencies` (mirroring `HermesRuntimeLauncher`'s injection pattern) so reachability derivation, step gating, and the remediation action are unit-testable without a SwiftUI snapshot harness. The controller derives a single `GatewayReachabilityState` (`unknown / cliMissing / apiServerDisabled / dashboardOnly / gatewayRunning / unreachable`), each carrying its own eyebrow + headline + detail + the single `primaryActionLabel` that resolves it. (2) The Connect step renders one editorial Observatory hero per state — eyebrow (GATEWAY/BLOCKED/CONFIG/PARTIAL/READY/OFFLINE) + 20pt title headline + caption detail + a mercury hairline + a pulsing status dot tinted by `GatewayReachabilityAccent` (neutral/warning/blocked/ready) + the single primary button ("Make Gateway Reachable" for unknown/dashboardOnly/unreachable, "Enable API Server" for apiServerDisabled) plus a secondary "Check Health". The "Make Gateway Reachable" button drives `openHermesAndGateway` (ensure `~/.hermes/.env` API_SERVER_ENABLED, install + launch `hermes gateway run`, launch `hermes dashboard --tui`, re-probe) instead of just re-probing — this is the button the old wizard was missing. On failure it surfaces an inline `Callout` (error/warning/info, mercury-stroked) with the launcher's message instead of silently looping. Window grew to 560×620 to fit the editorial hero. Mercury identity preserved: `mercuryGradient` hairline + number medallions, `hermesAureate` for primary CTAs and the api-server/CLI status rows, `HermesThinkingView` for the Chat-step verification spinner, `GlassCard` for each step body. Motion respects `accessibilityReduceMotion` (all `animation(_:value:)` gates on the flag). Covered by `HermesSetupWizardControllerTests` (15 cases) in `HermesRuntimeLauncherTests.swift`: reachability-state derivation per state, `makeGatewayReachable` invokes `openHermesAndGateway` (not just `refreshStatus`), error surfacing when the gateway stays down, `probeGateway` status application, `checkCLI`/`checkConfig` snapshot reading, navigation + completion gates, auto-probe lifecycle, and verification response/error handling. |
 | 2026-07-03 | Settings overhaul — "Command Bridge" IA + Settings Copilot + Model Proxy | The 14-tab flat sidebar was impossible to navigate: critical features (Model Proxy, Accounts, Appearance) were buried alongside low-traffic tabs (Pets, Text Expansion) at the same visual hierarchy. Redesigned with four structural changes. (1) **Sectioned sidebar**: `SettingsTab` gained a `section` property and a `SettingsSection` enum (Agents & Models, Look & Feel, Account & Sync, System, More) that groups tabs into labeled categories in the sidebar `List`, so the hierarchy reads instantly. Home sits above the sections as the default landing. (2) **Home overview** (`SettingsHomeView`): a mission-control landing that shows a live status grid (Daemon health, Model Proxy on/off + endpoint, Accounts count, Hermes state, Cloud Sync, Indexing), an attention strip for anything red/amber with a one-click Fix jump, and 6 task cards (Add Account, Model Proxy, Appearance, Text Expansion, Cloud, Data & Privacy) covering the surfaces users come to Settings for. (3) **Model Proxy as first-class tab** (`ModelProxySettingsView`): elevates the local gateway from a buried sub-page of the Daemon tab to its own top-level tab. Status-first hero with giant on/off toggle, copyable endpoint pill, quick stats (models served, route-ready count, provider count), routing strategy embedded from `ConnectionsSettingsView(.advancedOnly)`, live model catalog via `ProxyModelCatalogPanel`, and plumbing (host/port/token) behind an Advanced disclosure. (4) **Settings Copilot**: a two-tier system that combines instant manifest search (Tier 1, zero-latency, offline via `SettingsSearchEngine`) with agentic propose-and-confirm (Tier 2, streams through `CLIBridge.chat()`). The sidebar's command bar doubles as both search and copilot input (⌘K focuses it, Enter triggers Ask). The copilot uses a `SettingsActionRegistry` — a declarative whitelist of typed, safe mutations (`setAppearanceDark`, `enableModelProxy`, `setRefresh30s`, etc.) — that the LLM can reference via a system prompt carrying the action grammar + live settings snapshot. Proposed actions render as confirm chips: nothing mutates until the user taps Confirm, then the registry applies the change and deep-links to the changed row with an anchor highlight. Secrets (API keys, tokens) are NEVER writable through the registry. The `SettingsCopilotPromptBuilder` carries the action catalog, current state, manifest summary, and instructs the LLM to emit JSON action envelopes in fenced blocks. Covered by `SettingsActionRegistryTests` (20 cases), `SettingsCopilotControllerTests` (14 cases), and `SettingsHomeAndSectionTests` (16 cases). Daemon rebranded to "Engine Room". All legacy routes, anchors, and deep links resolve via the existing alias machinery (extended `resolving(legacyRawValue:)` + `pathForRoute`). |
+
+
+## AI Inbox Cost Cockpit — Design Appendix (2026-08-08)
+
+### Product context
+The Inbox is a background analyst that wakes every 5 min, usually finds nothing, and costs $0. When it *does* run, it spends real API dollars. Users asked: *"what is this costing me?"* and *"can I use my Codex / MiniMax / Factory sub instead of paying per-token?"* — especially developers who already pay for those subscriptions and would rather burn entitlement than cash.
+
+Project type: macOS Settings detail + ledger panel inside the native menu bar app.
+
+### Aesthetic — Instrument / Ledger
+- **Direction:** Quiet instrument panel meets warm ledger paper. Data-dense, but not spreadsheet. Think utility bill that someone designed.
+- **Decoration:** Low. Cards do the work. One ember glow for spend, one whimsy glow for local, one success tint for $0. No illustration, no empty-state mascot.
+- **Why it fits:** OpenBurnBar's soul is "a terminal that knows what it's doing." A cost surface should feel like measurement, not marketing. The ledger idiom lets numbers be the hero; the atelier lets choice feel tactile without feeling like a store.
+
+### Layout — Three layers, one scroll
+1. **Hero** — big mono spend today + projected / 30d, skip-efficiency badge, budget rail with 50% tick and ember→amber→warning progression, cap slider inlined.
+2. **Ledger** — 7-day sparkline (capsule bars: muted=free, ember=paid), then time+outcome+cost rows (8 most recent), then `X% checks free · $Y total` footnote. `Analyze now` lives here, not in the hero — it is the ledger's primary verb.
+3. **Model Atelier** — `What this pairing costs per day if every check were active` bar (ember vs whimsy split), then **Analyst** grid (6 cards, 2 col) and **Verifier** grid (4 cards, 2 col). Each card: radio dot, name, one-line provenance, badge (`cheapest`/`sub · $0`/`local · $0`), and `≈ $0.0095 / active tick`.
+
+Adaptive: `LazyVGrid` 2-col collapses to 1-col under 480pt (iOS). All cards use `GlassCard` idiom: `surface` + `border` 0.5pt + `lg` radius + spring shadow when selected.
+
+### Color — extends DesignSystem, does not invent
+- **Spend / cost:** `ember` (#F45B69 light ad. #FA5053 dark) — only the number that costs money glows. `$0.00` stays `textPrimary`.
+- **Stayed free / saved:** `success` — skip ratio, `$0` badges get `success` on `success/0.10` capsule.
+- **Local:** `whimsy` — Ollama / on-device routes sit in whimsy.
+- **Warning:** `warning` at `≥100% budget`. `amber` at `≥75%`.
+- **Chrome:** `surface`, `surfaceElevated`, `border`, `borderSubtle` — no new neutrals.
+- **Provider identity preserved:** `DesignSystem.Colors.primary(for: provider)` still drives dots where a provider is named, but cards use ember/whimsy to encode *cost*, not brand.
+
+Dark: the ember ledger row pops on cool slate (`#0D1117`). Light: botanical cream (`#F3E8E6`) with ember hardware — cost reads as warm ink.
+
+### Typography — mono earns the money
+| Token | Use |
+|---|---|
+| `monoLarge` 28 bold | Today spend |
+| `mono` 14 medium | Projected, estimate, per-tick cost |
+| `monoTiny` 11 medium | Rail labels, provenance, badges |
+| `caption` 12 medium | Section headers (`Ledger`, `Model atelier`) |
+| `tiny` 11 medium | Explanations, footnotes, what-if context |
+
+All numbers use `monospacedDigit()` + `contentTransition(.numericText())` so the hero ticks without jitter.
+
+### Spacing — 4px grid, breathable
+Base 4. Cards pad `lg` (16). Section gap `xl` (24) in the outer `VStack`. Atelier grid `sm` (8). Hero header `xs`/`sm`. Rail height 8. Sparkline 56. Card internal `sm`→`md`.
+
+### Motion — gentle, not giggly
+- Number tick: `.numericText()` (built-in)
+- Budget fill: `spring(response: 0.45, dampingFraction: 0.8)` on `ratio`
+- Selection: `shadow radius 6` + `ember 0.12` glows in, `spring(response: 0.35, dampingFraction: 0.85)`
+- Atelier bar split: `spring(response: 0.4, dampingFraction: 0.85)` as analyst/verifier costs change
+
+No shimmer, no mercury, no hero animation. The ledger is truth; truth should not dance.
+
+### Why this system is coherent
+The ledger says *what you spent* (past). The atelier says *what you would spend* (future, if you choose). The same three tints — ember (you paid), success (you saved / $0), whimsy (stayed local) — tie the two together. Mono carries the quantity; rounded carries the explanation. Spring-gentle says "this reacts," not "this delights." The whole cockpit pretends it is a utility meter that happens to be beautiful.
+
+### Safe choices (what users expect from a cost surface)
+- **Big number + projected monthly at the top.** Every billing surface from Stripe to Vercel puts the spend total first; deviating would feel evasive.
+- **Per-tick cost in dollars, not tokens.** Tokens are provider-interior; dollars are what the user compares to the budget rail.
+- **Budget as a rail/slider with left/total.** Slider + progress is the native macOS pattern (see existing `budgetSection`); we kept it, just tighter and ember-tinted.
+
+### Risks (where this gets its own face)
+- **The "what-if" bar that composes analyst+verifier before you switch.** Most model pickers show only a price list. We show the *pairing* cost and the worst-vs-realistic (15% active) daily estimate — because the inbox's real economy is "how often the gate opens," and that number is the honest one. Risk: it's an estimate; users may read it as a guarantee. Mitigation: label is `if every check were active` + footnote `realistic ≈`.
+- **$0 as a premium state, not a disabled state.** Subscription routes (`Codex via Codex`, `MiniMax via Factory`) get a `success` capsule and glow, not a grayed card. They are the *preferred* path for sub holders, not a cheap fallback. Risk: users without a sub might pick $0 and get a routing error. Mitigation: subtitle says `uses your Codex sub` and the executor surfaces `modelUnavailable` clearly; the picker does not pretend to create entitlement.
+- **Sparkline of capsule bars, not a line chart.** A line implies continuity; the inbox's spend is discrete and bursty (one tick = one bar). Capsules make "one free tick" legible as a 2pt muted nub vs. a paid bar. Risk: unfamiliar vs. chart.js. Mitigation: bar height still maps to magnitude; max is always full-height so trending remains legible.
+
+### Catalog & estimates (ground truth)
+| Role | Option | Provider:model | Input/MTok | Output/MTok | Cache read | ≈ / active tick* |
+|---|---|---|---|---|---|---|
+| Analyst | DeepSeek V4 Flash 0731 | `deepseek:deepseek-v4-flash` | $0.14 | $0.28 | $0.0028 | $0.0095 |
+| Analyst | Qwen 3.6 27B (Ollama) | `ollama:qwen3.6:27b-coding-nvfp4` | $0 | $0 | $0 | $0.00 |
+| Analyst | Luna via Codex | `codex:codex-gpt-5.6-luna-family` | $0 (sub) | $0 | $0 | $0.00 |
+| Analyst | MiniMax via Factory | `factory:factory-minimax-m2.7-family` | $0 (sub) | $0 | $0 | $0.00 |
+| Analyst | GLM-5 | `zai:glm-5` | $0.07 | $0.07 | $0.02 | $0.0045 |
+| Analyst | MiniMax direct | `minimax:minimax-m2.7-family` | $0.69 | $0.69 | $0.07 | $0.044 |
+| Verifier | Luna | `openai:gpt-5.6-luna` | $0.20 | $1.20 | $0.02 | $0.0059 for ×3 |
+| Verifier | Terra | `openai:gpt-5.6-terra` | $2.50 | $15 | $0.25 | $0.0735 for ×3 |
+| Verifier | Luna via Codex | `codex:codex-gpt-5.6-luna-family` | $0 (sub) | $0 | $0 | $0.00 |
+
+*Analyst: 60k in + 4k out per active tick. Verifier: 8k in + 0.3k out per call × up to 3. Worst-case daily = per-tick × `86400/tickSeconds`. Realistic = worst × 0.15 (observed gate-open rate with change gate).
+
+### Decisions log
+| Date | Decision | Rationale |
+|---|---|---|
+| 2026-08-08 | Cost Cockpit over Budget slider only | A slider answers "what is the cap" but not "what did it cost" or "what would a sub save me." The three-layer cockpit (hero + ledger + atelier) turns a control into a cockpit. |
+| 2026-08-08 | Per-pairing what-if before per-model price | Users choose a *pairing*; cost is compositional. Showing the sum first, then the parts, makes trade legible without mental arithmetic. |
+| 2026-08-08 | $0 as success, not muted | Sub holders should feel good about using what they already pay for. Success tint reframes $0 as owned value, not missing data. |
