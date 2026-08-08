@@ -114,6 +114,13 @@ struct SwitcherOnboardingScanAddStep: View {
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
             }
+
+            // Visual capture hint — where to find the CLI vs Desktop toggle after onboarding
+            Text("You can switch to Desktop app view anytime in Settings > Providers.")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, DesignSystem.Spacing.xs)
         }
         .sheet(isPresented: $showAPIKeySheet) {
             APIKeyEntrySheet(

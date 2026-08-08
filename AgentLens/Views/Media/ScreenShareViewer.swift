@@ -68,6 +68,11 @@ private struct ScreenShareViewerPanelContent: View {
             Color.black
             #endif
             VStack {
+                if SettingsManager.shared.visualCaptureSourceToggleEnabled {
+                    ScreenShareViewerInlineHeader(provider: .codex, settingsManager: SettingsManager.shared)
+                        .padding(.horizontal, 8)
+                        .padding(.top, 8)
+                }
                 HStack {
                     Spacer()
                     Image(systemName: "rectangle.on.rectangle")
