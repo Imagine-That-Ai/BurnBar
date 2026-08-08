@@ -6,13 +6,16 @@
 **Owners:** Prime Agent + 5 subagents (A–E)
 **Related:** `docs/PERFORMANCE_SCALABILITY_REVIEW.md` §6, `AgentLens/Services/ComputerUse/Mac/MacScreenshotService.swift`, `AgentLens/Services/Media/ScreenCapturePipeline.swift`, `OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/TokenUsage.swift` (`UsageExecutionSourceKind`), `AgentLens/Services/ManagedAgentRuntime/HermesRuntimeLauncher.swift`, `ProjectCodeMemory`, `ProviderQuota`
 
+
+> **AUDIT CORRECTION 2026-05-09:** Prior draft incorrectly marked Cline/Kilo/Roo/Augment/Junie as “has desktop app” and missed Factory/MiniMax/Z.ai/Devin. Web-verified sources: `factory.ai/product/desktop` (Factory Desktop), `agent.minimax.io/download` (MiniMax Agent/Desktop), `zcode.z.ai/en/docs/install` (ZCode Desktop — Mac/Win/Linux), `devin.ai/desktop` + `devin.ai/download` + `cognition.com/blog/introducing-devin-desktop` (Devin Desktop). Roo/Kilo/Cline/Augment/Junie are VS Code/JetBrains marketplace extensions with no standalone `.app` — they share the host IDE window. Table below is the corrected canonical registry.
+
 > **Goal:** Let users choose, per-provider, whether BurnBar visually shares the **CLI terminal (PTY)** or the **Desktop app / IDE window** — the same screen-share infra Codex and Hermes use — via a simple toggle. Persist the choice, default sensibly, and fall back gracefully when the chosen surface isn’t installed or permission-denied.
 
 ---
 
 ## 0) TL;DR for reviewers
 
-* **Which CLIs have a desktop twin?** Confirmed `Both` set = **Codex (codex-cli ↔ codex-desktop), Claude (claude-code ↔ Claude Desktop), Cursor (cursor-agent CLI ↔ Cursor IDE), Windsurf, Cline, Kilo Code, Roo Code, Augment, Junie, Warp (warp CLI ↔ Warp Terminal), OpenCode, Hermes (hermes CLI ↔ Hermes Dashboard TUI)**. CLI-only = Antigravity, Factory/Droid, Gemini CLI, Kimi, MiniMax, Z.ai, Copilot CLI, Aider, Goose, OpenClaw, Prime Agent, Muse, Ollama (service), etc.
+* **Which CLIs have a desktop twin?** **Audit-corrected 2026-05-09** — Confirmed `Both` set = **Codex (codex-cli ↔ codex-desktop), Claude (claude-code ↔ Claude Desktop), Cursor (cursor-agent ↔ Cursor IDE), Factory (factory-droid ↔ Factory Desktop), MiniMax (minimax-cli ↔ MiniMax Agent/Code Desktop), Z.ai (zai-cli ↔ ZCode Desktop), Devin (devin CLI ↔ Devin Desktop), Hermes (hermes CLI ↔ Hermes Dashboard TUI), Warp (warp CLI ↔ Warp Terminal), Windsurf (IDE desktop), OpenCode (CLI ↔ TUI), Ollama (service ↔ Ollama Desktop)**. CLI-only / plugin-only = **Cline, Kilo Code, Roo Code, Augment, Junie** are **IDE plugins, not standalone desktop apps** (they live in VS Code/JetBrains host — NO toggle), plus Antigravity, Gemini CLI, Kimi, Copilot CLI, Aider, Goose, OpenClaw, Prime Agent, Muse, etc.
 * **Toggle lives in two places:** (1) **Settings > Providers > [Provider] > Visual Surface** and (2) **Live session header / Screen Share viewer** (inline override). Global default in `SettingsManager` + per-provider override in `ProviderVisualCapturePreferences`.
 * **Capture stays on existing engines:** PTY path = `PTYInteractiveSession` + `CLIProcessStreamRunner` + `BufferedLineSequence` (already streams line-by-line, 256KB bounded). Desktop path = `MacScreenshotService.CGDisplayCreateImage` + `ScreenCapturePipeline` (ShareableContent display/window) + `MercuryRouter`/`MercuryLinuxCaptureEngine` over iroh (already peer-to-peer, not through our servers). No new daemon socket, no new Firestore collection.
 * **5 subagents, 5 coherent PRs** (each reviewable alone) — see §2.
@@ -30,15 +33,19 @@ Derived from **canonical source** `OpenBurnBarCore/Sources/OpenBurnBarKernel/Sha
 | **Cursor** (`cursor` + `cursorAgent`) | `cursor-agent` (`~/.cursor-agent/sessions/`, `cursor-agent` binary) | Cursor IDE (`/Applications/Cursor.app`, bundle `com.todesktop.230313mzl4w4u92`) | `.ide` for both (today conflated) — split to `.cli` for agent, `.ide` for IDE | ✅ `cursor-agent` probe; **add** `Cursor.app` bundle check | **YES — toggle** |
 | **Hermes** (`hermes`) | `hermes` CLI (`~/.hermes/sessions/*.jsonl`, `hermes` binary) | Hermes Dashboard TUI (`hermes dashboard --tui`, `hermes gateway run`) via `HermesRuntimeLauncher` | `.cli` (today) — Dashboard is TUI not GUI, but visually capturable as OS window | ✅ `resolveHermesExecutable` + `probeGateway` | **YES — toggle (PTY vs Dashboard window)** |
 | **Warp** (`warp`) | `warp` CLI (GraphQL) | Warp Terminal (`/Applications/Warp.app`) | `.cli` (today) — Warp is desktop terminal, so visual twin is the Warp window | ✅ GraphQL probe; **add** `Warp.app` | **YES — toggle** |
-| **Windsurf** (`windsurf`) | local SQLite `~/.windsurf/...` | Windsurf IDE (`/Applications/Windsurf.app`) | `.ide` | ✅ install detection | **YES — toggle (PTY unused, but IDE window vs headless)** |
-| **Cline** (`cline`) | `~/.cline` | VS Code + Cline extension (host is `/Applications/Visual Studio Code.app`) | `.ide` | ✅ install detection | **YES — toggle (extension host window)** |
-| **Kilo Code** (`kiloCode`) | install detection only | Kilo Code IDE (`/Applications/Kilo Code.app` if exists, else VS Code host) | `.ide` | ✅ `KiloCodeQuotaAdapter` | **YES — toggle** |
-| **Roo Code** (`rooCode`) | install detection | Roo Code IDE (`/Applications/Roo Code.app` / VS Code) | `.ide` | ✅ | **YES — toggle** |
-| **Augment** (`augment`) | install detection | Augment IDE (VS Code) | `.ide` | ✅ | **YES — toggle** |
-| **Junie** (`junie`) | `~/.junie/...` (JetBrains) | Junie / IntelliJ with Junie plugin (`/Applications/IntelliJ IDEA.app`) | `.ide` | ✅ `JunieParser` | **YES — toggle** |
-| **OpenCode** (`openCode`) | `opencode` CLI (`~/.local/share/opencode/opencode.db`) | OpenCode TUI/Desktop (`opencode` TUI window) | `.cli` (today) — has TUI capturable | ✅ | **YES — toggle (CLI vs TUI window)** |
+| **Factory / Droid** (`factory`) | `factory-droid` CLI (`droid` binary, `~/.factory/...`, `POST app.factory.ai`) | **Factory Desktop App** — native home for Droids on macOS/Linux/Windows (`factory.ai/product/desktop`) | `.automation` (today) → add `.desktopApp` sibling `factory-desktop` | ✅ CLI via `FactoryDroidParser`; **add** `/Applications/Factory.app` / `factory` desktop bundle probe | **YES — toggle (CLI vs Factory Desktop)** |
+| **MiniMax** (`minimax`) | `minimax-cli` (`minimax`/`MiniMax CLI`, `GET minimax.io coding-plan remains`) | **MiniMax Agent / MiniMax Code Desktop** — macOS/Windows desktop at `agent.minimax.io/download` | `.cli` (today) | ✅ CLI via `MiniMaxQuotaAdapter`; **add** `/Applications/MiniMax*.app` bundle check | **YES — toggle** |
+| **Z.ai / ZCode** (`zai`) | `zai-cli` / `ZCode` CLI (`GET api.z.ai monitor`) | **ZCode Desktop App** — macOS (Apple Silicon/Intel), Windows x64/ARM64, Linux AppImage (`zcode.z.ai/en/docs/install`) | `.cli` (today) | ✅ CLI via `ZAIQuotaAdapter`; **add** `/Applications/ZCode.app` / `Z.ai.app` probe | **YES — toggle** |
+| **Devin** (`devin` — *new provider to register*) | `devin` CLI + cloud agents (`devin.ai`) | **Devin Desktop** — Agent Command Center for fleets of local+cloud agents (`devin.ai/desktop`, `devin.ai/download` for Mac/Win/Linux) | not in `AgentProvider` today → add | **add** both CLI `devin` binary probe + `/Applications/Devin.app` bundle probe + register `AgentProvider.devin` | **YES — toggle** |
+| **Windsurf** (`windsurf`) | local SQLite `~/.windsurf/...` | Windsurf IDE (`/Applications/Windsurf.app`) — **is a desktop app** (fork of VS Code) | `.ide` | ✅ install detection | **YES — toggle (IDE window)** |
+| **OpenCode** (`openCode`) | `opencode` CLI (`~/.local/share/opencode/opencode.db`) | OpenCode TUI (`opencode` TUI window) | `.cli` → has TUI capturable | ✅ | **YES — toggle (CLI vs TUI window)** |
 | **Ollama** (`ollama`) | `ollama` service + cloud routing | Ollama Desktop (`/Applications/Ollama.app`) | `.service` | ✅ `GET localhost:11434` + bundle check | **YES — toggle (service logs vs Desktop window)** |
-| **Factory/Droid, Antigravity, Gemini CLI, Kimi, MiniMax, Z.ai, Copilot CLI, Aider, Goose, OpenClaw, Prime Agent, Muse, OMP, etc.** | CLI / local file only | **No desktop twin** | `.cli` / `.automation` | — | **NO toggle** — CLI-only chip, hide toggle, show “CLI only” |
+| **Cline** (`cline`) | VS Code extension (`saoudrizwan.claude-dev` marketplace) | **No standalone desktop app** — lives inside VS Code host (`/Applications/Visual Studio Code.app` or Cursor) | `.ide` | ✅ extension probe only | **NO toggle — plugin only** (visual share would be VS Code window, not Cline’s own app; defer) |
+| **Kilo Code** (`kiloCode`) | VS Code/JetBrains extension + CLI | **No standalone desktop app** — extension for VS Code/JetBrains, not own `.app` | `.ide` | ✅ | **NO toggle — plugin only** |
+| **Roo Code** (`rooCode`) | VS Code extension (`RooCodeInc.roo-cline`) — **shut down 2025-05-15**, community fork ZooCode | **No standalone desktop app** | `.ide` | ✅ (legacy) | **NO toggle — plugin only (shut down)** |
+| **Augment** (`augment`) | VS Code extension | **No standalone desktop app** — IDE plugin, no own `.app` | `.ide` | ✅ | **NO toggle — plugin only** |
+| **Junie** (`junie`) | JetBrains plugin (+ terminal) | **No standalone desktop app** — lives inside IntelliJ (`/Applications/IntelliJ IDEA.app`) | `.ide` | ✅ `JunieParser` | **NO toggle — plugin only (JetBrains host)** |
+| **Antigravity, Gemini CLI, Kimi, Copilot CLI, Aider, Goose, OpenClaw, Prime Agent, Muse, OMP, etc.** | CLI / local file only | **No desktop twin** | `.cli` / `.automation` | — | **NO toggle** — CLI-only chip |
 
 **Source of truth:** `TokenUsage.swift:160` already has `known("codex-desktop", "Codex Desktop", .desktopApp)` and `known("codex-cli", "Codex CLI", .cli)` — we extend the same `UsageExecutionSourceResolver`/`ProviderBrand` pattern for Claude/Cursor/Warp etc., not a new registry.
 
@@ -55,8 +62,8 @@ Derived from **canonical source** `OpenBurnBarCore/Sources/OpenBurnBarKernel/Sha
 **Goal:** Produce the canonical “Both vs CLI-only” table as code, not docs, so B–E can branch off without re-researching.
 
 **Scope:**
-* Extend `OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/catalog.json` with per-provider `visualSurfaces: ["cli","desktop"]` or `["cli"]`.
-* Extend `TokenUsage.swift` `UsageExecutionSourceResolver` to add missing `desktopApp` siblings: `claude-desktop`, `cursor-ide` split (currently `cursor` conflates), `warp-desktop`, `windsurf-ide` (already), etc. Add `claude-desktop` `known("claude-desktop","Claude Desktop",.desktopApp)`.
+* Extend `OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/catalog.json` with per-provider `visualSurfaces: ["cli","desktop"]` or `["cli"]` — **audit-corrected:** `Both` = codex, claude, cursor, factory, minimax, z.ai, devin, hermes, warp, windsurf, opencode, ollama; `CLI-only` = antigravity, gemini, kimi, copilot, aider, etc.; `Plugin-only (NO toggle)` = cline, kilo, roo, augment, junie.
+* Extend `TokenUsage.swift` `UsageExecutionSourceResolver` to add missing `desktopApp` siblings: `claude-desktop`, `cursor-ide` split (currently `cursor` conflates), `factory-desktop`, `minimax-desktop` (`agent.minimax.io/download`), `zcode-desktop` (`zcode.z.ai`), `devin-desktop` (new `AgentProvider.devin` + `UsageExecutionSourceKind.desktopApp`), `warp-desktop`, etc. Add `claude-desktop` `known("claude-desktop","Claude Desktop",.desktopApp)` and `known("factory-desktop","Factory Desktop",.desktopApp)`.
 * Add `ProviderBrand.swift` icons for new desktop variants (reuse `PrimeAgentLogo` pattern).
 * Update `docs/PROVIDERS.md` Execution-Source table.
 
@@ -260,6 +267,7 @@ A (registry) ─┬─> B (prefs) ─┬─> C (engine) ─┬─> D (UI) ─┬
 2. Claude Desktop bundle ID: `com.anthropic.claudefordesktop` — confirm on 2-yr MBA that actually exists, or use `com.anthropic.claude-code` + `/Applications/Claude.app` path probe?
 3. Warp: treat `warp` CLI probe (GraphQL) as sufficient to show toggle, or require `Warp.app` bundle? **Proposal:** require bundle for Desktop segment, else disabled with “Install Warp — brew install warp” link.
 4. Hermes: is “Desktop App” for Hermes actually the Dashboard TUI window, or should Hermes be CLI-only? **Proposal:** treat Dashboard TUI as `desktopApp` visually (it’s an AppKit window via `SwarmWallpaperRuntime`), so toggle is meaningful — PTY = raw `hermes` log, Desktop = Dashboard chrome.
+5. **NEW — Factory/MiniMax/Z.ai/Devin registration:** Should `devin` be added as a new `AgentProvider.devin` case (with `AgentProviderIngestionCatalog.generated.swift` regen) or handled as generic “factory-like” automation? **Proposal:** add `AgentProvider.devin` (`devin-desktop` + `devin-cli`) to match Factory/MiniMax/Z.ai pattern, since `devin.ai/desktop` is a standalone Electron app with CLI `devin`. Also add `factory-desktop`, `minimax-desktop`, `zcode-desktop` as `desktopApp` siblings even though today they are `.automation`/`.cli`.
 
 > **Decision needed before B:** Q1 (Cursor split) — affects `catalog.json` + `MigrationV58` wording.
 
@@ -269,9 +277,9 @@ A (registry) ─┬─> B (prefs) ─┬─> C (engine) ─┬─> D (UI) ─┬
 
 ```
 OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/catalog.json  (A)
-OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/TokenUsage.swift (A, B)
-AgentLens/Models/ProviderBrand.swift (A)
-AgentLens/Services/Settings/Stores/VisualCapturePreferences.swift (B)  // NEW
+OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/TokenUsage.swift (A, B) — add `devin`, `factory-desktop`, `minimax-desktop`, `zcode-desktop`, `claude-desktop`
+AgentLens/Models/ProviderBrand.swift (A) — icons for Factory Desktop, MiniMax, ZCode, Devin
+AgentLens/Services/Settings/Stores/VisualCapturePreferences.swift (B)  // NEW — Both set now correctly 12 providers, not 13 with plugins
 AgentLens/Services/ComputerUse/Mac/MacScreenshotService.swift (C)
 AgentLens/Services/Media/ScreenCapturePipeline.swift (C)
 OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/MercuryLinuxCaptureEngine.swift (C)
