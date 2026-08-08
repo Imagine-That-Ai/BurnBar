@@ -93,8 +93,6 @@ final class ScreenCapturePipeline: NSObject {
         self.frameHandler = frameHandler
     }
 
-
-
     static func availableDisplays() -> [HermesRealtimeRelayDisplayDescriptor] {
         NSScreen.screens.enumerated().map { index, screen in
             let displayId = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)
@@ -300,7 +298,7 @@ final class ScreenCapturePipeline: NSObject {
             "com.apple.SecurityAgentHelper",
             "com.apple.keychainaccess",
             "com.apple.FileVaultRecoveryUtility",
-            "com.apple.systempreferences",
+            "com.apple.systempreferences"
         ]
         if let ownBundleIdentifier, !ownBundleIdentifier.isEmpty {
             excludedBundleIdentifiers.insert(ownBundleIdentifier)

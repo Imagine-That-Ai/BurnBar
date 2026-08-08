@@ -38,7 +38,7 @@ final class VisualCaptureSourceToggleTests: XCTestCase {
         // Audit-corrected Both set = 12 cases (cursor splits into cursor + cursorAgent)
         let both: [AgentProvider] = [
             .codex, .claudeCode, .cursor, .cursorAgent, .factory, .minimax,
-            .zai, .devin, .hermes, .warp, .openCode, .ollama,
+            .zai, .devin, .hermes, .warp, .openCode, .ollama
         ]
         XCTAssertEqual(both.count, 12)
         for provider in both {
@@ -199,7 +199,7 @@ final class VisualCaptureSourceToggleTests: XCTestCase {
             "surface": .string("cli_pty"),
             "trigger": .string("session_header"),
             "fallback_used": .bool(true),
-            "is_eligible": .bool(false),
+            "is_eligible": .bool(false)
         ]))
         // Extra key (PII) fails
         XCTAssertFalse(VisualCaptureTelemetry.isCompliantPayload([
@@ -208,7 +208,7 @@ final class VisualCaptureSourceToggleTests: XCTestCase {
             "trigger": .string("settings"),
             "window_title": .string("my secret"),
             "fallback_used": .bool(false),
-            "is_eligible": .bool(true),
+            "is_eligible": .bool(true)
         ]))
         // Path separator in value fails
         XCTAssertFalse(VisualCaptureTelemetry.isCompliantPayload([
@@ -216,7 +216,7 @@ final class VisualCaptureSourceToggleTests: XCTestCase {
             "surface": .string("cli_pty"),
             "trigger": .string("settings"),
             "fallback_used": .bool(false),
-            "is_eligible": .bool(true),
+            "is_eligible": .bool(true)
         ].merging(["provider": .string("/etc/passwd")]) { _, new in new }))
         // Invalid surface fails
         XCTAssertFalse(VisualCaptureTelemetry.isCompliantPayload([
@@ -224,7 +224,7 @@ final class VisualCaptureSourceToggleTests: XCTestCase {
             "surface": .string("hacked"),
             "trigger": .string("settings"),
             "fallback_used": .bool(false),
-            "is_eligible": .bool(true),
+            "is_eligible": .bool(true)
         ]))
     }
 

@@ -6,24 +6,16 @@ import OpenBurnBarCore
 /// Capsule segmented control for choosing the visual surface BurnBar shares:
 /// CLI terminal (PTY, always available) vs Desktop app window (when installed).
 ///
-/// Gated by `SettingsManager.shared.visualCaptureSourceToggleEnabled`.
+/// Gated by the injected `settingsManager.visualCaptureSourceToggleEnabled`.
 /// Ineligible providers (CLI-only or plugin-only) show a `CLI only` badge instead.
 @MainActor
 struct VisualCaptureToggle: View {
     let provider: AgentProvider
     @Bindable var settingsManager: SettingsManager
 
-    init(provider: AgentProvider, settingsManager: SettingsManager = .shared) {
+    init(provider: AgentProvider, settingsManager: SettingsManager) {
         self.provider = provider
         self.settingsManager = settingsManager
-    }
-
-    /// Convenience for previews / tests that own a VisualCapturePreferences directly.
-    init(provider: AgentProvider, preferences: VisualCapturePreferences) {
-        // This init is intentionally not used in production — keep for tests.
-        // Create a throwaway SettingsManager that shares the same UserDefaults suite if needed.
-        self.provider = provider
-        self.settingsManager = SettingsManager.shared
     }
 
     private var isEligible: Bool {
@@ -204,10 +196,9 @@ enum VisualCaptureBundleChecker {
                 return true
             }
         }
-        for path in desktopAppPaths(for: provider) {
-            if FileManager.default.fileExists(atPath: (path as NSString).expandingTildeInPath) {
-                return true
-            }
+        for path in desktopAppPaths(for: provider)
+            where FileManager.default.fileExists(atPath: (path as NSString).expandingTildeInPath) {
+            return true
         }
         return false
     }

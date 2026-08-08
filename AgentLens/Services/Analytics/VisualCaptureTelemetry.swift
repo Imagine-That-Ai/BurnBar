@@ -40,7 +40,7 @@ enum VisualCaptureTelemetry {
                 "surface": .string(surface.rawValue),
                 "trigger": .string(trigger.rawValue),
                 "fallback_used": .bool(fallbackUsed),
-                "is_eligible": .bool(isEligible),
+                "is_eligible": .bool(isEligible)
             ]
         )
     }
@@ -62,7 +62,7 @@ enum VisualCaptureTelemetry {
                 "surface": .string(surfaceRawValue),
                 "trigger": .string(trigger.rawValue),
                 "fallback_used": .bool(fallbackUsed),
-                "is_eligible": .bool(isEligible),
+                "is_eligible": .bool(isEligible)
             ]
         )
     }

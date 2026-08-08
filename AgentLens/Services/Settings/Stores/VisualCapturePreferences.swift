@@ -54,7 +54,7 @@ final class VisualCapturePreferences {
         .hermes,
         .warp,
         .openCode,
-        .ollama,
+        .ollama
     ]
 
     private let persistence: SettingsPersistenceCoordinator
@@ -97,7 +97,7 @@ final class VisualCapturePreferences {
         // Per-provider map — JSON blob [persistedToken: rawValue]
         if let json = persistence.optionalString(forKey: Self.perProviderKey),
            let data = json.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
+           let decoded = try? JSONDecoder().decode([String: String].self, from: data) { // try?-ok(malformed prefs JSON -> empty map)
             var mapped: [AgentProvider: VisualCaptureSource] = [:]
             for (token, rawValue) in decoded {
                 guard let provider = AgentProvider.fromPersistedToken(token),
@@ -164,7 +164,7 @@ final class VisualCapturePreferences {
             }
             return
         }
-        if let data = try? JSONEncoder().encode(rawDict),
+        if let data = try? JSONEncoder().encode(rawDict), // try?-ok(encode failure keeps prior persisted value)
            let json = String(data: data, encoding: .utf8) {
             persistence.set(json, forKey: Self.perProviderKey)
         }

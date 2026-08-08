@@ -725,8 +725,8 @@ extension AccountSwitcherSettingsView {
                                 .font(DesignSystem.Typography.caption)
                                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                                 .fixedSize(horizontal: false, vertical: true)
-                            if let cliType = group.cliType, let provider = cliType.agentProvider, SettingsManager.shared.visualCaptureSourceToggleEnabled {
-                                VisualCaptureToggle(provider: provider, settingsManager: SettingsManager.shared)
+                            if let cliType = group.cliType, let provider = cliType.agentProvider, settingsManager.visualCaptureSourceToggleEnabled {
+                                VisualCaptureToggle(provider: provider, settingsManager: settingsManager)
                             }
                         }
                     }

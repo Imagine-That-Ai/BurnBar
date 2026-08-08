@@ -78,7 +78,7 @@ public final class MacScreenshotService: Sendable {
         "com.openblock.opencode",
         // Back-compat variants
         "com.anthropic.claude-code",
-        "com.todesktop.230313mzl4w4u92.Cursor",
+        "com.todesktop.230313mzl4w4u92.Cursor"
     ]
 
     /// Deny-list — union of `ComputerUseDenyRegistry.builtInRules` bundleIds +
@@ -91,7 +91,7 @@ public final class MacScreenshotService: Sendable {
         "com.apple.keychainaccess",
         "com.apple.FileVaultRecoveryUtility",
         "com.apple.systempreferences",
-        "com.apple.Terminal",
+        "com.apple.Terminal"
     ]
 
     /// Runtime-expanded deny set (includes live registry). Computed lazily so tests can inject.
@@ -273,7 +273,7 @@ public final class MacScreenshotService: Sendable {
         let attrs: [NSAttributedString.Key: Any] = [
             .foregroundColor: NSColor.white,
             .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
-            .paragraphStyle: paragraph,
+            .paragraphStyle: paragraph
         ]
         let inset: CGFloat = 24
         let textRect = NSRect(x: inset, y: inset, width: size.width - inset * 2, height: size.height - inset * 2)
@@ -305,12 +305,12 @@ public final class MacScreenshotService: Sendable {
         // Strip CSI sequences: ESC [ ... m / K / J etc
         // Covers: \x1B[0m, \x1B[38;5;...m, \x1B[2K, etc.
         let csiPattern = "\u{1B}\\[[0-9;:?]*[ -/]*[@-~]"
-        if let regex = try? NSRegularExpression(pattern: csiPattern, options: []) {
+        if let regex = try? NSRegularExpression(pattern: csiPattern, options: []) { // try?-ok(static CSI pattern always compiles)
             out = regex.stringByReplacingMatches(in: out, options: [], range: NSRange(out.startIndex..., in: out), withTemplate: "")
         }
         // Strip OSC sequences: ESC ] ... BEL or ESC \
         let oscPattern = "\u{1B}\\][^\u{07}]*(\u{07}|\u{1B}\\\\)"
-        if let regex = try? NSRegularExpression(pattern: oscPattern, options: []) {
+        if let regex = try? NSRegularExpression(pattern: oscPattern, options: []) { // try?-ok(static OSC pattern always compiles)
             out = regex.stringByReplacingMatches(in: out, options: [], range: NSRange(out.startIndex..., in: out), withTemplate: "")
         }
         // Strip remaining single ESC + char
@@ -338,16 +338,16 @@ public final class MacScreenshotService: Sendable {
                 attributes: [.posixPermissions: 0o700]
             )
         } else {
-            try? fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+            try? fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) // try?-ok(best-effort harden existing dir)
             // Also harden parent session dir
             let parent = directory.deletingLastPathComponent()
-            try? fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: parent.path)
+            try? fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: parent.path) // try?-ok(best-effort harden session parent)
         }
 
         let filename = "\(String(format: "%06d", entryIndexHint))-\(sanitized(label)).png"
         let url = directory.appendingPathComponent(filename, isDirectory: false)
         try png.write(to: url, options: [.atomic])
-        try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path) // try?-ok(best-effort harden capture file)
 
         return Capture(
             pngURL: url,
