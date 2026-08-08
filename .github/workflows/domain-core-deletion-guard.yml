@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Check out trusted default-branch evaluator
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           path: trusted
@@ -38,7 +38,7 @@ jobs:
           fetch-depth: 0
 
       - name: Check out candidate as data only
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
           path: candidate

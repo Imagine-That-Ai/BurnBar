@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Production health synthetic
         env:
@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: OWASP ZAP baseline (burnbar.ai)
         uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
@@ -72,9 +72,9 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
 
@@ -106,7 +106,7 @@ jobs:
     needs: [prod-health-synthetic, website-zap-baseline]
     if: always() && contains(needs.*.result, 'failure')
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
       - name: Record ops-confidence failure (per-lane dedupe; comment, never silent-skip)
         uses: ./.github/actions/ops-failure-issue
         with:
@@ -126,7 +126,7 @@ jobs:
     needs: [deploy-freshness]
     if: always() && contains(needs.*.result, 'failure')
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
       - name: Record deploy-freshness failure
         uses: ./.github/actions/ops-failure-issue
         with:
@@ -150,7 +150,7 @@ jobs:
     # so a STALE open issue from another lane can never suppress this lane.
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
       - name: Close resolved ops-confidence failure issue
         uses: ./.github/actions/ops-failure-issue
         with:
@@ -163,7 +163,7 @@ jobs:
     needs: [deploy-freshness]
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
       - name: Close resolved deploy-freshness failure issue
         uses: ./.github/actions/ops-failure-issue
         with:
