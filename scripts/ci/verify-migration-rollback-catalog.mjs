@@ -22,8 +22,8 @@ const INTENTIONAL_DIVERGENCES = {
     reason: "The app copy qualifies OpenBurnBarIdentity through the imported OpenBurnBarCore module.",
   },
   v46_drain_target_per_provider: {
-    app: "4fb660cde3c6c4ddacee691419d25d3c8702c8cb06dd7cc52aba30b363978897",
-    shared: "d0c286b75ada1d59c257a3a9cb8c782ffb84f486d1b0b9c59644341962eb2030",
+    app: "4861dc4526404b006e785f08b3b4c1f227500bfda7917130a8833df9b15f7aaf",
+    shared: "e89d925b947fc9126f86bcfbbe7bdc8b19c0a3701aded9b0a22b7b4d95fbf426",
     appExternalDependencies: [
       {
         file: "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SwitcherProfile.swift",
@@ -35,7 +35,7 @@ const INTENTIONAL_DIVERGENCES = {
       },
     ],
     sharedDependencies: ["providerIDForSwitcherCLIType"],
-    reason: "The shared-data target cannot depend on the app enum; both its frozen map and the app's enum dependencies are pinned.",
+    reason: "The shared-data target cannot depend on the app enum; both its frozen map and the app's enum dependencies are pinned. Fingerprints refreshed for Junie + Prime Agent switcher providerIDs.",
   },
 };
 

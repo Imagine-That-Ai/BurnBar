@@ -587,6 +587,10 @@ extension OpenBurnBarDatabase {
             return "kimi"
         case "pi":
             return "pi-agent"
+        case "junie":
+            return "junie"
+        case "prime-agent":
+            return "prime-agent"
         default:
             return nil
         }
