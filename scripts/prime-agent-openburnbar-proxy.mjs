@@ -233,15 +233,17 @@ function readModelsJson(modelsPath) {
   return parsed;
 }
 
-/** Redact apiKey before any console/JSON output. */
+/**
+ * Strip apiKey from any console/JSON output.
+ * Do not emit a redacted apiKey string — CodeQL still treats that field as sensitive.
+ */
 function redactProviderForDisplay(entry) {
   if (!entry || typeof entry !== "object") return entry;
-  const copy = { ...entry };
-  if ("apiKey" in copy) {
-    const configured = typeof copy.apiKey === "string" && copy.apiKey.length > 0;
-    copy.apiKey = configured ? "[redacted]" : "[missing]";
-  }
-  return copy;
+  const { apiKey, ...rest } = entry;
+  return {
+    ...rest,
+    apiKeyConfigured: typeof apiKey === "string" && apiKey.length > 0,
+  };
 }
 
 function writeModelsJson(modelsPath, data) {
@@ -304,7 +306,7 @@ async function main() {
     console.log(`  api: ${safe.api}`);
     console.log(`  models: ${safe.models?.length ?? 0}`);
     console.log(`  first: ${safe.models?.[0]?.id ?? "-"}`);
-    console.log(`  apiKey: ${safe.apiKey}`);
+    console.log(`  apiKeyConfigured: ${safe.apiKeyConfigured}`);
     console.log(`  path: ${modelsPath}`);
     process.exit(0);
   }
