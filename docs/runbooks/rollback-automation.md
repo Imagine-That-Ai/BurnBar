@@ -154,6 +154,12 @@ defaults write com.openburnbar.app visualCaptureSourceToggleEnabled -bool NO
 
 Also stored per-launch via `SettingsPersistenceCoordinator` keys: `visualCaptureGlobalDefault` (`cli_pty`|`desktop_app`) and `visualCapturePerProvider` (JSON `[persistedToken: rawValue]`). Clearing `visualCapturePerProvider` resets all per-provider overrides to the global default. No Cloud Run revision pin needed for this flag — it is local-only.
 
+**E2E capture/UI rollback (Subagent E):** flipping the flag off instantly restores the pre-toggle
+behavior with no code revert or build: `ScreenCapturePipeline` stays idle (`stream == nil`, no
+`SCShareableContent`/`SCStream`/`CVDisplayLink` wake) and `MediaSessionCoordinator` skips
+`MediaBudgetStatusStore` debit; Settings → Providers shows no toggle (row height unchanged) and
+the session header pill is hidden. Verify with `defaults read com.openburnbar.app visualCaptureSourceToggleEnabled` → `0`.
+
 ## Related Runbooks
 
 - [SLO thresholds](slos.md)

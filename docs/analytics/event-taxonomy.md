@@ -361,6 +361,17 @@ Also emits Tier 1 `error.handled` + `consent.analytics.granted`.
 
 ---
 
+## Tier 2 — Visual Capture (`platform: macos`)
+
+Privacy-preserving toggle for *which surface* BurnBar visually shares per provider
+(PTY terminal vs Desktop app window). No screen contents, window titles, or pixel hashes are ever sent.
+
+| Event                              | Category       | Properties                                                                 |
+|------------------------------------|----------------|-----------------------------------------------------------------------------|
+| `visual_capture.surface_selected`  | primary_action | `provider` (persistedToken), `surface` (`cli_pty`\|`desktop_app`), `trigger` (`settings`\|`session_header`\|`mobile`), `fallback_used:bool`, `is_eligible:bool` |
+
+> Fallback (`fallback_used=true`) covers: Screen Recording denied, Desktop bundle not installed, or denied-window filter. Eligible providers are the audit-corrected Both set (12 `AgentProvider` cases). Never includes `windowTitle`, `bundleId` beyond `persistedToken`, or `sha256Hex`.
+
 ## Tier 2 — Android surfaces (`platform: android`)
 
 The Android app reuses the shared **chat** (`chat.message.sent`, `chat.generation.*`,
