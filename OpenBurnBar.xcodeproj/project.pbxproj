@@ -5304,7 +5304,7 @@
 				7D8491C56ECA922EC60AEF9C /* GRDB-SQLCipher */,
 				4F907EAB0DD37C399F3C2E46 /* OpenBurnBarCore */,
 			);
-			name = Packages;
+			path = Packages;
 			sourceTree = "<group>";
 		};
 		01672476C317896071A3B037 /* Models */ = {
