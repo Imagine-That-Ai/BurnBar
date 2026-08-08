@@ -29,4 +29,12 @@ class ProviderLogoViewTest {
         assertEquals(R.drawable.paired_mac_logo, ProviderLogo.drawableForIdentity(identity))
         assertEquals(R.drawable.paired_mac_logo, ProviderLogo.drawableForAnyIdentifier(identity.id))
     }
+
+    @Test
+    fun primeAgentAndMuseResolveDedicatedLogoAssetsOnBothLookupSurfaces() {
+        assertEquals(R.drawable.logo_prime_agent, ProviderLogo.drawableFor(AgentProvider.PRIME_AGENT))
+        assertEquals(R.drawable.logo_prime_agent, AgentProvider.PRIME_AGENT.logoRes)
+        assertEquals(R.drawable.logo_meta, ProviderLogo.drawableFor(AgentProvider.MUSE))
+        assertEquals(R.drawable.logo_meta, AgentProvider.MUSE.logoRes)
+    }
 }

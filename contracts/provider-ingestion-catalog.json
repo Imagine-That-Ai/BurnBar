@@ -608,7 +608,7 @@
       "filePattern": "*.jsonl",
       "ingestion": "local-parser",
       "coverageNote": "Local parser registered in ParserRegistry.",
-      "xdgBehavior": "xdg-data-home",
+      "xdgBehavior": "xdg-data",
       "symlinkBehavior": "identity-on-resolved-path",
       "quotaSignal": false
     }

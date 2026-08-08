@@ -41,7 +41,9 @@ const REQUIRED_PROVIDER_IDS = [
   'grok',
   'mimo',
   'cursor-agent',
-  'junie'
+  'junie',
+  'prime-agent',
+  'muse'
 ] as const;
 
 describe('providerPathRegistry', () => {
@@ -56,17 +58,19 @@ describe('providerPathRegistry', () => {
 
   it('makes non-parser coverage explicit instead of implying local ingestion', () => {
     expect(providerCoverageCounts()).toEqual({
-      total: 33,
-      localParser: 29,
+      total: 35,
+      localParser: 31,
       apiBacked: 4,
       unavailable: 0
     });
     expect(providerPathById('openclaude')?.coverage).toBe('local-parser');
     expect(providerPathById('omp')?.coverage).toBe('local-parser');
+    expect(providerPathById('prime-agent')?.coverage).toBe('local-parser');
+    expect(providerPathById('muse')?.coverage).toBe('local-parser');
     expect(providerPathById('openai')?.coverage).toBe('api-backed');
     expect(providerPathById('mimo')?.coverage).toBe('api-backed');
     expect(providerCoverageSummary()).toBe(
-      '29 local parsers, 4 API-backed sources, 0 unavailable local sources (33 canonical providers)'
+      '31 local parsers, 4 API-backed sources, 0 unavailable local sources (35 canonical providers)'
     );
   });
 
@@ -87,6 +91,8 @@ describe('providerPathRegistry', () => {
     expect(providerPathById('factory-droid')?.providerId).toBe('droid');
     expect(providerPathById('x.ai')?.providerId).toBe('grok');
     expect(providerPathById('JetBrains Junie')?.providerId).toBe('junie');
+    expect(providerPathById('prime')?.providerId).toBe('prime-agent');
+    expect(providerPathById('meta-muse')?.providerId).toBe('muse');
     expect(providerPathById('unknown-vendor')).toBeUndefined();
   });
 
@@ -117,7 +123,7 @@ describe('providerPathRegistry', () => {
     expect(paths.length).toBe(LINUX_PROVIDER_PATH_REGISTRY.length);
   });
 
-  it('table-driven golden resolutions for all 33 providers under custom XDG', () => {
+  it('table-driven golden resolutions for all 35 providers under custom XDG', () => {
     const home = '/home/alice';
     const env = { XDG_CONFIG_HOME: '/xdg/config', XDG_DATA_HOME: '/xdg/data' };
     const expected: Record<string, string> = {
@@ -153,7 +159,9 @@ describe('providerPathRegistry', () => {
       kimi: '/home/alice/.kimi/sessions',
       mimo: '/home/alice/.codex',
       'cursor-agent': '/home/alice/.cursor-agent/sessions',
-      junie: '/home/alice/.junie/sessions'
+      junie: '/home/alice/.junie/sessions',
+      'prime-agent': '/home/alice/.prime/agent/sessions',
+      muse: '/xdg/data/muse/sessions'
     };
     for (const row of LINUX_PROVIDER_PATH_REGISTRY) {
       expect(resolveProviderLogicalPath(row.logicalPath, home, env)).toBe(expected[row.providerId]);
