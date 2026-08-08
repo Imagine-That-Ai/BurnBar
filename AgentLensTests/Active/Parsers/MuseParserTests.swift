@@ -32,8 +32,14 @@ final class MuseParserTests: XCTestCase {
     }
 
     private func envelope(_ dict: [String: Any]) -> String {
-        let data = try! JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
-        return String(data: data, encoding: .utf8)!
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys]),
+            let json = String(data: data, encoding: .utf8)
+        else {
+            XCTFail("Failed to encode Muse envelope JSON")
+            return "{}"
+        }
+        return json
     }
 
     private func metadataEnvelope(sessionId: String = "sess-001", workspace: String = "/tmp/project-a", model: String = "muse-spark-1.2-contributor", provider: String = "meta") -> String {

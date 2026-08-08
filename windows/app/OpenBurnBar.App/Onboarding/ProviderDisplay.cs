@@ -47,6 +47,9 @@ public static class ProviderDisplay
         AgentProviderBrand.Mimo => "MiMo",
         AgentProviderBrand.CursorAgent => "Cursor Agent",
         AgentProviderBrand.OpenBurnBar => "OpenBurnBar",
+        AgentProviderBrand.Junie => "Junie",
+        AgentProviderBrand.PrimeAgent => "Prime Agent",
+        AgentProviderBrand.Muse => "Muse",
         _ => throw new ArgumentOutOfRangeException(nameof(provider), provider, null),
     };
 }

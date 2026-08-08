@@ -82,10 +82,8 @@ public final class PrimeAgentParser: LogParser, Sendable {
         // loophole that would silently miss nested sessions.
         var candidates: [URL] = []
         if let enumerator = fm.enumerator(at: sessionsURL, includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey], options: [.skipsHiddenFiles]) {
-            for case let url as URL in enumerator {
-                if url.pathExtension == "jsonl" {
-                    candidates.append(url)
-                }
+            for case let url as URL in enumerator where url.pathExtension == "jsonl" {
+                candidates.append(url)
             }
         } else if let contents = try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isRegularFileKey]) {
             candidates = contents.filter { $0.pathExtension == "jsonl" }

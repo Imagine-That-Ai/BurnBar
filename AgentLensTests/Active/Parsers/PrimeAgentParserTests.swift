@@ -98,7 +98,7 @@ final class PrimeAgentParserTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
         let content = [
             sessionEnvelope(),
-            userMessage(text: "just a prompt, no assistant turn"),
+            userMessage(text: "just a prompt, no assistant turn")
         ].joined(separator: "\n")
         _ = try writeSessionFile(dir: dir, content: content)
         let result = try await PrimeAgentParser(logDirectoryOverride: dir.path).parse()
@@ -113,7 +113,7 @@ final class PrimeAgentParserTests: XCTestCase {
         let content = [
             sessionEnvelope(id: "sess-exact", cwd: "/home/alice/project-x"),
             userMessage(text: "build me a parser"),
-            assistantMessage(model: "muse-spark-1.2", input: 1200, output: 800, cacheRead: 100, cacheWrite: 50, cost: 0.042, text: "done"),
+            assistantMessage(model: "muse-spark-1.2", input: 1200, output: 800, cacheRead: 100, cacheWrite: 50, cost: 0.042, text: "done")
         ].joined(separator: "\n")
         _ = try writeSessionFile(dir: dir, content: content)
         let result = try await PrimeAgentParser(logDirectoryOverride: dir.path).parse()
@@ -139,7 +139,7 @@ final class PrimeAgentParserTests: XCTestCase {
             userMessage(),
             assistantMessage(model: "muse-spark-1.2", input: 100, output: 50, cost: 0.01, text: "a"),
             userMessage(text: "more"),
-            assistantMessage(model: "muse-spark-1.2", input: 200, output: 150, cacheRead: 30, cost: 0.02, text: "b"),
+            assistantMessage(model: "muse-spark-1.2", input: 200, output: 150, cacheRead: 30, cost: 0.02, text: "b")
         ].joined(separator: "\n")
         _ = try writeSessionFile(dir: dir, content: content)
         let result = try await PrimeAgentParser(logDirectoryOverride: dir.path).parse()
@@ -159,7 +159,7 @@ final class PrimeAgentParserTests: XCTestCase {
         // not be re-priced via the catalog. Only *missing* `cost` triggers fallback.
         let content = [
             sessionEnvelope(id: "sess-free"),
-            assistantMessage(model: "gpt-4o", input: 1000, output: 500, cost: 0.0, text: "explicit free turn"),
+            assistantMessage(model: "gpt-4o", input: 1000, output: 500, cost: 0.0, text: "explicit free turn")
         ].joined(separator: "\n")
         _ = try writeSessionFile(dir: dir, content: content)
         let result = try await PrimeAgentParser(logDirectoryOverride: dir.path).parse()
@@ -175,7 +175,7 @@ final class PrimeAgentParserTests: XCTestCase {
             sessionEnvelope(id: "sess-fallback"),
             """
             {"type":"message","timestamp":"2026-08-01T12:00:01Z","message":{"role":"assistant","model":"gpt-4o","provider":"prime","content":[{"type":"text","text":"no cost field"}],"usage":{"input":1000,"output":500,"cacheRead":0,"cacheWrite":0}}}
-            """,
+            """
         ].joined(separator: "\n")
         _ = try writeSessionFile(dir: dir, content: content)
         let result = try await PrimeAgentParser(logDirectoryOverride: dir.path).parse()
@@ -192,7 +192,7 @@ final class PrimeAgentParserTests: XCTestCase {
         let content = [
             sessionEnvelope(id: "sess-trunc"),
             assistantMessage(model: "muse-spark-1.2", input: 400, output: 200, cost: 0.015, text: "good turn"),
-            truncatedTail,
+            truncatedTail
         ].joined(separator: "\n")
         _ = try writeSessionFile(dir: dir, content: content)
         let result = try await PrimeAgentParser(logDirectoryOverride: dir.path).parse()
@@ -209,7 +209,7 @@ final class PrimeAgentParserTests: XCTestCase {
             "not json at all {",
             assistantMessage(model: "muse-spark-1.2", input: 10, output: 20, cost: 0.001, text: "still here"),
             "{\"type\":\"message\", \"oops\": }",
-            assistantMessage(model: "muse-spark-1.2", input: 30, output: 40, cost: 0.002, text: "also here"),
+            assistantMessage(model: "muse-spark-1.2", input: 30, output: 40, cost: 0.002, text: "also here")
         ].joined(separator: "\n")
         _ = try writeSessionFile(dir: dir, content: content)
         let result = try await PrimeAgentParser(logDirectoryOverride: dir.path).parse()
@@ -226,7 +226,7 @@ final class PrimeAgentParserTests: XCTestCase {
         let content = [
             sessionEnvelope(id: "sess-multi"),
             assistantMessage(model: "muse-spark-1.2", input: 100, output: 100, cost: 0.01, text: "first backend"),
-            assistantMessage(model: "gpt-5.6-luna", input: 200, output: 300, cost: 0.05, text: "second backend"),
+            assistantMessage(model: "gpt-5.6-luna", input: 200, output: 300, cost: 0.05, text: "second backend")
         ].joined(separator: "\n")
         _ = try writeSessionFile(dir: dir, content: content)
         let result = try await PrimeAgentParser(logDirectoryOverride: dir.path).parse()
@@ -244,7 +244,7 @@ final class PrimeAgentParserTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
         let content = [
             sessionEnvelope(id: "sess-cache"),
-            assistantMessage(model: "muse-spark-1.2", input: 1000, output: 500, cacheRead: 8000, cacheWrite: 2000, cost: 0.08, text: "cached"),
+            assistantMessage(model: "muse-spark-1.2", input: 1000, output: 500, cacheRead: 8000, cacheWrite: 2000, cost: 0.08, text: "cached")
         ].joined(separator: "\n")
         _ = try writeSessionFile(dir: dir, content: content)
         let result = try await PrimeAgentParser(logDirectoryOverride: dir.path).parse()
@@ -263,7 +263,7 @@ final class PrimeAgentParserTests: XCTestCase {
         try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
         let content = [
             sessionEnvelope(id: "sess-nested", cwd: "/tmp/nested"),
-            assistantMessage(model: "muse-spark-1.2", input: 77, output: 33, cost: 0.009, text: "nested"),
+            assistantMessage(model: "muse-spark-1.2", input: 77, output: 33, cost: 0.009, text: "nested")
         ].joined(separator: "\n")
         try content.write(to: nested.appendingPathComponent("session.jsonl"), atomically: true, encoding: .utf8)
         let result = try await PrimeAgentParser(logDirectoryOverride: dir.path).parse()
@@ -279,7 +279,7 @@ final class PrimeAgentParserTests: XCTestCase {
         for i in 1...3 {
             let content = [
                 sessionEnvelope(id: "sess-\(i)", cwd: "/tmp/p\(i)"),
-                assistantMessage(model: "muse-spark-1.2", input: 10*i, output: 5*i, cost: Double(i)*0.001, text: "hi-\(i)"),
+                assistantMessage(model: "muse-spark-1.2", input: 10*i, output: 5*i, cost: Double(i)*0.001, text: "hi-\(i)")
             ].joined(separator: "\n")
             _ = try writeSessionFile(dir: dir, name: "sess-\(i).jsonl", content: content)
         }
@@ -295,7 +295,7 @@ final class PrimeAgentParserTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
         let content = [
             sessionEnvelope(id: "sess-jsonl"),
-            assistantMessage(model: "muse-spark-1.2", input: 100, output: 100, cost: 0.01, text: "ok"),
+            assistantMessage(model: "muse-spark-1.2", input: 100, output: 100, cost: 0.01, text: "ok")
         ].joined(separator: "\n")
         _ = try writeSessionFile(dir: dir, name: "good.jsonl", content: content)
         try "noise".write(to: dir.appendingPathComponent("noise.txt"), atomically: true, encoding: .utf8)
@@ -309,7 +309,7 @@ final class PrimeAgentParserTests: XCTestCase {
         // no cwd in session envelope, file is named session-001.jsonl so sessionId derives from filename
         let content = [
             "{\"type\":\"session\",\"timestamp\":\"2026-08-01T12:00:00Z\"}",
-            assistantMessage(model: "muse-spark-1.2", input: 50, output: 50, cost: 0.005, text: "x"),
+            assistantMessage(model: "muse-spark-1.2", input: 50, output: 50, cost: 0.005, text: "x")
         ].joined(separator: "\n")
         _ = try writeSessionFile(dir: dir, name: "my-session.jsonl", content: content)
         let result = try await PrimeAgentParser(logDirectoryOverride: dir.path).parse()
@@ -325,7 +325,7 @@ final class PrimeAgentParserTests: XCTestCase {
         let content = [
             sessionEnvelope(id: "conv-1", cwd: "/tmp/app"),
             userMessage(text: "What is prime?"),
-            assistantMessage(model: "muse-spark-1.2", input: 20, output: 30, cost: 0.002, text: "A large prime is 997."),
+            assistantMessage(model: "muse-spark-1.2", input: 20, output: 30, cost: 0.002, text: "A large prime is 997.")
         ].joined(separator: "\n")
         _ = try writeSessionFile(dir: dir, content: content)
         let result = try await PrimeAgentParser(logDirectoryOverride: dir.path).parse()
