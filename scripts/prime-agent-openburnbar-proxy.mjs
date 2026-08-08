@@ -226,12 +226,23 @@ function readModelsJson(modelsPath) {
 function writeModelsJson(modelsPath, data) {
   const dir = path.dirname(modelsPath);
   fs.mkdirSync(dir, { recursive: true });
-  // Backup existing
-  if (fs.existsSync(modelsPath)) {
-    const backup = `${modelsPath}.bak`;
-    try { fs.copyFileSync(modelsPath, backup); } catch {}
+  const payload = JSON.stringify(data, null, 2) + "\n";
+  // Atomic replace avoids TOCTOU between exists/check and write (CodeQL js/file-system-race).
+  const tmpPath = `${modelsPath}.${process.pid}.tmp`;
+  fs.writeFileSync(tmpPath, payload, "utf8");
+  try {
+    try {
+      fs.copyFileSync(modelsPath, `${modelsPath}.bak`);
+    } catch (err) {
+      if (err?.code !== "ENOENT") {
+        // Best-effort backup only; primary write still proceeds via rename.
+      }
+    }
+    fs.renameSync(tmpPath, modelsPath);
+  } catch (err) {
+    try { fs.unlinkSync(tmpPath); } catch {}
+    throw err;
   }
-  fs.writeFileSync(modelsPath, JSON.stringify(data, null, 2) + "\n", "utf8");
 }
 
 async function main() {
@@ -271,7 +282,8 @@ async function main() {
     console.log(`  api: ${entry.api}`);
     console.log(`  models: ${entry.models?.length ?? 0}`);
     console.log(`  first: ${entry.models?.[0]?.id ?? "-"}`);
-    console.log(`  apiKey: ${entry.apiKey?.slice(0, 40)}...`);
+    // Never print apiKey material (shell resolver or secret) — presence only.
+    console.log(`  apiKey: ${typeof entry.apiKey === "string" && entry.apiKey.length > 0 ? "configured (redacted)" : "missing"}`);
     console.log(`  path: ${modelsPath}`);
     process.exit(0);
   }
