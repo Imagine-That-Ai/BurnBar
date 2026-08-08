@@ -253,7 +253,7 @@ android {
         applicationId = "com.openburnbar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 41
+        versionCode = 42
         versionName = openBurnBarAppVersionName.get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
