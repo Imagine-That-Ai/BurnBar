@@ -225,11 +225,6 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/OpenBurnBar.entitlements
-        ENABLE_HARDENED_RUNTIME: YES
-        # The daemon authenticates this app over the local RPC socket and
-        # requires both CodeDirectory flags. Keep the Xcode product compliant
-        # before any local/distribution re-signing step runs.
-        OTHER_CODE_SIGN_FLAGS: --options runtime,library
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar
         INFOPLIST_KEY_NSSupportsAutomaticTermination: NO
@@ -237,6 +232,17 @@ targets:
         SWIFT_ENABLE_EXPLICIT_MODULES: NO
         GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) SQLITE_HAS_CODEC=1"
         OTHER_CFLAGS: "$(inherited) -DSQLITE_HAS_CODEC"
+      configs:
+        Release:
+          ENABLE_HARDENED_RUNTIME: YES
+          # The daemon authenticates this app over the local RPC socket and
+          # requires both CodeDirectory flags. Keep the Xcode Release product
+          # compliant before any local/distribution re-signing step runs.
+          # Deliberately Release-only: the Debug XCTest host builds with
+          # CODE_SIGNING_ALLOWED=NO in CI, and carrying these flags there
+          # only perturbs the ad-hoc-signed test host (observed as an
+          # XCTest hang on CI runners) without protecting anything.
+          OTHER_CODE_SIGN_FLAGS: --options runtime,library
     postBuildScripts:
       - name: Configure Firebase Auth Resources
         # GoogleService-Info.plist is gitignored and may be absent on fresh
