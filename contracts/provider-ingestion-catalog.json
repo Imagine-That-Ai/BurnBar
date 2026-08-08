@@ -491,16 +491,15 @@
       "displayLabel": "Devin",
       "aliases": [
         "devin-desktop",
-        "devin-cli",
-        "windsurf"
+        "devin-cli"
       ],
       "paths": {
         "linux": "~/.config/Devin/sessions",
         "macos": "~/Library/Application Support/Devin/sessions"
       },
       "filePattern": "*.jsonl",
-      "ingestion": "local-parser",
-      "coverageNote": "Local parser registered in ParserRegistry. Successor to Windsurf (Devin Desktop) per devin.ai/blog/windsurf-is-now-devin-desktop.",
+      "ingestion": "unavailable",
+      "coverageNote": "Devin Desktop supersedes Windsurf branding, but no Devin session parser is registered yet. Keep the provider visible with unavailable local usage until a real parser ships.",
       "xdgBehavior": "home-relative",
       "symlinkBehavior": "identity-on-resolved-path",
       "quotaSignal": false
