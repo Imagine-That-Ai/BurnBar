@@ -353,7 +353,7 @@ struct InboxRowView: View {
 
     var body: some View {
         Button(action: onSelect) {
-            GlassCard(interactive: true) {
+            GlassCard(interactive: false) {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                     topLine
                     titleLine
