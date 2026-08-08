@@ -1,0 +1,226 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import "@styles/bench.css";
+import {
+  BENCH,
+  ALL_STACKS,
+  scopeLabel,
+  FAMILIES,
+  MODEL_CLASS,
+  HARNESS_CLASS,
+  classFor,
+  harnessDisplay,
+  modelDisplay,
+  fmtPct,
+  fmtCost,
+  fmtWall,
+  fmtTokens,
+  fmtInt,
+  fmtGeneratedAt
+} from "@data/bench";
+
+const mcls = (id: string): string => classFor(MODEL_CLASS, id);
+const hcls = (id: string): string => classFor(HARNESS_CLASS, id);
+
+const generatedAt = fmtGeneratedAt(BENCH.generated_at_utc);
+const shaShort = BENCH.source.runs_sha256.slice(0, 12);
+---
+
+<BaseLayout
+  title="BurnBench report — methodology & full data"
+  description="How BurnBench measures agent harness × model stacks: task families, strict vs solution rates, Wilson confidence intervals, confidence tiers, Arena protocol, and the complete published data table."
+>
+  {/* ──────────────── 1 · HERO ──────────────── */}
+  <section class="bb-hero" aria-labelledby="report-hero-h">
+    <div class="container container--wide bb-hero__inner">
+      <nav class="bb-bread mono" aria-label="Breadcrumbs">
+        <a href="/bench">BurnBench</a>
+        <span aria-hidden="true">→</span>
+        <span>Report</span>
+      </nav>
+      <span class="eyebrow eyebrow--ember">BurnBench · report</span>
+      <h1 id="report-hero-h" class="bb-hero__h">
+        Methodology first.
+        <span class="bb-hero__hb">Then every number we have.</span>
+      </h1>
+      <p class="bb-hero__lead">
+        This page is the full public report: how the suite is built, what the rates mean, how
+        the statistics work, and the complete overall data table exactly as exported. Everything
+        traces to <code>bench.json</code> — schema v{BENCH.schema_version}, generated {generatedAt}.
+      </p>
+
+      <ul class="bb-chips mono" aria-label="Report scope">
+        <li><span class="bb-dot"></span> {FAMILIES.length} published task families</li>
+        <li><span class="bb-dot bb-dot--mercury"></span> {fmtInt(BENCH.source.cells_measured)} cells measured</li>
+        <li><span class="bb-dot bb-dot--exact"></span> runs {shaShort}…</li>
+      </ul>
+
+      <div class="bb-hero__ctas">
+        <a class="btn btn--ember" href="/data/bench.json" download
+          >Download bench.json <span class="btn-arrow" aria-hidden="true">↓</span></a
+        >
+        <a class="btn btn--ghost" href="/bench">Leaderboard</a>
+        <a class="btn btn--ghost" href="/bench/arena">Arena</a>
+      </div>
+    </div>
+  </section>
+
+  {/* ──────────────── 2 · METHODOLOGY ──────────────── */}
+  <section class="bb-section bb-section--mercury" aria-labelledby="method-h">
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--mercury">Methodology</span>
+        <h2 id="method-h" class="bb-sec-h">How the numbers are made.</h2>
+      </header>
+
+      <div class="bb-method">
+        <article class="bb-methcard">
+          <h3>The suite.</h3>
+          <p>
+            Tasks follow the <code>NN_name</code> convention and are tagged by family, language,
+            framework, platform, and difficulty. Thirteen families span the work agents actually
+            get asked to do: <code>refactor</code>, <code>bugfix</code>, <code>feature</code>,
+            <code>performance</code>, <code>systems</code>, <code>parser</code>,
+            <code>agentic-ops</code>, and the experiential families — <code>visual-svg</code>,
+            <code>visual-canvas</code>, <code>visual-3d</code>, <code>game</code>,
+            <code>sim-game</code>, <code>ui-build</code>.
+          </p>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Two validators.</h3>
+          <p>
+            <strong>Script-validated</strong> tasks run a <code>verify.sh</code> pass/fail gate.
+            <strong>Human-validated</strong> tasks (every experiential family) run mechanical
+            packaging checks, then go to the <a href="/bench/arena">Arena</a> for blind pairwise
+            judgment — a script can't grade whether a game feels finished.
+          </p>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Strict rate vs solution rate.</h3>
+          <p>
+            The <strong>solution rate</strong> credits a cell when the deliverable solves the
+            task under the suite's solution checks. The <strong>strict rate</strong> is the
+            harsher gate: every mechanical check green, no partial credit, no packaging
+            exceptions. The gap between them is visible on every leaderboard bar — a wide gap
+            means a stack ships almost-right work.
+          </p>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Statistics you can audit.</h3>
+          <ul>
+            <li>Every rate carries a <strong>Wilson 95% confidence interval</strong> at the cell's n.</li>
+            <li>
+              <code>n &lt; 10</code> ⇒ <strong>low confidence</strong>, and the stack may not be
+              ranked first.
+            </li>
+            <li>
+              <strong>Inferred</strong> cells are shrinkage-pooled estimates — shown dashed,
+              never presented as measured.
+            </li>
+            <li>
+              Arena ratings are <strong>Bradley-Terry</strong> with bootstrap CIs, published only
+              at 30+ votes per stack.
+            </li>
+          </ul>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Provenance &amp; freshness.</h3>
+          <p>
+            Each export pins <code>generated_at_utc</code> and a <code>runs_sha256</code> over the
+            underlying run set, so consumers can reject stale files. This build:
+            <strong>{generatedAt}</strong>, runs <code>{shaShort}…</code>,
+            {fmtInt(BENCH.source.cells_measured)} cells measured,
+            {fmtInt(BENCH.source.cells_excluded)} excluded (superseded or invalid), trees
+            <code>{BENCH.source.trees.join(", ")}</code>.
+          </p>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Cost &amp; speed.</h3>
+          <p>
+            <code>cost_usd_median</code> is the median per-task dollar cost at estimated-tier
+            pricing; <code>wall_seconds_median</code> and <code>tokens_median</code> are medians
+            over the same cells. The <a href="/bench#pareto">Pareto view</a> plots cost against
+            quality so a cheap stack that almost ships is priced honestly against an expensive
+            one that does.
+          </p>
+        </article>
+      </div>
+
+      <p class="bb-note bb-note--spaced">
+        <strong>The self-contained HTML report.</strong> The BurnBench pipeline also emits a
+        single-file interactive report. It isn't embedded here yet: burnbar.ai serves every page
+        with a hash-locked CSP and <code>frame-ancestors 'none'</code>, and the pipeline artifact
+        carries its own inline runtime. When the pipeline ships a CSP-clean build, it will be
+        linked from this page. Until then, this page <em>is</em> the report — same export, every
+        number, natively rendered.
+      </p>
+    </div>
+  </section>
+
+  {/* ──────────────── 3 · FULL DATA TABLE ──────────────── */}
+  <section class="bb-section" aria-labelledby="data-h">
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--ember">Full data</span>
+        <h2 id="data-h" class="bb-sec-h">Every published cell, as exported.</h2>
+        <p class="bb-sec-lead">
+          The complete table from <code>bench.json</code> — {BENCH.stacks.length} stack-scope
+          rows (overall, per-family, per-language, per-platform), grouped by scope and sorted
+          by solution rate within each scope.
+        </p>
+      </header>
+
+      <div class="bb-data-wrap">
+        <table class="bb-data">
+          <thead>
+            <tr>
+              <th scope="col">harness</th>
+              <th scope="col">model</th>
+              <th scope="col">scope</th>
+              <th scope="col">solution</th>
+              <th scope="col">strict</th>
+              <th scope="col">CI 95%</th>
+              <th scope="col">n</th>
+              <th scope="col">cost/task</th>
+              <th scope="col">wall</th>
+              <th scope="col">tokens</th>
+              <th scope="col">confidence</th>
+              <th scope="col">evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              ALL_STACKS.map((s) => (
+                <tr class={s.evidence === "inferred" ? "d-row--inferred" : undefined}>
+                  <td class={`d-name h--${hcls(s.harness)}`}>
+                    {harnessDisplay(s.harness)}
+                  </td>
+                  <td class={`d-model m--${mcls(s.model)}`}>
+                    {modelDisplay(s.model)}
+                  </td>
+                  <td class="d-sub">{scopeLabel(s)}</td>
+                  <td class="d-sol">{fmtPct(s.solution_rate)}</td>
+                  <td>{fmtPct(s.strict_rate)}</td>
+                  <td class="d-sub">
+                    {fmtPct(s.ci95[0])}–{fmtPct(s.ci95[1])}
+                  </td>
+                  <td>{s.n}</td>
+                  <td>{fmtCost(s.cost_usd_median)}</td>
+                  <td>{fmtWall(s.wall_seconds_median)}</td>
+                  <td>{fmtTokens(s.tokens_median)}</td>
+                  <td class="d-sub">{s.confidence}</td>
+                  <td class="d-sub">{s.evidence}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

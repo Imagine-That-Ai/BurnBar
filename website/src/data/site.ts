@@ -145,6 +145,7 @@ export const SITE = {
 export const NAV_PRIMARY = [
   { href: "/product", label: "Product" },
   { href: "/router", label: "Router" },
+  { href: "/bench", label: "Bench" },
   { href: "/floo", label: "Floo" },
   { href: "/control", label: "Agent Control" },
   { href: "/platforms", label: "Platforms" },
@@ -159,6 +160,7 @@ export const NAV_FOOTER = {
   product: [
     { href: "/product", label: "Overview" },
     { href: "/router", label: "Fire Hydrant — router" },
+    { href: "/bench", label: "BurnBench — benchmarks" },
     { href: "/floo", label: "Floo — phone & Mac" },
     { href: "/control", label: "Agent Control" },
     { href: "/platforms", label: "Platforms" },

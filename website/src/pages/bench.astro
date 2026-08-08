@@ -1,0 +1,664 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import "@styles/bench.css";
+import {
+  BENCH,
+  RANKED_STACKS,
+  FAMILIES,
+  MODEL_COLOR,
+  HARNESS_COLOR,
+  MODEL_LOGO,
+  HARNESS_LOGO,
+  MODEL_CLASS,
+  HARNESS_CLASS,
+  colorFor,
+  classFor,
+  monogramFor,
+  stackFor,
+  familyBest,
+  modelStat,
+  modelDisplay,
+  harnessDisplay,
+  paretoDomain,
+  frontierPoints,
+  fmtPct,
+  fmtCost,
+  fmtInt,
+  fmtGeneratedAt
+} from "@data/bench";
+
+const mc = (id: string): string => colorFor(MODEL_COLOR, id);
+const hc = (id: string): string => colorFor(HARNESS_COLOR, id);
+const mcls = (id: string): string => classFor(MODEL_CLASS, id);
+const hcls = (id: string): string => classFor(HARNESS_CLASS, id);
+const pctAttr = (v: number): string => `${(v * 100).toFixed(2)}%`;
+
+const generatedAt = fmtGeneratedAt(BENCH.generated_at_utc);
+const shaShort = BENCH.source.runs_sha256.slice(0, 12);
+
+/* ---------- Pareto scatter geometry (viewBox 760×440, data-driven domain) ---------- */
+const PLOT = { w: 760, h: 440, ml: 56, mr: 24, mt: 24, mb: 48 };
+const domain = paretoDomain(RANKED_STACKS);
+const xPos = (cost: number): number =>
+  PLOT.ml + (cost / domain.xMax) * (PLOT.w - PLOT.ml - PLOT.mr);
+const yPos = (rate: number): number =>
+  PLOT.mt +
+  (1 - (rate - domain.yMin) / (domain.yMax - domain.yMin)) * (PLOT.h - PLOT.mt - PLOT.mb);
+const frontierPts = frontierPoints();
+const frontierLine = frontierPts
+  .map((p) => `${xPos(p.cost_usd_median).toFixed(1)},${yPos(p.solution_rate).toFixed(1)}`)
+  .join(" ");
+const frontierKeys = new Set(frontierPts.map((p) => `${p.harness}|${p.model}`));
+
+const inferredCount = RANKED_STACKS.filter((s) => s.evidence === "inferred").length;
+const lowCount = RANKED_STACKS.filter((s) => s.confidence === "low").length;
+---
+
+<BaseLayout
+  title="BurnBench — which agent harness × model actually ships"
+  description="Public BurnBench leaderboard: agent harnesses × models on real shipping tasks — solution-quality rates with Wilson confidence intervals, a harness × model matrix, per-family breakdowns, and a cost/quality Pareto frontier."
+>
+  {/* ──────────────── 1 · HERO ──────────────── */}
+  <section class="bb-hero" aria-labelledby="bb-hero-h">
+    <div class="container container--wide bb-hero__inner">
+      <nav class="bb-bread mono" aria-label="Breadcrumbs">
+        <span>BurnBench</span>
+        <span aria-hidden="true">·</span>
+        <span>evidence export · schema v{BENCH.schema_version}</span>
+      </nav>
+      <span class="eyebrow eyebrow--ember">BurnBench · public benchmark</span>
+      <h1 id="bb-hero-h" class="bb-hero__h">
+        Which agent harness × model
+        <span class="bb-hero__hb">actually ships.</span>
+      </h1>
+      <p class="bb-hero__lead">
+        {BENCH.harnesses.length} agent harnesses, {BENCH.models.length} models, one suite of real
+        shipping work — from refactors and bugfixes to agentic ops and visual builds. Every rate
+        below is measured on scored runs and ships with a Wilson 95% confidence interval and the
+        cell count behind it. No vibes, no self-reported scores.
+      </p>
+
+      <ul class="bb-chips mono" aria-label="Benchmark scope">
+        <li><span class="bb-dot"></span> {BENCH.harnesses.length} harnesses</li>
+        <li><span class="bb-dot"></span> {BENCH.models.length} models</li>
+        <li><span class="bb-dot bb-dot--mercury"></span> {fmtInt(BENCH.source.cells_measured)} cells measured</li>
+        <li><span class="bb-dot bb-dot--exact"></span> generated {generatedAt}</li>
+      </ul>
+
+      <div class="bb-hero__ctas">
+        <a class="btn btn--ember" href="#leaderboard"
+          >See the leaderboard <span class="btn-arrow" aria-hidden="true">↓</span></a
+        >
+        <a class="btn btn--ghost" href="/bench/arena">The Arena</a>
+        <a class="btn btn--ghost" href="/bench/report">Methodology &amp; full data</a>
+        <a class="btn btn--ghost" href="/data/bench.json" download>Raw JSON</a>
+      </div>
+    </div>
+  </section>
+
+  {/* ──────────────── 2 · LEADERBOARD ──────────────── */}
+  <section class="bb-section bb-section--ember" id="leaderboard" aria-labelledby="lb-h">
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--ember">Leaderboard · every published cell</span>
+        <h2 id="lb-h" class="bb-sec-h">The leaderboard — solution quality, with the receipts.</h2>
+        <p class="bb-sec-lead">
+          Bars show the <strong>solution rate</strong> — tasks whose deliverable passed the suite's
+          solution checks. The bright tick marks the <strong>strict rate</strong> (every mechanical
+          check green, no partial credit). Whiskers are the Wilson 95% CI at the cell's
+          <code>n</code>. Each row carries the task family its runs were measured in; dashed rows
+          are shrinkage-pooled <em>inferred</em> estimates, never presented as measured.
+        </p>
+      </header>
+
+      <ol class="bb-lb" role="list">
+        {
+          RANKED_STACKS.map((s, i) => {
+            const hLogo = HARNESS_LOGO[s.harness] ?? null;
+            const mLogo = MODEL_LOGO[s.model] ?? null;
+            const first = i === 0;
+            return (
+              <li
+                class={`lb-row${first ? " lb-row--first" : ""}${s.evidence === "inferred" ? " lb-row--inferred" : ""}`}
+              >
+                <span class="lb-rank">{String(i + 1).padStart(2, "0")}</span>
+
+                <div class="lb-stack">
+                  <span class={`bb-badge h--${hcls(s.harness)}`}>
+                    {hLogo ? (
+                      <img src={hLogo} alt="" width="22" height="22" loading="lazy" decoding="async" />
+                    ) : (
+                      <span class="bb-badge__mono">{monogramFor(s.harness, harnessDisplay(s.harness))}</span>
+                    )}
+                  </span>
+                  <span class={`bb-badge m--${mcls(s.model)}`}>
+                    {mLogo ? (
+                      <img src={mLogo} alt="" width="22" height="22" loading="lazy" decoding="async" />
+                    ) : (
+                      <span class="bb-badge__mono">{monogramFor(s.model, modelDisplay(s.model))}</span>
+                    )}
+                  </span>
+                  <span class="lb-stack__names">
+                    <span class="lb-stack__h">{harnessDisplay(s.harness)}</span>
+                    <span class="lb-stack__m">{modelDisplay(s.model)}</span>
+                    {s.scope.family && <span class="lb-scope">{s.scope.family}</span>}
+                  </span>
+                </div>
+
+                <div class="lb-bar">
+                  <svg
+                    class="lb-bar__svg"
+                    width="100%"
+                    height="26"
+                    role="img"
+                    aria-label={`${harnessDisplay(s.harness)} with ${modelDisplay(s.model)}: solution rate ${fmtPct(s.solution_rate)}, strict rate ${fmtPct(s.strict_rate)}, 95 percent confidence interval ${fmtPct(s.ci95[0])} to ${fmtPct(s.ci95[1])}, n ${s.n}`}
+                  >
+                    <rect class="lb-bar__track" x="0" y="9" width="100%" height="8" rx="4" />
+                    <rect
+                      class={`lb-bar__fill m--${mcls(s.model)}`}
+                      x="0"
+                      y="9"
+                      width={pctAttr(s.solution_rate)}
+                      height="8"
+                      rx="4"
+                    />
+                    <line
+                      class="lb-bar__ci"
+                      x1={pctAttr(s.ci95[0])}
+                      x2={pctAttr(s.ci95[1])}
+                      y1="13"
+                      y2="13"
+                    />
+                    <line
+                      class="lb-bar__ci"
+                      x1={pctAttr(s.ci95[0])}
+                      x2={pctAttr(s.ci95[0])}
+                      y1="9"
+                      y2="17"
+                    />
+                    <line
+                      class="lb-bar__ci"
+                      x1={pctAttr(s.ci95[1])}
+                      x2={pctAttr(s.ci95[1])}
+                      y1="9"
+                      y2="17"
+                    />
+                    <line
+                      class="lb-bar__strict"
+                      x1={pctAttr(s.strict_rate)}
+                      x2={pctAttr(s.strict_rate)}
+                      y1="5"
+                      y2="21"
+                    />
+                  </svg>
+                </div>
+
+                <div class="lb-nums">
+                  <span class="lb-nums__sol">{fmtPct(s.solution_rate)}</span>
+                  <span class="lb-nums__sub">
+                    strict {fmtPct(s.strict_rate)} · n {s.n} · {fmtCost(s.cost_usd_median)}/task
+                  </span>
+                  <span class="lb-tags">
+                    {s.evidence === "inferred" && <span class="tag tag--estimated">inferred</span>}
+                    <span
+                      class={`tag ${s.confidence === "high" ? "tag--exact" : s.confidence === "medium" ? "tag--estimated" : "tag--unavailable"}`}
+                    >
+                      {s.confidence}
+                    </span>
+                  </span>
+                </div>
+              </li>
+            );
+          })
+        }
+      </ol>
+
+      <p class="lb-legend" aria-hidden="true">
+        <span class="swatch m--gpt"><i></i> bar = solution rate (model color)</span>
+        <span class="swatch swatch--tick"><i></i> tick = strict rate</span>
+        <span class="swatch swatch--line"><i></i> whiskers = Wilson 95% CI</span>
+      </p>
+    </div>
+  </section>
+
+  {/* ──────────────── 3 · HARNESS × MODEL MATRIX ──────────────── */}
+  <section class="bb-section" aria-labelledby="mx-h">
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--mercury">The matrix</span>
+        <h2 id="mx-h" class="bb-sec-h">Harness × model — every cell, one glance.</h2>
+        <p class="bb-sec-lead">
+          Cell fill carries the <strong>model</strong> color, the border carries the
+          <strong>harness</strong> color. Numbers: solution rate on top, strict rate and
+          <code>n</code> below, with the cell's measured family underneath. Dashed border =
+          inferred estimate.
+        </p>
+      </header>
+
+      <div class="bb-matrix-wrap">
+        <table class="bb-matrix">
+          <thead>
+            <tr>
+              <th class="mx-corner">harness ↓ · model →</th>
+              {
+                BENCH.models.map((m) => {
+                  const logo = MODEL_LOGO[m.id] ?? null;
+                  return (
+                    <th class={`mx-colhead m--${mcls(m.id)}`} scope="col">
+                      <span class="mx-colhead__in">
+                        <span class={`bb-badge bb-badge--sm m--${mcls(m.id)}`}>
+                          {logo ? (
+                            <img src={logo} alt="" width="16" height="16" loading="lazy" decoding="async" />
+                          ) : (
+                            <span class="bb-badge__mono">{monogramFor(m.id, m.display)}</span>
+                          )}
+                        </span>
+                        {m.display}
+                      </span>
+                    </th>
+                  );
+                })
+              }
+            </tr>
+          </thead>
+          <tbody>
+            {
+              BENCH.harnesses.map((h) => {
+                const hLogo = HARNESS_LOGO[h.id] ?? null;
+                return (
+                  <tr>
+                    <th class={`mx-rowhead h--${hcls(h.id)}`} scope="row">
+                      <span class="mx-rowhead__in">
+                        <span class={`bb-badge bb-badge--sm h--${hcls(h.id)}`}>
+                          {hLogo ? (
+                            <img src={hLogo} alt="" width="16" height="16" loading="lazy" decoding="async" />
+                          ) : (
+                            <span class="bb-badge__mono">{monogramFor(h.id, h.display)}</span>
+                          )}
+                        </span>
+                        {h.display}
+                      </span>
+                    </th>
+                    {BENCH.models.map((m) => {
+                      const cell = stackFor(h.id, m.id);
+                      if (!cell) {
+                        return (
+                          <td class={`mx-cell h--${hcls(h.id)} m--${mcls(m.id)}`}>
+                            <span class="mx-cell__sub">—</span>
+                          </td>
+                        );
+                      }
+                      return (
+                        <td
+                          class={`mx-cell h--${hcls(h.id)} m--${mcls(m.id)}${cell.evidence === "inferred" ? " mx-cell--inferred" : ""}`}
+                          title={`${h.display} × ${m.display} · solution ${fmtPct(cell.solution_rate)} · strict ${fmtPct(cell.strict_rate)} · CI ${fmtPct(cell.ci95[0])}–${fmtPct(cell.ci95[1])} · n ${cell.n} · ${cell.evidence}`}
+                        >
+                          <span class="mx-cell__sol">{fmtPct(cell.solution_rate)}</span>
+                          <span class="mx-cell__sub">
+                            strict {fmtPct(cell.strict_rate)} · n {cell.n}
+                          </span>
+                          {cell.scope.family && <span class="mx-cell__fam">{cell.scope.family}</span>}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  {/* ──────────────── 4 · PER-MODEL CARDS ──────────────── */}
+  <section class="bb-section bb-section--mercury" aria-labelledby="mc-h">
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--mercury">Model lens</span>
+        <h2 id="mc-h" class="bb-sec-h">The models, profiled across harnesses.</h2>
+        <p class="bb-sec-lead">
+          Harnesses move the numbers; models set the ceiling. Mean rates across every published
+          harness cell, the harness each model ships best with, and the family where it peaks.
+        </p>
+      </header>
+
+      <div class="bb-mcards">
+        {
+          BENCH.models.map((m) => {
+            const stat = modelStat(m.id);
+            if (!stat) return null;
+            const logo = MODEL_LOGO[m.id] ?? null;
+            return (
+              <article class={`bb-mcard m--${mcls(m.id)}`}>
+                <header class="bb-mcard__head">
+                  <span class={`bb-badge bb-badge--lg m--${mcls(m.id)}`}>
+                    {logo ? (
+                      <img src={logo} alt="" width="32" height="32" loading="lazy" decoding="async" />
+                    ) : (
+                      <span class="bb-badge__mono">{monogramFor(m.id, m.display)}</span>
+                    )}
+                  </span>
+                  <div>
+                    <h3 class="bb-mcard__name">{m.display}</h3>
+                    <span class="bb-mcard__prov">{m.provider}</span>
+                  </div>
+                </header>
+                <dl class="bb-mcard__stats">
+                  <div class="bb-mcard__stat">
+                    <dt>mean solution</dt>
+                    <dd>{fmtPct(stat.meanSolution)}</dd>
+                  </div>
+                  <div class="bb-mcard__stat">
+                    <dt>mean strict</dt>
+                    <dd>{fmtPct(stat.meanStrict)}</dd>
+                  </div>
+                  <div class="bb-mcard__stat">
+                    <dt>best harness</dt>
+                    <dd>
+                      {stat.bestStack ? harnessDisplay(stat.bestStack.harness) : "—"}
+                      {stat.bestStack ? ` · ${fmtPct(stat.bestStack.solution_rate)}` : ""}
+                    </dd>
+                  </div>
+                  <div class="bb-mcard__stat">
+                    <dt>median cost</dt>
+                    <dd>{fmtCost(stat.medianCost)}/task</dd>
+                  </div>
+                  <div class="bb-mcard__stat">
+                    <dt>strongest family</dt>
+                    <dd>
+                      {stat.strongestFamily
+                        ? `${stat.strongestFamily.family} · ${fmtPct(stat.strongestFamily.rate)}`
+                        : "—"}
+                    </dd>
+                  </div>
+                  <div class="bb-mcard__stat">
+                    <dt>published cells</dt>
+                    <dd>{stat.cells}</dd>
+                  </div>
+                </dl>
+              </article>
+            );
+          })
+        }
+      </div>
+    </div>
+  </section>
+
+  {/* ──────────────── 5 · PER-FAMILY BREAKDOWN ──────────────── */}
+  <section class="bb-section" aria-labelledby="fam-h">
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--ember">By task family</span>
+        <h2 id="fam-h" class="bb-sec-h">Where each model shines — best harness per family.</h2>
+        <p class="bb-sec-lead">
+          Each cell is the strongest harness for that model inside one task family, from the
+          scoped stacks in the export. Family slices can carry small <code>n</code> — check the
+          confidence tier before reading a ranking into them.
+        </p>
+      </header>
+
+      <div class="bb-fam-wrap">
+        <table class="bb-fam">
+          <thead>
+            <tr>
+              <th scope="col">family</th>
+              {
+                BENCH.models.map((m) => (
+                  <th scope="col" class={`m--${mcls(m.id)}`}>
+                    {m.display}
+                  </th>
+                ))
+              }
+            </tr>
+          </thead>
+          <tbody>
+            {
+              FAMILIES.map((fam) => (
+                <tr>
+                  <th scope="row" class="fam-name">{fam}</th>
+                  {BENCH.models.map((m) => {
+                    const best = familyBest(fam, m.id);
+                    if (!best) {
+                      return <td class="fam-cell">—</td>;
+                    }
+                    return (
+                      <td class={`fam-cell fam-cell--top m--${mcls(m.id)}`}>
+                        {fmtPct(best.solution_rate)}
+                        <span class="fam-who">
+                          {harnessDisplay(best.harness)} · n {best.n}
+                          {best.confidence === "low" ? " · low" : ""}
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  {/* ──────────────── 6 · COST / QUALITY PARETO ──────────────── */}
+  <section class="bb-section bb-section--ember" id="pareto" aria-labelledby="par-h">
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--ember">Cost vs quality</span>
+        <h2 id="par-h" class="bb-sec-h">The Pareto frontier — what quality costs per task.</h2>
+        <p class="bb-sec-lead">
+          Every published cell plotted: median cost per task (estimated-tier pricing) against
+          solution rate. Point fill = model, ring = harness. The dashed ember line is the
+          non-dominated frontier — the cheapest way to buy each level of quality. Dashed-ring
+          points are inferred estimates.
+        </p>
+      </header>
+
+      <div class="bb-pareto">
+        <svg
+          class="bb-pareto__svg"
+          viewBox={`0 0 ${PLOT.w} ${PLOT.h}`}
+          role="img"
+          aria-label="Scatter plot of median cost per task versus solution rate for all harness and model combinations, with the non-dominated Pareto frontier drawn as a dashed line."
+        >
+          {/* gridlines + y ticks */}
+          {
+            domain.yTicks.map((t) => (
+              <>
+                <line
+                  class="bb-pareto__grid"
+                  x1={PLOT.ml}
+                  x2={PLOT.w - PLOT.mr}
+                  y1={yPos(t)}
+                  y2={yPos(t)}
+                />
+                <text class="bb-pareto__tick" x={PLOT.ml - 8} y={yPos(t) + 4} text-anchor="end">
+                  {Math.round(t * 100)}%
+                </text>
+              </>
+            ))
+          }
+          {/* x ticks */}
+          {
+            domain.xTicks.map((t) => (
+              <>
+                <line
+                  class="bb-pareto__grid"
+                  x1={xPos(t)}
+                  x2={xPos(t)}
+                  y1={PLOT.mt}
+                  y2={PLOT.h - PLOT.mb}
+                />
+                <text
+                  class="bb-pareto__tick"
+                  x={xPos(t)}
+                  y={PLOT.h - PLOT.mb + 18}
+                  text-anchor="middle"
+                >
+                  ${t.toFixed(2)}
+                </text>
+              </>
+            ))
+          }
+          {/* axes */}
+          <line
+            class="bb-pareto__axis"
+            x1={PLOT.ml}
+            x2={PLOT.w - PLOT.mr}
+            y1={PLOT.h - PLOT.mb}
+            y2={PLOT.h - PLOT.mb}
+          />
+          <line
+            class="bb-pareto__axis"
+            x1={PLOT.ml}
+            x2={PLOT.ml}
+            y1={PLOT.mt}
+            y2={PLOT.h - PLOT.mb}
+          />
+          <text
+            class="bb-pareto__axistitle"
+            x={(PLOT.ml + PLOT.w - PLOT.mr) / 2}
+            y={PLOT.h - 8}
+            text-anchor="middle"
+          >
+            median cost per task · USD (estimated-tier pricing)
+          </text>
+          <text
+            class="bb-pareto__axistitle"
+            transform={`translate(16, ${(PLOT.mt + PLOT.h - PLOT.mb) / 2}) rotate(-90)`}
+            text-anchor="middle"
+          >
+            solution rate
+          </text>
+
+          {/* frontier */}
+          <polyline class="bb-pareto__frontier" points={frontierLine} />
+
+          {/* points */}
+          {
+            RANKED_STACKS.filter((s) => s.cost_usd_median != null).map((s) => {
+              const x = xPos(s.cost_usd_median!);
+              const y = yPos(s.solution_rate);
+              const inferred = s.evidence === "inferred";
+              const onFrontier = frontierKeys.has(`${s.harness}|${s.model}`);
+              return (
+                <>
+                  <circle
+                    cx={x.toFixed(1)}
+                    cy={y.toFixed(1)}
+                    r="7"
+                    fill={mc(s.model)}
+                    fill-opacity={inferred ? "0.45" : "0.9"}
+                    stroke={hc(s.harness)}
+                    stroke-width="2.5"
+                    stroke-dasharray={inferred ? "3 3" : undefined}
+                  >
+                    <title>
+                      {`${harnessDisplay(s.harness)} × ${modelDisplay(s.model)} — ${fmtPct(s.solution_rate)} solution · ${fmtCost(s.cost_usd_median)}/task · n ${s.n}${inferred ? " · inferred" : ""}`}
+                    </title>
+                  </circle>
+                  {onFrontier && (
+                    <text
+                      class="bb-pareto__ptlabel"
+                      x={x > 600 ? (x - 11).toFixed(1) : (x + 11).toFixed(1)}
+                      y={(y + 4).toFixed(1)}
+                      text-anchor={x > 600 ? "end" : "start"}
+                    >
+                      {harnessDisplay(s.harness)}
+                    </text>
+                  )}
+                </>
+              );
+            })
+          }
+        </svg>
+
+        <p class="bb-legendrow" aria-label="Legend">
+          {
+            BENCH.models.map((m) => (
+              <span class={`key m--${mcls(m.id)}`}>
+                <i></i>
+                {m.display}
+              </span>
+            ))
+          }
+          {
+            BENCH.harnesses.map((h) => (
+              <span class={`key key--ring h--${hcls(h.id)}`}>
+                <i></i>
+                {h.display}
+              </span>
+            ))
+          }
+          <span class="key key--frontier"><i></i> Pareto frontier</span>
+          <span class="key key--dash"><i></i> inferred estimate</span>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  {/* ──────────────── 7 · METHODOLOGY + FRESHNESS ──────────────── */}
+  <section class="bb-section" aria-labelledby="meta-h">
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--mercury">Provenance</span>
+        <h2 id="meta-h" class="bb-sec-h">Fresh, frozen, and inspectable.</h2>
+      </header>
+
+      <div class="bb-meta">
+        <div class="bb-meta__grid">
+          <div class="bb-meta__fact">
+            <span class="bb-meta__k">generated</span>
+            <span class="bb-meta__v">{generatedAt}</span>
+          </div>
+          <div class="bb-meta__fact">
+            <span class="bb-meta__k">schema</span>
+            <span class="bb-meta__v">bench.json v{BENCH.schema_version}</span>
+          </div>
+          <div class="bb-meta__fact">
+            <span class="bb-meta__k">cells measured</span>
+            <span class="bb-meta__v">{fmtInt(BENCH.source.cells_measured)}</span>
+          </div>
+          <div class="bb-meta__fact">
+            <span class="bb-meta__k">cells excluded</span>
+            <span class="bb-meta__v">{fmtInt(BENCH.source.cells_excluded)}</span>
+          </div>
+          <div class="bb-meta__fact">
+            <span class="bb-meta__k">stacks published</span>
+            <span class="bb-meta__v">{BENCH.stacks.length}</span>
+          </div>
+          <div class="bb-meta__fact">
+            <span class="bb-meta__k">runs sha256</span>
+            <span class="bb-meta__v">{shaShort}…</span>
+          </div>
+          <div class="bb-meta__fact">
+            <span class="bb-meta__k">low-confidence cells</span>
+            <span class="bb-meta__v">{lowCount}</span>
+          </div>
+          <div class="bb-meta__fact">
+            <span class="bb-meta__k">inferred cells</span>
+            <span class="bb-meta__v">{inferredCount}</span>
+          </div>
+        </div>
+
+        <p class="bb-meta__note">
+          Rates ship with Wilson 95% confidence intervals. Cells with <code>n &lt; 10</code> are
+          marked <strong>low confidence</strong> and may not rank first. Cells marked
+          <strong> inferred</strong> are shrinkage-pooled estimates — shown dashed, never presented
+          as measured. Consumers can reject stale exports via the generated timestamp and the
+          runs hash above. Arena ratings are Bradley-Terry with bootstrap CIs, published only at
+          30+ votes per stack.
+        </p>
+
+        <div class="bb-meta__links">
+          <a class="btn btn--ghost btn--small" href="/bench/report">Methodology &amp; full data</a>
+          <a class="btn btn--ghost btn--small" href="/bench/arena">Arena standings</a>
+          <a class="btn btn--ghost btn--small" href="/data/bench.json" download>
+            Download bench.json
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
