@@ -66,6 +66,17 @@ data class QuotaSnapshotUpdate(
 )
 
 class FirestoreRepository {
+    companion object {
+        /**
+         * Sanctioned resolution point for the raw Firestore handle (R-GH6 raw
+         * Firestore ratchet). Call sites that must hand the concrete SDK
+         * handle to codec/vault helpers resolve it here instead of calling
+         * `FirebaseFirestore.getInstance()` directly, so handle configuration
+         * stays owned by the repository layer.
+         */
+        fun database(): FirebaseFirestore = Firebase.firestore
+    }
+
     private val db = Firebase.firestore
     private val functions = Firebase.functions
     internal val budget = FirestoreBudgetRepository(db) { currentUserId() }

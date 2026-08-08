@@ -120,6 +120,14 @@ public actor BurnBarDaemonServer {
     let databaseRecoveryService: BurnBarDatabaseRecoveryBundleService?
     let textExpansionService: BurnBarTextExpansionService?
     var resumeService: BurnBarResumeService?
+    /// The AI Inbox is opened lazily for the same reason as code memory: chat
+    /// owns first-use database creation on a fresh profile, so binding it at
+    /// init would leave the inbox unavailable until the next daemon restart.
+    private var aiInboxStorage: BurnBarAIInboxService?
+    private var aiInboxBootstrapAttempted = false
+    var aiInbox: BurnBarAIInboxService? {
+        ensureAIInboxBootstrapped()
+    }
     let ownsChatThreadService: Bool
     private let gatewayServer: BurnBarHTTPGatewayServer?
     private let rateLimiter: BurnBarRateLimiter?
@@ -130,6 +138,7 @@ public actor BurnBarDaemonServer {
     private var heartbeatTask: Task<Void, Never>?
     private var oauthRefreshTask: Task<Void, Never>?
     private var localUsageIngestionTask: Task<Void, Never>?
+    private var aiInboxStartedLoop = false
     public init(
         configuration: BurnBarDaemonConfiguration = BurnBarDaemonConfiguration(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(),
@@ -655,6 +664,42 @@ public actor BurnBarDaemonServer {
         }
     }
 
+    /// Opens the AI Inbox service exactly once after the configured database
+    /// path becomes a real file, mirroring the code-memory bootstrap. A failed
+    /// open is cached so a broken profile cannot cause a retry storm; a missing
+    /// file is NOT a failed attempt, because chat may create it later.
+    @discardableResult
+    func ensureAIInboxBootstrapped() -> BurnBarAIInboxService? {
+        if let aiInboxStorage {
+            return aiInboxStorage
+        }
+        guard aiInboxBootstrapAttempted == false else { return nil }
+        guard let path = configuration.indexDatabasePath?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            path.isEmpty == false,
+            FileManager.default.fileExists(atPath: path) else {
+            return nil
+        }
+
+        aiInboxBootstrapAttempted = true
+        do {
+            let service = try BurnBarAIInboxService(
+                databasePath: path,
+                usageRecorder: usageRecorder,
+                configStore: configStore
+            )
+            aiInboxStorage = service
+            logger.info("ai_inbox_bootstrap_succeeded", metadata: ["path": path])
+            return service
+        } catch {
+            logger.warning(
+                "ai_inbox_bootstrap_failed",
+                metadata: ["path": path, "error": error.localizedDescription]
+            )
+            return nil
+        }
+    }
+
     /// Opens the project code-memory store exactly once after the configured
     /// database path becomes a real file. This method is actor-isolated through
     /// `BurnBarDaemonServer`, so concurrent RPCs cannot race store construction.
@@ -1123,6 +1168,14 @@ public actor BurnBarDaemonServer {
         #endif
         if configuration.startsMissionControlBackgroundLoops {
             await missionControlService.startBackgroundLoops()
+            // Reuses the mission-control loop flag so in-process test servers do
+            // not spawn a background analyst. The inbox is additionally gated by
+            // its own persisted `enabled` flag, which is false until the user
+            // opts in — the loop wakes, sees disabled, and goes back to sleep.
+            if let inbox = ensureAIInboxBootstrapped() {
+                await inbox.start()
+                aiInboxStartedLoop = true
+            }
         } else {
             logger.debug(
                 "mission_control_background_loops_disabled",
@@ -1205,6 +1258,10 @@ public actor BurnBarDaemonServer {
         oauthRefreshTask = nil
         localUsageIngestionTask?.cancel()
         localUsageIngestionTask = nil
+        if aiInboxStartedLoop, let aiInboxStorage {
+            await aiInboxStorage.stop()
+            aiInboxStartedLoop = false
+        }
         let acceptTask = acceptLoopTask
         acceptLoopTask = nil
         acceptTask?.cancel()
@@ -1434,6 +1491,14 @@ public actor BurnBarDaemonServer {
                 return try await handleChatRPC(
                     method: method,
                     decoder: decoder,
+                    requestData: requestData
+                )
+            case .inboxList, .inboxGet, .inboxRunsRecent,
+                 .inboxConfigGet, .inboxConfigUpdate, .inboxRunNow:
+                return try await handleInboxRPC(
+                    method: method,
+                    decoder: decoder,
+                    request: request,
                     requestData: requestData
                 )
             case .proxyRouteLogRecent, .proxyRouteLogClear,

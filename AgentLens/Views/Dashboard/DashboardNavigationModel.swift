@@ -11,19 +11,23 @@ enum DashboardMainRoute: Hashable {
     case missions
     case sessionLogs
     case memoryReview
+    case inbox
     case chat
     case quota
     case provider(AgentProvider)
     case model(String)
 
-    /// The seven first-class sections surfaced by the Command Deck bar.
+    /// The eight first-class sections surfaced by the Command Deck bar.
     /// Overview and Insights remain sidebar-only.
+    ///
+    /// Inbox leads: it is the proactive surface — the one thing worth looking at
+    /// before you decide what to look at.
     static var primarySections: [DashboardMainRoute] {
-        [.chat, .quota, .database, .projects, .missions, .sessionLogs, .memoryReview]
+        [.inbox, .chat, .quota, .database, .projects, .missions, .sessionLogs, .memoryReview]
     }
 
-    /// One-based index into `primarySections` (1...7), or `nil` for routes
-    /// not in the primary list. Drives the ⌘1–⌘7 shortcuts.
+    /// One-based index into `primarySections` (1...8), or `nil` for routes
+    /// not in the primary list. Drives the ⌘1–⌘8 shortcuts.
     var primarySectionIndex: Int? {
         Self.primarySections.firstIndex(of: self).map { $0 + 1 }
     }
@@ -38,6 +42,7 @@ enum DashboardMainRoute: Hashable {
         case .missions: return "Missions"
         case .sessionLogs: return "Session Logs"
         case .memoryReview: return "Memory"
+        case .inbox: return "Inbox"
         case .chat: return "Chat"
         case .quota: return "Quota"
         case .provider(let provider): return provider.displayName
@@ -55,6 +60,7 @@ enum DashboardMainRoute: Hashable {
         case .missions: return "flag"
         case .sessionLogs: return "text.bubble"
         case .memoryReview: return "brain.head.profile"
+        case .inbox: return "tray.full"
         case .chat:
             return activeChatBackend == .hermes ? "sparkles" : "bubble.left.and.bubble.right"
         case .quota: return "gauge.with.dots.needle.67percent"
@@ -73,6 +79,8 @@ enum DashboardMainRoute: Hashable {
             return DesignSystem.Colors.amber
         case .charts:
             return DesignSystem.Colors.ember
+        case .inbox:
+            return DesignSystem.Colors.ember
         case .database, .projects, .missions, .sessionLogs, .memoryReview:
             return DesignSystem.Colors.whimsy
         default:
@@ -90,6 +98,7 @@ enum DashboardMainRoute: Hashable {
         case .missions: return "Active runs & tasks"
         case .sessionLogs: return "Indexed conversations"
         case .memoryReview: return "Review what OpenBurnBar learned"
+        case .inbox: return "What needs you right now"
         case .overview: return "All providers + models"
         case .insights: return "Editorial brief & anomalies"
         case .charts: return "Your usage, drawn honestly"

@@ -83,12 +83,21 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .providerModelDisplayNameSet, .providerModelDisplayNameClear,
              .quotaSignalsClear,
              .databaseRecoveryStatus,
-             .databaseRecoveryBundleExport, .databaseRecoveryBundleImport:
+             .databaseRecoveryBundleExport, .databaseRecoveryBundleImport,
+             // Inbox config writes change the egress posture and the spend
+             // ceiling; `run_now` can immediately spend. Both are operator
+             // actions, so they sit with the credential/config writes rather
+             // than with the observability reads above.
+             .inboxConfigUpdate, .inboxRunNow:
             return .config
         case .usageRecord, .usageRecent, .usageProjection, .usageRecount,
              .usageHistory, .usageInsights,
              .proxyRouteLogRecent, .proxyRouteLogClear,
-             .quotaSignalsRecent, .perfMeasure:
+             .quotaSignalsRecent, .perfMeasure,
+             // AI Inbox reads return already-synthesized, already-redacted
+             // summaries plus reference-shaped evidence — the same posture as
+             // usage/insight reads, so they share the observability group.
+             .inboxList, .inboxGet, .inboxRunsRecent, .inboxConfigGet:
             return .observability
         case .chatThreadList, .chatThreadGet, .chatMessageAppend:
             return .chat

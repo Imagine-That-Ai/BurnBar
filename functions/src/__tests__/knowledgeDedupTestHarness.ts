@@ -1,33 +1,23 @@
 /**
  * Shared in-memory Firestore double + device-side derivation helpers for the
- * knowledgeMemoryDedupHash suite. Extracted so the test file stays under the
- * max-lines lint ceiling; test files import this module and wire it into
- * `vi.mock` factories via dynamic import (the factory shares this module
- * instance with the test body, so `stored` is the single source of truth).
+ * knowledge dedup suites (`knowledgeMemoryDedupHash.test.ts` and
+ * `knowledgeMemoryDedupLifecycle.test.ts`). Extracted so each suite stays
+ * under the repo's max-lines lint floor without duplicating the harness.
+ *
+ * Both suites must install the same module mocks (logger, sentry, auth,
+ * callables/shared, firebase-admin/firestore, adminRuntime) and reference
+ * `FIELD_DELETE` / `makeDb` from here via async `vi.mock` factories, so the
+ * harness and the mocked runtime share ONE `stored` map instance.
  */
 import { createHash, createHmac, hkdfSync } from "node:crypto";
 
 import { runFakeFirestoreTransaction } from "./fakeFirestoreTransaction.js";
 
-// Minimal firebase-admin/firestore: capture the doc payloads, stub the value
-// wrappers + aggregate the loop reads. Exported so test files can hand it to
-// `vi.mock("firebase-admin/firestore", ...)` and share ONE delete sentinel.
-const FIELD_DELETE = Symbol("FieldValue.delete");
-export const firestoreAdminMock = {
-  Timestamp: { now: () => ({ __ts: true }) },
-  FieldValue: {
-    vector: (v: number[]) => ({ __vector: v }),
-    increment: (n: number) => ({ __increment: n }),
-    delete: () => FIELD_DELETE,
-  },
-  AggregateField: {
-    count: () => ({ __count: true }),
-    sum: (f: string) => ({ __sum: f }),
-  },
-};
+/** Sentinel returned by the mocked `FieldValue.delete()`. */
+export const FIELD_DELETE = Symbol("FieldValue.delete");
 
 // In-memory Firestore double. Records every `.set()` on the knowledge collection
-// keyed by `users/{uid}/cloud_search_knowledge/{vectorId}` so the test can dump
+// keyed by `users/{uid}/cloud_search_knowledge/{vectorId}` so tests can dump
 // the stored record.
 export const stored = new Map<string, Record<string, unknown>>();
 
@@ -298,11 +288,7 @@ export function hitsFromResult(result: unknown): Array<{ vectorId: string }> {
   });
 }
 
-export function purgeCounts(result: unknown): {
-  deletedByVersion: unknown;
-  deletedByRetiredTag: unknown;
-  deleted: unknown;
-} {
+export function purgeCounts(result: unknown): { deletedByVersion: unknown; deletedByRetiredTag: unknown; deleted: unknown } {
   return {
     deletedByVersion: Reflect.get(Object(result), "deletedByVersion"),
     deletedByRetiredTag: Reflect.get(Object(result), "deletedByRetiredTag"),

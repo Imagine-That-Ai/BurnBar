@@ -1859,6 +1859,26 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       "Bootstrap that MINTS an App Check token, so it cannot itself require one (chicken-and-egg). Gated by a platform attestation verifier instead; under production config no mock verifier is registered so only AC-013's real verifier can mint.",
   },
   {
+    exportedName: "onAIInboxItemNotification",
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions event trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "users/{uid}/ai_inbox_items/{itemId} trigger path",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger derives uid from the Firestore event path and fans out only to that user's device docs; the item body stays sealed and never enters the push payload",
+    handlerModule: "aiInboxNotifications.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["onAIInboxItemNotification"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
     exportedName: "onCliSessionAgentReplyNotification",
     trigger: "firestore-trigger",
     authMethod: "Firestore event trigger",

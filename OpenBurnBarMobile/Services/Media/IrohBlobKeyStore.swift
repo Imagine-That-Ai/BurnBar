@@ -36,13 +36,7 @@ final class IrohBlobKeyStore: Sendable {
     }
 
     private func loadFromKeychain() throws -> IrohSecretKeyMaterial? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
+        let query = KeychainGenericPasswordQuery.read(service: service, account: account)
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         switch status {
@@ -69,11 +63,7 @@ final class IrohBlobKeyStore: Sendable {
         case errSecSuccess:
             return
         case errSecDuplicateItem:
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: account
-            ]
+            let query = KeychainGenericPasswordQuery.base(service: service, account: account)
             let update: [String: Any] = [
                 kSecValueData as String: secret.raw,
                 kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
@@ -88,11 +78,7 @@ final class IrohBlobKeyStore: Sendable {
     }
 
     private func deleteFromKeychain() throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
+        let query = KeychainGenericPasswordQuery.base(service: service, account: account)
         let status = SecItemDelete(query as CFDictionary)
         if status != errSecSuccess && status != errSecItemNotFound {
             throw IrohBlobKeyStoreError.keychainStatus(status)

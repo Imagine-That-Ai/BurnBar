@@ -176,6 +176,12 @@ struct RootTabView: View {
         .task { missionConsoleHost.start() }
         .task { liveStagePresenter.observe(liveStageSingleton.state) }
         .task { liveStageSingleton.installLiveActivityIntentRouter() }
+        // Claims a push tap that landed BEFORE this view existed — a cold
+        // launch from an AI Inbox notification posts `AIInboxDeepLink` while
+        // the app is still in `didFinishLaunching`, so the `onReceive` below
+        // has no subscriber yet and the stash is the only surviving record of
+        // it. Same shape as `applyPendingGatewayPairingDeepLink`.
+        .task { claimPendingAIInboxDeepLink() }
         .task {
             liveStageSingleton.configurePictureInPicture(
                 onDidStart: { liveStagePresenter.setPiPActive(true) },
@@ -232,6 +238,9 @@ struct RootTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName)) { notification in
             openHermesGatewayPairingRoute(notification)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AIInboxDeepLink.notificationName)) { notification in
+            openAIInboxRoute(itemID: AIInboxDeepLink.itemID(from: notification))
         }
         .onReceive(NotificationCenter.default.publisher(for: .hermesKeyboardFocusChanged)) { notification in
             isHermesKeyboardVisible = notification.userInfo?["focused"] as? Bool ?? false
@@ -338,6 +347,10 @@ struct RootTabView: View {
     @State private var burnQuotaStore = QuotaStore()
     @State private var burnDashboardStore = DashboardStore()
     @State private var burnActivityStore = ActivityStore()
+    /// Hoisted for the same reason as the Pulse/Burn stores: Streams remounts on
+    /// every tab return, and a per-view inbox store would tear down and re-open
+    /// two Firestore listeners each time.
+    @State private var streamsInboxStore = AIInboxStore()
 
     private var insightsStack: some View {
         AgentInsightsTabScreen(
@@ -375,7 +388,7 @@ struct RootTabView: View {
 
     private var streamsStack: some View {
         NavigationStack(path: $streamsPath) {
-            StreamsView()
+            StreamsView(inbox: streamsInboxStore)
                 .navigationDestination(for: TokenUsage.self) { SessionDetailView(usage: $0) }
         }
     }
@@ -458,6 +471,38 @@ struct RootTabView: View {
         selection = .you
         youPath = NavigationPath()
         youPath.append(YouRoute.settings)
+    }
+
+    /// Lands a `burnbar://inbox[/{itemId}]` deep link — the tap target of an AI
+    /// Inbox P1 push.
+    ///
+    /// The Inbox lives inside the Streams stack, so this selects that tab, resets
+    /// its path (the user may have been deep inside a session), and pushes the
+    /// item route. `AIInboxDetailRoute` resolves the row from the live store, so
+    /// an item the Mac resolved between the push and the tap shows the
+    /// "this item is gone" pane rather than a blank screen.
+    private func openAIInboxRoute(itemID: String?) {
+        // Drain the stash on the live path too. The tap has been served here, so
+        // leaving it parked would let a later `.task` re-navigate the user back
+        // to this item after they had moved on.
+        _ = AIInboxDeepLink.consumePendingItemID()
+        selection = .streams
+        streamsPath = NavigationPath()
+        streamsInboxStore.focus(itemID: itemID)
+        guard let itemID else { return }
+        streamsPath.append(AIInboxDetailRoute(itemID: itemID))
+    }
+
+    /// Cold-launch counterpart to the `onReceive` above.
+    ///
+    /// A notification tap that launches the app posts its deep link during
+    /// `didFinishLaunching`, before any SwiftUI view has subscribed, so the
+    /// `AIInboxDeepLink` stash is the only surviving record. Claiming it here —
+    /// once, as the root appears — is what makes a push tap from a terminated
+    /// app land on the item instead of the default tab.
+    private func claimPendingAIInboxDeepLink() {
+        guard let itemID = AIInboxDeepLink.consumePendingItemID() else { return }
+        openAIInboxRoute(itemID: itemID)
     }
 
     private func openHermesGatewayPairingRoute(_: Notification) {

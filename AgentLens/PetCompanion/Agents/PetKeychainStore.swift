@@ -82,9 +82,8 @@ struct PetKeychainStore: Sendable {
         guard let data = secret.data(using: .utf8) else { throw KeychainError.dataEncodingFailed }
 
         let query = baseQuery(slot, account: account)
-        let attributes: [String: Any] = [kSecValueData as String: data]
 
-        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         switch updateStatus {
         case errSecSuccess:
             return

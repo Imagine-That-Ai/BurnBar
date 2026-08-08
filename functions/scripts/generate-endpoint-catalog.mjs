@@ -773,6 +773,46 @@ const CATALOG_OVERRIDES = {
       },
     ],
   },
+  googlePlayDeveloperNotifications: {
+    trigger: "provider-webhook",
+    authMethod: "Google Play RTDN delivered over an owned Pub/Sub topic (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "purchase-token claim resolved server-side to a uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler maps the Play-signed purchase token to an existing server-owned claim before touching any uid-scoped document",
+    handlerModule: "googlePlayRtdn.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["googlePlayDeveloperNotifications"],
+      },
+    ],
+    publicJustification:
+      "Provider notification endpoint authenticated by Google Play's signed RTDN payload on a project-owned Pub/Sub topic; it accepts no client-supplied object ids.",
+    highRiskComputerUse: false,
+  },
+  onAIInboxItemNotification: {
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions event trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "users/{uid}/ai_inbox_items/{itemId} trigger path",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger derives uid from the Firestore event path and fans out only to that user's device docs; the item body stays sealed and never enters the push payload",
+    handlerModule: "aiInboxNotifications.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["onAIInboxItemNotification"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   sendFcmOutbound: {
     trigger: "firestore-trigger",
     authMethod: "Firebase Functions event trigger (not client-callable)",

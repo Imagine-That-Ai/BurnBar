@@ -8,7 +8,10 @@ import {
 
 test("all production Android PendingIntents have explicit components and package pins", () => {
   const result = verifyAndroidPendingIntents();
-  assert.equal(result.callCount, 9);
+  // 10 after the AI Inbox push tap-target. This literal is the tripwire:
+  // a new PendingIntent must be registered in pendingIntentContracts and
+  // counted here deliberately, never absorbed silently.
+  assert.equal(result.callCount, 10);
 });
 
 test("the contract rejects a zero-argument implicit Intent", () => {

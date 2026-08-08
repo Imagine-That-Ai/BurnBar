@@ -33,6 +33,13 @@ final class FirestoreRepository {
 
     private var db: Firestore { Firestore.firestore() }
 
+    /// Sanctioned resolution point for the raw Firestore handle (R-GH6 raw
+    /// Firestore ratchet). Call sites that must hand the concrete SDK handle
+    /// to vault/codec helpers resolve it here instead of calling
+    /// `Firestore.firestore()` directly, so handle configuration stays owned
+    /// by the repository layer.
+    nonisolated static var database: Firestore { Firestore.firestore() }
+
     nonisolated func currentUserDisplayID() -> String? {
         guard FirebaseApp.app() != nil else { return nil }
         return Self.redactedUserID(Auth.auth().currentUser?.uid)

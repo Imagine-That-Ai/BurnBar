@@ -37,6 +37,9 @@ final class NavigationCoordinator {
         case projects
         case sessionLogs
         case chat
+        /// AI Inbox. The associated id is the item a notification was about, so a
+        /// tapped alert lands on that item rather than the top of the list.
+        case inbox(itemID: String?)
     }
     
     // MARK: - Navigation Methods
@@ -74,5 +77,22 @@ final class NavigationCoordinator {
     func setDashboardRoute(_ route: DashboardRoute) {
         dashboardRoute = route
         pendingNavigation = nil
+    }
+
+    /// Routes an `openburnbar://` deep link, currently used by AI Inbox
+    /// notifications. Returns whether the link was understood, so callers can
+    /// fall back rather than silently swallowing an unknown URL.
+    @discardableResult
+    func handleDeepLink(_ url: URL) -> Bool {
+        guard url.scheme == "openburnbar" else { return false }
+        switch url.host {
+        case "inbox":
+            let itemID = url.pathComponents.first { $0 != "/" }
+            setDashboardRoute(.inbox(itemID: itemID))
+            pendingNavigation = .dashboard
+            return true
+        default:
+            return false
+        }
     }
 }

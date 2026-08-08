@@ -66,8 +66,30 @@ for (const d of activated) {
   } else {
     ok(`${d.id} declares signalSealedCollections (${sealed.length}/${paths.size} collections Signal-sealed): ${sealed.join(", ")}`);
   }
-  if (d.id === "conversations_chat" && (sealed.length !== 10 || sealed.length !== paths.size)) {
-    fail("conversations_chat must declare Signal producer coverage for all ten private collections");
+  if (d.id === "conversations_chat") {
+    // Pin the EXACT set of Signal producers by name (stronger than the old
+    // count pin): the ten private collections below emit signalEnvelopes.
+    // The AI Inbox collections ride in this domain but are NOT Signal
+    // producers — ai_inbox_items is sealed with AES-GCM AIInboxMirrorCodec
+    // envelopes and ai_inbox_item_state is intentionally plain status
+    // metadata — so they are explicitly declared non-Signal here. Any other
+    // unsealed collection added to this domain still fails closed.
+    const EXPECTED_SEALED = [
+      "conversations", "chat_threads", "mobile_assistant_chats", "cli_sessions",
+      "cli_agent_mission_requests", "text_snippets", "rollback_requests",
+      "approval_policies", "agent_identities", "subscription_topics",
+    ];
+    const KNOWN_NON_SIGNAL = new Set(["ai_inbox_items", "ai_inbox_item_state"]);
+    const sealedSet = new Set(sealed);
+    const missing = EXPECTED_SEALED.filter((c) => !sealedSet.has(c));
+    const extra = sealed.filter((c) => !EXPECTED_SEALED.includes(c));
+    if (missing.length || extra.length) {
+      fail(`conversations_chat must declare Signal producer coverage for exactly the ten private collections (missing: ${missing.join(", ") || "none"}; extra: ${extra.join(", ") || "none"})`);
+    }
+    const undeclared = [...paths].filter((c) => !sealedSet.has(c) && !KNOWN_NON_SIGNAL.has(c));
+    if (undeclared.length) {
+      fail(`conversations_chat carries collections that are neither Signal-sealed nor known non-Signal: ${undeclared.join(", ")}`);
+    }
   }
 }
 

@@ -95,4 +95,25 @@ final class MacCloudVaultSignalActivationTests: XCTestCase {
             .off
         )
     }
+
+    func test_applyingSignalEnvelope_doesNotResolveFirestoreWhenSignalIsOff() async throws {
+        let payload = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
+            to: ["id": "doc-1"],
+            domainID: "conversations_chat",
+            uid: "uid-1",
+            firestore: Firestore.firestore(),
+            collection: "conversations",
+            docId: "doc-1",
+            plaintext: Data("plaintext".utf8),
+            resolvedKey: CloudVaultResolvedKey(
+                keyData: Data(repeating: 0x11, count: 32),
+                vaultKeyID: "key-1"
+            ),
+            legacyPrivateFields: ["sealedPayload"],
+            mergeWrite: true
+        )
+
+        XCTAssertEqual(payload["id"] as? String, "doc-1")
+        XCTAssertTrue(payload["signalEnvelope"] is FieldValue)
+    }
 }

@@ -1406,4 +1406,74 @@ enum OpenBurnBarDaemonSocketClient {
 
         return address
     }
+
+    // MARK: - AI Inbox control plane
+    //
+    // Inbox *reads* go straight to the shared SQLite database (see
+    // `ControlPlaneStore+AIInbox`) because the rows are already local and the
+    // surface should render even while the daemon restarts. These calls are the
+    // exception: configuration and "analyze now" are daemon-owned state, and the
+    // daemon must stay the single writer of both — it owns the loop, the
+    // credentials, and the egress policy.
+    //
+    // They live in this file rather than an extension because `send` is
+    // deliberately private; reaching them from outside would mean widening the
+    // socket client's encapsulation for no benefit.
+
+    static func inboxConfiguration(at socketURL: URL) throws -> BurnBarInboxConfig {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarInboxConfig> = try send(
+            BurnBarRPCRequestEnvelope(method: .inboxConfigGet),
+            socketURL: socketURL
+        )
+        if let error = envelope.error { throw OpenBurnBarDaemonManagerError.rpcError(error.message) }
+        guard let result = envelope.result else { throw OpenBurnBarDaemonManagerError.emptyResponse }
+        return result
+    }
+
+    /// Returns the config the daemon actually stored, which can differ from the
+    /// request: every value is re-clamped on write. Callers should render the
+    /// response rather than assume their request was accepted verbatim.
+    @discardableResult
+    static func updateInboxConfiguration(
+        _ config: BurnBarInboxConfig,
+        at socketURL: URL
+    ) throws -> BurnBarInboxConfig {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarInboxConfig> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(method: .inboxConfigUpdate, params: config),
+            socketURL: socketURL
+        )
+        if let error = envelope.error { throw OpenBurnBarDaemonManagerError.rpcError(error.message) }
+        guard let result = envelope.result else { throw OpenBurnBarDaemonManagerError.emptyResponse }
+        return result
+    }
+
+    static func runInboxNow(force: Bool, at socketURL: URL) throws -> BurnBarInboxRunNowResponse {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarInboxRunNowResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .inboxRunNow,
+                params: BurnBarInboxRunNowRequest(force: force)
+            ),
+            socketURL: socketURL
+        )
+        if let error = envelope.error { throw OpenBurnBarDaemonManagerError.rpcError(error.message) }
+        guard let result = envelope.result else { throw OpenBurnBarDaemonManagerError.emptyResponse }
+        return result
+    }
+
+    /// Tick telemetry plus today's spend. Read over RPC rather than from SQLite
+    /// because the authoritative spend figure lives in the daemon's usage ledger,
+    /// which the app's mirror lags behind.
+    static func inboxRuns(limit: Int = 20, at socketURL: URL) throws -> BurnBarInboxRunsResponse {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarInboxRunsResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .inboxRunsRecent,
+                params: BurnBarInboxRunsRequest(limit: limit)
+            ),
+            socketURL: socketURL
+        )
+        if let error = envelope.error { throw OpenBurnBarDaemonManagerError.rpcError(error.message) }
+        guard let result = envelope.result else { throw OpenBurnBarDaemonManagerError.emptyResponse }
+        return result
+    }
+
 }

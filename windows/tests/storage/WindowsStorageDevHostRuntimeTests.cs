@@ -15,8 +15,8 @@ namespace OpenBurnBar.App.Storage.Tests;
 public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
 {
     private const string SampleEnv = "OPENBURNBAR_SAMPLE_MODE";
-    private const string ExpectedV57Endpoint = "v57_execution_source_attribution";
-    private const long ExpectedV57MigrationCount = 58;
+    private const string ExpectedV58Endpoint = "v58_ai_inbox";
+    private const long ExpectedV58MigrationCount = 59;
 
     public void Dispose()
     {
@@ -41,8 +41,8 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
         Assert.True(File.Exists(profile.DatabasePath + ".key-provenance.json"));
         Assert.True(SqlCipherConnection.FileIsEncrypted(profile.DatabasePath));
         Assert.Equal("protected-generated:openburnbar.windows.sqlcipher.passphrase", report.KeyProvenance);
-        Assert.Equal(ExpectedV57Endpoint, report.SchemaEndpoint);
-        Assert.Equal(ExpectedV57MigrationCount, report.MigrationCount);
+        Assert.Equal(ExpectedV58Endpoint, report.SchemaEndpoint);
+        Assert.Equal(ExpectedV58MigrationCount, report.MigrationCount);
         Assert.Equal(WindowsSqlCipherProvisioner.CurrentUserVersion, report.UserVersion);
         Assert.Contains("\"state\": \"complete\"", File.ReadAllText(report.JournalPath), StringComparison.Ordinal);
         Assert.Contains("\"keyProvenance\": \"protected-generated:openburnbar.windows.sqlcipher.passphrase\"", File.ReadAllText(report.JournalPath), StringComparison.Ordinal);
@@ -56,8 +56,8 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
         using var connection = SqlCipherConnection.Open(profile.DatabasePath, passphrase!);
         SqlCipherConnection.AssertPinnedParams(connection, out string cipherVersion);
         Assert.Equal(report.CipherVersion, cipherVersion);
-        Assert.Equal(ExpectedV57Endpoint, SqlCipherConnection.ReadMigrationEndpoint(connection));
-        Assert.Equal(ExpectedV57MigrationCount, SqlCipherConnection.ReadMigrationCount(connection));
+        Assert.Equal(ExpectedV58Endpoint, SqlCipherConnection.ReadMigrationEndpoint(connection));
+        Assert.Equal(ExpectedV58MigrationCount, SqlCipherConnection.ReadMigrationCount(connection));
         AssertV56CheckpointSchema(connection);
         using (var insertManifest = connection.CreateCommand())
         {
@@ -138,15 +138,15 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
 
         Assert.False(second.Created);
         Assert.Equal(first.DatabasePath, second.DatabasePath);
-        Assert.Equal(ExpectedV57Endpoint, second.SchemaEndpoint);
-        Assert.Equal(ExpectedV57MigrationCount, second.MigrationCount);
+        Assert.Equal(ExpectedV58Endpoint, second.SchemaEndpoint);
+        Assert.Equal(ExpectedV58MigrationCount, second.MigrationCount);
         Assert.Equal(firstConfig, File.ReadAllText(profile.Configuration.ConfigFilePath));
         Assert.Contains("\"state\": \"complete\"", firstJournal, StringComparison.Ordinal);
         Assert.Contains("\"state\": \"complete\"", File.ReadAllText(second.JournalPath), StringComparison.Ordinal);
         using (var reopened = SqlCipherConnection.Open(profile.DatabasePath, passphrase!))
         {
-            Assert.Equal(ExpectedV57Endpoint, SqlCipherConnection.ReadMigrationEndpoint(reopened));
-            Assert.Equal(ExpectedV57MigrationCount, SqlCipherConnection.ReadMigrationCount(reopened));
+            Assert.Equal(ExpectedV58Endpoint, SqlCipherConnection.ReadMigrationEndpoint(reopened));
+            Assert.Equal(ExpectedV58MigrationCount, SqlCipherConnection.ReadMigrationCount(reopened));
             AssertV56CheckpointSchema(reopened);
             using var read = reopened.CreateCommand();
             read.CommandText = """
@@ -325,11 +325,11 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
         Assert.True(Directory.Exists(archive.ArchiveDirectory));
         Assert.True(File.Exists(archive.ArchivedDatabasePath));
         Assert.True(SqlCipherConnection.FileIsEncrypted(profile.DatabasePath));
-        Assert.Equal(ExpectedV57Endpoint, archive.NewDatabase.SchemaEndpoint);
-        Assert.Equal(ExpectedV57MigrationCount, archive.NewDatabase.MigrationCount);
+        Assert.Equal(ExpectedV58Endpoint, archive.NewDatabase.SchemaEndpoint);
+        Assert.Equal(ExpectedV58MigrationCount, archive.NewDatabase.MigrationCount);
         using var reset = SqlCipherConnection.Open(profile.DatabasePath, passphrase!);
-        Assert.Equal(ExpectedV57Endpoint, SqlCipherConnection.ReadMigrationEndpoint(reset));
-        Assert.Equal(ExpectedV57MigrationCount, SqlCipherConnection.ReadMigrationCount(reset));
+        Assert.Equal(ExpectedV58Endpoint, SqlCipherConnection.ReadMigrationEndpoint(reset));
+        Assert.Equal(ExpectedV58MigrationCount, SqlCipherConnection.ReadMigrationCount(reset));
         AssertV56CheckpointSchema(reset);
         WriteEvidence("corrupt-archive-reset", profile.DatabasePath, archive.NewDatabase, status.RecoveryState);
     }
@@ -430,10 +430,10 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
             return;
         }
 
-        Assert.Equal(ExpectedV57Endpoint, status.Report!.SchemaEndpoint);
-        Assert.Equal(ExpectedV57MigrationCount, status.Report.MigrationCount);
-        Assert.Equal(ExpectedV57Endpoint, SqlCipherConnection.ReadMigrationEndpoint(reopened));
-        Assert.Equal(ExpectedV57MigrationCount, SqlCipherConnection.ReadMigrationCount(reopened));
+        Assert.Equal(ExpectedV58Endpoint, status.Report!.SchemaEndpoint);
+        Assert.Equal(ExpectedV58MigrationCount, status.Report.MigrationCount);
+        Assert.Equal(ExpectedV58Endpoint, SqlCipherConnection.ReadMigrationEndpoint(reopened));
+        Assert.Equal(ExpectedV58MigrationCount, SqlCipherConnection.ReadMigrationCount(reopened));
         Assert.Contains(ReadTableInfo(reopened, "token_usage"), column =>
             column == ("parentRequestID", "TEXT", 0, 0));
     }

@@ -401,9 +401,9 @@ jobs:
   sqlcipher-codec-policy:
     name: SQLCipher codec policy
     runs-on: ubuntu-latest
-    # Checkout can consume nearly two minutes during GitHub fetch degradation;
-    # leave enough time for the required policy check to run afterward.
-    timeout-minutes: 6
+    # Checkout can consume 6-7 minutes during GitHub fetch degradation (observed
+    # Aug 2026); leave enough time for the required policy check to run afterward.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -414,8 +414,10 @@ jobs:
     name: AGPL compliance
     runs-on: ubuntu-latest
     # 3 minutes started timing out as the tree grew (checkout + verify ran
-    # 2m18s-3m15s in July 2026); job timeout reports as "cancelled" in the UI.
-    timeout-minutes: 6
+    # 2m18s-3m15s in July 2026), and GitHub fetch degradation pushed checkout
+    # alone to 6-7 minutes in Aug 2026; job timeout reports as "cancelled" in
+    # the UI.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -1037,7 +1039,9 @@ jobs:
   services-fast:
     name: "Services (relay + hosted-MCP: types + tests)"
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    # Checkout can consume 6-7 minutes during GitHub fetch degradation (observed
+    # Aug 2026); leave headroom for the install + test steps afterward.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -1285,13 +1289,11 @@ jobs:
     needs: classify
     if: needs.classify.outputs.functions == 'true'
     runs-on: ubuntu-latest
-    # 10 rather than 6, matching the majority of jobs in this file. This job
-    # takes ~1.7 min on pull_request, but on merge_group refs the checkout
-    # alone exceeded the whole 6-minute budget and was cancelled mid-fetch on
-    # four consecutive attempts (even shallow and with submodules off), so the
-    # required Fast Feedback Gate could never go green and the merge queue
-    # ejected #2183 six times. The work is unchanged; only the fetch is slow.
-    timeout-minutes: 10
+    # Healthy runs finish in ~2 minutes, but GitHub fetch degradation pushed
+    # checkout alone to 6-7 minutes in Aug 2026 (and cancelled merge_group
+    # attempts mid-fetch), which killed this lane at the old 6-minute timeout
+    # repeatedly before any code ran.
+    timeout-minutes: 12
     steps:
       # This job only reads the worktree, so history is unnecessary weight.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)

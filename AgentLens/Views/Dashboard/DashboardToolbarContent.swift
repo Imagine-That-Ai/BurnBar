@@ -34,6 +34,7 @@ extension DashboardView {
                 currentRoute: mainRoute,
                 activeChatBackend: chatController.chatBackend,
                 pendingMemoryCount: pendingMemoryReviewCount,
+                inboxUnreadCount: aiInboxUnreadCount,
                 onNavigate: { route in
                     withAnimation(DesignSystem.Animation.standard) {
                         navigate(to: route)
@@ -180,6 +181,7 @@ extension DashboardView {
                 currentRoute: mainRoute,
                 activeChatBackend: chatController.chatBackend,
                 pendingMemoryCount: pendingMemoryReviewCount,
+                inboxUnreadCount: aiInboxUnreadCount,
                 onNavigate: { route in
                     withAnimation(DesignSystem.Animation.standard) {
                         navigate(to: route)
@@ -1248,6 +1250,7 @@ private extension DashboardMainRoute {
         case "missions": return .missions
         case "sessionLogs": return .sessionLogs
         case "memoryReview": return .memoryReview
+        case "inbox": return .inbox
         case "chat": return .chat
         case "quota": return .quota
         default: return nil

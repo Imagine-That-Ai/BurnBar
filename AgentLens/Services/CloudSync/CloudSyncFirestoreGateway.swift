@@ -85,6 +85,13 @@ protocol CloudSyncDocumentSnapshotGateway: AnyObject, Sendable {
 // (override for tests); the SDK is internally thread-safe. sendable-allowlist: firebase-sdk-handle
 /// Thin wrapper around real Firebase Firestore SDK.
 final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked Sendable {
+    /// Sanctioned resolution point for the raw Firestore handle (R-GH6 raw
+    /// Firestore ratchet). Call sites that must hand the concrete SDK handle
+    /// to vault/Signal helpers resolve it here instead of calling
+    /// `Firestore.firestore()` directly, so handle configuration stays owned
+    /// by the gateway layer.
+    static var sdkHandle: Firestore { Firestore.firestore() }
+
     private let firestoreOverride: Firestore?
 
     init(firestore: Firestore? = nil) {

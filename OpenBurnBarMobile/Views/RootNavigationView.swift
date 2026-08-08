@@ -46,6 +46,10 @@ struct RootNavigationView: View {
     @State private var burnQuotaStore = QuotaStore()
     @State private var burnDashboardStore = DashboardStore()
     @State private var burnActivityStore = ActivityStore()
+    /// Hoisted for the same reason as the Pulse/Burn stores: the detail switch
+    /// destroys the selected branch's view tree on every sidebar change, and a
+    /// per-view inbox store would re-open two Firestore listeners each time.
+    @State private var streamsInboxStore = AIInboxStore()
     @State private var missionActivityCenter = MobileMissionActivityCenter()
     @State private var missionConsoleHost = MobileMissionConsoleHost()
     @State private var showHermesSheet = false
@@ -99,6 +103,12 @@ struct RootNavigationView: View {
         .task { missionConsoleHost.start() }
         .task { liveStagePresenter.observe(liveStageSingleton.state) }
         .task { liveStageSingleton.installLiveActivityIntentRouter() }
+        // Claims a push tap that landed BEFORE this view existed — a cold
+        // launch from an AI Inbox notification posts `AIInboxDeepLink` while
+        // the app is still in `didFinishLaunching`, so the `onReceive` below
+        // has no subscriber yet and the stash is the only surviving record of
+        // it. Same shape as `applyPendingGatewayPairingDeepLink`.
+        .task { claimPendingAIInboxDeepLink() }
         .task {
             liveStageSingleton.configurePictureInPicture(
                 onDidStart: { liveStagePresenter.setPiPActive(true) },
@@ -131,6 +141,9 @@ struct RootNavigationView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName)) { notification in
             openHermesGatewayPairingRoute(notification)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AIInboxDeepLink.notificationName)) { notification in
+            openAIInboxRoute(itemID: AIInboxDeepLink.itemID(from: notification))
         }
         .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
             isCloudStoreChromeHidden = notification.object as? Bool ?? false
@@ -382,7 +395,7 @@ struct RootNavigationView: View {
                         activityStore: burnActivityStore
                     )
                     case .insights: AgentInsightsTabScreen(dashboardStore: insightsDashboardStore, hermesService: hermesService)
-                    case .streams:  StreamsView()
+                    case .streams:  StreamsView(inbox: streamsInboxStore)
                     case .agents:   EmptyView()
                     case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
                     case .settings: SettingsHubView(authStore: authStore)
@@ -451,6 +464,37 @@ struct RootNavigationView: View {
         detailPath = NavigationPath()
         detailPath.append(SettingsPageRoute.hermes)
         updateColumnVisibility(for: .settings, animated: false)
+    }
+
+    /// Lands a `burnbar://inbox[/{itemId}]` deep link from an AI Inbox P1 push.
+    ///
+    /// The Inbox lives inside the Streams detail branch, so this selects it and
+    /// resets the detail path before pushing the item. On a wide iPad the split
+    /// layout may already show the item inline; pushing is still correct, since
+    /// the push destination resolves against the same live store.
+    private func openAIInboxRoute(itemID: String?) {
+        // Drain the stash on the live path too. The tap has been served here, so
+        // leaving it parked would let a later `.task` re-navigate the user back
+        // to this item after they had moved on.
+        _ = AIInboxDeepLink.consumePendingItemID()
+        selection = .streams
+        detailPath = NavigationPath()
+        streamsInboxStore.focus(itemID: itemID)
+        updateColumnVisibility(for: .streams, animated: false)
+        guard let itemID else { return }
+        detailPath.append(AIInboxDetailRoute(itemID: itemID))
+    }
+
+    /// Cold-launch counterpart to the `onReceive` above.
+    ///
+    /// A notification tap that launches the app posts its deep link during
+    /// `didFinishLaunching`, before any SwiftUI view has subscribed, so the
+    /// `AIInboxDeepLink` stash is the only surviving record. Claiming it here —
+    /// once, as the root appears — is what makes a push tap from a terminated
+    /// app land on the item instead of the default sidebar branch.
+    private func claimPendingAIInboxDeepLink() {
+        guard let itemID = AIInboxDeepLink.consumePendingItemID() else { return }
+        openAIInboxRoute(itemID: itemID)
     }
 
     private func updateColumnVisibility(for destination: AppDestination, animated: Bool = true) {

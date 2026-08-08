@@ -98,6 +98,7 @@ export const PLATFORM_TRIGGER_ENDPOINTS = [
   "reapHermesGatewayApprovals",
   "onCliSessionAgentReplyNotification",
   "onMobileAssistantAgentReplyNotification",
+  "onAIInboxItemNotification",
   "onKnowledgeRepoPush",
   "sendFcmOutbound",
   "sendVoIPOutbound",

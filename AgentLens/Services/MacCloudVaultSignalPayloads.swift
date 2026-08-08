@@ -109,6 +109,9 @@ enum MacCloudVaultSignalPayloads {
         to legacyPayload: NSDictionary,
         domainID: String,
         uid: String,
+        // Lazy so call sites can pass `Firestore.firestore()` without touching the live
+        // SDK when the domain's Signal gate is OFF (e.g. fake-gateway unit tests where
+        // FirebaseApp is never configured). Mirrors `signalEnvelopeIfEnabled` above.
         firestore: @autoclosure () throws -> Firestore,
         collection: String,
         docId: String,

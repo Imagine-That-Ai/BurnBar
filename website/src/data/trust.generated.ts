@@ -133,14 +133,16 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
     "id": "conversations_chat",
     "title": "Conversations & Chat",
     "tier": "end_to_end",
-    "blurb": "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, rollback scope/diagnostics, approval rules, agent personas, subscription graph edges, and conversation recall metadata are sealed on-device before Firestore receives them.",
-    "caveat": null,
+    "blurb": "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, rollback scope/diagnostics, approval rules, agent personas, subscription graph edges, conversation recall metadata, and AI Inbox findings are sealed on-device before Firestore receives them.",
+    "caveat": "Your per-item AI Inbox state — read, archived, snoozed, and the useful/not-useful verdict — rides as plain status metadata so every device converges on the same inbox; the item title, body, and evidence stay sealed.",
     "serverSees": [
       "provider/runtime identifiers",
       "message counts",
       "status/routing metadata",
       "timestamps",
-      "device ids"
+      "device ids",
+      "AI Inbox item kind/priority/lifecycle",
+      "AI Inbox read, archive, snooze, and feedback verdicts"
     ],
     "deviceOnly": [
       "chat titles",
@@ -154,7 +156,8 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
       "rollback error diagnostics",
       "approval policy labels/globs/projects",
       "agent persona text",
-      "subscription graph edges and display text"
+      "subscription graph edges and display text",
+      "AI Inbox titles, summaries, and evidence"
     ]
   },
   {

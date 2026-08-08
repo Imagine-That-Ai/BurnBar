@@ -84,9 +84,19 @@ struct DashboardView: View {
     @State var missionConsoleController: MissionConsoleWindowController?
     @State private var showMacWandComposer = false
     @State var pendingMemoryReviewCount: Int?
+    /// Unread AI Inbox items, shown as a badge on the section switcher. Nil until
+    /// the first read, so a profile whose daemon has never run shows no badge
+    /// rather than a misleading zero.
+    @State var aiInboxUnreadCount: Int?
+    /// Item id from a tapped notification deep link, consumed once by the Inbox
+    /// surface so it opens on that item instead of the newest one.
+    @State var pendingInboxItemID: String?
     @State var showCommandPalette = false
     @State var showHeroPopover = false
     @State private var dashboardSplitVisibility: NavigationSplitViewVisibility = .all
+    /// Non-nil only while the user has manually overridden the sidebar for the
+    /// current route. Cleared on navigation so each route starts from its default.
+    @State private var sidebarVisibilityOverride: Bool?
     @AppStorage("dashboard.statusRail.height") var storedDashboardStatusRailHeight = 52.0
     @State var dashboardStatusRailResizeOrigin: Double?
 
@@ -187,9 +197,43 @@ struct DashboardView: View {
         dashboardSplitVisibility != .detailOnly
     }
 
+    /// Routes whose content is *about* the provider/model breakdown the sidebar
+    /// renders. Workspaces that own a full-width layout (or their own left rail,
+    /// like Session Logs) would otherwise show a third redundant column.
+    static func routeWantsProviderSidebar(_ route: DashboardMainRoute) -> Bool {
+        switch route {
+        case .overview, .insights, .charts, .provider, .model:
+            return true
+        case .database, .projects, .missions, .sessionLogs, .memoryReview, .inbox, .chat, .quota:
+            return false
+        }
+    }
+
+    /// Sidebar visibility the current route asks for, unless the user has
+    /// explicitly overridden it for that route via the toggle.
+    var resolvedSidebarVisibility: NavigationSplitViewVisibility {
+        if let override = sidebarVisibilityOverride {
+            return override ? .all : .detailOnly
+        }
+        return Self.routeWantsProviderSidebar(mainRoute) ? .all : .detailOnly
+    }
+
     func toggleDashboardSidebar() {
         withAnimation(reduceMotion ? .easeOut(duration: 0.12) : DesignSystem.Animation.snappy) {
-            dashboardSplitVisibility = isDashboardSidebarVisible ? .detailOnly : .all
+            sidebarVisibilityOverride = !isDashboardSidebarVisible
+            dashboardSplitVisibility = resolvedSidebarVisibility
+        }
+    }
+
+    /// Re-derives sidebar visibility after a route change. The manual override
+    /// is per-route, so navigating away clears it.
+    func syncSidebarVisibility(for route: DashboardMainRoute, previous: DashboardMainRoute) {
+        guard route != previous else { return }
+        sidebarVisibilityOverride = nil
+        let target = Self.routeWantsProviderSidebar(route) ? NavigationSplitViewVisibility.all : .detailOnly
+        guard target != dashboardSplitVisibility else { return }
+        withAnimation(reduceMotion ? .easeOut(duration: 0.12) : DesignSystem.Animation.snappy) {
+            dashboardSplitVisibility = target
         }
     }
 
@@ -225,6 +269,10 @@ struct DashboardView: View {
         case .projects: route = .projects
         case .sessionLogs: route = .sessionLogs
         case .chat: route = .chat
+        case .inbox(let itemID):
+            route = .inbox
+            // Carried through so a tapped notification opens the exact item.
+            pendingInboxItemID = itemID
         }
         withAnimation(DesignSystem.Animation.standard) {
             navigate(to: route)
@@ -248,6 +296,7 @@ struct DashboardView: View {
         case .missions: return "Missions"
         case .sessionLogs: return "Session Logs"
         case .memoryReview: return "Memory"
+        case .inbox: return "Inbox"
         case .chat: return "Chat"
         case .quota: return "Quota"
         case .provider(let provider): return provider.displayName
@@ -352,6 +401,9 @@ struct DashboardView: View {
             }
             .allowsHitTesting(false)
         }
+        .onChange(of: mainRoute) { previous, route in
+            syncSidebarVisibility(for: route, previous: previous)
+        }
         // A published profile describes one specific backdrop. When the skin,
         // the live-backdrop toggles, or the app appearance change, it no longer
         // does — drop it so the skin-aware native fallback covers the frames
@@ -361,15 +413,23 @@ struct DashboardView: View {
             backdropReadabilityProfile = nil
         }
         .onAppear {
+            dashboardSplitVisibility = resolvedSidebarVisibility
             autoExpandTimeRangeIfNeeded()
             if missionConsoleController == nil {
                 missionConsoleController = MissionConsoleWindowController.bind(to: operatingLayer)
             }
             Task { await refreshPendingMemoryReviewCount() }
+            Task { await refreshAIInboxUnreadCount() }
             consumeCoordinatorDashboardRoute()
         }
         .onChange(of: navigationCoordinator.dashboardRoute) { _, _ in
             consumeCoordinatorDashboardRoute()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Self.inboxBadgeRefreshNotification)) { _ in
+            // The daemon writes inbox rows in another process, so there is no
+            // local mutation to react to. The shared background cadence posts
+            // this after each pass; the badge query is a single COUNT.
+            Task { await refreshAIInboxUnreadCount() }
         }
         .task(id: burnRailDeltaTaskID) {
             let requestID = burnRailDeltaTaskID
@@ -709,6 +769,9 @@ struct DashboardView: View {
                 case .memoryReview:
                     memoryReviewView
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .inbox:
+                    inboxView
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .chat:
                     DashboardChatWorkspaceView(
                         controller: chatController,
@@ -865,6 +928,74 @@ struct DashboardView: View {
     /// must read that same bucket so signed-in users can approve extracted memories.
     private var memoryReviewScope: MemoryScope {
         MemoryScope(appID: "openburnbar")
+    }
+
+    /// The AI Inbox destination.
+    ///
+    /// Rows are written by the daemon into the shared database, so this reads
+    /// straight through `DataStore` rather than round-tripping the socket — the
+    /// surface renders instantly even while the daemon is restarting.
+    ///
+    /// The memory-approval handler is bound to the SAME scope the Memory review
+    /// surface uses, so a fact approved from the inbox is visible and revocable
+    /// there too rather than living in a parallel bucket.
+    @ViewBuilder
+    private var inboxView: some View {
+        InboxView(
+            model: InboxModel(
+                loadRows: { [dataStore] states in
+                    try await dataStore.fetchAIInboxRows(states: states)
+                },
+                loadMarker: { [dataStore] in try await dataStore.aiInboxChangeMarker() },
+                markRead: { [dataStore] id in try await dataStore.markAIInboxItemRead(id: id) },
+                markUnread: { [dataStore] id in try await dataStore.markAIInboxItemUnread(id: id) },
+                setArchived: { [dataStore] id, archived in
+                    try await dataStore.setAIInboxItemArchived(id: id, archived: archived)
+                },
+                snooze: { [dataStore] id, until in
+                    try await dataStore.snoozeAIInboxItem(id: id, until: until)
+                },
+                setFeedback: { [dataStore] id, feedback in
+                    try await dataStore.setAIInboxItemFeedback(id: id, feedback: feedback)
+                },
+                markAllRead: { [dataStore] in try await dataStore.markAllAIInboxItemsRead() },
+                loadRuns: { [dataStore] in try await dataStore.fetchAIInboxRuns() }
+            ),
+            onOpenSessionLog: { conversationID in
+                // Resolve the citation into a real jump target so the click lands
+                // on the passage that justified the item, not the top of a long
+                // transcript. If the conversation is no longer indexed we still
+                // navigate — going nowhere would read as a broken link.
+                Task { @MainActor in
+                    let resolver = InboxConversationJumpResolver(dataStore: dataStore)
+                    sessionLogJumpTarget = await resolver.jumpTarget(conversationID: conversationID)
+                    navigate(to: .sessionLogs)
+                }
+            },
+            onOpenSettings: { presentSettings(itemID: "privacy") },
+            memoryApproval: runtimeContext?.chatMemoryStore.map {
+                InboxMemoryApprovalHandler(store: $0, scope: memoryReviewScope)
+            },
+            openItemID: pendingInboxItemID
+        )
+        // Consume the deep link so returning to the Inbox later opens normally.
+        .onAppear { pendingInboxItemID = nil }
+        .background(dashboardLiveBackdropActive ? Color.clear : DesignSystem.Colors.background)
+    }
+
+    /// Name posted by the shared background cadence after each pass, so the
+    /// badge tracks daemon-written rows without the view owning a second timer.
+    static let inboxBadgeRefreshNotification = Notification.Name("openburnbar.aiInbox.badgeRefresh")
+
+    /// Refreshes the inbox badge.
+    ///
+    /// Deliberately a `COUNT` rather than a fetch: this runs on the shared
+    /// background cadence, and the whole point of the feature is that an idle
+    /// inbox is free. A failure (daemon never ran, table absent) clears the badge
+    /// instead of surfacing an error — a badge is not the place to report a fault.
+    @MainActor
+    func refreshAIInboxUnreadCount() async {
+        aiInboxUnreadCount = try? await dataStore.aiInboxUnreadCount()
     }
 
     @MainActor
