@@ -80,7 +80,7 @@ const cases = [
   ["queue timeout shorter than workflow", (root) => mutateGovernance(root, (governance) => {
     governance.merge_queue.check_response_timeout_minutes = 100;
   }), 1],
-  ["workflow outgrows queue timeout", (root) => mutate(root, "app-pr-gate.yml", "timeout-minutes: 60", "timeout-minutes: 301"), 1],
+  ["workflow outgrows queue timeout", (root) => mutate(root, "app-pr-gate.yml", "timeout-minutes: 90", "timeout-minutes: 301"), 1],
 ];
 
 let failures = 0;
