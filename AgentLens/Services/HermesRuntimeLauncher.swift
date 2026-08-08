@@ -120,6 +120,8 @@ extension HermesRuntimeLauncher: ManagedAgentRuntimeAdapter {
 @MainActor
 final class HermesRuntimeLauncher {
     private let dependencies: HermesRuntimeLauncherDependencies
+    /// Perf: coalesce concurrent refreshes behind a single Task.
+    private var inFlightRefreshTask: Task<HermesRuntimeStatus, Never>?
 
     var status = HermesRuntimeStatus()
     var isBusy = false
@@ -132,6 +134,22 @@ final class HermesRuntimeLauncher {
     func refreshStatus(
         baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
         bearerToken: String? = nil
+    ) async -> HermesRuntimeStatus {
+        if let existing = inFlightRefreshTask {
+            return await existing.value
+        }
+        let task = Task { [self] () -> HermesRuntimeStatus in
+            await self.refreshStatusImpl(baseURL: baseURL, bearerToken: bearerToken)
+        }
+        inFlightRefreshTask = task
+        let result = await task.value
+        inFlightRefreshTask = nil
+        return result
+    }
+
+    private func refreshStatusImpl(
+        baseURL: URL,
+        bearerToken: String?
     ) async -> HermesRuntimeStatus {
         isBusy = true
         defer { isBusy = false }
