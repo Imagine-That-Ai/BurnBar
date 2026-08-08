@@ -292,14 +292,25 @@ public final class PrimeAgentParser: LogParser, Sendable {
         let resolvedEnd = lastTime ?? sessionTimestamp ?? mtime ?? resolvedStart
 
         // Cost: prefer the explicit total from the log when `cost.total` was present
-        // (even if `0` for free/cached turns); only missing `cost` falls back to
-        // catalog pricing. This prevents a free turn from being re-priced as paid.
+        // and non-zero; when `total` is `0` but tokens are non-zero, fall back to
+        // catalog pricing (e.g., muse-spark-1.2-contributor when prime-agent's
+        // models.json has no `cost` and therefore records 0). Truly free cached
+        // turns remain 0 only when the catalog also prices them at 0.
         let cost: Double
-        if costWasExplicit {
+        if costWasExplicit, totalCost != 0 {
             cost = totalCost
+        } else if costWasExplicit, totalCost == 0, totalInput == 0, totalOutput == 0, totalCacheRead == 0, totalCacheWrite == 0 {
+            cost = 0
         } else {
             let pricing = ModelPricing.lookup(model: model, providerID: "prime-agent")
-            cost = (try? pricing.cost(inputTokens: totalInput, outputTokens: totalOutput, cacheCreationTokens: totalCacheWrite, cacheReadTokens: totalCacheRead)) ?? totalCost
+            let fallback = (try? pricing.cost(inputTokens: totalInput, outputTokens: totalOutput, cacheCreationTokens: totalCacheWrite, cacheReadTokens: totalCacheRead)) ?? 0
+            // If explicit 0 was a true free turn, fallback will also be ~0 (cached pricing); keep the more precise fallback.
+            // Otherwise, use fallback to avoid showing $0 for large-token sessions whose cost wasn't computed.
+            if costWasExplicit, totalCost == 0 {
+                cost = fallback
+            } else {
+                cost = fallback
+            }
         }
 
         let usage = TokenUsage(

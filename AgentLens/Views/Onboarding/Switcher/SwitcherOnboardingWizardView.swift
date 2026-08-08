@@ -37,6 +37,7 @@ struct OnboardingProvider: Identifiable, Equatable {
         case piCLI
         case junieCLI
         case ompCLI
+        case primeAgentCLI
     }
 
     static let defaultOrder: [OnboardingProvider] = [
@@ -56,7 +57,8 @@ struct OnboardingProvider: Identifiable, Equatable {
         OnboardingProvider(id: "kimicli", label: "Kimi CLI", icon: "terminal.fill", bundledLogoName: "KimiLogo", color: Color(hex: "6366F1"), kind: .kimiCLI),
         OnboardingProvider(id: "picli", label: "Pi CLI", icon: "terminal.fill", bundledLogoName: "PiAgentLogo", color: Color(hex: "7C3AED"), kind: .piCLI),
         OnboardingProvider(id: "juniecli", label: "Junie CLI", icon: "terminal.fill", bundledLogoName: "JunieLogo", color: Color(hex: "48E054"), kind: .junieCLI),
-        OnboardingProvider(id: "ompcli", label: "OMP CLI", icon: "command", bundledLogoName: "OMPLogo", color: Color(hex: "EC4899"), kind: .ompCLI)
+        OnboardingProvider(id: "ompcli", label: "OMP CLI", icon: "command", bundledLogoName: "OMPLogo", color: Color(hex: "EC4899"), kind: .ompCLI),
+        OnboardingProvider(id: "primeagentcli", label: "Prime Agent", icon: "terminal.fill", bundledLogoName: "PrimeAgentLogo", color: Color(hex: "582CFF"), kind: .primeAgentCLI)
     ]
 }
 

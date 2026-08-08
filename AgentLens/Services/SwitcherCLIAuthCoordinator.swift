@@ -209,7 +209,7 @@ final class SwitcherCLIAuthCoordinator {
             return false
         case .opencode:
             return false
-        case .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
+        case .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent:
             if case .authenticated = authInfo.authState {
                 return true
             }
@@ -399,7 +399,7 @@ final class SwitcherCLIAuthCoordinator {
             candidates = [["login"], ["auth", "login"]]
         case .claude:
             candidates = [["auth", "login"], ["login"]]
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent:
             candidates = []
         }
 
@@ -436,6 +436,8 @@ final class SwitcherCLIAuthCoordinator {
             return ["JUNIE_HOME"]
         case .omp:
             return ["OMP_HOME", "OMP_CONFIG_HOME"]
+        case .primeAgent:
+            return ["PRIME_HOME", "PRIME_AGENT_HOME"]
         }
     }
 
@@ -584,6 +586,8 @@ final class SwitcherCLIAuthCoordinator {
             installHint = "Reinstall JetBrains Junie (curl -fsSL https://junie.jetbrains.com/install.sh | bash), then retry Add Account."
         case .omp:
             installHint = "Reinstall OMP, then retry Add Account."
+        case .primeAgent:
+            installHint = "Reinstall Prime Agent (npm install -g prime-agent), then retry Add Account."
         }
 
         let reason: String
