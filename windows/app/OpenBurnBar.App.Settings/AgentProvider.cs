@@ -17,7 +17,7 @@ namespace OpenBurnBar.App.Settings;
 
 /// <summary>
 /// Coding-agent provider identity. Mirrors <c>OpenBurnBarCore.AgentProvider</c>
-/// (32 cases, declaration order preserved so <see cref="AgentProviderMetadata.AllCases"/>
+/// (35 cases, declaration order preserved so <see cref="AgentProviderMetadata.AllCases"/>
 /// equals the Swift <c>allCases</c>).
 /// </summary>
 public enum AgentProvider
@@ -54,6 +54,9 @@ public enum AgentProvider
     XAI,
     Mimo,
     CursorAgent,
+    Junie,
+    PrimeAgent,
+    Muse,
 }
 
 /// <summary>
@@ -103,6 +106,9 @@ public static class AgentProviderMetadata
         AgentProvider.XAI => "xAI",
         AgentProvider.Mimo => "MiMo",
         AgentProvider.CursorAgent => "Cursor Agent",
+        AgentProvider.Junie => "Junie",
+        AgentProvider.PrimeAgent => "Prime Agent",
+        AgentProvider.Muse => "Muse",
         _ => throw new ArgumentOutOfRangeException(nameof(p), p, null),
     };
 
@@ -127,6 +133,7 @@ public static class AgentProviderMetadata
         AgentProvider.Kimi => "kimi",
         AgentProvider.XAI => "xai",
         AgentProvider.CursorAgent => "cursor-agent",
+        AgentProvider.PrimeAgent => "prime-agent",
         _ => PersistedToken(p),
     };
 }
