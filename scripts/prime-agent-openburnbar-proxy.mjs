@@ -75,10 +75,14 @@ function providerInput(providerId) {
 
 function loadCatalog(repoRoot) {
   const catalogPath = path.join(repoRoot, CATALOG_RELATIVE);
-  if (!fs.existsSync(catalogPath)) {
-    throw new Error(`Catalog not found at ${catalogPath}`);
+  // Read directly (no existsSync) so we avoid a TOCTOU race flagged by CodeQL.
+  let raw;
+  try {
+    raw = fs.readFileSync(catalogPath, "utf8");
+  } catch (err) {
+    if (err?.code === "ENOENT") throw new Error(`Catalog not found at ${catalogPath}`);
+    throw err;
   }
-  const raw = fs.readFileSync(catalogPath, "utf8");
   return JSON.parse(raw);
 }
 
@@ -215,23 +219,51 @@ function buildModelsFromLiveIds(liveIds, catalog) {
 }
 
 function readModelsJson(modelsPath) {
-  if (!fs.existsSync(modelsPath)) return { providers: {} };
-  const raw = fs.readFileSync(modelsPath, "utf8").trim();
+  // Read directly (no existsSync) so we avoid a TOCTOU race flagged by CodeQL.
+  let raw;
+  try {
+    raw = fs.readFileSync(modelsPath, "utf8").trim();
+  } catch (err) {
+    if (err?.code === "ENOENT") return { providers: {} };
+    throw err;
+  }
   if (!raw) return { providers: {} };
   const parsed = JSON.parse(raw);
   if (!parsed.providers || typeof parsed.providers !== "object") parsed.providers = {};
   return parsed;
 }
 
+/** Redact apiKey before any console/JSON output. */
+function redactProviderForDisplay(entry) {
+  if (!entry || typeof entry !== "object") return entry;
+  const copy = { ...entry };
+  if ("apiKey" in copy) {
+    const configured = typeof copy.apiKey === "string" && copy.apiKey.length > 0;
+    copy.apiKey = configured ? "[redacted]" : "[missing]";
+  }
+  return copy;
+}
+
 function writeModelsJson(modelsPath, data) {
   const dir = path.dirname(modelsPath);
   fs.mkdirSync(dir, { recursive: true });
-  // Backup existing
-  if (fs.existsSync(modelsPath)) {
-    const backup = `${modelsPath}.bak`;
-    try { fs.copyFileSync(modelsPath, backup); } catch {}
+  const payload = `${JSON.stringify(data, null, 2)}\n`;
+  // Atomic replace: no existsSync check before write (CodeQL js/file-system-race).
+  const tmpPath = `${modelsPath}.${process.pid}.tmp`;
+  fs.writeFileSync(tmpPath, payload, "utf8");
+  try {
+    try {
+      fs.copyFileSync(modelsPath, `${modelsPath}.bak`);
+    } catch (err) {
+      if (err?.code !== "ENOENT") {
+        // Best-effort backup only.
+      }
+    }
+    fs.renameSync(tmpPath, modelsPath);
+  } catch (err) {
+    try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+    throw err;
   }
-  fs.writeFileSync(modelsPath, JSON.stringify(data, null, 2) + "\n", "utf8");
 }
 
 async function main() {
@@ -266,12 +298,13 @@ async function main() {
       console.log(`gateway: http://${opts.gatewayHost}:${opts.gatewayPort}`);
       process.exit(1);
     }
+    const safe = redactProviderForDisplay(entry);
     console.log(`openburnbar provider: configured`);
-    console.log(`  baseUrl: ${entry.baseUrl}`);
-    console.log(`  api: ${entry.api}`);
-    console.log(`  models: ${entry.models?.length ?? 0}`);
-    console.log(`  first: ${entry.models?.[0]?.id ?? "-"}`);
-    console.log(`  apiKey: ${entry.apiKey?.slice(0, 40)}...`);
+    console.log(`  baseUrl: ${safe.baseUrl}`);
+    console.log(`  api: ${safe.api}`);
+    console.log(`  models: ${safe.models?.length ?? 0}`);
+    console.log(`  first: ${safe.models?.[0]?.id ?? "-"}`);
+    console.log(`  apiKey: ${safe.apiKey}`);
     console.log(`  path: ${modelsPath}`);
     process.exit(0);
   }
@@ -314,7 +347,13 @@ async function main() {
   };
 
   if (opts.print) {
-    console.log(JSON.stringify({ providers: { openburnbar: providerEntry } }, null, 2));
+    console.log(
+      JSON.stringify(
+        { providers: { openburnbar: redactProviderForDisplay(providerEntry) } },
+        null,
+        2
+      )
+    );
     process.exit(0);
   }
 
