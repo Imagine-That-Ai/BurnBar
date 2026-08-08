@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Prime Agent is now a first-class provider at parity with Hermes, Codex, and Droid**: auto-detected at `~/.prime/agent/sessions/*.jsonl` with no manual config; `PrimeAgentParser` extracts per-turn `input`/`output`/`cacheRead`/`cacheWrite` and exact USD cost from `message.usage.cost.total` (fallback to `ModelPricing` catalog when cost is zero). Sessions appear in the meter with correct tokens and $ cost; pricing falls back gracefully when the model is unknown. Handles empty logs, truncated JSONL, and multi-model sessions.
 
+### Added - Prime Agent OpenBurnBar proxy
+
+- Added Prime Agent OpenBurnBar proxy: `node scripts/prime-agent-openburnbar-proxy.mjs` syncs the local gateway catalog into `~/.prime/agent/models.json` as `openburnbar/*` so `prime-agent /model` and `prime-agent --provider openburnbar --model claude-sonnet-4-6` route through BurnBar's loopback gateway (accounting + failover), matching the existing Claude Code / Codex / Droid / Forge / OpenCode wiring. Supports `--live` (gateway-first), `--status`, `--print`, and `--remove`; API key resolves at request time from the LaunchAgent plist → keychain → env var. Docs: `docs/PROVIDERS.md` → Prime Agent via OpenBurnBar Gateway.
+
 ### Fixed - Mercury release build reliability
 
 - **Made clean Mercury XCFramework release builds deterministic across current
