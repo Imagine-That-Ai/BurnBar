@@ -369,8 +369,11 @@ public sealed class CompanionCliPackagingTests
                 includeConversationBodies = false,
             });
 
+            // Windows CI occasionally stalls the first staged-worker launch under load
+            // (15s protocol timeout). One clean retry matches the cleanup-retry harden
+            // already on this PR and avoids failing PR Windows Gate on a transient hang.
             (int exitCode, string workerStandardOutput, string workerStandardError) =
-                await RunStagedWorkerAsync(workerHost, appOutput, invalidNativeEngine, request);
+                await RunStagedWorkerWithRetryAsync(workerHost, appOutput, invalidNativeEngine, request);
 
             Assert.True(
                 exitCode == 16,
@@ -468,6 +471,23 @@ public sealed class CompanionCliPackagingTests
         Assert.True(
             process.ExitCode == 0,
             $"Direct worker staging failed with exit code {process.ExitCode}.\n{output}\n{error}");
+    }
+
+    private static async Task<(int ExitCode, string StandardOutput, string StandardError)>
+        RunStagedWorkerWithRetryAsync(
+            string workerHost,
+            string workingDirectory,
+            string invalidNativeEngine,
+            string request)
+    {
+        try
+        {
+            return await RunStagedWorkerAsync(workerHost, workingDirectory, invalidNativeEngine, request);
+        }
+        catch (TimeoutException)
+        {
+            return await RunStagedWorkerAsync(workerHost, workingDirectory, invalidNativeEngine, request);
+        }
     }
 
     private static async Task<(int ExitCode, string StandardOutput, string StandardError)>
