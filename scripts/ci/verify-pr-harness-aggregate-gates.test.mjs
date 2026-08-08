@@ -393,7 +393,7 @@ const rafStep = appBuildSteps.get("macOS rAF pause prerequisite (P-PERF-3)");
 const buildStep = appBuildSteps.get("Build AgentLens app for real-process CPU gate");
 const realGateStep = appBuildSteps.get("Enforce real macOS idle/occluded CPU budget (P-PERF-3)");
 const evidenceStep = appBuildSteps.get("Upload macOS idle/occlusion CPU evidence");
-const appTestStep = appBuildSteps.get("Build + test the AgentLens app target");
+const appTestStep = appBuildSteps.get("Build + run bounded AgentLens app smoke tests");
 
 check("P-PERF-3 runs the deterministic rAF test before building the real OpenBurnBar app", () => {
   assert.ok(rafStep && buildStep && realGateStep && evidenceStep, "missing P-PERF-3 workflow step");
@@ -442,6 +442,34 @@ check("app tests reuse the real-process build instead of compiling the product t
   );
   assert.match(driver, /OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR/u);
   assert.match(driver, /derived_data_dir="\$\(create_derived_data_dir\)"/u);
+});
+
+check("PR App Gate uses the bounded smoke catalog and leaves the full suite to harness", () => {
+  assert.equal(jobField(appBuildJob, "timeout-minutes"), "60");
+  const test = stepRun(appTestStep);
+  assert.match(
+    test,
+    /source scripts\/lib\/openburnbar-release-app-test-filters\.sh/u,
+  );
+  assert.match(
+    test,
+    /OPENBURNBAR_APP_TEST_FILTERS="\$\(openburnbar_release_app_test_filters_env\)"/u,
+  );
+  assert.match(test, /OPENBURNBAR_APP_TEST_ATTEMPTS=2/u);
+  assert.match(test, /OPENBURNBAR_APP_TEST_DEFAULT_ALLOWANCE=180/u);
+  assert.match(test, /OPENBURNBAR_APP_TEST_MAX_ALLOWANCE=360/u);
+  assert.doesNotMatch(
+    appBuildJob,
+    /name: Enforce app diff coverage/u,
+    "bounded smoke coverage cannot enforce full-suite diff coverage",
+  );
+  const harness = readFileSync(join(REPO_ROOT, WORKFLOW), "utf8");
+  const harnessAppJob = workflowJob(harness, "app-xctest");
+  const harnessAppTestStep = workflowStep(harnessAppJob, "Run OpenBurnBar app tests");
+  assert.match(
+    stepRun(harnessAppTestStep),
+    /OPENBURNBAR_ENABLE_COVERAGE=YES \.\/scripts\/test-openburnbar-app\.sh/u,
+  );
 });
 
 const fastWorkflow = readFileSync(join(REPO_ROOT, FAST_WORKFLOW), "utf8");

@@ -78,9 +78,9 @@ const cases = [
   ["promotion-contracts candidate clone drops blobs", (root) => mutate(root, "domain-core.yml", "persist-credentials: false\n          fetch-depth: 0\n          ref: ${{ github.event.pull_request.head.sha || github.sha }}\n", "persist-credentials: false\n          fetch-depth: 0\n          filter: blob:none\n          ref: ${{ github.event.pull_request.head.sha || github.sha }}\n"), 1],
   ["promotion-contracts evaluator fetches full history", (root) => mutate(root, "domain-core.yml", "fetch-depth: 1\n          sparse-checkout: scripts/ci/verify-domain-core-legacy-deletion.py", "fetch-depth: 0\n          sparse-checkout: scripts/ci/verify-domain-core-legacy-deletion.py"), 1],
   ["queue timeout shorter than workflow", (root) => mutateGovernance(root, (governance) => {
-    governance.merge_queue.check_response_timeout_minutes = 240;
+    governance.merge_queue.check_response_timeout_minutes = 100;
   }), 1],
-  ["workflow outgrows queue timeout", (root) => mutate(root, "app-pr-gate.yml", "timeout-minutes: 240", "timeout-minutes: 301"), 1],
+  ["workflow outgrows queue timeout", (root) => mutate(root, "app-pr-gate.yml", "timeout-minutes: 60", "timeout-minutes: 301"), 1],
 ];
 
 let failures = 0;

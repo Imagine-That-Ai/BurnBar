@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
-# Release publication runs a bounded app-host smoke, not the full app XCTest
-# corpus. The full suite stays in PR/CI; this list covers the shipped-binary
-# surfaces that have repeatedly blocked public releases.
+# Release publication and the PR App Gate run a bounded app-host smoke, not the
+# full app XCTest corpus. The full suite stays in the post-merge/nightly
+# harness; this list covers the shipped-binary surfaces that have repeatedly
+# blocked public releases.
 OPENBURNBAR_RELEASE_APP_TEST_FILTERS=(
     "OpenBurnBarTests/DirectDownloadReleaseMetadataTests"
     "OpenBurnBarTests/DirectDownloadUpdatePromptPolicyTests"

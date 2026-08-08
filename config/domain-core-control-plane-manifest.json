@@ -227,7 +227,7 @@
     "scripts/lib/export-domain-core-promotion-evidence.mjs": ["3af7bf1edb1adf37","dea066d4d2a4c6a9","2ca5ce6afd306e9d","b1258498b5da90d6"],
     "scripts/lib/export-domain-core-promotion-evidence.test.mjs": ["d8ecbe9944fa48e3","8d83769fd214cbcc","ed5c6e30f458c80e","1abcfbef2993cb52"],
     "scripts/lib/firebase-hosting-rest-url.mjs": ["fd9379519391ed1b","88962200ff0835e3","bb4144b0de380fd2","9c669261c073c992"],
-    "scripts/lib/openburnbar-release-app-test-filters.sh": ["ad45a822e6378582","1197a246c14da6f4","88b0aa2e53b852b8","acc9545b376af9eb"],
+    "scripts/lib/openburnbar-release-app-test-filters.sh": ["764b9999844726a4","c5f2a9439e564eda","b493e09e8ffa2db8","910ac2e75b777e6d"],
     "scripts/lib/openburnbar-release-mobile-test-filters.sh": ["609a8c076ee55fc5","9d947f70adae952c","07bf64fbe917ffcd","d959a36040b5a4bc"],
     "scripts/lib/prepare-signal-ffi-xcframework.sh": ["1975f84a02db491b","156ae7bcc7717433","304a6a61340c71ee","b23307af10bc133c"],
     "scripts/lib/resolve-repo-path.sh": ["9d7e2516dfca38b2","c15cfff31ed04df8","b98dcdd8650ece59","38dbeb2e4d8505d4"],
