@@ -143,6 +143,17 @@ firebase functions:log --limit 50 --project ${PROJECT_ID}
 3. Create a hotfix PR targeting the rolled-back version
 4. Do not merge new features until the hotfix is confirmed stable
 
+## Feature Flag Rollback — Visual Capture Source Toggle
+
+Local-only `UserDefaults` flag `visualCaptureSourceToggleEnabled` (default `false`) gates the per-provider Visual Capture toggle UI and engine branching. No Firestore collection or DB migration. To disable without reverting code:
+
+```bash
+defaults write com.openburnbar.app visualCaptureSourceToggleEnabled -bool NO
+# or via SettingsManager: SettingsManager.shared.visualCaptureSourceToggleEnabled = false
+```
+
+Also stored per-launch via `SettingsPersistenceCoordinator` keys: `visualCaptureGlobalDefault` (`cli_pty`|`desktop_app`) and `visualCapturePerProvider` (JSON `[persistedToken: rawValue]`). Clearing `visualCapturePerProvider` resets all per-provider overrides to the global default. No Cloud Run revision pin needed for this flag — it is local-only.
+
 ## Related Runbooks
 
 - [SLO thresholds](slos.md)
