@@ -48,9 +48,11 @@ jobs:
     # billed fast burst.
     runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
     # Cold cache + libsignal FFI + the full app build and bounded smoke catalog
-    # should fit comfortably inside an hour. The full XCTest corpus belongs to
-    # the post-merge/nightly harness, not this merge-blocking lane.
-    timeout-minutes: 60
+    # routinely take ~55–70 minutes on macos-26 hosted runners (CPU budget gate
+    # alone can take ~30m). Keep a 90m ceiling so the merge-blocking lane does
+    # not cancel mid-smoke. The full XCTest corpus belongs to the
+    # post-merge/nightly harness, not this lane.
+    timeout-minutes: 90
     needs: classify
     if: needs.classify.outputs.macos == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
