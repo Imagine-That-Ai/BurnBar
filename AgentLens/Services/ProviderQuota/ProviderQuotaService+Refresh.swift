@@ -90,7 +90,7 @@ extension ProviderQuotaService {
             await existing.value
             return
         }
-        let task = Task { [self] in
+        let task = Task { @MainActor [self] in
             isFetching = true
             defer {
                 isFetching = false
