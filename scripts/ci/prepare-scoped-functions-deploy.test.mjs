@@ -59,12 +59,22 @@ function resetFixture(manifestOverrides = {}) {
   );
 }
 
+const githubOutputPath = join(root, "github-output");
+
 function run(targets) {
+  writeFileSync(githubOutputPath, "");
   return spawnSync(
     process.execPath,
     [preparer, "--targets", targets, "--functions-dir", functionsDir],
-    { encoding: "utf8" },
+    {
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_OUTPUT: githubOutputPath },
+    },
   );
+}
+
+function readResolvedTargets() {
+  return readFileSync(githubOutputPath, "utf8");
 }
 
 function expectFailure(label, targets) {
@@ -94,6 +104,11 @@ try {
   ) {
     throw new Error(
       "generated entrypoint did not isolate the requested export",
+    );
+  }
+  if (readResolvedTargets() !== "function_targets=functions:selected\n") {
+    throw new Error(
+      "explicit selection did not emit its resolved deploy selectors",
     );
   }
 
@@ -153,6 +168,14 @@ try {
   ) {
     throw new Error(
       "blank target input did not export exactly the reviewed staging manifest",
+    );
+  }
+  if (
+    readResolvedTargets() !==
+    "function_targets=functions:selected,functions:unrelated\n"
+  ) {
+    throw new Error(
+      "blank target input did not emit the resolved manifest deploy selectors",
     );
   }
 

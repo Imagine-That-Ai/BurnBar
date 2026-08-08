@@ -221,6 +221,35 @@ try {
     ),
   );
   expectFailure(
+    "raw function_targets forwarded to the trusted deploy",
+    callerPath,
+    pristineCaller.replace(
+      "function_targets: ${{ needs.build-functions-candidate.outputs.resolved_function_targets }}",
+      "function_targets: ${{ inputs.function_targets }}",
+    ),
+  );
+  expectFailure(
+    "missing blank deploy scope guard",
+    trustedPath,
+    pristineTrusted.replace(
+      `            [[ -n "\${FUNCTION_TARGETS:-}" ]] || {
+              echo "::error::deploy_functions requires the resolved function_targets selectors from the candidate build."; exit 1;
+            }`,
+      "            echo blank-scope-allowed",
+    ),
+  );
+  expectFailure(
+    "unscoped functions deploy fallback",
+    trustedPath,
+    pristineTrusted.replace(
+      'deploy_scope="$FUNCTION_TARGETS"',
+      `deploy_scope="functions"
+          if [[ -n "\${FUNCTION_TARGETS:-}" ]]; then
+            deploy_scope="$FUNCTION_TARGETS"
+          fi`,
+    ),
+  );
+  expectFailure(
     "target-dependent Hosting deploy",
     trustedPath,
     pristineTrusted.replace("--only hosting", "--only hosting:marketing"),
