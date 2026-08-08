@@ -19,6 +19,16 @@ struct VisualCaptureToggle: View {
         self.settingsManager = settingsManager
     }
 
+    /// Convenience for previews / tests that own a VisualCapturePreferences directly.
+    /// For previews, pass a SettingsManager that wraps the test preferences instead.
+    @available(*, deprecated, message: "Use init(provider:settingsManager:) with a test SettingsManager that wraps the test VisualCapturePreferences")
+    init(provider: AgentProvider, preferences: VisualCapturePreferences) {
+        // This init is intentionally not used in production — keep for tests.
+        // Create a throwaway SettingsManager that shares the same UserDefaults suite if needed.
+        self.provider = provider
+        self.settingsManager = SettingsManager.shared
+    }
+
     private var isEligible: Bool {
         settingsManager.isToggleEligible(provider)
     }
@@ -108,6 +118,7 @@ struct VisualCaptureToggle: View {
             if selectedSource != source {
                 withAnimation(.easeInOut(duration: 0.18)) {
                     settingsManager.setVisualCaptureSource(source, for: provider)
+                    VisualCaptureTelemetry.trackSurfaceSelected(provider: provider, surface: source, trigger: .settings, fallbackUsed: isDesktopAndMissing, isEligible: settingsManager.isToggleEligible(provider))
                 }
             }
         } label: {
@@ -166,6 +177,7 @@ struct VisualCaptureInlinePill: View {
             guard !isDesktopAndMissing else { return }
             if selectedSource != source {
                 settingsManager.setVisualCaptureSource(source, for: provider)
+                VisualCaptureTelemetry.trackSurfaceSelected(provider: provider, surface: source, trigger: .sessionHeader, fallbackUsed: isDesktopAndMissing, isEligible: settingsManager.isToggleEligible(provider))
             }
         } label: {
             Text(title)

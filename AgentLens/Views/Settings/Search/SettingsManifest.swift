@@ -312,6 +312,17 @@ enum SettingsManifest {
             helpText: "Indexed transcripts never leave this Mac unless cloud backup is enabled."
         ),
 
+        SettingsItem(
+            id: "agents.visualSurface",
+            tab: .agents,
+            pageRoute: .agentsAccounts,
+            anchorID: SettingsAnchor.visualSurface,
+            title: "Visual Surface",
+            subtitle: "Choose CLI terminal or desktop app window for screen share",
+            keywords: ["visual surface", "cli", "desktop", "terminal", "window", "screen share", "pty", "desktop app", "visual capture"],
+            logoProviders: [.codex, .claudeCode, .cursor]
+        ),
+
         // MARK: General → Session summaries
 
         SettingsItem(

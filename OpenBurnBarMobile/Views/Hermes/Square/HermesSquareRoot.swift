@@ -195,6 +195,32 @@ struct HermesSquareRoot: View {
             pinnedGridSection
                 .padding(.horizontal, 16)
 
+            // Visual capture source toggle — mirrors macOS Settings > Providers > Visual Surface
+            // Simple per-device preference, no bundle check on iOS (both surfaces always available)
+            if UserDefaults.standard.object(forKey: "visualCaptureSourceToggleEnabled") as? Bool ?? false {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Label("Visual Surface", systemImage: "rectangle.on.rectangle")
+                            .font(.caption.bold())
+                            .foregroundStyle(Color.secondary)
+                        Spacer()
+                    }
+                    Picker("Visual Surface", selection: Binding(
+                        get: { UserDefaults.standard.string(forKey: "visualCaptureSource.hermes") ?? "cli_pty" },
+                        set: { newValue in
+                            UserDefaults.standard.set(newValue, forKey: "visualCaptureSource.hermes")
+                            // Telemetry is handled on macOS via VisualCaptureTelemetry; iOS picker is local-only for now
+                        }
+                    )) {
+                        Text("CLI Terminal").tag("cli_pty")
+                        Text("Desktop App").tag("desktop_app")
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(minHeight: 32)
+                }
+                .padding(.horizontal, 16)
+            }
+
             projectMemorySection
                 .padding(.horizontal, 16)
 
