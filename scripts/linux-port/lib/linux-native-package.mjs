@@ -47,18 +47,30 @@ export const ARCH_NONINTERACTIVE_PROVIDER_PACKAGES = Object.freeze([
   'ttf-dejavu'
 ]);
 
-// Package payload archives (dpkg-deb --fsys-tarfile, rpm2cpio) stream the
-// entire uncompressed payload through stdout, and the bundled pet model and
-// atlas resources already push that payload past 512 MiB. Keep enough
-// headroom that a legitimately built payload never trips the buffer limit.
-const PAYLOAD_MAX_BUFFER = 2 * 1024 * 1024 * 1024;
+// Package payloads (dpkg-deb --fsys-tarfile, rpm2cpio) are multi-gigabyte
+// uncompressed streams. They are never held in process memory: producers are
+// streamed to a mode-0600 temporary payload file through a redirected file
+// descriptor, and bsdtar reads that file directly. Captured stdout is only
+// ever archive listings and package metadata, which this bound covers with
+// large headroom while keeping a runaway or hostile producer from exhausting
+// memory.
+const METADATA_MAX_BUFFER = 64 * 1024 * 1024;
 
 // Error messages must stay well under V8's maximum string length even when a
-// failing binary produced hundreds of megabytes of stdout, so only the tail
+// failing binary produced hundreds of megabytes of output, so only the tail
 // of each stream is stringified for diagnostics.
 const ERROR_OUTPUT_TAIL_BYTES = 16 * 1024;
 
-function boundedOutputTail(buffer) {
+// Package tooling must terminate: a wedged producer (fifo, network mount,
+// hostile decompression bomb feeding a pipe that is never drained) is killed
+// rather than hanging the release pipeline forever. Overridable for slow CI
+// hardware; never disabled.
+const DEFAULT_TOOL_TIMEOUT_MS = (() => {
+  const raw = Number.parseInt(process.env.OPENBURNBAR_LINUX_PACKAGE_TOOL_TIMEOUT_MS ?? '', 10);
+  return Number.isSafeInteger(raw) && raw > 0 ? raw : 30 * 60 * 1000;
+})();
+
+export function boundedOutputTail(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) return '';
   const tail = buffer.subarray(-ERROR_OUTPUT_TAIL_BYTES);
   const prefix = buffer.length > tail.length
@@ -67,23 +79,61 @@ function boundedOutputTail(buffer) {
   return `${prefix}${tail.toString('utf8')}`;
 }
 
+function describeToolFailure(command, args, result) {
+  const timedOut = result.error?.code === 'ETIMEDOUT'
+    || (result.signal === 'SIGTERM' && result.error?.code === undefined && result.status === null);
+  return [
+    `${command} ${args.join(' ')} failed`,
+    timedOut ? `killed after exceeding the ${DEFAULT_TOOL_TIMEOUT_MS}ms package tool timeout` : null,
+    result.signal ? `terminated by signal ${result.signal}` : null,
+    result.error?.message,
+    boundedOutputTail(result.stdout),
+    boundedOutputTail(result.stderr)
+  ].filter(Boolean).join('\n');
+}
+
 function runBinary(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
     encoding: 'buffer',
     input: options.input,
-    maxBuffer: PAYLOAD_MAX_BUFFER,
+    maxBuffer: options.maxBuffer ?? METADATA_MAX_BUFFER,
+    timeout: options.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS,
     env: options.env ?? process.env
   });
-  if (result.error || (result.status ?? 1) !== 0) {
-    throw new Error([
-      `${command} ${args.join(' ')} failed`,
-      result.error?.message,
-      boundedOutputTail(result.stdout),
-      boundedOutputTail(result.stderr)
-    ].filter(Boolean).join('\n'));
+  if (result.error || result.signal || (result.status ?? 1) !== 0) {
+    throw new Error(describeToolFailure(command, args, result));
   }
   return result.stdout;
+}
+
+/**
+ * Run a payload-scale producer with stdout redirected straight to a private
+ * temporary file. The payload never enters process memory; only a bounded
+ * stderr tail is captured for diagnostics. A timeout kills the producer and
+ * the partial output file is removed, so callers observe either a complete
+ * payload file or a thrown error — never a truncated payload.
+ */
+export function streamBinaryToFile(command, args, outputPath, options = {}) {
+  const fd = fs.openSync(outputPath, 'w', 0o600);
+  let result;
+  try {
+    result = spawnSync(command, args, {
+      cwd: options.cwd,
+      stdio: ['ignore', fd, 'pipe'],
+      encoding: 'buffer',
+      maxBuffer: options.maxBuffer ?? METADATA_MAX_BUFFER,
+      timeout: options.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS,
+      env: options.env ?? process.env
+    });
+  } finally {
+    fs.closeSync(fd);
+  }
+  if (result.error || result.signal || (result.status ?? 1) !== 0) {
+    fs.rmSync(outputPath, { force: true });
+    throw new Error(describeToolFailure(command, args, result));
+  }
+  return outputPath;
 }
 
 function normalizedArchitecture(value) {
@@ -142,26 +192,79 @@ export function assertSafeArchiveMemberNames(listing, {
   return seen;
 }
 
-export function extractPreflightedArchiveBytes(archive, destination, {
+/**
+ * Preflight and extract an on-disk archive without ever loading the payload
+ * into memory. All three bsdtar passes (member listing, member types, actual
+ * extraction) read the archive file directly.
+ */
+export function extractPreflightedArchiveFile(archivePath, destination, {
   env = process.env,
   allowedRootMetadata = [],
   allowedPaths = [],
-  extractUsrOnly = false
+  extractUsrOnly = false,
+  timeoutMs = DEFAULT_TOOL_TIMEOUT_MS,
+  listingMaxBuffer = METADATA_MAX_BUFFER
 } = {}) {
-  if (!Buffer.isBuffer(archive) || archive.length === 0) throw new Error('native package archive is empty');
-  const listing = runBinary('bsdtar', ['-tf', '-'], { input: archive, env }).toString('utf8');
+  if (typeof archivePath !== 'string' || archivePath.length === 0) {
+    throw new Error('native package archive path is empty');
+  }
+  const stat = fs.statSync(archivePath);
+  if (!stat.isFile() || stat.size === 0) throw new Error('native package archive is empty');
+  const listing = runBinary('bsdtar', ['-tf', archivePath], {
+    env, timeoutMs, maxBuffer: listingMaxBuffer
+  }).toString('utf8');
   const members = assertSafeArchiveMemberNames(listing, { allowedRootMetadata, allowedPaths });
-  const verbose = runBinary('bsdtar', ['-tvf', '-'], { input: archive, env }).toString('utf8');
+  const verbose = runBinary('bsdtar', ['-tvf', archivePath], {
+    env, timeoutMs, maxBuffer: listingMaxBuffer
+  }).toString('utf8');
   const types = verbose.split('\n').filter(Boolean).map((line) => line[0]);
   if (types.length < members.size || types.some((type) => !['-', 'd', 'l'].includes(type))) {
     throw new Error('native package archive contains unsupported or ambiguous member types');
   }
   fs.rmSync(destination, { recursive: true, force: true });
   fs.mkdirSync(destination, { recursive: true });
-  const extractArgs = ['-xmf', '-', '-C', destination];
+  const extractArgs = ['-xmf', archivePath, '-C', destination];
   if (extractUsrOnly) extractArgs.push('usr', ...allowedPaths);
-  runBinary('bsdtar', extractArgs, { input: archive, env });
+  runBinary('bsdtar', extractArgs, { env, timeoutMs });
   return destination;
+}
+
+/**
+ * Byte-buffer compatibility wrapper. Callers that already hold small archive
+ * bytes (tests, fixture builders) stage them into a private temporary file so
+ * the streaming preflight/extraction path stays the single implementation.
+ * Payload-scale callers must use extractPreflightedArchiveFile directly.
+ */
+export function extractPreflightedArchiveBytes(archive, destination, options = {}) {
+  if (!Buffer.isBuffer(archive) || archive.length === 0) throw new Error('native package archive is empty');
+  const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-archive-bytes-'));
+  try {
+    const archivePath = path.join(staging, 'archive');
+    fs.writeFileSync(archivePath, archive, { mode: 0o600 });
+    return extractPreflightedArchiveFile(archivePath, destination, options);
+  } finally {
+    fs.rmSync(staging, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Stream a package's uncompressed payload to a file inside stagingDirectory
+ * (deb, rpm) or hand back the artifact itself (arch, whose payload bsdtar
+ * reads directly). Never buffers the payload in memory.
+ */
+export function materializeNativePackagePayload(format, artifact, stagingDirectory, {
+  env = process.env,
+  timeoutMs = DEFAULT_TOOL_TIMEOUT_MS
+} = {}) {
+  if (format === 'arch') return artifact;
+  const payloadPath = path.join(stagingDirectory, `payload-${format}`);
+  if (format === 'deb') {
+    return streamBinaryToFile('dpkg-deb', ['--fsys-tarfile', artifact], payloadPath, { env, timeoutMs });
+  }
+  if (format === 'rpm') {
+    return streamBinaryToFile('rpm2cpio', [artifact], payloadPath, { env, timeoutMs });
+  }
+  throw new Error(`unsupported native package format: ${format}`);
 }
 
 export function inspectNativePackageMetadata(format, artifact, { env = process.env } = {}) {
@@ -225,19 +328,18 @@ export function extractNativePackage(format, artifact, destination, { env = proc
   if (typeof process.getuid === 'function' && process.getuid() !== 0) {
     throw new Error('native package inventory extraction requires the isolated root toolchain container');
   }
-  const archive = format === 'deb'
-    ? runBinary('dpkg-deb', ['--fsys-tarfile', artifact], { env })
-    : format === 'rpm'
-      ? runBinary('rpm2cpio', [artifact], { env })
-      : format === 'arch'
-        ? fs.readFileSync(artifact)
-      : (() => { throw new Error(`unsupported native package format: ${format}`); })();
-  extractPreflightedArchiveBytes(archive, destination, {
-    env,
-    allowedRootMetadata: format === 'arch' ? ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST : [],
-    allowedPaths: NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST,
-    extractUsrOnly: format === 'arch'
-  });
+  const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-payload-staging-'));
+  try {
+    const payloadPath = materializeNativePackagePayload(format, artifact, staging, { env });
+    extractPreflightedArchiveFile(payloadPath, destination, {
+      env,
+      allowedRootMetadata: format === 'arch' ? ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST : [],
+      allowedPaths: NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST,
+      extractUsrOnly: format === 'arch'
+    });
+  } finally {
+    fs.rmSync(staging, { recursive: true, force: true });
+  }
 }
 
 export function archPackageRemovalCandidates(listing, metadataProvider = fs.lstatSync) {
