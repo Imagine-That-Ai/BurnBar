@@ -207,9 +207,12 @@ enum PixelClockAgentProcessDetector {
         if lower.contains("pixelclockexternalagentactivityscanner") {
             return nil
         }
+        if lower.contains("chrome-native-host") || lower.contains("native-host") {
+            return nil
+        }
 
         let tokens = lower
-            .split { !$0.isLetter && !$0.isNumber && $0 != "." && $0 != "-" }
+            .split { !$0.isLetter && !$0.isNumber && $0 != "." }
             .map(String.init)
 
         let serviceTokens: Set<String> = [
@@ -239,13 +242,13 @@ enum PixelClockAgentProcessDetector {
         if has(["codex"]) { return .codex }
         if has(["claude", "claude-code", "claudecode"]) { return .claudeCode }
         if has(["droid", "factory", "factory-cli"]) { return .factory }
-        if has(["opencode", "open-code"]) { return .openCode }
-        if has(["openclaw", "open-claw"]) { return .openClaw }
+        if has(["opencode"]) || lower.contains("open-code") { return .openCode }
+        if has(["openclaw"]) || lower.contains("open-claw") { return .openClaw }
         if has(["cursor"]) { return .cursor }
-        if has(["minimax", "mini-max"]) { return .minimax }
+        if has(["minimax"]) || lower.contains("mini-max") { return .minimax }
         if has(["zai", "z.ai", "z-ai"]) { return .zai }
         if has(["kimi", "moonshot"]) { return .kimi }
-        if has(["xai", "x.ai", "x-ai", "grok", "supergrok"]) { return .xAI }
+        if has(["xai", "x.ai", "grok", "supergrok"]) || lower.contains("x-ai") { return .xAI }
 
         return nil
     }

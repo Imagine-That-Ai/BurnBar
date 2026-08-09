@@ -479,6 +479,33 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(statuses[AgentProvider.xAI.persistedToken], .running)
     }
 
+    func test_agentProcessDetectorRecognizesHyphenatedAgentExecutables() {
+        let statuses = PixelClockAgentProcessDetector.statuses(fromPSOutput: """
+        COMM ARGS
+        codex-code-mode-host /Users/alberto/.codex/bin/codex-code-mode-host
+        cursor-agent worker start
+        open-code --stdio
+        mini-max --model MiniMax-M2
+        """)
+
+        XCTAssertEqual(statuses[AgentProvider.codex.persistedToken], .running)
+        XCTAssertEqual(statuses[AgentProvider.cursor.persistedToken], .running)
+        XCTAssertEqual(statuses[AgentProvider.openCode.persistedToken], .running)
+        XCTAssertEqual(statuses[AgentProvider.minimax.persistedToken], .running)
+    }
+
+    func test_agentProcessDetectorStillExcludesHyphenatedHelpersAndServices() {
+        let statuses = PixelClockAgentProcessDetector.statuses(fromPSOutput: """
+        COMM ARGS
+        Cursor Helper --type=renderer
+        chrome-native-host --stdio
+        droid /Users/alberto/.local/lib/factory/droid daemon --remote-access
+        cmux-agent-mcp /Users/alberto/.claude/cmux-agent-mcp/build/cli.js
+        """)
+
+        XCTAssertTrue(statuses.isEmpty)
+    }
+
     func test_swarmWallpaperColorDriver_fallsBackToHistoricalUsageWhenNoProviderIsRunning() {
         let summaries = [
             makeProviderSummary(provider: .codex, cost: 9, tokens: 900),

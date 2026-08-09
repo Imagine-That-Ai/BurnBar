@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Menu bar popover liquid glass redesign
+
+- Rebuilt the macOS menu bar popover for clearer burn/quota reading in light and
+  dark Liquid Glass: stronger header copy, single primary quota bars with
+  percent-left and resets-in lines, and tighter tray chrome contrast.
+
 ## [1.0.30] - 2026-08-08
 
 ### Added - Muse (Meta) first-class provider

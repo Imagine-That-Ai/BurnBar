@@ -67,7 +67,7 @@ struct OnboardingSystemPermissionsView: View {
         }
         .padding(DesignSystem.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DesignSystem.Colors.surface)
+        .background(DesignSystem.Colors.surface.opacity(0.55))
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg))
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.lg)
@@ -136,7 +136,7 @@ private struct PermissionsCard: View {
         }
         .padding(DesignSystem.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DesignSystem.Colors.surface)
+        .background(DesignSystem.Colors.surface.opacity(0.55))
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg))
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.lg)

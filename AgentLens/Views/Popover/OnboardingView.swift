@@ -66,6 +66,12 @@ struct OnboardingView: View {
         }
         .padding(DesignSystem.Spacing.xl)
         .frame(width: 340)
-        .background(DesignSystem.Colors.background)
+        .background {
+            Color.clear
+                .liquidGlassSurface(
+                    in: RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous),
+                    fallback: .ultraThinMaterial
+                )
+        }
     }
 }

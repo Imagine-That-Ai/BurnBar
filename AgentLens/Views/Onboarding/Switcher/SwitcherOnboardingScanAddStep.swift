@@ -349,7 +349,7 @@ struct SwitcherOnboardingScanAddStep: View {
                     title: "Connect Grok Build",
                     subtitle: "Verify the local Grok Build CLI profile on this Mac",
                     icon: "link.badge.plus",
-                    color: Color(hex: "111111"),
+                    color: Color.adaptive(light: "111111", dark: "E8E8E8"),
                     isLoading: connectingCLIType == .grok
                 ) {
                     await connectDifferentCLI(.grok)
@@ -809,7 +809,10 @@ private struct APIKeyEntrySheet: View {
         }
         .padding(DesignSystem.Spacing.xl)
         .frame(width: 360, height: 300)
-        .background(DesignSystem.Colors.background)
+        .background {
+            Color.clear
+                .liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous), fallback: .ultraThinMaterial)
+        }
     }
 }
 
@@ -981,7 +984,7 @@ private struct IdentityCard: View {
         case .grok:
             Image(systemName: "terminal.fill")
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Color(hex: "111111"))
+                .foregroundStyle(Color.adaptive(light: "111111", dark: "E8E8E8"))
         case .cursorAgent:
             Image(systemName: "terminal.fill")
                 .font(.system(size: 14, weight: .medium))
