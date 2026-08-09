@@ -321,6 +321,9 @@ enum DatabaseEncryptionService {
         // Release: never materialize key material on disk. Remove any file a
         // previous Debug run left behind so the weaker artifact does not
         // outlive the build that needed it.
+        // try?-ok(best-effort cleanup: the file may simply not exist, and a
+        // failed delete of a leftover Debug artifact must not block Release
+        // startup — the Release daemon never reads this path either way)
         try? fileManager.removeItem(at: fileURL)
         return false
 #else
