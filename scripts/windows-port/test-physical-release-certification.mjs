@@ -312,6 +312,11 @@ assert.match(
 assert.match(physicalRunbook, /--expected-commit \$ExpectedCommit/);
 assert.match(physicalRunbook, /--expected-harness-commit \$ExpectedHarnessCommit/);
 const windowsFastWorkflow = readFileSync(join(root, "../../.github/workflows/pr-windows-fast.yml"), "utf8");
+const windowsFullWorkflow = readFileSync(join(root, "../../.github/workflows/pr-windows-full.yml"), "utf8");
+const fullHarnessWorkflow = readFileSync(
+  join(root, "../../.github/workflows/openburnbar-pr-harness.yml"),
+  "utf8",
+);
 const windowsReleaseWorkflow = readFileSync(
   join(root, "../../.github/workflows/openburnbar-release-windows.yml"),
   "utf8",
@@ -330,6 +335,37 @@ assert.match(
   windowsFastWorkflow,
   /node --test scripts\/windows-port\/verify-local-domain-core-identity\.test\.mjs/,
 );
+assert.match(
+  windowsFastWorkflow,
+  /Verify native candidate helpers on Windows[\s\S]*stage-local-domain-core-native\.test\.mjs[\s\S]*verify-local-domain-core-identity\.test\.mjs/,
+);
+assert.match(
+  windowsFastWorkflow,
+  /--logger trx --results-directory TestResults-x64[\s\S]*verify-trx-results\.mjs --results-directory TestResults-x64 --minimum-files 40 --minimum-tests 4082/,
+);
+assert.match(
+  windowsFullWorkflow,
+  /--logger trx --results-directory TestResults-x64[\s\S]*--logger trx `[\s\S]*--results-directory TestResults-x64[\s\S]*verify-trx-results\.mjs --results-directory TestResults-x64 --minimum-files 41 --minimum-tests 4083/,
+);
+assert.match(
+  windowsFullWorkflow,
+  /--logger trx --results-directory TestResults-arm64[\s\S]*verify-trx-results\.mjs --results-directory TestResults-arm64 --minimum-files 40 --minimum-tests 4082/,
+);
+assert.match(
+  fullHarnessWorkflow,
+  /--logger trx --results-directory TestResults-x64[\s\S]*verify-trx-results\.mjs --results-directory TestResults-x64 --minimum-files 40 --minimum-tests 4082/,
+);
+for (const workflow of [
+  windowsFastWorkflow,
+  windowsFullWorkflow,
+  fullHarnessWorkflow,
+]) {
+  assert.doesNotMatch(
+    workflow,
+    /trx;LogFileName=windows-(?:pr|full)-/,
+    "solution-level Windows test evidence must use unique TRX filenames",
+  );
+}
 assert.match(windowsReleaseWorkflow, /Write physical-certification artifact manifests/);
 assert.match(windowsReleaseWorkflow, /write-signed-artifact-manifest\.mjs/);
 assert.match(windowsReleaseWorkflow, /RELEASE_COMMIT: \$\{\{ needs\.resolve-release\.outputs\.release_commit \}\}/);

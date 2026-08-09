@@ -175,7 +175,7 @@ jobs:
       - name: Build (dotnet build — full solution, Debug)
         run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=x64
 
-      # Run the full C# test suite. The ~2,545 fixtures cover: storage (14 DB
+      # Run the full C# test suite. The 4,082+ fixtures cover: storage (14 DB
       # open/read/FTS5/byte-compat), cloudsync (Firestore gateway, CloudVault,
       # App Check, offline queue), computeruse, particles, pretext, pal/ipc,
       # integrations, dist (hardening + updater feed), quota (4-mechanism value
@@ -184,9 +184,9 @@ jobs:
       - name: Test (dotnet test — full suite)
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
-        run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-full-x64.trx" --results-directory TestResults-x64
+        run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger trx --results-directory TestResults-x64
 
-      - name: Set up Node.js for live Playwright bridge proof
+      - name: Set up Node.js for test evidence and live Playwright bridge proof
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: "20"
@@ -207,7 +207,12 @@ jobs:
           dotnet test windows/tests/computeruse/OpenBurnBar.ComputerUse.Tests.csproj `
             --configuration Debug `
             --no-build `
-            --filter "FullyQualifiedName~ProcessDriver_LivePlaywrightBridge_NavigatesEvaluatesAndCloses"
+            --filter "FullyQualifiedName~ProcessDriver_LivePlaywrightBridge_NavigatesEvaluatesAndCloses" `
+            --logger trx `
+            --results-directory TestResults-x64
+
+      - name: Verify complete x64 test evidence
+        run: node scripts/windows-port/verify-trx-results.mjs --results-directory TestResults-x64 --minimum-files 41 --minimum-tests 4083
 
       # Publish the TRX results so a red fixture is inspectable in the Actions UI.
       - name: Upload test results
@@ -273,10 +278,18 @@ jobs:
       - name: Build (dotnet build — full solution, Debug)
         run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=ARM64
 
+      - name: Set up Node.js for test evidence
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: "22"
+
       - name: Test (dotnet test — full suite)
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
-        run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-full-arm64.trx" --results-directory TestResults-arm64
+        run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger trx --results-directory TestResults-arm64
+
+      - name: Verify complete ARM64 test evidence
+        run: node scripts/windows-port/verify-trx-results.mjs --results-directory TestResults-arm64 --minimum-files 40 --minimum-tests 4082
 
       - name: Upload test results
         if: always()

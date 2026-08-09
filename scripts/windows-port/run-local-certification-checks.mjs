@@ -121,6 +121,12 @@ const commands = [
     timeoutMs: 120000,
   },
   {
+    name: "windows-trx-evidence-verifier-tests",
+    file: "node",
+    args: ["--test", "scripts/windows-port/verify-trx-results.test.mjs"],
+    timeoutMs: 120000,
+  },
+  {
     name: "foundation-evidence-validator-tests",
     file: "node",
     args: ["scripts/test-windows-foundation-host-evidence.mjs"],
@@ -149,6 +155,7 @@ const commands = [
     file: "actionlint",
     args: [
       ".github/workflows/openburnbar-release-windows.yml",
+      ".github/workflows/openburnbar-pr-harness.yml",
       ".github/workflows/pr-windows-full.yml",
       ".github/workflows/pr-windows-fast.yml",
       ".github/workflows/pr-windows-dist.yml",
