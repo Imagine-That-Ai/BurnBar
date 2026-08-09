@@ -1,5 +1,5 @@
 import Foundation
-@testable import OpenBurnBarInboxModels
+import OpenBurnBarEngine
 import XCTest
 
 /// Wire-shape coverage for the Founder Lens DTOs: every request/response

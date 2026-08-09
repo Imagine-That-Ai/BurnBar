@@ -1380,9 +1380,6 @@ let firstPartyTargetsBase: [Target] = [
                 "OpenBurnBarSQLiteReader",
                 "OpenBurnBarFirestoreModels",
                 "OpenBurnBarLinuxSecurity",
-                // Founder Lens wire-shape tests (`BurnBarAIInboxFounderContractsTests`)
-                // round-trip the thread/plan-ledger DTOs.
-                "OpenBurnBarInboxModels",
                 // P-13 AE-TESTABLE: `ZAIQuotaAdapterTests` reaches the INTERNAL
                 // `ZAIQuotaAdapter.zaiUsageQueryItems(now:)`, which moved with the
                 // ProviderQuota adapters into `OpenBurnBarQuota`. `@testable import
