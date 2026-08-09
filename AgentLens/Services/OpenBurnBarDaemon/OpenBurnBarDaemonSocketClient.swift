@@ -1476,4 +1476,133 @@ enum OpenBurnBarDaemonSocketClient {
         return result
     }
 
+    // MARK: Founder Lens — threads, plans, memory export
+
+    static func inboxThread(fingerprint: String, at socketURL: URL) throws -> BurnBarInboxThread? {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarInboxThreadGetResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .inboxThreadGet,
+                params: BurnBarInboxThreadGetRequest(fingerprint: fingerprint)
+            ),
+            socketURL: socketURL
+        )
+        if let error = envelope.error { throw OpenBurnBarDaemonManagerError.rpcError(error.message) }
+        guard let result = envelope.result else { throw OpenBurnBarDaemonManagerError.emptyResponse }
+        return result.thread
+    }
+
+    /// A refusal (budget, egress, disabled) arrives as a result with
+    /// `refusalReason` set — render it; it is the answer.
+    static func inboxReply(
+        fingerprint: String,
+        bodyMarkdown: String,
+        at socketURL: URL
+    ) throws -> BurnBarInboxReplyResponse {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarInboxReplyResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .inboxReply,
+                params: BurnBarInboxReplyRequest(fingerprint: fingerprint, bodyMarkdown: bodyMarkdown)
+            ),
+            socketURL: socketURL
+        )
+        if let error = envelope.error { throw OpenBurnBarDaemonManagerError.rpcError(error.message) }
+        guard let result = envelope.result else { throw OpenBurnBarDaemonManagerError.emptyResponse }
+        return result
+    }
+
+    static func inboxPlans(
+        statuses: [BurnBarInboxPlanStatus] = [],
+        at socketURL: URL
+    ) throws -> [BurnBarInboxPlan] {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarInboxPlansListResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .inboxPlansList,
+                params: BurnBarInboxPlansListRequest(statuses: statuses)
+            ),
+            socketURL: socketURL
+        )
+        if let error = envelope.error { throw OpenBurnBarDaemonManagerError.rpcError(error.message) }
+        guard let result = envelope.result else { throw OpenBurnBarDaemonManagerError.emptyResponse }
+        return result.plans
+    }
+
+    static func inboxPlanAccept(
+        candidate: BurnBarInboxPlanCandidate,
+        pack: String,
+        at socketURL: URL
+    ) throws -> BurnBarInboxPlanAcceptResponse {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarInboxPlanAcceptResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .inboxPlansAccept,
+                params: BurnBarInboxPlanAcceptRequest(candidate: candidate, pack: pack)
+            ),
+            socketURL: socketURL
+        )
+        if let error = envelope.error { throw OpenBurnBarDaemonManagerError.rpcError(error.message) }
+        guard let result = envelope.result else { throw OpenBurnBarDaemonManagerError.emptyResponse }
+        return result
+    }
+
+    @discardableResult
+    static func inboxPlanUpdateStep(
+        stepID: String,
+        status: BurnBarInboxPlanStepStatus? = nil,
+        missionID: String? = nil,
+        followupID: String? = nil,
+        at socketURL: URL
+    ) throws -> BurnBarInboxPlanStep {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarInboxPlanUpdateStepResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .inboxPlansUpdateStep,
+                params: BurnBarInboxPlanUpdateStepRequest(
+                    stepID: stepID,
+                    status: status,
+                    missionID: missionID,
+                    followupID: followupID
+                )
+            ),
+            socketURL: socketURL
+        )
+        if let error = envelope.error { throw OpenBurnBarDaemonManagerError.rpcError(error.message) }
+        guard let result = envelope.result else { throw OpenBurnBarDaemonManagerError.emptyResponse }
+        return result.step
+    }
+
+    @discardableResult
+    static func inboxPlanGrade(
+        stepID: String,
+        grade: Int,
+        noteMarkdown: String? = nil,
+        at socketURL: URL
+    ) throws -> BurnBarInboxPlanGradeResponse {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarInboxPlanGradeResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .inboxPlansGrade,
+                params: BurnBarInboxPlanGradeRequest(stepID: stepID, grade: grade, noteMarkdown: noteMarkdown)
+            ),
+            socketURL: socketURL
+        )
+        if let error = envelope.error { throw OpenBurnBarDaemonManagerError.rpcError(error.message) }
+        guard let result = envelope.result else { throw OpenBurnBarDaemonManagerError.emptyResponse }
+        return result
+    }
+
+    /// Full-set push of approved inbox-scoped snippets (revocation by omission).
+    @discardableResult
+    static func inboxMemoryExport(
+        entries: [BurnBarInboxMemoryExportEntry],
+        at socketURL: URL
+    ) throws -> Int {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarInboxMemoryExportResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .inboxMemoryExport,
+                params: BurnBarInboxMemoryExportRequest(entries: entries)
+            ),
+            socketURL: socketURL
+        )
+        if let error = envelope.error { throw OpenBurnBarDaemonManagerError.rpcError(error.message) }
+        guard let result = envelope.result else { throw OpenBurnBarDaemonManagerError.emptyResponse }
+        return result.stored
+    }
+
 }
