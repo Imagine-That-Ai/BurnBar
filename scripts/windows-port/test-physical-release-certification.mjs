@@ -51,6 +51,10 @@ const storeRunbook = readFileSync(
   "utf8",
 );
 const localRunner = readFileSync(join(root, "run-local-certification-checks.mjs"), "utf8");
+const localNativeStager = readFileSync(
+  join(root, "stage-local-domain-core-native.mjs"),
+  "utf8",
+);
 
 assert.match(script, /\$PhysicalHardware/);
 assert.match(script, /-HardwareAttestationPath/);
@@ -318,6 +322,14 @@ assert.match(windowsFastWorkflow, /Smoke supplemental certification templates/);
 assert.match(windowsFastWorkflow, /Supplemental template OK/);
 assert.match(windowsFastWorkflow, /run-physical-release-certification\.ps1/);
 assert.match(windowsFastWorkflow, /Language\.Parser\]::ParseFile/);
+assert.match(
+  windowsFastWorkflow,
+  /node --test scripts\/windows-port\/stage-local-domain-core-native\.test\.mjs/,
+);
+assert.match(
+  windowsFastWorkflow,
+  /node --test scripts\/windows-port\/verify-local-domain-core-identity\.test\.mjs/,
+);
 assert.match(windowsReleaseWorkflow, /Write physical-certification artifact manifests/);
 assert.match(windowsReleaseWorkflow, /write-signed-artifact-manifest\.mjs/);
 assert.match(windowsReleaseWorkflow, /RELEASE_COMMIT: \$\{\{ needs\.resolve-release\.outputs\.release_commit \}\}/);
@@ -510,6 +522,16 @@ assert.match(localRunner, /\.\.\.\(spec\.env \?\? \{\}\)/);
 assert.match(
   localRunner,
   /if \(failedResults\.length > 0\)[\s\S]*NO-GO evidence bundle was retained[\s\S]*process\.exit\(1\)/,
+);
+assert.doesNotMatch(
+  localNativeStager,
+  /rmSync\(destination/,
+  "native staging must not create a delete-before-rename gap",
+);
+assert.ok(
+  localNativeStager.indexOf("copyFileSync(source, temporary)") <
+    localNativeStager.indexOf("renameSync(temporary, destination)"),
+  "native staging must verify a temporary copy before atomically replacing the destination",
 );
 
 const windowsHost = describeLocalCertificationHost({

@@ -47,7 +47,9 @@ export function stageNativeLibrary(sourcePath, destinationPath) {
         `staged local domain-core digest mismatch\nsource=${sourceSha256}\nstaged=${stagedSha256}`,
       );
     }
-    rmSync(destination, { force: true });
+    // renameSync replaces an existing file on Node's supported platforms.
+    // Keep the previous candidate present until the verified replacement is
+    // installed instead of creating a delete-before-rename gap.
     renameSync(temporary, destination);
     return {
       source,

@@ -49,11 +49,7 @@ test("returns a no-op result when source and destination are identical", () => {
   assert.equal(result.source, result.destination);
 });
 
-test("rejects missing, symlink, and directory sources", () => {
-  const realSource = join(workspace, "real-library");
-  writeFileSync(realSource, "real-native-bytes");
-  const symlinkSource = join(workspace, "symlink-library");
-  symlinkSync(realSource, symlinkSource);
+test("rejects missing and directory sources", () => {
   const directorySource = join(workspace, "directory-library");
   mkdirSync(directorySource);
   const destination = join(workspace, "rejected-destination");
@@ -63,11 +59,27 @@ test("rejects missing, symlink, and directory sources", () => {
     /ENOENT|nonempty regular file/,
   );
   assert.throws(
-    () => stageNativeLibrary(symlinkSource, destination),
-    /not a symlink/,
-  );
-  assert.throws(
     () => stageNativeLibrary(directorySource, destination),
     /nonempty regular file/,
+  );
+});
+
+test("rejects symlink sources when the host permits symlink creation", (t) => {
+  const realSource = join(workspace, "real-library");
+  writeFileSync(realSource, "real-native-bytes");
+  const symlinkSource = join(workspace, "symlink-library");
+  try {
+    symlinkSync(realSource, symlinkSource);
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "EPERM") {
+      t.skip("host does not permit unprivileged symlink creation");
+      return;
+    }
+    throw error;
+  }
+
+  assert.throws(
+    () => stageNativeLibrary(symlinkSource, join(workspace, "symlink-destination")),
+    /not a symlink/,
   );
 });

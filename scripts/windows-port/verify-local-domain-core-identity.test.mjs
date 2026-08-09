@@ -93,7 +93,7 @@ test("rejects a substituted binary", () => {
   );
 });
 
-test("rejects malformed reports, symlinks, and directories", () => {
+test("rejects malformed reports", () => {
   assert.throws(
     () =>
       verifyLocalDomainCoreIdentity(
@@ -103,9 +103,19 @@ test("rejects malformed reports, symlinks, and directories", () => {
       ),
     /must contain exactly/,
   );
+});
 
+test("rejects symlink binaries when the host permits symlink creation", (t) => {
   const symlinkPath = join(workspace, "library-symlink");
-  symlinkSync(binaryPath, symlinkPath);
+  try {
+    symlinkSync(binaryPath, symlinkPath);
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "EPERM") {
+      t.skip("host does not permit unprivileged symlink creation");
+      return;
+    }
+    throw error;
+  }
   assert.throws(
     () =>
       verifyLocalDomainCoreIdentity(
@@ -115,7 +125,9 @@ test("rejects malformed reports, symlinks, and directories", () => {
       ),
     /not a symlink/,
   );
+});
 
+test("rejects directory binaries", () => {
   const directoryPath = join(workspace, "library-directory");
   mkdirSync(directoryPath);
   assert.throws(
