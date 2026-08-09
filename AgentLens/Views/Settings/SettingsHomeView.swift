@@ -43,10 +43,10 @@ struct SettingsHomeView: View {
         .background(DesignSystem.Colors.background)
         .scrollContentBackground(.hidden)
         .navigationTitle("Home")
+        // Status-only: never repair the daemon / rebuild activity snapshots /
+        // Keychain-sweep on Settings open. Those used to blank the sheet while
+        // navigating. Full refresh stays on background cadence + Daemon Repair.
         .task { await refresh() }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            Task { await refresh() }
-        }
     }
 
     // MARK: - Hero
@@ -168,6 +168,13 @@ struct SettingsHomeView: View {
                     status: settingsManager.conversationIndexingEnabled ? "On" : "Off",
                     tint: settingsManager.conversationIndexingEnabled ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted,
                     tab: .general
+                )
+                statusCard(
+                    title: "AI Inbox",
+                    icon: "tray.full.fill",
+                    status: "Open",
+                    tint: DesignSystem.Colors.ember,
+                    tab: .aiInbox
                 )
             }
         }
@@ -394,8 +401,12 @@ struct SettingsHomeView: View {
     // MARK: - Refresh
 
     private func refresh() async {
-        await daemonManager.refreshHealth()
-        await quotaService.refreshIfNeeded(dataStore: dataStore)
+        await daemonManager.refreshHealth(mode: .statusOnly)
+        // Quota refresh does Keychain work — keep it off the first paint and
+        // don't await it on the Settings navigation path.
+        Task(priority: .utility) {
+            await quotaService.refreshIfNeeded(dataStore: dataStore)
+        }
         providerAccounts = (try? await dataStore.fetchProviderAccounts()) ?? []
     }
 }

@@ -28,6 +28,42 @@ final class WindowManager: ObservableObject {
     private var switcherOnboardingWindow: NSWindow?
     private var startupRecoveryWindow: NSWindow?
     private var dashboardWindowLifecycleHandler: DashboardWindowLifecycleDelegate?
+    private var settingsWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
+
+    /// `LSUIElement` apps launch as `.accessory`. Document windows (dashboard,
+    /// settings, wizards) must temporarily promote to `.regular` so clicking
+    /// another app resigns activation and sends BurnBar behind like a normal
+    /// Mac app. Without this, `activate(ignoringOtherApps:)` leaves the
+    /// accessory process sticky-frontmost.
+    private func promoteToRegularActivation() {
+        if NSApp.activationPolicy() != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
+        if !OpenBurnBarRuntime.isRunningTests {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
+    }
+
+    /// Return to menu-bar-only accessory mode once every document window is gone.
+    fileprivate func demoteToAccessoryIfIdle() {
+        let documentWindows: [NSWindow?] = [
+            dashboardWindow,
+            settingsWindow,
+            onboardingWindow,
+            hermesSetupWindow,
+            switcherOnboardingWindow,
+            startupRecoveryWindow,
+            WindowManager.chatPopOutWindow
+        ]
+        let hasVisibleDocument = documentWindows.contains { window in
+            guard let window else { return false }
+            return window.isVisible && window.isMiniaturized == false
+        }
+        guard hasVisibleDocument == false else { return }
+        if NSApp.activationPolicy() != .accessory {
+            NSApp.setActivationPolicy(.accessory)
+        }
+    }
 
     func openDashboard(
         dataStore: DataStore,
@@ -41,13 +77,12 @@ final class WindowManager: ObservableObject {
         settingsManager: SettingsManager,
         runtimeContext: OpenBurnBarRuntimeContext? = nil
     ) {
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        promoteToRegularActivation()
 
         if let window = dashboardWindow {
             if window.isMiniaturized {
                 window.deminiaturize(nil)
             }
-            window.orderFrontRegardless()
             window.makeKeyAndOrderFront(nil)
             return
         }
@@ -110,7 +145,9 @@ final class WindowManager: ObservableObject {
         window.setFrameAutosaveName("openburnbar.dashboard")
         window.makeKeyAndOrderFront(nil)
         window.isReleasedWhenClosed = false
-        let lifecycleDelegate = DashboardWindowLifecycleDelegate()
+        let lifecycleDelegate = DashboardWindowLifecycleDelegate { [weak self] in
+            self?.demoteToAccessoryIfIdle()
+        }
         window.delegate = lifecycleDelegate
 
         dashboardWindow = window
@@ -125,7 +162,7 @@ final class WindowManager: ObservableObject {
         dataStore: DataStore,
         runtimeContext: OpenBurnBarRuntimeContext? = nil
     ) {
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        promoteToRegularActivation()
 
         if let window = settingsWindow {
             window.makeKeyAndOrderFront(nil)
@@ -158,8 +195,15 @@ final class WindowManager: ObservableObject {
         window.setFrameAutosaveName("openburnbar.settings")
         window.makeKeyAndOrderFront(nil)
         window.isReleasedWhenClosed = false
+        let settingsLifecycle = DocumentWindowLifecycleDelegate { [weak self] in
+            self?.settingsWindow = nil
+            self?.settingsWindowLifecycleHandler = nil
+            self?.demoteToAccessoryIfIdle()
+        }
+        window.delegate = settingsLifecycle
 
         settingsWindow = window
+        settingsWindowLifecycleHandler = settingsLifecycle
     }
 
     func openOnboardingWizard(
@@ -169,7 +213,7 @@ final class WindowManager: ObservableObject {
         chatController: ChatSessionController?,
         onOpenDashboard: @escaping () -> Void
     ) {
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        promoteToRegularActivation()
 
         if let window = onboardingWindow {
             window.makeKeyAndOrderFront(nil)
@@ -184,6 +228,7 @@ final class WindowManager: ObservableObject {
             onDismiss: { [weak self] in
                 self?.onboardingWindow?.close()
                 self?.onboardingWindow = nil
+                self?.demoteToAccessoryIfIdle()
             },
             onOpenDashboard: { [weak self] in
                 self?.onboardingWindow?.close()
@@ -217,7 +262,7 @@ final class WindowManager: ObservableObject {
         cloudSyncService: CloudSyncService? = nil,
         iCloudSessionMirrorService: ICloudSessionMirrorService? = nil
     ) {
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        promoteToRegularActivation()
 
         if let window = hermesSetupWindow {
             window.makeKeyAndOrderFront(nil)
@@ -240,6 +285,7 @@ final class WindowManager: ObservableObject {
             onDismiss: { [weak self] in
                 self?.hermesSetupWindow?.close()
                 self?.hermesSetupWindow = nil
+                self?.demoteToAccessoryIfIdle()
             }
         )
 
@@ -267,7 +313,7 @@ final class WindowManager: ObservableObject {
         accountManager: AccountManager,
         onOpenSettings: @escaping () -> Void
     ) {
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        promoteToRegularActivation()
 
         if let window = switcherOnboardingWindow {
             window.makeKeyAndOrderFront(nil)
@@ -281,6 +327,7 @@ final class WindowManager: ObservableObject {
             onDismiss: { [weak self] in
                 self?.switcherOnboardingWindow?.close()
                 self?.switcherOnboardingWindow = nil
+                self?.demoteToAccessoryIfIdle()
             },
             onOpenSettings: { [weak self] in
                 self?.switcherOnboardingWindow?.close()
@@ -318,7 +365,7 @@ final class WindowManager: ObservableObject {
         onCopyDiagnostics: @escaping () -> Bool,
         onQuit: @escaping () -> Void
     ) {
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        promoteToRegularActivation()
 
         let contentView = DataStoreStartupRecoveryView(
             failure: failure,
@@ -358,6 +405,7 @@ final class WindowManager: ObservableObject {
     func closeStartupRecovery() {
         startupRecoveryWindow?.close()
         startupRecoveryWindow = nil
+        demoteToAccessoryIfIdle()
     }
 
     // MARK: - Chat Pop-Out Window
@@ -372,9 +420,7 @@ final class WindowManager: ObservableObject {
         settingsManager: SettingsManager,
         accountManager: AccountManager
     ) -> NSWindow {
-        if !OpenBurnBarRuntime.isRunningTests {
-            NSApplication.shared.activate(ignoringOtherApps: true)
-        }
+        promoteToRegularActivation()
 
         if let window = WindowManager.chatPopOutWindow {
             window.makeKeyAndOrderFront(nil)
@@ -414,10 +460,11 @@ final class WindowManager: ObservableObject {
         }
         window.isReleasedWhenClosed = false
 
-        let delegate = ChatPopOutWindowLifecycleDelegate { closed in
+        let delegate = ChatPopOutWindowLifecycleDelegate { [weak self] closed in
             WindowManager.persistChatPopOutFrame(closed.frame)
             WindowManager.chatPopOutWindow = nil
             WindowManager.chatPopOutLifecycleHandler = nil
+            self?.demoteToAccessoryIfIdle()
         }
         window.delegate = delegate
 
@@ -428,6 +475,7 @@ final class WindowManager: ObservableObject {
 
     func closeChatPopOutWindow() {
         WindowManager.chatPopOutWindow?.close()
+        demoteToAccessoryIfIdle()
     }
 
     /// Test-only accessor.
@@ -515,8 +563,32 @@ private struct ChatPopOutWindowTestContent: View {
 
 @MainActor
 private final class DashboardWindowLifecycleDelegate: NSObject, NSWindowDelegate {
+    private let onDidHide: @MainActor () -> Void
+
+    init(onDidHide: @escaping @MainActor () -> Void) {
+        self.onDidHide = onDidHide
+    }
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         sender.orderOut(nil)
+        onDidHide()
         return false
+    }
+}
+
+/// Clears a retained document-window reference on close and lets WindowManager
+/// demote back to `.accessory` when nothing document-like remains.
+@MainActor
+private final class DocumentWindowLifecycleDelegate: NSObject, NSWindowDelegate {
+    private let onWillClose: @MainActor () -> Void
+
+    init(onWillClose: @escaping @MainActor () -> Void) {
+        self.onWillClose = onWillClose
+    }
+
+    nonisolated func windowWillClose(_ notification: Notification) {
+        Task { @MainActor in
+            self.onWillClose()
+        }
     }
 }

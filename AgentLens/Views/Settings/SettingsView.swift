@@ -261,6 +261,9 @@ struct SettingsView: View {
             )
         case .sessionSummaries:
             SessionSummariesDetailView(settingsManager: settingsManager)
+        case .aiInboxRoot:
+            AIInboxSettingsRootView()
+                .navigationTitle("AI Inbox")
         case .daemonLifecycle:
             DaemonLifecycleDetailView(daemonManager: .shared)
         case .httpGateway:
@@ -334,6 +337,7 @@ struct SettingsView: View {
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot, .mediaRoot,
              .dataControlCenterRoot,
              .textExpansionRoot, .computerUseRoot, .petsRoot:
+             // `.aiInboxRoot` is handled above so Indexing can drill into it.
             // Roots are reachable via the sidebar tab selection — the path
             // stays empty for these. Legacy roots (`connectionsRoot`,
             // `providersRoot`, `routingPoolsRoot`, `switcherRoot`,
@@ -416,6 +420,9 @@ struct SettingsView: View {
                 runtimeContext: runtimeContext
             )
                 .navigationTitle("General")
+        case .aiInbox:
+            AIInboxSettingsRootView()
+                .navigationTitle("AI Inbox")
         case .updates:
             #if DISTRIBUTION_MAS
             Text("Updates are delivered through the Mac App Store.")

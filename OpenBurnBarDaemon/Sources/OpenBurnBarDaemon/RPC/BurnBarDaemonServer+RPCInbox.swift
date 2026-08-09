@@ -15,11 +15,16 @@ extension BurnBarDaemonServer {
         request: BurnBarRPCRequestEnvelope,
         requestData: Data
     ) async throws -> Data {
-        guard let inbox = aiInbox else {
+        // Config reads force a retry so Settings → Retry can recover after a
+        // transient lock or after the encryption key becomes readable.
+        let forceRetry = method == .inboxConfigGet
+        guard let inbox = ensureAIInboxBootstrapped(forceRetry: forceRetry) else {
+            let message = aiInboxUnavailabilityReason
+                ?? "The AI Inbox is not available. Configure OPENBURNBAR_INDEX_DATABASE_PATH and restart the daemon."
             return encodeErrorResponse(
                 id: request.id,
                 code: BurnBarRPCErrorCode.internalError,
-                message: "The AI Inbox is not available. Configure OPENBURNBAR_INDEX_DATABASE_PATH and restart the daemon."
+                message: message
             )
         }
 

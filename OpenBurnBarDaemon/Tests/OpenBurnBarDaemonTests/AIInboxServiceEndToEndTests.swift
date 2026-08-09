@@ -380,9 +380,102 @@ final class AIInboxServiceEndToEndTests: XCTestCase {
         let brief = BurnBarAIInboxService.ruleBasedBrief(pack: pack, findings: [], now: now)
 
         XCTAssertFalse(brief.isEmpty)
-        XCTAssertTrue(brief.contains("BurnBar"), "Projects are named")
-        XCTAssertTrue(brief.contains("uncommitted"), "Dirty state is surfaced")
-        XCTAssertTrue(brief.contains("$2.35"), "Spend is quantified")
+        XCTAssertTrue(brief.contains("BurnBar"), "Projects are named: \(brief)")
+        XCTAssertTrue(brief.contains("uncommitted"), "Dirty state is surfaced: \(brief)")
+        XCTAssertTrue(brief.contains("$2.35"), "Spend is quantified: \(brief)")
+        XCTAssertTrue(
+            brief.contains("Latest signal:") || brief.contains("What the transcripts show:"),
+            "Substantive sessions must contribute transcript signal, not just a count: \(brief)"
+        )
+        XCTAssertFalse(
+            brief.contains("mostly in **BurnBar** (1 session)"),
+            "Must not emit the old tautological project dump: \(brief)"
+        )
+    }
+
+    func test_ruleBasedBriefAdmitsThinIndexInsteadOfPretendingToNarrate() {
+        let now = Date()
+        let shells = (1...4).map { index in
+            AIInboxFixtures.conversation(
+                id: "shell-\(index)",
+                messageCount: 0,
+                body: "",
+                workspacePath: "/Users/albertonunez/DataJockey"
+            )
+        }
+        // Force the path-shaped project name the live bug shows.
+        let pathNamed = shells.map {
+            BurnBarAIInboxConversationExcerpt(
+                evidenceID: $0.evidenceID,
+                conversationID: $0.conversationID,
+                provider: "Factory",
+                projectName: "~/albertonunez/DataJockey",
+                workspacePath: $0.workspacePath,
+                title: "~/albertonunez/DataJockey",
+                endedAt: $0.endedAt,
+                messageCount: 0,
+                body: "",
+                keyFiles: [],
+                keyCommands: [],
+                wasTruncated: false
+            )
+        }
+        let pack = AIInboxFixtures.pack(
+            conversations: pathNamed,
+            usage: [
+                BurnBarAIInboxUsageAggregate(
+                    projectName: "~/albertonunez/DataJockey",
+                    model: "factory",
+                    provider: "factory",
+                    callCount: 9,
+                    totalTokens: 40_000,
+                    costUSD: 0.245
+                )
+            ],
+            now: now
+        )
+
+        let brief = BurnBarAIInboxService.ruleBasedBrief(pack: pack, findings: [], now: now)
+        let title = BurnBarAIInboxBriefAuthor.title(pack: pack, now: now)
+        let evidence = BurnBarAIInboxBriefAuthor.evidenceIDs(pack: pack)
+        let metrics = BurnBarAIInboxBriefAuthor.metrics(pack: pack)
+
+        XCTAssertTrue(brief.contains("empty shells"), "Thin index must be named: \(brief)")
+        XCTAssertTrue(brief.contains("DataJockey"), "Path projects collapse to a short label: \(brief)")
+        XCTAssertTrue(brief.contains("$0.245") || brief.contains("$0.25"), "Spend still lands: \(brief)")
+        XCTAssertTrue(title.contains("thin index"), "Title must not pretend the narrative is rich: \(title)")
+        XCTAssertEqual(evidence.count, 2, "One shell per project + spend citation, not four clones: \(evidence)")
+        XCTAssertEqual(
+            evidence.filter { $0.hasPrefix("conv:") }.count,
+            1,
+            "Empty shells collapse by project label even when workspacePath is nil: \(evidence)"
+        )
+        XCTAssertNil(metrics["workspaces"], "Zero workspaces must not render as a dead metric")
+        XCTAssertEqual(metrics["sessions"], "4")
+        XCTAssertEqual(metrics["projects"], "1")
+    }
+
+    func test_briefEvidenceDedupesEmptyShellsWithNilWorkspacePaths() {
+        let now = Date()
+        let shells = (1...4).map { index in
+            BurnBarAIInboxConversationExcerpt(
+                evidenceID: "conv:Factory:shell-\(index):0",
+                conversationID: "Factory:shell-\(index)",
+                provider: "Factory",
+                projectName: "~/albertonunez/DataJockey",
+                workspacePath: nil,
+                title: "~/albertonunez/DataJockey",
+                endedAt: now.addingTimeInterval(Double(-index) * 60),
+                messageCount: 0,
+                body: "",
+                keyFiles: [],
+                keyCommands: [],
+                wasTruncated: false
+            )
+        }
+        let pack = AIInboxFixtures.pack(conversations: shells, now: now)
+        let ids = BurnBarAIInboxBriefAuthor.evidenceIDs(pack: pack)
+        XCTAssertEqual(ids.count, 1, "Nil-workspace empty shells must collapse to one citation: \(ids)")
     }
 
     func test_ruleBasedBriefIsEmptyWhenNothingHappened() {

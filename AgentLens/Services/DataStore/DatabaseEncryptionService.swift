@@ -305,6 +305,38 @@ enum DatabaseEncryptionService {
         return String(data: data, encoding: .utf8)
     }
 
+    /// Writes the current SQLCipher key to an owner-only file the daemon can
+    /// read when Keychain ACL rejects the LaunchAgent / adhoc Debug identity
+    /// (`errSecAuthFailed` / -25293). No-op when no key is provisioned.
+    @discardableResult
+    static func syncDaemonReadableKeyMaterial(
+        to fileURL: URL,
+        fileManager: FileManager = .default
+    ) -> Bool {
+        guard let key = getKey(), key.isEmpty == false else {
+            return false
+        }
+        do {
+            try fileManager.createDirectory(
+                at: fileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            try Data(key.utf8).write(to: fileURL, options: [.atomic])
+            try fileManager.setAttributes(
+                [.posixPermissions: NSNumber(value: 0o600)],
+                ofItemAtPath: fileURL.path
+            )
+            return true
+        } catch {
+            AppLogger.dataStore.error(
+                "database_encryption_daemon_key_file_write_failed",
+                metadata: ["error": "\(error)"]
+            )
+            return false
+        }
+    }
+
     /// Generates a new 256-bit AES key, stores it in the Keychain, and returns it.
     /// If a key already exists, returns the existing key without generating a new one.
     ///

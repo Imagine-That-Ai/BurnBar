@@ -12,7 +12,7 @@ import OpenBurnBarKernel
 ///   • priority = `OpenBurnBarStatusBadge` capsule
 ///   • cards = `GlassCard`, sections = pinned `LazyVStack` headers
 struct InboxView: View {
-    @State var model: InboxModel
+    @State private var model: InboxModel
     let onOpenSessionLog: (String) -> Void
     let onOpenSettings: () -> Void
     /// Nil when no memory store is available; the detail view then shows the
@@ -22,6 +22,22 @@ struct InboxView: View {
     var openItemID: String?
 
     @Environment(\.dashboardLiveBackdropActive) private var liveBackdropActive
+
+    init(
+        model: InboxModel,
+        onOpenSessionLog: @escaping (String) -> Void,
+        onOpenSettings: @escaping () -> Void,
+        memoryApproval: InboxMemoryApprovalHandler? = nil,
+        openItemID: String? = nil
+    ) {
+        // Own the model in `@State` so DashboardView body re-evals that rebuild
+        // a throwaway `InboxModel(...)` cannot wipe selection mid-click.
+        _model = State(initialValue: model)
+        self.onOpenSessionLog = onOpenSessionLog
+        self.onOpenSettings = onOpenSettings
+        self.memoryApproval = memoryApproval
+        self.openItemID = openItemID
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -214,7 +230,7 @@ struct InboxView: View {
                             InboxRowView(
                                 row: row,
                                 isSelected: model.selectedID == row.id,
-                                onSelect: { Task { await model.select(row.id) } },
+                                onSelect: { model.select(row.id) },
                                 onArchive: { Task { await model.archive(row.id) } },
                                 onSnooze: { interval in Task { await model.snooze(row.id, for: interval) } },
                                 onToggleRead: { Task { await model.toggleRead(row.id) } }
@@ -352,8 +368,11 @@ struct InboxRowView: View {
     @State private var isHovering = false
 
     var body: some View {
+        // interactive: false — GlassCard(interactive: true) installs a
+        // minimumDistance-0 DragGesture that steals the click from this
+        // Button (same trap SessionLedgerEntryRow documents/guards).
         Button(action: onSelect) {
-            GlassCard(interactive: true) {
+            GlassCard(interactive: false) {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                     topLine
                     titleLine
@@ -369,6 +388,7 @@ struct InboxRowView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
                     .fill(rowWash)
@@ -381,9 +401,10 @@ struct InboxRowView: View {
                     )
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(InboxRowButtonStyle())
         .onHover { isHovering = $0 }
         .animation(DesignSystem.Animation.hover, value: isHovering)
+        .animation(DesignSystem.Animation.gentle, value: isSelected)
         .contextMenu {
             Button(row.readAt == nil ? "Mark as read" : "Mark as unread", action: onToggleRead)
             Divider()
@@ -497,6 +518,14 @@ struct InboxRowView: View {
             .replacingOccurrences(of: "\n\n", with: " ")
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+private struct InboxRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .animation(DesignSystem.Animation.snappy, value: configuration.isPressed)
     }
 }
 

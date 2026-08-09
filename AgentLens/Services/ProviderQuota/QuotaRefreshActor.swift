@@ -51,6 +51,13 @@ actor QuotaRefreshActor {
     /// actor boundary on every scan.
     private let codexRolloutScanCacheBox: Locked<CodexRolloutScanCache>
 
+    /// Background cadence refreshes can re-enter `makeContext` every few
+    /// seconds. Each call previously did dozens of synchronous Keychain reads
+    /// on the main actor (via `MainActor.run`), which beachballed Settings.
+    /// Cache the resolved map briefly so cadence ticks reuse it.
+    private var apiKeyResolutionCache: (deadline: Date, keys: [String: String?])?
+    private static let apiKeyResolutionCacheTTL: TimeInterval = 20
+
     init(
         settingsManager: SettingsManager,
         keyStore: ProviderAPIKeyStore,
@@ -166,11 +173,25 @@ actor QuotaRefreshActor {
         let planReaders = self.planReaders
         // Resolve every main-actor input (API keys + the user's plan selection)
         // in a single hop so adapters run off the main actor on `Sendable` values.
-        let resolved = await MainActor.run { () -> (keys: [String: String?], plan: ProviderQuotaPlanSnapshot) in
-            let keys = resolveAllAPIKeys(keyStore: keyStore, providerRuntimeKeyStore: runtimeKeyStore)
-            return (keys, planReaders.resolvedSnapshot())
+        // Keychain resolution is cached on this actor so SmartHub cadence does
+        // not re-hammer SecItemCopyMatching on the main actor every tick.
+        let keys: [String: String?]
+        let plan: ProviderQuotaPlanSnapshot
+        if let cached = apiKeyResolutionCache, Date() < cached.deadline {
+            keys = cached.keys
+            plan = await MainActor.run { planReaders.resolvedSnapshot() }
+        } else {
+            let resolved = await MainActor.run { () -> (keys: [String: String?], plan: ProviderQuotaPlanSnapshot) in
+                let keys = resolveAllAPIKeys(keyStore: keyStore, providerRuntimeKeyStore: runtimeKeyStore)
+                return (keys, planReaders.resolvedSnapshot())
+            }
+            keys = resolved.keys
+            plan = resolved.plan
+            apiKeyResolutionCache = (
+                deadline: Date().addingTimeInterval(Self.apiKeyResolutionCacheTTL),
+                keys: keys
+            )
         }
-        let plan = resolved.plan
 
         let codexCacheBox = self.codexRolloutScanCacheBox
         let context = ProviderQuotaAdapterContext(
@@ -195,7 +216,7 @@ actor QuotaRefreshActor {
                 }
             },
             claudeCredentialsReader: claudeCredentialsReader,
-            resolvedAPIKeys: resolved.keys,
+            resolvedAPIKeys: keys,
             secretStore: ProviderQuotaMacPlatform.secretStore,
             cliExecutor: ProviderQuotaMacPlatform.cliExecutor,
             quotaLogger: ProviderQuotaMacPlatform.quotaLogger

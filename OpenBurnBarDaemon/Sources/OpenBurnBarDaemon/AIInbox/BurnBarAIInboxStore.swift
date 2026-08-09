@@ -5,7 +5,12 @@ import Glibc
 #endif
 import Foundation
 import OpenBurnBarEngine
-#if canImport(SQLite3)
+// Prefer SQLCipher so open/key/schema all resolve to the same codec-backed
+// sqlite3_* symbols as `BurnBarDaemonDatabaseCipher`. Falling through to
+// system SQLite3 on a codec-less build keeps the plaintext path working.
+#if canImport(SQLCipher)
+import SQLCipher
+#elseif canImport(SQLite3)
 import SQLite3
 #else
 import CSQLite
