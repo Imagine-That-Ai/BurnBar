@@ -49,7 +49,10 @@ struct HermesSetupWizardView: View {
             stepContent
         }
         .frame(width: 560, height: 620)
-        .background(DesignSystem.Colors.background)
+        .background {
+            Color.clear
+                .liquidGlassSurface(in: Rectangle(), fallback: .ultraThinMaterial)
+        }
         .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
     }
 

@@ -338,12 +338,18 @@ final class OpenBurnBarGlassHostingController: NSViewController {
     private func applyGlassPreference() {
         guard #available(macOS 26.0, *),
               let glassView = nativeGlassView as? NSGlassEffectView else { return }
+        let reduceTransparency = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
         let raw = UserDefaults.standard.double(forKey: LiquidGlassTransparency.storageKey)
         let effective = LiquidGlassTransparency.effective(
             raw,
-            reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+            reduceTransparency: reduceTransparency
         )
+        // Clear glass only when the user asked for it and Reduce Transparency
+        // is off; otherwise stay on the denser regular plate so cardless rows
+        // remain legible against the desktop.
         glassView.style = LiquidGlassTransparency.usesClearGlass(effective) ? .clear : .regular
+        glassView.cornerRadius = 22
+        glassView.tintColor = nil
     }
 
     @available(*, unavailable)

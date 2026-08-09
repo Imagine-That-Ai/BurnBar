@@ -51,7 +51,7 @@ struct OnboardingProvider: Identifiable, Equatable {
         OnboardingProvider(id: "droidcli", label: "Droid CLI", icon: "terminal.fill", bundledLogoName: "FactoryLogo", color: Color(hex: "8B5CF6"), kind: .droidCLI),
         OnboardingProvider(id: "forgecli", label: "Forge CLI", icon: "terminal.fill", bundledLogoName: "ForgeLogo", color: Color(hex: "F97316"), kind: .forgeCLI),
         OnboardingProvider(id: "antigravitycli", label: "Antigravity CLI", icon: "terminal.fill", bundledLogoName: "AntigravityLogo", color: Color(hex: "6C63FF"), kind: .antigravityCLI),
-        OnboardingProvider(id: "grokcli", label: "Grok Build CLI", icon: "terminal.fill", bundledLogoName: "GrokLogo", color: Color(hex: "111111"), kind: .grokCLI),
+        OnboardingProvider(id: "grokcli", label: "Grok Build CLI", icon: "terminal.fill", bundledLogoName: "GrokLogo", color: Color.adaptive(light: "111111", dark: "E8E8E8"), kind: .grokCLI),
         OnboardingProvider(id: "cursoragentcli", label: "Cursor Agent CLI", icon: "terminal.fill", bundledLogoName: "CursorLogo", color: Color(hex: "00E5FF"), kind: .cursorAgentCLI),
         OnboardingProvider(id: "geminicli", label: "Gemini CLI", icon: "terminal.fill", bundledLogoName: "GeminiCLILogo", color: Color(hex: "4285F4"), kind: .geminiCLI),
         OnboardingProvider(id: "kimicli", label: "Kimi CLI", icon: "terminal.fill", bundledLogoName: "KimiLogo", color: Color(hex: "6366F1"), kind: .kimiCLI),
@@ -125,7 +125,10 @@ struct SwitcherOnboardingWizardView: View {
             footer
         }
         .frame(width: 520, height: 620)
-        .background(DesignSystem.Colors.background)
+        .background {
+            Color.clear
+                .liquidGlassSurface(in: Rectangle(), fallback: .ultraThinMaterial)
+        }
         .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .onAppear {
             Task {

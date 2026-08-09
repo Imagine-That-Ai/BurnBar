@@ -48,27 +48,76 @@ struct UpdateBannerCard: View {
         channel: UpdateChannel,
         checker: DirectDownloadUpdateChecker
     ) -> some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: compact ? DesignSystem.Spacing.sm : DesignSystem.Spacing.md) {
-                header(phase: phase, channel: channel)
+        Group {
+            if compact {
+                compactBanner(for: phase, channel: channel, checker: checker)
+            } else {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                        header(phase: phase, channel: channel)
 
-                if !compact, let subtitle = subtitle(for: phase, channel: channel) {
-                    Text(subtitle)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        if let subtitle = subtitle(for: phase, channel: channel) {
+                            Text(subtitle)
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        body(for: phase, channel: channel, checker: checker)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(DesignSystem.Spacing.md)
                 }
-
-                body(for: phase, channel: channel, checker: checker)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(compact ? DesignSystem.Spacing.sm : DesignSystem.Spacing.md)
         }
         // `.contain` (not `.combine`) so the Install / Later / View-Changes
         // buttons stay individually reachable by VoiceOver; the label gives the
         // group context when focus enters the card.
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel(for: phase, channel: channel))
+    }
+
+    /// Single-line glass strip for the menu-bar popover — keeps the install path
+    /// reachable without a heavy nested card on the plate.
+    @ViewBuilder
+    private func compactBanner(
+        for phase: UpdatePhase,
+        channel: UpdateChannel,
+        checker: DirectDownloadUpdateChecker
+    ) -> some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            iconDisc(systemName: icon(for: phase), gradient: iconGradient(for: phase), phase: phase)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title(for: phase, channel: channel))
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                if let subtitle = subtitle(for: phase, channel: channel) {
+                    Text(subtitle)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: DesignSystem.Spacing.xs)
+
+            if let offer = phase.offer {
+                versionPill(offer.pillText)
+            }
+
+            body(for: phase, channel: channel, checker: checker)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.sm)
+        .padding(.vertical, DesignSystem.Spacing.xs)
+        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+        )
     }
 
     // MARK: Header

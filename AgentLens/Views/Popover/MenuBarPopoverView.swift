@@ -39,6 +39,7 @@ struct MenuBarPopoverView: View {
     @State private var activeTrayResizeStartHeight: CGFloat = 0
     @State private var isHoveringResizeHandle = false
     @State private var resizeHandleCursorPushed = false
+    @StateObject private var cloudEntitlement = MacCloudEntitlementStore.shared
 
     @AppStorage("popoverTrayWidth") private var storedPopoverTrayWidth = 340.0
     @AppStorage("popoverTrayHeight") private var storedPopoverTrayHeight = 540.0
@@ -189,7 +190,6 @@ struct MenuBarPopoverView: View {
             } else {
                 VStack(spacing: 0) {
                     headerView
-                    freshnessBar
                     #if !DISTRIBUTION_MAS
                     UpdateBannerCard(compact: true, horizontalInset: DesignSystem.Spacing.sm, topInset: DesignSystem.Spacing.xs)
                         .frame(width: popoverWidth)
@@ -217,8 +217,10 @@ struct MenuBarPopoverView: View {
                     .clipped()
 
                     popoverDivider
-                    cloudWhisperStrip
-                    popoverDivider
+                    if cloudEntitlement.currentTier == .free {
+                        cloudWhisperStrip
+                        popoverDivider
+                    }
                     actionBar
                 }
             }
@@ -262,6 +264,7 @@ struct MenuBarPopoverView: View {
                 hasResetScrambledPopoverLayoutV2 = true
             }
             clampStoredPopoverSize()
+            cloudEntitlement.start()
             Task { @MainActor in
                 listAppeared = true
                 refreshInsightRollups()
@@ -476,10 +479,13 @@ struct MenuBarPopoverView: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 5)
         .frame(height: 22)
-        .background(.ultraThinMaterial, in: Capsule())
+        .background(
+            (colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04)),
+            in: Capsule()
+        )
         .overlay(
             Capsule()
-                .strokeBorder(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
+                .strokeBorder(DesignSystem.Colors.borderSubtle.opacity(0.7), lineWidth: 0.5)
         )
         .padding(.top, 3)
         .padding(.trailing, 4)
@@ -487,10 +493,30 @@ struct MenuBarPopoverView: View {
 
     private var resizeHandle: some View {
         Image(systemName: "arrow.up.left.and.arrow.down.right")
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(isHoveringResizeHandle || resizingStartSize != nil ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textMuted.opacity(0.75))
-            .frame(width: 32, height: 32)
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(
+                isHoveringResizeHandle || resizingStartSize != nil
+                    ? DesignSystem.Colors.ember.opacity(0.9)
+                    : DesignSystem.Colors.textMuted.opacity(0.55)
+            )
+            .frame(width: 28, height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(
+                        isHoveringResizeHandle || resizingStartSize != nil
+                            ? (colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                            : Color.clear
+                    )
+            )
+            .overlay {
+                if isHoveringResizeHandle || resizingStartSize != nil {
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .strokeBorder(DesignSystem.Colors.ember.opacity(0.35), lineWidth: 0.75)
+                }
+            }
             .contentShape(.rect)
+            .animation(DesignSystem.Animation.hover, value: isHoveringResizeHandle)
+            .animation(DesignSystem.Animation.hover, value: resizingStartSize != nil)
             .onHover { hovering in
                 isHoveringResizeHandle = hovering
                 updateResizeHandleCursor(show: hovering || resizingStartSize != nil)
@@ -659,15 +685,63 @@ struct MenuBarPopoverView: View {
 
     // MARK: - Header
 
+    private var hasWeeklyUsage: Bool {
+        // Presence must follow the metric shown in the headline so currency
+        // mode never reads "Burning $0.00" from token-only weeks (and vice versa).
+        switch settingsManager.usageDisplayMode {
+        case .currency:
+            return dataStore.totalCostThisWeek > 0
+        case .tokens:
+            return dataStore.totalTokensThisWeek > 0
+        }
+    }
+
+    private var burnHeadlineTitle: String {
+        PopoverHeaderCopy.burnTitle(
+            metric: settingsManager.formatUsageMetric(
+                cost: dataStore.totalCostThisWeek,
+                tokens: dataStore.totalTokensThisWeek
+            ),
+            hasUsage: hasWeeklyUsage
+        )
+    }
+
+    private var burnHeadlineSubtitle: String? {
+        PopoverHeaderCopy.burnSubtitle(hasUsage: hasWeeklyUsage, mode: settingsManager.usageDisplayMode)
+    }
+
+    private var showsProBadge: Bool {
+        cloudEntitlement.currentTier != .free
+    }
+
     private var headerView: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
             AppLogoView(size: 28)
 
-            Text("OpenBurnBar")
-                .font(DesignSystem.Typography.headline)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(burnHeadlineTitle)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .contentTransition(.numericText(countsDown: false))
+                        .animation(DesignSystem.Animation.gentle, value: burnHeadlineTitle)
 
-            Spacer()
+                    if showsProBadge {
+                        ProBadgePill()
+                    }
+                }
+
+                if let burnHeadlineSubtitle {
+                    Text(burnHeadlineSubtitle)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 0)
 
             GlassIconButton(isLoading: isCastingSmartHub, action: castSmartHubFromTray) {
                 Image(systemName: "airplayvideo")
@@ -706,16 +780,6 @@ struct MenuBarPopoverView: View {
             }
             .popoverTooltip(isClearPopoverGlass ? "Use frosted glass" : "Use clear liquid glass")
             .accessibilityLabel(isClearPopoverGlass ? "Use frosted glass" : "Use clear liquid glass")
-
-            GlassIconButton {
-                dismiss()
-                onOpenSettings()
-            } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-            }
-            .popoverTooltip("Open settings")
         }
         .padding(.horizontal, DesignSystem.Spacing.lg)
         .padding(.vertical, DesignSystem.Spacing.md)
@@ -745,54 +809,6 @@ struct MenuBarPopoverView: View {
         return issues
     }
 
-    private var freshnessBar: some View {
-        TimelineView(.periodic(from: .now, by: 15)) { context in
-            HStack(spacing: DesignSystem.Spacing.xs) {
-                Circle()
-                    .fill(freshnessColor(at: context.date))
-                    .frame(width: 6, height: 6)
-                    .popoverTooltip("Data freshness indicator")
-
-                Text(freshnessLabel(at: context.date))
-                    .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-
-                if !scanIssues.isEmpty {
-                    HStack(spacing: 3) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 9))
-                        Text(scanIssues.count == 1 ? "1 scan issue" : "\(scanIssues.count) scan issues")
-                            .font(DesignSystem.Typography.tiny)
-                    }
-                    .foregroundStyle(DesignSystem.Colors.warning)
-                    .popoverTooltip(scanIssues.joined(separator: "\n"))
-                    .accessibilityLabel("Scan issues: \(scanIssues.joined(separator: ". "))")
-                }
-
-                Spacer()
-
-                if dataStore.totalUsageSessionCount > 0 {
-                    Text(settingsManager.formatUsageMetric(cost: dataStore.totalCostToday, tokens: dataStore.totalTokensToday))
-                        .font(DesignSystem.Typography.monoTiny)
-                        .foregroundStyle(DesignSystem.Colors.primaryGradient)
-                        .popoverTooltip("Today's total cost/tokens")
-
-                    Text("·")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-
-                    Text("\(dataStore.totalUsageSessionCount.formatted()) session\(dataStore.totalUsageSessionCount == 1 ? "" : "s")")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                        .popoverTooltip("Total imported sessions across all providers")
-                }
-            }
-            .padding(.horizontal, DesignSystem.Spacing.lg)
-            .padding(.vertical, DesignSystem.Spacing.sm)
-            .background(popoverEmbeddedSurface)
-        }
-    }
-
     private func freshnessColor(at now: Date) -> Color {
         guard let last = lastRefreshDate else { return DesignSystem.Colors.textMuted }
         let elapsed = now.timeIntervalSince(last)
@@ -801,14 +817,31 @@ struct MenuBarPopoverView: View {
         return DesignSystem.Colors.warning
     }
 
-    private func freshnessLabel(at now: Date) -> String {
-        if isScanning { return "Scanning..." }
+    /// "Auto" while the aggregator refreshes on its timer, "Manual" when the
+    /// interval is disabled — mirrors the menu bar's refresh mode label.
+    private var refreshModeLabel: String {
+        settingsManager.refreshInterval > 0 ? "Auto" : "Manual"
+    }
+
+    /// Absolute last-scan timestamp ("8/8/26, 5:53 PM") — glanceable without
+    /// mental relative-time math.
+    private var lastRefreshLabel: String {
         guard let last = lastRefreshDate else { return "Not scanned yet" }
-        let elapsed = Int(now.timeIntervalSince(last))
-        if elapsed < 5 { return "Updated just now" }
-        if elapsed < 60 { return "Updated \(elapsed)s ago" }
-        if elapsed < 3600 { return "Updated \(elapsed / 60)m ago" }
-        return "Updated \(elapsed / 3600)h ago"
+        return last.formatted(date: .numeric, time: .shortened)
+    }
+
+    /// The old freshness strip's secondary numbers, folded into a tooltip so
+    /// the footer stays one calm line.
+    private var freshnessTooltip: String {
+        var lines: [String] = []
+        if dataStore.totalUsageSessionCount > 0 {
+            lines.append("Today: \(settingsManager.formatUsageMetric(cost: dataStore.totalCostToday, tokens: dataStore.totalTokensToday))")
+            lines.append("\(dataStore.totalUsageSessionCount.formatted()) sessions imported")
+        }
+        if let last = lastRefreshDate {
+            lines.append("Last scan \(last.formatted(date: .abbreviated, time: .shortened))")
+        }
+        return lines.isEmpty ? "No scan yet" : lines.joined(separator: "\n")
     }
 
     // MARK: - Summary
@@ -880,8 +913,9 @@ struct MenuBarPopoverView: View {
     private var providerListView: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             Text("PROVIDERS")
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .font(DesignSystem.Typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .padding(.horizontal, DesignSystem.Spacing.lg)
                 .padding(.top, DesignSystem.Spacing.md)
                 .popoverTooltip("Top 5 providers by cost")
@@ -966,46 +1000,109 @@ struct MenuBarPopoverView: View {
     }
 
     private var actionBar: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
-            GlassButton(
-                title: "Dashboard",
-                icon: "chart.bar.fill",
-                style: .prominent
-            ) {
-                Analytics.shared.track(.menubarAction, ["action": "open_dashboard"])
-                dismiss()
-                onOpenDashboard()
-            }
-            .popoverTooltip("Open the full dashboard")
-            .accessibilityIdentifier(OBBAccessibilityID.popoverDashboardButton)
+        TimelineView(.periodic(from: .now, by: 15)) { context in
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Circle()
+                    .fill(freshnessColor(at: context.date))
+                    .frame(width: 6, height: 6)
+                    .popoverTooltip("Data freshness indicator")
 
-            GlassButton(
-                title: "Settings",
-                icon: "gearshape.fill",
-                style: .regular
-            ) {
-                Analytics.shared.track(.menubarAction, ["action": "open_settings"])
-                dismiss()
-                onOpenSettings()
-            }
-            .popoverTooltip("Open settings")
-            .accessibilityIdentifier(OBBAccessibilityID.popoverSettingsButton)
+                Text(refreshModeLabel)
+                    .font(DesignSystem.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
 
-            PetCompanionToggleButton()
-                .popoverTooltip("Show or hide the desktop pet companion")
+                Text(isScanning ? "Scanning..." : lastRefreshLabel)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+                    .popoverTooltip(freshnessTooltip)
 
-            GlassButton(
-                title: "Quit OpenBurnBar",
-                icon: "power",
-                style: .cool
-            ) {
-                NSApplication.shared.terminate(nil)
+                if !scanIssues.isEmpty {
+                    HStack(spacing: 3) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 9))
+                        Text(scanIssues.count == 1 ? "1 scan issue" : "\(scanIssues.count) scan issues")
+                            .font(DesignSystem.Typography.tiny)
+                    }
+                    .foregroundStyle(DesignSystem.Colors.warning)
+                    .popoverTooltip(scanIssues.joined(separator: "\n"))
+                    .accessibilityLabel("Scan issues: \(scanIssues.joined(separator: ". "))")
+                }
+
+                Spacer(minLength: 0)
+
+                GlassIconButton {
+                    Analytics.shared.track(.menubarAction, ["action": "open_dashboard"])
+                    dismiss()
+                    onOpenDashboard()
+                } label: {
+                    Image(systemName: "chart.bar.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.primaryGradient)
+                }
+                .popoverTooltip("Open the full dashboard")
+                .accessibilityLabel("Open dashboard")
+                .accessibilityIdentifier(OBBAccessibilityID.popoverDashboardButton)
+
+                PetCompanionToggleButton()
+                    .popoverTooltip("Show or hide the desktop pet companion")
+
+                GlassIconButton {
+                    Analytics.shared.track(.menubarAction, ["action": "open_settings"])
+                    dismiss()
+                    onOpenSettings()
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+                .popoverTooltip("Open settings")
+                .accessibilityLabel("Open settings")
+                .accessibilityIdentifier(OBBAccessibilityID.popoverSettingsButton)
+
+                // App Store Guideline 2.1: menu-bar hosts must expose a standard
+                // visible Quit command name — keep the labeled GlassButton even
+                // when neighboring chrome is icon-only.
+                GlassButton(
+                    title: "Quit OpenBurnBar",
+                    icon: "power",
+                    style: .cool
+                ) {
+                    NSApplication.shared.terminate(nil)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                .popoverTooltip("Quit OpenBurnBar")
+                .accessibilityLabel("Quit OpenBurnBar")
             }
-            .popoverTooltip("Quit OpenBurnBar")
+            .padding(.horizontal, DesignSystem.Spacing.lg)
+            .padding(.vertical, DesignSystem.Spacing.sm + 2)
+            .background(popoverEmbeddedSurface)
         }
-        .padding(DesignSystem.Spacing.md)
     }
 
+}
+
+// MARK: - Header Copy
+
+/// Popover header strings as pure functions so the exact copy stays
+/// unit-testable.
+enum PopoverHeaderCopy {
+    /// "Burning 52.4M" while usage flows; falls back to the app name before
+    /// the first scan so the header never reads "Burning 0".
+    static func burnTitle(metric: String, hasUsage: Bool) -> String {
+        hasUsage ? "Burning \(metric)" : "OpenBurnBar"
+    }
+
+    /// Units line under the burn title — "tokens per week" in token mode,
+    /// "per week" in currency mode. Nil until there's usage to describe.
+    static func burnSubtitle(hasUsage: Bool, mode: UsageDisplayMode) -> String? {
+        guard hasUsage else { return nil }
+        switch mode {
+        case .tokens: return "tokens per week"
+        case .currency: return "per week"
+        }
+    }
 }
 
 // MARK: - Period Cost
@@ -1033,54 +1130,66 @@ private struct ProviderListRow: View {
     let summary: ProviderSummary
 
     @Environment(SettingsManager.self) private var settingsManager
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isHovered = false
 
     private var theme: ProviderTheme { ProviderTheme.theme(for: summary.provider) }
 
     var body: some View {
-        GlassCard(interactive: true, embedded: true) {
-            HStack(spacing: DesignSystem.Spacing.md) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 7.5, style: .continuous)
-                        .fill(theme.primaryColor.opacity(0.15))
-                        .frame(width: 32, height: 32)
+        HStack(spacing: DesignSystem.Spacing.md) {
+            ZStack {
+                Circle()
+                    .fill(theme.primaryColor.opacity(0.15))
+                    .frame(width: 28, height: 28)
 
-                    ProviderLogoView(provider: summary.provider, size: 20, useFallbackColor: false)
-                }
+                ProviderLogoView(provider: summary.provider, size: 16, useFallbackColor: false)
+            }
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(summary.provider.displayName)
-                        .font(DesignSystem.Typography.body)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(summary.provider.displayName)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                    HStack(spacing: DesignSystem.Spacing.xs) {
-                        Text("\(summary.sessionCount) session\(summary.sessionCount == 1 ? "" : "s")")
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Text("\(summary.sessionCount) session\(summary.sessionCount == 1 ? "" : "s")")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
 
-                        if summary.cacheEfficiency.hasSignal {
-                            let tier = CacheHitRateTier(summary.cacheEfficiency)
-                            HStack(spacing: 3) {
-                                Circle()
-                                    .fill(tier.color)
-                                    .frame(width: 4, height: 4)
-                                Text("\(summary.cacheEfficiency.formattedHitRate) cache")
-                                    .font(DesignSystem.Typography.tiny)
-                                    .foregroundStyle(tier.color)
-                                    .monospacedDigit()
-                            }
-                            .help("Cache hit rate for \(summary.provider.displayName)")
+                    if summary.cacheEfficiency.hasSignal {
+                        let tier = CacheHitRateTier(summary.cacheEfficiency)
+                        HStack(spacing: 3) {
+                            Circle()
+                                .fill(tier.color)
+                                .frame(width: 4, height: 4)
+                            Text("\(summary.cacheEfficiency.formattedHitRate) cache")
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(tier.color)
+                                .monospacedDigit()
                         }
+                        .help("Cache hit rate for \(summary.provider.displayName)")
                     }
                 }
-
-                Spacer()
-
-                Text(settingsManager.formatUsageMetric(cost: summary.totalCost, tokens: summary.totalTokens))
-                    .font(DesignSystem.Typography.mono)
-                    .foregroundStyle(theme.primaryColor)
             }
-            .padding(.horizontal, DesignSystem.Spacing.md)
-            .padding(.vertical, DesignSystem.Spacing.sm)
+
+            Spacer()
+
+            Text(settingsManager.formatUsageMetric(cost: summary.totalCost, tokens: summary.totalTokens))
+                .font(DesignSystem.Typography.mono)
+                .foregroundStyle(quotaLegibleProviderColor(theme.primaryColor, in: colorScheme))
+        }
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(isHovered
+                    ? (colorScheme == .dark ? Color.white.opacity(0.045) : Color.black.opacity(0.035))
+                    : Color.clear)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        .onHover { hovering in
+            withAnimation(DesignSystem.Animation.hover) {
+                isHovered = hovering
+            }
         }
     }
 }
@@ -1492,6 +1601,7 @@ private struct ResizableTraySectionDivider: View {
     var onResizeEnded: () -> Void
     var onReset: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isHovered = false
     @State private var isDragging = false
     @State private var cursorPushed = false
@@ -1502,13 +1612,22 @@ private struct ResizableTraySectionDivider: View {
             ZStack {
                 if showsLine {
                     Rectangle()
-                        .fill(DesignSystem.Colors.border)
-                        .frame(height: 1)
+                        .fill(
+                            isHovered || isDragging
+                                ? DesignSystem.Colors.ember.opacity(0.35)
+                                : (colorScheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.09))
+                        )
+                        .frame(height: 0.5)
+                        .padding(.horizontal, 12)
                 }
                 if isHovered || isDragging {
                     Capsule()
                         .fill(handleColor)
                         .frame(width: 36, height: 3)
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(DesignSystem.Colors.ember.opacity(isDragging ? 0.55 : 0.28), lineWidth: 0.5)
+                        )
                         .transition(.opacity)
                 }
             }
@@ -1519,7 +1638,7 @@ private struct ResizableTraySectionDivider: View {
                 .frame(height: 24) // 24 points is generous and very easy to target
                 .contentShape(Rectangle())
                 .onHover { hovering in
-                    withAnimation(.easeInOut(duration: 0.12)) {
+                    withAnimation(DesignSystem.Animation.hover) {
                         isHovered = hovering
                     }
                     updateCursor(showResize: hovering)
@@ -1568,8 +1687,9 @@ private struct ResizableTraySectionDivider: View {
     }
 
     private var handleColor: Color {
-        let base = DesignSystem.Colors.textMuted
-        return isDragging ? base.opacity(0.85) : base.opacity(0.55)
+        isDragging
+            ? DesignSystem.Colors.ember.opacity(0.85)
+            : DesignSystem.Colors.ember.opacity(0.55)
     }
 
     private func updateCursor(showResize: Bool) {

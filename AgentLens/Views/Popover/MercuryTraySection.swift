@@ -44,7 +44,7 @@ struct MercuryTraySection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             header
             phaseLine
             actionRow
@@ -54,24 +54,24 @@ struct MercuryTraySection: View {
                     set: { consentStore.rememberAcceptedMirrorPeers = $0 }
                 )) {
                     Text("Remember accepted mirror devices")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
                 .toggleStyle(.checkbox)
                 .accessibilityLabel("Always allow my iPhone to mirror this Mac")
             }
             if let lastError {
                 Text(lastError)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.error)
                     .lineLimit(2)
                     .accessibilityLabel("Mercury error: \(lastError)")
             }
         }
-        .padding(12)
-        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(DesignSystem.Spacing.md)
+        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                 .strokeBorder(borderGradient, lineWidth: 0.75)
         )
         .fileImporter(
@@ -88,14 +88,16 @@ struct MercuryTraySection: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: DesignSystem.Spacing.sm) {
             MercuryRing(isActive: isStreaming)
             VStack(alignment: .leading, spacing: 1) {
                 Text(peer?.displayName ?? "Mercury")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(DesignSystem.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
                 Text(statusLine)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
             Spacer(minLength: 0)
             availabilityDot
@@ -105,7 +107,7 @@ struct MercuryTraySection: View {
     private var availabilityDot: some View {
         let online = peer?.isOnline ?? false
         return Circle()
-            .fill(online ? Color.green : Color.secondary.opacity(0.35))
+            .fill(online ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted.opacity(0.35))
             .frame(width: 7, height: 7)
             .accessibilityLabel(online ? "iPhone online" : "iPhone offline")
     }

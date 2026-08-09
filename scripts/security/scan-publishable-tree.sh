@@ -160,6 +160,55 @@ if [[ "$trufflehog_status" -ne 0 ]]; then
   exit "$trufflehog_status"
 fi
 
+# TruffleHog's Lob detector treats XCTest/Jest identifiers like
+# `test_closedToOpen_afterThresholdFailures` as "verified" Lob test API keys.
+# Drop only those false positives when BOTH are true:
+#   1) raw looks like a multi-segment test method/id (not a bare `test_<hex>` Lob key)
+#   2) the finding path is a test source
+# Keep every other verified Lob finding fail-closed — including real Lob test
+# credentials that also happen to match `test_[A-Za-z0-9_]+`.
+filtered_report="$artifact_dir/trufflehog-publishable-tree.filtered.jsonl"
+python3 - "$trufflehog_report" "$filtered_report" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+src = Path(sys.argv[1])
+dst = Path(sys.argv[2])
+# Method-style ids have at least one additional underscore-separated segment
+# after `test_`, and each segment starts with a letter (XCTest/Jest names).
+test_method_id = re.compile(r"^test_[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z][A-Za-z0-9]*)+$")
+test_path = re.compile(
+    # Directory markers: Tests/, FooTests/, __tests__/, spec(s)/
+    r"(?:^|/)(?:[^/]*Tests?|__tests__|specs?)/|"
+    # File markers: *.test.*, *.spec.*, *Tests.swift, etc.
+    r"(?:\.test\.|\.spec\.|Tests?\.(?:swift|m|mm|kt|java|ts|tsx|js|jsx)$)",
+    re.IGNORECASE,
+)
+kept = []
+dropped = 0
+if src.exists() and src.stat().st_size:
+    for line in src.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        finding = json.loads(line)
+        detector = str(finding.get("DetectorName") or "")
+        raw = str(finding.get("Raw") or "")
+        path = str(
+            (((finding.get("SourceMetadata") or {}).get("Data") or {}).get("Filesystem") or {}).get("file")
+            or ""
+        )
+        if detector == "Lob" and test_method_id.fullmatch(raw) and test_path.search(path):
+            dropped += 1
+            print(f"Ignoring Lob false positive on test identifier in {path}: {raw}", file=sys.stderr)
+            continue
+        kept.append(line)
+dst.write_text(("\n".join(kept) + ("\n" if kept else "")), encoding="utf-8")
+print(f"trufflehog findings kept={len(kept)} dropped_lob_test_ids={dropped}")
+PY
+trufflehog_report="$filtered_report"
+
 if [[ -s "$trufflehog_report" ]]; then
   echo "trufflehog found verified secrets in publishable files:" >&2
   cat "$trufflehog_report" >&2

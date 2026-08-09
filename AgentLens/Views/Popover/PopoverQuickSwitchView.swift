@@ -72,6 +72,14 @@ struct PopoverQuickSwitchView: View {
     @State private var isHighlightingDefaultChange = false
     @State private var defaultChangeAnimationToken = 0
     @State private var quotaService = ProviderQuotaService.shared
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var trayWash: Color {
+        colorScheme == .dark ? Color.white.opacity(0.045) : Color.black.opacity(0.035)
+    }
+    private var trayWashStrong: Color {
+        colorScheme == .dark ? Color.white.opacity(0.07) : Color.black.opacity(0.05)
+    }
 
     // Launch services
     @State private var browserLaunchService: SwitcherBrowserLaunchService?
@@ -176,11 +184,10 @@ struct PopoverQuickSwitchView: View {
             }
         }
         .padding(DesignSystem.Spacing.md)
-        .background(DesignSystem.Colors.surface.opacity(0.6))
-        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
+                .strokeBorder(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
         )
         #if DEBUG
         .onAppear {
@@ -357,11 +364,11 @@ struct PopoverQuickSwitchView: View {
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
                     .padding(.horizontal, DesignSystem.Spacing.sm)
                     .padding(.vertical, DesignSystem.Spacing.xs)
-                    .background(DesignSystem.Colors.surfaceElevated)
+                    .background(trayWash)
                     .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                            .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
+                            .strokeBorder(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
                     )
                 }
                 .buttonStyle(.plain)
@@ -429,7 +436,7 @@ struct PopoverQuickSwitchView: View {
                             .foregroundStyle(DesignSystem.Colors.textSecondary)
                             .padding(.horizontal, DesignSystem.Spacing.xs)
                             .padding(.vertical, 3)
-                            .background(DesignSystem.Colors.surfaceElevated)
+                            .background(trayWash)
                             .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
                     }
                 }
@@ -544,7 +551,7 @@ struct PopoverQuickSwitchView: View {
                 }
                 .padding(.horizontal, DesignSystem.Spacing.sm)
                 .padding(.vertical, DesignSystem.Spacing.xs)
-                .background(DesignSystem.Colors.surfaceElevated)
+                .background(trayWash)
                 .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
@@ -579,7 +586,7 @@ struct PopoverQuickSwitchView: View {
                 }
                 .padding(.horizontal, DesignSystem.Spacing.sm)
                 .padding(.vertical, DesignSystem.Spacing.xs)
-                .background(DesignSystem.Colors.surfaceElevated)
+                .background(trayWash)
                 .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
                 .accessibilityLabel("No launch default selected")
             }
@@ -634,7 +641,7 @@ struct PopoverQuickSwitchView: View {
                 }
                 .padding(.horizontal, DesignSystem.Spacing.sm)
                 .padding(.vertical, DesignSystem.Spacing.xs)
-                .background(DesignSystem.Colors.surfaceElevated)
+                .background(trayWash)
                 .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
             }
             .disabled(switchState == .switching)
@@ -674,7 +681,7 @@ struct PopoverQuickSwitchView: View {
                     .background(
                         profile.id == selectedProfileID
                             ? DesignSystem.Colors.ember.opacity(0.18)
-                            : DesignSystem.Colors.surfaceElevated
+                            : trayWash
                     )
                     .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
                 }
@@ -684,11 +691,11 @@ struct PopoverQuickSwitchView: View {
             }
         }
         .padding(DesignSystem.Spacing.xxs)
-        .background(DesignSystem.Colors.surface.opacity(0.85))
+        .background(trayWashStrong)
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
+                .strokeBorder(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Profile choices")
@@ -735,7 +742,7 @@ struct PopoverQuickSwitchView: View {
                 .foregroundStyle(DesignSystem.Colors.textMuted)
                 .padding(.horizontal, DesignSystem.Spacing.sm)
                 .padding(.vertical, DesignSystem.Spacing.xs)
-                .background(DesignSystem.Colors.surfaceElevated)
+                .background(trayWash)
                 .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
                 .disabled(true)
                 .accessibilityLabel("Select a profile first")
