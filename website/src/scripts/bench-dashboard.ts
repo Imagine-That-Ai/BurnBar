@@ -201,8 +201,10 @@ function initTabs(data: Dataset): void {
     const tags: string[] = [];
     if (s.ev === "inferred") tags.push('<span class="tag tag--estimated">inferred</span>');
     if (s.conf === "low") tags.push('<span class="tag tag--unavailable">low conf</span>');
+    const hc = `h--${s.h.replace(/[^a-z0-9-]/g, "")}`;
+    const mc = `m--${s.m.includes("deepseek") ? "deepseek" : s.m.includes("glm") ? "glm" : s.m.includes("gpt-5-6") ? "gpt" : s.m.includes("spark") ? "spark" : s.m.includes("opus") ? "opus" : s.m.includes("gpt5") ? "gpt5" : "gemini"}`;
     return (
-      `<div class="lb-row${tie ? " lb-row--tie" : ""}${s.ev === "inferred" ? " lb-row--inferred" : ""}"` +
+      `<div class="lb-row ${hc} ${mc}${tie ? " lb-row--tie" : ""}${s.ev === "inferred" ? " lb-row--inferred" : ""}"` +
       ` data-h="${esc(s.h)}" data-m="${esc(s.m)}">` +
       `<span class="lb-rank">${String(rank).padStart(2, "0")}</span>` +
       `<span class="lb-logos">${logoHtml(s.hl, s.hm, "lb-logo--h")}${logoHtml(s.ml, s.mm, "lb-logo--m")}</span>` +
@@ -442,16 +444,18 @@ function initTuner(data: Dataset): void {
   render();
 }
 
-/* ---------- 3 · heatmap lens toggle ----------
+/* ---------- 3 · heatmap lens + liquid-glass focus ----------
    Colors live in CSS (data-bucket scales) so the hash-locked CSP never sees
-   a per-cell style attribute; JS only moves cells between buckets. */
+   a per-cell style attribute; JS only moves cells between buckets and toggles
+   focus classes that make one row or column lead the eye. */
 
 function initHeatLens(data: Dataset): void {
   const bar = document.querySelector<HTMLElement>("[data-bb-heatlens]");
   const grid = document.querySelector<HTMLElement>("[data-bb-heat]");
+  const frame = document.querySelector<HTMLElement>("[data-bb-heatframe]");
+  const tip = document.querySelector<HTMLElement>("[data-bb-heattip]");
   if (!bar || !grid) return;
-  // Buckets span each lens's observed range (SSR ships the rate lens); cost
-  // inverts so cheaper burns brighter.
+
   const bucket = (v: number | null, domain: [number, number], invert: boolean): string => {
     if (v == null) return "";
     const [lo, hi] = domain;
@@ -460,6 +464,100 @@ function initHeatLens(data: Dataset): void {
     const clamped = Math.max(0, Math.min(1, invert ? 1 - t : t));
     return String(Math.round(clamped * 10));
   };
+
+  let activeRow: string | null = null;
+  let activeCol: string | null = null;
+  let activeLens: "rate" | "strict" | "cost" = "rate";
+
+  const cells = (): HTMLElement[] => [...grid.querySelectorAll<HTMLElement>(".bb-heat__cell")];
+
+  const applyFocus = (): void => {
+    const hasFocus = activeRow != null || activeCol != null;
+    grid.classList.toggle("has-focus", hasFocus);
+    const rowHeads = [...grid.querySelectorAll<HTMLElement>("[data-heatrow]")];
+    const colHeads = [...grid.querySelectorAll<HTMLElement>("[data-heatcol]")];
+    rowHeads.forEach((el) => {
+      const on = el.dataset.heatrow === activeRow;
+      el.classList.toggle("is-active", on);
+      el.setAttribute("aria-pressed", String(on));
+      el.classList.toggle("is-dimmed", hasFocus && !on);
+    });
+    colHeads.forEach((el) => {
+      const on = el.dataset.heatcol === activeCol;
+      el.classList.toggle("is-active", on);
+      el.setAttribute("aria-pressed", String(on));
+      el.classList.toggle("is-dimmed", hasFocus && !on);
+    });
+    for (const c of cells()) {
+      const key = c.dataset.heatcell ?? "";
+      const [h, m, fam] = key.split("|");
+      const rowKey = `${h}|${m}`;
+      const onRow = activeRow != null && rowKey === activeRow;
+      const onCol = activeCol != null && fam === activeCol;
+      c.classList.toggle("is-row-focus", onRow && activeCol == null);
+      c.classList.toggle("is-col-focus", onCol && activeRow == null);
+      c.classList.toggle("is-pinned", onRow && onCol);
+      c.classList.toggle("is-dimmed", hasFocus && !onRow && !onCol);
+    }
+    if (tip) {
+      if (!hasFocus) {
+        tip.hidden = true;
+      } else {
+        const label = activeRow && activeCol
+          ? `${activeRow.replace("|", " × ")} · ${activeCol}`
+          : activeRow
+            ? `${activeRow.replace("|", " × ")} — every family`
+            : `${activeCol} — every stack`;
+        const count = cells().filter((c) => {
+          const k = c.dataset.heatcell ?? "";
+          const [h, m, fam] = k.split("|");
+          if (activeRow && activeCol) return `${h}|${m}` === activeRow && fam === activeCol;
+          if (activeRow) return `${h}|${m}` === activeRow && c.dataset.bucket !== "";
+          if (activeCol) return fam === activeCol && c.dataset.bucket !== "";
+          return false;
+        }).length;
+        tip.innerHTML =
+          `<span><strong>${esc(label)}</strong> · <em>${count} measured</em></span>` +
+          `<button class="bb-heat-tip__x" type="button" aria-label="Clear focus">×</button>`;
+        tip.hidden = false;
+        const x = tip.querySelector<HTMLButtonElement>(".bb-heat-tip__x");
+        x?.addEventListener("click", () => {
+          activeRow = null;
+          activeCol = null;
+          applyFocus();
+        }, { once: true });
+      }
+    }
+  };
+
+  const setLens = (lens: "rate" | "strict" | "cost"): void => {
+    activeLens = lens;
+    bar.querySelectorAll(".bb-tab[data-lens]").forEach((t) => {
+      const active = (t as HTMLElement).dataset.lens === lens;
+      t.classList.toggle("is-active", active);
+      t.setAttribute("aria-selected", String(active));
+    });
+    grid.classList.toggle("bb-heat--cost", lens === "cost");
+    const domain = lens === "cost" ? data.heatDomains.cost : lens === "strict" ? data.heatDomains.strict : data.heatDomains.rate;
+    const invert = lens === "cost";
+    for (const cell of cells()) {
+      const read = (k: string): number | null => {
+        const raw = cell.dataset[k];
+        return raw === "" || raw == null ? null : Number(raw);
+      };
+      const label = cell.querySelector(".bb-heat__v");
+      if (lens === "cost") {
+        const cost = read("cost");
+        cell.dataset.bucket = bucket(cost, domain, invert);
+        if (label) label.textContent = cost == null ? "" : cost < 0.01 ? "<1¢" : `$${cost.toFixed(2)}`;
+      } else {
+        const v = lens === "strict" ? read("strict") : read("rate");
+        cell.dataset.bucket = bucket(v, domain, invert);
+        if (label) label.textContent = v == null ? "" : String(Math.round(v * 100));
+      }
+    }
+  };
+
   bar.addEventListener("click", (ev) => {
     const famToggle = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-bb-emptyfam]");
     if (famToggle) {
@@ -468,34 +566,133 @@ function initHeatLens(data: Dataset): void {
       return;
     }
     const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-lens]");
-    if (!btn) return;
-    const lens = btn.dataset.lens as "rate" | "strict" | "cost";
-    bar.querySelectorAll(".bb-tab").forEach((t) => {
-      const active = t === btn;
-      t.classList.toggle("is-active", active);
-      t.setAttribute("aria-selected", String(active));
-    });
-    grid.classList.toggle("bb-heat--cost", lens === "cost");
-    grid.querySelectorAll<HTMLElement>(".bb-heat__cell").forEach((cell) => {
-      const read = (k: string): number | null => {
-        const raw = cell.dataset[k];
-        return raw === "" || raw == null ? null : Number(raw);
-      };
-      const label = cell.querySelector(".bb-heat__v");
-      if (lens === "cost") {
-        const cost = read("cost");
-        cell.dataset.bucket = bucket(cost, data.heatDomains.cost, true);
-        if (label) label.textContent = cost == null ? "" : cost < 0.01 ? "<1¢" : `$${cost.toFixed(2)}`;
+    if (btn?.dataset.lens) setLens(btn.dataset.lens as "rate" | "strict" | "cost");
+  });
+
+  grid.addEventListener("click", (ev) => {
+    const col = (ev.target as HTMLElement).closest<HTMLElement>("[data-heatcol]");
+    if (col?.dataset.heatcol) {
+      const key = col.dataset.heatcol;
+      activeCol = activeCol === key ? null : key;
+      // keep row if both were set, otherwise single-focus semantics: pick this column alone
+      if (activeRow && activeCol == null) { /* row stays */ } else if (activeCol && activeRow) { /* both */ }
+      applyFocus();
+      return;
+    }
+    const row = (ev.target as HTMLElement).closest<HTMLElement>("[data-heatrow]");
+    if (row?.dataset.heatrow) {
+      const key = row.dataset.heatrow;
+      activeRow = activeRow === key ? null : key;
+      applyFocus();
+      return;
+    }
+    const cell = (ev.target as HTMLElement).closest<HTMLElement>("[data-heatcell]");
+    if (cell?.dataset.heatcell) {
+      const [h, m, fam] = (cell.dataset.heatcell ?? "").split("|");
+      const rowKey = `${h}|${m}`;
+      // clicking a cell pins that intersection: row + col
+      if (activeRow === rowKey && activeCol === fam) {
+        activeRow = null;
+        activeCol = null;
       } else {
-        const v = lens === "strict" ? read("strict") : read("rate");
-        cell.dataset.bucket = bucket(v, lens === "strict" ? data.heatDomains.strict : data.heatDomains.rate, false);
-        if (label) label.textContent = v == null ? "" : String(Math.round(v * 100));
+        activeRow = rowKey;
+        activeCol = fam ?? null;
       }
-    });
+      applyFocus();
+    }
+  });
+
+  // ESC clears focus
+  frame?.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && (activeRow || activeCol)) {
+      activeRow = null;
+      activeCol = null;
+      applyFocus();
+    }
+  });
+  // click on frame background clears
+  frame?.addEventListener("click", (ev) => {
+    if (ev.target === frame) {
+      activeRow = null;
+      activeCol = null;
+      applyFocus();
+    }
   });
 }
 
-/* ---------- 4 · ask the data (AI panel) ---------- */
+/* ---------- 4 · model lens detail (interactive) ---------- */
+
+function initLens(data: Dataset): void {
+  const root = document.querySelector<HTMLElement>("[data-bb-lens]");
+  if (!root) return;
+  const picks = [...root.querySelectorAll<HTMLButtonElement>("[data-lenspick]")];
+  const rowsEl = root.querySelector<HTMLElement>("[data-bb-lensrows]");
+  const detail = root.querySelector<HTMLElement>("[data-bb-lensdetail]");
+  if (!rowsEl || !detail) return;
+  const rows = [...rowsEl.querySelectorAll<HTMLElement>("[data-lensrow]")];
+
+  const select = (id: string): void => {
+    picks.forEach((b) => {
+      const on = b.dataset.lenspick === id;
+      b.classList.toggle("is-active", on);
+      b.setAttribute("aria-selected", String(on));
+    });
+    rows.forEach((r) => {
+      const on = id !== "all" && r.dataset.lensrow === id;
+      r.classList.toggle("is-active", on);
+      r.classList.toggle("is-dimmed", id !== "all" && !on);
+    });
+    if (id === "all") {
+      detail.hidden = true;
+      detail.innerHTML = "";
+      return;
+    }
+    const stacks = data.stacks.filter((s) => s.m === id).sort((a, b) => b.sol - a.sol);
+    if (stacks.length === 0) {
+      detail.hidden = true;
+      return;
+    }
+    const m = stacks[0]!;
+    const head =
+      `<div class="bb-lens__detailhead">` +
+      (m.ml ? `<img src="${esc(m.ml)}" alt="" width="22" height="22" loading="lazy" decoding="async">` : `<span class="bb-badge__mono">${esc(m.mm)}</span>`) +
+      `<strong>${esc(m.md)}</strong><span>${stacks.length} harnesses · mean ${fmtPct(stacks.reduce((a, s) => a + s.sol, 0) / stacks.length)}</span>` +
+      `<span class="bb-lens__detailhint">tap a row to clear</span></div>`;
+    const harnessRows = stacks
+      .map((s) => {
+        const barW = `${(s.sol * 100).toFixed(1)}%`;
+        return (
+          `<div class="bb-lens__hrow h--${esc(s.h.replace(/[^a-z0-9-]/g, ""))}">` +
+          `<span style="display:inline-flex;align-items:center;gap:8px;min-width:0">` +
+          (s.hl ? `<img class="bb-badge" src="${esc(s.hl)}" alt="" width="22" height="22" style="padding:2px">` : `<span class="bb-badge"><span class="bb-badge__mono">${esc(s.hm)}</span></span>`) +
+          `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.hd)}</span></span>` +
+          `<span class="bb-lens__hbar"><span class="bb-lens__hfill" data-w="${barW}"></span></span>` +
+          `<span class="bb-lens__hmeta"><strong>${fmtPct(s.sol)}</strong><br>strict ${fmtPct(s.str)}</span>` +
+          `<span class="bb-lens__hmeta">${fmtCost(s.cost)}/task<br>n ${s.n}</span>` +
+          `</div>`
+        );
+      })
+      .join("");
+    detail.innerHTML = head + `<div class="bb-lens__harnesses">${harnessRows}</div>`;
+    detail.hidden = false;
+    detail.querySelectorAll<HTMLElement>("[data-w]").forEach((el) => {
+      (el as HTMLElement).style.width = el.dataset.w ?? "0%";
+    });
+    detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+
+  root.addEventListener("click", (ev) => {
+    const pick = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-lenspick]");
+    if (pick?.dataset.lenspick) {
+      select(pick.dataset.lenspick);
+      return;
+    }
+    const row = (ev.target as HTMLElement).closest<HTMLElement>("[data-lensrow]");
+    if (row?.dataset.lensrow) select(row.dataset.lensrow);
+  });
+}
+
+/* ---------- 5 · ask the data (AI panel) ---------- */
 
 /* The function's closed chart vocabulary (functions/src/benchAssistant.ts);
    the renderer maps it onto the dashboard dataset. */
@@ -872,6 +1069,170 @@ function initAsk(data: Dataset): void {
   });
 }
 
+/* ---------- 6 · Pareto — interactive (hover, pin, filter, round-up) ---------- */
+
+function initPareto(data: Dataset): void {
+  const root = document.querySelector<HTMLElement>("[data-bb-pareto]");
+  const svg = root?.querySelector<HTMLElement>("[data-bb-pareto-svg]");
+  const tip = root?.querySelector<HTMLElement>("[data-bb-pareto-tip]");
+  const compare = root?.querySelector<HTMLElement>("[data-bb-pareto-compare]");
+  const cards = root?.querySelector<HTMLElement>("[data-bb-pareto-cards]");
+  const count = root?.querySelector<HTMLElement>("[data-bb-pareto-count]");
+  const clearBtn = root?.querySelector<HTMLButtonElement>("[data-bb-pareto-clear]");
+  const resetBtn = root?.querySelector<HTMLButtonElement>("[data-bb-pareto-reset]");
+  if (!root || !svg || !tip || !compare || !cards) return;
+
+  const byKey = new Map(data.stacks.map((s) => [`${s.h}|${s.m}`, s]));
+  const pinned = new Set<string>();
+  const onH = new Set(data.stacks.map((s) => s.h));
+  const onM = new Set(data.stacks.map((s) => s.m));
+
+  const pts = (): HTMLElement[] => [...svg.querySelectorAll<HTMLElement>("[data-pareto-pt]")];
+
+  const applyFilters = (): void => {
+    for (const el of pts()) {
+      const h = el.dataset.h ?? "";
+      const m = el.dataset.m ?? "";
+      const visible = onH.has(h) && onM.has(m);
+      el.classList.toggle("is-dimmed", !visible);
+      el.setAttribute("aria-hidden", String(!visible));
+    }
+    // frontier line dims when most of the field is hidden (keep our round-up honest)
+    const visCount = pts().filter((p) => !p.classList.contains("is-dimmed")).length;
+    const frontier = root.querySelector<HTMLElement>("[data-bb-pareto-frontier]");
+    if (frontier) frontier.style.opacity = visCount < 4 ? "0.22" : "0.75";
+  };
+
+  const showTip = (key: string | null): void => {
+    if (!key || !byKey.has(key)) { tip.hidden = true; return; }
+    const s = byKey.get(key)!;
+    tip.innerHTML =
+      `<span><strong>${esc(s.hd)} × ${esc(s.mds)}</strong> · <em>${fmtPct(s.sol)}</em> solution · strict ${fmtPct(s.str)} · <em>${fmtCost(s.cost)}/task</em> · n ${s.n}</span>` +
+      `<span style="opacity:0.7" class="mono">${s.ev === "inferred" ? "inferred" : "measured"}${s.conf === "low" ? " · low conf" : ""}</span>`;
+    tip.hidden = false;
+  };
+
+  const renderCompare = (): void => {
+    const list = [...pinned].map((k) => byKey.get(k)).filter((s): s is StackRow => s != null);
+    if (count) count.textContent = `${list.length} stack${list.length === 1 ? "" : "s"}`;
+    if (clearBtn) clearBtn.hidden = list.length === 0;
+    if (list.length === 0) {
+      compare.hidden = true;
+      cards.innerHTML = "";
+      return;
+    }
+    compare.hidden = false;
+    cards.innerHTML = list.map((s) => {
+      const logo = s.hl ?? s.ml;
+      return (
+        `<div class="bb-pareto__card m--${esc(s.m.replace(/[^a-z0-9-]/g, ""))}" style="--mc:${esc(s.mc)}">` +
+        `<button class="bb-pareto__cardx" type="button" data-pareto-unpin="${esc(`${s.h}|${s.m}`)}" aria-label="Remove ${esc(s.hd)} × ${esc(s.mds)}">×</button>` +
+        `<div class="bb-pareto__cardhead">${logo ? `<img src="${esc(logo)}" alt="" width="18" height="18" loading="lazy" decoding="async">` : ""}${esc(s.hd)} × ${esc(s.mds)}</div>` +
+        `<div class="bb-pareto__cardmeta">` +
+        `<span><strong>${fmtPct(s.sol)}</strong> solution · strict ${fmtPct(s.str)}</span>` +
+        `<span><strong>${fmtCost(s.cost)}/task</strong>${s.cstd != null ? ` · std ${fmtCost(s.cstd)}` : ""} · n ${s.n}</span>` +
+        `<span>wall ${fmtWall(s.wall)} · ${fmtTokens(s.tok)} tokens · ${s.ev}${s.conf === "low" ? " · low conf" : ""}</span>` +
+        `</div></div>`
+      );
+    }).join("");
+  };
+
+  // hover — glass card
+  svg.addEventListener("pointerover", (ev) => {
+    const pt = (ev.target as HTMLElement).closest<HTMLElement>("[data-pareto-pt]");
+    if (!pt?.dataset.paretoPt) return;
+    pt.classList.add("is-hover");
+    showTip(pt.dataset.paretoPt);
+  });
+  svg.addEventListener("pointerout", (ev) => {
+    const pt = (ev.target as HTMLElement).closest<HTMLElement>("[data-pareto-pt]");
+    if (!pt) { tip.hidden = true; return; }
+    pt.classList.remove("is-hover");
+    // keep tip if we have pins, otherwise hide
+    if (pinned.size === 0) tip.hidden = true;
+  });
+  svg.addEventListener("focusin", (ev) => {
+    const pt = (ev.target as HTMLElement).closest<HTMLElement>("[data-pareto-pt]");
+    if (pt?.dataset.paretoPt) showTip(pt.dataset.paretoPt);
+  });
+  svg.addEventListener("focusout", () => { if (pinned.size === 0) tip.hidden = true; });
+
+  // click / keyboard — pin
+  const togglePin = (key: string): void => {
+    if (pinned.has(key)) pinned.delete(key);
+    else pinned.add(key);
+    for (const el of pts()) {
+      el.classList.toggle("is-pinned", pinned.has(el.dataset.paretoPt ?? ""));
+    }
+    renderCompare();
+  };
+  svg.addEventListener("click", (ev) => {
+    const pt = (ev.target as HTMLElement).closest<HTMLElement>("[data-pareto-pt]");
+    if (!pt?.dataset.paretoPt) return;
+    togglePin(pt.dataset.paretoPt);
+  });
+  svg.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    const pt = (ev.target as HTMLElement).closest<HTMLElement>("[data-pareto-pt]");
+    if (!pt?.dataset.paretoPt) return;
+    ev.preventDefault();
+    togglePin(pt.dataset.paretoPt);
+  });
+
+  // filter chips
+  root.querySelectorAll<HTMLButtonElement>("[data-pareto-h]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const h = btn.dataset.paretoH ?? "";
+      if (onH.has(h)) onH.delete(h); else onH.add(h);
+      if (onH.size === 0) { // never hide everything — reset
+        for (const s of data.stacks) onH.add(s.h);
+      }
+      btn.classList.toggle("is-on", onH.has(h));
+      btn.setAttribute("aria-pressed", String(onH.has(h)));
+      applyFilters();
+    });
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-pareto-m]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const m = btn.dataset.paretoM ?? "";
+      if (onM.has(m)) onM.delete(m); else onM.add(m);
+      if (onM.size === 0) {
+        for (const s of data.stacks) onM.add(s.m);
+      }
+      btn.classList.toggle("is-on", onM.has(m));
+      btn.setAttribute("aria-pressed", String(onM.has(m)));
+      applyFilters();
+    });
+  });
+  resetBtn?.addEventListener("click", () => {
+    onH.clear(); onM.clear();
+    for (const s of data.stacks) { onH.add(s.h); onM.add(s.m); }
+    root.querySelectorAll<HTMLButtonElement>("[data-pareto-h],[data-pareto-m]").forEach((b) => {
+      b.classList.add("is-on");
+      b.setAttribute("aria-pressed", "true");
+    });
+    applyFilters();
+  });
+  clearBtn?.addEventListener("click", () => {
+    pinned.clear();
+    for (const el of pts()) el.classList.remove("is-pinned");
+    tip.hidden = true;
+    renderCompare();
+  });
+  cards.addEventListener("click", (ev) => {
+    const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-pareto-unpin]");
+    const key = btn?.dataset.paretoUnpin;
+    if (!key) return;
+    pinned.delete(key);
+    const el = svg.querySelector<HTMLElement>(`[data-pareto-pt="${CSS.escape(key)}"]`);
+    el?.classList.remove("is-pinned");
+    renderCompare();
+    if (pinned.size === 0) tip.hidden = true;
+  });
+
+  applyFilters();
+}
+
 /* ---------- boot ---------- */
 
 void loadDataset().then((data) => {
@@ -879,5 +1240,7 @@ void loadDataset().then((data) => {
   initTabs(data);
   initTuner(data);
   initHeatLens(data);
+  initLens(data);
+  initPareto(data);
   initAsk(data);
 });
