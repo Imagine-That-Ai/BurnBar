@@ -74,7 +74,7 @@ win-x64/win-arm64 on Windows CI). The read test opens the committed
   that byte-compat is anchored to the pinned parameters, not the build.
 
 The write test then writes a `token_usage` row in a transaction, reopens, reads it
-back field-for-field, and asserts the schema hash stays `fb4b69e8…` (no accidental
+back field-for-field, and asserts the schema hash stays `90baa98a…` (no accidental
 migration), the migration marker stays `v58_ai_inbox` (count 59), and
 `PRAGMA user_version` stays 0 — proving a Windows write stays reopenable and
 migratable on Mac. Negative guards cover a wrong key (must fail to open) and the

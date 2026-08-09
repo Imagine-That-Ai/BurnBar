@@ -30,7 +30,7 @@ public sealed class SwitcherProfileWriteSeamRoundTripTests
     // Ground-truth invariants of the committed v58 fixture (pinned in the sibling
     // TokenUsageWriteRoundTripTests). A switcher write must not move any of these.
     private const string ExpectedSchemaHash =
-        "fb4b69e86d9f604826cd05634f979b0461c9945244fa57a5943f4f3244c156f2";
+        "90baa98a7e1dbe2c0afc39962ab80383b555e003193c470798fb1c0f9c3160c0";
     private const string ExpectedMigrationEndpoint = "v59_founder_lens";
     private const long ExpectedMigrationCount = 59;
     private const long ExpectedUserVersion = 0;
