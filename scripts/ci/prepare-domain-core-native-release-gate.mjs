@@ -442,9 +442,9 @@ export function run(
     join(sourceDirectory, DOMAIN_CORE_CANDIDATE_FILE),
     "candidate bundle",
   );
-  const rollbackPath = exactFile(
+  const candidateRollbackPath = exactFile(
     join(sourceDirectory, DOMAIN_CORE_ROLLBACK_FILE),
-    "rollback artifact",
+    "candidate rollback proof",
   );
   const bundle = parseJson(
     readFileSync(candidatePath, "utf8"),
@@ -459,6 +459,39 @@ export function run(
       "downloaded candidate bundle source coordinates do not match its artifact run",
     );
   }
+
+  // Preserve the candidate-bound rollback proof byte-identically, then mint a
+  // separate release-bound profile for verifyDomainCoreReleaseGate (which
+  // requires {version,tag,commit} on the profile path while still hashing the
+  // candidate proof against the protected bundle rollback digest).
+  const releaseVersion = resolvedSource.candidate.coreVersion;
+  const releaseTag = `v${releaseVersion}`;
+  const releaseBoundRollbackPath = join(
+    sourceDirectory,
+    "domain-core-public-production-rollback-release.json",
+  );
+  const releaseBoundRollback = resolveDomainCoreBuildProfile(
+    loadDomainCoreBuildProfiles(
+      resolve(
+        args.get("--profile-catalog") ??
+          join(repoRoot, "config/domain-core-build-profiles.json"),
+      ),
+    ),
+    DOMAIN_CORE_ROLLBACK_PROFILE,
+    resolvedSource.candidate,
+    {
+      version: releaseVersion,
+      tag: releaseTag,
+      commit: releaseCommit,
+    },
+  );
+  writeFileSync(
+    releaseBoundRollbackPath,
+    `${JSON.stringify(releaseBoundRollback, null, 2)}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+  exactFile(releaseBoundRollbackPath, "release-bound rollback profile");
+  const rollbackPath = candidateRollbackPath;
 
   const attestationDirectory = join(outputDirectory, "promotion");
   mkdirSync(attestationDirectory, { recursive: true });
@@ -560,12 +593,12 @@ export function run(
     profileName,
     resolvedSource.candidate,
   );
-  const releaseVersion = resolvedSource.candidate.coreVersion;
-  const releaseTag = `v${releaseVersion}`;
   const gate = verifyDomainCoreReleaseGate({
     candidateBundlePath: candidatePath,
     promotionAttestationPath: promotionPath,
     rollbackArtifactPath: rollbackPath,
+    candidateRollbackArtifactPath: candidateRollbackPath,
+    rollbackProfilePath: releaseBoundRollbackPath,
     expectedCandidate: resolvedSource.candidate,
     expectedSourceRunId: sourceRun.runId,
     expectedSourceRunAttempt: sourceRun.runAttempt,
@@ -599,6 +632,8 @@ export function run(
     candidateBundlePath: candidatePath,
     promotionAttestationPath: promotionPath,
     rollbackArtifactPath: rollbackPath,
+    candidateRollbackArtifactPath: candidateRollbackPath,
+    releaseBoundRollbackProfilePath: releaseBoundRollbackPath,
     rollbackSha256: sha256File(rollbackPath),
     activation: activationSelector.activation,
     activationPath,
