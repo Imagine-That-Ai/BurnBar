@@ -102,6 +102,19 @@ assert.doesNotMatch(
 
 const windowsReleaseWorkflow = read(".github/workflows/openburnbar-release-windows.yml");
 const windowsEngineWorkflow = read(".github/workflows/openburnbar-engine-windows.yml");
+const windowsOperationsRunbook = read(
+  "docs/windows-port/WINDOWS_PORT_OPERATIONS_RUNBOOK.md",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /ensure-windows-domain-core-release\.mjs[\s\S]*--phase prepare[\s\S]*publish-domain-core-release-evidence\.mjs/u,
+  "Windows release workflow must keep its public GitHub publication path visible to the operations contract",
+);
+assert.match(
+  windowsOperationsRunbook,
+  /Stop for explicit operator approval before pushing the tag\.[\s\S]*publishes a public GitHub Release[\s\S]*do not create or push the tag/u,
+  "Windows operations must require explicit public GitHub release approval before a windows-v* tag is pushed",
+);
 const windowsVersionArgumentSets =
   windowsReleaseWorkflow.match(
     /-p:Version="\$VERSION" -p:AssemblyVersion="\$\{VERSION\}\.0" \\\n\s+-p:FileVersion="\$\{VERSION\}\.0" -p:InformationalVersion="\$VERSION"/g,

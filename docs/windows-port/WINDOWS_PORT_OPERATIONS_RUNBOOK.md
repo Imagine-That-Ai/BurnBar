@@ -239,6 +239,14 @@ curl --fail --silent --show-error \
 Confirm the local author identity before creating an annotated tag. Never move
 or recreate a published release tag.
 
+**Stop for explicit operator approval before pushing the tag.** The current
+Windows workflow does more than build a private candidate: after signing and
+verification succeed, it publishes a public GitHub Release containing the
+signed Windows release bundle, update-feed files, and immutable domain-core
+evidence. Under rule 9 above, pushing `windows-vX.Y.Z` is therefore a public
+release action. If public GitHub release approval has not been given, keep the
+verified candidate on `main` and do not create or push the tag.
+
 ```bash
 git config user.name
 git config user.email
@@ -247,8 +255,10 @@ git tag -a "$TAG" -m "OpenBurnBar Windows ${VERSION} candidate ${CANDIDATE_SHA}"
 git push origin "refs/tags/${TAG}"
 ```
 
-This triggers `.github/workflows/openburnbar-release-windows.yml`. It does not
-authorize a public release.
+This triggers `.github/workflows/openburnbar-release-windows.yml` and, when all
+release jobs pass, publishes the public GitHub Release described above. It does
+not authorize Partner Center, winget, production staging, or any wider rollout;
+those remain separate explicit decisions.
 
 ### Step 5: verify the signed build
 
