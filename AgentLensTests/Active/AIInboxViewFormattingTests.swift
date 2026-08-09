@@ -202,6 +202,43 @@ final class AIInboxViewFormattingTests: XCTestCase {
         XCTAssertNil(coordinator.pendingNavigation)
     }
 
+    // MARK: - Settings unavailable copy
+
+    func testFriendlyUnavailableSurfacesAuthAndConnectDistinctly() {
+        XCTAssertTrue(
+            AIInboxSettingsModel.friendlyUnavailable(
+                OpenBurnBarDaemonManagerError.rpcError("Unauthorized OpenBurnBar RPC request.")
+            ).localizedCaseInsensitiveContains("authenticate")
+        )
+        XCTAssertTrue(
+            AIInboxSettingsModel.friendlyUnavailable(
+                OpenBurnBarDaemonManagerError.rpcError("Daemon socket connect failed: Connection refused")
+            ).localizedCaseInsensitiveContains("not running")
+        )
+        XCTAssertTrue(
+            AIInboxSettingsModel.friendlyUnavailable(
+                OpenBurnBarDaemonManagerError.emptyResponse
+            ).localizedCaseInsensitiveContains("code-signature")
+        )
+        XCTAssertTrue(
+            AIInboxSettingsModel.friendlyUnavailable(
+                OpenBurnBarDaemonManagerError.rpcTimedOut(seconds: 30)
+            ).localizedCaseInsensitiveContains("time")
+        )
+        XCTAssertTrue(
+            AIInboxSettingsModel.friendlyUnavailable(
+                OpenBurnBarDaemonManagerError.rpcError(
+                    "Failed to apply SQLCipher key to the daemon database: file is not a database"
+                )
+            ).localizedCaseInsensitiveContains("unlock the encrypted index")
+        )
+        XCTAssertTrue(
+            AIInboxSettingsModel.friendlyUnavailable(
+                OpenBurnBarDaemonManagerError.rpcError("Failed to open AI Inbox SQLite database: database is locked")
+            ).localizedCaseInsensitiveContains("busy")
+        )
+    }
+
     // MARK: - Helpers
 
     private func makeRun(

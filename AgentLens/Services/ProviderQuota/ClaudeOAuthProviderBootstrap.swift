@@ -69,8 +69,9 @@ private extension OpenBurnBarDaemonManager {
     }
 
     func providerConfigurationSnapshot() async throws -> BurnBarProviderConfigurationSnapshot {
-        try await daemonRPC {
-            try OpenBurnBarDaemonSocketClient.config(at: paths.socketURL)
+        let socketURL = paths.socketURL
+        return try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.config(at: socketURL)
         }
     }
 }

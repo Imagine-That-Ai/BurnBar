@@ -94,6 +94,9 @@ enum SettingsPageRoute: Hashable, Codable {
     case indexing
     case sessionSummaries
 
+    // AI Inbox
+    case aiInboxRoot
+
     // Updates
     case updatesRoot
 
@@ -199,6 +202,10 @@ enum SettingsAnchor {
 
     // General → Summaries
     static let summariesAuto = "general.summaries.auto"
+
+    // AI Inbox
+    static let aiInboxOverview = "aiInbox.overview"
+    static let aiInboxEnable = "aiInbox.enable"
 
     // General → Operator
     static let operatorWizard = "general.operator.wizard"

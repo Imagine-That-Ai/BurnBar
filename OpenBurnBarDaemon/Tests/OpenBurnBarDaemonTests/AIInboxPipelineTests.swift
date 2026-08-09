@@ -511,6 +511,10 @@ final class AIInboxPipelineTests: XCTestCase {
             brief.contains("may not be included yet"),
             "The brief must say when it is working from a stale picture: \(brief)"
         )
+        XCTAssertFalse(
+            brief.contains("(Sessions from the last"),
+            "Staleness is a sentence, not a parenthetical apology: \(brief)"
+        )
     }
 
     /// The analyst must be told too, so it does not conclude "work is missing"

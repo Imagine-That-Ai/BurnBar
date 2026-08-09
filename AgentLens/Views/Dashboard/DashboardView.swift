@@ -972,7 +972,7 @@ struct DashboardView: View {
                     navigate(to: .sessionLogs)
                 }
             },
-            onOpenSettings: { presentSettings(itemID: "privacy") },
+            onOpenSettings: { presentSettings(itemID: SettingsDeepLinkRouting.aiInboxItemID) },
             memoryApproval: runtimeContext?.chatMemoryStore.map {
                 InboxMemoryApprovalHandler(store: $0, scope: memoryReviewScope)
             },

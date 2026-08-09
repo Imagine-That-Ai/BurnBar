@@ -44,13 +44,23 @@ final class ProviderPathSettings {
         }
     }
 
+    /// Short-lived cache so Settings body evaluation does not re-walk every
+    /// provider path on each SwiftUI render (beachball / hitch source).
+    private var detectionCache: (at: Date, value: [AgentProvider: Bool])?
+    private static let detectionCacheTTL: TimeInterval = 2
+
     func detectAvailableProviders() -> [AgentProvider: Bool] {
+        if let cached = detectionCache,
+           Date().timeIntervalSince(cached.at) < Self.detectionCacheTTL {
+            return cached.value
+        }
         var result: [AgentProvider: Bool] = [:]
         for provider in AgentProvider.allCases {
             result[provider] = candidatePaths(for: provider, configuredPath: provider.logDirectory).contains {
                 FileManager.default.fileExists(atPath: $0)
             }
         }
+        detectionCache = (Date(), result)
         return result
     }
 
