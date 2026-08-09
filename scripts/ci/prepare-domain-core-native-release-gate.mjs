@@ -24,6 +24,7 @@ import {
   DOMAIN_CORE_PROMOTION_PREDICATE_TYPE,
   DOMAIN_CORE_PUBLIC_PROFILE,
   DOMAIN_CORE_ROLLBACK_FILE,
+  DOMAIN_CORE_ROLLBACK_PROFILE,
   candidateArtifactName,
   publicProfileSha256,
   resolveNativeReleaseProfile,
@@ -190,6 +191,15 @@ function parseArguments(argv) {
   return values;
 }
 
+function isExpiredArtifactDownloadError(error) {
+  const detail = error instanceof Error ? error.message : String(error);
+  return (
+    /no valid artifacts found to download/u.test(detail) ||
+    /artifact .+ has expired/iu.test(detail) ||
+    /expired artifact/iu.test(detail)
+  );
+}
+
 function downloadRunArtifact(run, repository, name, directory, command) {
   mkdirSync(directory, { recursive: true });
   command("gh", [
@@ -203,6 +213,160 @@ function downloadRunArtifact(run, repository, name, directory, command) {
     "--dir",
     directory,
   ]);
+}
+
+function listPromotionBundlePaths(repoRoot) {
+  const root = join(repoRoot, "config/domain-core-promotion-bundles");
+  if (!existsSync(root)) return [];
+  const paths = [];
+  for (const scope of readdirSync(root)) {
+    const scopeDirectory = join(root, scope);
+    if (!lstatSync(scopeDirectory).isDirectory()) continue;
+    for (const entry of readdirSync(scopeDirectory)) {
+      if (!/^\d+\.json$/u.test(entry)) continue;
+      paths.push(join(scopeDirectory, entry));
+    }
+  }
+  return paths.sort();
+}
+
+export function selectCommittedCandidateBundle({
+  repoRoot,
+  candidateCommit,
+  sourceRun,
+}) {
+  const matches = [];
+  for (const path of listPromotionBundlePaths(repoRoot)) {
+    const bundle = parseJson(
+      readFileSync(path, "utf8"),
+      `committed promotion bundle ${path}`,
+    );
+    if (
+      bundle?.candidate?.candidateCommit === candidateCommit &&
+      bundle?.workflow?.runId === sourceRun.runId &&
+      bundle?.workflow?.runAttempt === sourceRun.runAttempt
+    ) {
+      matches.push({ path, bundle });
+    }
+  }
+  if (matches.length === 0) {
+    throw new Error(
+      `no committed promotion bundle matches candidate ${candidateCommit} source run ${sourceRun.runId}/${sourceRun.runAttempt}`,
+    );
+  }
+  const digests = new Set(matches.map(({ path }) => sha256File(path)));
+  if (digests.size !== 1) {
+    throw new Error(
+      `committed promotion bundles for ${candidateCommit} disagree on bytes`,
+    );
+  }
+  return matches[0];
+}
+
+export function materializeCandidateBoundRollback({
+  repoRoot,
+  candidateCommit,
+  sourceRun,
+  sourceDirectory,
+  command = createCommandRunner(),
+}) {
+  mkdirSync(sourceDirectory, { recursive: true });
+  const { path: bundlePath, bundle } = selectCommittedCandidateBundle({
+    repoRoot,
+    candidateCommit,
+    sourceRun,
+  });
+  const candidatePath = join(sourceDirectory, DOMAIN_CORE_CANDIDATE_FILE);
+  const rollbackPath = join(sourceDirectory, DOMAIN_CORE_ROLLBACK_FILE);
+  copyFileSync(bundlePath, candidatePath);
+  exactFile(candidatePath, "committed candidate bundle");
+  if (sha256File(candidatePath) !== sha256File(bundlePath)) {
+    throw new Error("committed candidate bundle copy drifted during materialize");
+  }
+
+  const restoredSha256 = bundle?.rollback?.restoredArtifactSha256;
+  if (
+    typeof restoredSha256 !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(restoredSha256)
+  ) {
+    throw new Error(
+      "committed candidate bundle is missing rollback.restoredArtifactSha256",
+    );
+  }
+
+  const catalogText = command("git", [
+    "-C",
+    repoRoot,
+    "show",
+    `${candidateCommit}:config/domain-core-build-profiles.json`,
+  ]);
+  const catalogDirectory = join(sourceDirectory, "candidate-catalog");
+  mkdirSync(catalogDirectory, { recursive: true });
+  const catalogPath = join(
+    catalogDirectory,
+    "domain-core-build-profiles.json",
+  );
+  writeFileSync(catalogPath, catalogText, { encoding: "utf8", mode: 0o600 });
+  const catalog = loadDomainCoreBuildProfiles(catalogPath);
+  const candidateIdentity = {
+    candidateCommit: bundle.candidate.candidateCommit,
+    coreVersion: bundle.candidate.coreVersion,
+    abiVersion: bundle.candidate.abiVersion,
+    sourceSha256: bundle.candidate.sourceSha256,
+  };
+  const rollbackProfile = resolveDomainCoreBuildProfile(
+    catalog,
+    DOMAIN_CORE_ROLLBACK_PROFILE,
+    candidateIdentity,
+  );
+  writeFileSync(
+    rollbackPath,
+    `${JSON.stringify(rollbackProfile, null, 2)}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+  exactFile(rollbackPath, "regenerated rollback artifact");
+  if (sha256File(rollbackPath) !== restoredSha256) {
+    throw new Error(
+      `regenerated rollback artifact digest mismatch for ${candidateCommit}`,
+    );
+  }
+  return { candidatePath, rollbackPath, bundlePath, source: "committed" };
+}
+
+function downloadOrMaterializeSourceArtifacts({
+  repoRoot,
+  candidateCommit,
+  sourceRun,
+  repository,
+  sourceDirectory,
+  command,
+}) {
+  try {
+    downloadRunArtifact(
+      sourceRun,
+      repository,
+      candidateArtifactName(candidateCommit, sourceRun),
+      sourceDirectory,
+      command,
+    );
+    downloadRunArtifact(
+      sourceRun,
+      repository,
+      rollbackArtifactName(candidateCommit, sourceRun),
+      sourceDirectory,
+      command,
+    );
+    return { source: "actions" };
+  } catch (error) {
+    if (!isExpiredArtifactDownloadError(error)) throw error;
+    return materializeCandidateBoundRollback({
+      repoRoot,
+      candidateCommit,
+      sourceRun,
+      sourceDirectory,
+      command,
+    });
+  }
 }
 
 function promotionVerificationArguments(
@@ -266,27 +430,21 @@ export function run(
   );
 
   const sourceDirectory = join(outputDirectory, "source");
-  downloadRunArtifact(
+  downloadOrMaterializeSourceArtifacts({
+    repoRoot,
+    candidateCommit,
     sourceRun,
     repository,
-    candidateArtifactName(candidateCommit, sourceRun),
     sourceDirectory,
     command,
-  );
-  downloadRunArtifact(
-    sourceRun,
-    repository,
-    rollbackArtifactName(candidateCommit, sourceRun),
-    sourceDirectory,
-    command,
-  );
+  });
   const candidatePath = exactFile(
     join(sourceDirectory, DOMAIN_CORE_CANDIDATE_FILE),
     "candidate bundle",
   );
-  const rollbackPath = exactFile(
+  const candidateRollbackPath = exactFile(
     join(sourceDirectory, DOMAIN_CORE_ROLLBACK_FILE),
-    "rollback artifact",
+    "candidate rollback proof",
   );
   const bundle = parseJson(
     readFileSync(candidatePath, "utf8"),
@@ -301,6 +459,39 @@ export function run(
       "downloaded candidate bundle source coordinates do not match its artifact run",
     );
   }
+
+  // Preserve the candidate-bound rollback proof byte-identically, then mint a
+  // separate release-bound profile for verifyDomainCoreReleaseGate (which
+  // requires {version,tag,commit} on the profile path while still hashing the
+  // candidate proof against the protected bundle rollback digest).
+  const releaseVersion = resolvedSource.candidate.coreVersion;
+  const releaseTag = `v${releaseVersion}`;
+  const releaseBoundRollbackPath = join(
+    sourceDirectory,
+    "domain-core-public-production-rollback-release.json",
+  );
+  const releaseBoundRollback = resolveDomainCoreBuildProfile(
+    loadDomainCoreBuildProfiles(
+      resolve(
+        args.get("--profile-catalog") ??
+          join(repoRoot, "config/domain-core-build-profiles.json"),
+      ),
+    ),
+    DOMAIN_CORE_ROLLBACK_PROFILE,
+    resolvedSource.candidate,
+    {
+      version: releaseVersion,
+      tag: releaseTag,
+      commit: releaseCommit,
+    },
+  );
+  writeFileSync(
+    releaseBoundRollbackPath,
+    `${JSON.stringify(releaseBoundRollback, null, 2)}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+  exactFile(releaseBoundRollbackPath, "release-bound rollback profile");
+  const rollbackPath = candidateRollbackPath;
 
   const attestationDirectory = join(outputDirectory, "promotion");
   mkdirSync(attestationDirectory, { recursive: true });
@@ -402,12 +593,12 @@ export function run(
     profileName,
     resolvedSource.candidate,
   );
-  const releaseVersion = resolvedSource.candidate.coreVersion;
-  const releaseTag = `v${releaseVersion}`;
   const gate = verifyDomainCoreReleaseGate({
     candidateBundlePath: candidatePath,
     promotionAttestationPath: promotionPath,
     rollbackArtifactPath: rollbackPath,
+    candidateRollbackArtifactPath: candidateRollbackPath,
+    rollbackProfilePath: releaseBoundRollbackPath,
     expectedCandidate: resolvedSource.candidate,
     expectedSourceRunId: sourceRun.runId,
     expectedSourceRunAttempt: sourceRun.runAttempt,
@@ -441,6 +632,8 @@ export function run(
     candidateBundlePath: candidatePath,
     promotionAttestationPath: promotionPath,
     rollbackArtifactPath: rollbackPath,
+    candidateRollbackArtifactPath: candidateRollbackPath,
+    releaseBoundRollbackProfilePath: releaseBoundRollbackPath,
     rollbackSha256: sha256File(rollbackPath),
     activation: activationSelector.activation,
     activationPath,
