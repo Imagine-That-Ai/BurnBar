@@ -45,6 +45,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (fenced, trust-signaled; deliberately no write tool).
 - Docs: `docs/AI_INBOX_FOUNDER_LENS.md`, `docs/AI_INBOX_FOUNDER_PLANS.md`.
 
+## [1.0.33] - 2026-08-09
+
+### Fixed - Domain-core release gate Actions artifact expiry
+
+- When GitHub Actions artifacts for the activated Shared Rust candidate expire
+  (org retention overrides the workflow's 90-day request), the native release
+  gate now hydrates the attested candidate bundle from committed promotion
+  evidence and regenerates the byte-identical rollback profile, then continues
+  Sigstore verification. Unblocks `v1.0.32` OpenBurnBar Release after Preflight
+  passed but Shared Rust verify failed on expired run `30754893279`.
+
+- Bumped Google Play `versionCode` to `45` with `versionName` `1.0.33`, and Mac
+  `CURRENT_PROJECT_VERSION` to `75`.
+
 ## [1.0.32] - 2026-08-09
 
 ### Fixed - Release preflight Lob false positives

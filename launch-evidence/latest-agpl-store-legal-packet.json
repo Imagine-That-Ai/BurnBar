@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-09T14:49:26Z",
+  "generatedAt": "2026-08-09T18:37:05Z",
   "status": "owner_attested_soft_approval",
   "reviewStatus": "owner_attested_soft_approval",
   "repo": {
     "remote": "origin",
     "ownerRepo": "Imagine-That-Ai/BurnBar",
     "branch": "main",
-    "originMain": "0090719c8c494132e69cacd101d21ee56da8cfd9",
-    "releaseTag": "v1.0.32"
+    "originMain": "15f5b552ab5b96dc9f40f18174ac717af4534f21",
+    "releaseTag": "v1.0.33"
   },
-  "purpose": "Owner-attested emergency release evidence for the v1.0.32 public release boundary. This cut follows the liquid-glass popover land (#2197) and the Lob publishable-tree false-positive fix (#2199) after v1.0.30/v1.0.31 tags could not complete Release Preflight. The release must be cut from protected main only.",
+  "purpose": "Owner-attested emergency release evidence for the v1.0.33 public release boundary. This cut unblocks OpenBurnBar Release after v1.0.32 Preflight passed but the Shared Rust native release candidate verify failed because Actions artifacts for activated candidate 99ba1f66 expired under org retention. The gate now hydrates attested committed promotion evidence. The release must be cut from protected main only.",
   "ownerAttestation": {
     "ownerName": "Alberto Nunez",
     "ownerGitHub": "Ajnunezg",
     "ownerRole": "release_owner",
-    "attestedAt": "2026-08-09T14:49:26Z",
+    "attestedAt": "2026-08-09T18:37:05Z",
     "counselName": "Heather Meeker",
     "approvalType": "soft_approval",
-    "emergencyReason": "Publish the v1.0.32 three-platform release train (macOS direct-download / App Store, iOS, Android) from protected main after the Lob Release Preflight false-positive fix and liquid-glass popover landed; immutable v1.0.30/v1.0.31 tags cannot be rewritten.",
-    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.32 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
-    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker's existing soft approval applies to this v1.0.32 release boundary and authorizes the emergency owner-approved public release lane.",
+    "emergencyReason": "Publish the v1.0.33 three-platform release train after v1.0.32 Release failed Shared Rust verify on expired Actions artifacts; immutable tags cannot be rewritten.",
+    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.33 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
+    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker's existing soft approval applies to this v1.0.33 release boundary and authorizes the emergency owner-approved public release lane.",
     "followUpRequired": true
   },
   "scope": [
@@ -57,16 +57,8 @@
   ],
   "commandEvidence": [
     {
-      "id": "release_owner_attestation",
-      "status": "owner_attested",
-      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --allow-owner-emergency-runtime-hold --expected-release-tag v1.0.32",
-      "proof": "The emergency release lane validates this structured owner attestation. It does not replace the normal signed external-counsel approval packet."
-    },
-    {
-      "id": "signed_counsel_packet_follow_up",
-      "status": "required_follow_up",
-      "command": "python3 scripts/ci/check_agpl_legal_release_review.py <signed-review-artifact>.json --repo-root .",
-      "proof": "The stronger signed counsel packet remains required for the normal release lane once counsel signature material is available."
+      "command": "scripts/tag-release.sh --force 1.0.33",
+      "purpose": "Cut immutable v1.0.33 after domain-core Actions artifact expiry fallback lands on main"
     }
   ],
   "notes": "Emergency approval is owner-attested soft approval, not a detached counsel signature. Keep the signed-counsel gate intact and replace this emergency packet with signed evidence when available."
