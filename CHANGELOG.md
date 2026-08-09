@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.32] - 2026-08-09
+
+### Fixed - Release preflight Lob false positives
+
+- Broadened the publishable-tree TruffleHog Lob filter so camelCase XCTest
+  identifiers (and docs/Vendor mentions) are not treated as verified Lob
+  test-mode API keys — unblocking the Mac/iOS/Android release cut after
+  `v1.0.31` failed Release Preflight.
+
+- Bumped Google Play `versionCode` to `44` with `versionName` `1.0.32`, and Mac
+  `CURRENT_PROJECT_VERSION` to `74`.
+
 ## [1.0.31] - 2026-08-09
 
 ### Changed - Menu bar popover liquid glass redesign

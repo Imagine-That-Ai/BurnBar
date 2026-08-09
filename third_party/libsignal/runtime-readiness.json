@@ -13,7 +13,7 @@
       "status": "complete",
       "proof": "The official libsignal v0.94.4 Rust shared bridge is consumed through its Swift FFI, Kotlin/Android JNI, and Node bindings at one verified pin. Representative protocol, interop, at-rest, replay, and identity tests pass on all three consumers, and the vendored fork has no crypto-core divergence.",
       "command": "bash scripts/ci/verify-libsignal-pin.sh && bash scripts/ci/verify-libsignal-submodule-delta.sh && npm test --prefix packages/libsignal-bridge && swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-release-rust-bridge-swift --disable-swift-testing --filter OpenBurnBarSignalCoreTests && cd android && ./gradlew :app:testDebugUnitTest --tests '*AndroidSignalSession*' --tests '*AndroidSignalInteropKatTest' --tests '*AndroidCloudVaultSignalPayloadsTest' --tests '*AndroidSignalIdentityKeyStoreTest' --no-daemon",
-      "evidencePath": "launch-evidence/libsignal-rust-core-bridge-v1.0.31.json"
+      "evidencePath": "launch-evidence/libsignal-rust-core-bridge-v1.0.32.json"
     },
     {
       "id": "node_protocol_harness",
