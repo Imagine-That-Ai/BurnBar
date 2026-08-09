@@ -129,21 +129,21 @@ final class QuotaPopoverCopyTests: XCTestCase {
     // MARK: - quotaLegibleProviderColor
 
     func test_legibleColor_lightMode_darkensNearWhite() {
-        let warp = Color(hex: "DDE4EA")
+        let warp = Self.color(hex: "DDE4EA")
         let adjusted = quotaLegibleProviderColor(warp, in: .light)
         XCTAssertLessThan(Self.luminance(of: adjusted), Self.luminance(of: warp),
                           "Near-white provider color must darken to survive light mode")
     }
 
     func test_legibleColor_darkMode_lightensNearBlack() {
-        let xai = Color(hex: "1A1A1A")
+        let xai = Self.color(hex: "1A1A1A")
         let adjusted = quotaLegibleProviderColor(xai, in: .dark)
         XCTAssertGreaterThan(Self.luminance(of: adjusted), Self.luminance(of: xai),
                              "Near-black provider color must lighten to survive dark mode")
     }
 
     func test_legibleColor_midLuminance_unchangedInBothModes() {
-        let claude = Color(hex: "CC785C") // luminance ≈ 0.53 — legible as-is
+        let claude = Self.color(hex: "CC785C") // luminance ≈ 0.53 — legible as-is
         XCTAssertEqual(Self.luminance(of: quotaLegibleProviderColor(claude, in: .light)),
                        Self.luminance(of: claude), accuracy: 0.001)
         XCTAssertEqual(Self.luminance(of: quotaLegibleProviderColor(claude, in: .dark)),
@@ -152,7 +152,7 @@ final class QuotaPopoverCopyTests: XCTestCase {
 
     func test_legibleColor_crossMode_notDoubleAdjusted() {
         // Near-white is only a light-mode problem; dark mode must leave it alone.
-        let warp = Color(hex: "DDE4EA")
+        let warp = Self.color(hex: "DDE4EA")
         XCTAssertEqual(Self.luminance(of: quotaLegibleProviderColor(warp, in: .dark)),
                        Self.luminance(of: warp), accuracy: 0.001)
     }
@@ -207,5 +207,19 @@ final class QuotaPopoverCopyTests: XCTestCase {
     private static func luminance(of color: Color) -> Double {
         guard let rgb = NSColor(color).usingColorSpace(.deviceRGB) else { return -1 }
         return 0.2126 * rgb.redComponent + 0.7152 * rgb.greenComponent + 0.0722 * rgb.blueComponent
+    }
+
+    /// Local hex parser — `Color(hex:)` is defined in both AgentLens and
+    /// OpenBurnBarUI, so tests must avoid the ambiguous overload.
+    private static func color(hex: String) -> Color {
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        return Color(
+            .sRGB,
+            red: Double((int >> 16) & 0xFF) / 255,
+            green: Double((int >> 8) & 0xFF) / 255,
+            blue: Double(int & 0xFF) / 255,
+            opacity: 1
+        )
     }
 }
