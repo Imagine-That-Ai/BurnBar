@@ -160,13 +160,11 @@ if [[ "$trufflehog_status" -ne 0 ]]; then
   exit "$trufflehog_status"
 fi
 
-# TruffleHog's Lob detector treats XCTest/Jest identifiers like
-# `test_closedToOpen_afterThresholdFailures` as "verified" Lob test API keys.
-# Drop only those false positives when BOTH are true:
-#   1) raw looks like a multi-segment test method/id (not a bare `test_<hex>` Lob key)
-#   2) the finding path is a test source
-# Keep every other verified Lob finding fail-closed — including real Lob test
-# credentials that also happen to match `test_[A-Za-z0-9_]+`.
+# TruffleHog's Lob detector treats XCTest/Jest/docs identifiers like
+# `test_everyMacEventIsRegisteredInTaxonomy` as "verified" Lob test API keys
+# (including camelCase names with no extra underscores, and mentions in docs /
+# Vendor / skills). Drop Lob findings whose Raw looks like a test identifier,
+# but keep real Lob *test-mode* API keys (`test_` + hex only) fail-closed.
 filtered_report="$artifact_dir/trufflehog-publishable-tree.filtered.jsonl"
 python3 - "$trufflehog_report" "$filtered_report" <<'PY'
 import json
@@ -176,16 +174,11 @@ from pathlib import Path
 
 src = Path(sys.argv[1])
 dst = Path(sys.argv[2])
-# Method-style ids have at least one additional underscore-separated segment
-# after `test_`, and each segment starts with a letter (XCTest/Jest names).
-test_method_id = re.compile(r"^test_[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z][A-Za-z0-9]*)+$")
-test_path = re.compile(
-    # Directory markers: Tests/, FooTests/, __tests__/, spec(s)/
-    r"(?:^|/)(?:[^/]*Tests?|__tests__|specs?)/|"
-    # File markers: *.test.*, *.spec.*, *Tests.swift, etc.
-    r"(?:\.test\.|\.spec\.|Tests?\.(?:swift|m|mm|kt|java|ts|tsx|js|jsx)$)",
-    re.IGNORECASE,
-)
+# Real Lob test-mode keys are `test_` + hexadecimal payload.
+lob_test_api_key = re.compile(r"^test_[0-9a-f]+$", re.IGNORECASE)
+# XCTest / Jest / harness ids: test_ + identifier chars (letters required so
+# pure-hex Lob keys stay outside this class via lob_test_api_key above).
+test_identifier = re.compile(r"^test_[A-Za-z_][A-Za-z0-9_]*$")
 kept = []
 dropped = 0
 if src.exists() and src.stat().st_size:
@@ -199,7 +192,11 @@ if src.exists() and src.stat().st_size:
             (((finding.get("SourceMetadata") or {}).get("Data") or {}).get("Filesystem") or {}).get("file")
             or ""
         )
-        if detector == "Lob" and test_method_id.fullmatch(raw) and test_path.search(path):
+        if (
+            detector == "Lob"
+            and test_identifier.fullmatch(raw)
+            and not lob_test_api_key.fullmatch(raw)
+        ):
             dropped += 1
             print(f"Ignoring Lob false positive on test identifier in {path}: {raw}", file=sys.stderr)
             continue

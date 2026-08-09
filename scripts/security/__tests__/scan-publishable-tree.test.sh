@@ -60,35 +60,31 @@ grep -Fq -- "Publishable-tree secret scan passed." "$scan_output"
 [[ -f "$marker_dir/gitleaks" ]]
 [[ -f "$marker_dir/trufflehog" ]]
 
-# Lob exception must stay narrow: method-style test ids in test paths only.
-# Real Lob test keys (`test_<hex>`) and any Lob finding outside test sources
-# must remain fail-closed.
+# Lob exception: drop XCTest/Jest-style identifiers anywhere they appear
+# (tests, docs, Vendor, skills). Keep real Lob test-mode keys (`test_<hex>`).
 python3 - "$script_under_test" <<'PY'
 import pathlib
 import re
 import sys
 
 src = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
-assert "test_method_id" in src, "narrow Lob method-id filter missing"
-assert "[^/]*Tests?" in src, "Lob filter must match *Tests/ directories"
-assert "test_path.search(path)" in src, "Lob filter must require a test path"
+assert "lob_test_api_key" in src, "Lob hex-key keep filter missing"
+assert "test_identifier" in src, "Lob test-identifier drop filter missing"
 
 # Keep these heuristics identical to scripts/security/scan-publishable-tree.sh.
-test_method_id = re.compile(r"^test_[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z][A-Za-z0-9]*)+$")
-test_path = re.compile(
-    r"(?:^|/)(?:[^/]*Tests?|__tests__|specs?)/|"
-    r"(?:\.test\.|\.spec\.|Tests?\.(?:swift|m|mm|kt|java|ts|tsx|js|jsx)$)",
-    re.IGNORECASE,
-)
+lob_test_api_key = re.compile(r"^test_[0-9a-f]+$", re.IGNORECASE)
+test_identifier = re.compile(r"^test_[A-Za-z_][A-Za-z0-9_]*$")
 cases = [
-    ("test_closedToOpen_afterThresholdFailures", "AgentLensTests/Active/Foo.swift", True),
-    ("test_abc123deadbeef", "AgentLensTests/Active/Foo.swift", False),
-    ("test_closedToOpen_afterThresholdFailures", "AgentLens/Views/Foo.swift", False),
+    ("test_closedToOpen_afterThresholdFailures", True),
+    ("test_everyMacEventIsRegisteredInTaxonomy", True),
+    ("test_browserLaunchRejectsProfileMismatch", True),
+    ("test_abc123deadbeef", False),  # hex-only Lob test-mode key shape
+    ("live_prod_key_should_not_match", False),
 ]
-for raw, file_path, expect_drop in cases:
-    drop = bool(test_method_id.fullmatch(raw) and test_path.search(file_path))
-    assert drop is expect_drop, (raw, file_path, drop, expect_drop)
-print("PASS: Lob false-positive exception stays narrow")
+for raw, expect_drop in cases:
+    drop = bool(test_identifier.fullmatch(raw) and not lob_test_api_key.fullmatch(raw))
+    assert drop is expect_drop, (raw, drop, expect_drop)
+print("PASS: Lob false-positive exception covers camelCase test ids")
 PY
 
 echo "PASS: option-like publishable paths reach both scanner trees"
