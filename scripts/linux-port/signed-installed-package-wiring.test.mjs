@@ -120,10 +120,16 @@ test('package preparation and finalization never receive the private key', () =>
 test('RPM release packaging is rebuilt from the validated DEB filesystem', () => {
   const source = read('scripts/linux-port/bundle-signed-linux-packages.mjs');
   assert.match(source, /function bundleRpmFromDeb\(debArtifact\)/u);
-  assert.match(source, /run\('dpkg-deb', \['--fsys-tarfile', debArtifact\]/u);
+  // The multi-gigabyte payload must stream to disk, never through a captured
+  // stdout buffer.
   assert.match(
     source,
-    /extractPreflightedArchiveBytes\(dataArchive, extractedRoot, \{\s*env: childEnvironment,\s*allowedPaths: NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST\s*\}\)/u
+    /streamBinaryToFile\(\s*'dpkg-deb',\s*\['--fsys-tarfile', debArtifact\]/u
+  );
+  assert.doesNotMatch(source, /run\('dpkg-deb', \['--fsys-tarfile'/u);
+  assert.match(
+    source,
+    /extractPreflightedArchiveFile\(dataArchive, extractedRoot, \{\s*env: childEnvironment,\s*allowedPaths: NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST\s*\}\)/u
   );
   assert.match(source, /run\('rpmbuild'/u);
   assert.match(source, /Requires: libsecret/u);

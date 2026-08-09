@@ -14,10 +14,11 @@ import {
 } from './lib/linux-installed-manifest.mjs';
 import {
   extractNativePackage,
-  extractPreflightedArchiveBytes,
+  extractPreflightedArchiveFile,
   inspectNativePackageMetadata,
   isAllowedNativeNonUsrPath,
   NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST,
+  streamBinaryToFile,
   verifySignedNativePackage
 } from './lib/linux-native-package.mjs';
 import { replaceRpmAttestationFromPayload } from './lib/linux-rpm-attestation.mjs';
@@ -71,11 +72,10 @@ function run(command, args, options = {}) {
     env: { ...childEnvironment, ...(options.env ?? {}) },
     encoding: options.encoding ?? 'utf8',
     input: options.input,
-    // dpkg-deb --fsys-tarfile streams the whole uncompressed payload through
-    // stdout, and the bundled pet model and atlas resources already push that
-    // payload past 512 MiB. Keep headroom so legitimate payloads never trip
-    // the buffer limit.
-    maxBuffer: 2 * 1024 * 1024 * 1024
+    // Payload-scale streams (dpkg-deb --fsys-tarfile) never pass through this
+    // helper — they stream to disk via streamBinaryToFile. Captured output
+    // here is command metadata, listings, and bundler logs only.
+    maxBuffer: 64 * 1024 * 1024
   });
   if (result.error || (result.status ?? 1) !== 0) {
     throw new Error([
@@ -124,11 +124,15 @@ function bundleRpmFromDeb(debArtifact) {
   }
 
   try {
-    const dataArchive = run('dpkg-deb', ['--fsys-tarfile', debArtifact], {
-      encoding: 'buffer',
-      env: childEnvironment
-    }).stdout;
-    extractPreflightedArchiveBytes(dataArchive, extractedRoot, {
+    // The uncompressed payload is multi-gigabyte; stream it straight to a
+    // private staging file so it never enters process memory.
+    const dataArchive = streamBinaryToFile(
+      'dpkg-deb',
+      ['--fsys-tarfile', debArtifact],
+      path.join(temporary, 'deb-payload.tar'),
+      { env: childEnvironment }
+    );
+    extractPreflightedArchiveFile(dataArchive, extractedRoot, {
       env: childEnvironment,
       allowedPaths: NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST
     });
