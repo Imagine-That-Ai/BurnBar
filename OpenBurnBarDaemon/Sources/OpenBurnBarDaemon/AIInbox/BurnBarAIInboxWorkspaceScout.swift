@@ -100,15 +100,44 @@ struct BurnBarAIInboxWorkspaceScout: Sendable {
     /// Snapshots each distinct workspace, skipping non-repositories.
     /// Failures degrade to "no snapshot" rather than failing the tick — a
     /// missing git binary must never stop the inbox.
+    ///
+    /// Also inventories sibling worktrees via `git worktree list` for paths that
+    /// already appear in the conversation lookback, so abandoned linked trees
+    /// still get a chance to surface unfinished work.
     func snapshots(for workspacePaths: [String]) async -> [BurnBarAIInboxWorkspaceSnapshot] {
-        let unique = Self.normalizedWorkspaces(workspacePaths).prefix(Self.maxWorkspaces)
+        let seed = Self.normalizedWorkspaces(workspacePaths)
+        var expanded: [String] = []
+        var seen = Set<String>()
+        for path in seed {
+            if seen.insert(path).inserted { expanded.append(path) }
+            for sibling in await linkedWorktreePaths(for: path) {
+                if seen.insert(sibling).inserted { expanded.append(sibling) }
+            }
+        }
+
         var results: [BurnBarAIInboxWorkspaceSnapshot] = []
-        for path in unique {
+        for path in expanded.prefix(Self.maxWorkspaces) {
             if let snapshot = await snapshot(for: path) {
                 results.append(snapshot)
             }
         }
         return results
+    }
+
+    /// Extra checkout paths linked to the same repository as `path`.
+    private func linkedWorktreePaths(for path: String) async -> [String] {
+        guard let result = try? await git(["worktree", "list", "--porcelain"], at: path),
+              result.succeeded else {
+            return []
+        }
+        var paths: [String] = []
+        for line in result.standardOutput.split(separator: "\n") {
+            guard line.hasPrefix("worktree ") else { continue }
+            let sibling = String(line.dropFirst("worktree ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard sibling.isEmpty == false else { continue }
+            paths.append((sibling as NSString).standardizingPath)
+        }
+        return paths
     }
 
     func snapshot(for path: String) async -> BurnBarAIInboxWorkspaceSnapshot? {

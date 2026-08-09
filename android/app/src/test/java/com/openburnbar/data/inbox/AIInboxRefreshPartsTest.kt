@@ -612,8 +612,9 @@ class AIInboxRefreshPartsTest {
     fun `item kind tokens match the Swift raw values exactly`() {
         assertEquals(
             listOf(
-                "ci_waste", "promised_not_landed", "uncommitted_work", "cost_anomaly",
-                "stuck_pr", "index_health", "brief", "budget", "system",
+                "ci_waste", "promised_not_landed", "uncommitted_work", "unpushed_commits",
+                "pushed_not_merged", "cost_anomaly", "stuck_pr", "index_health", "brief",
+                "budget", "system",
             ),
             AIInboxItemKind.entries.map { it.token },
         )

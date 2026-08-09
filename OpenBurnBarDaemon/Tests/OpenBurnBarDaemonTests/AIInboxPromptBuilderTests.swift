@@ -191,6 +191,7 @@ final class AIInboxPromptBuilderTests: XCTestCase {
         // Already-open items, so the model does not restate them.
         XCTAssertTrue(prompt.contains("# Already-open inbox items"))
         XCTAssertTrue(prompt.contains("- [stuck_pr] PR #12 has been quiet for 8 days"))
+        XCTAssertTrue(prompt.contains("seen 1×"), "Open items carry occurrence + age for still-open synthesis")
 
         // Workspace state with every optional part present.
         XCTAssertTrue(prompt.contains("# Workspace state"))
@@ -217,6 +218,44 @@ final class AIInboxPromptBuilderTests: XCTestCase {
 
         // The closing instruction is always last.
         XCTAssertTrue(prompt.hasSuffix("Return the JSON object now."))
+    }
+
+    func test_approvedMemoriesAppearAsTrustedContext() {
+        let now = Date()
+        var pack = PromptBuilderSupport.fullPack(now: now)
+        pack = BurnBarAIInboxEvidencePack(
+            tickID: pack.tickID,
+            generatedAt: pack.generatedAt,
+            windowStart: pack.windowStart,
+            conversations: pack.conversations,
+            workspaces: pack.workspaces,
+            repositories: pack.repositories,
+            usage: pack.usage,
+            openItems: pack.openItems,
+            approvedMemories: [
+                BurnBarAIInboxApprovedMemorySnippet(
+                    id: "mem_1",
+                    kind: "convention",
+                    text: "Always run AI Inbox detectors before asking the analyst to invent git state."
+                )
+            ],
+            githubAvailability: pack.githubAvailability,
+            droppedConversationCount: pack.droppedConversationCount,
+            estimatedPromptTokens: pack.estimatedPromptTokens,
+            indexLagSeconds: pack.indexLagSeconds
+        )
+        let prompt = BurnBarAIInboxPromptBuilder.analystUserPrompt(
+            pack: pack,
+            detectorFindings: [],
+            now: now
+        )
+        XCTAssertTrue(prompt.contains("# Approved memories"))
+        XCTAssertTrue(prompt.contains("Always run AI Inbox detectors"))
+        XCTAssertTrue(prompt.contains("Do not re-propose the same fact"))
+        XCTAssertTrue(
+            BurnBarAIInboxPromptBuilder.analystSystemPrompt.contains("unpushed_commits"),
+            "System prompt must allow the new git lifecycle kinds"
+        )
     }
 
     func test_emptyPackRendersNoOptionalSections() {

@@ -33,6 +33,29 @@ final class AIInboxContractsBehaviorTests: XCTestCase {
         XCTAssertEqual(BurnBarInboxItemState.openStates, [.new, .updated])
     }
 
+    // MARK: - Synthesis presets
+
+    func test_synthesisPresetsMapOntoFlashLunaAndPro() {
+        XCTAssertEqual(BurnBarInboxSynthesisPreset.balanced.analystModel, "deepseek-v4-flash")
+        XCTAssertEqual(BurnBarInboxSynthesisPreset.balanced.verifierModel, "gpt-5.6-luna")
+        XCTAssertEqual(BurnBarInboxSynthesisPreset.balanced.maxVerifierCallsPerTick, 3)
+
+        XCTAssertEqual(BurnBarInboxSynthesisPreset.fast.maxVerifierCallsPerTick, 0)
+        XCTAssertEqual(BurnBarInboxSynthesisPreset.thorough.analystModel, "deepseek-v4-pro")
+        XCTAssertEqual(BurnBarInboxSynthesisPreset.thorough.maxVerifierCallsPerTick, 6)
+
+        let defaults = BurnBarInboxConfig()
+        XCTAssertEqual(BurnBarInboxSynthesisPreset.matching(config: defaults), .balanced)
+
+        let thorough = BurnBarInboxSynthesisPreset.thorough.applied(to: defaults)
+        XCTAssertEqual(thorough.analystModel, "deepseek-v4-pro")
+        XCTAssertEqual(thorough.maxVerifierCallsPerTick, 6)
+        XCTAssertEqual(BurnBarInboxSynthesisPreset.matching(config: thorough), .thorough)
+
+        let custom = BurnBarInboxConfig(maxVerifierCallsPerTick: 3, analystModel: "glm-5-turbo")
+        XCTAssertNil(BurnBarInboxSynthesisPreset.matching(config: custom))
+    }
+
     // MARK: - Egress modes
 
     func test_egressModesGateModelCallsAndCloudTravelIndependently() {

@@ -25,6 +25,8 @@ struct BurnBarAIInboxDetectors: Sendable {
         findings.append(contentsOf: detectCIWaste(pack: pack))
         findings.append(contentsOf: detectPromisedNotLanded(pack: pack))
         findings.append(contentsOf: detectUncommittedWork(pack: pack))
+        findings.append(contentsOf: detectUnpushedCommits(pack: pack))
+        findings.append(contentsOf: detectPushedNotMerged(pack: pack))
         findings.append(contentsOf: detectCostAnomaly(pack: pack))
         findings.append(contentsOf: detectStuckPullRequests(pack: pack))
         findings.append(contentsOf: detectIndexHealth(pack: pack))
@@ -287,7 +289,12 @@ struct BurnBarAIInboxDetectors: Sendable {
                             value: conversation.conversationID
                         )
                     ],
-                    memoryCandidates: [],
+                    memoryCandidates: [
+                        Self.unfinishedWorkMemoryCandidate(
+                            text: "Work described as finished in \"\(Self.truncate(conversation.title, 80))\" still has no matching commit or PR in \(Self.lastPathComponent(workspace.path)).",
+                            conversationIDs: [conversation.conversationID]
+                        )
+                    ].compactMap { $0 },
                     // Text-matching heuristic — precisely the kind of claim an
                     // adversarial verifier should be allowed to shoot down.
                     needsVerification: true,
@@ -365,10 +372,169 @@ struct BurnBarAIInboxDetectors: Sendable {
                             isPrimary: true
                         )
                     ],
+                    memoryCandidates: [
+                        Self.unfinishedWorkMemoryCandidate(
+                            text: "\(Self.lastPathComponent(workspace.path)) still has uncommitted work on \(workspace.branch ?? "HEAD") (\(changedCount) files).",
+                            conversationIDs: Self.conversationIDs(for: workspace.path, in: pack)
+                        )
+                    ].compactMap { $0 },
                     needsVerification: false,
                     deterministicVerification: BurnBarInboxVerification(
                         verdict: .deterministic,
                         reason: "Read directly from `git status` in the workspace.",
+                        checkedAt: now
+                    ),
+                    source: .detector
+                )
+            )
+        }
+        return findings
+    }
+
+    // MARK: - Unpushed commits
+
+    /// Local commits that never reached `@{upstream}`. Distinct from dirty trees:
+    /// the work is already committed, but the remote (and therefore any PR) never
+    /// saw it.
+    static let unpushedQuietPeriod: TimeInterval = 45 * 60
+
+    func detectUnpushedCommits(pack: BurnBarAIInboxEvidencePack) -> [BurnBarAIInboxFinding] {
+        var findings: [BurnBarAIInboxFinding] = []
+
+        for workspace in pack.workspaces where workspace.aheadCount > 0 {
+            guard let quietSince = Self.lastActivity(for: workspace.path, in: pack),
+                  now.timeIntervalSince(quietSince) >= Self.unpushedQuietPeriod else {
+                continue
+            }
+
+            let ahead = workspace.aheadCount
+            findings.append(
+                BurnBarAIInboxFinding(
+                    kind: .unpushedCommits,
+                    title: "\(ahead) unpushed commit\(ahead == 1 ? "" : "s") on \(workspace.branch ?? "HEAD")",
+                    summaryMarkdown: """
+                        `\(Self.displayPath(workspace.path))` is \(ahead) commit\(ahead == 1 ? "" : "s") ahead of \
+                        its upstream on `\(workspace.branch ?? "HEAD")`. The session there went quiet \
+                        \(Self.relativeDescription(from: quietSince, to: now)).
+
+                        \(workspace.headSubject.map { "Latest: \"\(Self.truncate($0, 80))\"" } ?? "")
+                        """,
+                    priority: ahead >= 5 ? .p2 : .p3,
+                    confidence: 0.92,
+                    evidenceIDs: ["workspace:\(workspace.path)"],
+                    fingerprint: BurnBarAIInboxFinding.fingerprint(
+                        kind: .unpushedCommits,
+                        scope: workspace.path,
+                        subject: workspace.branch ?? "HEAD"
+                    ),
+                    metrics: [
+                        "ahead": String(ahead),
+                        "behind": String(workspace.behindCount),
+                        "branch": workspace.branch ?? "unknown",
+                        "dirty_files": String(workspace.dirtyFiles.count)
+                    ],
+                    actions: [
+                        BurnBarInboxAction(
+                            id: "open-project",
+                            kind: .openProject,
+                            title: "Open project",
+                            value: workspace.path,
+                            isPrimary: true
+                        )
+                    ],
+                    memoryCandidates: [
+                        Self.unfinishedWorkMemoryCandidate(
+                            text: "\(Self.lastPathComponent(workspace.path)) has \(ahead) commit(s) on \(workspace.branch ?? "HEAD") that still need to be pushed.",
+                            conversationIDs: Self.conversationIDs(for: workspace.path, in: pack)
+                        )
+                    ].compactMap { $0 },
+                    needsVerification: false,
+                    deterministicVerification: BurnBarInboxVerification(
+                        verdict: .deterministic,
+                        reason: "Read directly from `git rev-list HEAD...@{upstream}`.",
+                        checkedAt: now
+                    ),
+                    source: .detector
+                )
+            )
+        }
+        return findings
+    }
+
+    // MARK: - Pushed, not merged
+
+    /// Feature branch that is no longer ahead of upstream (pushed or never diverged
+    /// locally after a push) but has no open PR — the classic "I pushed and forgot
+    /// to open the PR / get it merged" gap that `stuck_pr` cannot see.
+    static let pushedNotMergedQuietPeriod: TimeInterval = 2 * 60 * 60
+    static let defaultBranchNames: Set<String> = ["main", "master", "trunk", "develop", "dev"]
+
+    func detectPushedNotMerged(pack: BurnBarAIInboxEvidencePack) -> [BurnBarAIInboxFinding] {
+        guard pack.repositories.isEmpty == false else { return [] }
+        var findings: [BurnBarAIInboxFinding] = []
+
+        for workspace in pack.workspaces {
+            guard let branch = workspace.branch,
+                  Self.defaultBranchNames.contains(branch) == false,
+                  workspace.aheadCount == 0,
+                  let slug = workspace.githubSlug,
+                  let repository = pack.repositories.first(where: { $0.slug == slug }) else {
+                continue
+            }
+            guard let quietSince = Self.lastActivity(for: workspace.path, in: pack),
+                  now.timeIntervalSince(quietSince) >= Self.pushedNotMergedQuietPeriod else {
+                continue
+            }
+
+            let hasOpenPR = repository.openPullRequests.contains { $0.headRefName == branch }
+            let hasMergedPR = repository.recentlyMergedPullRequests.contains { $0.headRefName == branch }
+            guard hasOpenPR == false, hasMergedPR == false else { continue }
+
+            findings.append(
+                BurnBarAIInboxFinding(
+                    kind: .pushedNotMerged,
+                    title: "`\(branch)` pushed with no PR in \(slug)",
+                    summaryMarkdown: """
+                        `\(Self.displayPath(workspace.path))` is on `\(branch)` with nothing ahead of upstream, \
+                        and \(slug) has no open (or recently merged) pull request for that head. The session \
+                        went quiet \(Self.relativeDescription(from: quietSince, to: now)).
+
+                        \(workspace.headSubject.map { "Latest: \"\(Self.truncate($0, 80))\"" } ?? "")
+                        """,
+                    priority: .p3,
+                    confidence: 0.8,
+                    evidenceIDs: ["workspace:\(workspace.path)"],
+                    projectName: slug,
+                    fingerprint: BurnBarAIInboxFinding.fingerprint(
+                        kind: .pushedNotMerged,
+                        scope: slug,
+                        subject: branch
+                    ),
+                    metrics: [
+                        "branch": branch,
+                        "github": slug,
+                        "ahead": "0",
+                        "behind": String(workspace.behindCount)
+                    ],
+                    actions: [
+                        BurnBarInboxAction(
+                            id: "open-project",
+                            kind: .openProject,
+                            title: "Open project",
+                            value: workspace.path,
+                            isPrimary: true
+                        )
+                    ],
+                    memoryCandidates: [
+                        Self.unfinishedWorkMemoryCandidate(
+                            text: "Branch \(branch) in \(slug) was pushed but still has no pull request / merge.",
+                            conversationIDs: Self.conversationIDs(for: workspace.path, in: pack)
+                        )
+                    ].compactMap { $0 },
+                    needsVerification: false,
+                    deterministicVerification: BurnBarInboxVerification(
+                        verdict: .deterministic,
+                        reason: "Local ahead=0 and GitHub has no PR for this head branch.",
                         checkedAt: now
                     ),
                     source: .detector
@@ -739,5 +905,40 @@ struct BurnBarAIInboxDetectors: Sendable {
         }
         let days = Int(seconds / 86_400)
         return "\(days) day\(days == 1 ? "" : "s") ago"
+    }
+
+    static func lastActivity(for workspacePath: String, in pack: BurnBarAIInboxEvidencePack) -> Date? {
+        pack.conversations
+            .filter { $0.workspacePath.map { samePath($0, workspacePath) } ?? false }
+            .compactMap(\.endedAt)
+            .max()
+    }
+
+    static func conversationIDs(for workspacePath: String, in pack: BurnBarAIInboxEvidencePack) -> [String] {
+        pack.conversations
+            .filter { $0.workspacePath.map { samePath($0, workspacePath) } ?? false }
+            .map(\.conversationID)
+            .prefix(4)
+            .map { $0 }
+    }
+
+    /// Memory proposals about unfinished work still require a human "Remember this".
+    /// Citations must be real conversation ids so the analyst validator / approval
+    /// path can attach provenance.
+    static func unfinishedWorkMemoryCandidate(
+        text: String,
+        conversationIDs: [String]
+    ) -> BurnBarInboxMemoryCandidate? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 12, trimmed.count <= 600 else { return nil }
+        guard conversationIDs.isEmpty == false else { return nil }
+        let idSeed = BurnBarAIInboxStableHasher.hash([trimmed] + conversationIDs)
+        return BurnBarInboxMemoryCandidate(
+            id: "mem-unfinished-\(idSeed)",
+            text: trimmed,
+            kind: "context",
+            confidence: 0.75,
+            citationConversationIDs: conversationIDs
+        )
     }
 }

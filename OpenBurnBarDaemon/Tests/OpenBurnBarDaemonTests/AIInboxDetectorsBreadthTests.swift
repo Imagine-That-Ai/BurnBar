@@ -9,22 +9,25 @@ import XCTest
 private enum DetectorBreadthSupport {
     static func workspace(
         path: String = "/tmp/burnbar",
+        branch: String = "main",
         dirtyFileCount: Int = 0,
         untrackedCount: Int = 0,
+        aheadCount: Int = 0,
+        behindCount: Int = 0,
         githubSlug: String? = "Ajnunezg/BurnBar",
         recentCommitSubjects: [String] = ["feat: something"]
     ) -> BurnBarAIInboxWorkspaceSnapshot {
         BurnBarAIInboxWorkspaceSnapshot(
             path: path,
             isGitRepository: true,
-            branch: "main",
+            branch: branch,
             headSHA: "abc123",
             headSubject: recentCommitSubjects.first,
             headCommittedAt: Date(),
             dirtyFiles: (0..<dirtyFileCount).map { "file\($0).swift" },
             untrackedCount: untrackedCount,
-            aheadCount: 0,
-            behindCount: 0,
+            aheadCount: aheadCount,
+            behindCount: behindCount,
             githubSlug: githubSlug,
             recentCommitSubjects: recentCommitSubjects
         )
@@ -618,5 +621,140 @@ final class AIInboxDetectorsBreadthTests: XCTestCase {
             BurnBarAIInboxDetectors.relativeDescription(from: now.addingTimeInterval(-3 * 86_400), to: now),
             "3 days ago"
         )
+    }
+
+    // MARK: - Unpushed commits / pushed-not-merged
+
+    func test_unpushedCommitsFiresWhenAheadAndQuiet() {
+        let now = Date()
+        let path = "/tmp/burnbar-unpushed"
+        let pack = AIInboxFixtures.pack(
+            conversations: [
+                AIInboxFixtures.conversation(
+                    id: "conv_unpushed",
+                    workspacePath: path,
+                    endedAt: now.addingTimeInterval(-60 * 60)
+                )
+            ],
+            workspaces: [
+                DetectorBreadthSupport.workspace(
+                    path: path,
+                    branch: "feature/inbox",
+                    aheadCount: 3
+                )
+            ],
+            now: now
+        )
+        let findings = BurnBarAIInboxDetectors(now: now).detectUnpushedCommits(pack: pack)
+        XCTAssertEqual(findings.count, 1)
+        XCTAssertEqual(findings[0].kind, .unpushedCommits)
+        XCTAssertEqual(findings[0].metrics["ahead"], "3")
+        XCTAssertFalse(findings[0].memoryCandidates.isEmpty, "Unfinished-work detectors propose memories")
+    }
+
+    func test_unpushedCommitsStaysQuietWhileSessionIsActive() {
+        let now = Date()
+        let path = "/tmp/burnbar-active"
+        let pack = AIInboxFixtures.pack(
+            conversations: [
+                AIInboxFixtures.conversation(
+                    id: "conv_active",
+                    workspacePath: path,
+                    endedAt: now.addingTimeInterval(-5 * 60)
+                )
+            ],
+            workspaces: [
+                DetectorBreadthSupport.workspace(path: path, branch: "feature/x", aheadCount: 2)
+            ],
+            now: now
+        )
+        XCTAssertTrue(BurnBarAIInboxDetectors(now: now).detectUnpushedCommits(pack: pack).isEmpty)
+    }
+
+    func test_pushedNotMergedFiresWhenFeatureBranchHasNoPR() {
+        let now = Date()
+        let path = "/tmp/burnbar-pushed"
+        let slug = "Ajnunezg/BurnBar"
+        let repository = BurnBarGitHubRepositorySnapshot(
+            slug: slug,
+            openPullRequests: [
+                DetectorBreadthSupport.pullRequest(
+                    number: 1,
+                    title: "Unrelated",
+                    state: "OPEN",
+                    updatedAt: now,
+                    isDraft: false
+                )
+            ],
+            recentlyMergedPullRequests: [],
+            openIssues: [],
+            recentRuns: [],
+            fetchedAt: now
+        )
+        let pack = AIInboxFixtures.pack(
+            repositories: [repository],
+            conversations: [
+                AIInboxFixtures.conversation(
+                    id: "conv_pushed",
+                    workspacePath: path,
+                    endedAt: now.addingTimeInterval(-3 * 60 * 60)
+                )
+            ],
+            workspaces: [
+                DetectorBreadthSupport.workspace(
+                    path: path,
+                    branch: "feature/no-pr",
+                    aheadCount: 0,
+                    githubSlug: slug
+                )
+            ],
+            now: now
+        )
+        let findings = BurnBarAIInboxDetectors(now: now).detectPushedNotMerged(pack: pack)
+        XCTAssertEqual(findings.count, 1)
+        XCTAssertEqual(findings[0].kind, .pushedNotMerged)
+        XCTAssertEqual(findings[0].metrics["branch"], "feature/no-pr")
+    }
+
+    func test_pushedNotMergedSkipsDefaultBranchesAndOpenPRHeads() {
+        let now = Date()
+        let slug = "Ajnunezg/BurnBar"
+        let repository = BurnBarGitHubRepositorySnapshot(
+            slug: slug,
+            openPullRequests: [
+                DetectorBreadthSupport.pullRequest(
+                    number: 9,
+                    title: "Has a PR",
+                    state: "OPEN",
+                    updatedAt: now
+                )
+            ],
+            recentlyMergedPullRequests: [],
+            openIssues: [],
+            recentRuns: [],
+            fetchedAt: now
+        )
+        // pullRequest helper defaults headRefName to feature/x
+        let pack = AIInboxFixtures.pack(
+            repositories: [repository],
+            conversations: [
+                AIInboxFixtures.conversation(
+                    id: "conv_main",
+                    workspacePath: "/tmp/main",
+                    endedAt: now.addingTimeInterval(-4 * 60 * 60)
+                ),
+                AIInboxFixtures.conversation(
+                    id: "conv_feature",
+                    workspacePath: "/tmp/feature",
+                    endedAt: now.addingTimeInterval(-4 * 60 * 60)
+                )
+            ],
+            workspaces: [
+                DetectorBreadthSupport.workspace(path: "/tmp/main", branch: "main", githubSlug: slug),
+                DetectorBreadthSupport.workspace(path: "/tmp/feature", branch: "feature/x", githubSlug: slug)
+            ],
+            now: now
+        )
+        XCTAssertTrue(BurnBarAIInboxDetectors(now: now).detectPushedNotMerged(pack: pack).isEmpty)
     }
 }

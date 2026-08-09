@@ -21,6 +21,10 @@ public enum BurnBarInboxItemKind: String, Codable, Hashable, CaseIterable, Senda
     case promisedNotLanded = "promised_not_landed"
     /// A dirty worktree whose session has gone quiet.
     case uncommittedWork = "uncommitted_work"
+    /// Local commits that never reached the upstream remote.
+    case unpushedCommits = "unpushed_commits"
+    /// A branch that is on the remote (or has no local ahead) but never opened a PR / never merged.
+    case pushedNotMerged = "pushed_not_merged"
     /// Spend that deviates sharply from the trailing baseline.
     case costAnomaly = "cost_anomaly"
     /// An open PR that has stopped moving.
@@ -38,7 +42,8 @@ public enum BurnBarInboxItemKind: String, Codable, Hashable, CaseIterable, Senda
         switch self {
         case .brief, .system:
             return false
-        case .ciWaste, .promisedNotLanded, .uncommittedWork, .costAnomaly, .stuckPR, .indexHealth, .budget:
+        case .ciWaste, .promisedNotLanded, .uncommittedWork, .unpushedCommits, .pushedNotMerged,
+             .costAnomaly, .stuckPR, .indexHealth, .budget:
             return true
         }
     }
@@ -483,6 +488,100 @@ public struct BurnBarInboxRunsResponse: Codable, Hashable, Sendable {
 /// User-controllable configuration. Persisted daemon-side (single writer) and
 /// mutated only through `daemon.inbox.config.update`, so the app never has to
 /// keep a shadow copy in sync.
+/// Cost ↔ performance preset for the AI Inbox analyst/verifier pair.
+///
+/// The settings cockpit maps these onto concrete provider/model IDs and verifier
+/// budgets. Custom model picks leave the stored config outside every preset.
+public enum BurnBarInboxSynthesisPreset: String, Codable, Hashable, CaseIterable, Sendable {
+    case fast
+    case balanced
+    case thorough
+
+    public var title: String {
+        switch self {
+        case .fast: return "Fast"
+        case .balanced: return "Balanced"
+        case .thorough: return "Thorough"
+        }
+    }
+
+    public var subtitle: String {
+        switch self {
+        case .fast:
+            return "Flash writes the brief. No verifier — cheapest active tick."
+        case .balanced:
+            return "Flash + Luna. The designed pair: cheap narrative, independent check."
+        case .thorough:
+            return "DeepSeek Pro + Luna with more verifier budget. Higher scrutiny, higher spend."
+        }
+    }
+
+    /// Rough worst-case USD for one active tick at the preset's defaults.
+    public var estimatedCostPerActiveTickUSD: Double {
+        switch self {
+        case .fast: return 0.010
+        case .balanced: return 0.016
+        case .thorough: return 0.035
+        }
+    }
+
+    public var analystProviderID: String {
+        switch self {
+        case .fast, .balanced: return "deepseek"
+        case .thorough: return "deepseek"
+        }
+    }
+
+    public var analystModel: String {
+        switch self {
+        case .fast, .balanced: return "deepseek-v4-flash"
+        case .thorough: return "deepseek-v4-pro"
+        }
+    }
+
+    public var verifierProviderID: String { "openai" }
+
+    public var verifierModel: String { "gpt-5.6-luna" }
+
+    public var maxVerifierCallsPerTick: Int {
+        switch self {
+        case .fast: return 0
+        case .balanced: return 3
+        case .thorough: return 6
+        }
+    }
+
+    /// Which preset (if any) matches the stored model/verifier fields.
+    public static func matching(config: BurnBarInboxConfig) -> BurnBarInboxSynthesisPreset? {
+        allCases.first { preset in
+            config.analystProviderID == preset.analystProviderID
+                && config.analystModel == preset.analystModel
+                && config.verifierProviderID == preset.verifierProviderID
+                && config.verifierModel == preset.verifierModel
+                && config.maxVerifierCallsPerTick == preset.maxVerifierCallsPerTick
+        }
+    }
+
+    public func applied(to config: BurnBarInboxConfig) -> BurnBarInboxConfig {
+        BurnBarInboxConfig(
+            enabled: config.enabled,
+            egressMode: config.egressMode,
+            tickSeconds: config.tickSeconds,
+            remotePhaseEveryNTicks: config.remotePhaseEveryNTicks,
+            dailyBudgetUSD: config.dailyBudgetUSD,
+            maxVerifierCallsPerTick: maxVerifierCallsPerTick,
+            perTickPromptTokenCap: config.perTickPromptTokenCap,
+            analystProviderID: analystProviderID,
+            analystModel: analystModel,
+            verifierProviderID: verifierProviderID,
+            verifierModel: verifierModel,
+            githubEnabled: config.githubEnabled,
+            notifyOnP1: config.notifyOnP1,
+            lookbackMinutes: config.lookbackMinutes
+        )
+    }
+}
+
 public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
     public static let defaultTickSeconds = 300
     public static let minimumTickSeconds = 60

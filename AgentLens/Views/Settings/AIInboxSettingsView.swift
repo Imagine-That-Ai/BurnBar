@@ -34,6 +34,10 @@ struct AIInboxSettingsView: View {
                 if model.config.enabled {
                     Divider().background(DesignSystem.Colors.border)
                     egressSection
+                    if model.config.egressMode != .off {
+                        Divider().background(DesignSystem.Colors.border)
+                        AIInboxCostCockpitView(model: model)
+                    }
                     Divider().background(DesignSystem.Colors.border)
                     budgetSection
                     Divider().background(DesignSystem.Colors.border)
@@ -457,6 +461,11 @@ extension BurnBarInboxConfig {
         egressMode: BurnBarInboxEgressMode? = nil,
         tickSeconds: Int? = nil,
         dailyBudgetUSD: Double? = nil,
+        maxVerifierCallsPerTick: Int? = nil,
+        analystProviderID: String? = nil,
+        analystModel: String? = nil,
+        verifierProviderID: String? = nil,
+        verifierModel: String? = nil,
         githubEnabled: Bool? = nil,
         notifyOnP1: Bool? = nil
     ) -> BurnBarInboxConfig {
@@ -466,12 +475,12 @@ extension BurnBarInboxConfig {
             tickSeconds: tickSeconds ?? self.tickSeconds,
             remotePhaseEveryNTicks: remotePhaseEveryNTicks,
             dailyBudgetUSD: dailyBudgetUSD ?? self.dailyBudgetUSD,
-            maxVerifierCallsPerTick: maxVerifierCallsPerTick,
+            maxVerifierCallsPerTick: maxVerifierCallsPerTick ?? self.maxVerifierCallsPerTick,
             perTickPromptTokenCap: perTickPromptTokenCap,
-            analystProviderID: analystProviderID,
-            analystModel: analystModel,
-            verifierProviderID: verifierProviderID,
-            verifierModel: verifierModel,
+            analystProviderID: analystProviderID ?? self.analystProviderID,
+            analystModel: analystModel ?? self.analystModel,
+            verifierProviderID: verifierProviderID ?? self.verifierProviderID,
+            verifierModel: verifierModel ?? self.verifierModel,
             githubEnabled: githubEnabled ?? self.githubEnabled,
             notifyOnP1: notifyOnP1 ?? self.notifyOnP1,
             lookbackMinutes: lookbackMinutes

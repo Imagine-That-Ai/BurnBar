@@ -500,7 +500,9 @@ final class OpenBurnBarDaemonManager {
             return
         }
 
-        await exportControllerActivitySnapshotIfStale()
+        // Probe first. The controller-activity snapshot rebuild can scan up to
+        // 10k conversations; awaiting it *before* the health RPC made dashboard
+        // open / Agents settings feel hung even when the daemon was fine.
         status = .checking
         let socketURL = paths.socketURL
         let requestHealth = dependencies.requestHealth
@@ -521,6 +523,7 @@ final class OpenBurnBarDaemonManager {
                 status = .healthy(snapshot)
                 supervisionState = .healthy
                 if await refreshInstalledDaemonIfNeededForCurrentAppBuild() {
+                    await publishControllerActivitySnapshotIfNeeded()
                     return
                 }
             }
@@ -528,6 +531,7 @@ final class OpenBurnBarDaemonManager {
         } catch {
             if isInstalled {
                 if await refreshInstalledDaemonIfNeededForCurrentAppBuild() {
+                    await publishControllerActivitySnapshotIfNeeded()
                     return
                 }
                 let heartbeatDetail = isDaemonHeartbeatStale
@@ -548,6 +552,15 @@ final class OpenBurnBarDaemonManager {
             }
         }
         await refreshRuntimeSnapshot()
+        // After UI-visible health status is published — callers that await
+        // refreshHealth still see a fresh snapshot file when this returns.
+        await publishControllerActivitySnapshotIfNeeded()
+    }
+
+    /// Rebuilds the daemon-facing activity snapshot when stale. Kept off the
+    /// health-probe critical path so a large history cannot block dashboard open.
+    private func publishControllerActivitySnapshotIfNeeded() async {
+        await exportControllerActivitySnapshotIfStale()
     }
 
     func refreshRuntimeSnapshot() async {

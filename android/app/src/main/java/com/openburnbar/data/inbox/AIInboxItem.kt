@@ -25,6 +25,8 @@ enum class AIInboxItemKind(val token: String) {
     CI_WASTE("ci_waste"),
     PROMISED_NOT_LANDED("promised_not_landed"),
     UNCOMMITTED_WORK("uncommitted_work"),
+    UNPUSHED_COMMITS("unpushed_commits"),
+    PUSHED_NOT_MERGED("pushed_not_merged"),
     COST_ANOMALY("cost_anomaly"),
     STUCK_PR("stuck_pr"),
     INDEX_HEALTH("index_health"),

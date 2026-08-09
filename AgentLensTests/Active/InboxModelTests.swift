@@ -308,11 +308,13 @@ final class InboxModelTests: XCTestCase {
         await model.load()
         XCTAssertTrue(model.rows[0].isUnread)
 
-        await model.select("a")
+        // Select is synchronous for the UI; mark-read persistence is kicked off
+        // in a Task so a busy MainActor cannot leave the detail pane blank.
+        model.select("a")
 
         XCTAssertEqual(model.selectedID, "a")
         XCTAssertFalse(model.rows[0].isUnread)
-        let events = await harness.events
+        let events = await waitForEvents(harness, containing: "read:a")
         XCTAssertEqual(events, ["read:a"])
         // A successful mutation invalidates the marker so the next pass re-reads.
         XCTAssertNil(model.lastMarker)
@@ -324,7 +326,8 @@ final class InboxModelTests: XCTestCase {
         let model = makeModel(harness)
         await model.load()
 
-        await model.select("a")
+        model.select("a")
+        await Task.yield()
 
         XCTAssertEqual(model.selectedID, "a")
         let events = await harness.events
@@ -429,7 +432,11 @@ final class InboxModelTests: XCTestCase {
         await model.load()
         await harness.setMutationsFail(true)
 
-        await model.select("a")
+        model.select("a")
+        for _ in 0..<50 {
+            if model.errorMessage != nil { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
 
         XCTAssertEqual(model.errorMessage, "the write failed")
     }
@@ -584,5 +591,19 @@ final class InboxModelTests: XCTestCase {
         XCTAssertFalse(model.hasEverRun)
         XCTAssertNil(model.latestRun)
         XCTAssertNil(model.errorMessage, "telemetry never raises a user-facing error")
+    }
+
+    /// Select kicks mark-read off the UI path; give the Task a short window to land.
+    private func waitForEvents(
+        _ harness: InboxModelHarness,
+        containing needle: String,
+        attempts: Int = 50
+    ) async -> [String] {
+        for _ in 0..<attempts {
+            let events = await harness.events
+            if events.contains(needle) { return events }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return await harness.events
     }
 }

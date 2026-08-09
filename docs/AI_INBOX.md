@@ -42,7 +42,7 @@ saved to memory, or used in any prompt, until you press **Remember this**.
 
 ## What it detects
 
-Six deterministic detectors run on every non-skipped tick. They involve no model,
+Eight deterministic detectors run on every non-skipped tick. They involve no model,
 cost nothing, and work with egress turned off.
 
 | Detector | Fires when | Priority |
@@ -50,6 +50,8 @@ cost nothing, and work with egress turned off.
 | **CI waste** | ≥45% of a workflow's recent completed runs failed or were cancelled (≥6 runs). Escalates to Urgent at ≥80% **and** ≥60 wasted minutes. Also counts duplicate runs on one commit — the redundant-trigger smell. | up to P1 |
 | **Promised not landed** | A session claimed completion, but no recent commit or PR in that repository matches the task. | P2–P3 |
 | **Uncommitted work** | ≥3 changed files in a worktree whose session has been quiet ≥45 minutes. | P2–P3 |
+| **Unpushed commits** | Local branch is ahead of `@{upstream}` and the session has been quiet ≥45 minutes. | P2–P3 |
+| **Pushed, not merged** | Feature branch is not ahead of upstream, GitHub has no open/recently-merged PR for that head, and the session has been quiet ≥2 hours. | P3 |
 | **Cost anomaly** | Spend for a project breaks its own trailing baseline (robust z-score ≥3.5 over median + MAD — heavy-tailed-safe, unlike mean + σ). | P2–P3 |
 | **Stalled PR** | An open, non-draft PR with no activity for ≥5 days. Approved-and-forgotten ranks higher: the work is done and just needs a merge. | P2–P3 |
 | **Index health** | Agent logs changed but nothing from that window is indexed yet, so the brief may be incomplete. | P4 |
@@ -57,6 +59,30 @@ cost nothing, and work with egress turned off.
 Above these, the analyst model contributes narrative synthesis and cross-signal
 patterns the detectors were not written to see. It is explicitly forbidden from
 restating a deterministic finding — arithmetic wins over a guess.
+
+### Intelligence tradeoff (settings)
+
+When egress is `local` or `cloud`, **Settings → General → AI Inbox** shows a
+**Fast / Balanced / Thorough** cockpit that writes `analystModel` /
+`verifierModel` / `maxVerifierCallsPerTick`:
+
+| Preset | Analyst | Verifier |
+|---|---|---|
+| Fast | `deepseek-v4-flash` | off |
+| Balanced (default) | `deepseek-v4-flash` | `gpt-5.6-luna` ×3 |
+| Thorough | `deepseek-v4-pro` | `gpt-5.6-luna` ×6 |
+
+Advanced disclosure lets you pin any provider/model id the daemon router already
+resolves. Detectors still run with egress off; the cockpit only gates narrative
+synthesis.
+
+### Memory closed loop
+
+Unfinished-work detectors (and the analyst) may attach `memory_candidates`.
+Approving **Remember this** writes an approved chat-memory row. The next tick
+reads those approved snippets back into the evidence pack / analyst prompt as
+`# Approved memories` — so long-running project facts persist across quiet days.
+Nothing is auto-injected; dismiss stays local UI.
 
 ### It learns which of these you actually care about
 
@@ -500,7 +526,7 @@ produce no crash, no log, and no red build:
 | `AIInboxPipelineTests` | Citation validation rejects fabricated evidence; secrets and ungrounded citations drop memory proposals; delimiter and attribute injection are neutralized; redaction across six secret formats; unparseable verdicts are never approvals; config clamping; token budgeting; `gh` decoding. |
 | `AIInboxServiceEndToEndTests` | Full publish path: P1 item with materialized evidence, two ledger events sharing a `parentRequestID`; idempotent second tick; PR auto-resolution; GitHub outage does **not** mass-resolve; refuted findings stay suppressed; only P1 notifies; the rule-based brief is useful with no model. |
 | `AIInboxSchemaParityTests` | The three DDL copies cannot drift; the partial unique index exists and is partial. |
-| `AIInboxCrossPlatformContractTests` | Swift ↔ Kotlin ↔ `firestore.rules` agree on all 9 kinds, all 4 states, both field allowlists, the feedback vocabulary, and the AAD binding. Mutation-verified. |
+| `AIInboxCrossPlatformContractTests` | Swift ↔ Kotlin ↔ `firestore.rules` agree on all 11 kinds, all 4 states, both field allowlists, the feedback vocabulary, and the AAD binding. Mutation-verified. |
 | `AIInboxMirrorCodecTests` (Core) | Sealed round trip; no plaintext leaks into the document; a document replayed under a different id or uid refuses to decrypt; unknown kind degrades, unknown state drops. |
 | `AIInboxRefreshPartsTest` (Android, JVM) | Parse, join, rank, section, filter, unread counting, forward compatibility — all with no Firebase, so the logic that decides what the user sees is testable without an emulator. |
 | `AIInboxCalibrationTests` | The learning loop needs real evidence before acting, demotes by at most one band, never silences a kind, never promotes, and lets a kind recover after decay. |

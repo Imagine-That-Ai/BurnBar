@@ -178,7 +178,8 @@ final class AIInboxMirrorCodecTests: XCTestCase {
             BurnBarInboxItemKind.allCases.map(\.rawValue).sorted(),
             [
                 "brief", "budget", "ci_waste", "cost_anomaly", "index_health",
-                "promised_not_landed", "stuck_pr", "system", "uncommitted_work"
+                "promised_not_landed", "pushed_not_merged", "stuck_pr", "system",
+                "uncommitted_work", "unpushed_commits"
             ]
         )
         XCTAssertEqual(

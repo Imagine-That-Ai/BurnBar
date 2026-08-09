@@ -60,6 +60,8 @@ struct AIInboxNotificationPayload: Equatable, Sendable {
         case .ciWaste: return "Wasted CI"
         case .promisedNotLanded: return "Promised, not landed"
         case .uncommittedWork: return "Uncommitted work"
+        case .unpushedCommits: return "Unpushed commits"
+        case .pushedNotMerged: return "Pushed, not merged"
         case .costAnomaly: return "Cost anomaly"
         case .stuckPR: return "Stuck pull request"
         case .indexHealth: return "Index health"

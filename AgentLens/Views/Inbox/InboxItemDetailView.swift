@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import OpenBurnBarKernel
 
@@ -19,94 +20,136 @@ struct InboxItemDetailView: View {
     /// tests without a memory store wired up.
     var memoryApproval: InboxMemoryApprovalHandler?
 
+    private var kindTint: Color { InboxPresentation.tint(for: row.summary.kind) }
+    private var cast: [InboxPresentation.CastMember] { InboxPresentation.cast(for: row, limit: 6) }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                headerSection
-                if row.summaryMarkdown.isEmpty == false { bodySection }
-                if row.payload.metrics.isEmpty == false { metricsSection }
-                if row.payload.evidence.isEmpty == false { evidenceSection }
-                if row.payload.memoryCandidates.isEmpty == false { memorySection }
-                if row.payload.actions.isEmpty == false { actionsSection }
-                footerSection
+            VStack(alignment: .leading, spacing: 0) {
+                heroSection
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    if row.summaryMarkdown.isEmpty == false { bodySection }
+                    if row.payload.metrics.isEmpty == false { metricsSection }
+                    if row.payload.evidence.isEmpty == false { evidenceSection }
+                    if row.payload.memoryCandidates.isEmpty == false { memorySection }
+                    if row.payload.actions.isEmpty == false { actionsSection }
+                    footerSection
+                }
+                .padding(DesignSystem.Spacing.xl)
+                .frame(maxWidth: 760, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .accessibilityIdentifier(OBBAccessibilityID.inboxDetail)
+    }
+
+    // MARK: - Hero
+
+    /// Full-width atmosphere + emblem + title — the story poster for this beat.
+    private var heroSection: some View {
+        ZStack(alignment: .bottomLeading) {
+            InboxPresentation.atmosphere(for: row.summary.kind)
+                .frame(maxWidth: .infinity)
+                .frame(height: 210)
+                .overlay(alignment: .trailing) {
+                    Image(systemName: InboxPresentation.icon(for: row.summary.kind))
+                        .font(.system(size: 120, weight: .ultraLight))
+                        .foregroundStyle(kindTint.opacity(0.14))
+                        .padding(.trailing, DesignSystem.Spacing.xl)
+                        .offset(y: 12)
+                        .accessibilityHidden(true)
+                }
+
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
+                    InboxKindEmblem(kind: row.summary.kind, size: 64, isEmphasized: true)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: DesignSystem.Spacing.sm) {
+                            Text(InboxPresentation.kindLabel(row.summary.kind).uppercased())
+                                .font(DesignSystem.Typography.tiny)
+                                .tracking(1.2)
+                                .foregroundStyle(kindTint)
+
+                            OpenBurnBarStatusBadge(
+                                title: InboxPresentation.priorityLabel(row.summary.priority),
+                                color: InboxPresentation.priorityColor(row.summary.priority)
+                            )
+
+                            if row.summary.state == .resolved {
+                                OpenBurnBarStatusBadge(title: "Resolved", color: DesignSystem.Colors.success)
+                            }
+                        }
+
+                        Text(row.summary.title)
+                            .font(DesignSystem.Typography.display)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Text(InboxPresentation.storyBeat(for: row.summary.kind))
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: DesignSystem.Spacing.md) {
+                    InboxCastStrip(members: cast, size: 26)
+
+                    Spacer(minLength: 0)
+
+                    metaLine
+                }
+
+                if let note = row.summary.resolutionNote, row.summary.state == .resolved {
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundStyle(DesignSystem.Colors.success)
+                        Text(note)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+                    .padding(DesignSystem.Spacing.sm)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .fill(DesignSystem.Colors.success.opacity(0.10))
+                    )
+                }
             }
             .padding(DesignSystem.Spacing.xl)
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .accessibilityIdentifier(OBBAccessibilityID.inboxDetail)
     }
 
-    // MARK: - Header
-
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                Image(systemName: InboxPresentation.icon(for: row.summary.kind))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(InboxPresentation.tint(for: row.summary.kind))
-
-                Text(InboxPresentation.kindLabel(row.summary.kind).uppercased())
-                    .font(DesignSystem.Typography.tiny)
-                    .tracking(1.1)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-
-                OpenBurnBarStatusBadge(
-                    title: InboxPresentation.priorityLabel(row.summary.priority),
-                    color: InboxPresentation.priorityColor(row.summary.priority)
-                )
-
-                if row.summary.state == .resolved {
-                    OpenBurnBarStatusBadge(title: "Resolved", color: DesignSystem.Colors.success)
-                }
-
-                Spacer(minLength: 0)
+    private var metaLine: some View {
+        HStack(spacing: DesignSystem.Spacing.xs) {
+            if let project = row.summary.projectName, project.isEmpty == false {
+                Text(project)
+                Text("·")
             }
-
-            Text(row.summary.title)
-                .font(DesignSystem.Typography.display)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: DesignSystem.Spacing.xs) {
-                if let project = row.summary.projectName, project.isEmpty == false {
-                    Text(project)
-                    Text("·")
-                }
-                Text("first seen \(InboxView.relativeFormatter.localizedString(for: row.summary.firstSeenAt, relativeTo: Date()))")
-                if row.summary.occurrenceCount > 1 {
-                    Text("· seen \(row.summary.occurrenceCount) times")
-                }
-            }
-            .font(DesignSystem.Typography.caption)
-            .foregroundStyle(DesignSystem.Colors.textMuted)
-
-            if let note = row.summary.resolutionNote, row.summary.state == .resolved {
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .foregroundStyle(DesignSystem.Colors.success)
-                    Text(note)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                }
-                .padding(DesignSystem.Spacing.sm)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm)
-                        .fill(DesignSystem.Colors.success.opacity(0.10))
-                )
+            Text("first seen \(InboxView.relativeFormatter.localizedString(for: row.summary.firstSeenAt, relativeTo: Date()))")
+            if row.summary.occurrenceCount > 1 {
+                Text("· seen \(row.summary.occurrenceCount)×")
             }
         }
+        .font(DesignSystem.Typography.caption)
+        .foregroundStyle(DesignSystem.Colors.textMuted)
+        .lineLimit(1)
     }
 
     // MARK: - Body
 
     private var bodySection: some View {
-        Text(attributedBody)
-            .font(DesignSystem.Typography.body)
-            .foregroundStyle(DesignSystem.Colors.textPrimary)
-            .textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            sectionLabel("THE BRIEF")
+            Text(attributedBody)
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     /// Renders the markdown body. Falls back to plain text if the model produced
@@ -127,22 +170,38 @@ struct InboxItemDetailView: View {
             ElderWandFlowLayout(horizontalSpacing: DesignSystem.Spacing.sm, verticalSpacing: DesignSystem.Spacing.sm) {
                 ForEach(displayMetrics, id: \.key) { metric in
                     HStack(spacing: DesignSystem.Spacing.xs) {
+                        Image(systemName: metricIcon(for: metric.key))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(kindTint)
                         Text(metric.label)
                             .font(DesignSystem.Typography.tiny)
                             .foregroundStyle(DesignSystem.Colors.textMuted)
                         Text(metric.value)
                             .font(DesignSystem.Typography.monoSmall)
+                            .fontWeight(.semibold)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
                     }
                     .padding(.horizontal, DesignSystem.Spacing.sm)
                     .padding(.vertical, DesignSystem.Spacing.xs)
                     .background(
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm)
-                            .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+                        Capsule(style: .continuous)
+                            .fill(DesignSystem.Colors.surfaceElevated.opacity(0.65))
+                            .overlay(Capsule().strokeBorder(kindTint.opacity(0.18), lineWidth: 0.75))
                     )
                 }
             }
         }
+    }
+
+    private func metricIcon(for key: String) -> String {
+        let lower = key.lowercased()
+        if lower.contains("branch") { return "arrow.triangle.branch" }
+        if lower.contains("dirty") || lower.contains("untracked") || lower.contains("file") { return "doc.fill" }
+        if lower.contains("added") || lower.contains("insert") { return "plus.circle.fill" }
+        if lower.contains("cost") || lower.contains("usd") || lower.contains("spend") { return "dollarsign.circle.fill" }
+        if lower.contains("rate") || lower.contains("percent") { return "percent" }
+        if lower.contains("minute") || lower.contains("hour") { return "clock.fill" }
+        return "number"
     }
 
     /// Humanizes raw metric keys (`waste_rate` → "Waste rate", `0.950` → "95%").
@@ -182,41 +241,60 @@ struct InboxItemDetailView: View {
     }
 
     private func evidenceRow(_ evidence: BurnBarInboxEvidence) -> some View {
-        Button {
+        let isGitHub = evidence.url?.localizedCaseInsensitiveContains("github.com") == true
+        let tint = InboxPresentation.evidenceTint(for: evidence.kind)
+        return Button {
             open(evidence)
         } label: {
-            HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
-                Image(systemName: InboxPresentation.evidenceIcon(for: evidence.kind))
-                    .font(.system(size: 11))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                    .frame(width: 16)
+            HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(tint.opacity(0.14))
+                        .frame(width: 36, height: 36)
+                    if isGitHub, NSImage(named: "GitHubLogo") != nil {
+                        Image("GitHubLogo")
+                            .resizable()
+                            .scaledToFit()
+                            .padding(8)
+                            .frame(width: 36, height: 36)
+                    } else {
+                        Image(systemName: InboxPresentation.evidenceIcon(for: evidence.kind))
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(tint)
+                    }
+                }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(evidence.label)
                         .font(DesignSystem.Typography.caption)
+                        .fontWeight(.semibold)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
                         .lineLimit(1)
                     if let detail = evidence.detail {
                         Text(detail)
                             .font(DesignSystem.Typography.tiny)
                             .foregroundStyle(DesignSystem.Colors.textMuted)
-                            .lineLimit(1)
+                            .lineLimit(2)
                     }
                 }
 
                 Spacer(minLength: 0)
 
                 if evidence.url != nil {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
             }
             .padding(DesignSystem.Spacing.sm)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm)
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                     .fill(DesignSystem.Colors.surfaceElevated.opacity(0.45))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                            .strokeBorder(tint.opacity(0.16), lineWidth: 0.75)
+                    )
             )
         }
         .buttonStyle(.plain)

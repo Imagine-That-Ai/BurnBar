@@ -18,6 +18,14 @@ struct BurnBarAIInboxConversationExcerpt: Sendable, Hashable {
     let wasTruncated: Bool
 }
 
+/// One approved chat-memory fact the analyst may treat as durable context.
+/// Bodies are already redacted before they land here.
+struct BurnBarAIInboxApprovedMemorySnippet: Sendable, Hashable {
+    let id: String
+    let kind: String
+    let text: String
+}
+
 /// Everything one tick knows, assembled deterministically.
 ///
 /// Two rules govern this type:
@@ -35,6 +43,9 @@ struct BurnBarAIInboxEvidencePack: Sendable {
     let repositories: [BurnBarGitHubRepositorySnapshot]
     let usage: [BurnBarAIInboxUsageAggregate]
     let openItems: [BurnBarInboxItemSummary]
+    /// Approved chat-memory facts (human-gated). Empty when none exist or the
+    /// table is unavailable.
+    let approvedMemories: [BurnBarAIInboxApprovedMemorySnippet]
     let githubAvailability: BurnBarGitHubAvailability
     /// Bytes dropped by budgeting; surfaced so a truncated analysis is honest.
     let droppedConversationCount: Int
@@ -50,6 +61,36 @@ struct BurnBarAIInboxEvidencePack: Sendable {
     /// Lag worth mentioning to the user. Below this, the difference is not
     /// something a person would notice or act on.
     static let notableIndexLag: TimeInterval = 6 * 60
+
+    init(
+        tickID: String,
+        generatedAt: Date,
+        windowStart: Date,
+        conversations: [BurnBarAIInboxConversationExcerpt],
+        workspaces: [BurnBarAIInboxWorkspaceSnapshot],
+        repositories: [BurnBarGitHubRepositorySnapshot],
+        usage: [BurnBarAIInboxUsageAggregate],
+        openItems: [BurnBarInboxItemSummary],
+        approvedMemories: [BurnBarAIInboxApprovedMemorySnippet] = [],
+        githubAvailability: BurnBarGitHubAvailability,
+        droppedConversationCount: Int,
+        estimatedPromptTokens: Int,
+        indexLagSeconds: TimeInterval?
+    ) {
+        self.tickID = tickID
+        self.generatedAt = generatedAt
+        self.windowStart = windowStart
+        self.conversations = conversations
+        self.workspaces = workspaces
+        self.repositories = repositories
+        self.usage = usage
+        self.openItems = openItems
+        self.approvedMemories = approvedMemories
+        self.githubAvailability = githubAvailability
+        self.droppedConversationCount = droppedConversationCount
+        self.estimatedPromptTokens = estimatedPromptTokens
+        self.indexLagSeconds = indexLagSeconds
+    }
 
     var hasNotableIndexLag: Bool {
         (indexLagSeconds ?? 0) >= Self.notableIndexLag
@@ -97,6 +138,7 @@ struct BurnBarAIInboxEvidencePackBuilder: Sendable {
     static let maxConversationBodyBytes = 8 * 1024
     static let maxConversations = 25
     static let maxUsageAggregates = 25
+    static let maxApprovedMemories = 12
     /// Workflow-run lookback for the CI detectors. Wider than the conversation
     /// window because CI waste is a *pattern*, and a pattern needs history.
     static let workflowRunLookback: TimeInterval = 3 * 24 * 60 * 60
@@ -147,6 +189,7 @@ struct BurnBarAIInboxEvidencePackBuilder: Sendable {
 
         let usage = (try? store.usageAggregates(since: windowStart)) ?? []
         let openItems = (try? store.openItems()) ?? []
+        let approvedMemories = (try? store.approvedChatMemorySnippets(limit: Self.maxApprovedMemories)) ?? []
 
         let pack = BurnBarAIInboxEvidencePack(
             tickID: tickID,
@@ -157,6 +200,7 @@ struct BurnBarAIInboxEvidencePackBuilder: Sendable {
             repositories: repositories,
             usage: Array(usage.prefix(Self.maxUsageAggregates)),
             openItems: openItems,
+            approvedMemories: approvedMemories,
             githubAvailability: availability,
             droppedConversationCount: max(0, rows.count - excerpts.count),
             estimatedPromptTokens: 0,
@@ -261,6 +305,7 @@ struct BurnBarAIInboxEvidencePackBuilder: Sendable {
                 }
                 + (pack.usage.count * 96)
                 + (pack.openItems.count * 140)
+                + pack.approvedMemories.reduce(0) { $0 + $1.text.utf8.count + 48 }
             return (conversationBytes + structuralBytes) / 4
         }
 
@@ -280,6 +325,7 @@ struct BurnBarAIInboxEvidencePackBuilder: Sendable {
             repositories: pack.repositories,
             usage: pack.usage,
             openItems: pack.openItems,
+            approvedMemories: pack.approvedMemories,
             githubAvailability: pack.githubAvailability,
             droppedConversationCount: dropped,
             estimatedPromptTokens: estimate(conversations),

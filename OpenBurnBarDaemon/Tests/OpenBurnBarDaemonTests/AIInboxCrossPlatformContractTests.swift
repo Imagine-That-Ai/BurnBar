@@ -37,6 +37,8 @@ final class AIInboxCrossPlatformContractTests: XCTestCase {
         "ci_waste",
         "promised_not_landed",
         "uncommitted_work",
+        "unpushed_commits",
+        "pushed_not_merged",
         "cost_anomaly",
         "stuck_pr",
         "index_health",

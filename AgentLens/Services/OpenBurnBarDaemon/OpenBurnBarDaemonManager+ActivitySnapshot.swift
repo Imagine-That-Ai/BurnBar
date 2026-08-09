@@ -41,32 +41,80 @@ extension OpenBurnBarDaemonManager {
     func makeControllerActivitySnapshot(
         from dataStore: DataStore
     ) async throws -> BurnBarControllerActivitySnapshot {
+        // Fetch on the main-actor facade, then assemble off-main. The previous
+        // nested filter × slug implementation was O(projects × conversations)
+        // and froze the UI when refreshHealth ran during dashboard open with a
+        // large history (up to 10k conversations).
         let conversations = try await dataStore.fetchConversations(limit: Self.controllerActivityConversationLimit)
         let start = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date().addingTimeInterval(-7 * 24 * 60 * 60)
         let recentUsages = dataStore.usages(in: start...Date())
+        let generatedAt = Date()
 
-        let conversationProjects = conversations.map(\.projectName).filter {
-            $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        return await Task.detached(priority: .utility) {
+            Self.buildControllerActivitySnapshot(
+                conversations: conversations,
+                recentUsages: recentUsages,
+                generatedAt: generatedAt
+            )
+        }.value
+    }
+
+    /// Pure O(n) assembly: slug each row once, group once, emit projects.
+    nonisolated static func buildControllerActivitySnapshot(
+        conversations: [OpenBurnBarCore.ConversationRecord],
+        recentUsages: [TokenUsage],
+        generatedAt: Date = Date()
+    ) -> BurnBarControllerActivitySnapshot {
+        struct ConversationBucket {
+            var displayName: String
+            var conversations: [OpenBurnBarCore.ConversationRecord] = []
         }
-        let usageProjects = recentUsages.map(\.projectName).filter {
-            $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        struct UsageBucket {
+            var usages: [TokenUsage] = []
         }
-        let allProjectNames = Set(conversationProjects + usageProjects)
 
-        let projects = allProjectNames.compactMap { projectName -> BurnBarControllerActivityProject? in
-            let slug = Self.slug(for: projectName)
-            guard slug.isEmpty == false else { return nil }
+        var conversationBuckets: [String: ConversationBucket] = [:]
+        conversationBuckets.reserveCapacity(min(conversations.count, 256))
+        for conversation in conversations {
+            let slug = slug(for: conversation.projectName)
+            guard !slug.isEmpty else { continue }
+            var bucket = conversationBuckets[slug] ?? ConversationBucket(displayName: conversation.projectName)
+            if bucket.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                bucket.displayName = conversation.projectName
+            }
+            bucket.conversations.append(conversation)
+            conversationBuckets[slug] = bucket
+        }
 
-            let projectConversations = conversations
-                .filter { Self.slug(for: $0.projectName) == slug }
-                .sorted { Self.activityDate(for: $0) > Self.activityDate(for: $1) }
-            let projectUsages = recentUsages
-                .filter { Self.slug(for: $0.projectName) == slug }
-                .sorted { $0.endTime > $1.endTime }
+        var usageBuckets: [String: UsageBucket] = [:]
+        usageBuckets.reserveCapacity(min(recentUsages.count, 256))
+        for usage in recentUsages {
+            let slug = slug(for: usage.projectName)
+            guard !slug.isEmpty else { continue }
+            var bucket = usageBuckets[slug] ?? UsageBucket()
+            bucket.usages.append(usage)
+            usageBuckets[slug] = bucket
+        }
+
+        var allSlugs = Set(conversationBuckets.keys)
+        allSlugs.formUnion(usageBuckets.keys)
+
+        let projects: [BurnBarControllerActivityProject] = allSlugs.compactMap { slug in
+            let conversationBucket = conversationBuckets[slug]
+            let usages = usageBuckets[slug]?.usages ?? []
+            let projectConversations = (conversationBucket?.conversations ?? [])
+                .sorted { activityDate(for: $0) > activityDate(for: $1) }
+            let projectUsages = usages.sorted { $0.endTime > $1.endTime }
+
+            let displayName = conversationBucket?.displayName
+                ?? projectUsages.first?.projectName
+                ?? slug
+            let trimmedDisplay = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedDisplay.isEmpty else { return nil }
 
             let latestConversation = projectConversations.first
             let latestActivityAt = max(
-                latestConversation.map(Self.activityDate(for:)) ?? .distantPast,
+                latestConversation.map(activityDate(for:)) ?? .distantPast,
                 projectUsages.first?.endTime ?? .distantPast
             )
             let summary = latestConversation?.summary?.nonEmpty
@@ -76,7 +124,7 @@ extension OpenBurnBarDaemonManager {
 
             return BurnBarControllerActivityProject(
                 projectSlug: slug,
-                displayName: projectName,
+                displayName: trimmedDisplay,
                 summary: summary,
                 latestActivityAt: latestActivityAt == .distantPast ? nil : latestActivityAt,
                 latestConversationID: latestConversation?.id,
@@ -93,7 +141,7 @@ extension OpenBurnBarDaemonManager {
         .sorted { ($0.latestActivityAt ?? .distantPast) > ($1.latestActivityAt ?? .distantPast) }
 
         return BurnBarControllerActivitySnapshot(
-            generatedAt: Date(),
+            generatedAt: generatedAt,
             activeProjectSlug: projects.first?.projectSlug,
             projects: projects
         )
@@ -104,23 +152,37 @@ extension OpenBurnBarDaemonManager {
         return "\(token.prefix(4))…\(token.suffix(4))"
     }
 
-    static func slug(for projectName: String) -> String {
+    /// Single-pass slug: alphanumeric kept, everything else collapses to `-`.
+    /// Avoids the previous `map` + `replacingOccurrences("--")` allocation path
+    /// that dominated CPU when called millions of times from the nested filter.
+    nonisolated static func slug(for projectName: String) -> String {
         let trimmed = projectName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false else { return "" }
+        guard !trimmed.isEmpty else { return "" }
 
-        let scalars = trimmed.lowercased().unicodeScalars.map { scalar -> Character in
+        var result = String()
+        result.reserveCapacity(trimmed.utf8.count)
+        var pendingHyphen = false
+        var didWrite = false
+        for scalar in trimmed.lowercased().unicodeScalars {
             if CharacterSet.alphanumerics.contains(scalar) {
-                return Character(String(scalar))
+                if pendingHyphen && didWrite {
+                    result.append("-")
+                }
+                result.unicodeScalars.append(scalar)
+                pendingHyphen = false
+                didWrite = true
+            } else {
+                pendingHyphen = true
             }
-            return "-"
         }
-        let collapsed = String(scalars)
-            .replacingOccurrences(of: "--", with: "-")
-            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-        return collapsed.isEmpty ? trimmed.lowercased().replacingOccurrences(of: " ", with: "-") : collapsed
+
+        if result.isEmpty {
+            return trimmed.lowercased().replacingOccurrences(of: " ", with: "-")
+        }
+        return result
     }
 
-    static func activityDate(for conversation: OpenBurnBarCore.ConversationRecord) -> Date {
+    nonisolated static func activityDate(for conversation: OpenBurnBarCore.ConversationRecord) -> Date {
         conversation.endTime ?? conversation.startTime ?? conversation.indexedAt
     }
 }

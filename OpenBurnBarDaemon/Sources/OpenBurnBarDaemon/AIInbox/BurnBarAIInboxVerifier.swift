@@ -234,7 +234,8 @@ struct BurnBarAIInboxVerifier: Sendable {
                 }
             }
 
-        case .ciWaste, .uncommittedWork, .costAnomaly, .indexHealth, .brief, .budget, .system:
+        case .ciWaste, .uncommittedWork, .unpushedCommits, .pushedNotMerged,
+             .costAnomaly, .indexHealth, .brief, .budget, .system:
             break
         }
 

@@ -41,6 +41,8 @@ private val INBOX_KIND_TITLES =
         "ci_waste" to "Wasted CI",
         "promised_not_landed" to "Promised, not landed",
         "uncommitted_work" to "Uncommitted work",
+        "unpushed_commits" to "Unpushed commits",
+        "pushed_not_merged" to "Pushed, not merged",
         "cost_anomaly" to "Cost anomaly",
         "stuck_pr" to "Stuck pull request",
         "index_health" to "Index health",

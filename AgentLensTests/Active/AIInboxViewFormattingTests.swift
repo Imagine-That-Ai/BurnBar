@@ -22,19 +22,52 @@ final class AIInboxViewFormattingTests: XCTestCase {
         XCTAssertEqual(InboxRowView.plainPreview("plain"), "plain")
     }
 
+    func testInboxRowUsesNonInteractiveGlassCardSoButtonClicksAreNotStolen() throws {
+        // GlassCard(interactive: true) installs a minimumDistance-0 DragGesture
+        // that eats the Button action — SessionLedgerEntryRow already guards
+        // the same trap. Keep the inbox row on the non-interactive plate.
+        let testURL = URL(fileURLWithPath: #filePath)
+        let repositoryRoot = testURL
+            .deletingLastPathComponent() // Active
+            .deletingLastPathComponent() // AgentLensTests
+            .deletingLastPathComponent()
+        let sourceURL = repositoryRoot.appendingPathComponent("AgentLens/Views/Inbox/InboxView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let rowStart = try XCTUnwrap(source.range(of: "struct InboxRowView: View"))
+        let rowEnd = try XCTUnwrap(source.range(of: "private struct InboxRowButtonStyle"))
+        let rowSource = String(source[rowStart.lowerBound..<rowEnd.lowerBound])
+        XCTAssertTrue(rowSource.contains("GlassCard(interactive: false)"))
+        // Count call sites, not comments — a doc note may mention the trap.
+        let interactiveCallSites = rowSource.components(separatedBy: "GlassCard(interactive: true)").count - 1
+        XCTAssertEqual(interactiveCallSites, 0, "InboxRowView must not nest an interactive GlassCard inside its Button")
+        XCTAssertTrue(rowSource.contains("Button(action: onSelect)"))
+    }
+
     // MARK: - Presentation vocabulary
 
     func testEveryItemKindHasACompletePresentation() {
         for kind in BurnBarInboxItemKind.allCases {
             XCTAssertFalse(InboxPresentation.icon(for: kind).isEmpty, "\(kind) needs an icon")
             XCTAssertFalse(InboxPresentation.kindLabel(kind).isEmpty, "\(kind) needs a label")
+            XCTAssertFalse(InboxPresentation.storyBeat(for: kind).isEmpty, "\(kind) needs a story beat")
             _ = InboxPresentation.tint(for: kind)
+            _ = InboxPresentation.atmosphere(for: kind)
         }
         // Spot-check the mappings the product copy depends on.
-        XCTAssertEqual(InboxPresentation.icon(for: .ciWaste), "flame")
+        XCTAssertEqual(InboxPresentation.icon(for: .ciWaste), "flame.fill")
         XCTAssertEqual(InboxPresentation.kindLabel(.promisedNotLanded), "Possibly unfinished")
         XCTAssertEqual(InboxPresentation.kindLabel(.stuckPR), "Stalled PR")
         XCTAssertEqual(InboxPresentation.kindLabel(.costAnomaly), "Spend anomaly")
+    }
+
+    func testProvidersFromProvenanceMapKnownVendors() {
+        XCTAssertEqual(
+            InboxPresentation.providers(fromProvenance: "anthropic:claude-fable+openai:gpt-5.6-luna"),
+            [.claudeCode, .openAI]
+        )
+        XCTAssertEqual(InboxPresentation.providers(fromProvenance: "local-rules"), [])
+        XCTAssertEqual(InboxPresentation.provider(forProvenanceToken: "codex"), .codex)
+        XCTAssertEqual(InboxPresentation.provider(forProvenanceToken: "gemini"), .geminiCLI)
     }
 
     func testPriorityPresentationSpansTheWholeBand() {
@@ -167,6 +200,26 @@ final class AIInboxViewFormattingTests: XCTestCase {
         let toggles = base.with(githubEnabled: false, notifyOnP1: false)
         XCTAssertFalse(toggles.githubEnabled)
         XCTAssertFalse(toggles.notifyOnP1)
+
+        let models = base.with(
+            maxVerifierCallsPerTick: 0,
+            analystProviderID: "deepseek",
+            analystModel: "deepseek-v4-flash",
+            verifierProviderID: "openai",
+            verifierModel: "gpt-5.6-luna"
+        )
+        XCTAssertEqual(models.maxVerifierCallsPerTick, 0)
+        XCTAssertEqual(models.analystModel, "deepseek-v4-flash")
+        XCTAssertEqual(BurnBarInboxSynthesisPreset.matching(config: models), .fast)
+
+        XCTAssertEqual(
+            AIInboxCostCockpitView.splitProviderModel("openai:gpt-5.6-luna").provider,
+            "openai"
+        )
+        XCTAssertEqual(
+            AIInboxCostCockpitView.splitProviderModel("openai:gpt-5.6-luna").model,
+            "gpt-5.6-luna"
+        )
     }
 
     // MARK: - Deep links

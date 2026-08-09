@@ -291,6 +291,73 @@ final class BurnBarAIInboxStore: @unchecked Sendable {
         try list(BurnBarInboxListRequest(states: BurnBarInboxItemState.openStates, limit: BurnBarInboxListRequest.maxLimit)).items
     }
 
+    /// Approved chat-memory facts for analyst prompt injection.
+    ///
+    /// Reads the app-owned chat authority (`source_kind='chat'`,
+    /// `project_id='chat:openburnbar'`) — not project-code memory RPC. Bodies
+    /// live in `memory_body_snapshots.snapshot_json` and are redacted again
+    /// before leaving this method. Failures (missing tables, decrypt issues)
+    /// return `[]` so a memory-store gap never blocks the inbox tick.
+    func approvedChatMemorySnippets(limit: Int = 12) throws -> [BurnBarAIInboxApprovedMemorySnippet] {
+        let capped = min(max(1, limit), 32)
+        return try databaseSync {
+            let rows: [Row]
+            do {
+                rows = try queryRows(
+                    """
+                    SELECT m.id, m.kind, s.snapshot_json
+                    FROM agent_memories AS m
+                    JOIN memory_body_snapshots AS s
+                      ON s.memory_id = m.id
+                    WHERE m.source_kind = 'chat'
+                      AND m.review_status = 'approved'
+                      AND m.valid_to IS NULL
+                      AND m.project_id = 'chat:openburnbar'
+                    ORDER BY m.confidence DESC, m.updated_at DESC, m.id ASC
+                    LIMIT ?
+                    """,
+                    [.int(capped)]
+                )
+            } catch {
+                return []
+            }
+
+            var snippets: [BurnBarAIInboxApprovedMemorySnippet] = []
+            for row in rows {
+                let id = row.string(0)
+                guard id.isEmpty == false else { continue }
+                guard let body = Self.chatMemoryBody(fromSnapshotJSON: row.string(2)),
+                      body.isEmpty == false else {
+                    continue
+                }
+                let redacted = BurnBarAIInboxRedactor.redact(body)
+                let clipped = BurnBarAIInboxRedactor.clip(redacted, maxBytes: 600)
+                guard clipped.text.count >= 12 else { continue }
+                let kind = row.string(1)
+                snippets.append(
+                    BurnBarAIInboxApprovedMemorySnippet(
+                        id: id,
+                        kind: kind.isEmpty ? "fact" : kind,
+                        text: clipped.text
+                    )
+                )
+            }
+            return snippets
+        }
+    }
+
+    /// `MemoryBodySnapshot` JSON → body string. Tolerates unknown fields and
+    /// missing dates so a schema bump on the app side does not blank the inbox.
+    private static func chatMemoryBody(fromSnapshotJSON json: String) -> String? {
+        guard let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let body = object["body"] as? String else {
+            return nil
+        }
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     func list(_ request: BurnBarInboxListRequest) throws -> BurnBarInboxListResponse {
         try databaseSync {
             var clauses: [String] = []

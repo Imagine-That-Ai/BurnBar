@@ -16,6 +16,8 @@ enum AIInboxPresentation {
         case .ciWaste: return "flame"
         case .promisedNotLanded: return "questionmark.circle"
         case .uncommittedWork: return "tray.and.arrow.down"
+        case .unpushedCommits: return "arrow.up.circle"
+        case .pushedNotMerged: return "arrow.triangle.merge"
         case .costAnomaly: return "chart.line.uptrend.xyaxis"
         case .stuckPR: return "arrow.triangle.pull"
         case .indexHealth: return "waveform.path.ecg"
@@ -28,8 +30,8 @@ enum AIInboxPresentation {
     static func tint(for kind: BurnBarInboxItemKind) -> Color {
         switch kind {
         case .ciWaste, .costAnomaly, .budget: return MobileTheme.amber
-        case .promisedNotLanded, .stuckPR: return MobileTheme.ember
-        case .uncommittedWork: return MobileTheme.whimsy
+        case .promisedNotLanded, .stuckPR, .pushedNotMerged: return MobileTheme.ember
+        case .uncommittedWork, .unpushedCommits: return MobileTheme.whimsy
         case .indexHealth, .system: return MobileTheme.Colors.textMuted
         case .brief: return MobileTheme.blaze
         }
@@ -40,6 +42,8 @@ enum AIInboxPresentation {
         case .ciWaste: return "CI waste"
         case .promisedNotLanded: return "Possibly unfinished"
         case .uncommittedWork: return "Uncommitted work"
+        case .unpushedCommits: return "Unpushed commits"
+        case .pushedNotMerged: return "Pushed, not merged"
         case .costAnomaly: return "Spend anomaly"
         case .stuckPR: return "Stalled PR"
         case .indexHealth: return "Index"

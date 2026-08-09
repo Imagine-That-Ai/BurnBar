@@ -352,6 +352,36 @@ struct BurnBarAIInboxPublisher: Sendable {
             }
             return nil
 
+        case .unpushedCommits:
+            guard pack.workspaces.isEmpty == false else { return nil }
+            guard let detail = try? store.item(id: item.id) else { return nil }
+            for evidence in detail.payload.evidence where evidence.id.hasPrefix("workspace:") {
+                let path = String(evidence.id.dropFirst("workspace:".count))
+                guard let workspace = pack.workspaces.first(where: { $0.path == path }) else { continue }
+                if workspace.aheadCount == 0 {
+                    return "Those commits are no longer ahead of upstream."
+                }
+            }
+            return nil
+
+        case .pushedNotMerged:
+            guard pack.repositories.isEmpty == false else { return nil }
+            guard let detail = try? store.item(id: item.id) else { return nil }
+            let branch = detail.payload.metrics["branch"]
+            let slug = detail.payload.metrics["github"] ?? item.projectName
+            if let slug,
+               let repository = pack.repositories.first(where: { $0.slug == slug }) {
+                if let branch,
+                   repository.openPullRequests.contains(where: { $0.headRefName == branch }) {
+                    return "A pull request is now open for `\(branch)`."
+                }
+                if let branch,
+                   repository.recentlyMergedPullRequests.contains(where: { $0.headRefName == branch }) {
+                    return "`\(branch)` has been merged."
+                }
+            }
+            return nil
+
         case .ciWaste:
             // Only resolve on positive evidence that the workflow recovered —
             // a missing repository snapshot means "we did not look", not "fixed".
@@ -377,6 +407,7 @@ struct BurnBarAIInboxPublisher: Sendable {
             return nil
         }
     }
+
 
     // MARK: - Accounting
 
