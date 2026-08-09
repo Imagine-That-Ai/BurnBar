@@ -43,11 +43,10 @@ const shaShort = BENCH.source.runs_sha256.slice(0, 12);
 const kpis = benchKpis();
 const lens = modelLens();
 const heat = familyHeat();
+// Families with zero measured cells across every stack (experiential, pre-Arena).
+const emptyFams = heat.families.filter((_, fi) => heat.rows.every((r) => r.cells[fi]?.rate == null));
 
-/* Maxima for bar scaling (cost/speed/token tabs scale to the observed max). */
-const maxCost = Math.max(...RANKED_STACKS.map((s) => s.cost_usd_median ?? 0), 0.01);
-const maxWall = Math.max(...RANKED_STACKS.map((s) => s.wall_seconds_median ?? 0), 1);
-const maxTok = Math.max(...RANKED_STACKS.map((s) => s.tokens_median ?? 0), 1);
+/* Maxima for bar scaling live in the client module (tabs re-render bars). */
 
 /* ---------- Pareto scatter geometry (viewBox 760×440, log-cost domain) ---------- */
 const PLOT = { w: 760, h: 440, ml: 56, mr: 24, mt: 24, mb: 48 };
@@ -171,7 +170,7 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
 
   {/* ──────────────── 3 · LEADERBOARD (metric tabs) ──────────────── */}
   <section class="bb-section bb-section--ember" id="leaderboard" aria-labelledby="lb-h">
-    <div class="container container--wide">
+    <div class="container lb-shell">
       <header class="bb-sec-head">
         <span class="eyebrow eyebrow--ember">Leaderboard · every published stack</span>
         <h2 id="lb-h" class="bb-sec-h">One leaderboard, five lenses.</h2>
@@ -179,7 +178,9 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
           Switch the metric — the ranking re-sorts live. <strong>Solution</strong> bars carry the
           Wilson 95% whiskers and the strict-rate tick; <strong>cost</strong> bars are segmented
           into input vs output token spend (token-derived list prices, scaled to the measured
-          total). Dashed rows are shrinkage-pooled <em>inferred</em> estimates.
+          total). Stacks that tie on the visible metric share one rank — hover or tap the
+          <span class="mono">×n</span> chip to meet every contender. Dashed rows are
+          shrinkage-pooled <em>inferred</em> estimates.
         </p>
       </header>
 
@@ -196,107 +197,63 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
           RANKED_STACKS.map((s, i) => {
             const hLogo = HARNESS_LOGO[s.harness] ?? null;
             const mLogo = MODEL_LOGO[s.model] ?? null;
-            const segs = costSegments(s);
             const first = i === 0;
             return (
-              <li
-                class={`lb-row${first ? " lb-row--first" : ""}${s.evidence === "inferred" ? " lb-row--inferred" : ""}`}
-                data-h={s.harness}
-                data-m={s.model}
-                data-sol={s.solution_rate}
-                data-str={s.strict_rate}
-                data-ci0={s.ci95[0]}
-                data-ci1={s.ci95[1]}
-                data-cost={s.cost_usd_median ?? ""}
-                data-cin={segs?.input ?? ""}
-                data-cout={segs?.output ?? ""}
-                data-wall={s.wall_seconds_median ?? ""}
-                data-tok={s.tokens_median ?? ""}
-                data-n={s.n}
-                data-conf={s.confidence}
-              >
-                <span class="lb-rank">{String(i + 1).padStart(2, "0")}</span>
+              <li class="lb-group">
+                <div
+                  class={`lb-row${first ? " lb-row--first" : ""}${s.evidence === "inferred" ? " lb-row--inferred" : ""}`}
+                  data-h={s.harness}
+                  data-m={s.model}
+                >
+                  <span class="lb-rank">{String(i + 1).padStart(2, "0")}</span>
 
-                <div class="lb-stack">
-                  <span class={`bb-badge h--${hcls(s.harness)}`}>
+                  <span class="lb-logos">
                     {hLogo ? (
-                      <img src={hLogo} alt="" width="22" height="22" loading="lazy" decoding="async" />
+                      <img class="lb-logo lb-logo--h" src={hLogo} alt="" width="24" height="24" loading="lazy" decoding="async" />
                     ) : (
-                      <span class="bb-badge__mono">{monogramFor(s.harness, harnessDisplay(s.harness))}</span>
+                      <span class="lb-mono lb-logo--h">{monogramFor(s.harness, harnessDisplay(s.harness))}</span>
                     )}
-                  </span>
-                  <span class={`bb-badge m--${mcls(s.model)}`}>
                     {mLogo ? (
-                      <img src={mLogo} alt="" width="22" height="22" loading="lazy" decoding="async" />
+                      <img class="lb-logo lb-logo--m" src={mLogo} alt="" width="24" height="24" loading="lazy" decoding="async" />
                     ) : (
-                      <span class="bb-badge__mono">{monogramFor(s.model, modelDisplay(s.model))}</span>
+                      <span class="lb-mono lb-logo--m">{monogramFor(s.model, modelDisplay(s.model))}</span>
                     )}
                   </span>
-                  <span class="lb-stack__names">
-                    <span class="lb-stack__h">{harnessDisplay(s.harness)}</span>
-                    <span class="lb-stack__m">{modelDisplay(s.model)}</span>
+                  <span class="lb-names">
+                    <strong>
+                      {harnessDisplay(s.harness)} × {modelDisplayShort(s.model)}
+                    </strong>
+                    <span class="lb-sub" data-role="subline">
+                      strict {fmtPct(s.strict_rate)} · n {s.n} · {fmtCost(s.cost_usd_median)}/task
+                      {s.cost_standard_usd_median != null && (
+                        <span class="lb-std" title={`Non-contributor tier (meta/muse-spark-1.2 on OpenRouter): ${fmtCost(s.cost_standard_usd_median)}/task — the contributor tier is free under data-sharing`}>
+                          · std {fmtCost(s.cost_standard_usd_median)}
+                        </span>
+                      )}
+                    </span>
                   </span>
-                </div>
 
-                <div class="lb-bar">
-                  {/* solution lens: rate bar + CI whiskers + strict tick */}
                   <svg
-                    class="lb-bar__svg"
-                    data-lens="sol"
-                    width="100%"
-                    height="26"
+                    class="lb-bar"
+                    viewBox="0 0 100 26"
+                    preserveAspectRatio="none"
                     role="img"
                     aria-label={`${harnessDisplay(s.harness)} with ${modelDisplay(s.model)}: solution rate ${fmtPct(s.solution_rate)}, strict ${fmtPct(s.strict_rate)}, CI ${fmtPct(s.ci95[0])} to ${fmtPct(s.ci95[1])}, n ${s.n}`}
                   >
-                    <rect class="lb-bar__track" x="0" y="9" width="100%" height="8" rx="4" />
-                    <rect class={`lb-bar__fill m--${mcls(s.model)}`} x="0" y="9" width={pctAttr(s.solution_rate)} height="8" rx="4" />
+                    <rect class="lb-bar__track" x="0" y="9" width="100" height="8" rx="4" />
+                    <rect class="lb-bar__fill" fill={colorFor(MODEL_COLOR, s.model)} x="0" y="9" width={pctAttr(s.solution_rate)} height="8" rx="4" />
                     <line class="lb-bar__ci" x1={pctAttr(s.ci95[0])} x2={pctAttr(s.ci95[1])} y1="13" y2="13" />
                     <line class="lb-bar__ci" x1={pctAttr(s.ci95[0])} x2={pctAttr(s.ci95[0])} y1="9" y2="17" />
                     <line class="lb-bar__ci" x1={pctAttr(s.ci95[1])} x2={pctAttr(s.ci95[1])} y1="9" y2="17" />
                     <line class="lb-bar__strict" x1={pctAttr(s.strict_rate)} x2={pctAttr(s.strict_rate)} y1="5" y2="21" />
                   </svg>
-                  {/* cost lens: segmented input/output bar */}
-                  <svg class="lb-bar__svg u-hidden" data-lens="cost" width="100%" height="26" aria-hidden="true">
-                    <rect class="lb-bar__track" x="0" y="9" width="100%" height="8" rx="4" />
-                    {segs && (
-                      <>
-                        <rect
-                          class="lb-bar__seg lb-bar__seg--in"
-                          x="0"
-                          y="9"
-                          width={pctAttr(maxCost > 0 ? segs.input / maxCost : 0)}
-                          height="8"
-                          rx="4"
-                        />
-                        <rect
-                          class="lb-bar__seg lb-bar__seg--out"
-                          x={pctAttr(maxCost > 0 ? segs.input / maxCost : 0)}
-                          y="9"
-                          width={pctAttr(maxCost > 0 ? segs.output / maxCost : 0)}
-                          height="8"
-                        />
-                      </>
-                    )}
-                  </svg>
-                </div>
 
-                <div class="lb-nums">
-                  <span class="lb-nums__sol" data-role="headline">{fmtPct(s.solution_rate)}</span>
-                  <span class="lb-nums__sub" data-role="subline">
-                    strict {fmtPct(s.strict_rate)} · n {s.n} · {fmtCost(s.cost_usd_median)}/task
-                    {s.cost_standard_usd_median != null && (
-                      <span class="lb-std" title={`Non-contributor tier (meta/muse-spark-1.2 on OpenRouter): ${fmtCost(s.cost_standard_usd_median)}/task — the contributor tier is free under data-sharing`}>
-                        · std {fmtCost(s.cost_standard_usd_median)}
-                      </span>
-                    )}
-                  </span>
-                  <span class="lb-tags">
-                    {s.evidence === "inferred" && <span class="tag tag--estimated">inferred</span>}
-                    {s.cost_source === "derived" && <span class="tag tag--derived">cost est.</span>}
-                    <span
-                      class={`tag ${s.confidence === "high" ? "tag--exact" : s.confidence === "medium" ? "tag--estimated" : "tag--unavailable"}`}
-                    >
-                      {s.confidence}
+                  <span class="lb-nums">
+                    <span class="lb-head" data-role="headline">{fmtPct(s.solution_rate)}</span>
+                    <span class="lb-tags">
+                      {s.evidence === "inferred" && <span class="tag tag--estimated">inferred</span>}
+                      {s.cost_source === "derived" && <span class="tag tag--derived">cost est.</span>}
+                      {s.confidence === "low" && <span class="tag tag--unavailable">low conf</span>}
                     </span>
                   </span>
                 </div>
@@ -503,14 +460,29 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
         <button class="bb-tab is-active" role="tab" aria-selected="true" data-lens="rate">Solution</button>
         <button class="bb-tab" role="tab" aria-selected="false" data-lens="strict">Strict</button>
         <button class="bb-tab" role="tab" aria-selected="false" data-lens="cost">Cost</button>
+        {
+          emptyFams.length > 0 && (
+            <button class="bb-tab bb-tab--ghost" data-bb-emptyfam aria-pressed="false">
+              + {emptyFams.length} unmeasured
+            </button>
+          )
+        }
       </div>
 
+      {
+        /* Families no stack has measured (experiential, pre-Arena) collapse
+           out of the grid by default so the measured block stays dense. */
+      }
       <div class="bb-heat-wrap">
-        <div class="bb-heat" data-bb-heat style={`--fam-cols:${heat.families.length}`}>
+        <div
+          class="bb-heat"
+          data-bb-heat
+          style={`--fam-cols:${heat.families.length};--fam-vis:${heat.families.length - emptyFams.length}`}
+        >
           <div class="bb-heat__corner"></div>
           {
             heat.families.map((fam) => (
-              <div class="bb-heat__colhead" title={fam}>
+              <div class="bb-heat__colhead" title={fam} data-emptyfam={emptyFams.includes(fam) ? "true" : undefined}>
                 <span>{fam}</span>
               </div>
             ))
@@ -529,11 +501,12 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
                     data-strict={cell.strict ?? ""}
                     data-cost={cell.cost ?? ""}
                     data-n={cell.n}
+                    data-emptyfam={emptyFams.includes(heat.families[ci] ?? "") ? "true" : undefined}
                     data-bucket={heatBucket(cell.rate, heat.domains.rate) ?? ""}
                     title={
                       cell.rate != null
-                        ? `${harnessDisplay(row.harness)} × ${modelDisplay(row.model)} · ${heat.families[ci]}: ${fmtPct(cell.rate!)} (n ${cell.n})`
-                        : `${harnessDisplay(row.harness)} × ${modelDisplay(row.model)} · ${heat.families[ci]}: not measured`
+                        ? `${harnessDisplay(row.harness)} × ${modelDisplay(row.model)} · ${heat.families[ci] ?? heat.families[0]}: ${fmtPct(cell.rate!)} (n ${cell.n})`
+                        : `${harnessDisplay(row.harness)} × ${modelDisplay(row.model)} · ${heat.families[ci] ?? heat.families[0]}: not measured`
                     }
                   >
                     {cell.rate != null && <span class="bb-heat__v">{Math.round(cell.rate! * 100)}</span>}

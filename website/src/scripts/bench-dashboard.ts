@@ -185,11 +185,71 @@ function initTabs(data: Dataset): void {
   const tabBar = document.querySelector<HTMLElement>("[data-bb-tabs]");
   const list = document.querySelector<HTMLElement>("[data-bb-lb]");
   if (!tabBar || !list) return;
-  const rows = new Map(data.stacks.map((s) => [`${s.h}|${s.m}`, s]));
   const maxima = {
     cost: Math.max(...data.stacks.map((s) => s.cost ?? 0), 0.01),
     wall: Math.max(...data.stacks.map((s) => s.wall ?? 0), 1),
     tok: Math.max(...data.stacks.map((s) => s.tok ?? 0), 1)
+  };
+
+  const logoHtml = (url: string | null, mono: string, extra: string): string =>
+    url
+      ? `<img class="lb-logo ${extra}" src="${esc(url)}" alt="" width="24" height="24" loading="lazy" decoding="async">`
+      : `<span class="lb-mono ${extra}">${esc(mono)}</span>`;
+
+  const rowHtml = (s: StackRow, metric: Metric, rank: number, tie: boolean): string => {
+    const head = metric === "cost" && s.cost != null ? `${headline(s, metric)}/task` : headline(s, metric);
+    const tags: string[] = [];
+    if (s.ev === "inferred") tags.push('<span class="tag tag--estimated">inferred</span>');
+    if (s.conf === "low") tags.push('<span class="tag tag--unavailable">low conf</span>');
+    return (
+      `<div class="lb-row${tie ? " lb-row--tie" : ""}${s.ev === "inferred" ? " lb-row--inferred" : ""}"` +
+      ` data-h="${esc(s.h)}" data-m="${esc(s.m)}">` +
+      `<span class="lb-rank">${String(rank).padStart(2, "0")}</span>` +
+      `<span class="lb-logos">${logoHtml(s.hl, s.hm, "lb-logo--h")}${logoHtml(s.ml, s.mm, "lb-logo--m")}</span>` +
+      `<span class="lb-names"><strong>${esc(s.hd)} × ${esc(s.mds)}</strong>` +
+      `<span class="lb-sub">${esc(subline(s, metric))}</span></span>` +
+      `<svg class="lb-bar" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true">${barSvg(s, metric, maxima)}</svg>` +
+      `<span class="lb-nums"><span class="lb-head">${esc(head)}</span>` +
+      (tags.length ? `<span class="lb-tags">${tags.join("")}</span>` : "") +
+      `</span></div>`
+    );
+  };
+
+  const render = (metric: Metric): void => {
+    const sorted = [...data.stacks].sort(METRIC_SORT[metric]);
+    // Tie groups: consecutive stacks whose visible headline is identical
+    // share one competition rank; the group expands on hover/click.
+    const groups: { rank: number; members: StackRow[] }[] = [];
+    sorted.forEach((s, i) => {
+      const head = headline(s, metric);
+      const prev = groups[groups.length - 1];
+      const prevHead = prev?.members[0] ? headline(prev.members[0] as StackRow, metric) : null;
+      if (prev && i > 0 && prevHead === head) {
+        prev.members.push(s);
+      } else {
+        groups.push({ rank: i + 1, members: [s] });
+      }
+    });
+    list.innerHTML = groups
+      .map((g) => {
+        const first = g.members[0] as StackRow;
+        const rest = g.members.slice(1) as StackRow[];
+        const tieBtn =
+          rest.length > 0
+            ? `<button class="lb-tiebtn" aria-expanded="false" title="${rest.length + 1} stacks share this ${metric === "cost" ? "cost" : "score"} — hover or tap to expand">×${rest.length + 1}</button>`
+            : "";
+        const ties =
+          rest.length > 0
+            ? `<ul class="lb-ties">${rest.map((s) => `<li>${rowHtml(s, metric, g.rank, true)}</li>`).join("")}</ul>`
+            : "";
+        return (
+          `<li class="lb-group${rest.length ? " lb-group--tied" : ""}">` +
+          rowHtml(first, metric, g.rank, false).replace("</div>", `${tieBtn}</div>`) +
+          ties +
+          `</li>`
+        );
+      })
+      .join("");
   };
 
   tabBar.addEventListener("click", (ev) => {
@@ -201,35 +261,20 @@ function initTabs(data: Dataset): void {
       t.classList.toggle("is-active", active);
       t.setAttribute("aria-selected", String(active));
     });
-
-    const sorted = [...data.stacks].sort(METRIC_SORT[metric]);
-    const items = new Map(
-      [...list.querySelectorAll<HTMLElement>(".lb-row")].map((li) => [
-        `${li.dataset.h}|${li.dataset.m}`,
-        li
-      ])
-    );
-    sorted.forEach((s, i) => {
-      const li = items.get(`${s.h}|${s.m}`);
-      const row = rows.get(`${s.h}|${s.m}`);
-      if (!li || !row) return;
-      list.appendChild(li); // re-order
-      li.classList.toggle("lb-row--first", i === 0);
-      const rank = li.querySelector(".lb-rank");
-      if (rank) rank.textContent = String(i + 1).padStart(2, "0");
-      const bar = li.querySelector(".lb-bar");
-      if (bar) {
-        bar.innerHTML =
-          `<svg class="lb-bar__svg" width="100%" height="26" role="img" aria-label="${esc(
-            `${row.hd} with ${row.md}: ${headline(row, metric)}`
-          )}">` + barSvg(row, metric, maxima) + `</svg>`;
-      }
-      const head = li.querySelector('[data-role="headline"]');
-      if (head) head.textContent = metric === "cost" && row.cost != null ? `${headline(row, metric)}/task` : headline(row, metric);
-      const sub = li.querySelector('[data-role="subline"]');
-      if (sub) sub.textContent = subline(row, metric);
-    });
+    render(metric);
   });
+
+  // Tie chips pin open on click (hover opens via CSS :has).
+  list.addEventListener("click", (ev) => {
+    const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>(".lb-tiebtn");
+    if (!btn) return;
+    const group = btn.closest(".lb-group");
+    if (!group) return;
+    const open = group.classList.toggle("is-open");
+    btn.setAttribute("aria-expanded", String(open));
+  });
+
+  render("sol");
 }
 
 /* ---------- 2 · match tuner ---------- */
@@ -340,7 +385,7 @@ function initTuner(data: Dataset): void {
             ? `<img class="bb-pick__logo ${cls}" src="${esc(url)}" alt="" width="22" height="22" loading="lazy" decoding="async">`
             : `<span class="bb-pick__mono ${cls}">${esc(mono)}</span>`;
         const bar = (v: number, cls: string): string =>
-          `<span class="bb-pick__seg ${cls}" style="width:${(v * 100).toFixed(1)}%"></span>`;
+          `<span class="bb-pick__seg ${cls}" data-w="${(v * 100).toFixed(1)}"></span>`;
         return (
           `<li class="bb-pick${i === 0 ? " bb-pick--top" : ""}">` +
           `<span class="bb-pick__rank">${i + 1}</span>` +
@@ -353,6 +398,11 @@ function initTuner(data: Dataset): void {
         );
       })
       .join("");
+    // Widths via CSSOM — inline style attributes inserted by innerHTML are
+    // stripped by the production CSP (style-src-attr is hash-locked).
+    picksEl.querySelectorAll<HTMLElement>(".bb-pick__seg").forEach((el) => {
+      el.style.width = `${el.dataset.w}%`;
+    });
     if (noteEl) {
       const bits: string[] = [];
       if (fam) bits.push(`scored on ${fam} cells`);
@@ -411,6 +461,12 @@ function initHeatLens(data: Dataset): void {
     return String(Math.round(clamped * 10));
   };
   bar.addEventListener("click", (ev) => {
+    const famToggle = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-bb-emptyfam]");
+    if (famToggle) {
+      const show = grid.classList.toggle("show-all");
+      famToggle.setAttribute("aria-pressed", String(show));
+      return;
+    }
     const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-lens]");
     if (!btn) return;
     const lens = btn.dataset.lens as "rate" | "strict" | "cost";

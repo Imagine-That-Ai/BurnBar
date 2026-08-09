@@ -143,7 +143,7 @@ export const MODEL_LOGO: Record<string, string | null> = {
   "deepseek-v4-flash-0731": "/brand/providers/deepseek.svg",
   "glm-5-2": "/brand/providers/zai.png",
   "gpt-5-6-luna-max": "/brand/providers/openai.png",
-  "muse-spark-1-2-contributor": null,
+  "muse-spark-1-2-contributor": "/brand/providers/meta.svg",
   // current export roster
   "claude-opus-4-8": "/brand/providers/anthropic.png",
   "gpt-5-5": "/brand/providers/openai.png",
@@ -153,7 +153,7 @@ export const MODEL_LOGO: Record<string, string | null> = {
 export const HARNESS_LOGO: Record<string, string | null> = {
   // contract §5b roster
   droid: "/brand/providers/factory.png",
-  omp: null,
+  omp: "/brand/providers/omp.svg",
   pi: "/brand/providers/pi-agent.svg",
   codex: "/brand/providers/codex.png",
   claude: "/brand/providers/claude-code.png",
