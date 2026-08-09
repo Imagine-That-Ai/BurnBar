@@ -121,7 +121,7 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
 
         let migrations = try database.migrationRows()
         XCTAssertEqual(migrations, OpenBurnBarLocalDatabase.migrationIdentifiers)
-        XCTAssertEqual(migrations.last, "v58_ai_inbox")
+        XCTAssertEqual(migrations.last, "v59_founder_lens")
         XCTAssertTrue(migrations.contains("v35_provider_accounts"))
         XCTAssertTrue(migrations.contains("v50_project_code_memory_schema"))
 
@@ -169,7 +169,7 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
 
         let database = try openDatabase(path: dbPath, passphrase: passphrase)
         defer { try? database.close() }
-        XCTAssertEqual(try database.migrationRows().last, "v58_ai_inbox")
+        XCTAssertEqual(try database.migrationRows().last, "v59_founder_lens")
         XCTAssertEqual(try database.count(sql: "SELECT COUNT(*) FROM provider_accounts WHERE id = 'legacy-provider-account'"), 1)
         XCTAssertEqual(try database.verifyPragmaString("integrity_check"), "ok")
 

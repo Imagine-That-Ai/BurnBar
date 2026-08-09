@@ -25,7 +25,7 @@ public sealed class TokenUsageWriteRoundTripTests
     private const string FixtureName = "openburnbar-db-compat-v58.sqlcipher";
     private const string ExpectedSchemaHash =
         "fb4b69e86d9f604826cd05634f979b0461c9945244fa57a5943f4f3244c156f2";
-    private const string ExpectedMigrationEndpoint = "v58_ai_inbox";
+    private const string ExpectedMigrationEndpoint = "v59_founder_lens";
     private const long ExpectedMigrationCount = 59;
     private const long ExpectedUserVersion = 0;
 

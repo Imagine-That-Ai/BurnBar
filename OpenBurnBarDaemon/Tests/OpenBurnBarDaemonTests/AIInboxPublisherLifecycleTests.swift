@@ -553,7 +553,7 @@ final class AIInboxPublisherLifecycleTests: XCTestCase {
 
         let rows = BurnBarAIInboxPublisher.evidence(for: finding, pack: pack)
         let shellRow = try XCTUnwrap(rows.first(where: { $0.id.hasPrefix("conv:shell") }))
-        XCTAssertTrue(shellRow.detail?.contains("empty shell") == true)
+        XCTAssertEqual(shellRow.detail?.contains("empty shell"), true)
     }
 
     // MARK: - Evidence materialization

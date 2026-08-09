@@ -36,6 +36,10 @@ struct InboxMemoryExportService {
             _ = try OpenBurnBarDaemonSocketClient.inboxMemoryExport(entries: entries, at: socketURL)
         } catch {
             // The daemon self-heals on the next push; nothing durable is lost.
+            AppLogger.daemon.info(
+                "inbox_memory_export_deferred",
+                metadata: ["error": "\(error)"]
+            )
         }
     }
 
