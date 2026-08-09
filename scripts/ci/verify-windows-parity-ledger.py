@@ -552,9 +552,7 @@ def main(argv: list[str] | None = None) -> int:
     if isinstance(declared_row_count, bool) or not isinstance(declared_row_count, int):
         errors.append("declared_row_count must be an integer")
     elif declared_row_count != len(rows):
-        errors.append(
-            f"declared_row_count is stale: declared {declared_row_count}, actual {len(rows)}"
-        )
+        errors.append(f"declared_row_count is stale: declared {declared_row_count}, actual {len(rows)}")
 
     declared_histogram = data.get("declared_status_histogram")
     if not isinstance(declared_histogram, dict):
@@ -569,16 +567,11 @@ def main(argv: list[str] | None = None) -> int:
         for status in sorted(VALID_STATUSES):
             declared = declared_histogram.get(status)
             if isinstance(declared, bool) or not isinstance(declared, int) or declared < 0:
-                errors.append(
-                    f"declared_status_histogram.{status} must be a non-negative integer"
-                )
+                errors.append(f"declared_status_histogram.{status} must be a non-negative integer")
                 continue
             actual = status_counts.get(status, 0)
             if declared != actual:
-                errors.append(
-                    f"declared_status_histogram.{status} is stale: "
-                    f"declared {declared}, actual {actual}"
-                )
+                errors.append(f"declared_status_histogram.{status} is stale: declared {declared}, actual {actual}")
 
     # ── primary / required route coverage ───────────────────────────────────
     primary = data.get("macos_primary_routes") or []
