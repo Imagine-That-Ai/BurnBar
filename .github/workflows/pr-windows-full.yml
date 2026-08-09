@@ -4,7 +4,7 @@ name: PR Windows Full Suite
 #
 # Replaces the pr-windows-fast.yml skeleton placeholders with REAL dotnet build
 # + dotnet test over the full windows/ solution. The app builds to full
-# XamlCompiler completion (proven on physical Windows by #1248) and the ~2,545
+# XamlCompiler completion (proven on physical Windows by #1248) and the 4,082+
 # C# test fixtures run natively on windows-latest (x64) and windows-11-arm
 # (ARM64). This is the gate that makes a Windows regression un-mergeable once
 # Alberto flips it to a required status check (WS-A2).
@@ -16,7 +16,7 @@ name: PR Windows Full Suite
 #   - openburnbar-engine-windows.yml builds the Swift Engine subset on Windows
 #     (x64 + ARM64) + the G2 parser-parity harness. That lane is unchanged.
 #   - THIS workflow builds the C# WinUI app + all C# test projects and runs the
-#     full dotnet test suite — the ~2,545 fixtures that the physical Windows
+#     full dotnet test suite — the 4,082+ fixtures that the physical Windows
 #     validation proved green (after #1249's 5 fixes).
 #
 # Architectures: two parallel legs, mirroring openburnbar-engine-windows.yml.
@@ -212,7 +212,7 @@ jobs:
             --results-directory TestResults-x64
 
       - name: Verify complete x64 test evidence
-        run: node scripts/windows-port/verify-trx-results.mjs --results-directory TestResults-x64 --minimum-files 41 --minimum-tests 4083
+        run: node scripts/windows-port/verify-trx-results.mjs --results-directory TestResults-x64 --minimum-files 41 --minimum-tests 4083 --maximum-not-executed 15
 
       # Publish the TRX results so a red fixture is inspectable in the Actions UI.
       - name: Upload test results
@@ -289,7 +289,7 @@ jobs:
         run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger trx --results-directory TestResults-arm64
 
       - name: Verify complete ARM64 test evidence
-        run: node scripts/windows-port/verify-trx-results.mjs --results-directory TestResults-arm64 --minimum-files 40 --minimum-tests 4082
+        run: node scripts/windows-port/verify-trx-results.mjs --results-directory TestResults-arm64 --minimum-files 40 --minimum-tests 4082 --maximum-not-executed 15
 
       - name: Upload test results
         if: always()
@@ -346,7 +346,7 @@ jobs:
           fi
 
           if [[ "${WINDOWS_CHANGED}" == "true" ]]; then
-            echo "### PR Windows Full Gate: full-suite build + ~2,545 tests green on x64 + ARM64" >> "$GITHUB_STEP_SUMMARY"
+            echo "### PR Windows Full Gate: full-suite build + 4,082+ tests green on x64 + ARM64" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "### PR Windows Full Gate: no Windows full-suite surface changed - x64 + ARM64 legs skipped" >> "$GITHUB_STEP_SUMMARY"
           fi

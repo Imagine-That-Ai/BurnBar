@@ -32,6 +32,13 @@ function positiveInteger(value, label) {
   return Number.parseInt(value, 10);
 }
 
+function nonnegativeInteger(value, label) {
+  if (!/^(?:0|[1-9][0-9]*)$/u.test(value)) {
+    throw new Error(`${label} must be a nonnegative integer`);
+  }
+  return Number.parseInt(value, 10);
+}
+
 function collectTrxFiles(directory) {
   const files = [];
   function visit(path) {
@@ -105,7 +112,12 @@ function parseCounters(path) {
   return counters;
 }
 
-export function verifyTrxResults(resultsDirectory, minimumFiles, minimumTests) {
+export function verifyTrxResults(
+  resultsDirectory,
+  minimumFiles,
+  minimumTests,
+  maximumNotExecuted,
+) {
   const directory = resolve(resultsDirectory);
   const files = collectTrxFiles(directory);
   if (files.length < minimumFiles) {
@@ -132,6 +144,11 @@ export function verifyTrxResults(resultsDirectory, minimumFiles, minimumTests) {
       `TRX evidence is incomplete: expected at least ${minimumTests} tests, found ${totals.total}`,
     );
   }
+  if (totals.notExecuted > maximumNotExecuted) {
+    throw new Error(
+      `TRX evidence skipped too many tests: allowed at most ${maximumNotExecuted}, found ${totals.notExecuted}`,
+    );
+  }
 
   return {
     ok: true,
@@ -142,22 +159,25 @@ export function verifyTrxResults(resultsDirectory, minimumFiles, minimumTests) {
 }
 
 function parseArguments(argv) {
-  if (argv.length !== 6) {
+  if (argv.length !== 8) {
     throw new Error(
-      "usage: --results-directory PATH --minimum-files COUNT --minimum-tests COUNT",
+      "usage: --results-directory PATH --minimum-files COUNT --minimum-tests COUNT --maximum-not-executed COUNT",
     );
   }
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     if (
-      !["--results-directory", "--minimum-files", "--minimum-tests"].includes(
-        flag,
-      ) ||
+      ![
+        "--results-directory",
+        "--minimum-files",
+        "--minimum-tests",
+        "--maximum-not-executed",
+      ].includes(flag) ||
       values.has(flag)
     ) {
       throw new Error(
-        "usage: --results-directory PATH --minimum-files COUNT --minimum-tests COUNT",
+        "usage: --results-directory PATH --minimum-files COUNT --minimum-tests COUNT --maximum-not-executed COUNT",
       );
     }
     values.set(flag, argv[index + 1]);
@@ -172,6 +192,10 @@ function parseArguments(argv) {
       values.get("--minimum-tests"),
       "--minimum-tests",
     ),
+    maximumNotExecuted: nonnegativeInteger(
+      values.get("--maximum-not-executed"),
+      "--maximum-not-executed",
+    ),
   };
 }
 
@@ -181,6 +205,7 @@ export function run(argv) {
     options.resultsDirectory,
     options.minimumFiles,
     options.minimumTests,
+    options.maximumNotExecuted,
   );
   process.stdout.write(`${JSON.stringify(summary)}\n`);
   return summary;

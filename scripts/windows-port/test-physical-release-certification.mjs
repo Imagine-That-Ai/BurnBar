@@ -341,19 +341,19 @@ assert.match(
 );
 assert.match(
   windowsFastWorkflow,
-  /--logger trx --results-directory TestResults-x64[\s\S]*verify-trx-results\.mjs --results-directory TestResults-x64 --minimum-files 40 --minimum-tests 4082/,
+  /--logger trx --results-directory TestResults-x64[\s\S]*verify-trx-results\.mjs --results-directory TestResults-x64 --minimum-files 40 --minimum-tests 4082 --maximum-not-executed 15/,
 );
 assert.match(
   windowsFullWorkflow,
-  /--logger trx --results-directory TestResults-x64[\s\S]*--logger trx `[\s\S]*--results-directory TestResults-x64[\s\S]*verify-trx-results\.mjs --results-directory TestResults-x64 --minimum-files 41 --minimum-tests 4083/,
+  /--logger trx --results-directory TestResults-x64[\s\S]*--logger trx `[\s\S]*--results-directory TestResults-x64[\s\S]*verify-trx-results\.mjs --results-directory TestResults-x64 --minimum-files 41 --minimum-tests 4083 --maximum-not-executed 15/,
 );
 assert.match(
   windowsFullWorkflow,
-  /--logger trx --results-directory TestResults-arm64[\s\S]*verify-trx-results\.mjs --results-directory TestResults-arm64 --minimum-files 40 --minimum-tests 4082/,
+  /--logger trx --results-directory TestResults-arm64[\s\S]*verify-trx-results\.mjs --results-directory TestResults-arm64 --minimum-files 40 --minimum-tests 4082 --maximum-not-executed 15/,
 );
 assert.match(
   fullHarnessWorkflow,
-  /--logger trx --results-directory TestResults-x64[\s\S]*verify-trx-results\.mjs --results-directory TestResults-x64 --minimum-files 40 --minimum-tests 4082/,
+  /--logger trx --results-directory TestResults-x64[\s\S]*verify-trx-results\.mjs --results-directory TestResults-x64 --minimum-files 40 --minimum-tests 4082 --maximum-not-executed 15/,
 );
 for (const workflow of [
   windowsFastWorkflow,

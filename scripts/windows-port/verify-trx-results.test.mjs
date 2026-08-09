@@ -55,7 +55,7 @@ test("accepts complete passing TRX evidence and aggregates counters", () => {
     notExecuted: 0,
   });
 
-  assert.deepEqual(verifyTrxResults(results, 2, 7), {
+  assert.deepEqual(verifyTrxResults(results, 2, 7, 1), {
     ok: true,
     resultsDirectory: results,
     files: 2,
@@ -73,11 +73,11 @@ test("rejects an overwritten or otherwise incomplete TRX directory", () => {
   writeTrx(join(results, "only-last-project.trx"));
 
   assert.throws(
-    () => verifyTrxResults(results, 2, 3),
+    () => verifyTrxResults(results, 2, 3, 1),
     /expected at least 2 files, found 1/,
   );
   assert.throws(
-    () => verifyTrxResults(results, 1, 4),
+    () => verifyTrxResults(results, 1, 4, 1),
     /expected at least 4 tests, found 3/,
   );
 });
@@ -92,7 +92,7 @@ test("rejects failed and internally inconsistent counters", () => {
     failed: 1,
     notExecuted: 0,
   });
-  assert.throws(() => verifyTrxResults(failedResults, 1, 3), /has failed=1/);
+  assert.throws(() => verifyTrxResults(failedResults, 1, 3, 0), /has failed=1/);
 
   const inconsistentResults = join(workspace, "inconsistent");
   mkdirSync(inconsistentResults);
@@ -100,7 +100,18 @@ test("rejects failed and internally inconsistent counters", () => {
     total: 4,
   });
   assert.throws(
-    () => verifyTrxResults(inconsistentResults, 1, 4),
+    () => verifyTrxResults(inconsistentResults, 1, 4, 1),
     /total counter is inconsistent/,
+  );
+});
+
+test("rejects more skipped tests than the reviewed ceiling", () => {
+  const results = join(workspace, "too-many-skips");
+  mkdirSync(results);
+  writeTrx(join(results, "skipped.trx"));
+
+  assert.throws(
+    () => verifyTrxResults(results, 1, 3, 0),
+    /allowed at most 0, found 1/,
   );
 });
