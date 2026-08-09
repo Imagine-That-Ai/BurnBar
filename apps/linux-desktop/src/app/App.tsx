@@ -67,9 +67,18 @@ function isLinuxNativeRouteShortcut(event: KeyboardEvent, key: string): boolean 
  */
 export function App() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [readability, setReadability] = useState<BackdropReadabilityProfile>(() =>
+  const [readability, setReadabilityState] = useState<BackdropReadabilityProfile>(() =>
     fallbackProfileForSkin(useShellStore.getState().skin)
   );
+  // Automation readiness contract: `.shell[data-shell-ready='ready']` means
+  // the backdrop has mounted and published at least one readability profile,
+  // so capture tooling waits on this stable identifier instead of polling
+  // child controls (which time out when boot is slow).
+  const [shellReady, setShellReady] = useState(false);
+  const setReadability = (profile: BackdropReadabilityProfile) => {
+    setShellReady(true);
+    setReadabilityState(profile);
+  };
   const [kernelId, setKernelId] = useState<KernelId>(() => readPersistedKernelId());
   const route = useShellStore((s) => s.route);
   const setRoute = useShellStore((s) => s.setRoute);
@@ -332,6 +341,7 @@ export function App() {
         className="shell"
         data-foreground-tone={readability.tone}
         data-readability={readabilityDiagnostic(readability)}
+        data-shell-ready={shellReady ? 'ready' : 'pending'}
       >
         <a
           className="skip-link"
