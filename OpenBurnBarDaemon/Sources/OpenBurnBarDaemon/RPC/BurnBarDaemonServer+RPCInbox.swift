@@ -113,6 +113,164 @@ extension BurnBarDaemonServer {
             let response = await inbox.runNow(force: typedRequest.params.force)
             return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: response))
 
+        // MARK: Founder Lens — threads
+
+        case .inboxThreadGet:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxThreadGetRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: typedRequest.id,
+                        result: BurnBarInboxThreadGetResponse(
+                            thread: try await inbox.thread(fingerprint: typedRequest.params.fingerprint)
+                        )
+                    )
+                )
+            } catch {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message: error.localizedDescription
+                )
+            }
+
+        case .inboxReply:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxReplyRequest>.self,
+                from: requestData
+            )
+            // The service refuses internally (budget/egress/disabled) and says
+            // why; refusals are results, not transport errors.
+            let response = await inbox.reply(typedRequest.params)
+            return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: response))
+
+        // MARK: Founder Lens — plan ledger
+
+        case .inboxPlansList:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxPlansListRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: typedRequest.id,
+                        result: try await inbox.plansList(typedRequest.params)
+                    )
+                )
+            } catch {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message: error.localizedDescription
+                )
+            }
+
+        case .inboxPlansGet:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxPlanGetRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: typedRequest.id,
+                        result: try await inbox.planGet(typedRequest.params)
+                    )
+                )
+            } catch {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message: error.localizedDescription
+                )
+            }
+
+        case .inboxPlansAccept:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxPlanAcceptRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: typedRequest.id,
+                        result: try await inbox.planAccept(typedRequest.params)
+                    )
+                )
+            } catch {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message: error.localizedDescription
+                )
+            }
+
+        case .inboxPlansUpdateStep:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxPlanUpdateStepRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: typedRequest.id,
+                        result: try await inbox.planUpdateStep(typedRequest.params)
+                    )
+                )
+            } catch {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message: error.localizedDescription
+                )
+            }
+
+        case .inboxPlansGrade:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxPlanGradeRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: typedRequest.id,
+                        result: try await inbox.planGrade(typedRequest.params)
+                    )
+                )
+            } catch {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message: error.localizedDescription
+                )
+            }
+
+        // MARK: Founder Lens — memory export
+
+        case .inboxMemoryExport:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxMemoryExportRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: typedRequest.id,
+                        result: try await inbox.memoryExport(typedRequest.params)
+                    )
+                )
+            } catch {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message: error.localizedDescription
+                )
+            }
+
         default:
             preconditionFailure("Unhandled inbox RPC method: \(method.rawValue)")
         }

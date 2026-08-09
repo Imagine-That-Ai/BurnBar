@@ -147,7 +147,10 @@ actor BurnBarAIInboxService {
             verifierModel: config.verifierModel,
             githubEnabled: config.githubEnabled,
             notifyOnP1: config.notifyOnP1,
-            lookbackMinutes: config.lookbackMinutes
+            lookbackMinutes: config.lookbackMinutes,
+            founderLensEnabled: config.founderLensEnabled,
+            perReplyBudgetUSD: config.perReplyBudgetUSD,
+            maxThreadTurns: config.maxThreadTurns
         )
         try? store.setState(
             BurnBarAIInboxSchema.StateKey.config,
@@ -173,6 +176,90 @@ actor BurnBarAIInboxService {
 
     func item(id: String) throws -> BurnBarInboxItemDetail? {
         try store.item(id: id)
+    }
+
+    // MARK: - Founder Lens: threads + replies
+
+    func thread(fingerprint: String) throws -> BurnBarInboxThread? {
+        try store.thread(fingerprint: fingerprint)
+    }
+
+    func reply(_ request: BurnBarInboxReplyRequest) async -> BurnBarInboxReplyResponse {
+        let config = configuration()
+        let budget = await budgetState(config: config)
+        // Bind the thread to its condition's most recent item so the reply can
+        // quote what the user is actually looking at.
+        let item = try? store.itemDetail(fingerprint: request.fingerprint)
+        let service = BurnBarAIInboxReplyService(
+            store: store,
+            executor: executor,
+            router: router,
+            usageRecorder: usageRecorder,
+            logger: logger
+        )
+        return await service.reply(
+            request: request,
+            config: config,
+            dailyBudget: budget,
+            item: item,
+            now: clock()
+        )
+    }
+
+    // MARK: - Founder Lens: plan ledger
+
+    func plansList(_ request: BurnBarInboxPlansListRequest) throws -> BurnBarInboxPlansListResponse {
+        BurnBarInboxPlansListResponse(plans: try store.plans(statuses: request.statuses, limit: request.limit))
+    }
+
+    func planGet(_ request: BurnBarInboxPlanGetRequest) throws -> BurnBarInboxPlanGetResponse {
+        BurnBarInboxPlanGetResponse(plan: try store.plan(id: request.id))
+    }
+
+    func planAccept(_ request: BurnBarInboxPlanAcceptRequest) throws -> BurnBarInboxPlanAcceptResponse {
+        // The pack decides which judgment voice owns the plan; reject unknowns
+        // rather than storing free text a later prompt would interpolate.
+        guard BurnBarFounderLens.Pack(rawValue: request.pack) != nil else {
+            throw BurnBarAIInboxStoreError.sqlite("Unknown judgment pack: \(request.pack)")
+        }
+        let (plan, step) = try store.acceptPlan(
+            candidate: request.candidate,
+            pack: request.pack,
+            now: clock()
+        )
+        logger.info(
+            "ai_inbox_plan_accepted",
+            metadata: ["plan_id": plan.id, "step_id": step.id]
+        )
+        return BurnBarInboxPlanAcceptResponse(plan: plan, step: step)
+    }
+
+    func planUpdateStep(_ request: BurnBarInboxPlanUpdateStepRequest) throws -> BurnBarInboxPlanUpdateStepResponse {
+        BurnBarInboxPlanUpdateStepResponse(
+            step: try store.updatePlanStep(
+                stepID: request.stepID,
+                status: request.status,
+                missionID: request.missionID,
+                followupID: request.followupID,
+                now: clock()
+            )
+        )
+    }
+
+    func planGrade(_ request: BurnBarInboxPlanGradeRequest) throws -> BurnBarInboxPlanGradeResponse {
+        let (step, average) = try store.gradePlanStep(
+            stepID: request.stepID,
+            grade: request.grade,
+            noteMarkdown: request.noteMarkdown,
+            now: clock()
+        )
+        return BurnBarInboxPlanGradeResponse(step: step, planGradeAverage: average)
+    }
+
+    func memoryExport(_ request: BurnBarInboxMemoryExportRequest) throws -> BurnBarInboxMemoryExportResponse {
+        BurnBarInboxMemoryExportResponse(
+            stored: try store.replaceMemoryExport(entries: request.entries, now: clock())
+        )
     }
 
     func recentRuns(limit: Int) async throws -> BurnBarInboxRunsResponse {
@@ -336,6 +423,13 @@ actor BurnBarAIInboxService {
         var modelProvenance = "local-rules"
         var suppressed: [String] = []
 
+        // Standing commitments: active Founder Plans and approved snippets the
+        // synthesis must build on. Populated from the plan ledger; empty when
+        // the lens is off or nothing is active.
+        let standingCommitments = config.founderLensEnabled
+            ? await standingCommitments(now: now)
+            : []
+
         let budget = await budgetState(config: config)
         if config.egressMode.allowsModelCalls, budget.isExhausted == false, pack.isEmpty == false {
             let analyst = BurnBarAIInboxAnalyst(executor: executor, router: router, logger: logger)
@@ -344,7 +438,8 @@ actor BurnBarAIInboxService {
                     pack: pack,
                     detectorFindings: findings,
                     config: config,
-                    now: now
+                    now: now,
+                    standingCommitments: standingCommitments
                 )
                 calls.append(contentsOf: analysis.calls)
                 briefMarkdown = analysis.briefMarkdown
@@ -381,6 +476,19 @@ actor BurnBarAIInboxService {
             }
         }
 
+        if config.founderLensEnabled {
+            // One primary next move per item, enforced in code (never by the
+            // model), and unverified claims lose theirs. The rule-based brief
+            // mentions standing commitments so the no-model path compounds too.
+            findings = findings.map(BurnBarFounderLens.NextMoveRouter.enforce(finding:))
+            modelProvenance += "+\(BurnBarFounderLens.provenanceStamp)"
+            if standingCommitments.isEmpty == false {
+                let lines = standingCommitments.prefix(3).map { "- \($0.summary)" }
+                briefMarkdown += (briefMarkdown.isEmpty ? "" : "\n\n")
+                    + "**Standing commitments:**\n" + lines.joined(separator: "\n")
+            }
+        }
+
         let publish = await publisher.publish(
             findings: findings,
             briefMarkdown: briefMarkdown,
@@ -393,6 +501,21 @@ actor BurnBarAIInboxService {
             now: now
         )
         return PipelineResult(calls: calls, publish: publish)
+    }
+
+    // MARK: - Standing commitments
+
+    /// Active Founder Plans (and, later, approved memory snippets) rendered as
+    /// context lines for synthesis. Reads the daemon-owned plan ledger; returns
+    /// empty when the ledger has nothing active — the hook itself is always
+    /// safe to call.
+    func standingCommitments(now: Date) async -> [BurnBarFounderLens.StandingCommitment] {
+        do {
+            return try store.standingCommitments(limit: 8, now: now)
+        } catch {
+            logger.warning("ai_inbox_standing_commitments_failed", metadata: ["error": "\(error)"])
+            return []
+        }
     }
 
     // MARK: - Budget

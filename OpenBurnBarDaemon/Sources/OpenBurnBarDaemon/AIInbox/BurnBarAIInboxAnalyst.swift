@@ -55,7 +55,8 @@ struct BurnBarAIInboxAnalyst: Sendable {
         pack: BurnBarAIInboxEvidencePack,
         detectorFindings: [BurnBarAIInboxFinding],
         config: BurnBarInboxConfig,
-        now: Date
+        now: Date,
+        standingCommitments: [BurnBarFounderLens.StandingCommitment] = []
     ) async throws -> BurnBarAIInboxAnalystResult {
         let route = try await router.route(
             modelName: config.analystModel,
@@ -78,7 +79,8 @@ struct BurnBarAIInboxAnalyst: Sendable {
         let userPrompt = BurnBarAIInboxPromptBuilder.analystUserPrompt(
             pack: pack,
             detectorFindings: detectorFindings,
-            now: now
+            now: now,
+            standingCommitments: standingCommitments
         )
 
         var calls: [BurnBarAIInboxModelCall] = []
@@ -87,7 +89,9 @@ struct BurnBarAIInboxAnalyst: Sendable {
 
         for attempt in 0...Self.maxRepairAttempts {
             let request = BurnBarStructuredPromptRequest(
-                systemPrompt: BurnBarAIInboxPromptBuilder.analystSystemPrompt,
+                systemPrompt: BurnBarAIInboxPromptBuilder.analystSystemPrompt(
+                    founderLens: config.founderLensEnabled
+                ),
                 userPrompt: attempt == 0 ? userPrompt : Self.repairPrompt(original: userPrompt, error: lastError),
                 jsonOnly: true
             )

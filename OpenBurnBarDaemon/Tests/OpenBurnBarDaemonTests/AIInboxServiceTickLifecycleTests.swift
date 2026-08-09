@@ -226,7 +226,10 @@ final class AIInboxServiceTickLifecycleTests: XCTestCase {
         XCTAssertNil(run.error)
 
         let briefItem = try XCTUnwrap(try assertionStore.openItems().first { $0.kind == .brief })
-        XCTAssertEqual(briefItem.modelProvenance, "local-rules")
+        // The Founder Lens (on by default) stamps its version even on the
+        // rule-based path — the router and standing-commitments hook shaped
+        // the output, and provenance says so.
+        XCTAssertEqual(briefItem.modelProvenance, "local-rules+lens:v1")
     }
 
     func test_exhaustedBudgetSkipsModelCallsAndFilesABudgetItem() async throws {

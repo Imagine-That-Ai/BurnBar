@@ -506,6 +506,18 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
     public let notifyOnP1: Bool
     /// Conversation lookback for the evidence pack.
     public let lookbackMinutes: Int
+    /// Founder Lens: the judgment/voice layer plus reply threads and the plan
+    /// ledger surface. On by default — the lens is the product's voice, and it
+    /// only *shapes* synthesis; it cannot spend money or write memory on its
+    /// own (egress, budget, and approval gates are all upstream of it).
+    public let founderLensEnabled: Bool
+    /// Hard per-reply spend ceiling for dialogue turns (loophole L5). A reply
+    /// whose route would exceed this is refused before any bytes leave the
+    /// machine. Separate from `dailyBudgetUSD`, which still applies on top.
+    public let perReplyBudgetUSD: Double
+    /// Cap on stored turns per thread; older turns fall out of the prompt
+    /// window (they remain in the table for the UI).
+    public let maxThreadTurns: Int
 
     public init(
         enabled: Bool = false,
@@ -521,7 +533,10 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
         verifierModel: String = "gpt-5.6-luna",
         githubEnabled: Bool = true,
         notifyOnP1: Bool = true,
-        lookbackMinutes: Int = 120
+        lookbackMinutes: Int = 120,
+        founderLensEnabled: Bool = true,
+        perReplyBudgetUSD: Double = 0.10,
+        maxThreadTurns: Int = 40
     ) {
         self.enabled = enabled
         self.egressMode = egressMode
@@ -537,6 +552,9 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
         self.githubEnabled = githubEnabled
         self.notifyOnP1 = notifyOnP1
         self.lookbackMinutes = min(max(15, lookbackMinutes), 24 * 60)
+        self.founderLensEnabled = founderLensEnabled
+        self.perReplyBudgetUSD = min(max(0, perReplyBudgetUSD), 5)
+        self.maxThreadTurns = min(max(2, maxThreadTurns), 200)
     }
 
     /// Decodes with per-field defaults so a config written by an older daemon
@@ -567,7 +585,13 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
             githubEnabled: try container.decodeIfPresent(Bool.self, forKey: .githubEnabled) ?? fallback.githubEnabled,
             notifyOnP1: try container.decodeIfPresent(Bool.self, forKey: .notifyOnP1) ?? fallback.notifyOnP1,
             lookbackMinutes: try container.decodeIfPresent(Int.self, forKey: .lookbackMinutes)
-                ?? fallback.lookbackMinutes
+                ?? fallback.lookbackMinutes,
+            founderLensEnabled: try container.decodeIfPresent(Bool.self, forKey: .founderLensEnabled)
+                ?? fallback.founderLensEnabled,
+            perReplyBudgetUSD: try container.decodeIfPresent(Double.self, forKey: .perReplyBudgetUSD)
+                ?? fallback.perReplyBudgetUSD,
+            maxThreadTurns: try container.decodeIfPresent(Int.self, forKey: .maxThreadTurns)
+                ?? fallback.maxThreadTurns
         )
     }
 }
