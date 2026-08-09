@@ -118,6 +118,7 @@ export function KernelSwitcher({ kernelId, onKernelChange, className }: Props) {
         ref={triggerRef}
         type="button"
         className="kernel-switcher-trigger"
+        data-testid="kernel-switcher-trigger"
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
@@ -141,6 +142,7 @@ export function KernelSwitcher({ kernelId, onKernelChange, className }: Props) {
         <div
           id={listId}
           className="kernel-switcher-panel"
+          data-testid="kernel-switcher-panel"
           role="listbox"
           aria-label="Backdrop kernel"
           tabIndex={-1}

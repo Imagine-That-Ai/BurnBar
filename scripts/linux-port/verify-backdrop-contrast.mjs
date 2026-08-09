@@ -4,6 +4,15 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  BACKDROP_CANVAS_SELECTOR,
+  BACKDROP_CSS_SELECTOR,
+  DEFAULT_READINESS_TIMEOUT_MS,
+  KERNEL_SWITCHER_PANEL_SELECTOR,
+  KERNEL_SWITCHER_TRIGGER_SELECTOR,
+  SHELL_READY_SELECTOR,
+  withReadinessRetry,
+} from "./lib/shell-readiness.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const require = createRequire(join(root, "apps/linux-desktop/package.json"));
@@ -56,13 +65,28 @@ async function preparePage(browser, skin, viewport) {
       runtimeCapabilities: null,
     });
   });
-  await page.waitForSelector(".kernel-backdrop[data-backdrop-mode='canvas']");
+  // Wait for the shell's own readiness contract before touching any control:
+  // the canvas backdrop must be live AND the shell must have published a
+  // readability profile. Only then is the kernel switcher trigger reliably
+  // interactable — polling `.kernel-switcher-trigger` directly used to time
+  // out on slow boots before the chrome mounted.
+  await page.waitForSelector(BACKDROP_CANVAS_SELECTOR, { timeout: DEFAULT_READINESS_TIMEOUT_MS });
+  await page.waitForSelector(SHELL_READY_SELECTOR, { timeout: DEFAULT_READINESS_TIMEOUT_MS });
+  await page.waitForSelector(KERNEL_SWITCHER_TRIGGER_SELECTOR, { timeout: DEFAULT_READINESS_TIMEOUT_MS });
   await page.waitForTimeout(650);
   return page;
 }
 
+async function openKernelPanel(page) {
+  await page.locator(KERNEL_SWITCHER_TRIGGER_SELECTOR).click();
+  await page.waitForSelector(KERNEL_SWITCHER_PANEL_SELECTOR, { timeout: DEFAULT_READINESS_TIMEOUT_MS });
+}
+
 async function kernelIds(page) {
-  await page.locator(".kernel-switcher-trigger").click();
+  const { recovered } = await withReadinessRetry(async () => {
+    await openKernelPanel(page);
+  }, { onRetry: async () => page.keyboard.press("Escape") });
+  if (recovered) recoveries.push("kernel-panel:open");
   const ids = await page.locator("[data-kernel-id]").evaluateAll((nodes) =>
     nodes.map((node) => node.getAttribute("data-kernel-id")).filter(Boolean),
   );
@@ -71,12 +95,16 @@ async function kernelIds(page) {
 }
 
 async function selectKernel(page, id) {
-  await page.locator(".kernel-switcher-trigger").click();
-  await page.locator(`[data-kernel-id='${id}']`).evaluate((element) => element.click());
-  await page.waitForFunction(
-    (kernelId) => document.querySelector(".kernel-backdrop")?.getAttribute("data-kernel") === kernelId,
-    id,
-  );
+  const { recovered } = await withReadinessRetry(async () => {
+    await openKernelPanel(page);
+    await page.locator(`[data-kernel-id='${id}']`).evaluate((element) => element.click());
+    await page.waitForFunction(
+      (kernelId) => document.querySelector(".kernel-backdrop")?.getAttribute("data-kernel") === kernelId,
+      id,
+      { timeout: DEFAULT_READINESS_TIMEOUT_MS },
+    );
+  }, { onRetry: async () => page.keyboard.press("Escape") });
+  if (recovered) recoveries.push(`kernel-select:${id}`);
 }
 
 await mkdir(evidenceDir, { recursive: true });
@@ -85,6 +113,7 @@ const results = [];
 const screenshots = [];
 const interactionStates = [];
 const consoleErrors = [];
+const recoveries = [];
 
 try {
   for (const skin of skins) {
@@ -123,7 +152,7 @@ try {
     if (skin === "aurora") {
       await selectKernel(page, "mesh");
       await page.waitForTimeout(1_250);
-      await page.locator(".kernel-switcher-trigger").click();
+      await openKernelPanel(page);
       const focusedOption = page.locator("[data-kernel-id='retro-plasma']");
       await focusedOption.hover();
       await focusedOption.focus();
@@ -158,7 +187,8 @@ try {
     localStorage.setItem("openburnbar.linux.backdrop.mode.v1", "css");
   });
   await fallback.goto(baseURL, { waitUntil: "networkidle" });
-  await fallback.waitForSelector(".kernel-backdrop[data-backdrop-mode='css']");
+  await fallback.waitForSelector(BACKDROP_CSS_SELECTOR, { timeout: DEFAULT_READINESS_TIMEOUT_MS });
+  await fallback.waitForSelector(SHELL_READY_SELECTOR, { timeout: DEFAULT_READINESS_TIMEOUT_MS });
   const fallbackRaw = await fallback.locator(".shell").getAttribute("data-readability");
   const fallbackProfile = parseDiagnostic(fallbackRaw ?? "");
   if (fallbackProfile.source !== "css-fallback" || fallbackProfile.contrastRatio < 4.5) {
@@ -188,6 +218,7 @@ try {
     screenshots,
     interactionStates,
     consoleErrors,
+    recoveries,
     passed: consoleErrors.length === 0,
   };
   await writeFile(join(evidenceDir, "contrast-audit.json"), `${JSON.stringify(report, null, 2)}\n`);
