@@ -7,11 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.31] - 2026-08-09
+
 ### Changed - Menu bar popover liquid glass redesign
 
 - Rebuilt the macOS menu bar popover for clearer burn/quota reading in light and
   dark Liquid Glass: stronger header copy, single primary quota bars with
   percent-left and resets-in lines, and tighter tray chrome contrast.
+
+### Fixed - Release cut continuity
+
+- Cut `1.0.31` because repository rules forbid deleting the existing `v1.0.30`
+  tag after the first release attempt failed preflight. This build includes the
+  liquid-glass popover and the publishable-tree Lob false-positive filter.
+
+- Bumped Google Play `versionCode` to `43` with `versionName` `1.0.31`, and Mac
+  `CURRENT_PROJECT_VERSION` to `73`.
 
 ## [1.0.30] - 2026-08-08
 

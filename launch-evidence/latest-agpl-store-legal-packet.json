@@ -8,7 +8,7 @@
     "ownerRepo": "Imagine-That-Ai/BurnBar",
     "branch": "codex/shared-rust-domain-final-v3",
     "originMain": "3c8de9f230149faf27a739afc9cfcc7b610998a6",
-    "releaseTag": "v1.0.30"
+    "releaseTag": "v1.0.31"
   },
   "purpose": "Owner-attested emergency release evidence for the v1.0.30 public release boundary. The release must be cut from protected main only after the shared-Rust candidate at f10b3f26963ebaf8157325ae8cd00bb1f387c411 passes its exact-head gates and merges; this packet does not authorize release from the open PR branch.",
   "ownerAttestation": {
