@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "status": "passed",
-  "generatedAt": "2026-08-09T18:36:46Z",
+  "generatedAt": "2026-08-09T18:37:05Z",
   "privacy": "proof_only_no_plaintext_keys_or_user_data",
   "candidateReleaseTag": "v1.0.33",
-  "testedSourceCommit": "ff1f050ca28df1a3c125c7fd2761c2f8cc240cad",
+  "testedSourceCommit": "15f5b552ab5b96dc9f40f18174ac717af4534f21",
   "artifactDigests": [
     {
       "path": "OpenBurnBarCore/Package.swift",

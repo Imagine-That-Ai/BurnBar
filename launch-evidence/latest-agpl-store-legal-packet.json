@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-09T18:36:46Z",
+  "generatedAt": "2026-08-09T18:37:05Z",
   "status": "owner_attested_soft_approval",
   "reviewStatus": "owner_attested_soft_approval",
   "repo": {
     "remote": "origin",
     "ownerRepo": "Imagine-That-Ai/BurnBar",
     "branch": "main",
-    "originMain": "ff1f050ca28df1a3c125c7fd2761c2f8cc240cad",
+    "originMain": "15f5b552ab5b96dc9f40f18174ac717af4534f21",
     "releaseTag": "v1.0.33"
   },
   "purpose": "Owner-attested emergency release evidence for the v1.0.33 public release boundary. This cut unblocks OpenBurnBar Release after v1.0.32 Preflight passed but the Shared Rust native release candidate verify failed because Actions artifacts for activated candidate 99ba1f66 expired under org retention. The gate now hydrates attested committed promotion evidence. The release must be cut from protected main only.",
@@ -15,7 +15,7 @@
     "ownerName": "Alberto Nunez",
     "ownerGitHub": "Ajnunezg",
     "ownerRole": "release_owner",
-    "attestedAt": "2026-08-09T18:36:46Z",
+    "attestedAt": "2026-08-09T18:37:05Z",
     "counselName": "Heather Meeker",
     "approvalType": "soft_approval",
     "emergencyReason": "Publish the v1.0.33 three-platform release train after v1.0.32 Release failed Shared Rust verify on expired Actions artifacts; immutable tags cannot be rewritten.",
