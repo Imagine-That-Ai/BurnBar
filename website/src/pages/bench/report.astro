@@ -19,6 +19,8 @@ import {
   reportModels,
   reportTasks,
   reportStats,
+  reportCoverage,
+  noopStats,
   fmtPct,
   fmtCost,
   fmtWall,
@@ -38,6 +40,12 @@ const matrix = reportMatrix();
 const models = reportModels();
 const tasks = reportTasks();
 const prime = stats.prime;
+
+/* Suite-coverage + run-integrity disclosures. Both no-op against exports that
+   predate the coverage block / per-cell noop_runs — sections hide until the
+   regenerated evidence.json lands them. */
+const noop = noopStats();
+const coverage = reportCoverage();
 
 const params = EVIDENCE.params as {
   ci?: string;
@@ -884,6 +892,18 @@ const SECTION_NAV: [string, string][] = [
         </article>
 
         <article class="bb-methcard">
+          <h3>How medians are computed.</h3>
+          <p>
+            <code>wall_seconds_median</code>, <code>cost_usd_median</code>, and
+            <code>tokens_median</code> are
+            <strong>n-weighted medians of per-task medians</strong> (<code>params.scope_medians</code>):
+            each task contributes its own median, weighted by its trial count, so the mix of
+            fast and slow tasks doesn't drag the number. A pooled run-level median will differ —
+            pi × GLM 5.2 shows 43.9s task-weighted against 52.7s pooled.
+          </p>
+        </article>
+
+        <article class="bb-methcard">
           <h3>Cost &amp; speed.</h3>
           <p>
             <code>cost_usd_median</code> is the median per-task dollar cost at configured list
@@ -903,7 +923,129 @@ const SECTION_NAV: [string, string][] = [
             that almost ships is priced honestly against an expensive one that does.
           </p>
         </article>
+
+        <article class="bb-methcard">
+          <h3>Run integrity.</h3>
+          <ul>
+            <li>
+              <strong>Timeouts.</strong> Every task runs against a per-task wall cap; timed-out
+              runs count as failures and stay in the wall medians — a median is robust to them.
+            </li>
+            <li>
+              <strong>No-op runs.</strong> A run whose final diff touches only harness
+              scaffolding — zero source edits — is a no-op, counted as a failure and flagged
+              wherever its cell surfaces.
+              {noop && noop.runs > 0 && (
+                <>
+                  {" "}
+                  {fmtInt(noop.runs)} {noop.runs === 1 ? "run" : "runs"} across {noop.cells}
+                  {noop.cells === 1 ? "cell" : "cells"} ended with no source edits — counted as
+                  failures, flagged for transparency.
+                </>
+              )}
+            </li>
+            <li>
+              <strong>Token accounting.</strong> 2026-08-08: fixed an opencode step-usage parser
+              that could undercount output tokens; two historical runs were repaired from event
+              logs. Published token medians use <code>task_total_tokens</code> and were
+              unaffected.
+            </li>
+          </ul>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Reasoning effort parity.</h3>
+          <p>
+            Every run requested reasoning effort <code>high</code>. Delivery differs by harness:
+            claude, pi, omp, and prime-agent carry an explicit flag; the others reach it through
+            config or alias; opencode had no explicit delivery path in this run set and is
+            flagged for rerun. Treat cross-harness effort as a known limitation of this export.
+          </p>
+        </article>
       </div>
+
+      {
+        /* Suite coverage + excluded tasks — render only once the export ships
+           its coverage block; older exports hide the whole block cleanly. */
+        coverage && (
+          <div class="bb-cov">
+            <article class="bb-methcard">
+              <h3>Suite coverage.</h3>
+              <p>
+                Each model's measured task set, from the export's <code>coverage</code> block.
+                {coverage.commonCount > 0 &&
+                  `${coverage.commonCount} tasks are common to all ${coverage.models.length} models — the like-for-like comparison scope.`}
+                Harness gaps list tasks the model ran on other harnesses but not that one.
+              </p>
+              <div class="bb-cov__wrap">
+                <table class="bb-data bb-cov__table">
+                  <thead>
+                    <tr>
+                      <th scope="col">model</th>
+                      <th scope="col">tasks</th>
+                      <th scope="col">families</th>
+                      <th scope="col">harness gaps</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {coverage.models.map((m) => (
+                      <tr>
+                        <td class={`d-model m--${mcls(m.id)}`}>{modelDisplay(m.id)}</td>
+                        <td>{m.tasks}</td>
+                        <td class="d-sub bb-cov__fams">{m.families.join(", ")}</td>
+                        <td class="d-sub bb-cov__gaps">
+                          {m.gaps.length === 0
+                            ? "none"
+                            : m.gaps
+                                .map(
+                                  (g) =>
+                                    `${harnessDisplay(g.harness)} missing ${g.missing.join(", ")}`
+                                )
+                                .join(" · ")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {coverage.minTasks !== coverage.maxTasks && (
+                <p class="bb-note bb-cov__note">
+                  <strong>Cross-model overall rates pool different suites.</strong>
+                  {`${coverage.maxModels.map(modelDisplay).join(" and ")} ran ${coverage.maxTasks} tasks${coverage.extraFamilies.length > 0 ? ` (families incl. ${coverage.extraFamilies.join("/")})` : ""}; ${coverage.minModels.map(modelDisplay).join(" and ")} ran the ${coverage.minTasks}-task systems suite. Use the`}
+                  <strong>Systems family</strong>
+                  {`scope — common to all ${coverage.models.length} models — for apples-to-apples model comparison.`}
+                </p>
+              )}
+            </article>
+
+            {coverage.excluded.length > 0 && (
+              <article class="bb-methcard">
+                <h3>Excluded tasks.</h3>
+                <div class="bb-cov__wrap">
+                  <table class="bb-data bb-cov__table bb-cov__table--excl">
+                    <thead>
+                      <tr>
+                        <th scope="col">task</th>
+                        <th scope="col">reason</th>
+                        <th scope="col">disposition</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {coverage.excluded.map((x) => (
+                        <tr>
+                          <td>{x.task}</td>
+                          <td class="d-sub bb-cov__reason">{x.reason}</td>
+                          <td class="d-sub">excluded from rates, retained in coverage</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+            )}
+          </div>
+        )
+      }
 
       <p class="bb-note bb-note--spaced">
         <strong>The pipeline's self-contained report.</strong> The BurnBench pipeline also emits a

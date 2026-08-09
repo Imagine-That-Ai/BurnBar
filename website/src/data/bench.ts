@@ -322,7 +322,15 @@ export function modelStat(modelId: string): ModelStat | undefined {
       strongestFamily = { family: fam, rate: best.solution_rate };
     }
   }
-  return { model, meanSolution, meanStrict, bestStack, medianCost, strongestFamily, cells: cells.length };
+  return {
+    model,
+    meanSolution,
+    meanStrict,
+    bestStack,
+    medianCost,
+    strongestFamily,
+    cells: cells.length
+  };
 }
 
 export function modelDisplay(id: string): string {
@@ -372,9 +380,7 @@ function niceCeilRate(v: number): number {
 }
 
 export function paretoDomain(stacks: BenchStack[]): ParetoDomain {
-  const costs = stacks
-    .map((s) => s.cost_usd_median)
-    .filter((c): c is number => c != null);
+  const costs = stacks.map((s) => s.cost_usd_median).filter((c): c is number => c != null);
   const positive = costs.filter((c) => c > 0);
   const rates = stacks.map((s) => s.solution_rate);
 
@@ -468,7 +474,13 @@ export function benchKpis(): BenchKpis {
  */
 export interface ModelLens {
   model: BenchModel;
-  cells: { harness: string; rate: number; strict: number; cost: number | null; confidence: BenchConfidence }[];
+  cells: {
+    harness: string;
+    rate: number;
+    strict: number;
+    cost: number | null;
+    confidence: BenchConfidence;
+  }[];
   min: number;
   max: number;
   mean: number;
@@ -517,6 +529,8 @@ export interface HeatCell {
   wall: number | null;
   tokens: number | null;
   n: number;
+  /** No-op runs (zero source edits) aggregated over the slice's task cells. */
+  noop: number;
   confidence: BenchConfidence | null;
 }
 
@@ -540,13 +554,30 @@ export function familyHeat(): { families: string[]; rows: HeatRow[]; domains: He
       byKey.set(`${s.harness}|${s.model}|${s.scope.family}`, s);
     }
   }
+  // No-op runs aggregate per (stack, family) from the evidence cells — the
+  // heat detail surfaces them once the export ships per-cell noop_runs.
+  const noopByKey = new Map<string, number>();
+  for (const c of EVIDENCE_CELLS) {
+    if (!c.noop_runs) continue;
+    const key = `${c.harness}|${c.model}|${c.family}`;
+    noopByKey.set(key, (noopByKey.get(key) ?? 0) + c.noop_runs);
+  }
   const rows: HeatRow[] = RANKED_STACKS.map((stack) => ({
     harness: stack.harness,
     model: stack.model,
     cells: FAMILIES.map((fam) => {
       const slice = byKey.get(`${stack.harness}|${stack.model}|${fam}`);
       if (!slice || slice.n === 0) {
-        return { rate: null, strict: null, cost: null, wall: null, tokens: null, n: 0, confidence: null };
+        return {
+          rate: null,
+          strict: null,
+          cost: null,
+          wall: null,
+          tokens: null,
+          n: 0,
+          noop: 0,
+          confidence: null
+        };
       }
       return {
         rate: slice.solution_rate,
@@ -555,6 +586,7 @@ export function familyHeat(): { families: string[]; rows: HeatRow[]; domains: He
         wall: slice.wall_seconds_median,
         tokens: slice.tokens_median,
         n: slice.n,
+        noop: noopByKey.get(`${stack.harness}|${stack.model}|${fam}`) ?? 0,
         confidence: slice.confidence
       };
     })
@@ -604,7 +636,9 @@ export function costSegments(s: BenchStack): { input: number; output: number } |
 }
 
 /** Min-max normalizer over the stacks that carry a value for `pick`. */
-export function normalizer(pick: (s: BenchStack) => number | null): (s: BenchStack) => number | null {
+export function normalizer(
+  pick: (s: BenchStack) => number | null
+): (s: BenchStack) => number | null {
   const vals = RANKED_STACKS.map(pick).filter((v): v is number => v != null);
   const lo = Math.min(...vals);
   const hi = Math.max(...vals);
@@ -670,6 +704,9 @@ export function dashboardDataset(): unknown {
     generated: BENCH.generated_at_utc,
     byLanguage: scopeMeans("language"),
     byPlatform: scopeMeans("platform"),
+    // Per-model suite sizes — the client flags cross-model comparisons when
+    // the measured task sets differ (coverage block, else evidence cells).
+    modelTasks: Object.fromEntries(BENCH.models.map((m) => [m.id, modelTaskCount(m.id)])),
     stacks: RANKED_STACKS.map((s) => ({
       h: s.harness,
       m: s.model,
@@ -692,6 +729,9 @@ export function dashboardDataset(): unknown {
       wall: s.wall_seconds_median,
       tok: s.tokens_median,
       n: s.n,
+      nt: stackTaskCount(s.harness, s.model),
+      // Absent when zero so older-shaped rows and clean stacks stay lean.
+      no: stackNoopRuns(s.harness, s.model) || undefined,
       conf: s.confidence,
       ev: s.evidence
     })),
@@ -700,7 +740,11 @@ export function dashboardDataset(): unknown {
     heat: heat.rows.map((r) => ({
       h: r.harness,
       m: r.model,
-      cells: r.cells.map((c) => (c.rate == null ? null : { r: c.rate, s: c.strict, c: c.cost, w: c.wall, t: c.tokens, n: c.n }))
+      cells: r.cells.map((c) =>
+        c.rate == null
+          ? null
+          : { r: c.rate, s: c.strict, c: c.cost, w: c.wall, t: c.tokens, n: c.n }
+      )
     }))
   };
 }
@@ -745,8 +789,31 @@ export interface EvidenceCell {
   cost_output_usd_median: number | null;
   wall_seconds_median: number | null;
   tokens_median: number | null;
+  /** Runs that ended with zero source edits (diff touched only harness
+      scaffolding). Optional — shipped by newer exports; counted as failures. */
+  noop_runs?: number;
   confidence: BenchConfidence;
   evidence: BenchEvidence;
+}
+
+/** coverage.excluded_tasks entry — a task pulled from rates, with the reason. */
+export interface CoverageExcludedTask {
+  task: string;
+  reason: string;
+}
+
+/** coverage.models entry — one model's measured task set, per-harness splits. */
+export interface CoverageModel {
+  tasks: string[];
+  common_tasks: string[];
+  harnesses: Record<string, string[]>;
+}
+
+/** Top-level coverage block — present only in exports that ship suite coverage. */
+export interface CoverageBlock {
+  excluded_tasks: CoverageExcludedTask[];
+  models: Record<string, CoverageModel>;
+  common_tasks_all_models: string[];
 }
 
 export interface EvidenceDoc {
@@ -759,6 +826,7 @@ export interface EvidenceDoc {
   tasks: Record<string, EvidenceTaskMeta>;
   global: { n: number; solution_rate: number; strict_rate: number };
   cells: EvidenceCell[];
+  coverage?: CoverageBlock;
 }
 
 const evidenceRaw = readFileSync(join(process.cwd(), "public", "data", "evidence.json"), "utf8");
@@ -770,6 +838,171 @@ export const EVIDENCE_CELLS: EvidenceCell[] = EVIDENCE.cells;
 /** Trials in a cell that strict failed but the abandoned workspace passed. */
 export function flipTrials(cell: EvidenceCell): number {
   return Math.max(0, cell.solution_passes - cell.strict_passes);
+}
+
+/* ---------- suite coverage (coverage block, evidence-cell fallback) ---------- */
+
+/**
+ * Tasks one model ran — the export's coverage block when it ships, else the
+ * distinct tasks across the model's evidence cells. Sorted for stable output.
+ */
+export function modelTasks(modelId: string): string[] {
+  const cov = EVIDENCE.coverage?.models?.[modelId]?.tasks;
+  if (Array.isArray(cov) && cov.length > 0) {
+    return [...new Set(cov.filter((t): t is string => typeof t === "string"))].sort();
+  }
+  return [...new Set(EVIDENCE_CELLS.filter((c) => c.model === modelId).map((c) => c.task))].sort();
+}
+
+export function modelTaskCount(modelId: string): number {
+  return modelTasks(modelId).length;
+}
+
+/**
+ * Tasks one stack (harness × model) ran — the coverage block's per-harness
+ * list when present, else the distinct tasks across the pair's evidence cells.
+ */
+export function stackTasks(harness: string, model: string): string[] {
+  const cov = EVIDENCE.coverage?.models?.[model]?.harnesses?.[harness];
+  if (Array.isArray(cov) && cov.length > 0) {
+    return [...new Set(cov.filter((t): t is string => typeof t === "string"))].sort();
+  }
+  return [
+    ...new Set(
+      EVIDENCE_CELLS.filter((c) => c.harness === harness && c.model === model).map((c) => c.task)
+    )
+  ].sort();
+}
+
+export function stackTaskCount(harness: string, model: string): number {
+  return stackTasks(harness, model).length;
+}
+
+/** No-op runs (zero source edits) across one stack's task cells. */
+export function stackNoopRuns(harness: string, model: string): number {
+  let runs = 0;
+  for (const c of EVIDENCE_CELLS) {
+    if (c.harness === harness && c.model === model) runs += c.noop_runs ?? 0;
+  }
+  return runs;
+}
+
+/**
+ * Export-wide no-op totals — null until any cell ships the noop_runs field,
+ * so disclosures can hide cleanly against older exports.
+ */
+export function noopStats(): { runs: number; cells: number } | null {
+  let seen = false;
+  let runs = 0;
+  let cells = 0;
+  for (const c of EVIDENCE_CELLS) {
+    if (c.noop_runs == null) continue;
+    seen = true;
+    if (c.noop_runs > 0) {
+      runs += c.noop_runs;
+      cells += 1;
+    }
+  }
+  return seen ? { runs, cells } : null;
+}
+
+/* ---------- report: suite-coverage view model ---------- */
+
+export interface CoverageModelGap {
+  harness: string;
+  missing: string[];
+}
+
+export interface CoverageModelView {
+  id: string;
+  tasks: number;
+  families: string[];
+  /** Harnesses that ran a subset of this model's tasks, most gaps first. */
+  gaps: CoverageModelGap[];
+}
+
+export interface CoverageView {
+  models: CoverageModelView[];
+  commonCount: number;
+  excluded: CoverageExcludedTask[];
+  minTasks: number;
+  maxTasks: number;
+  /** Model ids on the largest / smallest suite (the caveat's protagonists). */
+  maxModels: string[];
+  minModels: string[];
+  /** Families the largest suite covers beyond the smallest ("families incl. …"). */
+  extraFamilies: string[];
+}
+
+/**
+ * The report's "Suite coverage" block — null when the export predates the
+ * coverage block, so the section hides cleanly until regeneration lands it.
+ */
+export function reportCoverage(): CoverageView | null {
+  const cov = EVIDENCE.coverage;
+  if (!cov || typeof cov !== "object" || !cov.models || typeof cov.models !== "object") {
+    return null;
+  }
+  const models: CoverageModelView[] = [];
+  const taskSets = new Map<string, Set<string>>();
+  for (const m of EVIDENCE.models) {
+    const cm = cov.models[m.id];
+    if (!cm || !Array.isArray(cm.tasks) || cm.tasks.length === 0) continue;
+    const tasks = [...new Set(cm.tasks.filter((t): t is string => typeof t === "string"))].sort();
+    taskSets.set(m.id, new Set(tasks));
+    const families = [
+      ...new Set(
+        tasks
+          .map((t) => EVIDENCE.tasks[t]?.family)
+          .filter((f): f is string => typeof f === "string" && f.length > 0)
+      )
+    ].sort();
+    const gaps: CoverageModelGap[] = [];
+    if (cm.harnesses && typeof cm.harnesses === "object") {
+      for (const [harness, hTasks] of Object.entries(cm.harnesses)) {
+        if (!Array.isArray(hTasks)) continue;
+        const ran = new Set(hTasks);
+        const missing = tasks.filter((t) => !ran.has(t));
+        if (missing.length > 0) gaps.push({ harness, missing });
+      }
+    }
+    gaps.sort((a, b) => b.missing.length - a.missing.length || a.harness.localeCompare(b.harness));
+    models.push({ id: m.id, tasks: tasks.length, families, gaps });
+  }
+  if (models.length === 0) return null;
+  const counts = models.map((m) => m.tasks);
+  const minTasks = Math.min(...counts);
+  const maxTasks = Math.max(...counts);
+  const maxModels = models.filter((m) => m.tasks === maxTasks).map((m) => m.id);
+  const minModels = models.filter((m) => m.tasks === minTasks).map((m) => m.id);
+  const extraFamilies: string[] = [];
+  const bigSet = taskSets.get(maxModels[0] ?? "");
+  const smallSet = taskSets.get(minModels[0] ?? "");
+  if (bigSet && smallSet && maxTasks !== minTasks) {
+    const fams = new Set<string>();
+    for (const t of bigSet) {
+      if (smallSet.has(t)) continue;
+      const f = EVIDENCE.tasks[t]?.family;
+      if (f) fams.add(f);
+    }
+    extraFamilies.push(...[...fams].sort());
+  }
+  return {
+    models,
+    commonCount: Array.isArray(cov.common_tasks_all_models)
+      ? cov.common_tasks_all_models.length
+      : 0,
+    excluded: Array.isArray(cov.excluded_tasks)
+      ? cov.excluded_tasks.filter(
+          (e): e is CoverageExcludedTask => !!e && typeof e.task === "string"
+        )
+      : [],
+    minTasks,
+    maxTasks,
+    maxModels,
+    minModels,
+    extraFamilies
+  };
 }
 
 /* ---------- report view-models ---------- */
@@ -890,7 +1123,9 @@ export function reportModels(): ReportModel[] {
       strict: n > 0 ? stp / n : 0,
       flips,
       medianCost: stat?.medianCost ?? null,
-      bestHarness: bestCell ? { harness: bestCell.harness, rate: bestCell.solution_rate } : undefined,
+      bestHarness: bestCell
+        ? { harness: bestCell.harness, rate: bestCell.solution_rate }
+        : undefined,
       strongestFamily: stat?.strongestFamily
     });
   }
@@ -1057,6 +1292,8 @@ export function reportDataset(): unknown {
  * Slim projection for /data/bench-cells.json — the cell explorer's dataset.
  * Ids are table indices; rates ship as integer pass counts (never rounded
  * floats) so the client filters exactly. Costs rounded to 1e-4, wall to 0.1s.
+ * Row: [h, m, t, n, solutionPasses, strictPasses, cost, wall, tokens, noopRuns]
+ * — noopRuns is 0 until the export ships per-cell noop_runs.
  */
 export function cellsDataset(): unknown {
   const harnessIds = [...new Set(EVIDENCE_CELLS.map((c) => c.harness))].sort();
@@ -1089,7 +1326,8 @@ export function cellsDataset(): unknown {
       c.strict_passes,
       round(c.cost_usd_median, 4),
       round(c.wall_seconds_median, 1),
-      c.tokens_median == null ? null : Math.round(c.tokens_median)
+      c.tokens_median == null ? null : Math.round(c.tokens_median),
+      c.noop_runs ?? 0
     ])
   };
 }
@@ -1122,8 +1360,18 @@ export const fmtInt = (v: number): string => v.toLocaleString("en-US");
 /** "2026-08-08T20:30:54Z" → "Aug 8, 2026 · 20:30 UTC" (deterministic, no locale drift). */
 export function fmtGeneratedAt(iso: string): string {
   const MONTHS = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec"
   ];
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso);
   if (!m) return iso;

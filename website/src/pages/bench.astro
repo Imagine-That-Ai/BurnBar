@@ -22,6 +22,8 @@ import {
   familyHeat,
   heatBucket,
   modelDisplayShort,
+  stackTaskCount,
+  modelTaskCount,
   fmtPct,
   fmtCost,
   fmtInt,
@@ -86,6 +88,13 @@ const lensHi = Math.min(1, Math.ceil((Math.max(...lensRates) + 0.01) * 20) / 20)
 const lensX = (rate: number): number => ((rate - lensLo) / (lensHi - lensLo)) * 100;
 const lensTicks: number[] = [];
 for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t * 100) / 100);
+
+/* Suite-coverage guardrail: overall rates pool different task suites when
+   models ran different task sets — disclose it wherever models are compared. */
+const suiteCounts = BENCH.models.map((m) => modelTaskCount(m.id));
+const suiteMin = suiteCounts.length > 0 ? Math.min(...suiteCounts) : 0;
+const suiteMax = suiteCounts.length > 0 ? Math.max(...suiteCounts) : 0;
+const suitesDiffer = suiteCounts.length > 1 && suiteMin !== suiteMax;
 ---
 
 <BaseLayout
@@ -209,6 +218,7 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
             const hLogo = HARNESS_LOGO[s.harness] ?? null;
             const mLogo = MODEL_LOGO[s.model] ?? null;
             const first = i === 0;
+            const ntasks = stackTaskCount(s.harness, s.model);
             return (
               <li class="lb-group">
                 <div
@@ -255,7 +265,7 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
                       {harnessDisplay(s.harness)} × {modelDisplayShort(s.model)}
                     </strong>
                     <span class="lb-sub" data-role="subline">
-                      strict {fmtPct(s.strict_rate)} · n {s.n} · {fmtCost(s.cost_usd_median)}/task
+                      {`strict ${fmtPct(s.strict_rate)} · n ${s.n}${ntasks > 0 ? ` · ${ntasks} tasks` : ""} · ${fmtCost(s.cost_usd_median)}/task`}
                       {s.cost_standard_usd_median != null && (
                         <span
                           class="lb-std"
@@ -496,6 +506,19 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
             >All {BENCH.harnesses.length} harnesses · mean &amp; spread below</span
           >
         </div>
+
+        {
+          suitesDiffer && (
+            <p
+              class="bb-suitewarn"
+              role="note"
+              title={`Overall rates pool different task suites per model; the Systems family is common to all ${BENCH.models.length}`}
+            >
+              Suites differ ({suiteMin} vs {suiteMax} tasks) — compare within the Systems family for
+              like-for-like.
+            </p>
+          )
+        }
 
         <div class="bb-lens__board">
           <div class="bb-lens__axisbar" aria-hidden="true">
@@ -764,6 +787,7 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
                         data-wall={cell.wall ?? ""}
                         data-tokens={cell.tokens ?? ""}
                         data-n={cell.n}
+                        data-noop={cell.noop > 0 ? cell.noop : ""}
                         data-emptyfam={
                           emptyFams.includes(heat.families[ci] ?? "") ? "true" : undefined
                         }

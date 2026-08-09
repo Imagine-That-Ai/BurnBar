@@ -62,7 +62,8 @@ function initMatrix(): void {
       const val = cell.querySelector("[data-mx-val]");
       const sub = cell.querySelector("[data-mx-sub]");
       if (val) val.textContent = mode === "str" ? str : sol;
-      if (sub) sub.textContent = mode === "str" ? `solution ${sol} · n ${n}` : `strict ${str} · n ${n}`;
+      if (sub)
+        sub.textContent = mode === "str" ? `solution ${sol} · n ${n}` : `strict ${str} · n ${n}`;
     });
   });
 }
@@ -87,7 +88,7 @@ function initTaskFilter(): void {
 
 /* ---------- 3 · cell explorer (lazy dataset) ---------- */
 
-/** Slim cell row: [harness, model, task, n, solutionPasses, strictPasses, cost, wall, tokens]. */
+/** Slim cell row: [harness, model, task, n, solutionPasses, strictPasses, cost, wall, tokens, noopRuns]. */
 type CellRow = [
   number,
   number,
@@ -97,7 +98,8 @@ type CellRow = [
   number,
   number | null,
   number | null,
-  number | null
+  number | null,
+  number?
 ];
 
 interface CellsPayload {
@@ -181,7 +183,8 @@ function initExplorer(): void {
       if (fv === "partial" && !(sp > 0 && stp < n)) continue;
       if (fv === "flip" && sp <= stp) continue;
       if (query) {
-        const hay = `${data.h[hi] ?? ""} ${data.hd[hi] ?? ""} ${data.m[mi] ?? ""} ${data.md[mi] ?? ""} ${data.t[ti] ?? ""} ${data.tf[ti] ?? ""}`.toLowerCase();
+        const hay =
+          `${data.h[hi] ?? ""} ${data.hd[hi] ?? ""} ${data.m[mi] ?? ""} ${data.md[mi] ?? ""} ${data.t[ti] ?? ""} ${data.tf[ti] ?? ""}`.toLowerCase();
         if (!hay.includes(query)) continue;
       }
       trials += n;
@@ -199,7 +202,7 @@ function initExplorer(): void {
     body.replaceChildren();
     const frag = document.createDocumentFragment();
     capped.forEach(({ row, idx }) => {
-      const [hi, mi, ti, n, sp, stp, cost, wall, tok] = row;
+      const [hi, mi, ti, n, sp, stp, cost, wall, tok, noop = 0] = row;
       const tr = document.createElement("tr");
 
       tr.appendChild(td(String(idx + 1), "d-sub"));
@@ -233,6 +236,13 @@ function initExplorer(): void {
         const tag = document.createElement("span");
         tag.className = "tag tag--derived";
         tag.textContent = `t/o-pass ×${sp - stp}`;
+        flags.appendChild(tag);
+      }
+      if (noop > 0) {
+        const tag = document.createElement("span");
+        tag.className = "tag tag--noop";
+        tag.title = "No-op runs ended with no source edits — counted as failures";
+        tag.textContent = `${noop}/${n} no-op`;
         flags.appendChild(tag);
       }
       tr.appendChild(flags);

@@ -4111,3 +4111,71 @@ table.bb-data {
   color: var(--text-dim);
   letter-spacing: 0.06em;
 }
+
+/* ---------- suite-coverage & run-integrity disclosures ---------- */
+
+.bb-suitewarn {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 var(--s-3);
+  padding: 6px 13px;
+  border: 1px dashed color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 106, 26, 0.05), transparent);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.bb-suitewarn--sm {
+  margin: 0;
+  padding: 4px 11px;
+  font-size: 0.66rem;
+}
+
+.bb-noop {
+  color: var(--text-dim);
+  border-bottom: 1px dotted var(--ink-line-bright);
+  cursor: help;
+}
+
+.tag--noop {
+  border-color: var(--ink-line);
+  color: var(--text-dim);
+}
+
+.bb-pareto__suitenote {
+  grid-column: 1 / -1;
+}
+
+.bb-cov {
+  margin-top: var(--s-4);
+  display: grid;
+  gap: var(--s-4);
+}
+.bb-cov__wrap {
+  overflow-x: auto;
+}
+.bb-cov__table {
+  min-width: 760px;
+}
+.bb-cov__table--excl {
+  min-width: 560px;
+}
+.bb-cov__table th:nth-child(4),
+.bb-cov__table td:nth-child(4) {
+  text-align: left;
+}
+.bb-cov__table td.bb-cov__fams,
+.bb-cov__table td.bb-cov__gaps,
+.bb-cov__table td.bb-cov__reason {
+  white-space: normal;
+  line-height: 1.5;
+}
+.bb-cov__note {
+  max-width: none;
+}

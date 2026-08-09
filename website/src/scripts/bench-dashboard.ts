@@ -36,6 +36,10 @@ interface StackRow {
   wall: number | null;
   tok: number | null;
   n: number;
+  /** Tasks behind the overall row (coverage block, else evidence cells). */
+  nt?: number;
+  /** No-op runs (zero source edits) across the stack's cells; absent when 0. */
+  no?: number;
   conf: "high" | "medium" | "low";
   ev: "measured" | "inferred";
 }
@@ -63,6 +67,8 @@ interface Dataset {
   generated: string;
   byLanguage: ScopeMean[];
   byPlatform: ScopeMean[];
+  /** Per-model measured task counts — drives the suite-mismatch chip. */
+  modelTasks?: Record<string, number>;
   stacks: StackRow[];
   families: string[];
   heatDomains: { rate: [number, number]; strict: [number, number]; cost: [number, number] };
@@ -192,19 +198,21 @@ function headline(s: StackRow, metric: Metric): string {
 
 function subline(s: StackRow, metric: Metric): string {
   const std = s.cstd != null ? ` · std ${fmtCost(s.cstd)}` : "";
+  // Suite-size disclosure: overall rows pool different task sets per stack.
+  const tasks = s.nt ? ` · ${s.nt} tasks` : "";
   switch (metric) {
     case "sol":
-      return `strict ${fmtPct(s.str)} · n ${s.n} · ${fmtCost(s.cost)}/task${std}`;
+      return `strict ${fmtPct(s.str)} · n ${s.n}${tasks} · ${fmtCost(s.cost)}/task${std}`;
     case "str":
-      return `solution ${fmtPct(s.sol)} · n ${s.n}`;
+      return `solution ${fmtPct(s.sol)} · n ${s.n}${tasks}`;
     case "cost":
       return s.cost == null
         ? "no cost evidence"
-        : `in ${fmtCost(s.cin)} · out ${fmtCost(s.cout)}${std} · n ${s.n}`;
+        : `in ${fmtCost(s.cin)} · out ${fmtCost(s.cout)}${std} · n ${s.n}${tasks}`;
     case "wall":
-      return `solution ${fmtPct(s.sol)} · n ${s.n}`;
+      return `solution ${fmtPct(s.sol)} · n ${s.n}${tasks}`;
     case "tok":
-      return `solution ${fmtPct(s.sol)} · n ${s.n}`;
+      return `solution ${fmtPct(s.sol)} · n ${s.n}${tasks}`;
   }
 }
 
@@ -793,6 +801,7 @@ function initHeatLens(data: Dataset): void {
     const wall = raw("wall");
     const tok = raw("tokens");
     const n = Number(cell.dataset.n ?? "0");
+    const noop = raw("noop");
     const lensLabel =
       activeLens === "cost"
         ? "Cost lens"
@@ -819,7 +828,11 @@ function initHeatLens(data: Dataset): void {
       `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Wall</span><span class="bb-heat-detail__v">${wall != null ? fmtWall(wall) : "—"}</span></span>` +
       `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Tokens / wall</span><span class="bb-heat-detail__v" title="Billed throughput — prompt+cache+output over harness wall, not model decode speed">throughput</span></span>` +
       `</div>` +
-      `<div class="bb-heat-detail__meta"><span>n ${n} cells</span><span>${esc(s?.hd ?? "")} harness</span><span>${esc(s?.md ?? "")} provider</span><span>${cost != null && cost < 0.01 ? "free-tier slice" : (s?.ev ?? "")}</span></div>`;
+      `<div class="bb-heat-detail__meta"><span>n ${n} cells</span>` +
+      (noop != null && noop > 0
+        ? `<span class="bb-noop" title="No-op runs ended with no source edits — counted as failures">${noop}/${n} no-op runs</span>`
+        : "") +
+      `<span>${esc(s?.hd ?? "")} harness</span><span>${esc(s?.md ?? "")} provider</span><span>${cost != null && cost < 0.01 ? "free-tier slice" : (s?.ev ?? "")}</span></div>`;
     detail.hidden = false;
   };
   void ((): CellTip | null => null)();
@@ -956,13 +969,28 @@ function initLens(data: Dataset): void {
     // Stretch bars to the observed band so they actually fill (86-99% on 0-100 crushes to slivers)
     const rates = stacks.map((s) => s.sol);
     const band = niceBand(rates);
+    // Suite-mismatch chip: this model's measured task set vs the rest of the
+    // field — overall rates pool different suites when counts differ.
+    const suiteCounts = Object.values(data.modelTasks ?? {});
+    const myTasks = data.modelTasks?.[id];
+    let suiteChip = "";
+    if (myTasks != null && suiteCounts.length > 1) {
+      const lo = Math.min(...suiteCounts);
+      const hi = Math.max(...suiteCounts);
+      if (lo !== hi) {
+        const other = myTasks === hi ? lo : hi;
+        suiteChip =
+          `<span class="bb-suitewarn bb-suitewarn--sm" title="Overall rates pool different task suites per model">` +
+          `Suites differ (${myTasks} vs ${other} tasks) — compare within the Systems family for like-for-like.</span>`;
+      }
+    }
     const head =
       `<div class="bb-lens__detailhead">` +
       (m.ml
         ? `<img src="${esc(m.ml)}" alt="" width="22" height="22" loading="lazy" decoding="async">`
         : `<span class="bb-badge__mono">${esc(m.mm)}</span>`) +
       `<strong>${esc(m.md)}</strong><span>${stacks.length} harnesses · mean ${fmtPct(stacks.reduce((a, s) => a + s.sol, 0) / stacks.length)} · axis ${Math.round(band.lo * 100)}% → ${Math.round(band.hi * 100)}%</span>` +
-      `<span class="bb-lens__detailhint">tap a row to clear</span></div>`;
+      `<span class="bb-lens__detailhint">tap a row to clear</span>${suiteChip}</div>`;
     const harnessRows = stacks
       .map((s) => {
         const barW = `${bandPct(s.sol, band).toFixed(1)}%`;
@@ -975,7 +1003,11 @@ function initLens(data: Dataset): void {
           `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.hd)}</span></span>` +
           `<span class="bb-lens__hbar"><span class="bb-lens__hfill" data-w="${barW}"></span></span>` +
           `<span class="bb-lens__hmeta"><strong>${fmtPct(s.sol)}</strong><br>strict ${fmtPct(s.str)}</span>` +
-          `<span class="bb-lens__hmeta">${fmtCost(s.cost)}/task<br>n ${s.n}</span>` +
+          `<span class="bb-lens__hmeta">${fmtCost(s.cost)}/task<br>n ${s.n}` +
+          (s.no
+            ? `<br><span class="bb-noop" title="No-op runs ended with no source edits — counted as failures">${s.no}/${s.n} no-op runs</span>`
+            : "") +
+          `</span>` +
           `</div>`
         );
       })
@@ -1486,21 +1518,34 @@ function initPareto(data: Dataset): void {
       return;
     }
     compare.hidden = false;
-    cards.innerHTML = list
-      .map((s) => {
-        const logo = s.hl ?? s.ml;
-        return (
-          `<div class="bb-pareto__card m--${esc(s.m.replace(/[^a-z0-9-]/g, ""))}" style="--mc:${esc(s.mc)}">` +
-          `<button class="bb-pareto__cardx" type="button" data-pareto-unpin="${esc(`${s.h}|${s.m}`)}" aria-label="Remove ${esc(s.hd)} × ${esc(s.mds)}">×</button>` +
-          `<div class="bb-pareto__cardhead">${logo ? `<img src="${esc(logo)}" alt="" width="18" height="18" loading="lazy" decoding="async">` : ""}${esc(s.hd)} × ${esc(s.mds)}</div>` +
-          `<div class="bb-pareto__cardmeta">` +
-          `<span><strong>${fmtPct(s.sol)}</strong> sol · strict ${fmtPct(s.str)}</span>` +
-          `<span><strong>${fmtCost(s.cost)}/task</strong>${s.cstd != null ? ` · std ${fmtCost(s.cstd)}` : ""} · n ${s.n}</span>` +
-          `<span>${fmtTokens(s.tok)} tok · ${fmtWall(s.wall)} · ${s.ev}${s.conf === "low" ? " · low conf" : ""}</span>` +
-          `</div></div>`
-        );
-      })
-      .join("");
+    // Suite-mismatch chip: pinned stacks whose models measured different
+    // task suites aren't like-for-like on overall rates.
+    const mtMap = data.modelTasks ?? {};
+    const pinnedCounts = [
+      ...new Set(list.map((s) => mtMap[s.m]).filter((v): v is number => v != null))
+    ];
+    const suiteNote =
+      pinnedCounts.length > 1
+        ? `<div class="bb-pareto__suitenote"><span class="bb-suitewarn bb-suitewarn--sm" title="Overall rates pool different task suites per model">` +
+          `Suites differ (${Math.min(...pinnedCounts)} vs ${Math.max(...pinnedCounts)} tasks) — compare within the Systems family for like-for-like.</span></div>`
+        : "";
+    cards.innerHTML =
+      suiteNote +
+      list
+        .map((s) => {
+          const logo = s.hl ?? s.ml;
+          return (
+            `<div class="bb-pareto__card m--${esc(s.m.replace(/[^a-z0-9-]/g, ""))}" style="--mc:${esc(s.mc)}">` +
+            `<button class="bb-pareto__cardx" type="button" data-pareto-unpin="${esc(`${s.h}|${s.m}`)}" aria-label="Remove ${esc(s.hd)} × ${esc(s.mds)}">×</button>` +
+            `<div class="bb-pareto__cardhead">${logo ? `<img src="${esc(logo)}" alt="" width="18" height="18" loading="lazy" decoding="async">` : ""}${esc(s.hd)} × ${esc(s.mds)}</div>` +
+            `<div class="bb-pareto__cardmeta">` +
+            `<span><strong>${fmtPct(s.sol)}</strong> sol · strict ${fmtPct(s.str)}</span>` +
+            `<span><strong>${fmtCost(s.cost)}/task</strong>${s.cstd != null ? ` · std ${fmtCost(s.cstd)}` : ""} · n ${s.n}</span>` +
+            `<span>${fmtTokens(s.tok)} tok · ${fmtWall(s.wall)} · ${s.ev}${s.conf === "low" ? " · low conf" : ""}</span>` +
+            `</div></div>`
+          );
+        })
+        .join("");
   };
 
   // hover — glass card
