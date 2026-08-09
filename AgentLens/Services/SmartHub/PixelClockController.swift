@@ -207,9 +207,16 @@ enum PixelClockAgentProcessDetector {
         if lower.contains("pixelclockexternalagentactivityscanner") {
             return nil
         }
+        // These are host/bridge processes, not agent work. Keep the compound
+        // names explicit because the token normalization below intentionally
+        // splits hyphenated executable names so `cursor-agent` and
+        // `codex-code-mode-host` can be recognized.
+        if lower.contains("chrome-native-host") || lower.contains("native-host") {
+            return nil
+        }
 
         let tokens = lower
-            .split { !$0.isLetter && !$0.isNumber && $0 != "." && $0 != "-" }
+            .split { !$0.isLetter && !$0.isNumber }
             .map(String.init)
 
         let serviceTokens: Set<String> = [

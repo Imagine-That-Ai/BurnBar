@@ -479,6 +479,33 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(statuses[AgentProvider.xAI.persistedToken], .running)
     }
 
+    func test_agentProcessDetectorRecognizesHyphenatedAgentExecutables() {
+        let statuses = PixelClockAgentProcessDetector.statuses(fromPSOutput: """
+        COMM ARGS
+        /Users/alberto/.local/lib/node_modules/@openai/codex/vendor/codex-code-mode-host
+        /Users/alberto/.cursor/bin/cursor-agent worker start --worker-dir /tmp/project
+        /opt/homebrew/bin/open-code --stdio
+        /usr/local/bin/mini-max --model M2.7
+        """)
+
+        XCTAssertEqual(statuses[AgentProvider.codex.persistedToken], .running)
+        XCTAssertEqual(statuses[AgentProvider.cursor.persistedToken], .running)
+        XCTAssertEqual(statuses[AgentProvider.openCode.persistedToken], .running)
+        XCTAssertEqual(statuses[AgentProvider.minimax.persistedToken], .running)
+    }
+
+    func test_agentProcessDetectorStillExcludesHyphenatedHelpersAndServices() {
+        let statuses = PixelClockAgentProcessDetector.statuses(fromPSOutput: """
+        COMM ARGS
+        /Applications/Cursor.app/Contents/Frameworks/Cursor Helper.app/Contents/MacOS/Cursor Helper --type=utility
+        /Applications/Claude.app/Contents/MacOS/chrome-native-host
+        /Users/alberto/.local/lib/factory/droid daemon --remote-access
+        /Users/alberto/.claude/cmux-agent-mcp/build/cli.js
+        """)
+
+        XCTAssertTrue(statuses.isEmpty)
+    }
+
     func test_swarmWallpaperColorDriver_fallsBackToHistoricalUsageWhenNoProviderIsRunning() {
         let summaries = [
             makeProviderSummary(provider: .codex, cost: 9, tokens: 900),
