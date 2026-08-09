@@ -91,6 +91,7 @@ struct DashboardView: View {
     /// Item id from a tapped notification deep link, consumed once by the Inbox
     /// surface so it opens on that item instead of the newest one.
     @State var pendingInboxItemID: String?
+    @State private var inboxModel: InboxModel?
     @State var showCommandPalette = false
     @State var showHeroPopover = false
     @State private var dashboardSplitVisibility: NavigationSplitViewVisibility = .all
@@ -941,26 +942,10 @@ struct DashboardView: View {
     /// there too rather than living in a parallel bucket.
     @ViewBuilder
     private var inboxView: some View {
-        InboxView(
-            model: InboxModel(
-                loadRows: { [dataStore] states in
-                    try await dataStore.fetchAIInboxRows(states: states)
-                },
-                loadMarker: { [dataStore] in try await dataStore.aiInboxChangeMarker() },
-                markRead: { [dataStore] id in try await dataStore.markAIInboxItemRead(id: id) },
-                markUnread: { [dataStore] id in try await dataStore.markAIInboxItemUnread(id: id) },
-                setArchived: { [dataStore] id, archived in
-                    try await dataStore.setAIInboxItemArchived(id: id, archived: archived)
-                },
-                snooze: { [dataStore] id, until in
-                    try await dataStore.snoozeAIInboxItem(id: id, until: until)
-                },
-                setFeedback: { [dataStore] id, feedback in
-                    try await dataStore.setAIInboxItemFeedback(id: id, feedback: feedback)
-                },
-                markAllRead: { [dataStore] in try await dataStore.markAllAIInboxItemsRead() },
-                loadRuns: { [dataStore] in try await dataStore.fetchAIInboxRuns() }
-            ),
+        Group {
+            if let model = inboxModel {
+                InboxView(
+                    model: model,
             onOpenSessionLog: { conversationID in
                 // Resolve the citation into a real jump target so the click lands
                 // on the passage that justified the item, not the top of a long
@@ -977,10 +962,35 @@ struct DashboardView: View {
                 InboxMemoryApprovalHandler(store: $0, scope: memoryReviewScope)
             },
             openItemID: pendingInboxItemID
-        )
-        // Consume the deep link so returning to the Inbox later opens normally.
-        .onAppear { pendingInboxItemID = nil }
-        .background(dashboardLiveBackdropActive ? Color.clear : DesignSystem.Colors.background)
+                )
+                // Consume the deep link so returning to the Inbox later opens normally.
+                .onAppear { pendingInboxItemID = nil }
+                .background(dashboardLiveBackdropActive ? Color.clear : DesignSystem.Colors.background)
+            } else {
+                Color.clear
+                    .onAppear {
+                        inboxModel = InboxModel(
+                            loadRows: { [dataStore] states in
+                                try await dataStore.fetchAIInboxRows(states: states)
+                            },
+                            loadMarker: { [dataStore] in try await dataStore.aiInboxChangeMarker() },
+                            markRead: { [dataStore] id in try await dataStore.markAIInboxItemRead(id: id) },
+                            markUnread: { [dataStore] id in try await dataStore.markAIInboxItemUnread(id: id) },
+                            setArchived: { [dataStore] id, archived in
+                                try await dataStore.setAIInboxItemArchived(id: id, archived: archived)
+                            },
+                            snooze: { [dataStore] id, until in
+                                try await dataStore.snoozeAIInboxItem(id: id, until: until)
+                            },
+                            setFeedback: { [dataStore] id, feedback in
+                                try await dataStore.setAIInboxItemFeedback(id: id, feedback: feedback)
+                            },
+                            markAllRead: { [dataStore] in try await dataStore.markAllAIInboxItemsRead() },
+                            loadRuns: { [dataStore] in try await dataStore.fetchAIInboxRuns() }
+                        )
+                    }
+            }
+        }
     }
 
     /// Name posted by the shared background cadence after each pass, so the

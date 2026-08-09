@@ -13,6 +13,22 @@ import OpenBurnBarCore
 // Tapping either parks a deep-link tab in UserDefaults so callers route
 // the Settings window straight to `SettingsTab.cloud`.
 
+/// The compact "PRO" capsule — shared by the member chip here and the
+/// popover header badge so membership reads identically in both spots.
+struct ProBadgePill: View {
+    var body: some View {
+        Text("PRO")
+            .font(.system(size: 9, weight: .heavy, design: .rounded))
+            .tracking(1.4)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(
+                Capsule().fill(DesignSystem.Colors.primaryGradient)
+            )
+    }
+}
+
 struct CloudWhisperStrip: View {
     @Environment(\.colorScheme) private var colorScheme
     let onOpen: () -> Void
@@ -50,15 +66,7 @@ struct CloudWhisperStrip: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
-                    Text("PRO")
-                        .font(.system(size: 9, weight: .heavy, design: .rounded))
-                        .tracking(1.4)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(
-                            Capsule().fill(DesignSystem.Colors.primaryGradient)
-                        )
+                    ProBadgePill()
                     Text("Cloud Member")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(DesignSystem.Colors.primaryGradient)

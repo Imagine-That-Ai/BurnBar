@@ -48,8 +48,7 @@ struct AssistantsPopoverStrip: View {
                 lastMessagePreview
             }
         }
-        .background(DesignSystem.Colors.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
         .overlay {
             runtimeBorder
         }

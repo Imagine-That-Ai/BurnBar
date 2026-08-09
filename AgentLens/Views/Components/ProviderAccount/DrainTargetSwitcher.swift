@@ -27,8 +27,13 @@ struct DrainTargetSwitcher: View {
     let onSelect: (SwitcherProfileRecord) -> Void
 
     @State private var hoveredID: String?
+    @Environment(\.colorScheme) private var colorScheme
 
     private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
+
+    private var trayWash: Color {
+        colorScheme == .dark ? Color.white.opacity(0.045) : Color.black.opacity(0.035)
+    }
 
     private var drainAccount: SwitcherProfileRecord? {
         guard let drainProfileID else { return nil }
@@ -248,7 +253,7 @@ struct DrainTargetSwitcher: View {
                     startPoint: .leading,
                     endPoint: .trailing
                 ))
-                : AnyShapeStyle(DesignSystem.Colors.surfaceElevated))
+                : AnyShapeStyle(trayWash))
     }
 
     private func chipBorder(isDrain: Bool) -> some View {
