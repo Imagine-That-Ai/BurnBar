@@ -120,6 +120,35 @@ final class FounderPlanLedgerTests: XCTestCase {
         XCTAssertEqual(landed.missionID, "mission_42")
     }
 
+    /// Terminal outcomes auto-seed a grade (landed=85, failed=25) so ungraded
+    /// steps still feed the loop; an explicit grade overwrites the seed.
+    func test_terminalStatusSeedsGradeAndExplicitGradeOverrides() throws {
+        let now = Date()
+        let (_, step) = try store.acceptPlan(
+            candidate: BurnBarInboxPlanCandidate(title: "Seed", bodyMarkdown: "s"),
+            pack: "engOps",
+            now: now
+        )
+        let landed = try store.updatePlanStep(
+            stepID: step.id, status: .landed, missionID: nil, followupID: nil, now: now
+        )
+        XCTAssertEqual(landed.grade, 85, "Landing seeds a default grade")
+        XCTAssertNotNil(landed.gradedAt)
+
+        let regraded = try store.gradePlanStep(stepID: step.id, grade: 95, noteMarkdown: "Shipped clean.", now: now)
+        XCTAssertEqual(regraded.step.grade, 95, "The human grade wins")
+
+        let (_, failing) = try store.acceptPlan(
+            candidate: BurnBarInboxPlanCandidate(title: "Flop", bodyMarkdown: "f"),
+            pack: "engOps",
+            now: now
+        )
+        let failed = try store.updatePlanStep(
+            stepID: failing.id, status: .failed, missionID: nil, followupID: nil, now: now
+        )
+        XCTAssertEqual(failed.grade, 25, "Failure seeds a low grade")
+    }
+
     func test_gradeClampsAndRollsUpPlanAverage() throws {
         let now = Date()
         let (plan, first) = try store.acceptPlan(

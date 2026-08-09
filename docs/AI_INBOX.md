@@ -558,3 +558,26 @@ prerequisite than this feature, and worth confirming independently.
   gap when it matters.
 - **The daemon needs `OPENBURNBAR_INDEX_DATABASE_PATH`.** Without it the inbox
   (like code memory and resume) is unavailable.
+
+---
+
+## Founder Lens (v59+)
+
+The inbox now carries a judgment layer and a compounding loop on top of the
+brief/alert core documented above:
+
+- **Voice + judgment packs** (engOps default, productStrategy gated), the
+  Swift-only NextMoveRouter (one primary next move; unverified claims own
+  nothing), and `lens:vN` provenance — [`AI_INBOX_FOUNDER_LENS.md`](AI_INBOX_FOUNDER_LENS.md)
+- **Reply threads** keyed by condition fingerprint, with fail-closed egress +
+  per-reply budget gates and canonical G8 fences — same doc
+- **Founder Plan Ledger**: accepted suggestions become durable plans that are
+  executed via Mission Control / followups, audited, graded, remembered in
+  Chat Memory Authority (and Pensieve for Pro Max/Ultra), and recalled into
+  future briefs/replies as standing commitments —
+  [`AI_INBOX_FOUNDER_PLANS.md`](AI_INBOX_FOUNDER_PLANS.md)
+
+Related: [`PENSIEVE.md`](PENSIEVE.md) (cloud knowledge; `sourceKind:
+chat_memory` commits require approved + provenance + Pro Max/Ultra),
+[`MEMORY_ACTIVATION.md`](MEMORY_ACTIVATION.md) (the authority the Remember
+path writes through).

@@ -339,6 +339,16 @@ extension BurnBarAIInboxStore {
                 let newStatus = status?.rawValue
                 let isTerminal = status.map { [.landed, .failed, .killed].contains($0) } ?? false
 
+                // Auto-seed grade on terminal outcome so ungraded steps still
+                // feed the compounding loop ("landed" is evidence, "failed" is
+                // evidence). The user's explicit `plans.grade` overwrites this.
+                let seededGrade: Int?
+                switch status {
+                case .landed: seededGrade = 85
+                case .failed: seededGrade = 25
+                default: seededGrade = nil
+                }
+
                 try execute(
                     """
                     UPDATE ai_inbox_plan_steps SET
@@ -346,6 +356,8 @@ extension BurnBarAIInboxStore {
                         mission_id = COALESCE(?, mission_id),
                         followup_id = COALESCE(?, followup_id),
                         completed_at = CASE WHEN ? THEN ? ELSE completed_at END,
+                        grade = COALESCE(grade, ?),
+                        graded_at = CASE WHEN grade IS NULL AND ? IS NOT NULL THEN ? ELSE graded_at END,
                         updated_at = ?
                     WHERE id = ?
                     """,
@@ -355,10 +367,23 @@ extension BurnBarAIInboxStore {
                         .optionalText(followupID),
                         .int(isTerminal ? 1 : 0),
                         .text(stamp),
+                        seededGrade.map(Bind.int) ?? .null,
+                        seededGrade.map(Bind.int) ?? .null,
+                        .text(stamp),
                         .text(stamp),
                         .text(stepID)
                     ]
                 )
+                if seededGrade != nil {
+                    try execute(
+                        """
+                        UPDATE ai_inbox_plans SET
+                            grade_avg = (SELECT AVG(grade) FROM ai_inbox_plan_steps WHERE plan_id = ? AND grade IS NOT NULL)
+                        WHERE id = ?
+                        """,
+                        [.text(planID), .text(planID)]
+                    )
+                }
                 try execute(
                     "UPDATE ai_inbox_plans SET updated_at = ? WHERE id = ?",
                     [.text(stamp), .text(planID)]

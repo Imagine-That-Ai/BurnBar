@@ -321,7 +321,10 @@ struct InboxView: View {
                 onSnooze: { interval in Task { await model.snooze(row.id, for: interval) } },
                 onFeedback: { useful in Task { await model.setFeedback(row.id, useful: useful) } },
                 onOpenSettings: onOpenSettings,
-                memoryApproval: memoryApproval
+                memoryApproval: memoryApproval,
+                // Fingerprint-keyed on purpose (L1): reselecting the item after
+                // a resolve/reopen cycle lands on the same conversation.
+                threadFingerprint: row.summary.fingerprint
             )
             .id(row.id)
         } else {

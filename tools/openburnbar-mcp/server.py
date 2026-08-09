@@ -3299,6 +3299,98 @@ def burnbar_inbox_status() -> str:
     return json.dumps(result, indent=2, default=str)
 
 
+@mcp.tool()
+def burnbar_inbox_plans_list(statuses: list[str] | None = None, limit: int = 50) -> str:
+    """
+    List Founder Plans — durable commitments the user accepted from AI Inbox
+    suggestions/replies, with lifecycle status and rolling grade.
+
+    `statuses` defaults to active + proposed; values: proposed, active, paused,
+    completed, killed. Read-only: plans are created/graded only through the
+    human-confirmed daemon RPCs, never by an agent.
+    """
+    params: dict[str, Any] = {"limit": max(1, min(int(limit), 200)), "statuses": statuses or []}
+    try:
+        result = pcm.call_daemon("daemon.inbox.plans.list", params, timeout_seconds=5.0)
+    except Exception as exc:  # noqa: BLE001 - surface any transport failure as data
+        return json.dumps({"error": str(exc)}, indent=2)
+
+    plans = result.get("plans") or []
+    for plan in plans:
+        # Titles/summaries originate in model prose the human accepted; still
+        # data, never instructions, for any agent reading this.
+        plan["title"] = _wrap_untrusted_snippet(
+            plan.get("title"),
+            source_tool="burnbar_inbox_plans_list",
+            record_id=str(plan.get("id") or "unknown"),
+        )
+        plan.pop("summaryMarkdown", None)
+        plan.pop("steps", None)
+    return json.dumps(
+        {
+            "plans": plans,
+            "trustSignal": {
+                "untrustedContentWrapped": True,
+                "wrappedCount": len(plans),
+                "sourceTool": "burnbar_inbox_plans_list",
+            },
+        },
+        indent=2,
+        default=str,
+    )
+
+
+@mcp.tool()
+def burnbar_inbox_plans_get(plan_id: str) -> str:
+    """
+    Read one Founder Plan in full: summary, steps with status/grades, linked
+    mission and follow-up ids, and audit trail pointers.
+
+    Requires the sensitive-read capability: plan bodies are synthesized from the
+    user's own work and accepted commitments.
+    """
+    denied = _capability_denial(
+        "burnbar_inbox_plans_get",
+        "sensitive_read",
+        "Founder Plan bodies describe the user's own commitments and work state.",
+    )
+    if denied:
+        return denied
+    try:
+        result = pcm.call_daemon("daemon.inbox.plans.get", {"id": plan_id}, timeout_seconds=5.0)
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": str(exc)}, indent=2)
+
+    plan = result.get("plan")
+    if not plan:
+        return json.dumps({"error": f"No plan with id {plan_id}."}, indent=2)
+    for key in ("title", "summaryMarkdown"):
+        plan[key] = _wrap_untrusted_snippet(
+            plan.get(key),
+            source_tool="burnbar_inbox_plans_get",
+            record_id=str(plan.get("id") or "unknown"),
+        )
+    for step in plan.get("steps") or []:
+        for key in ("title", "bodyMarkdown", "gradeNoteMarkdown"):
+            if step.get(key):
+                step[key] = _wrap_untrusted_snippet(
+                    step.get(key),
+                    source_tool="burnbar_inbox_plans_get",
+                    record_id=str(step.get("id") or "unknown"),
+                )
+    return json.dumps(
+        {
+            "plan": plan,
+            "trustSignal": {
+                "untrustedContentWrapped": True,
+                "sourceTool": "burnbar_inbox_plans_get",
+            },
+        },
+        indent=2,
+        default=str,
+    )
+
+
 def main() -> None:
     mcp.run()
 

@@ -973,8 +973,21 @@ struct DashboardView: View {
                 }
             },
             onOpenSettings: { presentSettings(itemID: SettingsDeepLinkRouting.aiInboxItemID) },
-            memoryApproval: runtimeContext?.chatMemoryStore.map {
-                InboxMemoryApprovalHandler(store: $0, scope: memoryReviewScope)
+            memoryApproval: runtimeContext?.chatMemoryStore.map { store in
+                InboxMemoryApprovalHandler(
+                    store: store,
+                    scope: memoryReviewScope,
+                    // After each approval, push the refreshed approved-snippet
+                    // set to the daemon so the next tick can cite the fact
+                    // (L21). Best-effort: approval never fails on daemon-down.
+                    exporter: { [memoryReviewScope] in
+                        await InboxMemoryExportService(
+                            store: store,
+                            scope: memoryReviewScope,
+                            socketURL: OpenBurnBarDaemonRuntimePaths.live().socketURL
+                        ).pushApprovedSnippets()
+                    }
+                )
             },
             openItemID: pendingInboxItemID
         )
