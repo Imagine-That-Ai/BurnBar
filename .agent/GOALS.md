@@ -21,3 +21,5 @@ This file is the project-level index of active and completed agent goals. It rec
 | `linux-w5-mercury-engine-2026-07-06` | active | linux-macos-parity-2026-07-05 | `.agent/runs/linux-w5-mercury-engine-2026-07-06/` | 2026-07-06T10:01:10Z |
 | `sota-quality-apple-apps-2026-07-06` | active | none | `.agent/runs/sota-quality-apple-apps-2026-07-06/` | 2026-07-06T11:22:23Z |
 | `burnbar-accretive-pr-merge-2026-08-07` | complete — #2191/#2172/#2125/#2088/#2054/#2186 MERGED; main@20ec5aba4e | none | `.agent/runs/burnbar-accretive-pr-merge-2026-08-07/` | 2026-08-08T07:38:18Z |
+| `cut-1-0-30-three-platform-2026-08-08` | active — babysitting #2197 merge queue → retag v1.0.30 → OpenBurnBar Release Mac/iOS/Android + website/R2 + Play/ASC | burnbar-accretive-pr-merge-2026-08-07 | `.agent/runs/cut-1-0-30-three-platform-2026-08-08/` | 2026-08-09T03:52:00Z |
+| `cut-1-0-30-three-platform-2026-08-08` | active | burnbar-accretive-pr-merge-2026-08-07 | `.agent/runs/cut-1-0-30-three-platform-2026-08-08/` | 2026-08-09T03:51:10Z |

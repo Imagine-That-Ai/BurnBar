@@ -105,6 +105,7 @@ struct SettingsSearchResultsView: View {
         case .dataRefresh: return "Data Refresh"
         case .indexing: return "Indexing & Search"
         case .sessionSummaries: return "Session Summaries"
+        case .aiInbox: return "AI Inbox"
         case .daemonLifecycle: return "Lifecycle"
         case .httpGateway: return "HTTP Gateway"
         case .controllerRuntime: return "Controller Runtime"

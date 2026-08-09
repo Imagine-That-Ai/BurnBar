@@ -155,10 +155,21 @@ struct PrivacyIndexingSettingsView: View {
 
                 Divider().background(DesignSystem.Colors.border)
 
-                // The AI Inbox belongs on this screen: it is the other feature
-                // that reads conversation content, and its egress switch is the
-                // same class of decision as the toggles above.
-                AIInboxSettingsView()
+                // Primary home is Settings → General → AI Inbox. Keep a
+                // privacy-kinship drill here so egress stays discoverable next
+                // to indexing / Mac CLI assistants.
+                NavigationLink {
+                    AIInboxSettingsDetailView()
+                } label: {
+                    SettingsDrillRow(
+                        icon: "tray.full.fill",
+                        iconTint: DesignSystem.Colors.ember,
+                        title: "AI Inbox",
+                        subtitle: "Background analyst, egress, and cost cockpit"
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, DesignSystem.Spacing.lg)
 
                 if !retrievalHealthSnapshot.degradedModes.isEmpty {
                     Divider().background(DesignSystem.Colors.border)

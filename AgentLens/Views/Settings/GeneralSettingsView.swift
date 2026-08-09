@@ -140,10 +140,21 @@ struct GeneralSettingsView: View {
                             : DesignSystem.Colors.textMuted
                     )
                 }
+
+                NavigationLink {
+                    AIInboxSettingsDetailView()
+                } label: {
+                    SettingsDrillRow(
+                        icon: "tray.full.fill",
+                        iconTint: DesignSystem.Colors.ember,
+                        title: "AI Inbox",
+                        subtitle: "Background analyst, egress, and cost cockpit"
+                    )
+                }
             } header: {
                 Text("Search & summaries")
             } footer: {
-                Text("Indexed transcripts never leave this Mac unless cloud backup is explicitly enabled.")
+                Text("Indexed transcripts never leave this Mac unless cloud backup is explicitly enabled. AI Inbox egress is a separate choice.")
                     .font(DesignSystem.Typography.tiny)
             }
         }
@@ -467,6 +478,25 @@ struct SessionSummariesDetailView: View {
                 .padding(DesignSystem.Spacing.lg)
             }
         }
+    }
+}
+
+// MARK: - AI Inbox Detail
+
+struct AIInboxSettingsDetailView: View {
+    var body: some View {
+        SettingsDeepLinkScrollContainer(route: .aiInbox) { _ in
+            ScrollView {
+                GlassCard {
+                    AIInboxSettingsView()
+                }
+                .padding(DesignSystem.Spacing.lg)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .settingsAnchor(SettingsAnchor.aiInbox)
+            }
+        }
+        .background(DesignSystem.Colors.background)
+        .navigationTitle("AI Inbox")
     }
 }
 

@@ -324,6 +324,23 @@ enum SettingsManifest {
             keywords: ["recap", "summary", "session", "auto"]
         ),
 
+        // MARK: General → AI Inbox
+
+        SettingsItem(
+            id: "general.aiInbox",
+            tab: .general,
+            pageRoute: .aiInbox,
+            anchorID: SettingsAnchor.aiInbox,
+            title: "AI Inbox",
+            subtitle: "Background analyst, egress, cost cockpit, and run cadence",
+            keywords: [
+                "ai inbox", "inbox", "analyst", "egress", "verifier", "deepseek",
+                "luna", "flash", "cost", "synthesis", "brief", "detectors",
+                "unpushed", "unmerged", "ci waste"
+            ],
+            helpText: "Detectors always run locally. Narrative synthesis only runs when egress is Local or Cloud."
+        ),
+
         // MARK: Daemon → Lifecycle
 
         SettingsItem(
@@ -884,6 +901,7 @@ enum SettingsManifest {
         SettingsAnchor.refreshInterval,
         SettingsAnchor.indexingToggle,
         SettingsAnchor.summariesAuto,
+        SettingsAnchor.aiInbox,
         SettingsAnchor.updatesOverview,
         SettingsAnchor.updatesAutomaticChecks,
         SettingsAnchor.updatesReleaseNotes,

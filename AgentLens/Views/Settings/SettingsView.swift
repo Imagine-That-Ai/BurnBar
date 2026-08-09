@@ -261,6 +261,8 @@ struct SettingsView: View {
             )
         case .sessionSummaries:
             SessionSummariesDetailView(settingsManager: settingsManager)
+        case .aiInbox:
+            AIInboxSettingsDetailView()
         case .daemonLifecycle:
             DaemonLifecycleDetailView(daemonManager: .shared)
         case .httpGateway:

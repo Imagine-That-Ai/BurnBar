@@ -142,7 +142,7 @@ final class SettingsRouter {
         case .generalRoot:
             return []
         case .operatorModel, .appearance, .defaultView, .dataRefresh,
-             .indexing, .sessionSummaries:
+             .indexing, .sessionSummaries, .aiInbox:
             return [route]
 
         // Daemon subpages.
