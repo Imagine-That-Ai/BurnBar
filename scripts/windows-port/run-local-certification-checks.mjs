@@ -2,11 +2,10 @@
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
-  existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
-  statSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { cpus, platform, release, totalmem } from "node:os";
@@ -58,6 +57,26 @@ const source = {
   dirtyTree: git(["status", "--porcelain"]).length > 0,
 };
 const runtimePlatform = platform();
+const domainCoreNativeFileName =
+  runtimePlatform === "win32"
+    ? "openburnbar_domain_ffi.dll"
+    : runtimePlatform === "darwin"
+      ? "libopenburnbar_domain_ffi.dylib"
+      : "libopenburnbar_domain_ffi.so";
+const domainCoreNativePath = join(
+  repoRoot,
+  "crates/openburnbar-domain-core/target/debug",
+  domainCoreNativeFileName,
+);
+const domainCoreObservedIdentityPath = join(logsDir, "domain-core-observed-identity.json");
+rmSync(domainCoreObservedIdentityPath, { force: true });
+const domainCoreTestEnvironment = {
+  OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1",
+  OPENBURNBAR_NATIVE_DIR: dirname(domainCoreNativePath),
+  DOMAIN_CORE_NATIVE_LIBRARY_PATH: domainCoreNativePath,
+  DOMAIN_CORE_CANDIDATE_COMMIT: source.commitSha,
+  DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: domainCoreObservedIdentityPath,
+};
 const host = describeLocalCertificationHost({
   platform: runtimePlatform,
   release: release(),
@@ -90,6 +109,18 @@ const commands = [
     timeoutMs: 120000,
   },
   {
+    name: "domain-core-local-identity-verifier-tests",
+    file: "node",
+    args: ["--test", "scripts/windows-port/verify-local-domain-core-identity.test.mjs"],
+    timeoutMs: 120000,
+  },
+  {
+    name: "domain-core-local-staging-tests",
+    file: "node",
+    args: ["--test", "scripts/windows-port/stage-local-domain-core-native.test.mjs"],
+    timeoutMs: 120000,
+  },
+  {
     name: "foundation-evidence-validator-tests",
     file: "node",
     args: ["scripts/test-windows-foundation-host-evidence.mjs"],
@@ -116,7 +147,13 @@ const commands = [
   {
     name: "windows-release-workflow-lint",
     file: "actionlint",
-    args: [".github/workflows/openburnbar-release-windows.yml", ".github/workflows/pr-windows-full.yml", ".github/workflows/pr-windows-fast.yml"],
+    args: [
+      ".github/workflows/openburnbar-release-windows.yml",
+      ".github/workflows/pr-windows-full.yml",
+      ".github/workflows/pr-windows-fast.yml",
+      ".github/workflows/pr-windows-dist.yml",
+      ".github/workflows/windows-candidate-evidence.yml",
+    ],
     timeoutMs: 120000,
   },
   {
@@ -130,12 +167,26 @@ const commands = [
     file: "cargo",
     args: [
       "build",
+      "--locked",
       "--manifest-path",
       "crates/openburnbar-domain-core/Cargo.toml",
       "-p",
       "openburnbar-domain-ffi",
     ],
     timeoutMs: 900000,
+    env: { OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: source.commitSha },
+  },
+  {
+    name: "domain-core-native-stage",
+    file: "node",
+    args: [
+      "scripts/windows-port/stage-local-domain-core-native.mjs",
+      "--manifest-path",
+      "crates/openburnbar-domain-core/Cargo.toml",
+      "--destination",
+      domainCoreNativePath,
+    ],
+    timeoutMs: 120000,
   },
   {
     name: "windows-solution-aggregate",
@@ -151,7 +202,7 @@ const commands = [
       runtimePlatform === "win32" ? "600s" : "60s",
     ],
     timeoutMs: 900000,
-    env: { OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1" },
+    env: domainCoreTestEnvironment,
   },
 ];
 
@@ -187,9 +238,23 @@ for (const project of testProjects) {
       isColdNativeSpike ? (windowsNativeColdSpike ? "600s" : "180s") : "60s",
     ],
     timeoutMs: isColdNativeSpike ? (windowsNativeColdSpike ? 900000 : 360000) : 180000,
-    env: { OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1" },
+    env: domainCoreTestEnvironment,
   });
 }
+commands.push({
+  name: "domain-core-local-identity",
+  file: "node",
+  args: [
+    "scripts/windows-port/verify-local-domain-core-identity.mjs",
+    "--expected-commit",
+    source.commitSha,
+    "--observed-identity",
+    domainCoreObservedIdentityPath,
+    "--binary",
+    domainCoreNativePath,
+  ],
+  timeoutMs: 120000,
+});
 
 function runCommand(spec) {
   const startedAt = new Date();
@@ -369,6 +434,13 @@ const validation = validateReleaseCertificationBundle(outputDir, { expectedCommi
 if (!validation.ok) {
   console.error("FAIL: generated local certification bundle did not validate.");
   for (const error of validation.errors) console.error(`- ${error}`);
+  process.exit(1);
+}
+if (failedResults.length > 0) {
+  console.error(
+    `FAIL: ${failedResults.length} local certification command(s) failed or timed out. ` +
+      `The NO-GO evidence bundle was retained at ${outputDir}.`,
+  );
   process.exit(1);
 }
 console.log(`PASS: generated and validated ${receiptEntries.length} certification receipts at ${outputDir}`);

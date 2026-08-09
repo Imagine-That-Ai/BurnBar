@@ -2,8 +2,8 @@
 
 **Machine source of truth:** [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml)
 **Scanner:** [`scripts/ci/verify-windows-parity-ledger.py`](../../scripts/ci/verify-windows-parity-ledger.py)
-**Updated:** 2026-07-13 (F1 ledger green — 50 Real / 0 Deferred / 0 Blocked)
-**Finish line:** **F2 True 1:1** remains the named **100% parity** endpoint (`finish_line: F2_True_1to1`). The current 50-row result is the scoped F1 Ship Peer ledger gate; WPD-0009 still requires F2 production composition and evidence before claiming full macOS parity. Operational host steps (Authenticode private key, required GH check flip, physical TPM claim) remain outside the in-repo ledger gate.
+**Updated:** 2026-08-09 (F1 + F2 source/product ledger green — 51 Real / 0 Substituted / 0 DeferredApproved / 0 Blocked)
+**Finish line:** **F2 True 1:1** is the named **100% parity** endpoint (`finish_line: F2_True_1to1`). All 51 registered source/product rows are now Real. This proves the implementation ledger only; an exact signed candidate still needs the Windows CI, physical hardware, accessibility, safety, staging, update, and Store evidence named by the release audit before the product can claim complete end-to-end parity.
 
 ## Why this exists
 
@@ -69,7 +69,10 @@ Plus required peers: `overview`, `insights`, `settings`, `flyout`, `budget`, `el
 
 ## Status counts
 
-The scanner prints a status histogram on every run. Do not hand-edit a stale count here — trust the YAML + CI.
+The scanner prints a status histogram on every run and rejects a stale
+`declared_row_count` or `declared_status_histogram`. When the ledger changes,
+update the headline above in the same change; the machine declaration and CI
+prevent the source of truth from silently drifting.
 
 ## Relationship to other docs
 

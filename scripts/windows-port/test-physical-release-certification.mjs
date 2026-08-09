@@ -467,7 +467,38 @@ assert.ok(
     localRunner.indexOf('name: "windows-solution-aggregate"'),
   "the local certification runner must build the native domain core before running Windows tests",
 );
+assert.match(
+  localRunner,
+  /name: "domain-core-native-build"[\s\S]*"--locked"[\s\S]*OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: source\.commitSha/,
+);
+assert.match(
+  localRunner,
+  /name: "domain-core-native-stage"[\s\S]*stage-local-domain-core-native\.mjs[\s\S]*"--destination"[\s\S]*domainCoreNativePath/,
+);
+assert.ok(
+  localRunner.indexOf('name: "domain-core-native-build"') <
+    localRunner.indexOf('name: "domain-core-native-stage"') &&
+    localRunner.indexOf('name: "domain-core-native-stage"') <
+      localRunner.indexOf('name: "windows-solution-aggregate"'),
+  "the local certification runner must stage the native domain core after Cargo and before Windows tests",
+);
 assert.match(localRunner, /OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"/);
+assert.match(localRunner, /OPENBURNBAR_NATIVE_DIR: dirname\(domainCoreNativePath\)/);
+assert.match(localRunner, /DOMAIN_CORE_NATIVE_LIBRARY_PATH: domainCoreNativePath/);
+assert.match(localRunner, /DOMAIN_CORE_CANDIDATE_COMMIT: source\.commitSha/);
+assert.match(
+  localRunner,
+  /DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: domainCoreObservedIdentityPath/,
+);
+assert.match(
+  localRunner,
+  /name: "domain-core-local-identity"[\s\S]*verify-local-domain-core-identity\.mjs[\s\S]*"--expected-commit"[\s\S]*source\.commitSha[\s\S]*"--observed-identity"[\s\S]*domainCoreObservedIdentityPath[\s\S]*"--binary"[\s\S]*domainCoreNativePath/,
+);
+assert.ok(
+  localRunner.indexOf('name: "domain-core-local-identity"') >
+    localRunner.indexOf("for (const project of testProjects)"),
+  "the local certification runner must verify the loaded native identity after all Windows tests",
+);
 assert.match(localRunner, /isColdNativeSpike \? \(windowsNativeColdSpike \? "600s" : "180s"\) : "60s"/);
 assert.match(localRunner, /isColdNativeSpike \? \(windowsNativeColdSpike \? 900000 : 360000\) : 180000/);
 assert.match(
@@ -476,6 +507,10 @@ assert.match(
 );
 assert.match(localRunner, /PYTHONUTF8: process\.env\.PYTHONUTF8 \?\? "1"/);
 assert.match(localRunner, /\.\.\.\(spec\.env \?\? \{\}\)/);
+assert.match(
+  localRunner,
+  /if \(failedResults\.length > 0\)[\s\S]*NO-GO evidence bundle was retained[\s\S]*process\.exit\(1\)/,
+);
 
 const windowsHost = describeLocalCertificationHost({
   platform: "win32",

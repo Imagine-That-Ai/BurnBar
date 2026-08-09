@@ -422,6 +422,11 @@ for (const requiredEvidence of [
 const windowsDistPrWorkflow = read(".github/workflows/pr-windows-dist.yml");
 assert.match(
   windowsDistPrWorkflow,
+  /on:\n\s+workflow_dispatch:/,
+  "Windows distribution verification must support an exact-candidate manual run",
+);
+assert.match(
+  windowsDistPrWorkflow,
   /windows\/packaging\/msix\//,
   "Windows distribution PR detection must include the MSIX packaging surface",
 );
