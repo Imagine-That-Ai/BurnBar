@@ -372,7 +372,7 @@ public sealed class SqlCipherSwitcherProfileStoreTests
             string candidate = Path.Combine(dir.FullName, "AgentLensTests", "Fixtures", "DBByteCompat");
             if (File.Exists(Path.Combine(candidate, "openburnbar-db-compat-vector.json")))
             {
-            var pinned = Path.Combine(candidate, "openburnbar-db-compat-v58.sqlcipher");
+            var pinned = Path.Combine(candidate, "openburnbar-db-compat-v59.sqlcipher");
                 if (File.Exists(pinned))
                 {
                     return pinned;
