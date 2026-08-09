@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-17T16:27:27Z",
+  "generatedAt": "2026-08-09T14:49:26Z",
   "status": "owner_attested_soft_approval",
   "reviewStatus": "owner_attested_soft_approval",
   "repo": {
     "remote": "origin",
     "ownerRepo": "Imagine-That-Ai/BurnBar",
-    "branch": "codex/shared-rust-domain-final-v3",
-    "originMain": "3c8de9f230149faf27a739afc9cfcc7b610998a6",
-    "releaseTag": "v1.0.31"
+    "branch": "main",
+    "originMain": "0090719c8c494132e69cacd101d21ee56da8cfd9",
+    "releaseTag": "v1.0.32"
   },
-  "purpose": "Owner-attested emergency release evidence for the v1.0.30 public release boundary. The release must be cut from protected main only after the shared-Rust candidate at f10b3f26963ebaf8157325ae8cd00bb1f387c411 passes its exact-head gates and merges; this packet does not authorize release from the open PR branch.",
+  "purpose": "Owner-attested emergency release evidence for the v1.0.32 public release boundary. This cut follows the liquid-glass popover land (#2197) and the Lob publishable-tree false-positive fix (#2199) after v1.0.30/v1.0.31 tags could not complete Release Preflight. The release must be cut from protected main only.",
   "ownerAttestation": {
     "ownerName": "Alberto Nunez",
     "ownerGitHub": "Ajnunezg",
     "ownerRole": "release_owner",
-    "attestedAt": "2026-07-17T16:27:27Z",
+    "attestedAt": "2026-08-09T14:49:26Z",
     "counselName": "Heather Meeker",
     "approvalType": "soft_approval",
-    "emergencyReason": "Publish the shared-Rust-authoritative v1.0.30 release train from protected main after its exact candidate, promotion, rollback, and independent-review gates pass, instead of moving immutable v1.0.29 or shipping from an unmerged branch.",
-    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.30 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
-    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker's existing soft approval applies to this v1.0.30 release boundary and authorizes the emergency owner-approved public release lane.",
+    "emergencyReason": "Publish the v1.0.32 three-platform release train (macOS direct-download / App Store, iOS, Android) from protected main after the Lob Release Preflight false-positive fix and liquid-glass popover landed; immutable v1.0.30/v1.0.31 tags cannot be rewritten.",
+    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.32 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
+    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker's existing soft approval applies to this v1.0.32 release boundary and authorizes the emergency owner-approved public release lane.",
     "followUpRequired": true
   },
   "scope": [
@@ -59,7 +59,7 @@
     {
       "id": "release_owner_attestation",
       "status": "owner_attested",
-      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --allow-owner-emergency-runtime-hold --expected-release-tag v1.0.30",
+      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --allow-owner-emergency-runtime-hold --expected-release-tag v1.0.32",
       "proof": "The emergency release lane validates this structured owner attestation. It does not replace the normal signed external-counsel approval packet."
     },
     {
