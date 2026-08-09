@@ -1,8 +1,16 @@
 #!/usr/bin/env node
 /**
+ * LEGACY v1 payload layout (historical contract v1-opt-2026-07).
+ *
  * Rebuild Linux package payloads so deb/rpm (and optional AppImage inject)
  * ship the branch daemon, openburnbar-daemon-launch, systemd unit, and the
  * Swift 6.1 runtime under /opt/openburnbar/lib/swift.
+ *
+ * This script reproduces the July 2026 mission-002 evidence-era layout only.
+ * Current release packaging roots the runtime under /usr/lib/openburnbar
+ * (see lib/linux-package-payload-contract.mjs and
+ * validate-linux-release-config.mjs); do not use this script for new
+ * release artifacts.
  *
  * Intended to run on a Linux aarch64 guest with dpkg-deb + fpm (or rpmbuild).
  */
