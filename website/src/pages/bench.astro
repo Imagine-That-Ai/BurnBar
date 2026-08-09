@@ -4,7 +4,6 @@ import "@styles/bench.css";
 import {
   BENCH,
   RANKED_STACKS,
-  FAMILIES,
   MODEL_COLOR,
   HARNESS_COLOR,
   MODEL_LOGO,
@@ -25,8 +24,6 @@ import {
   modelDisplayShort,
   fmtPct,
   fmtCost,
-  fmtWall,
-  fmtTokens,
   fmtInt,
   fmtGeneratedAt
 } from "@data/bench";
@@ -35,7 +32,6 @@ const mc = (id: string): string => colorFor(MODEL_COLOR, id);
 const hc = (id: string): string => colorFor(HARNESS_COLOR, id);
 const mcls = (id: string): string => classFor(MODEL_CLASS, id);
 const hcls = (id: string): string => classFor(HARNESS_CLASS, id);
-const pctAttr = (v: number): string => `${(v * 100).toFixed(2)}%`;
 
 const generatedAt = fmtGeneratedAt(BENCH.generated_at_utc);
 const shaShort = BENCH.source.runs_sha256.slice(0, 12);
@@ -43,18 +39,27 @@ const kpis = benchKpis();
 const lens = modelLens();
 const heat = familyHeat();
 // Families with zero measured cells across every stack (experiential, pre-Arena).
-const emptyFams = heat.families.filter((_, fi) => heat.rows.every((r) => r.cells[fi]?.rate == null));
+const emptyFams = heat.families.filter((_, fi) =>
+  heat.rows.every((r) => r.cells[fi]?.rate == null)
+);
 
-/* Maxima for bar scaling live in the client module (tabs re-render bars). */
+/* Leaderboard bars: 0-100 absolute crushes every stack into the same 86-99%
+   silhouette, so the bars look empty. Anchor the scale to the observed band
+   instead (like the lens does) so the leader actually fills the track and
+   the laggards breathe. */
+const lbRates = RANKED_STACKS.map((s) => s.solution_rate);
+const lbLo = Math.max(0, Math.floor((Math.min(...lbRates) - 0.03) * 20) / 20);
+const lbHi = Math.min(1, Math.ceil((Math.max(...lbRates) + 0.01) * 20) / 20);
+const lbSpan = lbHi - lbLo;
+const barPct = (v: number): string =>
+  `${(Math.min(1, Math.max(0, (v - lbLo) / lbSpan)) * 100).toFixed(2)}%`;
 
 /* ---------- Pareto scatter geometry (viewBox 760×440, log-cost domain) ---------- */
 const PLOT = { w: 760, h: 440, ml: 56, mr: 24, mt: 24, mb: 48 };
 const domain = paretoDomain(RANKED_STACKS);
-const xPos = (cost: number): number =>
-  PLOT.ml + domain.xFrac(cost) * (PLOT.w - PLOT.ml - PLOT.mr);
+const xPos = (cost: number): number => PLOT.ml + domain.xFrac(cost) * (PLOT.w - PLOT.ml - PLOT.mr);
 const yPos = (rate: number): number =>
-  PLOT.mt +
-  (1 - (rate - domain.yMin) / (domain.yMax - domain.yMin)) * (PLOT.h - PLOT.mt - PLOT.mb);
+  PLOT.mt + (1 - (rate - domain.yMin) / (domain.yMax - domain.yMin)) * (PLOT.h - PLOT.mt - PLOT.mb);
 const frontierPts = frontierPoints();
 const frontierLine = frontierPts
   .map((p) => `${xPos(p.cost_usd_median).toFixed(1)},${yPos(p.solution_rate).toFixed(1)}`)
@@ -101,10 +106,9 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
         <span class="bb-hero__hb">harness × model evidence.</span>
       </h1>
       <p class="bb-hero__lead">
-        {BENCH.harnesses.length} agent harnesses × {BENCH.models.length} models on real shipping
-        work — refactors, bugfixes, agentic ops, visual builds. Every rate is measured on scored
-        runs and ships with a Wilson 95% CI and the cell count behind it. No vibes, no
-        self-reported scores.
+        {BENCH.harnesses.length} agent harnesses × {BENCH.models.length} models on real shipping work
+        — refactors, bugfixes, agentic ops, visual builds. Every rate is measured on scored runs and ships
+        with a Wilson 95% CI and the cell count behind it. No vibes, no self-reported scores.
       </p>
 
       {/* freshness strip */}
@@ -132,7 +136,9 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
       <div class="bb-kpi">
         <span class="bb-kpi__k">stacks measured</span>
         <span class="bb-kpi__v">{kpis.stacks}</span>
-        <span class="bb-kpi__sub">{BENCH.harnesses.length} harnesses × {BENCH.models.length} models</span>
+        <span class="bb-kpi__sub"
+          >{BENCH.harnesses.length} harnesses × {BENCH.models.length} models</span
+        >
       </div>
       <div class="bb-kpi">
         <span class="bb-kpi__k">cells measured</span>
@@ -143,9 +149,11 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
         <span class="bb-kpi__k">top solution rate</span>
         <span class="bb-kpi__v">{kpis.topStack ? fmtPct(kpis.topStack.solution_rate) : "—"}</span>
         <span class="bb-kpi__sub">
-          {kpis.topStack
-            ? `${harnessDisplay(kpis.topStack.harness)} × ${modelDisplay(kpis.topStack.model)}`
-            : "no eligible stack"}
+          {
+            kpis.topStack
+              ? `${harnessDisplay(kpis.topStack.harness)} × ${modelDisplay(kpis.topStack.model)}`
+              : "no eligible stack"
+          }
         </span>
       </div>
       <div class="bb-kpi">
@@ -154,9 +162,11 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
           {kpis.cheapestFrontier ? fmtCost(kpis.cheapestFrontier.cost_usd_median) : "—"}
         </span>
         <span class="bb-kpi__sub">
-          {kpis.cheapestFrontier
-            ? `${harnessDisplay(kpis.cheapestFrontier.harness)} × ${modelDisplay(kpis.cheapestFrontier.model)} · ${fmtPct(kpis.cheapestFrontier.solution_rate)}`
-            : "no priced stacks"}
+          {
+            kpis.cheapestFrontier
+              ? `${harnessDisplay(kpis.cheapestFrontier.harness)} × ${modelDisplay(kpis.cheapestFrontier.model)} · ${fmtPct(kpis.cheapestFrontier.solution_rate)}`
+              : "no priced stacks"
+          }
         </span>
       </div>
       <div class="bb-kpi">
@@ -174,17 +184,19 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
         <span class="eyebrow eyebrow--ember">Leaderboard · every published stack</span>
         <h2 id="lb-h" class="bb-sec-h">One leaderboard, five lenses.</h2>
         <p class="bb-sec-lead">
-          Switch the metric — the ranking re-sorts live. <strong>Solution</strong> bars carry the
-          Wilson 95% whiskers and the strict-rate tick; <strong>cost</strong> bars are segmented
-          into input vs output token spend (token-derived list prices, scaled to the measured
-          total). Stacks that tie on the visible metric share one rank — hover or tap the
-          <span class="mono">×n</span> chip to meet every contender. Dashed rows are
-          shrinkage-pooled <em>inferred</em> estimates.
+          Switch the metric — the ranking re-sorts live. <strong>Solution</strong> bars carry the Wilson
+          95% whiskers and the strict-rate tick; <strong>cost</strong> bars are segmented into input vs
+          output token spend (token-derived list prices, scaled to the measured total). Stacks that tie
+          on the visible metric share one rank — hover or tap the
+          <span class="mono">×n</span> chip to meet every contender. Dashed rows are shrinkage-pooled
+          <em>inferred</em> estimates.
         </p>
       </header>
 
       <div class="bb-tabs" role="tablist" aria-label="Leaderboard metric" data-bb-tabs>
-        <button class="bb-tab is-active" role="tab" aria-selected="true" data-metric="sol">Solution</button>
+        <button class="bb-tab is-active" role="tab" aria-selected="true" data-metric="sol"
+          >Solution</button
+        >
         <button class="bb-tab" role="tab" aria-selected="false" data-metric="str">Strict</button>
         <button class="bb-tab" role="tab" aria-selected="false" data-metric="cost">Cost</button>
         <button class="bb-tab" role="tab" aria-selected="false" data-metric="wall">Speed</button>
@@ -208,14 +220,34 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
 
                   <span class="lb-logos">
                     {hLogo ? (
-                      <img class="lb-logo lb-logo--h" src={hLogo} alt="" width="24" height="24" loading="lazy" decoding="async" />
+                      <img
+                        class="lb-logo lb-logo--h"
+                        src={hLogo}
+                        alt=""
+                        width="24"
+                        height="24"
+                        loading="lazy"
+                        decoding="async"
+                      />
                     ) : (
-                      <span class="lb-mono lb-logo--h">{monogramFor(s.harness, harnessDisplay(s.harness))}</span>
+                      <span class="lb-mono lb-logo--h">
+                        {monogramFor(s.harness, harnessDisplay(s.harness))}
+                      </span>
                     )}
                     {mLogo ? (
-                      <img class="lb-logo lb-logo--m" src={mLogo} alt="" width="24" height="24" loading="lazy" decoding="async" />
+                      <img
+                        class="lb-logo lb-logo--m"
+                        src={mLogo}
+                        alt=""
+                        width="24"
+                        height="24"
+                        loading="lazy"
+                        decoding="async"
+                      />
                     ) : (
-                      <span class="lb-mono lb-logo--m">{monogramFor(s.model, modelDisplay(s.model))}</span>
+                      <span class="lb-mono lb-logo--m">
+                        {monogramFor(s.model, modelDisplay(s.model))}
+                      </span>
                     )}
                   </span>
                   <span class="lb-names">
@@ -225,7 +257,10 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
                     <span class="lb-sub" data-role="subline">
                       strict {fmtPct(s.strict_rate)} · n {s.n} · {fmtCost(s.cost_usd_median)}/task
                       {s.cost_standard_usd_median != null && (
-                        <span class="lb-std" title={`Non-contributor tier (meta/muse-spark-1.2 on OpenRouter): ${fmtCost(s.cost_standard_usd_median)}/task — the contributor tier is free under data-sharing`}>
+                        <span
+                          class="lb-std"
+                          title={`Non-contributor tier (meta/muse-spark-1.2 on OpenRouter): ${fmtCost(s.cost_standard_usd_median)}/task — the contributor tier is free under data-sharing`}
+                        >
                           · std {fmtCost(s.cost_standard_usd_median)}
                         </span>
                       )}
@@ -239,19 +274,56 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
                     role="img"
                     aria-label={`${harnessDisplay(s.harness)} with ${modelDisplay(s.model)}: solution rate ${fmtPct(s.solution_rate)}, strict ${fmtPct(s.strict_rate)}, CI ${fmtPct(s.ci95[0])} to ${fmtPct(s.ci95[1])}, n ${s.n}`}
                   >
-                    <rect class="lb-bar__track" x="0" y="9" width="100" height="8" rx="4" />
-                    <rect class="lb-bar__fill" x="0" y="9" width={pctAttr(s.solution_rate)} height="8" rx="4" />
-                    <line class="lb-bar__ci" x1={pctAttr(s.ci95[0])} x2={pctAttr(s.ci95[1])} y1="13" y2="13" />
-                    <line class="lb-bar__ci" x1={pctAttr(s.ci95[0])} x2={pctAttr(s.ci95[0])} y1="9" y2="17" />
-                    <line class="lb-bar__ci" x1={pctAttr(s.ci95[1])} x2={pctAttr(s.ci95[1])} y1="9" y2="17" />
-                    <line class="lb-bar__strict" x1={pctAttr(s.strict_rate)} x2={pctAttr(s.strict_rate)} y1="5" y2="21" />
+                    <rect class="lb-bar__track" x="0" y="7" width="100" height="12" rx="6" />
+                    <rect
+                      class="lb-bar__fill"
+                      x="0"
+                      y="7"
+                      width={barPct(s.solution_rate)}
+                      height="12"
+                      rx="6"
+                    />
+                    <line
+                      class="lb-bar__ci"
+                      x1={barPct(s.ci95[0])}
+                      x2={barPct(s.ci95[1])}
+                      y1="13"
+                      y2="13"
+                    />
+                    <line
+                      class="lb-bar__ci"
+                      x1={barPct(s.ci95[0])}
+                      x2={barPct(s.ci95[0])}
+                      y1="8"
+                      y2="18"
+                    />
+                    <line
+                      class="lb-bar__ci"
+                      x1={barPct(s.ci95[1])}
+                      x2={barPct(s.ci95[1])}
+                      y1="8"
+                      y2="18"
+                    />
+                    <line
+                      class="lb-bar__strict"
+                      x1={barPct(s.strict_rate)}
+                      x2={barPct(s.strict_rate)}
+                      y1="4"
+                      y2="22"
+                    />
                   </svg>
 
                   <span class="lb-nums">
-                    <span class="lb-head" data-role="headline">{fmtPct(s.solution_rate)}</span>
+                    <span class="lb-head" data-role="headline">
+                      {fmtPct(s.solution_rate)}
+                    </span>
                     <span class="lb-tags">
-                      {s.evidence === "inferred" && <span class="tag tag--estimated">inferred</span>}
-                      {s.cost_source === "derived" && <span class="tag tag--derived">cost est.</span>}
+                      {s.evidence === "inferred" && (
+                        <span class="tag tag--estimated">inferred</span>
+                      )}
+                      {s.cost_source === "derived" && (
+                        <span class="tag tag--derived">cost est.</span>
+                      )}
                       {s.confidence === "low" && <span class="tag tag--unavailable">low conf</span>}
                     </span>
                   </span>
@@ -269,8 +341,14 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
         <span class="swatch swatch--seg-in"><i></i> input tokens</span>
         <span class="swatch swatch--seg-out"><i></i> output tokens</span>
       </p>
+      <p class="bb-caption lb-axisnote" data-bb-lb-scale>
+        Solution bars use the observed {Math.round(lbLo * 100)}% → {Math.round(lbHi * 100)}% scale
+        so real separation is visible.
+      </p>
       <p class="bb-caption">
-        Costs are per-task medians at configured list prices; {derivedCosts} of {RANKED_STACKS.length}
+        Costs are per-task medians at configured list prices; {derivedCosts} of {
+          RANKED_STACKS.length
+        }
         stacks include token-derived estimates (<span class="mono">cost_source: derived</span>).
         Cached input tokens are billed at the full input rate — an upper bound for cache-heavy
         stacks. Speed is median wall-clock per task; tokens are the median task total.
@@ -300,7 +378,14 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
         <div class="bb-tuner__controls">
           <label class="bb-tuner__ctl">
             <span class="bb-tuner__label">Quality <output data-out="wq">60%</output></span>
-            <input type="range" min="0" max="100" value="60" data-w="wq" aria-label="Quality weight" />
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value="60"
+              data-w="wq"
+              aria-label="Quality weight"
+            />
           </label>
           <label class="bb-tuner__ctl">
             <span class="bb-tuner__label">Cost <output data-out="wc">25%</output></span>
@@ -308,7 +393,14 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
           </label>
           <label class="bb-tuner__ctl">
             <span class="bb-tuner__label">Speed <output data-out="ws">15%</output></span>
-            <input type="range" min="0" max="100" value="15" data-w="ws" aria-label="Speed weight" />
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value="15"
+              data-w="ws"
+              aria-label="Speed weight"
+            />
           </label>
         </div>
         <div class="bb-tuner__scope">
@@ -331,7 +423,12 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
             </select>
           </label>
           <label class="bb-tuner__check">
-            <input type="checkbox" data-scope="lowconf" checked aria-label="Exclude low-confidence stacks" />
+            <input
+              type="checkbox"
+              data-scope="lowconf"
+              checked
+              aria-label="Exclude low-confidence stacks"
+            />
             <span>exclude low-confidence</span>
           </label>
         </div>
@@ -348,40 +445,67 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
         <span class="eyebrow eyebrow--mercury">Model lens</span>
         <h2 id="lens-h" class="bb-sec-h">Is it the model or the harness?</h2>
         <p class="bb-sec-lead">
-          Every dot is one harness running the same model. The bar spans worst → best;
-          the notch is the mean. A wide bar means the harness matters more than the model.
-          Pick a model — the table below isolates it across every harness.
+          Every dot is one harness running the same model. The bar spans worst → best; the notch is
+          the mean. A wide bar means the harness matters more than the model. Pick a model — the
+          table below isolates it across every harness.
         </p>
       </header>
 
       <div class="bb-lens" data-bb-lens>
         <div class="bb-lens__toolbar">
           <div class="bb-lens__picker" role="tablist" aria-label="Isolate a model">
-            {lens.map((L) => {
-              const logo = MODEL_LOGO[L.model.id] ?? null;
-              return (
-                <button class="bb-lens__pick" role="tab" aria-selected="false" data-lenspick={L.model.id}>
-                  {logo ? (
-                    <img src={logo} alt="" width="16" height="16" loading="lazy" decoding="async" />
-                  ) : (
-                    <span class="bb-lens__pickmono">{monogramFor(L.model.id, L.model.display)}</span>
-                  )}
-                  {modelDisplayShort(L.model.id)}
-                </button>
-              );
-            })}
-            <button class="bb-lens__pick is-active" role="tab" aria-selected="true" data-lenspick="all">
+            {
+              lens.map((L) => {
+                const logo = MODEL_LOGO[L.model.id] ?? null;
+                return (
+                  <button
+                    class="bb-lens__pick"
+                    role="tab"
+                    aria-selected="false"
+                    data-lenspick={L.model.id}
+                  >
+                    {logo ? (
+                      <img
+                        src={logo}
+                        alt=""
+                        width="16"
+                        height="16"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    ) : (
+                      <span class="bb-lens__pickmono">
+                        {monogramFor(L.model.id, L.model.display)}
+                      </span>
+                    )}
+                    {modelDisplayShort(L.model.id)}
+                  </button>
+                );
+              })
+            }
+            <button
+              class="bb-lens__pick is-active"
+              role="tab"
+              aria-selected="true"
+              data-lenspick="all"
+            >
               All models
             </button>
           </div>
-          <span class="bb-lens__pickhint mono">All {BENCH.harnesses.length} harnesses · mean &amp; spread below</span>
+          <span class="bb-lens__pickhint mono"
+            >All {BENCH.harnesses.length} harnesses · mean &amp; spread below</span
+          >
         </div>
 
         <div class="bb-lens__board">
           <div class="bb-lens__axisbar" aria-hidden="true">
             <span class="bb-lens__corner"></span>
             <div class="bb-lens__axis">
-              {lensTicks.map((t) => <span style={`left:${lensX(t).toFixed(2)}%`}>{Math.round(t * 100)}%</span>)}
+              {
+                lensTicks.map((t) => (
+                  <span style={`left:${lensX(t).toFixed(2)}%`}>{Math.round(t * 100)}%</span>
+                ))
+              }
             </div>
             <span class="bb-lens__corner"></span>
           </div>
@@ -400,9 +524,18 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
                     <span class="bb-lens__id">
                       <span class={`bb-badge m--${mcls(L.model.id)}`}>
                         {logo ? (
-                          <img src={logo} alt="" width="20" height="20" loading="lazy" decoding="async" />
+                          <img
+                            src={logo}
+                            alt=""
+                            width="20"
+                            height="20"
+                            loading="lazy"
+                            decoding="async"
+                          />
                         ) : (
-                          <span class="bb-badge__mono">{monogramFor(L.model.id, L.model.display)}</span>
+                          <span class="bb-badge__mono">
+                            {monogramFor(L.model.id, L.model.display)}
+                          </span>
                         )}
                       </span>
                       <span class="bb-lens__names">
@@ -420,7 +553,13 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
                       aria-label={`${L.model.display} across harnesses: solution rates from ${fmtPct(L.min)} to ${fmtPct(L.max)}`}
                     >
                       {lensTicks.map((t) => (
-                        <line class="bb-lens__tick" x1={lensX(t).toFixed(2)} y1="4" x2={lensX(t).toFixed(2)} y2="26" />
+                        <line
+                          class="bb-lens__tick"
+                          x1={lensX(t).toFixed(2)}
+                          y1="4"
+                          x2={lensX(t).toFixed(2)}
+                          y2="26"
+                        />
                       ))}
                       <line class="bb-lens__gridline" x1="0" y1="15" x2="100" y2="15" />
                       <rect
@@ -468,12 +607,15 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
             {
               BENCH.harnesses.map((h) => (
                 <span class={`key key--ring h--${hcls(h.id)}`}>
-                  <i></i>
+                  <i />
                   {h.display}
                 </span>
               ))
             }
-            <span class="bb-lens__axisnote">axis {Math.round(lensLo * 100)}% → {Math.round(lensHi * 100)}% · notch = mean · hollow = low confidence</span>
+            <span class="bb-lens__axisnote"
+              >axis {Math.round(lensLo * 100)}% → {Math.round(lensHi * 100)}% · notch = mean ·
+              hollow = low confidence</span
+            >
           </p>
         </div>
       </div>
@@ -487,15 +629,17 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
         <span class="eyebrow eyebrow--ember">Family explorer</span>
         <h2 id="heat-h" class="bb-sec-h">Where each stack shines — not all at once.</h2>
         <p class="bb-sec-lead">
-          Tap a stack to isolate its row; tap a family to pull one column into focus. The rest
-          dims and contracts so your eye lands on one line at a time. Numbers stay quiet until
-          you hover. Toggle the lens — solution, strict, or cost — and keep one comparison in view.
+          Tap a stack to isolate its row; tap a family to pull one column into focus. The rest dims
+          and contracts so your eye lands on one line at a time. Numbers stay quiet until you hover.
+          Toggle the lens — solution, strict, or cost — and keep one comparison in view.
         </p>
       </header>
 
       <div class="bb-heat-toolbar">
         <div class="bb-tabs bb-tabs--sm" role="tablist" aria-label="Heatmap lens" data-bb-heatlens>
-          <button class="bb-tab is-active" role="tab" aria-selected="true" data-lens="rate">Solution</button>
+          <button class="bb-tab is-active" role="tab" aria-selected="true" data-lens="rate"
+            >Solution</button
+          >
           <button class="bb-tab" role="tab" aria-selected="false" data-lens="strict">Strict</button>
           <button class="bb-tab" role="tab" aria-selected="false" data-lens="cost">Cost</button>
           {
@@ -512,9 +656,14 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
       <div class="bb-heat-frame" data-bb-heatframe>
         <div class="bb-heat-zoombar" data-bb-heat-zoombar>
           <span class="bb-zoom-hint">pinch or scroll to zoom · drag to pan</span>
-          <button class="bb-zoom-btn" type="button" data-heat-zoom-out aria-label="Zoom out">−</button>
-          <button class="bb-zoom-btn" type="button" data-heat-zoom-in aria-label="Zoom in">+</button>
-          <button class="bb-zoom-btn" type="button" data-heat-zoom-reset aria-label="Reset zoom">⟲</button>
+          <button class="bb-zoom-btn" type="button" data-heat-zoom-out aria-label="Zoom out"
+            >−</button
+          >
+          <button class="bb-zoom-btn" type="button" data-heat-zoom-in aria-label="Zoom in">+</button
+          >
+          <button class="bb-zoom-btn" type="button" data-heat-zoom-reset aria-label="Reset zoom"
+            >⟲</button
+          >
         </div>
         <div class="bb-heat-wrap" data-bb-heat-wrap>
           <div class="bb-heat-zoom" data-bb-heat-zoom>
@@ -549,37 +698,59 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
                       aria-pressed="false"
                     >
                       <span class="bb-heat__rowbadges" aria-hidden="true">
-                        {
-                          (() => {
-                            const hl = HARNESS_LOGO[row.harness] ?? null;
-                            const ml = MODEL_LOGO[row.model] ?? null;
-                            const hMono = monogramFor(row.harness, harnessDisplay(row.harness));
-                            const mMono = monogramFor(row.model, modelDisplay(row.model));
-                            return (
-                              <>
-                                <span class={`bb-heat__badge bb-heat__badge--h h--${hcls(row.harness)}`}>
-                                  {hl ? (
-                                    <img src={hl} alt="" width="16" height="16" loading="lazy" decoding="async" />
-                                  ) : (
-                                    <span class="bb-badge__mono">{hMono}</span>
-                                  )}
-                                </span>
-                                <span class="bb-heat__x" aria-hidden="true">×</span>
-                                <span class={`bb-heat__badge bb-heat__badge--m m--${mcls(row.model)}`}>
-                                  {ml ? (
-                                    <img src={ml} alt="" width="16" height="16" loading="lazy" decoding="async" />
-                                  ) : (
-                                    <span class="bb-badge__mono">{mMono}</span>
-                                  )}
-                                </span>
-                              </>
-                            );
-                          })()
-                        }
+                        {(() => {
+                          const hl = HARNESS_LOGO[row.harness] ?? null;
+                          const ml = MODEL_LOGO[row.model] ?? null;
+                          const hMono = monogramFor(row.harness, harnessDisplay(row.harness));
+                          const mMono = monogramFor(row.model, modelDisplay(row.model));
+                          return (
+                            <>
+                              <span
+                                class={`bb-heat__badge bb-heat__badge--h h--${hcls(row.harness)}`}
+                              >
+                                {hl ? (
+                                  <img
+                                    src={hl}
+                                    alt=""
+                                    width="16"
+                                    height="16"
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
+                                ) : (
+                                  <span class="bb-badge__mono">{hMono}</span>
+                                )}
+                              </span>
+                              <span class="bb-heat__x" aria-hidden="true">
+                                ×
+                              </span>
+                              <span
+                                class={`bb-heat__badge bb-heat__badge--m m--${mcls(row.model)}`}
+                              >
+                                {ml ? (
+                                  <img
+                                    src={ml}
+                                    alt=""
+                                    width="16"
+                                    height="16"
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
+                                ) : (
+                                  <span class="bb-badge__mono">{mMono}</span>
+                                )}
+                              </span>
+                            </>
+                          );
+                        })()}
                       </span>
                       <span class="bb-heat__rowlabel">
-                        <span class={`bb-heat__h h--${hcls(row.harness)}`}>{harnessDisplay(row.harness)}</span>
-                        <span class="bb-heat__m" title={modelDisplay(row.model)}>{modelDisplayShort(row.model)}</span>
+                        <span class={`bb-heat__h h--${hcls(row.harness)}`}>
+                          {harnessDisplay(row.harness)}
+                        </span>
+                        <span class="bb-heat__m" title={modelDisplay(row.model)}>
+                          {modelDisplayShort(row.model)}
+                        </span>
                       </span>
                     </button>
                     {row.cells.map((cell, ci) => (
@@ -593,7 +764,9 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
                         data-wall={cell.wall ?? ""}
                         data-tokens={cell.tokens ?? ""}
                         data-n={cell.n}
-                        data-emptyfam={emptyFams.includes(heat.families[ci] ?? "") ? "true" : undefined}
+                        data-emptyfam={
+                          emptyFams.includes(heat.families[ci] ?? "") ? "true" : undefined
+                        }
                         data-bucket={heatBucket(cell.rate, heat.domains.rate) ?? ""}
                         aria-label={
                           cell.rate != null
@@ -601,11 +774,13 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
                             : `${harnessDisplay(row.harness)} × ${modelDisplay(row.model)} · ${heat.families[ci]}: not measured`
                         }
                       >
-                        <span class="bb-heat__glass" aria-hidden="true"></span>
+                        <span class="bb-heat__glass" aria-hidden="true" />
                         {cell.rate != null ? (
                           <span class="bb-heat__v">{Math.round(cell.rate! * 100)}</span>
                         ) : (
-                          <span class="bb-heat__dash" aria-hidden="true">—</span>
+                          <span class="bb-heat__dash" aria-hidden="true">
+                            —
+                          </span>
                         )}
                       </button>
                     ))}
@@ -615,12 +790,21 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
             </div>
           </div>
         </div>
-        <div class="bb-heat-detail" data-bb-heat-detail hidden role="dialog" aria-modal="false" aria-label="Cell details"></div>
+        <div
+          class="bb-heat-detail"
+          data-bb-heat-detail
+          hidden
+          role="dialog"
+          aria-modal="false"
+          aria-label="Cell details"
+        >
+        </div>
         <div class="bb-heat-tip" data-bb-heattip hidden role="status" aria-live="polite"></div>
       </div>
       <p class="bb-caption">
-        Glass: the tint is the value, the number is quiet until you hover. In cost mode cheapest glows teal.
-        Empty tiles are dashed glass — never painted as zero. Experiential families stay hidden until Arena judgment lands.
+        Glass: the tint is the value, the number is quiet until you hover. In cost mode cheapest
+        glows teal. Empty tiles are dashed glass — never painted as zero. Experiential families stay
+        hidden until Arena judgment lands.
       </p>
     </div>
   </section>
@@ -654,7 +838,14 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
                     title={`Toggle ${h.display}`}
                   >
                     {HARNESS_LOGO[h.id] ? (
-                      <img src={HARNESS_LOGO[h.id]!} alt="" width="14" height="14" loading="lazy" decoding="async" />
+                      <img
+                        src={HARNESS_LOGO[h.id]!}
+                        alt=""
+                        width="14"
+                        height="14"
+                        loading="lazy"
+                        decoding="async"
+                      />
                     ) : null}
                     {h.display}
                   </button>
@@ -672,7 +863,14 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
                     aria-pressed="true"
                   >
                     {MODEL_LOGO[m.id] ? (
-                      <img src={MODEL_LOGO[m.id]!} alt="" width="14" height="14" loading="lazy" decoding="async" />
+                      <img
+                        src={MODEL_LOGO[m.id]!}
+                        alt=""
+                        width="14"
+                        height="14"
+                        loading="lazy"
+                        decoding="async"
+                      />
                     ) : null}
                     {modelDisplayShort(m.id)}
                   </button>
@@ -681,17 +879,27 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
             </div>
           </div>
           <div class="bb-pareto__toolbar-right">
-            <button class="bb-pareto__ghost" type="button" data-bb-pareto-reset>Reset filters</button>
-            <button class="bb-pareto__ghost" type="button" data-bb-pareto-clear hidden>Clear pins</button>
+            <button class="bb-pareto__ghost" type="button" data-bb-pareto-reset
+              >Reset filters</button
+            >
+            <button class="bb-pareto__ghost" type="button" data-bb-pareto-clear hidden
+              >Clear pins</button
+            >
           </div>
         </div>
 
         <div class="bb-pareto__stage" data-bb-pareto-stage>
           <div class="bb-pareto__stagebar" data-bb-pareto-zoombar>
             <span class="bb-zoom-hint">pinch or scroll to zoom</span>
-            <button class="bb-zoom-btn" type="button" data-pareto-zoom-out aria-label="Zoom out">−</button>
-            <button class="bb-zoom-btn" type="button" data-pareto-zoom-in aria-label="Zoom in">+</button>
-            <button class="bb-zoom-btn" type="button" data-pareto-zoom-reset aria-label="Reset zoom">⟲</button>
+            <button class="bb-zoom-btn" type="button" data-pareto-zoom-out aria-label="Zoom out"
+              >−</button
+            >
+            <button class="bb-zoom-btn" type="button" data-pareto-zoom-in aria-label="Zoom in"
+              >+</button
+            >
+            <button class="bb-zoom-btn" type="button" data-pareto-zoom-reset aria-label="Reset zoom"
+              >⟲</button
+            >
           </div>
           <svg
             class="bb-pareto__svg"
@@ -705,13 +913,20 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
               x={PLOT.ml}
               y={PLOT.mt}
               width={(xPos(medianCost) - PLOT.ml).toFixed(1)}
-              height={(yPos(medianRate) - PLOT.mt).toFixed(1)}
-            />
-            <text class="bb-pareto__quadlabel" x={PLOT.ml + 10} y={PLOT.mt + 16}>most attractive</text>
+              height={(yPos(medianRate) - PLOT.mt).toFixed(1)}></rect>
+            <text class="bb-pareto__quadlabel" x={PLOT.ml + 10} y={PLOT.mt + 16}
+              >most attractive</text
+            >
             {
               domain.yTicks.map((t) => (
                 <>
-                  <line class="bb-pareto__grid" x1={PLOT.ml} x2={PLOT.w - PLOT.mr} y1={yPos(t)} y2={yPos(t)} />
+                  <line
+                    class="bb-pareto__grid"
+                    x1={PLOT.ml}
+                    x2={PLOT.w - PLOT.mr}
+                    y1={yPos(t)}
+                    y2={yPos(t)}
+                  />
                   <text class="bb-pareto__tick" x={PLOT.ml - 8} y={yPos(t) + 4} text-anchor="end">
                     {Math.round(t * 100)}%
                   </text>
@@ -721,18 +936,52 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
             {
               domain.xTicks.map((t) => (
                 <>
-                  <line class="bb-pareto__grid" x1={xPos(t)} x2={xPos(t)} y1={PLOT.mt} y2={PLOT.h - PLOT.mb} />
-                  <text class="bb-pareto__tick" x={xPos(t)} y={PLOT.h - PLOT.mb + 18} text-anchor="middle">
+                  <line
+                    class="bb-pareto__grid"
+                    x1={xPos(t)}
+                    x2={xPos(t)}
+                    y1={PLOT.mt}
+                    y2={PLOT.h - PLOT.mb}
+                  />
+                  <text
+                    class="bb-pareto__tick"
+                    x={xPos(t)}
+                    y={PLOT.h - PLOT.mb + 18}
+                    text-anchor="middle"
+                  >
                     {fmtCost(t)}
                   </text>
                 </>
               ))
             }
-            <line class="bb-pareto__grid" x1={xPos(0) + 14} x2={xPos(0) + 14} y1={PLOT.mt} y2={PLOT.h - PLOT.mb} stroke-dasharray="2 4" />
-            <text class="bb-pareto__tick" x={xPos(0)} y={PLOT.h - PLOT.mb + 18} text-anchor="middle">$0 free</text>
-            <line class="bb-pareto__axis" x1={PLOT.ml} x2={PLOT.w - PLOT.mr} y1={PLOT.h - PLOT.mb} y2={PLOT.h - PLOT.mb} />
-            <line class="bb-pareto__axis" x1={PLOT.ml} x2={PLOT.ml} y1={PLOT.mt} y2={PLOT.h - PLOT.mb} />
-            <text class="bb-pareto__axistitle" x={(PLOT.ml + PLOT.w - PLOT.mr) / 2} y={PLOT.h - 8} text-anchor="middle">
+            <line
+              class="bb-pareto__grid"
+              x1={xPos(0) + 14}
+              x2={xPos(0) + 14}
+              y1={PLOT.mt}
+              y2={PLOT.h - PLOT.mb}
+              stroke-dasharray="2 4"></line>
+            <text class="bb-pareto__tick" x={xPos(0)} y={PLOT.h - PLOT.mb + 18} text-anchor="middle"
+              >$0 free</text
+            >
+            <line
+              class="bb-pareto__axis"
+              x1={PLOT.ml}
+              x2={PLOT.w - PLOT.mr}
+              y1={PLOT.h - PLOT.mb}
+              y2={PLOT.h - PLOT.mb}></line>
+            <line
+              class="bb-pareto__axis"
+              x1={PLOT.ml}
+              x2={PLOT.ml}
+              y1={PLOT.mt}
+              y2={PLOT.h - PLOT.mb}></line>
+            <text
+              class="bb-pareto__axistitle"
+              x={(PLOT.ml + PLOT.w - PLOT.mr) / 2}
+              y={PLOT.h - 8}
+              text-anchor="middle"
+            >
               median cost per task · USD, log scale (list-price, token-derived)
             </text>
             <text
@@ -742,7 +991,8 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
             >
               solution rate
             </text>
-            <polyline class="bb-pareto__frontier" data-bb-pareto-frontier points={frontierLine} />
+            <polyline class="bb-pareto__frontier" data-bb-pareto-frontier points={frontierLine}
+            ></polyline>
             {
               RANKED_STACKS.filter((s) => s.cost_usd_median != null).map((s) => {
                 const x = xPos(s.cost_usd_median!);
@@ -783,7 +1033,8 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
               })
             }
           </svg>
-          <div class="bb-pareto__tip" data-bb-pareto-tip hidden role="status" aria-live="polite"></div>
+          <div class="bb-pareto__tip" data-bb-pareto-tip hidden role="status" aria-live="polite">
+          </div>
         </div>
 
         <div class="bb-pareto__compare" data-bb-pareto-compare hidden>
@@ -795,10 +1046,19 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
         </div>
 
         <p class="bb-legendrow" aria-label="Legend">
-          {BENCH.models.map((m) => <span class={`key m--${mcls(m.id)}`}><i></i>{m.display}</span>)}
+          {
+            BENCH.models.map((m) => (
+              <span class={`key m--${mcls(m.id)}`}>
+                <i />
+                {m.display}
+              </span>
+            ))
+          }
           <span class="key key--frontier"><i></i> Pareto frontier (our round-up)</span>
           <span class="key key--dash"><i></i> inferred</span>
-          <span class="key" style="opacity:0.85">— hover for card · click to pin · filters above narrow the field</span>
+          <span class="key" style="opacity:0.85"
+            >— hover for card · click to pin · filters above narrow the field</span
+          >
         </p>
       </div>
     </div>
@@ -823,16 +1083,28 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
             <div class="bb-ask__msg bb-ask__msg--ai">
               <p>
                 I'm grounded in the {generatedAt} export — {RANKED_STACKS.length} stacks,
-                {` ${fmtInt(kpis.cellsMeasured)}`} cells. Ask me about tradeoffs, families, or
-                where a stack earns its ranking.
+                {` ${fmtInt(kpis.cellsMeasured)}`} cells. Ask me about tradeoffs, families, or where a
+                stack earns its ranking.
               </p>
             </div>
           </div>
           <div class="bb-ask__suggestions">
-            <button class="bb-chip" data-q="Which stack gives the best quality per dollar for feature work?">Best quality per dollar?</button>
-            <button class="bb-chip" data-q="How much does the harness change GLM 5.2's results?">Harness effect on GLM 5.2?</button>
-            <button class="bb-chip" data-q="Which stack is fastest without giving up solution quality?">Fastest without quality loss?</button>
-            <button class="bb-chip" data-q="Where does the leader struggle by task family?">Leader's weak families?</button>
+            <button
+              class="bb-chip"
+              data-q="Which stack gives the best quality per dollar for feature work?"
+              >Best quality per dollar?</button
+            >
+            <button class="bb-chip" data-q="How much does the harness change GLM 5.2's results?"
+              >Harness effect on GLM 5.2?</button
+            >
+            <button
+              class="bb-chip"
+              data-q="Which stack is fastest without giving up solution quality?"
+              >Fastest without quality loss?</button
+            >
+            <button class="bb-chip" data-q="Where does the leader struggle by task family?"
+              >Leader's weak families?</button
+            >
           </div>
           <form class="bb-ask__form" data-bb-form>
             <input
@@ -905,14 +1177,14 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
         </div>
 
         <p class="bb-meta__note">
-          Rates ship with Wilson 95% confidence intervals. Cells with <code>n &lt; 10</code> are
-          marked <strong>low confidence</strong> and may not rank first. Cells marked
-          <strong> inferred</strong> are shrinkage-pooled estimates — shown dashed, never presented
-          as measured. Costs are per-task medians at configured list prices;
-          <strong> derived</strong> costs are computed from token counts (cached inputs at the full
-          input rate — an upper bound), never receipts. Consumers can reject stale exports via the
-          generated timestamp and the runs hash. Arena ratings are Bradley-Terry with bootstrap
-          CIs, published only at 30+ votes per stack.
+          Rates ship with Wilson 95% confidence intervals. Cells with <code>n &lt; 10</code> are marked
+          <strong>low confidence</strong> and may not rank first. Cells marked
+          <strong> inferred</strong> are shrinkage-pooled estimates — shown dashed, never presented as
+          measured. Costs are per-task medians at configured list prices;
+          <strong> derived</strong> costs are computed from token counts (cached inputs at the full input
+          rate — an upper bound), never receipts. Consumers can reject stale exports via the generated
+          timestamp and the runs hash. Arena ratings are Bradley-Terry with bootstrap CIs, published only
+          at 30+ votes per stack.
         </p>
 
         <div class="bb-meta__links">
@@ -926,11 +1198,13 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
     </div>
   </section>
 
-  {/*
+  {
+    /*
     The dashboard module fetches its dataset from /data/bench-dashboard.json
     (a prerendered projection of the export) — no inline data island, so the
     page keeps its zero-inline-JS budget and the dataset caches immutably.
-  */}
+  */
+  }
   <script>
     import "../scripts/bench-dashboard";
   </script>

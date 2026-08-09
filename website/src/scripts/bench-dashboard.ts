@@ -110,6 +110,19 @@ const esc = (s: string): string =>
 
 type Metric = "sol" | "str" | "cost" | "wall" | "tok";
 
+type Band = { lo: number; hi: number };
+
+const niceBand = (values: number[]): Band => {
+  const lo = Math.max(0, Math.floor((Math.min(...values) - 0.03) * 20) / 20);
+  const hi = Math.min(1, Math.ceil((Math.max(...values) + 0.01) * 20) / 20);
+  return hi > lo ? { lo, hi } : { lo: 0, hi: 1 };
+};
+
+const bandPct = (v: number, band: Band): number => {
+  const span = band.hi - band.lo;
+  return Math.min(100, Math.max(0, ((v - band.lo) / span) * 100));
+};
+
 const METRIC_SORT: Record<Metric, (a: StackRow, b: StackRow) => number> = {
   sol: (a, b) => b.sol - a.sol,
   str: (a, b) => b.str - a.str,
@@ -118,17 +131,22 @@ const METRIC_SORT: Record<Metric, (a: StackRow, b: StackRow) => number> = {
   tok: (a, b) => (a.tok ?? Infinity) - (b.tok ?? Infinity)
 };
 
-function barSvg(s: StackRow, metric: Metric, maxima: { cost: number; wall: number; tok: number }): string {
-  const track = `<rect class="lb-bar__track" x="0" y="9" width="100%" height="8" rx="4"></rect>`;
+function barSvg(
+  s: StackRow,
+  metric: Metric,
+  maxima: { cost: number; wall: number; tok: number },
+  bands: { sol: Band; str: Band }
+): string {
+  const track = `<rect class="lb-bar__track" x="0" y="7" width="100%" height="12" rx="6"></rect>`;
   if (metric === "sol") {
-    const p = (v: number) => `${(v * 100).toFixed(2)}%`;
+    const p = (v: number) => `${bandPct(v, bands.sol).toFixed(2)}%`;
     return (
       track +
-      `<rect class="lb-bar__fill" fill="${s.mc}" x="0" y="9" width="${p(s.sol)}" height="8" rx="4"></rect>` +
+      `<rect class="lb-bar__fill" fill="${s.mc}" x="0" y="7" width="${p(s.sol)}" height="12" rx="6"></rect>` +
       `<line class="lb-bar__ci" x1="${p(s.ci[0])}" x2="${p(s.ci[1])}" y1="13" y2="13"></line>` +
-      `<line class="lb-bar__ci" x1="${p(s.ci[0])}" x2="${p(s.ci[0])}" y1="9" y2="17"></line>` +
-      `<line class="lb-bar__ci" x1="${p(s.ci[1])}" x2="${p(s.ci[1])}" y1="9" y2="17"></line>` +
-      `<line class="lb-bar__strict" x1="${p(s.str)}" x2="${p(s.str)}" y1="5" y2="21"></line>`
+      `<line class="lb-bar__ci" x1="${p(s.ci[0])}" x2="${p(s.ci[0])}" y1="8" y2="18"></line>` +
+      `<line class="lb-bar__ci" x1="${p(s.ci[1])}" x2="${p(s.ci[1])}" y1="8" y2="18"></line>` +
+      `<line class="lb-bar__strict" x1="${p(s.str)}" x2="${p(s.str)}" y1="4" y2="22"></line>`
     );
   }
   if (metric === "cost") {
@@ -137,16 +155,23 @@ function barSvg(s: StackRow, metric: Metric, maxima: { cost: number; wall: numbe
     const outW = ((s.cout ?? s.cost) / maxima.cost) * 100;
     return (
       track +
-      `<rect class="lb-bar__seg lb-bar__seg--in" x="0" y="9" width="${inW.toFixed(2)}%" height="8" rx="4"></rect>` +
-      `<rect class="lb-bar__seg lb-bar__seg--out" x="${inW.toFixed(2)}%" y="9" width="${outW.toFixed(2)}%" height="8"></rect>`
+      `<rect class="lb-bar__seg lb-bar__seg--in" x="0" y="7" width="${inW.toFixed(2)}%" height="12" rx="6"></rect>` +
+      `<rect class="lb-bar__seg lb-bar__seg--out" x="${inW.toFixed(2)}%" y="7" width="${outW.toFixed(2)}%" height="12"></rect>`
     );
   }
-  const value = metric === "str" ? s.str : metric === "wall" ? s.wall : s.tok;
-  const max = metric === "str" ? 1 : metric === "wall" ? maxima.wall : maxima.tok;
+  if (metric === "str") {
+    const w = bandPct(s.str, bands.str);
+    return (
+      track +
+      `<rect class="lb-bar__fill" fill="${s.mc}" x="0" y="7" width="${w.toFixed(2)}%" height="12" rx="6"></rect>`
+    );
+  }
+  const value = metric === "wall" ? s.wall : s.tok;
+  const max = metric === "wall" ? maxima.wall : maxima.tok;
   const w = value == null ? 0 : Math.min(100, (value / max) * 100);
   return (
     track +
-    `<rect class="lb-bar__fill" fill="${s.mc}" x="0" y="9" width="${w.toFixed(2)}%" height="8" rx="4"></rect>`
+    `<rect class="lb-bar__fill" fill="${s.mc}" x="0" y="7" width="${w.toFixed(2)}%" height="12" rx="6"></rect>`
   );
 }
 
@@ -187,10 +212,25 @@ function initTabs(data: Dataset): void {
   const tabBar = document.querySelector<HTMLElement>("[data-bb-tabs]");
   const list = document.querySelector<HTMLElement>("[data-bb-lb]");
   if (!tabBar || !list) return;
+  const scaleNote = document.querySelector<HTMLElement>("[data-bb-lb-scale]");
   const maxima = {
     cost: Math.max(...data.stacks.map((s) => s.cost ?? 0), 0.01),
     wall: Math.max(...data.stacks.map((s) => s.wall ?? 0), 1),
     tok: Math.max(...data.stacks.map((s) => s.tok ?? 0), 1)
+  };
+  const bands = {
+    sol: niceBand(data.stacks.map((s) => s.sol)),
+    str: niceBand(data.stacks.map((s) => s.str))
+  };
+  const stackById = new Map(data.stacks.map((s) => [`${s.h}|${s.m}`, s]));
+  const scaleText = (metric: Metric): string => {
+    if (metric === "sol" || metric === "str") {
+      const b = bands[metric];
+      return `${metric === "sol" ? "Solution" : "Strict"} bars use the observed ${Math.round(b.lo * 100)}% → ${Math.round(b.hi * 100)}% scale so real separation is visible.`;
+    }
+    if (metric === "cost") return `Cost bars use a 0 → ${fmtCost(maxima.cost)} per-task scale.`;
+    if (metric === "wall") return `Wall-time bars use a 0 → ${fmtWall(maxima.wall)} scale.`;
+    return `Token bars use a 0 → ${fmtTokens(maxima.tok)} scale.`;
   };
 
   const logoHtml = (url: string | null, mono: string, extra: string): string =>
@@ -199,7 +239,8 @@ function initTabs(data: Dataset): void {
       : `<span class="lb-mono ${extra}">${esc(mono)}</span>`;
 
   const rowHtml = (s: StackRow, metric: Metric, rank: number, tie: boolean): string => {
-    const head = metric === "cost" && s.cost != null ? `${headline(s, metric)}/task` : headline(s, metric);
+    const head =
+      metric === "cost" && s.cost != null ? `${headline(s, metric)}/task` : headline(s, metric);
     const tags: string[] = [];
     if (s.ev === "inferred") tags.push('<span class="tag tag--estimated">inferred</span>');
     if (s.conf === "low") tags.push('<span class="tag tag--unavailable">low conf</span>');
@@ -212,7 +253,7 @@ function initTabs(data: Dataset): void {
       `<span class="lb-logos">${logoHtml(s.hl, s.hm, "lb-logo--h")}${logoHtml(s.ml, s.mm, "lb-logo--m")}</span>` +
       `<span class="lb-names"><strong>${esc(s.hd)} × ${esc(s.mds)}</strong>` +
       `<span class="lb-sub">${esc(subline(s, metric))}</span></span>` +
-      `<svg class="lb-bar" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true">${barSvg(s, metric, maxima)}</svg>` +
+      `<svg class="lb-bar" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true">${barSvg(s, metric, maxima, bands)}</svg>` +
       `<span class="lb-nums"><span class="lb-head">${esc(head)}</span>` +
       (tags.length ? `<span class="lb-tags">${tags.join("")}</span>` : "") +
       `</span></div>`
@@ -220,6 +261,7 @@ function initTabs(data: Dataset): void {
   };
 
   const render = (metric: Metric): void => {
+    if (scaleNote) scaleNote.textContent = scaleText(metric);
     const sorted = [...data.stacks].sort(METRIC_SORT[metric]);
     // Tie groups: consecutive stacks whose visible headline is identical
     // share one competition rank; the group expands on hover/click.
@@ -254,6 +296,12 @@ function initTabs(data: Dataset): void {
         );
       })
       .join("");
+    list.querySelectorAll<HTMLElement>(".lb-row[data-h][data-m]").forEach((row) => {
+      const s = stackById.get(`${row.dataset.h}|${row.dataset.m}`);
+      if (!s) return;
+      row.style.setProperty("--hc", s.hc);
+      row.style.setProperty("--mc", s.mc);
+    });
   };
 
   tabBar.addEventListener("click", (ev) => {
@@ -310,9 +358,8 @@ function initTuner(data: Dataset): void {
 
     // Scope the metric picks: family cells override overall stats when set.
     const qualityOf = (s: StackRow): number | null =>
-      fi >= 0 ? heatFor(s, fi)?.r ?? null : s.sol;
-    const costOf = (s: StackRow): number | null =>
-      fi >= 0 ? heatFor(s, fi)?.c ?? null : s.cost;
+      fi >= 0 ? (heatFor(s, fi)?.r ?? null) : s.sol;
+    const costOf = (s: StackRow): number | null => (fi >= 0 ? (heatFor(s, fi)?.c ?? null) : s.cost);
 
     let excludedScope = 0;
     let excludedBudget = 0;
@@ -365,10 +412,13 @@ function initTuner(data: Dataset): void {
     const first = eligible[0] ?? scored[0];
     if (!first) {
       picksEl.innerHTML = "";
-      if (noteEl) noteEl.textContent = "No stack survives those filters — loosen the budget or scope.";
+      if (noteEl)
+        noteEl.textContent = "No stack survives those filters — loosen the budget or scope.";
       return;
     }
-    const top: { s: StackRow; score: number; parts: { q: number; c: number; sp: number } }[] = [first];
+    const top: { s: StackRow; score: number; parts: { q: number; c: number; sp: number } }[] = [
+      first
+    ];
     for (const x of scored) {
       if (top.length >= 3) break;
       if (!top.includes(x)) top.push(x);
@@ -382,7 +432,11 @@ function initTuner(data: Dataset): void {
         if (s.ev === "inferred") tags.push("inferred");
         if (c === 0) tags.push("free tier");
         const dom =
-          parts.q >= parts.c && parts.q >= parts.sp ? "quality" : parts.c >= parts.sp ? "cost" : "speed";
+          parts.q >= parts.c && parts.q >= parts.sp
+            ? "quality"
+            : parts.c >= parts.sp
+              ? "cost"
+              : "speed";
         const why = `wins on ${dom} — ${fmtPct(q ?? 0)}${fam ? ` on ${fam}` : ""} · ${fmtCost(c)}/task · ${fmtWall(s.wall)}`;
         const logo = (url: string | null, mono: string, cls: string): string =>
           url
@@ -410,7 +464,8 @@ function initTuner(data: Dataset): void {
     if (noteEl) {
       const bits: string[] = [];
       if (fam) bits.push(`scored on ${fam} cells`);
-      if (budget != null) bits.push(`budget ≤ ${budget === 0 ? "$0" : `$${budget.toFixed(2)}`}/task`);
+      if (budget != null)
+        bits.push(`budget ≤ ${budget === 0 ? "$0" : `$${budget.toFixed(2)}`}/task`);
       const ex: string[] = [];
       if (excludedScope) ex.push(`${excludedScope} unmeasured in ${fam}`);
       if (excludedBudget) ex.push(`${excludedBudget} over budget`);
@@ -476,18 +531,32 @@ function attachZoom(
   let startDist = 0;
   let startScale = 1;
   const dist = (a: Touch, b: Touch) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-  wrap.addEventListener("touchstart", (ev) => {
-    if (ev.touches.length !== 2) return;
-    startDist = dist(ev.touches[0]!, ev.touches[1]!);
-    startScale = scale;
-  }, { passive: true });
-  wrap.addEventListener("touchmove", (ev) => {
-    if (ev.touches.length !== 2 || startDist <= 0) return;
-    ev.preventDefault();
-    const next = startScale * (dist(ev.touches[0]!, ev.touches[1]!) / startDist);
-    apply(next);
-  }, { passive: false });
-  wrap.addEventListener("touchend", () => { startDist = 0; }, { passive: true });
+  wrap.addEventListener(
+    "touchstart",
+    (ev) => {
+      if (ev.touches.length !== 2) return;
+      startDist = dist(ev.touches[0]!, ev.touches[1]!);
+      startScale = scale;
+    },
+    { passive: true }
+  );
+  wrap.addEventListener(
+    "touchmove",
+    (ev) => {
+      if (ev.touches.length !== 2 || startDist <= 0) return;
+      ev.preventDefault();
+      const next = startScale * (dist(ev.touches[0]!, ev.touches[1]!) / startDist);
+      apply(next);
+    },
+    { passive: false }
+  );
+  wrap.addEventListener(
+    "touchend",
+    () => {
+      startDist = 0;
+    },
+    { passive: true }
+  );
   return () => scale;
 }
 
@@ -522,7 +591,14 @@ function initHeatLens(data: Dataset): void {
     getHeatScale = () => heatScale;
     setHeatScale = applyHeat;
     // wheel + pinch via helper
-    attachZoom(heatWrap, heatZoom, { min: 1, max: 2.2, step: 0.12, onChange: (s) => { heatScale = s; } });
+    attachZoom(heatWrap, heatZoom, {
+      min: 1,
+      max: 2.2,
+      step: 0.12,
+      onChange: (s) => {
+        heatScale = s;
+      }
+    });
     // also keep zoombar buttons in sync on pinch
     const syncBtns = () => {
       const out = zoombar?.querySelector<HTMLButtonElement>("[data-heat-zoom-out]");
@@ -531,9 +607,21 @@ function initHeatLens(data: Dataset): void {
       if (rst) rst.disabled = heatScale <= 1.01;
     };
     heatWrap.addEventListener("wheel", () => syncBtns(), { passive: true });
-    zoombar?.querySelector<HTMLButtonElement>("[data-heat-zoom-in]")?.addEventListener("click", () => { applyHeat(heatScale + 0.18); });
-    zoombar?.querySelector<HTMLButtonElement>("[data-heat-zoom-out]")?.addEventListener("click", () => { applyHeat(heatScale - 0.18); });
-    zoombar?.querySelector<HTMLButtonElement>("[data-heat-zoom-reset]")?.addEventListener("click", () => { applyHeat(1); });
+    zoombar
+      ?.querySelector<HTMLButtonElement>("[data-heat-zoom-in]")
+      ?.addEventListener("click", () => {
+        applyHeat(heatScale + 0.18);
+      });
+    zoombar
+      ?.querySelector<HTMLButtonElement>("[data-heat-zoom-out]")
+      ?.addEventListener("click", () => {
+        applyHeat(heatScale - 0.18);
+      });
+    zoombar
+      ?.querySelector<HTMLButtonElement>("[data-heat-zoom-reset]")
+      ?.addEventListener("click", () => {
+        applyHeat(1);
+      });
   }
   void getHeatScale;
   void setHeatScale;
@@ -585,11 +673,12 @@ function initHeatLens(data: Dataset): void {
       if (!hasFocus) {
         tip.hidden = true;
       } else {
-        const label = activeRow && activeCol
-          ? `${activeRow.replace("|", " × ")} · ${activeCol}`
-          : activeRow
-            ? `${activeRow.replace("|", " × ")} — every family`
-            : `${activeCol} — every stack`;
+        const label =
+          activeRow && activeCol
+            ? `${activeRow.replace("|", " × ")} · ${activeCol}`
+            : activeRow
+              ? `${activeRow.replace("|", " × ")} — every family`
+              : `${activeCol} — every stack`;
         const count = cells().filter((c) => {
           const k = c.dataset.heatcell ?? "";
           const [h, m, fam] = k.split("|");
@@ -603,11 +692,15 @@ function initHeatLens(data: Dataset): void {
           `<button class="bb-heat-tip__x" type="button" aria-label="Clear focus">×</button>`;
         tip.hidden = false;
         const x = tip.querySelector<HTMLButtonElement>(".bb-heat-tip__x");
-        x?.addEventListener("click", () => {
-          activeRow = null;
-          activeCol = null;
-          applyFocus();
-        }, { once: true });
+        x?.addEventListener(
+          "click",
+          () => {
+            activeRow = null;
+            activeCol = null;
+            applyFocus();
+          },
+          { once: true }
+        );
       }
     }
   };
@@ -620,7 +713,12 @@ function initHeatLens(data: Dataset): void {
       t.setAttribute("aria-selected", String(active));
     });
     grid.classList.toggle("bb-heat--cost", lens === "cost");
-    const domain = lens === "cost" ? data.heatDomains.cost : lens === "strict" ? data.heatDomains.strict : data.heatDomains.rate;
+    const domain =
+      lens === "cost"
+        ? data.heatDomains.cost
+        : lens === "strict"
+          ? data.heatDomains.strict
+          : data.heatDomains.rate;
     const invert = lens === "cost";
     for (const cell of cells()) {
       const read = (k: string): number | null => {
@@ -631,7 +729,8 @@ function initHeatLens(data: Dataset): void {
       if (lens === "cost") {
         const cost = read("cost");
         cell.dataset.bucket = bucket(cost, domain, invert);
-        if (label) label.textContent = cost == null ? "" : cost < 0.01 ? "<1¢" : `$${cost.toFixed(2)}`;
+        if (label)
+          label.textContent = cost == null ? "" : cost < 0.01 ? "<1¢" : `$${cost.toFixed(2)}`;
       } else {
         const v = lens === "strict" ? read("strict") : read("rate");
         cell.dataset.bucket = bucket(v, domain, invert);
@@ -651,7 +750,17 @@ function initHeatLens(data: Dataset): void {
     if (btn?.dataset.lens) setLens(btn.dataset.lens as "rate" | "strict" | "cost");
   });
 
-  type CellTip = { h: string; m: string; fam: string; rate: number | null; strict: number | null; cost: number | null; wall: number | null; tok: number | null; n: number };
+  type CellTip = {
+    h: string;
+    m: string;
+    fam: string;
+    rate: number | null;
+    strict: number | null;
+    cost: number | null;
+    wall: number | null;
+    tok: number | null;
+    n: number;
+  };
 
   const renderDetail = (cell: HTMLElement | null): void => {
     if (!detail) return;
@@ -684,13 +793,21 @@ function initHeatLens(data: Dataset): void {
     const wall = raw("wall");
     const tok = raw("tokens");
     const n = Number(cell.dataset.n ?? "0");
-    const tps = wall != null && tok != null && wall > 0 ? tok / wall : null;
-    const lensLabel = activeLens === "cost" ? "Cost lens" : activeLens === "strict" ? "Strict lens" : "Solution lens";
+    const lensLabel =
+      activeLens === "cost"
+        ? "Cost lens"
+        : activeLens === "strict"
+          ? "Strict lens"
+          : "Solution lens";
     detail.innerHTML =
       `<div class="bb-heat-detail__head">` +
       `<span class="bb-heat__rowbadges" aria-hidden="true">` +
-      (s?.hl ? `<span class="bb-heat__badge bb-heat__badge--h"><img src="${esc(s.hl)}" alt="" width="16" height="16"></span><span class="bb-heat__x">×</span>` : "") +
-      (s?.ml ? `<span class="bb-heat__badge bb-heat__badge--m"><img src="${esc(s.ml)}" alt="" width="16" height="16"></span>` : `<span class="bb-heat__badge"><span class="bb-badge__mono">${esc(s?.mm ?? "")}</span></span>`) +
+      (s?.hl
+        ? `<span class="bb-heat__badge bb-heat__badge--h"><img src="${esc(s.hl)}" alt="" width="16" height="16"></span><span class="bb-heat__x">×</span>`
+        : "") +
+      (s?.ml
+        ? `<span class="bb-heat__badge bb-heat__badge--m"><img src="${esc(s.ml)}" alt="" width="16" height="16"></span>`
+        : `<span class="bb-heat__badge"><span class="bb-badge__mono">${esc(s?.mm ?? "")}</span></span>`) +
       `</span>` +
       `<span class="bb-heat-detail__titles"><span class="bb-heat-detail__fam">${esc(fam ?? "")} · ${esc(lensLabel)} · ${esc(s?.hd ?? h ?? "")} × ${esc(s?.mds ?? s?.md ?? m ?? "")}</span><span class="bb-heat-detail__stack">${rate != null ? fmtPct(rate) : "—"} solution · strict ${strict != null ? fmtPct(strict) : "—"}</span></span>` +
       `<button class="bb-heat-detail__close" type="button" aria-label="Close">×</button></div>` +
@@ -698,11 +815,11 @@ function initHeatLens(data: Dataset): void {
       `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Solution</span><span class="bb-heat-detail__v bb-heat-detail__v--hi">${rate != null ? fmtPct(rate) : "—"}</span></span>` +
       `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Strict</span><span class="bb-heat-detail__v">${strict != null ? fmtPct(strict) : "—"}</span></span>` +
       `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Cost / task</span><span class="bb-heat-detail__v">${cost != null ? fmtCost(cost) : "—"}</span></span>` +
-      `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Tokens</span><span class="bb-heat-detail__v">${tok != null ? fmtTokens(tok) : "—"}</span></span>` +
+      `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Tokens (prompt+output)</span><span class="bb-heat-detail__v">${tok != null ? fmtTokens(tok) : "—"}</span></span>` +
       `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Wall</span><span class="bb-heat-detail__v">${wall != null ? fmtWall(wall) : "—"}</span></span>` +
-      `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Typical TPS</span><span class="bb-heat-detail__v">${tps != null ? `${tps.toFixed(1)} tok/s` : "—"}</span></span>` +
+      `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Tokens / wall</span><span class="bb-heat-detail__v" title="Billed throughput — prompt+cache+output over harness wall, not model decode speed">throughput</span></span>` +
       `</div>` +
-      `<div class="bb-heat-detail__meta"><span>n ${n} cells</span><span>${esc(s?.hd ?? "")} harness</span><span>${esc(s?.md ?? "")} provider</span><span>${cost != null && cost < 0.01 ? "free-tier slice" : s?.ev ?? ""}</span></div>`;
+      `<div class="bb-heat-detail__meta"><span>n ${n} cells</span><span>${esc(s?.hd ?? "")} harness</span><span>${esc(s?.md ?? "")} provider</span><span>${cost != null && cost < 0.01 ? "free-tier slice" : (s?.ev ?? "")}</span></div>`;
     detail.hidden = false;
   };
   void ((): CellTip | null => null)();
@@ -729,10 +846,17 @@ function initHeatLens(data: Dataset): void {
     if (rel?.closest?.("[data-heatcell]")) return;
     hoverTip.hidden = true;
   });
-  detail?.querySelector(".bb-heat-detail__close")?.addEventListener("click", () => { if (detail) { detail.hidden = true; } });
+  detail?.querySelector(".bb-heat-detail__close")?.addEventListener("click", () => {
+    if (detail) {
+      detail.hidden = true;
+    }
+  });
   frame?.addEventListener("click", (ev) => {
     const close = (ev.target as HTMLElement).closest<HTMLButtonElement>(".bb-heat-detail__close");
-    if (close && detail) { detail.hidden = true; return; }
+    if (close && detail) {
+      detail.hidden = true;
+      return;
+    }
   });
 
   grid.addEventListener("click", (ev) => {
@@ -741,7 +865,11 @@ function initHeatLens(data: Dataset): void {
       const key = col.dataset.heatcol;
       activeCol = activeCol === key ? null : key;
       // keep row if both were set, otherwise single-focus semantics: pick this column alone
-      if (activeRow && activeCol == null) { /* row stays */ } else if (activeCol && activeRow) { /* both */ }
+      if (activeRow && activeCol == null) {
+        /* row stays */
+      } else if (activeCol && activeRow) {
+        /* both */
+      }
       applyFocus();
       return;
     }
@@ -825,18 +953,25 @@ function initLens(data: Dataset): void {
       return;
     }
     const m = stacks[0]!;
+    // Stretch bars to the observed band so they actually fill (86-99% on 0-100 crushes to slivers)
+    const rates = stacks.map((s) => s.sol);
+    const band = niceBand(rates);
     const head =
       `<div class="bb-lens__detailhead">` +
-      (m.ml ? `<img src="${esc(m.ml)}" alt="" width="22" height="22" loading="lazy" decoding="async">` : `<span class="bb-badge__mono">${esc(m.mm)}</span>`) +
-      `<strong>${esc(m.md)}</strong><span>${stacks.length} harnesses · mean ${fmtPct(stacks.reduce((a, s) => a + s.sol, 0) / stacks.length)}</span>` +
+      (m.ml
+        ? `<img src="${esc(m.ml)}" alt="" width="22" height="22" loading="lazy" decoding="async">`
+        : `<span class="bb-badge__mono">${esc(m.mm)}</span>`) +
+      `<strong>${esc(m.md)}</strong><span>${stacks.length} harnesses · mean ${fmtPct(stacks.reduce((a, s) => a + s.sol, 0) / stacks.length)} · axis ${Math.round(band.lo * 100)}% → ${Math.round(band.hi * 100)}%</span>` +
       `<span class="bb-lens__detailhint">tap a row to clear</span></div>`;
     const harnessRows = stacks
       .map((s) => {
-        const barW = `${(s.sol * 100).toFixed(1)}%`;
+        const barW = `${bandPct(s.sol, band).toFixed(1)}%`;
         return (
-          `<div class="bb-lens__hrow h--${esc(s.h.replace(/[^a-z0-9-]/g, ""))}">` +
+          `<div class="bb-lens__hrow h--${esc(s.h.replace(/[^a-z0-9-]/g, ""))}" data-h="${esc(s.h)}">` +
           `<span style="display:inline-flex;align-items:center;gap:8px;min-width:0">` +
-          (s.hl ? `<img class="bb-badge" src="${esc(s.hl)}" alt="" width="22" height="22" style="padding:2px">` : `<span class="bb-badge"><span class="bb-badge__mono">${esc(s.hm)}</span></span>`) +
+          (s.hl
+            ? `<img class="bb-badge" src="${esc(s.hl)}" alt="" width="22" height="22" style="padding:2px">`
+            : `<span class="bb-badge"><span class="bb-badge__mono">${esc(s.hm)}</span></span>`) +
           `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.hd)}</span></span>` +
           `<span class="bb-lens__hbar"><span class="bb-lens__hfill" data-w="${barW}"></span></span>` +
           `<span class="bb-lens__hmeta"><strong>${fmtPct(s.sol)}</strong><br>strict ${fmtPct(s.str)}</span>` +
@@ -847,6 +982,10 @@ function initLens(data: Dataset): void {
       .join("");
     detail.innerHTML = head + `<div class="bb-lens__harnesses">${harnessRows}</div>`;
     detail.hidden = false;
+    detail.querySelectorAll<HTMLElement>(".bb-lens__hrow[data-h]").forEach((row) => {
+      const s = stacks.find((stack) => stack.h === row.dataset.h);
+      if (s) row.style.setProperty("--hc", s.hc);
+    });
     detail.querySelectorAll<HTMLElement>("[data-w]").forEach((el) => {
       (el as HTMLElement).style.width = el.dataset.w ?? "0%";
     });
@@ -870,7 +1009,13 @@ function initLens(data: Dataset): void {
    the renderer maps it onto the dashboard dataset. */
 const CHART_TYPES = new Set(["bar", "scatter", "line", "heatmap"]);
 const CHART_DIMS = new Set(["stack", "model", "harness", "family", "language", "platform"]);
-const CHART_METRICS = new Set(["solution_rate", "strict_rate", "cost_usd", "wall_seconds", "tokens"]);
+const CHART_METRICS = new Set([
+  "solution_rate",
+  "strict_rate",
+  "cost_usd",
+  "wall_seconds",
+  "tokens"
+]);
 
 interface ChartSpec {
   type: string;
@@ -923,7 +1068,11 @@ function fmtMetric(v: number | null, metric: MetricKey): string {
 
 /** Render a server-validated chart spec to SVG. Never executes model code. */
 function renderChart(spec: ChartSpec, data: Dataset): { svg: string; title: string } | null {
-  if (!CHART_TYPES.has(spec.type) || !CHART_DIMS.has(spec.dimension) || !CHART_METRICS.has(spec.metric)) {
+  if (
+    !CHART_TYPES.has(spec.type) ||
+    !CHART_DIMS.has(spec.dimension) ||
+    !CHART_METRICS.has(spec.metric)
+  ) {
     return null;
   }
   const mkey = METRIC_MAP[spec.metric];
@@ -1089,7 +1238,8 @@ function lineSvg(items: { label: string; value: number }[], metric: MetricKey): 
  */
 function buildDigest(data: Dataset): string {
   const r3 = (v: number | null): number | null => (v == null ? null : Math.round(v * 1000) / 1000);
-  const r5 = (v: number | null): number | null => (v == null ? null : Math.round(v * 100000) / 100000);
+  const r5 = (v: number | null): number | null =>
+    v == null ? null : Math.round(v * 100000) / 100000;
   const r1 = (v: number | null): number | null => (v == null ? null : Math.round(v * 10) / 10);
   const overall = data.stacks.map((s) => ({
     id: `${s.h} × ${s.m}`,
@@ -1135,7 +1285,12 @@ function buildDigest(data: Dataset): string {
       const fam = data.families[i] ?? "";
       const cur = best.get(fam);
       if (!cur || c.r > cur.solution_rate) {
-        best.set(fam, { id: `${row.h} × ${row.m}`, family: fam, solution_rate: r3(c.r) ?? 0, n: c.n });
+        best.set(fam, {
+          id: `${row.h} × ${row.m}`,
+          family: fam,
+          solution_rate: r3(c.r) ?? 0,
+          n: c.n
+        });
       }
     });
   }
@@ -1266,10 +1421,25 @@ function initPareto(data: Dataset): void {
     if (out) out.disabled = paretoScale <= 1.01;
     if (rst) rst.disabled = paretoScale <= 1.01;
   };
-  if (stage) attachZoom(stage, svg, { min: 1, max: 2.4, step: 0.14, onChange: (s) => { paretoScale = s; root.classList.toggle("is-zoomed", s > 1.02); } });
-  root.querySelector<HTMLButtonElement>("[data-pareto-zoom-in]")?.addEventListener("click", () => setParetoScale(paretoScale + 0.18));
-  root.querySelector<HTMLButtonElement>("[data-pareto-zoom-out]")?.addEventListener("click", () => setParetoScale(paretoScale - 0.18));
-  root.querySelector<HTMLButtonElement>("[data-pareto-zoom-reset]")?.addEventListener("click", () => setParetoScale(1));
+  if (stage)
+    attachZoom(stage, svg, {
+      min: 1,
+      max: 2.4,
+      step: 0.14,
+      onChange: (s) => {
+        paretoScale = s;
+        root.classList.toggle("is-zoomed", s > 1.02);
+      }
+    });
+  root
+    .querySelector<HTMLButtonElement>("[data-pareto-zoom-in]")
+    ?.addEventListener("click", () => setParetoScale(paretoScale + 0.18));
+  root
+    .querySelector<HTMLButtonElement>("[data-pareto-zoom-out]")
+    ?.addEventListener("click", () => setParetoScale(paretoScale - 0.18));
+  root
+    .querySelector<HTMLButtonElement>("[data-pareto-zoom-reset]")
+    ?.addEventListener("click", () => setParetoScale(1));
 
   const byKey = new Map(data.stacks.map((s) => [`${s.h}|${s.m}`, s]));
   const pinned = new Set<string>();
@@ -1293,14 +1463,16 @@ function initPareto(data: Dataset): void {
   };
 
   const showTip = (key: string | null): void => {
-    if (!key || !byKey.has(key)) { tip.hidden = true; return; }
+    if (!key || !byKey.has(key)) {
+      tip.hidden = true;
+      return;
+    }
     const s = byKey.get(key)!;
     const wall = s.wall;
     const tok = s.tok;
-    const tps = wall != null && tok != null && wall > 0 ? tok / wall : null;
     tip.innerHTML =
       `<span><strong>${esc(s.hd)} × ${esc(s.mds)}</strong> · <em>${fmtPct(s.sol)}</em> sol · strict ${fmtPct(s.str)} · <em>${fmtCost(s.cost)}/task</em></span>` +
-      `<span class="mono" style="opacity:0.78">${fmtWall(wall)} · ${fmtTokens(tok)} tok${tps != null ? ` · ${tps.toFixed(1)} tok/s` : ""} · n ${s.n} · ${s.ev === "inferred" ? "inferred" : "measured"}${s.conf === "low" ? " · low conf" : ""}</span>`;
+      `<span class="mono" style="opacity:0.78">${fmtWall(wall)} · ${fmtTokens(tok)} tok · n ${s.n} · ${s.ev === "inferred" ? "inferred" : "measured"}${s.conf === "low" ? " · low conf" : ""}</span>`;
     tip.hidden = false;
   };
 
@@ -1314,20 +1486,21 @@ function initPareto(data: Dataset): void {
       return;
     }
     compare.hidden = false;
-    cards.innerHTML = list.map((s) => {
-      const logo = s.hl ?? s.ml;
-      const tps = s.wall != null && s.tok != null && s.wall > 0 ? s.tok / s.wall : null;
-      return (
-        `<div class="bb-pareto__card m--${esc(s.m.replace(/[^a-z0-9-]/g, ""))}" style="--mc:${esc(s.mc)}">` +
-        `<button class="bb-pareto__cardx" type="button" data-pareto-unpin="${esc(`${s.h}|${s.m}`)}" aria-label="Remove ${esc(s.hd)} × ${esc(s.mds)}">×</button>` +
-        `<div class="bb-pareto__cardhead">${logo ? `<img src="${esc(logo)}" alt="" width="18" height="18" loading="lazy" decoding="async">` : ""}${esc(s.hd)} × ${esc(s.mds)}</div>` +
-        `<div class="bb-pareto__cardmeta">` +
-        `<span><strong>${fmtPct(s.sol)}</strong> sol · strict ${fmtPct(s.str)}</span>` +
-        `<span><strong>${fmtCost(s.cost)}/task</strong>${s.cstd != null ? ` · std ${fmtCost(s.cstd)}` : ""} · n ${s.n}</span>` +
-        `<span>${fmtTokens(s.tok)} tok · ${fmtWall(s.wall)}${tps != null ? ` · ${tps.toFixed(1)} tok/s` : ""} · ${s.ev}${s.conf === "low" ? " · low conf" : ""}</span>` +
-        `</div></div>`
-      );
-    }).join("");
+    cards.innerHTML = list
+      .map((s) => {
+        const logo = s.hl ?? s.ml;
+        return (
+          `<div class="bb-pareto__card m--${esc(s.m.replace(/[^a-z0-9-]/g, ""))}" style="--mc:${esc(s.mc)}">` +
+          `<button class="bb-pareto__cardx" type="button" data-pareto-unpin="${esc(`${s.h}|${s.m}`)}" aria-label="Remove ${esc(s.hd)} × ${esc(s.mds)}">×</button>` +
+          `<div class="bb-pareto__cardhead">${logo ? `<img src="${esc(logo)}" alt="" width="18" height="18" loading="lazy" decoding="async">` : ""}${esc(s.hd)} × ${esc(s.mds)}</div>` +
+          `<div class="bb-pareto__cardmeta">` +
+          `<span><strong>${fmtPct(s.sol)}</strong> sol · strict ${fmtPct(s.str)}</span>` +
+          `<span><strong>${fmtCost(s.cost)}/task</strong>${s.cstd != null ? ` · std ${fmtCost(s.cstd)}` : ""} · n ${s.n}</span>` +
+          `<span>${fmtTokens(s.tok)} tok · ${fmtWall(s.wall)} · ${s.ev}${s.conf === "low" ? " · low conf" : ""}</span>` +
+          `</div></div>`
+        );
+      })
+      .join("");
   };
 
   // hover — glass card
@@ -1339,7 +1512,10 @@ function initPareto(data: Dataset): void {
   });
   svg.addEventListener("pointerout", (ev) => {
     const pt = (ev.target as HTMLElement).closest<HTMLElement>("[data-pareto-pt]");
-    if (!pt) { tip.hidden = true; return; }
+    if (!pt) {
+      tip.hidden = true;
+      return;
+    }
     pt.classList.remove("is-hover");
     // keep tip if we have pins, otherwise hide
     if (pinned.size === 0) tip.hidden = true;
@@ -1348,7 +1524,9 @@ function initPareto(data: Dataset): void {
     const pt = (ev.target as HTMLElement).closest<HTMLElement>("[data-pareto-pt]");
     if (pt?.dataset.paretoPt) showTip(pt.dataset.paretoPt);
   });
-  svg.addEventListener("focusout", () => { if (pinned.size === 0) tip.hidden = true; });
+  svg.addEventListener("focusout", () => {
+    if (pinned.size === 0) tip.hidden = true;
+  });
 
   // click / keyboard — pin
   const togglePin = (key: string): void => {
@@ -1376,8 +1554,10 @@ function initPareto(data: Dataset): void {
   root.querySelectorAll<HTMLButtonElement>("[data-pareto-h]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const h = btn.dataset.paretoH ?? "";
-      if (onH.has(h)) onH.delete(h); else onH.add(h);
-      if (onH.size === 0) { // never hide everything — reset
+      if (onH.has(h)) onH.delete(h);
+      else onH.add(h);
+      if (onH.size === 0) {
+        // never hide everything — reset
         for (const s of data.stacks) onH.add(s.h);
       }
       btn.classList.toggle("is-on", onH.has(h));
@@ -1388,7 +1568,8 @@ function initPareto(data: Dataset): void {
   root.querySelectorAll<HTMLButtonElement>("[data-pareto-m]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const m = btn.dataset.paretoM ?? "";
-      if (onM.has(m)) onM.delete(m); else onM.add(m);
+      if (onM.has(m)) onM.delete(m);
+      else onM.add(m);
       if (onM.size === 0) {
         for (const s of data.stacks) onM.add(s.m);
       }
@@ -1398,8 +1579,12 @@ function initPareto(data: Dataset): void {
     });
   });
   resetBtn?.addEventListener("click", () => {
-    onH.clear(); onM.clear();
-    for (const s of data.stacks) { onH.add(s.h); onM.add(s.m); }
+    onH.clear();
+    onM.clear();
+    for (const s of data.stacks) {
+      onH.add(s.h);
+      onM.add(s.m);
+    }
     root.querySelectorAll<HTMLButtonElement>("[data-pareto-h],[data-pareto-m]").forEach((b) => {
       b.classList.add("is-on");
       b.setAttribute("aria-pressed", "true");
