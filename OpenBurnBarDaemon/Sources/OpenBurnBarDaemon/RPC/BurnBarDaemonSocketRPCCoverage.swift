@@ -224,7 +224,15 @@ enum BurnBarDaemonSocketRPCCoverage {
         .inboxRunsRecent,
         .inboxConfigGet,
         .inboxConfigUpdate,
-        .inboxRunNow
+        .inboxRunNow,
+        .inboxThreadGet,
+        .inboxReply,
+        .inboxPlansList,
+        .inboxPlansGet,
+        .inboxPlansAccept,
+        .inboxPlansUpdateStep,
+        .inboxPlansGrade,
+        .inboxMemoryExport
     ]
 
     static var allHandled: Set<BurnBarRPCMethod> {

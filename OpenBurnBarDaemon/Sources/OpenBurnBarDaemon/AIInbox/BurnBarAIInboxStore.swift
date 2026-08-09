@@ -139,6 +139,9 @@ final class BurnBarAIInboxStore: @unchecked Sendable {
         for statement in BurnBarAIInboxSchema.statements {
             try execute(statement, [])
         }
+        for statement in BurnBarAIInboxSchema.founderLensStatements {
+            try execute(statement, [])
+        }
     }
 
     // MARK: - Items

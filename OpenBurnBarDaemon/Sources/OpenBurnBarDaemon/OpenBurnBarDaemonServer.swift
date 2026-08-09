@@ -1540,7 +1540,10 @@ public actor BurnBarDaemonServer {
                     requestData: requestData
                 )
             case .inboxList, .inboxGet, .inboxRunsRecent,
-                 .inboxConfigGet, .inboxConfigUpdate, .inboxRunNow:
+                 .inboxConfigGet, .inboxConfigUpdate, .inboxRunNow,
+                 .inboxThreadGet, .inboxReply,
+                 .inboxPlansList, .inboxPlansGet, .inboxPlansAccept,
+                 .inboxPlansUpdateStep, .inboxPlansGrade, .inboxMemoryExport:
                 return try await handleInboxRPC(
                     method: method,
                     decoder: decoder,

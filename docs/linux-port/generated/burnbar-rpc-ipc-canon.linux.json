@@ -1,6 +1,6 @@
 {
   "generatedBy": "tools/ipc/generate-burnbarrpc-canon.mjs",
-  "methodCount": 169,
+  "methodCount": 177,
   "methods": [
     {
       "id": "approval.respond",
@@ -743,6 +743,76 @@
       "error": "BurnBarRPCError"
     },
     {
+      "id": "daemon.inbox.memory.export",
+      "caseName": "inboxMemoryExport",
+      "domain": "inbox",
+      "capability": "config",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+      "result": "Codable response for daemon.inbox.memory.export",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.inbox.plans.accept",
+      "caseName": "inboxPlansAccept",
+      "domain": "inbox",
+      "capability": "config",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+      "result": "Codable response for daemon.inbox.plans.accept",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.inbox.plans.get",
+      "caseName": "inboxPlansGet",
+      "domain": "inbox",
+      "capability": "observability",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+      "result": "Codable response for daemon.inbox.plans",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.inbox.plans.grade",
+      "caseName": "inboxPlansGrade",
+      "domain": "inbox",
+      "capability": "config",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+      "result": "Codable response for daemon.inbox.plans.grade",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.inbox.plans.list",
+      "caseName": "inboxPlansList",
+      "domain": "inbox",
+      "capability": "observability",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+      "result": "Codable response for daemon.inbox.plans",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.inbox.plans.update_step",
+      "caseName": "inboxPlansUpdateStep",
+      "domain": "inbox",
+      "capability": "config",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+      "result": "Codable mutation response for daemon.inbox.plans",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.inbox.reply",
+      "caseName": "inboxReply",
+      "domain": "inbox",
+      "capability": "config",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+      "result": "Codable response for daemon.inbox.reply",
+      "error": "BurnBarRPCError"
+    },
+    {
       "id": "daemon.inbox.run_now",
       "caseName": "inboxRunNow",
       "domain": "inbox",
@@ -760,6 +830,16 @@
       "owner": "OpenBurnBarDaemon",
       "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
       "result": "Codable response for daemon.inbox.runs",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.inbox.thread.get",
+      "caseName": "inboxThreadGet",
+      "domain": "inbox",
+      "capability": "observability",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+      "result": "Codable response for daemon.inbox.thread",
       "error": "BurnBarRPCError"
     },
     {

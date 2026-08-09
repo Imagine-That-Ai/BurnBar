@@ -88,7 +88,13 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              // ceiling; `run_now` can immediately spend. Both are operator
              // actions, so they sit with the credential/config writes rather
              // than with the observability reads above.
-             .inboxConfigUpdate, .inboxRunNow:
+             .inboxConfigUpdate, .inboxRunNow,
+             // Founder Lens mutations: a reply spends model budget; plan
+             // accept/update/grade are human-confirmed durable writes; the
+             // memory export changes what the daemon may cite as approved
+             // fact. All operator actions.
+             .inboxReply, .inboxPlansAccept, .inboxPlansUpdateStep,
+             .inboxPlansGrade, .inboxMemoryExport:
             return .config
         case .usageRecord, .usageRecent, .usageProjection, .usageRecount,
              .usageHistory, .usageInsights,
@@ -97,7 +103,9 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              // AI Inbox reads return already-synthesized, already-redacted
              // summaries plus reference-shaped evidence — the same posture as
              // usage/insight reads, so they share the observability group.
-             .inboxList, .inboxGet, .inboxRunsRecent, .inboxConfigGet:
+             .inboxList, .inboxGet, .inboxRunsRecent, .inboxConfigGet,
+             // Thread and plan reads are the same already-synthesized shape.
+             .inboxThreadGet, .inboxPlansList, .inboxPlansGet:
             return .observability
         case .chatThreadList, .chatThreadGet, .chatMessageAppend:
             return .chat
