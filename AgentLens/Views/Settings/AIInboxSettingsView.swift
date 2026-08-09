@@ -549,7 +549,13 @@ extension BurnBarInboxConfig {
             verifierModel: verifierModel,
             githubEnabled: githubEnabled ?? self.githubEnabled,
             notifyOnP1: notifyOnP1 ?? self.notifyOnP1,
-            lookbackMinutes: lookbackMinutes
+            lookbackMinutes: lookbackMinutes,
+            // Founder Lens fields must survive unrelated edits — omitting them
+            // here silently reset a disabled lens or a lowered reply budget to
+            // defaults on every settings change.
+            founderLensEnabled: founderLensEnabled,
+            perReplyBudgetUSD: perReplyBudgetUSD,
+            maxThreadTurns: maxThreadTurns
         )
     }
 }

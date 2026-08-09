@@ -92,12 +92,20 @@ final class InboxThreadModel: ObservableObject {
     }
 
     /// Accept into plan — the human confirmation that turns a proposal into a
-    /// durable ledger row. Tracks accepted candidates so the button collapses
-    /// into a receipt instead of inviting a duplicate.
+    /// durable ledger row. The store deduplicates on content identity (same
+    /// title+body on the same plan returns the existing row), and this model
+    /// additionally refuses re-entry while a call is in flight, so neither a
+    /// double-click nor a recreated view can mint duplicates.
+    @Published private(set) var acceptInFlight: Set<String> = []
+
     func accept(candidate: BurnBarInboxPlanCandidate, messageID: String) async {
+        let key = messageID + candidate.title
+        guard acceptInFlight.contains(key) == false else { return }
+        acceptInFlight.insert(key)
+        defer { acceptInFlight.remove(key) }
         do {
             _ = try await acceptCandidate(candidate, "engOps")
-            acceptedStepIDs.insert(messageID + candidate.title)
+            acceptedStepIDs.insert(key)
         } catch {
             refusalReason = error.localizedDescription
         }

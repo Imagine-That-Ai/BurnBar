@@ -910,7 +910,21 @@ struct DashboardView: View {
             MemoryReviewInboxHost(
                 store: store,
                 scope: memoryReviewScope,
-                afterStatusChange: { await refreshPendingMemoryReviewCount() }
+                afterStatusChange: {
+                    await refreshPendingMemoryReviewCount()
+                    // Any status change can revoke an already-exported inbox
+                    // memory. The export is a FULL-SET replacement, so pushing
+                    // after every change makes revocation propagate to the
+                    // daemon by omission — without this, a rejected fact keeps
+                    // entering model prompts until the next unrelated approval.
+                    if let store = runtimeContext?.chatMemoryStore {
+                        await InboxMemoryExportService(
+                            store: store,
+                            scope: memoryReviewScope,
+                            socketURL: OpenBurnBarDaemonRuntimePaths.live().socketURL
+                        ).pushApprovedSnippets()
+                    }
+                }
             )
             .id(ObjectIdentifier(store))
         } else {

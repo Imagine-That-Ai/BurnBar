@@ -388,10 +388,16 @@ final class BurnBarAIInboxStore: @unchecked Sendable {
 
     func itemDetail(fingerprint: String) throws -> BurnBarInboxItemDetail? {
         try databaseSync {
+            // Open item preferred; otherwise the NEWEST row for the condition.
+            // Discuss is available on resolved/archived items too, and a reply
+            // there still needs the item's title/summary/evidence as context.
             guard let row = try queryRows(
                 """
                 SELECT id FROM ai_inbox_items
-                WHERE fingerprint = ? AND state IN ('new', 'updated') LIMIT 1
+                WHERE fingerprint = ?
+                ORDER BY CASE WHEN state IN ('new', 'updated') THEN 0 ELSE 1 END,
+                         last_seen_at DESC
+                LIMIT 1
                 """,
                 [.text(fingerprint)]
             ).first else { return nil }

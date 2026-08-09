@@ -94,17 +94,20 @@ extension BurnBarAIInboxStore {
                 [.text(fingerprint)]
             ).first else { return nil }
 
+            // Newest turns first so the limit keeps the RECENT window (the
+            // prompt context and the UI both want "latest N"), then reversed
+            // back to chronological order for presentation.
             let rows = try queryRows(
                 """
                 SELECT id, fingerprint, role, body_md, plan_candidates_json, model_provenance, cost_usd, created_at
                 FROM ai_inbox_thread_messages
                 WHERE fingerprint = ?
-                ORDER BY created_at ASC, id ASC
+                ORDER BY created_at DESC, id DESC
                 LIMIT ?
                 """,
                 [.text(fingerprint), .int(max(1, messageLimit))]
             )
-            let messages = rows.compactMap(Self.threadMessage(from:))
+            let messages = rows.compactMap(Self.threadMessage(from:)).reversed()
             return BurnBarInboxThread(
                 fingerprint: head.string(0),
                 itemID: head.optionalString(1),
@@ -112,7 +115,7 @@ extension BurnBarAIInboxStore {
                 updatedAt: head.date(3) ?? Date(timeIntervalSince1970: 0),
                 turnCount: head.int(4),
                 totalCostUSD: head.double(5),
-                messages: messages
+                messages: Array(messages)
             )
         }
     }
@@ -145,6 +148,38 @@ extension BurnBarAIInboxStore {
         now: Date
     ) throws -> (plan: BurnBarInboxPlan, step: BurnBarInboxPlanStep) {
         try databaseSync {
+            // Idempotency across view lifetimes and double-clicks: an accept
+            // with the same title+body targeting the same plan (or a fresh
+            // plan with the same title) returns the existing rows instead of
+            // minting duplicates. Content identity, not client state.
+            let duplicateQuery: [Row]
+            if let planID = candidate.planID {
+                duplicateQuery = try queryRows(
+                    """
+                    SELECT plan_id, id FROM ai_inbox_plan_steps
+                    WHERE plan_id = ? AND title = ? AND body_md = ?
+                    LIMIT 1
+                    """,
+                    [.text(planID), .text(candidate.title), .text(candidate.bodyMarkdown)]
+                )
+            } else {
+                duplicateQuery = try queryRows(
+                    """
+                    SELECT s.plan_id, s.id FROM ai_inbox_plan_steps s
+                    JOIN ai_inbox_plans p ON p.id = s.plan_id
+                    WHERE p.title = ? AND s.title = ? AND s.body_md = ?
+                          AND p.status IN ('proposed', 'active')
+                    LIMIT 1
+                    """,
+                    [.text(candidate.title), .text(candidate.title), .text(candidate.bodyMarkdown)]
+                )
+            }
+            if let existing = duplicateQuery.first,
+               let plan = try planLocked(id: existing.string(0)),
+               let step = plan.steps.first(where: { $0.id == existing.string(1) }) {
+                return (plan, step)
+            }
+
             try execute("BEGIN IMMEDIATE", [])
             do {
                 let stamp = Self.string(from: now)

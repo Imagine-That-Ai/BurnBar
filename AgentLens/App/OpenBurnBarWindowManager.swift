@@ -24,6 +24,10 @@ final class WindowManager: ObservableObject {
     private var dashboardWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
+    private var onboardingWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
+    private var hermesSetupWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
+    private var switcherOnboardingWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
+    private var startupRecoveryWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
     private var hermesSetupWindow: NSWindow?
     private var switcherOnboardingWindow: NSWindow?
     private var startupRecoveryWindow: NSWindow?
@@ -252,6 +256,16 @@ final class WindowManager: ObservableObject {
         window.makeKeyAndOrderFront(nil)
         window.isReleasedWhenClosed = false
 
+        // The red close button must run the same demote path as onDismiss —
+        // without a delegate, closing via titlebar left the menu-bar app stuck
+        // with a Dock icon (regular activation) until quit.
+        let onboardingLifecycle = DocumentWindowLifecycleDelegate { [weak self] in
+            self?.onboardingWindow = nil
+            self?.onboardingWindowLifecycleHandler = nil
+            self?.demoteToAccessoryIfIdle()
+        }
+        window.delegate = onboardingLifecycle
+        onboardingWindowLifecycleHandler = onboardingLifecycle
         onboardingWindow = window
     }
 
@@ -304,6 +318,13 @@ final class WindowManager: ObservableObject {
         window.makeKeyAndOrderFront(nil)
         window.isReleasedWhenClosed = false
 
+        let hermesLifecycle = DocumentWindowLifecycleDelegate { [weak self] in
+            self?.hermesSetupWindow = nil
+            self?.hermesSetupWindowLifecycleHandler = nil
+            self?.demoteToAccessoryIfIdle()
+        }
+        window.delegate = hermesLifecycle
+        hermesSetupWindowLifecycleHandler = hermesLifecycle
         hermesSetupWindow = window
     }
 
@@ -351,6 +372,13 @@ final class WindowManager: ObservableObject {
         window.makeKeyAndOrderFront(nil)
         window.isReleasedWhenClosed = false
 
+        let switcherLifecycle = DocumentWindowLifecycleDelegate { [weak self] in
+            self?.switcherOnboardingWindow = nil
+            self?.switcherOnboardingWindowLifecycleHandler = nil
+            self?.demoteToAccessoryIfIdle()
+        }
+        window.delegate = switcherLifecycle
+        switcherOnboardingWindowLifecycleHandler = switcherLifecycle
         switcherOnboardingWindow = window
     }
 
@@ -399,6 +427,13 @@ final class WindowManager: ObservableObject {
         window.makeKeyAndOrderFront(nil)
         window.isReleasedWhenClosed = false
 
+        let recoveryLifecycle = DocumentWindowLifecycleDelegate { [weak self] in
+            self?.startupRecoveryWindow = nil
+            self?.startupRecoveryWindowLifecycleHandler = nil
+            self?.demoteToAccessoryIfIdle()
+        }
+        window.delegate = recoveryLifecycle
+        startupRecoveryWindowLifecycleHandler = recoveryLifecycle
         startupRecoveryWindow = window
     }
 

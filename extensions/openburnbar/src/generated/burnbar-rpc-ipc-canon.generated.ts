@@ -845,7 +845,7 @@ export const burnBarRpcIpcCanon = [
     "id": "daemon.inbox.thread.get",
     "caseName": "inboxThreadGet",
     "domain": "inbox",
-    "capability": "observability",
+    "capability": "chat",
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable response for daemon.inbox.thread",

@@ -305,14 +305,25 @@ enum DatabaseEncryptionService {
         return String(data: data, encoding: .utf8)
     }
 
-    /// Writes the current SQLCipher key to an owner-only file the daemon can
-    /// read when Keychain ACL rejects the LaunchAgent / adhoc Debug identity
-    /// (`errSecAuthFailed` / -25293). No-op when no key is provisioned.
+    /// DEBUG-ONLY: writes the current SQLCipher key to an owner-only file so an
+    /// adhoc Debug daemon (which cannot satisfy the Keychain ACL and fails with
+    /// `errSecAuthFailed` / -25293) can open the encrypted index during local
+    /// development. Compiled out of Release builds entirely: SECURITY.md
+    /// guarantees the key exists only in Keychain with no plaintext recovery
+    /// file, and a signed production daemon must use the Keychain path — if it
+    /// cannot, the inbox fails closed rather than weakening the key's storage.
     @discardableResult
     static func syncDaemonReadableKeyMaterial(
         to fileURL: URL,
         fileManager: FileManager = .default
     ) -> Bool {
+#if !DEBUG
+        // Release: never materialize key material on disk. Remove any file a
+        // previous Debug run left behind so the weaker artifact does not
+        // outlive the build that needed it.
+        try? fileManager.removeItem(at: fileURL)
+        return false
+#else
         guard let key = getKey(), key.isEmpty == false else {
             return false
         }
@@ -335,6 +346,7 @@ enum DatabaseEncryptionService {
             )
             return false
         }
+#endif
     }
 
     /// Generates a new 256-bit AES key, stores it in the Keychain, and returns it.

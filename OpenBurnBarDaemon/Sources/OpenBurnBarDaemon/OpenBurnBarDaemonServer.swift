@@ -717,6 +717,15 @@ public actor BurnBarDaemonServer {
             aiInboxBootstrapFailure = nil
             aiInboxBootstrapAttempted = true
             logger.info("ai_inbox_bootstrap_succeeded", metadata: ["path": path])
+            // Late bootstrap (index database created after daemon startup, or
+            // a Settings → Retry) must still start the periodic loop — startup
+            // only starts it when bootstrap succeeded there and then. Without
+            // this, a fresh profile gets a service that answers RPCs but never
+            // ticks in the background until the daemon restarts.
+            if configuration.startsMissionControlBackgroundLoops, aiInboxStartedLoop == false {
+                Task { await service.start() }
+                aiInboxStartedLoop = true
+            }
             return service
         } catch {
             let detail = error.localizedDescription

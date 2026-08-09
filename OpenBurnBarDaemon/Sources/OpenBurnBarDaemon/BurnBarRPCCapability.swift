@@ -104,10 +104,15 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              // summaries plus reference-shaped evidence — the same posture as
              // usage/insight reads, so they share the observability group.
              .inboxList, .inboxGet, .inboxRunsRecent, .inboxConfigGet,
-             // Thread and plan reads are the same already-synthesized shape.
-             .inboxThreadGet, .inboxPlansList, .inboxPlansGet:
+             // Plan reads are the same already-synthesized shape.
+             .inboxPlansList, .inboxPlansGet:
             return .observability
-        case .chatThreadList, .chatThreadGet, .chatMessageAppend:
+        case .chatThreadList, .chatThreadGet, .chatMessageAppend,
+             // Inbox reply threads store the user's own dialogue verbatim —
+             // the same sensitivity as chat history, so the same capability.
+             // A read-only observability peer may list items but not read the
+             // conversation about them.
+             .inboxThreadGet:
             return .chat
         case .membershipStatus, .membershipCheckoutURL, .membershipPortalURL, .membershipRestore:
             return .membership

@@ -323,7 +323,70 @@ final class AIInboxReplyServiceTests: XCTestCase {
         XCTAssertEqual(candidate.title.count, 80)
         XCTAssertEqual(candidate.bodyMarkdown.count, 2_000)
         XCTAssertEqual(candidate.horizon, .week, "Unknown horizons parse to the safe default")
-        XCTAssertEqual(candidate.evidenceIDs.count, 6)
+        // With no item context, no evidence id is trusted (SY): forged or
+        // ungrounded ids are dropped rather than merely capped.
+        XCTAssertEqual(candidate.evidenceIDs.count, 0)
+    }
+
+    // MARK: - Review-fix regressions
+
+    /// R6: strategy-shaped user questions upgrade the dialogue pack; plain
+    /// engineering questions stay in engOps.
+    func test_strategyShapedQuestionsRouteToProductStrategy() {
+        XCTAssertTrue(
+            BurnBarAIInboxReplyService.isStrategyShapedQuestion(
+                "Should we start fundraising before we have product-market fit?"
+            )
+        )
+        XCTAssertTrue(
+            BurnBarAIInboxReplyService.isStrategyShapedQuestion("What's our moat vs the competitor?")
+        )
+        XCTAssertFalse(
+            BurnBarAIInboxReplyService.isStrategyShapedQuestion("Why is CI still red on this PR?")
+        )
+    }
+
+    /// SY: hallucinated evidence ids never survive into a candidate; ids the
+    /// conversation actually cited do.
+    func test_candidateEvidenceIntersectsKnownIDs() {
+        let payloads = [
+            BurnBarAIInboxReplyService.CandidatePayload(
+                title: "Fix CI",
+                bodyMD: "Land it.",
+                horizon: "week",
+                evidenceIDs: ["item:real-fp", "conv:forged", "pr:owner/x#1"],
+                planID: nil
+            )
+        ]
+        let item = AIInboxFixtures.itemDetail(fingerprint: "real-fp")
+        let validated = BurnBarAIInboxReplyService.validatedCandidates(payloads, item: item)
+        XCTAssertEqual(
+            validated.first?.evidenceIDs,
+            ["item:real-fp"],
+            "Only ids grounded in the item survive; forged ids are dropped"
+        )
+        // With no item context at all, nothing is trusted.
+        let orphan = BurnBarAIInboxReplyService.validatedCandidates(payloads, item: nil)
+        XCTAssertEqual(orphan.first?.evidenceIDs, [])
+    }
+
+    /// SV: the enforced output ceiling reaches the provider request.
+    func test_replySendsEnforcedMaxOutputTokens() async throws {
+        let executor = FakeInboxProviderExecutor(responses: [Self.validReplyJSON])
+        let service = makeService(executor: executor)
+        _ = await service.reply(
+            request: BurnBarInboxReplyRequest(fingerprint: "fp:cap", bodyMarkdown: "hi"),
+            config: config(),
+            dailyBudget: healthyBudget,
+            item: nil,
+            now: Date()
+        )
+        let prompt = await executor.lastPrompt()
+        XCTAssertEqual(
+            try XCTUnwrap(prompt).maxOutputTokens,
+            BurnBarAIInboxReplyService.estimatedMaxOutputTokens,
+            "The ceiling the preflight priced must be the ceiling the provider enforces"
+        )
     }
 
     func test_decodeToleratesFencedJSON() {

@@ -105,7 +105,15 @@ enum BurnBarDaemonDatabaseCipher {
            key.isEmpty == false {
             return key
         }
+#if DEBUG
+        // Debug-only fallback matching the app's DEBUG-gated key file writer.
+        // A signed Release daemon must satisfy the Keychain ACL; if it cannot,
+        // the encrypted index stays closed rather than reading key material
+        // from disk (SECURITY.md: key exists only in Keychain).
         return resolveKeyFromDaemonReadableFile()
+#else
+        return nil
+#endif
 #else
         let custodian = LinuxSecretStoreFactory.production()
         return try? custodian

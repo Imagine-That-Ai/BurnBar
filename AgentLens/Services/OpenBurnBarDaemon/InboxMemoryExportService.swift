@@ -33,7 +33,13 @@ struct InboxMemoryExportService {
     func pushApprovedSnippets() async {
         do {
             let entries = try await approvedInboxEntries()
-            _ = try OpenBurnBarDaemonSocketClient.inboxMemoryExport(entries: entries, at: socketURL)
+            let socketURL = self.socketURL
+            // Socket I/O off the main actor: the approval already succeeded,
+            // and a slow/absent daemon must not beachball the UI for a
+            // best-effort push.
+            _ = try await Task.detached(priority: .utility) {
+                try OpenBurnBarDaemonSocketClient.inboxMemoryExport(entries: entries, at: socketURL)
+            }.value
         } catch {
             // The daemon self-heals on the next push; nothing durable is lost.
             AppLogger.daemon.info(

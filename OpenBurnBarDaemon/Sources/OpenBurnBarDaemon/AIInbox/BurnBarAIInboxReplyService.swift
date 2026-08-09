@@ -178,9 +178,14 @@ struct BurnBarAIInboxReplyService: Sendable {
 
         let thread = try? store.thread(fingerprint: request.fingerprint, messageLimit: config.maxThreadTurns)
         let commitments = (try? store.standingCommitments(limit: 8, now: now)) ?? []
-        let pack = BurnBarFounderLens.pack(
-            for: item.map(\.summary.kind) ?? .brief
-        )
+        // Item kind picks the baseline pack; a strategy-shaped USER question
+        // upgrades to productStrategy for this turn. Dialogue is the one
+        // surface where the user, not the detector, sets the topic — the L7
+        // gate still holds for tick-time synthesis, which never upgrades.
+        let baselinePack = BurnBarFounderLens.pack(for: item.map(\.summary.kind) ?? .brief)
+        let pack: BurnBarFounderLens.Pack = Self.isStrategyShapedQuestion(body)
+            ? .productStrategy
+            : baselinePack
         let systemPrompt = Self.systemPrompt(pack: pack)
         let userPrompt = Self.userPrompt(
             item: item,
@@ -213,7 +218,10 @@ struct BurnBarAIInboxReplyService: Sendable {
                 BurnBarStructuredPromptRequest(
                     systemPrompt: systemPrompt,
                     userPrompt: userPrompt,
-                    jsonOnly: true
+                    jsonOnly: true,
+                    // The same ceiling the preflight estimate priced, enforced
+                    // at generation time — the provider cannot bill past it.
+                    maxOutputTokens: Self.estimatedMaxOutputTokens
                 ),
                 route: route
             )
@@ -378,24 +386,47 @@ struct BurnBarAIInboxReplyService: Sendable {
     }
 
     /// Candidate hygiene: at most one, sane lengths, redacted, and horizon
-    /// parsed defensively. Candidates are proposals — the accept RPC re-checks
-    /// everything — but garbage should not reach the UI either.
+    /// parsed defensively. Evidence ids are INTERSECTED with what this
+    /// conversation actually cited — a hallucinated or injected id never
+    /// reaches the durable ledger (and `item:`-prefixed ids double as the
+    /// plan's origin fingerprint, so forging one would misfile the plan).
     static func validatedCandidates(
         _ payloads: [CandidatePayload],
         item: BurnBarInboxItemDetail?
     ) -> [BurnBarInboxPlanCandidate] {
-        payloads.prefix(1).compactMap { payload in
+        var knownEvidenceIDs = Set<String>()
+        if let item {
+            knownEvidenceIDs.insert("item:\(item.summary.fingerprint)")
+            knownEvidenceIDs.formUnion(item.payload.evidence.map(\.id))
+        }
+        return payloads.prefix(1).compactMap { payload in
             guard let title = payload.title?.trimmingCharacters(in: .whitespacesAndNewlines),
                   title.isEmpty == false,
                   let body = payload.bodyMD?.trimmingCharacters(in: .whitespacesAndNewlines),
                   body.isEmpty == false else { return nil }
+            let citedIDs = (payload.evidenceIDs ?? []).filter(knownEvidenceIDs.contains)
             return BurnBarInboxPlanCandidate(
                 title: String(BurnBarAIInboxRedactor.redact(title).prefix(80)),
                 bodyMarkdown: String(BurnBarAIInboxRedactor.redact(body).prefix(2_000)),
                 horizon: payload.horizon.flatMap(BurnBarInboxPlanHorizon.init(rawValue:)) ?? .week,
-                evidenceIDs: Array((payload.evidenceIDs ?? []).prefix(6)),
+                evidenceIDs: Array(citedIDs.prefix(6)),
                 planID: payload.planID
             )
         }
+    }
+
+    /// Cheap, deterministic strategy-shape detector for dialogue routing.
+    /// Deliberately conservative: it looks for unambiguous business-strategy
+    /// vocabulary, so an engineering question about "pricing a query" or a
+    /// "market" variable name stays in engOps.
+    static func isStrategyShapedQuestion(_ text: String) -> Bool {
+        let lowered = text.lowercased()
+        let markers = [
+            "fundrais", "raise money", "investor", "valuation", "term sheet",
+            "product-market fit", "product market fit", "pmf", "go-to-market",
+            "go to market", "gtm", "pricing strategy", "monetiz", "churn",
+            "market size", "competitor", "moat", "positioning", "customer segment"
+        ]
+        return markers.contains(where: lowered.contains)
     }
 }

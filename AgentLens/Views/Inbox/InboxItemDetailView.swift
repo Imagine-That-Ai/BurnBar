@@ -35,6 +35,14 @@ struct InboxItemDetailView: View {
                 if row.payload.actions.isEmpty == false { actionsSection }
                 if let threadFingerprint {
                     InboxThreadHost(fingerprint: threadFingerprint)
+                    // The accepted ledger with its action controls (promote /
+                    // follow-up / remember / grade) — renders only when a plan
+                    // exists. Mission and follow-up creation need a project;
+                    // items without attribution get the rest of the loop.
+                    InboxPlansPanel(
+                        projectSlug: row.summary.projectID,
+                        memoryApproval: memoryApproval
+                    )
                 }
                 footerSection
             }

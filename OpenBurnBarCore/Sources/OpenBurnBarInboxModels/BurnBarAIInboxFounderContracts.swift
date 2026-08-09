@@ -285,6 +285,22 @@ public struct BurnBarInboxPlansListRequest: Codable, Hashable, Sendable {
         self.statuses = statuses
         self.limit = min(max(1, limit), 200)
     }
+
+    /// Wire decoding routes through the clamping initializer — synthesized
+    /// Decodable would assign the raw JSON value and let an RPC peer request
+    /// an unbounded list (each returned plan costs a separate step query).
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            statuses: try container.decodeIfPresent([BurnBarInboxPlanStatus].self, forKey: .statuses) ?? [],
+            limit: try container.decodeIfPresent(Int.self, forKey: .limit) ?? 50
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case statuses
+        case limit
+    }
 }
 
 public struct BurnBarInboxPlansListResponse: Codable, Hashable, Sendable {
