@@ -216,7 +216,13 @@ describe('PetChatBubble', () => {
 
   it('emits companion behavior states as the user focuses and completes a turn', async () => {
     const onStateChange = vi.fn();
-    const sendMessage = vi.fn(async () => {});
+    const sendMessage = vi.fn(async () => {
+      useChatStore.setState({ streamPhase: 'done' } as Partial<ChatState>);
+    });
+    // Fixture mode keeps this a pure behavior-state test: the hardened
+    // composer otherwise blocks sends while gatewayStatus is 'unknown', and
+    // only a completed stream ('done') consumes the turn and emits `react`.
+    useShellStore.setState({ fixtureMode: true });
     useChatStore.setState({ sendMessage } as Partial<ChatState>);
 
     render(
@@ -229,6 +235,10 @@ describe('PetChatBubble', () => {
 
     fireEvent.focus(screen.getByLabelText('Companion message'));
     fireEvent.change(screen.getByLabelText('Companion message'), { target: { value: 'Hello companion' } });
+    await waitFor(() => {
+      const send = screen.getByRole('button', { name: 'Send companion message' }) as HTMLButtonElement;
+      expect(send.disabled).toBe(false);
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Send companion message' }));
 
     await waitFor(() => expect(sendMessage).toHaveBeenCalledWith('Hello companion', undefined));
@@ -250,6 +260,7 @@ describe('PetChatBubble', () => {
       });
       useChatStore.setState({ streaming: false, streamPhase: 'done' });
     });
+    useShellStore.setState({ fixtureMode: true });
     useChatStore.setState({ sendMessage } as Partial<ChatState>);
 
     render(
@@ -260,6 +271,10 @@ describe('PetChatBubble', () => {
       />
     );
     fireEvent.change(screen.getByLabelText('Companion message'), { target: { value: 'Hello companion' } });
+    await waitFor(() => {
+      const send = screen.getByRole('button', { name: 'Send companion message' }) as HTMLButtonElement;
+      expect(send.disabled).toBe(false);
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Send companion message' }));
 
     await waitFor(() => expect(onStateChange).toHaveBeenCalledWith('speak'));

@@ -129,8 +129,13 @@ export function PetChatBubble({
     container.scrollTop = container.scrollHeight;
   }, [messages, streaming]);
 
+  // Each dropped file must be staged exactly once. The effect re-runs when
+  // busy/streaming flip, and re-inspecting an already-consumed file would
+  // overwrite the post-send status ("Reply received." / "Response stopped.").
+  const consumedDropRef = useRef<File | null>(null);
   useEffect(() => {
-    if (!droppedFile) return;
+    if (!droppedFile || consumedDropRef.current === droppedFile) return;
+    consumedDropRef.current = droppedFile;
     if (busy || streaming) {
       setStatus('Wait for the current response before attaching another file.');
       onDroppedFileConsumed?.();
