@@ -159,6 +159,175 @@ final class BurnBarDaemonServerInboxRPCTests: XCTestCase {
         XCTAssertEqual(runNowResult.reason, "The AI Inbox is turned off.")
     }
 
+    /// The Founder Lens surface end to end through the production socket:
+    /// thread read/reply, the plan ledger lifecycle (accept → update →
+    /// grade), and the approved-memory export. Same discipline as the
+    /// six-RPC test — real dispatch, real SQLite, no service shortcuts.
+    func test_founderLensRPCsDispatchThroughTheServerSocket() async throws {
+        let rootURL = try makeTemporaryRoot(name: "inbox-lens-rpc")
+        let databasePath = rootURL.appendingPathComponent("openburnbar.sqlite").path
+        _ = try BurnBarAIInboxStore(
+            databasePath: databasePath,
+            logger: BurnBarDaemonLogger(category: "test")
+        )
+
+        let socketPath = makeSocketPath(name: "inbox-lens")
+        let server = makeServer(rootURL: rootURL, socketPath: socketPath, indexDatabasePath: databasePath)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        // 1. thread.get for an unknown fingerprint is an empty result, not an error.
+        let emptyThread: BurnBarRPCResponseEnvelope<BurnBarInboxThreadGetResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "thread-get",
+                method: .inboxThreadGet,
+                authToken: authToken,
+                params: BurnBarInboxThreadGetRequest(fingerprint: "ci_waste:none")
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(emptyThread.error)
+        XCTAssertNil(emptyThread.result?.thread)
+
+        // 2. reply is REFUSED (inbox disabled by default) with a stated reason,
+        // delivered as a result — refusals are answers, not transport errors.
+        let refusedReply: BurnBarRPCResponseEnvelope<BurnBarInboxReplyResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "reply",
+                method: .inboxReply,
+                authToken: authToken,
+                params: BurnBarInboxReplyRequest(fingerprint: "ci_waste:none", bodyMarkdown: "why?")
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(refusedReply.error)
+        let replyResult = try XCTUnwrap(refusedReply.result)
+        XCTAssertNil(replyResult.message)
+        XCTAssertEqual(replyResult.refusalReason, "The AI Inbox is turned off.")
+
+        // 3. plans.accept creates an active plan with an accepted step.
+        let accept: BurnBarRPCResponseEnvelope<BurnBarInboxPlanAcceptResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "plan-accept",
+                method: .inboxPlansAccept,
+                authToken: authToken,
+                params: BurnBarInboxPlanAcceptRequest(
+                    candidate: BurnBarInboxPlanCandidate(
+                        title: "Kill the CI waste loop",
+                        bodyMarkdown: "Land the compile gate.",
+                        horizon: .week
+                    ),
+                    pack: "engOps"
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(accept.error)
+        let accepted = try XCTUnwrap(accept.result)
+        XCTAssertEqual(accepted.plan.status, .active)
+        XCTAssertEqual(accepted.step.status, .accepted)
+
+        // An unknown pack is rejected, not stored as free text.
+        let badPack: BurnBarRPCResponseEnvelope<BurnBarInboxPlanAcceptResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "plan-accept-bad",
+                method: .inboxPlansAccept,
+                authToken: authToken,
+                params: BurnBarInboxPlanAcceptRequest(
+                    candidate: BurnBarInboxPlanCandidate(title: "X", bodyMarkdown: "y"),
+                    pack: "notAPack"
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(badPack.result)
+        XCTAssertNotNil(badPack.error)
+
+        // 4. plans.list and plans.get surface the accepted plan.
+        let plans: BurnBarRPCResponseEnvelope<BurnBarInboxPlansListResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "plans-list",
+                method: .inboxPlansList,
+                authToken: authToken,
+                params: BurnBarInboxPlansListRequest()
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(plans.error)
+        XCTAssertEqual(plans.result?.plans.first?.id, accepted.plan.id)
+
+        let plan: BurnBarRPCResponseEnvelope<BurnBarInboxPlanGetResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "plan-get",
+                method: .inboxPlansGet,
+                authToken: authToken,
+                params: BurnBarInboxPlanGetRequest(id: accepted.plan.id)
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(plan.error)
+        XCTAssertEqual(plan.result?.plan?.steps.count, 1)
+
+        // 5. plans.update_step binds a mission and lands the step (auto-seeded
+        // grade), then plans.grade overrides with the human verdict.
+        let landed: BurnBarRPCResponseEnvelope<BurnBarInboxPlanUpdateStepResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "step-update",
+                method: .inboxPlansUpdateStep,
+                authToken: authToken,
+                params: BurnBarInboxPlanUpdateStepRequest(
+                    stepID: accepted.step.id,
+                    status: .landed,
+                    missionID: "mission_rpc"
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(landed.error)
+        XCTAssertEqual(landed.result?.step.status, .landed)
+        XCTAssertEqual(landed.result?.step.missionID, "mission_rpc")
+        XCTAssertEqual(landed.result?.step.grade, 85, "Landing auto-seeds the grade")
+
+        let graded: BurnBarRPCResponseEnvelope<BurnBarInboxPlanGradeResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "step-grade",
+                method: .inboxPlansGrade,
+                authToken: authToken,
+                params: BurnBarInboxPlanGradeRequest(
+                    stepID: accepted.step.id,
+                    grade: 95,
+                    noteMarkdown: "Shipped clean."
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(graded.error)
+        XCTAssertEqual(graded.result?.step.grade, 95)
+        XCTAssertEqual(graded.result?.planGradeAverage ?? 0, 95, accuracy: 0.01)
+
+        // 6. memory.export replaces the daemon's approved-snippet set.
+        let export: BurnBarRPCResponseEnvelope<BurnBarInboxMemoryExportResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "memory-export",
+                method: .inboxMemoryExport,
+                authToken: authToken,
+                params: BurnBarInboxMemoryExportRequest(
+                    entries: [
+                        BurnBarInboxMemoryExportEntry(
+                            memoryID: "mem_rpc",
+                            provenance: "ai-inbox:plan:\(accepted.plan.id)",
+                            snippetMarkdown: "Trunk must compile before merges.",
+                            approvedAt: Date()
+                        )
+                    ]
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(export.error)
+        XCTAssertEqual(export.result?.stored, 1)
+    }
+
     func test_inboxRPCsFailClosedWhenNoIndexDatabaseIsConfigured() async throws {
         let rootURL = try makeTemporaryRoot(name: "inbox-rpc-nil")
         let socketPath = makeSocketPath(name: "inbox-nil")
