@@ -1,16 +1,16 @@
 {
  "schema_version": 1,
- "generated_at_utc": "2026-08-09T05:23:52.889240+00:00",
+ "generated_at_utc": "2026-08-09T07:22:54.412623+00:00",
  "source": {
   "trees": [
-   "/Volumes/Samsung NVME/agent-harness-bench/results-deepseek-v4-flash-0731-v2-20260806",
    "/Volumes/Samsung NVME/agent-harness-bench/results-glm-5-2-20260807",
    "/Volumes/Samsung NVME/agent-harness-bench/results-gpt-5-6-luna-max-20260807",
-   "/Volumes/Samsung NVME/agent-harness-bench/results-muse-spark-1-2-contributor-20260807"
+   "/Volumes/Samsung NVME/agent-harness-bench/results-muse-spark-1-2-contributor-20260807",
+   "/Volumes/Samsung NVME/agent-harness-bench/results-deepseek-v4-flash-0731-v2-20260806"
   ],
   "cells_measured": 3070,
   "cells_excluded": 368,
-  "runs_sha256": "1b7a51b461300e76cde21880e0434b55501f67183da08dbd86669be1fc0aeb0f"
+  "runs_sha256": "6dfe1656644b010b01ec798e9e34f942697f5ba17c0d10099794caeeec84f7d6"
  },
  "models": [
   {
@@ -13687,19 +13687,19 @@
     "platform": null
    },
    "n": 79,
-   "strict_rate": 0.683544,
-   "solution_rate": 0.734177,
+   "strict_rate": 0.708861,
+   "solution_rate": 0.759494,
    "ci95": [
-    0.62757,
-    0.819067
+    0.654643,
+    0.840278
    ],
-   "cost_usd_median": 0.057481,
+   "cost_usd_median": 0.055608,
    "cost_source": "derived",
-   "cost_input_usd_median": 0.056647,
+   "cost_input_usd_median": 0.055049,
    "cost_output_usd_median": 0.001648,
    "cost_standard_usd_median": null,
-   "wall_seconds_median": 324.526,
-   "tokens_median": 75569,
+   "wall_seconds_median": 244.955,
+   "tokens_median": 73729,
    "arena_bt": null,
    "confidence": "high",
    "evidence": "measured"
@@ -13714,11 +13714,11 @@
     "platform": null
    },
    "n": 25,
-   "strict_rate": 0.709584,
-   "solution_rate": 0.752622,
+   "strict_rate": 0.745389,
+   "solution_rate": 0.788427,
    "ci95": [
-    0.565703,
-    0.885037
+    0.60869,
+    0.911394
    ],
    "cost_usd_median": 0.054821,
    "cost_source": "derived",
@@ -13741,8 +13741,8 @@
     "platform": null
    },
    "n": 5,
-   "strict_rate": 0.78903,
-   "solution_rate": 0.822785,
+   "strict_rate": 0.805907,
+   "solution_rate": 0.839662,
    "ci95": [
     0.565518,
     1.0
@@ -13768,8 +13768,8 @@
     "platform": null
    },
    "n": 15,
-   "strict_rate": 0.753418,
-   "solution_rate": 0.773671,
+   "strict_rate": 0.763544,
+   "solution_rate": 0.783797,
    "ci95": [
     0.548146,
     0.929525
@@ -13795,8 +13795,8 @@
     "platform": null
    },
    "n": 0,
-   "strict_rate": 0.683544,
-   "solution_rate": 0.734177,
+   "strict_rate": 0.708861,
+   "solution_rate": 0.759494,
    "ci95": [
     0.0,
     1.0
@@ -13822,8 +13822,8 @@
     "platform": null
    },
    "n": 6,
-   "strict_rate": 0.739715,
-   "solution_rate": 0.833861,
+   "strict_rate": 0.755538,
+   "solution_rate": 0.849684,
    "ci95": [
     0.609666,
     1.0
@@ -13849,8 +13849,8 @@
     "platform": null
    },
    "n": 5,
-   "strict_rate": 0.722363,
-   "solution_rate": 0.822785,
+   "strict_rate": 0.739241,
+   "solution_rate": 0.839662,
    "ci95": [
     0.565518,
     1.0
@@ -13876,19 +13876,19 @@
     "platform": null
    },
    "n": 10,
-   "strict_rate": 0.391772,
-   "solution_rate": 0.417089,
+   "strict_rate": 0.45443,
+   "solution_rate": 0.479747,
    "ci95": [
-    0.017876,
-    0.40415
+    0.056682,
+    0.509838
    ],
-   "cost_usd_median": 0.052744,
-   "cost_source": "derived",
-   "cost_input_usd_median": 0.051856,
-   "cost_output_usd_median": 0.000835,
+   "cost_usd_median": 0.049579,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.048454,
+   "cost_output_usd_median": 0.000748,
    "cost_standard_usd_median": null,
-   "wall_seconds_median": 324.526,
-   "tokens_median": 68797,
+   "wall_seconds_median": 61.178,
+   "tokens_median": 64664,
    "arena_bt": null,
    "confidence": "medium",
    "evidence": "inferred"
@@ -13903,8 +13903,8 @@
     "platform": null
    },
    "n": 0,
-   "strict_rate": 0.683544,
-   "solution_rate": 0.734177,
+   "strict_rate": 0.708861,
+   "solution_rate": 0.759494,
    "ci95": [
     0.0,
     1.0
@@ -13930,8 +13930,8 @@
     "platform": null
    },
    "n": 13,
-   "strict_rate": 0.688498,
-   "solution_rate": 0.75399,
+   "strict_rate": 0.699505,
+   "solution_rate": 0.764997,
    "ci95": [
     0.497436,
     0.918205
@@ -13957,8 +13957,8 @@
     "platform": null
    },
    "n": 0,
-   "strict_rate": 0.683544,
-   "solution_rate": 0.734177,
+   "strict_rate": 0.708861,
+   "solution_rate": 0.759494,
    "ci95": [
     0.0,
     1.0
@@ -13984,8 +13984,8 @@
     "platform": null
    },
    "n": 0,
-   "strict_rate": 0.683544,
-   "solution_rate": 0.734177,
+   "strict_rate": 0.708861,
+   "solution_rate": 0.759494,
    "ci95": [
     0.0,
     1.0
@@ -14011,8 +14011,8 @@
     "platform": null
    },
    "n": 0,
-   "strict_rate": 0.683544,
-   "solution_rate": 0.734177,
+   "strict_rate": 0.708861,
+   "solution_rate": 0.759494,
    "ci95": [
     0.0,
     1.0
@@ -14038,8 +14038,8 @@
     "platform": null
    },
    "n": 0,
-   "strict_rate": 0.683544,
-   "solution_rate": 0.734177,
+   "strict_rate": 0.708861,
+   "solution_rate": 0.759494,
    "ci95": [
     0.0,
     1.0
@@ -14065,8 +14065,8 @@
     "platform": null
    },
    "n": 0,
-   "strict_rate": 0.683544,
-   "solution_rate": 0.734177,
+   "strict_rate": 0.708861,
+   "solution_rate": 0.759494,
    "ci95": [
     0.0,
     1.0
@@ -14092,8 +14092,8 @@
     "platform": null
    },
    "n": 0,
-   "strict_rate": 0.683544,
-   "solution_rate": 0.734177,
+   "strict_rate": 0.708861,
+   "solution_rate": 0.759494,
    "ci95": [
     0.0,
     1.0
@@ -14119,16 +14119,16 @@
     "platform": null
    },
    "n": 20,
-   "strict_rate": 0.727848,
-   "solution_rate": 0.744726,
+   "strict_rate": 0.76962,
+   "solution_rate": 0.786498,
    "ci95": [
-    0.531299,
-    0.888138
+    0.583983,
+    0.919342
    ],
    "cost_usd_median": 0.053833,
    "cost_source": "derived",
    "cost_input_usd_median": 0.053044,
-   "cost_output_usd_median": 0.00084,
+   "cost_output_usd_median": 0.000857,
    "cost_standard_usd_median": null,
    "wall_seconds_median": 199.946,
    "tokens_median": 70283,
@@ -14146,11 +14146,11 @@
     "platform": null
    },
    "n": 54,
-   "strict_rate": 0.722222,
-   "solution_rate": 0.796296,
+   "strict_rate": 0.703704,
+   "solution_rate": 0.777778,
    "ci95": [
-    0.670977,
-    0.882259
+    0.650613,
+    0.868046
    ],
    "cost_usd_median": 0.066092,
    "cost_source": "derived",
@@ -14173,19 +14173,19 @@
     "platform": null
    },
    "n": 5,
-   "strict_rate": 0.455696,
-   "solution_rate": 0.489451,
+   "strict_rate": 0.605907,
+   "solution_rate": 0.639662,
    "ci95": [
-    0.0,
-    0.434482
+    0.117621,
+    0.769276
    ],
-   "cost_usd_median": 0.052744,
-   "cost_source": "derived",
-   "cost_input_usd_median": 0.051856,
-   "cost_output_usd_median": 0.000963,
+   "cost_usd_median": 0.049779,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.049075,
+   "cost_output_usd_median": 0.000937,
    "cost_standard_usd_median": null,
-   "wall_seconds_median": 324.817,
-   "tokens_median": 68797,
+   "wall_seconds_median": 77.361,
+   "tokens_median": 65064,
    "arena_bt": null,
    "confidence": "low",
    "evidence": "inferred"
@@ -14200,8 +14200,8 @@
     "platform": "browser"
    },
    "n": 0,
-   "strict_rate": 0.683544,
-   "solution_rate": 0.734177,
+   "strict_rate": 0.708861,
+   "solution_rate": 0.759494,
    "ci95": [
     0.0,
     1.0
@@ -14227,16 +14227,16 @@
     "platform": "cli"
    },
    "n": 20,
-   "strict_rate": 0.694515,
-   "solution_rate": 0.744726,
+   "strict_rate": 0.736287,
+   "solution_rate": 0.786498,
    "ci95": [
-    0.531299,
-    0.888138
+    0.583983,
+    0.919342
    ],
    "cost_usd_median": 0.053833,
    "cost_source": "derived",
    "cost_input_usd_median": 0.053044,
-   "cost_output_usd_median": 0.00084,
+   "cost_output_usd_median": 0.000857,
    "cost_standard_usd_median": null,
    "wall_seconds_median": 199.946,
    "tokens_median": 70283,
@@ -14254,11 +14254,11 @@
     "platform": "library"
    },
    "n": 54,
-   "strict_rate": 0.666667,
-   "solution_rate": 0.722222,
+   "strict_rate": 0.685185,
+   "solution_rate": 0.740741,
    "ci95": [
-    0.591096,
-    0.823832
+    0.610691,
+    0.838813
    ],
    "cost_usd_median": 0.062201,
    "cost_source": "derived",
@@ -14281,8 +14281,8 @@
     "platform": "research"
    },
    "n": 5,
-   "strict_rate": 0.722363,
-   "solution_rate": 0.756118,
+   "strict_rate": 0.739241,
+   "solution_rate": 0.772996,
    "ci95": [
     0.375535,
     0.963776
@@ -14308,8 +14308,8 @@
     "platform": "web-api"
    },
    "n": 0,
-   "strict_rate": 0.683544,
-   "solution_rate": 0.734177,
+   "strict_rate": 0.708861,
+   "solution_rate": 0.759494,
    "ci95": [
     0.0,
     1.0

@@ -956,10 +956,14 @@ const SECTION_NAV: [string, string][] = [
         <article class="bb-methcard">
           <h3>Reasoning effort parity.</h3>
           <p>
-            Every run requested reasoning effort <code>high</code>. Delivery differs by harness:
+            Every run requests reasoning effort <code>high</code>. Delivery differs by harness:
             claude, pi, omp, and prime-agent carry an explicit flag; the others reach it through
-            config or alias; opencode had no explicit delivery path in this run set and is
-            flagged for rerun. Treat cross-harness effort as a known limitation of this export.
+            config or alias. opencode had no explicit delivery path, so on 2026-08-09 its three
+            weakest glm-5-2 cells (18, 21, 22) were rerun with the effort pin enforced at the
+            proxy; those 15 runs replace the originals here. Under parity, opencode engaged on
+            every task (aggregate on the three cells rose 13% → 27%), though three of five
+            task-21 runs still ended without source edits — flagged as no-ops on that cell.
+            Treat residual cross-harness effort differences as a known limitation.
           </p>
         </article>
       </div>
