@@ -52,6 +52,19 @@ export const LEGACY_KIMI_WIRE_PRICING = {
 export const INSIGHTS_HOSTED_DEFAULT_INPUT_PRICE_PER_MTOKEN = 0.255;
 export const INSIGHTS_HOSTED_DEFAULT_OUTPUT_PRICE_PER_MTOKEN = 1.0;
 
+/**
+ * Per-million-token USD pricing for the public BurnBench assistant default
+ * model (`openai/gpt-5.6-luna-pro` via OpenRouter). Lets the `benchAssistant`
+ * callable stamp `estimatedCostUSD` on its token-usage record so owner-budget
+ * reporting works without round-tripping OpenRouter's separate cost-report
+ * endpoint. Contract rates supplied with the BurnBench assistant brief —
+ * override via the `BENCH_ASSISTANT_INPUT_PRICE_PER_MTOKEN` /
+ * `BENCH_ASSISTANT_OUTPUT_PRICE_PER_MTOKEN` env knobs when the OpenRouter
+ * pricing page changes.
+ */
+export const BENCH_ASSISTANT_DEFAULT_INPUT_PRICE_PER_MTOKEN = 0.1;
+export const BENCH_ASSISTANT_DEFAULT_OUTPUT_PRICE_PER_MTOKEN = 0.6;
+
 export function estimateTokenCost(
   rates: TokenPricingRates,
   buckets: TokenPricingBuckets,

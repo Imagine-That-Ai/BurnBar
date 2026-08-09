@@ -42,6 +42,8 @@ export interface BenchHarness {
 export type BenchConfidence = "high" | "medium" | "low";
 export type BenchEvidence = "measured" | "inferred";
 
+export type BenchCostSource = "measured" | "derived" | "none";
+
 export interface BenchStack {
   harness: string;
   model: string;
@@ -52,6 +54,11 @@ export interface BenchStack {
   solution_rate: number;
   ci95: [number, number];
   cost_usd_median: number | null;
+  cost_source: BenchCostSource;
+  cost_input_usd_median: number | null;
+  cost_output_usd_median: number | null;
+  /** Amendment 12: standard-tier (non-contributor) equivalent for subsidized models. */
+  cost_standard_usd_median: number | null;
   wall_seconds_median: number | null;
   tokens_median: number | null;
   arena_bt: number | null;
@@ -150,7 +157,7 @@ export const HARNESS_LOGO: Record<string, string | null> = {
   pi: "/brand/providers/pi-agent.svg",
   codex: "/brand/providers/codex.png",
   claude: "/brand/providers/claude-code.png",
-  "prime-agent": null,
+  "prime-agent": "/brand/providers/prime-intellect.png",
   hermes: "/brand/providers/hermes.png",
   opencode: "/brand/providers/opencode.png",
   // current export roster
@@ -322,25 +329,38 @@ export function modelDisplay(id: string): string {
   return BENCH.models.find((m) => m.id === id)?.display ?? id;
 }
 
+/** Short display names for dense layouts (heatmap rows, lens labels). */
+const DISPLAY_SHORT: Record<string, string> = {
+  "muse-spark-1-2-contributor": "Muse Spark 1.2 CE",
+  "deepseek-v4-flash-0731": "DeepSeek V4 Flash",
+  "gpt-5-6-luna-max": "GPT 5.6 Luna Pro",
+  "glm-5-2": "GLM 5.2"
+};
+
+export function modelDisplayShort(id: string): string {
+  const pinned = DISPLAY_SHORT[id];
+  if (pinned) return pinned;
+  const full = modelDisplay(id);
+  return full.length <= 18 ? full : `${full.slice(0, 17)}…`;
+}
+
 export function harnessDisplay(id: string): string {
   return BENCH.harnesses.find((h) => h.id === id)?.display ?? id;
 }
 
-/* ---------- Pareto domain (data-driven, nice ticks) ---------- */
+/* ---------- Pareto domain (log-cost axis, data-driven) ---------- */
 
 export interface ParetoDomain {
+  /** Smallest positive cost: the log floor. Zero-cost (free) stacks park in
+      a dedicated gutter one half-decade below it, tick-labeled "$0 (free)". */
+  xMinPos: number;
   xMax: number;
   yMin: number;
   yMax: number;
   xTicks: number[];
   yTicks: number[];
-}
-
-function niceCeil(v: number): number {
-  const mag = Math.pow(10, Math.floor(Math.log10(v)));
-  const norm = v / mag;
-  const nice = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10;
-  return nice * mag;
+  /** Map a cost to its 0–1 axis fraction (log10; free stacks → the gutter). */
+  xFrac: (cost: number) => number;
 }
 
 function niceFloor(v: number): number {
@@ -355,14 +375,30 @@ export function paretoDomain(stacks: BenchStack[]): ParetoDomain {
   const costs = stacks
     .map((s) => s.cost_usd_median)
     .filter((c): c is number => c != null);
+  const positive = costs.filter((c) => c > 0);
   const rates = stacks.map((s) => s.solution_rate);
-  const xMax = niceCeil(Math.max(...costs, 1));
+
+  const xMinPos = positive.length > 0 ? Math.min(...positive) : 0.001;
+  const xMax = Math.max(...costs, xMinPos * 10);
   const yMin = Math.max(0, niceFloor(Math.min(...rates, 0.5)));
   const yMax = niceCeilRate(Math.max(...rates, 0.6));
 
+  // Log axis: gutter occupies [0, gutterW] of the fraction, then decades.
+  const lo = Math.log10(xMinPos);
+  const hi = Math.log10(xMax);
+  const span = hi - lo || 1;
+  const gutterW = 0.09; // free stacks park in the left 9% of the axis
+  const xFrac = (cost: number): number => {
+    if (cost <= 0) return gutterW / 2;
+    const t = (Math.log10(cost) - lo) / span;
+    return gutterW + t * (1 - gutterW);
+  };
+
   const xTicks: number[] = [];
-  const xStep = xMax / 4;
-  for (let i = 0; i <= 4; i++) xTicks.push(Math.round(xStep * i * 100) / 100);
+  for (let e = Math.floor(lo); e <= Math.ceil(hi); e++) {
+    const v = Math.pow(10, e);
+    if (v >= xMinPos * 0.999 && v <= xMax * 1.001) xTicks.push(v);
+  }
 
   const yTicks: number[] = [];
   const ySpan = yMax - yMin;
@@ -370,7 +406,7 @@ export function paretoDomain(stacks: BenchStack[]): ParetoDomain {
   for (let t = yMin; t <= yMax + 1e-9; t += yStep) {
     yTicks.push(Math.round(t * 100) / 100);
   }
-  return { xMax, yMin, yMax, xTicks, yTicks };
+  return { xMinPos, xMax, yMin, yMax, xTicks, yTicks, xFrac };
 }
 
 /**
@@ -400,12 +436,671 @@ export function frontierPoints(): BenchFrontierPoint[] {
   );
 }
 
+/* ---------- command-center view models ---------- */
+
+/** Headline KPIs for the strip under the hero. */
+export interface BenchKpis {
+  stacks: number;
+  cellsMeasured: number;
+  cellsExcluded: number;
+  topStack: BenchStack | undefined;
+  cheapestFrontier: BenchFrontierPoint | undefined;
+  arenaVotes: number;
+}
+
+export function benchKpis(): BenchKpis {
+  const eligible = RANKED_STACKS.filter((s) => s.confidence !== "low");
+  const frontier = frontierPoints();
+  return {
+    stacks: RANKED_STACKS.length,
+    cellsMeasured: BENCH.source.cells_measured,
+    cellsExcluded: BENCH.source.cells_excluded,
+    topStack: eligible[0] ?? RANKED_STACKS[0],
+    cheapestFrontier: frontier[0],
+    arenaVotes: BENCH.arena.votes
+  };
+}
+
+/**
+ * Model lens: one model's solution rate across every harness — the answer to
+ * "is it the model or the harness?" Dots are per-harness cells; the range
+ * bar runs min→max.
+ */
+export interface ModelLens {
+  model: BenchModel;
+  cells: { harness: string; rate: number; strict: number; cost: number | null; confidence: BenchConfidence }[];
+  min: number;
+  max: number;
+  mean: number;
+  spread: number;
+}
+
+export function modelLens(): ModelLens[] {
+  const out: ModelLens[] = [];
+  for (const m of BENCH.models) {
+    const cells = RANKED_STACKS.filter((s) => s.model === m.id)
+      .map((s) => ({
+        harness: s.harness,
+        rate: s.solution_rate,
+        strict: s.strict_rate,
+        cost: s.cost_usd_median,
+        confidence: s.confidence
+      }))
+      .sort((a, b) => b.rate - a.rate);
+    if (cells.length === 0) continue;
+    const rates = cells.map((c) => c.rate);
+    const min = Math.min(...rates);
+    const max = Math.max(...rates);
+    out.push({
+      model: m,
+      cells,
+      min,
+      max,
+      mean: rates.reduce((a, r) => a + r, 0) / rates.length,
+      spread: max - min
+    });
+  }
+  // Best mean first; each row's min→max range shows the harness effect.
+  return out.sort((a, b) => b.mean - a.mean);
+}
+
+/**
+ * Family heatmap: stacks (rows, leaderboard order) × families (cols).
+ * Value is the stack's DIRECT family-slice solution rate; null when the
+ * slice has no measured cells (n = 0 slices are pooled artifacts — the
+ * heatmap shows them as empty rather than painting a prior).
+ */
+export interface HeatCell {
+  rate: number | null;
+  strict: number | null;
+  cost: number | null;
+  n: number;
+  confidence: BenchConfidence | null;
+}
+
+export interface HeatRow {
+  harness: string;
+  model: string;
+  /** One entry per family; unmeasured slices carry null fields, never holes. */
+  cells: HeatCell[];
+}
+
+export interface HeatDomains {
+  rate: [number, number];
+  strict: [number, number];
+  cost: [number, number];
+}
+
+export function familyHeat(): { families: string[]; rows: HeatRow[]; domains: HeatDomains } {
+  const byKey = new Map<string, BenchStack>();
+  for (const s of BENCH.stacks) {
+    if (s.scope.family && !s.scope.language && !s.scope.platform) {
+      byKey.set(`${s.harness}|${s.model}|${s.scope.family}`, s);
+    }
+  }
+  const rows: HeatRow[] = RANKED_STACKS.map((stack) => ({
+    harness: stack.harness,
+    model: stack.model,
+    cells: FAMILIES.map((fam) => {
+      const slice = byKey.get(`${stack.harness}|${stack.model}|${fam}`);
+      if (!slice || slice.n === 0) {
+        return { rate: null, strict: null, cost: null, n: 0, confidence: null };
+      }
+      return {
+        rate: slice.solution_rate,
+        strict: slice.strict_rate,
+        cost: slice.cost_usd_median,
+        n: slice.n,
+        confidence: slice.confidence
+      };
+    })
+  }));
+  // Observed ranges drive the color buckets — a linear 0–100% scale crushes
+  // every measured cell into the top buckets and reads as uniform orange.
+  const observed = rows.flatMap((r) => r.cells);
+  const range = (pick: (c: HeatCell) => number | null): [number, number] => {
+    const vals = observed.map(pick).filter((v): v is number => v != null);
+    if (vals.length === 0) return [0, 1];
+    const lo = Math.min(...vals);
+    const hi = Math.max(...vals);
+    return lo === hi ? [Math.max(0, lo - 0.05), hi + 0.05] : [lo, hi];
+  };
+  const domains: HeatDomains = {
+    rate: range((c) => c.rate),
+    strict: range((c) => c.strict),
+    cost: range((c) => c.cost)
+  };
+  return { families: FAMILIES, rows, domains };
+}
+
+/** Bucket a value 0–10 against an observed domain (the heatmap's scale). */
+export function heatBucket(v: number | null, domain: [number, number]): number | null {
+  if (v == null) return null;
+  const [lo, hi] = domain;
+  const span = hi - lo;
+  const t = span <= 0 ? 1 : (v - lo) / span;
+  return Math.round(Math.max(0, Math.min(1, t)) * 10);
+}
+
+/**
+ * Input/output cost split for the segmented cost bars. Components are
+ * token-derived list-price parts (contract §3); when they don't sum to the
+ * displayed total (measured totals, rounding) they are scaled proportionally
+ * so the bar always reads as one honest whole.
+ */
+export function costSegments(s: BenchStack): { input: number; output: number } | null {
+  if (s.cost_usd_median == null) return null;
+  const i = s.cost_input_usd_median;
+  const o = s.cost_output_usd_median;
+  if (i == null || o == null || i + o <= 0) {
+    return { input: 0, output: s.cost_usd_median };
+  }
+  const scale = s.cost_usd_median / (i + o);
+  return { input: i * scale, output: o * scale };
+}
+
+/** Min-max normalizer over the stacks that carry a value for `pick`. */
+export function normalizer(pick: (s: BenchStack) => number | null): (s: BenchStack) => number | null {
+  const vals = RANKED_STACKS.map(pick).filter((v): v is number => v != null);
+  const lo = Math.min(...vals);
+  const hi = Math.max(...vals);
+  const span = hi - lo;
+  return (s) => {
+    const v = pick(s);
+    if (v == null) return null;
+    return span <= 0 ? 1 : (v - lo) / span;
+  };
+}
+
+/**
+ * n-weighted means over a single-key scope (language or platform) — the
+ * aggregation the AI-chart renderer uses for those dimensions.
+ */
+function scopeMeans(key: "language" | "platform"): unknown[] {
+  const groups = new Map<string, BenchStack[]>();
+  for (const s of BENCH.stacks) {
+    // single-key slices only: this dimension set, the other two null
+    const isSlice =
+      key === "language"
+        ? s.scope.language != null && s.scope.family == null && s.scope.platform == null
+        : s.scope.platform != null && s.scope.family == null && s.scope.language == null;
+    if (!isSlice || s.n === 0) continue;
+    const k = s.scope[key];
+    if (!k) continue;
+    const arr = groups.get(k) ?? [];
+    arr.push(s);
+    groups.set(k, arr);
+  }
+  const wmean = (rows: BenchStack[], pick: (s: BenchStack) => number | null): number | null => {
+    let sum = 0;
+    let w = 0;
+    for (const r of rows) {
+      const v = pick(r);
+      if (v == null) continue;
+      sum += v * r.n;
+      w += r.n;
+    }
+    return w > 0 ? Math.round((sum / w) * 1e6) / 1e6 : null;
+  };
+  return [...groups.entries()]
+    .map(([k, rows]) => ({
+      key: k,
+      sol: wmean(rows, (s) => s.solution_rate),
+      str: wmean(rows, (s) => s.strict_rate),
+      cost: wmean(rows, (s) => s.cost_usd_median),
+      wall: wmean(rows, (s) => s.wall_seconds_median),
+      tok: wmean(rows, (s) => (s.tokens_median == null ? null : s.tokens_median)),
+      n: rows.reduce((a, r) => a + r.n, 0)
+    }))
+    .sort((a, b) => (b.sol ?? 0) - (a.sol ?? 0));
+}
+
+/**
+ * Compact dataset for the dashboard's client module (metric tabs, tuner,
+ * AI-chart rendering). Served at /data/bench-dashboard.json (prerendered
+ * endpoint) so the page keeps its zero-inline-JS budget.
+ */
+export function dashboardDataset(): unknown {
+  const heat = familyHeat();
+  return {
+    generated: BENCH.generated_at_utc,
+    byLanguage: scopeMeans("language"),
+    byPlatform: scopeMeans("platform"),
+    stacks: RANKED_STACKS.map((s) => ({
+      h: s.harness,
+      m: s.model,
+      hd: harnessDisplay(s.harness),
+      md: modelDisplay(s.model),
+      mds: modelDisplayShort(s.model),
+      mc: colorFor(MODEL_COLOR, s.model),
+      hc: colorFor(HARNESS_COLOR, s.harness),
+      hl: HARNESS_LOGO[s.harness] ?? null,
+      ml: MODEL_LOGO[s.model] ?? null,
+      hm: monogramFor(s.harness, harnessDisplay(s.harness)),
+      mm: monogramFor(s.model, modelDisplay(s.model)),
+      sol: s.solution_rate,
+      str: s.strict_rate,
+      ci: s.ci95,
+      cost: s.cost_usd_median,
+      cin: s.cost_input_usd_median,
+      cout: s.cost_output_usd_median,
+      cstd: s.cost_standard_usd_median ?? null,
+      wall: s.wall_seconds_median,
+      tok: s.tokens_median,
+      n: s.n,
+      conf: s.confidence,
+      ev: s.evidence
+    })),
+    families: heat.families,
+    heatDomains: heat.domains,
+    heat: heat.rows.map((r) => ({
+      h: r.harness,
+      m: r.model,
+      cells: r.cells.map((c) => (c.rate == null ? null : { r: c.rate, s: c.strict, c: c.cost, n: c.n }))
+    }))
+  };
+}
+
+/* ---------- evidence store (per-task measured cells) ----------
+   `website/public/data/evidence.json` is the pipeline's full evidence
+   export: one aggregate row per measured (harness × model × task) cell,
+   with trial counts, pass splits, medians, and provenance. The report
+   page derives its matrix, per-task browser, flip stats, and explorer
+   from it; bench.json stays the source for stack-scope rows. */
+
+export interface EvidenceTaskMeta {
+  family: string;
+  language: string;
+  framework: string | null;
+  platform: string;
+  difficulty: string;
+  validator_type: string;
+  tags: string[];
+}
+
+export interface EvidenceCell {
+  harness: string;
+  model: string;
+  task: string;
+  family: string;
+  language: string;
+  framework: string | null;
+  platform: string;
+  difficulty: string;
+  tags: string[];
+  n: number;
+  strict_passes: number;
+  solution_passes: number;
+  strict_rate: number;
+  solution_rate: number;
+  ci95: [number, number];
+  strict_ci95: [number, number];
+  cost_usd_median: number | null;
+  cost_source: BenchCostSource;
+  cost_input_usd_median: number | null;
+  cost_output_usd_median: number | null;
+  wall_seconds_median: number | null;
+  tokens_median: number | null;
+  confidence: BenchConfidence;
+  evidence: BenchEvidence;
+}
+
+export interface EvidenceDoc {
+  schema_version: number;
+  generated_at_utc: string;
+  params: Record<string, unknown>;
+  source: BenchDoc["source"];
+  models: BenchModel[];
+  harnesses: BenchHarness[];
+  tasks: Record<string, EvidenceTaskMeta>;
+  global: { n: number; solution_rate: number; strict_rate: number };
+  cells: EvidenceCell[];
+}
+
+const evidenceRaw = readFileSync(join(process.cwd(), "public", "data", "evidence.json"), "utf8");
+export const EVIDENCE: EvidenceDoc = JSON.parse(evidenceRaw) as EvidenceDoc;
+
+/** Measured cells only — the export never mixes inferred rows into cells. */
+export const EVIDENCE_CELLS: EvidenceCell[] = EVIDENCE.cells;
+
+/** Trials in a cell that strict failed but the abandoned workspace passed. */
+export function flipTrials(cell: EvidenceCell): number {
+  return Math.max(0, cell.solution_passes - cell.strict_passes);
+}
+
+/* ---------- report view-models ---------- */
+
+/** One matrix tile: a harness × model pair aggregated over its task cells. */
+export interface ReportMatrixCell {
+  harness: string;
+  model: string;
+  n: number;
+  tasks: number;
+  solution: number;
+  strict: number;
+  flips: number;
+  cost: number | null;
+}
+
+export interface ReportMatrix {
+  /** Harness ids, best mean solution rate first (row order). */
+  harnesses: string[];
+  /** Model ids, best mean solution rate first (column order). */
+  models: string[];
+  /** keyed `${harness}|${model}`; missing pairs never ran. */
+  cells: Map<string, ReportMatrixCell>;
+}
+
+export function reportMatrix(): ReportMatrix {
+  const agg = new Map<string, ReportMatrixCell & { sp: number; stp: number; costs: number[] }>();
+  for (const c of EVIDENCE_CELLS) {
+    const key = `${c.harness}|${c.model}`;
+    let a = agg.get(key);
+    if (!a) {
+      a = {
+        harness: c.harness,
+        model: c.model,
+        n: 0,
+        tasks: 0,
+        solution: 0,
+        strict: 0,
+        flips: 0,
+        cost: null,
+        sp: 0,
+        stp: 0,
+        costs: []
+      };
+      agg.set(key, a);
+    }
+    a.n += c.n;
+    a.tasks += 1;
+    a.sp += c.solution_passes;
+    a.stp += c.strict_passes;
+    a.flips += flipTrials(c);
+    if (c.cost_usd_median != null) a.costs.push(c.cost_usd_median);
+  }
+  const cells = new Map<string, ReportMatrixCell>();
+  for (const [key, a] of agg) {
+    const sorted = [...a.costs].sort((x, y) => x - y);
+    cells.set(key, {
+      harness: a.harness,
+      model: a.model,
+      n: a.n,
+      tasks: a.tasks,
+      solution: a.n > 0 ? a.sp / a.n : 0,
+      strict: a.n > 0 ? a.stp / a.n : 0,
+      flips: a.flips,
+      cost: sorted.length > 0 ? (sorted[Math.floor(sorted.length / 2)] ?? null) : null
+    });
+  }
+  const meanByModel = new Map<string, number>();
+  for (const m of EVIDENCE.models) {
+    const stat = modelStat(m.id);
+    meanByModel.set(m.id, stat?.meanSolution ?? 0);
+  }
+  const bestByHarness = new Map<string, number>();
+  for (const h of EVIDENCE.harnesses) {
+    const rates = RANKED_STACKS.filter((s) => s.harness === h.id).map((s) => s.solution_rate);
+    bestByHarness.set(h.id, rates.length > 0 ? Math.max(...rates) : 0);
+  }
+  return {
+    harnesses: EVIDENCE.harnesses
+      .map((h) => h.id)
+      .sort((a, b) => (bestByHarness.get(b) ?? 0) - (bestByHarness.get(a) ?? 0)),
+    models: EVIDENCE.models
+      .map((m) => m.id)
+      .sort((a, b) => (meanByModel.get(b) ?? 0) - (meanByModel.get(a) ?? 0)),
+    cells
+  };
+}
+
+/** Per-model profile for the "four models, one suite" cards. */
+export interface ReportModel {
+  model: BenchModel;
+  n: number;
+  tasks: number;
+  solution: number;
+  strict: number;
+  flips: number;
+  medianCost: number | null;
+  bestHarness: { harness: string; rate: number } | undefined;
+  strongestFamily: { family: string; rate: number } | undefined;
+}
+
+export function reportModels(): ReportModel[] {
+  const out: ReportModel[] = [];
+  for (const m of EVIDENCE.models) {
+    const cells = EVIDENCE_CELLS.filter((c) => c.model === m.id);
+    if (cells.length === 0) continue;
+    const n = cells.reduce((a, c) => a + c.n, 0);
+    const sp = cells.reduce((a, c) => a + c.solution_passes, 0);
+    const stp = cells.reduce((a, c) => a + c.strict_passes, 0);
+    const flips = cells.reduce((a, c) => a + flipTrials(c), 0);
+    const stat = modelStat(m.id);
+    const bestCell = RANKED_STACKS.filter((s) => s.model === m.id)[0];
+    out.push({
+      model: m,
+      n,
+      tasks: cells.length,
+      solution: n > 0 ? sp / n : 0,
+      strict: n > 0 ? stp / n : 0,
+      flips,
+      medianCost: stat?.medianCost ?? null,
+      bestHarness: bestCell ? { harness: bestCell.harness, rate: bestCell.solution_rate } : undefined,
+      strongestFamily: stat?.strongestFamily
+    });
+  }
+  return out.sort((a, b) => b.solution - a.solution);
+}
+
+/** One row of the per-task browser. */
+export interface ReportTask {
+  task: string;
+  family: string;
+  difficulty: string;
+  language: string;
+  n: number;
+  cells: number;
+  solution: number;
+  strict: number;
+  flips: number;
+  /** Min/max per-stack solution rate — the discrimination read. */
+  min: number;
+  max: number;
+}
+
+export function reportTasks(): ReportTask[] {
+  const byTask = new Map<string, EvidenceCell[]>();
+  for (const c of EVIDENCE_CELLS) {
+    const list = byTask.get(c.task) ?? [];
+    list.push(c);
+    byTask.set(c.task, list);
+  }
+  const out: ReportTask[] = [];
+  for (const [task, cells] of byTask) {
+    const n = cells.reduce((a, c) => a + c.n, 0);
+    const sp = cells.reduce((a, c) => a + c.solution_passes, 0);
+    const stp = cells.reduce((a, c) => a + c.strict_passes, 0);
+    const rates = cells.map((c) => c.solution_rate);
+    const meta = EVIDENCE.tasks[task];
+    out.push({
+      task,
+      family: meta?.family ?? cells[0]?.family ?? "unknown",
+      difficulty: meta?.difficulty ?? cells[0]?.difficulty ?? "mid",
+      language: meta?.language ?? cells[0]?.language ?? "",
+      n,
+      cells: cells.length,
+      solution: n > 0 ? sp / n : 0,
+      strict: n > 0 ? stp / n : 0,
+      flips: cells.reduce((a, c) => a + flipTrials(c), 0),
+      min: rates.length > 0 ? Math.min(...rates) : 0,
+      max: rates.length > 0 ? Math.max(...rates) : 0
+    });
+  }
+  // Suite order (01_cli_todo … 32_utf8_stream): the trivial-to-brutal arc.
+  return out.sort((a, b) => a.task.localeCompare(b.task));
+}
+
+/** Headline numbers for the report hero + the strict-vs-solution section. */
+export interface ReportStats {
+  harnesses: number;
+  models: number;
+  stacks: number;
+  tasks: number;
+  cells: number;
+  trials: number;
+  excluded: number;
+  globalSolution: number;
+  globalStrict: number;
+  flipTrials: number;
+  flipCells: number;
+  flipsByHarness: { harness: string; flips: number; cells: number }[];
+  saturatedTasks: number;
+  hardestTask: { task: string; solution: number } | undefined;
+  prime: { n: number; solution: number; strict: number; flips: number } | undefined;
+}
+
+export function reportStats(): ReportStats {
+  const tasks = reportTasks();
+  let flipTrialsTotal = 0;
+  let flipCellsTotal = 0;
+  const perHarness = new Map<string, { flips: number; cells: number }>();
+  for (const c of EVIDENCE_CELLS) {
+    const f = flipTrials(c);
+    if (f > 0) {
+      flipTrialsTotal += f;
+      flipCellsTotal += 1;
+      const agg = perHarness.get(c.harness) ?? { flips: 0, cells: 0 };
+      agg.flips += f;
+      agg.cells += 1;
+      perHarness.set(c.harness, agg);
+    }
+  }
+  const primeCells = EVIDENCE_CELLS.filter((c) => c.harness === "prime-agent");
+  const primeN = primeCells.reduce((a, c) => a + c.n, 0);
+  const primeSp = primeCells.reduce((a, c) => a + c.solution_passes, 0);
+  const primeStp = primeCells.reduce((a, c) => a + c.strict_passes, 0);
+  const hardest = [...tasks].sort((a, b) => a.solution - b.solution)[0];
+  return {
+    harnesses: EVIDENCE.harnesses.length,
+    models: EVIDENCE.models.length,
+    stacks: RANKED_STACKS.length,
+    tasks: tasks.length,
+    cells: EVIDENCE_CELLS.length,
+    trials: EVIDENCE.global.n,
+    excluded: BENCH.source.cells_excluded,
+    globalSolution: EVIDENCE.global.solution_rate,
+    globalStrict: EVIDENCE.global.strict_rate,
+    flipTrials: flipTrialsTotal,
+    flipCells: flipCellsTotal,
+    flipsByHarness: [...perHarness.entries()]
+      .map(([harness, a]) => ({ harness, flips: a.flips, cells: a.cells }))
+      .sort((a, b) => b.flips - a.flips),
+    saturatedTasks: tasks.filter((t) => t.solution > 0.95).length,
+    hardestTask: hardest ? { task: hardest.task, solution: hardest.solution } : undefined,
+    prime:
+      primeN > 0
+        ? {
+            n: primeN,
+            solution: primeSp / primeN,
+            strict: primeStp / primeN,
+            flips: primeCells.reduce((a, c) => a + flipTrials(c), 0)
+          }
+        : undefined
+  };
+}
+
+/**
+ * Public projection for /data/bench-report.json — every number the report
+ * page renders, recomputed from the evidence store at build time. Served
+ * verbatim so consumers can audit the page against the export.
+ */
+export function reportDataset(): unknown {
+  const stats = reportStats();
+  const matrix = reportMatrix();
+  return {
+    generated: EVIDENCE.generated_at_utc,
+    stats: {
+      ...stats,
+      flipsByHarness: stats.flipsByHarness.map((f) => ({
+        ...f,
+        display: harnessDisplay(f.harness)
+      }))
+    },
+    matrix: {
+      harnesses: matrix.harnesses,
+      models: matrix.models,
+      cells: [...matrix.cells.values()]
+    },
+    models: reportModels().map((m) => ({
+      id: m.model.id,
+      display: m.model.display,
+      provider: m.model.provider,
+      n: m.n,
+      tasks: m.tasks,
+      solution: m.solution,
+      strict: m.strict,
+      flips: m.flips,
+      medianCost: m.medianCost,
+      bestHarness: m.bestHarness,
+      strongestFamily: m.strongestFamily
+    })),
+    tasks: reportTasks()
+  };
+}
+
+/**
+ * Slim projection for /data/bench-cells.json — the cell explorer's dataset.
+ * Ids are table indices; rates ship as integer pass counts (never rounded
+ * floats) so the client filters exactly. Costs rounded to 1e-4, wall to 0.1s.
+ */
+export function cellsDataset(): unknown {
+  const harnessIds = [...new Set(EVIDENCE_CELLS.map((c) => c.harness))].sort();
+  const modelIds = [...new Set(EVIDENCE_CELLS.map((c) => c.model))].sort();
+  const taskIds = [...new Set(EVIDENCE_CELLS.map((c) => c.task))].sort();
+  const hIdx = new Map(harnessIds.map((h, i) => [h, i]));
+  const mIdx = new Map(modelIds.map((m, i) => [m, i]));
+  const tIdx = new Map(taskIds.map((t, i) => [t, i]));
+  const round = (v: number | null, p: number): number | null =>
+    v == null ? null : Number(v.toFixed(p));
+  return {
+    generated: EVIDENCE.generated_at_utc,
+    h: harnessIds,
+    hd: harnessIds.map((h) => harnessDisplay(h)),
+    hc: harnessIds.map((h) => classFor(HARNESS_CLASS, h)),
+    m: modelIds,
+    md: modelIds.map((m) => modelDisplay(m)),
+    mc: modelIds.map((m) => classFor(MODEL_CLASS, m)),
+    t: taskIds,
+    tf: taskIds.map(
+      (t) => EVIDENCE.tasks[t]?.family ?? EVIDENCE_CELLS.find((c) => c.task === t)?.family ?? ""
+    ),
+    fams: [...new Set(EVIDENCE_CELLS.map((c) => c.family))].sort(),
+    cells: EVIDENCE_CELLS.map((c) => [
+      hIdx.get(c.harness),
+      mIdx.get(c.model),
+      tIdx.get(c.task),
+      c.n,
+      c.solution_passes,
+      c.strict_passes,
+      round(c.cost_usd_median, 4),
+      round(c.wall_seconds_median, 1),
+      c.tokens_median == null ? null : Math.round(c.tokens_median)
+    ])
+  };
+}
+
 /* ---------- formatting ---------- */
 
 export const fmtPct = (v: number, digits = 1): string => `${(v * 100).toFixed(digits)}%`;
 
-export const fmtCost = (v: number | null): string =>
-  v == null ? "—" : `$${v.toFixed(2)}`;
+/** Adaptive USD: sub-cent costs get the precision they need to stay honest. */
+export const fmtCost = (v: number | null): string => {
+  if (v == null) return "—";
+  if (v === 0) return "$0.00";
+  if (v < 0.01) return `$${v.toFixed(4)}`;
+  return `$${v.toFixed(2)}`;
+};
 
 export const fmtWall = (seconds: number | null): string => {
   if (seconds == null) return "—";

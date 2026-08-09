@@ -14,15 +14,20 @@ import {
   colorFor,
   classFor,
   monogramFor,
-  stackFor,
-  familyBest,
-  modelStat,
   modelDisplay,
   harnessDisplay,
   paretoDomain,
   frontierPoints,
+  benchKpis,
+  modelLens,
+  familyHeat,
+  heatBucket,
+  costSegments,
+  modelDisplayShort,
   fmtPct,
   fmtCost,
+  fmtWall,
+  fmtTokens,
   fmtInt,
   fmtGeneratedAt
 } from "@data/bench";
@@ -35,12 +40,20 @@ const pctAttr = (v: number): string => `${(v * 100).toFixed(2)}%`;
 
 const generatedAt = fmtGeneratedAt(BENCH.generated_at_utc);
 const shaShort = BENCH.source.runs_sha256.slice(0, 12);
+const kpis = benchKpis();
+const lens = modelLens();
+const heat = familyHeat();
 
-/* ---------- Pareto scatter geometry (viewBox 760×440, data-driven domain) ---------- */
+/* Maxima for bar scaling (cost/speed/token tabs scale to the observed max). */
+const maxCost = Math.max(...RANKED_STACKS.map((s) => s.cost_usd_median ?? 0), 0.01);
+const maxWall = Math.max(...RANKED_STACKS.map((s) => s.wall_seconds_median ?? 0), 1);
+const maxTok = Math.max(...RANKED_STACKS.map((s) => s.tokens_median ?? 0), 1);
+
+/* ---------- Pareto scatter geometry (viewBox 760×440, log-cost domain) ---------- */
 const PLOT = { w: 760, h: 440, ml: 56, mr: 24, mt: 24, mb: 48 };
 const domain = paretoDomain(RANKED_STACKS);
 const xPos = (cost: number): number =>
-  PLOT.ml + (cost / domain.xMax) * (PLOT.w - PLOT.ml - PLOT.mr);
+  PLOT.ml + domain.xFrac(cost) * (PLOT.w - PLOT.ml - PLOT.mr);
 const yPos = (rate: number): number =>
   PLOT.mt +
   (1 - (rate - domain.yMin) / (domain.yMax - domain.yMin)) * (PLOT.h - PLOT.mt - PLOT.mb);
@@ -50,13 +63,31 @@ const frontierLine = frontierPts
   .join(" ");
 const frontierKeys = new Set(frontierPts.map((p) => `${p.harness}|${p.model}`));
 
+/* Attractive quadrant: cheaper than the median priced stack, better than the
+   median rate — the region a buyer should start from. */
+const priced = RANKED_STACKS.map((s) => s.cost_usd_median).filter((c): c is number => c != null);
+const sortedCosts = [...priced].sort((a, b) => a - b);
+const medianCost = sortedCosts[Math.floor(sortedCosts.length / 2)] ?? 0;
+const sortedRates = [...RANKED_STACKS.map((s) => s.solution_rate)].sort((a, b) => a - b);
+const medianRate = sortedRates[Math.floor(sortedRates.length / 2)] ?? 0.5;
+
 const inferredCount = RANKED_STACKS.filter((s) => s.evidence === "inferred").length;
 const lowCount = RANKED_STACKS.filter((s) => s.confidence === "low").length;
+const derivedCosts = RANKED_STACKS.filter((s) => s.cost_source === "derived").length;
+
+/* Model-lens domain: zoom to the observed band (floor to 5%, padded) so
+   harness spread is visible; disclosed on the axis. */
+const lensRates = lens.flatMap((L) => [L.min, L.max]);
+const lensLo = Math.max(0, Math.floor((Math.min(...lensRates) - 0.03) * 20) / 20);
+const lensHi = Math.min(1, Math.ceil((Math.max(...lensRates) + 0.01) * 20) / 20);
+const lensX = (rate: number): number => ((rate - lensLo) / (lensHi - lensLo)) * 100;
+const lensTicks: number[] = [];
+for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t * 100) / 100);
 ---
 
 <BaseLayout
   title="BurnBench — which agent harness × model actually ships"
-  description="Public BurnBench leaderboard: agent harnesses × models on real shipping tasks — solution-quality rates with Wilson confidence intervals, a harness × model matrix, per-family breakdowns, and a cost/quality Pareto frontier."
+  description="Public BurnBench command center: agent harnesses × models on real shipping tasks — solution-quality rates with Wilson confidence intervals, cost/speed tradeoffs, per-family heatmaps, and an AI analyst grounded in the export."
 >
   {/* ──────────────── 1 · HERO ──────────────── */}
   <section class="bb-hero" aria-labelledby="bb-hero-h">
@@ -68,58 +99,121 @@ const lowCount = RANKED_STACKS.filter((s) => s.confidence === "low").length;
       </nav>
       <span class="eyebrow eyebrow--ember">BurnBench · public benchmark</span>
       <h1 id="bb-hero-h" class="bb-hero__h">
-        Which agent harness × model
-        <span class="bb-hero__hb">actually ships.</span>
+        The command center for
+        <span class="bb-hero__hb">harness × model evidence.</span>
       </h1>
       <p class="bb-hero__lead">
-        {BENCH.harnesses.length} agent harnesses, {BENCH.models.length} models, one suite of real
-        shipping work — from refactors and bugfixes to agentic ops and visual builds. Every rate
-        below is measured on scored runs and ships with a Wilson 95% confidence interval and the
-        cell count behind it. No vibes, no self-reported scores.
+        {BENCH.harnesses.length} agent harnesses × {BENCH.models.length} models on real shipping
+        work — refactors, bugfixes, agentic ops, visual builds. Every rate is measured on scored
+        runs and ships with a Wilson 95% CI and the cell count behind it. No vibes, no
+        self-reported scores.
       </p>
 
-      <ul class="bb-chips mono" aria-label="Benchmark scope">
-        <li><span class="bb-dot"></span> {BENCH.harnesses.length} harnesses</li>
-        <li><span class="bb-dot"></span> {BENCH.models.length} models</li>
-        <li><span class="bb-dot bb-dot--mercury"></span> {fmtInt(BENCH.source.cells_measured)} cells measured</li>
+      {/* freshness strip */}
+      <ul class="bb-chips mono" aria-label="Benchmark freshness">
         <li><span class="bb-dot bb-dot--exact"></span> generated {generatedAt}</li>
+        <li><span class="bb-dot"></span> {fmtInt(kpis.cellsMeasured)} cells measured</li>
+        <li><span class="bb-dot bb-dot--mercury"></span> runs sha {shaShort}…</li>
+        <li><span class="bb-dot"></span> {kpis.cellsExcluded} cells excluded by policy</li>
       </ul>
 
       <div class="bb-hero__ctas">
         <a class="btn btn--ember" href="#leaderboard"
-          >See the leaderboard <span class="btn-arrow" aria-hidden="true">↓</span></a
+          >Open the leaderboard <span class="btn-arrow" aria-hidden="true">↓</span></a
         >
+        <a class="btn btn--ghost" href="#ask">Ask the data</a>
         <a class="btn btn--ghost" href="/bench/arena">The Arena</a>
         <a class="btn btn--ghost" href="/bench/report">Methodology &amp; full data</a>
-        <a class="btn btn--ghost" href="/data/bench.json" download>Raw JSON</a>
       </div>
     </div>
   </section>
 
-  {/* ──────────────── 2 · LEADERBOARD ──────────────── */}
+  {/* ──────────────── 2 · KPI STRIP ──────────────── */}
+  <section class="bb-kpis" aria-label="Key numbers">
+    <div class="container container--wide bb-kpis__grid">
+      <div class="bb-kpi">
+        <span class="bb-kpi__k">stacks measured</span>
+        <span class="bb-kpi__v">{kpis.stacks}</span>
+        <span class="bb-kpi__sub">{BENCH.harnesses.length} harnesses × {BENCH.models.length} models</span>
+      </div>
+      <div class="bb-kpi">
+        <span class="bb-kpi__k">cells measured</span>
+        <span class="bb-kpi__v">{fmtInt(kpis.cellsMeasured)}</span>
+        <span class="bb-kpi__sub">{kpis.cellsExcluded} excluded by policy</span>
+      </div>
+      <div class="bb-kpi bb-kpi--ember">
+        <span class="bb-kpi__k">top solution rate</span>
+        <span class="bb-kpi__v">{kpis.topStack ? fmtPct(kpis.topStack.solution_rate) : "—"}</span>
+        <span class="bb-kpi__sub">
+          {kpis.topStack
+            ? `${harnessDisplay(kpis.topStack.harness)} × ${modelDisplay(kpis.topStack.model)}`
+            : "no eligible stack"}
+        </span>
+      </div>
+      <div class="bb-kpi">
+        <span class="bb-kpi__k">frontier entry</span>
+        <span class="bb-kpi__v">
+          {kpis.cheapestFrontier ? fmtCost(kpis.cheapestFrontier.cost_usd_median) : "—"}
+        </span>
+        <span class="bb-kpi__sub">
+          {kpis.cheapestFrontier
+            ? `${harnessDisplay(kpis.cheapestFrontier.harness)} × ${modelDisplay(kpis.cheapestFrontier.model)} · ${fmtPct(kpis.cheapestFrontier.solution_rate)}`
+            : "no priced stacks"}
+        </span>
+      </div>
+      <div class="bb-kpi">
+        <span class="bb-kpi__k">arena votes</span>
+        <span class="bb-kpi__v">{fmtInt(kpis.arenaVotes)}</span>
+        <span class="bb-kpi__sub">blind pairwise, experiential tasks</span>
+      </div>
+    </div>
+  </section>
+
+  {/* ──────────────── 3 · LEADERBOARD (metric tabs) ──────────────── */}
   <section class="bb-section bb-section--ember" id="leaderboard" aria-labelledby="lb-h">
     <div class="container container--wide">
       <header class="bb-sec-head">
-        <span class="eyebrow eyebrow--ember">Leaderboard · every published cell</span>
-        <h2 id="lb-h" class="bb-sec-h">The leaderboard — solution quality, with the receipts.</h2>
+        <span class="eyebrow eyebrow--ember">Leaderboard · every published stack</span>
+        <h2 id="lb-h" class="bb-sec-h">One leaderboard, five lenses.</h2>
         <p class="bb-sec-lead">
-          Bars show the <strong>solution rate</strong> — tasks whose deliverable passed the suite's
-          solution checks. The bright tick marks the <strong>strict rate</strong> (every mechanical
-          check green, no partial credit). Whiskers are the Wilson 95% CI at the cell's
-          <code>n</code>. Each row carries the task family its runs were measured in; dashed rows
-          are shrinkage-pooled <em>inferred</em> estimates, never presented as measured.
+          Switch the metric — the ranking re-sorts live. <strong>Solution</strong> bars carry the
+          Wilson 95% whiskers and the strict-rate tick; <strong>cost</strong> bars are segmented
+          into input vs output token spend (token-derived list prices, scaled to the measured
+          total). Dashed rows are shrinkage-pooled <em>inferred</em> estimates.
         </p>
       </header>
 
-      <ol class="bb-lb" role="list">
+      <div class="bb-tabs" role="tablist" aria-label="Leaderboard metric" data-bb-tabs>
+        <button class="bb-tab is-active" role="tab" aria-selected="true" data-metric="sol">Solution</button>
+        <button class="bb-tab" role="tab" aria-selected="false" data-metric="str">Strict</button>
+        <button class="bb-tab" role="tab" aria-selected="false" data-metric="cost">Cost</button>
+        <button class="bb-tab" role="tab" aria-selected="false" data-metric="wall">Speed</button>
+        <button class="bb-tab" role="tab" aria-selected="false" data-metric="tok">Tokens</button>
+      </div>
+
+      <ol class="bb-lb" role="list" data-bb-lb>
         {
           RANKED_STACKS.map((s, i) => {
             const hLogo = HARNESS_LOGO[s.harness] ?? null;
             const mLogo = MODEL_LOGO[s.model] ?? null;
+            const segs = costSegments(s);
             const first = i === 0;
             return (
               <li
                 class={`lb-row${first ? " lb-row--first" : ""}${s.evidence === "inferred" ? " lb-row--inferred" : ""}`}
+                data-h={s.harness}
+                data-m={s.model}
+                data-sol={s.solution_rate}
+                data-str={s.strict_rate}
+                data-ci0={s.ci95[0]}
+                data-ci1={s.ci95[1]}
+                data-cost={s.cost_usd_median ?? ""}
+                data-cin={segs?.input ?? ""}
+                data-cout={segs?.output ?? ""}
+                data-wall={s.wall_seconds_median ?? ""}
+                data-tok={s.tokens_median ?? ""}
+                data-n={s.n}
+                data-conf={s.confidence}
               >
                 <span class="lb-rank">{String(i + 1).padStart(2, "0")}</span>
 
@@ -141,65 +235,64 @@ const lowCount = RANKED_STACKS.filter((s) => s.confidence === "low").length;
                   <span class="lb-stack__names">
                     <span class="lb-stack__h">{harnessDisplay(s.harness)}</span>
                     <span class="lb-stack__m">{modelDisplay(s.model)}</span>
-                    {s.scope.family && <span class="lb-scope">{s.scope.family}</span>}
                   </span>
                 </div>
 
                 <div class="lb-bar">
+                  {/* solution lens: rate bar + CI whiskers + strict tick */}
                   <svg
                     class="lb-bar__svg"
+                    data-lens="sol"
                     width="100%"
                     height="26"
                     role="img"
-                    aria-label={`${harnessDisplay(s.harness)} with ${modelDisplay(s.model)}: solution rate ${fmtPct(s.solution_rate)}, strict rate ${fmtPct(s.strict_rate)}, 95 percent confidence interval ${fmtPct(s.ci95[0])} to ${fmtPct(s.ci95[1])}, n ${s.n}`}
+                    aria-label={`${harnessDisplay(s.harness)} with ${modelDisplay(s.model)}: solution rate ${fmtPct(s.solution_rate)}, strict ${fmtPct(s.strict_rate)}, CI ${fmtPct(s.ci95[0])} to ${fmtPct(s.ci95[1])}, n ${s.n}`}
                   >
                     <rect class="lb-bar__track" x="0" y="9" width="100%" height="8" rx="4" />
-                    <rect
-                      class={`lb-bar__fill m--${mcls(s.model)}`}
-                      x="0"
-                      y="9"
-                      width={pctAttr(s.solution_rate)}
-                      height="8"
-                      rx="4"
-                    />
-                    <line
-                      class="lb-bar__ci"
-                      x1={pctAttr(s.ci95[0])}
-                      x2={pctAttr(s.ci95[1])}
-                      y1="13"
-                      y2="13"
-                    />
-                    <line
-                      class="lb-bar__ci"
-                      x1={pctAttr(s.ci95[0])}
-                      x2={pctAttr(s.ci95[0])}
-                      y1="9"
-                      y2="17"
-                    />
-                    <line
-                      class="lb-bar__ci"
-                      x1={pctAttr(s.ci95[1])}
-                      x2={pctAttr(s.ci95[1])}
-                      y1="9"
-                      y2="17"
-                    />
-                    <line
-                      class="lb-bar__strict"
-                      x1={pctAttr(s.strict_rate)}
-                      x2={pctAttr(s.strict_rate)}
-                      y1="5"
-                      y2="21"
-                    />
+                    <rect class={`lb-bar__fill m--${mcls(s.model)}`} x="0" y="9" width={pctAttr(s.solution_rate)} height="8" rx="4" />
+                    <line class="lb-bar__ci" x1={pctAttr(s.ci95[0])} x2={pctAttr(s.ci95[1])} y1="13" y2="13" />
+                    <line class="lb-bar__ci" x1={pctAttr(s.ci95[0])} x2={pctAttr(s.ci95[0])} y1="9" y2="17" />
+                    <line class="lb-bar__ci" x1={pctAttr(s.ci95[1])} x2={pctAttr(s.ci95[1])} y1="9" y2="17" />
+                    <line class="lb-bar__strict" x1={pctAttr(s.strict_rate)} x2={pctAttr(s.strict_rate)} y1="5" y2="21" />
+                  </svg>
+                  {/* cost lens: segmented input/output bar */}
+                  <svg class="lb-bar__svg u-hidden" data-lens="cost" width="100%" height="26" aria-hidden="true">
+                    <rect class="lb-bar__track" x="0" y="9" width="100%" height="8" rx="4" />
+                    {segs && (
+                      <>
+                        <rect
+                          class="lb-bar__seg lb-bar__seg--in"
+                          x="0"
+                          y="9"
+                          width={pctAttr(maxCost > 0 ? segs.input / maxCost : 0)}
+                          height="8"
+                          rx="4"
+                        />
+                        <rect
+                          class="lb-bar__seg lb-bar__seg--out"
+                          x={pctAttr(maxCost > 0 ? segs.input / maxCost : 0)}
+                          y="9"
+                          width={pctAttr(maxCost > 0 ? segs.output / maxCost : 0)}
+                          height="8"
+                        />
+                      </>
+                    )}
                   </svg>
                 </div>
 
                 <div class="lb-nums">
-                  <span class="lb-nums__sol">{fmtPct(s.solution_rate)}</span>
-                  <span class="lb-nums__sub">
+                  <span class="lb-nums__sol" data-role="headline">{fmtPct(s.solution_rate)}</span>
+                  <span class="lb-nums__sub" data-role="subline">
                     strict {fmtPct(s.strict_rate)} · n {s.n} · {fmtCost(s.cost_usd_median)}/task
+                    {s.cost_standard_usd_median != null && (
+                      <span class="lb-std" title={`Non-contributor tier (meta/muse-spark-1.2 on OpenRouter): ${fmtCost(s.cost_standard_usd_median)}/task — the contributor tier is free under data-sharing`}>
+                        · std {fmtCost(s.cost_standard_usd_median)}
+                      </span>
+                    )}
                   </span>
                   <span class="lb-tags">
                     {s.evidence === "inferred" && <span class="tag tag--estimated">inferred</span>}
+                    {s.cost_source === "derived" && <span class="tag tag--derived">cost est.</span>}
                     <span
                       class={`tag ${s.confidence === "high" ? "tag--exact" : s.confidence === "medium" ? "tag--estimated" : "tag--unavailable"}`}
                     >
@@ -214,244 +307,263 @@ const lowCount = RANKED_STACKS.filter((s) => s.confidence === "low").length;
       </ol>
 
       <p class="lb-legend" aria-hidden="true">
-        <span class="swatch m--gpt"><i></i> bar = solution rate (model color)</span>
+        <span class="swatch m--gpt"><i></i> bar = metric value (model color)</span>
         <span class="swatch swatch--tick"><i></i> tick = strict rate</span>
         <span class="swatch swatch--line"><i></i> whiskers = Wilson 95% CI</span>
+        <span class="swatch swatch--seg-in"><i></i> input tokens</span>
+        <span class="swatch swatch--seg-out"><i></i> output tokens</span>
+      </p>
+      <p class="bb-caption">
+        Costs are per-task medians at configured list prices; {derivedCosts} of {RANKED_STACKS.length}
+        stacks include token-derived estimates (<span class="mono">cost_source: derived</span>).
+        Cached input tokens are billed at the full input rate — an upper bound for cache-heavy
+        stacks. Speed is median wall-clock per task; tokens are the median task total.
       </p>
     </div>
   </section>
 
-  {/* ──────────────── 3 · HARNESS × MODEL MATRIX ──────────────── */}
-  <section class="bb-section" aria-labelledby="mx-h">
+  {/* ──────────────── 4 · MATCH TUNER ──────────────── */}
+  <section class="bb-section" id="tuner" aria-labelledby="tuner-h">
     <div class="container container--wide">
       <header class="bb-sec-head">
-        <span class="eyebrow eyebrow--mercury">The matrix</span>
-        <h2 id="mx-h" class="bb-sec-h">Harness × model — every cell, one glance.</h2>
+        <span class="eyebrow eyebrow--mercury">Match tuner</span>
+        <h2 id="tuner-h" class="bb-sec-h">Weight what matters. Get your stack.</h2>
         <p class="bb-sec-lead">
-          Cell fill carries the <strong>model</strong> color, the border carries the
-          <strong>harness</strong> color. Numbers: solution rate on top, strict rate and
-          <code>n</code> below, with the cell's measured family underneath. Dashed border =
-          inferred estimate.
+          Three weights, one weighted score over normalized quality, cost, and speed. Low-confidence
+          stacks can't take first place — the same rule the API enforces.
         </p>
       </header>
 
-      <div class="bb-matrix-wrap">
-        <table class="bb-matrix">
-          <thead>
-            <tr>
-              <th class="mx-corner">harness ↓ · model →</th>
-              {
-                BENCH.models.map((m) => {
-                  const logo = MODEL_LOGO[m.id] ?? null;
-                  return (
-                    <th class={`mx-colhead m--${mcls(m.id)}`} scope="col">
-                      <span class="mx-colhead__in">
-                        <span class={`bb-badge bb-badge--sm m--${mcls(m.id)}`}>
-                          {logo ? (
-                            <img src={logo} alt="" width="16" height="16" loading="lazy" decoding="async" />
-                          ) : (
-                            <span class="bb-badge__mono">{monogramFor(m.id, m.display)}</span>
-                          )}
-                        </span>
-                        {m.display}
-                      </span>
-                    </th>
-                  );
-                })
-              }
-            </tr>
-          </thead>
-          <tbody>
-            {
-              BENCH.harnesses.map((h) => {
-                const hLogo = HARNESS_LOGO[h.id] ?? null;
-                return (
-                  <tr>
-                    <th class={`mx-rowhead h--${hcls(h.id)}`} scope="row">
-                      <span class="mx-rowhead__in">
-                        <span class={`bb-badge bb-badge--sm h--${hcls(h.id)}`}>
-                          {hLogo ? (
-                            <img src={hLogo} alt="" width="16" height="16" loading="lazy" decoding="async" />
-                          ) : (
-                            <span class="bb-badge__mono">{monogramFor(h.id, h.display)}</span>
-                          )}
-                        </span>
-                        {h.display}
-                      </span>
-                    </th>
-                    {BENCH.models.map((m) => {
-                      const cell = stackFor(h.id, m.id);
-                      if (!cell) {
-                        return (
-                          <td class={`mx-cell h--${hcls(h.id)} m--${mcls(m.id)}`}>
-                            <span class="mx-cell__sub">—</span>
-                          </td>
-                        );
-                      }
-                      return (
-                        <td
-                          class={`mx-cell h--${hcls(h.id)} m--${mcls(m.id)}${cell.evidence === "inferred" ? " mx-cell--inferred" : ""}`}
-                          title={`${h.display} × ${m.display} · solution ${fmtPct(cell.solution_rate)} · strict ${fmtPct(cell.strict_rate)} · CI ${fmtPct(cell.ci95[0])}–${fmtPct(cell.ci95[1])} · n ${cell.n} · ${cell.evidence}`}
-                        >
-                          <span class="mx-cell__sol">{fmtPct(cell.solution_rate)}</span>
-                          <span class="mx-cell__sub">
-                            strict {fmtPct(cell.strict_rate)} · n {cell.n}
-                          </span>
-                          {cell.scope.family && <span class="mx-cell__fam">{cell.scope.family}</span>}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })
-            }
-          </tbody>
-        </table>
+      <div class="bb-tuner" data-bb-tuner>
+        <div class="bb-tuner__presets" role="group" aria-label="Weight presets">
+          <button class="bb-chip is-active" data-preset="60,25,15">Balanced</button>
+          <button class="bb-chip" data-preset="85,10,5">Quality-first</button>
+          <button class="bb-chip" data-preset="20,65,15">Budget</button>
+          <button class="bb-chip" data-preset="20,15,65">Speed demon</button>
+        </div>
+        <div class="bb-tuner__controls">
+          <label class="bb-tuner__ctl">
+            <span class="bb-tuner__label">Quality <output data-out="wq">60%</output></span>
+            <input type="range" min="0" max="100" value="60" data-w="wq" aria-label="Quality weight" />
+          </label>
+          <label class="bb-tuner__ctl">
+            <span class="bb-tuner__label">Cost <output data-out="wc">25%</output></span>
+            <input type="range" min="0" max="100" value="25" data-w="wc" aria-label="Cost weight" />
+          </label>
+          <label class="bb-tuner__ctl">
+            <span class="bb-tuner__label">Speed <output data-out="ws">15%</output></span>
+            <input type="range" min="0" max="100" value="15" data-w="ws" aria-label="Speed weight" />
+          </label>
+        </div>
+        <div class="bb-tuner__scope">
+          <label class="bb-tuner__field">
+            <span class="bb-tuner__label">Task family</span>
+            <select data-scope="family" aria-label="Score within a task family">
+              <option value="">overall suite</option>
+              {heat.families.map((f) => <option value={f}>{f}</option>)}
+            </select>
+          </label>
+          <label class="bb-tuner__field">
+            <span class="bb-tuner__label">Budget cap</span>
+            <select data-scope="budget" aria-label="Maximum cost per task">
+              <option value="">no cap</option>
+              <option value="0">free only ($0)</option>
+              <option value="0.01">≤ $0.01 / task</option>
+              <option value="0.05">≤ $0.05 / task</option>
+              <option value="0.10">≤ $0.10 / task</option>
+              <option value="0.25">≤ $0.25 / task</option>
+            </select>
+          </label>
+          <label class="bb-tuner__check">
+            <input type="checkbox" data-scope="lowconf" checked aria-label="Exclude low-confidence stacks" />
+            <span>exclude low-confidence</span>
+          </label>
+        </div>
+        <ol class="bb-tuner__picks" data-bb-picks aria-live="polite"></ol>
+        <p class="bb-tuner__note" data-bb-tunernote></p>
       </div>
     </div>
   </section>
 
-  {/* ──────────────── 4 · PER-MODEL CARDS ──────────────── */}
-  <section class="bb-section bb-section--mercury" aria-labelledby="mc-h">
+  {/* ──────────────── 5 · MODEL LENS (dumbbells) ──────────────── */}
+  <section class="bb-section bb-section--mercury" aria-labelledby="lens-h">
     <div class="container container--wide">
       <header class="bb-sec-head">
         <span class="eyebrow eyebrow--mercury">Model lens</span>
-        <h2 id="mc-h" class="bb-sec-h">The models, profiled across harnesses.</h2>
+        <h2 id="lens-h" class="bb-sec-h">Is it the model or the harness? Both — here's how much.</h2>
         <p class="bb-sec-lead">
-          Harnesses move the numbers; models set the ceiling. Mean rates across every published
-          harness cell, the harness each model ships best with, and the family where it peaks.
+          One row per model: every harness's solution rate as a dot, the min→max range as the
+          connecting bar. A wide bar means the harness moves that model's numbers; a tight one
+          means the model carries the result everywhere.
         </p>
       </header>
 
-      <div class="bb-mcards">
+      <div class="bb-lens">
+        <div class="bb-lens__grid">
+          <span class="bb-lens__corner"></span>
+          <div class="bb-lens__axis" aria-hidden="true">
+            {lensTicks.map((t) => <span style={`left:${lensX(t).toFixed(2)}%`}>{Math.round(t * 100)}%</span>)}
+          </div>
+          <span class="bb-lens__corner"></span>
+        </div>
         {
-          BENCH.models.map((m) => {
-            const stat = modelStat(m.id);
-            if (!stat) return null;
-            const logo = MODEL_LOGO[m.id] ?? null;
+          lens.map((L) => {
+            const logo = MODEL_LOGO[L.model.id] ?? null;
             return (
-              <article class={`bb-mcard m--${mcls(m.id)}`}>
-                <header class="bb-mcard__head">
-                  <span class={`bb-badge bb-badge--lg m--${mcls(m.id)}`}>
+              <div class={`bb-lens__row m--${mcls(L.model.id)}`}>
+                <div class="bb-lens__id">
+                  <span class={`bb-badge m--${mcls(L.model.id)}`}>
                     {logo ? (
-                      <img src={logo} alt="" width="32" height="32" loading="lazy" decoding="async" />
+                      <img src={logo} alt="" width="22" height="22" loading="lazy" decoding="async" />
                     ) : (
-                      <span class="bb-badge__mono">{monogramFor(m.id, m.display)}</span>
+                      <span class="bb-badge__mono">{monogramFor(L.model.id, L.model.display)}</span>
                     )}
                   </span>
-                  <div>
-                    <h3 class="bb-mcard__name">{m.display}</h3>
-                    <span class="bb-mcard__prov">{m.provider}</span>
+                  <div class="bb-lens__names">
+                    <span class="bb-lens__name">{modelDisplayShort(L.model.id)}</span>
+                    <span class="bb-lens__sub">
+                      mean {fmtPct(L.mean)} · spread {fmtPct(L.spread)}
+                    </span>
                   </div>
-                </header>
-                <dl class="bb-mcard__stats">
-                  <div class="bb-mcard__stat">
-                    <dt>mean solution</dt>
-                    <dd>{fmtPct(stat.meanSolution)}</dd>
-                  </div>
-                  <div class="bb-mcard__stat">
-                    <dt>mean strict</dt>
-                    <dd>{fmtPct(stat.meanStrict)}</dd>
-                  </div>
-                  <div class="bb-mcard__stat">
-                    <dt>best harness</dt>
-                    <dd>
-                      {stat.bestStack ? harnessDisplay(stat.bestStack.harness) : "—"}
-                      {stat.bestStack ? ` · ${fmtPct(stat.bestStack.solution_rate)}` : ""}
-                    </dd>
-                  </div>
-                  <div class="bb-mcard__stat">
-                    <dt>median cost</dt>
-                    <dd>{fmtCost(stat.medianCost)}/task</dd>
-                  </div>
-                  <div class="bb-mcard__stat">
-                    <dt>strongest family</dt>
-                    <dd>
-                      {stat.strongestFamily
-                        ? `${stat.strongestFamily.family} · ${fmtPct(stat.strongestFamily.rate)}`
-                        : "—"}
-                    </dd>
-                  </div>
-                  <div class="bb-mcard__stat">
-                    <dt>published cells</dt>
-                    <dd>{stat.cells}</dd>
-                  </div>
-                </dl>
-              </article>
+                </div>
+                <svg
+                  class="bb-lens__svg"
+                  viewBox="0 0 100 30"
+                  preserveAspectRatio="none"
+                  role="img"
+                  aria-label={`${L.model.display} across harnesses: solution rates from ${fmtPct(L.min)} to ${fmtPct(L.max)}`}
+                >
+                  {lensTicks.map((t) => (
+                    <line class="bb-lens__tick" x1={lensX(t).toFixed(2)} y1="4" x2={lensX(t).toFixed(2)} y2="26" />
+                  ))}
+                  <line class="bb-lens__gridline" x1="0" y1="15" x2="100" y2="15" />
+                  <rect
+                    class="bb-lens__range"
+                    x={lensX(L.min).toFixed(2)}
+                    y="11.5"
+                    width={(lensX(L.max) - lensX(L.min)).toFixed(2)}
+                    height="7"
+                    rx="3.5"
+                  />
+                  <line
+                    class="bb-lens__mean"
+                    x1={lensX(L.mean).toFixed(2)}
+                    x2={lensX(L.mean).toFixed(2)}
+                    y1="8"
+                    y2="22"
+                  />
+                  {L.cells.map((c) => (
+                    <circle
+                      class={`bb-lens__dot h--${hcls(c.harness)}`}
+                      cx={lensX(c.rate).toFixed(2)}
+                      cy="15"
+                      r="3.4"
+                      data-conf={c.confidence}
+                    >
+                      <title>
+                        {`${harnessDisplay(c.harness)} · ${fmtPct(c.rate)} solution · strict ${fmtPct(c.strict)} · ${fmtCost(c.cost)}/task`}
+                      </title>
+                    </circle>
+                  ))}
+                </svg>
+                <span class="bb-lens__max mono">{fmtPct(L.max)}</span>
+              </div>
             );
           })
         }
+        <p class="bb-lens__legend" aria-hidden="true">
+          {
+            BENCH.harnesses.map((h) => (
+              <span class={`key key--ring h--${hcls(h.id)}`}>
+                <i></i>
+                {h.display}
+              </span>
+            ))
+          }
+          <span class="bb-lens__axisnote">axis zoomed to {Math.round(lensLo * 100)}–{Math.round(lensHi * 100)}% · tick = mean</span>
+        </p>
       </div>
     </div>
   </section>
 
-  {/* ──────────────── 5 · PER-FAMILY BREAKDOWN ──────────────── */}
-  <section class="bb-section" aria-labelledby="fam-h">
+  {/* ──────────────── 6 · FAMILY HEATMAP ──────────────── */}
+  <section class="bb-section" aria-labelledby="heat-h">
     <div class="container container--wide">
       <header class="bb-sec-head">
-        <span class="eyebrow eyebrow--ember">By task family</span>
-        <h2 id="fam-h" class="bb-sec-h">Where each model shines — best harness per family.</h2>
+        <span class="eyebrow eyebrow--ember">Family heatmap</span>
+        <h2 id="heat-h" class="bb-sec-h">Where each stack shines — {FAMILIES.length} task families.</h2>
         <p class="bb-sec-lead">
-          Each cell is the strongest harness for that model inside one task family, from the
-          scoped stacks in the export. Family slices can carry small <code>n</code> — check the
-          confidence tier before reading a ranking into them.
+          Rows are stacks in leaderboard order; columns are task families. Cells show direct
+          measurements only — a family a stack never measured stays empty rather than painting a
+          pooled estimate. Toggle the lens to recolor by strict rate or cost.
         </p>
       </header>
 
-      <div class="bb-fam-wrap">
-        <table class="bb-fam">
-          <thead>
-            <tr>
-              <th scope="col">family</th>
-              {
-                BENCH.models.map((m) => (
-                  <th scope="col" class={`m--${mcls(m.id)}`}>
-                    {m.display}
-                  </th>
-                ))
-              }
-            </tr>
-          </thead>
-          <tbody>
-            {
-              FAMILIES.map((fam) => (
-                <tr>
-                  <th scope="row" class="fam-name">{fam}</th>
-                  {BENCH.models.map((m) => {
-                    const best = familyBest(fam, m.id);
-                    if (!best) {
-                      return <td class="fam-cell">—</td>;
+      <div class="bb-tabs bb-tabs--sm" role="tablist" aria-label="Heatmap lens" data-bb-heatlens>
+        <button class="bb-tab is-active" role="tab" aria-selected="true" data-lens="rate">Solution</button>
+        <button class="bb-tab" role="tab" aria-selected="false" data-lens="strict">Strict</button>
+        <button class="bb-tab" role="tab" aria-selected="false" data-lens="cost">Cost</button>
+      </div>
+
+      <div class="bb-heat-wrap">
+        <div class="bb-heat" data-bb-heat style={`--fam-cols:${heat.families.length}`}>
+          <div class="bb-heat__corner"></div>
+          {
+            heat.families.map((fam) => (
+              <div class="bb-heat__colhead" title={fam}>
+                <span>{fam}</span>
+              </div>
+            ))
+          }
+          {
+            heat.rows.map((row) => (
+              <>
+                <div class="bb-heat__rowhead" title={`${harnessDisplay(row.harness)} × ${modelDisplay(row.model)}`}>
+                  <span class={`bb-heat__h h--${hcls(row.harness)}`}>{harnessDisplay(row.harness)}</span>
+                  <span class="bb-heat__m">{modelDisplayShort(row.model)}</span>
+                </div>
+                {row.cells.map((cell, ci) => (
+                  <div
+                    class="bb-heat__cell"
+                    data-rate={cell.rate ?? ""}
+                    data-strict={cell.strict ?? ""}
+                    data-cost={cell.cost ?? ""}
+                    data-n={cell.n}
+                    data-bucket={heatBucket(cell.rate, heat.domains.rate) ?? ""}
+                    title={
+                      cell.rate != null
+                        ? `${harnessDisplay(row.harness)} × ${modelDisplay(row.model)} · ${heat.families[ci]}: ${fmtPct(cell.rate!)} (n ${cell.n})`
+                        : `${harnessDisplay(row.harness)} × ${modelDisplay(row.model)} · ${heat.families[ci]}: not measured`
                     }
-                    return (
-                      <td class={`fam-cell fam-cell--top m--${mcls(m.id)}`}>
-                        {fmtPct(best.solution_rate)}
-                        <span class="fam-who">
-                          {harnessDisplay(best.harness)} · n {best.n}
-                          {best.confidence === "low" ? " · low" : ""}
-                        </span>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))
-            }
-          </tbody>
-        </table>
+                  >
+                    {cell.rate != null && <span class="bb-heat__v">{Math.round(cell.rate! * 100)}</span>}
+                  </div>
+                ))}
+              </>
+            ))
+          }
+        </div>
+        <p class="bb-caption">
+          Color spans the observed range ({Math.round(heat.domains.rate[0] * 100)}%–{Math.round(heat.domains.rate[1] * 100)}%
+          solution) so differences stay visible — a linear 0–100 scale paints every measured cell the same ember.
+          Numbers are percents. Experiential families (visual, game, sim, UI) fill in as Arena human judgment lands —
+          script verifiers never score them.
+        </p>
       </div>
     </div>
   </section>
 
-  {/* ──────────────── 6 · COST / QUALITY PARETO ──────────────── */}
+  {/* ──────────────── 7 · COST / QUALITY PARETO ──────────────── */}
   <section class="bb-section bb-section--ember" id="pareto" aria-labelledby="par-h">
     <div class="container container--wide">
       <header class="bb-sec-head">
         <span class="eyebrow eyebrow--ember">Cost vs quality</span>
         <h2 id="par-h" class="bb-sec-h">The Pareto frontier — what quality costs per task.</h2>
         <p class="bb-sec-lead">
-          Every published cell plotted: median cost per task (estimated-tier pricing) against
-          solution rate. Point fill = model, ring = harness. The dashed ember line is the
-          non-dominated frontier — the cheapest way to buy each level of quality. Dashed-ring
-          points are inferred estimates.
+          Median cost per task against solution rate, every published stack. The shaded quadrant is
+          the most attractive region — cheaper <em>and</em> better than the median stack. The
+          dashed ember line is the non-dominated frontier: the cheapest way to buy each level of
+          quality.
         </p>
       </header>
 
@@ -460,69 +572,57 @@ const lowCount = RANKED_STACKS.filter((s) => s.confidence === "low").length;
           class="bb-pareto__svg"
           viewBox={`0 0 ${PLOT.w} ${PLOT.h}`}
           role="img"
-          aria-label="Scatter plot of median cost per task versus solution rate for all harness and model combinations, with the non-dominated Pareto frontier drawn as a dashed line."
+          aria-label="Scatter plot of median cost per task versus solution rate for all harness and model combinations, with the most attractive quadrant shaded and the non-dominated Pareto frontier drawn as a dashed line."
         >
+          {/* attractive quadrant */}
+          <rect
+            class="bb-pareto__quadrant"
+            x={PLOT.ml}
+            y={PLOT.mt}
+            width={(xPos(medianCost) - PLOT.ml).toFixed(1)}
+            height={(yPos(medianRate) - PLOT.mt).toFixed(1)}
+          />
+          <text class="bb-pareto__quadlabel" x={PLOT.ml + 10} y={PLOT.mt + 16}>
+            most attractive
+          </text>
           {/* gridlines + y ticks */}
           {
             domain.yTicks.map((t) => (
               <>
-                <line
-                  class="bb-pareto__grid"
-                  x1={PLOT.ml}
-                  x2={PLOT.w - PLOT.mr}
-                  y1={yPos(t)}
-                  y2={yPos(t)}
-                />
+                <line class="bb-pareto__grid" x1={PLOT.ml} x2={PLOT.w - PLOT.mr} y1={yPos(t)} y2={yPos(t)} />
                 <text class="bb-pareto__tick" x={PLOT.ml - 8} y={yPos(t) + 4} text-anchor="end">
                   {Math.round(t * 100)}%
                 </text>
               </>
             ))
           }
-          {/* x ticks */}
+          {/* x ticks (log decades) + free gutter */}
           {
             domain.xTicks.map((t) => (
               <>
-                <line
-                  class="bb-pareto__grid"
-                  x1={xPos(t)}
-                  x2={xPos(t)}
-                  y1={PLOT.mt}
-                  y2={PLOT.h - PLOT.mb}
-                />
-                <text
-                  class="bb-pareto__tick"
-                  x={xPos(t)}
-                  y={PLOT.h - PLOT.mb + 18}
-                  text-anchor="middle"
-                >
-                  ${t.toFixed(2)}
+                <line class="bb-pareto__grid" x1={xPos(t)} x2={xPos(t)} y1={PLOT.mt} y2={PLOT.h - PLOT.mb} />
+                <text class="bb-pareto__tick" x={xPos(t)} y={PLOT.h - PLOT.mb + 18} text-anchor="middle">
+                  {fmtCost(t)}
                 </text>
               </>
             ))
           }
-          {/* axes */}
           <line
-            class="bb-pareto__axis"
-            x1={PLOT.ml}
-            x2={PLOT.w - PLOT.mr}
-            y1={PLOT.h - PLOT.mb}
-            y2={PLOT.h - PLOT.mb}
-          />
-          <line
-            class="bb-pareto__axis"
-            x1={PLOT.ml}
-            x2={PLOT.ml}
+            class="bb-pareto__grid"
+            x1={xPos(0) + 14}
+            x2={xPos(0) + 14}
             y1={PLOT.mt}
             y2={PLOT.h - PLOT.mb}
+            stroke-dasharray="2 4"
           />
-          <text
-            class="bb-pareto__axistitle"
-            x={(PLOT.ml + PLOT.w - PLOT.mr) / 2}
-            y={PLOT.h - 8}
-            text-anchor="middle"
-          >
-            median cost per task · USD (estimated-tier pricing)
+          <text class="bb-pareto__tick" x={xPos(0)} y={PLOT.h - PLOT.mb + 18} text-anchor="middle">
+            $0 free
+          </text>
+          {/* axes */}
+          <line class="bb-pareto__axis" x1={PLOT.ml} x2={PLOT.w - PLOT.mr} y1={PLOT.h - PLOT.mb} y2={PLOT.h - PLOT.mb} />
+          <line class="bb-pareto__axis" x1={PLOT.ml} x2={PLOT.ml} y1={PLOT.mt} y2={PLOT.h - PLOT.mb} />
+          <text class="bb-pareto__axistitle" x={(PLOT.ml + PLOT.w - PLOT.mr) / 2} y={PLOT.h - 8} text-anchor="middle">
+            median cost per task · USD, log scale (list-price, token-derived)
           </text>
           <text
             class="bb-pareto__axistitle"
@@ -555,7 +655,7 @@ const lowCount = RANKED_STACKS.filter((s) => s.confidence === "low").length;
                     stroke-dasharray={inferred ? "3 3" : undefined}
                   >
                     <title>
-                      {`${harnessDisplay(s.harness)} × ${modelDisplay(s.model)} — ${fmtPct(s.solution_rate)} solution · ${fmtCost(s.cost_usd_median)}/task · n ${s.n}${inferred ? " · inferred" : ""}`}
+                      {`${harnessDisplay(s.harness)} × ${modelDisplay(s.model)} — ${fmtPct(s.solution_rate)} solution · ${fmtCost(s.cost_usd_median)}/task${s.cost_standard_usd_median != null ? ` (std tier ${fmtCost(s.cost_standard_usd_median)})` : ""} · n ${s.n}${inferred ? " · inferred" : ""}`}
                     </title>
                   </circle>
                   {onFrontier && (
@@ -583,14 +683,6 @@ const lowCount = RANKED_STACKS.filter((s) => s.confidence === "low").length;
               </span>
             ))
           }
-          {
-            BENCH.harnesses.map((h) => (
-              <span class={`key key--ring h--${hcls(h.id)}`}>
-                <i></i>
-                {h.display}
-              </span>
-            ))
-          }
           <span class="key key--frontier"><i></i> Pareto frontier</span>
           <span class="key key--dash"><i></i> inferred estimate</span>
         </p>
@@ -598,7 +690,59 @@ const lowCount = RANKED_STACKS.filter((s) => s.confidence === "low").length;
     </div>
   </section>
 
-  {/* ──────────────── 7 · METHODOLOGY + FRESHNESS ──────────────── */}
+  {/* ──────────────── 8 · ASK THE DATA (AI panel) ──────────────── */}
+  <section class="bb-section bb-section--ask" id="ask" aria-labelledby="ask-h">
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--mercury">AI analyst</span>
+        <h2 id="ask-h" class="bb-sec-h">Ask the data.</h2>
+        <p class="bb-sec-lead">
+          An AI analyst grounded in this exact export — every answer cites the rows it used, and
+          charts render from a closed, server-validated spec (no generated code ever runs). Powered
+          by Luna 5.6 via OpenRouter; rate-limited to keep the benchmark's costs boring.
+        </p>
+      </header>
+
+      <div class="bb-ask" data-bb-ask>
+        <div class="bb-ask__chat">
+          <div class="bb-ask__log" data-bb-log aria-live="polite">
+            <div class="bb-ask__msg bb-ask__msg--ai">
+              <p>
+                I'm grounded in the {generatedAt} export — {RANKED_STACKS.length} stacks,
+                {` ${fmtInt(kpis.cellsMeasured)}`} cells. Ask me about tradeoffs, families, or
+                where a stack earns its ranking.
+              </p>
+            </div>
+          </div>
+          <div class="bb-ask__suggestions">
+            <button class="bb-chip" data-q="Which stack gives the best quality per dollar for feature work?">Best quality per dollar?</button>
+            <button class="bb-chip" data-q="How much does the harness change GLM 5.2's results?">Harness effect on GLM 5.2?</button>
+            <button class="bb-chip" data-q="Which stack is fastest without giving up solution quality?">Fastest without quality loss?</button>
+            <button class="bb-chip" data-q="Where does the leader struggle by task family?">Leader's weak families?</button>
+          </div>
+          <form class="bb-ask__form" data-bb-form>
+            <input
+              class="bb-ask__input"
+              type="text"
+              name="q"
+              maxlength="500"
+              placeholder="Ask about the numbers…"
+              autocomplete="off"
+              aria-label="Ask the BurnBench data a question"
+            />
+            <button class="btn btn--ember btn--small" type="submit">Ask</button>
+          </form>
+          <p class="bb-ask__meta mono" data-bb-status>answers cite rows · 10/min · 60/day</p>
+        </div>
+        <div class="bb-ask__chart" data-bb-chart hidden>
+          <div class="bb-ask__charthead mono" data-bb-charttitle></div>
+          <div class="bb-ask__chartsvg" data-bb-chartsvg></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {/* ──────────────── 9 · PROVENANCE ──────────────── */}
   <section class="bb-section" aria-labelledby="meta-h">
     <div class="container container--wide">
       <header class="bb-sec-head">
@@ -640,15 +784,21 @@ const lowCount = RANKED_STACKS.filter((s) => s.confidence === "low").length;
             <span class="bb-meta__k">inferred cells</span>
             <span class="bb-meta__v">{inferredCount}</span>
           </div>
+          <div class="bb-meta__fact">
+            <span class="bb-meta__k">derived-cost stacks</span>
+            <span class="bb-meta__v">{derivedCosts}</span>
+          </div>
         </div>
 
         <p class="bb-meta__note">
           Rates ship with Wilson 95% confidence intervals. Cells with <code>n &lt; 10</code> are
           marked <strong>low confidence</strong> and may not rank first. Cells marked
           <strong> inferred</strong> are shrinkage-pooled estimates — shown dashed, never presented
-          as measured. Consumers can reject stale exports via the generated timestamp and the
-          runs hash above. Arena ratings are Bradley-Terry with bootstrap CIs, published only at
-          30+ votes per stack.
+          as measured. Costs are per-task medians at configured list prices;
+          <strong> derived</strong> costs are computed from token counts (cached inputs at the full
+          input rate — an upper bound), never receipts. Consumers can reject stale exports via the
+          generated timestamp and the runs hash. Arena ratings are Bradley-Terry with bootstrap
+          CIs, published only at 30+ votes per stack.
         </p>
 
         <div class="bb-meta__links">
@@ -661,4 +811,13 @@ const lowCount = RANKED_STACKS.filter((s) => s.confidence === "low").length;
       </div>
     </div>
   </section>
+
+  {/*
+    The dashboard module fetches its dataset from /data/bench-dashboard.json
+    (a prerendered projection of the export) — no inline data island, so the
+    page keeps its zero-inline-JS budget and the dataset caches immutably.
+  */}
+  <script>
+    import "../scripts/bench-dashboard";
+  </script>
 </BaseLayout>

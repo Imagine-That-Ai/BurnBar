@@ -1,0 +1,827 @@
+/**
+ * @fileoverview BurnBench command-center client module.
+ *
+ * Progressive enhancement for /bench: the page is fully meaningful as SSR
+ * HTML; this module adds (1) leaderboard metric tabs with live re-sorting,
+ * (2) the match tuner (weighted quality/cost/speed picks), (3) the family
+ * heatmap lens toggle, and (4) the "Ask the data" AI panel, whose charts
+ * render from a closed, server-validated spec — no model-generated code
+ * ever executes.
+ *
+ * All data comes from /data/bench-dashboard.json, a prerendered projection
+ * of the export (no inline data island — the page keeps its zero-inline-JS
+ * budget). Everything rendered via innerHTML is built from whitelisted ids
+ * and numbers; model answer text is only ever assigned through textContent.
+ */
+
+interface StackRow {
+  h: string;
+  m: string;
+  hd: string;
+  md: string;
+  mds: string;
+  mc: string;
+  hc: string;
+  hl: string | null;
+  ml: string | null;
+  hm: string;
+  mm: string;
+  sol: number;
+  str: number;
+  ci: [number, number];
+  cost: number | null;
+  cin: number | null;
+  cout: number | null;
+  cstd: number | null;
+  wall: number | null;
+  tok: number | null;
+  n: number;
+  conf: "high" | "medium" | "low";
+  ev: "measured" | "inferred";
+}
+
+interface HeatCellData {
+  r: number;
+  s: number;
+  c: number | null;
+  n: number;
+}
+
+interface ScopeMean {
+  key: string;
+  sol: number | null;
+  str: number | null;
+  cost: number | null;
+  wall: number | null;
+  tok: number | null;
+  n: number;
+}
+
+interface Dataset {
+  generated: string;
+  byLanguage: ScopeMean[];
+  byPlatform: ScopeMean[];
+  stacks: StackRow[];
+  families: string[];
+  heatDomains: { rate: [number, number]; strict: [number, number]; cost: [number, number] };
+  heat: { h: string; m: string; cells: (HeatCellData | null)[] }[];
+}
+
+/* ---------- dataset ---------- */
+
+async function loadDataset(): Promise<Dataset | null> {
+  try {
+    const res = await fetch("/data/bench-dashboard.json");
+    if (!res.ok) return null;
+    return (await res.json()) as Dataset;
+  } catch {
+    return null;
+  }
+}
+
+/* ---------- shared formatting (mirrors bench.ts) ---------- */
+
+const fmtPct = (v: number, digits = 1): string => `${(v * 100).toFixed(digits)}%`;
+
+const fmtCost = (v: number | null): string => {
+  if (v == null) return "—";
+  if (v === 0) return "$0.00";
+  if (v < 0.01) return `$${v.toFixed(4)}`;
+  return `$${v.toFixed(2)}`;
+};
+
+const fmtWall = (seconds: number | null): string => {
+  if (seconds == null) return "—";
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+};
+
+const fmtTokens = (v: number | null): string =>
+  v == null ? "—" : v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`;
+
+const esc = (s: string): string =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/* ---------- 1 · leaderboard metric tabs ---------- */
+
+type Metric = "sol" | "str" | "cost" | "wall" | "tok";
+
+const METRIC_SORT: Record<Metric, (a: StackRow, b: StackRow) => number> = {
+  sol: (a, b) => b.sol - a.sol,
+  str: (a, b) => b.str - a.str,
+  cost: (a, b) => (a.cost ?? Infinity) - (b.cost ?? Infinity),
+  wall: (a, b) => (a.wall ?? Infinity) - (b.wall ?? Infinity),
+  tok: (a, b) => (a.tok ?? Infinity) - (b.tok ?? Infinity)
+};
+
+function barSvg(s: StackRow, metric: Metric, maxima: { cost: number; wall: number; tok: number }): string {
+  const track = `<rect class="lb-bar__track" x="0" y="9" width="100%" height="8" rx="4"></rect>`;
+  if (metric === "sol") {
+    const p = (v: number) => `${(v * 100).toFixed(2)}%`;
+    return (
+      track +
+      `<rect class="lb-bar__fill" fill="${s.mc}" x="0" y="9" width="${p(s.sol)}" height="8" rx="4"></rect>` +
+      `<line class="lb-bar__ci" x1="${p(s.ci[0])}" x2="${p(s.ci[1])}" y1="13" y2="13"></line>` +
+      `<line class="lb-bar__ci" x1="${p(s.ci[0])}" x2="${p(s.ci[0])}" y1="9" y2="17"></line>` +
+      `<line class="lb-bar__ci" x1="${p(s.ci[1])}" x2="${p(s.ci[1])}" y1="9" y2="17"></line>` +
+      `<line class="lb-bar__strict" x1="${p(s.str)}" x2="${p(s.str)}" y1="5" y2="21"></line>`
+    );
+  }
+  if (metric === "cost") {
+    if (s.cost == null) return track;
+    const inW = ((s.cin ?? 0) / maxima.cost) * 100;
+    const outW = ((s.cout ?? s.cost) / maxima.cost) * 100;
+    return (
+      track +
+      `<rect class="lb-bar__seg lb-bar__seg--in" x="0" y="9" width="${inW.toFixed(2)}%" height="8" rx="4"></rect>` +
+      `<rect class="lb-bar__seg lb-bar__seg--out" x="${inW.toFixed(2)}%" y="9" width="${outW.toFixed(2)}%" height="8"></rect>`
+    );
+  }
+  const value = metric === "str" ? s.str : metric === "wall" ? s.wall : s.tok;
+  const max = metric === "str" ? 1 : metric === "wall" ? maxima.wall : maxima.tok;
+  const w = value == null ? 0 : Math.min(100, (value / max) * 100);
+  return (
+    track +
+    `<rect class="lb-bar__fill" fill="${s.mc}" x="0" y="9" width="${w.toFixed(2)}%" height="8" rx="4"></rect>`
+  );
+}
+
+function headline(s: StackRow, metric: Metric): string {
+  switch (metric) {
+    case "sol":
+      return fmtPct(s.sol);
+    case "str":
+      return fmtPct(s.str);
+    case "cost":
+      return s.cost == null ? "—" : `${fmtCost(s.cost)}`;
+    case "wall":
+      return fmtWall(s.wall);
+    case "tok":
+      return fmtTokens(s.tok);
+  }
+}
+
+function subline(s: StackRow, metric: Metric): string {
+  const std = s.cstd != null ? ` · std ${fmtCost(s.cstd)}` : "";
+  switch (metric) {
+    case "sol":
+      return `strict ${fmtPct(s.str)} · n ${s.n} · ${fmtCost(s.cost)}/task${std}`;
+    case "str":
+      return `solution ${fmtPct(s.sol)} · n ${s.n}`;
+    case "cost":
+      return s.cost == null
+        ? "no cost evidence"
+        : `in ${fmtCost(s.cin)} · out ${fmtCost(s.cout)}${std} · n ${s.n}`;
+    case "wall":
+      return `solution ${fmtPct(s.sol)} · n ${s.n}`;
+    case "tok":
+      return `solution ${fmtPct(s.sol)} · n ${s.n}`;
+  }
+}
+
+function initTabs(data: Dataset): void {
+  const tabBar = document.querySelector<HTMLElement>("[data-bb-tabs]");
+  const list = document.querySelector<HTMLElement>("[data-bb-lb]");
+  if (!tabBar || !list) return;
+  const rows = new Map(data.stacks.map((s) => [`${s.h}|${s.m}`, s]));
+  const maxima = {
+    cost: Math.max(...data.stacks.map((s) => s.cost ?? 0), 0.01),
+    wall: Math.max(...data.stacks.map((s) => s.wall ?? 0), 1),
+    tok: Math.max(...data.stacks.map((s) => s.tok ?? 0), 1)
+  };
+
+  tabBar.addEventListener("click", (ev) => {
+    const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-metric]");
+    if (!btn) return;
+    const metric = btn.dataset.metric as Metric;
+    tabBar.querySelectorAll(".bb-tab").forEach((t) => {
+      const active = t === btn;
+      t.classList.toggle("is-active", active);
+      t.setAttribute("aria-selected", String(active));
+    });
+
+    const sorted = [...data.stacks].sort(METRIC_SORT[metric]);
+    const items = new Map(
+      [...list.querySelectorAll<HTMLElement>(".lb-row")].map((li) => [
+        `${li.dataset.h}|${li.dataset.m}`,
+        li
+      ])
+    );
+    sorted.forEach((s, i) => {
+      const li = items.get(`${s.h}|${s.m}`);
+      const row = rows.get(`${s.h}|${s.m}`);
+      if (!li || !row) return;
+      list.appendChild(li); // re-order
+      li.classList.toggle("lb-row--first", i === 0);
+      const rank = li.querySelector(".lb-rank");
+      if (rank) rank.textContent = String(i + 1).padStart(2, "0");
+      const bar = li.querySelector(".lb-bar");
+      if (bar) {
+        bar.innerHTML =
+          `<svg class="lb-bar__svg" width="100%" height="26" role="img" aria-label="${esc(
+            `${row.hd} with ${row.md}: ${headline(row, metric)}`
+          )}">` + barSvg(row, metric, maxima) + `</svg>`;
+      }
+      const head = li.querySelector('[data-role="headline"]');
+      if (head) head.textContent = metric === "cost" && row.cost != null ? `${headline(row, metric)}/task` : headline(row, metric);
+      const sub = li.querySelector('[data-role="subline"]');
+      if (sub) sub.textContent = subline(row, metric);
+    });
+  });
+}
+
+/* ---------- 2 · match tuner ---------- */
+
+function initTuner(data: Dataset): void {
+  const root = document.querySelector<HTMLElement>("[data-bb-tuner]");
+  const picksEl = root?.querySelector<HTMLElement>("[data-bb-picks]");
+  if (!root || !picksEl) return;
+
+  const noteEl = root.querySelector<HTMLElement>("[data-bb-tunernote]");
+  const famIdx = (fam: string) => data.families.indexOf(fam);
+  const heatFor = (s: StackRow, fi: number): HeatCellData | null =>
+    data.heat.find((r) => r.h === s.h && r.m === s.m)?.cells[fi] ?? null;
+
+  const render = () => {
+    const wq = Number(root.querySelector<HTMLInputElement>('[data-w="wq"]')?.value ?? 60);
+    const wc = Number(root.querySelector<HTMLInputElement>('[data-w="wc"]')?.value ?? 25);
+    const ws = Number(root.querySelector<HTMLInputElement>('[data-w="ws"]')?.value ?? 15);
+    root.querySelectorAll("output").forEach((o) => {
+      const key = (o as HTMLOutputElement).dataset.out;
+      const v = key === "wq" ? wq : key === "wc" ? wc : ws;
+      o.textContent = `${v}%`;
+    });
+    const fam = root.querySelector<HTMLSelectElement>('[data-scope="family"]')?.value ?? "";
+    const budgetRaw = root.querySelector<HTMLSelectElement>('[data-scope="budget"]')?.value ?? "";
+    const budget = budgetRaw === "" ? null : Number(budgetRaw);
+    const hideLow = root.querySelector<HTMLInputElement>('[data-scope="lowconf"]')?.checked ?? true;
+    const fi = fam ? famIdx(fam) : -1;
+
+    // Scope the metric picks: family cells override overall stats when set.
+    const qualityOf = (s: StackRow): number | null =>
+      fi >= 0 ? heatFor(s, fi)?.r ?? null : s.sol;
+    const costOf = (s: StackRow): number | null =>
+      fi >= 0 ? heatFor(s, fi)?.c ?? null : s.cost;
+
+    let excludedScope = 0;
+    let excludedBudget = 0;
+    let excludedConf = 0;
+    const pool = data.stacks.filter((s) => {
+      if (fi >= 0 && qualityOf(s) == null) {
+        excludedScope++;
+        return false;
+      }
+      const c = costOf(s);
+      if (budget != null && (c == null || c > budget)) {
+        excludedBudget++;
+        return false;
+      }
+      if (hideLow && s.conf === "low") {
+        excludedConf++;
+        return false;
+      }
+      return true;
+    });
+
+    // Normalize within the scoped pool so the spread is real.
+    const norm = (pick: (s: StackRow) => number | null) => {
+      const vals = pool.map(pick).filter((v): v is number => v != null);
+      if (vals.length === 0) return () => 0.5;
+      const lo = Math.min(...vals);
+      const hi = Math.max(...vals);
+      const span = hi - lo;
+      return (s: StackRow): number => {
+        const v = pick(s);
+        if (v == null) return 0.5;
+        return span <= 0 ? 1 : (v - lo) / span;
+      };
+    };
+    const solN = norm(qualityOf);
+    const costN = norm(costOf);
+    const wallN = norm((s) => s.wall);
+
+    const sum = wq + wc + ws || 1;
+    const scored = pool
+      .map((s) => {
+        const q = (wq * solN(s)) / sum;
+        const c = (wc * (1 - costN(s))) / sum;
+        const sp = (ws * (1 - wallN(s))) / sum;
+        return { s, score: q + c + sp, parts: { q, c, sp } };
+      })
+      .sort((a, b) => b.score - a.score);
+    // Contract rule: low-confidence stacks may not take first place.
+    const eligible = scored.filter((x) => x.s.conf !== "low");
+    const first = eligible[0] ?? scored[0];
+    if (!first) {
+      picksEl.innerHTML = "";
+      if (noteEl) noteEl.textContent = "No stack survives those filters — loosen the budget or scope.";
+      return;
+    }
+    const top: { s: StackRow; score: number; parts: { q: number; c: number; sp: number } }[] = [first];
+    for (const x of scored) {
+      if (top.length >= 3) break;
+      if (!top.includes(x)) top.push(x);
+    }
+    picksEl.innerHTML = top
+      .map(({ s, score, parts }, i) => {
+        const q = qualityOf(s);
+        const c = costOf(s);
+        const tags: string[] = [];
+        if (s.conf === "low") tags.push("low confidence");
+        if (s.ev === "inferred") tags.push("inferred");
+        if (c === 0) tags.push("free tier");
+        const dom =
+          parts.q >= parts.c && parts.q >= parts.sp ? "quality" : parts.c >= parts.sp ? "cost" : "speed";
+        const why = `wins on ${dom} — ${fmtPct(q ?? 0)}${fam ? ` on ${fam}` : ""} · ${fmtCost(c)}/task · ${fmtWall(s.wall)}`;
+        const logo = (url: string | null, mono: string, cls: string): string =>
+          url
+            ? `<img class="bb-pick__logo ${cls}" src="${esc(url)}" alt="" width="22" height="22" loading="lazy" decoding="async">`
+            : `<span class="bb-pick__mono ${cls}">${esc(mono)}</span>`;
+        const bar = (v: number, cls: string): string =>
+          `<span class="bb-pick__seg ${cls}" style="width:${(v * 100).toFixed(1)}%"></span>`;
+        return (
+          `<li class="bb-pick${i === 0 ? " bb-pick--top" : ""}">` +
+          `<span class="bb-pick__rank">${i + 1}</span>` +
+          `<span class="bb-pick__logos">${logo(s.hl, s.hm, "bb-pick__logo--h")}${logo(s.ml, s.mm, "bb-pick__logo--m")}</span>` +
+          `<span class="bb-pick__names"><strong>${esc(s.hd)} × ${esc(s.md)}</strong>` +
+          `<span class="bb-pick__why">${esc(why)} · n ${s.n}${tags.length ? ` · ${esc(tags.join(" · "))}` : ""}</span>` +
+          `<span class="bb-pick__bar" aria-hidden="true">${bar(parts.q, "bb-pick__seg--q")}${bar(parts.c, "bb-pick__seg--c")}${bar(parts.sp, "bb-pick__seg--s")}</span></span>` +
+          `<span class="bb-pick__score mono">${(score * 100).toFixed(1)}</span>` +
+          `</li>`
+        );
+      })
+      .join("");
+    if (noteEl) {
+      const bits: string[] = [];
+      if (fam) bits.push(`scored on ${fam} cells`);
+      if (budget != null) bits.push(`budget ≤ ${budget === 0 ? "$0" : `$${budget.toFixed(2)}`}/task`);
+      const ex: string[] = [];
+      if (excludedScope) ex.push(`${excludedScope} unmeasured in ${fam}`);
+      if (excludedBudget) ex.push(`${excludedBudget} over budget`);
+      if (excludedConf) ex.push(`${excludedConf} low-confidence`);
+      noteEl.textContent =
+        (bits.length ? bits.join(" · ") : "scored on the overall suite") +
+        (ex.length ? ` — excluded: ${ex.join(", ")}` : "");
+    }
+  };
+
+  root.querySelectorAll('input[type="range"]').forEach((r) =>
+    r.addEventListener("input", () => {
+      root.querySelectorAll("[data-preset]").forEach((b) => b.classList.remove("is-active"));
+      render();
+    })
+  );
+  root.querySelectorAll("[data-preset]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const parts = (b as HTMLElement).dataset.preset!.split(",");
+      const set = (k: string, v: string | undefined) => {
+        const input = root.querySelector<HTMLInputElement>(`[data-w="${k}"]`);
+        if (input && v != null) input.value = v;
+      };
+      set("wq", parts[0]);
+      set("wc", parts[1]);
+      set("ws", parts[2]);
+      root.querySelectorAll("[data-preset]").forEach((x) => x.classList.remove("is-active"));
+      b.classList.add("is-active");
+      render();
+    })
+  );
+  root.querySelectorAll("[data-scope]").forEach((el) => el.addEventListener("change", render));
+  render();
+}
+
+/* ---------- 3 · heatmap lens toggle ----------
+   Colors live in CSS (data-bucket scales) so the hash-locked CSP never sees
+   a per-cell style attribute; JS only moves cells between buckets. */
+
+function initHeatLens(data: Dataset): void {
+  const bar = document.querySelector<HTMLElement>("[data-bb-heatlens]");
+  const grid = document.querySelector<HTMLElement>("[data-bb-heat]");
+  if (!bar || !grid) return;
+  // Buckets span each lens's observed range (SSR ships the rate lens); cost
+  // inverts so cheaper burns brighter.
+  const bucket = (v: number | null, domain: [number, number], invert: boolean): string => {
+    if (v == null) return "";
+    const [lo, hi] = domain;
+    const span = hi - lo;
+    const t = span <= 0 ? 1 : (v - lo) / span;
+    const clamped = Math.max(0, Math.min(1, invert ? 1 - t : t));
+    return String(Math.round(clamped * 10));
+  };
+  bar.addEventListener("click", (ev) => {
+    const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-lens]");
+    if (!btn) return;
+    const lens = btn.dataset.lens as "rate" | "strict" | "cost";
+    bar.querySelectorAll(".bb-tab").forEach((t) => {
+      const active = t === btn;
+      t.classList.toggle("is-active", active);
+      t.setAttribute("aria-selected", String(active));
+    });
+    grid.classList.toggle("bb-heat--cost", lens === "cost");
+    grid.querySelectorAll<HTMLElement>(".bb-heat__cell").forEach((cell) => {
+      const read = (k: string): number | null => {
+        const raw = cell.dataset[k];
+        return raw === "" || raw == null ? null : Number(raw);
+      };
+      const label = cell.querySelector(".bb-heat__v");
+      if (lens === "cost") {
+        const cost = read("cost");
+        cell.dataset.bucket = bucket(cost, data.heatDomains.cost, true);
+        if (label) label.textContent = cost == null ? "" : cost < 0.01 ? "<1¢" : `$${cost.toFixed(2)}`;
+      } else {
+        const v = lens === "strict" ? read("strict") : read("rate");
+        cell.dataset.bucket = bucket(v, lens === "strict" ? data.heatDomains.strict : data.heatDomains.rate, false);
+        if (label) label.textContent = v == null ? "" : String(Math.round(v * 100));
+      }
+    });
+  });
+}
+
+/* ---------- 4 · ask the data (AI panel) ---------- */
+
+/* The function's closed chart vocabulary (functions/src/benchAssistant.ts);
+   the renderer maps it onto the dashboard dataset. */
+const CHART_TYPES = new Set(["bar", "scatter", "line", "heatmap"]);
+const CHART_DIMS = new Set(["stack", "model", "harness", "family", "language", "platform"]);
+const CHART_METRICS = new Set(["solution_rate", "strict_rate", "cost_usd", "wall_seconds", "tokens"]);
+
+interface ChartSpec {
+  type: string;
+  title?: string;
+  dimension: string;
+  metric: string;
+  filter?: { harness?: string; model?: string; family?: string };
+}
+
+type MetricKey = "sol" | "str" | "cost" | "wall" | "tok";
+
+const METRIC_MAP: Record<string, MetricKey> = {
+  solution_rate: "sol",
+  strict_rate: "str",
+  cost_usd: "cost",
+  wall_seconds: "wall",
+  tokens: "tok"
+};
+
+function metricOf(s: StackRow, metric: MetricKey): number | null {
+  switch (metric) {
+    case "sol":
+      return s.sol;
+    case "str":
+      return s.str;
+    case "cost":
+      return s.cost;
+    case "wall":
+      return s.wall;
+    case "tok":
+      return s.tok;
+  }
+}
+
+const METRIC_LABEL: Record<MetricKey, string> = {
+  sol: "solution rate",
+  str: "strict rate",
+  cost: "median cost / task",
+  wall: "median wall time",
+  tok: "median tokens"
+};
+
+function fmtMetric(v: number | null, metric: MetricKey): string {
+  if (v == null) return "—";
+  if (metric === "sol" || metric === "str") return fmtPct(v);
+  if (metric === "cost") return fmtCost(v);
+  if (metric === "wall") return fmtWall(v);
+  return fmtTokens(v);
+}
+
+/** Render a server-validated chart spec to SVG. Never executes model code. */
+function renderChart(spec: ChartSpec, data: Dataset): { svg: string; title: string } | null {
+  if (!CHART_TYPES.has(spec.type) || !CHART_DIMS.has(spec.dimension) || !CHART_METRICS.has(spec.metric)) {
+    return null;
+  }
+  const mkey = METRIC_MAP[spec.metric];
+  if (!mkey) return null;
+  let rows = data.stacks;
+  if (spec.filter?.harness) rows = rows.filter((r) => r.h === spec.filter!.harness);
+  if (spec.filter?.model) rows = rows.filter((r) => r.m === spec.filter!.model);
+
+  const title = spec.title ?? `${METRIC_LABEL[mkey]} by ${spec.dimension}`;
+
+  if (spec.dimension === "language" || spec.dimension === "platform") {
+    const scopeRows = spec.dimension === "language" ? data.byLanguage : data.byPlatform;
+    const items = scopeRows
+      .map((r) => ({ label: r.key, value: r[mkey] }))
+      .filter((x): x is { label: string; value: number } => x.value != null)
+      .sort((a, b) => (mkey === "sol" || mkey === "str" ? b.value - a.value : a.value - b.value))
+      .slice(0, 12);
+    if (items.length === 0) return null;
+    return { svg: hbarSvg(items, mkey, "#ff6d3f"), title };
+  }
+
+  if (spec.type === "heatmap" || spec.dimension === "family") {
+    // family lens: mean metric per family across (filtered) stacks
+    const famAgg = new Map<string, { sum: number; n: number }>();
+    for (const row of data.heat) {
+      if (spec.filter?.harness && row.h !== spec.filter.harness) continue;
+      if (spec.filter?.model && row.m !== spec.filter.model) continue;
+      row.cells.forEach((c, i) => {
+        if (!c) return;
+        const v = mkey === "sol" ? c.r : mkey === "str" ? c.s : c.c;
+        if (v == null) return;
+        const fam = data.families[i] ?? "";
+        const agg = famAgg.get(fam) ?? { sum: 0, n: 0 };
+        agg.sum += v;
+        agg.n += 1;
+        famAgg.set(fam, agg);
+      });
+    }
+    const items = [...famAgg.entries()]
+      .map(([label, a]) => ({ label, value: a.sum / a.n }))
+      .sort((x, y) => y.value - x.value)
+      .slice(0, 14);
+    if (items.length === 0) return null;
+    return { svg: hbarSvg(items, mkey, "#ff6d3f"), title };
+  }
+
+  if (spec.type === "scatter") {
+    return { svg: scatterSvg(rows), title: spec.title ?? "cost vs solution rate" };
+  }
+
+  // aggregate to the requested dimension
+  let items: { label: string; value: number; color?: string }[];
+  if (spec.dimension === "stack") {
+    items = rows
+      .map((s) => ({ label: `${s.hd} × ${s.md}`, value: metricOf(s, mkey), color: s.mc }))
+      .filter((x): x is { label: string; value: number; color: string } => x.value != null);
+  } else {
+    const key = spec.dimension === "model" ? "md" : "hd";
+    const colorKey = spec.dimension === "model" ? "mc" : "hc";
+    const agg = new Map<string, { sum: number; n: number; color: string }>();
+    for (const s of rows) {
+      const v = metricOf(s, mkey);
+      if (v == null) continue;
+      const k = s[key];
+      const a = agg.get(k) ?? { sum: 0, n: 0, color: s[colorKey] };
+      a.sum += v;
+      a.n += 1;
+      agg.set(k, a);
+    }
+    items = [...agg.entries()].map(([label, a]) => ({
+      label,
+      value: a.sum / a.n,
+      color: a.color
+    }));
+  }
+  const ascending = mkey === "cost" || mkey === "wall" || mkey === "tok";
+  items.sort((a, b) => (ascending ? a.value - b.value : b.value - a.value));
+  items = items.slice(0, 12);
+  if (items.length === 0) return null;
+
+  if (spec.type === "line") {
+    return { svg: lineSvg(items, mkey), title };
+  }
+  return { svg: hbarSvg(items, mkey), title };
+}
+
+function hbarSvg(
+  items: { label: string; value: number; color?: string }[],
+  metric: MetricKey,
+  fallbackColor = "#8a8f98"
+): string {
+  const W = 560;
+  const H = Math.max(120, items.length * 30 + 16);
+  const max = Math.max(...items.map((i) => i.value), 1e-9);
+  const rows = items
+    .map((it, i) => {
+      const y = 8 + i * 30;
+      const w = Math.max(2, (it.value / max) * (W - 220));
+      return (
+        `<text x="0" y="${y + 13}" class="bb-c__label">${esc(it.label.length > 26 ? it.label.slice(0, 25) + "…" : it.label)}</text>` +
+        `<rect x="190" y="${y}" width="${w.toFixed(1)}" height="16" rx="4" fill="${it.color ?? fallbackColor}"></rect>` +
+        `<text x="${(196 + w).toFixed(1)}" y="${y + 13}" class="bb-c__val">${esc(fmtMetric(it.value, metric))}</text>`
+      );
+    })
+    .join("");
+  return `<svg viewBox="0 0 ${W} ${H}" class="bb-c__svg" role="img">${rows}</svg>`;
+}
+
+function scatterSvg(rows: StackRow[]): string {
+  const pts = rows.filter((r) => r.cost != null);
+  if (pts.length === 0) return "";
+  const W = 560;
+  const H = 320;
+  const ml = 44;
+  const mb = 34;
+  const maxC = Math.max(...pts.map((p) => p.cost ?? 0), 0.01);
+  const x = (c: number) => ml + (c / maxC) * (W - ml - 16);
+  const y = (r: number) => 12 + (1 - r) * (H - 12 - mb);
+  const dots = pts
+    .map(
+      (p) =>
+        `<circle cx="${x(p.cost ?? 0).toFixed(1)}" cy="${y(p.sol).toFixed(1)}" r="6" fill="${p.mc}" stroke="${p.hc}" stroke-width="2"><title>${esc(`${p.hd} × ${p.md} — ${fmtPct(p.sol)} · ${fmtCost(p.cost)}`)}</title></circle>`
+    )
+    .join("");
+  return (
+    `<svg viewBox="0 0 ${W} ${H}" class="bb-c__svg" role="img">` +
+    `<line x1="${ml}" y1="${H - mb}" x2="${W - 16}" y2="${H - mb}" class="bb-c__axis"></line>` +
+    `<line x1="${ml}" y1="12" x2="${ml}" y2="${H - mb}" class="bb-c__axis"></line>` +
+    `<text x="${(ml + W) / 2}" y="${H - 6}" class="bb-c__axistitle">median cost / task</text>` +
+    dots +
+    `</svg>`
+  );
+}
+
+function lineSvg(items: { label: string; value: number }[], metric: MetricKey): string {
+  if (items.length < 2) return hbarSvg(items, metric);
+  const W = 560;
+  const H = 260;
+  const max = Math.max(...items.map((i) => i.value), 1e-9);
+  const min = Math.min(...items.map((i) => i.value), 0);
+  const span = max - min || 1;
+  const px = (i: number) => 24 + (i / (items.length - 1)) * (W - 48);
+  const py = (v: number) => 16 + (1 - (v - min) / span) * (H - 56);
+  const points = items.map((it, i) => `${px(i).toFixed(1)},${py(it.value).toFixed(1)}`).join(" ");
+  const dots = items
+    .map(
+      (it, i) =>
+        `<circle cx="${px(i).toFixed(1)}" cy="${py(it.value).toFixed(1)}" r="4" fill="#ff6d3f"><title>${esc(`${it.label}: ${fmtMetric(it.value, metric)}`)}</title></circle>`
+    )
+    .join("");
+  return (
+    `<svg viewBox="0 0 ${W} ${H}" class="bb-c__svg" role="img">` +
+    `<polyline points="${points}" fill="none" stroke="#ff6d3f" stroke-width="2"></polyline>` +
+    dots +
+    `</svg>`
+  );
+}
+
+/**
+ * Compact digest of the export for the assistant (its contract: caller
+ * supplies the digest, ≤ 24000 chars). Overall stack rows always; per-family
+ * detail while the budget allows, falling back to family bests.
+ */
+function buildDigest(data: Dataset): string {
+  const r3 = (v: number | null): number | null => (v == null ? null : Math.round(v * 1000) / 1000);
+  const r5 = (v: number | null): number | null => (v == null ? null : Math.round(v * 100000) / 100000);
+  const r1 = (v: number | null): number | null => (v == null ? null : Math.round(v * 10) / 10);
+  const overall = data.stacks.map((s) => ({
+    id: `${s.h} × ${s.m}`,
+    scope: "overall",
+    solution_rate: r3(s.sol),
+    strict_rate: r3(s.str),
+    ci95: [r3(s.ci[0]), r3(s.ci[1])],
+    n: s.n,
+    cost_usd_median: r5(s.cost),
+    wall_seconds_median: r1(s.wall),
+    tokens_median: s.tok == null ? null : Math.round(s.tok),
+    confidence: s.conf,
+    evidence: s.ev
+  }));
+  // Packed family rows (self-documented via family_schema): rate + n are
+  // what family questions turn on, and the packed form keeps the full 224-row
+  // detail inside the function's 24000-char digest budget.
+  const familyRows: unknown[] = [];
+  for (const row of data.heat) {
+    row.cells.forEach((c, i) => {
+      if (!c) return;
+      familyRows.push([`${row.h} × ${row.m}`, data.families[i], r3(c.r), r3(c.s), c.n]);
+    });
+  }
+  const base = {
+    generated: data.generated,
+    note: "BurnBench export digest. Rates are solution-quality estimands with Wilson ci95; costs are per-task medians at list prices.",
+    overall,
+    byLanguage: data.byLanguage,
+    byPlatform: data.byPlatform
+  };
+  const full = JSON.stringify({
+    ...base,
+    family_schema: "[stack_id, family, solution_rate, strict_rate, n]",
+    family: familyRows
+  });
+  if (full.length <= 23_500) return full;
+  // Budget fallback: per-family best stack only.
+  const best = new Map<string, { id: string; family: string; solution_rate: number; n: number }>();
+  for (const row of data.heat) {
+    row.cells.forEach((c, i) => {
+      if (!c) return;
+      const fam = data.families[i] ?? "";
+      const cur = best.get(fam);
+      if (!cur || c.r > cur.solution_rate) {
+        best.set(fam, { id: `${row.h} × ${row.m}`, family: fam, solution_rate: r3(c.r) ?? 0, n: c.n });
+      }
+    });
+  }
+  return JSON.stringify({ ...base, familyBest: [...best.values()] });
+}
+
+function initAsk(data: Dataset): void {
+  const root = document.querySelector<HTMLElement>("[data-bb-ask]");
+  if (!root) return;
+  const log = root.querySelector<HTMLElement>("[data-bb-log]");
+  const form = root.querySelector<HTMLFormElement>("[data-bb-form]");
+  const input = form?.querySelector<HTMLInputElement>('input[name="q"]');
+  const status = root.querySelector<HTMLElement>("[data-bb-status]");
+  const chartBox = root.querySelector<HTMLElement>("[data-bb-chart]");
+  const chartTitle = root.querySelector<HTMLElement>("[data-bb-charttitle]");
+  const chartSvg = root.querySelector<HTMLElement>("[data-bb-chartsvg]");
+  if (!log || !form || !input || !status) return;
+
+  let digest: string | null = null;
+  const getDigest = (): string => {
+    if (digest == null) digest = buildDigest(data);
+    return digest;
+  };
+
+  const addMsg = (kind: "user" | "ai", text: string): HTMLElement => {
+    const div = document.createElement("div");
+    div.className = `bb-ask__msg bb-ask__msg--${kind}`;
+    const p = document.createElement("p");
+    p.textContent = text; // never innerHTML: model output is untrusted
+    div.appendChild(p);
+    log.appendChild(div);
+    div.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    return div;
+  };
+
+  const ask = async (question: string) => {
+    addMsg("user", question);
+    const pending = addMsg("ai", "Thinking…");
+    pending.classList.add("is-pending");
+    status.textContent = "querying the export…";
+    try {
+      // Firebase callable protocol: {data: …} in, {result: …} | {error: …} out.
+      const res = await fetch("/api/bench/assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: {
+            schemaVersion: 1,
+            question,
+            digest: getDigest(),
+            view: "bench command center"
+          }
+        })
+      });
+      const body = (await res.json()) as {
+        result?: {
+          answer?: string;
+          chart?: ChartSpec | null;
+          rowsUsed?: string[];
+          modelSlug?: string;
+        };
+        error?: { message?: string; status?: string };
+      };
+      if (!res.ok || body.error) {
+        const msg = body.error?.message ?? `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      const payload = body.result ?? {};
+      pending.classList.remove("is-pending");
+      pending.querySelector("p")!.textContent = payload.answer ?? "No answer came back.";
+      const cited = payload.rowsUsed?.length ?? 0;
+      status.textContent = cited > 0 ? `${cited} rows cited · 10/min · 60/day` : "10/min · 60/day";
+      if (payload.chart && chartBox && chartSvg && chartTitle) {
+        const rendered = renderChart(payload.chart, data);
+        if (rendered) {
+          chartTitle.textContent = rendered.title;
+          chartSvg.innerHTML = rendered.svg; // whitelisted numbers/labels only
+          chartBox.hidden = false;
+        }
+      }
+    } catch (err) {
+      pending.classList.remove("is-pending");
+      const message = err instanceof Error ? err.message : "";
+      pending.querySelector("p")!.textContent = /resource-exhausted|rate/i.test(message)
+        ? "You've hit the assistant's rate limit — give it a minute. The numbers on this page are the same export it reads."
+        : "The analyst is unavailable right now — the numbers on this page are the same export it reads, so the leaderboard above still has you covered.";
+      status.textContent = "assistant offline · page data unaffected";
+    }
+  };
+
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const q = input.value.trim();
+    if (!q) return;
+    input.value = "";
+    void ask(q);
+  });
+  root.querySelectorAll<HTMLButtonElement>(".bb-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const q = chip.dataset.q ?? chip.textContent ?? "";
+      void ask(q);
+    });
+  });
+}
+
+/* ---------- boot ---------- */
+
+void loadDataset().then((data) => {
+  if (!data) return; // SSR page remains fully meaningful without enhancement
+  initTabs(data);
+  initTuner(data);
+  initHeatLens(data);
+  initAsk(data);
+});

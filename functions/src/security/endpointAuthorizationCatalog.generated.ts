@@ -272,6 +272,27 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
   },
   {
+    exportedName: "benchAssistant",
+    trigger: "callable",
+    authMethod:
+      "none — public website callable bounded by product-layer IP rate limits (bench_assistant_burst + bench_assistant_daily) enforced before any OpenRouter call",
+    appCheck: "not-applicable",
+    tenantSource: "none — answers only from the caller-supplied public BurnBench digest; no tenant objects are read",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler reads no Firestore tenant data; it validates the payload, enforces the IP rate limits, and proxies the digest to OpenRouter",
+    handlerModule: "benchAssistant.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/benchAssistant.test.ts",
+        test: "public benchmark assistant answers only from the supplied digest and exposes no tenant objects",
+        kind: "not-applicable-public",
+        covers: ["benchAssistant"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
     exportedName: "bindAppCheckAttestation",
     trigger: "callable",
     authMethod: "Firebase Auth with callable-level ownership checks",

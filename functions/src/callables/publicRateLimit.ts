@@ -135,6 +135,19 @@ const HOSTED_INSIGHTS_LIMITS: Record<HostedInsightsRateLimitAction, { windowSeco
   insights_hosted_answer_daily: { windowSeconds: 86_400, maxAttempts: 200 },
 };
 
+// Public BurnBench assistant (`benchAssistant` callable): unauthenticated
+// website traffic, and each answer bills input tokens to the owner's
+// OpenRouter budget. There is no uid to key on, so the limit follows the
+// client IP; a short burst window plus a daily ceiling keeps a single source
+// from looping answers to drain that budget while leaving normal browsing
+// unthrottled. Mirrors the hosted-Insights burst + daily pair shape.
+type BenchAssistantRateLimitAction = "bench_assistant_burst" | "bench_assistant_daily";
+
+const BENCH_ASSISTANT_LIMITS: Record<BenchAssistantRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
+  bench_assistant_burst: { windowSeconds: 60, maxAttempts: 10 },
+  bench_assistant_daily: { windowSeconds: 86_400, maxAttempts: 60 },
+};
+
 function rateLimitDocId(keyMaterial: string, action: string): string {
   const hash = createHash("sha256").update(`${keyMaterial}:${action}`).digest("hex");
   return `${action}_${hash.slice(0, 40)}`;
@@ -240,6 +253,35 @@ export async function checkHostedInsightsAnswerRateLimit(uid: string): Promise<v
     "insights_hosted_answer_daily",
     HOSTED_INSIGHTS_LIMITS.insights_hosted_answer_daily,
   );
+}
+
+/**
+ * Per-IP rate limit for the public BurnBench assistant callable
+ * (`benchAssistant`). Enforces both a short burst window and a daily ceiling
+ * in a single transaction so a single source cannot loop calls to drain the
+ * owner's OpenRouter budget. Falls back to a constant "unknown-ip" bucket
+ * when the platform supplies no client IP. Throws `resource-exhausted` when
+ * either bound is hit.
+ */
+export async function checkBenchAssistantRateLimit(req: {
+  headers?: Record<string, unknown>;
+  ip?: string;
+  socket?: { remoteAddress?: string };
+}): Promise<void> {
+  const ip = clientIpFromHttpRequest(req);
+  const keyMaterial = ip === "unknown" ? "unknown-ip" : ip;
+  await incrementRateLimitsAtomically([
+    {
+      docId: rateLimitDocId(keyMaterial, "bench_assistant_burst"),
+      action: "bench_assistant_burst",
+      limit: BENCH_ASSISTANT_LIMITS.bench_assistant_burst,
+    },
+    {
+      docId: rateLimitDocId(keyMaterial, "bench_assistant_daily"),
+      action: "bench_assistant_daily",
+      limit: BENCH_ASSISTANT_LIMITS.bench_assistant_daily,
+    },
+  ]);
 }
 
 /**
