@@ -322,8 +322,10 @@ struct QuotaPrimaryBar: View {
     private var fillColor: Color { QuotaBarFill.color(for: fraction, theme: theme) }
 
     /// Headline tint: the provider's brand color while the reserve is healthy
-    /// (nudged legible per appearance), state colors once it thins.
+    /// (nudged legible per appearance), state colors once it thins. Missing
+    /// buckets stay muted — absence of data must not read as exhaustion.
     private var headlineColor: Color {
+        guard bucket != nil else { return DesignSystem.Colors.textMuted }
         switch fraction {
         case 0.50...: return quotaLegibleProviderColor(theme.primaryColor, in: colorScheme)
         case 0.25..<0.50: return DesignSystem.Colors.amber
@@ -355,7 +357,7 @@ struct QuotaPrimaryBar: View {
 
                     if fraction > 0 {
                         Capsule(style: .continuous)
-                            .fill(QuotaBarFill.gradient(for: fraction, theme: theme))
+                            .fill(QuotaBarFill.gradient(for: fraction, theme: theme, adjustingFor: colorScheme))
                             .frame(width: geo.size.width * fraction)
                             .shadow(color: fillColor.opacity(0.30), radius: 3, y: 0)
                             .animation(DesignSystem.Animation.gentle, value: fraction)

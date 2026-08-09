@@ -246,7 +246,9 @@ enum PixelClockAgentProcessDetector {
         if has(["openclaw"]) || lower.contains("open-claw") { return .openClaw }
         if has(["cursor"]) { return .cursor }
         if has(["minimax"]) || lower.contains("mini-max") { return .minimax }
-        if has(["zai", "z.ai", "z-ai"]) { return .zai }
+        // Tokenizer splits hyphens, so keep the raw-string fallback used for
+        // open-code / mini-max / x-ai — otherwise `z-ai` becomes ["z","ai"].
+        if has(["zai", "z.ai"]) || lower.contains("z-ai") { return .zai }
         if has(["kimi", "moonshot"]) { return .kimi }
         if has(["xai", "x.ai", "grok", "supergrok"]) || lower.contains("x-ai") { return .xAI }
 

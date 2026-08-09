@@ -60,4 +60,35 @@ grep -Fq -- "Publishable-tree secret scan passed." "$scan_output"
 [[ -f "$marker_dir/gitleaks" ]]
 [[ -f "$marker_dir/trufflehog" ]]
 
+# Lob exception must stay narrow: method-style test ids in test paths only.
+# Real Lob test keys (`test_<hex>`) and any Lob finding outside test sources
+# must remain fail-closed.
+python3 - "$script_under_test" <<'PY'
+import pathlib
+import re
+import sys
+
+src = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+assert "test_method_id" in src, "narrow Lob method-id filter missing"
+assert "[^/]*Tests?" in src, "Lob filter must match *Tests/ directories"
+assert "test_path.search(path)" in src, "Lob filter must require a test path"
+
+# Keep these heuristics identical to scripts/security/scan-publishable-tree.sh.
+test_method_id = re.compile(r"^test_[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z][A-Za-z0-9]*)+$")
+test_path = re.compile(
+    r"(?:^|/)(?:[^/]*Tests?|__tests__|specs?)/|"
+    r"(?:\.test\.|\.spec\.|Tests?\.(?:swift|m|mm|kt|java|ts|tsx|js|jsx)$)",
+    re.IGNORECASE,
+)
+cases = [
+    ("test_closedToOpen_afterThresholdFailures", "AgentLensTests/Active/Foo.swift", True),
+    ("test_abc123deadbeef", "AgentLensTests/Active/Foo.swift", False),
+    ("test_closedToOpen_afterThresholdFailures", "AgentLens/Views/Foo.swift", False),
+]
+for raw, file_path, expect_drop in cases:
+    drop = bool(test_method_id.fullmatch(raw) and test_path.search(file_path))
+    assert drop is expect_drop, (raw, file_path, drop, expect_drop)
+print("PASS: Lob false-positive exception stays narrow")
+PY
+
 echo "PASS: option-like publishable paths reach both scanner trees"

@@ -486,12 +486,16 @@ final class SettingsManagerTests: XCTestCase {
         cursor-agent worker start
         open-code --stdio
         mini-max --model MiniMax-M2
+        z-ai --stdio
+        x-ai --model grok
         """)
 
         XCTAssertEqual(statuses[AgentProvider.codex.persistedToken], .running)
         XCTAssertEqual(statuses[AgentProvider.cursor.persistedToken], .running)
         XCTAssertEqual(statuses[AgentProvider.openCode.persistedToken], .running)
         XCTAssertEqual(statuses[AgentProvider.minimax.persistedToken], .running)
+        XCTAssertEqual(statuses[AgentProvider.zai.persistedToken], .running)
+        XCTAssertEqual(statuses[AgentProvider.xAI.persistedToken], .running)
     }
 
     func test_agentProcessDetectorStillExcludesHyphenatedHelpersAndServices() {

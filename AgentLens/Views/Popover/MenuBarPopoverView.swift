@@ -686,7 +686,14 @@ struct MenuBarPopoverView: View {
     // MARK: - Header
 
     private var hasWeeklyUsage: Bool {
-        dataStore.totalTokensThisWeek > 0 || dataStore.totalCostThisWeek > 0
+        // Presence must follow the metric shown in the headline so currency
+        // mode never reads "Burning $0.00" from token-only weeks (and vice versa).
+        switch settingsManager.usageDisplayMode {
+        case .currency:
+            return dataStore.totalCostThisWeek > 0
+        case .tokens:
+            return dataStore.totalTokensThisWeek > 0
+        }
     }
 
     private var burnHeadlineTitle: String {
@@ -1035,6 +1042,7 @@ struct MenuBarPopoverView: View {
                         .foregroundStyle(DesignSystem.Colors.primaryGradient)
                 }
                 .popoverTooltip("Open the full dashboard")
+                .accessibilityLabel("Open dashboard")
                 .accessibilityIdentifier(OBBAccessibilityID.popoverDashboardButton)
 
                 PetCompanionToggleButton()
@@ -1050,16 +1058,22 @@ struct MenuBarPopoverView: View {
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
                 .popoverTooltip("Open settings")
+                .accessibilityLabel("Open settings")
                 .accessibilityIdentifier(OBBAccessibilityID.popoverSettingsButton)
 
-                GlassIconButton {
+                // App Store Guideline 2.1: menu-bar hosts must expose a standard
+                // visible Quit command name — keep the labeled GlassButton even
+                // when neighboring chrome is icon-only.
+                GlassButton(
+                    title: "Quit OpenBurnBar",
+                    icon: "power",
+                    style: .cool
+                ) {
                     NSApplication.shared.terminate(nil)
-                } label: {
-                    Image(systemName: "power")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.coolDownGradient)
                 }
+                .fixedSize(horizontal: true, vertical: false)
                 .popoverTooltip("Quit OpenBurnBar")
+                .accessibilityLabel("Quit OpenBurnBar")
             }
             .padding(.horizontal, DesignSystem.Spacing.lg)
             .padding(.vertical, DesignSystem.Spacing.sm + 2)
