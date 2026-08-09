@@ -241,7 +241,7 @@
     "scripts/linux-port/lib/linux-appimage-peer-manifest.mjs": ["4dff81d500ccb872","077797eb17f96cf6","746691b81a896872","c4fd9b3535c673e9"],
     "scripts/linux-port/lib/linux-arch-pkgbuild.mjs": ["5a965d5854623150","7a87070684b12760","3b1fd472b75f3924","50a7baed12638809"],
     "scripts/linux-port/lib/linux-installed-manifest.mjs": ["efda35161a5d88a9","ee7a953f86aac2bf","4c70dfffc72f41da","bc3478cbdfcfdd89"],
-    "scripts/linux-port/lib/linux-native-package.mjs": ["a0b66e39aa8dc224","c95dad70a5d3bc14","6ae679fdf54ed9fa","cab1c7e0ff576d1c"],
+    "scripts/linux-port/lib/linux-native-package.mjs": ["2bb5d529774c84f5","1567697464a750e4","8c77f6a00a60f6a5","be873eabc98b1043"],
     "scripts/linux-port/lib/linux-package-payload.mjs": ["71a3b2e931b8daef","cc23b85f181b873b","5a91907d96341769","15ef022eac2ecfc4"],
     "scripts/linux-port/lib/linux-package-session.mjs": ["5a2e9618aad1f589","d39085b7983b21e5","d6e066c536e6c82a","f74853dd93160335"],
     "scripts/linux-port/lib/linux-package-smoke-installed.mjs": ["e9b6b6afd6e7a9fa","537f8725b0b63334","bc62830f7c2db86a","f81755a4dcd79708"],
