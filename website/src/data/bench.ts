@@ -514,6 +514,8 @@ export interface HeatCell {
   rate: number | null;
   strict: number | null;
   cost: number | null;
+  wall: number | null;
+  tokens: number | null;
   n: number;
   confidence: BenchConfidence | null;
 }
@@ -544,12 +546,14 @@ export function familyHeat(): { families: string[]; rows: HeatRow[]; domains: He
     cells: FAMILIES.map((fam) => {
       const slice = byKey.get(`${stack.harness}|${stack.model}|${fam}`);
       if (!slice || slice.n === 0) {
-        return { rate: null, strict: null, cost: null, n: 0, confidence: null };
+        return { rate: null, strict: null, cost: null, wall: null, tokens: null, n: 0, confidence: null };
       }
       return {
         rate: slice.solution_rate,
         strict: slice.strict_rate,
         cost: slice.cost_usd_median,
+        wall: slice.wall_seconds_median,
+        tokens: slice.tokens_median,
         n: slice.n,
         confidence: slice.confidence
       };
@@ -696,7 +700,7 @@ export function dashboardDataset(): unknown {
     heat: heat.rows.map((r) => ({
       h: r.harness,
       m: r.model,
-      cells: r.cells.map((c) => (c.rate == null ? null : { r: c.rate, s: c.strict, c: c.cost, n: c.n }))
+      cells: r.cells.map((c) => (c.rate == null ? null : { r: c.rate, s: c.strict, c: c.cost, w: c.wall, t: c.tokens, n: c.n }))
     }))
   };
 }

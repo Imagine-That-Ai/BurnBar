@@ -510,101 +510,112 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
       </div>
 
       <div class="bb-heat-frame" data-bb-heatframe>
-        <div class="bb-heat-wrap">
-          <div
-            class="bb-heat"
-            data-bb-heat
-            style={`--fam-cols:${heat.families.length};--fam-vis:${heat.families.length - emptyFams.length}`}
-          >
-            <div class="bb-heat__corner" aria-hidden="true"></div>
-            {
-              heat.families.map((fam) => (
-                <button
-                  class="bb-heat__colhead"
-                  type="button"
-                  data-heatcol={fam}
-                  title={`${fam} — tap to focus this family`}
-                  data-emptyfam={emptyFams.includes(fam) ? "true" : undefined}
-                  aria-pressed="false"
-                >
-                  <span>{fam}</span>
-                </button>
-              ))
-            }
-            {
-              heat.rows.map((row) => (
-                <>
+        <div class="bb-heat-zoombar" data-bb-heat-zoombar>
+          <span class="bb-zoom-hint">pinch or scroll to zoom · drag to pan</span>
+          <button class="bb-zoom-btn" type="button" data-heat-zoom-out aria-label="Zoom out">−</button>
+          <button class="bb-zoom-btn" type="button" data-heat-zoom-in aria-label="Zoom in">+</button>
+          <button class="bb-zoom-btn" type="button" data-heat-zoom-reset aria-label="Reset zoom">⟲</button>
+        </div>
+        <div class="bb-heat-wrap" data-bb-heat-wrap>
+          <div class="bb-heat-zoom" data-bb-heat-zoom>
+            <div
+              class="bb-heat"
+              data-bb-heat
+              style={`--fam-cols:${heat.families.length};--fam-vis:${heat.families.length - emptyFams.length}`}
+            >
+              <div class="bb-heat__corner" aria-hidden="true"></div>
+              {
+                heat.families.map((fam) => (
                   <button
-                    class={`bb-heat__rowhead h--${hcls(row.harness)} m--${mcls(row.model)}`}
+                    class="bb-heat__colhead"
                     type="button"
-                    data-heatrow={`${row.harness}|${row.model}`}
-                    title={`${harnessDisplay(row.harness)} × ${modelDisplay(row.model)} — tap to isolate this stack`}
+                    data-heatcol={fam}
+                    title={`${fam} — tap to focus this family`}
+                    data-emptyfam={emptyFams.includes(fam) ? "true" : undefined}
                     aria-pressed="false"
                   >
-                    <span class="bb-heat__rowbadges" aria-hidden="true">
-                      {
-                        (() => {
-                          const hl = HARNESS_LOGO[row.harness] ?? null;
-                          const ml = MODEL_LOGO[row.model] ?? null;
-                          const hMono = monogramFor(row.harness, harnessDisplay(row.harness));
-                          const mMono = monogramFor(row.model, modelDisplay(row.model));
-                          return (
-                            <>
-                              <span class={`bb-heat__badge bb-heat__badge--h h--${hcls(row.harness)}`}>
-                                {hl ? (
-                                  <img src={hl} alt="" width="16" height="16" loading="lazy" decoding="async" />
-                                ) : (
-                                  <span class="bb-badge__mono">{hMono}</span>
-                                )}
-                              </span>
-                              <span class="bb-heat__x" aria-hidden="true">×</span>
-                              <span class={`bb-heat__badge bb-heat__badge--m m--${mcls(row.model)}`}>
-                                {ml ? (
-                                  <img src={ml} alt="" width="16" height="16" loading="lazy" decoding="async" />
-                                ) : (
-                                  <span class="bb-badge__mono">{mMono}</span>
-                                )}
-                              </span>
-                            </>
-                          );
-                        })()
-                      }
-                    </span>
-                    <span class="bb-heat__rowlabel">
-                      <span class={`bb-heat__h h--${hcls(row.harness)}`}>{harnessDisplay(row.harness)}</span>
-                      <span class="bb-heat__m" title={modelDisplay(row.model)}>{modelDisplayShort(row.model)}</span>
-                    </span>
+                    <span>{fam}</span>
                   </button>
-                  {row.cells.map((cell, ci) => (
+                ))
+              }
+              {
+                heat.rows.map((row) => (
+                  <>
                     <button
-                      class="bb-heat__cell"
+                      class={`bb-heat__rowhead h--${hcls(row.harness)} m--${mcls(row.model)}`}
                       type="button"
-                      data-heatcell={`${row.harness}|${row.model}|${heat.families[ci]}`}
-                      data-rate={cell.rate ?? ""}
-                      data-strict={cell.strict ?? ""}
-                      data-cost={cell.cost ?? ""}
-                      data-n={cell.n}
-                      data-emptyfam={emptyFams.includes(heat.families[ci] ?? "") ? "true" : undefined}
-                      data-bucket={heatBucket(cell.rate, heat.domains.rate) ?? ""}
-                      aria-label={
-                        cell.rate != null
-                          ? `${harnessDisplay(row.harness)} × ${modelDisplay(row.model)} · ${heat.families[ci]}: ${fmtPct(cell.rate!)}`
-                          : `${harnessDisplay(row.harness)} × ${modelDisplay(row.model)} · ${heat.families[ci]}: not measured`
-                      }
+                      data-heatrow={`${row.harness}|${row.model}`}
+                      title={`${harnessDisplay(row.harness)} × ${modelDisplay(row.model)} — tap to isolate this stack`}
+                      aria-pressed="false"
                     >
-                      <span class="bb-heat__glass" aria-hidden="true"></span>
-                      {cell.rate != null ? (
-                        <span class="bb-heat__v">{Math.round(cell.rate! * 100)}</span>
-                      ) : (
-                        <span class="bb-heat__dash" aria-hidden="true">—</span>
-                      )}
+                      <span class="bb-heat__rowbadges" aria-hidden="true">
+                        {
+                          (() => {
+                            const hl = HARNESS_LOGO[row.harness] ?? null;
+                            const ml = MODEL_LOGO[row.model] ?? null;
+                            const hMono = monogramFor(row.harness, harnessDisplay(row.harness));
+                            const mMono = monogramFor(row.model, modelDisplay(row.model));
+                            return (
+                              <>
+                                <span class={`bb-heat__badge bb-heat__badge--h h--${hcls(row.harness)}`}>
+                                  {hl ? (
+                                    <img src={hl} alt="" width="16" height="16" loading="lazy" decoding="async" />
+                                  ) : (
+                                    <span class="bb-badge__mono">{hMono}</span>
+                                  )}
+                                </span>
+                                <span class="bb-heat__x" aria-hidden="true">×</span>
+                                <span class={`bb-heat__badge bb-heat__badge--m m--${mcls(row.model)}`}>
+                                  {ml ? (
+                                    <img src={ml} alt="" width="16" height="16" loading="lazy" decoding="async" />
+                                  ) : (
+                                    <span class="bb-badge__mono">{mMono}</span>
+                                  )}
+                                </span>
+                              </>
+                            );
+                          })()
+                        }
+                      </span>
+                      <span class="bb-heat__rowlabel">
+                        <span class={`bb-heat__h h--${hcls(row.harness)}`}>{harnessDisplay(row.harness)}</span>
+                        <span class="bb-heat__m" title={modelDisplay(row.model)}>{modelDisplayShort(row.model)}</span>
+                      </span>
                     </button>
-                  ))}
-                </>
-              ))
-            }
+                    {row.cells.map((cell, ci) => (
+                      <button
+                        class="bb-heat__cell"
+                        type="button"
+                        data-heatcell={`${row.harness}|${row.model}|${heat.families[ci]}`}
+                        data-rate={cell.rate ?? ""}
+                        data-strict={cell.strict ?? ""}
+                        data-cost={cell.cost ?? ""}
+                        data-wall={cell.wall ?? ""}
+                        data-tokens={cell.tokens ?? ""}
+                        data-n={cell.n}
+                        data-emptyfam={emptyFams.includes(heat.families[ci] ?? "") ? "true" : undefined}
+                        data-bucket={heatBucket(cell.rate, heat.domains.rate) ?? ""}
+                        aria-label={
+                          cell.rate != null
+                            ? `${harnessDisplay(row.harness)} × ${modelDisplay(row.model)} · ${heat.families[ci]}: ${fmtPct(cell.rate!)}`
+                            : `${harnessDisplay(row.harness)} × ${modelDisplay(row.model)} · ${heat.families[ci]}: not measured`
+                        }
+                      >
+                        <span class="bb-heat__glass" aria-hidden="true"></span>
+                        {cell.rate != null ? (
+                          <span class="bb-heat__v">{Math.round(cell.rate! * 100)}</span>
+                        ) : (
+                          <span class="bb-heat__dash" aria-hidden="true">—</span>
+                        )}
+                      </button>
+                    ))}
+                  </>
+                ))
+              }
+            </div>
           </div>
         </div>
+        <div class="bb-heat-detail" data-bb-heat-detail hidden role="dialog" aria-modal="false" aria-label="Cell details"></div>
         <div class="bb-heat-tip" data-bb-heattip hidden role="status" aria-live="polite"></div>
       </div>
       <p class="bb-caption">
@@ -675,7 +686,13 @@ for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t 
           </div>
         </div>
 
-        <div class="bb-pareto__stage">
+        <div class="bb-pareto__stage" data-bb-pareto-stage>
+          <div class="bb-pareto__stagebar" data-bb-pareto-zoombar>
+            <span class="bb-zoom-hint">pinch or scroll to zoom</span>
+            <button class="bb-zoom-btn" type="button" data-pareto-zoom-out aria-label="Zoom out">−</button>
+            <button class="bb-zoom-btn" type="button" data-pareto-zoom-in aria-label="Zoom in">+</button>
+            <button class="bb-zoom-btn" type="button" data-pareto-zoom-reset aria-label="Reset zoom">⟲</button>
+          </div>
           <svg
             class="bb-pareto__svg"
             data-bb-pareto-svg

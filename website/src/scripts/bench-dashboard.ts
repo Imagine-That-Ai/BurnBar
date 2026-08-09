@@ -44,6 +44,8 @@ interface HeatCellData {
   r: number;
   s: number;
   c: number | null;
+  w: number | null;
+  t: number | null;
   n: number;
 }
 
@@ -449,12 +451,92 @@ function initTuner(data: Dataset): void {
    a per-cell style attribute; JS only moves cells between buckets and toggles
    focus classes that make one row or column lead the eye. */
 
+function attachZoom(
+  wrap: HTMLElement,
+  zoomEl: HTMLElement,
+  opts: { min: number; max: number; step: number; onChange?: (scale: number) => void }
+): () => number {
+  let scale = 1;
+  const clamp = (v: number) => Math.max(opts.min, Math.min(opts.max, v));
+  const apply = (next: number, _origin?: { x: number; y: number }) => {
+    scale = clamp(next);
+    zoomEl.style.transform = `scale(${scale})`;
+    wrap.style.overflow = scale > 1 ? "auto" : "";
+    opts.onChange?.(scale);
+    return scale;
+  };
+  const fromWheel = (ev: WheelEvent) => {
+    if (!(ev.ctrlKey || ev.metaKey)) return;
+    ev.preventDefault();
+    const delta = -ev.deltaY * 0.0012;
+    const next = scale * (1 + delta);
+    apply(next);
+  };
+  wrap.addEventListener("wheel", fromWheel, { passive: false });
+  let startDist = 0;
+  let startScale = 1;
+  const dist = (a: Touch, b: Touch) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  wrap.addEventListener("touchstart", (ev) => {
+    if (ev.touches.length !== 2) return;
+    startDist = dist(ev.touches[0]!, ev.touches[1]!);
+    startScale = scale;
+  }, { passive: true });
+  wrap.addEventListener("touchmove", (ev) => {
+    if (ev.touches.length !== 2 || startDist <= 0) return;
+    ev.preventDefault();
+    const next = startScale * (dist(ev.touches[0]!, ev.touches[1]!) / startDist);
+    apply(next);
+  }, { passive: false });
+  wrap.addEventListener("touchend", () => { startDist = 0; }, { passive: true });
+  return () => scale;
+}
+
 function initHeatLens(data: Dataset): void {
   const bar = document.querySelector<HTMLElement>("[data-bb-heatlens]");
   const grid = document.querySelector<HTMLElement>("[data-bb-heat]");
   const frame = document.querySelector<HTMLElement>("[data-bb-heatframe]");
   const tip = document.querySelector<HTMLElement>("[data-bb-heattip]");
+  const detail = document.querySelector<HTMLElement>("[data-bb-heat-detail]");
+  const heatWrap = document.querySelector<HTMLElement>("[data-bb-heat-wrap]");
+  const heatZoom = document.querySelector<HTMLElement>("[data-bb-heat-zoom]");
   if (!bar || !grid) return;
+
+  // zoom wiring (guard missing wrap/zoom during SSR preview)
+  const zoombar = document.querySelector<HTMLElement>("[data-bb-heat-zoombar]");
+  let getHeatScale = () => 1;
+  let setHeatScale = (_v: number): number => 1;
+  if (heatWrap && heatZoom) {
+    let heatScale = 1;
+    const applyHeat = (next: number) => {
+      heatScale = Math.max(1, Math.min(2.2, next));
+      heatZoom.style.transform = `scale(${heatScale})`;
+      heatWrap.style.overflow = heatScale > 1 ? "auto" : "";
+      if (zoombar) {
+        const out = zoombar.querySelector<HTMLButtonElement>("[data-heat-zoom-out]");
+        const rst = zoombar.querySelector<HTMLButtonElement>("[data-heat-zoom-reset]");
+        if (out) out.disabled = heatScale <= 1.01;
+        if (rst) rst.disabled = heatScale <= 1.01;
+      }
+      return heatScale;
+    };
+    getHeatScale = () => heatScale;
+    setHeatScale = applyHeat;
+    // wheel + pinch via helper
+    attachZoom(heatWrap, heatZoom, { min: 1, max: 2.2, step: 0.12, onChange: (s) => { heatScale = s; } });
+    // also keep zoombar buttons in sync on pinch
+    const syncBtns = () => {
+      const out = zoombar?.querySelector<HTMLButtonElement>("[data-heat-zoom-out]");
+      const rst = zoombar?.querySelector<HTMLButtonElement>("[data-heat-zoom-reset]");
+      if (out) out.disabled = heatScale <= 1.01;
+      if (rst) rst.disabled = heatScale <= 1.01;
+    };
+    heatWrap.addEventListener("wheel", () => syncBtns(), { passive: true });
+    zoombar?.querySelector<HTMLButtonElement>("[data-heat-zoom-in]")?.addEventListener("click", () => { applyHeat(heatScale + 0.18); });
+    zoombar?.querySelector<HTMLButtonElement>("[data-heat-zoom-out]")?.addEventListener("click", () => { applyHeat(heatScale - 0.18); });
+    zoombar?.querySelector<HTMLButtonElement>("[data-heat-zoom-reset]")?.addEventListener("click", () => { applyHeat(1); });
+  }
+  void getHeatScale;
+  void setHeatScale;
 
   const bucket = (v: number | null, domain: [number, number], invert: boolean): string => {
     if (v == null) return "";
@@ -569,6 +651,90 @@ function initHeatLens(data: Dataset): void {
     if (btn?.dataset.lens) setLens(btn.dataset.lens as "rate" | "strict" | "cost");
   });
 
+  type CellTip = { h: string; m: string; fam: string; rate: number | null; strict: number | null; cost: number | null; wall: number | null; tok: number | null; n: number };
+
+  const renderDetail = (cell: HTMLElement | null): void => {
+    if (!detail) return;
+    if (!cell || cell.dataset.bucket === "") {
+      const empty = cell != null;
+      if (empty) {
+        const [h, m, fam] = (cell.dataset.heatcell ?? "").split("|");
+        const s = data.stacks.find((x) => x.h === h && x.m === m);
+        detail.innerHTML =
+          `<div class="bb-heat-detail__head">` +
+          `<span class="bb-heat-detail__titles"><span class="bb-heat-detail__fam">${esc(fam ?? "")} · not yet measured</span><span class="bb-heat-detail__stack">${esc(s?.hd ?? h ?? "")} × ${esc(s?.mds ?? s?.md ?? m ?? "")}</span></span>` +
+          `<button class="bb-heat-detail__close" type="button" aria-label="Close">×</button></div>` +
+          `<p class="bb-heat-detail__cta">Experiential families stay dashed until Arena judgment lands. This cell has no measured n for the current export.</p>`;
+        detail.hidden = false;
+      } else {
+        detail.hidden = true;
+        detail.innerHTML = "";
+      }
+      return;
+    }
+    const [h, m, fam] = (cell.dataset.heatcell ?? "").split("|");
+    const s = data.stacks.find((x) => x.h === h && x.m === m);
+    const raw = (k: string): number | null => {
+      const v = cell.dataset[k];
+      return v == null || v === "" ? null : Number(v);
+    };
+    const rate = raw("rate");
+    const strict = raw("strict");
+    const cost = raw("cost");
+    const wall = raw("wall");
+    const tok = raw("tokens");
+    const n = Number(cell.dataset.n ?? "0");
+    const tps = wall != null && tok != null && wall > 0 ? tok / wall : null;
+    const lensLabel = activeLens === "cost" ? "Cost lens" : activeLens === "strict" ? "Strict lens" : "Solution lens";
+    detail.innerHTML =
+      `<div class="bb-heat-detail__head">` +
+      `<span class="bb-heat__rowbadges" aria-hidden="true">` +
+      (s?.hl ? `<span class="bb-heat__badge bb-heat__badge--h"><img src="${esc(s.hl)}" alt="" width="16" height="16"></span><span class="bb-heat__x">×</span>` : "") +
+      (s?.ml ? `<span class="bb-heat__badge bb-heat__badge--m"><img src="${esc(s.ml)}" alt="" width="16" height="16"></span>` : `<span class="bb-heat__badge"><span class="bb-badge__mono">${esc(s?.mm ?? "")}</span></span>`) +
+      `</span>` +
+      `<span class="bb-heat-detail__titles"><span class="bb-heat-detail__fam">${esc(fam ?? "")} · ${esc(lensLabel)} · ${esc(s?.hd ?? h ?? "")} × ${esc(s?.mds ?? s?.md ?? m ?? "")}</span><span class="bb-heat-detail__stack">${rate != null ? fmtPct(rate) : "—"} solution · strict ${strict != null ? fmtPct(strict) : "—"}</span></span>` +
+      `<button class="bb-heat-detail__close" type="button" aria-label="Close">×</button></div>` +
+      `<div class="bb-heat-detail__grid">` +
+      `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Solution</span><span class="bb-heat-detail__v bb-heat-detail__v--hi">${rate != null ? fmtPct(rate) : "—"}</span></span>` +
+      `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Strict</span><span class="bb-heat-detail__v">${strict != null ? fmtPct(strict) : "—"}</span></span>` +
+      `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Cost / task</span><span class="bb-heat-detail__v">${cost != null ? fmtCost(cost) : "—"}</span></span>` +
+      `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Tokens</span><span class="bb-heat-detail__v">${tok != null ? fmtTokens(tok) : "—"}</span></span>` +
+      `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Wall</span><span class="bb-heat-detail__v">${wall != null ? fmtWall(wall) : "—"}</span></span>` +
+      `<span class="bb-heat-detail__stat"><span class="bb-heat-detail__k">Typical TPS</span><span class="bb-heat-detail__v">${tps != null ? `${tps.toFixed(1)} tok/s` : "—"}</span></span>` +
+      `</div>` +
+      `<div class="bb-heat-detail__meta"><span>n ${n} cells</span><span>${esc(s?.hd ?? "")} harness</span><span>${esc(s?.md ?? "")} provider</span><span>${cost != null && cost < 0.01 ? "free-tier slice" : s?.ev ?? ""}</span></div>`;
+    detail.hidden = false;
+  };
+  void ((): CellTip | null => null)();
+
+  // provider-aware hover: show family + provider quickly, full card on click
+  const hoverTip = document.createElement("div");
+  hoverTip.className = "bb-heat-tip";
+  hoverTip.hidden = true;
+  hoverTip.setAttribute("role", "status");
+  hoverTip.setAttribute("aria-live", "polite");
+  hoverTip.style.pointerEvents = "none";
+  frame?.appendChild(hoverTip);
+  grid.addEventListener("pointerover", (ev) => {
+    const cell = (ev.target as HTMLElement).closest<HTMLElement>("[data-heatcell]");
+    if (!cell || cell.dataset.bucket === "") return;
+    const [h, m, fam] = (cell.dataset.heatcell ?? "").split("|");
+    const s = data.stacks.find((x) => x.h === h && x.m === m);
+    const rate = cell.dataset.rate ? fmtPct(Number(cell.dataset.rate)) : "—";
+    hoverTip.textContent = `${fam} · ${s?.hd ?? h} × ${s?.mds ?? m} · ${rate}`;
+    hoverTip.hidden = false;
+  });
+  grid.addEventListener("pointerout", (ev) => {
+    const rel = ev.relatedTarget as HTMLElement | null;
+    if (rel?.closest?.("[data-heatcell]")) return;
+    hoverTip.hidden = true;
+  });
+  detail?.querySelector(".bb-heat-detail__close")?.addEventListener("click", () => { if (detail) { detail.hidden = true; } });
+  frame?.addEventListener("click", (ev) => {
+    const close = (ev.target as HTMLElement).closest<HTMLButtonElement>(".bb-heat-detail__close");
+    if (close && detail) { detail.hidden = true; return; }
+  });
+
   grid.addEventListener("click", (ev) => {
     const col = (ev.target as HTMLElement).closest<HTMLElement>("[data-heatcol]");
     if (col?.dataset.heatcol) {
@@ -590,23 +756,27 @@ function initHeatLens(data: Dataset): void {
     if (cell?.dataset.heatcell) {
       const [h, m, fam] = (cell.dataset.heatcell ?? "").split("|");
       const rowKey = `${h}|${m}`;
-      // clicking a cell pins that intersection: row + col
-      if (activeRow === rowKey && activeCol === fam) {
+      // clicking a cell pins that intersection: row + col + opens detail card
+      if (activeRow === rowKey && activeCol === fam && detail && !detail.hidden) {
         activeRow = null;
         activeCol = null;
+        detail.hidden = true;
       } else {
         activeRow = rowKey;
         activeCol = fam ?? null;
+        renderDetail(cell);
       }
       applyFocus();
     }
   });
 
-  // ESC clears focus
+  // ESC clears focus + detail
   frame?.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && (activeRow || activeCol)) {
+    if (ev.key === "Escape" && (activeRow || activeCol || (detail && !detail.hidden))) {
       activeRow = null;
       activeCol = null;
+      if (detail) detail.hidden = true;
+      hoverTip.hidden = true;
       applyFocus();
     }
   });
@@ -615,6 +785,8 @@ function initHeatLens(data: Dataset): void {
     if (ev.target === frame) {
       activeRow = null;
       activeCol = null;
+      if (detail) detail.hidden = true;
+      hoverTip.hidden = true;
       applyFocus();
     }
   });
@@ -1074,6 +1246,7 @@ function initAsk(data: Dataset): void {
 function initPareto(data: Dataset): void {
   const root = document.querySelector<HTMLElement>("[data-bb-pareto]");
   const svg = root?.querySelector<HTMLElement>("[data-bb-pareto-svg]");
+  const stage = root?.querySelector<HTMLElement>("[data-bb-pareto-stage]");
   const tip = root?.querySelector<HTMLElement>("[data-bb-pareto-tip]");
   const compare = root?.querySelector<HTMLElement>("[data-bb-pareto-compare]");
   const cards = root?.querySelector<HTMLElement>("[data-bb-pareto-cards]");
@@ -1081,6 +1254,22 @@ function initPareto(data: Dataset): void {
   const clearBtn = root?.querySelector<HTMLButtonElement>("[data-bb-pareto-clear]");
   const resetBtn = root?.querySelector<HTMLButtonElement>("[data-bb-pareto-reset]");
   if (!root || !svg || !tip || !compare || !cards) return;
+  // zoom: stage is scroll container so transform doesn't clip the glass tip
+  let paretoScale = 1;
+  const setParetoScale = (next: number) => {
+    paretoScale = Math.max(1, Math.min(2.4, next));
+    svg.style.transform = `scale(${paretoScale})`;
+    if (stage) stage.style.overflow = paretoScale > 1 ? "auto" : "";
+    root.classList.toggle("is-zoomed", paretoScale > 1.02);
+    const out = root.querySelector<HTMLButtonElement>("[data-pareto-zoom-out]");
+    const rst = root.querySelector<HTMLButtonElement>("[data-pareto-zoom-reset]");
+    if (out) out.disabled = paretoScale <= 1.01;
+    if (rst) rst.disabled = paretoScale <= 1.01;
+  };
+  if (stage) attachZoom(stage, svg, { min: 1, max: 2.4, step: 0.14, onChange: (s) => { paretoScale = s; root.classList.toggle("is-zoomed", s > 1.02); } });
+  root.querySelector<HTMLButtonElement>("[data-pareto-zoom-in]")?.addEventListener("click", () => setParetoScale(paretoScale + 0.18));
+  root.querySelector<HTMLButtonElement>("[data-pareto-zoom-out]")?.addEventListener("click", () => setParetoScale(paretoScale - 0.18));
+  root.querySelector<HTMLButtonElement>("[data-pareto-zoom-reset]")?.addEventListener("click", () => setParetoScale(1));
 
   const byKey = new Map(data.stacks.map((s) => [`${s.h}|${s.m}`, s]));
   const pinned = new Set<string>();
@@ -1106,9 +1295,12 @@ function initPareto(data: Dataset): void {
   const showTip = (key: string | null): void => {
     if (!key || !byKey.has(key)) { tip.hidden = true; return; }
     const s = byKey.get(key)!;
+    const wall = s.wall;
+    const tok = s.tok;
+    const tps = wall != null && tok != null && wall > 0 ? tok / wall : null;
     tip.innerHTML =
-      `<span><strong>${esc(s.hd)} × ${esc(s.mds)}</strong> · <em>${fmtPct(s.sol)}</em> solution · strict ${fmtPct(s.str)} · <em>${fmtCost(s.cost)}/task</em> · n ${s.n}</span>` +
-      `<span style="opacity:0.7" class="mono">${s.ev === "inferred" ? "inferred" : "measured"}${s.conf === "low" ? " · low conf" : ""}</span>`;
+      `<span><strong>${esc(s.hd)} × ${esc(s.mds)}</strong> · <em>${fmtPct(s.sol)}</em> sol · strict ${fmtPct(s.str)} · <em>${fmtCost(s.cost)}/task</em></span>` +
+      `<span class="mono" style="opacity:0.78">${fmtWall(wall)} · ${fmtTokens(tok)} tok${tps != null ? ` · ${tps.toFixed(1)} tok/s` : ""} · n ${s.n} · ${s.ev === "inferred" ? "inferred" : "measured"}${s.conf === "low" ? " · low conf" : ""}</span>`;
     tip.hidden = false;
   };
 
@@ -1124,14 +1316,15 @@ function initPareto(data: Dataset): void {
     compare.hidden = false;
     cards.innerHTML = list.map((s) => {
       const logo = s.hl ?? s.ml;
+      const tps = s.wall != null && s.tok != null && s.wall > 0 ? s.tok / s.wall : null;
       return (
         `<div class="bb-pareto__card m--${esc(s.m.replace(/[^a-z0-9-]/g, ""))}" style="--mc:${esc(s.mc)}">` +
         `<button class="bb-pareto__cardx" type="button" data-pareto-unpin="${esc(`${s.h}|${s.m}`)}" aria-label="Remove ${esc(s.hd)} × ${esc(s.mds)}">×</button>` +
         `<div class="bb-pareto__cardhead">${logo ? `<img src="${esc(logo)}" alt="" width="18" height="18" loading="lazy" decoding="async">` : ""}${esc(s.hd)} × ${esc(s.mds)}</div>` +
         `<div class="bb-pareto__cardmeta">` +
-        `<span><strong>${fmtPct(s.sol)}</strong> solution · strict ${fmtPct(s.str)}</span>` +
+        `<span><strong>${fmtPct(s.sol)}</strong> sol · strict ${fmtPct(s.str)}</span>` +
         `<span><strong>${fmtCost(s.cost)}/task</strong>${s.cstd != null ? ` · std ${fmtCost(s.cstd)}` : ""} · n ${s.n}</span>` +
-        `<span>wall ${fmtWall(s.wall)} · ${fmtTokens(s.tok)} tokens · ${s.ev}${s.conf === "low" ? " · low conf" : ""}</span>` +
+        `<span>${fmtTokens(s.tok)} tok · ${fmtWall(s.wall)}${tps != null ? ` · ${tps.toFixed(1)} tok/s` : ""} · ${s.ev}${s.conf === "low" ? " · low conf" : ""}</span>` +
         `</div></div>`
       );
     }).join("");
