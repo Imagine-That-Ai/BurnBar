@@ -26,7 +26,7 @@ public sealed class TokenUsageWriteRoundTripTests
     private const string ExpectedSchemaHash =
         "90baa98a7e1dbe2c0afc39962ab80383b555e003193c470798fb1c0f9c3160c0";
     private const string ExpectedMigrationEndpoint = "v59_founder_lens";
-    private const long ExpectedMigrationCount = 59;
+    private const long ExpectedMigrationCount = 60;
     private const long ExpectedUserVersion = 0;
 
     private static string FixtureSource =>
