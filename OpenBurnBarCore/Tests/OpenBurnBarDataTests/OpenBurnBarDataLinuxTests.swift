@@ -304,6 +304,50 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
         XCTAssertEqual(try reopened.count(sql: "SELECT COUNT(*) FROM token_usage"), 1)
     }
 
+    /// v60 billing provenance through the Linux write seam. `recordUsage` used to
+    /// omit `billingKind` entirely, so every Linux-written row sat at the
+    /// `'unknown'` schema default forever and the api-vs-plan split was empty on
+    /// Linux even though the column existed. Proven here — inside the suite the
+    /// Linux swift-test manifest actually runs — that a stamped kind and a derived
+    /// kind both reach the encrypted file and survive a reopen.
+    /// `OpenBurnBarBillingProvenanceTests` proves the classifier itself agrees with
+    /// the migration's own backfill SQL for every provider/usageSource combination.
+    public func testUsageRowsPersistBillingProvenanceAcrossReopen() throws {
+        let directory = try makeTempDirectory()
+        let path = directory.appendingPathComponent("billing-provenance.sqlite").path
+        let database = try openDatabase(path: path, passphrase: passphrase)
+
+        // Derived at write time from provider + usageSource…
+        var planRow = usageRow(id: "usage-plan", sessionID: "session-plan")
+        planRow.usageSource = "provider_log"
+        try database.recordUsage(planRow)
+
+        // …and an explicit stamp, which must win over the derivation.
+        var stampedRow = usageRow(id: "usage-stamped", sessionID: "session-stamped")
+        stampedRow.usageSource = "provider_log"
+        stampedRow.billingKind = OpenBurnBarBillingProvenance.api
+        stampedRow.providerAccountID = "acct-stamped"
+        try database.recordUsage(stampedRow)
+
+        try database.close()
+
+        let reopened = try openDatabase(path: path, passphrase: passphrase)
+        defer { try? reopened.close() }
+        XCTAssertEqual(
+            try reopened.count(sql: "SELECT COUNT(*) FROM token_usage WHERE id = 'usage-plan' AND billingKind = 'subscription'"),
+            1
+        )
+        XCTAssertEqual(
+            try reopened.count(sql: "SELECT COUNT(*) FROM token_usage WHERE id = 'usage-stamped' AND billingKind = 'api'"),
+            1
+        )
+        XCTAssertEqual(
+            try reopened.count(sql: "SELECT COUNT(*) FROM token_usage WHERE billingKind = 'unknown'"),
+            0,
+            "the Linux write seam must stamp provenance, not leave rows at the column default"
+        )
+    }
+
     private func openDatabase(path: String, passphrase: String) throws -> OpenBurnBarLocalDatabase {
         try OpenBurnBarLocalDatabase.open(
             path: path,

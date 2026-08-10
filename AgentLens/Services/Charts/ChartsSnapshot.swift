@@ -79,6 +79,12 @@ struct ChartsSnapshot: Equatable, Sendable {
     let apiBurnSeries: [ChartBucketing.DateBucket]
     /// Burn series restricted to plan-covered (subscription) imputed value.
     let subscriptionBurnSeries: [ChartBucketing.DateBucket]
+    /// Burn series for spend that resisted classification.
+    ///
+    /// Carried as a series and not only a total so every lens mode can *draw*
+    /// it. Split previously showed only API and Plan, which silently dropped
+    /// this bucket from both the curves and the headline total.
+    let unknownBurnSeries: [ChartBucketing.DateBucket]
     let apiCost: Double
     let subscriptionCost: Double
     /// Cost that resisted classification. Surfaced in copy when non-zero —
@@ -184,12 +190,15 @@ extension ChartsSnapshot {
         }
         var apiRows: [TokenUsage] = []
         var subscriptionRows: [TokenUsage] = []
-        var unknownBillingCost: Double = 0
+        // Kept as rows, not just a running total, so Split can draw the
+        // unclassified curve rather than only naming its total. A bucket the
+        // lens cannot draw is a bucket the lens hides.
+        var unknownRows: [TokenUsage] = []
         for row in rows {
             switch effectiveBillingKind(row) {
             case .api: apiRows.append(row)
             case .subscription: subscriptionRows.append(row)
-            case .unknown: unknownBillingCost += row.cost
+            case .unknown: unknownRows.append(row)
             }
         }
         let apiBurnSeries = ChartBucketing.dateBuckets(
@@ -200,8 +209,13 @@ extension ChartsSnapshot {
             events: subscriptionRows.map { (date: attributionDate(for: $0, in: range), value: $0.cost) },
             range: range, component: bucketComponent, calendar: calendar
         )
+        let unknownBurnSeries = ChartBucketing.dateBuckets(
+            events: unknownRows.map { (date: attributionDate(for: $0, in: range), value: $0.cost) },
+            range: range, component: bucketComponent, calendar: calendar
+        )
         let apiCost = apiRows.reduce(0) { $0 + $1.cost }
         let subscriptionCost = subscriptionRows.reduce(0) { $0 + $1.cost }
+        let unknownBillingCost = unknownRows.reduce(0) { $0 + $1.cost }
 
         let totalCost = rows.reduce(0) { $0 + $1.cost }
         let totalTokens = rows.reduce(0) { $0 + $1.totalTokens }
@@ -334,6 +348,7 @@ extension ChartsSnapshot {
             burnTrendPercent: halfOverHalfPercent(burnSeries.map(\.value)),
             apiBurnSeries: apiBurnSeries,
             subscriptionBurnSeries: subscriptionBurnSeries,
+            unknownBurnSeries: unknownBurnSeries,
             apiCost: apiCost,
             subscriptionCost: subscriptionCost,
             unknownBillingCost: unknownBillingCost,

@@ -327,8 +327,9 @@ public final class OpenBurnBarLocalDatabase: @unchecked Sendable {
                     cost, startTime, endTime, createdAt,
                     executionSourceID, executionSourceName, executionSourceKind,
                     executionSourceConfidence, providerID,
-                    providerAccountID, providerAccountLabel, providerAccountSource
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    providerAccountID, providerAccountLabel, providerAccountSource,
+                    usageSource, billingKind
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: usage.databaseArguments
             )
@@ -728,6 +729,26 @@ public struct OpenBurnBarUsageRow: Equatable, Sendable {
     public var providerAccountLabel: String
     public var providerAccountSource: String
 
+    /// How BurnBar ingested this row (a `UsageSource` raw value). Defaults to the
+    /// `token_usage` schema default, so a caller that never set it writes exactly
+    /// what the column would have defaulted to before this field existed.
+    public var usageSource: String
+
+    /// Billing provenance (`api` / `subscription` / `unknown`) — v60. `nil` means
+    /// "classify me at write time" and the seam derives it from `provider` +
+    /// `usageSource` via `OpenBurnBarBillingProvenance.classify`, the same stamp
+    /// the macOS `UsageStore.upsertUsage` and the Windows write seam apply. Set it
+    /// explicitly only when the caller already knows the kind from its ingest route.
+    public var billingKind: String?
+
+    /// The kind actually persisted: the stamped value, else the classifier's.
+    public var effectiveBillingKind: String {
+        billingKind ?? OpenBurnBarBillingProvenance.classify(
+            provider: provider,
+            usageSource: usageSource
+        )
+    }
+
     public init(
         id: String,
         provider: String,
@@ -750,7 +771,9 @@ public struct OpenBurnBarUsageRow: Equatable, Sendable {
         providerID: String,
         providerAccountID: String,
         providerAccountLabel: String,
-        providerAccountSource: String
+        providerAccountSource: String,
+        usageSource: String = "unknown",
+        billingKind: String? = nil
     ) {
         self.id = id
         self.provider = provider
@@ -774,6 +797,8 @@ public struct OpenBurnBarUsageRow: Equatable, Sendable {
         self.providerAccountID = providerAccountID
         self.providerAccountLabel = providerAccountLabel
         self.providerAccountSource = providerAccountSource
+        self.usageSource = usageSource
+        self.billingKind = billingKind
     }
 
     var databaseArguments: StatementArguments {
@@ -783,7 +808,8 @@ public struct OpenBurnBarUsageRow: Equatable, Sendable {
             cost, startTime, endTime, createdAt,
             executionSourceID, executionSourceName, executionSourceKind,
             executionSourceConfidence, providerID,
-            providerAccountID, providerAccountLabel, providerAccountSource
+            providerAccountID, providerAccountLabel, providerAccountSource,
+            usageSource, effectiveBillingKind
         ]
     }
 }

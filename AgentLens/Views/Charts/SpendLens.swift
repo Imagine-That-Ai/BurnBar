@@ -105,6 +105,11 @@ struct SpendLensBurnBody: View {
     let snapshot: ChartsSnapshot
     let mode: SpendLensMode
 
+    /// Below half a cent, disclosing an unclassified bucket costs more
+    /// attention than the money is worth. Shared by the pane, the legend, and
+    /// the card headline so all three agree about when it exists.
+    static let disclosureFloor: Double = 0.005
+
     private var sharedCeiling: Double {
         let apiMax = snapshot.apiBurnSeries.map(\.value).max() ?? 0
         let subMax = snapshot.subscriptionBurnSeries.map(\.value).max() ?? 0
@@ -129,6 +134,21 @@ struct SpendLensBurnBody: View {
                     values: snapshot.subscriptionBurnSeries.map(\.value),
                     accent: DesignSystem.Colors.planSpend
                 )
+                // Unclassified spend gets its own pane rather than being
+                // dropped. Split used to render API and Plan only, so this
+                // money vanished from the curves *and* the headline while
+                // Overlay showed it — the two modes disagreed about how much
+                // had been spent. The pane appears only when there is
+                // something to disclose, so the usual two-pane split is
+                // unchanged.
+                if snapshot.unknownBillingCost > Self.disclosureFloor {
+                    splitPane(
+                        title: "UNCLASSIFIED",
+                        total: snapshot.unknownBillingCost,
+                        values: snapshot.unknownBurnSeries.map(\.value),
+                        accent: DesignSystem.Colors.textSecondary
+                    )
+                }
             }
         case .overlay:
             VStack(alignment: .leading, spacing: 4) {
@@ -151,7 +171,7 @@ struct SpendLensBurnBody: View {
                 HStack(spacing: DesignSystem.Spacing.md) {
                     legendChip("API \(snapshot.apiCost.formatAsCost())", DesignSystem.Colors.ember)
                     legendChip("Plan \(snapshot.subscriptionCost.formatAsCost())", DesignSystem.Colors.planSpend)
-                    if snapshot.unknownBillingCost > 0.005 {
+                    if snapshot.unknownBillingCost > Self.disclosureFloor {
                         legendChip(
                             "Unclassified \(snapshot.unknownBillingCost.formatAsCost())",
                             DesignSystem.Colors.textMuted

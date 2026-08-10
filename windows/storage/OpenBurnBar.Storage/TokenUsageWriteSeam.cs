@@ -86,7 +86,8 @@ public static class TokenUsageWriteSeam
                 executionSourceKind, executionSourceConfidence,
                 sourceDeviceId, sourceDeviceName, isRemote,
                 providerID, providerAccountID, providerAccountLabel, providerAccountSource,
-                provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID
+                provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID,
+                billingKind
             ) VALUES (
                 $id, $provider, $sessionId, $projectName, $model,
                 $inputTokens, $outputTokens, $cacheCreationTokens, $cacheReadTokens,
@@ -95,7 +96,8 @@ public static class TokenUsageWriteSeam
                 $executionSourceKind, $executionSourceConfidence,
                 $sourceDeviceId, $sourceDeviceName, $isRemote,
                 $providerID, $providerAccountID, $providerAccountLabel, $providerAccountSource,
-                $provenanceMethod, $provenanceConfidence, $estimatorVersion, $parentRequestID
+                $provenanceMethod, $provenanceConfidence, $estimatorVersion, $parentRequestID,
+                $billingKind
             )
             ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, '')) DO UPDATE SET
                 projectName = excluded.projectName,
@@ -156,7 +158,14 @@ public static class TokenUsageWriteSeam
                             WHEN 'exact' THEN 4 WHEN 'derived_exact' THEN 3
                             WHEN 'high_confidence_estimate' THEN 2
                             WHEN 'low_confidence_estimate' THEN 1 ELSE 0 END
-                    THEN excluded.executionSourceConfidence ELSE token_usage.executionSourceConfidence END
+                    THEN excluded.executionSourceConfidence ELSE token_usage.executionSourceConfidence END,
+                -- Billing provenance is sticky, exactly as in UsageStore+Upsert.swift:
+                -- a classified kind survives an unknown-carrying correction, but a
+                -- classified incoming row may correct a stale unknown.
+                billingKind = CASE
+                    WHEN excluded.billingKind != 'unknown' THEN excluded.billingKind
+                    ELSE token_usage.billingKind
+                END
             """;
 
         Bind(command, "$id", record.Id);
@@ -190,6 +199,10 @@ public static class TokenUsageWriteSeam
         Bind(command, "$provenanceConfidence", record.ProvenanceConfidence);
         Bind(command, "$estimatorVersion", record.EstimatorVersion);
         Bind(command, "$parentRequestID", (object?)record.ParentRequestID ?? DBNull.Value);
+        // Stamp at write time; derive for callers that didn't classify — the peer of
+        // the Mac UsageStore.upsertUsage stamp, so a Windows-written row carries the
+        // same provenance a Mac-written row would.
+        Bind(command, "$billingKind", record.EffectiveBillingKind);
 
         return command.ExecuteNonQuery();
     }
@@ -210,7 +223,8 @@ public static class TokenUsageWriteSeam
                    executionSourceKind, executionSourceConfidence,
                    sourceDeviceId, sourceDeviceName, isRemote,
                    providerID, providerAccountID, providerAccountLabel, providerAccountSource,
-                   provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID
+                   provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID,
+                   billingKind
             FROM token_usage WHERE id = $id
             """;
         Bind(command, "$id", id);
@@ -254,6 +268,7 @@ public static class TokenUsageWriteSeam
             ProvenanceConfidence = reader.GetString(28),
             EstimatorVersion = reader.GetString(29),
             ParentRequestID = reader.IsDBNull(30) ? null : reader.GetString(30),
+            BillingKind = reader.GetString(31),
         };
     }
 

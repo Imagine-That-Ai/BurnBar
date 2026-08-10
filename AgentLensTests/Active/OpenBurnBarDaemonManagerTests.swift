@@ -971,6 +971,94 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(usage.executionSourceConfidence, .derivedExact)
     }
 
+    /// A daemon event that explicitly says `.subscription` must reach the store
+    /// saying `.subscription`. Dropping the stamp here let the write-time
+    /// fallback re-derive `.api` from `usageSource == .daemon`, so plan-covered
+    /// work was billed as real wallet spend in Spend Lens.
+    func test_usageSync_runtimeSnapshotPreservesStampedBillingKind() throws {
+        let harness = try makeRuntimePathsHarness(name: "runtime-billing-kind")
+        defer { harness.cleanup() }
+
+        func event(sessionID: String, billingKind: BurnBarBillingKind?) -> BurnBarUsageEvent {
+            BurnBarUsageEvent(
+                providerID: "codex",
+                modelID: "gpt-5.6-codex",
+                inputTokens: 100,
+                outputTokens: 20,
+                cacheReadTokens: 10,
+                cost: 1,
+                recordedAt: Date(timeIntervalSince1970: 1_784_592_000),
+                sessionID: sessionID,
+                projectName: "OpenBurnBar",
+                billingKind: billingKind
+            )
+        }
+        let service = OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+
+        let snapshot = service.runtimeSnapshot(
+            from: BurnBarProviderConfigurationSnapshot(providers: []),
+            usageEvents: [
+                event(sessionID: "sub-route", billingKind: .subscription),
+                event(sessionID: "api-route", billingKind: .api),
+                event(sessionID: "legacy-route", billingKind: nil)
+            ]
+        )
+
+        let imported = Dictionary(
+            uniqueKeysWithValues: snapshot.importedUsages.map { ($0.sessionId, $0.billingKind) }
+        )
+        XCTAssertEqual(imported["sub-route"], .subscription)
+        XCTAssertEqual(imported["api-route"], .api)
+        // Unstamped legacy rows keep resolving through the provider classifier;
+        // "codex" is not an API-key daemon slot, so it stays honestly unknown
+        // and the store's `.daemon` fallback classifies it exactly as before.
+        XCTAssertEqual(imported["legacy-route"], .unknown)
+    }
+
+    /// Same guarantee on the on-disk ledger path (`refreshState`), which is the
+    /// conversion the app actually runs when the daemon socket is unavailable.
+    func test_usageSync_ledgerImportPreservesStampedBillingKind() async throws {
+        let harness = try makeRuntimePathsHarness(name: "ledger-billing-kind")
+        defer { harness.cleanup() }
+
+        let encoder = JSONEncoder()
+        func line(key: String, sessionID: String, billingKind: BurnBarBillingKind?) throws -> String {
+            try encodedUsageRecordLine(
+                idempotencyKey: key,
+                event: BurnBarUsageEvent(
+                    providerID: "codex",
+                    modelID: "gpt-5.6-codex",
+                    inputTokens: 80,
+                    outputTokens: 40,
+                    cacheReadTokens: 0,
+                    cost: 0.5,
+                    recordedAt: Date(timeIntervalSince1970: 1_784_592_100),
+                    sessionID: sessionID,
+                    projectName: "OpenBurnBar",
+                    billingKind: billingKind
+                ),
+                encoder: encoder
+            )
+        }
+        try [
+            line(key: "ledger-sub", sessionID: "ledger-sub-route", billingKind: .subscription),
+            line(key: "ledger-api", sessionID: "ledger-api-route", billingKind: .api),
+            line(key: "ledger-legacy", sessionID: "ledger-legacy-route", billingKind: nil)
+        ]
+        .joined(separator: "\n")
+        .appending("\n")
+        .write(to: harness.paths.usageLedgerURL, atomically: true, encoding: .utf8)
+
+        var inserted: [TokenUsage] = []
+        let service = OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        _ = service.refreshState(insertUsages: { inserted.append(contentsOf: $0) })
+
+        let imported = Dictionary(uniqueKeysWithValues: inserted.map { ($0.sessionId, $0.billingKind) })
+        XCTAssertEqual(imported["ledger-sub-route"], .subscription)
+        XCTAssertEqual(imported["ledger-api-route"], .api)
+        XCTAssertEqual(imported["ledger-legacy-route"], .unknown)
+    }
+
     func test_usageSync_importsHermesLedgerRowsAsHermesProvider() async throws {
         let harness = try makeRuntimePathsHarness(name: "hermes-import")
         defer { harness.cleanup() }

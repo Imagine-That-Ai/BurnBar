@@ -130,11 +130,38 @@ extension UsageStore {
                     -- elderwand parentRequestID, a later non-daemon correction
                     -- (which carries NULL) must not erase it.
                     parentRequestID = COALESCE(excluded.parentRequestID, token_usage.parentRequestID),
-                    -- Billing provenance is sticky the same way: a classified
-                    -- kind survives an unknown-carrying correction, but a
-                    -- classified incoming row may correct a stale unknown.
+                    -- Billing provenance follows the SAME source/confidence
+                    -- precedence the `usageSource` arm above applies, because
+                    -- the kind describes the source that the row retains. An
+                    -- unknown-carrying correction never erases a classified
+                    -- kind; a stale unknown is always improvable; a strictly
+                    -- higher-confidence source re-classifies; an
+                    -- equal-confidence source may re-classify only when it
+                    -- speaks for the source the row already records. Without
+                    -- that last gate an exact Codex provider-log correction
+                    -- would flip a confirmed `billing_api` wallet charge into
+                    -- plan value while `usageSource` still said `billing_api`.
                     billingKind = CASE
-                        WHEN excluded.billingKind != 'unknown' THEN excluded.billingKind
+                        WHEN excluded.billingKind = 'unknown' THEN token_usage.billingKind
+                        WHEN token_usage.billingKind = 'unknown' THEN excluded.billingKind
+                        WHEN
+                            CASE excluded.provenanceConfidence
+                                WHEN 'exact' THEN 4
+                                WHEN 'derived_exact' THEN 3
+                                WHEN 'high_confidence_estimate' THEN 2
+                                WHEN 'low_confidence_estimate' THEN 1
+                                ELSE 0
+                            END
+                            >
+                            CASE token_usage.provenanceConfidence
+                                WHEN 'exact' THEN 4
+                                WHEN 'derived_exact' THEN 3
+                                WHEN 'high_confidence_estimate' THEN 2
+                                WHEN 'low_confidence_estimate' THEN 1
+                                ELSE 0
+                            END
+                        THEN excluded.billingKind
+                        WHEN excluded.usageSource = token_usage.usageSource THEN excluded.billingKind
                         ELSE token_usage.billingKind
                     END,
                     syncedAt = NULL
@@ -179,6 +206,9 @@ extension UsageStore {
                         -- fusion parentRequestID a prior row lacked.
                         OR (excluded.parentRequestID IS NOT NULL
                             AND COALESCE(token_usage.parentRequestID, '') != excluded.parentRequestID)
+                        -- A differing kind is a reason to run the write; whether
+                        -- it actually replaces the stored one is decided by the
+                        -- precedence CASE in the SET clause above.
                         OR (excluded.billingKind != 'unknown'
                             AND token_usage.billingKind != excluded.billingKind)
                     )
