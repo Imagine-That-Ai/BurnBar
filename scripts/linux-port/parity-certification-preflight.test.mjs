@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -29,6 +29,57 @@ const RELEASE_ONLY = new Set(['P-01', 'P-03', 'P-04', 'P-37', 'P-38']);
 const OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY = 'OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY';
 const PRIVATE_TMP_ROOT = fs.realpathSync('/private/tmp');
 const GIT_FIXTURE_DATE = '2026-08-10T00:00:00Z';
+const ownedTemporaryDirectories = new Set();
+let processCleanupHandlersInstalled = false;
+
+function cleanupExitCodeForSignal(signal) {
+  return 128 + (os.constants.signals[signal] ?? 1);
+}
+
+function directoryKey(directory) {
+  try {
+    return fs.realpathSync(directory);
+  } catch {
+    return path.resolve(directory);
+  }
+}
+
+function cleanupOwnedTemporaryDirectories() {
+  for (const directory of [...ownedTemporaryDirectories].sort((left, right) => right.length - left.length)) {
+    try {
+      fs.rmSync(directory, { recursive: true, force: true });
+    } finally {
+      ownedTemporaryDirectories.delete(directory);
+    }
+  }
+}
+
+function installProcessCleanupHandlers() {
+  if (processCleanupHandlersInstalled) return;
+  processCleanupHandlersInstalled = true;
+  process.once('exit', cleanupOwnedTemporaryDirectories);
+  for (const signal of ['SIGHUP', 'SIGINT', 'SIGTERM']) {
+    process.once(signal, () => {
+      cleanupOwnedTemporaryDirectories();
+      process.exit(cleanupExitCodeForSignal(signal));
+    });
+  }
+}
+
+function registerTemporaryDirectory(directory) {
+  installProcessCleanupHandlers();
+  ownedTemporaryDirectories.add(directoryKey(directory));
+  return directory;
+}
+
+function removeTemporaryDirectory(directory) {
+  const key = directoryKey(directory);
+  try {
+    fs.rmSync(key, { recursive: true, force: true });
+  } finally {
+    ownedTemporaryDirectories.delete(key);
+  }
+}
 
 function withCollectorConcurrency(value, callback) {
   const previous = process.env[OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY];
@@ -55,7 +106,7 @@ function withPrivateTmpRoot(callback) {
 }
 
 function makePrivateTempDir(prefix) {
-  return fs.mkdtempSync(path.join(PRIVATE_TMP_ROOT, prefix));
+  return registerTemporaryDirectory(fs.mkdtempSync(path.join(PRIVATE_TMP_ROOT, prefix)));
 }
 
 
@@ -77,8 +128,9 @@ after(async () => {
     // The test that awaited fixture creation owns the failure; the suite hook still cleans up.
   }
   if (sharedOwnershipFixtureRoot) {
-    fs.rmSync(sharedOwnershipFixtureRoot, { recursive: true, force: true });
+    removeTemporaryDirectory(sharedOwnershipFixtureRoot);
   }
+  cleanupOwnedTemporaryDirectories();
   sharedOwnershipFixture = undefined;
   sharedOwnershipFixturePromise = undefined;
   sharedOwnershipFixtureRoot = undefined;
@@ -189,7 +241,7 @@ function assertSharedOwnershipFixture(fixture) {
   );
 }
 
-function copySubjectSnapshot(sourceSubject, root) {
+function copySubjectSnapshotFallback(sourceSubject, root) {
   fs.cpSync(sourceSubject.root, root, {
     recursive: true,
     dereference: false,
@@ -206,6 +258,38 @@ function copySubjectSnapshot(sourceSubject, root) {
   git(root, ['config', 'gc.auto', '0']);
   git(root, ['add', '.']);
   git(root, ['commit', '-qm', 'complete parity inventory']);
+}
+
+function copySubjectSnapshot(sourceSubject, root) {
+  const cloned = spawnSync('git', [
+    'clone', '--quiet', '--shared', '--no-tags', sourceSubject.root, root
+  ], {
+    cwd: PRIVATE_TMP_ROOT,
+    encoding: 'utf8',
+    timeout: 60_000,
+    env: {
+      ...process.env,
+      GIT_AUTHOR_DATE: GIT_FIXTURE_DATE,
+      GIT_COMMITTER_DATE: GIT_FIXTURE_DATE
+    }
+  });
+  if (cloned.error || cloned.status !== 0 || !fs.existsSync(path.join(root, '.git'))) {
+    fs.rmSync(root, { recursive: true, force: true });
+    copySubjectSnapshotFallback(sourceSubject, root);
+  } else {
+    git(root, ['checkout', '--quiet', sourceSubject.head]);
+    git(root, ['config', 'user.name', 'OpenBurnBar Test']);
+    git(root, ['config', 'user.email', 'test@openburnbar.invalid']);
+    git(root, ['config', 'gc.auto', '0']);
+    if (sourceSubject.inputRelative) {
+      fs.cpSync(path.join(sourceSubject.root, sourceSubject.inputRelative), path.join(root, sourceSubject.inputRelative), {
+        recursive: true,
+        dereference: false,
+        preserveTimestamps: true,
+        mode: fs.constants.COPYFILE_FICLONE
+      });
+    }
+  }
   assert.equal(git(root, ['rev-parse', 'HEAD']), sourceSubject.head, 'private clone HEAD');
 }
 
@@ -220,7 +304,7 @@ function cloneSubjectForCollector(subject, label) {
       inputRoot: path.join(root, subject.inputRelative),
       aggregatePath: path.join(root, path.relative(subject.root, subject.aggregatePath))
     },
-    cleanup: () => fs.rmSync(cloneParent, { recursive: true, force: true })
+    cleanup: () => removeTemporaryDirectory(cloneParent)
   };
 }
 
@@ -317,7 +401,7 @@ async function getSharedOwnershipFixture() {
 
 function privateCloneSubject(t, fixture) {
   const cloneParent = makePrivateTempDir('openburnbar-parity-preflight-clone-');
-  t.after(() => fs.rmSync(cloneParent, { recursive: true, force: true }));
+  t.after(() => removeTemporaryDirectory(cloneParent));
   const root = path.join(cloneParent, 'repo');
   copySubjectSnapshot(fixture.subject, root);
   return {
@@ -643,110 +727,115 @@ function registry() {
 }
 
 function createRepository({ complete = true } = {}) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-parity-preflight-'));
-  git(root, ['init', '-q']);
-  git(root, ['config', 'user.name', 'OpenBurnBar Test']);
-  git(root, ['config', 'user.email', 'test@openburnbar.invalid']);
-  git(root, ['config', 'gc.auto', '0']);
-  const requirements = requirementsManifest();
-  writeJson(root, 'docs/linux-port/product-parity-requirements.json', requirements);
-  writeJson(root, 'docs/linux-port/product-parity-evidence-policies.json', policies(requirements));
-  writeJson(root, 'docs/linux-port/product-feature-proof-registry.json', registry(complete));
-  write(root, '.gitignore', 'docs/linux-port/evidence/\n');
-  for (const schema of [
-    'schemas/linux-parity-certification-preflight.schema.json',
-    'schemas/linux-product-feature-proof-registry.schema.json'
-  ]) write(root, schema, fs.readFileSync(path.join(SOURCE_ROOT, schema)));
-  const validatorIds = REQUIREMENT_IDS;
-  for (const requirementId of validatorIds) {
-    write(root, `scripts/linux-port/product-validators/${requirementId}.mjs`,
-      `export async function validateProductRequirement(context) {\n`
-      + `  if (context.observedRequirement !== '${requirementId}') throw new Error('${requirementId} semantic mutation');\n`
-      + `  return { status: 'passed', requirementId: '${requirementId}' };\n}\n`);
-    const ownership = registry(complete).certification.find((entry) => entry.requirementId === requirementId);
-    const testDirectory = path.posix.dirname(ownership.validator.testPath);
-    const relativeModule = (modulePath) => {
-      const relative = path.posix.relative(testDirectory, modulePath);
-      return relative.startsWith('.') ? relative : `./${relative}`;
-    };
-    write(root, ownership.validator.testPath,
-      `import assert from 'node:assert/strict';\n`
-      + `import test from 'node:test';\n`
-      + `import { validateProductRequirement } from '../product-validators/${requirementId}.mjs';\n`
-      + `import * as captureProducer from '${relativeModule(ownership.capture.producerPath)}';\n`
-      + `import * as materializerProducer from '${relativeModule(ownership.materializer.producerPath)}';\n`
-      + `test('${ownership.validator.mutationTestName}', async () => {\n`
-      + `  await assert.rejects(() => validateProductRequirement({ observedRequirement: 'substituted' }), /semantic mutation/u);\n`
-      + `});\n`
-      + `test('${ownership.capture.testName}', () => assert.equal(typeof captureProducer.requirement, 'string'));\n`
-      + `test('${ownership.materializer.testName}', () => assert.equal(typeof materializerProducer.requirement, 'string'));\n`);
-    for (const component of ['capture', 'materializer']) {
-      write(root, ownership[component].producerPath, `export const requirement = '${requirementId}';\n`);
-      const workflowPath = ownership[component].workflowPath;
-      if (['.github/workflows/linux-release.yml', '.github/workflows/linux-product-parity.yml']
-        .includes(workflowPath)) {
-        write(root, workflowPath, fs.readFileSync(path.join(SOURCE_ROOT, workflowPath)));
-      } else {
-        write(root, workflowPath,
-          `jobs:\n  certification:\n    steps:\n`
-          + `      - name: ${requirementId} ${component} executes\n`
-          + `        run: node ${ownership[component].producerPath}\n`);
+  const root = registerTemporaryDirectory(fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-parity-preflight-')));
+  try {
+    git(root, ['init', '-q']);
+    git(root, ['config', 'user.name', 'OpenBurnBar Test']);
+    git(root, ['config', 'user.email', 'test@openburnbar.invalid']);
+    git(root, ['config', 'gc.auto', '0']);
+    const requirements = requirementsManifest();
+    writeJson(root, 'docs/linux-port/product-parity-requirements.json', requirements);
+    writeJson(root, 'docs/linux-port/product-parity-evidence-policies.json', policies(requirements));
+    writeJson(root, 'docs/linux-port/product-feature-proof-registry.json', registry(complete));
+    write(root, '.gitignore', 'docs/linux-port/evidence/\n');
+    for (const schema of [
+      'schemas/linux-parity-certification-preflight.schema.json',
+      'schemas/linux-product-feature-proof-registry.schema.json'
+    ]) write(root, schema, fs.readFileSync(path.join(SOURCE_ROOT, schema)));
+    const validatorIds = REQUIREMENT_IDS;
+    for (const requirementId of validatorIds) {
+      write(root, `scripts/linux-port/product-validators/${requirementId}.mjs`,
+        `export async function validateProductRequirement(context) {\n`
+        + `  if (context.observedRequirement !== '${requirementId}') throw new Error('${requirementId} semantic mutation');\n`
+        + `  return { status: 'passed', requirementId: '${requirementId}' };\n}\n`);
+      const ownership = registry(complete).certification.find((entry) => entry.requirementId === requirementId);
+      const testDirectory = path.posix.dirname(ownership.validator.testPath);
+      const relativeModule = (modulePath) => {
+        const relative = path.posix.relative(testDirectory, modulePath);
+        return relative.startsWith('.') ? relative : `./${relative}`;
+      };
+      write(root, ownership.validator.testPath,
+        `import assert from 'node:assert/strict';\n`
+        + `import test from 'node:test';\n`
+        + `import { validateProductRequirement } from '../product-validators/${requirementId}.mjs';\n`
+        + `import * as captureProducer from '${relativeModule(ownership.capture.producerPath)}';\n`
+        + `import * as materializerProducer from '${relativeModule(ownership.materializer.producerPath)}';\n`
+        + `test('${ownership.validator.mutationTestName}', async () => {\n`
+        + `  await assert.rejects(() => validateProductRequirement({ observedRequirement: 'substituted' }), /semantic mutation/u);\n`
+        + `});\n`
+        + `test('${ownership.capture.testName}', () => assert.equal(typeof captureProducer.requirement, 'string'));\n`
+        + `test('${ownership.materializer.testName}', () => assert.equal(typeof materializerProducer.requirement, 'string'));\n`);
+      for (const component of ['capture', 'materializer']) {
+        write(root, ownership[component].producerPath, `export const requirement = '${requirementId}';\n`);
+        const workflowPath = ownership[component].workflowPath;
+        if (['.github/workflows/linux-release.yml', '.github/workflows/linux-product-parity.yml']
+          .includes(workflowPath)) {
+          write(root, workflowPath, fs.readFileSync(path.join(SOURCE_ROOT, workflowPath)));
+        } else {
+          write(root, workflowPath,
+            `jobs:\n  certification:\n    steps:\n`
+            + `      - name: ${requirementId} ${component} executes\n`
+            + `        run: node ${ownership[component].producerPath}\n`);
+        }
       }
     }
+    write(root, 'scripts/linux-port/run-product-requirement-validator.mjs', 'export const runner = true;\n');
+    git(root, ['add', '.']);
+    git(root, ['commit', '-qm', 'complete parity inventory']);
+    const head = git(root, ['rev-parse', 'HEAD']);
+    const inputRelative = `docs/linux-port/evidence/product-parity-inputs/P-02/${ENVIRONMENT}`;
+    const inputRoot = path.join(root, inputRelative);
+    const releaseArtifacts = ['appimage', 'arch', 'daemon', 'deb', 'rpm'].flatMap((type) =>
+      ['aarch64', 'x86_64'].map((architecture) => ({
+        type,
+        architecture,
+        artifact: { path: 'unused', sha256: 'a'.repeat(64) },
+        detachedSignature: { path: 'unused', sha256: 'a'.repeat(64) },
+        sigstore: { path: 'unused', sha256: 'a'.repeat(64) }
+      }))
+    );
+    const packages = ['arch', 'deb', 'rpm'].flatMap((format) =>
+      ['aarch64', 'x86_64'].map((architecture) => ({
+        format,
+        architecture,
+        artifact: { path: 'unused', sha256: 'a'.repeat(64) },
+        installedManifest: { path: 'unused', sha256: 'a'.repeat(64) },
+        installedManifestSignature: { path: 'unused', sha256: 'a'.repeat(64) }
+      }))
+    );
+    const aggregate = {
+      schemaVersion: 2,
+      stage: 'candidate',
+      status: 'passed',
+      targetHead: head,
+      sourceCommit: head,
+      version: '1.2.3',
+      git: { dirty: false },
+      architectures: ['aarch64', 'x86_64'],
+      supportEnvironments: [...SUPPORT_ENVIRONMENTS],
+      releaseArtifacts,
+      packages,
+      attestationSubjects: aggregateAttestationSubjects(releaseArtifacts, packages),
+      featureProofRegistry: null,
+      proofs: [{ role: 'inventory' }],
+      blockers: []
+    };
+    const registrySidecar = write(
+      root,
+      `${inputRelative}/.linux-release/sidecars/product-feature-proof-registry.json`,
+      fs.readFileSync(path.join(root, 'docs/linux-port/product-feature-proof-registry.json'))
+    );
+    aggregate.featureProofRegistry = {
+      path: 'sidecars/product-feature-proof-registry.json',
+      sha256: sha256(registrySidecar),
+      size: fs.statSync(registrySidecar).size
+    };
+    const aggregatePath = writeJson(root, `${inputRelative}/.linux-release/product-proof-closure.json`, aggregate);
+    return { root, head, inputRoot, inputRelative, aggregatePath };
+  } catch (error) {
+    removeTemporaryDirectory(root);
+    throw error;
   }
-  write(root, 'scripts/linux-port/run-product-requirement-validator.mjs', 'export const runner = true;\n');
-  git(root, ['add', '.']);
-  git(root, ['commit', '-qm', 'complete parity inventory']);
-  const head = git(root, ['rev-parse', 'HEAD']);
-  const inputRelative = `docs/linux-port/evidence/product-parity-inputs/P-02/${ENVIRONMENT}`;
-  const inputRoot = path.join(root, inputRelative);
-  const releaseArtifacts = ['appimage', 'arch', 'daemon', 'deb', 'rpm'].flatMap((type) =>
-    ['aarch64', 'x86_64'].map((architecture) => ({
-      type,
-      architecture,
-      artifact: { path: 'unused', sha256: 'a'.repeat(64) },
-      detachedSignature: { path: 'unused', sha256: 'a'.repeat(64) },
-      sigstore: { path: 'unused', sha256: 'a'.repeat(64) }
-    }))
-  );
-  const packages = ['arch', 'deb', 'rpm'].flatMap((format) =>
-    ['aarch64', 'x86_64'].map((architecture) => ({
-      format,
-      architecture,
-      artifact: { path: 'unused', sha256: 'a'.repeat(64) },
-      installedManifest: { path: 'unused', sha256: 'a'.repeat(64) },
-      installedManifestSignature: { path: 'unused', sha256: 'a'.repeat(64) }
-    }))
-  );
-  const aggregate = {
-    schemaVersion: 2,
-    stage: 'candidate',
-    status: 'passed',
-    targetHead: head,
-    sourceCommit: head,
-    version: '1.2.3',
-    git: { dirty: false },
-    architectures: ['aarch64', 'x86_64'],
-    supportEnvironments: [...SUPPORT_ENVIRONMENTS],
-    releaseArtifacts,
-    packages,
-    attestationSubjects: aggregateAttestationSubjects(releaseArtifacts, packages),
-    featureProofRegistry: null,
-    proofs: [{ role: 'inventory' }],
-    blockers: []
-  };
-  const registrySidecar = write(
-    root,
-    `${inputRelative}/.linux-release/sidecars/product-feature-proof-registry.json`,
-    fs.readFileSync(path.join(root, 'docs/linux-port/product-feature-proof-registry.json'))
-  );
-  aggregate.featureProofRegistry = {
-    path: 'sidecars/product-feature-proof-registry.json',
-    sha256: sha256(registrySidecar),
-    size: fs.statSync(registrySidecar).size
-  };
-  const aggregatePath = writeJson(root, `${inputRelative}/.linux-release/product-proof-closure.json`, aggregate);
-  return { root, head, inputRoot, inputRelative, aggregatePath };
 }
 
 function capture(subject, overrides = {}) {
@@ -1043,7 +1132,7 @@ test('ownership mutation accepts only a normal nonzero child exit', () => {
 
 test('execution authentication binds baseline and mutation result metadata and output digests', (t) => {
   const subject = createRepository({ complete: false });
-  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+  t.after(() => removeTemporaryDirectory(subject.root));
   const executions = capture(subject).document.testExecutions;
   assert.equal(certificationTestExecutionsMatch(executions, executions), true);
   for (const [field, value] of [
@@ -1058,7 +1147,7 @@ test('execution authentication binds baseline and mutation result metadata and o
 
 test('P-02 capture emits a passed candidate-bound diagnostic inventory', (t) => {
   const subject = createRepository({ complete: false });
-  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+  t.after(() => removeTemporaryDirectory(subject.root));
   const captured = capture(subject);
   assert.equal(captured.document.targetHead, subject.head);
   assert.equal(captured.document.candidate.runId, RUN_ID);
@@ -1169,7 +1258,7 @@ test('executed semantic mutation ownership rejects a unique no-op validator', as
 
 test('bounded ownership collector rejects invalid concurrency before collection', (t) => {
   const subject = createRepository();
-  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+  t.after(() => removeTemporaryDirectory(subject.root));
   for (const value of ['0', '9', '1.5', 'abc']) {
     withCollectorConcurrency(value, () => {
       assert.throws(
@@ -1353,8 +1442,10 @@ test('capture failure always leaves an uploadable non-promotable diagnostic', as
   t.after(() => assertSharedOwnershipFixture(fixture));
   const subject = privateCloneSubject(t, fixture);
   const runnerTemporaryRoot = fs.realpathSync(process.env.RUNNER_TEMP ?? os.tmpdir());
-  const diagnosticRoot = fs.mkdtempSync(path.join(runnerTemporaryRoot, 'openburnbar-p02-diagnostic-test-'));
-  t.after(() => fs.rmSync(diagnosticRoot, { recursive: true, force: true }));
+  const diagnosticRoot = registerTemporaryDirectory(
+    fs.mkdtempSync(path.join(runnerTemporaryRoot, 'openburnbar-p02-diagnostic-test-'))
+  );
+  t.after(() => removeTemporaryDirectory(diagnosticRoot));
   write(subject.root, '.linux-parity-diagnostics', 'hostile repository path\n');
   const failedExecutions = cloneRows(fixture.fourWorkerRows).map((entry, index) =>
     index === 0 ? { ...entry, status: 'failed', exitCode: 1 } : entry
@@ -1423,10 +1514,8 @@ test('capture failure always leaves an uploadable non-promotable diagnostic', as
     subject.root, '.linux-parity-diagnostics'
   ));
   assert.equal(JSON.parse(fs.readFileSync(fallbackError.diagnosticOutput, 'utf8')).status, 'capture-failed');
-  t.after(() => fs.rmSync(path.dirname(fallbackError.diagnosticOutput), {
-    recursive: true,
-    force: true
-  }));
+  registerTemporaryDirectory(path.dirname(fallbackError.diagnosticOutput));
+  t.after(() => removeTemporaryDirectory(path.dirname(fallbackError.diagnosticOutput)));
 });
 
 test('uncommitted target inventory and validator substitutions cannot affect the commit snapshot', async (t) => {
