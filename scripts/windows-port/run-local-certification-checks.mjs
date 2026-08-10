@@ -213,6 +213,16 @@ const commands = [
     timeoutMs: 120000,
   },
   {
+    name: "domain-core-control-plane-manifest",
+    file: "node",
+    args: [
+      "scripts/ci/verify-domain-core-control-plane.mjs",
+      "--candidate-root",
+      ".",
+    ],
+    timeoutMs: 120000,
+  },
+  {
     name: "domain-core-native-build",
     file: "rustup",
     args: [

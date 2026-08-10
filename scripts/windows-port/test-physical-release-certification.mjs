@@ -1082,6 +1082,11 @@ assert.match(
   localRunner,
   /if \(failedResults\.length > 0\)[\s\S]*NO-GO evidence bundle was retained[\s\S]*process\.exit\(1\)/,
 );
+assert.match(
+  localRunner,
+  /verify-domain-core-control-plane\.mjs[\s\S]*--candidate-root[\s\S]*"\."/,
+  "local certification must reject stale trusted control-plane checksums",
+);
 assert.doesNotMatch(
   nativeLibraryStaging,
   /rmSync\(destination/,
