@@ -4139,7 +4139,6 @@ table.bb-data {
   .bb-heat__cell,
   .bb-heat__rowhead,
   .bb-heat__colhead,
-  .bb-pareto__chip,
   .bb-zoom-btn {
     min-height: 32px;
   }
@@ -4216,13 +4215,14 @@ table.bb-data {
   appearance: none;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 14px;
   border-radius: 999px;
   border: 1px solid var(--ink-line);
   background: var(--ink-surface);
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   color: var(--text-mute);
   cursor: pointer;
   transition:
@@ -4233,23 +4233,34 @@ table.bb-data {
     transform var(--dur-fast) var(--ease);
 }
 .bb-pareto__chip img {
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
   object-fit: contain;
-  border-radius: 4px;
+  border-radius: 5px;
+  transition:
+    filter var(--dur-fast) var(--ease),
+    opacity var(--dur-fast) var(--ease);
 }
+/* Included stack: full-color logo, bright label, warm tinted border. */
 .bb-pareto__chip.is-on {
   color: var(--text-bright);
-  border-color: color-mix(in oklab, var(--ember-core) 18%, var(--ink-line));
-  background: color-mix(in oklab, var(--glass-bg-elevated) 96%, transparent);
+  border-color: color-mix(in oklab, var(--ember-core) 38%, var(--ink-line));
+  background: color-mix(in oklab, var(--ember-core) 7%, var(--glass-bg-elevated));
 }
+/* Excluded stack: greyed logo + dashed border — never struck-through text. */
 .bb-pareto__chip:not(.is-on) {
-  opacity: 0.52;
-  text-decoration: line-through;
-  text-decoration-color: var(--text-dim);
+  color: var(--text-dim);
+  border-style: dashed;
+  border-color: var(--ink-line-soft);
+  background: transparent;
+}
+.bb-pareto__chip:not(.is-on) img {
+  filter: grayscale(1);
+  opacity: 0.38;
 }
 .bb-pareto__chip--model.is-on {
-  border-color: color-mix(in oklab, var(--mercury-core) 22%, var(--ink-line));
+  border-color: color-mix(in oklab, var(--mercury-core) 40%, var(--ink-line));
+  background: color-mix(in oklab, var(--mercury-core) 7%, var(--glass-bg-elevated));
 }
 .bb-pareto__chip:hover {
   transform: translateY(-1px);
@@ -4277,15 +4288,23 @@ table.bb-data {
 }
 .bb-pareto__chip--axis {
   min-height: 44px;
-  padding: 8px 14px;
+  padding: 10px 18px;
+  font-size: 0.82rem;
 }
+/* Active axis: solid ember fill — unmistakable in both themes. */
 .bb-pareto__chip--axis.is-active {
-  color: var(--text-bright);
-  border-color: color-mix(in oklab, var(--ember-core) 45%, var(--ink-line));
-  background: color-mix(in oklab, var(--ember-core) 12%, var(--ink-surface));
+  color: #180805;
+  font-weight: 600;
+  border-color: var(--ember-core);
+  background: linear-gradient(160deg, var(--ember-bright), var(--ember-core) 65%);
+  box-shadow: 0 6px 18px -8px var(--ember-glow);
 }
-.bb-pareto__chip--axis:not(.is-active) {
-  opacity: 0.72;
+:root[data-theme="light"] .bb-pareto__chip--axis.is-active {
+  color: #fff8f2;
+}
+.bb-pareto__chip--axis:not(.is-active):hover {
+  color: var(--text-bright);
+  border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
 }
 /* Smooth re-layout when axes switch (SVG geometry properties animate in
    Chromium/Safari; harmless no-op elsewhere). */
@@ -4521,8 +4540,13 @@ table.bb-data {
     padding: var(--s-3);
   }
   .bb-pareto__chip {
-    padding: 5px 8px;
-    font-size: 0.64rem;
+    min-height: 44px;
+    padding: 8px 12px;
+    font-size: 0.72rem;
+  }
+  .bb-pareto__chip img {
+    width: 18px;
+    height: 18px;
   }
   .bb-pareto__cards {
     grid-template-columns: 1fr;

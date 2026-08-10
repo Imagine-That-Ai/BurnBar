@@ -107,7 +107,13 @@ const fmtWall = (seconds: number | null): string => {
 };
 
 const fmtTokens = (v: number | null): string =>
-  v == null ? "—" : v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`;
+  v == null
+    ? "—"
+    : v >= 1e6
+      ? `${+(v / 1e6).toFixed(1)}M`
+      : v >= 1000
+        ? `${Math.round(v / 1000)}k`
+        : `${v}`;
 
 const esc = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -1717,8 +1723,51 @@ function initPareto(data: Dataset): void {
   const yVal = (p: PtMetrics, ay: AxisY): number | null =>
     ay === "sol" ? p.sol : ay === "str" ? p.str : p.qual;
 
+  /** Human-friendly log ticks. Cost/tokens use 1·2·5×10ⁿ; wall time uses
+      clock-named values (30s, 1m, 2m, 5m…) so a narrow domain still gets
+      several readable ticks instead of a lone decade label. */
+  const WALL_COARSE = [15, 30, 60, 120, 300, 600, 1200, 1800, 3600, 7200];
+  const WALL_FINE = [10, 20, 45, 90, 150, 240, 420, 900, 1500, 2700, 5400];
+  const niceTicks = (ax: AxisX, min: number, max: number): number[] => {
+    const inDomain = (v: number): boolean => v >= min * 0.995 && v <= max * 1.005;
+    let ticks: number[];
+    if (ax === "wall") {
+      ticks = WALL_COARSE.filter(inDomain);
+      if (ticks.length < 4) {
+        // Densify with fine values, greedily picking the widest log-gap fill
+        // so clean clock values (1m, 2m, 5m) are never thinned away.
+        const fine = WALL_FINE.filter((v) => inDomain(v) && !ticks.includes(v));
+        while (ticks.length < 5 && fine.length > 0) {
+          let best = 0;
+          let bestD = -1;
+          for (let i = 0; i < fine.length; i++) {
+            const d = Math.min(...ticks.map((t) => Math.abs(Math.log10(fine[i]) - Math.log10(t))));
+            if (d > bestD) {
+              bestD = d;
+              best = i;
+            }
+          }
+          ticks.push(fine.splice(best, 1)[0]);
+        }
+        ticks.sort((a, b) => a - b);
+      }
+      while (ticks.length > 6) ticks = ticks.filter((_, i) => i % 2 === 0);
+    } else {
+      const all: number[] = [];
+      for (let e = Math.floor(Math.log10(min)) - 1; e <= Math.ceil(Math.log10(max)); e++) {
+        for (const m of [1, 2, 5]) all.push(m * Math.pow(10, e));
+      }
+      ticks = all.filter(inDomain);
+      if (ticks.length > 6) ticks = ticks.filter((v) => { const m = v / Math.pow(10, Math.floor(Math.log10(v))); return m === 1 || m === 5; });
+      if (ticks.length > 6) ticks = ticks.filter((v) => Math.abs(v / Math.pow(10, Math.round(Math.log10(v))) - 1) < 1e-9);
+    }
+    // Never leave an axis bare: fall back to the domain endpoints.
+    if (ticks.length < 2) ticks = [min, max];
+    return ticks;
+  };
+
   /** Log10 axis fraction with the server's free-stack gutter. */
-  const logScale = (values: number[]): { frac: (v: number) => number; ticks: number[] } => {
+  const logScale = (values: number[], ax: AxisX): { frac: (v: number) => number; ticks: number[] } => {
     const positive = values.filter((v) => v > 0);
     const xMinPos = positive.length > 0 ? Math.min(...positive) : 0.001;
     const xMax = Math.max(...values, xMinPos * 10);
@@ -1730,12 +1779,7 @@ function initPareto(data: Dataset): void {
       if (v <= 0) return gutterW / 2;
       return gutterW + ((Math.log10(v) - lo) / span) * (1 - gutterW);
     };
-    const ticks: number[] = [];
-    for (let e = Math.floor(lo); e <= Math.ceil(hi); e++) {
-      const v = Math.pow(10, e);
-      if (v >= xMinPos * 0.999 && v <= xMax * 1.001) ticks.push(v);
-    }
-    return { frac, ticks };
+    return { frac, ticks: niceTicks(ax, xMinPos, xMax) };
   };
 
   /** Linear Y domain: rates pad to 0.05 steps like the server; quality
@@ -1781,7 +1825,7 @@ function initPareto(data: Dataset): void {
     }
     const xs = present.map((p) => xVal(p, ax)!);
     const ys = present.map((p) => yVal(p, ay)!);
-    const scX = logScale(xs);
+    const scX = logScale(xs, ax);
     const dY = linDomain(ys, ay === "qual");
     const px = (v: number): number => PLOT.ml + scX.frac(v) * (PLOT.w - PLOT.ml - PLOT.mr);
     const py = (v: number): number =>
@@ -1797,9 +1841,15 @@ function initPareto(data: Dataset): void {
       });
     }
 
-    // Rebuild gridlines + tick labels for the active axes.
+    // Rebuild gridlines + tick labels for the active axes. Tick labels use
+    // compact unit-aware forms ("$0.5", "90s", "20k") since niceTicks only
+    // emits round values.
+    const fmtCostTick = (t: number): string =>
+      `$${t >= 1 ? (Number.isInteger(t) ? t : t.toFixed(2)) : t}`;
+    const fmtWallTick = (t: number): string =>
+      t % 60 === 0 ? fmtWall(t) : t < 180 ? `${t}s` : fmtWall(t);
     const fmtXTick = (t: number): string =>
-      ax === "cost" ? fmtCost(t) : ax === "wall" ? fmtWall(t) : fmtTokens(t);
+      ax === "cost" ? fmtCostTick(t) : ax === "wall" ? fmtWallTick(t) : fmtTokens(t);
     const fmtYTick = (t: number): string =>
       ay === "qual" ? (Number.isInteger(t) ? String(t) : t.toFixed(1)) : `${Math.round(t * 100)}%`;
     if (gridY) {
