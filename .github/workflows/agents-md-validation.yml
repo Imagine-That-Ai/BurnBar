@@ -32,7 +32,7 @@ jobs:
     # (2026-07-31) to stop occupying the scarce hosted-macOS concurrency pool
     # that the Swift lanes contend for.
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
