@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-08-10T21:47:37.424641+00:00",
+  "judge": "kimi",
+  "judge_model": "kimi-code/kimi-for-coding",
+  "source_trees": [
+    "/Volumes/Samsung NVME/agent-harness-bench/results-glm-5-2-20260807",
+    "/Volumes/Samsung NVME/agent-harness-bench/results-muse-spark-1-2-contributor-20260807",
+    "/Volumes/Samsung NVME/agent-harness-bench/results-deepseek-v4-flash-0731-v2-20260806",
+    "/Volumes/Samsung NVME/agent-harness-bench/results-gpt-5-6-luna-max-20260807"
+  ],
+  "combos": {
+    "claude/deepseek-v4-flash-0731": {
+      "observations": [
+        "Empty or unchanged diffs cluster on hard structural tasks: 18_multifile_api_break (q=1.00), 27_ir_optimizer (q=1.00), 29_incremental_parser (q=2.00/1.25), and 31_mvcc_kv (q=1.00).",
+        "Concurrency/stateful tasks tend toward correct-but-under-engineered code: 15_race_condition (q=3.25/2.75) serializes with a global Lock, 30_fair_scheduler (q=3.50) keeps a redundant resume dict, and 31_mvcc_kv (q=4.00) omits GC and stores tombstones as raw None.",
+        "Best outputs on narrow fixes frequently hit q=5.00: 19_security_hardening, 22_incident_triage, 25_git_archaeology, 28_lease_lock, 30_fair_scheduler, and 32_utf8_stream."
+      ],
+      "summary": "Polarized and inconsistent: six narrow tasks hit q=5.00 best, but large best-worst gaps (18: 3.5, 27: 1.75, 28: 2.0, 31: 3.0) and empty-diff failures (18, 27, 29, 31) show unreliable sampling. Concurrency/stateful tasks skew correct-but-under-engineered (15, 30, 31).",
+      "n_tasks": 18,
+      "skeptic_round_1_critique": [
+        "Observation 3 ('verbose or awkwardly structured despite correctness') is the weakest: it leans on a minor 'slightly more verbose' best-only note for 23 and a stylistic quirk for 17, making it closer to generic filler than a robust pattern.",
+        "The synthesis misses a clear positive pattern: the combo scores near-perfectly on narrow, self-contained tasks such as security hardening, incident triage, git archaeology, lease lock, fair scheduler, and utf8 stream.",
+        "No calibration errors found: all quoted scores match the source data."
+      ],
+      "skeptic_round_2_critique": [
+        "Observation 3 overstates consistency: 19_security_hardening (q=3.50 worst), 28_lease_lock (q=3.00 worst), and 30_fair_scheduler (q=3.50 worst) have mediocre worst outputs, so 'performs strongly' is misleading and should be limited to best outputs.",
+        "The synthesis misses a high-variance pattern across trials: large best-worst score gaps appear on 18_multifile_api_break (3.5), 27_ir_optimizer (1.75), 28_lease_lock (2.0), and 31_mvcc_kv (3.0), indicating inconsistent sampling rather than reliable task-level mastery.",
+        "No calibration errors: all quoted scores match the source data."
+      ],
+      "skeptic_round_3_critique": [
+        "The 'perfect best outputs' observation does not note that several of those same tasks have weak worst outputs (19 q=3.50, 28 q=3.00, 30 q=3.50), understating trial variance.",
+        "The summary gestures at inconsistency but should cite the concrete best-worst score gaps (18: 3.5, 27: 1.75, 28: 2.0, 31: 3.0) as evidence of unreliable sampling.",
+        "No calibration errors: all quoted scores match the source data."
+      ]
+    },
+    "claude/glm-5-2": {
+      "observations": [
+        "Submits empty diffs on four substantial implementation tasks: 20_schema_evolution, 27_ir_optimizer, 28_lease_lock, and 30_fair_scheduler (all WORST q=1.00).",
+        "Worst-case locking/concurrency solutions have real correctness gaps: 15_race_condition (WORST q=3.00) deadlocks on self-transfer, and 18_multifile_api_break (WORST q=3.50) drops locking entirely.",
+        "Best-case concurrency outputs are strong: 28_lease_lock (BEST q=4.75) uses bounded retries and atomic CAS, and 31_mvcc_kv (BEST q=4.50) is simple and correct."
+      ],
+      "summary": "glm-5-2 via claude produces strong best-case code and consistently high-quality worst cases on many tasks, but repeatedly submits empty diffs on substantial implementation tasks and has worst-case locking failures on 15_race_condition and 18_multifile_api_break.",
+      "n_tasks": 18,
+      "skeptic_round_1_critique": [
+        "Observation 2's 'struggles with concurrency' framing overgeneralizes; the concurrency failures are worst-case specific, while best cases on the same tasks score 4.50–4.75.",
+        "Synthesis underweights the generally high quality of best-case outputs (q≥4.50 across most tasks).",
+        "Minor missed pattern: 31_mvcc_kv worst case (q=4.00) also shows concurrency-related inefficiency, though less severe than the locking gaps."
+      ],
+      "skeptic_round_2_critique": [
+        "Observation 2 misreports 28_lease_lock as a 'worst case' and misrepresents its score: q=4.75 trial=3 is actually the BEST case, not WORST. The WORST case is q=1.00 trial=2 with an empty diff. The claim about stale token state and CAS undo only applies to the best case, not worst-case locking gaps.",
+        "Observation 2 conflates 18_multifile_api_break (q=3.50, no locking, extra dict lookup) with 'locking correctness gaps' but omits the more specific efficiency issue (extra dict lookup).",
+        "Observation 2 overgeneralizes 'concurrency and locking worst cases' to include 28_lease_lock best case; this is a calibration error.",
+        "Observation 1 is correct but misses that 27_ir_optimizer q=1.00 and 30_fair_scheduler q=1.00 are also empty diffs, and underweights that 28_lease_lock worst case is empty diff too.",
+        "Skeptic round 1 critique incorrectly says synthesis underweights high best-case quality — actually the current summary says 'strong best-case work' and is accurate there.",
+        "Skeptic round 1 critique's note about 31_mvcc_kv worst case showing 'concurrency-related inefficiency' is weak: the source describes it as inefficient list rebuilding/GC, not concurrency-related."
+      ],
+      "skeptic_round_3_critique": [
+        "Observation 2 groups two distinct concurrency failures under one heading: 15_race_condition is a runtime deadlock, while 18_multifile_api_break simply omits locking. The claim is true but slightly broad.",
+        "Missed strong pattern: several worst-case outputs are nearly as strong as best cases, including 25_git_archaeology WORST q=5.00 and 16_perf_hot_path/22_incident_triage/23_ci_repair_loop/32_utf8_stream WORST all q≥4.50, indicating low best/worst variance on many tasks.",
+        "Missed polarization pattern: 28_lease_lock spans BEST q=4.75 (solid CAS/lease logic) to WORST q=1.00 (empty diff), showing the model can implement the task when it does not bail out."
+      ]
+    },
+    "claude/gpt-5-6-luna-max": {
+      "observations": [
+        "Weak concurrency attempts either omit locks or invent needlessly complex hand-rolled ones (06_async_bug q=2.25, 10_ttl_cache q=2.25, 15_race_condition q=3.50).",
+        "Several worst trials break the public contract: reshaping outputs (02 q=3.00), rejecting valid paths (08 q=2.50), or leaving no-op/placeholder outputs (09 q=1.00, 24 q=2.50).",
+        "Many remaining worst trials still score 4.00+ with only minor issues: stale or misleading comments (16 q=4.00, 30 q=4.00), redundant decoupling (11 q=4.25, 12 q=4.50), or avoidable round-trips (28 q=4.25)."
+      ],
+      "summary": "Clean, correct solutions dominate; worst trials cluster on concurrency bugs, public-contract breakage (including no-op/placeholder outputs), or minor style/comment issues rather than systemic failures.",
+      "n_tasks": 31,
+      "skeptic_round_1_critique": [
+        "No calibration errors: every q-value cited in the current synthesis matches the source data.",
+        "A strong pattern is missing: most 'WORST' entries actually score 4.00–4.75 and are minor redundancy, stale comments, or style issues rather than serious bugs.",
+        "The no-op/placeholder observation (09, 24) is valid but narrow; it is folded into the summary to keep the synthesis shorter."
+      ],
+      "skeptic_round_2_critique": [
+        "No calibration errors: every q-value cited in the current synthesis matches the source data.",
+        "Missed strong pattern: no-op/placeholder worst submissions — 09_event_stream q=1.00 (empty diff leaves the broken implementation untouched) and 24_api_research_report q=2.50 (emits illustrative placeholder values instead of computing from the dataset).",
+        "Observation 3 is accurate but verbose and meta; it should be tightened so the synthesis can include the no-op/placeholder pattern without growing longer."
+      ],
+      "skeptic_round_3_critique": [
+        "Observation 3 is weak/generic filler: it labels a list of trials as 'minor or superficial' without naming the actual defects, so it is hard to verify.",
+        "A strong pattern is missed: many WORST trials still score 4.00-4.75 and involve only minor issues (stale comments, redundant fallbacks, slight over-engineering) rather than serious bugs.",
+        "No calibration errors: every q-value cited in observations 1 and 2 matches the source data."
+      ]
+    }
+  },
+  "harnesses": {},
+  "models": {}
+}

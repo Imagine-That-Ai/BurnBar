@@ -4259,6 +4259,46 @@ table.bb-data {
   color: var(--text-dim);
   opacity: 0.5;
 }
+/* ---------- Pareto axis picker ---------- */
+.bb-pareto__axes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+  align-items: center;
+  padding: 0 var(--s-3) var(--s-3);
+  margin-top: calc(-1 * var(--s-2));
+}
+.bb-pareto__axisrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.bb-pareto__chip--axis {
+  min-height: 44px;
+  padding: 8px 14px;
+}
+.bb-pareto__chip--axis.is-active {
+  color: var(--text-bright);
+  border-color: color-mix(in oklab, var(--ember-core) 45%, var(--ink-line));
+  background: color-mix(in oklab, var(--ember-core) 12%, var(--ink-surface));
+}
+.bb-pareto__chip--axis:not(.is-active) {
+  opacity: 0.72;
+}
+/* Smooth re-layout when axes switch (SVG geometry properties animate in
+   Chromium/Safari; harmless no-op elsewhere). */
+.bb-pareto__pt .bb-pareto__hit {
+  transition:
+    cx 300ms ease-out,
+    cy 300ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bb-pareto__pt circle {
+    transition: none;
+  }
+}
 .bb-pareto__toolbar-right {
   display: inline-flex;
   gap: var(--s-2);
@@ -4333,7 +4373,9 @@ table.bb-data {
     r 180ms var(--ease),
     stroke-width 180ms var(--ease),
     filter 180ms var(--ease),
-    opacity 180ms var(--ease);
+    opacity 180ms var(--ease),
+    cx 300ms ease-out,
+    cy 300ms ease-out;
 }
 .bb-pareto__pt.is-hover .bb-pareto__dot {
   r: 8.5;
@@ -5833,5 +5875,671 @@ table.bb-data {
   .bb-qlq__n {
     grid-area: n;
     text-align: left;
+  }
+}
+
+/* ---------- report: liquid glass quality commentary cards ----------
+   iOS-style glass: backdrop blur over the dark theme, hairline highlight
+   border, soft drop shadow, 16px radius. Mobile-first: cards stack
+   full-width, tap targets ≥44px, body text ≥14px; widen to a two-column
+   grid only when the viewport has room. Expand/collapse is a CSS grid-rows
+   transition (~300ms ease-out) driven by the .is-open class; content never
+   navigates away or moves scroll. */
+
+.bb-glass {
+  background: rgba(255, 255, 255, 0.05);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+}
+.bb-glass--best {
+  background: color-mix(in oklab, var(--status-exact) 7%, rgba(255, 255, 255, 0.04));
+  border-color: color-mix(in oklab, var(--status-exact) 28%, rgba(255, 255, 255, 0.1));
+}
+.bb-glass--worst {
+  background: color-mix(in oklab, var(--bb-h-opencode) 8%, rgba(255, 255, 255, 0.04));
+  border-color: color-mix(in oklab, var(--bb-h-opencode) 30%, rgba(255, 255, 255, 0.1));
+}
+
+.bb-glasswrap {
+  margin-block-start: var(--s-6, 2.5rem);
+}
+
+/* Judge's-verdict pull quotes above the card grid. */
+.bb-verdicts {
+  display: grid;
+  gap: var(--s-3, 1rem);
+  margin-block: var(--s-4, 1.5rem);
+}
+.bb-verdicts__q {
+  margin: 0;
+  padding: var(--s-4, 1.25rem);
+}
+.bb-verdicts__text {
+  margin: 0 0 var(--s-2, 0.75rem);
+  font-size: 1rem;
+  line-height: 1.55;
+  font-style: italic;
+}
+.bb-verdicts__attr {
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+}
+
+/* Per-task cards — one column on phones. */
+.bb-qcards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s-3, 1rem);
+}
+.bb-qcard {
+  overflow: hidden;
+}
+
+/* Collapsed head: full-width 44px+ tap target, name left, chips right. */
+.bb-qcard__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3, 1rem);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--s-3, 0.875rem) var(--s-4, 1.125rem);
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.bb-qcard__id {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2, 0.625rem);
+  min-width: 0;
+}
+.bb-qcard__name {
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+.bb-qcard__chips {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2, 0.5rem);
+  flex-shrink: 0;
+}
+.bb-qcard__chip {
+  font-size: 0.8125rem;
+  padding: 0.2em 0.55em;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  white-space: nowrap;
+}
+.bb-qcard__chip--spread {
+  color: var(--text-dim);
+}
+.bb-qcard__chip--best {
+  color: var(--status-exact);
+  border-color: color-mix(in oklab, var(--status-exact) 40%, transparent);
+  background: color-mix(in oklab, var(--status-exact) 10%, transparent);
+}
+.bb-qcard__chev {
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--text-dim);
+  transition: transform 300ms ease-out;
+  transform: rotate(90deg);
+}
+.bb-qcard.is-open .bb-qcard__chev {
+  transform: rotate(-90deg);
+}
+
+/* Expand/collapse: max-height fallback for Safari/iOS, grid-rows for modern.
+   The grid-template-rows: 0fr→1fr technique doesn't animate in older Safari
+   (the body stays 0px). We use max-height as the base and override with
+   grid-rows where @supports says it works. */
+.bb-qcard__body {
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 300ms ease-out;
+}
+.bb-qcard.is-open .bb-qcard__body {
+  max-height: 2000px;
+}
+@supports (interpolate-size: allow-keywords) {
+  .bb-qcard__body {
+    max-height: none;
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 300ms ease-out;
+  }
+  .bb-qcard.is-open .bb-qcard__body {
+    grid-template-rows: 1fr;
+  }
+}
+.bb-qcard__inner {
+  overflow: hidden;
+  min-height: 0;
+  display: grid;
+  gap: var(--s-3, 1rem);
+  padding: 0 var(--s-4, 1.125rem);
+  /* Padding animates in so the open state breathes. */
+  padding-block-end: 0;
+  transition: padding-block-end 300ms ease-out;
+}
+.bb-qcard.is-open .bb-qcard__inner {
+  padding-block-end: var(--s-4, 1.25rem);
+}
+.bb-qcard__meta {
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+}
+
+/* Best/worst side panes inside an expanded card. */
+.bb-qside {
+  padding: var(--s-3, 1rem);
+  display: grid;
+  gap: var(--s-2, 0.75rem);
+}
+.bb-qside__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2, 0.625rem);
+  flex-wrap: wrap;
+}
+.bb-qside__tier {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.2em 0.6em;
+  border-radius: 999px;
+}
+.bb-qside__tier--best {
+  color: var(--status-exact);
+  background: color-mix(in oklab, var(--status-exact) 14%, transparent);
+}
+.bb-qside__tier--worst {
+  color: var(--bb-h-opencode);
+  background: color-mix(in oklab, var(--bb-h-opencode) 16%, transparent);
+}
+.bb-qside__who {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1, 0.375rem);
+  font-size: 0.875rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.bb-qside__score {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.bb-qside__rationale {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+/* Per-dimension bars: label · bar · score. */
+.bb-qdims {
+  display: grid;
+  gap: var(--s-1, 0.5rem);
+}
+.bb-qdims__row {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, auto) 1fr 1.5rem;
+  align-items: center;
+  gap: var(--s-2, 0.625rem);
+}
+.bb-qdims__label {
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+}
+.bb-qdims__bar {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.bb-qdims__fill {
+  height: 100%;
+  border-radius: 4px;
+}
+.bb-qdims__fill--best {
+  background: linear-gradient(90deg,
+    color-mix(in oklab, var(--status-exact) 70%, transparent),
+    var(--status-exact));
+}
+.bb-qdims__fill--worst {
+  background: linear-gradient(90deg,
+    color-mix(in oklab, var(--bb-h-opencode) 70%, transparent),
+    var(--bb-h-opencode));
+}
+.bb-qdims__val {
+  font-size: 0.8125rem;
+  text-align: right;
+}
+
+/* Quality-spread visualization: best/worst marks on a 0–5 track. */
+.bb-qspread {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2, 0.75rem);
+}
+.bb-qspread__label,
+.bb-qspread__val {
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.bb-qspread__bar {
+  position: relative;
+  flex: 1 1 auto;
+  height: 16px;
+}
+.bb-qspread__track {
+  position: absolute;
+  inset: 6px 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.bb-qspread__mark {
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  transform: translateX(-50%);
+}
+.bb-qspread__mark--best {
+  background: var(--status-exact);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--status-exact) 60%, transparent);
+}
+.bb-qspread__mark--worst {
+  background: var(--bb-h-opencode);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--bb-h-opencode) 60%, transparent);
+}
+
+/* ---------- report: Judge's Synthesis ---------- */
+
+.bb-synth__status {
+  margin-block-start: var(--s-4, 1.5rem);
+}
+.bb-synth__pending {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3, 0.875rem);
+  padding: var(--s-4, 1.25rem);
+  font-size: 0.9375rem;
+  color: var(--text-dim);
+}
+.bb-synth__spinner {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-top-color: var(--status-exact);
+  animation: bb-synth-spin 0.9s linear infinite;
+}
+@keyframes bb-synth-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bb-synth__spinner { animation: none; }
+  .bb-qcard__body,
+  .bb-qcard__inner,
+  .bb-qcard__chev,
+  .bb-scard__obs,
+  .bb-scard__chev { transition: none; }
+}
+.bb-synth__body {
+  display: grid;
+  gap: var(--s-6, 2.5rem);
+  margin-block-start: var(--s-4, 1.5rem);
+}
+.bb-synth__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s-3, 1rem);
+  margin-block-start: var(--s-3, 1rem);
+}
+.bb-scard {
+  overflow: hidden;
+}
+.bb-scard__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3, 1rem);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--s-3, 0.875rem) var(--s-4, 1.125rem);
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.bb-scard__title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.bb-scard__n {
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.bb-scard__body {
+  padding: 0 var(--s-4, 1.125rem) var(--s-4, 1.125rem);
+  display: grid;
+  gap: var(--s-3, 0.875rem);
+}
+.bb-scard__summary {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+.bb-scard__obs {
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 300ms ease-out;
+}
+.bb-scard.is-open .bb-scard__obs {
+  max-height: 2000px;
+}
+@supports (interpolate-size: allow-keywords) {
+  .bb-scard__obs {
+    max-height: none;
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 300ms ease-out;
+  }
+  .bb-scard.is-open .bb-scard__obs {
+    grid-template-rows: 1fr;
+  }
+}
+.bb-scard__obs-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+.bb-scard__obs-list {
+  margin: 0;
+  padding-inline-start: 1.25em;
+  display: grid;
+  gap: var(--s-1, 0.5rem);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.bb-scard__toggle {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0 var(--s-3, 0.875rem);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.bb-scard__chev {
+  display: inline-block;
+  transition: transform 300ms ease-out;
+  transform: rotate(90deg);
+}
+.bb-scard.is-open .bb-scard__chev {
+  transform: rotate(-90deg);
+}
+
+/* Wider viewports: two-column grids once cards can stay readable. */
+@media (min-width: 720px) {
+  .bb-qcards,
+  .bb-synth__grid,
+  .bb-verdicts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ---------- report: expandable stack-quality rows + deep-linked cards ----------
+   Every quality number on the site deep-links to #qlq-<harness>-<model>
+   (these rows) or #qcard-<task> (the commentary cards); scroll-margin
+   keeps the target clear of the sticky site header. Rows reuse the qcard
+   collapse pattern: max-height base (works everywhere), grid-rows where
+   @supports says it animates. */
+
+[id^="qcard-"],
+[id^="qlq-"],
+[id^="synth-"] {
+  scroll-margin-top: 96px;
+}
+
+/* The row becomes a block container; the grid moves onto the head button. */
+.bb-qlq__row--xp {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+.bb-qlq__head {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1.6fr) minmax(6rem, 2fr) 3.5rem 9rem 1.25rem;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3) var(--s-4, 1.125rem);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: 44px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.bb-qlq__head:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.bb-qlq__head:focus-visible {
+  outline: 2px solid var(--status-exact);
+  outline-offset: -2px;
+  border-radius: var(--r-3);
+}
+.bb-qlq__names {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bb-qlq__x {
+  color: var(--text-dim);
+}
+.bb-qlq__chev {
+  justify-self: end;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--text-dim);
+  transition: transform 300ms ease-out;
+  transform: rotate(90deg);
+}
+.bb-qlq__row--xp.is-open .bb-qlq__chev {
+  transform: rotate(-90deg);
+}
+.bb-qlq__body {
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 300ms ease-out;
+}
+.bb-qlq__row--xp.is-open .bb-qlq__body {
+  max-height: 800px;
+}
+@supports (interpolate-size: allow-keywords) {
+  .bb-qlq__body {
+    max-height: none;
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 300ms ease-out;
+  }
+  .bb-qlq__row--xp.is-open .bb-qlq__body {
+    grid-template-rows: 1fr;
+  }
+}
+.bb-qlq__bodyinner {
+  overflow: hidden;
+  min-height: 0;
+  padding: 0 var(--s-4, 1.125rem) var(--s-4, 1.25rem);
+  display: grid;
+  gap: var(--s-2, 0.75rem);
+}
+.bb-qlq__note {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+}
+.bb-qlq__note a {
+  color: var(--status-exact);
+}
+@media (max-width: 720px) {
+  .bb-qlq__head {
+    grid-template-columns: 1fr auto 1.25rem;
+    grid-template-areas:
+      "name val chev"
+      "bar bar bar"
+      "n n n";
+    row-gap: var(--s-1);
+  }
+  .bb-qlq__head .bb-qlq__name {
+    grid-area: name;
+  }
+  .bb-qlq__head .bb-qlq__bar {
+    grid-area: bar;
+  }
+  .bb-qlq__head .bb-qlq__val {
+    grid-area: val;
+  }
+  .bb-qlq__head .bb-qlq__n {
+    grid-area: n;
+    text-align: left;
+  }
+  .bb-qlq__chev {
+    grid-area: chev;
+  }
+}
+
+/* Combo dimension block inside an expanded row — labels a touch wider. */
+.bb-qdims--combo {
+  max-width: 34rem;
+}
+
+/* Per-task quality rows are now anchor links to the commentary cards. */
+.bb-trow--link {
+  text-decoration: none;
+  color: inherit;
+  border-radius: var(--r-2, 6px);
+  transition: background 150ms ease-out;
+}
+.bb-trow--link:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.bb-trow--link:hover .bb-trow__name {
+  color: var(--status-exact);
+}
+.bb-trow--link:focus-visible {
+  outline: 2px solid var(--status-exact);
+  outline-offset: -2px;
+}
+
+/* Quality links inside the matrix cells + the full-data table. */
+.mx-cell__q,
+.d-qlink {
+  color: var(--status-exact);
+  text-decoration: none;
+  border-bottom: 1px dotted color-mix(in oklab, var(--status-exact) 45%, transparent);
+}
+.mx-cell__q:hover,
+.d-qlink:hover {
+  border-bottom-style: solid;
+}
+
+/* The leaderboard quality subline is now a link to the report's row. */
+a.lb-quality {
+  text-decoration: none;
+}
+a.lb-quality:hover {
+  border-bottom-style: solid;
+}
+
+/* ---------- report: best/worst pane readability ---------- */
+.bb-qside__names {
+  min-width: 0;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.bb-qside__scoreblock {
+  margin-left: auto;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+}
+.bb-qside__score {
+  font-size: 1.25rem;
+  font-variation-settings: "wght" 680;
+  color: var(--text-bright);
+  line-height: 1;
+}
+.bb-qside__of5 {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-variation-settings: "wght" 400;
+}
+.bb-qside__rank {
+  font-size: 0.6875rem;
+  color: var(--text-dim);
+}
+/* Side-by-side best/worst panes when there's room; stacked on phones. */
+@media (min-width: 720px) {
+  .bb-qcard__inner {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .bb-qcard__meta,
+  .bb-qspread {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Verdict pull-quotes: logo badges sit inline with the attribution. */
+.bb-verdicts__attr {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2, 0.5rem);
+  flex-wrap: wrap;
+}
+
+/* Synthesis card titles carry the harness/model logos. */
+.bb-scard__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2, 0.5rem);
+  min-width: 0;
+}
+
+/* Reduced motion: kill the new transitions too. */
+@media (prefers-reduced-motion: reduce) {
+  .bb-qlq__body,
+  .bb-qlq__chev,
+  .bb-trow--link {
+    transition: none;
   }
 }

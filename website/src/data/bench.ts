@@ -812,8 +812,33 @@ export interface EvidenceCell {
   quality_invariant_coverage?: number | null;
   quality_code_quality?: number | null;
   quality_performance_awareness?: number | null;
+  /** Per-cell best/worst trial rationales from the Kimi judge, with the
+      full commentary text, per-dimension scores (1-5), quality_mean, rank,
+      and trial number. Absent on older exports / unjudged cells. */
+  quality_rationales?: QualityRationale[];
   confidence: BenchConfidence;
   evidence: BenchEvidence;
+}
+
+/** One Kimi-judge trial rationale — the "best" or "worst" trial for a cell,
+    with the judge's full commentary and per-dimension scores. */
+export interface QualityRationale {
+  /** "best" or "worst" — the trial with the highest/lowest quality_mean. */
+  tier: "best" | "worst";
+  /** Trial number within the cell (1-based). */
+  trial: number;
+  /** Per-trial quality_mean (1-5). */
+  quality_mean: number;
+  /** Rank of this trial among all trials the judge scored for the cell
+      (1 = best). */
+  rank: number;
+  /** The judge's full commentary, plain English. */
+  rationale: string;
+  /** Per-dimension scores (1-5). */
+  correctness_strategy: number;
+  invariant_coverage: number;
+  code_quality: number;
+  performance_awareness: number;
 }
 
 /** coverage.excluded_tasks entry — a task pulled from rates, with the reason. */
@@ -1272,6 +1297,12 @@ export interface ReportStackQuality {
   n: number;
   /** Number of judged task cells. */
   cells: number;
+  /** Median per-rubric dimension across the stack's judged cells (1-5);
+      null when no judged cell carries the dimension. */
+  correctness: number | null;
+  invariants: number | null;
+  codeQuality: number | null;
+  perf: number | null;
 }
 
 export interface ReportQuality {
@@ -1315,16 +1346,21 @@ export function reportQuality(): ReportQuality | null {
   const medianOf = (vals: number[]): number =>
     vals.length === 0 ? 0 : [...vals].sort((a, b) => a - b)[Math.floor(vals.length / 2)] ?? 0;
 
-  // Per-stack: n-weighted median of per-cell quality_means.
-  const byStack = new Map<string, { harness: string; model: string; pairs: [number, number][] }>();
+  // Per-stack: n-weighted median of per-cell quality_means + per-dimension
+  // medians (the component scores behind the headline number).
+  const byStack = new Map<
+    string,
+    { harness: string; model: string; pairs: [number, number][]; cells: JudgedCell[] }
+  >();
   for (const c of judgedCells) {
     const key = `${c.harness}|${c.model}`;
     let a = byStack.get(key);
     if (!a) {
-      a = { harness: c.harness, model: c.model, pairs: [] };
+      a = { harness: c.harness, model: c.model, pairs: [], cells: [] };
       byStack.set(key, a);
     }
     a.pairs.push([c.quality_mean, c.quality_n]);
+    a.cells.push(c);
   }
   const stacks: ReportStackQuality[] = [];
   for (const a of byStack.values()) {
@@ -1339,12 +1375,20 @@ export function reportQuality(): ReportQuality | null {
         break;
       }
     }
+    const dim = (pick: (c: JudgedCell) => number | null | undefined): number | null => {
+      const vals = a.cells.map(pick).filter((v): v is number => v != null);
+      return vals.length > 0 ? medianOf(vals) : null;
+    };
     stacks.push({
       harness: a.harness,
       model: a.model,
       quality: q,
       n: total,
-      cells: a.pairs.length
+      cells: a.pairs.length,
+      correctness: dim((c) => c.quality_correctness_strategy),
+      invariants: dim((c) => c.quality_invariant_coverage),
+      codeQuality: dim((c) => c.quality_code_quality),
+      perf: dim((c) => c.quality_performance_awareness)
     });
   }
   stacks.sort((x, y) => (y.quality ?? 0) - (x.quality ?? 0));
@@ -1393,6 +1437,243 @@ export function reportQuality(): ReportQuality | null {
     stacks,
     tasks
   };
+}
+
+/* ---------- report: Kimi-judge quality commentary view model ----------
+   Surfaces the actual judge rationales — the plain-English verdicts behind
+   the quality_mean numbers — per task, as a best/worst pair with harness +
+   model context, per-dimension scores, the quality spread, and a handful of
+   "judge's verdict" pull quotes for the section header. Hides cleanly (null)
+   when no cell ships quality_rationales, so older exports drop the
+   commentary UI without breaking the leaderboard/landscape above. */
+
+/** One side of a task's best/worst pair — the rationale + its context. */
+export interface QualityCommentarySide {
+  tier: "best" | "worst";
+  trial: number;
+  qualityMean: number;
+  rank: number;
+  rationale: string;
+  correctness: number;
+  invariants: number;
+  codeQuality: number;
+  perf: number;
+  harness: string;
+  model: string;
+}
+
+/** One task's commentary card — best and worst sides + the quality spread. */
+export interface QualityCommentaryTask {
+  task: string;
+  family: string;
+  difficulty: string;
+  /** Median quality_mean across the task's judged cells (1-5) — context. */
+  quality: number;
+  /** Number of judged trials across the task. */
+  n: number;
+  /** Number of cells with rationales for this task. */
+  cells: number;
+  /** The best-trial rationale (highest quality_mean across the task's cells). */
+  best: QualityCommentarySide | null;
+  /** The worst-trial rationale (lowest quality_mean across the task's cells). */
+  worst: QualityCommentarySide | null;
+  /** best.qualityMean - worst.qualityMean; null when only one side exists. */
+  spread: number | null;
+}
+
+/** A "judge's verdict" pull quote for the section header. */
+export interface QualityVerdictQuote {
+  task: string;
+  tier: "best" | "worst";
+  harness: string;
+  model: string;
+  qualityMean: number;
+  rationale: string;
+}
+
+export interface ReportQualityCommentary {
+  /** True when at least one cell ships quality_rationales. */
+  hasRationales: boolean;
+  /** Hand-pickable notable quotes for the header — the most insightful,
+      surprising, or damning rationales across all tasks. */
+  verdicts: QualityVerdictQuote[];
+  /** Per-task commentary cards, in suite order. */
+  tasks: QualityCommentaryTask[];
+}
+
+/** Pick the best and worst rationale across a task's cells. The "best" is
+    the highest quality_mean among the cells' "best" rationales; the "worst"
+    is the lowest quality_mean among the cells' "worst" rationales. */
+function pickTaskSides(
+  cells: EvidenceCell[]
+): { best: QualityCommentarySide | null; worst: QualityCommentarySide | null } {
+  const bests: QualityCommentarySide[] = [];
+  const worsts: QualityCommentarySide[] = [];
+  for (const c of cells) {
+    const rs = c.quality_rationales;
+    if (!Array.isArray(rs)) continue;
+    for (const r of rs) {
+      const side: QualityCommentarySide = {
+        tier: r.tier,
+        trial: r.trial,
+        qualityMean: r.quality_mean,
+        rank: r.rank,
+        rationale: r.rationale,
+        correctness: r.correctness_strategy,
+        invariants: r.invariant_coverage,
+        codeQuality: r.code_quality,
+        perf: r.performance_awareness,
+        harness: c.harness,
+        model: c.model
+      };
+      if (r.tier === "best") bests.push(side);
+      else worsts.push(side);
+    }
+  }
+  const best = bests.length > 0
+    ? bests.reduce((a, b) => (b.qualityMean > a.qualityMean ? b : a))
+    : null;
+  const worst = worsts.length > 0
+    ? worsts.reduce((a, b) => (b.qualityMean < a.qualityMean ? b : a))
+    : null;
+  return { best, worst };
+}
+
+/**
+ * The report's quality-commentary block — null when the export predates
+ * per-cell quality_rationales, so the commentary UI hides cleanly. The
+ * verdicts are auto-selected: the single highest-scoring "best" and the
+ * single lowest-scoring "worst" across all tasks, plus the most damning
+ * worst whose rationale mentions a correctness/invariant failure (detected
+ * by low correctness or empty-diff language) — three pull quotes that make
+ * someone want to read more.
+ */
+export function reportQualityCommentary(): ReportQualityCommentary | null {
+  const withRationales = EVIDENCE_CELLS.filter(
+    (c) => Array.isArray(c.quality_rationales) && c.quality_rationales.length > 0
+  );
+  if (withRationales.length === 0) return null;
+
+  // Per-task grouping (over judged cells, mirroring reportQuality).
+  const byTask = new Map<string, EvidenceCell[]>();
+  for (const c of withRationales) {
+    const list = byTask.get(c.task) ?? [];
+    list.push(c);
+    byTask.set(c.task, list);
+  }
+
+  const tasks: QualityCommentaryTask[] = [];
+  // Track candidates for the verdict pull quotes.
+  let topBest: QualityVerdictQuote | null = null;
+  let topWorst: QualityVerdictQuote | null = null;
+  let damningWorst: QualityVerdictQuote | null = null;
+  for (const [task, cells] of byTask) {
+    const { best, worst } = pickTaskSides(cells);
+    const meta = EVIDENCE.tasks[task];
+    const qmeans = cells
+      .map((c) => c.quality_mean)
+      .filter((v): v is number => v != null);
+    const quality =
+      qmeans.length > 0
+        ? [...qmeans].sort((a, b) => a - b)[Math.floor(qmeans.length / 2)] ?? 0
+        : 0;
+    const n = cells.reduce((a, c) => a + (c.quality_n ?? 0), 0);
+    const spread =
+      best && worst ? Math.round((best.qualityMean - worst.qualityMean) * 100) / 100 : null;
+    tasks.push({
+      task,
+      family: meta?.family ?? cells[0]?.family ?? "unknown",
+      difficulty: meta?.difficulty ?? cells[0]?.difficulty ?? "mid",
+      quality,
+      n,
+      cells: cells.length,
+      best,
+      worst,
+      spread
+    });
+    if (best && (!topBest || best.qualityMean > topBest.qualityMean)) {
+      topBest = {
+        task,
+        tier: "best",
+        harness: best.harness,
+        model: best.model,
+        qualityMean: best.qualityMean,
+        rationale: best.rationale
+      };
+    }
+    if (worst && (!topWorst || worst.qualityMean < topWorst.qualityMean)) {
+      topWorst = {
+        task,
+        tier: "worst",
+        harness: worst.harness,
+        model: worst.model,
+        qualityMean: worst.qualityMean,
+        rationale: worst.rationale
+      };
+    }
+    // Most damning worst: lowest correctness score, breaking ties by lower
+    // quality_mean — the "no implementation / broken parser" verdicts.
+    if (worst) {
+      const damning = damningWorst as QualityVerdictQuote | null;
+      const score = (q: QualityVerdictQuote): number => {
+        const side = worst;
+        return side ? side.correctness : 0;
+      };
+      if (!damning || worst.correctness < score(damning) ||
+          (worst.correctness === score(damning) && worst.qualityMean < damning.qualityMean)) {
+        damningWorst = {
+          task,
+          tier: "worst",
+          harness: worst.harness,
+          model: worst.model,
+          qualityMean: worst.qualityMean,
+          rationale: worst.rationale
+        };
+      }
+    }
+  }
+  tasks.sort((a, b) => a.task.localeCompare(b.task));
+
+  const verdicts: QualityVerdictQuote[] = [topBest, damningWorst, topWorst].filter(
+    (q): q is QualityVerdictQuote => q != null
+  );
+
+  return {
+    hasRationales: true,
+    verdicts,
+    tasks
+  };
+}
+
+/* ---------- report: Judge's Synthesis (cross-cutting patterns) ----------
+   The synthesis job writes /data/synthesis.json — pattern analysis across
+   the quality rationales, sliced three ways: per harness × model combo, per
+   harness across models, per model across harnesses. Loaded client-side by
+   bench-report.ts (the file may not exist yet while the job runs); these
+   types pin the contract both sides share. */
+
+/** One synthesis slice: the cross-cutting read for one combo / harness /
+    model, plus the individual observations it was distilled from. */
+export interface SynthesisEntry {
+  /** One paragraph distillation of the observations. */
+  summary: string;
+  /** The individual cross-cutting observations backing the summary. */
+  observations: string[];
+  /** Task count backing a combo entry (combos slice only). */
+  n_tasks?: number;
+  /** Model count backing a harness entry (harnesses slice only). */
+  n_models?: number;
+  /** Harness count backing a model entry (models slice only). */
+  n_harnesses?: number;
+}
+
+/** The full /data/synthesis.json payload — three slices, keyed by id
+    ("claude/glm-5-2" for combos, "claude" for harnesses, "glm-5-2" for
+    models). */
+export interface SynthesisPayload {
+  combos: Record<string, SynthesisEntry>;
+  harnesses: Record<string, SynthesisEntry>;
+  models: Record<string, SynthesisEntry>;
 }
 
 /** Headline numbers for the report hero + the strict-vs-solution section. */

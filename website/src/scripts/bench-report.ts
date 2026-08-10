@@ -315,8 +315,296 @@ function initExplorer(): void {
   root.addEventListener("pointerdown", bootOnce, { once: true });
 }
 
+/* ---------- 4 · quality cards + combo rows (tap-to-expand, deep links) ----------
+
+   Non-destructive: toggling flips .is-open on the card and updates
+   aria-expanded; CSS owns the height animation. No navigation, no scroll
+   repositioning. One delegated listener covers the per-task commentary
+   cards ([data-qcard]) and the stack quality leaderboard rows ([data-qlq]).
+
+   Deep links: every quality number on the site points at #qcard-<task> or
+   #qlq-<harness>-<model>; on load and on hashchange we expand the target
+   in place and scroll it into view. */
+
+function setCardOpen(card: HTMLElement, btn: HTMLButtonElement | null, open: boolean): void {
+  card.classList.toggle("is-open", open);
+  btn?.setAttribute("aria-expanded", String(open));
+}
+
+function initQualityCards(): void {
+  document.addEventListener("click", (ev) => {
+    const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>(
+      "[data-qcard-toggle], [data-qlq-toggle]"
+    );
+    if (!btn) return;
+    const card = btn.closest<HTMLElement>("[data-qcard], [data-qlq]");
+    if (!card) return;
+    setCardOpen(card, btn, !card.classList.contains("is-open"));
+  });
+}
+
+/** Expand + scroll to the card named by location.hash, if any. Returns
+    true when the hash named a quality card (so callers can skip other
+    hash work). Synthesis anchors (#synth-*) are handled by initSynthesis
+    after its fetch lands. */
+function openQualityHashTarget(): boolean {
+  const hash = window.location.hash.slice(1);
+  if (!hash || (!hash.startsWith("qcard-") && !hash.startsWith("qlq-"))) return false;
+  const card = document.getElementById(hash);
+  if (!card) return false;
+  const btn = card.querySelector<HTMLButtonElement>("[data-qcard-toggle], [data-qlq-toggle]");
+  setCardOpen(card, btn, true);
+  // The browser already scrolled for same-page anchors; scrollIntoView is
+  // the cross-page / JS-injected case. block:"start" keeps the head visible
+  // under the sticky site header via scroll-margin-top in CSS.
+  card.scrollIntoView({ block: "start" });
+  return true;
+}
+
+/* ---------- 5 · Judge's Synthesis (lazy /data/synthesis.json) ----------
+
+   The synthesis job may still be running, so the payload loads client-side
+   with a graceful placeholder on 404/network failure. DOM-built with
+   textContent throughout — no innerHTML. Mirrors the SynthesisPayload
+   contract in bench.ts. */
+
+interface SynthEntry {
+  summary: string;
+  observations: string[];
+  n_tasks?: number;
+  n_models?: number;
+  n_harnesses?: number;
+}
+
+interface SynthPayload {
+  combos: Record<string, SynthEntry>;
+  harnesses: Record<string, SynthEntry>;
+  models: Record<string, SynthEntry>;
+}
+
+function el(tag: string, className: string, text?: string): HTMLElement {
+  const e = document.createElement(tag);
+  e.className = className;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+/* Brand logos for synthesis cards — mirrors MODEL_LOGO / HARNESS_LOGO in
+   bench.ts (a server module; client scripts can't import it). Unknown ids
+   fall back to no image, matching the site's monogram-free client style. */
+const HARNESS_LOGO_SRC: Record<string, string> = {
+  droid: "/brand/providers/factory.png",
+  omp: "/brand/providers/omp.svg",
+  pi: "/brand/providers/pi-agent.svg",
+  codex: "/brand/providers/codex.png",
+  claude: "/brand/providers/claude-code.png",
+  "prime-agent": "/brand/providers/prime-intellect.png",
+  hermes: "/brand/providers/hermes.png",
+  opencode: "/brand/providers/opencode.png"
+};
+const MODEL_LOGO_SRC: Record<string, string> = {
+  "deepseek-v4-flash-0731": "/brand/providers/deepseek.svg",
+  "glm-5-2": "/brand/providers/zai.png",
+  "gpt-5-6-luna-max": "/brand/providers/openai.png",
+  "muse-spark-1-2-contributor": "/brand/providers/meta.svg"
+};
+
+function logoImg(src: string | undefined, size = 16): HTMLElement | null {
+  if (!src) return null;
+  const badge = el("span", "bb-badge bb-badge--sm");
+  const img = document.createElement("img");
+  img.src = src;
+  img.alt = "";
+  img.width = size;
+  img.height = size;
+  img.loading = "lazy";
+  img.decoding = "async";
+  badge.appendChild(img);
+  return badge;
+}
+
+function synthCard(
+  id: string,
+  title: string,
+  entry: SynthEntry,
+  nLabel: string | null,
+  logos: (HTMLElement | null)[]
+): HTMLElement {
+  const card = el("article", "bb-scard bb-glass");
+  card.id = id;
+
+  const head = document.createElement("button");
+  head.type = "button";
+  head.className = "bb-scard__head";
+  head.setAttribute("aria-expanded", "false");
+  const titleWrap = el("span", "bb-scard__title");
+  for (const logo of logos) if (logo) titleWrap.appendChild(logo);
+  titleWrap.appendChild(el("span", "", title));
+  head.appendChild(titleWrap);
+  const right = el("span", "bb-scard__n");
+  if (nLabel) right.appendChild(el("span", "", nLabel));
+  right.appendChild(el("span", "bb-scard__chev", "›"));
+  head.appendChild(right);
+
+  const body = el("div", "bb-scard__body");
+  // Lean syntheses may legitimately return no observations and an empty
+  // summary — say so plainly instead of rendering an empty card.
+  const summary =
+    entry.summary.trim().length > 0
+      ? entry.summary
+      : entry.observations.length === 0
+        ? "No strong, consistent patterns survived the skeptic rounds for this slice."
+        : "";
+  if (summary) body.appendChild(el("p", "bb-scard__summary", summary));
+  if (entry.observations.length > 0) {
+    const obs = el("div", "bb-scard__obs");
+    const inner = el("div", "bb-scard__obs-inner");
+    const list = el("ul", "bb-scard__obs-list");
+    for (const o of entry.observations) {
+      list.appendChild(el("li", "", o));
+    }
+    inner.appendChild(list);
+    obs.appendChild(inner);
+    body.appendChild(obs);
+  }
+
+  // Tap anywhere on the head toggles observations open/closed in place.
+  head.addEventListener("click", () => {
+    const open = card.classList.toggle("is-open");
+    head.setAttribute("aria-expanded", String(open));
+  });
+
+  card.append(head, body);
+  return card;
+}
+
+function renderSynthGroup(root: HTMLElement, entries: Record<string, SynthEntry>, kind: "combos" | "harnesses" | "models"): void {
+  const frag = document.createDocumentFragment();
+  const keys = Object.keys(entries).sort((a, b) => a.localeCompare(b));
+  for (const key of keys) {
+    const entry = entries[key];
+    if (!entry) continue;
+    let title = key;
+    let nLabel: string | null = null;
+    let id = `synth-${kind}-${key}`;
+    let logos: (HTMLElement | null)[] = [];
+    if (kind === "combos") {
+      const [h, m] = key.split("/");
+      title = m ? `${h} × ${m}` : key;
+      nLabel = entry.n_tasks != null ? `${entry.n_tasks} tasks` : null;
+      id = `synth-combo-${h}-${m ?? ""}`;
+      logos = [logoImg(HARNESS_LOGO_SRC[h ?? ""]), logoImg(MODEL_LOGO_SRC[m ?? ""])];
+    } else if (kind === "harnesses") {
+      nLabel = entry.n_models != null ? `${entry.n_models} models` : null;
+      id = `synth-harness-${key}`;
+      logos = [logoImg(HARNESS_LOGO_SRC[key])];
+    } else {
+      nLabel = entry.n_harnesses != null ? `${entry.n_harnesses} harnesses` : null;
+      id = `synth-model-${key}`;
+      logos = [logoImg(MODEL_LOGO_SRC[key])];
+    }
+    frag.appendChild(synthCard(id, title, entry, nLabel, logos));
+  }
+  root.replaceChildren(frag);
+}
+
+function initSynthesis(): void {
+  const root = document.querySelector<HTMLElement>("[data-br-synthesis]");
+  if (!root) return;
+  const status = root.querySelector<HTMLElement>("[data-br-synthesis-status]");
+  const body = root.querySelector<HTMLElement>("[data-br-synthesis-body]");
+  const combos = root.querySelector<HTMLElement>("[data-br-synthesis-combos]");
+  const harnesses = root.querySelector<HTMLElement>("[data-br-synthesis-harnesses]");
+  const models = root.querySelector<HTMLElement>("[data-br-synthesis-models]");
+  if (!status || !body || !combos || !harnesses || !models) return;
+
+  let loaded = false;
+  let loading: Promise<void> | null = null;
+
+  /** After a render, honor a #synth-* hash: open the named card and scroll
+      it into view. Called post-load and on hashchange. */
+  const openHashCard = (): void => {
+    const hash = window.location.hash.slice(1);
+    if (!hash.startsWith("synth-")) return;
+    const card = document.getElementById(hash);
+    if (!card) return;
+    card.classList.add("is-open");
+    card.querySelector("button")?.setAttribute("aria-expanded", "true");
+    card.scrollIntoView({ block: "start" });
+  };
+
+  const load = async (): Promise<void> => {
+    let data: SynthPayload | null = null;
+    try {
+      const res = await fetch("/data/synthesis.json", { cache: "no-store" });
+      if (res.ok) data = (await res.json()) as SynthPayload;
+    } catch {
+      data = null;
+    }
+    if (
+      !data ||
+      (Object.keys(data.combos ?? {}).length === 0 &&
+        Object.keys(data.harnesses ?? {}).length === 0 &&
+        Object.keys(data.models ?? {}).length === 0)
+    ) {
+      // Keep the "synthesis in progress" placeholder — nothing to show yet.
+      return;
+    }
+    renderSynthGroup(combos, data.combos ?? {}, "combos");
+    renderSynthGroup(harnesses, data.harnesses ?? {}, "harnesses");
+    renderSynthGroup(models, data.models ?? {}, "models");
+    status.hidden = true;
+    body.hidden = false;
+    loaded = true;
+    openHashCard();
+  };
+
+  const ensureLoaded = (): void => {
+    if (!loaded && !loading) loading = load();
+  };
+
+  // A tap on any "synthesis for this combo →" link must trigger the lazy
+  // fetch immediately — the anchor target doesn't exist until the render.
+  document.addEventListener("click", (ev) => {
+    const a = (ev.target as HTMLElement).closest<HTMLAnchorElement>('a[href^="#synth-"]');
+    if (!a) return;
+    ensureLoaded();
+  });
+
+  window.addEventListener("hashchange", () => {
+    if (window.location.hash.startsWith("#synth-")) {
+      if (loaded) openHashCard();
+      else ensureLoaded();
+    }
+  });
+
+  // Lazy: wait until the section nears the viewport before fetching — but
+  // a #synth-* deep link on arrival forces the load immediately.
+  if (window.location.hash.startsWith("#synth-")) {
+    ensureLoaded();
+  } else if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          io.disconnect();
+          ensureLoaded();
+        }
+      },
+      { rootMargin: "240px" }
+    );
+    io.observe(root);
+  } else {
+    ensureLoaded();
+  }
+}
+
 /* ---------- boot ---------- */
 
 initMatrix();
 initTaskFilter();
 initExplorer();
+initQualityCards();
+initSynthesis();
+// Deep links into quality cards land expanded, on arrival and on tap.
+openQualityHashTarget();
+window.addEventListener("hashchange", openQualityHashTarget);

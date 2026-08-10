@@ -267,9 +267,13 @@ const suitesDiffer = suiteCounts.length > 1 && suiteMin !== suiteMax;
                     <span class="lb-sub" data-role="subline">
                       {`strict ${fmtPct(s.strict_rate)} · n ${s.n}${ntasks > 0 ? ` · ${ntasks} tasks` : ""} · ${fmtCost(s.cost_usd_median)}/task`}
                       {s.quality_mean != null && s.quality_n > 0 && (
-                        <span class="lb-quality" title={`Kimi judge median quality_mean (1–5) over ${s.quality_n} judged trials`}>
+                        <a
+                          class="lb-quality"
+                          href={`/bench/report#qlq-${s.harness}-${s.model}`}
+                          title={`Kimi judge median quality_mean (1–5) over ${s.quality_n} judged trials — tap for the per-dimension breakdown`}
+                        >
                           {` · q ${s.quality_mean.toFixed(2)}`}
-                        </span>
+                        </a>
                       )}
                       {s.cost_standard_usd_median != null && (
                         <span
@@ -917,6 +921,55 @@ const suitesDiffer = suiteCounts.length > 1 && suiteMin !== suiteMax;
           </div>
         </div>
 
+        <div class="bb-pareto__axes" data-bb-pareto-axes>
+          <div class="bb-pareto__axisrow" role="group" aria-label="X axis metric">
+            <span class="bb-pareto__filterlabel mono">X</span>
+            <div class="bb-pareto__chips">
+              <button
+                class="bb-pareto__chip bb-pareto__chip--axis is-active"
+                type="button"
+                data-pareto-axis-x="cost"
+                aria-pressed="true">Cost</button
+              >
+              <button
+                class="bb-pareto__chip bb-pareto__chip--axis"
+                type="button"
+                data-pareto-axis-x="wall"
+                aria-pressed="false">Wall time</button
+              >
+              <button
+                class="bb-pareto__chip bb-pareto__chip--axis"
+                type="button"
+                data-pareto-axis-x="tok"
+                aria-pressed="false">Tokens</button
+              >
+            </div>
+          </div>
+          <div class="bb-pareto__axisrow" role="group" aria-label="Y axis metric">
+            <span class="bb-pareto__filterlabel mono">Y</span>
+            <div class="bb-pareto__chips">
+              <button
+                class="bb-pareto__chip bb-pareto__chip--axis is-active"
+                type="button"
+                data-pareto-axis-y="sol"
+                aria-pressed="true">Solution</button
+              >
+              <button
+                class="bb-pareto__chip bb-pareto__chip--axis"
+                type="button"
+                data-pareto-axis-y="str"
+                aria-pressed="false">Strict</button
+              >
+              <button
+                class="bb-pareto__chip bb-pareto__chip--axis"
+                type="button"
+                data-pareto-axis-y="qual"
+                aria-pressed="false">Kimi quality</button
+              >
+            </div>
+          </div>
+        </div>
+
         <div class="bb-pareto__stage" data-bb-pareto-stage>
           <div class="bb-pareto__stagebar" data-bb-pareto-zoombar>
             <span class="bb-zoom-hint">pinch or scroll to zoom</span>
@@ -939,6 +992,7 @@ const suitesDiffer = suiteCounts.length > 1 && suiteMin !== suiteMax;
           >
             <rect
               class="bb-pareto__quadrant"
+              data-pareto-quadrant
               x={PLOT.ml}
               y={PLOT.mt}
               width={(xPos(medianCost) - PLOT.ml).toFixed(1)}
@@ -946,53 +1000,68 @@ const suitesDiffer = suiteCounts.length > 1 && suiteMin !== suiteMax;
             <text class="bb-pareto__quadlabel" x={PLOT.ml + 10} y={PLOT.mt + 16}
               >most attractive</text
             >
-            {
-              domain.yTicks.map((t) => (
-                <>
-                  <line
-                    class="bb-pareto__grid"
-                    x1={PLOT.ml}
-                    x2={PLOT.w - PLOT.mr}
-                    y1={yPos(t)}
-                    y2={yPos(t)}
-                  />
-                  <text class="bb-pareto__tick" x={PLOT.ml - 8} y={yPos(t) + 4} text-anchor="end">
-                    {Math.round(t * 100)}%
-                  </text>
-                </>
-              ))
-            }
-            {
-              domain.xTicks.map((t) => (
-                <>
-                  <line
-                    class="bb-pareto__grid"
-                    x1={xPos(t)}
-                    x2={xPos(t)}
-                    y1={PLOT.mt}
-                    y2={PLOT.h - PLOT.mb}
-                  />
-                  <text
-                    class="bb-pareto__tick"
-                    x={xPos(t)}
-                    y={PLOT.h - PLOT.mb + 18}
-                    text-anchor="middle"
-                  >
-                    {fmtCost(t)}
-                  </text>
-                </>
-              ))
-            }
-            <line
-              class="bb-pareto__grid"
-              x1={xPos(0) + 14}
-              x2={xPos(0) + 14}
-              y1={PLOT.mt}
-              y2={PLOT.h - PLOT.mb}
-              stroke-dasharray="2 4"></line>
-            <text class="bb-pareto__tick" x={xPos(0)} y={PLOT.h - PLOT.mb + 18} text-anchor="middle"
-              >$0 free</text
-            >
+            <g data-pareto-grid-y>
+              {
+                domain.yTicks.map((t) => (
+                  <>
+                    <line
+                      class="bb-pareto__grid"
+                      x1={PLOT.ml}
+                      x2={PLOT.w - PLOT.mr}
+                      y1={yPos(t)}
+                      y2={yPos(t)}
+                    />
+                    <text
+                      class="bb-pareto__tick"
+                      x={PLOT.ml - 8}
+                      y={yPos(t) + 4}
+                      text-anchor="end"
+                    >
+                      {Math.round(t * 100)}%
+                    </text>
+                  </>
+                ))
+              }
+            </g>
+            <g data-pareto-grid-x>
+              {
+                domain.xTicks.map((t) => (
+                  <>
+                    <line
+                      class="bb-pareto__grid"
+                      x1={xPos(t)}
+                      x2={xPos(t)}
+                      y1={PLOT.mt}
+                      y2={PLOT.h - PLOT.mb}
+                    />
+                    <text
+                      class="bb-pareto__tick"
+                      x={xPos(t)}
+                      y={PLOT.h - PLOT.mb + 18}
+                      text-anchor="middle"
+                    >
+                      {fmtCost(t)}
+                    </text>
+                  </>
+                ))
+              }
+            </g>
+            <g data-pareto-zeroline>
+              <line
+                class="bb-pareto__grid"
+                x1={xPos(0) + 14}
+                x2={xPos(0) + 14}
+                y1={PLOT.mt}
+                y2={PLOT.h - PLOT.mb}
+                stroke-dasharray="2 4"></line>
+              <text
+                class="bb-pareto__tick"
+                x={xPos(0)}
+                y={PLOT.h - PLOT.mb + 18}
+                text-anchor="middle"
+                >$0 free</text
+              >
+            </g>
             <line
               class="bb-pareto__axis"
               x1={PLOT.ml}
@@ -1007,6 +1076,7 @@ const suitesDiffer = suiteCounts.length > 1 && suiteMin !== suiteMax;
               y2={PLOT.h - PLOT.mb}></line>
             <text
               class="bb-pareto__axistitle"
+              data-pareto-axistitle-x
               x={(PLOT.ml + PLOT.w - PLOT.mr) / 2}
               y={PLOT.h - 8}
               text-anchor="middle"
@@ -1015,6 +1085,7 @@ const suitesDiffer = suiteCounts.length > 1 && suiteMin !== suiteMax;
             </text>
             <text
               class="bb-pareto__axistitle"
+              data-pareto-axistitle-y
               transform={`translate(16, ${(PLOT.mt + PLOT.h - PLOT.mb) / 2}) rotate(-90)`}
               text-anchor="middle"
             >
@@ -1034,6 +1105,12 @@ const suitesDiffer = suiteCounts.length > 1 && suiteMin !== suiteMax;
                     data-pareto-pt={`${s.harness}|${s.model}`}
                     data-h={s.harness}
                     data-m={s.model}
+                    data-cost={s.cost_usd_median ?? ""}
+                    data-wall={s.wall_seconds_median ?? ""}
+                    data-tok={s.tokens_median ?? ""}
+                    data-sol={s.solution_rate}
+                    data-str={s.strict_rate}
+                    data-qual={s.quality_mean ?? ""}
                     role="button"
                     tabindex="0"
                     aria-label={`${harnessDisplay(s.harness)} × ${modelDisplay(s.model)}: ${fmtPct(s.solution_rate)} solution, ${fmtCost(s.cost_usd_median)}/task, n ${s.n}`}

@@ -1480,11 +1480,45 @@ function initPareto(data: Dataset): void {
 
   const pts = (): HTMLElement[] => [...svg.querySelectorAll<HTMLElement>("[data-pareto-pt]")];
 
+  /* ---------- Pareto — switchable axes: per-point metrics from the SSR
+     data attributes (quality_mean never reaches the JSON dataset, so the
+     DOM is the source of truth for all six metrics). ---------- */
+  type AxisX = "cost" | "wall" | "tok";
+  type AxisY = "sol" | "str" | "qual";
+  const parseMetric = (v: string | undefined): number | null => {
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  interface PtMetrics {
+    el: HTMLElement;
+    key: string;
+    cost: number | null;
+    wall: number | null;
+    tok: number | null;
+    sol: number | null;
+    str: number | null;
+    qual: number | null;
+  }
+  const pmetrics: PtMetrics[] = pts().map((el) => ({
+    el,
+    key: el.dataset.paretoPt ?? "",
+    cost: parseMetric(el.dataset.cost),
+    wall: parseMetric(el.dataset.wall),
+    tok: parseMetric(el.dataset.tok),
+    sol: parseMetric(el.dataset.sol),
+    str: parseMetric(el.dataset.str),
+    qual: parseMetric(el.dataset.qual)
+  }));
+  const qualByKey = new Map(pmetrics.map((p) => [p.key, p.qual]));
+  /** Keys hidden because the active axes lack a value for them. */
+  const missingAxis = new Set<string>();
+
   const applyFilters = (): void => {
     for (const el of pts()) {
       const h = el.dataset.h ?? "";
       const m = el.dataset.m ?? "";
-      const visible = onH.has(h) && onM.has(m);
+      const visible = onH.has(h) && onM.has(m) && !missingAxis.has(el.dataset.paretoPt ?? "");
       el.classList.toggle("is-dimmed", !visible);
       el.setAttribute("aria-hidden", String(!visible));
     }
@@ -1502,9 +1536,10 @@ function initPareto(data: Dataset): void {
     const s = byKey.get(key)!;
     const wall = s.wall;
     const tok = s.tok;
+    const qual = qualByKey.get(key) ?? null;
     tip.innerHTML =
       `<span><strong>${esc(s.hd)} × ${esc(s.mds)}</strong> · <em>${fmtPct(s.sol)}</em> sol · strict ${fmtPct(s.str)} · <em>${fmtCost(s.cost)}/task</em></span>` +
-      `<span class="mono" style="opacity:0.78">${fmtWall(wall)} · ${fmtTokens(tok)} tok · n ${s.n} · ${s.ev === "inferred" ? "inferred" : "measured"}${s.conf === "low" ? " · low conf" : ""}</span>`;
+      `<span class="mono" style="opacity:0.78">${fmtWall(wall)} · ${fmtTokens(tok)} tok · ${qual != null ? `quality ${qual.toFixed(1)}/5 · ` : ""}n ${s.n} · ${s.ev === "inferred" ? "inferred" : "measured"}${s.conf === "low" ? " · low conf" : ""}</span>`;
     tip.hidden = false;
   };
 
@@ -1653,7 +1688,268 @@ function initPareto(data: Dataset): void {
     if (pinned.size === 0) tip.hidden = true;
   });
 
-  applyFilters();
+  /* ---------- Pareto — switchable axes (client recompute) ----------
+     Mirrors the server paretoDomain geometry: log10 X with a 9% gutter
+     for $0/free stacks, linear Y padded to the observed band. The SSR
+     default (cost × solution) stays byte-identical until a chip moves. */
+  const PLOT = { w: 760, h: 440, ml: 56, mr: 24, mt: 24, mb: 48 };
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const gridX = svg.querySelector<SVGGElement>("[data-pareto-grid-x]");
+  const gridY = svg.querySelector<SVGGElement>("[data-pareto-grid-y]");
+  const zeroLine = svg.querySelector<SVGGElement>("[data-pareto-zeroline]");
+  const quadrant = svg.querySelector<SVGRectElement>("[data-pareto-quadrant]");
+  const titleX = svg.querySelector<SVGTextElement>("[data-pareto-axistitle-x]");
+  const titleY = svg.querySelector<SVGTextElement>("[data-pareto-axistitle-y]");
+  const frontier = svg.querySelector<SVGPolylineElement>("[data-bb-pareto-frontier]");
+
+  const AXIS_TITLE_X: Record<AxisX, string> = {
+    cost: "median cost per task · USD, log scale (list-price, token-derived)",
+    wall: "median wall time per task · log scale",
+    tok: "median tokens per task · log scale"
+  };
+  const AXIS_TITLE_Y: Record<AxisY, string> = {
+    sol: "solution rate",
+    str: "strict rate",
+    qual: "Kimi quality (1–5)"
+  };
+  const xVal = (p: PtMetrics, ax: AxisX): number | null =>
+    ax === "cost" ? p.cost : ax === "wall" ? p.wall : p.tok;
+  const yVal = (p: PtMetrics, ay: AxisY): number | null =>
+    ay === "sol" ? p.sol : ay === "str" ? p.str : p.qual;
+
+  /** Log10 axis fraction with the server's free-stack gutter. */
+  const logScale = (values: number[]): { frac: (v: number) => number; ticks: number[] } => {
+    const positive = values.filter((v) => v > 0);
+    const xMinPos = positive.length > 0 ? Math.min(...positive) : 0.001;
+    const xMax = Math.max(...values, xMinPos * 10);
+    const lo = Math.log10(xMinPos);
+    const hi = Math.log10(xMax);
+    const span = hi - lo || 1;
+    const gutterW = 0.09;
+    const frac = (v: number): number => {
+      if (v <= 0) return gutterW / 2;
+      return gutterW + ((Math.log10(v) - lo) / span) * (1 - gutterW);
+    };
+    const ticks: number[] = [];
+    for (let e = Math.floor(lo); e <= Math.ceil(hi); e++) {
+      const v = Math.pow(10, e);
+      if (v >= xMinPos * 0.999 && v <= xMax * 1.001) ticks.push(v);
+    }
+    return { frac, ticks };
+  };
+
+  /** Linear Y domain: rates pad to 0.05 steps like the server; quality
+      pads the observed 1–5 band to half-point steps. */
+  const linDomain = (vals: number[], isQual: boolean): { min: number; max: number; ticks: number[] } => {
+    let yMin: number;
+    let yMax: number;
+    if (isQual) {
+      yMin = Math.max(1, Math.floor((Math.min(...vals) - 0.25) * 2) / 2);
+      yMax = Math.min(5, Math.ceil((Math.max(...vals) + 0.25) * 2) / 2);
+    } else {
+      yMin = Math.max(0, Math.floor(Math.min(...vals, 0.5) * 20) / 20);
+      yMax = Math.ceil(Math.max(...vals, 0.6) * 20) / 20;
+    }
+    if (yMax <= yMin) yMax = yMin + (isQual ? 1 : 0.05);
+    const span = yMax - yMin;
+    const step = isQual ? (span <= 1 ? 0.5 : 1) : span <= 0.2 ? 0.05 : span <= 0.5 ? 0.1 : 0.2;
+    const ticks: number[] = [];
+    for (let t = yMin; t <= yMax + 1e-9; t += step) ticks.push(Math.round(t * 100) / 100);
+    return { min: yMin, max: yMax, ticks };
+  };
+
+  const svgEl = <K extends keyof SVGElementTagNameMap>(
+    tag: K,
+    attrs: Record<string, string>,
+    text?: string
+  ): SVGElementTagNameMap[K] => {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    if (text != null) node.textContent = text;
+    return node;
+  };
+
+  const applyAxes = (ax: AxisX, ay: AxisY): void => {
+    const present = pmetrics.filter((p) => xVal(p, ax) != null && yVal(p, ay) != null);
+    missingAxis.clear();
+    for (const p of pmetrics) {
+      if (xVal(p, ax) == null || yVal(p, ay) == null) missingAxis.add(p.key);
+    }
+    if (present.length === 0) {
+      applyFilters();
+      return;
+    }
+    const xs = present.map((p) => xVal(p, ax)!);
+    const ys = present.map((p) => yVal(p, ay)!);
+    const scX = logScale(xs);
+    const dY = linDomain(ys, ay === "qual");
+    const px = (v: number): number => PLOT.ml + scX.frac(v) * (PLOT.w - PLOT.ml - PLOT.mr);
+    const py = (v: number): number =>
+      PLOT.mt + (1 - (v - dY.min) / (dY.max - dY.min)) * (PLOT.h - PLOT.mt - PLOT.mb);
+
+    // Reposition both circles of every visible point.
+    for (const p of present) {
+      const cx = px(xVal(p, ax)!).toFixed(1);
+      const cy = py(yVal(p, ay)!).toFixed(1);
+      p.el.querySelectorAll("circle").forEach((c) => {
+        c.setAttribute("cx", cx);
+        c.setAttribute("cy", cy);
+      });
+    }
+
+    // Rebuild gridlines + tick labels for the active axes.
+    const fmtXTick = (t: number): string =>
+      ax === "cost" ? fmtCost(t) : ax === "wall" ? fmtWall(t) : fmtTokens(t);
+    const fmtYTick = (t: number): string =>
+      ay === "qual" ? (Number.isInteger(t) ? String(t) : t.toFixed(1)) : `${Math.round(t * 100)}%`;
+    if (gridY) {
+      gridY.replaceChildren(
+        ...dY.ticks.flatMap((t) => [
+          svgEl("line", {
+            class: "bb-pareto__grid",
+            x1: String(PLOT.ml),
+            x2: String(PLOT.w - PLOT.mr),
+            y1: py(t).toFixed(1),
+            y2: py(t).toFixed(1)
+          }),
+          svgEl(
+            "text",
+            {
+              class: "bb-pareto__tick",
+              x: String(PLOT.ml - 8),
+              y: (py(t) + 4).toFixed(1),
+              "text-anchor": "end"
+            },
+            fmtYTick(t)
+          )
+        ])
+      );
+    }
+    if (gridX) {
+      gridX.replaceChildren(
+        ...scX.ticks.flatMap((t) => [
+          svgEl("line", {
+            class: "bb-pareto__grid",
+            x1: px(t).toFixed(1),
+            x2: px(t).toFixed(1),
+            y1: String(PLOT.mt),
+            y2: String(PLOT.h - PLOT.mb)
+          }),
+          svgEl(
+            "text",
+            {
+              class: "bb-pareto__tick",
+              x: px(t).toFixed(1),
+              y: String(PLOT.h - PLOT.mb + 18),
+              "text-anchor": "middle"
+            },
+            fmtXTick(t)
+          )
+        ])
+      );
+    }
+
+    // Axis titles + accessible description.
+    if (titleX) titleX.textContent = AXIS_TITLE_X[ax];
+    if (titleY) titleY.textContent = AXIS_TITLE_Y[ay];
+    svg.setAttribute(
+      "aria-label",
+      `Interactive scatter: ${AXIS_TITLE_X[ax]} versus ${AXIS_TITLE_Y[ay]}. Hover for details, click to pin comparisons.`
+    );
+
+    // The $0 gutter marker only means something on the cost axis.
+    if (zeroLine) zeroLine.style.display = ax === "cost" ? "" : "none";
+
+    // "Most attractive" quadrant: below-median x, above-median y.
+    const median = (arr: number[]): number => {
+      const s = [...arr].sort((a, b) => a - b);
+      return s[Math.floor(s.length / 2)] ?? 0;
+    };
+    if (quadrant) {
+      quadrant.setAttribute("width", Math.max(0, px(median(xs)) - PLOT.ml).toFixed(1));
+      quadrant.setAttribute("height", Math.max(0, py(median(ys)) - PLOT.mt).toFixed(1));
+    }
+
+    // Pareto frontier for the active axes: sort by x ascending, keep
+    // strictly improving y (lower x is always better here).
+    const sorted = [...present].sort((a, b) => xVal(a, ax)! - xVal(b, ax)!);
+    let best = -Infinity;
+    const fKeys = new Set<string>();
+    const fpts: string[] = [];
+    for (const p of sorted) {
+      const y = yVal(p, ay)!;
+      if (y > best + 1e-9) {
+        best = y;
+        fKeys.add(p.key);
+        fpts.push(`${px(xVal(p, ax)!).toFixed(1)},${py(y).toFixed(1)}`);
+      }
+    }
+    if (frontier) frontier.setAttribute("points", fpts.join(" "));
+    for (const p of pmetrics) p.el.classList.toggle("bb-pareto__pt--frontier", fKeys.has(p.key));
+
+    applyFilters();
+  };
+
+  // Axis chips — one active per axis, persisted to localStorage.
+  const AXES_KEY = "bb-pareto-axes";
+  let axisX: AxisX = "cost";
+  let axisY: AxisY = "sol";
+  try {
+    const raw = localStorage.getItem(AXES_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw) as { x?: string; y?: string };
+      if (saved.x === "cost" || saved.x === "wall" || saved.x === "tok") axisX = saved.x;
+      if (saved.y === "sol" || saved.y === "str" || saved.y === "qual") axisY = saved.y;
+    }
+  } catch {
+    /* storage unavailable — defaults stand */
+  }
+  const persistAxes = (): void => {
+    try {
+      localStorage.setItem(AXES_KEY, JSON.stringify({ x: axisX, y: axisY }));
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  const syncAxisChips = (): void => {
+    root.querySelectorAll<HTMLButtonElement>("[data-pareto-axis-x]").forEach((b) => {
+      const on = b.dataset.paretoAxisX === axisX;
+      b.classList.toggle("is-active", on);
+      b.setAttribute("aria-pressed", String(on));
+    });
+    root.querySelectorAll<HTMLButtonElement>("[data-pareto-axis-y]").forEach((b) => {
+      const on = b.dataset.paretoAxisY === axisY;
+      b.classList.toggle("is-active", on);
+      b.setAttribute("aria-pressed", String(on));
+    });
+  };
+  root.querySelectorAll<HTMLButtonElement>("[data-pareto-axis-x]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const v = btn.dataset.paretoAxisX;
+      if (v !== "cost" && v !== "wall" && v !== "tok") return;
+      axisX = v;
+      persistAxes();
+      syncAxisChips();
+      setParetoScale(1);
+      applyAxes(axisX, axisY);
+    });
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-pareto-axis-y]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const v = btn.dataset.paretoAxisY;
+      if (v !== "sol" && v !== "str" && v !== "qual") return;
+      axisY = v;
+      persistAxes();
+      syncAxisChips();
+      setParetoScale(1);
+      applyAxes(axisX, axisY);
+    });
+  });
+
+  syncAxisChips();
+  // Restore a saved non-default view; the default matches the SSR markup.
+  if (axisX !== "cost" || axisY !== "sol") applyAxes(axisX, axisY);
+  else applyFilters();
 }
 
 /* ---------- boot ---------- */

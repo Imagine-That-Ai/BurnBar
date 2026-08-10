@@ -21,6 +21,7 @@ import {
   reportStats,
   reportCoverage,
   reportQuality,
+  reportQualityCommentary,
   noopStats,
   fmtPct,
   fmtCost,
@@ -48,6 +49,7 @@ const prime = stats.prime;
 const noop = noopStats();
 const coverage = reportCoverage();
 const quality = reportQuality();
+const qualityCommentary = reportQualityCommentary();
 
 const params = EVIDENCE.params as {
   ci?: string;
@@ -132,6 +134,11 @@ const AMENDMENTS: [string, string, string][] = [
     "Standard-tier cost equivalent",
     "2026-08-08",
     "The contributor tier of muse-spark is free under data-sharing; every contributor cell is repriced at the standard non-contributor rates (meta/muse-spark-1.2, $1.25/$4.25 per M) and published as cost_standard_usd_median alongside the $0.00."
+  ],
+  [
+    "Comparative quality judging",
+    "2026-08-09",
+    "Kimi K3 judges every measured cell on a 4-dimension rubric (correctness, invariant coverage, code quality, performance awareness) with per-trial rationales. Hard tasks 33-37 added to break saturation; reference-solution anchors calibrate the judge on those tasks. Judge timeouts root-caused and fixed (chunk 8, 900s)."
   ]
 ];
 
@@ -140,6 +147,7 @@ const SECTION_NAV: [string, string][] = [
   ["models", "Models"],
   ["endpoints", "Two estimands"],
   ["quality", "Quality"],
+  ["synthesis", "Synthesis"],
   ["prime", "Prime audit"],
   ["audits", "Audit verdicts"],
   ["tasks", "Tasks"],
@@ -309,7 +317,18 @@ const SECTION_NAV: [string, string][] = [
                           </span>
                           <span class="mx-cell__fam">
                             {cell.tasks} tasks{cell.flips > 0 ? ` · ${cell.flips} t/o-pass` : ""}
-                            {cell.quality != null ? ` · q ${cell.quality.toFixed(2)}` : ""}
+                            {cell.quality != null && (
+                              <>
+                                {" · "}
+                                <a
+                                  class="mx-cell__q"
+                                  href={`#qlq-${hid}-${mid}`}
+                                  title={`Kimi quality ${cell.quality.toFixed(2)}/5 — tap for the component scores`}
+                                >
+                                  q {cell.quality.toFixed(2)}
+                                </a>
+                              </>
+                            )}
                           </span>
                         </td>
                       );
@@ -501,38 +520,93 @@ const SECTION_NAV: [string, string][] = [
         </header>
 
         {/* Stack quality leaderboard — best first, mirroring the matrix's
-            harness × model structure. */}
+            harness × model structure. Each row taps open in place to reveal
+            the four rubric component scores behind the headline number. */}
         <div class="bb-qlq">
           <h3 class="bb-qlq__h">Stack quality leaderboard.</h3>
           <p class="bb-caption">
             Each row is one harness × model stack. quality_mean is the n-weighted median of the
             stack's per-task quality_means (1–5); the bar is scaled to the observed range so
-            fine differences stay visible.
+            fine differences stay visible. <strong>Tap a row</strong> for the component scores —
+            correctness strategy, invariant coverage, code quality, performance awareness.
           </p>
-          <div class="bb-qlq__rows">
+          <div class="bb-qlq__rows" data-br-qlq>
             {quality.stacks.map((s) => {
               const q = s.quality ?? 0;
               // Bar fraction on a 1–5 scale, floored at 2 so the bar never
               // reads empty for a 1-score (it is still a real, bad score).
               const frac = Math.max(0, Math.min(1, (q - 2) / 3));
               return (
-                <div class={`bb-qlq__row h--${hcls(s.harness)} m--${mcls(s.model)}`}>
-                  <span class="bb-qlq__name">
-                    <span class={`bb-badge bb-badge--sm h--${hcls(s.harness)}`}>
-                      {HARNESS_LOGO[s.harness]
-                        ? (
-                          <img src={HARNESS_LOGO[s.harness]!} alt="" width="14" height="14" loading="lazy" decoding="async" />
-                        )
-                        : <span class="bb-badge__mono">{monogramFor(s.harness, harnessDisplay(s.harness))}</span>}
+                <article
+                  class={`bb-qlq__row bb-qlq__row--xp h--${hcls(s.harness)} m--${mcls(s.model)}`}
+                  id={`qlq-${s.harness}-${s.model}`}
+                  data-qlq
+                >
+                  <button
+                    type="button"
+                    class="bb-qlq__head"
+                    data-qlq-toggle
+                    aria-expanded="false"
+                    aria-label={`${harnessDisplay(s.harness)} × ${modelDisplay(s.model)}: quality ${q.toFixed(2)} of 5 — tap for component scores`}
+                  >
+                    <span class="bb-qlq__name">
+                      <span class={`bb-badge bb-badge--sm h--${hcls(s.harness)}`}>
+                        {HARNESS_LOGO[s.harness]
+                          ? (
+                            <img src={HARNESS_LOGO[s.harness]!} alt="" width="14" height="14" loading="lazy" decoding="async" />
+                          )
+                          : <span class="bb-badge__mono">{monogramFor(s.harness, harnessDisplay(s.harness))}</span>}
+                      </span>
+                      <span class={`bb-badge bb-badge--sm m--${mcls(s.model)}`}>
+                        {MODEL_LOGO[s.model]
+                          ? (
+                            <img src={MODEL_LOGO[s.model]!} alt="" width="14" height="14" loading="lazy" decoding="async" />
+                          )
+                          : <span class="bb-badge__mono">{monogramFor(s.model, modelDisplay(s.model))}</span>}
+                      </span>
+                      <span class="bb-qlq__names">
+                        {harnessDisplay(s.harness)} <span class="bb-qlq__x">×</span> {modelDisplay(s.model)}
+                      </span>
                     </span>
-                    {harnessDisplay(s.harness)} · {modelDisplay(s.model)}
-                  </span>
-                  <div class="bb-qlq__bar" role="img" aria-label={`quality ${q.toFixed(2)} of 5, ${s.n} judged trials`}>
-                    <div class="bb-qlq__fill" style={`width:${(frac * 100).toFixed(1)}%`}></div>
+                    <div class="bb-qlq__bar" role="img" aria-label={`quality ${q.toFixed(2)} of 5, ${s.n} judged trials`}>
+                      <div class="bb-qlq__fill" style={`width:${(frac * 100).toFixed(1)}%`}></div>
+                    </div>
+                    <span class="bb-qlq__val mono">{s.quality != null ? s.quality.toFixed(2) : "—"}</span>
+                    <span class="bb-qlq__n mono">{s.n} trials · {s.cells} cells</span>
+                    <span class="bb-qlq__chev" aria-hidden="true">›</span>
+                  </button>
+                  <div class="bb-qlq__body" data-qlq-body>
+                    <div class="bb-qlq__bodyinner">
+                      <div class="bb-qdims bb-qdims--combo">
+                        {([
+                          ["Correctness strategy", s.correctness],
+                          ["Invariant coverage", s.invariants],
+                          ["Code quality", s.codeQuality],
+                          ["Performance awareness", s.perf]
+                        ] as const).map(([label, v]) => (
+                          <div class="bb-qdims__row">
+                            <span class="bb-qdims__label">{label}</span>
+                            <div
+                              class="bb-qdims__bar"
+                              role="img"
+                              aria-label={`${label}: ${v != null ? v.toFixed(2) : "—"} of 5`}
+                            >
+                              <div
+                                class="bb-qdims__fill bb-qdims__fill--best"
+                                style={`width:${v != null ? ((v / 5) * 100).toFixed(1) : 0}%`}
+                              ></div>
+                            </div>
+                            <span class="bb-qdims__val mono">{v != null ? v.toFixed(2) : "—"}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <p class="bb-qlq__note">
+                        Component scores are medians across the stack's {s.cells} judged task
+                        cells. <a href={`#synth-combo-${s.harness}-${s.model}`} data-synth-link>Judge's pattern synthesis for this combo →</a>
+                      </p>
+                    </div>
                   </div>
-                  <span class="bb-qlq__val mono">{s.quality != null ? s.quality.toFixed(2) : "—"}</span>
-                  <span class="bb-qlq__n mono">{s.n} trials · {s.cells} cells</span>
-                </div>
+                </article>
               );
             })}
           </div>
@@ -568,7 +642,12 @@ const SECTION_NAV: [string, string][] = [
                 .map((d) => (d != null ? d.toFixed(1) : "—"))
                 .join("·");
               return (
-                <div class="bb-trow" data-family={t.family}>
+                <a
+                  class="bb-trow bb-trow--link"
+                  data-family={t.family}
+                  href={`#qcard-${t.task}`}
+                  title={`${t.task} — tap for the judge's best/worst commentary`}
+                >
                   <div class="bb-trow__id">
                     <span class="bb-trow__name mono">{t.task}</span>
                     <span class={`bb-trow__diff bb-trow__diff--${t.difficulty}`}>{t.difficulty}</span>
@@ -606,14 +685,218 @@ const SECTION_NAV: [string, string][] = [
                   <span class="bb-trow__num mono bb-qlq__dims" title="correctness·invariants·code·perf (median, 1–5)">
                     {dimStr}
                   </span>
-                </div>
+                </a>
               );
             })}
           </div>
         </div>
+
+        {/* Per-task quality commentary — liquid glass cards, tap to expand
+            in place. Each card pairs the judge's best and worst rationales
+            for the task with per-dimension bars; the collapsed face keeps
+            the spread + best score glanceable on a phone. */}
+        {qualityCommentary && (
+          <div class="bb-glasswrap" data-br-glass>
+            <h3 class="bb-qlq__h">Judge's commentary, task by task.</h3>
+            <p class="bb-caption">
+              Tap a card to read the judge's full rationale for the task's best and worst
+              trials — harness, model, per-dimension scores, and the quality spread between
+              them.
+            </p>
+            {qualityCommentary.verdicts.length > 0 && (
+              <div class="bb-verdicts">
+                {qualityCommentary.verdicts.map((v) => (
+                  <blockquote class={`bb-verdicts__q bb-glass bb-glass--${v.tier}`}>
+                    <p class="bb-verdicts__text">“{v.rationale}”</p>
+                    <footer class="bb-verdicts__attr mono">
+                      <span class={`bb-badge bb-badge--sm h--${hcls(v.harness)}`} title={harnessDisplay(v.harness)}>
+                        {HARNESS_LOGO[v.harness]
+                          ? <img src={HARNESS_LOGO[v.harness]!} alt="" width="14" height="14" loading="lazy" decoding="async" />
+                          : <span class="bb-badge__mono">{monogramFor(v.harness, harnessDisplay(v.harness))}</span>}
+                      </span>
+                      <span class={`bb-badge bb-badge--sm m--${mcls(v.model)}`} title={modelDisplay(v.model)}>
+                        {MODEL_LOGO[v.model]
+                          ? <img src={MODEL_LOGO[v.model]!} alt="" width="14" height="14" loading="lazy" decoding="async" />
+                          : <span class="bb-badge__mono">{monogramFor(v.model, modelDisplay(v.model))}</span>}
+                      </span>
+                      {harnessDisplay(v.harness)} × {modelDisplay(v.model)} · {v.task} ·{" "}
+                      {v.qualityMean.toFixed(1)}/5 {v.tier}
+                    </footer>
+                  </blockquote>
+                ))}
+              </div>
+            )}
+            <div class="bb-qcards">
+              {qualityCommentary.tasks.map((t) => (
+                <article
+                  class="bb-qcard bb-glass"
+                  id={`qcard-${t.task}`}
+                  data-qcard
+                  data-family={t.family}
+                >
+                  <button
+                    type="button"
+                    class="bb-qcard__head"
+                    data-qcard-toggle
+                    aria-expanded="false"
+                  >
+                    <span class="bb-qcard__id">
+                      <span class="bb-qcard__name mono">{t.task}</span>
+                      <span class={`bb-trow__diff bb-trow__diff--${t.difficulty}`}>{t.difficulty}</span>
+                    </span>
+                    <span class="bb-qcard__chips">
+                      {t.spread != null && (
+                        <span class="bb-qcard__chip bb-qcard__chip--spread mono" title="best minus worst quality_mean">
+                          Δ {t.spread.toFixed(1)}
+                        </span>
+                      )}
+                      {t.best && (
+                        <span class="bb-qcard__chip bb-qcard__chip--best mono">
+                          best {t.best.qualityMean.toFixed(1)}
+                        </span>
+                      )}
+                      <span class="bb-qcard__chev" aria-hidden="true">›</span>
+                    </span>
+                  </button>
+                  <div class="bb-qcard__body" data-qcard-body>
+                    <div class="bb-qcard__inner">
+                      <span class="bb-qcard__meta mono">
+                        {t.cells} cells · {t.n} judged trials · median {t.quality.toFixed(2)}/5
+                      </span>
+                      {([t.best, t.worst] as const).map((side) =>
+                        side && (
+                          <div class={`bb-qside bb-glass bb-glass--${side.tier}`}>
+                            <header class="bb-qside__head">
+                              <span class={`bb-qside__tier bb-qside__tier--${side.tier}`}>
+                                {side.tier === "best" ? "Best" : "Worst"}
+                              </span>
+                              <span class="bb-qside__who">
+                                <span class={`bb-badge bb-badge--sm h--${hcls(side.harness)}`} title={harnessDisplay(side.harness)}>
+                                  {HARNESS_LOGO[side.harness]
+                                    ? (
+                                      <img src={HARNESS_LOGO[side.harness]!} alt="" width="16" height="16" loading="lazy" decoding="async" />
+                                    )
+                                    : <span class="bb-badge__mono">{monogramFor(side.harness, harnessDisplay(side.harness))}</span>}
+                                </span>
+                                <span class={`bb-badge bb-badge--sm m--${mcls(side.model)}`} title={modelDisplay(side.model)}>
+                                  {MODEL_LOGO[side.model]
+                                    ? (
+                                      <img src={MODEL_LOGO[side.model]!} alt="" width="16" height="16" loading="lazy" decoding="async" />
+                                    )
+                                    : <span class="bb-badge__mono">{monogramFor(side.model, modelDisplay(side.model))}</span>}
+                                </span>
+                                <span class="bb-qside__names">
+                                  {harnessDisplay(side.harness)} <span class="bb-qlq__x">×</span> {modelDisplay(side.model)}
+                                </span>
+                              </span>
+                              <span class="bb-qside__scoreblock">
+                                <span class="bb-qside__score mono">{side.qualityMean.toFixed(1)}<span class="bb-qside__of5">/5</span></span>
+                                <span class="bb-qside__rank mono">rank #{side.rank}</span>
+                              </span>
+                            </header>
+                            <p class="bb-qside__rationale">{side.rationale}</p>
+                            <div class="bb-qdims">
+                              {([
+                                ["Correctness", side.correctness],
+                                ["Invariant coverage", side.invariants],
+                                ["Code quality", side.codeQuality],
+                                ["Performance", side.perf]
+                              ] as const).map(([label, v]) => (
+                                <div class="bb-qdims__row">
+                                  <span class="bb-qdims__label">{label}</span>
+                                  <div
+                                    class="bb-qdims__bar"
+                                    role="img"
+                                    aria-label={`${label}: ${v} of 5`}
+                                  >
+                                    <div
+                                      class={`bb-qdims__fill bb-qdims__fill--${side.tier}`}
+                                      style={`width:${((v / 5) * 100).toFixed(1)}%`}
+                                    ></div>
+                                  </div>
+                                  <span class="bb-qdims__val mono">{v}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      )}
+                      {t.spread != null && (
+                        <div class="bb-qspread">
+                          <span class="bb-qspread__label mono">spread</span>
+                          <div
+                            class="bb-qspread__bar"
+                            role="img"
+                            aria-label={`quality spread ${t.spread.toFixed(2)} — best ${t.best?.qualityMean.toFixed(1)}, worst ${t.worst?.qualityMean.toFixed(1)}`}
+                          >
+                            <div class="bb-qspread__track"></div>
+                            {t.worst && (
+                              <div
+                                class="bb-qspread__mark bb-qspread__mark--worst"
+                                style={`left:${((t.worst.qualityMean / 5) * 100).toFixed(1)}%`}
+                              ></div>
+                            )}
+                            {t.best && (
+                              <div
+                                class="bb-qspread__mark bb-qspread__mark--best"
+                                style={`left:${((t.best.qualityMean / 5) * 100).toFixed(1)}%`}
+                              ></div>
+                            )}
+                          </div>
+                          <span class="bb-qspread__val mono">
+                            {t.worst?.qualityMean.toFixed(1)} → {t.best?.qualityMean.toFixed(1)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </section>
   )}
+
+  {/* ──────────────── 4.6 · JUDGE'S SYNTHESIS ────────────────
+      Cross-cutting pattern analysis, loaded client-side from
+      /data/synthesis.json — shows a placeholder until the synthesis job
+      lands the file. */}
+  <section class="bb-section bb-section--ember" id="synthesis" aria-labelledby="synthesis-h" data-br-synthesis>
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--ember">Cross-cutting patterns</span>
+        <h2 id="synthesis-h" class="bb-sec-h">Judge's synthesis.</h2>
+        <p class="bb-sec-lead">
+          The judge's rationales, read across tasks: what stays true about each
+          harness regardless of model, about each model regardless of harness, and about
+          every harness × model combo in between.
+        </p>
+      </header>
+      <div class="bb-synth__status" data-br-synthesis-status>
+        <div class="bb-glass bb-synth__pending">
+          <span class="bb-synth__spinner" aria-hidden="true"></span>
+          Synthesis in progress — the cross-cutting analysis job is still running. This
+          section fills in automatically once it lands.
+        </div>
+      </div>
+      <div class="bb-synth__body" data-br-synthesis-body hidden>
+        <div class="bb-synth__group">
+          <h3 class="bb-qlq__h">Per harness × model.</h3>
+          <div class="bb-synth__grid" data-br-synthesis-combos></div>
+        </div>
+        <div class="bb-synth__group">
+          <h3 class="bb-qlq__h">Per harness, across models.</h3>
+          <div class="bb-synth__grid" data-br-synthesis-harnesses></div>
+        </div>
+        <div class="bb-synth__group">
+          <h3 class="bb-qlq__h">Per model, across harnesses.</h3>
+          <div class="bb-synth__grid" data-br-synthesis-models></div>
+        </div>
+      </div>
+    </div>
+  </section>
 
   {/* ──────────────── 5 · PRIME AGENT: THE 2026-08 AUDIT STORY ──────────────── */}
   <section class="bb-section" id="prime" aria-labelledby="prime-h">
@@ -879,8 +1162,9 @@ const SECTION_NAV: [string, string][] = [
         <h2 id="method-h" class="bb-sec-h">Methodology &amp; amendments.</h2>
         <p class="bb-sec-lead">
           Pre-registered before the v2 matrix ran; the plan's SHA-256 is embedded in every report
-          so post-hoc deviation is detectable. Eleven logged amendments track every mid-flight
-          change.
+          so post-hoc deviation is detectable. {AMENDMENTS.length} logged amendments track every mid-flight
+          change. Questions, concerns, issues, or suggestions?
+          <a href="mailto:bench@burnbar.ai">bench@burnbar.ai</a>
         </p>
       </header>
 
@@ -1108,6 +1392,83 @@ const SECTION_NAV: [string, string][] = [
             Treat residual cross-harness effort differences as a known limitation.
           </p>
         </article>
+
+        <article class="bb-methcard">
+          <h3>Comparative quality judging.</h3>
+          <p>
+            Binary pass/fail saturates: on easy tasks every stack passes, and the signal is gone.
+            The <strong>Kimi K3 judge</strong> adds a differentiation layer — every measured cell's
+            diff is bytecode-stripped, anonymized, and shown to the judge as an anonymous candidate
+            alongside every other candidate for that task. The judge scores four 1-5 rubric
+            dimensions (<strong>correctness strategy</strong>, <strong>invariant coverage</strong>,
+            <strong>code quality</strong>, <strong>performance awareness</strong>) and produces a
+            total-order ranking with a per-trial rationale.
+          </p>
+          <ul>
+            <li>
+              <strong>Blind judging.</strong> Candidates are anonymized (C01, C02, ...) — the judge
+              never sees harness or model names.
+            </li>
+            <li>
+              <strong>Reference anchors.</strong> Hard tasks (33-37) ship a hidden reference
+              solution mixed in as one more anonymous candidate. A judge that scores the reference
+              low is drifting; per-task anchor scores are recorded for exactly that audit.
+            </li>
+            <li>
+              <strong>Integrity filter.</strong> Cells with <code>infra_failure</code> status or
+              empty diffs are excluded from judging — the judge never sees a non-run.
+            </li>
+            <li>
+              <strong>Timeout hardening.</strong> Judge calls use a 900s timeout with chunked
+              rounds (max 8 candidates per round) plus a merge round for large pools. A round that
+              fails twice is recorded as <code>judge_error</code>; the batch never crashes.
+            </li>
+            <li>
+              <strong>Resumable.</strong> Per-task atomic writes mean a crash mid-batch costs at
+              most the in-flight task; rerunning the same command resumes where it left off.
+            </li>
+            <li>
+              <strong>Meta-synthesis.</strong> A second pass asks the judge to synthesize patterns
+              per harness×model combo, per harness (across models), and per model (across
+              harnesses). Each synthesis goes through three rounds of self-critique: the judge
+              re-reads the source data, flags overclaims and missed patterns, then produces a
+              corrected version.
+            </li>
+          </ul>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Data pipeline safeguards.</h3>
+          <ul>
+            <li>
+              <strong>Incremental atomic writes.</strong> Every intermediate artifact
+              (meta.json, quality_scores.json, synthesis.json) is written to a temp file then
+              renamed — a crash never leaves a corrupt file.
+            </li>
+            <li>
+              <strong>Skip-existing semantics.</strong> Every pipeline stage checks what's already
+              done and only processes the remainder. Rerunning any command is safe and idempotent.
+            </li>
+            <li>
+              <strong>Provenance chain.</strong> Per-cell image digests in meta.json, a
+              <code>runs_sha256</code> over the full run set in every export, and
+              <code>generated_at_utc</code> timestamps let consumers reject stale or tampered data.
+            </li>
+            <li>
+              <strong>Seal verification.</strong> The pre-registered plan's SHA-256 is embedded in
+              every report. 0/2,602 cells contaminated at the mid-run audit.
+            </li>
+            <li>
+              <strong>Superseded cell quarantine.</strong> Runs replaced by corrections (e.g. the
+              opencode effort-parity rerun) are marked <code>superseded</code> and excluded from
+              all rates, but retained in the tree for audit.
+            </li>
+            <li>
+              <strong>Docker crash recovery.</strong> Two Docker Desktop crashes (resource saver +
+              memory pressure) were recovered with zero data loss via resume semantics.
+            </li>
+          </ul>
+        </article>
       </div>
 
       {
@@ -1201,6 +1562,11 @@ const SECTION_NAV: [string, string][] = [
         pipeline repo for offline reading; the JSON projections behind this page are served at
         <a href="/data/bench-report.json"><code>/data/bench-report.json</code></a> and
         <a href="/data/bench-cells.json"><code>/data/bench-cells.json</code></a>.
+      </p>
+
+      <p class="bb-note bb-note--spaced" style="text-align: center; margin-top: 2rem;">
+        Questions, concerns, issues, or suggestions about the benchmark?
+        <a href="mailto:bench@burnbar.ai"><strong>bench@burnbar.ai</strong></a>
       </p>
     </div>
   </section>
@@ -1338,9 +1704,17 @@ const SECTION_NAV: [string, string][] = [
                   <td>{fmtWall(s.wall_seconds_median)}</td>
                   <td>{fmtTokens(s.tokens_median)}</td>
                   <td class="d-sub">
-                    {s.quality_mean != null
-                      ? `${s.quality_mean.toFixed(2)}${s.quality_n > 0 ? ` (${s.quality_n})` : ""}`
-                      : "—"}
+                    {s.quality_mean != null ? (
+                      <a
+                        class="d-qlink"
+                        href={`#qlq-${s.harness}-${s.model}`}
+                        title={`Kimi quality ${s.quality_mean.toFixed(2)}/5 over ${s.quality_n} judged trials — tap for the component scores`}
+                      >
+                        {`${s.quality_mean.toFixed(2)}${s.quality_n > 0 ? ` (${s.quality_n})` : ""}`}
+                      </a>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td class="d-sub">{s.confidence}</td>
                   <td class="d-sub">{s.evidence}</td>
