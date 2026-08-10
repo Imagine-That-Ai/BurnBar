@@ -125,7 +125,7 @@ public enum BurnBarDaemonPaths {
 }
 
 public enum BurnBarDaemonVersion {
-    public static let current = "1.0.32"
+    public static let current = "1.0.33"
 }
 
 public enum OpenBurnBarDaemonOllamaEndpointDefaults {
