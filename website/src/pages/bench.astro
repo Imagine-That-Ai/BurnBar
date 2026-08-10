@@ -266,6 +266,11 @@ const suitesDiffer = suiteCounts.length > 1 && suiteMin !== suiteMax;
                     </strong>
                     <span class="lb-sub" data-role="subline">
                       {`strict ${fmtPct(s.strict_rate)} · n ${s.n}${ntasks > 0 ? ` · ${ntasks} tasks` : ""} · ${fmtCost(s.cost_usd_median)}/task`}
+                      {s.quality_mean != null && s.quality_n > 0 && (
+                        <span class="lb-quality" title={`Kimi judge median quality_mean (1–5) over ${s.quality_n} judged trials`}>
+                          {` · q ${s.quality_mean.toFixed(2)}`}
+                        </span>
+                      )}
                       {s.cost_standard_usd_median != null && (
                         <span
                           class="lb-std"

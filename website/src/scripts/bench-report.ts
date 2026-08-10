@@ -49,7 +49,7 @@ function initMatrix(): void {
   tabs.addEventListener("click", (ev) => {
     const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-mx]");
     if (!btn) return;
-    const mode = btn.dataset.mx === "str" ? "str" : "sol";
+    const mode = btn.dataset.mx === "str" ? "str" : btn.dataset.mx === "qual" ? "qual" : "sol";
     tabs.querySelectorAll(".bb-tab").forEach((t) => {
       const active = t === btn;
       t.classList.toggle("is-active", active);
@@ -58,12 +58,18 @@ function initMatrix(): void {
     table.querySelectorAll<HTMLElement>(".mx-cell[data-sol]").forEach((cell) => {
       const sol = cell.dataset.sol ?? "";
       const str = cell.dataset.str ?? "";
+      const qual = cell.dataset.qual ?? "";
       const n = cell.dataset.n ?? "";
       const val = cell.querySelector("[data-mx-val]");
       const sub = cell.querySelector("[data-mx-sub]");
-      if (val) val.textContent = mode === "str" ? str : sol;
+      if (val) val.textContent = mode === "str" ? str : mode === "qual" ? qual : sol;
       if (sub)
-        sub.textContent = mode === "str" ? `solution ${sol} · n ${n}` : `strict ${str} · n ${n}`;
+        sub.textContent =
+          mode === "str"
+            ? `solution ${sol} · n ${n}`
+            : mode === "qual"
+              ? `solution ${sol} · n ${n}`
+              : `strict ${str} · n ${n}`;
     });
   });
 }

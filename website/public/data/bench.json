@@ -1,12 +1,12 @@
 {
  "schema_version": 1,
- "generated_at_utc": "2026-08-09T07:22:54.412623+00:00",
+ "generated_at_utc": "2026-08-10T17:44:49.262339+00:00",
  "source": {
   "trees": [
    "/Volumes/Samsung NVME/agent-harness-bench/results-glm-5-2-20260807",
-   "/Volumes/Samsung NVME/agent-harness-bench/results-gpt-5-6-luna-max-20260807",
    "/Volumes/Samsung NVME/agent-harness-bench/results-muse-spark-1-2-contributor-20260807",
-   "/Volumes/Samsung NVME/agent-harness-bench/results-deepseek-v4-flash-0731-v2-20260806"
+   "/Volumes/Samsung NVME/agent-harness-bench/results-deepseek-v4-flash-0731-v2-20260806",
+   "/Volumes/Samsung NVME/agent-harness-bench/results-gpt-5-6-luna-max-20260807"
   ],
   "cells_measured": 3070,
   "cells_excluded": 368,
@@ -94,7 +94,9 @@
    "tokens_median": 48650,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 85
   },
   {
    "harness": "claude",
@@ -121,7 +123,9 @@
    "tokens_median": 48650,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 25
   },
   {
    "harness": "claude",
@@ -148,7 +152,9 @@
    "tokens_median": 35211,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.0,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -175,7 +181,9 @@
    "tokens_median": 41076,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 15
   },
   {
    "harness": "claude",
@@ -202,7 +210,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -229,7 +239,9 @@
    "tokens_median": 0,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 1.25,
+   "quality_n": 10
   },
   {
    "harness": "claude",
@@ -256,7 +268,9 @@
    "tokens_median": 17615,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -283,7 +297,9 @@
    "tokens_median": 66558,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 10
   },
   {
    "harness": "claude",
@@ -310,7 +326,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -337,7 +355,9 @@
    "tokens_median": 86180,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 15
   },
   {
    "harness": "claude",
@@ -364,7 +384,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -391,7 +413,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -418,7 +442,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -445,7 +471,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -472,7 +500,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -499,7 +529,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -526,7 +558,9 @@
    "tokens_median": 36027,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "claude",
@@ -553,7 +587,9 @@
    "tokens_median": 41076,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 60
   },
   {
    "harness": "claude",
@@ -580,7 +616,9 @@
    "tokens_median": 66558,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -607,7 +645,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -634,7 +674,9 @@
    "tokens_median": 36027,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "claude",
@@ -661,7 +703,9 @@
    "tokens_median": 41076,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 60
   },
   {
    "harness": "claude",
@@ -688,7 +732,9 @@
    "tokens_median": 54558,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -715,7 +761,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -742,7 +790,9 @@
    "tokens_median": 76994,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 75
   },
   {
    "harness": "claude",
@@ -769,7 +819,9 @@
    "tokens_median": 28318,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 25
   },
   {
    "harness": "claude",
@@ -796,7 +848,9 @@
    "tokens_median": 71923,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -823,7 +877,9 @@
    "tokens_median": 76994,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 15
   },
   {
    "harness": "claude",
@@ -850,7 +906,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -877,7 +935,9 @@
    "tokens_median": 133300,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.625,
+   "quality_n": 3
   },
   {
    "harness": "claude",
@@ -904,7 +964,9 @@
    "tokens_median": 26000,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -931,7 +993,9 @@
    "tokens_median": 141895,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 10
   },
   {
    "harness": "claude",
@@ -958,7 +1022,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -985,7 +1051,9 @@
    "tokens_median": 108962,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.875,
+   "quality_n": 12
   },
   {
    "harness": "claude",
@@ -1012,7 +1080,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1039,7 +1109,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1066,7 +1138,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1093,7 +1167,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1120,7 +1196,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1147,7 +1225,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1174,7 +1254,9 @@
    "tokens_median": 23074,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "claude",
@@ -1201,7 +1283,9 @@
    "tokens_median": 88888,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 50
   },
   {
    "harness": "claude",
@@ -1228,7 +1312,9 @@
    "tokens_median": 142511,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -1255,7 +1341,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1282,7 +1370,9 @@
    "tokens_median": 28318,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "claude",
@@ -1309,7 +1399,9 @@
    "tokens_median": 108962,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 50
   },
   {
    "harness": "claude",
@@ -1336,7 +1428,9 @@
    "tokens_median": 20032,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 2.75,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -1363,7 +1457,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1390,7 +1486,9 @@
    "tokens_median": 133236,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 145
   },
   {
    "harness": "claude",
@@ -1417,7 +1515,9 @@
    "tokens_median": 108225,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 25
   },
   {
    "harness": "claude",
@@ -1444,7 +1544,9 @@
    "tokens_median": 128118,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 15
   },
   {
    "harness": "claude",
@@ -1471,7 +1573,9 @@
    "tokens_median": 133236,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 48
   },
   {
    "harness": "claude",
@@ -1498,7 +1602,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1525,7 +1631,9 @@
    "tokens_median": 173752,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 10
   },
   {
    "harness": "claude",
@@ -1552,7 +1660,9 @@
    "tokens_median": 71044,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -1579,7 +1689,9 @@
    "tokens_median": 157789,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 27
   },
   {
    "harness": "claude",
@@ -1606,7 +1718,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1633,7 +1747,9 @@
    "tokens_median": 290532,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 15
   },
   {
    "harness": "claude",
@@ -1660,7 +1776,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1687,7 +1805,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1714,7 +1834,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1741,7 +1863,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1768,7 +1892,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1795,7 +1921,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1822,7 +1950,9 @@
    "tokens_median": 83253,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "claude",
@@ -1849,7 +1979,9 @@
    "tokens_median": 152645,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 120
   },
   {
    "harness": "claude",
@@ -1876,7 +2008,9 @@
    "tokens_median": 157789,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -1903,7 +2037,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -1930,7 +2066,9 @@
    "tokens_median": 108225,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 28
   },
   {
    "harness": "claude",
@@ -1957,7 +2095,9 @@
    "tokens_median": 157789,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 107
   },
   {
    "harness": "claude",
@@ -1984,7 +2124,9 @@
    "tokens_median": 83253,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 2.5,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -2011,7 +2153,9 @@
    "tokens_median": 78495,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -2038,7 +2182,9 @@
    "tokens_median": 188013,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 72
   },
   {
    "harness": "claude",
@@ -2065,7 +2211,9 @@
    "tokens_median": 70024,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 25
   },
   {
    "harness": "claude",
@@ -2092,7 +2240,9 @@
    "tokens_median": 164290,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -2119,7 +2269,9 @@
    "tokens_median": 233779,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 15
   },
   {
    "harness": "claude",
@@ -2146,7 +2298,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -2173,7 +2327,9 @@
    "tokens_median": 121827,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 2
   },
   {
    "harness": "claude",
@@ -2200,7 +2356,9 @@
    "tokens_median": 101760,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -2227,7 +2385,9 @@
    "tokens_median": 188013,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 10
   },
   {
    "harness": "claude",
@@ -2254,7 +2414,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -2281,7 +2443,9 @@
    "tokens_median": 206087,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 10
   },
   {
    "harness": "claude",
@@ -2308,7 +2472,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -2335,7 +2501,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -2362,7 +2530,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -2389,7 +2559,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -2416,7 +2588,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -2443,7 +2617,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -2470,7 +2646,9 @@
    "tokens_median": 66286,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "claude",
@@ -2497,7 +2675,9 @@
    "tokens_median": 215617,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 47
   },
   {
    "harness": "claude",
@@ -2524,7 +2704,9 @@
    "tokens_median": 188013,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -2551,7 +2733,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "claude",
@@ -2578,7 +2762,9 @@
    "tokens_median": 70024,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "claude",
@@ -2605,7 +2791,9 @@
    "tokens_median": 188013,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 47
   },
   {
    "harness": "claude",
@@ -2632,7 +2820,9 @@
    "tokens_median": 54441,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "claude",
@@ -2659,7 +2849,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -2686,7 +2878,9 @@
    "tokens_median": 174005,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 84
   },
   {
    "harness": "codex",
@@ -2713,7 +2907,9 @@
    "tokens_median": 126412,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 25
   },
   {
    "harness": "codex",
@@ -2740,7 +2936,9 @@
    "tokens_median": 104506,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.0,
+   "quality_n": 5
   },
   {
    "harness": "codex",
@@ -2767,7 +2965,9 @@
    "tokens_median": 121472,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 15
   },
   {
    "harness": "codex",
@@ -2794,7 +2994,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -2821,7 +3023,9 @@
    "tokens_median": 278879,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 10
   },
   {
    "harness": "codex",
@@ -2848,7 +3052,9 @@
    "tokens_median": 48740,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "codex",
@@ -2875,7 +3081,9 @@
    "tokens_median": 151894,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 9
   },
   {
    "harness": "codex",
@@ -2902,7 +3110,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -2929,7 +3139,9 @@
    "tokens_median": 639897,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 15
   },
   {
    "harness": "codex",
@@ -2956,7 +3168,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -2983,7 +3197,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3010,7 +3226,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3037,7 +3255,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3064,7 +3284,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3091,7 +3313,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3118,7 +3342,9 @@
    "tokens_median": 112616,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "codex",
@@ -3145,7 +3371,9 @@
    "tokens_median": 190603,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 60
   },
   {
    "harness": "codex",
@@ -3172,7 +3400,9 @@
    "tokens_median": 151894,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 5.0,
+   "quality_n": 4
   },
   {
    "harness": "codex",
@@ -3199,7 +3429,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3226,7 +3458,9 @@
    "tokens_median": 112616,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "codex",
@@ -3253,7 +3487,9 @@
    "tokens_median": 190603,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 59
   },
   {
    "harness": "codex",
@@ -3280,7 +3516,9 @@
    "tokens_median": 174005,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "codex",
@@ -3307,7 +3545,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3334,7 +3574,9 @@
    "tokens_median": 202292,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 78
   },
   {
    "harness": "codex",
@@ -3361,7 +3603,9 @@
    "tokens_median": 163112,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 25
   },
   {
    "harness": "codex",
@@ -3388,7 +3632,9 @@
    "tokens_median": 202292,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.5,
+   "quality_n": 5
   },
   {
    "harness": "codex",
@@ -3415,7 +3661,9 @@
    "tokens_median": 193958,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 15
   },
   {
    "harness": "codex",
@@ -3442,7 +3690,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3469,7 +3719,9 @@
    "tokens_median": 717621,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 8
   },
   {
    "harness": "codex",
@@ -3496,7 +3748,9 @@
    "tokens_median": 165994,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "codex",
@@ -3523,7 +3777,9 @@
    "tokens_median": 473775,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 10
   },
   {
    "harness": "codex",
@@ -3550,7 +3806,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3577,7 +3835,9 @@
    "tokens_median": 616494,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 10
   },
   {
    "harness": "codex",
@@ -3604,7 +3864,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3631,7 +3893,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3658,7 +3922,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3685,7 +3951,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3712,7 +3980,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3739,7 +4009,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3766,7 +4038,9 @@
    "tokens_median": 122593,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "codex",
@@ -3793,7 +4067,9 @@
    "tokens_median": 435541,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 53
   },
   {
    "harness": "codex",
@@ -3820,7 +4096,9 @@
    "tokens_median": 473775,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "codex",
@@ -3847,7 +4125,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3874,7 +4154,9 @@
    "tokens_median": 122593,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "codex",
@@ -3901,7 +4183,9 @@
    "tokens_median": 473775,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 53
   },
   {
    "harness": "codex",
@@ -3928,7 +4212,9 @@
    "tokens_median": 163112,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 2.75,
+   "quality_n": 5
   },
   {
    "harness": "codex",
@@ -3955,7 +4241,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -3982,7 +4270,9 @@
    "tokens_median": 687950,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 145
   },
   {
    "harness": "codex",
@@ -4009,7 +4299,9 @@
    "tokens_median": 666179,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 25
   },
   {
    "harness": "codex",
@@ -4036,7 +4328,9 @@
    "tokens_median": 665433,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.25,
+   "quality_n": 13
   },
   {
    "harness": "codex",
@@ -4063,7 +4357,9 @@
    "tokens_median": 589938,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 47
   },
   {
    "harness": "codex",
@@ -4090,7 +4386,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -4117,7 +4415,9 @@
    "tokens_median": 567220,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 2.75,
+   "quality_n": 10
   },
   {
    "harness": "codex",
@@ -4144,7 +4444,9 @@
    "tokens_median": 472281,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "codex",
@@ -4171,7 +4473,9 @@
    "tokens_median": 778290,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 30
   },
   {
    "harness": "codex",
@@ -4198,7 +4502,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -4225,7 +4531,9 @@
    "tokens_median": 756045,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 15
   },
   {
    "harness": "codex",
@@ -4252,7 +4560,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -4279,7 +4589,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -4306,7 +4618,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -4333,7 +4647,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -4360,7 +4676,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -4387,7 +4705,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -4414,7 +4734,9 @@
    "tokens_median": 666179,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "codex",
@@ -4441,7 +4763,9 @@
    "tokens_median": 677741,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 120
   },
   {
    "harness": "codex",
@@ -4468,7 +4792,9 @@
    "tokens_median": 722829,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 5
   },
   {
    "harness": "codex",
@@ -4495,7 +4821,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -4522,7 +4850,9 @@
    "tokens_median": 666179,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 29
   },
   {
    "harness": "codex",
@@ -4549,7 +4879,9 @@
    "tokens_median": 740697,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 106
   },
   {
    "harness": "codex",
@@ -4576,7 +4908,9 @@
    "tokens_median": 603070,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 2.5,
+   "quality_n": 5
   },
   {
    "harness": "codex",
@@ -4603,7 +4937,9 @@
    "tokens_median": 536702,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "codex",
@@ -4630,7 +4966,9 @@
    "tokens_median": 350515,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 77
   },
   {
    "harness": "codex",
@@ -4657,7 +4995,9 @@
    "tokens_median": 193204,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 25
   },
   {
    "harness": "codex",
@@ -4684,7 +5024,9 @@
    "tokens_median": 333857,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.25,
+   "quality_n": 5
   },
   {
    "harness": "codex",
@@ -4711,7 +5053,9 @@
    "tokens_median": 408032,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 15
   },
   {
    "harness": "codex",
@@ -4738,7 +5082,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -4765,7 +5111,9 @@
    "tokens_median": 852127,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 8
   },
   {
    "harness": "codex",
@@ -4792,7 +5140,9 @@
    "tokens_median": 271042,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.5,
+   "quality_n": 5
   },
   {
    "harness": "codex",
@@ -4819,7 +5169,9 @@
    "tokens_median": 666633,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 10
   },
   {
    "harness": "codex",
@@ -4846,7 +5198,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -4873,7 +5227,9 @@
    "tokens_median": 430417,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 9
   },
   {
    "harness": "codex",
@@ -4900,7 +5256,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -4927,7 +5285,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -4954,7 +5314,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -4981,7 +5343,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -5008,7 +5372,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -5035,7 +5401,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -5062,7 +5430,9 @@
    "tokens_median": 156780,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "codex",
@@ -5089,7 +5459,9 @@
    "tokens_median": 350515,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 52
   },
   {
    "harness": "codex",
@@ -5116,7 +5488,9 @@
    "tokens_median": 666633,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "codex",
@@ -5143,7 +5517,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "codex",
@@ -5170,7 +5546,9 @@
    "tokens_median": 193204,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "codex",
@@ -5197,7 +5575,9 @@
    "tokens_median": 408032,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 52
   },
   {
    "harness": "codex",
@@ -5224,7 +5604,9 @@
    "tokens_median": 155084,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 5
   },
   {
    "harness": "codex",
@@ -5251,7 +5633,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -5278,7 +5662,9 @@
    "tokens_median": 110891,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 83
   },
   {
    "harness": "droid",
@@ -5305,7 +5691,9 @@
    "tokens_median": 69536,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 25
   },
   {
    "harness": "droid",
@@ -5332,7 +5720,9 @@
    "tokens_median": 67413,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.0,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -5359,7 +5749,9 @@
    "tokens_median": 89492,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 15
   },
   {
    "harness": "droid",
@@ -5386,7 +5778,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -5413,7 +5807,9 @@
    "tokens_median": 215574,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 2.25,
+   "quality_n": 10
   },
   {
    "harness": "droid",
@@ -5440,7 +5836,9 @@
    "tokens_median": 34163,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -5467,7 +5865,9 @@
    "tokens_median": 123065,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 8
   },
   {
    "harness": "droid",
@@ -5494,7 +5894,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -5521,7 +5923,9 @@
    "tokens_median": 347459,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 15
   },
   {
    "harness": "droid",
@@ -5548,7 +5952,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -5575,7 +5981,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -5602,7 +6010,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -5629,7 +6039,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -5656,7 +6068,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -5683,7 +6097,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -5710,7 +6126,9 @@
    "tokens_median": 63347,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "droid",
@@ -5737,7 +6155,9 @@
    "tokens_median": 130482,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 60
   },
   {
    "harness": "droid",
@@ -5764,7 +6184,9 @@
    "tokens_median": 123065,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 3
   },
   {
    "harness": "droid",
@@ -5791,7 +6213,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -5818,7 +6242,9 @@
    "tokens_median": 63347,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "droid",
@@ -5845,7 +6271,9 @@
    "tokens_median": 123065,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 58
   },
   {
    "harness": "droid",
@@ -5872,7 +6300,9 @@
    "tokens_median": 110891,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -5899,7 +6329,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -5926,7 +6358,9 @@
    "tokens_median": 148020,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 74
   },
   {
    "harness": "droid",
@@ -5953,7 +6387,9 @@
    "tokens_median": 54785,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 25
   },
   {
    "harness": "droid",
@@ -5980,7 +6416,9 @@
    "tokens_median": 148020,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -6007,7 +6445,9 @@
    "tokens_median": 143514,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 15
   },
   {
    "harness": "droid",
@@ -6034,7 +6474,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6061,7 +6503,9 @@
    "tokens_median": 216709,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 6
   },
   {
    "harness": "droid",
@@ -6088,7 +6532,9 @@
    "tokens_median": 78666,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -6115,7 +6561,9 @@
    "tokens_median": 157695,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 10
   },
   {
    "harness": "droid",
@@ -6142,7 +6590,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6169,7 +6619,9 @@
    "tokens_median": 391519,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.125,
+   "quality_n": 8
   },
   {
    "harness": "droid",
@@ -6196,7 +6648,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6223,7 +6677,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6250,7 +6706,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6277,7 +6735,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6304,7 +6764,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6331,7 +6793,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6358,7 +6822,9 @@
    "tokens_median": 52546,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "droid",
@@ -6385,7 +6851,9 @@
    "tokens_median": 175664,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 49
   },
   {
    "harness": "droid",
@@ -6412,7 +6880,9 @@
    "tokens_median": 157695,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 5.0,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -6439,7 +6909,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6466,7 +6938,9 @@
    "tokens_median": 52546,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "droid",
@@ -6493,7 +6967,9 @@
    "tokens_median": 157695,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 49
   },
   {
    "harness": "droid",
@@ -6520,7 +6996,9 @@
    "tokens_median": 54785,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -6547,7 +7025,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6574,7 +7054,9 @@
    "tokens_median": 313879,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 138
   },
   {
    "harness": "droid",
@@ -6601,7 +7083,9 @@
    "tokens_median": 185198,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 25
   },
   {
    "harness": "droid",
@@ -6628,7 +7112,9 @@
    "tokens_median": 346767,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 12
   },
   {
    "harness": "droid",
@@ -6655,7 +7141,9 @@
    "tokens_median": 280732,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.375,
+   "quality_n": 45
   },
   {
    "harness": "droid",
@@ -6682,7 +7170,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6709,7 +7199,9 @@
    "tokens_median": 338599,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.0,
+   "quality_n": 10
   },
   {
    "harness": "droid",
@@ -6736,7 +7228,9 @@
    "tokens_median": 172459,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -6763,7 +7257,9 @@
    "tokens_median": 387234,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 26
   },
   {
    "harness": "droid",
@@ -6790,7 +7286,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6817,7 +7315,9 @@
    "tokens_median": 285065,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 15
   },
   {
    "harness": "droid",
@@ -6844,7 +7344,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6871,7 +7373,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6898,7 +7402,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6925,7 +7431,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6952,7 +7460,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -6979,7 +7489,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -7006,7 +7518,9 @@
    "tokens_median": 162717,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "droid",
@@ -7033,7 +7547,9 @@
    "tokens_median": 320816,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.375,
+   "quality_n": 113
   },
   {
    "harness": "droid",
@@ -7060,7 +7576,9 @@
    "tokens_median": 382643,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -7087,7 +7605,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -7114,7 +7634,9 @@
    "tokens_median": 218067,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 27
   },
   {
    "harness": "droid",
@@ -7141,7 +7663,9 @@
    "tokens_median": 329865,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 101
   },
   {
    "harness": "droid",
@@ -7168,7 +7692,9 @@
    "tokens_median": 138583,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -7195,7 +7721,9 @@
    "tokens_median": 168244,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -7222,7 +7750,9 @@
    "tokens_median": 174846,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 71
   },
   {
    "harness": "droid",
@@ -7249,7 +7779,9 @@
    "tokens_median": 97106,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 25
   },
   {
    "harness": "droid",
@@ -7276,7 +7808,9 @@
    "tokens_median": 243677,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -7303,7 +7837,9 @@
    "tokens_median": 159701,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 15
   },
   {
    "harness": "droid",
@@ -7330,7 +7866,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -7357,7 +7895,9 @@
    "tokens_median": 109416,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -7384,7 +7924,9 @@
    "tokens_median": 363795,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -7411,7 +7953,9 @@
    "tokens_median": 208667,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 10
   },
   {
    "harness": "droid",
@@ -7438,7 +7982,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -7465,7 +8011,9 @@
    "tokens_median": 160719,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 6
   },
   {
    "harness": "droid",
@@ -7492,7 +8040,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -7519,7 +8069,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -7546,7 +8098,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -7573,7 +8127,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -7600,7 +8156,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -7627,7 +8185,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -7654,7 +8214,9 @@
    "tokens_median": 64821,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "droid",
@@ -7681,7 +8243,9 @@
    "tokens_median": 201230,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 46
   },
   {
    "harness": "droid",
@@ -7708,7 +8272,9 @@
    "tokens_median": 208667,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -7735,7 +8301,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "droid",
@@ -7762,7 +8330,9 @@
    "tokens_median": 97106,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "droid",
@@ -7789,7 +8359,9 @@
    "tokens_median": 208667,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 46
   },
   {
    "harness": "droid",
@@ -7816,7 +8388,9 @@
    "tokens_median": 54742,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "droid",
@@ -7843,7 +8417,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -7870,7 +8446,9 @@
    "tokens_median": 260919,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 85
   },
   {
    "harness": "hermes",
@@ -7897,7 +8475,9 @@
    "tokens_median": 140575,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 25
   },
   {
    "harness": "hermes",
@@ -7924,7 +8504,9 @@
    "tokens_median": 353849,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -7951,7 +8533,9 @@
    "tokens_median": 254132,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 15
   },
   {
    "harness": "hermes",
@@ -7978,7 +8562,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8005,7 +8591,9 @@
    "tokens_median": 531970,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 10
   },
   {
    "harness": "hermes",
@@ -8032,7 +8620,9 @@
    "tokens_median": 90679,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -8059,7 +8649,9 @@
    "tokens_median": 288697,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 10
   },
   {
    "harness": "hermes",
@@ -8086,7 +8678,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8113,7 +8707,9 @@
    "tokens_median": 614620,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 15
   },
   {
    "harness": "hermes",
@@ -8140,7 +8736,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8167,7 +8765,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8194,7 +8794,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8221,7 +8823,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8248,7 +8852,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8275,7 +8881,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8302,7 +8910,9 @@
    "tokens_median": 111088,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 20
   },
   {
    "harness": "hermes",
@@ -8329,7 +8939,9 @@
    "tokens_median": 315243,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 60
   },
   {
    "harness": "hermes",
@@ -8356,7 +8968,9 @@
    "tokens_median": 288697,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -8383,7 +8997,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8410,7 +9026,9 @@
    "tokens_median": 140575,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 20
   },
   {
    "harness": "hermes",
@@ -8437,7 +9055,9 @@
    "tokens_median": 315243,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 60
   },
   {
    "harness": "hermes",
@@ -8464,7 +9084,9 @@
    "tokens_median": 111088,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -8491,7 +9113,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8518,7 +9142,9 @@
    "tokens_median": 199432,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 80
   },
   {
    "harness": "hermes",
@@ -8545,7 +9171,9 @@
    "tokens_median": 104636,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 25
   },
   {
    "harness": "hermes",
@@ -8572,7 +9200,9 @@
    "tokens_median": 172218,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -8599,7 +9229,9 @@
    "tokens_median": 199432,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 15
   },
   {
    "harness": "hermes",
@@ -8626,7 +9258,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8653,7 +9287,9 @@
    "tokens_median": 299617,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 6
   },
   {
    "harness": "hermes",
@@ -8680,7 +9316,9 @@
    "tokens_median": 136561,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -8707,7 +9345,9 @@
    "tokens_median": 222228,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 10
   },
   {
    "harness": "hermes",
@@ -8734,7 +9374,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8761,7 +9403,9 @@
    "tokens_median": 493830,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 14
   },
   {
    "harness": "hermes",
@@ -8788,7 +9432,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8815,7 +9461,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8842,7 +9490,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8869,7 +9519,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8896,7 +9548,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8923,7 +9577,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -8950,7 +9606,9 @@
    "tokens_median": 85885,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 20
   },
   {
    "harness": "hermes",
@@ -8977,7 +9635,9 @@
    "tokens_median": 222228,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 55
   },
   {
    "harness": "hermes",
@@ -9004,7 +9664,9 @@
    "tokens_median": 286056,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -9031,7 +9693,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -9058,7 +9722,9 @@
    "tokens_median": 85885,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 20
   },
   {
    "harness": "hermes",
@@ -9085,7 +9751,9 @@
    "tokens_median": 286056,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 55
   },
   {
    "harness": "hermes",
@@ -9112,7 +9780,9 @@
    "tokens_median": 104636,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -9139,7 +9809,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -9166,7 +9838,9 @@
    "tokens_median": 593479,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 146
   },
   {
    "harness": "hermes",
@@ -9193,7 +9867,9 @@
    "tokens_median": 410799,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 25
   },
   {
    "harness": "hermes",
@@ -9220,7 +9896,9 @@
    "tokens_median": 561836,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.625,
+   "quality_n": 13
   },
   {
    "harness": "hermes",
@@ -9247,7 +9925,9 @@
    "tokens_median": 500000,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 50
   },
   {
    "harness": "hermes",
@@ -9274,7 +9954,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -9301,7 +9983,9 @@
    "tokens_median": 606019,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.5,
+   "quality_n": 10
   },
   {
    "harness": "hermes",
@@ -9328,7 +10012,9 @@
    "tokens_median": 471371,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -9355,7 +10041,9 @@
    "tokens_median": 849116,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 28
   },
   {
    "harness": "hermes",
@@ -9382,7 +10070,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -9409,7 +10099,9 @@
    "tokens_median": 646398,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 15
   },
   {
    "harness": "hermes",
@@ -9436,7 +10128,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -9463,7 +10157,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -9490,7 +10186,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -9517,7 +10215,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -9544,7 +10244,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -9571,7 +10273,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -9598,7 +10302,9 @@
    "tokens_median": 404091,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 20
   },
   {
    "harness": "hermes",
@@ -9625,7 +10331,9 @@
    "tokens_median": 600348,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 121
   },
   {
    "harness": "hermes",
@@ -9652,7 +10360,9 @@
    "tokens_median": 1022804,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -9679,7 +10389,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -9706,7 +10418,9 @@
    "tokens_median": 417086,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 30
   },
   {
    "harness": "hermes",
@@ -9733,7 +10447,9 @@
    "tokens_median": 646398,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 106
   },
   {
    "harness": "hermes",
@@ -9760,7 +10476,9 @@
    "tokens_median": 169051,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 2.25,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -9787,7 +10505,9 @@
    "tokens_median": 466871,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -9814,7 +10534,9 @@
    "tokens_median": 398626,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 76
   },
   {
    "harness": "hermes",
@@ -9841,7 +10563,9 @@
    "tokens_median": 179718,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 24
   },
   {
    "harness": "hermes",
@@ -9868,7 +10592,9 @@
    "tokens_median": 377162,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -9895,7 +10621,9 @@
    "tokens_median": 502941,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 15
   },
   {
    "harness": "hermes",
@@ -9922,7 +10650,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -9949,7 +10679,9 @@
    "tokens_median": 1648156,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.375,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -9976,7 +10708,9 @@
    "tokens_median": 405788,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -10003,7 +10737,9 @@
    "tokens_median": 407573,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 10
   },
   {
    "harness": "hermes",
@@ -10030,7 +10766,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -10057,7 +10795,9 @@
    "tokens_median": 357136,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 12
   },
   {
    "harness": "hermes",
@@ -10084,7 +10824,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -10111,7 +10853,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -10138,7 +10882,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -10165,7 +10911,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -10192,7 +10940,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -10219,7 +10969,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -10246,7 +10998,9 @@
    "tokens_median": 139438,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 19
   },
   {
    "harness": "hermes",
@@ -10273,7 +11027,9 @@
    "tokens_median": 438986,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 52
   },
   {
    "harness": "hermes",
@@ -10300,7 +11056,9 @@
    "tokens_median": 407573,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -10327,7 +11085,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "hermes",
@@ -10354,7 +11114,9 @@
    "tokens_median": 179718,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 19
   },
   {
    "harness": "hermes",
@@ -10381,7 +11143,9 @@
    "tokens_median": 407573,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 52
   },
   {
    "harness": "hermes",
@@ -10408,7 +11172,9 @@
    "tokens_median": 108972,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "hermes",
@@ -10435,7 +11201,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -10462,7 +11230,9 @@
    "tokens_median": 170152,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 85
   },
   {
    "harness": "omp",
@@ -10489,7 +11259,9 @@
    "tokens_median": 143354,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 25
   },
   {
    "harness": "omp",
@@ -10516,7 +11288,9 @@
    "tokens_median": 111453,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -10543,7 +11317,9 @@
    "tokens_median": 185466,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 15
   },
   {
    "harness": "omp",
@@ -10570,7 +11346,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -10597,7 +11375,9 @@
    "tokens_median": 206962,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.25,
+   "quality_n": 10
   },
   {
    "harness": "omp",
@@ -10624,7 +11404,9 @@
    "tokens_median": 68820,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -10651,7 +11433,9 @@
    "tokens_median": 260074,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 10
   },
   {
    "harness": "omp",
@@ -10678,7 +11462,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -10705,7 +11491,9 @@
    "tokens_median": 284437,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 15
   },
   {
    "harness": "omp",
@@ -10732,7 +11520,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -10759,7 +11549,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -10786,7 +11578,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -10813,7 +11607,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -10840,7 +11636,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -10867,7 +11665,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -10894,7 +11694,9 @@
    "tokens_median": 111021,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "omp",
@@ -10921,7 +11723,9 @@
    "tokens_median": 185466,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 60
   },
   {
    "harness": "omp",
@@ -10948,7 +11752,9 @@
    "tokens_median": 260074,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -10975,7 +11781,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -11002,7 +11810,9 @@
    "tokens_median": 111021,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "omp",
@@ -11029,7 +11839,9 @@
    "tokens_median": 195428,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 60
   },
   {
    "harness": "omp",
@@ -11056,7 +11868,9 @@
    "tokens_median": 149422,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -11083,7 +11897,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -11110,7 +11926,9 @@
    "tokens_median": 300578,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.375,
+   "quality_n": 77
   },
   {
    "harness": "omp",
@@ -11137,7 +11955,9 @@
    "tokens_median": 196282,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 25
   },
   {
    "harness": "omp",
@@ -11164,7 +11984,9 @@
    "tokens_median": 197709,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -11191,7 +12013,9 @@
    "tokens_median": 322873,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 15
   },
   {
    "harness": "omp",
@@ -11218,7 +12042,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -11245,7 +12071,9 @@
    "tokens_median": 342889,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 6
   },
   {
    "harness": "omp",
@@ -11272,7 +12100,9 @@
    "tokens_median": 131123,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -11299,7 +12129,9 @@
    "tokens_median": 344239,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 10
   },
   {
    "harness": "omp",
@@ -11326,7 +12158,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -11353,7 +12187,9 @@
    "tokens_median": 364167,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 11
   },
   {
    "harness": "omp",
@@ -11380,7 +12216,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -11407,7 +12245,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -11434,7 +12274,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -11461,7 +12303,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -11488,7 +12332,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -11515,7 +12361,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -11542,7 +12390,9 @@
    "tokens_median": 131086,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "omp",
@@ -11569,7 +12419,9 @@
    "tokens_median": 322873,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 52
   },
   {
    "harness": "omp",
@@ -11596,7 +12448,9 @@
    "tokens_median": 344239,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -11623,7 +12477,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -11650,7 +12506,9 @@
    "tokens_median": 131086,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "omp",
@@ -11677,7 +12535,9 @@
    "tokens_median": 342889,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 52
   },
   {
    "harness": "omp",
@@ -11704,7 +12564,9 @@
    "tokens_median": 196282,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -11731,7 +12593,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -11758,7 +12622,9 @@
    "tokens_median": 706319,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 143
   },
   {
    "harness": "omp",
@@ -11785,7 +12651,9 @@
    "tokens_median": 609370,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 25
   },
   {
    "harness": "omp",
@@ -11812,7 +12680,9 @@
    "tokens_median": 796032,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 15
   },
   {
    "harness": "omp",
@@ -11839,7 +12709,9 @@
    "tokens_median": 646281,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 45
   },
   {
    "harness": "omp",
@@ -11866,7 +12738,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -11893,7 +12767,9 @@
    "tokens_median": 595088,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.25,
+   "quality_n": 10
   },
   {
    "harness": "omp",
@@ -11920,7 +12796,9 @@
    "tokens_median": 570726,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 5.0,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -11947,7 +12825,9 @@
    "tokens_median": 1312520,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 28
   },
   {
    "harness": "omp",
@@ -11974,7 +12854,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12001,7 +12883,9 @@
    "tokens_median": 659618,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 15
   },
   {
    "harness": "omp",
@@ -12028,7 +12912,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12055,7 +12941,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12082,7 +12970,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12109,7 +12999,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12136,7 +13028,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12163,7 +13057,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12190,7 +13086,9 @@
    "tokens_median": 558000,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "omp",
@@ -12217,7 +13115,9 @@
    "tokens_median": 740128,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 118
   },
   {
    "harness": "omp",
@@ -12244,7 +13144,9 @@
    "tokens_median": 1315757,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -12271,7 +13173,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12298,7 +13202,9 @@
    "tokens_median": 614292,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 29
   },
   {
    "harness": "omp",
@@ -12325,7 +13231,9 @@
    "tokens_median": 740128,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 107
   },
   {
    "harness": "omp",
@@ -12352,7 +13260,9 @@
    "tokens_median": 558000,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -12379,7 +13289,9 @@
    "tokens_median": 687043,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 2
   },
   {
    "harness": "omp",
@@ -12406,7 +13318,9 @@
    "tokens_median": 204990,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 73
   },
   {
    "harness": "omp",
@@ -12433,7 +13347,9 @@
    "tokens_median": 163132,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 5.0,
+   "quality_n": 25
   },
   {
    "harness": "omp",
@@ -12460,7 +13376,9 @@
    "tokens_median": 230566,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -12487,7 +13405,9 @@
    "tokens_median": 331914,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 15
   },
   {
    "harness": "omp",
@@ -12514,7 +13434,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12541,7 +13463,9 @@
    "tokens_median": 460172,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.375,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -12568,7 +13492,9 @@
    "tokens_median": 109521,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -12595,7 +13521,9 @@
    "tokens_median": 257117,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 10
   },
   {
    "harness": "omp",
@@ -12622,7 +13550,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12649,7 +13579,9 @@
    "tokens_median": 195805,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 8
   },
   {
    "harness": "omp",
@@ -12676,7 +13608,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12703,7 +13637,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12730,7 +13666,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12757,7 +13695,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12784,7 +13724,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12811,7 +13753,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12838,7 +13782,9 @@
    "tokens_median": 112371,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 5.0,
+   "quality_n": 20
   },
   {
    "harness": "omp",
@@ -12865,7 +13811,9 @@
    "tokens_median": 230566,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 48
   },
   {
    "harness": "omp",
@@ -12892,7 +13840,9 @@
    "tokens_median": 257117,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -12919,7 +13869,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "omp",
@@ -12946,7 +13898,9 @@
    "tokens_median": 163132,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 5.0,
+   "quality_n": 20
   },
   {
    "harness": "omp",
@@ -12973,7 +13927,9 @@
    "tokens_median": 257117,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 48
   },
   {
    "harness": "omp",
@@ -13000,7 +13956,9 @@
    "tokens_median": 74867,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "omp",
@@ -13027,7 +13985,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -13054,7 +14014,9 @@
    "tokens_median": 95342,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 84
   },
   {
    "harness": "opencode",
@@ -13081,7 +14043,9 @@
    "tokens_median": 76888,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 25
   },
   {
    "harness": "opencode",
@@ -13108,7 +14072,9 @@
    "tokens_median": 66417,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 2.75,
+   "quality_n": 5
   },
   {
    "harness": "opencode",
@@ -13135,7 +14101,9 @@
    "tokens_median": 105649,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 15
   },
   {
    "harness": "opencode",
@@ -13162,7 +14130,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -13189,7 +14159,9 @@
    "tokens_median": 60083,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.0,
+   "quality_n": 10
   },
   {
    "harness": "opencode",
@@ -13216,7 +14188,9 @@
    "tokens_median": 61671,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 5
   },
   {
    "harness": "opencode",
@@ -13243,7 +14217,9 @@
    "tokens_median": 70996,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 1.0,
+   "quality_n": 9
   },
   {
    "harness": "opencode",
@@ -13270,7 +14246,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -13297,7 +14275,9 @@
    "tokens_median": 109138,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 15
   },
   {
    "harness": "opencode",
@@ -13324,7 +14304,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -13351,7 +14333,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -13378,7 +14362,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -13405,7 +14391,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -13432,7 +14420,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -13459,7 +14449,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -13486,7 +14478,9 @@
    "tokens_median": 75142,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 20
   },
   {
    "harness": "opencode",
@@ -13513,7 +14507,9 @@
    "tokens_median": 95342,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 60
   },
   {
    "harness": "opencode",
@@ -13540,7 +14536,9 @@
    "tokens_median": 107437,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.125,
+   "quality_n": 4
   },
   {
    "harness": "opencode",
@@ -13567,7 +14565,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -13594,7 +14594,9 @@
    "tokens_median": 76888,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 20
   },
   {
    "harness": "opencode",
@@ -13621,7 +14623,9 @@
    "tokens_median": 95342,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 59
   },
   {
    "harness": "opencode",
@@ -13648,7 +14652,9 @@
    "tokens_median": 66836,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "opencode",
@@ -13675,7 +14681,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -13702,7 +14710,9 @@
    "tokens_median": 73729,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 79
   },
   {
    "harness": "opencode",
@@ -13729,7 +14739,9 @@
    "tokens_median": 70898,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 25
   },
   {
    "harness": "opencode",
@@ -13756,7 +14768,9 @@
    "tokens_median": 85661,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.5,
+   "quality_n": 5
   },
   {
    "harness": "opencode",
@@ -13783,7 +14797,9 @@
    "tokens_median": 82500,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 15
   },
   {
    "harness": "opencode",
@@ -13810,7 +14826,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -13837,7 +14855,9 @@
    "tokens_median": 97109,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 6
   },
   {
    "harness": "opencode",
@@ -13864,7 +14884,9 @@
    "tokens_median": 58852,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "opencode",
@@ -13891,7 +14913,9 @@
    "tokens_median": 64664,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 1.0,
+   "quality_n": 10
   },
   {
    "harness": "opencode",
@@ -13918,7 +14942,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -13945,7 +14971,9 @@
    "tokens_median": 101646,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 13
   },
   {
    "harness": "opencode",
@@ -13972,7 +15000,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -13999,7 +15029,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14026,7 +15058,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14053,7 +15087,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14080,7 +15116,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14107,7 +15145,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14134,7 +15174,9 @@
    "tokens_median": 70283,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 20
   },
   {
    "harness": "opencode",
@@ -14161,7 +15203,9 @@
    "tokens_median": 86055,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 54
   },
   {
    "harness": "opencode",
@@ -14188,7 +15232,9 @@
    "tokens_median": 65064,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 1.0,
+   "quality_n": 5
   },
   {
    "harness": "opencode",
@@ -14215,7 +15261,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14242,7 +15290,9 @@
    "tokens_median": 70283,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.5,
+   "quality_n": 20
   },
   {
    "harness": "opencode",
@@ -14269,7 +15319,9 @@
    "tokens_median": 85661,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 54
   },
   {
    "harness": "opencode",
@@ -14296,7 +15348,9 @@
    "tokens_median": 73333,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 5
   },
   {
    "harness": "opencode",
@@ -14323,7 +15377,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14350,7 +15406,9 @@
    "tokens_median": 238119,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 139
   },
   {
    "harness": "opencode",
@@ -14377,7 +15435,9 @@
    "tokens_median": 222224,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 25
   },
   {
    "harness": "opencode",
@@ -14404,7 +15464,9 @@
    "tokens_median": 209892,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.25,
+   "quality_n": 14
   },
   {
    "harness": "opencode",
@@ -14431,7 +15493,9 @@
    "tokens_median": 254220,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 3.5,
+   "quality_n": 43
   },
   {
    "harness": "opencode",
@@ -14458,7 +15522,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14485,7 +15551,9 @@
    "tokens_median": 203570,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 10
   },
   {
    "harness": "opencode",
@@ -14512,7 +15580,9 @@
    "tokens_median": 217806,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "opencode",
@@ -14539,7 +15609,9 @@
    "tokens_median": 251714,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 27
   },
   {
    "harness": "opencode",
@@ -14566,7 +15638,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14593,7 +15667,9 @@
    "tokens_median": 278298,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 15
   },
   {
    "harness": "opencode",
@@ -14620,7 +15696,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14647,7 +15725,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14674,7 +15754,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14701,7 +15783,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14728,7 +15812,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14755,7 +15841,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14782,7 +15870,9 @@
    "tokens_median": 218991,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 20
   },
   {
    "harness": "opencode",
@@ -14809,7 +15899,9 @@
    "tokens_median": 248028,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 114
   },
   {
    "harness": "opencode",
@@ -14836,7 +15928,9 @@
    "tokens_median": 263281,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "opencode",
@@ -14863,7 +15957,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -14890,7 +15986,9 @@
    "tokens_median": 222224,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 27
   },
   {
    "harness": "opencode",
@@ -14917,7 +16015,9 @@
    "tokens_median": 251714,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 3.875,
+   "quality_n": 102
   },
   {
    "harness": "opencode",
@@ -14944,7 +16044,9 @@
    "tokens_median": 218991,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.25,
+   "quality_n": 5
   },
   {
    "harness": "opencode",
@@ -14971,7 +16073,9 @@
    "tokens_median": 208448,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "opencode",
@@ -14998,7 +16102,9 @@
    "tokens_median": 33468,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 74
   },
   {
    "harness": "opencode",
@@ -15025,7 +16131,9 @@
    "tokens_median": 30990,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 25
   },
   {
    "harness": "opencode",
@@ -15052,7 +16160,9 @@
    "tokens_median": 28384,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.5,
+   "quality_n": 4
   },
   {
    "harness": "opencode",
@@ -15079,7 +16189,9 @@
    "tokens_median": 41952,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 15
   },
   {
    "harness": "opencode",
@@ -15106,7 +16218,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -15133,7 +16247,9 @@
    "tokens_median": 40390,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 2.5,
+   "quality_n": 5
   },
   {
    "harness": "opencode",
@@ -15160,7 +16276,9 @@
    "tokens_median": 26640,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "opencode",
@@ -15187,7 +16305,9 @@
    "tokens_median": 30725,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 1.0,
+   "quality_n": 10
   },
   {
    "harness": "opencode",
@@ -15214,7 +16334,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -15241,7 +16363,9 @@
    "tokens_median": 46304,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.25,
+   "quality_n": 10
   },
   {
    "harness": "opencode",
@@ -15268,7 +16392,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -15295,7 +16421,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -15322,7 +16450,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -15349,7 +16479,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -15376,7 +16508,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -15403,7 +16537,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -15430,7 +16566,9 @@
    "tokens_median": 25113,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 20
   },
   {
    "harness": "opencode",
@@ -15457,7 +16595,9 @@
    "tokens_median": 40390,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 3.5,
+   "quality_n": 49
   },
   {
    "harness": "opencode",
@@ -15484,7 +16624,9 @@
    "tokens_median": 30725,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 2.5,
+   "quality_n": 5
   },
   {
    "harness": "opencode",
@@ -15511,7 +16653,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "opencode",
@@ -15538,7 +16682,9 @@
    "tokens_median": 25113,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.25,
+   "quality_n": 20
   },
   {
    "harness": "opencode",
@@ -15565,7 +16711,9 @@
    "tokens_median": 33507,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 3.5,
+   "quality_n": 49
   },
   {
    "harness": "opencode",
@@ -15592,7 +16740,9 @@
    "tokens_median": 100100,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "opencode",
@@ -15619,7 +16769,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -15646,7 +16798,9 @@
    "tokens_median": 38730,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 79
   },
   {
    "harness": "pi",
@@ -15673,7 +16827,9 @@
    "tokens_median": 32479,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 25
   },
   {
    "harness": "pi",
@@ -15700,7 +16856,9 @@
    "tokens_median": 40779,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.5,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -15727,7 +16885,9 @@
    "tokens_median": 81403,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 15
   },
   {
    "harness": "pi",
@@ -15754,7 +16914,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -15781,7 +16943,9 @@
    "tokens_median": 14565,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 6
   },
   {
    "harness": "pi",
@@ -15808,7 +16972,9 @@
    "tokens_median": 17655,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -15835,7 +17001,9 @@
    "tokens_median": 86218,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 8
   },
   {
    "harness": "pi",
@@ -15862,7 +17030,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -15889,7 +17059,9 @@
    "tokens_median": 136719,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 15
   },
   {
    "harness": "pi",
@@ -15916,7 +17088,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -15943,7 +17117,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -15970,7 +17146,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -15997,7 +17175,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -16024,7 +17204,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -16051,7 +17233,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -16078,7 +17262,9 @@
    "tokens_median": 26029,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "pi",
@@ -16105,7 +17291,9 @@
    "tokens_median": 81208,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 56
   },
   {
    "harness": "pi",
@@ -16132,7 +17320,9 @@
    "tokens_median": 86218,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 3
   },
   {
    "harness": "pi",
@@ -16159,7 +17349,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -16186,7 +17378,9 @@
    "tokens_median": 26029,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "pi",
@@ -16213,7 +17407,9 @@
    "tokens_median": 81403,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 54
   },
   {
    "harness": "pi",
@@ -16240,7 +17436,9 @@
    "tokens_median": 38730,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -16267,7 +17465,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -16294,7 +17494,9 @@
    "tokens_median": 56911,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 68
   },
   {
    "harness": "pi",
@@ -16321,7 +17523,9 @@
    "tokens_median": 27302,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 25
   },
   {
    "harness": "pi",
@@ -16348,7 +17552,9 @@
    "tokens_median": 89430,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -16375,7 +17581,9 @@
    "tokens_median": 56911,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 15
   },
   {
    "harness": "pi",
@@ -16402,7 +17610,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -16429,7 +17639,9 @@
    "tokens_median": 58811,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 4
   },
   {
    "harness": "pi",
@@ -16456,7 +17668,9 @@
    "tokens_median": 16816,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -16483,7 +17697,9 @@
    "tokens_median": 101144,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 10
   },
   {
    "harness": "pi",
@@ -16510,7 +17726,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -16537,7 +17755,9 @@
    "tokens_median": 76150,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 4
   },
   {
    "harness": "pi",
@@ -16564,7 +17784,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -16591,7 +17813,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -16618,7 +17842,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -16645,7 +17871,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -16672,7 +17900,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -16699,7 +17929,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -16726,7 +17958,9 @@
    "tokens_median": 22371,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "pi",
@@ -16753,7 +17987,9 @@
    "tokens_median": 76150,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 43
   },
   {
    "harness": "pi",
@@ -16780,7 +18016,9 @@
    "tokens_median": 101144,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -16807,7 +18045,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -16834,7 +18074,9 @@
    "tokens_median": 22371,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "pi",
@@ -16861,7 +18103,9 @@
    "tokens_median": 76150,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 43
   },
   {
    "harness": "pi",
@@ -16888,7 +18132,9 @@
    "tokens_median": 27302,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -16915,7 +18161,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -16942,7 +18190,9 @@
    "tokens_median": 118746,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 141
   },
   {
    "harness": "pi",
@@ -16969,7 +18219,9 @@
    "tokens_median": 72609,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 25
   },
   {
    "harness": "pi",
@@ -16996,7 +18248,9 @@
    "tokens_median": 113509,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 14
   },
   {
    "harness": "pi",
@@ -17023,7 +18277,9 @@
    "tokens_median": 95773,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 43
   },
   {
    "harness": "pi",
@@ -17050,7 +18306,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17077,7 +18335,9 @@
    "tokens_median": 73969,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 10
   },
   {
    "harness": "pi",
@@ -17104,7 +18364,9 @@
    "tokens_median": 84961,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -17131,7 +18393,9 @@
    "tokens_median": 153300,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 29
   },
   {
    "harness": "pi",
@@ -17158,7 +18422,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17185,7 +18451,9 @@
    "tokens_median": 243513,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 15
   },
   {
    "harness": "pi",
@@ -17212,7 +18480,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17239,7 +18509,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17266,7 +18538,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17293,7 +18567,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17320,7 +18596,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17347,7 +18625,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17374,7 +18654,9 @@
    "tokens_median": 69906,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "pi",
@@ -17401,7 +18683,9 @@
    "tokens_median": 123334,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 116
   },
   {
    "harness": "pi",
@@ -17428,7 +18712,9 @@
    "tokens_median": 245374,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -17455,7 +18741,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17482,7 +18770,9 @@
    "tokens_median": 87686,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 28
   },
   {
    "harness": "pi",
@@ -17509,7 +18799,9 @@
    "tokens_median": 144724,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 103
   },
   {
    "harness": "pi",
@@ -17536,7 +18828,9 @@
    "tokens_median": 52167,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -17563,7 +18857,9 @@
    "tokens_median": 79487,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -17590,7 +18886,9 @@
    "tokens_median": 102196,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 75
   },
   {
    "harness": "pi",
@@ -17617,7 +18915,9 @@
    "tokens_median": 50855,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 24
   },
   {
    "harness": "pi",
@@ -17644,7 +18944,9 @@
    "tokens_median": 97156,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -17671,7 +18973,9 @@
    "tokens_median": 143211,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 15
   },
   {
    "harness": "pi",
@@ -17698,7 +19002,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17725,7 +19031,9 @@
    "tokens_median": 70174,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -17752,7 +19060,9 @@
    "tokens_median": 56155,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -17779,7 +19089,9 @@
    "tokens_median": 114070,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 10
   },
   {
    "harness": "pi",
@@ -17806,7 +19118,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17833,7 +19147,9 @@
    "tokens_median": 113702,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.625,
+   "quality_n": 11
   },
   {
    "harness": "pi",
@@ -17860,7 +19176,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17887,7 +19205,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17914,7 +19234,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17941,7 +19263,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17968,7 +19292,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -17995,7 +19321,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -18022,7 +19350,9 @@
    "tokens_median": 41483,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 19
   },
   {
    "harness": "pi",
@@ -18049,7 +19379,9 @@
    "tokens_median": 113702,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 51
   },
   {
    "harness": "pi",
@@ -18076,7 +19408,9 @@
    "tokens_median": 124379,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -18103,7 +19437,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "pi",
@@ -18130,7 +19466,9 @@
    "tokens_median": 41483,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 19
   },
   {
    "harness": "pi",
@@ -18157,7 +19495,9 @@
    "tokens_median": 113702,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 51
   },
   {
    "harness": "pi",
@@ -18184,7 +19524,9 @@
    "tokens_median": 50855,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "pi",
@@ -18211,7 +19553,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -18238,7 +19582,9 @@
    "tokens_median": 52667,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 144
   },
   {
    "harness": "prime-agent",
@@ -18265,7 +19611,9 @@
    "tokens_median": 41103,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 25
   },
   {
    "harness": "prime-agent",
@@ -18292,7 +19640,9 @@
    "tokens_median": 60389,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.5,
+   "quality_n": 15
   },
   {
    "harness": "prime-agent",
@@ -18319,7 +19669,9 @@
    "tokens_median": 39270,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 50
   },
   {
    "harness": "prime-agent",
@@ -18346,7 +19698,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -18373,7 +19727,9 @@
    "tokens_median": 12429,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 7
   },
   {
    "harness": "prime-agent",
@@ -18400,7 +19756,9 @@
    "tokens_median": 22427,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 5
   },
   {
    "harness": "prime-agent",
@@ -18427,7 +19785,9 @@
    "tokens_median": 86183,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 27
   },
   {
    "harness": "prime-agent",
@@ -18454,7 +19814,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -18481,7 +19843,9 @@
    "tokens_median": 261660,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 15
   },
   {
    "harness": "prime-agent",
@@ -18508,7 +19872,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -18535,7 +19901,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -18562,7 +19930,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -18589,7 +19959,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -18616,7 +19988,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -18643,7 +20017,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -18670,7 +20046,9 @@
    "tokens_median": 40017,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "prime-agent",
@@ -18697,7 +20075,9 @@
    "tokens_median": 53895,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 121
   },
   {
    "harness": "prime-agent",
@@ -18724,7 +20104,9 @@
    "tokens_median": 99922,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 3
   },
   {
    "harness": "prime-agent",
@@ -18751,7 +20133,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -18778,7 +20162,9 @@
    "tokens_median": 41103,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 30
   },
   {
    "harness": "prime-agent",
@@ -18805,7 +20191,9 @@
    "tokens_median": 53895,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 104
   },
   {
    "harness": "prime-agent",
@@ -18832,7 +20220,9 @@
    "tokens_median": 40017,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 5
   },
   {
    "harness": "prime-agent",
@@ -18859,7 +20249,9 @@
    "tokens_median": 30464,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 5
   },
   {
    "harness": "prime-agent",
@@ -18886,7 +20278,9 @@
    "tokens_median": 95640,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 67
   },
   {
    "harness": "prime-agent",
@@ -18913,7 +20307,9 @@
    "tokens_median": 38801,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 25
   },
   {
    "harness": "prime-agent",
@@ -18940,7 +20336,9 @@
    "tokens_median": 95640,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.375,
+   "quality_n": 4
   },
   {
    "harness": "prime-agent",
@@ -18967,7 +20365,9 @@
    "tokens_median": 107784,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 15
   },
   {
    "harness": "prime-agent",
@@ -18994,7 +20394,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19021,7 +20423,9 @@
    "tokens_median": 167426,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 2
   },
   {
    "harness": "prime-agent",
@@ -19048,7 +20452,9 @@
    "tokens_median": 28079,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "prime-agent",
@@ -19075,7 +20481,9 @@
    "tokens_median": 144121,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 9
   },
   {
    "harness": "prime-agent",
@@ -19102,7 +20510,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19129,7 +20539,9 @@
    "tokens_median": 137078,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.125,
+   "quality_n": 7
   },
   {
    "harness": "prime-agent",
@@ -19156,7 +20568,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19183,7 +20597,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19210,7 +20626,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19237,7 +20655,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19264,7 +20684,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19291,7 +20713,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19318,7 +20742,9 @@
    "tokens_median": 36938,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "prime-agent",
@@ -19345,7 +20771,9 @@
    "tokens_median": 137078,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 43
   },
   {
    "harness": "prime-agent",
@@ -19372,7 +20800,9 @@
    "tokens_median": 165850,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 4
   },
   {
    "harness": "prime-agent",
@@ -19399,7 +20829,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19426,7 +20858,9 @@
    "tokens_median": 38801,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 20
   },
   {
    "harness": "prime-agent",
@@ -19453,7 +20887,9 @@
    "tokens_median": 137078,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 42
   },
   {
    "harness": "prime-agent",
@@ -19480,7 +20916,9 @@
    "tokens_median": 4108,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 1.0,
+   "quality_n": 5
   },
   {
    "harness": "prime-agent",
@@ -19507,7 +20945,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19534,7 +20974,9 @@
    "tokens_median": 138870,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 143
   },
   {
    "harness": "prime-agent",
@@ -19561,7 +21003,9 @@
    "tokens_median": 88516,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 25
   },
   {
    "harness": "prime-agent",
@@ -19588,7 +21032,9 @@
    "tokens_median": 136048,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 15
   },
   {
    "harness": "prime-agent",
@@ -19615,7 +21061,9 @@
    "tokens_median": 135744,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.375,
+   "quality_n": 47
   },
   {
    "harness": "prime-agent",
@@ -19642,7 +21090,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19669,7 +21119,9 @@
    "tokens_median": 152577,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 10
   },
   {
    "harness": "prime-agent",
@@ -19696,7 +21148,9 @@
    "tokens_median": 93620,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "prime-agent",
@@ -19723,7 +21177,9 @@
    "tokens_median": 189593,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 27
   },
   {
    "harness": "prime-agent",
@@ -19750,7 +21206,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19777,7 +21235,9 @@
    "tokens_median": 315408,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 14
   },
   {
    "harness": "prime-agent",
@@ -19804,7 +21264,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19831,7 +21293,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19858,7 +21322,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19885,7 +21351,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19912,7 +21380,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19939,7 +21409,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -19966,7 +21438,9 @@
    "tokens_median": 79477,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "prime-agent",
@@ -19993,7 +21467,9 @@
    "tokens_median": 154094,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 118
   },
   {
    "harness": "prime-agent",
@@ -20020,7 +21496,9 @@
    "tokens_median": 225228,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "prime-agent",
@@ -20047,7 +21525,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -20074,7 +21554,9 @@
    "tokens_median": 88516,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 30
   },
   {
    "harness": "prime-agent",
@@ -20101,7 +21583,9 @@
    "tokens_median": 167104,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.5,
+   "quality_n": 103
   },
   {
    "harness": "prime-agent",
@@ -20128,7 +21612,9 @@
    "tokens_median": 62419,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.5,
+   "quality_n": 5
   },
   {
    "harness": "prime-agent",
@@ -20155,7 +21641,9 @@
    "tokens_median": 130403,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "prime-agent",
@@ -20182,7 +21670,9 @@
    "tokens_median": 173251,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 77
   },
   {
    "harness": "prime-agent",
@@ -20209,7 +21699,9 @@
    "tokens_median": 68537,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 25
   },
   {
    "harness": "prime-agent",
@@ -20236,7 +21728,9 @@
    "tokens_median": 173251,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.5,
+   "quality_n": 5
   },
   {
    "harness": "prime-agent",
@@ -20263,7 +21757,9 @@
    "tokens_median": 288388,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 15
   },
   {
    "harness": "prime-agent",
@@ -20290,7 +21786,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -20317,7 +21815,9 @@
    "tokens_median": 300764,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 3.625,
+   "quality_n": 6
   },
   {
    "harness": "prime-agent",
@@ -20344,7 +21844,9 @@
    "tokens_median": 126123,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 5
   },
   {
    "harness": "prime-agent",
@@ -20371,7 +21873,9 @@
    "tokens_median": 211912,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 2.5,
+   "quality_n": 10
   },
   {
    "harness": "prime-agent",
@@ -20398,7 +21902,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -20425,7 +21931,9 @@
    "tokens_median": 186068,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.125,
+   "quality_n": 11
   },
   {
    "harness": "prime-agent",
@@ -20452,7 +21960,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -20479,7 +21989,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -20506,7 +22018,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -20533,7 +22047,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -20560,7 +22076,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -20587,7 +22105,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -20614,7 +22134,9 @@
    "tokens_median": 65779,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "prime-agent",
@@ -20641,7 +22163,9 @@
    "tokens_median": 188028,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 52
   },
   {
    "harness": "prime-agent",
@@ -20668,7 +22192,9 @@
    "tokens_median": 211912,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 5
   },
   {
    "harness": "prime-agent",
@@ -20695,7 +22221,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   },
   {
    "harness": "prime-agent",
@@ -20722,7 +22250,9 @@
    "tokens_median": 68537,
    "arena_bt": null,
    "confidence": "medium",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 20
   },
   {
    "harness": "prime-agent",
@@ -20749,7 +22279,9 @@
    "tokens_median": 211912,
    "arena_bt": null,
    "confidence": "high",
-   "evidence": "measured"
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 52
   },
   {
    "harness": "prime-agent",
@@ -20776,7 +22308,9 @@
    "tokens_median": 47771,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 5
   },
   {
    "harness": "prime-agent",
@@ -20803,7 +22337,9 @@
    "tokens_median": null,
    "arena_bt": null,
    "confidence": "low",
-   "evidence": "inferred"
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0
   }
  ],
  "frontier": [

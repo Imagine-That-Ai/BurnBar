@@ -20,6 +20,7 @@ import {
   reportTasks,
   reportStats,
   reportCoverage,
+  reportQuality,
   noopStats,
   fmtPct,
   fmtCost,
@@ -46,6 +47,7 @@ const prime = stats.prime;
    regenerated evidence.json lands them. */
 const noop = noopStats();
 const coverage = reportCoverage();
+const quality = reportQuality();
 
 const params = EVIDENCE.params as {
   ci?: string;
@@ -137,6 +139,7 @@ const SECTION_NAV: [string, string][] = [
   ["matrix", "Matrix"],
   ["models", "Models"],
   ["endpoints", "Two estimands"],
+  ["quality", "Quality"],
   ["prime", "Prime audit"],
   ["audits", "Audit verdicts"],
   ["tasks", "Tasks"],
@@ -235,6 +238,7 @@ const SECTION_NAV: [string, string][] = [
       <div class="bb-tabs bb-tabs--sm" role="tablist" aria-label="Matrix metric" data-br-mxtabs>
         <button class="bb-tab is-active" role="tab" aria-selected="true" data-mx="sol">Solution quality</button>
         <button class="bb-tab" role="tab" aria-selected="false" data-mx="str">Strict</button>
+        <button class="bb-tab" role="tab" aria-selected="false" data-mx="qual">Kimi quality</button>
       </div>
 
       <div class="bb-matrix-wrap">
@@ -295,8 +299,9 @@ const SECTION_NAV: [string, string][] = [
                           class={`mx-cell h--${hcls(hid)} m--${mcls(mid)}`}
                           data-sol={fmtPct(cell.solution)}
                           data-str={fmtPct(cell.strict)}
+                          data-qual={cell.quality != null ? cell.quality.toFixed(2) : "—"}
                           data-n={cell.n}
-                          title={`${harnessDisplay(hid)} × ${modelDisplay(mid)} — solution ${fmtPct(cell.solution)} · strict ${fmtPct(cell.strict)} · n ${cell.n} across ${cell.tasks} tasks`}
+                          title={`${harnessDisplay(hid)} × ${modelDisplay(mid)} — solution ${fmtPct(cell.solution)} · strict ${fmtPct(cell.strict)}${cell.quality != null ? ` · quality ${cell.quality.toFixed(2)}/5` : ""} · n ${cell.n} across ${cell.tasks} tasks`}
                         >
                           <span class="mx-cell__sol" data-mx-val>{fmtPct(cell.solution)}</span>
                           <span class="mx-cell__sub" data-mx-sub>
@@ -304,6 +309,7 @@ const SECTION_NAV: [string, string][] = [
                           </span>
                           <span class="mx-cell__fam">
                             {cell.tasks} tasks{cell.flips > 0 ? ` · ${cell.flips} t/o-pass` : ""}
+                            {cell.quality != null ? ` · q ${cell.quality.toFixed(2)}` : ""}
                           </span>
                         </td>
                       );
@@ -472,6 +478,142 @@ const SECTION_NAV: [string, string][] = [
       </div>
     </div>
   </section>
+
+  {/* ──────────────── 4.5 · KIMI JUDGE QUALITY ──────────────── */}
+  {quality && (
+    <section class="bb-section bb-section--ember" id="quality" aria-labelledby="quality-h">
+      <div class="container container--wide">
+        <header class="bb-sec-head">
+          <span class="eyebrow eyebrow--ember">Code-quality judging</span>
+          <h2 id="quality-h" class="bb-sec-h">Kimi judge: code quality on a 1–5 rubric.</h2>
+          <p class="bb-sec-lead">
+            Every non-infra-failure trial is judged blind by{" "}
+            <strong>{quality.judge ?? "the judge"}{" "}</strong>
+            ({quality.judgeModel ?? "—"}, rubric v{quality.rubricVersion ?? "?"}) on four
+            dimensions — correctness strategy, invariant coverage, code quality, and
+            performance awareness — each scored 1–5. The per-trial mean is the
+            <strong>quality_mean</strong>; cells carry the median across their judged trials,
+            stacks carry the n-weighted median of per-task medians. {fmtInt(quality.trials)}
+            trials across {fmtInt(quality.cells)} cells judged; global median quality
+            {" "}<strong>{quality.globalMean != null ? quality.globalMean.toFixed(2) : "—"}</strong>
+            {" "}/ 5.
+          </p>
+        </header>
+
+        {/* Stack quality leaderboard — best first, mirroring the matrix's
+            harness × model structure. */}
+        <div class="bb-qlq">
+          <h3 class="bb-qlq__h">Stack quality leaderboard.</h3>
+          <p class="bb-caption">
+            Each row is one harness × model stack. quality_mean is the n-weighted median of the
+            stack's per-task quality_means (1–5); the bar is scaled to the observed range so
+            fine differences stay visible.
+          </p>
+          <div class="bb-qlq__rows">
+            {quality.stacks.map((s) => {
+              const q = s.quality ?? 0;
+              // Bar fraction on a 1–5 scale, floored at 2 so the bar never
+              // reads empty for a 1-score (it is still a real, bad score).
+              const frac = Math.max(0, Math.min(1, (q - 2) / 3));
+              return (
+                <div class={`bb-qlq__row h--${hcls(s.harness)} m--${mcls(s.model)}`}>
+                  <span class="bb-qlq__name">
+                    <span class={`bb-badge bb-badge--sm h--${hcls(s.harness)}`}>
+                      {HARNESS_LOGO[s.harness]
+                        ? (
+                          <img src={HARNESS_LOGO[s.harness]!} alt="" width="14" height="14" loading="lazy" decoding="async" />
+                        )
+                        : <span class="bb-badge__mono">{monogramFor(s.harness, harnessDisplay(s.harness))}</span>}
+                    </span>
+                    {harnessDisplay(s.harness)} · {modelDisplay(s.model)}
+                  </span>
+                  <div class="bb-qlq__bar" role="img" aria-label={`quality ${q.toFixed(2)} of 5, ${s.n} judged trials`}>
+                    <div class="bb-qlq__fill" style={`width:${(frac * 100).toFixed(1)}%`}></div>
+                  </div>
+                  <span class="bb-qlq__val mono">{s.quality != null ? s.quality.toFixed(2) : "—"}</span>
+                  <span class="bb-qlq__n mono">{s.n} trials · {s.cells} cells</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Per-task quality landscape — mirrors the task browser, colored by
+            quality instead of strict rate. */}
+        <div class="bb-qlq">
+          <h3 class="bb-qlq__h">Per-task quality.</h3>
+          <p class="bb-caption">
+            Median quality_mean per task across all stacks. The white tick marks the
+            solution rate for context — a high solution rate with a low quality score means
+            the agent shipped a correct-but-rough solution. Dimensions are the medians of
+            the four rubric axes (1–5).
+          </p>
+          <div class="bb-tasks__card">
+            <div class="bb-trow bb-trow--hd" aria-hidden="true">
+              <span>task</span>
+              <span class="bb-trow__num">judged</span>
+              <span>quality_mean (1–5) · tick = solution rate</span>
+              <span class="bb-trow__num">quality</span>
+              <span class="bb-trow__num">spread</span>
+              <span class="bb-trow__num">dims</span>
+            </div>
+            {quality.tasks.map((t) => {
+              // Bar on 1–5: floor at 2 so a 1 score still shows a sliver.
+              const q = t.quality;
+              const frac = Math.max(0, Math.min(1, (q - 2) / 3));
+              // solution rate tick: pull from the tasks list computed earlier.
+              const solTask = tasks.find((x) => x.task === t.task);
+              const solFrac = solTask ? solTask.solution : 0;
+              const dimStr = [t.correctness, t.invariants, t.codeQuality, t.perf]
+                .map((d) => (d != null ? d.toFixed(1) : "—"))
+                .join("·");
+              return (
+                <div class="bb-trow" data-family={t.family}>
+                  <div class="bb-trow__id">
+                    <span class="bb-trow__name mono">{t.task}</span>
+                    <span class={`bb-trow__diff bb-trow__diff--${t.difficulty}`}>{t.difficulty}</span>
+                    <span class="bb-trow__fam">{t.family}</span>
+                  </div>
+                  <span class="bb-trow__num mono">{t.n}</span>
+                  <svg
+                    class="bb-trow__bar"
+                    width="100%"
+                    height="16"
+                    role="img"
+                    aria-label={`${t.task}: quality ${q.toFixed(2)}/5, solution ${fmtPct(solFrac)}, ${t.n} judged trials`}
+                  >
+                    <rect class="bb-trow__track" x="0" y="4" width="100%" height="8" rx="4" />
+                    <rect
+                      class="bb-trow__fill bb-trow__fill--quality"
+                      style={`width:${(frac * 100).toFixed(2)}%`}
+                      x="0"
+                      y="4"
+                      height="8"
+                      rx="4"
+                    />
+                    <line
+                      class="bb-trow__tick"
+                      x1={`${(solFrac * 100).toFixed(2)}%`}
+                      x2={`${(solFrac * 100).toFixed(2)}%`}
+                      y1="1"
+                      y2="15"
+                    />
+                  </svg>
+                  <span class="bb-trow__num mono bb-trow__sol">{q.toFixed(2)}</span>
+                  <span class="bb-trow__num mono bb-trow__spread">
+                    {t.min.toFixed(1)}–{t.max.toFixed(1)}
+                  </span>
+                  <span class="bb-trow__num mono bb-qlq__dims" title="correctness·invariants·code·perf (median, 1–5)">
+                    {dimStr}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </section>
+  )}
 
   {/* ──────────────── 5 · PRIME AGENT: THE 2026-08 AUDIT STORY ──────────────── */}
   <section class="bb-section" id="prime" aria-labelledby="prime-h">
@@ -1162,6 +1304,7 @@ const SECTION_NAV: [string, string][] = [
               <th scope="col">cost/task</th>
               <th scope="col">wall</th>
               <th scope="col">tokens</th>
+              <th scope="col">quality</th>
               <th scope="col">confidence</th>
               <th scope="col">evidence</th>
             </tr>
@@ -1194,6 +1337,11 @@ const SECTION_NAV: [string, string][] = [
                   </td>
                   <td>{fmtWall(s.wall_seconds_median)}</td>
                   <td>{fmtTokens(s.tokens_median)}</td>
+                  <td class="d-sub">
+                    {s.quality_mean != null
+                      ? `${s.quality_mean.toFixed(2)}${s.quality_n > 0 ? ` (${s.quality_n})` : ""}`
+                      : "—"}
+                  </td>
                   <td class="d-sub">{s.confidence}</td>
                   <td class="d-sub">{s.evidence}</td>
                 </tr>

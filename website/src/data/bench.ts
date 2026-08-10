@@ -64,6 +64,11 @@ export interface BenchStack {
   arena_bt: number | null;
   confidence: BenchConfidence;
   evidence: BenchEvidence;
+  /** Kimi-judge quality_mean (1-5 scale), n-weighted median of per-task
+      medians for this scope slice. null when no trials were judged. */
+  quality_mean: number | null;
+  /** Number of judged trials backing quality_mean (0 when unjudged). */
+  quality_n: number;
 }
 
 export interface BenchFrontierPoint {
@@ -792,6 +797,21 @@ export interface EvidenceCell {
   /** Runs that ended with zero source edits (diff touched only harness
       scaffolding). Optional — shipped by newer exports; counted as failures. */
   noop_runs?: number;
+  /** Kimi-judge median quality_mean (1-5 scale) across the cell's judged
+      trials. null/absent when no trials were judged (older exports, infra
+      failures, pending hard band). */
+  quality_mean?: number | null;
+  /** Number of judged trials backing quality_mean. */
+  quality_n?: number;
+  /** Judge id ("kimi") and model, recorded for disclosure. */
+  quality_judge?: string | null;
+  quality_judge_model?: string | null;
+  quality_rubric_version?: number | null;
+  /** Per-rubric dimension medians (1-5); null when the cell wasn't judged. */
+  quality_correctness_strategy?: number | null;
+  quality_invariant_coverage?: number | null;
+  quality_code_quality?: number | null;
+  quality_performance_awareness?: number | null;
   confidence: BenchConfidence;
   evidence: BenchEvidence;
 }
@@ -1017,6 +1037,11 @@ export interface ReportMatrixCell {
   strict: number;
   flips: number;
   cost: number | null;
+  /** Kimi-judge median quality_mean across the pair's judged cells (1-5);
+      null when no trials were judged. */
+  quality: number | null;
+  /** Number of judged trials backing quality. */
+  qualityN: number;
 }
 
 export interface ReportMatrix {
@@ -1029,7 +1054,10 @@ export interface ReportMatrix {
 }
 
 export function reportMatrix(): ReportMatrix {
-  const agg = new Map<string, ReportMatrixCell & { sp: number; stp: number; costs: number[] }>();
+  const agg = new Map<
+    string,
+    ReportMatrixCell & { sp: number; stp: number; costs: number[]; qPairs: [number, number][] }
+  >();
   for (const c of EVIDENCE_CELLS) {
     const key = `${c.harness}|${c.model}`;
     let a = agg.get(key);
@@ -1043,9 +1071,12 @@ export function reportMatrix(): ReportMatrix {
         strict: 0,
         flips: 0,
         cost: null,
+        quality: null,
+        qualityN: 0,
         sp: 0,
         stp: 0,
-        costs: []
+        costs: [],
+        qPairs: []
       };
       agg.set(key, a);
     }
@@ -1055,10 +1086,29 @@ export function reportMatrix(): ReportMatrix {
     a.stp += c.strict_passes;
     a.flips += flipTrials(c);
     if (c.cost_usd_median != null) a.costs.push(c.cost_usd_median);
+    if (c.quality_mean != null && c.quality_n != null && c.quality_n > 0) {
+      a.qPairs.push([c.quality_mean, c.quality_n]);
+      a.qualityN += c.quality_n;
+    }
   }
   const cells = new Map<string, ReportMatrixCell>();
   for (const [key, a] of agg) {
     const sorted = [...a.costs].sort((x, y) => x - y);
+    // n-weighted median of per-cell quality_means (1-5).
+    let quality: number | null = null;
+    if (a.qPairs.length > 0) {
+      const clean = [...a.qPairs].sort((x, y) => x[0] - y[0]);
+      const total = clean.reduce((s, [, w]) => s + w, 0);
+      let acc = 0;
+      for (const [v, w] of clean) {
+        acc += w;
+        if (acc >= total / 2) {
+          quality = v;
+          break;
+        }
+      }
+      if (quality == null) quality = clean[clean.length - 1]?.[0] ?? null;
+    }
     cells.set(key, {
       harness: a.harness,
       model: a.model,
@@ -1067,7 +1117,9 @@ export function reportMatrix(): ReportMatrix {
       solution: a.n > 0 ? a.sp / a.n : 0,
       strict: a.n > 0 ? a.stp / a.n : 0,
       flips: a.flips,
-      cost: sorted.length > 0 ? (sorted[Math.floor(sorted.length / 2)] ?? null) : null
+      cost: sorted.length > 0 ? (sorted[Math.floor(sorted.length / 2)] ?? null) : null,
+      quality,
+      qualityN: a.qualityN
     });
   }
   const meanByModel = new Map<string, number>();
@@ -1178,6 +1230,169 @@ export function reportTasks(): ReportTask[] {
   }
   // Suite order (01_cli_todo … 32_utf8_stream): the trivial-to-brutal arc.
   return out.sort((a, b) => a.task.localeCompare(b.task));
+}
+
+/* ---------- report: Kimi-judge quality view model ----------
+   The Kimi judge scores every non-infra-failure trial on a 1-5 rubric
+   (correctness_strategy, invariant_coverage, code_quality,
+   performance_awareness), producing a per-trial quality_mean. Cells carry
+   the median across their judged trials; this view rolls them up to the
+   per-stack and per-task lenses the report page renders. It hides cleanly
+   (returns null) when no cell ships a quality_mean, so the section drops
+   out of the report against older exports that predate judging. */
+
+/** One per-task quality row — the quality landscape, mirroring reportTasks. */
+export interface ReportTaskQuality {
+  task: string;
+  family: string;
+  difficulty: string;
+  /** Median quality_mean across all judged trials of this task (1-5). */
+  quality: number;
+  /** Number of judged trials backing the median. */
+  n: number;
+  /** Number of cells with at least one judged trial. */
+  cells: number;
+  /** Min/max per-cell quality_mean — the discrimination read. */
+  min: number;
+  max: number;
+  /** Per-rubric dimension medians across the task's judged trials (1-5). */
+  correctness: number | null;
+  invariants: number | null;
+  codeQuality: number | null;
+  perf: number | null;
+}
+
+/** One per-stack quality row — the harness × model quality leaderboard. */
+export interface ReportStackQuality {
+  harness: string;
+  model: string;
+  /** n-weighted median of per-task quality_means (1-5). */
+  quality: number | null;
+  /** Number of judged trials backing the median. */
+  n: number;
+  /** Number of judged task cells. */
+  cells: number;
+}
+
+export interface ReportQuality {
+  /** True when at least one cell carries a judged quality_mean. */
+  judged: boolean;
+  /** Judge id and model, for the section disclosure. */
+  judge: string | null;
+  judgeModel: string | null;
+  rubricVersion: number | null;
+  /** Total judged trials across all cells. */
+  trials: number;
+  /** Total judged cells. */
+  cells: number;
+  /** Global median quality_mean across all judged trials (1-5). */
+  globalMean: number | null;
+  /** Per-stack rows, best quality first; null quality stacks sort last. */
+  stacks: ReportStackQuality[];
+  /** Per-task rows, in suite order. */
+  tasks: ReportTaskQuality[];
+}
+
+/**
+ * The report's quality-judging block — null when the export predates the
+ * Kimi-judge quality scores, so the section hides cleanly until regeneration
+ * lands them. Reads the per-cell quality_* fields the evidence store began
+ * shipping alongside the per-trial judge rows.
+ */
+export function reportQuality(): ReportQuality | null {
+  type JudgedCell = EvidenceCell & { quality_mean: number; quality_n: number };
+  const judgedCells = EVIDENCE_CELLS.filter(
+    (c): c is JudgedCell =>
+      c.quality_mean != null && c.quality_n != null && c.quality_n > 0
+  );
+  if (judgedCells.length === 0) return null;
+  let trials = 0;
+  const allTrialMeans: number[] = [];
+  for (const c of judgedCells) {
+    trials += c.quality_n;
+    allTrialMeans.push(c.quality_mean);
+  }
+  const medianOf = (vals: number[]): number =>
+    vals.length === 0 ? 0 : [...vals].sort((a, b) => a - b)[Math.floor(vals.length / 2)] ?? 0;
+
+  // Per-stack: n-weighted median of per-cell quality_means.
+  const byStack = new Map<string, { harness: string; model: string; pairs: [number, number][] }>();
+  for (const c of judgedCells) {
+    const key = `${c.harness}|${c.model}`;
+    let a = byStack.get(key);
+    if (!a) {
+      a = { harness: c.harness, model: c.model, pairs: [] };
+      byStack.set(key, a);
+    }
+    a.pairs.push([c.quality_mean, c.quality_n]);
+  }
+  const stacks: ReportStackQuality[] = [];
+  for (const a of byStack.values()) {
+    const clean = [...a.pairs].sort((x, y) => x[0] - y[0]);
+    const total = clean.reduce((s, [, w]) => s + w, 0);
+    let acc = 0;
+    let q = clean[0]?.[0] ?? null;
+    for (const [v, w] of clean) {
+      acc += w;
+      if (acc >= total / 2) {
+        q = v;
+        break;
+      }
+    }
+    stacks.push({
+      harness: a.harness,
+      model: a.model,
+      quality: q,
+      n: total,
+      cells: a.pairs.length
+    });
+  }
+  stacks.sort((x, y) => (y.quality ?? 0) - (x.quality ?? 0));
+
+  // Per-task: median across the task's judged cells + per-dimension medians.
+  const byTask = new Map<string, JudgedCell[]>();
+  for (const c of judgedCells) {
+    const list = byTask.get(c.task) ?? [];
+    list.push(c);
+    byTask.set(c.task, list);
+  }
+  const tasks: ReportTaskQuality[] = [];
+  for (const [task, cells] of byTask) {
+    const qmeans = cells.map((c) => c.quality_mean);
+    const meta = EVIDENCE.tasks[task];
+    const dim = (pick: (c: JudgedCell) => number | null | undefined): number | null => {
+      const vals = cells.map(pick).filter((v): v is number => v != null);
+      return vals.length > 0 ? medianOf(vals) : null;
+    };
+    tasks.push({
+      task,
+      family: meta?.family ?? cells[0]?.family ?? "unknown",
+      difficulty: meta?.difficulty ?? cells[0]?.difficulty ?? "mid",
+      quality: medianOf(qmeans),
+      n: cells.reduce((a, c) => a + c.quality_n, 0),
+      cells: cells.length,
+      min: Math.min(...qmeans),
+      max: Math.max(...qmeans),
+      correctness: dim((c) => c.quality_correctness_strategy),
+      invariants: dim((c) => c.quality_invariant_coverage),
+      codeQuality: dim((c) => c.quality_code_quality),
+      perf: dim((c) => c.quality_performance_awareness)
+    });
+  }
+  tasks.sort((a, b) => a.task.localeCompare(b.task));
+
+  const first = judgedCells[0];
+  return {
+    judged: true,
+    judge: first?.quality_judge ?? null,
+    judgeModel: first?.quality_judge_model ?? null,
+    rubricVersion: first?.quality_rubric_version ?? null,
+    trials,
+    cells: judgedCells.length,
+    globalMean: medianOf(allTrialMeans),
+    stacks,
+    tasks
+  };
 }
 
 /** Headline numbers for the report hero + the strict-vs-solution section. */
