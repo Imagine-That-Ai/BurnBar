@@ -9,9 +9,9 @@ export const PARITY_LEDGER: ParityRow[] = [
   {
     feature: 'System-wide text expansion (Wayland)',
     macos: 'CGEvent session tap + Accessibility',
-    linux: 'Explicit-consent signed IBus engine when the packaged daemon reports it; in-app fallback otherwise',
+    linux: 'Explicit-consent signed IBus engine or packaged native Fcitx5 addon when the daemon reports it; in-app fallback otherwise',
     substitution:
-      'Fcitx native addon remains unavailable; secure-field denial and no evdev/global keylogger are enforced.'
+      'Standalone AppImage system integration remains unavailable; secure-field denial and no evdev/global keylogger are enforced.'
   },
   {
     feature: 'PetCompanion always-on-top click-through',

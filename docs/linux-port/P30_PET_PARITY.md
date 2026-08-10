@@ -4,13 +4,13 @@
 chat/file-drop slice, macOS-shaped pet catalog/avatar selection, and legacy 2D
 atlas runtime are ready at source level. The generated catalog contains 114
 unique entries, including 112 GLB-backed entries and three atlas forms (two
-atlas-only plus one hybrid). The installed-candidate proof package is not yet
-registered in the product workflow, and Tier A parity remains blocked until the
-exact signed candidate passes all seven compositor and architecture
-environments. macOS's offscreen 3D thumbnail pipeline and persona/local-floor
-behavior remain open; the atlas runtime now consumes the companion's logical
-conversation and movement states at source level, while compositor receipts
-remain open.
+atlas-only plus one hybrid). The installed-candidate proof package is registered
+in the product workflow, but it has not yet been executed against this exact
+candidate. Tier A parity remains blocked until the exact signed candidate passes
+all seven compositor and architecture environments. macOS's offscreen 3D
+thumbnail pipeline and persona/local-floor behavior remain open; the atlas
+runtime now consumes the companion's logical conversation and movement states
+at source level, while compositor receipts remain open.
 
 ## Difference
 
@@ -153,4 +153,4 @@ Installed-app checks still required before promotion:
    and desktop process restoration.
 8. Materialize and capture against the signed candidate, then run the P-30
    product validator in all seven support environments. Registration and
-   certification remain separate integration steps.
+   certification remain separate steps; registration is already complete.

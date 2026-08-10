@@ -1236,10 +1236,12 @@ several of its source-gap statements are no longer current. At head
   cursor/identity validation, and fail-closed attachment metadata handling.
   Remaining P-14/P-17 work is provider breadth and installed populated-data
   proof.
-- The Fcitx5 contract remains intentionally source-only. It must not be marked
-  runtime-supported until a native addon is built, signed, packaged, and
-  exercised in the IME/keyring matrix. IBus support and the secure-field
-  refusal contract remain the supported Linux path.
+- **Superseded on 2026-08-10:** `ac0ce21685` builds and packages a native
+  Fcitx5 addon with separate signed-manifest identity, and `386dde168b` updates
+  the installed proof contract. Runtime certification is still open until the
+  exact signed candidate exercises the addon in the IME/keyring and
+  secure-field matrix. IBus remains supported alongside Fcitx5; standalone
+  AppImage system registration remains intentionally unavailable.
 
 The current branch is merge-clean against the latest `main`; the exact-head
 Linux PR gate passed before this merge. The UTM guest is deliberately stopped,
