@@ -171,6 +171,18 @@ jobs:
         id: candidate
         run: node scripts/ci/canonical-candidate-commit.mjs
 
+      - name: Verify canonical candidate checkout
+        env:
+          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
+        run: |
+          if ($env:CANDIDATE_COMMIT -notmatch '^[0-9a-f]{40}$') {
+            throw "Canonical candidate output is missing or malformed."
+          }
+          $checkedOutCommit = (git rev-parse HEAD).Trim()
+          if ($checkedOutCommit -ne $env:CANDIDATE_COMMIT) {
+            throw "Checked-out commit $checkedOutCommit does not match canonical candidate $env:CANDIDATE_COMMIT."
+          }
+
       - name: Install NASM
         uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1.5.2
 
@@ -340,6 +352,18 @@ jobs:
       - name: Resolve canonical candidate commit
         id: candidate
         run: node scripts/ci/canonical-candidate-commit.mjs
+
+      - name: Verify canonical candidate checkout
+        env:
+          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
+        run: |
+          if ($env:CANDIDATE_COMMIT -notmatch '^[0-9a-f]{40}$') {
+            throw "Canonical candidate output is missing or malformed."
+          }
+          $checkedOutCommit = (git rev-parse HEAD).Trim()
+          if ($checkedOutCommit -ne $env:CANDIDATE_COMMIT) {
+            throw "Checked-out commit $checkedOutCommit does not match canonical candidate $env:CANDIDATE_COMMIT."
+          }
 
       - name: Install NASM
         uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1.5.2

@@ -641,6 +641,11 @@ for (const jobName of ["build-test-x64", "build-test-arm64"]) {
     /- name: Resolve canonical candidate commit\n        id: candidate\n        run: node scripts\/ci\/canonical-candidate-commit\.mjs/u,
     `${jobName} must resolve the canonical candidate before binding native identity`,
   );
+  assert.match(
+    jobBody,
+    /- name: Verify canonical candidate checkout\n        env:\n          CANDIDATE_COMMIT: \$\{\{ steps\.candidate\.outputs\.candidate_commit \}\}\n        run: \|[\s\S]*CANDIDATE_COMMIT -notmatch '\^\[0-9a-f\]\{40\}\$'[\s\S]*git rev-parse HEAD[\s\S]*checkedOutCommit -ne \$env:CANDIDATE_COMMIT/u,
+    `${jobName} must reject missing canonical output and a checkout mismatch before native work`,
+  );
   assert.ok(
     jobBody.indexOf("Resolve canonical candidate commit") <
       jobBody.indexOf("OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT"),
