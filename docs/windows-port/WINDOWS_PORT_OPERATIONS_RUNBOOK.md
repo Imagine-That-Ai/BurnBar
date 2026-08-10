@@ -2,7 +2,7 @@
 
 **Owner:** OpenBurnBar release engineering
 
-**Last verified:** 2026-07-19
+**Last verified:** 2026-08-10
 
 **Applies to:** Windows x64 and ARM64 source, CI, staging, signing, physical certification, and Microsoft Store flights
 
@@ -24,7 +24,34 @@ Source parity can be complete while a release is still `NO-GO`. A signed build
 is also not a release by itself. The release becomes `GO` only when every
 required evidence gate for that exact artifact is `PASS`.
 
-### Dated checkpoint
+### Current merged-main checkpoint
+
+This is the current automated checkpoint. It is not a signed-release claim:
+
+- Exact `main` candidate: `8b07625eebe9db0bf0084e6a884becd6d8bcc72e`
+- Merge source: PR #2203, independently approved and merged on 2026-08-10
+- Source parity: 51/51 `Real`, with zero substituted, deferred, blocked, or
+  authored rows
+- Clean local certification: 65/65 commands passed
+- Windows Full: run `31358055958` passed x64, ARM64, and the aggregate gate
+- Windows engine: run `31358056003` passed x64 and ARM64
+- Candidate export/foundation: run `31358681287` imported 13,535/13,535 files
+  with zero mismatches and passed all nine foundation commands
+- Distribution/MSIX: run `31354131189` passed
+- Staging preparation: dry run `31358681447` verified all 969 checksums and
+  skipped deployment
+- Shared domain-core: run `31354131316` passed the exact same SHA across all
+  required consumers
+- Intended Windows release version: `1.0.39`
+- Protected release tag: not created; `windows-v1.0.39` does not exist
+- Release verdict: `NO-GO`
+
+The six open external receipt groups are physical x64 performance, physical
+ARM64, accessibility/display, staging cloud, paired media/Computer Use safety,
+and Store/update lifecycle. Historical signed artifacts do not satisfy those
+gates for the current exact source.
+
+### Historical signed-candidate checkpoint
 
 This checkpoint is history, not a substitute for live verification:
 
@@ -147,7 +174,7 @@ candidate identity.
 
 ```bash
 export REPO=Imagine-That-Ai/BurnBar
-export VERSION=1.0.38
+export VERSION=1.0.39
 export TAG="windows-v${VERSION}"
 ```
 
@@ -191,6 +218,10 @@ a newer run as evidence for the older candidate.
 
 First run the safe dry run, then deploy the reviewed four-function Windows
 surface. The `staging` Environment approval is intentional.
+
+**Stop after the dry run until the operator explicitly types
+`approve staging deployment`.** Approval of a pull request, merge, CI run, or
+release-preparation task is not staging-deployment approval.
 
 ```bash
 gh workflow run deploy-staging.yml --repo "$REPO" --ref main \

@@ -1,42 +1,47 @@
 # Windows parity — Alberto's exact checklist
 
 **Date:** 2026-07-08
-**Context:** The agent lanes drove the Windows port from ~40% to ~55% honest parity
-(21 PRs, 2026-07-06 session) and hit the agent ceiling (~65%). Everything below is
-the complete set of items only Alberto can do. Each unblocks a named wave of
-agent-executable work; nothing here requires writing code.
+**Last refreshed:** 2026-08-10
+**Historical context:** The agent lanes drove the Windows port from ~40% to
+~55% honest parity during the 2026-07-06 session. The original prerequisite
+list is retained below; use the refreshed current-status section for the work
+that still needs Alberto.
 
-## Current status - 2026-07-18
+## Current status - 2026-08-10
 
 This checklist is retained as the original external-prerequisite runbook. Its
-July 8 blocking state has materially advanced:
+July 8 blocking state has materially advanced.
 
-- **B - complete:** Azure Artifact Signing identity validation and the public
-  trust certificate profile are active. The exact `windows-v1.0.37` x64 and
-  ARM64 release completed with Authenticode and RFC 3161 verification.
-- **C - account complete, lifecycle open:** the Imagine That AI LLC Store
-  developer account is verified and `BurnBar` is reserved as Store product
-  `9PKMSDP99CJ6`. The controlled private submission and Store/update lifecycle
-  protocol have not been promoted to PASS.
-- **D - configuration complete, live proof open:** the Windows OAuth client ID
-  and Firebase API key are configured as repository variables. End-to-end
-  OAuth, App Check, TPM, and CloudVault certification still requires deployed
-  `burnbar-staging` services.
-- **A - VM validation complete:** the exact `windows-v1.0.37` ARM64 MSIX
-  lifecycle, portable launch, and 25/25 UIA route/scenario rerun passed under
-  UTM. This does not count as physical ARM64 certification.
-- **Physical x64 completed, candidate failed:** the exact v1.0.37 Intel run
-  passed signature, lifecycle, soak, and evidence validation but returned
-  **NO-GO** because native backdrop surfaces covered the Providers/dashboard
-  content and compact/accessibility defects remained. PR #1854 contains the
-  source remediation; v1.0.37 must not be submitted or promoted.
+The simple current result is:
 
-The current operator actions are therefore narrower: wait for PR #1854 and a
-new signed candidate, rerun that successor on the physical Intel x64 laptop,
-finish the isolated staging protocols, and authorize a non-public Partner
-Center submission only after the replacement candidate passes local physical
-gates. Physical ARM64 remains an explicit beta limitation until qualifying
-hardware exists.
+- **Code parity is done:** exact merged `main` commit
+  `8b07625eebe9db0bf0084e6a884becd6d8bcc72e` has 51/51 `Real` parity rows.
+- **Automated Windows proof is done:** the exact source passed 65/65 local
+  certification commands plus hosted x64, ARM64, engine, candidate-export,
+  distribution, MSIX, security, and shared-domain gates.
+- **Release certification is not done:** the exact source has not yet produced
+  a signed `windows-v1.0.39` candidate and still lacks the six external receipt
+  groups below. The honest verdict is **NO-GO**.
+
+What Alberto needs to approve or provide next, in order:
+
+1. Type the exact phrase **`approve staging deployment`** when ready for the
+   reviewed four-function deployment to `burnbar-staging`.
+2. After staging passes, separately approve creation and push of protected tag
+   `windows-v1.0.39`. That tag publishes a public GitHub Release; PR approval
+   does not authorize it.
+3. Make the physical Intel x64 Windows laptop and paired Mac/iPhone available
+   for performance, accessibility/display, media, Computer Use, panic, and
+   safety protocols.
+4. Explicitly authorize a private Partner Center flight after the signed
+   physical x64 candidate passes.
+5. Provide physical ARM64 Windows hardware, or retain ARM64 as a clearly stated
+   beta limitation.
+
+The older sections below explain how the original prerequisites were created.
+Use the current
+[`WINDOWS_PORT_OPERATIONS_RUNBOOK.md`](WINDOWS_PORT_OPERATIONS_RUNBOOK.md) for
+the live sequence and current candidate identity.
 
 Ordering is by urgency (lead time), not effort.
 
