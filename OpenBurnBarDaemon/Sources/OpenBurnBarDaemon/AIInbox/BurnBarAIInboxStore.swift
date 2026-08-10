@@ -19,7 +19,8 @@ import CSQLite
 let aiInboxSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 // Identifies the store's serial queue so re-entrant calls run inline instead of
 // deadlocking on `dbQueue.sync`.
-let aiInboxQueueKey = DispatchSpecificKey<UUID>()
+// DispatchSpecificKey is not Sendable; access is confined to the inbox serial queue.
+nonisolated(unsafe) let aiInboxQueueKey = DispatchSpecificKey<UUID>()
 
 enum BurnBarAIInboxStoreError: Error, LocalizedError {
     case sqlite(String)
