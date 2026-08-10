@@ -69,6 +69,72 @@ extension BurnBarDaemonServer {
                 )
             }
 
+        case .inboxPresentationList:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxPresentationListRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: typedRequest.id,
+                        result: try await inbox.presentationList(typedRequest.params)
+                    )
+                )
+            } catch {
+                return encodeInboxStoreErrorResponse(id: typedRequest.id, error: error)
+            }
+
+        case .inboxPresentationGet:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxPresentationGetRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: typedRequest.id,
+                        result: BurnBarInboxPresentationGetResponse(
+                            row: try await inbox.presentationRow(id: typedRequest.params.id)
+                        )
+                    )
+                )
+            } catch {
+                return encodeInboxStoreErrorResponse(id: typedRequest.id, error: error)
+            }
+
+        case .inboxPresentationMutate:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxPresentationMutationRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: typedRequest.id,
+                        result: try await inbox.mutatePresentationState(typedRequest.params)
+                    )
+                )
+            } catch {
+                return encodeInboxStoreErrorResponse(id: typedRequest.id, error: error)
+            }
+
+        case .inboxPresentationMarkAllRead:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxPresentationMarkAllReadRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: typedRequest.id,
+                        result: try await inbox.markAllOpenPresentationItemsRead()
+                    )
+                )
+            } catch {
+                return encodeInboxStoreErrorResponse(id: typedRequest.id, error: error)
+            }
+
         case .inboxRunsRecent:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxRunsRequest>.self,
@@ -274,5 +340,20 @@ extension BurnBarDaemonServer {
         default:
             preconditionFailure("Unhandled inbox RPC method: \(method.rawValue)")
         }
+    }
+
+    private func encodeInboxStoreErrorResponse(id: String, error: Error) -> Data {
+        let code: Int
+        if let storeError = error as? BurnBarAIInboxStoreError {
+            switch storeError {
+            case .itemNotFound, .invalidPresentationMutation:
+                code = BurnBarRPCErrorCode.invalidParams
+            case .sqlite, .closed:
+                code = BurnBarRPCErrorCode.internalError
+            }
+        } else {
+            code = BurnBarRPCErrorCode.internalError
+        }
+        return encodeErrorResponse(id: id, code: code, message: error.localizedDescription)
     }
 }

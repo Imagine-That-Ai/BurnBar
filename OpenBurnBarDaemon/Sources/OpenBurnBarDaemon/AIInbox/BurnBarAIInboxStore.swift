@@ -24,6 +24,8 @@ let aiInboxQueueKey = DispatchSpecificKey<UUID>()
 enum BurnBarAIInboxStoreError: Error, LocalizedError {
     case sqlite(String)
     case closed
+    case itemNotFound(String)
+    case invalidPresentationMutation(String)
 
     var errorDescription: String? {
         switch self {
@@ -31,6 +33,10 @@ enum BurnBarAIInboxStoreError: Error, LocalizedError {
             return message
         case .closed:
             return "The AI Inbox SQLite database is closed."
+        case .itemNotFound(let id):
+            return "AI Inbox item \(id) does not exist."
+        case .invalidPresentationMutation(let message):
+            return message
         }
     }
 }
@@ -423,6 +429,307 @@ final class BurnBarAIInboxStore: @unchecked Sendable {
         )
     }
 
+    // MARK: - Presentation rows and human state mutations
+
+    /// Cross-platform list shape used by clients that cannot safely open the
+    /// daemon's SQLite database directly. Item content and durable human state
+    /// are read from one transactionally consistent snapshot.
+    func presentationList(
+        _ request: BurnBarInboxPresentationListRequest,
+        now: Date
+    ) throws -> BurnBarInboxPresentationListResponse {
+        try databaseSync {
+            var clauses: [String] = []
+            var binds: [Bind] = []
+
+            if let states = request.states, states.isEmpty == false {
+                clauses.append("i.state IN (\(Self.placeholders(states.count)))")
+                binds.append(contentsOf: states.map { .text($0.rawValue) })
+            }
+            if let kinds = request.kinds, kinds.isEmpty == false {
+                clauses.append("i.kind IN (\(Self.placeholders(kinds.count)))")
+                binds.append(contentsOf: kinds.map { .text($0.rawValue) })
+            }
+            if let priorities = request.priorities, priorities.isEmpty == false {
+                clauses.append("i.priority IN (\(Self.placeholders(priorities.count)))")
+                binds.append(contentsOf: priorities.map { .int($0.rawValue) })
+            }
+            if let projectID = request.projectID, projectID.isEmpty == false {
+                clauses.append("i.project_id = ?")
+                binds.append(.text(projectID))
+            }
+            if let isUnread = request.isUnread {
+                if isUnread {
+                    clauses.append("i.state IN ('new', 'updated') AND s.read_at IS NULL")
+                } else {
+                    clauses.append("(i.state NOT IN ('new', 'updated') OR s.read_at IS NOT NULL)")
+                }
+            }
+            if let isArchived = request.isArchived {
+                clauses.append(isArchived ? "s.archived_at IS NOT NULL" : "s.archived_at IS NULL")
+            }
+            if let isSnoozed = request.isSnoozed {
+                if isSnoozed {
+                    clauses.append("s.snoozed_until > ?")
+                } else {
+                    clauses.append("(s.snoozed_until IS NULL OR s.snoozed_until <= ?)")
+                }
+                binds.append(.text(Self.string(from: now)))
+            }
+            if let feedback = request.feedback {
+                clauses.append("s.feedback = ?")
+                binds.append(.text(feedback.rawValue))
+            }
+            if let before = request.before {
+                clauses.append("i.last_seen_at < ?")
+                binds.append(.text(Self.string(from: before)))
+            }
+            let whereClause = clauses.isEmpty ? "" : "WHERE \(clauses.joined(separator: " AND "))"
+
+            let rows = try queryRows(
+                """
+                SELECT i.id, i.fingerprint, i.kind, i.priority, i.state, i.title,
+                       i.project_id, i.project_name, i.occurrence_count,
+                       i.first_seen_at, i.last_seen_at, i.resolved_at,
+                       i.resolution_note, i.model_provenance, i.payload_json,
+                       i.summary_md, i.tick_id,
+                       s.read_at, s.archived_at, s.snoozed_until, s.feedback, s.updated_at
+                FROM ai_inbox_items i
+                LEFT JOIN ai_inbox_item_state s ON s.item_id = i.id
+                \(whereClause)
+                ORDER BY i.last_seen_at DESC, i.id DESC
+                LIMIT ?
+                """,
+                binds + [.int(request.limit + Self.tieLookahead)]
+            )
+
+            var page = Array(rows.prefix(request.limit))
+            if rows.count > request.limit, let boundary = page.last?.string(10) {
+                for row in rows.dropFirst(request.limit) where row.string(10) == boundary {
+                    page.append(row)
+                }
+            }
+            let nextBefore = rows.count > page.count ? page.last?.date(10) : nil
+            return BurnBarInboxPresentationListResponse(
+                rows: page.compactMap(Self.presentationRow(from:)),
+                nextBefore: nextBefore,
+                openCount: try fetchInt(
+                    "SELECT COUNT(*) FROM ai_inbox_items WHERE state IN ('new', 'updated')",
+                    []
+                ),
+                activeUnreadCount: try activeUnreadCountLocked(now: now)
+            )
+        }
+    }
+
+    func presentationRow(id: String) throws -> BurnBarInboxPresentationRow? {
+        try databaseSync {
+            try presentationRowLocked(id: id)
+        }
+    }
+
+    /// Applies exactly one closed-set human action and returns the row read back
+    /// from SQLite before the transaction commits.
+    func mutatePresentationState(
+        _ request: BurnBarInboxPresentationMutationRequest,
+        now: Date
+    ) throws -> BurnBarInboxPresentationMutationResponse {
+        try databaseSync {
+            try execute("BEGIN IMMEDIATE", [])
+            do {
+                guard try itemExistsLocked(id: request.itemID) else {
+                    throw BurnBarAIInboxStoreError.itemNotFound(request.itemID)
+                }
+
+                let existing = try presentationStateLocked(itemID: request.itemID)
+                var readAt = existing.readAt
+                var archivedAt = existing.archivedAt
+                var snoozedUntil = existing.snoozedUntil
+                var feedback = existing.feedback
+
+                switch request.action {
+                case .markRead:
+                    try requireNoPresentationPayload(request)
+                    readAt = readAt ?? now
+                case .markUnread:
+                    try requireNoPresentationPayload(request)
+                    readAt = nil
+                case .archive:
+                    try requireNoPresentationPayload(request)
+                    archivedAt = now
+                    readAt = readAt ?? now
+                case .unarchive:
+                    try requireNoPresentationPayload(request)
+                    archivedAt = nil
+                case .snooze:
+                    guard let requestedUntil = request.snoozedUntil, request.feedback == nil else {
+                        throw BurnBarAIInboxStoreError.invalidPresentationMutation(
+                            "snooze requires snoozedUntil and does not accept feedback."
+                        )
+                    }
+                    snoozedUntil = requestedUntil
+                    readAt = readAt ?? now
+                case .clearSnooze:
+                    try requireNoPresentationPayload(request)
+                    snoozedUntil = nil
+                case .setFeedback:
+                    guard request.snoozedUntil == nil, let requestedFeedback = request.feedback else {
+                        throw BurnBarAIInboxStoreError.invalidPresentationMutation(
+                            "set_feedback requires feedback and does not accept snoozedUntil."
+                        )
+                    }
+                    feedback = requestedFeedback
+                case .clearFeedback:
+                    try requireNoPresentationPayload(request)
+                    feedback = nil
+                }
+
+                try execute(
+                    """
+                    INSERT INTO ai_inbox_item_state (
+                        item_id, read_at, archived_at, snoozed_until, feedback, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(item_id) DO UPDATE SET
+                        read_at = excluded.read_at,
+                        archived_at = excluded.archived_at,
+                        snoozed_until = excluded.snoozed_until,
+                        feedback = excluded.feedback,
+                        updated_at = excluded.updated_at
+                    """,
+                    [
+                        .text(request.itemID),
+                        .optionalDate(readAt),
+                        .optionalDate(archivedAt),
+                        .optionalDate(snoozedUntil),
+                        feedback.map { .text($0.rawValue) } ?? .null,
+                        .text(Self.string(from: now))
+                    ]
+                )
+                guard let row = try presentationRowLocked(id: request.itemID) else {
+                    throw BurnBarAIInboxStoreError.itemNotFound(request.itemID)
+                }
+                try execute("COMMIT", [])
+                return BurnBarInboxPresentationMutationResponse(row: row)
+            } catch {
+                try? execute("ROLLBACK", [])
+                throw error
+            }
+        }
+    }
+
+    /// Marks the transaction's current snapshot of lifecycle-open items read.
+    /// Existing read timestamps are retained, matching the macOS store.
+    func markAllOpenPresentationItemsRead(
+        now: Date
+    ) throws -> BurnBarInboxPresentationMarkAllReadResponse {
+        try databaseSync {
+            try execute("BEGIN IMMEDIATE", [])
+            do {
+                let stamp = Self.string(from: now)
+                try execute(
+                    """
+                    INSERT INTO ai_inbox_item_state (item_id, read_at, updated_at)
+                    SELECT i.id, ?, ?
+                    FROM ai_inbox_items i
+                    LEFT JOIN ai_inbox_item_state s ON s.item_id = i.id
+                    WHERE i.state IN ('new', 'updated') AND s.read_at IS NULL
+                    ON CONFLICT(item_id) DO UPDATE SET
+                        read_at = COALESCE(ai_inbox_item_state.read_at, excluded.read_at),
+                        updated_at = excluded.updated_at
+                    """,
+                    [.text(stamp), .text(stamp)]
+                )
+                let updatedCount = changes()
+                let response = BurnBarInboxPresentationMarkAllReadResponse(
+                    updatedCount: updatedCount,
+                    readAt: now,
+                    activeUnreadCount: try activeUnreadCountLocked(now: now)
+                )
+                try execute("COMMIT", [])
+                return response
+            } catch {
+                try? execute("ROLLBACK", [])
+                throw error
+            }
+        }
+    }
+
+    private struct StoredPresentationState {
+        let readAt: Date?
+        let archivedAt: Date?
+        let snoozedUntil: Date?
+        let feedback: BurnBarInboxFeedback?
+    }
+
+    private func presentationStateLocked(itemID: String) throws -> StoredPresentationState {
+        let row = try queryRows(
+            """
+            SELECT read_at, archived_at, snoozed_until, feedback
+            FROM ai_inbox_item_state
+            WHERE item_id = ?
+            LIMIT 1
+            """,
+            [.text(itemID)]
+        ).first
+        return StoredPresentationState(
+            readAt: row?.date(0),
+            archivedAt: row?.date(1),
+            snoozedUntil: row?.date(2),
+            feedback: row.flatMap { BurnBarInboxFeedback(rawValue: $0.string(3)) }
+        )
+    }
+
+    private func itemExistsLocked(id: String) throws -> Bool {
+        try queryRows(
+            "SELECT 1 FROM ai_inbox_items WHERE id = ? LIMIT 1",
+            [.text(id)]
+        ).isEmpty == false
+    }
+
+    private func presentationRowLocked(id: String) throws -> BurnBarInboxPresentationRow? {
+        guard let row = try queryRows(
+            """
+            SELECT i.id, i.fingerprint, i.kind, i.priority, i.state, i.title,
+                   i.project_id, i.project_name, i.occurrence_count,
+                   i.first_seen_at, i.last_seen_at, i.resolved_at,
+                   i.resolution_note, i.model_provenance, i.payload_json,
+                   i.summary_md, i.tick_id,
+                   s.read_at, s.archived_at, s.snoozed_until, s.feedback, s.updated_at
+            FROM ai_inbox_items i
+            LEFT JOIN ai_inbox_item_state s ON s.item_id = i.id
+            WHERE i.id = ?
+            LIMIT 1
+            """,
+            [.text(id)]
+        ).first else { return nil }
+        return Self.presentationRow(from: row)
+    }
+
+    private func activeUnreadCountLocked(now: Date) throws -> Int {
+        try fetchInt(
+            """
+            SELECT COUNT(*)
+            FROM ai_inbox_items i
+            LEFT JOIN ai_inbox_item_state s ON s.item_id = i.id
+            WHERE i.state IN ('new', 'updated')
+              AND s.read_at IS NULL
+              AND s.archived_at IS NULL
+              AND (s.snoozed_until IS NULL OR s.snoozed_until <= ?)
+            """,
+            [.text(Self.string(from: now))]
+        )
+    }
+
+    private func requireNoPresentationPayload(
+        _ request: BurnBarInboxPresentationMutationRequest
+    ) throws {
+        guard request.snoozedUntil == nil, request.feedback == nil else {
+            throw BurnBarAIInboxStoreError.invalidPresentationMutation(
+                "\(request.action.rawValue) does not accept snoozedUntil or feedback."
+            )
+        }
+    }
+
     // MARK: - Runs
 
     func beginRun(_ telemetry: BurnBarInboxRunTelemetry, gateSignature: String) throws {
@@ -550,7 +857,7 @@ final class BurnBarAIInboxStore: @unchecked Sendable {
         }
     }
 
-    // MARK: - App-owned item state (read-only from the daemon)
+    // MARK: - Presentation state consumed by calibration/suppression
 
     struct ItemUserState: Sendable, Hashable {
         let itemID: String
@@ -836,6 +1143,26 @@ final class BurnBarAIInboxStore: @unchecked Sendable {
             resolutionNote: row.optionalString(12),
             modelProvenance: row.string(13),
             hasMemoryCandidates: payload.memoryCandidates.isEmpty == false
+        )
+    }
+
+    private static func presentationRow(from row: Row) -> BurnBarInboxPresentationRow? {
+        guard row.values.count >= 22 else { return nil }
+        let detail = BurnBarInboxItemDetail(
+            summary: summary(from: row),
+            summaryMarkdown: row.string(15),
+            payload: decodePayload(row.optionalString(14)),
+            tickID: row.string(16)
+        )
+        return BurnBarInboxPresentationRow(
+            item: detail,
+            presentation: BurnBarInboxItemPresentationState(
+                readAt: row.date(17),
+                archivedAt: row.date(18),
+                snoozedUntil: row.date(19),
+                feedback: BurnBarInboxFeedback(rawValue: row.string(20)),
+                updatedAt: row.date(21)
+            )
         )
     }
 }

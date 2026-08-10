@@ -43,7 +43,8 @@ final class BurnBarDaemonSocketRPCCoverageTests: XCTestCase {
             BurnBarDaemonSocketRPCCoverage.search,
             BurnBarDaemonSocketRPCCoverage.memory,
             BurnBarDaemonSocketRPCCoverage.code,
-            BurnBarDaemonSocketRPCCoverage.databaseRecovery
+            BurnBarDaemonSocketRPCCoverage.databaseRecovery,
+            BurnBarDaemonSocketRPCCoverage.inbox
         ]
 
         for (index, left) in domains.enumerated() {
@@ -55,6 +56,20 @@ final class BurnBarDaemonSocketRPCCoverageTests: XCTestCase {
             }
         }
     }
+
+    func testInboxPresentationMethodsUseInboxDomain() {
+        let methods: Set<BurnBarRPCMethod> = [
+            .inboxPresentationList,
+            .inboxPresentationGet,
+            .inboxPresentationMutate,
+            .inboxPresentationMarkAllRead
+        ]
+        XCTAssertTrue(methods.isSubset(of: BurnBarDaemonSocketRPCCoverage.inbox))
+        for method in methods {
+            XCTAssertEqual(BurnBarDaemonSocketRPCCoverage.domain(for: method), "inbox")
+        }
+    }
+
     func testChatMethodsUseChatDomain() {
         for method in [
             BurnBarRPCMethod.chatThreadList,

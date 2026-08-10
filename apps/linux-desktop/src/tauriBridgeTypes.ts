@@ -1648,6 +1648,354 @@ export type DaemonSubscriptionStopResponse = {
   lastSeq: number;
 };
 
+// ───────────────────── AI Inbox / Founder Lens ───────────────────────────
+//
+// Field names intentionally mirror the Swift Codable contracts exactly,
+// including the `ID` / `USD` initialisms. Dates are normalized to ISO-8601
+// strings after the renderer boundary validates Swift's reference-date values.
+
+export type AIInboxItemKind =
+  | 'ci_waste'
+  | 'promised_not_landed'
+  | 'uncommitted_work'
+  | 'cost_anomaly'
+  | 'stuck_pr'
+  | 'index_health'
+  | 'brief'
+  | 'budget'
+  | 'system';
+export type AIInboxItemState = 'new' | 'updated' | 'resolved' | 'expired';
+export type AIInboxPriority = 1 | 2 | 3 | 4;
+export type AIInboxEgressMode = 'off' | 'local' | 'cloud';
+export type AIInboxEvidenceKind =
+  | 'conversation'
+  | 'pull_request'
+  | 'issue'
+  | 'workflow_run'
+  | 'commit'
+  | 'file'
+  | 'usage'
+  | 'metric';
+export type AIInboxActionKind =
+  | 'open_url'
+  | 'resume_conversation'
+  | 'open_session_log'
+  | 'open_project'
+  | 'open_settings'
+  | 'run_command';
+export type AIInboxVerificationVerdict =
+  | 'confirmed'
+  | 'refuted'
+  | 'unclear'
+  | 'unverified'
+  | 'deterministic';
+
+export type AIInboxEvidence = {
+  id: string;
+  kind: AIInboxEvidenceKind;
+  label: string;
+  detail?: string;
+  url?: string;
+  occurredAt?: string;
+};
+export type AIInboxMemoryCandidate = {
+  id: string;
+  text: string;
+  kind: string;
+  confidence: number;
+  citationConversationIDs: string[];
+};
+export type AIInboxAction = {
+  id: string;
+  kind: AIInboxActionKind;
+  title: string;
+  value: string;
+  isPrimary: boolean;
+};
+export type AIInboxVerification = {
+  verdict: AIInboxVerificationVerdict;
+  reason?: string;
+  checkedAt: string;
+  verifierModel?: string;
+};
+export type AIInboxItemPayload = {
+  version: number;
+  evidence: AIInboxEvidence[];
+  memoryCandidates: AIInboxMemoryCandidate[];
+  actions: AIInboxAction[];
+  metrics: Record<string, string>;
+  verification?: AIInboxVerification;
+};
+export type AIInboxItemSummary = {
+  id: string;
+  fingerprint: string;
+  kind: AIInboxItemKind;
+  priority: AIInboxPriority;
+  state: AIInboxItemState;
+  title: string;
+  projectID?: string;
+  projectName?: string;
+  occurrenceCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  resolvedAt?: string;
+  resolutionNote?: string;
+  modelProvenance: string;
+  hasMemoryCandidates: boolean;
+};
+export type AIInboxItemDetail = {
+  summary: AIInboxItemSummary;
+  summaryMarkdown: string;
+  payload: AIInboxItemPayload;
+  tickID: string;
+};
+export type AIInboxListRequest = {
+  states?: AIInboxItemState[];
+  kinds?: AIInboxItemKind[];
+  projectID?: string;
+  limit?: number;
+  before?: string;
+};
+export type AIInboxListResponse = {
+  items: AIInboxItemSummary[];
+  nextBefore?: string;
+  openCount: number;
+};
+export type AIInboxGetResponse = { item?: AIInboxItemDetail };
+
+export type AIInboxFeedback = 'useful' | 'not_useful';
+export type AIInboxItemPresentationState = {
+  readAt?: string;
+  archivedAt?: string;
+  snoozedUntil?: string;
+  feedback?: AIInboxFeedback;
+  updatedAt?: string;
+};
+export type AIInboxPresentationRow = {
+  item: AIInboxItemDetail;
+  presentation: AIInboxItemPresentationState;
+};
+export type AIInboxPresentationListRequest = {
+  /**
+   * Undefined preserves Swift's default open states; null explicitly requests
+   * every lifecycle state.
+   */
+  states?: AIInboxItemState[] | null;
+  kinds?: AIInboxItemKind[];
+  priorities?: AIInboxPriority[];
+  projectID?: string;
+  isUnread?: boolean;
+  isArchived?: boolean;
+  isSnoozed?: boolean;
+  feedback?: AIInboxFeedback;
+  limit?: number;
+  before?: string;
+};
+export type AIInboxPresentationListResponse = {
+  rows: AIInboxPresentationRow[];
+  nextBefore?: string;
+  openCount: number;
+  activeUnreadCount: number;
+};
+export type AIInboxPresentationGetResponse = { row?: AIInboxPresentationRow };
+export type AIInboxPresentationMutationAction =
+  | 'mark_read'
+  | 'mark_unread'
+  | 'archive'
+  | 'unarchive'
+  | 'snooze'
+  | 'clear_snooze'
+  | 'set_feedback'
+  | 'clear_feedback';
+export type AIInboxPresentationMutationRequest = {
+  itemID: string;
+  action: AIInboxPresentationMutationAction;
+  snoozedUntil?: string;
+  feedback?: AIInboxFeedback;
+};
+export type AIInboxPresentationMutationResponse = {
+  row: AIInboxPresentationRow;
+};
+export type AIInboxPresentationMarkAllReadResponse = {
+  updatedCount: number;
+  readAt: string;
+  activeUnreadCount: number;
+};
+
+export type AIInboxRunGateResult =
+  | 'skipped_unchanged'
+  | 'skipped_disabled'
+  | 'local_changed'
+  | 'remote_phase'
+  | 'forced'
+  | 'failed';
+export type AIInboxRunTelemetry = {
+  tickID: string;
+  startedAt: string;
+  finishedAt?: string;
+  gateResult: AIInboxRunGateResult;
+  egressMode: AIInboxEgressMode;
+  llmCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUSD: number;
+  itemsNew: number;
+  itemsUpdated: number;
+  itemsResolved: number;
+  error?: string;
+};
+export type AIInboxRunsResponse = {
+  runs: AIInboxRunTelemetry[];
+  todaySpendUSD: number;
+  dailyBudgetUSD: number;
+};
+export type AIInboxConfig = {
+  enabled: boolean;
+  egressMode: AIInboxEgressMode;
+  tickSeconds: number;
+  remotePhaseEveryNTicks: number;
+  dailyBudgetUSD: number;
+  maxVerifierCallsPerTick: number;
+  perTickPromptTokenCap: number;
+  analystProviderID: string;
+  analystModel: string;
+  verifierProviderID: string;
+  verifierModel: string;
+  githubEnabled: boolean;
+  notifyOnP1: boolean;
+  lookbackMinutes: number;
+  founderLensEnabled: boolean;
+  perReplyBudgetUSD: number;
+  maxThreadTurns: number;
+  budgetCountsSubscriptionSpend: boolean;
+};
+export type AIInboxRunNowResponse = {
+  tickID?: string;
+  accepted: boolean;
+  reason?: string;
+};
+
+export type AIInboxFounderPack = 'engOps' | 'productStrategy';
+export type AIInboxThreadMessageRole = 'user' | 'assistant';
+export type AIInboxPlanHorizon = 'week' | 'month' | 'quarter' | 'ongoing';
+export type AIInboxPlanStatus = 'proposed' | 'active' | 'paused' | 'completed' | 'killed';
+export type AIInboxPlanStepStatus =
+  | 'proposed'
+  | 'accepted'
+  | 'in_progress'
+  | 'landed'
+  | 'failed'
+  | 'killed';
+export type AIInboxPlanCandidate = {
+  title: string;
+  bodyMarkdown: string;
+  horizon: AIInboxPlanHorizon;
+  evidenceIDs: string[];
+  planID?: string;
+};
+export type AIInboxThreadMessage = {
+  id: string;
+  fingerprint: string;
+  role: AIInboxThreadMessageRole;
+  bodyMarkdown: string;
+  planCandidates: AIInboxPlanCandidate[];
+  modelProvenance?: string;
+  costUSD: number;
+  createdAt: string;
+};
+export type AIInboxThread = {
+  fingerprint: string;
+  itemID?: string;
+  createdAt: string;
+  updatedAt: string;
+  turnCount: number;
+  totalCostUSD: number;
+  messages: AIInboxThreadMessage[];
+};
+export type AIInboxThreadGetResponse = { thread?: AIInboxThread };
+export type AIInboxReplyRequest = {
+  fingerprint: string;
+  bodyMarkdown: string;
+};
+export type AIInboxReplyResponse = {
+  message?: AIInboxThreadMessage;
+  refusalReason?: string;
+};
+
+export type AIInboxPlanStep = {
+  id: string;
+  planID: string;
+  parentStepID?: string;
+  ordinal: number;
+  title: string;
+  bodyMarkdown: string;
+  status: AIInboxPlanStepStatus;
+  nextMoveMarkdown?: string;
+  evidenceIDs: string[];
+  missionID?: string;
+  followupID?: string;
+  inboxFingerprint?: string;
+  grade?: number;
+  gradeNoteMarkdown?: string;
+  gradedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+};
+export type AIInboxPlan = {
+  id: string;
+  title: string;
+  horizon: AIInboxPlanHorizon;
+  pack: AIInboxFounderPack;
+  status: AIInboxPlanStatus;
+  summaryMarkdown: string;
+  createdAt: string;
+  updatedAt: string;
+  originFingerprint?: string;
+  memoryID?: string;
+  pensieveVectorID?: string;
+  gradeAverage?: number;
+  steps: AIInboxPlanStep[];
+};
+export type AIInboxPlansListRequest = {
+  statuses?: AIInboxPlanStatus[];
+  limit?: number;
+};
+export type AIInboxPlansListResponse = { plans: AIInboxPlan[] };
+export type AIInboxPlanGetResponse = { plan?: AIInboxPlan };
+export type AIInboxPlanAcceptRequest = {
+  candidate: AIInboxPlanCandidate;
+  pack: AIInboxFounderPack;
+};
+export type AIInboxPlanAcceptResponse = {
+  plan: AIInboxPlan;
+  step: AIInboxPlanStep;
+};
+export type AIInboxPlanUpdateStepRequest = {
+  stepID: string;
+  status?: AIInboxPlanStepStatus;
+  missionID?: string;
+  followupID?: string;
+};
+export type AIInboxPlanUpdateStepResponse = { step: AIInboxPlanStep };
+export type AIInboxPlanGradeRequest = {
+  stepID: string;
+  grade: number;
+  noteMarkdown?: string;
+};
+export type AIInboxPlanGradeResponse = {
+  step: AIInboxPlanStep;
+  planGradeAverage?: number;
+};
+export type AIInboxMemoryExportEntry = {
+  memoryID: string;
+  provenance: string;
+  snippetMarkdown: string;
+  approvedAt: string;
+};
+export type AIInboxMemoryExportRequest = { entries: AIInboxMemoryExportEntry[] };
+export type AIInboxMemoryExportResponse = { stored: number };
+
 // ─────────────────────────── Bridge contract ──────────────────────────────
 
 export interface LinuxShellBridge {
@@ -1696,6 +2044,30 @@ export interface LinuxShellBridge {
     before?: ChatMessageCursor
   ): Promise<ChatThreadGetResult>;
   chatMessageAppend(request: ChatMessageAppendRequest): Promise<ChatMessageAppendResult>;
+  inboxList(request?: AIInboxListRequest): Promise<AIInboxListResponse>;
+  inboxGet(id: string): Promise<AIInboxGetResponse>;
+  inboxPresentationList(
+    request?: AIInboxPresentationListRequest
+  ): Promise<AIInboxPresentationListResponse>;
+  inboxPresentationGet(id: string): Promise<AIInboxPresentationGetResponse>;
+  inboxPresentationMutate(
+    request: AIInboxPresentationMutationRequest
+  ): Promise<AIInboxPresentationMutationResponse>;
+  inboxPresentationMarkAllRead(): Promise<AIInboxPresentationMarkAllReadResponse>;
+  inboxRunsRecent(limit?: number): Promise<AIInboxRunsResponse>;
+  inboxConfigGet(): Promise<AIInboxConfig>;
+  inboxConfigUpdate(config: AIInboxConfig): Promise<AIInboxConfig>;
+  inboxRunNow(force?: boolean): Promise<AIInboxRunNowResponse>;
+  inboxThreadGet(fingerprint: string): Promise<AIInboxThreadGetResponse>;
+  inboxReply(request: AIInboxReplyRequest): Promise<AIInboxReplyResponse>;
+  inboxPlansList(request?: AIInboxPlansListRequest): Promise<AIInboxPlansListResponse>;
+  inboxPlansGet(id: string): Promise<AIInboxPlanGetResponse>;
+  inboxPlansAccept(request: AIInboxPlanAcceptRequest): Promise<AIInboxPlanAcceptResponse>;
+  inboxPlansUpdateStep(
+    request: AIInboxPlanUpdateStepRequest
+  ): Promise<AIInboxPlanUpdateStepResponse>;
+  inboxPlansGrade(request: AIInboxPlanGradeRequest): Promise<AIInboxPlanGradeResponse>;
+  inboxMemoryExport(request: AIInboxMemoryExportRequest): Promise<AIInboxMemoryExportResponse>;
   usageInsights(): Promise<UsageInsights>;
   missionList(): Promise<MissionListResult>;
   missionGet(id: string): Promise<MissionDetail | null>;
@@ -1759,6 +2131,7 @@ export interface LinuxShellBridge {
   membershipCheckoutUrl?(): Promise<string>;
   membershipPortalUrl?(): Promise<string>;
   openExternalUrl?(url: string): Promise<void>;
+  openInboxExternalUrl?(url: string): Promise<void>;
   openUpdateUrl?(url: string): Promise<void>;
   membershipRestore?(): Promise<void>;
   appVersionInfo(): Promise<AppVersionInfo>;

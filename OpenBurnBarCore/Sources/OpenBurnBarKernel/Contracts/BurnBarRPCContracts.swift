@@ -190,6 +190,13 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     /// shaped; config/run mutations spend money and are classified with config.
     case inboxList = "daemon.inbox.list"
     case inboxGet = "daemon.inbox.get"
+    /// Cross-platform presentation rows join daemon item content to durable
+    /// read/archive/snooze/feedback state. Mutations are a closed, human-driven
+    /// action set; callers never submit SQL-shaped data.
+    case inboxPresentationList = "daemon.inbox.presentation.list"
+    case inboxPresentationGet = "daemon.inbox.presentation.get"
+    case inboxPresentationMutate = "daemon.inbox.presentation.mutate"
+    case inboxPresentationMarkAllRead = "daemon.inbox.presentation.mark_all_read"
     case inboxRunsRecent = "daemon.inbox.runs.recent"
     case inboxConfigGet = "daemon.inbox.config.get"
     case inboxConfigUpdate = "daemon.inbox.config.update"

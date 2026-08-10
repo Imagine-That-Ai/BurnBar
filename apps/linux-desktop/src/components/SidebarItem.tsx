@@ -12,6 +12,7 @@ const DASHBOARD_ROUTE_ORDER = ROUTES.filter((r) => r.group === 'dashboard').map(
 
 const ROUTE_PROVIDER: Partial<Record<ShellRoute, string>> = {
   insights: 'anthropic',
+  inbox: 'codex',
   database: 'hermes',
   providers: 'openai',
   projects: 'cursor',
@@ -24,6 +25,7 @@ const ROUTE_PROVIDER: Partial<Record<ShellRoute, string>> = {
 const ROUTE_SESSIONS: Partial<Record<ShellRoute, number>> = {
   overview: 12,
   insights: 8,
+  inbox: 4,
   database: 3,
   providers: 6,
   projects: 4,
@@ -36,6 +38,7 @@ const ROUTE_SESSIONS: Partial<Record<ShellRoute, number>> = {
 const ROUTE_COST_USD: Partial<Record<ShellRoute, number>> = {
   overview: 4.82,
   insights: 2.14,
+  inbox: 0.18,
   database: 0.42,
   providers: 1.06,
   projects: 0.88,

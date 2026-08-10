@@ -28,18 +28,24 @@ describe('TopTabbar keyboard accessibility', () => {
     resetShell('chat');
     render(<TopTabbar />);
     const tabs = screen.getAllByRole('tab');
+    const selectedIndex = DECK_PRIMARY_ROUTES.indexOf('chat');
+    const selected = tabs[selectedIndex];
+    const nextIndex = (selectedIndex + 1) % tabs.length;
+    const next = tabs[nextIndex];
 
-    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
-    fireEvent.keyDown(tabs[0], { key: 'ArrowRight' });
-    expect(document.activeElement).toBe(tabs[1]);
-    expect(useShellStore.getState().route).toBe(DECK_PRIMARY_ROUTES[1]);
-    expect(tabs[1].getAttribute('aria-selected')).toBe('true');
-    expect(tabs[0].tabIndex).toBe(-1);
+    expect(selected.getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(selected, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(next);
+    expect(useShellStore.getState().route).toBe(DECK_PRIMARY_ROUTES[nextIndex]);
+    expect(next.getAttribute('aria-selected')).toBe('true');
+    expect(selected.tabIndex).toBe(-1);
 
-    fireEvent.keyDown(tabs[1], { key: 'ArrowLeft' });
+    fireEvent.keyDown(next, { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(selected);
+    expect(useShellStore.getState().route).toBe(DECK_PRIMARY_ROUTES[selectedIndex]);
+
+    fireEvent.keyDown(selected, { key: 'Home' });
     expect(document.activeElement).toBe(tabs[0]);
-    expect(useShellStore.getState().route).toBe(DECK_PRIMARY_ROUTES[0]);
-
     fireEvent.keyDown(tabs[0], { key: 'ArrowLeft' });
     expect(document.activeElement).toBe(tabs[DECK_PRIMARY_ROUTES.length - 1]);
     expect(useShellStore.getState().route).toBe(DECK_PRIMARY_ROUTES[DECK_PRIMARY_ROUTES.length - 1]);
@@ -49,8 +55,9 @@ describe('TopTabbar keyboard accessibility', () => {
     resetShell('chat');
     render(<TopTabbar />);
     const tabs = screen.getAllByRole('tab');
+    const selected = tabs[DECK_PRIMARY_ROUTES.indexOf('chat')];
 
-    fireEvent.keyDown(tabs[0], { key: 'End' });
+    fireEvent.keyDown(selected, { key: 'End' });
     expect(document.activeElement).toBe(tabs[tabs.length - 1]);
     expect(useShellStore.getState().route).toBe(DECK_PRIMARY_ROUTES.at(-1));
     expect(tabs.filter((tab) => tab.tabIndex === 0)).toHaveLength(1);

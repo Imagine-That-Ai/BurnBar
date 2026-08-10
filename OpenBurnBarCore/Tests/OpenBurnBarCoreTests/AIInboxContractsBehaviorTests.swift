@@ -87,6 +87,90 @@ final class AIInboxContractsBehaviorTests: XCTestCase {
         XCTAssertEqual(populated.item?.id, "inb_7")
     }
 
+    // MARK: - Presentation state
+
+    func test_presentationRowCombinesFullItemWithTypedDurableState() {
+        let now = Date(timeIntervalSince1970: 1_786_300_000)
+        let row = BurnBarInboxPresentationRow(
+            item: BurnBarInboxItemDetail(
+                summary: Self.makeSummary(id: "inb_presentation"),
+                summaryMarkdown: "Full detail",
+                payload: BurnBarInboxItemPayload(metrics: ["waste_rate": "0.95"]),
+                tickID: "tick_presentation"
+            ),
+            presentation: BurnBarInboxItemPresentationState(
+                readAt: nil,
+                archivedAt: nil,
+                snoozedUntil: now.addingTimeInterval(600),
+                feedback: .notUseful,
+                updatedAt: now
+            )
+        )
+
+        XCTAssertEqual(row.id, "inb_presentation")
+        XCTAssertTrue(row.isUnread)
+        XCTAssertFalse(row.isArchived)
+        XCTAssertTrue(row.isSnoozed(at: now))
+        XCTAssertEqual(row.presentation.feedback, .notUseful)
+        XCTAssertEqual(row.item.payload.metrics["waste_rate"], "0.95")
+    }
+
+    func test_presentationListRequestDefaultsClampsAndPreservesExplicitAllStates() throws {
+        let defaults = try JSONDecoder().decode(
+            BurnBarInboxPresentationListRequest.self,
+            from: Data("{}".utf8)
+        )
+        XCTAssertEqual(defaults.states, BurnBarInboxItemState.openStates)
+        XCTAssertEqual(defaults.limit, BurnBarInboxPresentationListRequest.defaultLimit)
+
+        let allStates = try JSONDecoder().decode(
+            BurnBarInboxPresentationListRequest.self,
+            from: Data("{\"states\":null,\"limit\":999999}".utf8)
+        )
+        XCTAssertNil(allStates.states, "Explicit null means all lifecycle states")
+        XCTAssertEqual(allStates.limit, BurnBarInboxPresentationListRequest.maxLimit)
+
+        let minimum = try JSONDecoder().decode(
+            BurnBarInboxPresentationListRequest.self,
+            from: Data("{\"limit\":0}".utf8)
+        )
+        XCTAssertEqual(minimum.limit, 1)
+    }
+
+    func test_presentationMutationWireRejectsUnknownActionsAndFeedback() throws {
+        let valid = try JSONDecoder().decode(
+            BurnBarInboxPresentationMutationRequest.self,
+            from: Data(
+                """
+                {"itemID":"inb_1","action":"set_feedback","feedback":"useful"}
+                """.utf8
+            )
+        )
+        XCTAssertEqual(valid.action, .setFeedback)
+        XCTAssertEqual(valid.feedback, .useful)
+
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                BurnBarInboxPresentationMutationRequest.self,
+                from: Data(
+                    """
+                    {"itemID":"inb_1","action":"execute_sql"}
+                    """.utf8
+                )
+            )
+        )
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                BurnBarInboxPresentationMutationRequest.self,
+                from: Data(
+                    """
+                    {"itemID":"inb_1","action":"set_feedback","feedback":"maybe"}
+                    """.utf8
+                )
+            )
+        )
+    }
+
     // MARK: - Run telemetry
 
     func test_runTelemetryCarriesEveryCounterAndIdentifiesByTick() {

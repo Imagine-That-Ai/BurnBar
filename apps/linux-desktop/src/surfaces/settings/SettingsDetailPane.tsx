@@ -44,6 +44,7 @@ import { SettingsDrillRow } from './SettingsDrillRow.js';
 import { settingsTabMeta, type SettingsTabId } from './settingsTabs.js';
 import { fixtureAccountStatus } from '../../daemonFixture.js';
 import { CloudSyncControls } from './CloudSyncControls.js';
+import { AIInboxSettingsDetail } from './AIInboxSettingsDetail.js';
 
 const UPDATE_CHANNEL_COPY: Record<'deb' | 'rpm' | 'arch' | 'appimage' | 'unknown', string> = {
   deb: 'Installed via the Debian package channel; apt/dpkg owns upgrades.',
@@ -1567,6 +1568,9 @@ export function SettingsDetailPane({
       config.secretServiceStatus === 'locked' || config.secretServiceStatus === 'unavailable';
 
     switch (activeTab) {
+      case 'ai-inbox':
+        content = <AIInboxSettingsDetail bridge={bridge} fixtureMode={fixtureMode} />;
+        break;
       case 'general':
         content = (
           <>

@@ -21,6 +21,7 @@ import './system/system.css';
 // Computer Use surface into the initial chunk even when onboarding only needed
 // one screen. Named-export adapters keep each split point explicit for Vite.
 const InsightsSurface = lazy(() => import('./insights/InsightsSurface.js').then(({ InsightsSurface }) => ({ default: InsightsSurface })));
+const InboxSurface = lazy(() => import('./inbox/InboxSurface.js').then(({ InboxSurface }) => ({ default: InboxSurface })));
 const DatabaseSurface = lazy(() => import('./database/DatabaseSurface.js').then(({ DatabaseSurface }) => ({ default: DatabaseSurface })));
 const ProvidersSurface = lazy(() => import('./ProvidersSurface.js').then(({ ProvidersSurface }) => ({ default: ProvidersSurface })));
 const ProjectsSurface = lazy(() => import('./projects/ProjectsSurface.js').then(({ ProjectsSurface }) => ({ default: ProjectsSurface })));
@@ -129,6 +130,7 @@ function SurfaceBody({
 const SURFACES: Record<ShellRoute, ComponentType> = {
   overview: OverviewSurface,
   insights: InsightsSurface,
+  inbox: InboxSurface,
   database: DatabaseSurface,
   providers: ProvidersSurface,
   projects: ProjectsSurface,

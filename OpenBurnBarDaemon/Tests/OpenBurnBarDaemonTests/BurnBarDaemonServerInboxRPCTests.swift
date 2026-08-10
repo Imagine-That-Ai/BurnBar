@@ -328,6 +328,168 @@ final class BurnBarDaemonServerInboxRPCTests: XCTestCase {
         XCTAssertEqual(export.result?.stored, 1)
     }
 
+    func test_presentationStateRPCsDispatchAndReturnPersistedDaemonTruth() async throws {
+        let rootURL = try makeTemporaryRoot(name: "inbox-presentation-rpc")
+        let databasePath = rootURL.appendingPathComponent("openburnbar.sqlite").path
+        let store = try BurnBarAIInboxStore(
+            databasePath: databasePath,
+            logger: BurnBarDaemonLogger(category: "test")
+        )
+        let now = Date()
+        let first = try store.upsertItem(
+            AIInboxFixtures.itemWrite(
+                fingerprint: "presentation:socket:first",
+                title: "First presentation row"
+            ),
+            now: now
+        )
+        let second = try store.upsertItem(
+            AIInboxFixtures.itemWrite(
+                fingerprint: "presentation:socket:second",
+                title: "Second presentation row"
+            ),
+            now: now.addingTimeInterval(1)
+        )
+
+        let socketPath = makeSocketPath(name: "inbox-presentation")
+        let server = makeServer(rootURL: rootURL, socketPath: socketPath, indexDatabasePath: databasePath)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        // 1. list returns full item detail joined to current presentation state.
+        let list: BurnBarRPCResponseEnvelope<BurnBarInboxPresentationListResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "presentation-list",
+                method: .inboxPresentationList,
+                authToken: authToken,
+                params: BurnBarInboxPresentationListRequest()
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(list.error)
+        let listed = try XCTUnwrap(list.result)
+        XCTAssertEqual(Set(listed.rows.map(\.id)), Set([first.id, second.id]))
+        XCTAssertEqual(listed.openCount, 2)
+        XCTAssertEqual(listed.activeUnreadCount, 2)
+        XCTAssertEqual(listed.rows.first(where: { $0.id == first.id })?.item.tickID, "tick_test")
+
+        // 2. get returns one joined row and nil for an unknown id.
+        let get: BurnBarRPCResponseEnvelope<BurnBarInboxPresentationGetResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "presentation-get",
+                method: .inboxPresentationGet,
+                authToken: authToken,
+                params: BurnBarInboxPresentationGetRequest(id: first.id)
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(get.error)
+        XCTAssertEqual(get.result?.row?.item.summary.title, "First presentation row")
+        XCTAssertNil(get.result?.row?.presentation.readAt)
+
+        let missing: BurnBarRPCResponseEnvelope<BurnBarInboxPresentationGetResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "presentation-get-missing",
+                method: .inboxPresentationGet,
+                authToken: authToken,
+                params: BurnBarInboxPresentationGetRequest(id: "inb_missing")
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(missing.error)
+        XCTAssertNil(missing.result?.row)
+
+        // 3. mutate applies a closed-set human action and returns the stored row.
+        let archived: BurnBarRPCResponseEnvelope<BurnBarInboxPresentationMutationResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "presentation-mutate",
+                method: .inboxPresentationMutate,
+                authToken: authToken,
+                params: BurnBarInboxPresentationMutationRequest(itemID: first.id, action: .archive)
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(archived.error)
+        XCTAssertNotNil(archived.result?.row.presentation.archivedAt)
+        XCTAssertNotNil(archived.result?.row.presentation.readAt, "Archive must imply read")
+
+        let archivedList: BurnBarRPCResponseEnvelope<BurnBarInboxPresentationListResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "presentation-list-archived",
+                method: .inboxPresentationList,
+                authToken: authToken,
+                params: BurnBarInboxPresentationListRequest(isArchived: true)
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(archivedList.result?.rows.map(\.id), [first.id])
+        XCTAssertEqual(archivedList.result?.activeUnreadCount, 1)
+
+        let invalid: BurnBarRPCResponseEnvelope<BurnBarInboxPresentationMutationResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "presentation-mutate-invalid",
+                method: .inboxPresentationMutate,
+                authToken: authToken,
+                params: BurnBarInboxPresentationMutationRequest(itemID: second.id, action: .setFeedback)
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(invalid.result)
+        XCTAssertEqual(invalid.error?.code, BurnBarRPCErrorCode.invalidParams)
+
+        let unknownAction: BurnBarRPCResponseEnvelope<BurnBarInboxPresentationMutationResponse> =
+            try sendPayload(
+                Data(
+                    """
+                    {"id":"presentation-unknown-action","method":"daemon.inbox.presentation.mutate",\
+                    "authToken":"\(authToken)","params":{"itemID":"\(second.id)","action":"execute_sql"}}
+                    """.utf8
+                ),
+                socketPath: socketPath
+            )
+        XCTAssertNil(unknownAction.result)
+        XCTAssertEqual(unknownAction.error?.code, BurnBarRPCErrorCode.invalidParams)
+
+        let unknownFeedback: BurnBarRPCResponseEnvelope<BurnBarInboxPresentationMutationResponse> =
+            try sendPayload(
+                Data(
+                    """
+                    {"id":"presentation-unknown-feedback","method":"daemon.inbox.presentation.mutate",\
+                    "authToken":"\(authToken)","params":{"itemID":"\(second.id)","action":"set_feedback",\
+                    "feedback":"thumbs_up"}}
+                    """.utf8
+                ),
+                socketPath: socketPath
+            )
+        XCTAssertNil(unknownFeedback.result)
+        XCTAssertEqual(unknownFeedback.error?.code, BurnBarRPCErrorCode.invalidParams)
+
+        // 4. mark_all_read touches the remaining lifecycle-open unread item.
+        let markAll: BurnBarRPCResponseEnvelope<BurnBarInboxPresentationMarkAllReadResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "presentation-mark-all-read",
+                method: .inboxPresentationMarkAllRead,
+                authToken: authToken,
+                params: BurnBarInboxPresentationMarkAllReadRequest()
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(markAll.error)
+        XCTAssertEqual(markAll.result?.updatedCount, 1)
+        XCTAssertEqual(markAll.result?.activeUnreadCount, 0)
+
+        let secondAfter: BurnBarRPCResponseEnvelope<BurnBarInboxPresentationGetResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "presentation-get-after-mark-all",
+                method: .inboxPresentationGet,
+                authToken: authToken,
+                params: BurnBarInboxPresentationGetRequest(id: second.id)
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNotNil(secondAfter.result?.row?.presentation.readAt)
+    }
+
     func test_inboxRPCsFailClosedWhenNoIndexDatabaseIsConfigured() async throws {
         let rootURL = try makeTemporaryRoot(name: "inbox-rpc-nil")
         let socketPath = makeSocketPath(name: "inbox-nil")
@@ -393,6 +555,13 @@ final class BurnBarDaemonServerInboxRPCTests: XCTestCase {
         _ envelope: Envelope,
         socketPath: String
     ) throws -> BurnBarRPCResponseEnvelope<Response> {
+        try sendPayload(try JSONEncoder().encode(envelope), socketPath: socketPath)
+    }
+
+    private func sendPayload<Response: Decodable>(
+        _ payload: Data,
+        socketPath: String
+    ) throws -> BurnBarRPCResponseEnvelope<Response> {
         let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
         XCTAssertNotEqual(fileDescriptor, -1)
 
@@ -412,8 +581,8 @@ final class BurnBarDaemonServerInboxRPCTests: XCTestCase {
         }
         defer { close(fileDescriptor) }
 
-        let payload = try JSONEncoder().encode(envelope) + Data([0x0A])
-        payload.withUnsafeBytes { rawBuffer in
+        let framedPayload = payload + Data([0x0A])
+        framedPayload.withUnsafeBytes { rawBuffer in
             guard let baseAddress = rawBuffer.baseAddress else { return }
             var bytesRemaining = rawBuffer.count
             var offset = 0

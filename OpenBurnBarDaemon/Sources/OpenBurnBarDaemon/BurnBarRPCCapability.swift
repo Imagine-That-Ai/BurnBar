@@ -89,6 +89,10 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              // actions, so they sit with the credential/config writes rather
              // than with the observability reads above.
              .inboxConfigUpdate, .inboxRunNow,
+             // Presentation-state changes are explicit human actions over
+             // durable local data. Read-only peers may inspect presentation
+             // rows but cannot mutate or bulk-mark them.
+             .inboxPresentationMutate, .inboxPresentationMarkAllRead,
              // Founder Lens mutations: a reply spends model budget; plan
              // accept/update/grade are human-confirmed durable writes; the
              // memory export changes what the daemon may cite as approved
@@ -103,7 +107,9 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              // AI Inbox reads return already-synthesized, already-redacted
              // summaries plus reference-shaped evidence — the same posture as
              // usage/insight reads, so they share the observability group.
-             .inboxList, .inboxGet, .inboxRunsRecent, .inboxConfigGet,
+             .inboxList, .inboxGet,
+             .inboxPresentationList, .inboxPresentationGet,
+             .inboxRunsRecent, .inboxConfigGet,
              // Plan reads are the same already-synthesized shape.
              .inboxPlansList, .inboxPlansGet:
             return .observability

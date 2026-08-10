@@ -791,6 +791,64 @@
     }
 
     #[test]
+    fn ai_inbox_founder_lens_wire_contract_is_pinned() {
+        let commands = include_str!("daemon_data_commands.rs");
+        let registration = include_str!("tray_runtime.rs");
+        for (command, method) in [
+            ("inbox_list", "daemon.inbox.list"),
+            ("inbox_get", "daemon.inbox.get"),
+            (
+                "inbox_presentation_list",
+                "daemon.inbox.presentation.list",
+            ),
+            (
+                "inbox_presentation_get",
+                "daemon.inbox.presentation.get",
+            ),
+            (
+                "inbox_presentation_mutate",
+                "daemon.inbox.presentation.mutate",
+            ),
+            (
+                "inbox_presentation_mark_all_read",
+                "daemon.inbox.presentation.mark_all_read",
+            ),
+            ("inbox_runs_recent", "daemon.inbox.runs.recent"),
+            ("inbox_config_get", "daemon.inbox.config.get"),
+            ("inbox_config_update", "daemon.inbox.config.update"),
+            ("inbox_run_now", "daemon.inbox.run_now"),
+            ("inbox_thread_get", "daemon.inbox.thread.get"),
+            ("inbox_reply", "daemon.inbox.reply"),
+            ("inbox_plans_list", "daemon.inbox.plans.list"),
+            ("inbox_plans_get", "daemon.inbox.plans.get"),
+            ("inbox_plans_accept", "daemon.inbox.plans.accept"),
+            (
+                "inbox_plans_update_step",
+                "daemon.inbox.plans.update_step",
+            ),
+            ("inbox_plans_grade", "daemon.inbox.plans.grade"),
+            ("inbox_memory_export", "daemon.inbox.memory.export"),
+        ] {
+            assert!(
+                commands.contains(&format!("fn {command}(")),
+                "missing Tauri command {command}"
+            );
+            assert!(
+                commands.contains(&format!("call_daemon_method(\"{method}\"")),
+                "missing canonical daemon method {method}"
+            );
+            assert!(
+                registration.contains(&format!("            {command},")),
+                "missing invoke registration for {command}"
+            );
+        }
+        assert!(
+            commands.contains("call_daemon_method(\"daemon.inbox.config.get\", None)"),
+            "config.get must not invent a params object"
+        );
+    }
+
+    #[test]
     fn initial_and_forwarded_deep_link_drains_have_distinct_owners() {
         let initial = Mutex::new(Some("overview".to_string()));
         let forwarded = Mutex::new(vec!["chat".to_string(), "settings".to_string()]);
@@ -1261,6 +1319,33 @@
             "javascript:alert(1)",
         ] {
             assert!(validate_external_url(refused).is_err(), "{refused}");
+        }
+    }
+
+    #[test]
+    fn inbox_external_url_validation_is_https_and_remote_host_only() {
+        assert_eq!(
+            validate_inbox_external_url("https://github.com/Imagine-That-Ai/OpenBurnBar/pull/2172")
+                .unwrap(),
+            "https://github.com/Imagine-That-Ai/OpenBurnBar/pull/2172"
+        );
+        assert_eq!(
+            validate_inbox_external_url("https://docs.example.com/runbook?row=P-34#evidence")
+                .unwrap(),
+            "https://docs.example.com/runbook?row=P-34#evidence"
+        );
+        for refused in [
+            "http://github.com/Imagine-That-Ai/OpenBurnBar",
+            "https://user@github.com/Imagine-That-Ai/OpenBurnBar",
+            "https://github.com:444/Imagine-That-Ai/OpenBurnBar",
+            "https://localhost/admin",
+            "https://sub.localhost/admin",
+            "https://127.0.0.1/admin",
+            "https://[::1]/admin",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+        ] {
+            assert!(validate_inbox_external_url(refused).is_err(), "{refused}");
         }
     }
 

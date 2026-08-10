@@ -243,6 +243,235 @@ final class AIInboxStoreTests: XCTestCase {
         XCTAssertTrue(state.isSuppressed)
     }
 
+    // MARK: - Cross-platform presentation contract
+
+    func test_presentationRowsJoinDetailAndDurableStateAcrossRestart() throws {
+        let now = Date(timeIntervalSince1970: 1_786_300_000)
+        let read = try store.upsertItem(
+            AIInboxFixtures.itemWrite(fingerprint: "presentation:read", title: "Read"),
+            now: now
+        )
+        let archived = try store.upsertItem(
+            AIInboxFixtures.itemWrite(fingerprint: "presentation:archived", title: "Archived"),
+            now: now.addingTimeInterval(10)
+        )
+        let snoozed = try store.upsertItem(
+            AIInboxFixtures.itemWrite(fingerprint: "presentation:snoozed", title: "Snoozed"),
+            now: now.addingTimeInterval(20)
+        )
+        let feedback = try store.upsertItem(
+            AIInboxFixtures.itemWrite(
+                fingerprint: "presentation:feedback",
+                title: "Feedback",
+                payload: BurnBarInboxItemPayload(metrics: ["signal": "strong"])
+            ),
+            now: now.addingTimeInterval(30)
+        )
+
+        _ = try store.mutatePresentationState(
+            BurnBarInboxPresentationMutationRequest(itemID: read.id, action: .markRead),
+            now: now.addingTimeInterval(40)
+        )
+        _ = try store.mutatePresentationState(
+            BurnBarInboxPresentationMutationRequest(itemID: archived.id, action: .archive),
+            now: now.addingTimeInterval(41)
+        )
+        _ = try store.mutatePresentationState(
+            BurnBarInboxPresentationMutationRequest(
+                itemID: snoozed.id,
+                action: .snooze,
+                snoozedUntil: now.addingTimeInterval(3_600)
+            ),
+            now: now.addingTimeInterval(42)
+        )
+        _ = try store.mutatePresentationState(
+            BurnBarInboxPresentationMutationRequest(
+                itemID: feedback.id,
+                action: .setFeedback,
+                feedback: .useful
+            ),
+            now: now.addingTimeInterval(43)
+        )
+
+        let visible = try store.presentationList(
+            BurnBarInboxPresentationListRequest(isArchived: false, isSnoozed: false),
+            now: now.addingTimeInterval(60)
+        )
+        XCTAssertEqual(Set(visible.rows.map(\.id)), Set([read.id, feedback.id]))
+        XCTAssertEqual(visible.openCount, 4)
+        XCTAssertEqual(visible.activeUnreadCount, 1, "Only the feedback row is visible and unread")
+
+        let archivedOnly = try store.presentationList(
+            BurnBarInboxPresentationListRequest(isArchived: true),
+            now: now.addingTimeInterval(60)
+        )
+        XCTAssertEqual(archivedOnly.rows.map(\.id), [archived.id])
+
+        let snoozedOnly = try store.presentationList(
+            BurnBarInboxPresentationListRequest(isSnoozed: true),
+            now: now.addingTimeInterval(60)
+        )
+        XCTAssertEqual(snoozedOnly.rows.map(\.id), [snoozed.id])
+
+        let usefulOnly = try store.presentationList(
+            BurnBarInboxPresentationListRequest(feedback: .useful),
+            now: now.addingTimeInterval(60)
+        )
+        XCTAssertEqual(usefulOnly.rows.map(\.id), [feedback.id])
+        XCTAssertEqual(usefulOnly.rows.first?.item.payload.metrics["signal"], "strong")
+
+        store = nil
+        store = try BurnBarAIInboxStore(
+            databasePath: databaseURL.path,
+            logger: BurnBarDaemonLogger(category: "test-reopen")
+        )
+        let persisted = try XCTUnwrap(try store.presentationRow(id: feedback.id))
+        XCTAssertEqual(persisted.presentation.feedback, .useful)
+        XCTAssertEqual(persisted.item.summary.title, "Feedback")
+    }
+
+    func test_presentationMutationsMatchMacSemanticsAndReturnStoredTruth() throws {
+        let now = Date(timeIntervalSince1970: 1_786_310_000)
+        let item = try store.upsertItem(
+            AIInboxFixtures.itemWrite(fingerprint: "presentation:mutate", title: "Mutate"),
+            now: now
+        )
+
+        let read = try store.mutatePresentationState(
+            BurnBarInboxPresentationMutationRequest(itemID: item.id, action: .markRead),
+            now: now.addingTimeInterval(1)
+        )
+        XCTAssertEqual(read.row.presentation.readAt, now.addingTimeInterval(1))
+
+        let unread = try store.mutatePresentationState(
+            BurnBarInboxPresentationMutationRequest(itemID: item.id, action: .markUnread),
+            now: now.addingTimeInterval(2)
+        )
+        XCTAssertNil(unread.row.presentation.readAt)
+
+        let archived = try store.mutatePresentationState(
+            BurnBarInboxPresentationMutationRequest(itemID: item.id, action: .archive),
+            now: now.addingTimeInterval(3)
+        )
+        XCTAssertEqual(archived.row.presentation.archivedAt, now.addingTimeInterval(3))
+        XCTAssertEqual(
+            archived.row.presentation.readAt,
+            now.addingTimeInterval(3),
+            "Archiving implies the person has seen the item"
+        )
+
+        let unarchived = try store.mutatePresentationState(
+            BurnBarInboxPresentationMutationRequest(itemID: item.id, action: .unarchive),
+            now: now.addingTimeInterval(4)
+        )
+        XCTAssertNil(unarchived.row.presentation.archivedAt)
+        XCTAssertNotNil(unarchived.row.presentation.readAt, "Unarchive must not resurrect the unread badge")
+
+        let deadline = now.addingTimeInterval(3_600)
+        let snoozed = try store.mutatePresentationState(
+            BurnBarInboxPresentationMutationRequest(
+                itemID: item.id,
+                action: .snooze,
+                snoozedUntil: deadline
+            ),
+            now: now.addingTimeInterval(5)
+        )
+        XCTAssertEqual(snoozed.row.presentation.snoozedUntil, deadline)
+
+        let clearedSnooze = try store.mutatePresentationState(
+            BurnBarInboxPresentationMutationRequest(itemID: item.id, action: .clearSnooze),
+            now: now.addingTimeInterval(6)
+        )
+        XCTAssertNil(clearedSnooze.row.presentation.snoozedUntil)
+
+        let useful = try store.mutatePresentationState(
+            BurnBarInboxPresentationMutationRequest(
+                itemID: item.id,
+                action: .setFeedback,
+                feedback: .notUseful
+            ),
+            now: now.addingTimeInterval(7)
+        )
+        XCTAssertEqual(useful.row.presentation.feedback, .notUseful)
+
+        let clearedFeedback = try store.mutatePresentationState(
+            BurnBarInboxPresentationMutationRequest(itemID: item.id, action: .clearFeedback),
+            now: now.addingTimeInterval(8)
+        )
+        XCTAssertNil(clearedFeedback.row.presentation.feedback)
+        XCTAssertEqual(clearedFeedback.row.presentation.updatedAt, now.addingTimeInterval(8))
+    }
+
+    func test_invalidPresentationMutationRollsBackWithoutLosingExistingState() throws {
+        let now = Date(timeIntervalSince1970: 1_786_320_000)
+        let item = try store.upsertItem(
+            AIInboxFixtures.itemWrite(fingerprint: "presentation:rollback", title: "Rollback"),
+            now: now
+        )
+        _ = try store.mutatePresentationState(
+            BurnBarInboxPresentationMutationRequest(itemID: item.id, action: .markRead),
+            now: now.addingTimeInterval(1)
+        )
+
+        XCTAssertThrowsError(
+            try store.mutatePresentationState(
+                BurnBarInboxPresentationMutationRequest(itemID: item.id, action: .setFeedback),
+                now: now.addingTimeInterval(2)
+            )
+        ) { error in
+            guard case BurnBarAIInboxStoreError.invalidPresentationMutation = error else {
+                return XCTFail("Expected invalidPresentationMutation, got \(error)")
+            }
+        }
+        let after = try XCTUnwrap(try store.presentationRow(id: item.id))
+        XCTAssertEqual(after.presentation.readAt, now.addingTimeInterval(1))
+        XCTAssertNil(after.presentation.feedback)
+
+        XCTAssertThrowsError(
+            try store.mutatePresentationState(
+                BurnBarInboxPresentationMutationRequest(itemID: "inb_missing", action: .archive),
+                now: now
+            )
+        ) { error in
+            guard case BurnBarAIInboxStoreError.itemNotFound("inb_missing") = error else {
+                return XCTFail("Expected itemNotFound, got \(error)")
+            }
+        }
+    }
+
+    func test_markAllReadOnlyTouchesItemsOpenAtTransactionTime() throws {
+        let now = Date(timeIntervalSince1970: 1_786_330_000)
+        let unread = try store.upsertItem(
+            AIInboxFixtures.itemWrite(fingerprint: "presentation:all-unread", title: "Unread"),
+            now: now
+        )
+        let alreadyRead = try store.upsertItem(
+            AIInboxFixtures.itemWrite(fingerprint: "presentation:all-read", title: "Read"),
+            now: now.addingTimeInterval(1)
+        )
+        let resolved = try store.upsertItem(
+            AIInboxFixtures.itemWrite(fingerprint: "presentation:all-resolved", title: "Resolved"),
+            now: now.addingTimeInterval(2)
+        )
+        _ = try store.mutatePresentationState(
+            BurnBarInboxPresentationMutationRequest(itemID: alreadyRead.id, action: .markRead),
+            now: now.addingTimeInterval(3)
+        )
+        XCTAssertTrue(
+            try store.resolveItem(id: resolved.id, note: "closed", now: now.addingTimeInterval(4))
+        )
+
+        let response = try store.markAllOpenPresentationItemsRead(now: now.addingTimeInterval(5))
+        XCTAssertEqual(response.updatedCount, 1)
+        XCTAssertEqual(response.activeUnreadCount, 0)
+        XCTAssertNotNil(try store.presentationRow(id: unread.id)?.presentation.readAt)
+        XCTAssertNotNil(try store.presentationRow(id: alreadyRead.id)?.presentation.readAt)
+        XCTAssertNil(
+            try store.presentationRow(id: resolved.id)?.presentation.readAt,
+            "Resolved rows are outside the mark-all-open snapshot"
+        )
+    }
+
     // MARK: - Schema
 
     /// Reopening must be a no-op: both the daemon and the app migration create

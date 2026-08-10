@@ -8,7 +8,7 @@ import {
   COMPUTER_USE_SESSION_DEFAULTS,
   decodeComputerUseInvokeResponse
 } from './tauriBridge.js';
-import type { ProjectUpsertInput } from './tauriBridge.js';
+import type { AIInboxConfig, ProjectUpsertInput } from './tauriBridge.js';
 
 const invoke = vi.fn();
 
@@ -36,6 +36,17 @@ describe('VAL-RPC-002 bridge behavior', () => {
     if (!b) throw new Error('expected tauri bridge');
     return b;
   }
+
+  it('opens Inbox links through the dedicated native URL command', async () => {
+    invoke.mockResolvedValue(undefined);
+    const b = await bridge();
+
+    await b.openInboxExternalUrl?.('https://github.com/Imagine-That-Ai/OpenBurnBar/pull/2172');
+
+    expect(invoke).toHaveBeenCalledWith('open_inbox_external_url', {
+      url: 'https://github.com/Imagine-That-Ai/OpenBurnBar/pull/2172'
+    });
+  });
 
   it('keeps startup and forwarded deep-link queues under distinct consumers', async () => {
     invoke.mockResolvedValueOnce('providers?provider=codex').mockResolvedValueOnce('settings');
@@ -175,6 +186,294 @@ describe('VAL-RPC-002 bridge behavior', () => {
       maxMessages: 200,
       beforeTimestamp: '2026-07-10T12:00:00.000Z',
       beforeMessageId: 'newest-page-oldest'
+    });
+  });
+
+  it('maps every AI Inbox and Founder Lens call with exact Swift field names', async () => {
+    const config: AIInboxConfig = {
+      enabled: false,
+      egressMode: 'off',
+      tickSeconds: 300,
+      remotePhaseEveryNTicks: 3,
+      dailyBudgetUSD: 1.5,
+      maxVerifierCallsPerTick: 3,
+      perTickPromptTokenCap: 60_000,
+      analystProviderID: 'deepseek',
+      analystModel: 'deepseek-v4-flash',
+      verifierProviderID: 'openai',
+      verifierModel: 'gpt-5.6-luna',
+      githubEnabled: true,
+      notifyOnP1: true,
+      lookbackMinutes: 120,
+      founderLensEnabled: true,
+      perReplyBudgetUSD: 0.1,
+      maxThreadTurns: 40,
+      budgetCountsSubscriptionSpend: false
+    };
+    const step = {
+      id: 'step_1',
+      planID: 'plan_1',
+      parentStepID: null,
+      ordinal: 0,
+      title: 'Land the gate',
+      bodyMarkdown: 'Make it required.',
+      status: 'accepted',
+      nextMoveMarkdown: null,
+      evidenceIDs: ['workflow:42'],
+      missionID: null,
+      followupID: null,
+      inboxFingerprint: 'ci_waste:linux',
+      grade: null,
+      gradeNoteMarkdown: null,
+      gradedAt: null,
+      createdAt: 0,
+      updatedAt: 0,
+      completedAt: null
+    };
+    const plan = {
+      id: 'plan_1',
+      title: 'Kill CI waste',
+      horizon: 'week',
+      pack: 'engOps',
+      status: 'active',
+      summaryMarkdown: 'Make CI earn its keep.',
+      createdAt: 0,
+      updatedAt: 0,
+      originFingerprint: 'ci_waste:linux',
+      memoryID: null,
+      pensieveVectorID: null,
+      gradeAverage: null,
+      steps: [step]
+    };
+    invoke
+      .mockResolvedValueOnce({ items: [], nextBefore: null, openCount: 0 })
+      .mockResolvedValueOnce({ item: null })
+      .mockResolvedValueOnce({ runs: [], todaySpendUSD: 0, dailyBudgetUSD: 1.5 })
+      .mockResolvedValueOnce(config)
+      .mockResolvedValueOnce(config)
+      .mockResolvedValueOnce({ tickID: null, accepted: false, reason: 'The AI Inbox is turned off.' })
+      .mockResolvedValueOnce({ thread: null })
+      .mockResolvedValueOnce({ message: null, refusalReason: 'Founder Lens replies are turned off.' })
+      .mockResolvedValueOnce({ plans: [] })
+      .mockResolvedValueOnce({ plan: null })
+      .mockResolvedValueOnce({ plan, step })
+      .mockResolvedValueOnce({ step: { ...step, status: 'landed', missionID: 'mission_1' } })
+      .mockResolvedValueOnce({
+        step: { ...step, grade: 100, gradeNoteMarkdown: 'Shipped.' },
+        planGradeAverage: 100
+      })
+      .mockResolvedValueOnce({ stored: 1 });
+
+    const b = await bridge();
+    await b.inboxList({
+      states: ['new'],
+      kinds: ['ci_waste'],
+      projectID: 'burnbar',
+      limit: 999,
+      before: '2001-01-01T00:00:00.000Z'
+    });
+    await b.inboxGet('inb_1');
+    await b.inboxRunsRecent(999);
+    await b.inboxConfigGet();
+    await b.inboxConfigUpdate(config);
+    await b.inboxRunNow(true);
+    await b.inboxThreadGet('ci_waste:linux');
+    await b.inboxReply({ fingerprint: 'ci_waste:linux', bodyMarkdown: 'Why?' });
+    await b.inboxPlansList({ statuses: ['active'], limit: 999 });
+    await b.inboxPlansGet('plan_1');
+    await b.inboxPlansAccept({
+      candidate: {
+        title: 'Land the gate',
+        bodyMarkdown: 'Make it required.',
+        horizon: 'week',
+        evidenceIDs: ['workflow:42']
+      },
+      pack: 'engOps'
+    });
+    await b.inboxPlansUpdateStep({
+      stepID: 'step_1',
+      status: 'landed',
+      missionID: 'mission_1'
+    });
+    await b.inboxPlansGrade({ stepID: 'step_1', grade: 999, noteMarkdown: 'Shipped.' });
+    await b.inboxMemoryExport({
+      entries: [{
+        memoryID: 'mem_1',
+        provenance: 'ai-inbox:plan:plan_1',
+        snippetMarkdown: 'Compile before review.',
+        approvedAt: '2001-01-01T00:00:00.000Z'
+      }]
+    });
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'inbox_list', {
+      request: {
+        states: ['new'],
+        kinds: ['ci_waste'],
+        projectID: 'burnbar',
+        limit: 300,
+        before: 0
+      }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'inbox_get', { request: { id: 'inb_1' } });
+    expect(invoke).toHaveBeenNthCalledWith(3, 'inbox_runs_recent', { request: { limit: 200 } });
+    expect(invoke).toHaveBeenNthCalledWith(4, 'inbox_config_get');
+    expect(invoke).toHaveBeenNthCalledWith(5, 'inbox_config_update', { config });
+    expect(invoke).toHaveBeenNthCalledWith(6, 'inbox_run_now', { request: { force: true } });
+    expect(invoke).toHaveBeenNthCalledWith(7, 'inbox_thread_get', {
+      request: { fingerprint: 'ci_waste:linux' }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(8, 'inbox_reply', {
+      request: { fingerprint: 'ci_waste:linux', bodyMarkdown: 'Why?' }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(9, 'inbox_plans_list', {
+      request: { statuses: ['active'], limit: 200 }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(10, 'inbox_plans_get', {
+      request: { id: 'plan_1' }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(11, 'inbox_plans_accept', {
+      request: {
+        candidate: {
+          title: 'Land the gate',
+          bodyMarkdown: 'Make it required.',
+          horizon: 'week',
+          evidenceIDs: ['workflow:42']
+        },
+        pack: 'engOps'
+      }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(12, 'inbox_plans_update_step', {
+      request: { stepID: 'step_1', status: 'landed', missionID: 'mission_1' }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(13, 'inbox_plans_grade', {
+      request: { stepID: 'step_1', grade: 100, noteMarkdown: 'Shipped.' }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(14, 'inbox_memory_export', {
+      request: {
+        entries: [{
+          memoryID: 'mem_1',
+          provenance: 'ai-inbox:plan:plan_1',
+          snippetMarkdown: 'Compile before review.',
+          approvedAt: 0
+        }]
+      }
+    });
+  });
+
+  it('maps shared Inbox presentation reads and mutations without renderer-owned state', async () => {
+    const item = {
+      summary: {
+        id: 'inb_1',
+        fingerprint: 'ci_waste:linux',
+        kind: 'ci_waste',
+        priority: 1,
+        state: 'updated',
+        title: 'CI waste',
+        projectID: 'burnbar',
+        projectName: 'BurnBar',
+        occurrenceCount: 2,
+        firstSeenAt: 0,
+        lastSeenAt: 0,
+        resolvedAt: null,
+        resolutionNote: null,
+        modelProvenance: 'local-rules',
+        hasMemoryCandidates: false
+      },
+      summaryMarkdown: 'Make CI earn its keep.',
+      payload: {
+        version: 1,
+        evidence: [],
+        memoryCandidates: [],
+        actions: [],
+        metrics: {},
+        verification: null
+      },
+      tickID: 'tick_1'
+    };
+    const unreadRow = {
+      item,
+      presentation: {
+        readAt: null,
+        archivedAt: null,
+        snoozedUntil: null,
+        feedback: null,
+        updatedAt: null
+      }
+    };
+    const archivedRow = {
+      item,
+      presentation: {
+        readAt: 0,
+        archivedAt: 0,
+        snoozedUntil: null,
+        feedback: 'useful',
+        updatedAt: 0
+      }
+    };
+    invoke
+      .mockResolvedValueOnce({
+        rows: [unreadRow],
+        nextBefore: null,
+        openCount: 1,
+        activeUnreadCount: 1
+      })
+      .mockResolvedValueOnce({ row: unreadRow })
+      .mockResolvedValueOnce({ row: archivedRow })
+      .mockResolvedValueOnce({ updatedCount: 1, readAt: 0, activeUnreadCount: 0 });
+
+    const b = await bridge();
+    await b.inboxPresentationList({
+      states: null,
+      kinds: ['ci_waste'],
+      priorities: [1],
+      projectID: 'burnbar',
+      isUnread: true,
+      isArchived: false,
+      isSnoozed: false,
+      feedback: 'useful',
+      limit: 999,
+      before: '2001-01-01T00:00:00.000Z'
+    });
+    await b.inboxPresentationGet('inb_1');
+    const mutation = await b.inboxPresentationMutate({
+      itemID: 'inb_1',
+      action: 'archive'
+    });
+    const markAll = await b.inboxPresentationMarkAllRead();
+
+    expect(mutation.row.presentation).toEqual({
+      readAt: '2001-01-01T00:00:00.000Z',
+      archivedAt: '2001-01-01T00:00:00.000Z',
+      feedback: 'useful',
+      updatedAt: '2001-01-01T00:00:00.000Z'
+    });
+    expect(markAll).toEqual({
+      updatedCount: 1,
+      readAt: '2001-01-01T00:00:00.000Z',
+      activeUnreadCount: 0
+    });
+    expect(invoke).toHaveBeenNthCalledWith(1, 'inbox_presentation_list', {
+      request: {
+        states: null,
+        kinds: ['ci_waste'],
+        priorities: [1],
+        projectID: 'burnbar',
+        isUnread: true,
+        isArchived: false,
+        isSnoozed: false,
+        feedback: 'useful',
+        limit: 300,
+        before: 0
+      }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'inbox_presentation_get', {
+      request: { id: 'inb_1' }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(3, 'inbox_presentation_mutate', {
+      request: { itemID: 'inb_1', action: 'archive' }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(4, 'inbox_presentation_mark_all_read', {
+      request: {}
     });
   });
 

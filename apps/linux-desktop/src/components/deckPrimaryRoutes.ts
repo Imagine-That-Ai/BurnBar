@@ -1,7 +1,8 @@
 import type { ShellRoute } from '../routes.js';
 
-/** Seven Command Deck sections — mirrors `DashboardMainRoute.primarySections`. */
+/** Eight Command Deck sections — mirrors `DashboardMainRoute.primarySections`. */
 export const DECK_PRIMARY_ROUTES: ShellRoute[] = [
+  'inbox',
   'chat',
   'providers',
   'database',

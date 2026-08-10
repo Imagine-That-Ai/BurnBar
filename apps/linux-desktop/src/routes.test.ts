@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  inboxRouteHash,
+  inboxSelectionFromHash,
   providerRouteHash,
   providerSelectionFromHash,
   ROUTES,
@@ -27,6 +29,20 @@ describe('routeFromHash', () => {
     });
   });
 
+  it('round-trips bounded Inbox detail', () => {
+    const hash = inboxRouteHash('inbox/item 42');
+    expect(hash).toBe('#/inbox?item=inbox%2Fitem+42');
+    expect(inboxSelectionFromHash(hash)).toEqual({ itemID: 'inbox/item 42' });
+    expect(inboxRouteHash()).toBe('#/inbox');
+  });
+
+  it('rejects malformed Inbox detail', () => {
+    expect(inboxSelectionFromHash('#/activity?item=inbox-1')).toBeNull();
+    expect(inboxSelectionFromHash('#/inbox?item=inbox-1&extra=1')).toBeNull();
+    expect(inboxSelectionFromHash(`#/inbox?item=${'a'.repeat(257)}`)).toBeNull();
+    expect(() => inboxRouteHash('a'.repeat(257))).toThrow(/too long/i);
+  });
+
   it('rejects provider detail outside the providers route or size bound', () => {
     expect(providerSelectionFromHash('#/settings?provider=codex')).toBeNull();
     expect(providerSelectionFromHash('#/providers?model=gpt-5')).toBeNull();
@@ -39,6 +55,10 @@ describe('routeFromHash', () => {
       route: 'providers',
       hash: '#/providers?provider=openai&model=gpt-5'
     });
+    expect(shellDestinationFromNative('inbox?item=inbox-1')).toEqual({
+      route: 'inbox',
+      hash: '#/inbox?item=inbox-1'
+    });
     expect(shellDestinationFromNative('chat?prompt=secret')).toBeNull();
     expect(shellDestinationFromNative('unknown')).toBeNull();
   });
@@ -47,6 +67,7 @@ describe('routeFromHash', () => {
     expect(ROUTES.map((r) => r.id)).toEqual([
       'overview',
       'insights',
+      'inbox',
       'database',
       'providers',
       'projects',

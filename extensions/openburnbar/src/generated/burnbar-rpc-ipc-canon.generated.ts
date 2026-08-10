@@ -812,6 +812,46 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.inbox.presentation.get",
+    "caseName": "inboxPresentationGet",
+    "domain": "inbox",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.inbox.presentation",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.inbox.presentation.list",
+    "caseName": "inboxPresentationList",
+    "domain": "inbox",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.inbox.presentation",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.inbox.presentation.mark_all_read",
+    "caseName": "inboxPresentationMarkAllRead",
+    "domain": "inbox",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.inbox.presentation.mark_all_read",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.inbox.presentation.mutate",
+    "caseName": "inboxPresentationMutate",
+    "domain": "inbox",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.inbox.presentation.mutate",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.inbox.reply",
     "caseName": "inboxReply",
     "domain": "inbox",

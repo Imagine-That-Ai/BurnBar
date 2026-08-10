@@ -120,6 +120,42 @@ import {
   mapComputerUsePanicHalt,
   decodeComputerUseInvokeResponse
 } from './tauriBridgePlatformDecoders.js';
+import {
+  decodeAIInboxConfig,
+  decodeAIInboxGetResponse,
+  decodeAIInboxListResponse,
+  decodeAIInboxMemoryExportResponse,
+  decodeAIInboxPlanAcceptResponse,
+  decodeAIInboxPlanGetResponse,
+  decodeAIInboxPlanGradeResponse,
+  decodeAIInboxPlansListResponse,
+  decodeAIInboxPlanUpdateStepResponse,
+  decodeAIInboxPresentationGetResponse,
+  decodeAIInboxPresentationListResponse,
+  decodeAIInboxPresentationMarkAllReadResponse,
+  decodeAIInboxPresentationMutationResponse,
+  decodeAIInboxReplyResponse,
+  decodeAIInboxRunNowResponse,
+  decodeAIInboxRunsResponse,
+  decodeAIInboxThreadGetResponse,
+  encodeAIInboxConfig,
+  encodeAIInboxGetRequest,
+  encodeAIInboxListRequest,
+  encodeAIInboxMemoryExportRequest,
+  encodeAIInboxPlanAcceptRequest,
+  encodeAIInboxPlanGetRequest,
+  encodeAIInboxPlanGradeRequest,
+  encodeAIInboxPlansListRequest,
+  encodeAIInboxPlanUpdateStepRequest,
+  encodeAIInboxPresentationGetRequest,
+  encodeAIInboxPresentationListRequest,
+  encodeAIInboxPresentationMarkAllReadRequest,
+  encodeAIInboxPresentationMutationRequest,
+  encodeAIInboxReplyRequest,
+  encodeAIInboxRunNowRequest,
+  encodeAIInboxRunsRequest,
+  encodeAIInboxThreadGetRequest
+} from './tauriBridgeInboxDecoders.js';
 
 export * from './tauriBridgeTypes.js';
 export {
@@ -159,6 +195,27 @@ export {
   decodePetAtlasResponse,
   defaultNotificationConfig
 } from './tauriBridgePlatformDecoders.js';
+export {
+  decodeAIInboxConfig,
+  decodeAIInboxGetResponse,
+  decodeAIInboxListResponse,
+  decodeAIInboxMemoryExportResponse,
+  decodeAIInboxPlanAcceptResponse,
+  decodeAIInboxPlanGetResponse,
+  decodeAIInboxPlanGradeResponse,
+  decodeAIInboxPlansListResponse,
+  decodeAIInboxPlanUpdateStepResponse,
+  decodeAIInboxPresentationGetResponse,
+  decodeAIInboxPresentationListResponse,
+  decodeAIInboxPresentationMarkAllReadResponse,
+  decodeAIInboxPresentationMutationResponse,
+  decodeAIInboxReplyResponse,
+  decodeAIInboxRunNowResponse,
+  decodeAIInboxRunsResponse,
+  decodeAIInboxThreadGetResponse,
+  decodeSwiftDate,
+  encodeSwiftDate
+} from './tauriBridgeInboxDecoders.js';
 
 
 export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
@@ -272,6 +329,112 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       assertAppendEcho(request, result);
       return result;
     },
+    // AI Inbox / Founder Lens — exact Swift Codable fields, normalized only at
+    // the renderer boundary. The daemon remains the sole persistence/policy owner.
+    inboxList: async (request = {}) =>
+      decodeAIInboxListResponse(
+        await invoke<RawJsonValue>('inbox_list', {
+          request: encodeAIInboxListRequest(request)
+        })
+      ),
+    inboxGet: async (id) =>
+      decodeAIInboxGetResponse(
+        await invoke<RawJsonValue>('inbox_get', {
+          request: encodeAIInboxGetRequest(id)
+        })
+      ),
+    inboxPresentationList: async (request = {}) =>
+      decodeAIInboxPresentationListResponse(
+        await invoke<RawJsonValue>('inbox_presentation_list', {
+          request: encodeAIInboxPresentationListRequest(request)
+        })
+      ),
+    inboxPresentationGet: async (id) =>
+      decodeAIInboxPresentationGetResponse(
+        await invoke<RawJsonValue>('inbox_presentation_get', {
+          request: encodeAIInboxPresentationGetRequest(id)
+        })
+      ),
+    inboxPresentationMutate: async (request) =>
+      decodeAIInboxPresentationMutationResponse(
+        await invoke<RawJsonValue>('inbox_presentation_mutate', {
+          request: encodeAIInboxPresentationMutationRequest(request)
+        })
+      ),
+    inboxPresentationMarkAllRead: async () =>
+      decodeAIInboxPresentationMarkAllReadResponse(
+        await invoke<RawJsonValue>('inbox_presentation_mark_all_read', {
+          request: encodeAIInboxPresentationMarkAllReadRequest()
+        })
+      ),
+    inboxRunsRecent: async (limit = 20) =>
+      decodeAIInboxRunsResponse(
+        await invoke<RawJsonValue>('inbox_runs_recent', {
+          request: encodeAIInboxRunsRequest(limit)
+        })
+      ),
+    inboxConfigGet: async () =>
+      decodeAIInboxConfig(await invoke<RawJsonValue>('inbox_config_get')),
+    inboxConfigUpdate: async (config) =>
+      decodeAIInboxConfig(
+        await invoke<RawJsonValue>('inbox_config_update', {
+          config: encodeAIInboxConfig(config)
+        })
+      ),
+    inboxRunNow: async (force = false) =>
+      decodeAIInboxRunNowResponse(
+        await invoke<RawJsonValue>('inbox_run_now', {
+          request: encodeAIInboxRunNowRequest(force)
+        })
+      ),
+    inboxThreadGet: async (fingerprint) =>
+      decodeAIInboxThreadGetResponse(
+        await invoke<RawJsonValue>('inbox_thread_get', {
+          request: encodeAIInboxThreadGetRequest(fingerprint)
+        })
+      ),
+    inboxReply: async (request) =>
+      decodeAIInboxReplyResponse(
+        await invoke<RawJsonValue>('inbox_reply', {
+          request: encodeAIInboxReplyRequest(request)
+        })
+      ),
+    inboxPlansList: async (request = {}) =>
+      decodeAIInboxPlansListResponse(
+        await invoke<RawJsonValue>('inbox_plans_list', {
+          request: encodeAIInboxPlansListRequest(request)
+        })
+      ),
+    inboxPlansGet: async (id) =>
+      decodeAIInboxPlanGetResponse(
+        await invoke<RawJsonValue>('inbox_plans_get', {
+          request: encodeAIInboxPlanGetRequest(id)
+        })
+      ),
+    inboxPlansAccept: async (request) =>
+      decodeAIInboxPlanAcceptResponse(
+        await invoke<RawJsonValue>('inbox_plans_accept', {
+          request: encodeAIInboxPlanAcceptRequest(request)
+        })
+      ),
+    inboxPlansUpdateStep: async (request) =>
+      decodeAIInboxPlanUpdateStepResponse(
+        await invoke<RawJsonValue>('inbox_plans_update_step', {
+          request: encodeAIInboxPlanUpdateStepRequest(request)
+        })
+      ),
+    inboxPlansGrade: async (request) =>
+      decodeAIInboxPlanGradeResponse(
+        await invoke<RawJsonValue>('inbox_plans_grade', {
+          request: encodeAIInboxPlanGradeRequest(request)
+        })
+      ),
+    inboxMemoryExport: async (request) =>
+      decodeAIInboxMemoryExportResponse(
+        await invoke<RawJsonValue>('inbox_memory_export', {
+          request: encodeAIInboxMemoryExportRequest(request)
+        })
+      ),
     // P05 — daemon.usage.recent → insights aggregation
     usageInsights: async () => {
       const raw = await invoke<RawJsonValue>('usage_insights');
@@ -702,6 +865,7 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       return mapMembershipPortalUrl(raw);
     },
     openExternalUrl: (url) => invoke<void>('open_external_url', { url }),
+    openInboxExternalUrl: (url) => invoke<void>('open_inbox_external_url', { url }),
     openUpdateUrl: (url) => invoke<void>('open_update_url', { url }),
     // P10 — daemon-side restore hook; callers re-fetch status afterwards.
     membershipRestore: async () => {

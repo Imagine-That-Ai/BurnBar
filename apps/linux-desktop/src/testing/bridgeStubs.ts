@@ -13,6 +13,32 @@ import type {
   ChatAttachmentUploadResult,
   ChatThreadGetResult,
   ChatThreadListResult,
+  AIInboxConfig,
+  AIInboxGetResponse,
+  AIInboxListRequest,
+  AIInboxListResponse,
+  AIInboxMemoryExportRequest,
+  AIInboxMemoryExportResponse,
+  AIInboxPlanAcceptRequest,
+  AIInboxPlanAcceptResponse,
+  AIInboxPlanGetResponse,
+  AIInboxPlanGradeRequest,
+  AIInboxPlanGradeResponse,
+  AIInboxPlansListRequest,
+  AIInboxPlansListResponse,
+  AIInboxPlanUpdateStepRequest,
+  AIInboxPlanUpdateStepResponse,
+  AIInboxPresentationGetResponse,
+  AIInboxPresentationListRequest,
+  AIInboxPresentationListResponse,
+  AIInboxPresentationMarkAllReadResponse,
+  AIInboxPresentationMutationRequest,
+  AIInboxPresentationMutationResponse,
+  AIInboxReplyRequest,
+  AIInboxReplyResponse,
+  AIInboxRunNowResponse,
+  AIInboxRunsResponse,
+  AIInboxThreadGetResponse,
   ComputerUsePanicHaltResult,
   ComputerUseInvokeRequest,
   ComputerUseInvokeResponse,
@@ -225,6 +251,100 @@ export const emptyChatMessageAppend = (
   inserted: true
 });
 
+export const emptyAIInboxList = (
+  _request?: AIInboxListRequest
+): Promise<AIInboxListResponse> => Promise.resolve({ items: [], openCount: 0 });
+
+export const emptyAIInboxGet = (_id: string): Promise<AIInboxGetResponse> =>
+  Promise.resolve({});
+
+export const emptyAIInboxPresentationList = (
+  _request?: AIInboxPresentationListRequest
+): Promise<AIInboxPresentationListResponse> =>
+  Promise.resolve({ rows: [], openCount: 0, activeUnreadCount: 0 });
+
+export const emptyAIInboxPresentationGet = (
+  _id: string
+): Promise<AIInboxPresentationGetResponse> => Promise.resolve({});
+
+export const emptyAIInboxPresentationMutate = (
+  _request: AIInboxPresentationMutationRequest
+): Promise<AIInboxPresentationMutationResponse> =>
+  Promise.reject(new Error('AI Inbox presentation mutations are unavailable in the test shell.'));
+
+export const emptyAIInboxPresentationMarkAllRead = (
+): Promise<AIInboxPresentationMarkAllReadResponse> =>
+  Promise.resolve({
+    updatedCount: 0,
+    readAt: new Date(0).toISOString(),
+    activeUnreadCount: 0
+  });
+
+export const emptyAIInboxRunsRecent = (_limit?: number): Promise<AIInboxRunsResponse> =>
+  Promise.resolve({ runs: [], todaySpendUSD: 0, dailyBudgetUSD: 0 });
+
+export const defaultAIInboxConfig = (): AIInboxConfig => ({
+  enabled: false,
+  egressMode: 'off',
+  tickSeconds: 300,
+  remotePhaseEveryNTicks: 3,
+  dailyBudgetUSD: 1.5,
+  maxVerifierCallsPerTick: 3,
+  perTickPromptTokenCap: 60_000,
+  analystProviderID: 'deepseek',
+  analystModel: 'deepseek-v4-flash',
+  verifierProviderID: 'openai',
+  verifierModel: 'gpt-5.6-luna',
+  githubEnabled: true,
+  notifyOnP1: true,
+  lookbackMinutes: 120,
+  founderLensEnabled: true,
+  perReplyBudgetUSD: 0.1,
+  maxThreadTurns: 40,
+  budgetCountsSubscriptionSpend: false
+});
+
+export const emptyAIInboxConfigGet = (): Promise<AIInboxConfig> =>
+  Promise.resolve(defaultAIInboxConfig());
+
+export const emptyAIInboxConfigUpdate = (config: AIInboxConfig): Promise<AIInboxConfig> =>
+  Promise.resolve(config);
+
+export const emptyAIInboxRunNow = (_force?: boolean): Promise<AIInboxRunNowResponse> =>
+  Promise.resolve({ accepted: false, reason: 'The AI Inbox is unavailable in the test shell.' });
+
+export const emptyAIInboxThreadGet = (_fingerprint: string): Promise<AIInboxThreadGetResponse> =>
+  Promise.resolve({});
+
+export const emptyAIInboxReply = (_request: AIInboxReplyRequest): Promise<AIInboxReplyResponse> =>
+  Promise.resolve({ refusalReason: 'Founder Lens replies are unavailable in the test shell.' });
+
+export const emptyAIInboxPlansList = (
+  _request?: AIInboxPlansListRequest
+): Promise<AIInboxPlansListResponse> => Promise.resolve({ plans: [] });
+
+export const emptyAIInboxPlansGet = (_id: string): Promise<AIInboxPlanGetResponse> =>
+  Promise.resolve({});
+
+const unavailableAIInboxMutation = <T>(): Promise<T> =>
+  Promise.reject(new Error('AI Inbox mutations are unavailable in the test shell.'));
+
+export const emptyAIInboxPlansAccept = (
+  _request: AIInboxPlanAcceptRequest
+): Promise<AIInboxPlanAcceptResponse> => unavailableAIInboxMutation();
+
+export const emptyAIInboxPlansUpdateStep = (
+  _request: AIInboxPlanUpdateStepRequest
+): Promise<AIInboxPlanUpdateStepResponse> => unavailableAIInboxMutation();
+
+export const emptyAIInboxPlansGrade = (
+  _request: AIInboxPlanGradeRequest
+): Promise<AIInboxPlanGradeResponse> => unavailableAIInboxMutation();
+
+export const emptyAIInboxMemoryExport = (
+  _request: AIInboxMemoryExportRequest
+): Promise<AIInboxMemoryExportResponse> => Promise.resolve({ stored: 0 });
+
 export const emptyComputerUsePanicHalt = (): Promise<ComputerUsePanicHaltResult> =>
   Promise.resolve({
     sessionId: '*',
@@ -361,6 +481,24 @@ export const bridgeStubDefaults = {
   chatThreadList: emptyChatThreadList,
   chatThreadGet: emptyChatThreadGet,
   chatMessageAppend: emptyChatMessageAppend,
+  inboxList: emptyAIInboxList,
+  inboxGet: emptyAIInboxGet,
+  inboxPresentationList: emptyAIInboxPresentationList,
+  inboxPresentationGet: emptyAIInboxPresentationGet,
+  inboxPresentationMutate: emptyAIInboxPresentationMutate,
+  inboxPresentationMarkAllRead: emptyAIInboxPresentationMarkAllRead,
+  inboxRunsRecent: emptyAIInboxRunsRecent,
+  inboxConfigGet: emptyAIInboxConfigGet,
+  inboxConfigUpdate: emptyAIInboxConfigUpdate,
+  inboxRunNow: emptyAIInboxRunNow,
+  inboxThreadGet: emptyAIInboxThreadGet,
+  inboxReply: emptyAIInboxReply,
+  inboxPlansList: emptyAIInboxPlansList,
+  inboxPlansGet: emptyAIInboxPlansGet,
+  inboxPlansAccept: emptyAIInboxPlansAccept,
+  inboxPlansUpdateStep: emptyAIInboxPlansUpdateStep,
+  inboxPlansGrade: emptyAIInboxPlansGrade,
+  inboxMemoryExport: emptyAIInboxMemoryExport,
   mediaStatus: emptyMediaStatus,
   mediaSessionState: emptyMediaSessionState,
   mediaAcceptCall: emptyMediaAction,

@@ -9,6 +9,7 @@ export type TopTabMeta = {
 };
 
 export const TOP_TAB_META: TopTabMeta[] = [
+  { route: 'inbox', tabLabel: 'Inbox', subtitle: 'What needs you right now' },
   { route: 'chat', tabLabel: 'Chat', subtitle: 'Full-canvas chat' },
   { route: 'providers', tabLabel: 'Quota', subtitle: 'Subscriptions & limits' },
   { route: 'database', tabLabel: 'Database', subtitle: 'Browse tracked sessions' },

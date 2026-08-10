@@ -3,6 +3,7 @@ import type { RuntimeCapabilityID } from './runtimeCapabilities.js';
 export type ShellRoute =
   | 'overview'
   | 'insights'
+  | 'inbox'
   | 'database'
   | 'providers'
   | 'projects'
@@ -32,6 +33,7 @@ export type RouteMeta = {
 export const ROUTES: RouteMeta[] = [
   { id: 'overview', label: 'Overview', group: 'dashboard', description: 'Local peer health and recent activity.', requiredCapability: 'usage.read' },
   { id: 'insights', label: 'Insights', group: 'dashboard', description: 'Usage and investigation surfaces backed by the daemon when available.', requiredCapability: 'usage.read' },
+  { id: 'inbox', label: 'Inbox', group: 'dashboard', description: 'Prioritized findings, Founder Lens replies, and accepted plans.', requiredCapability: 'sessions.read' },
   { id: 'database', label: 'Database', group: 'dashboard', description: 'Encrypted local store status and migration health.', requiredCapability: 'database.read' },
   { id: 'providers', label: 'Providers & models', group: 'dashboard', description: 'Provider credentials, routing, and model catalog.', requiredCapability: 'providers.configure' },
   { id: 'projects', label: 'Projects', group: 'dashboard', description: 'Workspace projects and code memory scope.', requiredCapability: 'projects.read' },
@@ -54,6 +56,10 @@ export const ROUTES: RouteMeta[] = [
 export type ProviderRouteSelection = {
   providerID: string;
   modelID: string | null;
+};
+
+export type InboxRouteSelection = {
+  itemID: string;
 };
 
 export type ShellDestination = {
@@ -88,8 +94,9 @@ export function shellDestinationFromNative(value: string): ShellDestination | nu
   const route = ROUTES.find((entry) => entry.id === routeName)?.id;
   if (!route) return null;
   if (!candidate.includes('?')) return { route, hash };
-  if (route !== 'providers' || providerSelectionFromHash(hash) === null) return null;
-  return { route, hash };
+  if (route === 'providers' && providerSelectionFromHash(hash) !== null) return { route, hash };
+  if (route === 'inbox' && inboxSelectionFromHash(hash) !== null) return { route, hash };
+  return null;
 }
 
 /** Read the bounded provider/model detail encoded in a reload-safe shell hash. */
@@ -110,4 +117,26 @@ export function providerRouteHash(providerID: string, modelID?: string | null): 
   const params = new URLSearchParams({ provider: providerID });
   if (modelID) params.set('model', modelID);
   return `#/providers?${params.toString()}`;
+}
+
+/** Read the bounded AI Inbox item detail encoded in a reload-safe shell hash. */
+export function inboxSelectionFromHash(hash: string): InboxRouteSelection | null {
+  const decoded = decodedHashPath(hash);
+  const queryIndex = decoded.indexOf('?');
+  if (queryIndex < 0 || decoded.slice(0, queryIndex) !== 'inbox') return null;
+  const params = new URLSearchParams(decoded.slice(queryIndex + 1));
+  if (Array.from(params.keys()).some((key) => key !== 'item')) return null;
+  const itemID = params.get('item')?.trim() ?? '';
+  if (!itemID || itemID.length > ROUTE_DETAIL_MAX_LENGTH) return null;
+  return { itemID };
+}
+
+/** Serialize an AI Inbox detail destination without allowing it to escape the hash route. */
+export function inboxRouteHash(itemID?: string | null): string {
+  const normalized = itemID?.trim() ?? '';
+  if (!normalized) return '#/inbox';
+  if (normalized.length > ROUTE_DETAIL_MAX_LENGTH) {
+    throw new Error('Inbox item id is too long.');
+  }
+  return `#/inbox?${new URLSearchParams({ item: normalized }).toString()}`;
 }

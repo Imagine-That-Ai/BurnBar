@@ -221,6 +221,10 @@ enum BurnBarDaemonSocketRPCCoverage {
     static let inbox: Set<BurnBarRPCMethod> = [
         .inboxList,
         .inboxGet,
+        .inboxPresentationList,
+        .inboxPresentationGet,
+        .inboxPresentationMutate,
+        .inboxPresentationMarkAllRead,
         .inboxRunsRecent,
         .inboxConfigGet,
         .inboxConfigUpdate,

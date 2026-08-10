@@ -179,6 +179,26 @@ actor BurnBarAIInboxService {
         try store.item(id: id)
     }
 
+    func presentationList(
+        _ request: BurnBarInboxPresentationListRequest
+    ) throws -> BurnBarInboxPresentationListResponse {
+        try store.presentationList(request, now: clock())
+    }
+
+    func presentationRow(id: String) throws -> BurnBarInboxPresentationRow? {
+        try store.presentationRow(id: id)
+    }
+
+    func mutatePresentationState(
+        _ request: BurnBarInboxPresentationMutationRequest
+    ) throws -> BurnBarInboxPresentationMutationResponse {
+        try store.mutatePresentationState(request, now: clock())
+    }
+
+    func markAllOpenPresentationItemsRead() throws -> BurnBarInboxPresentationMarkAllReadResponse {
+        try store.markAllOpenPresentationItemsRead(now: clock())
+    }
+
     // MARK: - Founder Lens: threads + replies
 
     func thread(fingerprint: String) throws -> BurnBarInboxThread? {

@@ -162,6 +162,10 @@ final class BurnBarRPCContractsTests: XCTestCase {
         // AI Inbox — daemon-resident proactive analyst (see BurnBarRPCContracts).
         .inboxList: "daemon.inbox.list",
         .inboxGet: "daemon.inbox.get",
+        .inboxPresentationList: "daemon.inbox.presentation.list",
+        .inboxPresentationGet: "daemon.inbox.presentation.get",
+        .inboxPresentationMutate: "daemon.inbox.presentation.mutate",
+        .inboxPresentationMarkAllRead: "daemon.inbox.presentation.mark_all_read",
         .inboxRunsRecent: "daemon.inbox.runs.recent",
         .inboxConfigGet: "daemon.inbox.config.get",
         .inboxConfigUpdate: "daemon.inbox.config.update",

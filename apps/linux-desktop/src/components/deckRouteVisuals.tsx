@@ -4,6 +4,7 @@ import { PROVIDER_GLYPHS } from '../providerGlyphs.js';
 const ROUTE_PROVIDER: Partial<Record<ShellRoute, string>> = {
   overview: 'codex',
   insights: 'anthropic',
+  inbox: 'codex',
   database: 'hermes',
   providers: 'openai',
   projects: 'cursor',
@@ -25,6 +26,15 @@ function providerAccent(route: ShellRoute): string {
 export function DeckRouteIcon({ route }: { route: ShellRoute }) {
   const accent = providerAccent(route);
   switch (route) {
+    case 'inbox':
+      return (
+        <svg className="deck-route-icon" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M2.5 3.2h11l1 5.2v4.1A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5V8.4l1-5.2Zm1.2 1.4-.6 3.1h2.5l.7 1.4h3.4l.7-1.4h2.5l-.6-3.1H3.7Z"
+          />
+        </svg>
+      );
     case 'database':
       return (
         <svg className="deck-route-icon" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">

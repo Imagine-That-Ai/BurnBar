@@ -7,10 +7,11 @@ import {
 } from './settingsTabs.js';
 
 describe('Linux settings inventory', () => {
-  it('exposes the complete 16-destination settings inventory', () => {
-    expect(SETTINGS_TABS).toHaveLength(16);
+  it('exposes the complete 17-destination settings inventory', () => {
+    expect(SETTINGS_TABS).toHaveLength(17);
     expect(SETTINGS_TABS.map((tab) => tab.id)).toEqual(expect.arrayContaining([
       'model-proxy',
+      'ai-inbox',
       'computer-use',
       'pets'
     ]));
@@ -27,7 +28,7 @@ describe('Linux settings inventory', () => {
 
   it('keeps section order aligned with the macOS settings oracle', () => {
     expect(SETTINGS_SECTIONS).toEqual([
-      { id: 'agents-and-models', title: 'Agents & Models', tabIds: ['agents', 'model-proxy'] },
+      { id: 'agents-and-models', title: 'Agents & Models', tabIds: ['agents', 'model-proxy', 'ai-inbox'] },
       { id: 'look-and-feel', title: 'Look & Feel', tabIds: ['general'] },
       {
         id: 'account-and-sync',

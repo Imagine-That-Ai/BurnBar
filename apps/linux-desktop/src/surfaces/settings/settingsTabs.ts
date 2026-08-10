@@ -7,6 +7,7 @@ export type SettingsTabId =
   | 'cloud'
   | 'agents'
   | 'model-proxy'
+  | 'ai-inbox'
   | 'alerts'
   | 'notifications'
   | 'devices-and-sync'
@@ -109,6 +110,15 @@ export const SETTINGS_TABS: SettingsTabMeta[] = [
     detailTitle: 'Model Proxy'
   },
   {
+    id: 'ai-inbox',
+    title: 'AI Inbox',
+    subtitle: 'Founder Lens, privacy, cadence, and spend',
+    iconGlyph: '▤',
+    iconTint: 'var(--color-ember-core)',
+    section: 'agents-and-models',
+    detailTitle: 'AI Inbox'
+  },
+  {
     id: 'alerts',
     title: 'Alerts',
     subtitle: 'Spend thresholds and daily digest',
@@ -183,7 +193,7 @@ export const SETTINGS_TABS: SettingsTabMeta[] = [
 ];
 
 export const SETTINGS_SECTIONS: { id: SettingsSectionId; title: string; tabIds: SettingsTabId[] }[] = [
-  { id: 'agents-and-models', title: 'Agents & Models', tabIds: ['agents', 'model-proxy'] },
+  { id: 'agents-and-models', title: 'Agents & Models', tabIds: ['agents', 'model-proxy', 'ai-inbox'] },
   { id: 'look-and-feel', title: 'Look & Feel', tabIds: ['general'] },
   {
     id: 'account-and-sync',

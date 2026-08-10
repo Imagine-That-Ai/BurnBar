@@ -21,10 +21,11 @@ describe('DeckSectionSwitcher keyboard accessibility', () => {
     fireEvent.click(trigger);
 
     const options = screen.getAllByRole('option');
-    expect(document.activeElement).toBe(options[0]);
-    expect(options[0].getAttribute('aria-selected')).toBe('true');
-    expect(options[0].tabIndex).toBe(0);
-    expect(options.slice(1).every((option) => option.tabIndex === -1)).toBe(true);
+    const selected = options.find((option) => option.getAttribute('aria-selected') === 'true');
+    expect(selected).toBeTruthy();
+    expect(document.activeElement).toBe(selected);
+    expect(selected?.tabIndex).toBe(0);
+    expect(options.filter((option) => option.tabIndex === 0)).toEqual([selected]);
   });
 
   it('supports roving Arrow/Home/End navigation and activates with Enter or Space', () => {
@@ -32,10 +33,13 @@ describe('DeckSectionSwitcher keyboard accessibility', () => {
     const trigger = screen.getByRole('button', { name: /chat \/ hermes/i });
     fireEvent.click(trigger);
     const options = screen.getAllByRole('option');
+    const selectedIndex = options.findIndex((option) => option.getAttribute('aria-selected') === 'true');
+    const selected = options[selectedIndex];
+    const next = options[(selectedIndex + 1) % options.length];
 
-    fireEvent.keyDown(options[0], { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(options[1]);
-    fireEvent.keyDown(options[1], { key: 'End' });
+    fireEvent.keyDown(selected, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(next);
+    fireEvent.keyDown(next, { key: 'End' });
     expect(document.activeElement).toBe(options.at(-1));
     fireEvent.keyDown(options.at(-1)!, { key: 'Home' });
     expect(document.activeElement).toBe(options[0]);
@@ -53,9 +57,11 @@ describe('DeckSectionSwitcher keyboard accessibility', () => {
     const trigger = screen.getByRole('button', { name: /chat \/ hermes/i });
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
     const options = screen.getAllByRole('option');
+    const selected = options.find((option) => option.getAttribute('aria-selected') === 'true');
 
-    expect(document.activeElement).toBe(options[0]);
-    fireEvent.keyDown(options[0], { key: 'Escape' });
+    expect(selected).toBeTruthy();
+    expect(document.activeElement).toBe(selected);
+    fireEvent.keyDown(selected!, { key: 'Escape' });
 
     expect(screen.queryByRole('option')).toBeNull();
     expect(document.activeElement).toBe(trigger);

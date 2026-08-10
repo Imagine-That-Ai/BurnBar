@@ -73,6 +73,35 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertFalse(profile.permits(.codeIndexProject))
     }
 
+    func test_inboxPresentationReadsAndWritesAreAttenuatedSeparately() {
+        XCTAssertEqual(
+            BurnBarRPCCapability.capability(for: .inboxPresentationList),
+            .observability
+        )
+        XCTAssertEqual(
+            BurnBarRPCCapability.capability(for: .inboxPresentationGet),
+            .observability
+        )
+        XCTAssertEqual(
+            BurnBarRPCCapability.capability(for: .inboxPresentationMutate),
+            .config
+        )
+        XCTAssertEqual(
+            BurnBarRPCCapability.capability(for: .inboxPresentationMarkAllRead),
+            .config
+        )
+
+        XCTAssertTrue(BurnBarPeerCapabilityProfile.readOnly.permits(.inboxPresentationList))
+        XCTAssertTrue(BurnBarPeerCapabilityProfile.readOnly.permits(.inboxPresentationGet))
+        XCTAssertFalse(BurnBarPeerCapabilityProfile.readOnly.permits(.inboxPresentationMutate))
+        XCTAssertFalse(BurnBarPeerCapabilityProfile.readOnly.permits(.inboxPresentationMarkAllRead))
+
+        XCTAssertTrue(BurnBarPeerCapabilityProfile.runClient.permits(.inboxPresentationList))
+        XCTAssertTrue(BurnBarPeerCapabilityProfile.runClient.permits(.inboxPresentationGet))
+        XCTAssertFalse(BurnBarPeerCapabilityProfile.runClient.permits(.inboxPresentationMutate))
+        XCTAssertFalse(BurnBarPeerCapabilityProfile.runClient.permits(.inboxPresentationMarkAllRead))
+    }
+
     func test_runClientProfileIsDeniedComputerUseAndConfig() {
         let profile = BurnBarPeerCapabilityProfile.runClient
         XCTAssertTrue(profile.permits(.runCreate))

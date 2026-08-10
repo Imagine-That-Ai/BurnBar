@@ -1548,7 +1548,10 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .inboxList, .inboxGet, .inboxRunsRecent,
+            case .inboxList, .inboxGet,
+                 .inboxPresentationList, .inboxPresentationGet,
+                 .inboxPresentationMutate, .inboxPresentationMarkAllRead,
+                 .inboxRunsRecent,
                  .inboxConfigGet, .inboxConfigUpdate, .inboxRunNow,
                  .inboxThreadGet, .inboxReply,
                  .inboxPlansList, .inboxPlansGet, .inboxPlansAccept,

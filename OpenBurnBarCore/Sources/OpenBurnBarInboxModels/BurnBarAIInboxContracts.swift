@@ -398,6 +398,231 @@ public struct BurnBarInboxGetResponse: Codable, Hashable, Sendable {
     public init(item: BurnBarInboxItemDetail?) { self.item = item }
 }
 
+// MARK: - Cross-platform presentation state
+
+/// Human feedback accepted by the Inbox. Raw values are persisted and mirrored,
+/// so cases are append-only and unknown values must fail decoding.
+public enum BurnBarInboxFeedback: String, Codable, Hashable, CaseIterable, Sendable {
+    case useful
+    case notUseful = "not_useful"
+}
+
+/// Durable user-owned presentation state joined to a daemon-owned Inbox item.
+///
+/// This is intentionally separate from the item's lifecycle (`new`, `updated`,
+/// `resolved`, `expired`). Reading, archiving, snoozing, and feedback describe
+/// how a person is presenting the item, not whether the underlying condition is
+/// still true.
+public struct BurnBarInboxItemPresentationState: Codable, Hashable, Sendable {
+    public let readAt: Date?
+    public let archivedAt: Date?
+    public let snoozedUntil: Date?
+    public let feedback: BurnBarInboxFeedback?
+    public let updatedAt: Date?
+
+    public init(
+        readAt: Date? = nil,
+        archivedAt: Date? = nil,
+        snoozedUntil: Date? = nil,
+        feedback: BurnBarInboxFeedback? = nil,
+        updatedAt: Date? = nil
+    ) {
+        self.readAt = readAt
+        self.archivedAt = archivedAt
+        self.snoozedUntil = snoozedUntil
+        self.feedback = feedback
+        self.updatedAt = updatedAt
+    }
+}
+
+/// Full item content plus the current durable presentation state.
+///
+/// Reusing `BurnBarInboxItemDetail` keeps the Linux socket representation tied
+/// to the same item contract as macOS instead of creating a second item model.
+public struct BurnBarInboxPresentationRow: Codable, Hashable, Sendable, Identifiable {
+    public let item: BurnBarInboxItemDetail
+    public let presentation: BurnBarInboxItemPresentationState
+
+    public var id: String { item.id }
+    public var isUnread: Bool {
+        presentation.readAt == nil && item.summary.state.isOpen
+    }
+    public var isArchived: Bool {
+        presentation.archivedAt != nil
+    }
+
+    public init(
+        item: BurnBarInboxItemDetail,
+        presentation: BurnBarInboxItemPresentationState
+    ) {
+        self.item = item
+        self.presentation = presentation
+    }
+
+    public func isSnoozed(at date: Date = Date()) -> Bool {
+        guard let snoozedUntil = presentation.snoozedUntil else { return false }
+        return snoozedUntil > date
+    }
+}
+
+/// Typed list/filter contract for cross-platform Inbox presentation rows.
+///
+/// Optional booleans are tri-state filters:
+///   • `nil` — do not filter that dimension
+///   • `true` — only rows matching the state
+///   • `false` — only rows not matching the state
+public struct BurnBarInboxPresentationListRequest: Codable, Hashable, Sendable {
+    public static let defaultLimit = 200
+    public static let maxLimit = 300
+
+    public let states: [BurnBarInboxItemState]?
+    public let kinds: [BurnBarInboxItemKind]?
+    public let priorities: [BurnBarInboxPriority]?
+    public let projectID: String?
+    public let isUnread: Bool?
+    public let isArchived: Bool?
+    public let isSnoozed: Bool?
+    public let feedback: BurnBarInboxFeedback?
+    public let limit: Int
+    /// Keyset cursor: return rows whose item `lastSeenAt` is strictly earlier.
+    public let before: Date?
+
+    public init(
+        states: [BurnBarInboxItemState]? = BurnBarInboxItemState.openStates,
+        kinds: [BurnBarInboxItemKind]? = nil,
+        priorities: [BurnBarInboxPriority]? = nil,
+        projectID: String? = nil,
+        isUnread: Bool? = nil,
+        isArchived: Bool? = nil,
+        isSnoozed: Bool? = nil,
+        feedback: BurnBarInboxFeedback? = nil,
+        limit: Int = BurnBarInboxPresentationListRequest.defaultLimit,
+        before: Date? = nil
+    ) {
+        self.states = states
+        self.kinds = kinds
+        self.priorities = priorities
+        self.projectID = projectID
+        self.isUnread = isUnread
+        self.isArchived = isArchived
+        self.isSnoozed = isSnoozed
+        self.feedback = feedback
+        self.limit = min(max(1, limit), Self.maxLimit)
+        self.before = before
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedStates: [BurnBarInboxItemState]? = if container.contains(.states) {
+            try container.decodeIfPresent([BurnBarInboxItemState].self, forKey: .states)
+        } else {
+            BurnBarInboxItemState.openStates
+        }
+        self.init(
+            states: decodedStates,
+            kinds: try container.decodeIfPresent([BurnBarInboxItemKind].self, forKey: .kinds),
+            priorities: try container.decodeIfPresent([BurnBarInboxPriority].self, forKey: .priorities),
+            projectID: try container.decodeIfPresent(String.self, forKey: .projectID),
+            isUnread: try container.decodeIfPresent(Bool.self, forKey: .isUnread),
+            isArchived: try container.decodeIfPresent(Bool.self, forKey: .isArchived),
+            isSnoozed: try container.decodeIfPresent(Bool.self, forKey: .isSnoozed),
+            feedback: try container.decodeIfPresent(BurnBarInboxFeedback.self, forKey: .feedback),
+            limit: try container.decodeIfPresent(Int.self, forKey: .limit) ?? Self.defaultLimit,
+            before: try container.decodeIfPresent(Date.self, forKey: .before)
+        )
+    }
+}
+
+public struct BurnBarInboxPresentationListResponse: Codable, Hashable, Sendable {
+    public let rows: [BurnBarInboxPresentationRow]
+    public let nextBefore: Date?
+    /// All lifecycle-open items, including rows hidden by archive or snooze.
+    public let openCount: Int
+    /// Badge truth: lifecycle-open, unread, unarchived, and not actively snoozed.
+    public let activeUnreadCount: Int
+
+    public init(
+        rows: [BurnBarInboxPresentationRow],
+        nextBefore: Date? = nil,
+        openCount: Int = 0,
+        activeUnreadCount: Int = 0
+    ) {
+        self.rows = rows
+        self.nextBefore = nextBefore
+        self.openCount = openCount
+        self.activeUnreadCount = activeUnreadCount
+    }
+}
+
+public struct BurnBarInboxPresentationGetRequest: Codable, Hashable, Sendable {
+    public let id: String
+    public init(id: String) { self.id = id }
+}
+
+public struct BurnBarInboxPresentationGetResponse: Codable, Hashable, Sendable {
+    public let row: BurnBarInboxPresentationRow?
+    public init(row: BurnBarInboxPresentationRow?) { self.row = row }
+}
+
+/// Closed set of human-invoked presentation mutations.
+///
+/// The request deliberately carries no column names or general key/value map:
+/// every permitted write is represented here and applied transactionally by the
+/// daemon.
+public enum BurnBarInboxPresentationMutationAction: String, Codable, Hashable, CaseIterable, Sendable {
+    case markRead = "mark_read"
+    case markUnread = "mark_unread"
+    case archive
+    case unarchive
+    case snooze
+    case clearSnooze = "clear_snooze"
+    case setFeedback = "set_feedback"
+    case clearFeedback = "clear_feedback"
+}
+
+public struct BurnBarInboxPresentationMutationRequest: Codable, Hashable, Sendable {
+    public let itemID: String
+    public let action: BurnBarInboxPresentationMutationAction
+    /// Required only for `snooze`.
+    public let snoozedUntil: Date?
+    /// Required only for `setFeedback`.
+    public let feedback: BurnBarInboxFeedback?
+
+    public init(
+        itemID: String,
+        action: BurnBarInboxPresentationMutationAction,
+        snoozedUntil: Date? = nil,
+        feedback: BurnBarInboxFeedback? = nil
+    ) {
+        self.itemID = itemID
+        self.action = action
+        self.snoozedUntil = snoozedUntil
+        self.feedback = feedback
+    }
+}
+
+public struct BurnBarInboxPresentationMutationResponse: Codable, Hashable, Sendable {
+    /// Daemon truth after the transaction commits.
+    public let row: BurnBarInboxPresentationRow
+    public init(row: BurnBarInboxPresentationRow) { self.row = row }
+}
+
+public struct BurnBarInboxPresentationMarkAllReadRequest: Codable, Hashable, Sendable {
+    public init() {}
+}
+
+public struct BurnBarInboxPresentationMarkAllReadResponse: Codable, Hashable, Sendable {
+    public let updatedCount: Int
+    public let readAt: Date
+    public let activeUnreadCount: Int
+
+    public init(updatedCount: Int, readAt: Date, activeUnreadCount: Int) {
+        self.updatedCount = updatedCount
+        self.readAt = readAt
+        self.activeUnreadCount = activeUnreadCount
+    }
+}
+
 /// Per-tick telemetry. Every tick writes exactly one row — including skipped
 /// ticks — so the settings pane can prove the loop is alive and cheap.
 public struct BurnBarInboxRunTelemetry: Codable, Hashable, Sendable, Identifiable {

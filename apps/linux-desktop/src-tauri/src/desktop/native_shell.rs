@@ -20,6 +20,34 @@ fn validate_external_url(raw_url: &str) -> Result<String, String> {
     Ok(url.to_string())
 }
 
+fn validate_inbox_external_url(raw_url: &str) -> Result<String, String> {
+    if raw_url.len() > 4_096 {
+        return Err("inbox_url_too_long".to_string());
+    }
+    let url = reqwest::Url::parse(raw_url).map_err(|_| "inbox_url_invalid".to_string())?;
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || !matches!(url.port(), None | Some(443))
+    {
+        return Err("inbox_url_origin_refused".to_string());
+    }
+    let Some(host) = url.host_str() else {
+        return Err("inbox_url_host_refused".to_string());
+    };
+    if host.eq_ignore_ascii_case("localhost")
+        || host.ends_with(".localhost")
+        || host
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<std::net::IpAddr>()
+            .is_ok()
+    {
+        return Err("inbox_url_host_refused".to_string());
+    }
+    Ok(url.to_string())
+}
+
 fn validate_auth_url(raw_url: &str) -> Result<String, String> {
     if raw_url.len() > 4_096 {
         return Err("auth_url_too_long".to_string());
@@ -113,6 +141,16 @@ fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
     app.shell()
         .open(validated, None)
         .map_err(|_| "external_url_open_failed".to_string())
+}
+
+#[tauri::command]
+fn open_inbox_external_url(app: AppHandle, url: String) -> Result<(), String> {
+    let validated = validate_inbox_external_url(&url)?;
+    // reason: tauri-plugin-shell retains this Tauri 2 API while the app keeps URL validation native.
+    #[allow(deprecated)]
+    app.shell()
+        .open(validated, None)
+        .map_err(|_| "inbox_url_open_failed".to_string())
 }
 
 #[tauri::command]

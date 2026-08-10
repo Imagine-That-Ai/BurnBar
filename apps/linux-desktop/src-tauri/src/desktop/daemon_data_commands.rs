@@ -214,6 +214,104 @@ fn chat_message_append(request: serde_json::Value) -> Result<serde_json::Value, 
     call_daemon_method("daemon.chat.message.append", Some(request))
 }
 
+// ───────────── AI Inbox / Founder Lens daemon authority ─────────────
+//
+// These commands are intentionally thin. Swift owns validation, persistence,
+// egress, budget, and approval policy; the Linux shell preserves the canonical
+// Codable field names and forwards one typed renderer request object as the
+// daemon RPC `params` object.
+#[tauri::command]
+fn inbox_list(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.list", Some(request))
+}
+
+#[tauri::command]
+fn inbox_get(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.get", Some(request))
+}
+
+#[tauri::command]
+fn inbox_presentation_list(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.presentation.list", Some(request))
+}
+
+#[tauri::command]
+fn inbox_presentation_get(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.presentation.get", Some(request))
+}
+
+#[tauri::command]
+fn inbox_presentation_mutate(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.presentation.mutate", Some(request))
+}
+
+#[tauri::command]
+fn inbox_presentation_mark_all_read(
+    request: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.presentation.mark_all_read", Some(request))
+}
+
+#[tauri::command]
+fn inbox_runs_recent(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.runs.recent", Some(request))
+}
+
+#[tauri::command]
+fn inbox_config_get() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.config.get", None)
+}
+
+#[tauri::command]
+fn inbox_config_update(config: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.config.update", Some(config))
+}
+
+#[tauri::command]
+fn inbox_run_now(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.run_now", Some(request))
+}
+
+#[tauri::command]
+fn inbox_thread_get(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.thread.get", Some(request))
+}
+
+#[tauri::command]
+fn inbox_reply(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.reply", Some(request))
+}
+
+#[tauri::command]
+fn inbox_plans_list(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.plans.list", Some(request))
+}
+
+#[tauri::command]
+fn inbox_plans_get(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.plans.get", Some(request))
+}
+
+#[tauri::command]
+fn inbox_plans_accept(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.plans.accept", Some(request))
+}
+
+#[tauri::command]
+fn inbox_plans_update_step(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.plans.update_step", Some(request))
+}
+
+#[tauri::command]
+fn inbox_plans_grade(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.plans.grade", Some(request))
+}
+
+#[tauri::command]
+fn inbox_memory_export(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.memory.export", Some(request))
+}
+
 // ───────────────── P05: usage insights ─────────────────
 // Wire: daemon.usage.insights. The daemon owns the bounded digest and local
 // rules analysis; the renderer only receives the typed usage/analysis result.

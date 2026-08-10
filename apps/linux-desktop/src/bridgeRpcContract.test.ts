@@ -165,6 +165,38 @@ describe('VAL-RPC bridge contract', () => {
     }
   });
 
+  it('wires every AI Inbox and Founder Lens command to the canonical RPC canon', () => {
+    const inboxMethods = [
+      ['inbox_list', 'daemon.inbox.list'],
+      ['inbox_get', 'daemon.inbox.get'],
+      ['inbox_presentation_list', 'daemon.inbox.presentation.list'],
+      ['inbox_presentation_get', 'daemon.inbox.presentation.get'],
+      ['inbox_presentation_mutate', 'daemon.inbox.presentation.mutate'],
+      ['inbox_presentation_mark_all_read', 'daemon.inbox.presentation.mark_all_read'],
+      ['inbox_runs_recent', 'daemon.inbox.runs.recent'],
+      ['inbox_config_get', 'daemon.inbox.config.get'],
+      ['inbox_config_update', 'daemon.inbox.config.update'],
+      ['inbox_run_now', 'daemon.inbox.run_now'],
+      ['inbox_thread_get', 'daemon.inbox.thread.get'],
+      ['inbox_reply', 'daemon.inbox.reply'],
+      ['inbox_plans_list', 'daemon.inbox.plans.list'],
+      ['inbox_plans_get', 'daemon.inbox.plans.get'],
+      ['inbox_plans_accept', 'daemon.inbox.plans.accept'],
+      ['inbox_plans_update_step', 'daemon.inbox.plans.update_step'],
+      ['inbox_plans_grade', 'daemon.inbox.plans.grade'],
+      ['inbox_memory_export', 'daemon.inbox.memory.export']
+    ] as const;
+    const daemonCalls = new Set(daemonMethodCalls(rustBridge));
+    for (const [command, method] of inboxMethods) {
+      expect(rustBridge, `missing Rust command ${command}`).toContain(`fn ${command}(`);
+      expect(daemonCalls, `missing Rust daemon call ${method}`).toContain(method);
+      expect(tsBridge, `missing renderer invoke ${command}`).toContain(`'${command}'`);
+      expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(
+        `id: "${method}"`
+      );
+    }
+  });
+
   it('keeps SmartHub execution on the fixed Linux CLI allowlist', () => {
     expect(rustBridge).toContain('fn smarthub_command');
     for (const operation of ['discover', 'status', 'cast_status', 'homeassistant_status', 'parity']) {
