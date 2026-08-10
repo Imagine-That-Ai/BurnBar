@@ -562,9 +562,13 @@ enum InboxMetricInspector {
         guard let detail, let dollarIndex = detail.firstIndex(of: "$") else { return nil }
         var digits = ""
         for character in detail[detail.index(after: dollarIndex)...] {
-            if character.isNumber || character == "." { digits.append(character) }
-            else if character == "," { continue }
-            else { break }
+            if character.isNumber || character == "." {
+                digits.append(character)
+            } else if character == "," {
+                continue
+            } else {
+                break
+            }
         }
         return Double(digits)
     }

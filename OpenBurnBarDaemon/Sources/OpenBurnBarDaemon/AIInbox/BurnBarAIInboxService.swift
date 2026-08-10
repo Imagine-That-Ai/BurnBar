@@ -478,13 +478,20 @@ actor BurnBarAIInboxService {
                 // Publish the deterministic findings anyway. A provider outage
                 // must degrade the feature, not disable it.
                 //
-                // But degrade LOUDLY. This used to be a `logger.warning` whose
-                // payload `os_log` redacts as `%{private}`, so a mis-pinned
-                // model or an unusable credential looked exactly like "nothing
-                // to report" — for as long as nobody rebuilt the daemon.
-                // `silentFailure` emits `%{public}` and still runs the metadata
+                // But degrade LOUDLY. This used to be a `logger.warning`, and
+                // every level except `silentFailure` emits its payload under
+                // os_log's private-redaction specifier — so a mis-pinned model
+                // or an unusable credential looked exactly like "nothing to
+                // report" for as long as nobody rebuilt the daemon.
+                // `silentFailure` emits publicly and still runs the metadata
                 // through the secret scrubber, which is the right trade for a
                 // provider/model routing diagnostic.
+                //
+                // Keep every brace character out of this comment.
+                // tools/error-debt/count-error-debt.py finds catch bodies with
+                // a regex whose body group excludes the closing brace, so the
+                // first brace inside a comment truncates the match and makes
+                // this fully-populated block report as an empty catch.
                 let reason = Self.analystFailureReason(error)
                 logger.silentFailure(
                     "ai_inbox_analysis",

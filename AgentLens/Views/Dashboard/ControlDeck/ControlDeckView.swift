@@ -246,21 +246,22 @@ struct ControlDeckView: View {
                         layout.setSpan(kind, current >= ControlDeckLayout.maxSpan ? 1 : ControlDeckLayout.maxSpan)
                         persistLayout()
                     }
+                },
+                tile: { config in
+                    ControlTileView(
+                        config: config,
+                        settingsManager: settingsManager,
+                        operatingLayer: operatingLayer,
+                        daemonManager: daemonManager,
+                        accountManager: accountManager,
+                        model: model,
+                        todaySpend: todaySpend,
+                        onOpenSettings: onOpenSettings,
+                        onNavigate: onNavigate,
+                        onCastWand: onCastWand
+                    )
                 }
-            ) { config in
-                ControlTileView(
-                    config: config,
-                    settingsManager: settingsManager,
-                    operatingLayer: operatingLayer,
-                    daemonManager: daemonManager,
-                    accountManager: accountManager,
-                    model: model,
-                    todaySpend: todaySpend,
-                    onOpenSettings: onOpenSettings,
-                    onNavigate: onNavigate,
-                    onCastWand: onCastWand
-                )
-            }
+            )
         }
     }
 
