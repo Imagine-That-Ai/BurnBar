@@ -24,11 +24,12 @@ Source parity can be complete while a release is still `NO-GO`. A signed build
 is also not a release by itself. The release becomes `GO` only when every
 required evidence gate for that exact artifact is `PASS`.
 
-### Current merged-main checkpoint
+### Measured source-parity checkpoint
 
-This is the current automated checkpoint. It is not a signed-release claim:
+This is an automated source checkpoint for one exact commit. It is not a
+signed-release claim, and it is not by itself the current release candidate:
 
-- Exact `main` candidate: `8b07625eebe9db0bf0084e6a884becd6d8bcc72e`
+- Exact measured commit: `8b07625eebe9db0bf0084e6a884becd6d8bcc72e`
 - Merge source: PR #2203, independently approved and merged on 2026-08-10
 - Source parity: 51/51 `Real`, with zero substituted, deferred, blocked, or
   authored rows
@@ -46,10 +47,25 @@ This is the current automated checkpoint. It is not a signed-release claim:
 - Protected release tag: not created; `windows-v1.0.39` does not exist
 - Release verdict: `NO-GO`
 
-The six open external receipt groups are physical x64 performance, physical
-ARM64, accessibility/display, staging cloud, paired media/Computer Use safety,
-and Store/update lifecycle. Historical signed artifacts do not satisfy those
-gates for the current exact source.
+That commit is where those numbers were measured. It is not a standing claim
+about `origin/main`: this documentation change and every later commit land on
+top of it, so `main` moves past it. Step 1 requires `CANDIDATE_SHA` to equal
+`origin/main` and Step 2 requires each dispatched run's `headSha` to equal
+`CANDIDATE_SHA`, so the run IDs above are evidence for that one commit and never
+transfer to a later head. Before the next candidate is tagged, re-run at the new
+`origin/main` head: the parity ledger verifier, the version-consistency gate,
+`pr-windows-full.yml`, `pr-windows-fast.yml`, and the Windows engine,
+candidate-export, distribution/MSIX, staging dry-run, and shared domain-core
+gates.
+
+Five open external receipt groups block the release: physical x64 performance,
+accessibility/display, staging cloud, paired media/Computer Use safety, and
+Store/update lifecycle. Physical ARM64 is a sixth open group but is not
+blocking. Section 7 and
+[`ALBERTO_PARITY_CHECKLIST.md`](ALBERTO_PARITY_CHECKLIST.md) both allow shipping
+it as an explicit, uncertified beta limitation, so never hold a release waiting
+for ARM64 hardware; state the limitation instead. Historical signed artifacts do
+not satisfy any of these gates for the current exact source.
 
 ### Historical signed-candidate checkpoint
 
@@ -221,13 +237,27 @@ surface. The `staging` Environment approval is intentional.
 
 **Stop after the dry run until the operator explicitly types
 `approve staging deployment`.** Approval of a pull request, merge, CI run, or
-release-preparation task is not staging-deployment approval.
+release-preparation task is not staging-deployment approval. Neither is the
+`staging` Environment reviewer prompt: that prompt appears only after the
+mutating dispatch has already been fired, so it cannot stand in for the phrase.
+
+The two dispatches are deliberately kept in separate blocks. Never merge them.
+
+Dry run. This block is safe to run as a unit:
 
 ```bash
 gh workflow run deploy-staging.yml --repo "$REPO" --ref main \
   -f dry_run=true -f deploy_functions=true \
   -f function_targets='functions:issueWindowsAppCheckChallenge,functions:mintWindowsAppCheckToken,functions:getWindowsRuntimeSafetyConfig,functions:submitDomainCoreShadowSamples'
+```
 
+Read the dry run's result, then stop. Ask for the phrase and wait for it.
+
+**Post-approval only. This dispatch mutates `burnbar-staging`.** Run it as a
+single standalone command once the operator has typed
+`approve staging deployment` for this exact candidate:
+
+```bash
 gh workflow run deploy-staging.yml --repo "$REPO" --ref main \
   -f dry_run=false -f deploy_functions=true \
   -f function_targets='functions:issueWindowsAppCheckChallenge,functions:mintWindowsAppCheckToken,functions:getWindowsRuntimeSafetyConfig,functions:submitDomainCoreShadowSamples'
@@ -278,6 +308,35 @@ evidence. Under rule 9 above, pushing `windows-vX.Y.Z` is therefore a public
 release action. If public GitHub release approval has not been given, keep the
 verified candidate on `main` and do not create or push the tag.
 
+Certification precedes publication. Signing and publication are separable only
+if the publication job can be held, so hold it before the tag exists:
+
+- Verified 2026-08-10: the `windows-release` GitHub Environment has no
+  protection rules, so a single tag push runs signing and public publication
+  end to end with no second approval.
+- Before pushing, add a required reviewer to the repository's
+  `windows-release` Environment. Both `build-sign` and the publishing
+  `domain-core-windows-release-evidence` job declare that environment, so each
+  then waits for its own approval.
+- Approve `build-sign` only. It produces the signed candidate as a workflow
+  artifact for Step 5 and creates no release.
+- Leave `domain-core-windows-release-evidence` pending until Step 7 and Step 8
+  pass. Step 9 approves it. Before starting Step 7, confirm with
+  `gh run view <RELEASE_RUN_ID> --repo "$REPO" --json jobs` that this job is
+  still waiting and that no release exists at
+  `repos/$REPO/releases/tags/$TAG`. If either check fails, the candidate is
+  already public and rule 9 was breached; report it rather than continuing
+  quietly.
+- GitHub cancels a run whose deployment stays pending beyond its approval
+  window (30 days at the time of writing) and publishes nothing. Re-dispatch
+  `openburnbar-release-windows.yml` from `refs/tags/${TAG}` when the gates
+  finally pass.
+
+If that reviewer is not added there is no private signing path, and the honest
+consequence is that the tag itself is the public release: hold the tag until
+every Step 7 and Step 8 gate is `PASS`. Never push the tag expecting to delete
+the release afterwards.
+
 ```bash
 git config user.name
 git config user.email
@@ -286,9 +345,11 @@ git tag -a "$TAG" -m "OpenBurnBar Windows ${VERSION} candidate ${CANDIDATE_SHA}"
 git push origin "refs/tags/${TAG}"
 ```
 
-This triggers `.github/workflows/openburnbar-release-windows.yml` and, when all
-release jobs pass, publishes the public GitHub Release described above. It does
-not authorize Partner Center, winget, production staging, or any wider rollout;
+This triggers `.github/workflows/openburnbar-release-windows.yml`. With the
+publication job held it stops at a pending deployment after signing and
+supply-chain verification; without the hold it runs straight through and
+publishes the public GitHub Release described above. Either way it does not
+authorize Partner Center, winget, production staging, or any wider rollout;
 those remain separate explicit decisions.
 
 ### Step 5: verify the signed build
@@ -320,6 +381,12 @@ Required release evidence:
 - x64 hosted install/launch/uninstall/reinstall is green;
 - Ed25519 feed self-verification, SPDX SBOM, OpenVEX, and every Sigstore bundle
   verify against the exact artifact digest.
+
+These downloads come from the workflow run, not from a GitHub Release, so every
+gate from here to Step 8 runs against a private signed candidate. Keep
+`domain-core-windows-release-evidence` pending throughout. With that job held,
+`gh run watch` never returns; stop watching once `build-sign` and `supply-chain`
+are `success` and the release artifacts are downloadable.
 
 The GitHub artifact expires after seven days. Copy the verified release and
 provenance to the candidate's content-addressed evidence directory promptly.
@@ -431,6 +498,27 @@ authorizes a private flight:
 
 Private-flight success is not permission for public submission.
 
+### Step 9: publish the public GitHub Release
+
+This is the last step, not part of Step 4. Run it only after Step 7 and Step 8
+are `PASS` and the Section 7 table reads `GO` for this exact candidate.
+
+1. Re-check every row of the Section 7 table against this candidate's validated
+   evidence bundle. Physical ARM64 may be an explicit beta limitation; no other
+   required gate may be `FAIL`, `BLOCKED`, or `NOT_RUN`.
+2. Get the operator's explicit public-release approval. Tag approval, the
+   `staging` Environment prompt, and private-flight authorization are each a
+   different decision and none of them is this one.
+3. Approve the pending `domain-core-windows-release-evidence` deployment. It
+   publishes the non-prerelease `windows-vX.Y.Z` GitHub Release, created with
+   `latest=false`, carrying the signed release bundle, update-feed files, and
+   immutable domain-core evidence.
+4. Confirm the published release tag resolves to `CANDIDATE_SHA` and the
+   published asset digests match the checksums verified in Step 5.
+
+Publishing this release still does not authorize Partner Center public
+submission, winget, or production rollout.
+
 ## 7. Definition of done
 
 A Windows release is `GO` only when this table is true for one exact candidate:
@@ -450,6 +538,12 @@ A Windows release is `GO` only when this table is true for one exact candidate:
 
 If any required non-waived gate is `FAIL`, `BLOCKED`, or `NOT_RUN`, the release
 verdict is `NO-GO`.
+
+The publication order is fixed by that verdict. A `windows-v*` tag may be signed
+while the verdict is still `NO-GO`, because the physical and Store gates need a
+signed artifact; the public GitHub Release is approved only once this table
+reads `GO`. Physical ARM64 is the single waivable row, and waiving it means
+stating the beta limitation in the release notes, never labelling it certified.
 
 ## 8. Rollback and incident response
 
