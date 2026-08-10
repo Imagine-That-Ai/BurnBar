@@ -1,5 +1,4 @@
 import SwiftUI
-import OpenBurnBarCore
 
 // MARK: - Agent Deck (PR 1 — "Say who is answering")
 //
@@ -13,11 +12,13 @@ import OpenBurnBarCore
 // (embedded, pop-out, single pane, tiled), with 0 / 1 / 12 agents enabled.
 //
 // PLACEMENT NOTE: the spec's Appendix B files these types under
-// `AgentLens/Views/Chat/AgentDeck/*.swift`. They live here instead because this
-// PR must not regenerate `OpenBurnBar.xcodeproj` (the project lists every source
-// file explicitly, so a brand-new file would not compile and could not be
-// verified). Every type below is marked with its destination file so the split
-// is a pure cut-and-paste once the project is regenerated.
+// `AgentLens/Views/Chat/AgentDeck/*.swift`. They still live here; the split is
+// deliberately deferred rather than blocked. (`OpenBurnBar.xcodeproj` lists
+// every source file explicitly and is now regenerated in this branch, so a new
+// file *does* compile — see `AgentLens/Views/Chat/AgentDeck.swift`, which holds
+// the deck's injected models. Moving ~1200 lines of view code at the same time
+// would bury the behavioural diff.) Every type below is still marked with its
+// destination file, so the split stays a pure cut-and-paste.
 //
 // THE CONTAINMENT LAW (§6.1): `sigilTint` draws the Sigil plate wash + rim, the
 // presence dot, the ghost ring, the composer's 3pt leading bar, the tab
@@ -284,8 +285,6 @@ enum AgentPresenceResolver {
 @MainActor
 @Observable
 final class AgentPresenceModel {
-    static let shared = AgentPresenceModel()
-
     static let executableProbeTTL: TimeInterval = 60
 
     private(set) var presence: [ChatBackendID: AgentPresence] = [:]
@@ -453,8 +452,6 @@ final class AgentPresenceModel {
 @MainActor
 @Observable
 final class AgentDeckSwitcher {
-    static let shared = AgentDeckSwitcher()
-
     @ObservationIgnored private let hermesRuntimeLauncher = HermesRuntimeLauncher()
     @ObservationIgnored private let piAgentRuntimeAdapter = PiAgentRuntimeAdapter()
 
@@ -628,11 +625,13 @@ struct AgentSigil: View {
     /// background and a focus ring).
     var isCompact = false
 
-    @State private var presenceModel = AgentPresenceModel.shared
-    @State private var switcher = AgentDeckSwitcher.shared
     @State private var quotaService = ProviderQuotaService.shared
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Fleet models, injected on the controller (see `AgentDeck.swift`).
+    private var presenceModel: AgentPresenceModel { controller.agentDeck.presence }
+    private var switcher: AgentDeckSwitcher { controller.agentDeck.switcher }
 
     private var backend: ChatBackendID { controller.chatBackend }
     private var enabled: [ChatBackendID] { settingsManager.enabledChatBackends }
@@ -754,7 +753,7 @@ struct AgentSigil: View {
         .accessibilityAddTraits(.isButton)
         .popoverTooltip("Model for \(backend.displayName). Each agent remembers its own choice.")
         .task(id: backend) {
-            await CLIRuntimeModelCatalogCache.shared.refreshIfNeeded(
+            await controller.agentDeck.modelCatalog.refreshIfNeeded(
                 runtime: ChatEngineModelMenu.cliRuntime(for: backend),
                 settingsManager: controller.settingsManager
             )
@@ -1040,9 +1039,11 @@ struct AgentGhostRow: View {
     /// 0 collapses every ghost into the overflow chip.
     var limit: Int = 5
 
-    @State private var presenceModel = AgentPresenceModel.shared
-    @State private var switcher = AgentDeckSwitcher.shared
     @State private var hovered: ChatBackendID?
+
+    /// Fleet models, injected on the controller (see `AgentDeck.swift`).
+    private var presenceModel: AgentPresenceModel { controller.agentDeck.presence }
+    private var switcher: AgentDeckSwitcher { controller.agentDeck.switcher }
 
     private var others: [ChatBackendID] {
         settingsManager.enabledChatBackends.filter { $0 != controller.chatBackend }

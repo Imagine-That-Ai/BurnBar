@@ -859,7 +859,10 @@ final class PaneWorkspaceModel {
             memoryExtractionEngine: sourceController.memoryExtractionEngine,
             initialThreadID: threadID,
             persistsViewState: false,
-            initialBackend: selectedBackend
+            initialBackend: selectedBackend,
+            // Panes share the window's deck: one presence resolution, one model
+            // catalog, one switch path — never one per tile.
+            agentDeck: sourceController.agentDeck
         )
         controller.copyPaneRuntimeBindings(from: sourceController)
         controller.copyPaneConversationControls(from: sourceController)

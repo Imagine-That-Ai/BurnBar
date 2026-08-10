@@ -11,8 +11,6 @@ import OpenBurnBarCore
 @MainActor
 @Observable
 final class CLIRuntimeModelCatalogCache {
-    static let shared = CLIRuntimeModelCatalogCache()
-
     private(set) var rows: [AssistantRuntimeID: [CLIRuntimeModelOption]] = [:]
     private(set) var errors: [AssistantRuntimeID: String] = [:]
     @ObservationIgnored private var inFlight: Set<AssistantRuntimeID> = []
@@ -75,7 +73,7 @@ struct ChatEngineModelMenu: View {
             // Warm the catalog eagerly (as this view always has), so the menu is
             // populated the first time it is opened — from here or from the
             // Sigil.
-            await CLIRuntimeModelCatalogCache.shared.refreshIfNeeded(
+            await controller.agentDeck.modelCatalog.refreshIfNeeded(
                 runtime: Self.cliRuntime(for: controller.chatBackend),
                 settingsManager: controller.settingsManager
             )
@@ -160,8 +158,10 @@ struct ChatEngineModelMenu: View {
 struct ChatEngineModelRows: View {
     @Bindable var controller: ChatSessionController
 
-    @State private var catalog = CLIRuntimeModelCatalogCache.shared
     @State private var quotaService = ProviderQuotaService.shared
+
+    /// The shared Mac catalog, injected on the controller (see `AgentDeck.swift`).
+    private var catalog: CLIRuntimeModelCatalogCache { controller.agentDeck.modelCatalog }
 
     typealias ModelMenuRow = ChatEngineModelMenu.ModelMenuRow
 

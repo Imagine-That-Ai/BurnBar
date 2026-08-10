@@ -2,7 +2,7 @@ import AppKit
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import SwiftUI
 
 // MARK: - Control Deck Model
@@ -120,16 +120,15 @@ final class ControlDeckModel {
     @ObservationIgnored private var didLoadInbox = false
     @ObservationIgnored private var didProbeRouter = false
 
-    /// One deck model per app, deliberately.
+    /// One deck model per dashboard window, deliberately — and owned by
+    /// `DashboardView`, not by a global.
     ///
     /// The counts must outlive the route view: every dashboard route view
     /// carries `.id(mainRoute)`, so a `@State` model inside `ControlDeckView`
     /// would be destroyed and re-read on every visit, and the tiles would flash
-    /// "—" each time you came back. A shared, `@MainActor` `@Observable`
-    /// singleton is the same shape `ProviderQuotaService.shared` and
-    /// `DirectDownloadUpdateChecker.shared` already use.
-    static let shared = ControlDeckModel()
-
+    /// "—" each time you came back. `DashboardView` is *not* re-identified on
+    /// navigation, so its `@State` copy survives every route change; see
+    /// `DashboardView.controlDeckModel`.
     init() {}
 
     /// Attach to the live store and take the first reading. Idempotent — the
@@ -485,7 +484,11 @@ final class ControlDeckModel {
         }
 
         do {
-            let snapshot = try await Firestore.firestore()
+            // Through the sanctioned gateway, never a raw `Firestore.firestore()`
+            // handle (R-GH6): offline persistence and handle configuration stay
+            // owned by the CloudSync gateway layer, and this stays a one-shot
+            // read rather than a subscription.
+            let snapshot = try await CloudSyncFirestoreLiveGateway()
                 .collection("users").document(uid)
                 .collection("remote_mcp_clients")
                 .getDocuments()

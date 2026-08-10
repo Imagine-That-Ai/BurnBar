@@ -3,8 +3,10 @@ import SwiftUI
 struct ChatEngineBackendStrip: View {
     @Bindable var controller: ChatSessionController
     var settingsManager: SettingsManager
-    @State private var switcher = AgentDeckSwitcher.shared
     @State private var quotaService = ProviderQuotaService.shared
+
+    /// The one switch path, injected on the controller (see `AgentDeck.swift`).
+    private var switcher: AgentDeckSwitcher { controller.agentDeck.switcher }
 
     private var enabledChatBackendsForHeader: [ChatBackendID] {
         settingsManager.enabledChatBackends

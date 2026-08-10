@@ -1,5 +1,5 @@
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import SwiftUI
 
 // MARK: - Control Deck · the four asynchronous tiles

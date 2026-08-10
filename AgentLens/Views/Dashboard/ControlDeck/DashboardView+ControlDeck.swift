@@ -16,7 +16,7 @@ extension DashboardView {
             dataStore: dataStore,
             daemonManager: operatingLayer.daemonManager,
             accountManager: accountManager,
-            model: .shared,
+            model: controlDeckModel,
             // Today's window, not the dashboard's selected range: a spend
             // threshold is a *daily* threshold, so showing it against a
             // 30-day total would be a lie with a number attached. The

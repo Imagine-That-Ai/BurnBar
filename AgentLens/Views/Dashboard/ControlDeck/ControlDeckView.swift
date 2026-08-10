@@ -1,5 +1,4 @@
 import AppKit
-import OpenBurnBarCore
 import SwiftUI
 
 // MARK: - Control Deck

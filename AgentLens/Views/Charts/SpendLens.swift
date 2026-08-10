@@ -1,5 +1,4 @@
 import SwiftUI
-import OpenBurnBarCore
 
 // MARK: - Spend Lens
 //

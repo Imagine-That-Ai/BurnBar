@@ -1094,4 +1094,3 @@ final class AgentSigilLabelTests: XCTestCase {
         XCTAssertEqual(AgentSigil.elapsedText(since: start, now: start.addingTimeInterval(-5)), "0s")
     }
 }
-

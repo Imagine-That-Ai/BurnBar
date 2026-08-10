@@ -86,6 +86,11 @@ struct DashboardView: View {
     /// composer from `DashboardView+ControlDeck.swift`, so the app has one
     /// cast surface with one set of approval switches rather than two.
     @State var showMacWandComposer = false
+    /// The Control Deck's cached facts, owned here rather than by the route
+    /// view: route views carry `.id(mainRoute)` and are rebuilt on every visit,
+    /// so a model held there would flash "—" each time you came back. Internal,
+    /// not private — `DashboardView+ControlDeck.swift` hands it to the deck.
+    @State var controlDeckModel = ControlDeckModel()
     @State var pendingMemoryReviewCount: Int?
     /// Unread AI Inbox items, shown as a badge on the section switcher. Nil until
     /// the first read, so a profile whose daemon has never run shows no badge
