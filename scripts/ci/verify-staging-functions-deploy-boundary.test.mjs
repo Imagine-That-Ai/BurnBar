@@ -65,6 +65,75 @@ try {
     ),
   );
   expectFailure(
+    "missing exact candidate input",
+    callerPath,
+    pristineCaller.replace(
+      `      candidate_sha:
+        description: "Optional exact candidate SHA; overrides are accepted only when this workflow runs from main"
+        required: false
+        type: string
+        default: ""
+`,
+      "",
+    ),
+  );
+  expectFailure(
+    "weak candidate SHA validation",
+    callerPath,
+    pristineCaller.replace(
+      'if [[ ! "$candidate_sha" =~ ^[0-9a-f]{40}$ ]]; then',
+      'if [[ -z "$candidate_sha" ]]; then',
+    ),
+  );
+  expectFailure(
+    "candidate override allowed from a feature branch",
+    callerPath,
+    pristineCaller.replace(
+      'if [[ -n "$INPUT_CANDIDATE_SHA" && "$DISPATCH_REF" != "refs/heads/main" ]]; then',
+      'if [[ -z "$INPUT_CANDIDATE_SHA" ]]; then',
+    ),
+  );
+  expectFailure(
+    "rules build does not check out the exact candidate",
+    callerPath,
+    pristineCaller.replace(
+      "          ref: ${{ needs.resolve-candidate.outputs.candidate_sha }}",
+      "          ref: ${{ github.sha }}",
+    ),
+  );
+  expectFailure(
+    "rules package records the dispatch SHA",
+    callerPath,
+    pristineCaller.replace(
+      "          CANDIDATE_SHA: ${{ needs.resolve-candidate.outputs.candidate_sha }}",
+      "          CANDIDATE_SHA: ${{ github.sha }}",
+    ),
+  );
+  expectFailure(
+    "trusted deploy receives the dispatch SHA",
+    callerPath,
+    pristineCaller.replace(
+      "      candidate_sha: ${{ needs.resolve-candidate.outputs.candidate_sha }}",
+      "      candidate_sha: ${{ github.sha }}",
+    ),
+  );
+  expectFailure(
+    "deploy ignores candidate resolution failure",
+    callerPath,
+    pristineCaller.replace(
+      " && needs.resolve-candidate.result == 'success'",
+      "",
+    ),
+  );
+  expectFailure(
+    "rules artifact uses the dispatch SHA",
+    callerPath,
+    pristineCaller.replace(
+      "staging-rules-${{ needs.resolve-candidate.outputs.candidate_sha }}",
+      "staging-rules-${{ github.sha }}",
+    ),
+  );
+  expectFailure(
     "candidate auth",
     callerPath,
     `${pristineCaller}\n# google-github-actions/auth\n`,
@@ -145,10 +214,10 @@ try {
     "staging Hosting artifact omits hidden files",
     callerPath,
     pristineCaller.replace(
-      `          name: staging-hosting-\${{ github.sha }}
+      `          name: staging-hosting-\${{ needs.resolve-candidate.outputs.candidate_sha }}
           path: \${{ runner.temp }}/staging-hosting
           include-hidden-files: true`,
-      `          name: staging-hosting-\${{ github.sha }}
+      `          name: staging-hosting-\${{ needs.resolve-candidate.outputs.candidate_sha }}
           path: \${{ runner.temp }}/staging-hosting
           include-hidden-files: false`,
     ),
@@ -157,10 +226,10 @@ try {
     "staging Functions artifact omits hidden files",
     callerPath,
     pristineCaller.replace(
-      `          name: staging-functions-\${{ github.sha }}
+      `          name: staging-functions-\${{ needs.resolve-candidate.outputs.candidate_sha }}
           path: \${{ runner.temp }}/staging-functions
           include-hidden-files: true`,
-      `          name: staging-functions-\${{ github.sha }}
+      `          name: staging-functions-\${{ needs.resolve-candidate.outputs.candidate_sha }}
           path: \${{ runner.temp }}/staging-functions
           include-hidden-files: false`,
     ),
