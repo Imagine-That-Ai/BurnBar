@@ -21,6 +21,18 @@ enum OBBAccessibilityID {
     static let chartsAIToggle = "charts.aiToggle"
     static let dashboardDeckChartButton = "dashboard.deckChartButton"
 
+    // Control Deck
+    static let controlDeck = "controlDeck.page"
+    static let controlDeckEditMenu = "controlDeck.editMenu"
+
+    static func controlDeckTile(_ kind: String) -> String {
+        "controlDeck.tile.\(normalized(kind))"
+    }
+
+    static func controlDeckToggle(_ kind: String) -> String {
+        "controlDeck.tile.toggle.\(normalized(kind))"
+    }
+
     static let inboxRoot = "inbox.root"
     static let inboxDetail = "inbox.detail"
     static let dashboardDeckInboxButton = "dashboard.deckInboxButton"

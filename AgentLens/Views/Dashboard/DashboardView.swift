@@ -204,7 +204,11 @@ struct DashboardView: View {
         switch route {
         case .overview, .insights, .charts, .provider, .model:
             return true
-        case .database, .projects, .missions, .sessionLogs, .memoryReview, .inbox, .chat, .quota:
+        case .database, .projects, .missions, .sessionLogs, .memoryReview, .inbox, .chat, .quota,
+             .controlDeck:
+            // The Control Deck is a full-width workspace like Inbox and Quota:
+            // it is *not* about the provider/model breakdown, so the provider
+            // rail would be a third redundant column.
             return false
         }
     }
@@ -299,6 +303,7 @@ struct DashboardView: View {
         case .inbox: return "Inbox"
         case .chat: return "Chat"
         case .quota: return "Quota"
+        case .controlDeck: return "Control Deck"
         case .provider(let provider): return provider.displayName
         case .model(let modelName): return modelName
         }
@@ -521,6 +526,7 @@ struct DashboardView: View {
         .accessibilityIdentifier(OBBAccessibilityID.dashboardRoot)
         .background {
             sectionShortcuts
+            controlDeckShortcut
             commandPaletteShortcut
         }
         .sheet(isPresented: $showCommandPalette) {
@@ -695,6 +701,23 @@ struct DashboardView: View {
         }
     }
 
+    /// Hidden ⌘0 for the Control Deck. Deliberately *outside* the ⌘1–⌘8
+    /// `primarySections` range, which is positional — inserting the deck into
+    /// that array would renumber every existing user's shortcuts.
+    private var controlDeckShortcut: some View {
+        Button {
+            withAnimation(DesignSystem.Animation.standard) {
+                navigate(to: .controlDeck)
+            }
+        } label: {
+            EmptyView()
+        }
+        .keyboardShortcut("0", modifiers: .command)
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .allowsHitTesting(false)
+    }
+
     /// Hidden ⌘K to open the Command Palette from anywhere in the window.
     private var commandPaletteShortcut: some View {
         Button {
@@ -813,6 +836,8 @@ struct DashboardView: View {
                         }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .controlDeck:
+                    controlDeckRouteView
                 case .provider(let provider):
                     ProviderDashboardView(
                         provider: provider,

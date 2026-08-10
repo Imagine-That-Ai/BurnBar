@@ -102,6 +102,18 @@ struct DashboardDetailView: View {
                         description: Text("Open Memory from the main dashboard to review extracted memories.")
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .controlDeck:
+                    // Parallel/legacy detail surface. The Control Deck needs the
+                    // daemon manager and the deck model, which this context does
+                    // not carry, so render the graceful unavailable state rather
+                    // than a half-wired deck — the same choice `.memoryReview`
+                    // makes above.
+                    ContentUnavailableView(
+                        "The Control Deck is unavailable",
+                        systemImage: "slider.horizontal.below.square.filled.and.square",
+                        description: Text("Open the Control Deck from the main dashboard.")
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .inbox:
                     // Unlike memory review, the inbox needs only `DataStore`,
                     // which this context has — so it renders fully here.
