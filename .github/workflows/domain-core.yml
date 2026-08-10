@@ -1512,11 +1512,12 @@ jobs:
       - rollback-drill
       - candidate-bundle
     runs-on: ubuntu-latest
-    # The deletion-candidate checkout needs complete history and blobs for
-    # ancestry and historical-content proofs, so a degraded GitHub fetch can
-    # consume most of the job budget before the gate logic runs. Leave enough
-    # headroom without weakening the fail-closed gate.
-    timeout-minutes: 60
+    # The deletion-candidate checkout needs complete history, all refs, and
+    # blobs for ancestry and historical-content proofs. The current repository
+    # pack is 8.68 GiB, so a degraded GitHub fetch can consume an hour before
+    # the gate logic runs. Leave two hours of headroom without weakening the
+    # fail-closed gate.
+    timeout-minutes: 120
     steps:
       - name: Require every meaningful Domain Core job
         if: needs.classify.outputs.rust == 'true'
