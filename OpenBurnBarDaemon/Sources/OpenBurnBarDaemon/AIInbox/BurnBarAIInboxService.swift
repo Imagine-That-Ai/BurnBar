@@ -150,7 +150,8 @@ actor BurnBarAIInboxService {
             lookbackMinutes: config.lookbackMinutes,
             founderLensEnabled: config.founderLensEnabled,
             perReplyBudgetUSD: config.perReplyBudgetUSD,
-            maxThreadTurns: config.maxThreadTurns
+            maxThreadTurns: config.maxThreadTurns,
+            budgetCountsSubscriptionSpend: config.budgetCountsSubscriptionSpend
         )
         try? store.setState(
             BurnBarAIInboxSchema.StateKey.config,
@@ -536,9 +537,17 @@ actor BurnBarAIInboxService {
 
     private func spendToday() async throws -> Double {
         let startOfDay = Calendar.current.startOfDay(for: clock())
+        let countsSubscription = configuration().budgetCountsSubscriptionSpend
         return try await usageRecorder.records()
             .map(\.event)
             .filter { $0.executionSourceID == BurnBarAIInboxUsage.executionSourceID && $0.recordedAt >= startOfDay }
+            .filter { event in
+                // The protective budget guards real dollars. Subscription-routed
+                // calls are plan-covered imputed value — they only count when the
+                // user opts in. `unknown` counts as spend: fail-protective.
+                if countsSubscription { return true }
+                return BurnBarBillingProvenance.effectiveKind(of: event) != .subscription
+            }
             .reduce(0) { $0 + $1.cost }
     }
 

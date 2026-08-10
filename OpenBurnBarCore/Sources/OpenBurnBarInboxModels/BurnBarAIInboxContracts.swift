@@ -518,6 +518,12 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
     /// Cap on stored turns per thread; older turns fall out of the prompt
     /// window (they remain in the table for the UI).
     public let maxThreadTurns: Int
+    /// Whether subscription-routed model calls (imputed value inside a flat
+    /// plan — no dollars leave a wallet) consume `dailyBudgetUSD`. Off by
+    /// default: the protective budget exists to guard real API spend, and
+    /// counting plan-covered calls against it silently starves the inbox into
+    /// the local-rules path. API-billed calls always count.
+    public let budgetCountsSubscriptionSpend: Bool
 
     public init(
         enabled: Bool = false,
@@ -536,7 +542,8 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
         lookbackMinutes: Int = 120,
         founderLensEnabled: Bool = true,
         perReplyBudgetUSD: Double = 0.10,
-        maxThreadTurns: Int = 40
+        maxThreadTurns: Int = 40,
+        budgetCountsSubscriptionSpend: Bool = false
     ) {
         self.enabled = enabled
         self.egressMode = egressMode
@@ -555,6 +562,7 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
         self.founderLensEnabled = founderLensEnabled
         self.perReplyBudgetUSD = min(max(0, perReplyBudgetUSD), 5)
         self.maxThreadTurns = min(max(2, maxThreadTurns), 200)
+        self.budgetCountsSubscriptionSpend = budgetCountsSubscriptionSpend
     }
 
     /// Decodes with per-field defaults so a config written by an older daemon
@@ -591,7 +599,11 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
             perReplyBudgetUSD: try container.decodeIfPresent(Double.self, forKey: .perReplyBudgetUSD)
                 ?? fallback.perReplyBudgetUSD,
             maxThreadTurns: try container.decodeIfPresent(Int.self, forKey: .maxThreadTurns)
-                ?? fallback.maxThreadTurns
+                ?? fallback.maxThreadTurns,
+            budgetCountsSubscriptionSpend: try container.decodeIfPresent(
+                Bool.self,
+                forKey: .budgetCountsSubscriptionSpend
+            ) ?? fallback.budgetCountsSubscriptionSpend
         )
     }
 }

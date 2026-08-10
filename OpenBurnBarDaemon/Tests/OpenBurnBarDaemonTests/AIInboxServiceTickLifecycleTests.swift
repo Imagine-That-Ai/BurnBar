@@ -374,6 +374,58 @@ final class AIInboxServiceTickLifecycleTests: XCTestCase {
         XCTAssertEqual(runs.dailyBudgetUSD, BurnBarInboxConfig().dailyBudgetUSD, accuracy: 0.0001)
     }
 
+    // MARK: - Billing provenance and the protective budget
+
+    /// The daily budget guards real API dollars. Subscription-routed calls
+    /// (plan-covered imputed value) are excluded by default; legacy rows with
+    /// no stamped kind resolve through the provider classifier, and anything
+    /// unknown still counts — the gate fails protective, never open.
+    func test_budgetCountsOnlyAPISpendByDefault() async throws {
+        let service = try makeService(executor: FakeInboxProviderExecutor(responses: []))
+        _ = await service.updateConfiguration(
+            BurnBarInboxConfig(enabled: true, egressMode: .off, dailyBudgetUSD: 1.0, githubEnabled: false)
+        )
+
+        func seed(_ cost: Double, kind: BurnBarBillingKind?, provider: String, key: String) async throws {
+            _ = try await usageRecorder.record(
+                BurnBarUsageEvent(
+                    providerID: provider,
+                    modelID: "m",
+                    inputTokens: 10,
+                    outputTokens: 10,
+                    cacheReadTokens: 0,
+                    cost: cost,
+                    recordedAt: Date(),
+                    executionSourceID: BurnBarAIInboxUsage.executionSourceID,
+                    billingKind: kind
+                ),
+                idempotencyKey: key
+            )
+        }
+        try await seed(0.60, kind: .api, provider: "deepseek", key: "billing-api")
+        try await seed(0.60, kind: .subscription, provider: "anthropic", key: "billing-sub")
+        // Legacy row: no stamp; "deepseek" classifies to .api and must count.
+        try await seed(0.25, kind: nil, provider: "deepseek", key: "billing-legacy")
+        // Unclassifiable row: counts (fail-protective), never silently free.
+        try await seed(0.10, kind: nil, provider: "mystery-route", key: "billing-unknown")
+
+        let defaultBudget = await service.budgetState(config: service.configuration())
+        XCTAssertEqual(defaultBudget.spentUSD, 0.95, accuracy: 0.0001,
+                       "api 0.60 + legacy-api 0.25 + unknown 0.10; subscription excluded")
+        XCTAssertFalse(defaultBudget.isExhausted)
+
+        _ = await service.updateConfiguration(
+            BurnBarInboxConfig(
+                enabled: true, egressMode: .off, dailyBudgetUSD: 1.0,
+                githubEnabled: false, budgetCountsSubscriptionSpend: true
+            )
+        )
+        let optedIn = await service.budgetState(config: service.configuration())
+        XCTAssertEqual(optedIn.spentUSD, 1.55, accuracy: 0.0001,
+                       "opting in counts subscription spend again")
+        XCTAssertTrue(optedIn.isExhausted)
+    }
+
     // MARK: - Fixtures
 
     /// Analyst output citing the seeded conversation, with a claim that needs

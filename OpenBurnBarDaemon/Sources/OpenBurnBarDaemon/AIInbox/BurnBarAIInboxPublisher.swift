@@ -405,7 +405,12 @@ struct BurnBarAIInboxPublisher: Sendable {
                 executionSourceKind: .automation,
                 executionSourceConfidence: .exact,
                 confidence: .exact,
-                parentRequestID: tickID
+                parentRequestID: tickID,
+                // The inbox router only dials key-backed provider slots today,
+                // so every analyst/verifier/reply call is real API spend. A
+                // future subscription-bridged route must stamp .subscription
+                // here or the budget gate will over-count it.
+                billingKind: .api
             )
             do {
                 _ = try await usageRecorder.record(

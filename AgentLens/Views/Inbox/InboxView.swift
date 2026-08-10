@@ -149,7 +149,18 @@ struct InboxView: View {
         case .skippedUnchanged, .skippedDisabled:
             return "Last checked \(when) — nothing had changed."
         case .localChanged, .remotePhase, .forced:
-            let cost = run.costUSD > 0 ? String(format: " · $%.3f", run.costUSD) : " · no model calls"
+            // "no model calls" read as a normal state and hid the real story:
+            // the brief was authored by the rule-based fallback. Say so — and
+            // when egress is on, name the budget gate as the likely reason
+            // instead of pretending the silence is fine.
+            let cost: String
+            if run.costUSD > 0 {
+                cost = String(format: " · $%.3f", run.costUSD)
+            } else if run.egressMode.allowsModelCalls {
+                cost = " · rule-based brief (model call skipped — check budget)"
+            } else {
+                cost = " · rule-based brief (model egress off)"
+            }
             return "Last analyzed \(when)\(cost)"
         case .failed:
             return "The last analysis did not complete."

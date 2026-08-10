@@ -209,6 +209,14 @@ struct AIInboxSettingsView: View {
                     .font(DesignSystem.Typography.monoTiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
+
+            SettingsToggle(
+                title: "Count subscription spend",
+                subtitle: "Off: the budget guards real API dollars only — calls covered by a flat plan (imputed value) run free. On: everything counts.",
+                isOn: model.binding(\.budgetCountsSubscriptionSpend) { config, value in
+                    config.with(budgetCountsSubscriptionSpend: value)
+                }
+            )
         }
     }
 
@@ -345,7 +353,13 @@ struct AIInboxSettingsView: View {
             if run.itemsNew > 0 { parts.append("\(run.itemsNew) new") }
             if run.itemsUpdated > 0 { parts.append("\(run.itemsUpdated) updated") }
             if run.itemsResolved > 0 { parts.append("\(run.itemsResolved) resolved") }
-            if run.llmCalls == 0 { parts.append("no model calls") }
+            if run.llmCalls == 0 {
+                parts.append(
+                    run.egressMode.allowsModelCalls
+                        ? "rule-based (model skipped — budget?)"
+                        : "rule-based (egress off)"
+                )
+            }
             return parts.isEmpty ? "analyzed, nothing to report" : parts.joined(separator: ", ")
         }
     }
@@ -533,7 +547,8 @@ extension BurnBarInboxConfig {
         tickSeconds: Int? = nil,
         dailyBudgetUSD: Double? = nil,
         githubEnabled: Bool? = nil,
-        notifyOnP1: Bool? = nil
+        notifyOnP1: Bool? = nil,
+        budgetCountsSubscriptionSpend: Bool? = nil
     ) -> BurnBarInboxConfig {
         BurnBarInboxConfig(
             enabled: enabled ?? self.enabled,
@@ -555,7 +570,9 @@ extension BurnBarInboxConfig {
             // defaults on every settings change.
             founderLensEnabled: founderLensEnabled,
             perReplyBudgetUSD: perReplyBudgetUSD,
-            maxThreadTurns: maxThreadTurns
+            maxThreadTurns: maxThreadTurns,
+            budgetCountsSubscriptionSpend: budgetCountsSubscriptionSpend
+                ?? self.budgetCountsSubscriptionSpend
         )
     }
 }

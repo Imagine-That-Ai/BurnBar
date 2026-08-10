@@ -129,7 +129,7 @@ final class AIInboxViewFormattingTests: XCTestCase {
             AIInboxSettingsView.runLabel(
                 makeRun(gateResult: .localChanged, llmCalls: 0, itemsNew: 2, itemsUpdated: 1)
             ),
-            "2 new, 1 updated, no model calls"
+            "2 new, 1 updated, rule-based (egress off)"
         )
         XCTAssertEqual(
             AIInboxSettingsView.runLabel(
