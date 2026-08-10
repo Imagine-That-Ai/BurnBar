@@ -9,7 +9,7 @@ pinned SQLCipher parameters and rationale, and
 
 | File | What it is |
 | ---- | ---------- |
-| `openburnbar-db-compat-v60.sqlcipher` | A **real Mac-produced** SQLCipher database, migrated through the **live** `OpenBurnBarDatabase` migrator to `v59_founder_lens` and seeded with the canonical FTS corpus. Genuinely encrypted (no plaintext SQLite header). |
+| `openburnbar-db-compat-v60.sqlcipher` | A **real Mac-produced** SQLCipher database, migrated through the **live** `OpenBurnBarDatabase` migrator to `v60_billing_kind` and seeded with the canonical FTS corpus. Genuinely encrypted (no plaintext SQLite header). |
 | `openburnbar-db-compat-vector.json` | The **DB-compat vector**: expected schema hash (SHA-256 over normalized `sqlite_master` DDL) + the expected FTS5 `bm25()`/`snippet()` row set for a fixed set of `MATCH` probes. |
 | `openburnbar-db-compat-params-observed.json` | The SQLCipher parameters **read back from the live 4.16.0 binary** (evidence for the pinned values). |
 
@@ -71,6 +71,29 @@ bug rather than a stale artifact:
    carries `migrationCount` and the schema hash, which no human can compute.
 4. The `.sqlcipher` binary itself — a v(N-1) database can never satisfy a vN
    vector, no matter what the JSON says.
+
+### …and the Windows mirrors, which read this same fixture
+
+The Windows port consumes this kit directly, with **literal** pins that must be
+moved by hand. Bumping only the endpoint string here is the recurring miss (it
+broke CI on both v59 and v60): the count is a separate literal and does not
+follow the endpoint. Grep for the previous count before you assume it is done.
+
+5. `WindowsSqlCipherProvisioner` — `CurrentMigrationEndpoint`,
+   `CurrentMigrationCount`, the new identifier appended to
+   `AppliedMigrationIdentifiers` (`.Metadata.cs`, endpoint stays last), and the
+   endpoint schema itself (`.Schema.cs`).
+6. The Windows test pins, **endpoint _and_ count together**:
+   `windows/storage/OpenBurnBar.Storage.Tests/TokenUsageWriteRoundTripTests.cs`,
+   `.../SwitcherProfileWriteSeamRoundTripTests.cs` (schema hash + count), and
+   `windows/tests/storage/WindowsStorageDevHostRuntimeTests.cs`.
+7. Every `openburnbar-db-compat-vN.sqlcipher` filename reference under
+   `windows/` — csproj `<Content>` links, `RepoFixtures`, and the per-suite
+   `FixtureName` constants.
+
+The count is always the length of `AppliedMigrationIdentifiers`, which equals
+the Swift migrator's `registerMigration` count — verify it, don't copy whatever
+number the failing assertion prints.
 
 Editing only the JSON is the trap: `schemaEndpoint` is the one field that looks
 hand-editable, and changing it alone produces a vector that disagrees with both
