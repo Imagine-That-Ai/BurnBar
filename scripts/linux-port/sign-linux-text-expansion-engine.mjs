@@ -75,11 +75,18 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToP
     const executable = value('--executable');
     const output = value('--output');
     const backend = value('--backend');
+    // The installed path the manifest binds to. The IBus engine keeps its
+    // historical default; the native Fcitx5 addon signs its packaged module
+    // path so the daemon's path-identity gate stays exact per backend.
+    const installedExecutable = value('--installed-executable')
+      ?? (backend === 'fcitx5'
+        ? '/usr/lib/openburnbar/fcitx5/openburnbar-fcitx5.so'
+        : '/usr/libexec/openburnbar/text-expansion-engine');
     const privateKeyPem = process.env.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM;
     if (!executable || !output || !backend || !privateKeyPem) {
       throw new Error('--executable, --output, --backend, and OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM are required');
     }
-    const manifest = createSignedEngineManifest({ backend, executable, privateKeyPem });
+    const manifest = createSignedEngineManifest({ backend, executable, installedExecutable, privateKeyPem });
     fs.mkdirSync(path.dirname(path.resolve(output)), { recursive: true });
     fs.writeFileSync(output, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o644, flag: 'wx' });
   } catch (error) {

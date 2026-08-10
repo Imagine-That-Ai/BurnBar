@@ -1,10 +1,14 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "backend": "fcitx5",
   "engineID": "org.openburnbar.TextExpansion",
-  "status": "source-only-not-packaged",
-  "nativeAddonPath": null,
+  "status": "native-addon-packaged",
+  "nativeAddonPath": "/usr/lib/openburnbar/fcitx5/openburnbar-fcitx5.so",
+  "addonRegistrationPath": "/usr/share/openburnbar/text-expansion/fcitx5/addon/openburnbar-fcitx5.conf",
+  "inputMethodRegistrationPath": "/usr/share/openburnbar/text-expansion/fcitx5/inputmethod/openburnbar.conf",
+  "signedManifestPath": "/usr/share/openburnbar/text-expansion/text-expansion-engine-fcitx5.json",
   "sourceContract": "packaging/linux/FCITX5_ADDON_CONTRACT.md",
+  "sourceDir": "packaging/linux/fcitx5-addon",
   "requiredHeaders": ["Fcitx5Core >= 5.1.6"],
   "requiredBuildTools": ["cmake >= 3.20", "pkg-config", "C++17 compiler"],
   "supportsWayland": true,
@@ -13,8 +17,8 @@
   "readsClipboard": false,
   "readsSurroundingText": false,
   "secureFieldPolicy": "deny-unless-inspectable-and-explicitly-nonsecure",
-  "promotionBlocker": "fcitx5-native-headers-and-signed-addon-build-unavailable",
-  "runtimeSupport": false,
-  "packageSupport": false,
-  "note": "This manifest is a capability contract only. The release does not ship an Fcitx5 executable or claim system-wide Fcitx5 expansion."
+  "consent": "daemon-enforced-explicit-opt-in",
+  "runtimeSupport": true,
+  "packageSupport": true,
+  "note": "The native Fcitx5 addon ships in deb/rpm/arch packages with a release-signed executable manifest. Expansion remains daemon-owned trigger-only: the addon forwards canonical triggers to openburnbar-cli under a hard timeout, denies secure/password/uninspectable fields before any daemon call, and performs no evdev/global capture, clipboard reads, or surrounding-text reads. The daemon refuses expansion until external expansion is explicitly enabled."
 }

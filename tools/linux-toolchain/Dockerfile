@@ -52,6 +52,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         gstreamer1.0-pipewire \
         gstreamer1.0-tools \
         ibus \
+        fcitx5 \
+        libfcitx5core-dev \
+        libfcitx5utils-dev \
+        libfcitx5config-dev \
+        extra-cmake-modules \
+        cmake \
         libgstreamer1.0-dev \
         libgstreamer-plugins-base1.0-dev \
         git \

@@ -700,7 +700,7 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
         guard registration.registration == .registered,
               registration.supportsExternalExpansion,
               let executablePath = registration.backendPath,
-              let manifestPath = engineManifestPath else {
+              let manifestPath = engineManifestPath(for: registration.backend) else {
             throw EngineRuntimeError.notRegistered(registration.registration)
         }
 
@@ -851,7 +851,7 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
             )
         }
 
-        guard let path = engineManifestPath else {
+        guard let path = engineManifestPath(for: backend) else {
             return makeStatus(
                 state: .blocked,
                 backend: backend.rawValue,
@@ -1306,9 +1306,36 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
     }
 
     private var engineManifestPath: String? {
+        engineManifestPath(for: nil)
+    }
+
+    /// Resolve the signed engine manifest for a discovered backend. Each
+    /// backend may ship its own signed manifest (`text-expansion-engine.json`
+    /// for the default/IBus engine, a backend-suffixed manifest such as
+    /// `text-expansion-engine-fcitx5.json` for the native Fcitx5 addon lane)
+    /// so registering one backend can never silently satisfy the other's
+    /// signature gate. Backend-specific environment overrides (for example
+    /// `OPENBURNBAR_LINUX_TEXT_EXPANSION_ENGINE_MANIFEST_FCITX5`) take
+    /// precedence over the generic override; explicit constructor overrides
+    /// keep their existing single-manifest behavior.
+    private func engineManifestPath(for backend: Backend?) -> String? {
         if let manifestPathOverride { return Self.standardizedPath(manifestPathOverride) }
+        if let backend,
+           let configured = Self.nonEmpty(environment(
+               "OPENBURNBAR_LINUX_TEXT_EXPANSION_ENGINE_MANIFEST_\(backend.rawValue.uppercased())"
+           )) {
+            return Self.standardizedPath(configured)
+        }
         if let configured = Self.nonEmpty(environment("OPENBURNBAR_LINUX_TEXT_EXPANSION_ENGINE_MANIFEST")) {
             return Self.standardizedPath(configured)
+        }
+        if let backend, backend != .ibus {
+            for root in allowedManifestRoots {
+                let candidate = URL(fileURLWithPath: root, isDirectory: true)
+                    .appendingPathComponent("text-expansion-engine-\(backend.rawValue).json")
+                    .standardizedFileURL.path
+                if readFileMetadata(candidate) != nil { return candidate }
+            }
         }
         guard let root = allowedManifestRoots.first else { return nil }
         return URL(fileURLWithPath: root, isDirectory: true)

@@ -33,6 +33,10 @@ const releasePublicKey = path.join(
 );
 const textExpansionManifest = process.env.OPENBURNBAR_LINUX_TEXT_EXPANSION_SIGNED_MANIFEST?.trim()
   || path.join(repoRoot, '.linux-trust/text-expansion-engine.json');
+const fcitx5AddonDir = process.env.OPENBURNBAR_FCITX5_ADDON_OUT?.trim()
+  || path.join(repoRoot, 'apps/linux-desktop/src-tauri/target/openburnbar-fcitx5-addon');
+const fcitx5Manifest = process.env.OPENBURNBAR_LINUX_TEXT_EXPANSION_SIGNED_MANIFEST_FCITX5?.trim()
+  || path.join(repoRoot, '.linux-trust/text-expansion-engine-fcitx5.json');
 const payloadRoot = process.env.OPENBURNBAR_LINUX_PACKAGE_PAYLOAD?.trim()
   || path.join(repoRoot, 'apps/linux-desktop/src-tauri/target/openburnbar-package-payload');
 
@@ -53,6 +57,8 @@ try {
       browserRuntimeRequirements,
       releasePublicKey,
       textExpansionManifest,
+      fcitx5AddonDir,
+      fcitx5Manifest,
       resourceBundles: resolveLinuxResourceBundles({ repoRoot }),
       payloadRoot,
       swiftRuntimeDir: resolveSwiftRuntimeDir(),

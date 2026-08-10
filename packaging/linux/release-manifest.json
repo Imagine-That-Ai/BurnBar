@@ -33,6 +33,10 @@
     "textExpansionEngine": "/usr/libexec/openburnbar/text-expansion-engine",
     "textExpansionManifest": "/usr/share/openburnbar/text-expansion/text-expansion-engine.json",
     "textExpansionFcitx5Contract": "/usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json",
+    "textExpansionFcitx5Addon": "/usr/lib/openburnbar/fcitx5/openburnbar-fcitx5.so",
+    "textExpansionFcitx5AddonRegistration": "/usr/share/openburnbar/text-expansion/fcitx5/addon/openburnbar-fcitx5.conf",
+    "textExpansionFcitx5InputMethodRegistration": "/usr/share/openburnbar/text-expansion/fcitx5/inputmethod/openburnbar.conf",
+    "textExpansionFcitx5Manifest": "/usr/share/openburnbar/text-expansion/text-expansion-engine-fcitx5.json",
     "ibusComponent": "/usr/share/ibus/component/openburnbar.xml",
     "swiftRuntime": "/usr/lib/openburnbar/swift",
     "nativeRuntime": "/usr/lib/openburnbar/native",
@@ -106,15 +110,17 @@
     "readsSurroundingText": false,
     "secureFieldPolicy": "deny-unless-inspectable-and-explicitly-nonsecure",
     "supportedBackend": "ibus",
-    "unavailableBackend": "fcitx5-native-addon-not-packaged",
+    "supportedBackends": ["ibus", "fcitx5"],
     "fcitx5": {
       "contract": "packaging/linux/fcitx5-openburnbar-addon.json",
-      "status": "source-only-not-packaged",
-      "nativeAddonPath": null,
-      "runtimeSupport": false,
-      "packageSupport": false,
-      "requiredHeaders": ["Fcitx5Core >= 5.1.6"],
-      "promotionBlocker": "fcitx5-native-headers-and-signed-addon-build-unavailable"
+      "status": "native-addon-packaged",
+      "nativeAddonPath": "/usr/lib/openburnbar/fcitx5/openburnbar-fcitx5.so",
+      "signedManifestPath": "/usr/share/openburnbar/text-expansion/text-expansion-engine-fcitx5.json",
+      "addonSource": "packaging/linux/fcitx5-addon",
+      "addonBuilder": "scripts/linux-port/build-fcitx5-addon.sh",
+      "runtimeSupport": true,
+      "packageSupport": true,
+      "requiredHeaders": ["Fcitx5Core >= 5.1.6"]
     }
   },
   "updateMetadata": {

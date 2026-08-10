@@ -10,7 +10,7 @@ export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 unset BASH_ENV ENV CDPATH GLOBIGNORE LD_PRELOAD LD_AUDIT NODE_OPTIONS
 unset OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS BURNBAR_DAEMON_LINUX_PEER_ROOTS
 unset OPENBURNBAR_DAEMON_LINUX_PEER_SHA256_PINS BURNBAR_DAEMON_LINUX_PEER_SHA256_PINS
-unset OPENBURNBAR_LINUX_TEXT_EXPANSION_ENGINE_PUBLIC_KEY OPENBURNBAR_LINUX_TEXT_EXPANSION_ENGINE_MANIFEST
+unset OPENBURNBAR_LINUX_TEXT_EXPANSION_ENGINE_PUBLIC_KEY OPENBURNBAR_LINUX_TEXT_EXPANSION_ENGINE_MANIFEST OPENBURNBAR_LINUX_TEXT_EXPANSION_ENGINE_MANIFEST_FCITX5
 unset OPENBURNBAR_LINUX_TEXT_EXPANSION_EXTERNAL
 
 APP_DIR_NAME=openburnbar
@@ -117,6 +117,7 @@ export OPENBURNBAR_INDEX_DATABASE_PATH="${OPENBURNBAR_INDEX_DATABASE_PATH:-${SUP
 # the engine process.
 if [[ -z "${APPIMAGE_ROOT}" ]]; then
   text_expansion_manifest="/usr/share/openburnbar/text-expansion/text-expansion-engine.json"
+  fcitx5_manifest="/usr/share/openburnbar/text-expansion/text-expansion-engine-fcitx5.json"
   release_public_key="/usr/share/openburnbar/attestation/release-ed25519.pub.pem"
   if [[ -r "${text_expansion_manifest}" && -r "${release_public_key}" ]]; then
     raw_engine_key="$(openssl pkey -pubin -in "${release_public_key}" -outform DER 2>/dev/null | tail -c 32 | base64 | tr -d '\n')"
@@ -126,6 +127,14 @@ if [[ -z "${APPIMAGE_ROOT}" ]]; then
     fi
     export OPENBURNBAR_LINUX_TEXT_EXPANSION_ENGINE_PUBLIC_KEY="${raw_engine_key}"
     export OPENBURNBAR_LINUX_TEXT_EXPANSION_ENGINE_MANIFEST="${text_expansion_manifest}"
+    # The native Fcitx5 addon ships its own signed manifest; expose it only
+    # when the package actually installed one so the daemon per-backend
+    # signature gate stays exact.
+    if [[ -r "${fcitx5_manifest}" ]]; then
+      export OPENBURNBAR_LINUX_TEXT_EXPANSION_ENGINE_MANIFEST_FCITX5="${fcitx5_manifest}"
+    else
+      unset OPENBURNBAR_LINUX_TEXT_EXPANSION_ENGINE_MANIFEST_FCITX5
+    fi
     export OPENBURNBAR_LINUX_TEXT_EXPANSION_EXTERNAL=1
   fi
 else
@@ -134,6 +143,7 @@ else
   # identity; in-app expansion remains available.
   unset OPENBURNBAR_LINUX_TEXT_EXPANSION_ENGINE_PUBLIC_KEY
   unset OPENBURNBAR_LINUX_TEXT_EXPANSION_ENGINE_MANIFEST
+  unset OPENBURNBAR_LINUX_TEXT_EXPANSION_ENGINE_MANIFEST_FCITX5
   unset OPENBURNBAR_LINUX_TEXT_EXPANSION_EXTERNAL
 fi
 

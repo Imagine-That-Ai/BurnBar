@@ -147,6 +147,18 @@ for (const artifact of closure.artifacts ?? []) {
       'usr/lib/openburnbar/native/libopenburnbar_iroh.so',
       'deb package missing iroh runtime at /usr/lib/openburnbar/native'
     );
+    assertContains(
+      'assert deb contains native Fcitx5 addon',
+      contents.stdout,
+      'usr/lib/openburnbar/fcitx5/openburnbar-fcitx5.so',
+      'deb package missing native Fcitx5 addon at /usr/lib/openburnbar/fcitx5'
+    );
+    assertContains(
+      'assert deb contains signed Fcitx5 engine manifest',
+      contents.stdout,
+      'usr/share/openburnbar/text-expansion/text-expansion-engine-fcitx5.json',
+      'deb package missing signed Fcitx5 engine manifest'
+    );
     for (const attestationPath of [
       'usr/share/openburnbar/attestation/installed-manifest.json',
       'usr/share/openburnbar/attestation/installed-manifest.json.sig',
@@ -218,6 +230,18 @@ for (const artifact of closure.artifacts ?? []) {
       listing.stdout,
       '/usr/lib/openburnbar/native/libopenburnbar_iroh.so',
       'rpm package missing iroh runtime at /usr/lib/openburnbar/native'
+    );
+    assertContains(
+      'assert rpm contains native Fcitx5 addon',
+      listing.stdout,
+      '/usr/lib/openburnbar/fcitx5/openburnbar-fcitx5.so',
+      'rpm package missing native Fcitx5 addon at /usr/lib/openburnbar/fcitx5'
+    );
+    assertContains(
+      'assert rpm contains signed Fcitx5 engine manifest',
+      listing.stdout,
+      '/usr/share/openburnbar/text-expansion/text-expansion-engine-fcitx5.json',
+      'rpm package missing signed Fcitx5 engine manifest'
     );
     for (const attestationPath of [
       '/usr/share/openburnbar/attestation/installed-manifest.json',
