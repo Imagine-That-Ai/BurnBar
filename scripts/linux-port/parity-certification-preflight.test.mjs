@@ -1037,31 +1037,36 @@ test('inventory detects every missing, duplicate, reused, invalid, and unsupport
   }
 });
 
-test('executed semantic mutation ownership rejects a unique no-op validator', (t) => {
-  const subject = createRepository();
-  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
-  const baseline = collectCertificationTestExecutions(subject.root, subject.head);
-  assert.ok(baseline.every((entry) => entry.status === 'passed'), JSON.stringify(baseline, null, 2));
-  write(subject.root, 'scripts/linux-port/product-validators/P-05.mjs',
-    "export async function validateProductRequirement() { return { status: 'passed' }; }\n");
-  commitMutation(subject, 'replace P-05 with semantic no-op');
-  const mutated = collectCertificationTestExecutions(subject.root, subject.head);
-  const execution = mutated.find((entry) =>
-    entry.testName === 'P-05 semantic mutation fails closed'
-  );
-  assert.equal(execution.status, 'failed');
-  assert.throws(
-    () => captureParityCertificationPreflight({
-      repoRoot: subject.root,
-      inputRoot: subject.inputRoot,
-      environmentId: ENVIRONMENT,
-      targetHead: subject.head,
-      candidateRunId: RUN_ID,
-      candidateArtifactDigest: DIGEST,
-      testExecutions: mutated
-    }),
-    /ownership tests failed/u
-  );
+test('executed semantic mutation ownership rejects a unique no-op validator', async (t) => {
+  const fixture = await getSharedOwnershipFixture();
+  assertSharedOwnershipFixture(fixture);
+  try {
+    const subject = privateCloneSubject(t, fixture);
+    const baseline = fixture.fourWorkerRows;
+    assert.ok(baseline.every((entry) => entry.status === 'passed'), JSON.stringify(baseline, null, 2));
+    write(subject.root, 'scripts/linux-port/product-validators/P-05.mjs',
+      "export async function validateProductRequirement() { return { status: 'passed' }; }\n");
+    commitMutation(subject, 'replace P-05 with semantic no-op');
+    const mutated = collectCertificationTestExecutions(subject.root, subject.head);
+    const execution = mutated.find((entry) =>
+      entry.testName === 'P-05 semantic mutation fails closed'
+    );
+    assert.equal(execution.status, 'failed');
+    assert.throws(
+      () => captureParityCertificationPreflight({
+        repoRoot: subject.root,
+        inputRoot: subject.inputRoot,
+        environmentId: ENVIRONMENT,
+        targetHead: subject.head,
+        candidateRunId: RUN_ID,
+        candidateArtifactDigest: DIGEST,
+        testExecutions: mutated
+      }),
+      /ownership tests failed/u
+    );
+  } finally {
+    assertSharedOwnershipFixture(fixture);
+  }
 });
 
 test('bounded ownership collector rejects invalid concurrency before collection', (t) => {
