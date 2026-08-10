@@ -207,4 +207,11 @@ test("loads a strict sorted skipped-test allowlist", () => {
     () => readAllowedNotExecuted(path),
     /test names must be sorted/,
   );
+
+  const directory = join(workspace, "allowed-directory");
+  mkdirSync(directory);
+  assert.throws(
+    () => readAllowedNotExecuted(directory),
+    /allowed not-executed file must be a regular file/,
+  );
 });

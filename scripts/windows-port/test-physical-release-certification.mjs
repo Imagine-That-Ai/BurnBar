@@ -485,6 +485,7 @@ const windowsFullPushTrigger = windowsFullWorkflow.slice(
   windowsFullWorkflow.indexOf("  pull_request:"),
 );
 for (const evidenceDependency of [
+  "scripts/lib/atomic-regular-file.mjs",
   "scripts/lib/domain-core-release-evidence.mjs",
   "scripts/ci/verify-domain-core-observed-identity.mjs",
   "scripts/windows-port/allowed-not-executed-full.json",
@@ -509,7 +510,7 @@ const windowsFullDetector = windowsFullWorkflow.slice(
   windowsFullWorkflow.indexOf("# x64 leg"),
 );
 for (const detectorDependency of [
-  "scripts/lib/domain-core-release-evidence\\.mjs",
+  "scripts/lib/(atomic-regular-file|domain-core-release-evidence)\\.mjs",
   "scripts/ci/verify-domain-core-observed-identity\\.mjs",
   "allowed-not-executed-full\\.json",
   "stage-local-(domain-core-native|rust-cdylib)",
@@ -520,6 +521,10 @@ for (const detectorDependency of [
     `${detectorDependency} must rerun the full Windows workflow for pull requests`,
   );
 }
+assert.ok(
+  windowsFastWorkflow.includes("scripts/lib/atomic-regular-file\\.mjs"),
+  "atomic regular-file reader changes must rerun the fast Windows gate",
+);
 assert.match(windowsFastWorkflow, /new-physical-hardware-attestation\.ps1/);
 assert.match(
   windowsFastWorkflow,

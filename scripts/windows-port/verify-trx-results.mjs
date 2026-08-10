@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
-import { lstatSync, readFileSync, readdirSync } from "node:fs";
+import { lstatSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { readRegularFileSync } from "../lib/atomic-regular-file.mjs";
 
 const REQUIRED_COUNTERS = [
   "aborted",
@@ -87,7 +89,10 @@ function xmlAttribute(attributes, name, path) {
 }
 
 function parseCounters(path) {
-  const source = readFileSync(path, "utf8");
+  const source = readRegularFileSync(path, {
+    encoding: "utf8",
+    label: "TRX result",
+  });
   const summaryMatches = [
     ...source.matchAll(/<ResultSummary\b[^>]*\boutcome="([^"]+)"[^>]*>/gu),
   ];
@@ -173,16 +178,15 @@ function parseCounters(path) {
 
 export function readAllowedNotExecuted(path) {
   const absolutePath = resolve(path);
-  const metadata = lstatSync(absolutePath);
-  if (!metadata.isFile() || metadata.isSymbolicLink()) {
-    throw new Error(
-      `allowed not-executed file must be a real file: ${absolutePath}`,
-    );
-  }
 
   let value;
   try {
-    value = JSON.parse(readFileSync(absolutePath, "utf8"));
+    value = JSON.parse(
+      readRegularFileSync(absolutePath, {
+        encoding: "utf8",
+        label: "allowed not-executed file",
+      }),
+    );
   } catch (error) {
     throw new Error(
       `unable to read allowed not-executed file ${absolutePath}: ${error.message}`,

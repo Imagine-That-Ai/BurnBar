@@ -40,6 +40,7 @@ on:
       - "crates/burnbar-remote/**"
       - "crates/openburnbar-iroh/**"
       - "crates/openburnbar-domain-core/**"
+      - "scripts/lib/atomic-regular-file.mjs"
       - "scripts/lib/domain-core-release-evidence.mjs"
       - "scripts/ci/verify-domain-core-observed-identity.mjs"
       - "scripts/windows-port/allowed-not-executed-full.json"
@@ -122,7 +123,7 @@ jobs:
           echo "${changed}"
 
           if echo "${changed}" | grep -Eq \
-            '^(windows/|crates/burnbar-remote/|crates/openburnbar-iroh/|crates/openburnbar-domain-core/|OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/|AgentLensTests/Fixtures/|scripts/lib/domain-core-release-evidence\.mjs|scripts/ci/verify-domain-core-observed-identity\.mjs|scripts/windows-port/(allowed-not-executed-full\.json|stage-local-(domain-core-native|rust-cdylib)(\.test)?\.mjs|verify-(local-domain-core-identity|trx-results)(\.test)?\.mjs)|\.github/workflows/pr-windows-full\.yml)'; then
+            '^(windows/|crates/burnbar-remote/|crates/openburnbar-iroh/|crates/openburnbar-domain-core/|OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/|AgentLensTests/Fixtures/|scripts/lib/(atomic-regular-file|domain-core-release-evidence)\.mjs|scripts/ci/verify-domain-core-observed-identity\.mjs|scripts/windows-port/(allowed-not-executed-full\.json|stage-local-(domain-core-native|rust-cdylib)(\.test)?\.mjs|verify-(local-domain-core-identity|trx-results)(\.test)?\.mjs)|\.github/workflows/pr-windows-full\.yml)'; then
             echo "windows=true" >> "$GITHUB_OUTPUT"
             echo "Windows full-suite surface changed: running x64 + ARM64 full-suite legs."
           else
