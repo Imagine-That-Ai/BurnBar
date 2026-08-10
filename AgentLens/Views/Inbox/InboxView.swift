@@ -40,15 +40,17 @@ struct InboxView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            listPane
-                .frame(width: 380)
-                .frame(minHeight: 0, maxHeight: .infinity)
+        GeometryReader { proxy in
+            HStack(spacing: 0) {
+                listPane
+                    .frame(width: Self.listPaneWidth(forTotalWidth: proxy.size.width))
+                    .frame(minHeight: 0, maxHeight: .infinity)
 
-            Divider().background(DesignSystem.Colors.border)
+                Divider().background(DesignSystem.Colors.border)
 
-            detailPane
-                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                detailPane
+                    .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+            }
         }
         .task {
             await model.load(force: true)
@@ -153,11 +155,17 @@ struct InboxView: View {
             // the brief was authored by the rule-based fallback. Say so — and
             // when egress is on, name the budget gate as the likely reason
             // instead of pretending the silence is fine.
+            // Do not name a cause the run telemetry cannot actually prove. The
+            // analyst is skipped for three different reasons (egress off,
+            // budget spent, or an empty evidence pack — nothing indexed in the
+            // window), and only the egress one is visible here. Guessing
+            // "check budget" sent a reader hunting through settings while the
+            // real cause was an index that had not caught up yet.
             let cost: String
             if run.costUSD > 0 {
                 cost = String(format: " · $%.3f", run.costUSD)
             } else if run.egressMode.allowsModelCalls {
-                cost = " · rule-based brief (model call skipped — check budget)"
+                cost = " · rule-based brief (no model ran)"
             } else {
                 cost = " · rule-based brief (model egress off)"
             }
@@ -356,6 +364,15 @@ struct InboxView: View {
         }
     }
 
+    /// The list keeps a comfortable 380pt on a desk-width window, but yields to
+    /// the reading pane as the window narrows — a fixed 380 left the detail pane
+    /// unusably thin below ~900pt, which is exactly where the detail layout has
+    /// the least room to spare.
+    static func listPaneWidth(forTotalWidth total: CGFloat) -> CGFloat {
+        guard total > 0 else { return 380 }
+        return min(380, max(260, total * 0.32))
+    }
+
     static let relativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
@@ -485,9 +502,12 @@ struct InboxRowView: View {
                 .foregroundStyle(DesignSystem.Colors.textMuted)
 
             if row.summary.occurrenceCount > 1 {
-                Text("· seen \(row.summary.occurrenceCount)×")
+                Text("· seen \(InboxMetricInspector.groupedCount(Double(row.summary.occurrenceCount)))×")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
+                    // The full story lives in the detail pane; the list still
+                    // owes a hover answer rather than a bare number.
+                    .help(InboxOccurrenceInspector.summarize(summary: row.summary).explanation)
             }
 
             Spacer(minLength: 0)
@@ -677,6 +697,32 @@ enum InboxPresentation {
         case .p2: return "Today"
         case .p3: return "Worth knowing"
         case .p4: return "Background"
+        }
+    }
+
+    /// What this kind of item means. Surfaced on hover so the chip is a label
+    /// that can answer for itself rather than a piece of jargon.
+    static func kindExplanation(_ kind: BurnBarInboxItemKind) -> String {
+        switch kind {
+        case .ciWaste: return "A CI pattern that keeps burning machine time without producing signal."
+        case .promisedNotLanded: return "An agent said it would do something that never reached main."
+        case .uncommittedWork: return "A workspace with uncommitted changes whose session has gone quiet."
+        case .costAnomaly: return "Spend that deviates sharply from the trailing baseline."
+        case .stuckPR: return "An open pull request that has stopped moving."
+        case .indexHealth: return "The local index itself is stale or degraded."
+        case .brief: return "The periodic narrative synthesis — what has been going on lately."
+        case .budget: return "The daily analysis budget was reached, so synthesis fell back to rules."
+        case .system: return "A capability notice from OpenBurnBar itself, not a finding about your work."
+        }
+    }
+
+    /// What a priority band commits to, in plain words.
+    static func priorityExplanation(_ priority: BurnBarInboxPriority) -> String {
+        switch priority {
+        case .p1: return "Urgent — the only band allowed to raise a notification."
+        case .p2: return "Worth handling today, but it will not interrupt you."
+        case .p3: return "Worth knowing. It sits in the list until you get to it."
+        case .p4: return "Background context. Nothing here is asking for action."
         }
     }
 
