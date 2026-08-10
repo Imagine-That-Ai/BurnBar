@@ -1,4 +1,6 @@
 import XCTest
+import AppKit
+import SwiftUI
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 @testable import OpenBurnBar
@@ -677,6 +679,49 @@ final class PaneWorkspaceModelTests: XCTestCase {
         XCTAssertEqual(target.controller.activeThreadID, threadID)
     }
 
+    // MARK: - Tab identity (Agent Deck §3.7)
+
+    func test_displayTitle_neverFallsBackToTheAgentName() throws {
+        let ws = try makeWorkspace()
+        let tab = ws.selectedTab
+        // No tab title, no thread title, no custom leaf title: the old chain
+        // ended at `chatBackend.displayName`, so a fresh tab read "Codex" and
+        // silently stopped reading it the moment the thread earned a title.
+        ws.primaryController.chatBackend = .codex
+        let title = ws.displayTitle(for: tab)
+        XCTAssertEqual(title, "Tab 1")
+        XCTAssertNotEqual(title, ChatBackendID.codex.displayName)
+
+        ws.primaryController.chatBackend = .hermes
+        XCTAssertEqual(ws.displayTitle(for: tab), "Tab 1",
+                       "The tab title must not track the agent — the agent marks do")
+    }
+
+    func test_displayTitle_stillPrefersTheExplicitTabTitle() throws {
+        let ws = try makeWorkspace()
+        let tab = ws.selectedTab
+        ws.renameTab(tab.id, title: "Refactor the parser")
+        XCTAssertEqual(ws.displayTitle(for: tab), "Refactor the parser")
+    }
+
+    func test_distinctBackends_areTheTabsAgentMarks() throws {
+        let ws = try makeWorkspace()
+        ws.primaryController.chatBackend = .codex
+        XCTAssertEqual(ws.selectedTab.distinctBackends, [.codex])
+
+        ws.splitActive(axis: .horizontal)
+        let second = try XCTUnwrap(ws.leaf(ws.activeLeafID))
+        second.controller.chatBackend = .claude
+        XCTAssertEqual(ws.selectedTab.distinctBackends, [.codex, .claude],
+                       "The marks are plural because the tab is plural")
+
+        // Distinctness, not multiplicity: a second Codex pane is still one mark.
+        ws.splitActive(axis: .vertical)
+        let third = try XCTUnwrap(ws.leaf(ws.activeLeafID))
+        third.controller.chatBackend = .codex
+        XCTAssertEqual(ws.selectedTab.distinctBackends, [.codex, .claude])
+    }
+
     // MARK: - Codable snapshot (pure)
 
     func test_snapshot_codableRoundTrip() throws {
@@ -702,3 +747,351 @@ final class PaneWorkspaceModelTests: XCTestCase {
         XCTAssertFalse(primary2)
     }
 }
+
+// MARK: - Agent Deck (PR 1)
+//
+// These classes belong in `AgentLensTests/Active/AgentDeckTests.swift` per the
+// spec's Appendix B. They live here because this PR must not regenerate
+// `OpenBurnBar.xcodeproj` — a brand-new test file would not be a member of the
+// test target and would silently never run. Moving them out is a pure
+// cut-and-paste once the project is regenerated.
+
+/// `ChatBackendID.sigilTint` / `.sigilInk` / `.kindLabel` — the identity layer
+/// the whole deck is drawn from.
+@MainActor
+final class AgentDeckIdentityTests: XCTestCase {
+
+    func test_sigilTintHex_isTotalAndPairwiseDistinct() {
+        var seen: [String: ChatBackendID] = [:]
+        for backend in ChatBackendID.allCases {
+            let hex = backend.sigilTintHex
+            XCTAssertEqual(hex.count, 6, "\(backend.rawValue) must declare a 6-digit identity hex")
+            if let clash = seen[hex] {
+                XCTFail("\(backend.rawValue) and \(clash.rawValue) share tint #\(hex) — agents must be told apart by colour")
+            }
+            seen[hex] = backend
+        }
+        XCTAssertEqual(seen.count, ChatBackendID.allCases.count)
+        XCTAssertEqual(ChatBackendID.allCases.count, 12)
+    }
+
+    func test_sigilTint_reusesTheDesignSystemPrimaries_andInventsNoNewHexes() throws {
+        for backend in ChatBackendID.allCases where backend != .hermes {
+            let provider = try XCTUnwrap(backend.agentProvider)
+            let expected = try XCTUnwrap(Self.srgb(DesignSystem.Colors.primary(for: provider)))
+            let declared = AgentDeckContrast.rgb(fromHex: backend.sigilTintHex)
+            XCTAssertEqual(declared.red / 255, expected.red, accuracy: 0.004, "\(backend.rawValue) red drifted from DesignSystem.Colors.primary")
+            XCTAssertEqual(declared.green / 255, expected.green, accuracy: 0.004, "\(backend.rawValue) green drifted")
+            XCTAssertEqual(declared.blue / 255, expected.blue, accuracy: 0.004, "\(backend.rawValue) blue drifted")
+        }
+    }
+
+    func test_sigilTint_hermes_keepsTheMercuryAxis_andIsNeverProviderPurple() {
+        XCTAssertEqual(ChatBackendID.hermes.sigilTint, DesignSystem.Colors.hermesAureate)
+        // A855F7 is Hermes' *provider* primary and must never reach a chat surface.
+        XCTAssertNotEqual(
+            AgentDeckContrast.rgb(fromHex: ChatBackendID.hermes.sigilTintHex),
+            AgentDeckContrast.rgb(fromHex: "A855F7")
+        )
+    }
+
+    func test_sigilInk_isAlwaysTheHigherContrastChoice() {
+        for backend in ChatBackendID.allCases {
+            let hex = backend.sigilTintHex
+            let dark = AgentDeckContrast.contrastRatio(inkRGB: AgentDeckContrast.darkInkRGB, tintHex: hex)
+            let light = AgentDeckContrast.contrastRatio(inkRGB: AgentDeckContrast.lightInkRGB, tintHex: hex)
+            let chosenIsDark = AgentDeckContrast.prefersDarkInk(overTintHex: hex)
+            XCTAssertEqual(
+                chosenIsDark, dark >= light,
+                "\(backend.rawValue) picked the lower-contrast ink"
+            )
+            XCTAssertEqual(
+                AgentDeckContrast.inkContrastRatio(forTintHex: hex),
+                max(dark, light),
+                accuracy: 0.001
+            )
+        }
+    }
+
+    func test_sigilInk_clearsTheLargeGlyphBar_forEveryAgent() {
+        // The spec's "4.5:1 for all 12" is unreachable without minting new
+        // hexes, which §6.1 forbids: 8B5CF6 (Droid) tops out at ~4.41:1 and
+        // 6C63FF (Antigravity) at ~4.32:1 against *either* ink — they are
+        // genuine mid-tones. The ink only ever fills a ≥14pt semibold mark, so
+        // the bar it must clear is the large-text 3.0:1, and it does, twice
+        // over. Everything else the tint touches is a rim, a dot or a ≤3pt bar.
+        for backend in ChatBackendID.allCases {
+            let ratio = AgentDeckContrast.inkContrastRatio(forTintHex: backend.sigilTintHex)
+            XCTAssertGreaterThanOrEqual(
+                ratio, BackdropContrast.largeTextRatio,
+                "\(backend.rawValue) ink contrast \(ratio) fails the large-text bar"
+            )
+        }
+        let midTones = ChatBackendID.allCases.filter {
+            AgentDeckContrast.inkContrastRatio(forTintHex: $0.sigilTintHex) < BackdropContrast.normalTextRatio
+        }
+        XCTAssertEqual(
+            Set(midTones), [.droid, .antigravity],
+            "The set of agents that miss 4.5:1 changed — re-read §6.1 before shipping a new tint"
+        )
+    }
+
+    func test_brandTintsThatSitNearASemanticColour_areSeparatedByTheDotChannel() {
+        // Three near-collisions are real and deliberate: FF6B6B (OpenClaw) vs
+        // error FA5053, F97316 (Forge) vs warning, 48E054 (Junie) vs dark
+        // success 38D898. Colour alone can therefore not carry state — which is
+        // exactly why filled / hollow / dashed is a mandatory second channel.
+        XCTAssertEqual(AgentPresence.ready.dotStyle, .filled)
+        XCTAssertEqual(AgentPresence.needsAuth(.cliConsent).dotStyle, .hollow)
+        XCTAssertEqual(AgentPresence.offline.dotStyle, .hollow)
+        XCTAssertEqual(AgentPresence.notInstalled.dotStyle, .dashed)
+        XCTAssertNotEqual(AgentPresence.ready.dotStyle, AgentPresence.notInstalled.dotStyle)
+        XCTAssertNotNil(AgentPresence.offline.glyph)
+        XCTAssertNotNil(AgentPresence.notInstalled.glyph)
+        XCTAssertNotNil(AgentPresence.error("boom").glyph)
+    }
+
+    func test_kindLabel_usesTheMobileTwinsShippedCopy() {
+        XCTAssertEqual(ChatBackendID.hermes.kindLabel, "Agent harness")
+        XCTAssertEqual(ChatBackendID.piAgent.kindLabel, "Empathy agent")
+        XCTAssertEqual(ChatBackendID.openclaw.kindLabel, "Gateway agent")
+        for backend in ChatBackendID.allCases where backend.requiresCLIAssistantConsent {
+            XCTAssertEqual(backend.kindLabel, "CLI agent", "\(backend.rawValue) is a local CLI agent")
+        }
+        // Copy law: the window never says engine / backend / runtime / surface.
+        for backend in ChatBackendID.allCases {
+            let lowered = backend.kindLabel.lowercased()
+            XCTAssertFalse(lowered.contains("engine"))
+            XCTAssertFalse(lowered.contains("backend"))
+            XCTAssertFalse(lowered.contains("runtime"))
+            XCTAssertFalse(lowered.contains("surface"))
+        }
+    }
+
+    private static func srgb(_ color: Color) -> BackdropRGBComponents? {
+        guard let resolved = NSColor(color).usingColorSpace(.sRGB) else { return nil }
+        return BackdropRGBComponents(
+            red: Double(resolved.redComponent),
+            green: Double(resolved.greenComponent),
+            blue: Double(resolved.blueComponent)
+        )
+    }
+
+    private struct BackdropRGBComponents {
+        let red: Double
+        let green: Double
+        let blue: Double
+    }
+}
+
+/// The eight presence states and — the part that actually matters — the order
+/// they beat each other in.
+final class AgentPresenceTests: XCTestCase {
+
+    private let epoch = Date(timeIntervalSince1970: 1_700_000_000)
+
+    func test_ready_isTheFloor() {
+        XCTAssertEqual(AgentPresenceResolver.resolve(AgentPresenceFacts()), .ready)
+        XCTAssertEqual(
+            AgentPresenceResolver.resolve(
+                AgentPresenceFacts(executableResolved: true, gatewayReachable: true, quotaRemainingFraction: 0.9)
+            ),
+            .ready
+        )
+    }
+
+    func test_eachStateIsReachable() {
+        XCTAssertEqual(
+            AgentPresenceResolver.resolve(AgentPresenceFacts(isStreaming: true, busySince: epoch)),
+            .streaming(since: epoch)
+        )
+        XCTAssertEqual(
+            AgentPresenceResolver.resolve(AgentPresenceFacts(isThinking: true, busySince: epoch)),
+            .thinking(since: epoch)
+        )
+        XCTAssertEqual(
+            AgentPresenceResolver.resolve(AgentPresenceFacts(executableResolved: false)),
+            .notInstalled
+        )
+        XCTAssertEqual(
+            AgentPresenceResolver.resolve(AgentPresenceFacts(gatewayReachable: false)),
+            .offline
+        )
+        XCTAssertEqual(
+            AgentPresenceResolver.resolve(AgentPresenceFacts(authGate: .hermesSetup)),
+            .needsAuth(.hermesSetup)
+        )
+        XCTAssertEqual(
+            AgentPresenceResolver.resolve(AgentPresenceFacts(quotaRemainingFraction: 0)),
+            .exhausted
+        )
+        XCTAssertEqual(
+            AgentPresenceResolver.resolve(AgentPresenceFacts(streamError: "stream died")),
+            .error("stream died")
+        )
+    }
+
+    func test_precedence_streamingBeatsEverything() {
+        let all = AgentPresenceFacts(
+            isStreaming: true,
+            isThinking: true,
+            busySince: epoch,
+            executableResolved: false,
+            gatewayReachable: false,
+            authGate: .cliConsent,
+            quotaRemainingFraction: 0,
+            streamError: "boom"
+        )
+        XCTAssertEqual(AgentPresenceResolver.resolve(all), .streaming(since: epoch))
+    }
+
+    func test_precedence_fullLadder() {
+        var facts = AgentPresenceFacts(
+            isStreaming: true,
+            isThinking: true,
+            busySince: epoch,
+            executableResolved: false,
+            gatewayReachable: false,
+            authGate: .cliConsent,
+            quotaRemainingFraction: 0,
+            streamError: "boom"
+        )
+        // streaming → thinking → notInstalled → offline → needsAuth → exhausted → error → ready
+        XCTAssertEqual(AgentPresenceResolver.resolve(facts), .streaming(since: epoch))
+        facts.isStreaming = false
+        XCTAssertEqual(AgentPresenceResolver.resolve(facts), .thinking(since: epoch))
+        facts.isThinking = false
+        XCTAssertEqual(AgentPresenceResolver.resolve(facts), .notInstalled)
+        facts.executableResolved = true
+        XCTAssertEqual(AgentPresenceResolver.resolve(facts), .offline)
+        facts.gatewayReachable = true
+        XCTAssertEqual(AgentPresenceResolver.resolve(facts), .needsAuth(.cliConsent))
+        facts.authGate = nil
+        XCTAssertEqual(AgentPresenceResolver.resolve(facts), .exhausted)
+        facts.quotaRemainingFraction = 0.5
+        XCTAssertEqual(AgentPresenceResolver.resolve(facts), .error("boom"))
+        facts.streamError = nil
+        XCTAssertEqual(AgentPresenceResolver.resolve(facts), .ready)
+    }
+
+    func test_unknownProbesNeverClaimAFault() {
+        // `nil` means "not applicable / not probed yet". A gateway agent has no
+        // executable and a CLI agent has no gateway; neither may be reported
+        // missing on that basis.
+        XCTAssertEqual(
+            AgentPresenceResolver.resolve(AgentPresenceFacts(executableResolved: nil, gatewayReachable: nil)),
+            .ready
+        )
+    }
+
+    func test_busySinceDefaultsToNow_whenTheTransitionWasNotRecorded() {
+        let now = epoch.addingTimeInterval(42)
+        XCTAssertEqual(
+            AgentPresenceResolver.resolve(AgentPresenceFacts(isStreaming: true), now: now),
+            .streaming(since: now)
+        )
+    }
+
+    func test_words_areUserFacingAndNeverSayEngineOrBackend() {
+        let states: [AgentPresence] = [
+            .ready, .thinking(since: epoch), .streaming(since: epoch), .exhausted,
+            .needsAuth(.hermesSetup), .needsAuth(.hermesCatalog), .needsAuth(.cliConsent),
+            .offline, .notInstalled, .error("x")
+        ]
+        for state in states {
+            XCTAssertFalse(state.word.isEmpty)
+            let lowered = state.word.lowercased()
+            XCTAssertFalse(lowered.contains("engine"))
+            XCTAssertFalse(lowered.contains("backend"))
+        }
+        XCTAssertEqual(AgentPresence.streaming(since: epoch).word, "Answering")
+        XCTAssertEqual(AgentPresence.thinking(since: epoch).word, "Thinking")
+        XCTAssertTrue(AgentPresence.streaming(since: epoch).isBusy)
+        XCTAssertFalse(AgentPresence.offline.isBusy)
+        XCTAssertEqual(AgentPresence.streaming(since: epoch).busySince, epoch)
+    }
+}
+
+/// §3.3 — the model segment is never allowed to lie or vanish.
+@MainActor
+final class AgentSigilLabelTests: XCTestCase {
+
+    func test_hermesColdCatalog_neverPrintsTheGatewaySelfAlias() {
+        let label = AgentSigil.modelLabel(
+            backend: .hermes,
+            effectiveModel: ChatSessionController.hermesCanonicalModelAlias,
+            selectedHermesFamily: nil,
+            isElderWandActive: false
+        )
+        XCTAssertEqual(label, "Auto (gateway picks)")
+        XCTAssertFalse(label.contains("hermes"), "The literal gateway alias leaked into the picker")
+    }
+
+    func test_hermesBareFamilyToken_rendersAsAnAutoRoute() {
+        XCTAssertEqual(
+            AgentSigil.modelLabel(backend: .hermes, effectiveModel: "claude", selectedHermesFamily: nil, isElderWandActive: false),
+            "Auto → Claude"
+        )
+        XCTAssertEqual(
+            AgentSigil.modelLabel(backend: .hermes, effectiveModel: "codex", selectedHermesFamily: nil, isElderWandActive: false),
+            "Auto → Codex"
+        )
+    }
+
+    func test_hermesConcreteModel_showsTheRouteItTravels() {
+        XCTAssertEqual(
+            AgentSigil.modelLabel(
+                backend: .hermes,
+                effectiveModel: "claude-sonnet-4-6",
+                selectedHermesFamily: .claude,
+                isElderWandActive: false
+            ),
+            "claude-sonnet-4-6 · via Claude"
+        )
+    }
+
+    func test_hermesEmptySelection_stillNamesSomething() {
+        XCTAssertEqual(
+            AgentSigil.modelLabel(backend: .hermes, effectiveModel: "", selectedHermesFamily: nil, isElderWandActive: false),
+            "Auto (gateway picks)"
+        )
+    }
+
+    func test_elderWand_stopsThePillFromLying() {
+        let label = AgentSigil.modelLabel(
+            backend: .hermes,
+            effectiveModel: "gpt-5-codex",
+            selectedHermesFamily: nil,
+            isElderWandActive: true
+        )
+        XCTAssertEqual(label, "Fusion → BurnBar gateway · gpt-5-codex")
+    }
+
+    func test_nonHermes_isAlwaysANameNeverABlank() {
+        XCTAssertEqual(
+            AgentSigil.modelLabel(backend: .codex, effectiveModel: "gpt-5-codex", selectedHermesFamily: nil, isElderWandActive: false),
+            "gpt-5-codex"
+        )
+        XCTAssertEqual(
+            AgentSigil.modelLabel(backend: .codex, effectiveModel: "   ", selectedHermesFamily: nil, isElderWandActive: false),
+            "Default model"
+        )
+        for backend in ChatBackendID.allCases {
+            let label = AgentSigil.modelLabel(
+                backend: backend,
+                effectiveModel: "",
+                selectedHermesFamily: nil,
+                isElderWandActive: false
+            )
+            XCTAssertFalse(label.isEmpty, "\(backend.rawValue) rendered an empty model segment")
+        }
+    }
+
+    func test_elapsedSuffix_isSeparateFromTheModel_andFormatsMinutes() {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertEqual(AgentSigil.elapsedText(since: start, now: start.addingTimeInterval(41)), "41s")
+        XCTAssertEqual(AgentSigil.elapsedText(since: start, now: start.addingTimeInterval(125)), "2m 5s")
+        XCTAssertEqual(AgentSigil.elapsedText(since: start, now: start.addingTimeInterval(-5)), "0s")
+    }
+}
+
