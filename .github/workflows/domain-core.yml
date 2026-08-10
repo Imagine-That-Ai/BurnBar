@@ -1442,7 +1442,7 @@ jobs:
       - python-hermes-contracts
       - rollback-drill
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out exact candidate
         if: github.event_name == 'push'

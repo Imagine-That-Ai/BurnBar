@@ -31,6 +31,7 @@ const FAST_WORKFLOW = ".github/workflows/fast-feedback.yml";
 const NATIVE_WORKFLOW = ".github/workflows/pr-native-fast.yml";
 const SECURITY_WORKFLOW = ".github/workflows/security-pr.yml";
 const BRANCH_PROTECTION = "governance/branch-protection.main.json";
+const CHECKOUT_TIMEOUT_FLOOR_MINUTES = 15;
 const roots = [];
 
 process.on("exit", () => {
@@ -92,7 +93,7 @@ function checkoutTimeoutOffenders(root) {
       const timeout = body.match(/^    timeout-minutes:\s*(\d+)\s*$/mu);
       if (
         timeout &&
-        Number.parseInt(timeout[1], 10) < 6 &&
+        Number.parseInt(timeout[1], 10) < CHECKOUT_TIMEOUT_FLOOR_MINUTES &&
         body.includes("actions/checkout")
       ) {
         offenders.push(`${file}:${job}=${timeout[1]}`);
@@ -510,21 +511,21 @@ check("every checkout-bearing CI job tolerates a slow checkout", () => {
   // A job whose budget expires during actions/checkout is reported by GitHub as
   // CANCELLED, and the CI Gate aggregator fails closed on a cancelled component
   // -- so an ordinary slow checkout ejects the whole merge-queue candidate. The
-  // pack is ~866MB and a tip checkout has been observed taking nearly 5min under
-  // contention. This originally guarded one job (SQLCipher), was widened to
-  // fast-feedback.yml, and is now repo-wide: the required-context detector jobs
-  // (Detect native/dist/windows changes) live in other workflows and were the
-  // ones still ejecting candidates. Any job that runs actions/checkout must
-  // budget >= 6 minutes.
+  // pack is ~866MB. On 2026-08-10, required jobs were cancelled after spending
+  // their entire 8- and 10-minute budgets inside checkout, while the Firestore
+  // rules job took 10m27s and still passed under a larger cap. This originally
+  // guarded one job (SQLCipher), was widened to fast-feedback.yml, and is now
+  // repo-wide. Any job that runs actions/checkout must budget at least 15
+  // minutes so checkout can finish and the actual check still gets time to run.
   const offenders = checkoutTimeoutOffenders(REPO_ROOT);
   assert.deepEqual(
     offenders,
     [],
-    `checkout-bearing jobs must budget >=6 min: ${JSON.stringify(offenders)}`,
+    `checkout-bearing jobs must budget >=${CHECKOUT_TIMEOUT_FLOOR_MINUTES} min: ${JSON.stringify(offenders)}`,
   );
 });
 
-check("checkout timeout guard catches a tight OSV budget", () => {
+check("checkout timeout guard catches a ten-minute OSV budget", () => {
   const root = mkdtempSync(join(tmpdir(), "checkout-timeout-guard-"));
   roots.push(root);
   const workflows = join(root, ".github", "workflows");
@@ -534,7 +535,7 @@ check("checkout timeout guard catches a tight OSV budget", () => {
   const osvJob = workflowJob(source, "osv-scanner");
   const mutatedJob = osvJob.replace(
     /^    timeout-minutes:\s*\d+\s*$/mu,
-    "    timeout-minutes: 5\n",
+    "    timeout-minutes: 10\n",
   );
   assert.notEqual(mutatedJob, osvJob, "OSV timeout mutation must change the job");
   writeFileSync(
@@ -542,7 +543,7 @@ check("checkout timeout guard catches a tight OSV budget", () => {
     source.replace(osvJob, mutatedJob),
   );
 
-  assert.deepEqual(checkoutTimeoutOffenders(root), ["security-pr.yml:osv-scanner=5"]);
+  assert.deepEqual(checkoutTimeoutOffenders(root), ["security-pr.yml:osv-scanner=10"]);
 });
 
 check("Rust path detector is mandatory and only a proven unchanged path may skip Rust", () => {

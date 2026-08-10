@@ -76,7 +76,7 @@ jobs:
     needs: detect-public-macos-download-change
     if: ${{ needs.detect-public-macos-download-change.outputs.gate_changed == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -100,7 +100,7 @@ jobs:
     needs: detect-public-macos-download-change
     if: ${{ needs.detect-public-macos-download-change.outputs.changed == 'true' }}
     runs-on: macos-26
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - name: Check out candidate download metadata
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)

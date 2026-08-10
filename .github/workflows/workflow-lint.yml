@@ -261,7 +261,9 @@ on:
 jobs:
   actionlint:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # PR run 31396653617 spent the full former 10-minute budget in checkout
+    # on 2026-08-10, before actionlint or any workflow self-test could run.
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
