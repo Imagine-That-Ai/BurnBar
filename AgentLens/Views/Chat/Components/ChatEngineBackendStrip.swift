@@ -3,10 +3,10 @@ import SwiftUI
 struct ChatEngineBackendStrip: View {
     @Bindable var controller: ChatSessionController
     var settingsManager: SettingsManager
-    @State private var hermesRuntimeLauncher = HermesRuntimeLauncher()
-    @State private var piAgentRuntimeAdapter = PiAgentRuntimeAdapter()
-
     @State private var quotaService = ProviderQuotaService.shared
+
+    /// The one switch path, injected on the controller (see `AgentDeck.swift`).
+    private var switcher: AgentDeckSwitcher { controller.agentDeck.switcher }
 
     private var enabledChatBackendsForHeader: [ChatBackendID] {
         settingsManager.enabledChatBackends
@@ -110,40 +110,12 @@ struct ChatEngineBackendStrip: View {
         }
     }
 
+    /// Delegates to the one switching path the app has
+    /// (`AgentDeckSwitcher`), so this strip and the Agent Deck's Sigil / ghost
+    /// row can never drift on the Hermes-wizard, Hermes-launch and Pi-launch
+    /// asymmetries.
     private func handleBackendTap(_ backend: ChatBackendID) {
-        if backend == .hermes && !settingsManager.hermesSetupWizardCompleted {
-            WindowManager.shared.openHermesSetupWizard(
-                settingsManager: settingsManager,
-                chatController: controller
-            )
-            return
-        }
-        if backend == .hermes && controller.hermesAvailable == false {
-            controller.setChatBackend(.hermes)
-            Task {
-                _ = await hermesRuntimeLauncher.openHermesAndGateway(
-                    baseURL: resolvedHermesGatewayBaseURL,
-                    bearerToken: resolvedHermesBearerToken
-                )
-                await controller.probeHermesAvailability()
-            }
-            return
-        }
-        if backend == .piAgent && controller.piAgentAvailable == false {
-            Task {
-                syncPiAgentAdapterPreferences()
-                _ = await piAgentRuntimeAdapter.openManagedRuntime(
-                    baseURL: resolvedPiAgentGatewayBaseURL,
-                    bearerToken: resolvedPiAgentBearerToken
-                )
-                await controller.probePiAgentAvailability()
-                if controller.piAgentAvailable {
-                    controller.setChatBackend(.piAgent)
-                }
-            }
-            return
-        }
-        controller.setChatBackend(backend)
+        switcher.select(backend, controller: controller, settingsManager: settingsManager)
     }
 
     private func isBackendUnavailable(_ backend: ChatBackendID) -> Bool {
@@ -159,30 +131,4 @@ struct ChatEngineBackendStrip: View {
         }
     }
 
-    private func syncPiAgentAdapterPreferences() {
-        let preferred = settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
-        piAgentRuntimeAdapter.preferredInstanceID = preferred.isEmpty ? nil : preferred
-        let redisRaw = settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        piAgentRuntimeAdapter.redisURL = redisRaw.isEmpty ? nil : URL(string: redisRaw)
-    }
-
-    private var resolvedHermesGatewayBaseURL: URL {
-        URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(string: "http://127.0.0.1:8642")!
-    }
-
-    private var resolvedHermesBearerToken: String? {
-        let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        return token.isEmpty ? nil : token
-    }
-
-    private var resolvedPiAgentGatewayBaseURL: URL {
-        URL(string: settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(string: "http://127.0.0.1:8765")!
-    }
-
-    private var resolvedPiAgentBearerToken: String? {
-        let token = settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        return token.isEmpty ? nil : token
-    }
 }

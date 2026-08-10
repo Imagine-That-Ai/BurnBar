@@ -52,7 +52,51 @@ struct BurnBarAIInboxReplyService: Sendable {
 
     /// Byte-stable so provider prompt caching applies. The lens pack is chosen
     /// per-thread from the item kind; strategy packs never answer ops alerts.
-    static func systemPrompt(pack: BurnBarFounderLens.Pack) -> String {
+    ///
+    /// A `directive` appends one more static constant — the "say it again, this
+    /// way" instruction — so each (pack, directive) pair is its own stable
+    /// cache entry rather than a string assembled per turn.
+    static func systemPrompt(
+        pack: BurnBarFounderLens.Pack,
+        directive: BurnBarInboxReplyDirective? = nil
+    ) -> String {
+        let base = basePrompt(pack: pack)
+        guard let directive else { return base }
+        return base + "\n\n" + rewriteSection(directive)
+    }
+
+    /// The rewrite instruction for one directive. Selected, never interpolated.
+    ///
+    /// The register/detail language is reused verbatim from the analyst's
+    /// fragments so "plain English" means the same thing in a reply as it does
+    /// in a brief — one definition, two surfaces.
+    static func rewriteSection(_ directive: BurnBarInboxReplyDirective) -> String {
+        let instruction: String
+        if let register = directive.register {
+            instruction = BurnBarAIInboxPromptBuilder.registerFragment(register)
+        } else if let detail = directive.detail {
+            instruction = BurnBarAIInboxPromptBuilder.detailFragment(detail)
+        } else {
+            instruction = ""
+        }
+        let body = instruction.isEmpty
+            // `.professional` contributes no fragment because it *is* the base
+            // voice — so the rewrite request itself carries the whole payload.
+            ? "Write it the way you would to a colleague who shares this context."
+            : instruction
+        return """
+            ## This turn is a rewrite request
+            The user is not asking a new question. They are asking for the SAME item, explained \
+            differently. Re-explain the item under discussion from scratch in the register below. \
+            Do not open with "sure" or "here is". Do not apologise for the earlier version, and \
+            do not refer to it. Change nothing about what is true — only how it reads. Keep every \
+            number, file name, and citation intact. `plan_candidates` stays empty for a rewrite.
+
+            \(body)
+            """
+    }
+
+    static func basePrompt(pack: BurnBarFounderLens.Pack) -> String {
         """
         You are the reply half of OpenBurnBar's AI Inbox: a sharp founder/engineer colleague \
         continuing a conversation about ONE specific inbox item. The user read the item and \
@@ -119,16 +163,27 @@ struct BurnBarAIInboxReplyService: Sendable {
             )
         }
 
-        let body = request.bodyMarkdown.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard body.isEmpty == false else {
+        let rawBody = request.bodyMarkdown.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard rawBody.isEmpty == false else {
             return BurnBarInboxReplyResponse(message: nil, refusalReason: "Empty reply.")
         }
-        guard body.count <= Self.maxUserTurnCharacters else {
+        guard rawBody.count <= Self.maxUserTurnCharacters else {
             return BurnBarInboxReplyResponse(
                 message: nil,
-                refusalReason: "Reply is too long (\(body.count) characters; the cap is \(Self.maxUserTurnCharacters))."
+                refusalReason: """
+                    Reply is too long (\(rawBody.count) characters; the cap is \(Self.maxUserTurnCharacters)).
+                    """
             )
         }
+
+        // "Explain this differently" is a reply, not a new capability: the app
+        // sends a directive token as the body and every gate above and below
+        // this line applies unchanged. The token is replaced with the sentence
+        // it stands for before anything is stored or prompted, so the thread
+        // reads as a conversation instead of leaking a wire format.
+        let parsedDirective = BurnBarInboxReplyDirective.parse(body: rawBody)
+        let directive = parsedDirective?.directive
+        let body = Self.renderedUserTurn(rawBody: rawBody, parsed: parsedDirective)
 
         // Persist the user turn FIRST: the thread is the durable record of what
         // was asked, even when the answer is refused downstream.
@@ -186,7 +241,7 @@ struct BurnBarAIInboxReplyService: Sendable {
         let pack: BurnBarFounderLens.Pack = Self.isStrategyShapedQuestion(body)
             ? .productStrategy
             : baselinePack
-        let systemPrompt = Self.systemPrompt(pack: pack)
+        let systemPrompt = Self.systemPrompt(pack: pack, directive: directive)
         let userPrompt = Self.userPrompt(
             item: item,
             thread: thread,
@@ -292,6 +347,23 @@ struct BurnBarAIInboxReplyService: Sendable {
         } catch {
             logger.warning("ai_inbox_reply_usage_record_failed", metadata: ["error": "\(error)"])
         }
+    }
+
+    // MARK: - Directives
+
+    /// What the thread stores and what the model reads as the user's turn.
+    ///
+    /// An ordinary reply passes through untouched. A directive becomes the
+    /// plain sentence it stands for, with any free text the user typed after
+    /// the token appended — so "explain this in plain English, especially the
+    /// CI part" survives as one coherent turn.
+    static func renderedUserTurn(
+        rawBody: String,
+        parsed: (directive: BurnBarInboxReplyDirective, followUp: String)?
+    ) -> String {
+        guard let parsed else { return rawBody }
+        guard parsed.followUp.isEmpty == false else { return parsed.directive.userTurnMarkdown }
+        return parsed.directive.userTurnMarkdown + "\n\n" + parsed.followUp
     }
 
     // MARK: - Prompt assembly

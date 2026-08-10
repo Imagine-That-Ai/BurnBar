@@ -71,9 +71,29 @@ final class InboxThreadModel: ObservableObject {
         thread = try? await loadThread(fingerprint)
     }
 
+    /// One-tap "say that differently".
+    ///
+    /// Goes through the ordinary reply path rather than a new call: a rewrite
+    /// is a turn in the same conversation, so it inherits the same egress gate,
+    /// the same per-reply budget, the same redaction, and the same thread
+    /// persistence. Anything that re-explains an item outside this path would
+    /// have to re-implement all four, and that is where they drift apart.
+    ///
+    /// Any text already typed rides along as the follow-up, so "explain simpler"
+    /// does not silently discard a half-written question.
+    func send(directive: BurnBarInboxReplyDirective) async {
+        guard isSending == false else { return }
+        let followUp = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        await deliver(body: directive.encodedBody(followUp: followUp))
+    }
+
     func send() async {
         let body = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard body.isEmpty == false, isSending == false else { return }
+        await deliver(body: body)
+    }
+
+    private func deliver(body: String) async {
         isSending = true
         refusalReason = nil
         defer { isSending = false }
@@ -135,6 +155,7 @@ struct InboxThreadHost: View {
 }
 
 struct InboxThreadSection: View {
+    @Environment(\.backdropInk) private var ink
     @ObservedObject var model: InboxThreadModel
 
     var body: some View {
@@ -143,11 +164,11 @@ struct InboxThreadSection: View {
                 Text("DISCUSS")
                     .font(DesignSystem.Typography.tiny)
                     .tracking(1.1)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
                 if let thread = model.thread, thread.totalCostUSD > 0 {
                     Text(String(format: "· $%.3f", thread.totalCostUSD))
                         .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(ink.subtle)
                 }
             }
 
@@ -184,6 +205,8 @@ struct InboxThreadSection: View {
                 )
             }
 
+            rewriteChips
+
             HStack(spacing: DesignSystem.Spacing.sm) {
                 TextField("Ask about this item…", text: $model.draft, axis: .vertical)
                     .textFieldStyle(.plain)
@@ -211,7 +234,7 @@ struct InboxThreadSection: View {
                             .font(.system(size: 22))
                             .foregroundStyle(
                                 model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                    ? AnyShapeStyle(DesignSystem.Colors.textMuted)
+                                    ? AnyShapeStyle(ink.subtle)
                                     : AnyShapeStyle(DesignSystem.Colors.primaryGradient)
                             )
                     }
@@ -226,11 +249,73 @@ struct InboxThreadSection: View {
         }
         .task(id: model.fingerprint) { await model.refresh() }
     }
+
+    /// The one-tap register controls.
+    ///
+    /// These exist because the honest failure mode of an analyst brief is not
+    /// "wrong" — it is "pitched at the wrong person". A brief written for
+    /// someone who already knows the internals is noise to someone skimming at
+    /// 1am, and the reverse is condescending. Rather than pick one register and
+    /// be wrong half the time, the item can be re-pitched in one click.
+    ///
+    /// Order matters: the two the user reaches for most (simpler, shorter) come
+    /// first. `expert` is deliberately last — it is the least-used and the most
+    /// expensive, since it produces the longest completion.
+    private var rewriteChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                ForEach(Self.chipOrder, id: \.self) { directive in
+                    Button {
+                        Task { await model.send(directive: directive) }
+                    } label: {
+                        Text(Self.chipLabel(directive))
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(
+                                Capsule().fill(DesignSystem.Colors.surfaceElevated.opacity(0.7))
+                            )
+                            .overlay(
+                                Capsule().stroke(DesignSystem.Colors.borderSubtle, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(model.isSending)
+                    // The full sentence it will send, so a click is never a
+                    // surprise and the thread turn reads as something the user
+                    // could have typed.
+                    .help(directive.userTurnMarkdown)
+                    .accessibilityLabel(directive.userTurnMarkdown)
+                    .accessibilityIdentifier(OBBAccessibilityID.inboxRewriteChip(directive.rawValue))
+                }
+            }
+            .padding(.horizontal, 1)
+        }
+        .frame(height: 26)
+    }
+
+    private static let chipOrder: [BurnBarInboxReplyDirective] = [
+        .plainEnglish, .shorter, .deeper, .professional, .expert
+    ]
+
+    /// Short enough to fit a chip; the full sentence lives in the tooltip and
+    /// the VoiceOver label.
+    private static func chipLabel(_ directive: BurnBarInboxReplyDirective) -> String {
+        switch directive {
+        case .plainEnglish: return "Plain English"
+        case .shorter: return "Shorter"
+        case .deeper: return "Go deeper"
+        case .professional: return "Colleague"
+        case .expert: return "Expert"
+        }
+    }
 }
 
 /// One turn. Assistant turns may carry plan candidates, rendered as an accept
 /// card under the message — the proposal is visible, the accept is explicit.
 private struct InboxThreadBubble: View {
+    @Environment(\.backdropInk) private var ink
     let message: BurnBarInboxThreadMessage
     let isAccepted: (BurnBarInboxPlanCandidate) -> Bool
     let onAccept: (BurnBarInboxPlanCandidate) -> Void
@@ -240,14 +325,14 @@ private struct InboxThreadBubble: View {
             HStack(spacing: DesignSystem.Spacing.xs) {
                 Image(systemName: message.role == .user ? "person.fill" : "sparkles")
                     .font(.system(size: 10))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
                 Text(message.role == .user ? "You" : "Inbox")
                     .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
                 if let provenance = message.modelProvenance {
                     Text("· \(provenance)")
                         .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(ink.subtle)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -292,7 +377,7 @@ private struct InboxThreadBubble: View {
                     .font(DesignSystem.Typography.tiny)
                     .tracking(0.8)
             }
-            .foregroundStyle(DesignSystem.Colors.textMuted)
+            .foregroundStyle(ink.subtle)
 
             Text(candidate.title)
                 .font(DesignSystem.Typography.body.weight(.semibold))

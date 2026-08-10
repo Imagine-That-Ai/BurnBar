@@ -62,12 +62,17 @@ Inspired by herbarium paper and botanical illustration: cream with a clear green
 
 Accents shift between modes — botanical light uses earthier, nature-grounded variants:
 
-| Color | Dark | Light | Usage |
-|-------|------|-------|-------|
-| Coral | `#E87060` | `#C8604E` | Claude Code, gradients |
-| Purple | `#9080D8` | `#6868B8` | Factory Droid, charts |
-| Teal | `#2CCAC0` | `#1A9A8C` | Kimi, cache hits |
-| Gold | `#E0A030` | `#A47A1E` | MiniMax, warnings |
+`coral` / `purple` / `teal` / `gold` are **legacy aliases**, not independent hexes
+(`DesignSystem.swift:26-29`): they resolve to `ember` / `whimsy` / `whimsy` / `amber`.
+Per-provider brand colour comes from `DesignSystem.Colors.primary(for:)` /
+`accent(for:)`, never from this table.
+
+| Token | Dark | Light | Resolves to | Usage |
+|-------|------|-------|-------------|-------|
+| `ember` (`coral`) | `#FA5053` | `#F45B69` | — | Assistant bubble stroke, error accent |
+| `whimsy` (`purple`, `teal`) | `#8B7FE8` | `#6A5ACD` | — | Non-Hermes chat accent, charts |
+| `amber` (`gold`) | `#FFA800` | `#F28C38` | — | Quota pressure, warnings |
+| `blaze` | `#E86100` | `#E86100` | — | Peak-heat emphasis |
 
 ### Hermes Mercury (chat identity)
 
@@ -76,7 +81,7 @@ Hermes has two color identities: **provider purple** (`#A855F7`/`#C084FC`) for t
 | Token | Dark | Light | Usage |
 |-------|------|-------|-------|
 | `hermesMercury` | `#C8BFB5` | `#AEA69C` | Warm silver — response bubble strokes, status text, thinking state |
-| `hermesAureate` | `#A2ACBA` | `#3F4651` | Dark platinum — Hermes badges, links, send button accent (replaced former gold for a colder, more premium gunmetal pairing with mercury) |
+| `hermesAureate` | `#D4AA3C` | `#B8942E` | Warm gold — Hermes badges, links, send button accent, and the Hermes Agent Sigil tint. (This row previously documented a gunmetal `#A2ACBA`/`#3F4651` pairing that the code never shipped; corrected against `DesignSystem.swift:59`.) |
 
 **Mercury gradient:**
 ```swift

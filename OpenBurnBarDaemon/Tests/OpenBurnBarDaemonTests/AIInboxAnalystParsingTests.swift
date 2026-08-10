@@ -220,10 +220,15 @@ final class AIInboxAnalystParsingTests: XCTestCase {
     func test_actionDerivationSkipsMalformedReferences() {
         // Exercised directly: the helper must tolerate ids that carry the right
         // prefix but not the right shape, without inventing a URL.
+        //
+        // `metric:whatever` used to belong on this list because NOTHING except
+        // `conv:` and `pr:` produced an action. It is a well-formed citation
+        // now (it routes to the spend surface — see AIInboxActionFactoryTests),
+        // so the subject-less form is what proves the shape check still runs.
         let now = Date()
         let pack = AIInboxFixtures.emptyPack(now: now)
         let actions = BurnBarAIInboxAnalyst.actions(
-            for: ["pr:no-number-here", "conv:", "metric:whatever"],
+            for: ["pr:no-number-here", "conv:", "metric:", "usage:", "mystery:whatever"],
             pack: pack
         )
         XCTAssertTrue(actions.isEmpty, "Malformed references must yield no buttons: \(actions)")
@@ -232,9 +237,12 @@ final class AIInboxAnalystParsingTests: XCTestCase {
     func test_conversationCitationsProduceResumeActions() {
         let pack = AIInboxFixtures.packWithConversation()
         let actions = BurnBarAIInboxAnalyst.actions(for: ["conv:conv-1:12"], pack: pack)
-        XCTAssertEqual(actions.count, 1)
-        XCTAssertEqual(actions.first?.kind, .resumeConversation)
-        XCTAssertEqual(actions.first?.value, "conv-1")
+        // Resuming and reading are different intentions, and a session citation
+        // now offers both rather than assuming which one you wanted.
+        XCTAssertEqual(actions.map(\.kind), [.resumeConversation, .openSessionLog])
+        XCTAssertEqual(Set(actions.map(\.value)), ["conv-1"])
+        XCTAssertEqual(actions.filter(\.isPrimary).count, 1)
+        XCTAssertTrue(actions[0].isPrimary)
     }
 
     // MARK: - Per-call accounting

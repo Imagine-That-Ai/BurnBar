@@ -362,6 +362,13 @@ final class ChatSessionController {
     /// app-wide single-instance behavior for every existing call site.
     let persistsViewState: Bool
 
+    /// Fleet-wide Agent Deck models (presence, switching, model catalog).
+    ///
+    /// Constructed once by the app's root controller and passed by reference to
+    /// every pane controller, so the deck stays singular without a global. See
+    /// `AgentDeck.swift`.
+    let agentDeck: AgentDeck
+
     init(
         dataStore: DataStore,
         settingsManager: SettingsManager = .shared,
@@ -371,9 +378,11 @@ final class ChatSessionController {
         memoryExtractionEngine: MemoryExtractionEngine? = nil,
         initialThreadID: String? = nil,
         persistsViewState: Bool = true,
-        initialBackend: ChatBackendID? = nil
+        initialBackend: ChatBackendID? = nil,
+        agentDeck: AgentDeck = AgentDeck()
     ) {
         self.persistsViewState = persistsViewState
+        self.agentDeck = agentDeck
         self.dataStore = dataStore
         self.settingsManager = settingsManager
         self.memoryService = memoryService
