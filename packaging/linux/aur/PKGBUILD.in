@@ -7,7 +7,7 @@ arch=("x86_64" "aarch64")
 url="https://github.com/Imagine-That-Ai/BurnBar"
 license=("AGPL-3.0-only")
 depends=("webkit2gtk-4.1" "gtk3" "libayatana-appindicator" "libsecret" "nodejs" "npm" "polkit" "gstreamer" "gst-plugins-base" "gst-plugins-good" "gst-plugin-pipewire" "ibus" "python-gobject")
-optdepends=("kwallet: KDE Wallet credential backend" "fcitx5: input-method host (OpenBurnBar Fcitx5 addon is source-only and unavailable)")
+optdepends=("kwallet: KDE Wallet credential backend" "fcitx5: enables the packaged OpenBurnBar Fcitx5 text-expansion addon")
 
 source=(
   "openburnbar.desktop::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar.desktop"
@@ -109,6 +109,10 @@ package() {
     usr/share/ibus/component/openburnbar.xml \
     usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json \
     usr/share/openburnbar/text-expansion/text-expansion-engine.json \
+    usr/share/openburnbar/text-expansion/text-expansion-engine-fcitx5.json \
+    usr/lib/openburnbar/fcitx5/openburnbar-fcitx5.so \
+    usr/share/openburnbar/text-expansion/fcitx5/addon/openburnbar-fcitx5.conf \
+    usr/share/openburnbar/text-expansion/fcitx5/inputmethod/openburnbar.conf \
     usr/lib/openburnbar/native/libopenburnbar_iroh.so \
     usr/lib/openburnbar/native/libsqlcipher.so.0 \
     usr/lib/openburnbar/swift; do
@@ -207,6 +211,18 @@ package() {
   install -Dm644 "${srcdir}/squashfs-root/usr/share/ibus/component/openburnbar.xml" "${pkgdir}/usr/share/ibus/component/openburnbar.xml"
   install -Dm644 "${srcdir}/squashfs-root/usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json" "${pkgdir}/usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json"
   install -Dm644 "${srcdir}/squashfs-root/usr/share/openburnbar/text-expansion/text-expansion-engine.json" "${pkgdir}/usr/share/openburnbar/text-expansion/text-expansion-engine.json"
+  install -Dm644 "${srcdir}/squashfs-root/usr/share/openburnbar/text-expansion/text-expansion-engine-fcitx5.json" "${pkgdir}/usr/share/openburnbar/text-expansion/text-expansion-engine-fcitx5.json"
+  install -Dm755 "${srcdir}/squashfs-root/usr/lib/openburnbar/fcitx5/openburnbar-fcitx5.so" "${pkgdir}/usr/lib/openburnbar/fcitx5/openburnbar-fcitx5.so"
+  install -Dm644 "${srcdir}/squashfs-root/usr/share/openburnbar/text-expansion/fcitx5/addon/openburnbar-fcitx5.conf" "${pkgdir}/usr/share/openburnbar/text-expansion/fcitx5/addon/openburnbar-fcitx5.conf"
+  install -Dm644 "${srcdir}/squashfs-root/usr/share/openburnbar/text-expansion/fcitx5/inputmethod/openburnbar.conf" "${pkgdir}/usr/share/openburnbar/text-expansion/fcitx5/inputmethod/openburnbar.conf"
+  # Fcitx5 discovers the addon through its own search paths; expose the
+  # package-private module via stable symlinks only when the host has Fcitx5.
+  install -d "${pkgdir}/usr/lib/fcitx5"
+  install -d "${pkgdir}/usr/share/fcitx5/addon"
+  install -d "${pkgdir}/usr/share/fcitx5/inputmethod"
+  ln -s /usr/lib/openburnbar/fcitx5/openburnbar-fcitx5.so "${pkgdir}/usr/lib/fcitx5/openburnbar-fcitx5.so"
+  ln -s /usr/share/openburnbar/text-expansion/fcitx5/addon/openburnbar-fcitx5.conf "${pkgdir}/usr/share/fcitx5/addon/openburnbar-fcitx5.conf"
+  ln -s /usr/share/openburnbar/text-expansion/fcitx5/inputmethod/openburnbar.conf "${pkgdir}/usr/share/fcitx5/inputmethod/openburnbar.conf"
   rm -rf "${srcdir}/squashfs-root"
   trap - ERR
 }

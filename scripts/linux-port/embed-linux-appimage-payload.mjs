@@ -370,6 +370,37 @@ export function embedLinuxAppImagePayload({
       dereference: false,
       preserveTimestamps: true
     });
+    // Optional native Fcitx5 addon: carried as payload so the Arch recipe can
+    // repackage it from the extracted AppImage. The AppImage itself performs
+    // no system input-method registration - a transient mount path cannot
+    // satisfy the signed manifest path identity.
+    const fcitx5Payload = path.join(payload, 'fcitx5-addon');
+    if (fs.existsSync(fcitx5Payload)) {
+      const fcitx5Lib = path.join(appDir, 'usr/lib/openburnbar/fcitx5');
+      const fcitx5Share = path.join(appDir, 'usr/share/openburnbar/text-expansion/fcitx5');
+      fs.rmSync(fcitx5Lib, { recursive: true, force: true });
+      fs.rmSync(fcitx5Share, { recursive: true, force: true });
+      fs.mkdirSync(fcitx5Lib, { recursive: true });
+      fs.mkdirSync(path.join(fcitx5Share, 'addon'), { recursive: true });
+      fs.mkdirSync(path.join(fcitx5Share, 'inputmethod'), { recursive: true });
+      fs.copyFileSync(
+        path.join(fcitx5Payload, 'openburnbar-fcitx5.so'),
+        path.join(fcitx5Lib, 'openburnbar-fcitx5.so')
+      );
+      fs.chmodSync(path.join(fcitx5Lib, 'openburnbar-fcitx5.so'), 0o755);
+      fs.copyFileSync(
+        path.join(fcitx5Payload, 'addon/openburnbar-fcitx5.conf'),
+        path.join(fcitx5Share, 'addon/openburnbar-fcitx5.conf')
+      );
+      fs.copyFileSync(
+        path.join(fcitx5Payload, 'inputmethod/openburnbar.conf'),
+        path.join(fcitx5Share, 'inputmethod/openburnbar.conf')
+      );
+      fs.copyFileSync(
+        path.join(payload, 'text-expansion-engine-fcitx5.json'),
+        path.join(appDir, 'usr/share/openburnbar/text-expansion/text-expansion-engine-fcitx5.json')
+      );
+    }
     fs.mkdirSync(path.join(appDir, 'usr/share/openburnbar'), { recursive: true });
     fs.copyFileSync(
       path.join(payload, 'cloud-auth.json'),

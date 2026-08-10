@@ -37,6 +37,18 @@ enable_daemon_service() {
 
 enable_daemon_service
 
+# Register the packaged native Fcitx5 addon into the host's Fcitx5 search
+# paths when Fcitx5 exists. Best effort by the same rule as the daemon
+# service: package installation never fails because an input method is
+# absent, and consent still gates actual expansion daemon-side.
+register_fcitx5_addon() {
+  [[ "$root" == "/" ]] || return 0
+  [[ -x /usr/libexec/openburnbar/openburnbar-fcitx5-register ]] || return 0
+  /usr/libexec/openburnbar/openburnbar-fcitx5-register || true
+}
+
+register_fcitx5_addon
+
 canonical="${prefix}/usr/bin/openburnbar-cli"
 legacy="${prefix}/usr/local/bin/openburnbar-cli"
 

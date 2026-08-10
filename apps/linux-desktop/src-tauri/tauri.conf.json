@@ -25,7 +25,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.png"],
+    "icon": [
+      "icons/icon.png"
+    ],
     "resources": {
       "../../../AgentLens/PetCompanion/Resources/Models/": "pet-models",
       "../../../AgentLens/PetCompanion/Resources/Pets/": "pet-atlas"
@@ -41,7 +43,9 @@
           "gstreamer1.0-plugins-good",
           "gstreamer1.0-pipewire"
         ],
-        "recommends": ["gnome-keyring | libkf5wallet-bin | libkf6wallet-bin"],
+        "recommends": [
+          "gnome-keyring | libkf5wallet-bin | libkf6wallet-bin"
+        ],
         "files": {
           "/usr/bin/openburnbar-daemon": "target/openburnbar-package-payload/openburnbar-daemon",
           "/usr/bin": "target/openburnbar-package-payload/resource-bundles",
@@ -50,6 +54,10 @@
           "/usr/share/ibus/component/openburnbar.xml": "../../../packaging/linux/ibus-openburnbar.xml",
           "/usr/share/openburnbar/text-expansion/text-expansion-engine.json": "target/openburnbar-package-payload/text-expansion-engine.json",
           "/usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json": "../../../packaging/linux/fcitx5-openburnbar-addon.json",
+          "/usr/lib/openburnbar/fcitx5/openburnbar-fcitx5.so": "target/openburnbar-package-payload/fcitx5-addon/openburnbar-fcitx5.so",
+          "/usr/share/openburnbar/text-expansion/fcitx5/addon/openburnbar-fcitx5.conf": "target/openburnbar-package-payload/fcitx5-addon/addon/openburnbar-fcitx5.conf",
+          "/usr/share/openburnbar/text-expansion/fcitx5/inputmethod/openburnbar.conf": "target/openburnbar-package-payload/fcitx5-addon/inputmethod/openburnbar.conf",
+          "/usr/share/openburnbar/text-expansion/text-expansion-engine-fcitx5.json": "target/openburnbar-package-payload/text-expansion-engine-fcitx5.json",
           "/usr/lib/openburnbar/swift": "target/openburnbar-package-payload/swift",
           "/usr/lib/openburnbar/native": "target/openburnbar-package-payload/native",
           "/usr/lib/openburnbar/playwright": "target/openburnbar-package-payload/playwright",
@@ -58,6 +66,8 @@
           "/usr/share/openburnbar/attestation/installed-manifest.json.sig": "target/openburnbar-package-payload/attestation/installed-manifest.json.sig",
           "/usr/share/openburnbar/attestation/release-ed25519.pub.pem": "target/openburnbar-package-payload/attestation/release-ed25519.pub.pem",
           "/usr/libexec/openburnbar-cli-migrate": "../../../packaging/linux/openburnbar-cli-migrate.sh",
+          "/usr/libexec/openburnbar/openburnbar-fcitx5-register": "../../../packaging/linux/openburnbar-fcitx5-register.sh",
+          "/usr/libexec/openburnbar/openburnbar-fcitx5-unregister": "../../../packaging/linux/openburnbar-fcitx5-unregister.sh",
           "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
           "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop": "../../../packaging/linux/openburnbar.desktop",
@@ -66,7 +76,8 @@
           "/usr/share/doc/openburnbar/daemon.env.example": "../../../packaging/linux/daemon.env.example",
           "/usr/share/doc/openburnbar/systemd/custom-xdg.conf.example": "../../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example"
         },
-        "postInstallScript": "../../../packaging/linux/openburnbar-cli-migrate.sh"
+        "postInstallScript": "../../../packaging/linux/openburnbar-cli-migrate.sh",
+        "postRemoveScript": "../../../packaging/linux/openburnbar-fcitx5-unregister.sh"
       },
       "rpm": {
         "desktopTemplate": "../../../packaging/linux/tauri-installed.desktop",
@@ -86,6 +97,10 @@
           "/usr/share/ibus/component/openburnbar.xml": "../../../packaging/linux/ibus-openburnbar.xml",
           "/usr/share/openburnbar/text-expansion/text-expansion-engine.json": "target/openburnbar-package-payload/text-expansion-engine.json",
           "/usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json": "../../../packaging/linux/fcitx5-openburnbar-addon.json",
+          "/usr/lib/openburnbar/fcitx5/openburnbar-fcitx5.so": "target/openburnbar-package-payload/fcitx5-addon/openburnbar-fcitx5.so",
+          "/usr/share/openburnbar/text-expansion/fcitx5/addon/openburnbar-fcitx5.conf": "target/openburnbar-package-payload/fcitx5-addon/addon/openburnbar-fcitx5.conf",
+          "/usr/share/openburnbar/text-expansion/fcitx5/inputmethod/openburnbar.conf": "target/openburnbar-package-payload/fcitx5-addon/inputmethod/openburnbar.conf",
+          "/usr/share/openburnbar/text-expansion/text-expansion-engine-fcitx5.json": "target/openburnbar-package-payload/text-expansion-engine-fcitx5.json",
           "/usr/lib/openburnbar/swift": "target/openburnbar-package-payload/swift",
           "/usr/lib/openburnbar/native": "target/openburnbar-package-payload/native",
           "/usr/lib/openburnbar/playwright": "target/openburnbar-package-payload/playwright",
@@ -94,6 +109,8 @@
           "/usr/share/openburnbar/attestation/installed-manifest.json.sig": "target/openburnbar-package-payload/attestation/installed-manifest.json.sig",
           "/usr/share/openburnbar/attestation/release-ed25519.pub.pem": "target/openburnbar-package-payload/attestation/release-ed25519.pub.pem",
           "/usr/libexec/openburnbar-cli-migrate": "../../../packaging/linux/openburnbar-cli-migrate.sh",
+          "/usr/libexec/openburnbar/openburnbar-fcitx5-register": "../../../packaging/linux/openburnbar-fcitx5-register.sh",
+          "/usr/libexec/openburnbar/openburnbar-fcitx5-unregister": "../../../packaging/linux/openburnbar-fcitx5-unregister.sh",
           "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
           "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop": "../../../packaging/linux/openburnbar.desktop",
@@ -102,7 +119,8 @@
           "/usr/share/doc/openburnbar/daemon.env.example": "../../../packaging/linux/daemon.env.example",
           "/usr/share/doc/openburnbar/systemd/custom-xdg.conf.example": "../../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example"
         },
-        "postInstallScript": "../../../packaging/linux/openburnbar-cli-migrate.sh"
+        "postInstallScript": "../../../packaging/linux/openburnbar-cli-migrate.sh",
+        "postRemoveScript": "../../../packaging/linux/openburnbar-fcitx5-unregister.sh"
       },
       "appimage": {
         "files": {

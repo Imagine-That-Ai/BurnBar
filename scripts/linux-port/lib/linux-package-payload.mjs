@@ -459,6 +459,8 @@ export function stageLinuxPackagePayload({
   sqlcipherLibDir,
   irohNativeLibrary,
   textExpansionManifest = null,
+  fcitx5AddonDir = null,
+  fcitx5Manifest = null,
   env = process.env,
   probe = true
 }) {
@@ -478,6 +480,28 @@ export function stageLinuxPackagePayload({
   const textExpansionManifestSource = textExpansionManifest
     ? requireRegularFile(textExpansionManifest, 'signed text-expansion manifest')
     : null;
+  // The native Fcitx5 addon is optional: when its build output directory is
+  // present, its module + registration metadata ship in the payload. Missing
+  // pieces inside a present directory fail closed.
+  const fcitx5Source = fcitx5AddonDir && fs.existsSync(fcitx5AddonDir)
+    ? requireDirectory(fcitx5AddonDir, 'Fcitx5 addon build output')
+    : null;
+  if (fcitx5Source) {
+    requireRegularFile(path.join(fcitx5Source, 'openburnbar-fcitx5.so'), 'Fcitx5 addon module');
+    requireRegularFile(path.join(fcitx5Source, 'addon/openburnbar-fcitx5.conf'), 'Fcitx5 addon registration');
+    requireRegularFile(path.join(fcitx5Source, 'inputmethod/openburnbar.conf'), 'Fcitx5 input-method registration');
+  }
+  // A staged addon must carry its signed manifest and vice versa — shipping
+  // one without the other would either register unsigned bytes or promise a
+  // signature for a module that is not in the package.
+  const fcitx5ManifestSource = fcitx5Manifest && fs.existsSync(fcitx5Manifest)
+    ? requireRegularFile(fcitx5Manifest, 'signed Fcitx5 engine manifest')
+    : null;
+  if (Boolean(fcitx5Source) !== Boolean(fcitx5ManifestSource)) {
+    throw new Error(
+      'Fcitx5 addon staging requires both the built module directory and its signed manifest, or neither'
+    );
+  }
   const root = path.resolve(payloadRoot);
   const resourceBundlesDestination = path.join(root, linuxResourceBundlesDirectoryName);
   const daemonDestination = path.join(root, 'openburnbar-daemon');
@@ -488,6 +512,7 @@ export function stageLinuxPackagePayload({
   const cloudAuthDestination = path.join(root, 'cloud-auth.json');
   const attestationDestination = path.join(root, 'attestation');
   const textExpansionManifestDestination = path.join(root, 'text-expansion-engine.json');
+  const fcitx5Destination = path.join(root, 'fcitx5-addon');
 
   fs.rmSync(root, { recursive: true, force: true });
   fs.mkdirSync(root, { recursive: true });
@@ -551,6 +576,17 @@ export function stageLinuxPackagePayload({
     fs.copyFileSync(textExpansionManifestSource, textExpansionManifestDestination);
     fs.chmodSync(textExpansionManifestDestination, 0o644);
   }
+  if (fcitx5Source) {
+    fs.cpSync(fcitx5Source, fcitx5Destination, {
+      recursive: true,
+      dereference: false,
+      preserveTimestamps: true
+    });
+    fs.chmodSync(path.join(fcitx5Destination, 'openburnbar-fcitx5.so'), 0o755);
+    const fcitx5ManifestDestination = path.join(root, 'text-expansion-engine-fcitx5.json');
+    fs.copyFileSync(fcitx5ManifestSource, fcitx5ManifestDestination);
+    fs.chmodSync(fcitx5ManifestDestination, 0o644);
+  }
   const releasePublicKeyDestination = path.join(attestationDestination, 'release-ed25519.pub.pem');
   const installedManifestDestination = path.join(attestationDestination, 'installed-manifest.json');
   const installedManifestSignatureDestination = `${installedManifestDestination}.sig`;
@@ -592,6 +628,8 @@ export function stageLinuxPackagePayload({
     installedManifest: installedManifestDestination,
     installedManifestSignature: installedManifestSignatureDestination,
     textExpansionManifest: textExpansionManifestSource ? textExpansionManifestDestination : null,
+    fcitx5Addon: fcitx5Source ? fcitx5Destination : null,
+    fcitx5Manifest: fcitx5Source ? path.join(root, 'text-expansion-engine-fcitx5.json') : null,
     sqlcipherFiles,
     runtimeProbe
   };
