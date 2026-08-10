@@ -316,7 +316,33 @@ function initTabs(data: Dataset): void {
       row.style.setProperty("--hc", s.hc);
       row.style.setProperty("--mc", s.mc);
     });
+    applyLbFilter();
   };
+
+  // Stack search: hides non-matching rows (ranks stay global — filtering
+  // never renumbers the board). Re-applied after every lens re-render.
+  const lbSearch = document.querySelector<HTMLInputElement>("[data-bb-lb-q]");
+  const applyLbFilter = (): void => {
+    const q = (lbSearch?.value ?? "").trim().toLowerCase();
+    list.querySelectorAll<HTMLElement>(".lb-group").forEach((group) => {
+      if (!q) {
+        group.classList.remove("lb-hidden");
+        group.querySelectorAll(".lb-row").forEach((r) => r.classList.remove("lb-hidden"));
+        return;
+      }
+      let anyVisible = false;
+      group.querySelectorAll<HTMLElement>(".lb-row[data-h][data-m]").forEach((row) => {
+        const s = stackById.get(`${row.dataset.h}|${row.dataset.m}`);
+        const hay =
+          `${row.dataset.h ?? ""} ${row.dataset.m ?? ""} ${s?.hd ?? ""} ${s?.mds ?? ""}`.toLowerCase();
+        const show = hay.includes(q);
+        row.classList.toggle("lb-hidden", !show);
+        if (show) anyVisible = true;
+      });
+      group.classList.toggle("lb-hidden", !anyVisible);
+    });
+  };
+  lbSearch?.addEventListener("input", applyLbFilter);
 
   tabBar.addEventListener("click", (ev) => {
     const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-metric]");
@@ -1543,9 +1569,15 @@ function initPareto(data: Dataset): void {
     const wall = s.wall;
     const tok = s.tok;
     const qual = qualByKey.get(key) ?? null;
+    // Rich identity row: both logos large so the hovered stack is obvious
+    // at a glance, then the metric strip.
+    const logos =
+      (s.hl ? `<img class="bb-pareto__tiplogo" src="${esc(s.hl)}" alt="" width="30" height="30">` : "") +
+      (s.ml ? `<img class="bb-pareto__tiplogo bb-pareto__tiplogo--m" src="${esc(s.ml)}" alt="" width="30" height="30">` : "");
     tip.innerHTML =
-      `<span><strong>${esc(s.hd)} × ${esc(s.mds)}</strong> · <em>${fmtPct(s.sol)}</em> sol · strict ${fmtPct(s.str)} · <em>${fmtCost(s.cost)}/task</em></span>` +
-      `<span class="mono" style="opacity:0.78">${fmtWall(wall)} · ${fmtTokens(tok)} tok · ${qual != null ? `quality ${qual.toFixed(1)}/5 · ` : ""}n ${s.n} · ${s.ev === "inferred" ? "inferred" : "measured"}${s.conf === "low" ? " · low conf" : ""}</span>`;
+      `<span class="bb-pareto__tipid">${logos}<span class="bb-pareto__tipname">${esc(s.hd)} <em>×</em> ${esc(s.mds)}</span></span>` +
+      `<span class="bb-pareto__tiprow"><em>${fmtPct(s.sol)}</em> sol · strict ${fmtPct(s.str)} · <em>${fmtCost(s.cost)}/task</em></span>` +
+      `<span class="bb-pareto__tiprow mono">${fmtWall(wall)} · ${fmtTokens(tok)} tok · ${qual != null ? `quality ${qual.toFixed(1)}/5 · ` : ""}n ${s.n} · ${s.ev === "inferred" ? "inferred" : "measured"}${s.conf === "low" ? " · low conf" : ""}</span>`;
     tip.hidden = false;
   };
 
@@ -1741,13 +1773,17 @@ function initPareto(data: Dataset): void {
           let best = 0;
           let bestD = -1;
           for (let i = 0; i < fine.length; i++) {
-            const d = Math.min(...ticks.map((t) => Math.abs(Math.log10(fine[i]) - Math.log10(t))));
+            const fv = fine[i];
+            if (fv === undefined) continue;
+            const d = Math.min(...ticks.map((t) => Math.abs(Math.log10(fv) - Math.log10(t))));
             if (d > bestD) {
               bestD = d;
               best = i;
             }
           }
-          ticks.push(fine.splice(best, 1)[0]);
+          const picked = fine.splice(best, 1)[0];
+          if (picked === undefined) break;
+          ticks.push(picked);
         }
         ticks.sort((a, b) => a - b);
       }

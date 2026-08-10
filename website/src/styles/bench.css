@@ -3427,8 +3427,10 @@ table.bb-data {
 }
 .bb-heat-wrap {
   position: relative;
-  overflow-x: auto;
-  overflow-y: hidden;
+  /* The grid gets its own scroll region (both axes) so the sticky family
+     headers and stack labels never scroll out of view on tall grids. */
+  overflow: auto;
+  max-height: min(76vh, 820px);
   padding-bottom: var(--s-2);
   scrollbar-width: thin;
   scrollbar-color: var(--ink-line-bright) transparent;
@@ -3472,21 +3474,33 @@ table.bb-data {
   color: var(--ember-bright);
 }
 
+/* Corner + headers stick inside the wrap's own scroll region. */
 .bb-heat__corner {
   pointer-events: none;
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 6;
+  background: color-mix(in oklab, var(--ink-base) 88%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
+  border-radius: var(--r-2);
 }
 
 /* column heads — glass pills, rotated label */
 .bb-heat__colhead {
   appearance: none;
   border: 1px solid transparent;
-  background: transparent;
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: 5;
   height: 78px;
   align-self: end;
   border-radius: var(--r-2);
   cursor: pointer;
   padding: 0;
+  /* Nearly-solid glass so scrolling cells never bleed through the label row. */
+  background: color-mix(in oklab, var(--ink-base) 86%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
   transition:
     background var(--dur-fast) var(--ease),
     border-color var(--dur-fast) var(--ease),
@@ -3526,16 +3540,21 @@ table.bb-data {
   border-color: color-mix(in oklab, var(--ember-core) 18%, transparent);
 }
 
-/* row heads — liquid glass capsules */
+/* row heads — liquid glass capsules, pinned left while panning */
 .bb-heat__rowhead {
   appearance: none;
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  padding: 4px 8px 4px 6px;
+  padding: 5px 10px 5px 7px;
+  position: sticky;
+  left: 0;
+  z-index: 4;
   border-radius: 999px;
   border: 1px solid transparent;
-  background: transparent;
+  /* Nearly-solid glass so cells sliding under the pinned label stay hidden. */
+  background: color-mix(in oklab, var(--ink-base) 86%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
   white-space: nowrap;
   overflow: hidden;
   cursor: pointer;
@@ -3569,9 +3588,9 @@ table.bb-data {
   gap: 2px;
 }
 .bb-heat__badge {
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
   display: inline-grid;
   place-items: center;
   flex: 0 0 auto;
@@ -3581,8 +3600,8 @@ table.bb-data {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 .bb-heat__badge img {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   object-fit: contain;
   display: block;
 }
@@ -3628,7 +3647,7 @@ table.bb-data {
 }
 .bb-heat__h {
   font-family: var(--font-body);
-  font-size: 0.8rem;
+  font-size: 0.84rem;
   font-weight: 650;
   color: var(--hc, var(--text-bright));
   letter-spacing: -0.01em;
@@ -3638,7 +3657,7 @@ table.bb-data {
 }
 .bb-heat__m {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3717,8 +3736,9 @@ table.bb-data {
   font-variant-numeric: tabular-nums;
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45);
   pointer-events: none;
-  opacity: 0;
-  transform: translateY(2px) scale(0.98);
+  /* Values are the data — always readable, full strength on hover/focus. */
+  opacity: 0.85;
+  transform: none;
   transition:
     opacity 220ms var(--ease),
     transform 220ms var(--ease);
@@ -4194,16 +4214,26 @@ table.bb-data {
   border: 1px solid var(--ink-line);
   margin-bottom: var(--s-3);
 }
+/* Harnesses and models get their own labeled tracks so the two families
+   never blend into one row of knobs. */
 .bb-pareto__filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.bb-pareto__filterrow {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--s-2) var(--s-3);
+  gap: var(--s-2);
   min-width: 0;
 }
 .bb-pareto__filterlabel {
+  flex: 0 0 84px;
   font-size: 0.68rem;
   letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--text-dim);
 }
 .bb-pareto__chips {
@@ -4397,9 +4427,11 @@ table.bb-data {
     cy 300ms ease-out;
 }
 .bb-pareto__pt.is-hover .bb-pareto__dot {
-  r: 8.5;
+  r: 9.5;
   stroke-width: 3;
-  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.35));
+  filter:
+    drop-shadow(0 0 10px color-mix(in oklab, var(--ember-core) 55%, transparent))
+    drop-shadow(0 2px 10px rgba(0, 0, 0, 0.35));
 }
 .bb-pareto__pt.is-pinned .bb-pareto__dot {
   r: 9;
@@ -4419,15 +4451,17 @@ table.bb-data {
   left: 50%;
   bottom: 14px;
   transform: translateX(-50%);
-  max-width: min(92%, 520px);
+  max-width: min(92%, 560px);
   display: inline-flex;
-  align-items: center;
-  gap: var(--s-3);
-  padding: 10px 12px;
-  border-radius: 16px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 12px 16px;
+  border-radius: 18px;
   background: var(--glass-bg-elevated);
   backdrop-filter: blur(22px) saturate(170%);
   border: 1px solid rgba(255, 255, 255, 0.14);
+  animation: bb-pareto-tip-in 180ms var(--ease);
   box-shadow:
     0 12px 32px -12px rgba(0, 0, 0, 0.55),
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
@@ -4446,6 +4480,64 @@ table.bb-data {
   font-style: normal;
   color: var(--ember-bright);
   font-weight: 700;
+}
+/* Rich hover identity — the whole point of the card: which stack is this? */
+@keyframes bb-pareto-tip-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+.bb-pareto__tipid {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.bb-pareto__tiplogo {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  object-fit: contain;
+  padding: 3px;
+  background: color-mix(in oklab, var(--glass-bg-elevated) 88%, transparent);
+  border: 1px solid var(--ink-line-bright);
+  box-shadow: 0 2px 8px -4px rgba(0, 0, 0, 0.4);
+}
+.bb-pareto__tiplogo--m {
+  margin-left: -16px;
+}
+.bb-pareto__tipname {
+  font-family: var(--font-display);
+  font-size: 0.98rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text-bright);
+  white-space: nowrap;
+}
+.bb-pareto__tipname em {
+  color: var(--text-dim);
+  font-weight: 400;
+  padding: 0 2px;
+}
+.bb-pareto__tiprow {
+  display: block;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--text-base);
+}
+.bb-pareto__tiprow.mono {
+  opacity: 0.78;
+  font-size: 0.72rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bb-pareto__tip {
+    animation: none;
+  }
 }
 .bb-pareto__compare {
   margin-top: var(--s-3);
@@ -4547,6 +4639,9 @@ table.bb-data {
   .bb-pareto__chip img {
     width: 18px;
     height: 18px;
+  }
+  .bb-pareto__filterlabel {
+    flex-basis: 100%;
   }
   .bb-pareto__cards {
     grid-template-columns: 1fr;
@@ -5446,6 +5541,145 @@ table.bb-data {
   font-size: 0.85rem;
   padding: 9px 13px;
   border-radius: var(--r-md);
+}
+
+/* Save-as-PDF button in the report hero nav */
+.bb-rnav__pdf {
+  appearance: none;
+  border: 1px solid color-mix(in oklab, var(--ember-core) 45%, var(--ink-line));
+  background: color-mix(in oklab, var(--ember-core) 10%, var(--ink-surface));
+  color: var(--ember-bright);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  padding: 8px 14px;
+  min-height: 36px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+.bb-rnav__pdf:hover {
+  transform: translateY(-1px);
+  border-color: var(--ember-core);
+  background: color-mix(in oklab, var(--ember-core) 16%, var(--ink-surface));
+}
+
+/* Shared smart-table controls: search pills + sortable headers */
+.bb-lb__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+}
+.bb-lb__toolbar .bb-tabs {
+  margin-bottom: 0;
+}
+.bb-lb__q,
+.bb-qlq__q,
+.bb-tasks__q,
+.bb-mx__q {
+  border: 1px solid var(--ink-line);
+  background: var(--ink-surface);
+  color: var(--text-bright);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  padding: 9px 13px;
+  border-radius: var(--r-md);
+  min-height: 40px;
+}
+.bb-lb__q {
+  flex: 1 1 180px;
+  max-width: 300px;
+  margin-left: auto;
+}
+.bb-qlq__q {
+  width: min(100%, 340px);
+  margin-bottom: var(--s-3);
+}
+.bb-tasks__q {
+  margin-left: auto;
+  flex: 0 1 220px;
+}
+.bb-lb__q:focus-visible,
+.bb-qlq__q:focus-visible,
+.bb-tasks__q:focus-visible,
+.bb-mx__q:focus-visible {
+  outline: 2px solid var(--ember-core);
+  outline-offset: 1px;
+}
+.lb-hidden {
+  display: none !important;
+}
+
+/* Explorer sortable headers */
+.bb-explorer__table th[data-sort] {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.bb-explorer__table th[data-sort]:hover {
+  color: var(--text-bright);
+}
+.bb-explorer__table th[data-sort]::after {
+  content: "⇅";
+  margin-left: 5px;
+  font-size: 0.62rem;
+  opacity: 0.4;
+}
+.bb-explorer__table th[data-sort].is-sorted::after {
+  content: "▲";
+  opacity: 1;
+  color: var(--ember-bright);
+}
+.bb-explorer__table th[data-sort].is-sorted.is-desc::after {
+  content: "▼";
+}
+
+/* Matrix toolbar, sort arrows, highlight-dimming */
+.bb-mx__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+}
+.bb-mx__toolbar .bb-tabs {
+  margin-bottom: 0;
+}
+.bb-mx__q {
+  flex: 0 1 260px;
+}
+.bb-mx__sorthint {
+  margin-top: var(--s-2);
+}
+.mx-colhead,
+.mx-rowhead,
+.mx-corner {
+  cursor: pointer;
+}
+.mx-sortarrow::after {
+  content: "";
+  margin-left: 6px;
+  font-size: 0.6rem;
+}
+.mx-colhead.is-sorted .mx-sortarrow::after,
+.mx-rowhead.is-sorted .mx-sortarrow::after {
+  content: "↓";
+  color: var(--ember-bright);
+}
+.mx-colhead.is-sorted,
+.mx-rowhead.is-sorted {
+  outline: 2px solid color-mix(in oklab, var(--ember-core) 45%, var(--ink-line));
+  outline-offset: -2px;
+  border-radius: var(--r-2);
+}
+.bb-matrix .mx-dim {
+  opacity: 0.25;
+  filter: saturate(0.4);
+  transition: opacity var(--dur-fast) var(--ease);
 }
 .bb-explorer__controls input {
   flex: 1 1 200px;
@@ -6565,5 +6799,154 @@ a.lb-quality:hover {
   .bb-qlq__chev,
   .bb-trow--link {
     transition: none;
+  }
+}
+
+/* ============================================================
+   PRINT / PDF — the merged bench page is the report; the hero's
+   "Save as PDF" button prints it. Paper tokens, chrome and
+   interactive controls hidden, every collapsible expanded,
+   tables repeat headers across pages.
+   ============================================================ */
+@page {
+  margin: 13mm;
+}
+@media print {
+  :root {
+    --ink-void: #ffffff;
+    --ink-base: #ffffff;
+    --ink-furnace: #ffffff;
+    --ink-line: rgba(22, 19, 14, 0.18);
+    --ink-line-bright: rgba(22, 19, 14, 0.3);
+    --ink-line-soft: rgba(22, 19, 14, 0.1);
+    --glass-bg: #ffffff;
+    --glass-bg-elevated: #ffffff;
+    --ink-surface: rgba(22, 19, 14, 0.045);
+    --ink-surface-2: rgba(22, 19, 14, 0.08);
+    --text-bright: #16140f;
+    --text-base: rgba(22, 19, 14, 0.87);
+    --text-mute: rgba(22, 19, 14, 0.66);
+    --text-dim: rgba(22, 19, 14, 0.6);
+    --ember-core: #c8530a;
+    --ember-bright: #8a5f00;
+    --ember-glow: rgba(200, 83, 10, 0.25);
+    --shadow-glass: none;
+    --shadow-glass-soft: none;
+    color-scheme: light;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  canvas {
+    display: none !important;
+  }
+
+  /* chrome + interactive-only surfaces */
+  .site-header,
+  .site-footer,
+  #tuner,
+  #ask,
+  .bb-bread,
+  .bb-rnav,
+  .bb-hero__cta,
+  .bb-meta__links,
+  .bb-tabs,
+  .bb-pareto__toolbar,
+  .bb-pareto__axes,
+  .bb-pareto__stagebar,
+  .bb-pareto__tip,
+  .bb-heat-toolbar,
+  .bb-heat-zoombar,
+  .bb-heat-tip,
+  .bb-lb__q,
+  .bb-qlq__q,
+  .bb-tasks__q,
+  .bb-mx__q,
+  .bb-mx__sorthint,
+  .bb-explorer__controls,
+  .bb-qlq__chev,
+  .bb-qcard__chev,
+  .bb-scard__chev,
+  .lb-tiebtn,
+  .bb-zoom-btn,
+  [data-print-report] {
+    display: none !important;
+  }
+
+  /* every collapsible renders expanded */
+  .bb-qcard__body,
+  .bb-qlq__body,
+  .bb-scard__obs {
+    display: block !important;
+    grid-template-rows: 1fr !important;
+    max-height: none !important;
+    overflow: visible !important;
+    opacity: 1 !important;
+  }
+  .bb-qcard__inner,
+  .bb-qlq__inner,
+  .bb-scard__obs-inner {
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+  .lb-ties {
+    display: grid !important;
+  }
+
+  /* heatmap: unstick and unclip so the whole grid prints */
+  .bb-heat-wrap {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .bb-heat__corner,
+  .bb-heat__colhead,
+  .bb-heat__rowhead {
+    position: static !important;
+    backdrop-filter: none !important;
+  }
+  .bb-heat__colhead,
+  .bb-heat__rowhead {
+    background: var(--ink-surface) !important;
+  }
+
+  /* glass becomes flat paper panels */
+  .bb-glass,
+  .bb-qcard,
+  .bb-scard,
+  .bb-qlq__row,
+  .bb-pareto,
+  .bb-heat-frame,
+  .bb-methcard,
+  .bb-explorer,
+  .bb-pareto__card,
+  .bb-pareto__compare {
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+
+  /* multi-page tables repeat their headers */
+  thead {
+    display: table-header-group;
+  }
+  tr {
+    break-inside: avoid;
+  }
+  .bb-section {
+    break-inside: auto;
+  }
+  .bb-qcard,
+  .bb-scard,
+  .bb-qlq__row,
+  .bb-methcard,
+  .bb-pareto__card {
+    break-inside: avoid;
+  }
+  .bb-sec-head {
+    break-after: avoid;
+  }
+  h2,
+  h3 {
+    break-after: avoid;
   }
 }

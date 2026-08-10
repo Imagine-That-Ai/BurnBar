@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-08-10T21:47:37.424641+00:00",
+  "generated_at_utc": "2026-08-10T23:35:22.088630+00:00",
   "judge": "kimi",
   "judge_model": "kimi-code/kimi-for-coding",
   "source_trees": [
@@ -83,6 +83,384 @@
         "Observation 3 is weak/generic filler: it labels a list of trials as 'minor or superficial' without naming the actual defects, so it is hard to verify.",
         "A strong pattern is missed: many WORST trials still score 4.00-4.75 and involve only minor issues (stale comments, redundant fallbacks, slight over-engineering) rather than serious bugs.",
         "No calibration errors: every q-value cited in observations 1 and 2 matches the source data."
+      ]
+    },
+    "claude/muse-spark-1-2-contributor": {
+      "observations": [
+        "Redundant or unnecessary mechanisms weaken otherwise correct solutions: 16_perf_hot_path (q=3.50) adds a pointless hash-warming loop and unnecessary isinstance shortcut; 27_ir_optimizer (q=3.50) uses a bisect-based remap with duplicated cycle checks; and 15_race_condition (q=3.00) uses an unnecessary RLock and reorders create_account validation.",
+        "Concurrency and scheduling implementations diverge from specified semantics: 28_lease_lock (q=1.50) relies on an unspecified store.log and undoes valid CAS operations by timestamp; 30_fair_scheduler (q=3.50) uses start-tag scheduling that breaks smallest-finish-tag service and the lag bound.",
+        "Non-code artifacts and presentation are frequent failure modes: 19_security_hardening (q=3.25) modifies data/hello.txt and data/notes.txt contents; 17_wire_protocol (q=4.00) corrupts the docstring diagram; 24_api_research_report shows inverted artifact quality (q=4.75 trial has jumbled category keys, q=3.75 trial sorts them alphabetically but omits a trailing newline); and 25_git_archaeology (q=4.25) formats answer.txt poorly.",
+        "Type-system and parsing issues appear in the lower-scoring trials: 21_ts_types_refactor (q=3.25) loses discriminated narrowing by capturing action as a string variable; 32_utf8_stream (q=4.00) has redundant generic branches for leads that never need them, while the q=4.50 best carries a misleading comment about offset advancement.",
+        "Most worst trials remain functionally correct with only minor gaps: 18_multifile_api_break (q=3.75), 20_schema_evolution (q=4.25), 22_incident_triage (q=4.75), 23_ci_repair_loop (q=4.50), and 26_data_pipeline_rescue (q=4.00)."
+      ],
+      "summary": "Quality gaps cluster in redundant mechanisms, semantic deviations in concurrency/scheduling, mishandled non-code artifacts, and subtle type/parser issues, while most worst trials still pass functionally.",
+      "n_tasks": 17,
+      "skeptic_round_1_critique": [
+        "The original observations are concrete and backed by multiple tasks, but the summary's 'reliably over-engineers' overstates the frequency; over-engineering appears in a subset of tasks.",
+        "The synthesis misses that even high-scoring trials frequently contain minor defects (e.g., jumbled report keys, redundant conflict scan, missing bind reset, misleading comment).",
+        "In 24_api_research_report, the higher-scoring trial (q=4.75) had jumbled category-key ordering, while the lower-scoring trial (q=3.75) was alphabetically sorted; this inverted relationship is worth noting."
+      ],
+      "skeptic_round_2_critique": [
+        "Observation 4 ('Minor gaps persist in high-scoring trials') is duplicative (31, 30, and 24 are already covered) and generic filler.",
+        "The summary is generic boilerplate that could apply to any harness/model and lacks concrete task names.",
+        "Missed strong pattern: many worst trials remain functionally correct with only minor gaps (18_multifile_api_break q=3.75, 20_schema_evolution q=4.25, 22_incident_triage q=4.75, 23_ci_repair_loop q=4.50, 26_data_pipeline_rescue q=4.00).",
+        "Missed calibration note: 24_api_research_report has an inverted artifact-quality relationship — the higher-scoring trial (q=4.75) jumbles category-key order while the lower-scoring trial (q=3.75) sorts them alphabetically.",
+        "Missed concrete issues: 21_ts_types_refactor worst loses discriminated narrowing by capturing action as a string variable; 32_utf8_stream worst has redundant branches and the best has a misleading comment about offset advancement."
+      ],
+      "skeptic_round_3_critique": [
+        "Observation 1 conflates best and worst evidence for 31_mvcc_kv: the redundant second conflict scan appears in the best (q=4.25) trial, while GC-after-every-op appears in the worst (q=3.75); the synthesis bundles them as if both are worst-trial behavior.",
+        "The summary is generic boilerplate that names no specific tasks and could apply to almost any harness/model.",
+        "Strong missed pattern: many worst trials remain functionally correct with only minor gaps — backed by 18_multifile_api_break (q=3.75), 20_schema_evolution (q=4.25), 22_incident_triage (q=4.75), 23_ci_repair_loop (q=4.50), and 26_data_pipeline_rescue (q=4.00).",
+        "Missed concrete issues: 21_ts_types_refactor worst (q=3.25) loses discriminated narrowing by capturing action as a string variable; 32_utf8_stream worst (q=4.00) has redundant generic branches for leads that never need them, while the best (q=4.50) has a misleading comment about offset advancement.",
+        "Observation 3's characterization of 24_api_research_report is accurate but the phrasing 'q=4.75 best' is confusing because q=4.75 is the lower of the two scores; still, the inverted artifact-quality relationship is real."
+      ]
+    },
+    "codex/deepseek-v4-flash-0731": {
+      "observations": [
+        "Empty diffs leave core requirements unimplemented in 15_race_condition (worst q=1.00) and 27_ir_optimizer (worst q=1.00).",
+        "Best entries cluster at q=5.00 across seven tasks: 17_wire_protocol, 18_multifile_api_break, 20_schema_evolution, 24_api_research_report, 25_git_archaeology, 27_ir_optimizer, and 32_utf8_stream.",
+        "Worst submissions are frequently still high quality (q>=4.00) or nearly identical to best: 16_perf_hot_path (q=4.50), 23_ci_repair_loop (q=4.50), 24_api_research_report (q=4.50), 25_git_archaeology (q=4.50), 30_fair_scheduler (q=4.50), and 32_utf8_stream (q=4.50).",
+        "Concurrency and security edge-case gaps appear in worst entries: 19_security_hardening (abspath instead of realpath, no NUL/iterative-decoding checks) and 28_lease_lock (busy-loop on StoreUnavailable, token not refreshed on renew).",
+        "Spec-exceeding or inefficient surface appears in 18_multifile_api_break worst (O(n) delete, complex index) and 31_mvcc_kv worst (begin consumes commit ids, extra `snapshot` property, quadratic GC)."
+      ],
+      "summary": "Best entries frequently hit q=5.00 with clean, minimal designs, while worst entries usually remain high-quality or nearly identical to best. Real failures are concentrated outliers: empty diffs on 15 and 27, plus edge-case oversights in 19, 28, 29, and 31.",
+      "n_tasks": 18,
+      "skeptic_round_1_critique": [
+        "Observation 2 calls 31_mvcc_kv's worst (q=3.25) a 'correct solution,' but it has real semantic/surface issues (begin consumes commit ids, extra public `snapshot`, quadratic GC); rephrase as 'solutions are sometimes over-engineered or add unnecessary surface area.'",
+        "The synthesis misses that worst submissions are frequently still high quality: 16, 23, 24, 25, 30, and 32 worst entries score q≥4.50 and are often correct or nearly identical to best, so the real failures are concentrated outliers rather than broad inconsistency.",
+        "No score mischaracterizations in the listed claims, but the summary overstates overall inconsistency without noting how many worst outputs remain acceptable."
+      ],
+      "skeptic_round_2_critique": [
+        "The summary's 'bimodal' framing overstates inconsistency: the source shows many worst entries are high-scoring and correct (16, 23, 24, 25, 30, 32 all score q>=4.50), so failures are concentrated outliers rather than a broad split.",
+        "Missed strong pattern: best/worst pairs are often nearly identical or differ only in minor polish/tie-breaking (e.g., 23's worst is the same minimal fix, ranked by candidate ID), with large gaps driven by empty diffs or edge-case oversights.",
+        "No score mischaracterizations in the current observations; task/score/behavior citations match the source."
+      ],
+      "skeptic_round_3_critique": [
+        "Observation 2 claims 'worst submissions are often still high quality or only minimally different from best' but only lists six tasks; it omits 17_wire_protocol worst (q=3.75) and 26_data_pipeline_rescue worst (q=4.00) which are still solid. More importantly, the claim is supported by enough tasks, but the framing could be tightened.",
+        "Observation 3 is over-broad: 'over-engineering or spec-exceeding surface appears' groups three very different cases. It is backed by specific tasks, but the umbrella phrasing is generic. Better to split into two focused claims: unnecessary complexity vs spec-exceeding surface.",
+        "Observation 4 is solid and specific, but could add 15_race_condition best concurrency correctness as contrast.",
+        "Missed strong pattern: best entries frequently score q=5.00 (17, 18, 20, 24, 25, 27, 32 — seven tasks) and are described as 'clean' or 'minimal'. The synthesis does not highlight this ceiling-cluster.",
+        "Missed strong pattern: worst failures are dominated by empty diffs (15, 27) and edge-case oversights (19, 28, 31, 29), not broad quality collapse.",
+        "The summary is accurate but slightly overstates 'high-quality outputs dominate' without quantifying the concentration of q=5.00 best entries and q<=3.25 worst entries."
+      ]
+    },
+    "codex/glm-5-2": {
+      "observations": [
+        "Severe functional defects span concurrency, failure handling, and core algorithms: 15_race_condition (q=2.50) risks deadlock; 27_ir_optimizer (q=3.00) removes no-op jumps without retargeting incoming edges; 28_lease_lock (q=4.00) swallows StoreUnavailable so is_held can lie during an outage; 30_fair_scheduler (q=2.50) omits the 1/weight enqueue increment.",
+        "Refactors and parser tasks break promised invariants or runtime semantics: 18_multifile_api_break (q=3.00) rebuilds the index on delete; 21_ts_types_refactor (q=4.00) changes nameOf to throw on missing users; 26_data_pipeline_rescue (q=3.25) uses unreliable strptime %z for colon offsets; 29_incremental_parser (q=2.75) reimplements the grammar, risking structural mismatch; 31_mvcc_kv (q=3.75) prepends versions and skips GC on begin.",
+        "Verification, edge-case reporting, and reproducibility artifacts are repeatedly weak: 16_perf_hot_path (q=3.25) weakens verify.sh with a retry loop; 17_wire_protocol (q=2.75) reports mid-frame truncation as bare EOFError; 19_security_hardening (q=4.00) rejects valid path components and omits verify.sh; 20_schema_evolution (q=3.75) points verify.sh at a nonexistent oracle; 24_api_research_report (q=2.50) hardcodes report.json with no computation script."
+      ],
+      "summary": "codex/glm-5-2's best trials are frequently excellent (7/18 at q=5.00), but its worst trials are split: many introduce functional or semantic defects, while others stay correct and only lose points on verification, reproducibility, or polish.",
+      "n_tasks": 18,
+      "skeptic_round_1_critique": [
+        "Summary overstates severity: many worst trials (e.g., 22 q=4.75, 23 q=4.50, 25 q=4.50, 32 q=4.50) are functionally correct and mainly degrade in presentation, verification, or edge-case handling rather than 'failing'.",
+        "Missed strong pattern: verify.sh / reproducibility artifacts are repeatedly problematic across 16_perf_hot_path, 19_security_hardening, 20_schema_evolution, and 24_api_research_report.",
+        "Observation 1 rests on exactly two tasks (the minimum); while concrete, it is a narrower pattern than the others."
+      ],
+      "skeptic_round_2_critique": [
+        "Summary still overstates severity: most worst trials score q≥3.00, and several (22 q=4.75, 23 q=4.50, 25 q=4.50, 28 q=4.00, 32 q=4.50) are functionally correct, degrading mainly in presentation, verification, or edge-case handling rather than 'failing outright'.",
+        "Observation 1 rests on only two tasks, and one scores q=4.00, so the claimed broad pattern is narrower than stated.",
+        "Missed pattern: many worst trials remain functionally correct and only lose points on polish/over-abstraction/presentation (22_incident_triage, 25_git_archaeology, 32_utf8_stream).",
+        "Additional missed failure modes: 21_ts_types_refactor changes runtime behavior (nameOf throws), 26_data_pipeline_rescue uses unreliable strptime %z, and 29_incremental_parser reimplements the grammar, risking structural mismatch."
+      ],
+      "skeptic_round_3_critique": [
+        "Observation 1 is overstated: it claims concurrency/failure-mode handling contains the 'only' severe functional bugs, but worst trials in 18, 21, 26, 27, 29, 30, and 31 also contain functional or semantic defects.",
+        "Observation 1 rests on only two tasks, and 28_lease_lock (q=4.00) is not clearly 'severe', so the pattern is narrower than claimed.",
+        "Missed strong pattern: verification, reproducibility, and edge-case reporting artifacts are repeatedly weak across 16_perf_hot_path, 17_wire_protocol, 19_security_hardening, 20_schema_evolution, and 24_api_research_report.",
+        "Missed pattern: several worst trials (22_incident_triage, 23_ci_repair_loop, 25_git_archaeology, 32_utf8_stream) remain functionally correct and only lose points on polish or over-abstraction.",
+        "Missed functional defects: 21_ts_types_refactor changes runtime behavior (nameOf throws), 26_data_pipeline_rescue uses unreliable strptime %z parsing, and 29_incremental_parser reimplements the grammar, risking structural mismatch.",
+        "Summary overstates that worst trials 'usually remain functionally correct'; roughly half of the worst trials contain functional or semantic defects."
+      ]
+    },
+    "codex/gpt-5-6-luna-max": {
+      "observations": [
+        "Concurrency is mishandled: 10_ttl_cache (3.00) has racy _values/_inflight with no lock; 15_race_condition (2.50) serializes every transfer with a global RLock; 18_multifile_api_break (2.50) lacks Store/Snapshot locks.",
+        "Refactors introduce regressions: 04_god_refactor (3.75) maps None region to '' instead of 'Unknown'; 12_event_router_refactor (3.25) changes handler signatures and swallows exceptions; 13_schema_consolidation (3.75) fails to convert labels to lists; 21_ts_types_refactor (3.50) changes nameOf to return undefined.",
+        "Verification wiring is ineffective: 01_cli_todo (4.00) sets testpaths=['tests'] so pytest misses test_todo.py; 05_add_endpoint (3.25) validate_title is unregistered; 24_api_research_report (2.50) uses placeholders.",
+        "Security-sensitive path/URL handling is buggy: 08_safe_file_store (2.25) leaks writes through broken symlinked parents; 19_security_hardening (3.00) skips recursive URL decoding and has .replace order bugs."
+      ],
+      "summary": "The combo tends to produce surface-correct code that fails on concurrency, refactor regressions, verification wiring, and security-sensitive path/URL handling; even its top-scoring trials often retain serious flaws.",
+      "n_tasks": 31,
+      "skeptic_round_1_critique": [
+        "No weak claims to delete: all three observations are backed by multiple specific tasks, name exact scores and behaviors, and are not generic filler.",
+        "Missed strong pattern: security-sensitive path and URL handling is frequently buggy. 08_safe_file_store (2.25) can leak writes through broken symlinked parents before the symlink check runs, and 19_security_hardening (3.00) skips recursive URL decoding and uses chained .replace calls with substitution-order bugs."
+      ],
+      "skeptic_round_2_critique": [
+        "The summary claims security-sensitive path/URL handling failures, but no observation in the current synthesis supports it.",
+        "Security is a strong missed pattern: 08_safe_file_store (2.25) can write outside the root through broken symlinked parents, and 19_security_hardening (3.00) skips recursive URL decoding and has .replace order bugs.",
+        "The three existing observations are concrete and each backed by at least two tasks; no score calibration errors."
+      ],
+      "skeptic_round_3_critique": [
+        "No weak claims to delete: all four observations are backed by at least two specific tasks, name exact scores and behaviors, and are not generic filler.",
+        "No score calibration errors: every cited score matches the corresponding WORST trial in the source data.",
+        "Missed strong pattern: even the BEST-scoring trials frequently retain serious flaws. Examples: 02_buggy_parser (3.50) still uses first-row width and misses wider rows; 08_safe_file_store (3.25) lacks TOCTOU protection and is overly restrictive; 09_event_stream (3.00) catches overly broad exceptions and lacks byte support; 10_ttl_cache (3.25) has racy factory insertion and never purges expired entries; 27_ir_optimizer (3.00) disables constant-branch elimination on any out-of-range jump; 31_mvcc_kv (4.25) does not trigger GC from version_count."
+      ]
+    },
+    "codex/muse-spark-1-2-contributor": {
+      "observations": [
+        "WORST trials often add unnecessary files or retain unused code: 16_perf_hot_path (2.50) adds an unrelated verify.sh; 20_schema_evolution (3.50) adds an empty --help file; 21_ts_types_refactor (3.50) adds redundant root .js duplicates; 26_data_pipeline_rescue (3.25) copies _dt per row; 31_mvcc_kv (4.00) keeps an unused legacy _data dict.",
+        "Concurrency WORST trials have real correctness failures: 15_race_condition (2.50) deadlocks on self-transfers; 28_lease_lock (2.50) deletes a store record without checking local holder state.",
+        "Optimization shortcuts break edge-case correctness: 27_ir_optimizer (2.50) removes a jump-target push in a dead branch; 29_incremental_parser (2.00) misaligns cached slices with nodes via SequenceMatcher; 30_fair_scheduler (3.75) omits the +1/w enqueue term and bind state reset.",
+        "Many WORST trials still score q≥4.0 and differ from BEST only by minor nits: 17_wire_protocol (4.75), 19_security_hardening (4.00), 22_incident_triage (4.50), 23_ci_repair_loop (4.75), 25_git_archaeology (4.50), 31_mvcc_kv (4.00), 32_utf8_stream (4.00)."
+      ],
+      "summary": "The combo frequently adds unnecessary files or retains unused code in WORST trials, and shows real correctness failures in concurrency and optimization edge cases; nevertheless, many WORST trials still score q≥4.0 and trail BEST only by minor nits.",
+      "n_tasks": 18,
+      "skeptic_round_1_critique": [
+        "Observation 1 overstates 17_wire_protocol (q=4.75 WORST): its verify.sh is task-relevant, not extraneous pollution, and the score is very high.",
+        "The synthesis misses that many WORST trials are high-scoring (q≥4.0 for 17, 22, 23, 25, 31, 32) and differ from BEST mainly by minor nits or scope issues rather than correctness failures.",
+        "The synthesis underemphasizes backwards-compatibility/minor-hardening gaps in refactoring and hardening tasks: 18_multifile_api_break changes _entries type, 19_security_hardening omits os.path.isabs, and 21_ts_types_refactor duplicates .js files at the root."
+      ],
+      "skeptic_round_2_critique": [
+        "Observation 1 is loose in calling 31_mvcc_kv (q=4.00) a 'lower-scoring submission'; the artifact pattern is real but dominated by genuinely low WORST trials.",
+        "The synthesis misses the strong pattern that many WORST trials still score q≥4.0 and trail BEST only by minor nits: 17_wire_protocol (4.75), 19_security_hardening (4.00), 22_incident_triage (4.50), 23_ci_repair_loop (4.75), 25_git_archaeology (4.50), 31_mvcc_kv (4.00), 32_utf8_stream (4.00).",
+        "It underemphasizes minor backwards-compatibility/hardening gaps in refactoring/hardening WORST trials: 18_multifile_api_break changes _entries type, 19_security_hardening omits os.path.isabs, and 21_ts_types_refactor duplicates root .js files."
+      ],
+      "skeptic_round_3_critique": [
+        "Observation 1 is loose: 'extraneous artifacts' lumps added files (16_perf_hot_path, 20_schema_evolution, 21_ts_types_refactor) together with legacy code (31_mvcc_kv) and an unnecessary copy (26_data_pipeline_rescue); rewording to 'unnecessary files or unused code' is more accurate.",
+        "Observation 1 implies the artifact pattern is WORST-exclusive, but 16_perf_hot_path BEST (4.00) also adds an unnecessary verify.sh.",
+        "The synthesis misses a strong pattern in refactoring/hardening WORST trials: 18_multifile_api_break (3.50) changes _entries from a list to a dict, 19_security_hardening (4.00) omits os.path.isabs and keeps dead %prefix code, and 21_ts_types_refactor (3.50) duplicates root .js files."
+      ]
+    },
+    "droid/deepseek-v4-flash-0731": {
+      "observations": [
+        "Empty diffs on algorithmic tasks: 27_ir_optimizer best/worst q=1.00, 30_fair_scheduler worst q=1.00, 29_incremental_parser worst q=1.25.",
+        "Concurrency worst trials have subtle correctness flaws: 15_race_condition q=2.00 (balance()/total() unprotected), 28_lease_lock q=3.75 (stale expiry in renew), 31_mvcc_kv q=3.25 (id() versions, no GC in version_count).",
+        "Protocol/API/schema worst trials mishandle edge states: 17_wire_protocol q=2.50 (truncation as clean EOF), 18_multifile_api_break q=2.75 (OrderedIndex passed to snapshot iteration), 20_schema_evolution q=3.00 (partial migration treated as complete).",
+        "High-scoring best trials still carry flaws: 16_perf_hot_path q=4.75 (stale docstring), 24_api_research_report q=4.50 (single-line), 26_data_pipeline_rescue q=5.00 (float amounts), 31_mvcc_kv q=4.50 (sequence-number consumption, identity-based GC filtering).",
+        "Worst trials often still score 4.00–4.75, reflecting minor issues rather than major failures: 16_perf_hot_path, 19_security_hardening, 22_incident_triage, 23_ci_repair_loop, and 25_git_archaeology."
+      ],
+      "summary": "Deepseek-v4-flash-0731 via droid produces strong best solutions, but even high-scoring ones carry minor flaws; worst trials are inconsistent, spanning empty diffs, subtle correctness bugs, and many still-high scores.",
+      "n_tasks": 18,
+      "skeptic_round_1_critique": [
+        "Observation 1 understates the empty-diff pattern: it misses that 27_ir_optimizer's best trial is also q=1.00 with an empty diff.",
+        "Observations 1-3 are each backed by three concrete tasks and accurately quote scores; no calibration errors found.",
+        "The summary overstates how 'clean' the best trials are; several high-scoring bests still carry minor flaws.",
+        "Missed pattern: high-scoring best trials frequently contain minor imperfections (stale docstrings, formatting, float amounts)."
+      ],
+      "skeptic_round_2_critique": [
+        "The embedded skeptic_round_1_critique[0] is wrong: observation 1 already states '27_ir_optimizer best/worst q=1.00', so the empty-diff best trial is not understated.",
+        "Missed pattern: many worst trials are still relatively high-scoring (4.00–4.75), indicating plausible-but-flawed solutions rather than complete failures.",
+        "No score calibration errors found."
+      ],
+      "skeptic_round_3_critique": [
+        "Observation 5 mischaracterizes high-scoring worst trials as 'partial failure'; the source describes 16_perf_hot_path worst and 23_ci_repair_loop worst as essentially correct/minimal, so the pattern is minor issues at high scores, not partial failure.",
+        "Missed pattern: modify-only / extra-file violations, e.g., 32_utf8_stream worst q=3.00 adds large crosscheck scripts and a usage JSON.",
+        "Missed pattern: 21_ts_types_refactor shows a clear best/worst gap (q=5.00 vs q=3.50) around discriminated unions vs optional-field casts that is absent from the synthesis.",
+        "No score calibration errors found."
+      ]
+    },
+    "droid/glm-5-2": {
+      "observations": [
+        "Empty diffs cause complete failure on 27 (both trials q=1.00) and 30's worst trial (q=1.25); 30's best trial is q=5.00.",
+        "Concurrency and locking solutions are mostly correct but carry edge-case bugs: 15's worst trial (q=4.00) is over-engineered (locks for missing accounts, unused helper), while 28 collapses absent/unavailable states and release() can delete stale records without lease validation (q=3.75/2.50).",
+        "Verification/delivery artifacts are brittle or missing: 18 has brittle CLI assumptions and flaky scaling (q=3.00), 19 omits verify.sh (q=3.50), and 24 hardcodes /workspace/report.json (q=3.50)."
+      ],
+      "summary": "glm-5-2 reaches excellent peak quality (eight best trials at 5.00, four at 4.75) and is often consistent (25 and 29 perfect in both trials; 21, 22, 23, and 32 worst trials ≥4.25). However, 27 fails completely with empty diffs, 30's worst trial is an empty diff (q=1.25), concurrency solutions have lingering edge-case bugs (15 over-engineered, 28 stale-record deletion), and verification artifacts are repeatedly brittle or missing (18, 19, 24).",
+      "n_tasks": 18,
+      "skeptic_round_1_critique": [
+        "The synthesis omits a strong positive pattern: glm-5-2 frequently achieves perfect or near-perfect best-trial scores, including eight 5.00s (17, 21, 22, 23, 25, 29, 30, 32) and four 4.75s (15, 16, 19, 24), with tasks 25 and 29 scoring 5.00 in both trials."
+      ],
+      "skeptic_round_2_critique": [
+        "Observation 1 overgeneralizes: only 27 has empty diffs in both trials (q=1.00); 30's best trial is q=5.00, so 'empty diffs on the hardest tasks' mischaracterizes 30.",
+        "Synthesis misses a strong consistency pattern: worst trials are often strong (21 q=4.25, 22 q=4.25, 23 q=4.50, 32 q=4.50) and 25/29 score 5.00 in both trials."
+      ],
+      "skeptic_round_3_critique": [
+        "Observation 2 mischaracterizes 28: its bugs (stale-record deletion, absent/unavailable state collapse) are edge-case correctness failures, not over-engineering; only 15's worst trial is genuinely over-engineered.",
+        "The observations list only failure patterns and omit the strong positive pattern that the summary captures: eight best trials at 5.00 (17, 21, 22, 23, 25, 29, 30, 32), four at 4.75 (15, 16, 19, 24), and 25/29 perfect in both trials."
+      ]
+    },
+    "droid/gpt-5-6-luna-max": {
+      "observations": [
+        "Concurrency and algorithmic shortcuts are severe failure modes: 10_ttl_cache (q=3.00) is lockless and race-prone, 06_async_bug (q=3.75) drops cancelled tasks, 27_ir_optimizer (q=2.00) is O(n^2) with stale jump targets, and 30_fair_scheduler (q=3.25) omits the +1/weight increment.",
+        "Edge-case and data-fidelity slips are common: 24_api_research_report (q=2.50) uses placeholder values, 01_cli_todo (q=3.00) leaves stray data and makes done non-idempotent, 04_god_refactor (q=3.75) changes empty-region and whitespace-amount semantics, and 08_safe_file_store (q=3.00) over-rejects safe '..' paths and symlinks.",
+        "Refactor and type-quality tasks have maintainability issues: 21_ts_types_refactor (q=3.00) uses weak optional interfaces, 13_schema_consolidation (q=3.75) overengineers dual defaults, and 12_event_router_refactor (q=3.25) skips alias normalization."
+      ],
+      "summary": "Worst trials are split: a few are deeply broken in parsing, streaming, IR, and data-fidelity tasks (2.00–2.75), while the rest are functionally close but hurt by concurrency races, edge-case semantic shifts, or maintainability gaps.",
+      "n_tasks": 31,
+      "skeptic_round_1_critique": [
+        "No score calibration errors: every q value cited in the synthesis matches the source data.",
+        "The lead 'repeatedly fumbles' is slightly stronger than the evidence; only two concurrency failures and one algorithmic failure are directly cited, so the wording should be toned down.",
+        "Missed strong pattern: most worst trials still score at or above 4.0, and even the broken-looking ones are usually functionally close. Truly low-score failures are concentrated in a minority of tasks (IR optimizer, API report, parser, TS refactor, event stream).",
+        "Missed pattern: refactor/type-quality tasks show recurring maintainability issues, e.g., older typing style in 04_god_refactor, weak TypeScript interfaces in 21_ts_types_refactor, overengineered defaults in 13_schema_consolidation, and generic or incomplete verify scripts in 11_policy_engine_refactor and 12_event_router_refactor."
+      ],
+      "skeptic_round_2_critique": [
+        "No calibration errors: every cited q value matches the source data.",
+        "Observation 1 would be stronger if it included the 30_fair_scheduler q=3.25 algorithmic flaw (missing +1/weight increment), which reinforces the algorithmic-shortcut pattern.",
+        "Missed strong pattern: the lowest worst scores cluster in parsing, streaming, IR, and data-fidelity tasks (02_buggy_parser q=2.50, 09_event_stream q=2.75, 21_ts_types_refactor q=3.00, 24_api_research_report q=2.50, 27_ir_optimizer q=2.00, 29_incremental_parser q=2.25), not only in concurrency.",
+        "Missed pattern: refactor and type-quality tasks show recurring maintainability issues, including older typing style (04_god_refactor), overengineered defaults (13_schema_consolidation), weak TypeScript interfaces (21_ts_types_refactor), and generic or thin verify scripts (11_policy_engine_refactor, 12_event_router_refactor)."
+      ],
+      "skeptic_round_3_critique": [
+        "Observation 3 ('Path and security boundaries are miscalibrated') was supported by only two tasks (08_safe_file_store and 19_security_hardening), making it a thin pattern; it has been removed.",
+        "The summary overstated how often worst trials are 'functionally close'; only 12 of 31 worst scores are at or above 4.0, while 19 are below 4.0.",
+        "Missed strong pattern: refactor and type-quality tasks recur with maintainability issues, including 21_ts_types_refactor (weak optional interfaces, non-null assertions), 13_schema_consolidation (dual default/default_factory mechanisms), and 12_event_router_refactor (unnormalized aliases).",
+        "Missed strong pattern: the lowest worst scores cluster in parsing, streaming, IR, and data-fidelity tasks: 02_buggy_parser (q=2.50), 09_event_stream (q=2.75), 27_ir_optimizer (q=2.00), 29_incremental_parser (q=2.25), and 24_api_research_report (q=2.50)."
+      ]
+    },
+    "droid/muse-spark-1-2-contributor": {
+      "observations": [
+        "Over-engineers and takes risky shortcuts: 15_race_condition (3.50) serializes transfers via structure-lock snapshot copy; 18_multifile_api_break (2.00) has a list-plus-index design with a permanent _has_unhashable flag and desynchronization risk; 27_ir_optimizer (3.00) deletes targeted pushes with complex interval remapping; 29_incremental_parser (3.50) hand-rolls grammar parsing, risking lang.parse mismatches.",
+        "Unnecessary overhead: 16_perf_hot_path (3.50) calls gc.collect() per call; 31_mvcc_kv (4.00) runs GC on every op and linearly scans snapshots; 32_utf8_stream (4.00) uses pop(0) and extra tuple allocations.",
+        "Mishandles bounds and timing: 28_lease_lock (4.00) lets outage retry sleeps exceed the remaining lease; 30_fair_scheduler (3.50/4.00) fails the lag bound and converts Fraction tags to float keys.",
+        "Readability and formatting gaps: 17_wire_protocol (4.75), 19_security_hardening (4.00), and 20_schema_evolution (4.50/3.25) are verbose; 22_incident_triage (4.50), 24_api_research_report (3.75), and 25_git_archaeology (4.50) have formatting/readability issues."
+      ],
+      "summary": "Core correctness is solid—8 of 18 best trials score 5.00 and lower-scoring trials often remain correct—but the combo over-engineers, adds overhead, mishandles bounds/timing, and has readability gaps.",
+      "n_tasks": 18,
+      "skeptic_round_1_critique": [
+        "The summary overstates timing/resource mishandling ('consistently ... mishandle bounded timing/resource semantics') when only 28_lease_lock and 30_fair_scheduler support it.",
+        "The synthesis misses that many lower-scoring trials still preserve core correctness (e.g., 16_perf_hot_path 3.50 'solid hybrid fallback', 21_ts_types_refactor 4.50 'runtime behavior is preserved', 25_git_archaeology 4.50 'correctly identifies the culprit and applies the right fix') and that overhead/over-engineering also appears in higher-scoring trials such as 31_mvcc_kv 4.00 and 15_race_condition 4.50.",
+        "The synthesis also misses the risky low-level reimplementation pattern seen in 27_ir_optimizer (3.00) and 29_incremental_parser (3.50)."
+      ],
+      "skeptic_round_2_critique": [
+        "The synthesis understates that many lower-scoring trials still preserve core correctness (e.g., 16_perf_hot_path 3.50 'solid hybrid fallback', 21_ts_types_refactor 4.50 'runtime behavior is preserved', 23_ci_repair_loop 4.50 'Corrects the inclusive range bug', 25_git_archaeology 4.50 'correctly identifies the culprit and applies the right fix', 26_data_pipeline_rescue 3.75 'yields correct UTC naive times', 28_lease_lock 4.00 'Robust release/renew').",
+        "It misses a recurring readability/formatting gap: 17_wire_protocol 4.75 has a defensive comment that hurts readability, 19_security_hardening 4.00 is verbose, 20_schema_evolution uses verbose inline comments, 22_incident_triage 4.50 is less readable, 24_api_research_report 3.75 fails alphabetical sorting, 25_git_archaeology 4.50 is overly terse, and 32_utf8_stream 4.00 uses pop(0) and extra tuple allocations.",
+        "31_mvcc_kv 4.00 is the BEST score; the GC-on-every-call and linear-scan overhead appears in the top trial, so framing it as a combo weakness is fair but should not imply it only afflicts low-scoring trials."
+      ],
+      "skeptic_round_3_critique": [
+        "The summary claims readability is a weak spot but no observation supports it; the synthesis actually misses a strong readability/formatting pattern across 17_wire_protocol (4.75), 19_security_hardening (4.00), 20_schema_evolution (4.50/3.25), 22_incident_triage (4.50), 24_api_research_report (3.75), and 25_git_archaeology (4.50).",
+        "It understates that many lower-scoring trials preserve core correctness (calibration error): 16_perf_hot_path (3.50) is a 'solid hybrid fallback', 21_ts_types_refactor (4.50) preserves runtime behavior, 23_ci_repair_loop (4.50) correctly fixes both issues, 25_git_archaeology (4.50) correctly identifies and fixes the culprit, 26_data_pipeline_rescue (3.75) yields correct UTC naive times, and 28_lease_lock (4.00) has robust release/renew.",
+        "Observation 2 cites 31_mvcc_kv (4.00) as overhead without noting 4.00 is the BEST trial, so the overhead pattern spans top and bottom trials.",
+        "Observation 3 attributes the lag-bound failure to 30_fair_scheduler (3.50), but the source shows the lag bound fails in the BEST (4.00) trial; the WORST trial's main issues are Fraction-to-float key conversion and failure to reset virtual time in bind."
+      ]
+    },
+    "hermes/deepseek-v4-flash-0731": {
+      "observations": [
+        "Artifact pollution (hermes-usage.json, verify.sh, telemetry, fuzz_extra.py) appears in most best and worst trials, yet best scores remain 4.00–5.00; when the core implementation is otherwise correct the drop is small (16_perf_hot_path 4.50/4.00, 18_multifile_api_break 4.75/4.00, 23_ci_repair_loop 4.00/4.00, 24_api_research_report 4.25/4.00).",
+        "Empty diffs leave broken skeletons unchanged on 28_lease_lock (1.00), 29_incremental_parser (1.50), and 32_utf8_stream (1.00).",
+        "Worst trials introduce real functional bugs: 15_race_condition unsynchronized snapshot/total (2.50), 20_schema_evolution idempotency outside the required transaction (3.00), 27_ir_optimizer dead-branch index mismatch (2.75), 31_mvcc_kv missing GC and None tombstone (3.25)."
+      ],
+      "summary": "Pervasive artifact pollution, empty diffs, and functional bugs in worst trials produce large best/worst variance.",
+      "n_tasks": 18,
+      "skeptic_round_1_critique": [
+        "Observation 1 is well-supported but overbroad: the clause 'even when the core implementation is correct' is not true for every listed worst trial (e.g., 30_fair_scheduler worst has an idle-tag-inflation bug).",
+        "Observation 2 is accurate and concrete.",
+        "No score mischaracterizations (calibration errors) were found in the cited q-values.",
+        "The synthesis misses that worst trials frequently introduce real functional bugs, not just artifacts and empty diffs.",
+        "The synthesis misses the large best/worst variance across many tasks (e.g., gaps of 2.0+ on 15_race_condition, 27_ir_optimizer, 28_lease_lock, 29_incremental_parser, 32_utf8_stream)."
+      ],
+      "skeptic_round_2_critique": [
+        "The embedded 'skeptic_round_1_critique' field is meta-commentary, not a source-data observation, and was removed from the corrected synthesis.",
+        "All three source observations are backed by multiple concrete tasks and scores and are not generic filler.",
+        "No score mischaracterizations (calibration errors) were found in the cited q-values.",
+        "The original synthesis missed that artifact pollution frequently produces only small best/worst score gaps when the core implementation is otherwise correct; this has been added to observation 1."
+      ],
+      "skeptic_round_3_critique": [
+        "The output still contains `skeptic_round_1_critique` and `skeptic_round_2_critique` fields; these are meta-commentary, not source-data observations, and must be removed from the corrected synthesis.",
+        "Observation 1's 'most consistent failure mode' is a vague superlative; artifact pollution is pervasive (present in 13/18 tasks) but the data does not rank failure modes explicitly.",
+        "Observation 1's small-score-drop claim is selective and only holds when the core implementation is otherwise correct; cases like 17_wire_protocol (5.00/3.50 with telemetry plus truncation bug) and 32_utf8_stream (4.50/1.00 with fuzz_extra.py plus empty diff) show artifacts can accompany larger gaps.",
+        "No calibration errors: every q-value cited in the observations matches the source data.",
+        "The synthesis under-emphasizes that worst trials are bimodal: either empty diffs yielding very low scores (28_lease_lock, 29_incremental_parser, 32_utf8_stream) or functional-bug-plus-artifact cases yielding moderate-low scores (15_race_condition, 20_schema_evolution, 27_ir_optimizer, 31_mvcc_kv)."
+      ]
+    },
+    "hermes/glm-5-2": {
+      "observations": [
+        "Best trials score 4.00+ on 17 of 18 tasks and 4.25+ on 16 of 18, with perfect 5.00 on 20_schema_evolution, 21_ts_types_refactor, and 27_ir_optimizer; the only sub-4.00 best is 32_utf8_stream at 3.75.",
+        "An unrelated hermes-usage.json file appears in at least one trial for 14 of 18 tasks (e.g., 15-17, 19-20, 22-26, 29-32), repeatedly noted as noise or a modify-only violation.",
+        "Worst trials for 15_race_condition, 27_ir_optimizer, and 28_lease_lock are empty diffs scoring 1.00, leaving the skeleton unchanged.",
+        "Weaker trials repeatedly omit or mishandle verify.sh: 19_security_hardening worst lacks it, 20_schema_evolution worst references starter/, and 21_ts_types_refactor worst has none."
+      ],
+      "summary": "Hermes+glm-5-2 best trials are consistently strong (4.00+ on 17/18 tasks, 5.00 on 20, 21, 27), but most trials add an unrelated hermes-usage.json file; worst trials most often fail through empty diffs (15, 27, 28) or missing/mishandled verify.sh (19, 20, 21).",
+      "n_tasks": 18,
+      "skeptic_round_1_critique": [
+        "Observation 1 is unbalanced: it cites mostly best trials for the hermes-usage.json pattern, even though worst trials also frequently include the file (17, 20, 22-26, 30-32).",
+        "'Lowering scores' in observation 1 is interpretive; the source notes the file as noise or a modify-only violation but provides no counterfactual score.",
+        "Observation 3 and the summary overgeneralize weaker trials as 'over-engineering' or 'invasive global changes'; the data shows diverse failure modes, with empty diffs, missing verify.sh, and unrelated files being at least as common.",
+        "Missed strong pattern: best trials are consistently high-scoring (4.00+ on 17/18 tasks, 4.25+ on 15/18, including 5.00 on 20, 21, 27).",
+        "Missed pattern: verify.sh omissions/errors recur in weaker trials (19 worst, 20 worst, 21 worst)."
+      ],
+      "skeptic_round_2_critique": [
+        "Observation 1 overclaims. The hermes-usage.json pattern occurs in many submissions, but the 'both best and worst trials' framing is uneven: several worst trials (15, 16, 18, 21, 27, 28) do not include it, and 'modify-only violation' wording applies mainly to 32.",
+        "Observation 2 contains a calibration error. Best trials scoring 4.25+ are 16 of 18 (only 28 at 4.00 and 32 at 3.75 are below 4.25), not 15 of 18.",
+        "Observation 4 lists failure modes but most do not meet the 2-task backing rule: no thread safety (18 only), invasive GC tuning (16 only), absolute-path output (24 only), and over-engineered parsing (29 only). Missing verify.sh is the only valid multi-task item.",
+        "The summary mischaracterizes weaker trials as failing through 'diverse issues rather than a single dominant pattern'; in fact, empty diffs and missing verify.sh are concrete recurring patterns.",
+        "Missed strong pattern: empty diffs recur in worst trials for race condition (15), IR optimizer (27), and lease lock (28).",
+        "Missed strong pattern: missing verify.sh recurs in worst trials for security hardening (19), schema evolution (20), and TypeScript refactor (21).",
+        "Missed outlier: 32_utf8_stream best trial is the only one below 4.00, due to unrelated hermes-usage.json and a suboptimal dict lookup."
+      ],
+      "skeptic_round_3_critique": [
+        "Observation 1's task range '15-17, 19-26, 29-32' is inaccurate: 21_ts_types_refactor trials do not add hermes-usage.json, while 23_ci_repair_loop worst and 30_fair_scheduler worst do but are omitted.",
+        "Observation 1's 'Most submissions' framing is vague; the file should be quantified by task/trial count rather than asserted loosely.",
+        "The current JSON contains extra fields (n_tasks, skeptic_round_1_critique, skeptic_round_2_critique) outside the requested output schema and should be removed.",
+        "Missed strong pattern: best trials score 4.00+ on 17 of 18 tasks and 4.25+ on 16 of 18; the only best trial below 4.00 is 32_utf8_stream at 3.75.",
+        "Missed calibration nuance: 28_lease_lock best at 4.00 is the non-sub-4.00 drag on the 4.25+ threshold."
+      ]
+    },
+    "hermes/gpt-5-6-luna-max": {
+      "observations": [
+        "Unrelated `hermes-usage.json` metadata appears in most tasks (e.g., 01_cli_todo, 02_buggy_parser, 04_god_refactor); `verify.sh` changes appear in 04, 05, 07, and 11.",
+        "Empty/no-op submissions occur in 01_cli_todo, 10_ttl_cache, 15_race_condition, 21_ts_types_refactor, and 27_ir_optimizer.",
+        "Weaker trials introduce regressions: broken CSV quoted-newline parsing (02_buggy_parser), unsynchronized submit (06_async_bug), omitted dispatch_batch body (12_event_router_refactor), stale scheduler state (30_fair_scheduler), and absent-key/IndexError conflation (31_mvcc_kv).",
+        "q≥4.5 trials (e.g., 17_wire_protocol BEST, 18_multifile_api_break BEST) are usually correct and mainly lose points for metadata noise; high-q worst trials still have maintainability gaps (18_multifile_api_break WORST, 19_security_hardening WORST)."
+      ],
+      "summary": "Persistent `hermes-usage.json` pollution, occasional empty/no-op submissions, and regressions in weaker runs dominate; top cores are usually sound, though some high-q worst trials have maintainability/security gaps.",
+      "n_tasks": 31,
+      "skeptic_round_1_critique": [
+        "Observation 1 is substantively sound but over-long; the verify.sh sub-list could be trimmed since only four tasks mention it.",
+        "No major score calibration errors found.",
+        "Missed nuance: the strongest trials (q≥4.5) are generally correct and only downgraded by the hermes-usage.json artifact, indicating strong core implementation quality when the model attempts the task."
+      ],
+      "skeptic_round_2_critique": [
+        "Observation 1 is accurate but wordy; the verify.sh sub-pattern is minor and limited to four tasks.",
+        "Observation 2 is well-supported and concrete.",
+        "Observation 3 is true for the listed examples, but high-scoring worst trials also introduce maintainability/correctness gaps (e.g., unused EntryIndex in 18_multifile_api_break WORST q=4.25, missing Windows abs pre-check in 19_security_hardening WORST q=4.25), so the framing understates quality issues in the upper score range.",
+        "No major score calibration errors.",
+        "Missed strong pattern: top-scoring trials (q≥4.5) are usually correct and are downgraded almost exclusively by the extraneous hermes-usage.json artifact."
+      ],
+      "skeptic_round_3_critique": [
+        "Observation 1 was wordy; trimmed to core examples while retaining the concrete verify.sh sub-pattern.",
+        "Observation 3 originally omitted higher-scoring worst trials that still contain real defects, e.g., 18_multifile_api_break WORST q=4.25 (unused EntryIndex, redundant branch) and 19_security_hardening WORST q=4.25 (no Windows abs pre-check).",
+        "Added the missed pattern that high-q worst trials can still have maintainability/security gaps despite functionally correct cores.",
+        "No major score calibration errors."
+      ]
+    },
+    "hermes/muse-spark-1-2-contributor": {
+      "observations": [
+        "Repeatedly adds unrelated metadata files (mostly `hermes-usage.json`); judges penalize this in best and worst trials (e.g., 17, 18, 21-26, 30-32).",
+        "Worst trials carry substantive logic bugs across many domains: locking/serialization (15), perf fallback/item-drop risk (16), protocol infinite loop (17), missing explicit .. containment (19), schema FK/existence gaps (20), TypeScript compile error (21), unsound constant folding (27), lease-record violations (28), parser reuse misses (29), and scheduler finish-tag loss (30)."
+      ],
+      "summary": "Pervasively penalized for unrelated metadata artifacts; worst trials also carry substantive logic bugs across concurrency, protocol, security, schema, typing, optimization, and scheduling, while best-trial core correctness is generally high.",
+      "n_tasks": 18,
+      "skeptic_round_1_critique": [
+        "The artifact observation understates the pattern; unrelated metadata files appear in at least 13 of 18 tasks (17, 18, 20–26, 29–32) and are repeatedly penalized.",
+        "The synthesis misses that worst trials contain substantive correctness bugs outside concurrency/scheduling, including 16_perf_hot_path (quadratic fallback / item-drop risk), 17_wire_protocol (infinite loop on None), 19_security_hardening (missing .. rejection), 20_schema_evolution (missing FK/existence checks), 21_ts_types_refactor (compilation error), 27_ir_optimizer (unsound constant folding), and 29_incremental_parser (reuse misses).",
+        "No score-calibration errors in the cited examples."
+      ],
+      "skeptic_round_2_critique": [
+        "Observation 1 passes all three criteria: backed by 11+ tasks, names the specific artifact and task numbers, and is not generic filler.",
+        "Observation 2 passes all three criteria: backed by 6 tasks, names specific bug types and task numbers, and is not generic filler.",
+        "Observation 2 under-represents the range of worst-trial correctness bugs; it omits strong patterns in 16_perf_hot_path (quadratic fallback / item-drop risk), 17_wire_protocol (infinite loop when read() returns None), 19_security_hardening (missing explicit ..-component rejection), and 20_schema_evolution (missing FK handling and customers-existence check).",
+        "The artifact observation is accurate but understates pervasiveness; explicit `hermes-usage.json` artifacts appear in at least 11 of 18 tasks.",
+        "No score-calibration errors in the cited examples."
+      ],
+      "skeptic_round_3_critique": [
+        "Observation 1 is mostly solid but slightly overstates the filename: tasks 20 and 29 mention 'unrelated metadata' / 'irrelevant metadata file' without explicitly naming hermes-usage.json. It should hedge on those two.",
+        "Observation 2 is well-backed and concrete; no weak claims to delete.",
+        "No score-calibration errors detected in the cited examples.",
+        "The synthesis captures the main patterns; it could note that 22's best and worst trials are tied at 4.00 with the artifact as the only real differentiator, and that 23's perfect 5.00 best trial achieved it partly by avoiding the artifact, but these are minor."
+      ]
+    },
+    "omp/deepseek-v4-flash-0731": {
+      "observations": [
+        "Empty diffs occur on hard implementation/refactoring tasks, leaving the original code unchanged: 21_ts_types_refactor worst q=1.00 (keeps all `any` annotations), 27_ir_optimizer best/worst q=1.00 (broken optimizer skeleton untouched), 29_incremental_parser worst q=2.25 (naive full-reparse remains).",
+        "Concurrency and synchronization worst trials regress to coarse or incorrect lifecycle semantics: 15_race_condition worst q=3.00 (global RLock serializes the ledger), 28_lease_lock worst q=2.00 (busy-spins on StoreUnavailable and can hang), 31_mvcc_kv worst q=2.25 (GC pins too many versions, breaking the A+1 bound).",
+        "Weaker trials often lose on polish or edge cases; several remain functionally correct: stale docs/extra files (16 q=4.00 stale docstring, 30 q=3.50 extra stress.py), security/runtime gaps (19 q=3.50 normpath symlink escape, 26 q=3.75 unconverted `Z` datetime), and naming/readability nits (20 q=3.25 confusing table name but works; 22/23/24/25/32 q 4.00–4.75)."
+      ],
+      "summary": "The combo produces clean, perfect-score solutions but is unreliable on hard implementation and concurrency tasks: it sometimes returns empty diffs or reverts to coarse synchronization, and weaker trials usually lose on polish, hygiene, or edge cases rather than core logic.",
+      "n_tasks": 18,
+      "skeptic_round_1_critique": [
+        "Missed pattern: path-traversal risk in 19_security_hardening worst q=3.50 (uses os.path.normpath instead of realpath, allowing symlink escape from data/).",
+        "Missed pattern: real runtime crash risk in 26_data_pipeline_rescue worst q=3.75 (datetime.fromisoformat rejects 'Z' before Python 3.11).",
+        "Missed nuance: many worst trials remain functionally correct (16 q=4.00, 22 q=4.00, 23 q=4.50, 24 q=4.50, 25 q=4.25, 32 q=4.75) and lose mainly on polish/readability, not core logic."
+      ],
+      "skeptic_round_2_critique": [
+        "Missed strong pattern: path-traversal risk in 19_security_hardening worst q=3.50 (uses os.path.normpath instead of realpath, allowing symlink escape from data/).",
+        "Missed strong pattern: real runtime crash risk in 26_data_pipeline_rescue worst q=3.75 (datetime.fromisoformat rejects `Z` before Python 3.11 if not converted).",
+        "Missed nuance: many worst trials are still functionally correct (16 q=4.00, 22 q=4.00, 23 q=4.50, 24 q=4.50, 25 q=4.25, 32 q=4.75) and lose mainly on polish/readability/constraint hygiene, not core logic.",
+        "Calibration note: 20_schema_evolution worst q=3.25 naming issue is explicitly described as functionally working; the impact is maintainability, not correctness."
+      ],
+      "skeptic_round_3_critique": [
+        "Observation 3 mixed documentation/naming/extra-file issues with security/runtime gaps and did not make clear that many weak trials remain functionally correct.",
+        "Missed nuance: several worst trials are still functionally correct (16 q=4.00, 22 q=4.00, 23 q=4.50, 24 q=4.50, 25 q=4.25, 32 q=4.75) and lose mainly on polish, readability, or constraint hygiene.",
+        "Calibration: 20_schema_evolution worst q=3.25 is explicitly described as functionally working; the confusing `customers_new` table name is a maintainability issue, not a correctness bug."
       ]
     }
   },

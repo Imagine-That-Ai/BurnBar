@@ -40,16 +40,29 @@ const fmtTokens = (v: number | null): string =>
 
 const fmtInt = (v: number): string => v.toLocaleString("en-US");
 
-/* ---------- 1 · matrix metric toggle ---------- */
+/* ---------- 1 · matrix metric toggle + header sorting + highlight search ---------- */
 
 function initMatrix(): void {
   const tabs = document.querySelector<HTMLElement>("[data-br-mxtabs]");
   const table = document.querySelector<HTMLElement>("[data-br-mx]");
   if (!tabs || !table) return;
+  const theadRow = table.querySelector<HTMLTableRowElement>("thead tr");
+  const tbody = table.querySelector<HTMLElement>("tbody");
+  const search = document.querySelector<HTMLInputElement>("[data-br-mxq]");
+  let mode: "sol" | "str" | "qual" = "sol";
+
+  const cellScore = (cell: Element): number => {
+    const el = cell as HTMLElement;
+    const raw =
+      mode === "str" ? el.dataset.strnum : mode === "qual" ? el.dataset.qualnum : el.dataset.solnum;
+    const v = raw == null || raw === "" ? NaN : Number(raw);
+    return v;
+  };
+
   tabs.addEventListener("click", (ev) => {
     const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-mx]");
     if (!btn) return;
-    const mode = btn.dataset.mx === "str" ? "str" : btn.dataset.mx === "qual" ? "qual" : "sol";
+    mode = btn.dataset.mx === "str" ? "str" : btn.dataset.mx === "qual" ? "qual" : "sol";
     tabs.querySelectorAll(".bb-tab").forEach((t) => {
       const active = t === btn;
       t.classList.toggle("is-active", active);
@@ -72,24 +85,187 @@ function initMatrix(): void {
               : `strict ${str} · n ${n}`;
     });
   });
+
+  /* Header sorting: a model column header ranks harness rows by that
+     column's active-metric score; a harness row header ranks model columns
+     the same way; the corner cell restores the default (data) order.
+     Empty cells sink to the end. */
+  if (theadRow && tbody) {
+    const defaultRowOrder = [...tbody.querySelectorAll<HTMLElement>("tr[data-mxrow]")];
+    const defaultColOrder = [
+      ...theadRow.querySelectorAll<HTMLElement>("th[data-mxsort-col]")
+    ].map((th) => th.dataset.mxsortCol ?? "");
+    let sortCol: string | null = null;
+    let sortRow: string | null = null;
+
+    const applyColOrder = (order: string[]): void => {
+      const headCells = [...theadRow.children] as HTMLElement[];
+      const corner = headCells.find((c) => c.hasAttribute("data-mxsort-reset"));
+      const byId = new Map(
+        headCells.filter((c) => c.dataset.mxsortCol).map((c) => [c.dataset.mxsortCol ?? "", c])
+      );
+      theadRow.replaceChildren(
+        ...(corner ? [corner] : []),
+        ...order.map((id) => byId.get(id)).filter((c): c is HTMLElement => c != null)
+      );
+      for (const tr of tbody.querySelectorAll<HTMLElement>("tr[data-mxrow]")) {
+        const rowHead = tr.querySelector<HTMLElement>("th[data-mxsort-row]");
+        const cellsByCol = new Map(
+          [...tr.querySelectorAll<HTMLElement>("td[data-mxcol]")].map((td) => [
+            td.dataset.mxcol ?? "",
+            td
+          ])
+        );
+        tr.replaceChildren(
+          ...(rowHead ? [rowHead] : []),
+          ...order.map((id) => cellsByCol.get(id)).filter((c): c is HTMLElement => c != null)
+        );
+      }
+    };
+
+    const markActive = (): void => {
+      table.querySelectorAll<HTMLElement>("[data-mxsort-col]").forEach((th) => {
+        const active = th.dataset.mxsortCol === sortCol;
+        th.classList.toggle("is-sorted", active);
+        th.setAttribute("aria-sort", active ? "descending" : "none");
+      });
+      table.querySelectorAll<HTMLElement>("[data-mxsort-row]").forEach((th) => {
+        const active = th.dataset.mxsortRow === sortRow;
+        th.classList.toggle("is-sorted", active);
+        th.setAttribute("aria-sort", active ? "descending" : "none");
+      });
+    };
+
+    const sortByCol = (mid: string): void => {
+      sortCol = sortCol === mid ? null : mid;
+      sortRow = null;
+      const rows = [...tbody.querySelectorAll<HTMLElement>("tr[data-mxrow]")];
+      if (sortCol) {
+        const score = (tr: HTMLElement): number => {
+          const cell = tr.querySelector(`td[data-mxcol="${CSS.escape(sortCol ?? "")}"]`);
+          const v = cell ? cellScore(cell) : NaN;
+          return Number.isNaN(v) ? -Infinity : v;
+        };
+        rows.sort((a, b) => score(b) - score(a));
+        rows.forEach((tr) => tbody.appendChild(tr));
+      } else {
+        defaultRowOrder.forEach((tr) => tbody.appendChild(tr));
+      }
+      markActive();
+    };
+
+    const sortByRow = (hid: string): void => {
+      sortRow = sortRow === hid ? null : hid;
+      sortCol = null;
+      if (sortRow) {
+        const tr = tbody.querySelector<HTMLElement>(`tr[data-mxrow="${CSS.escape(sortRow)}"]`);
+        const scoreOf = (mid: string): number => {
+          const cell = tr?.querySelector(`td[data-mxcol="${CSS.escape(mid)}"]`);
+          const v = cell ? cellScore(cell) : NaN;
+          return Number.isNaN(v) ? -Infinity : v;
+        };
+        applyColOrder([...defaultColOrder].sort((a, b) => scoreOf(b) - scoreOf(a)));
+      } else {
+        applyColOrder(defaultColOrder);
+      }
+      markActive();
+    };
+
+    const reset = (): void => {
+      sortCol = null;
+      sortRow = null;
+      defaultRowOrder.forEach((tr) => tbody.appendChild(tr));
+      applyColOrder(defaultColOrder);
+      markActive();
+    };
+
+    table.addEventListener("click", (ev) => {
+      const col = (ev.target as HTMLElement).closest<HTMLElement>("[data-mxsort-col]");
+      if (col) {
+        sortByCol(col.dataset.mxsortCol ?? "");
+        return;
+      }
+      const rowH = (ev.target as HTMLElement).closest<HTMLElement>("[data-mxsort-row]");
+      if (rowH) {
+        sortByRow(rowH.dataset.mxsortRow ?? "");
+        return;
+      }
+      if ((ev.target as HTMLElement).closest("[data-mxsort-reset]")) reset();
+    });
+    table.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      const el = (ev.target as HTMLElement).closest<HTMLElement>(
+        "[data-mxsort-col],[data-mxsort-row],[data-mxsort-reset]"
+      );
+      if (!el) return;
+      ev.preventDefault();
+      el.click();
+    });
+  }
+
+  /* Highlight search: dims non-matching rows/columns, never hides data. */
+  if (search) {
+    search.addEventListener("input", () => {
+      const q = search.value.trim().toLowerCase();
+      const rows = table.querySelectorAll<HTMLElement>("tr[data-mxrow]");
+      const cols = table.querySelectorAll<HTMLElement>("th[data-mxsort-col]");
+      if (!q) {
+        table.classList.remove("mx--filtering");
+        rows.forEach((r) => r.classList.remove("mx-dim"));
+        cols.forEach((c) => c.classList.remove("mx-dim"));
+        table.querySelectorAll("td[data-mxcol]").forEach((c) => c.classList.remove("mx-dim"));
+        return;
+      }
+      table.classList.add("mx--filtering");
+      const matchCols = new Set<string>();
+      const matchRows = new Set<string>();
+      cols.forEach((c) => {
+        const name = (c.dataset.mname ?? "").toLowerCase();
+        const id = (c.dataset.mxsortCol ?? "").toLowerCase();
+        if (name.includes(q) || id.includes(q)) matchCols.add(c.dataset.mxsortCol ?? "");
+      });
+      rows.forEach((r) => {
+        const name = (r.dataset.mxhname ?? "").toLowerCase();
+        const id = (r.dataset.mxrow ?? "").toLowerCase();
+        if (name.includes(q) || id.includes(q)) matchRows.add(r.dataset.mxrow ?? "");
+      });
+      rows.forEach((r) => r.classList.toggle("mx-dim", !matchRows.has(r.dataset.mxrow ?? "")));
+      cols.forEach((c) => c.classList.toggle("mx-dim", !matchCols.has(c.dataset.mxsortCol ?? "")));
+      for (const tr of rows) {
+        const rowMatch = matchRows.has(tr.dataset.mxrow ?? "");
+        tr.querySelectorAll<HTMLElement>("td[data-mxcol]").forEach((td) => {
+          td.classList.toggle("mx-dim", !rowMatch && !matchCols.has(td.dataset.mxcol ?? ""));
+        });
+      }
+    });
+  }
 }
 
-/* ---------- 2 · task-browser family filter ---------- */
+/* ---------- 2 · task-browser family filter + text search ---------- */
 
 function initTaskFilter(): void {
   const root = document.querySelector<HTMLElement>("[data-br-tasks]");
   if (!root) return;
   const chips = root.querySelector<HTMLElement>(".bb-tasks__chips");
   if (!chips) return;
+  const search = root.querySelector<HTMLInputElement>("[data-br-taskq]");
+  let fam = "";
+  const apply = (): void => {
+    const q = (search?.value ?? "").trim().toLowerCase();
+    root.querySelectorAll<HTMLElement>(".bb-trow[data-family]").forEach((row) => {
+      const famOk = fam === "" || row.dataset.family === fam;
+      const qOk = q === "" || row.textContent.toLowerCase().includes(q);
+      row.style.display = famOk && qOk ? "" : "none";
+    });
+  };
   chips.addEventListener("click", (ev) => {
     const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-fam]");
     if (!btn) return;
-    const fam = btn.dataset.fam ?? "";
+    fam = btn.dataset.fam ?? "";
     chips.querySelectorAll(".bb-chip").forEach((c) => c.classList.toggle("is-active", c === btn));
-    root.querySelectorAll<HTMLElement>(".bb-trow[data-family]").forEach((row) => {
-      row.style.display = fam === "" || row.dataset.family === fam ? "" : "none";
-    });
+    apply();
   });
+  search?.addEventListener("input", apply);
 }
 
 /* ---------- 3 · cell explorer (lazy dataset) ---------- */
@@ -168,6 +344,79 @@ function initExplorer(): void {
     return loadPromise;
   };
 
+  /* Column sorting: click / Enter / Space on a th[data-sort]. Text keys
+     start A→Z, numeric keys start high→low; clicking the active column
+     flips direction. Sorting happens before the ROW_CAP slice so "top 200"
+     is always the top of the SORTED, filtered set. */
+  type SortKey = "h" | "m" | "t" | "n" | "sol" | "str" | "cost" | "wall" | "tok";
+  let sortKey: SortKey | null = null;
+  let sortDir: 1 | -1 = 1;
+  const TEXT_KEYS = new Set<SortKey>(["h", "m", "t"]);
+  const cellVal = (data: CellsPayload, row: CellRow, key: SortKey): string | number | null => {
+    const [hi, mi, ti, n, sp, stp, cost, wall, tok] = row;
+    switch (key) {
+      case "h": return (data.hd[hi] ?? data.h[hi] ?? "").toLowerCase();
+      case "m": return (data.md[mi] ?? data.m[mi] ?? "").toLowerCase();
+      case "t": return (data.t[ti] ?? "").toLowerCase();
+      case "n": return n;
+      case "sol": return n > 0 ? sp / n : 0;
+      case "str": return n > 0 ? stp / n : 0;
+      case "cost": return cost;
+      case "wall": return wall;
+      case "tok": return tok;
+    }
+  };
+  const sortMatches = (data: CellsPayload, matches: { row: CellRow; idx: number }[]): void => {
+    if (!sortKey) return;
+    const key = sortKey;
+    matches.sort((a, b) => {
+      const va = cellVal(data, a.row, key);
+      const vb = cellVal(data, b.row, key);
+      if (va == null && vb == null) return a.idx - b.idx;
+      if (va == null) return 1; // nulls sink regardless of direction
+      if (vb == null) return -1;
+      const c =
+        typeof va === "string" && typeof vb === "string"
+          ? va.localeCompare(vb)
+          : Number(va) - Number(vb);
+      return c === 0 ? a.idx - b.idx : c * sortDir;
+    });
+  };
+  const syncSortHeads = (): void => {
+    root.querySelectorAll<HTMLElement>("th[data-sort]").forEach((th) => {
+      const active = th.dataset.sort === sortKey;
+      th.setAttribute("aria-sort", active ? (sortDir === 1 ? "ascending" : "descending") : "none");
+      th.classList.toggle("is-sorted", active);
+      th.classList.toggle("is-desc", active && sortDir === -1);
+    });
+  };
+  const thead = root.querySelector<HTMLElement>("thead");
+  const onSort = (th: HTMLElement): void => {
+    const key = th.dataset.sort as SortKey | undefined;
+    if (!key) return;
+    if (sortKey === key) {
+      sortDir = sortDir === 1 ? -1 : 1;
+    } else {
+      sortKey = key;
+      sortDir = TEXT_KEYS.has(key) ? 1 : -1;
+    }
+    syncSortHeads();
+    void load().then((data) => {
+      if (data) render(data);
+    });
+  };
+  thead?.addEventListener("click", (ev) => {
+    const th = (ev.target as HTMLElement).closest<HTMLElement>("th[data-sort]");
+    if (th) onSort(th);
+  });
+  thead?.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    const th = (ev.target as HTMLElement).closest<HTMLElement>("th[data-sort]");
+    if (!th) return;
+    ev.preventDefault();
+    onSort(th);
+  });
+
   const render = (data: CellsPayload): void => {
     const query = q.value.trim().toLowerCase();
     const fh = selH.value;
@@ -197,6 +446,7 @@ function initExplorer(): void {
       matches.push({ row, idx: i });
     }
 
+    sortMatches(data, matches);
     const capped = matches.slice(0, ROW_CAP);
     count.textContent =
       matches.length === 0
@@ -563,6 +813,14 @@ function initSynthesis(): void {
     if (!loaded && !loading) loading = load();
   };
 
+  // Print preparation (Save as PDF) awaits the synthesis fetch + render.
+  (window as unknown as { __bbSynthesisLoad?: () => Promise<void> }).__bbSynthesisLoad =
+    async () => {
+      if (loaded) return;
+      if (!loading) loading = load();
+      await loading;
+    };
+
   // A tap on any "synthesis for this combo →" link must trigger the lazy
   // fetch immediately — the anchor target doesn't exist until the render.
   document.addEventListener("click", (ev) => {
@@ -598,6 +856,41 @@ function initSynthesis(): void {
   }
 }
 
+/* ---------- 6 · quality-leaderboard search ---------- */
+
+function initQlqFilter(): void {
+  const search = document.querySelector<HTMLInputElement>("[data-br-qlq-q]");
+  const rows = document.querySelector<HTMLElement>("[data-br-qlq]");
+  if (!search || !rows) return;
+  search.addEventListener("input", () => {
+    const q = search.value.trim().toLowerCase();
+    rows.querySelectorAll<HTMLElement>("[data-qlq]").forEach((row) => {
+      const show = q === "" || row.textContent.toLowerCase().includes(q);
+      row.style.display = show ? "" : "none";
+    });
+  });
+}
+
+/* ---------- 7 · print / PDF ---------- */
+
+function initPrint(): void {
+  const buttons = document.querySelectorAll<HTMLButtonElement>("[data-print-report]");
+  if (buttons.length === 0) return;
+  const prepareAndPrint = async (): Promise<void> => {
+    // Print CSS force-expands every collapsible; here we only need the lazy
+    // synthesis section rendered before the snapshot.
+    const loader = (window as unknown as { __bbSynthesisLoad?: () => Promise<void> })
+      .__bbSynthesisLoad;
+    if (loader) await loader();
+    window.print();
+  };
+  buttons.forEach((btn) =>
+    btn.addEventListener("click", () => {
+      void prepareAndPrint();
+    })
+  );
+}
+
 /* ---------- boot ---------- */
 
 initMatrix();
@@ -605,6 +898,8 @@ initTaskFilter();
 initExplorer();
 initQualityCards();
 initSynthesis();
+initQlqFilter();
+initPrint();
 // Deep links into quality cards land expanded, on arrival and on tap.
 openQualityHashTarget();
 window.addEventListener("hashchange", openQualityHashTarget);
