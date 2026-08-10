@@ -505,6 +505,7 @@ const windowsFullPushTrigger = windowsFullWorkflow.slice(
 for (const evidenceDependency of [
   "scripts/lib/atomic-regular-file.mjs",
   "scripts/lib/domain-core-release-evidence.mjs",
+  "scripts/ci/canonical-candidate-commit.mjs",
   "scripts/ci/verify-domain-core-observed-identity.mjs",
   "scripts/windows-port/allowed-not-executed-full.json",
   "scripts/windows-port/native-library-staging.mjs",
@@ -529,7 +530,7 @@ const windowsFullDetector = windowsFullWorkflow.slice(
 );
 for (const detectorDependency of [
   "scripts/lib/(atomic-regular-file|domain-core-release-evidence)\\.mjs",
-  "scripts/ci/verify-domain-core-observed-identity\\.mjs",
+  "scripts/ci/(canonical-candidate-commit|verify-domain-core-observed-identity)\\.mjs",
   "allowed-not-executed-full\\.json",
   "(native-library-staging|stage-local-rust-cdylib)",
   "verify-(local-domain-core-identity|trx-results)",
@@ -616,8 +617,49 @@ for (const stageStep of workflowStepBodies(
 )) {
   assert.match(
     stageStep,
-    /OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ github\.sha \}\}/u,
+    /OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ steps\.candidate\.outputs\.candidate_commit \}\}/u,
     "artifact-discovery rebuilds must preserve the exact candidate identity",
+  );
+}
+for (const jobName of ["build-test-x64", "build-test-arm64"]) {
+  const jobStart = windowsFullWorkflow.indexOf(`  ${jobName}:\n`);
+  assert.notEqual(jobStart, -1, `missing ${jobName}`);
+  const jobRemainder = windowsFullWorkflow.slice(jobStart + 2);
+  const nextJobOffset = jobRemainder.search(/^  [A-Za-z0-9_-]+:\n/mu);
+  const jobBody =
+    nextJobOffset === -1
+      ? windowsFullWorkflow.slice(jobStart)
+      : windowsFullWorkflow.slice(jobStart, jobStart + 2 + nextJobOffset);
+
+  assert.match(
+    jobBody,
+    /- name: Check out repository[\s\S]*?persist-credentials: false\n          ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/u,
+    `${jobName} must check out the real PR head instead of GitHub's synthetic merge commit`,
+  );
+  assert.match(
+    jobBody,
+    /- name: Resolve canonical candidate commit\n        id: candidate\n        run: node scripts\/ci\/canonical-candidate-commit\.mjs/u,
+    `${jobName} must resolve the canonical candidate before binding native identity`,
+  );
+  assert.ok(
+    jobBody.indexOf("Resolve canonical candidate commit") <
+      jobBody.indexOf("OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT"),
+    `${jobName} must resolve the candidate before the first identity-bound build`,
+  );
+  assert.doesNotMatch(
+    jobBody,
+    /(?:OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT|DOMAIN_CORE_CANDIDATE_COMMIT): \$\{\{ github\.sha \}\}|--expected-commit \$\{\{ github\.sha \}\}/u,
+    `${jobName} must never label native evidence with the synthetic pull-request merge SHA`,
+  );
+  assert.match(
+    jobBody,
+    /DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ steps\.candidate\.outputs\.candidate_commit \}\}/u,
+    `${jobName} test execution must expect the canonical candidate commit`,
+  );
+  assert.match(
+    jobBody,
+    /verify-local-domain-core-identity\.mjs --expected-commit \$\{\{ steps\.candidate\.outputs\.candidate_commit \}\}/u,
+    `${jobName} identity verification must expect the canonical candidate commit`,
   );
 }
 const livePlaywrightSteps = workflowStepBodies(
@@ -652,7 +694,7 @@ assert.match(
 );
 assert.match(
   windowsFullWorkflow,
-  /verify-local-domain-core-identity\.mjs --expected-commit \$\{\{ github\.sha \}\}/,
+  /verify-local-domain-core-identity\.mjs --expected-commit \$\{\{ steps\.candidate\.outputs\.candidate_commit \}\}/,
 );
 assert.match(
   fullHarnessWorkflow,
