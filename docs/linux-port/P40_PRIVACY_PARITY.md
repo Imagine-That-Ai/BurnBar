@@ -3,12 +3,12 @@
 This slice closes the Linux settings gap where consent flags were displayed as
 read-only values even though the daemon already exposes the typed
 `daemon.config.update` contract. It also adds deliberately narrow daemon-owned
-local deletion and export contracts, plus a trusted-device-gated cloud-account
-export. The local UI can inventory, preview, delete, and encrypted-export only
-the proxy-route log and text-expansion store; the cloud export writes the
-server-authoritative bounded JSON envelope to an owner-only local path without
-returning payload bytes through the renderer. Raw provider credentials and
-arbitrary local transcript files remain excluded.
+local deletion, encrypted export, and retention contracts, plus
+trusted-device-gated cloud-account export and erasure. The local UI can
+inventory, preview, delete, encrypted-export, and apply bounded retention only
+to the proxy-route log and text-expansion store; cloud data control keeps
+authorization and payload bytes out of the renderer. Raw provider credentials
+and arbitrary local transcript files remain excluded.
 
 ## Delivered
 
@@ -43,19 +43,32 @@ arbitrary local transcript files remain excluded.
   response with owner-only permissions. The bridge returns only a bounded
   receipt (`destinationPath`, byte count, schema version), never cloud payload,
   credentials, sealed references, or action proofs.
+- The daemon owns bounded age and size retention for both allowlisted local
+  stores. Settings reads the current policy, requires the exact confirmation
+  phrase `APPLY RETENTION POLICY`, and applies a complete two-store policy.
+  Invalid bounds, malformed stores, unsafe paths, or partial policies fail
+  closed without deleting data.
+- Account erasure is available through the daemon-owned
+  `linuxAccountCloudDataDelete` path. The renderer forwards only
+  `DELETE MY ACCOUNT`; the daemon owns trusted-device authorization, Firebase
+  credentials, callable execution, and the redacted deletion receipt. Partial
+  secret, storage, cloud-data, or Auth deletion is shown as incomplete and
+  remains retryable instead of being reported as success.
 - The current daemon response may omit path/status envelope fields; the store
   preserves the already-loaded daemon facts until an explicit config refresh,
   while consent/provider fields come from the returned canonical snapshot.
-- Account erasure, retention, and recovery-key workflows remain unavailable
-  capability states. Local deletion/export controls do not touch transcripts,
-  credentials, account data, or arbitrary files; authenticated cloud export is
-  a separate server-authoritative path. The existing redacted support
-  diagnostics export remains linked separately.
+- Local deletion/export/retention controls do not touch transcripts,
+  credentials, account data, or arbitrary files. Account export and erasure are
+  separate server-authoritative paths. Encrypted database recovery bundles are
+  exposed separately; cross-device recovery-key custody and P-40 recovery
+  certification remain open. The existing redacted support diagnostics export
+  remains linked separately.
 
 ## Validation
 
 Focused UI/store tests cover fixture writes, packaged-bridge absence, payload
-preservation, success state, and unsupported lifecycle copy. Run from
+preservation, local deletion/export/retention, complete account erasure,
+partial-erasure retry, and unsupported lifecycle copy. Run from
 `apps/linux-desktop`:
 
 ```bash
@@ -64,24 +77,26 @@ npx tsc --noEmit
 npm run build
 ```
 
-The final PR also records Rust formatting/tests and the production bundle
-verifier. Live GNOME Keyring/KWallet behavior, native save-picker behavior,
-account deletion, retention enforcement, recovery receipts, and multi-device
+The source lane also records Rust formatting/tests, daemon privacy tests,
+account-control tests, the P-40 proof tests, and the production bundle verifier.
+Live GNOME Keyring/KWallet behavior, native save-picker behavior, trusted-device
+account erasure, backend deletion receipts, recovery receipts, and multi-device
 propagation remain environment/backend work and are not claimed by this slice.
 
 ## Follow-up contract
 
-To move the remaining unavailable rows to an actionable state, add canonical
-daemon RPCs with explicit scope and policy before changing this UI:
+The remaining work is execution and scope closure, not missing local RPC
+scaffolding:
 
-1. Extend the existing local preview/execute pattern to account deletion only
-   after backend erasure authority, audit receipts, retry/partial-failure
-   handling, and offline behavior are specified.
-2. Extend the selected-scope local export with a native save destination and
-   import/restore validation. Add local transcript export only after a daemon
-   history contract explicitly binds source identity and retention semantics.
-3. Define retention expiry and recovery-key custody, including locked keyring
-   and cross-device propagation states.
+1. Execute account erasure against the deployed backend with a real approved
+   trusted device, and capture complete, partial-failure, retry, offline, and
+   idempotency receipts.
+2. Add local transcript export only after a daemon history contract explicitly
+   binds source identity and retention semantics; keep arbitrary files and
+   credentials outside this scope.
+3. Certify retention, encrypted export, account data control, recovery-bundle
+   handoff, locked-keyring behavior, and cross-device propagation on the exact
+   signed candidate in all seven Linux environments.
 
-Until those contracts exist, the Linux shell must keep the remaining controls
-disabled and must not infer completion from renderer state.
+Until those receipts exist, the Linux shell and parity ledger must not infer
+certification from source code or renderer state.
