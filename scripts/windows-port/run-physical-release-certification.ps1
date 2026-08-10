@@ -458,21 +458,58 @@ if ($SkipAutomatedTests) {
     $receiptEntries.Add((New-Receipt 'local-automated-checks' 'Windows solution and focused test suites' 'BLOCKED' 'The Windows solution and focused test suites exit 0.' 'Automated tests were explicitly skipped.' $null @() @('Run dotnet restore/build/test on the exact candidate.') ([ordered]@{ id = 'LOCAL-AUTOMATION-SKIPPED'; owner = 'operator'; missing = 'automated test execution'; recovery = 'Run the script without -SkipAutomatedTests.' }) @($skipBlocker) $device $artifact))
 } else {
     $steps.Add((Invoke-LoggedProcess 'dotnet-restore' 'dotnet' @('restore', 'windows\OpenBurnBar.sln', "-p:Platform=$Platform")))
-    # Bind the native domain core to the certified candidate: embed the
-    # snapshotted commit, resolve dependencies only from the tracked lockfile,
-    # and build the MSVC triple for the certified -Platform instead of the
-    # host default, then stage the DLL where the test csprojs copy it from.
+    # Build all three native libraries for the certified architecture from
+    # locked dependencies. The domain core embeds the exact snapshotted commit.
+    # Every DLL is digest-checked and atomically staged into one hardened,
+    # absolute probe directory before any managed build or test starts.
     $rustTargetTriple = if ($Platform -eq 'ARM64') { 'aarch64-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
-    $steps.Add((Invoke-LoggedProcess 'domain-core-native-build' 'cargo' @('build', '--locked', '--manifest-path', 'crates\openburnbar-domain-core\Cargo.toml', '-p', 'openburnbar-domain-ffi', '--target', $rustTargetTriple) -Environment @{ OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT = $script:SourceIdentity.commitSha }))
-    $steps.Add((Invoke-LoggedProcess 'domain-core-native-stage' (Get-Process -Id $PID).Path @('-NoProfile', '-NonInteractive', '-Command', "`$ErrorActionPreference = 'Stop'; New-Item -ItemType Directory -Force -Path 'crates\openburnbar-domain-core\target\debug' | Out-Null; Copy-Item -LiteralPath 'crates\openburnbar-domain-core\target\$rustTargetTriple\debug\openburnbar_domain_ffi.dll' -Destination 'crates\openburnbar-domain-core\target\debug\openburnbar_domain_ffi.dll' -Force")))
+    $nativeStageDir = Join-Path $RepoRoot 'crates\openburnbar-domain-core\target\debug'
+    $domainCoreNativePath = Join-Path $nativeStageDir 'openburnbar_domain_ffi.dll'
+    $domainCoreObservedIdentityPath = Join-Path $OutputDir 'logs\domain-core-observed-identity.json'
+    $testResultsDir = Join-Path $OutputDir 'test-results'
+    Remove-Item -LiteralPath $domainCoreObservedIdentityPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $testResultsDir -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $testResultsDir | Out-Null
+    # Evidence-critical helpers come from the independently pinned harness
+    # checkout, never from the candidate that they are evaluating.
+    $nativeStager = Join-Path $HarnessRoot 'scripts\windows-port\stage-local-rust-cdylib.mjs'
+    $trxVerifier = Join-Path $HarnessRoot 'scripts\windows-port\verify-trx-results.mjs'
+    $allowedNotExecuted = Join-Path $HarnessRoot 'scripts\windows-port\allowed-not-executed-full.json'
+    $identityVerifier = Join-Path $HarnessRoot 'scripts\windows-port\verify-local-domain-core-identity.mjs'
+    $steps.Add((Invoke-LoggedProcess 'domain-core-native-build' 'rustup' @('run', '1.96.0', 'cargo', 'build', '--locked', '--manifest-path', 'crates\openburnbar-domain-core\Cargo.toml', '-p', 'openburnbar-domain-ffi', '--target', $rustTargetTriple) -Environment @{ OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT = $script:SourceIdentity.commitSha }))
+    $steps.Add((Invoke-LoggedProcess 'domain-core-native-stage' 'node' @($nativeStager, '--manifest-path', 'crates\openburnbar-domain-core\Cargo.toml', '--toolchain', '1.96.0', '--logical-name', 'openburnbar_domain_ffi', '--target', $rustTargetTriple, '--destination', $domainCoreNativePath)))
+    $steps.Add((Invoke-LoggedProcess 'burnbar-remote-native-build' 'rustup' @('run', '1.94.0', 'cargo', 'build', '--locked', '--manifest-path', 'crates\burnbar-remote\Cargo.toml', '-p', 'burnbar-remote-ffi', '--target', $rustTargetTriple)))
+    $steps.Add((Invoke-LoggedProcess 'burnbar-remote-native-stage' 'node' @($nativeStager, '--manifest-path', 'crates\burnbar-remote\Cargo.toml', '--toolchain', '1.94.0', '--logical-name', 'burnbar_remote', '--target', $rustTargetTriple, '--destination', (Join-Path $nativeStageDir 'burnbar_remote.dll'))))
+    $steps.Add((Invoke-LoggedProcess 'iroh-native-build' 'rustup' @('run', '1.96.0', 'cargo', 'build', '--locked', '--manifest-path', 'crates\openburnbar-iroh\Cargo.toml', '--target', $rustTargetTriple)))
+    $steps.Add((Invoke-LoggedProcess 'iroh-native-stage' 'node' @($nativeStager, '--manifest-path', 'crates\openburnbar-iroh\Cargo.toml', '--toolchain', '1.96.0', '--logical-name', 'openburnbar_iroh', '--target', $rustTargetTriple, '--destination', (Join-Path $nativeStageDir 'openburnbar_iroh.dll'))))
     $steps.Add((Invoke-LoggedProcess 'dotnet-build' 'dotnet' @('build', 'windows\OpenBurnBar.sln', '-c', 'Release', '--no-restore', '-m:1', "-p:Platform=$Platform")))
-    $steps.Add((Invoke-LoggedProcess 'dotnet-test' 'dotnet' @('test', 'windows\OpenBurnBar.sln', '-c', 'Release', '--no-build', '--nologo', '-m:1', "-p:Platform=$Platform", '--logger', 'trx;LogFileName=physical-certification.trx') -Environment @{ OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE = '1' }))
+    $nativeTestEnvironment = @{
+        OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE = '1'
+        OPENBURNBAR_REQUIRE_NATIVE_SHIMS = '1'
+        OPENBURNBAR_NATIVE_DIR = $nativeStageDir
+        DOMAIN_CORE_NATIVE_LIBRARY_PATH = $domainCoreNativePath
+        DOMAIN_CORE_CANDIDATE_COMMIT = $script:SourceIdentity.commitSha
+        DOMAIN_CORE_OBSERVED_IDENTITY_REPORT = $domainCoreObservedIdentityPath
+    }
+    $steps.Add((Invoke-LoggedProcess 'dotnet-test' 'dotnet' @('test', 'windows\OpenBurnBar.sln', '-c', 'Release', '--no-build', '--nologo', '-m:1', "-p:Platform=$Platform", '--logger', 'trx', '--results-directory', $testResultsDir) -Environment $nativeTestEnvironment))
+    $steps.Add((Invoke-LoggedProcess 'complete-trx-evidence' 'node' @($trxVerifier, '--results-directory', $testResultsDir, '--minimum-files', '40', '--minimum-tests', '4083', '--maximum-not-executed', '2', '--allowed-not-executed-file', $allowedNotExecuted)))
+    $steps.Add((Invoke-LoggedProcess 'domain-core-native-identity' 'node' @($identityVerifier, '--expected-commit', $script:SourceIdentity.commitSha, '--observed-identity', $domainCoreObservedIdentityPath, '--binary', $domainCoreNativePath)))
     $failed = @($steps | Where-Object { $_.exitCode -ne 0 })
     $localLogRefs = @($steps | ForEach-Object { [ordered]@{ path = $_.log; sha256 = $_.logSha256 } })
+    if (Test-Path -LiteralPath $domainCoreObservedIdentityPath -PathType Leaf) {
+        $localLogRefs += [ordered]@{ path = 'logs/domain-core-observed-identity.json'; sha256 = Get-Sha256 $domainCoreObservedIdentityPath }
+    }
+    $outputDirPrefix = $OutputDir.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    $localLogRefs += @(Get-ChildItem -LiteralPath $testResultsDir -Recurse -File -Filter '*.trx' | ForEach-Object {
+        [ordered]@{
+            path = $_.FullName.Substring($outputDirPrefix.Length).Replace('\', '/')
+            sha256 = Get-Sha256 $_.FullName
+        }
+    })
     if ($failed.Count -eq 0) {
-        $receiptEntries.Add((New-Receipt 'local-automated-checks' 'Windows solution and native domain-core build and test' 'PASS' 'Restore, native domain-core build, Release build, and full solution test exit 0 with the native core required.' 'All automated Windows solution steps exited 0 with OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE=1.' 0 @($steps.command) @('Automated proof is supporting evidence only; it is not physical certification.') $null $localLogRefs $device $artifact))
+        $receiptEntries.Add((New-Receipt 'local-automated-checks' 'Windows solution and all required native Rust libraries' 'PASS' 'Restore, exact-candidate native builds, atomic staging, Release build, complete test evidence, and loaded domain-core identity verification all exit 0.' 'All automated Windows solution steps passed with the domain core and both Rust shims required; only the two reviewed live/manual tests may remain skipped.' 0 @($steps.command) @('Automated proof is supporting evidence only; it is not physical certification.') $null $localLogRefs $device $artifact))
     } else {
-        $receiptEntries.Add((New-Receipt 'local-automated-checks' 'Windows solution and native domain-core build and test' 'FAIL' 'Restore, native domain-core build, Release build, and full solution test exit 0 with the native core required.' ("Failed steps: " + (($failed | ForEach-Object { $_.name }) -join ', ')) 1 @($steps.command) @() $null $localLogRefs $device $artifact))
+        $receiptEntries.Add((New-Receipt 'local-automated-checks' 'Windows solution and all required native Rust libraries' 'FAIL' 'Restore, exact-candidate native builds, atomic staging, Release build, complete test evidence, and loaded domain-core identity verification all exit 0.' ("Failed steps: " + (($failed | ForEach-Object { $_.name }) -join ', ')) 1 @($steps.command) @() $null $localLogRefs $device $artifact))
     }
 }
 

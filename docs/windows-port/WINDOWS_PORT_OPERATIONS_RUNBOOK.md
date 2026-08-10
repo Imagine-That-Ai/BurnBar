@@ -316,6 +316,26 @@ put token material or the TPM verifier token on the drive or in evidence.
 
 ### Step 7: certify on the physical Intel x64 laptop
 
+The baseline runner compiles the exact candidate's three Rust libraries before
+it runs the managed suite. The machine therefore needs PowerShell 7, Node.js
+22, the .NET 8 and 10 SDKs, Visual Studio 2022 C++/Windows build tools, NASM,
+and Rust 1.94.0 plus 1.96.0 with the matching MSVC target installed. For the
+Intel laptop, verify the pinned Rust setup before starting:
+
+```powershell
+rustup toolchain install 1.94.0 --profile minimal --target x86_64-pc-windows-msvc
+rustup toolchain install 1.96.0 --profile minimal --target x86_64-pc-windows-msvc
+rustup run 1.94.0 rustc --version
+rustup run 1.96.0 rustc --version
+nasm -v
+node --version
+dotnet --list-sdks
+```
+
+For a physical ARM64 campaign, install
+`aarch64-pc-windows-msvc` on both pinned Rust toolchains instead. Missing or
+wrong-architecture native libraries are certification failures, not skips.
+
 Run from a normal signed-in PowerShell 7 desktop session, not a Codex sandbox,
 service session, VM, or compatibility layer. Preserve any pre-existing package.
 

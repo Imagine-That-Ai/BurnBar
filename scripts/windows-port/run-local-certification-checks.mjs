@@ -20,10 +20,14 @@ import {
 } from "./validate-release-certification-evidence.mjs";
 import { sanitizeCertificationLog } from "./certification-log-sanitizer.mjs";
 import { describeLocalCertificationHost } from "./local-certification-host.mjs";
+import { nativeLibraryFileName } from "./stage-local-rust-cdylib.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
-const defaultOutput = join(repoRoot, "docs/windows-port/evidence/physical-release-certification-2026-07-11");
+const defaultOutput = join(
+  repoRoot,
+  "docs/windows-port/evidence/physical-release-certification-2026-07-11",
+);
 const outputDir = resolve(process.argv[2] ?? defaultOutput);
 const logsDir = join(outputDir, "logs");
 const receiptsDir = join(outputDir, "receipts");
@@ -49,7 +53,9 @@ function sanitize(text) {
 }
 
 function git(args) {
-  return execFileSync("git", ["-C", repoRoot, ...args], { encoding: "utf8" }).trim();
+  return execFileSync("git", ["-C", repoRoot, ...args], {
+    encoding: "utf8",
+  }).trim();
 }
 
 const source = {
@@ -57,22 +63,31 @@ const source = {
   dirtyTree: git(["status", "--porcelain"]).length > 0,
 };
 const runtimePlatform = platform();
-const domainCoreNativeFileName =
-  runtimePlatform === "win32"
-    ? "openburnbar_domain_ffi.dll"
-    : runtimePlatform === "darwin"
-      ? "libopenburnbar_domain_ffi.dylib"
-      : "libopenburnbar_domain_ffi.so";
-const domainCoreNativePath = join(
+const nativeStageDir = join(
   repoRoot,
   "crates/openburnbar-domain-core/target/debug",
-  domainCoreNativeFileName,
 );
-const domainCoreObservedIdentityPath = join(logsDir, "domain-core-observed-identity.json");
+const domainCoreNativePath = join(
+  nativeStageDir,
+  nativeLibraryFileName("openburnbar_domain_ffi", runtimePlatform),
+);
+const burnBarRemoteNativePath = join(
+  nativeStageDir,
+  nativeLibraryFileName("burnbar_remote", runtimePlatform),
+);
+const irohNativePath = join(
+  nativeStageDir,
+  nativeLibraryFileName("openburnbar_iroh", runtimePlatform),
+);
+const domainCoreObservedIdentityPath = join(
+  logsDir,
+  "domain-core-observed-identity.json",
+);
 rmSync(domainCoreObservedIdentityPath, { force: true });
-const domainCoreTestEnvironment = {
+const nativeTestEnvironment = {
   OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1",
-  OPENBURNBAR_NATIVE_DIR: dirname(domainCoreNativePath),
+  OPENBURNBAR_REQUIRE_NATIVE_SHIMS: "1",
+  OPENBURNBAR_NATIVE_DIR: nativeStageDir,
   DOMAIN_CORE_NATIVE_LIBRARY_PATH: domainCoreNativePath,
   DOMAIN_CORE_CANDIDATE_COMMIT: source.commitSha,
   DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: domainCoreObservedIdentityPath,
@@ -99,7 +114,9 @@ const commands = [
   {
     name: "evidence-validator-tests",
     file: "node",
-    args: ["scripts/windows-port/test-validate-release-certification-evidence.mjs"],
+    args: [
+      "scripts/windows-port/test-validate-release-certification-evidence.mjs",
+    ],
     timeoutMs: 120000,
   },
   {
@@ -111,13 +128,25 @@ const commands = [
   {
     name: "domain-core-local-identity-verifier-tests",
     file: "node",
-    args: ["--test", "scripts/windows-port/verify-local-domain-core-identity.test.mjs"],
+    args: [
+      "--test",
+      "scripts/windows-port/verify-local-domain-core-identity.test.mjs",
+    ],
     timeoutMs: 120000,
   },
   {
     name: "domain-core-local-staging-tests",
     file: "node",
-    args: ["--test", "scripts/windows-port/stage-local-domain-core-native.test.mjs"],
+    args: [
+      "--test",
+      "scripts/windows-port/stage-local-domain-core-native.test.mjs",
+    ],
+    timeoutMs: 120000,
+  },
+  {
+    name: "rust-cdylib-local-staging-tests",
+    file: "node",
+    args: ["--test", "scripts/windows-port/stage-local-rust-cdylib.test.mjs"],
     timeoutMs: 120000,
   },
   {
@@ -171,8 +200,11 @@ const commands = [
   },
   {
     name: "domain-core-native-build",
-    file: "cargo",
+    file: "rustup",
     args: [
+      "run",
+      "1.96.0",
+      "cargo",
       "build",
       "--locked",
       "--manifest-path",
@@ -187,11 +219,77 @@ const commands = [
     name: "domain-core-native-stage",
     file: "node",
     args: [
-      "scripts/windows-port/stage-local-domain-core-native.mjs",
+      "scripts/windows-port/stage-local-rust-cdylib.mjs",
       "--manifest-path",
       "crates/openburnbar-domain-core/Cargo.toml",
+      "--toolchain",
+      "1.96.0",
+      "--logical-name",
+      "openburnbar_domain_ffi",
       "--destination",
       domainCoreNativePath,
+    ],
+    timeoutMs: 120000,
+  },
+  {
+    name: "burnbar-remote-native-build",
+    file: "rustup",
+    args: [
+      "run",
+      "1.94.0",
+      "cargo",
+      "build",
+      "--locked",
+      "--manifest-path",
+      "crates/burnbar-remote/Cargo.toml",
+      "-p",
+      "burnbar-remote-ffi",
+    ],
+    timeoutMs: 900000,
+  },
+  {
+    name: "burnbar-remote-native-stage",
+    file: "node",
+    args: [
+      "scripts/windows-port/stage-local-rust-cdylib.mjs",
+      "--manifest-path",
+      "crates/burnbar-remote/Cargo.toml",
+      "--toolchain",
+      "1.94.0",
+      "--logical-name",
+      "burnbar_remote",
+      "--destination",
+      burnBarRemoteNativePath,
+    ],
+    timeoutMs: 120000,
+  },
+  {
+    name: "iroh-native-build",
+    file: "rustup",
+    args: [
+      "run",
+      "1.96.0",
+      "cargo",
+      "build",
+      "--locked",
+      "--manifest-path",
+      "crates/openburnbar-iroh/Cargo.toml",
+    ],
+    timeoutMs: 900000,
+  },
+  {
+    name: "iroh-native-stage",
+    file: "node",
+    args: [
+      "scripts/windows-port/stage-local-rust-cdylib.mjs",
+      "--manifest-path",
+      "crates/openburnbar-iroh/Cargo.toml",
+      "--toolchain",
+      "1.96.0",
+      "--logical-name",
+      "openburnbar_iroh",
+      "--destination",
+      irohNativePath,
     ],
     timeoutMs: 120000,
   },
@@ -209,7 +307,7 @@ const commands = [
       runtimePlatform === "win32" ? "600s" : "60s",
     ],
     timeoutMs: 900000,
-    env: domainCoreTestEnvironment,
+    env: nativeTestEnvironment,
   },
 ];
 
@@ -219,18 +317,25 @@ function walk(root) {
     if (["bin", "obj", ".git"].includes(entry.name)) continue;
     const path = join(root, entry.name);
     if (entry.isDirectory()) result.push(...walk(path));
-    else if (entry.isFile() && entry.name.endsWith(".Tests.csproj")) result.push(path);
+    else if (entry.isFile() && entry.name.endsWith(".Tests.csproj"))
+      result.push(path);
   }
   return result;
 }
 
 const testProjects = walk(join(repoRoot, "windows"))
   .map((path) => relative(repoRoot, path).replaceAll("\\", "/"))
-  .filter((path) => !path.includes("/ui-automation-harness/OpenBurnBar.UiAutomationHarness.csproj"))
+  .filter(
+    (path) =>
+      !path.includes(
+        "/ui-automation-harness/OpenBurnBar.UiAutomationHarness.csproj",
+      ),
+  )
   .sort();
 const windowsNativeColdSpike = runtimePlatform === "win32";
 for (const project of testProjects) {
-  const isColdNativeSpike = project === "windows/tests/b0-spike/OpenBurnBar.B0Spike.Tests.csproj";
+  const isColdNativeSpike =
+    project === "windows/tests/b0-spike/OpenBurnBar.B0Spike.Tests.csproj";
   commands.push({
     name: `dotnet-${project.replaceAll("/", "-").replaceAll(".csproj", "")}`,
     file: "dotnet",
@@ -244,8 +349,12 @@ for (const project of testProjects) {
       "--blame-hang-timeout",
       isColdNativeSpike ? (windowsNativeColdSpike ? "600s" : "180s") : "60s",
     ],
-    timeoutMs: isColdNativeSpike ? (windowsNativeColdSpike ? 900000 : 360000) : 180000,
-    env: domainCoreTestEnvironment,
+    timeoutMs: isColdNativeSpike
+      ? windowsNativeColdSpike
+        ? 900000
+        : 360000
+      : 180000,
+    env: nativeTestEnvironment,
   });
 }
 commands.push({
@@ -277,10 +386,13 @@ function runCommand(spec) {
     },
   });
   const endedAt = new Date();
-  const timedOut = result.error?.code === "ETIMEDOUT" || result.signal === "SIGTERM";
+  const timedOut =
+    result.error?.code === "ETIMEDOUT" || result.signal === "SIGTERM";
   const exitCode = timedOut ? null : (result.status ?? 1);
   const logPath = join(logsDir, `${spec.name}.log`);
-  const output = sanitize(`${result.stdout ?? ""}${result.stderr ?? ""}${result.error ? `\n${result.error.message}` : ""}`);
+  const output = sanitize(
+    `${result.stdout ?? ""}${result.stderr ?? ""}${result.error ? `\n${result.error.message}` : ""}`,
+  );
   writeFileSync(logPath, output);
   return {
     name: spec.name,
@@ -300,7 +412,8 @@ const results = [];
 for (const spec of commands) {
   const result = runCommand(spec);
   results.push(result);
-  const status = result.exitCode === 0 ? "PASS" : result.timedOut ? "TIMEOUT" : "FAIL";
+  const status =
+    result.exitCode === 0 ? "PASS" : result.timedOut ? "TIMEOUT" : "FAIL";
   console.log(`${status} ${result.name}`);
 }
 const endedAt = new Date();
@@ -313,23 +426,40 @@ writeJson(summaryPath, {
   counts: {
     total: results.length,
     passed: results.filter((result) => result.exitCode === 0).length,
-    failed: results.filter((result) => result.exitCode !== 0 && !result.timedOut).length,
+    failed: results.filter(
+      (result) => result.exitCode !== 0 && !result.timedOut,
+    ).length,
     timedOut: results.filter((result) => result.timedOut).length,
   },
 });
 
 function blockerFile(gate, id, missing, recovery) {
   const path = join(blockersDir, `${gate}.md`);
-  writeFileSync(path, `# ${gate} blocker\n\n- id: ${id}\n- status: BLOCKED\n- owner: Alberto\n- missing: ${missing}\n- recovery: ${recovery}\n- capturedAtUtc: ${new Date().toISOString()}\n`);
+  writeFileSync(
+    path,
+    `# ${gate} blocker\n\n- id: ${id}\n- status: BLOCKED\n- owner: Alberto\n- missing: ${missing}\n- recovery: ${recovery}\n- capturedAtUtc: ${new Date().toISOString()}\n`,
+  );
   return { path: `blockers/${gate}.md`, sha256: sha256(path) };
 }
 
-function baseReceipt(gate, status, expected, observed, exitCode, protocol, evidenceFiles, blocker) {
+function baseReceipt(
+  gate,
+  status,
+  expected,
+  observed,
+  exitCode,
+  protocol,
+  evidenceFiles,
+  blocker,
+) {
   return {
     schema: RECEIPT_SCHEMA,
     status,
     gate,
-    target: gate === "local-automated-checks" ? `portable Windows cores and CI/meta harnesses on ${host.label}` : gate,
+    target:
+      gate === "local-automated-checks"
+        ? `portable Windows cores and CI/meta harnesses on ${host.label}`
+        : gate,
     source,
     artifact,
     device,
@@ -360,7 +490,12 @@ const localReceipt = baseReceipt(
     ? `All ${results.length} commands exited 0.`
     : `${failedResults.length} command(s) failed or timed out: ${failedResults.map((result) => result.name).join(", ")}. Full output is retained in logs.`,
   failedResults.length === 0 ? 0 : 1,
-  { commands: results.map((result) => result.command), manualSteps: ["This receipt is supporting evidence only and cannot certify physical Windows behavior."] },
+  {
+    commands: results.map((result) => result.command),
+    manualSteps: [
+      "This receipt is supporting evidence only and cannot certify physical Windows behavior.",
+    ],
+  },
   evidenceFiles,
   null,
 );
@@ -399,7 +534,13 @@ const blockers = {
   ],
 };
 
-const receiptEntries = [{ path: "receipts/local-automated-checks.json", status: localReceipt.status, gate: localReceipt.gate }];
+const receiptEntries = [
+  {
+    path: "receipts/local-automated-checks.json",
+    status: localReceipt.status,
+    gate: localReceipt.gate,
+  },
+];
 for (const gate of REQUIRED_GATE_IDS.slice(1)) {
   const [id, missing, recovery] = blockers[gate];
   const evidence = blockerFile(gate, id, missing, recovery);
@@ -415,7 +556,11 @@ for (const gate of REQUIRED_GATE_IDS.slice(1)) {
   );
   const path = join(receiptsDir, `${gate}.json`);
   writeJson(path, receipt);
-  receiptEntries.push({ path: `receipts/${gate}.json`, status: "BLOCKED", gate });
+  receiptEntries.push({
+    path: `receipts/${gate}.json`,
+    status: "BLOCKED",
+    gate,
+  });
 }
 
 const manifest = {
@@ -428,8 +573,15 @@ const manifest = {
     note: `This bundle records ${host.evidenceScope} and external blockers; it does not attest physical Windows hardware or satisfy physical/live gates.`,
   },
   overallVerdict: "NO-GO",
-  receipts: receiptEntries.map((entry) => ({ path: entry.path, sha256: sha256(join(outputDir, entry.path)) })),
-  gates: receiptEntries.map((entry) => ({ id: entry.gate, status: entry.status, receipts: [entry.path] })),
+  receipts: receiptEntries.map((entry) => ({
+    path: entry.path,
+    sha256: sha256(join(outputDir, entry.path)),
+  })),
+  gates: receiptEntries.map((entry) => ({
+    id: entry.gate,
+    status: entry.status,
+    receipts: [entry.path],
+  })),
   notes: [
     "Physical PASS is reserved for physical-windows device receipts with recorded signed artifacts.",
     "VM, hosted runner, source review, unit tests, and successful package registration do not satisfy physical certification.",
@@ -437,7 +589,9 @@ const manifest = {
 };
 writeJson(join(outputDir, "certification-manifest.json"), manifest);
 writeSha256Sums(outputDir);
-const validation = validateReleaseCertificationBundle(outputDir, { expectedCommit: source.commitSha });
+const validation = validateReleaseCertificationBundle(outputDir, {
+  expectedCommit: source.commitSha,
+});
 if (!validation.ok) {
   console.error("FAIL: generated local certification bundle did not validate.");
   for (const error of validation.errors) console.error(`- ${error}`);
@@ -450,4 +604,6 @@ if (failedResults.length > 0) {
   );
   process.exit(1);
 }
-console.log(`PASS: generated and validated ${receiptEntries.length} certification receipts at ${outputDir}`);
+console.log(
+  `PASS: generated and validated ${receiptEntries.length} certification receipts at ${outputDir}`,
+);

@@ -24,6 +24,10 @@ const REQUIRED_COUNTERS = [
 const FAILURE_COUNTERS = REQUIRED_COUNTERS.filter(
   (name) => !["executed", "notExecuted", "passed", "total"].includes(name),
 );
+const ALLOWED_NOT_EXECUTED_SCHEMA =
+  "openburnbar.windows.allowed-not-executed.v1";
+const USAGE =
+  "usage: --results-directory PATH --minimum-files COUNT --minimum-tests COUNT --maximum-not-executed COUNT [--allowed-not-executed-file PATH]";
 
 function positiveInteger(value, label) {
   if (!/^[1-9][0-9]*$/u.test(value)) {
@@ -69,6 +73,19 @@ function collectTrxFiles(directory) {
   return files.sort();
 }
 
+function xmlAttribute(attributes, name, path) {
+  const match = new RegExp(`\\b${name}="([^"]*)"`, "u").exec(attributes);
+  if (!match) {
+    throw new Error(`TRX result row is missing ${name}: ${path}`);
+  }
+  return match[1]
+    .replaceAll("&quot;", '"')
+    .replaceAll("&apos;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+}
+
 function parseCounters(path) {
   const source = readFileSync(path, "utf8");
   const summaryMatches = [
@@ -106,10 +123,99 @@ function parseCounters(path) {
   if (counters.executed !== counters.passed + counters.failed) {
     throw new Error(`TRX executed counter is inconsistent: ${path}`);
   }
-  if (counters.total !== counters.executed + counters.notExecuted) {
-    throw new Error(`TRX total counter is inconsistent: ${path}`);
+
+  // VSTest's TRX logger records skipped xUnit tests as UnitTestResult
+  // outcome="NotExecuted", but some current SDKs still emit
+  // Counters notExecuted="0". Count the actual result rows so skipped-test
+  // evidence remains fail-closed without rejecting valid hosted-runner TRX.
+  const results = [...source.matchAll(/<UnitTestResult\b([^>]*)>/gu)].map(
+    (match) => ({
+      testName: xmlAttribute(match[1], "testName", path),
+      outcome: xmlAttribute(match[1], "outcome", path),
+    }),
+  );
+  if (results.length !== counters.total) {
+    throw new Error(
+      `TRX total counter does not match test results: ${path} (counter=${counters.total}, results=${results.length})`,
+    );
   }
-  return counters;
+
+  const outcomeCounts = new Map();
+  for (const { outcome } of results) {
+    outcomeCounts.set(outcome, (outcomeCounts.get(outcome) ?? 0) + 1);
+  }
+  for (const [outcome, count] of outcomeCounts) {
+    if (!["Passed", "NotExecuted"].includes(outcome)) {
+      throw new Error(
+        `TRX result has disallowed outcome ${outcome}=${count}: ${path}`,
+      );
+    }
+  }
+
+  const passed = outcomeCounts.get("Passed") ?? 0;
+  const notExecuted = outcomeCounts.get("NotExecuted") ?? 0;
+  if (passed !== counters.passed || passed !== counters.executed) {
+    throw new Error(`TRX executed counters do not match test results: ${path}`);
+  }
+  if (counters.notExecuted !== 0 && counters.notExecuted !== notExecuted) {
+    throw new Error(
+      `TRX notExecuted counter does not match test results: ${path}`,
+    );
+  }
+  return {
+    ...counters,
+    notExecuted,
+    notExecutedTests: results
+      .filter((result) => result.outcome === "NotExecuted")
+      .map((result) => result.testName),
+  };
+}
+
+export function readAllowedNotExecuted(path) {
+  const absolutePath = resolve(path);
+  const metadata = lstatSync(absolutePath);
+  if (!metadata.isFile() || metadata.isSymbolicLink()) {
+    throw new Error(
+      `allowed not-executed file must be a real file: ${absolutePath}`,
+    );
+  }
+
+  let value;
+  try {
+    value = JSON.parse(readFileSync(absolutePath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `unable to read allowed not-executed file ${absolutePath}: ${error.message}`,
+    );
+  }
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.keys(value).sort().join(",") !== "schema,tests" ||
+    value.schema !== ALLOWED_NOT_EXECUTED_SCHEMA ||
+    !Array.isArray(value.tests)
+  ) {
+    throw new Error(
+      `allowed not-executed file must use ${ALLOWED_NOT_EXECUTED_SCHEMA}`,
+    );
+  }
+
+  const tests = value.tests.map((testName) => {
+    if (typeof testName !== "string" || testName.length === 0) {
+      throw new Error(
+        "allowed not-executed test names must be non-empty strings",
+      );
+    }
+    return testName;
+  });
+  if (new Set(tests).size !== tests.length) {
+    throw new Error("allowed not-executed test names must be unique");
+  }
+  if (tests.join("\n") !== [...tests].sort().join("\n")) {
+    throw new Error("allowed not-executed test names must be sorted");
+  }
+  return tests;
 }
 
 export function verifyTrxResults(
@@ -117,6 +223,7 @@ export function verifyTrxResults(
   minimumFiles,
   minimumTests,
   maximumNotExecuted,
+  allowedNotExecuted = null,
 ) {
   const directory = resolve(resultsDirectory);
   const files = collectTrxFiles(directory);
@@ -133,11 +240,13 @@ export function verifyTrxResults(
     failed: 0,
     notExecuted: 0,
   };
+  const notExecutedTests = [];
   for (const file of files) {
     const counters = parseCounters(file);
     for (const name of Object.keys(totals)) {
       totals[name] += counters[name];
     }
+    notExecutedTests.push(...counters.notExecutedTests);
   }
   if (totals.total < minimumTests) {
     throw new Error(
@@ -149,20 +258,34 @@ export function verifyTrxResults(
       `TRX evidence skipped too many tests: allowed at most ${maximumNotExecuted}, found ${totals.notExecuted}`,
     );
   }
+  const sortedNotExecutedTests = notExecutedTests.sort();
+  if (allowedNotExecuted !== null) {
+    if (!Array.isArray(allowedNotExecuted)) {
+      throw new Error("allowed not-executed tests must be an array");
+    }
+    const allowed = new Set(allowedNotExecuted);
+    const unexpected = sortedNotExecutedTests.filter(
+      (testName) => !allowed.has(testName),
+    );
+    if (unexpected.length > 0) {
+      throw new Error(
+        `TRX evidence contains unreviewed skipped tests: ${[...new Set(unexpected)].join(", ")}`,
+      );
+    }
+  }
 
   return {
     ok: true,
     resultsDirectory: directory,
     files: files.length,
     ...totals,
+    notExecutedTests: sortedNotExecutedTests,
   };
 }
 
 function parseArguments(argv) {
-  if (argv.length !== 8) {
-    throw new Error(
-      "usage: --results-directory PATH --minimum-files COUNT --minimum-tests COUNT --maximum-not-executed COUNT",
-    );
+  if (![8, 10].includes(argv.length)) {
+    throw new Error(USAGE);
   }
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
@@ -173,14 +296,23 @@ function parseArguments(argv) {
         "--minimum-files",
         "--minimum-tests",
         "--maximum-not-executed",
+        "--allowed-not-executed-file",
       ].includes(flag) ||
       values.has(flag)
     ) {
-      throw new Error(
-        "usage: --results-directory PATH --minimum-files COUNT --minimum-tests COUNT --maximum-not-executed COUNT",
-      );
+      throw new Error(USAGE);
     }
     values.set(flag, argv[index + 1]);
+  }
+  for (const required of [
+    "--results-directory",
+    "--minimum-files",
+    "--minimum-tests",
+    "--maximum-not-executed",
+  ]) {
+    if (!values.has(required)) {
+      throw new Error(USAGE);
+    }
   }
   return {
     resultsDirectory: values.get("--results-directory"),
@@ -196,6 +328,9 @@ function parseArguments(argv) {
       values.get("--maximum-not-executed"),
       "--maximum-not-executed",
     ),
+    allowedNotExecuted: values.has("--allowed-not-executed-file")
+      ? readAllowedNotExecuted(values.get("--allowed-not-executed-file"))
+      : null,
   };
 }
 
@@ -206,6 +341,7 @@ export function run(argv) {
     options.minimumFiles,
     options.minimumTests,
     options.maximumNotExecuted,
+    options.allowedNotExecuted,
   );
   process.stdout.write(`${JSON.stringify(summary)}\n`);
   return summary;

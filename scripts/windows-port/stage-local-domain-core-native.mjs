@@ -23,7 +23,7 @@ function nativeFileName(runtimePlatform) {
 }
 
 export function stageNativeLibrary(sourcePath, destinationPath) {
-  const source = regularFile(sourcePath, "built local domain-core library");
+  const source = regularFile(sourcePath, "built native library");
   const destination = resolve(destinationPath);
   if (source === destination) {
     return {
@@ -39,12 +39,12 @@ export function stageNativeLibrary(sourcePath, destinationPath) {
   rmSync(temporary, { force: true });
   try {
     copyFileSync(source, temporary);
-    regularFile(temporary, "staged local domain-core library");
+    regularFile(temporary, "staged native library");
     const sourceSha256 = sha256File(source);
     const stagedSha256 = sha256File(temporary);
     if (sourceSha256 !== stagedSha256) {
       throw new Error(
-        `staged local domain-core digest mismatch\nsource=${sourceSha256}\nstaged=${stagedSha256}`,
+        `staged native library digest mismatch\nsource=${sourceSha256}\nstaged=${stagedSha256}`,
       );
     }
     // renameSync replaces an existing file on Node's supported platforms.
