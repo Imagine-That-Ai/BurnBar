@@ -15,6 +15,8 @@ namespace OpenBurnBar.Dist.Tests;
 
 public sealed class CompanionCliPackagingTests
 {
+    private static readonly TimeSpan StagedWorkerProtocolTimeout = TimeSpan.FromMinutes(1);
+
     [Fact]
     public void ReleasePublishesSignedCompanionCliForEachAppRid()
     {
@@ -499,7 +501,11 @@ public sealed class CompanionCliPackagingTests
 
         try
         {
-            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+            // The full solution starts many test hosts at once. A freshly staged
+            // apphost can therefore launch slowly on a hosted Windows runner.
+            // This test proves packaging and protocol behavior, not startup
+            // performance, so keep the wait bounded but allow runner contention.
+            await process.WaitForExitAsync().WaitAsync(StagedWorkerProtocolTimeout);
         }
         catch (TimeoutException exception)
         {
@@ -508,8 +514,13 @@ public sealed class CompanionCliPackagingTests
                 process.Kill(entireProcessTree: true);
                 await process.WaitForExitAsync();
             }
+
+            string output = await standardOutput;
+            string error = await standardError;
             throw new TimeoutException(
-                "The directly staged usage-scan worker did not answer the bounded protocol request within 15 seconds.",
+                "The directly staged usage-scan worker did not answer the bounded "
+                + $"protocol request within {StagedWorkerProtocolTimeout.TotalSeconds:0} seconds."
+                + $"\nstdout:\n{output}\nstderr:\n{error}",
                 exception);
         }
 

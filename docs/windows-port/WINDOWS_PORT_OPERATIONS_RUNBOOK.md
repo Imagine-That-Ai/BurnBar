@@ -239,6 +239,14 @@ curl --fail --silent --show-error \
 Confirm the local author identity before creating an annotated tag. Never move
 or recreate a published release tag.
 
+**Stop for explicit operator approval before pushing the tag.** The current
+Windows workflow does more than build a private candidate: after signing and
+verification succeed, it publishes a public GitHub Release containing the
+signed Windows release bundle, update-feed files, and immutable domain-core
+evidence. Under rule 9 above, pushing `windows-vX.Y.Z` is therefore a public
+release action. If public GitHub release approval has not been given, keep the
+verified candidate on `main` and do not create or push the tag.
+
 ```bash
 git config user.name
 git config user.email
@@ -247,8 +255,10 @@ git tag -a "$TAG" -m "OpenBurnBar Windows ${VERSION} candidate ${CANDIDATE_SHA}"
 git push origin "refs/tags/${TAG}"
 ```
 
-This triggers `.github/workflows/openburnbar-release-windows.yml`. It does not
-authorize a public release.
+This triggers `.github/workflows/openburnbar-release-windows.yml` and, when all
+release jobs pass, publishes the public GitHub Release described above. It does
+not authorize Partner Center, winget, production staging, or any wider rollout;
+those remain separate explicit decisions.
 
 ### Step 5: verify the signed build
 
@@ -305,6 +315,26 @@ settings may be included only in the separately protected handoff area; never
 put token material or the TPM verifier token on the drive or in evidence.
 
 ### Step 7: certify on the physical Intel x64 laptop
+
+The baseline runner compiles the exact candidate's three Rust libraries before
+it runs the managed suite. The machine therefore needs PowerShell 7, Node.js
+22, the .NET 8 and 10 SDKs, Visual Studio 2022 C++/Windows build tools, NASM,
+and Rust 1.94.0 plus 1.96.0 with the matching MSVC target installed. For the
+Intel laptop, verify the pinned Rust setup before starting:
+
+```powershell
+rustup toolchain install 1.94.0 --profile minimal --target x86_64-pc-windows-msvc
+rustup toolchain install 1.96.0 --profile minimal --target x86_64-pc-windows-msvc
+rustup run 1.94.0 rustc --version
+rustup run 1.96.0 rustc --version
+nasm -v
+node --version
+dotnet --list-sdks
+```
+
+For a physical ARM64 campaign, install
+`aarch64-pc-windows-msvc` on both pinned Rust toolchains instead. Missing or
+wrong-architecture native libraries are certification failures, not skips.
 
 Run from a normal signed-in PowerShell 7 desktop session, not a Codex sandbox,
 service session, VM, or compatibility layer. Preserve any pre-existing package.

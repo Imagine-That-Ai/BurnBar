@@ -5,10 +5,10 @@
     the graceful NotSupported surface, the generated-binding API shape — all of
     which run on ANY host with no Rust build — plus loopback tests that drive a
     real FFI round-trip through the generated C# bindings whenever the
-    natively-built cdylibs ARE present (macOS dev host after `cargo build`;
-    Windows once a cargo step feeds this lane). Loopback tests skip — never
-    fail — when the cdylibs are absent, so the pr-windows-full suite stays
-    green without a Rust toolchain.
+    natively-built cdylibs ARE present. Optional developer hosts may omit them,
+    but the full-suite and physical release-certification harnesses set
+    OPENBURNBAR_REQUIRE_NATIVE_SHIMS=1 and fail unless both real libraries are
+    present, loadable, and exercised.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>

@@ -22,6 +22,7 @@ name: PR Windows Dist Gate
 # passing required status via a correct skip.
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
