@@ -2087,14 +2087,26 @@ function installSemanticMutation(checkout, entry) {
   fs.writeFileSync(absolute, `${lines.join('\n')}\n`);
 }
 
+function nativeCopyOnWriteClone(templateRoot, checkout) {
+  const args = process.platform === 'darwin'
+    ? ['-c', '-p', '-R', templateRoot, checkout]
+    : ['-a', '--reflink=auto', templateRoot, checkout];
+  const command = process.platform === 'darwin' ? '/bin/cp' : 'cp';
+  const copied = spawnSync(command, args, { timeout: COMMAND_TIMEOUT_MS });
+  return !copied.error && copied.status === 0 && fs.existsSync(checkout);
+}
+
 function cloneIsolatedTarget(templateRoot) {
   const container = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-p02-run-'));
   const checkout = path.join(container, 'checkout');
-  fs.cpSync(templateRoot, checkout, {
-    recursive: true,
-    dereference: false,
-    mode: fs.constants.COPYFILE_FICLONE
-  });
+  if (!nativeCopyOnWriteClone(templateRoot, checkout)) {
+    fs.rmSync(checkout, { recursive: true, force: true });
+    fs.cpSync(templateRoot, checkout, {
+      recursive: true,
+      dereference: false,
+      mode: fs.constants.COPYFILE_FICLONE
+    });
+  }
   return { checkout, container };
 }
 

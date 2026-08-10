@@ -785,7 +785,8 @@ test('executed semantic mutation ownership rejects a unique no-op validator', (t
       environmentId: ENVIRONMENT,
       targetHead: subject.head,
       candidateRunId: RUN_ID,
-      candidateArtifactDigest: DIGEST
+      candidateArtifactDigest: DIGEST,
+      testExecutions: mutated
     }),
     /ownership tests failed/u
   );
