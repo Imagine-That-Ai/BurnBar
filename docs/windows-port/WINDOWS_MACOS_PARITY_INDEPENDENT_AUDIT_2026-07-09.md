@@ -1,15 +1,69 @@
 # Independent Windows Parity Audit Against macOS
 
 **Date:** 2026-07-09
+**Last current-source refresh:** 2026-08-10
 **Reference product:** shipping macOS OpenBurnBar
-**Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** F1 source/product implementation and applicable WPD-0006 F2 substitutions are complete. Exact signed candidate `windows-v1.0.38` is stable on physical Intel x64, but remains a validator-clean **NO-GO** until its supplemental accessibility, performance, staging, paired-device safety, and private Store/update receipts are complete; physical ARM64 remains an explicit beta limitation
+**Audit target:** exact merged `main` commit `8b07625eebe9db0bf0084e6a884becd6d8bcc72e`
+**Status:** F1 source/product parity is complete at 51/51 Real rows, and the exact merged source passes the current automated Windows x64 and ARM64 proof. Release certification remains **NO-GO** because this exact commit has not yet produced a signed release candidate or completed physical performance, manual accessibility/display, live staging, paired-device safety, private Store/update, and physical ARM64 evidence.
 
 **Day-two operations:** use
 [`WINDOWS_PORT_OPERATIONS_RUNBOOK.md`](WINDOWS_PORT_OPERATIONS_RUNBOOK.md) for
 the current release sequence, cost model, maintenance cadence, evidence gates,
 rollback steps, and agent handoff format. This audit preserves the detailed
 historical evidence; the runbook owns repeatable operations.
+
+## Merged-main automated checkpoint - 2026-08-10
+
+[PR #2203](https://github.com/Imagine-That-Ai/BurnBar/pull/2203) received the
+required independent approval and merged at `2026-08-10T05:16:15Z`. Its exact
+merge commit is `8b07625eebe9db0bf0084e6a884becd6d8bcc72e`. A clean detached
+checkout of that commit matched `origin/main`.
+
+The current-source result is strong and candidate-bound:
+
+- The machine-checked parity ledger reports 51/51 `Real`, with zero
+  `Substituted`, `DeferredApproved`, `Blocked`, or `Authored` rows.
+- The exact merged source passed all 65 local certification commands with zero
+  failures and zero timeouts. The independent evidence validator accepted all
+  seven receipts and confirmed that the tracked tree was clean.
+- [Windows Full run 31358055958](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31358055958)
+  passed x64, ARM64, and its aggregate gate. Independent TRX inspection found
+  4,082 executed x64 passes and 4,081 executed ARM64 passes, zero failures, and
+  only the two exact allowlisted live/manual rows not executed on each
+  architecture. The x64 live Playwright bridge separately passed.
+- [Windows engine run 31358056003](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31358056003)
+  built and exercised the production Swift/C ABI engine for x64 and ARM64. The
+  downloaded manifests covered 26 x64 files and 25 ARM64 files; every recorded
+  SHA-256 and byte size matched, and binary inspection confirmed native x86-64
+  and Aarch64 Windows DLLs.
+- [Candidate export run 31358681287](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31358681287)
+  exported and re-imported 13,535 files with an exact tree match, passed all
+  nine foundation commands, passed ten storage cases, and found no secret-scan
+  finding. Independent extraction and a separate local re-export matched the
+  complete file manifest and uncompressed tar content.
+- [Distribution run 31354131189](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31354131189)
+  passed 124 distribution tests, direct and Store MSIX fixture inspection,
+  signer pinning/fail-closed checks, package identity, version policy, and the
+  aggregate distribution gate against the same exact SHA.
+- [Staging dry run 31358681447](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31358681447)
+  verified all 969 Functions/rules checksums and generated exactly the four
+  reviewed Windows exports. Its deployment job was skipped; no staging state
+  changed.
+- [Shared domain-core run 31354131316](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31354131316)
+  passed the exact same SHA across Rust, C#, Windows x64, Windows ARM64, Apple,
+  Android, Wasm, Python, Console, rollback, and consumer-contract jobs.
+
+This checkpoint closes the current-source and hosted automated proof boundary.
+It does not convert historical `windows-v1.0.38` physical evidence into proof
+for the new merged source. The Windows manifest is `1.0.39.0`, but no protected
+`windows-v1.0.39` tag exists, so no signed exact-main release artifact has been
+created. Pushing that tag is a separate public-release action and is not
+authorized by PR approval.
+
+The honest release result therefore remains **NO-GO**. The six still-open
+external receipt groups are physical x64 performance, physical ARM64,
+accessibility/display, staging cloud, paired media/Computer Use safety, and
+Store/update lifecycle.
 
 ## Supplemental Harness Recovery - 2026-07-20
 
@@ -976,18 +1030,20 @@ primary row remains SUB-BUILD. That source result covers the gateway, durable
 runs/missions, Browser Computer Use, the exact-approval privileged-input broker,
 project symbols, the sealed Pensieve watcher, the full Elder Wand fusion
 pipeline, standalone companion CLI, guarded Switcher, indexed search, and the
-connector/tooling plane. It does not close signed-host or physical evidence.
-The x64/ARM64 build, signing/provenance, hosted x64 registration, ARM64 UTM
-foundation, and corrected signed-runtime gates are proven. The exact v1.0.38
-x64 package also passed repeated physical cold/warm/reinstall launch holds and
-a 30-minute soak. The evidence does not yet close every row in the QA
-checklist.
+connector/tooling plane.
+
+Exact merged `main` commit
+`8b07625eebe9db0bf0084e6a884becd6d8bcc72e` now also passes the current local
+and hosted x64/ARM64 automated proof described in the 2026-08-10 checkpoint.
+Historical signed `windows-v1.0.38` evidence remains useful for its own exact
+commit, but it cannot certify the newer source. The newer source has not yet
+produced a protected, signed `windows-v1.0.39` release candidate.
 
 Accordingly, the accurate current claim is: **F1 source/product parity is
-ledger-green; applicable F2 source composition is complete; the exact-head
-signed automated release is verified; F2 True 1:1 is not release-certified
-because physical/manual/live/public-lifecycle evidence is incomplete**.
-A public parity release remains gated on the explicitly named
+ledger-green; applicable F2 source composition is complete; exact merged-main
+automated Windows proof is green; F2 True 1:1 is not release-certified because
+the exact source is not yet signed and its physical/manual/live/Store evidence
+is incomplete**. A public parity release remains gated on the explicitly named
 physical Windows, manual accessibility/display, live staging/cross-device,
 advanced safety, and public lifecycle evidence above.
 
