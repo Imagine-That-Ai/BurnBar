@@ -362,7 +362,11 @@ actor BurnBarAIInboxService {
                 costUSD: result.calls.reduce(0) { $0 + $1.costUSD },
                 itemsNew: result.publish.itemsNew,
                 itemsUpdated: result.publish.itemsUpdated,
-                itemsResolved: result.publish.itemsResolved
+                itemsResolved: result.publish.itemsResolved,
+                // The run finished, but say so honestly when the analyst was
+                // skipped: a row of zeros with no explanation is what let this
+                // fail silently for a whole night.
+                error: result.analystFailure.map { "analyst unavailable: \($0)" }
             )
             try? store.finishRun(telemetry)
             logger.info(
@@ -371,7 +375,8 @@ actor BurnBarAIInboxService {
                     "gate": decision.telemetryResult.rawValue,
                     "llm_calls": "\(result.calls.count)",
                     "items_new": "\(result.publish.itemsNew)",
-                    "items_resolved": "\(result.publish.itemsResolved)"
+                    "items_resolved": "\(result.publish.itemsResolved)",
+                    "analyst_failed": result.analystFailure == nil ? "false" : "true"
                 ]
             )
         } catch {
@@ -392,6 +397,10 @@ actor BurnBarAIInboxService {
     private struct PipelineResult {
         let calls: [BurnBarAIInboxModelCall]
         let publish: BurnBarAIInboxPublishResult
+        /// Set when the analyst threw and the tick degraded to the rule-based
+        /// brief. Carried into run telemetry so `daemon.inbox.runs.recent`
+        /// answers "why is llmCalls 0?" without a log-privacy safari.
+        let analystFailure: String?
     }
 
     private func runPipeline(
@@ -423,6 +432,7 @@ actor BurnBarAIInboxService {
         var briefMarkdown = ""
         var modelProvenance = "local-rules"
         var suppressed: [String] = []
+        var analystFailure: String?
 
         // Standing commitments: active Founder Plans and approved snippets the
         // synthesis must build on. Populated from the plan ledger; empty when
@@ -467,7 +477,28 @@ actor BurnBarAIInboxService {
             } catch {
                 // Publish the deterministic findings anyway. A provider outage
                 // must degrade the feature, not disable it.
-                logger.warning("ai_inbox_analysis_failed", metadata: ["error": "\(error)"])
+                //
+                // But degrade LOUDLY. This used to be a `logger.warning` whose
+                // payload `os_log` redacts as `%{private}`, so a mis-pinned
+                // model or an unusable credential looked exactly like "nothing
+                // to report" — for as long as nobody rebuilt the daemon.
+                // `silentFailure` emits `%{public}` and still runs the metadata
+                // through the secret scrubber, which is the right trade for a
+                // provider/model routing diagnostic.
+                let reason = Self.analystFailureReason(error)
+                logger.silentFailure(
+                    "ai_inbox_analysis",
+                    error: error,
+                    context: [
+                        "analyst_provider": config.analystProviderID,
+                        "analyst_model": config.analystModel,
+                        "egress_mode": config.egressMode.rawValue
+                    ]
+                )
+                analystFailure = reason
+                findings.append(
+                    Self.analystUnavailableFinding(reason: reason, config: config, now: now)
+                )
                 briefMarkdown = Self.ruleBasedBrief(pack: pack, findings: findings, now: now)
             }
         } else {
@@ -501,7 +532,7 @@ actor BurnBarAIInboxService {
             newlySuppressedFingerprints: suppressed,
             now: now
         )
-        return PipelineResult(calls: calls, publish: publish)
+        return PipelineResult(calls: calls, publish: publish, analystFailure: analystFailure)
     }
 
     // MARK: - Standing commitments
@@ -630,6 +661,83 @@ actor BurnBarAIInboxService {
             )
         }
         return nil
+    }
+
+    /// Human-readable reason for an analyst throw.
+    ///
+    /// `LocalizedError.errorDescription` is the sentence the router and the
+    /// executor already wrote for a human ("Provider 'x' is missing
+    /// credentials."); `String(describing:)` on those enums yields
+    /// `missingCredential("x")`, which is worse. Fall back to the raw
+    /// description only for errors that carry no message.
+    static func analystFailureReason(_ error: Error) -> String {
+        let localized = (error as? LocalizedError)?.errorDescription?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let reason: String
+        if let localized, localized.isEmpty == false {
+            reason = localized
+        } else {
+            reason = String(describing: error)
+        }
+        return String(reason.prefix(400))
+    }
+
+    /// Surfaces "the analyst never ran" as an inbox item.
+    ///
+    /// Without this the inbox degrades to the rule-based brief and looks
+    /// *identical* to a healthy quiet day — which is exactly how a broken model
+    /// pin survives.
+    ///
+    /// The fingerprint is deliberately NOT scoped to the pinned route. The
+    /// condition is "the analyst is down", not "the analyst is down on this
+    /// route" — scoping by route means trying four models to find a working one
+    /// leaves four permanently-open items. The route is *measurement*, so it
+    /// lives in the body and the metrics, and the single item updates in place.
+    static func analystUnavailableFinding(
+        reason: String,
+        config: BurnBarInboxConfig,
+        now: Date
+    ) -> BurnBarAIInboxFinding {
+        let route = "\(config.analystProviderID):\(config.analystModel)"
+        return BurnBarAIInboxFinding(
+            kind: .system,
+            title: "Analyst could not run",
+            summaryMarkdown: """
+                The AI Inbox fell back to local rules because its analyst model could not be reached.
+
+                **Route:** `\(route)`
+                **Reason:** \(reason)
+
+                Deterministic detection kept running, so alerts below are still real — but there is no \
+                written synthesis for this tick, and nothing was spent.
+                """,
+            priority: .p2,
+            confidence: 1.0,
+            evidenceIDs: [],
+            fingerprint: BurnBarAIInboxFinding.analystUnavailableFingerprint,
+            metrics: [
+                // `analyst_provider` doubles as the marker the publisher looks
+                // for when deciding this notice can be auto-resolved.
+                "analyst_provider": config.analystProviderID,
+                "analyst_model": config.analystModel
+            ],
+            actions: [
+                BurnBarInboxAction(
+                    id: "open-settings",
+                    kind: .openSettings,
+                    title: "Check the analyst model",
+                    value: "ai-inbox",
+                    isPrimary: true
+                )
+            ],
+            needsVerification: false,
+            deterministicVerification: BurnBarInboxVerification(
+                verdict: .deterministic,
+                reason: "Observed directly: the analyst call threw on this tick.",
+                checkedAt: now
+            ),
+            source: .detector
+        )
     }
 
     static func budgetFinding(

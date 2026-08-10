@@ -373,7 +373,17 @@ struct BurnBarAIInboxPublisher: Sendable {
         case .indexHealth:
             return pack.conversations.isEmpty ? nil : "The index has caught up."
 
-        case .costAnomaly, .brief, .budget, .system:
+        case .system:
+            // The analyst-down notice is the one `system` item that has a
+            // positive end condition: this tick published findings without it,
+            // so the analyst ran. Matched on the metric marker rather than the
+            // fingerprint so notices minted by an older, route-scoped
+            // fingerprint clear out too instead of sitting open forever.
+            guard let detail = try? store.item(id: item.id),
+                  detail.payload.metrics["analyst_provider"] != nil else { return nil }
+            return "The analyst is running again."
+
+        case .costAnomaly, .brief, .budget:
             return nil
         }
     }

@@ -525,6 +525,20 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
     /// the local-rules path. API-billed calls always count.
     public let budgetCountsSubscriptionSpend: Bool
 
+    /// Shipped analyst/verifier pins.
+    ///
+    /// These MUST be catalog model **IDs**, never aliases. The router forwards
+    /// the matched alias verbatim as the wire model (see `wireModel(for:)`), so
+    /// pinning an alias sends a name the vendor's API does not accept. The
+    /// previous default, `deepseek-v4-flash`, is only an alias of
+    /// `deepseek-chat` in the DeepSeek catalog *and* the primary ID of an Ollama
+    /// Cloud model — so it both put an unroutable name on the wire to
+    /// api.deepseek.com and made the intended provider ambiguous.
+    public static let defaultAnalystProviderID = "deepseek"
+    public static let defaultAnalystModel = "deepseek-chat"
+    public static let defaultVerifierProviderID = "openai"
+    public static let defaultVerifierModel = "gpt-5.6-luna"
+
     public init(
         enabled: Bool = false,
         egressMode: BurnBarInboxEgressMode = .off,
@@ -533,10 +547,10 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
         dailyBudgetUSD: Double = 1.50,
         maxVerifierCallsPerTick: Int = 3,
         perTickPromptTokenCap: Int = 60_000,
-        analystProviderID: String = "deepseek",
-        analystModel: String = "deepseek-v4-flash",
-        verifierProviderID: String = "openai",
-        verifierModel: String = "gpt-5.6-luna",
+        analystProviderID: String = BurnBarInboxConfig.defaultAnalystProviderID,
+        analystModel: String = BurnBarInboxConfig.defaultAnalystModel,
+        verifierProviderID: String = BurnBarInboxConfig.defaultVerifierProviderID,
+        verifierModel: String = BurnBarInboxConfig.defaultVerifierModel,
         githubEnabled: Bool = true,
         notifyOnP1: Bool = true,
         lookbackMinutes: Int = 120,
@@ -552,10 +566,13 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
         self.dailyBudgetUSD = max(0, dailyBudgetUSD)
         self.maxVerifierCallsPerTick = min(max(0, maxVerifierCallsPerTick), 25)
         self.perTickPromptTokenCap = min(max(2_000, perTickPromptTokenCap), 500_000)
-        self.analystProviderID = analystProviderID
-        self.analystModel = analystModel
-        self.verifierProviderID = verifierProviderID
-        self.verifierModel = verifierModel
+        // Route pins are clamped like every other field: an RPC caller (or a
+        // hand-edited row) cannot persist a blank provider/model that would
+        // resolve to `unsupportedModel("")` on every tick for the rest of time.
+        self.analystProviderID = Self.routePin(analystProviderID, default: Self.defaultAnalystProviderID)
+        self.analystModel = Self.routePin(analystModel, default: Self.defaultAnalystModel)
+        self.verifierProviderID = Self.routePin(verifierProviderID, default: Self.defaultVerifierProviderID)
+        self.verifierModel = Self.routePin(verifierModel, default: Self.defaultVerifierModel)
         self.githubEnabled = githubEnabled
         self.notifyOnP1 = notifyOnP1
         self.lookbackMinutes = min(max(15, lookbackMinutes), 24 * 60)
@@ -563,6 +580,13 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
         self.perReplyBudgetUSD = min(max(0, perReplyBudgetUSD), 5)
         self.maxThreadTurns = min(max(2, maxThreadTurns), 200)
         self.budgetCountsSubscriptionSpend = budgetCountsSubscriptionSpend
+    }
+
+    /// Trims a provider/model pin and substitutes the shipped default when the
+    /// caller supplied nothing usable.
+    static func routePin(_ value: String, default fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
     }
 
     /// Decodes with per-field defaults so a config written by an older daemon
