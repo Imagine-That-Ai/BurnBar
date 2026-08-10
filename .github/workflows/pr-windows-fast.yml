@@ -251,7 +251,7 @@ jobs:
       - name: Verify native candidate helpers on Windows
         run: |
           node --test `
-            scripts/windows-port/stage-local-domain-core-native.test.mjs `
+            scripts/windows-port/native-library-staging.test.mjs `
             scripts/windows-port/stage-local-rust-cdylib.test.mjs `
             scripts/windows-port/verify-local-domain-core-identity.test.mjs
 
@@ -343,7 +343,7 @@ jobs:
           node scripts/windows-port/test-validate-release-certification-evidence.mjs
           node scripts/windows-port/test-physical-release-certification.mjs
           node scripts/windows-port/test-stage-exact-candidate-rehearsal.mjs
-          node --test scripts/windows-port/stage-local-domain-core-native.test.mjs
+          node --test scripts/windows-port/native-library-staging.test.mjs
           node --test scripts/windows-port/stage-local-rust-cdylib.test.mjs
           node --test scripts/windows-port/verify-local-domain-core-identity.test.mjs
           node --test scripts/windows-port/verify-trx-results.test.mjs

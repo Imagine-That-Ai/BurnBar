@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describeLocalCertificationHost } from "./local-certification-host.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(root, "../..");
 const script = readFileSync(
   join(root, "run-physical-release-certification.ps1"),
   "utf8",
@@ -71,8 +73,8 @@ const localRunner = readFileSync(
   join(root, "run-local-certification-checks.mjs"),
   "utf8",
 );
-const localNativeStager = readFileSync(
-  join(root, "stage-local-domain-core-native.mjs"),
+const nativeLibraryStaging = readFileSync(
+  join(root, "native-library-staging.mjs"),
   "utf8",
 );
 const rustCdylibStager = readFileSync(
@@ -505,8 +507,8 @@ for (const evidenceDependency of [
   "scripts/lib/domain-core-release-evidence.mjs",
   "scripts/ci/verify-domain-core-observed-identity.mjs",
   "scripts/windows-port/allowed-not-executed-full.json",
-  "scripts/windows-port/stage-local-domain-core-native.mjs",
-  "scripts/windows-port/stage-local-domain-core-native.test.mjs",
+  "scripts/windows-port/native-library-staging.mjs",
+  "scripts/windows-port/native-library-staging.test.mjs",
   "scripts/windows-port/stage-local-rust-cdylib.mjs",
   "scripts/windows-port/stage-local-rust-cdylib.test.mjs",
   "scripts/windows-port/verify-local-domain-core-identity.mjs",
@@ -529,7 +531,7 @@ for (const detectorDependency of [
   "scripts/lib/(atomic-regular-file|domain-core-release-evidence)\\.mjs",
   "scripts/ci/verify-domain-core-observed-identity\\.mjs",
   "allowed-not-executed-full\\.json",
-  "stage-local-(domain-core-native|rust-cdylib)",
+  "(native-library-staging|stage-local-rust-cdylib)",
   "verify-(local-domain-core-identity|trx-results)",
 ]) {
   assert.ok(
@@ -561,7 +563,7 @@ assert.equal(
   "the Windows helper tests must share one fail-closed node invocation",
 );
 for (const helperTest of [
-  "stage-local-domain-core-native.test.mjs",
+  "native-library-staging.test.mjs",
   "stage-local-rust-cdylib.test.mjs",
   "verify-local-domain-core-identity.test.mjs",
 ]) {
@@ -582,7 +584,7 @@ for (const helperStep of windowsFullNativeHelperSteps) {
     "each full Windows helper step must use one fail-closed node invocation",
   );
   for (const helperTest of [
-    "stage-local-domain-core-native.test.mjs",
+    "native-library-staging.test.mjs",
     "stage-local-rust-cdylib.test.mjs",
     "verify-local-domain-core-identity.test.mjs",
     "verify-trx-results.test.mjs",
@@ -607,6 +609,16 @@ for (const nativeStepName of [
       `${nativeStepName} must stop after the first failed native command`,
     );
   }
+}
+for (const stageStep of workflowStepBodies(
+  windowsFullWorkflow,
+  "Stage exact native libraries",
+)) {
+  assert.match(
+    stageStep,
+    /OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ github\.sha \}\}/u,
+    "artifact-discovery rebuilds must preserve the exact candidate identity",
+  );
 }
 const livePlaywrightSteps = workflowStepBodies(
   windowsFullWorkflow,
@@ -847,7 +859,7 @@ assert.match(
 );
 assert.match(
   script,
-  /'domain-core-native-stage' 'node' @\(\$nativeStager,[\s\S]*'--logical-name', 'openburnbar_domain_ffi'[\s\S]*'--target', \$rustTargetTriple[\s\S]*'--destination', \$domainCoreNativePath/,
+  /'domain-core-native-stage' 'node' @\(\$nativeStager,[\s\S]*'--logical-name', 'openburnbar_domain_ffi'[\s\S]*'--target', \$rustTargetTriple[\s\S]*'--destination', \$domainCoreNativePath\) -Environment @\{ OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT = \$script:SourceIdentity\.commitSha \}/,
 );
 assert.match(
   script,
@@ -945,7 +957,7 @@ assert.match(
 );
 assert.match(
   localRunner,
-  /name: "domain-core-native-stage"[\s\S]*stage-local-rust-cdylib\.mjs[\s\S]*"--toolchain"[\s\S]*"1\.96\.0"[\s\S]*"--logical-name"[\s\S]*"openburnbar_domain_ffi"[\s\S]*"--destination"[\s\S]*domainCoreNativePath/,
+  /name: "domain-core-native-stage"[\s\S]*stage-local-rust-cdylib\.mjs[\s\S]*"--toolchain"[\s\S]*"1\.96\.0"[\s\S]*"--logical-name"[\s\S]*"openburnbar_domain_ffi"[\s\S]*"--destination"[\s\S]*domainCoreNativePath[\s\S]*OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: source\.commitSha/,
 );
 assert.ok(
   localRunner.indexOf('name: "domain-core-native-build"') <
@@ -1001,22 +1013,36 @@ assert.match(
 );
 assert.match(
   localRunner,
-  /windows\/OpenBurnBar\.sln[\s\S]*--blame-hang-timeout",[\s\S]*runtimePlatform === "win32" \? "600s" : "60s"[\s\S]*timeoutMs: 900000/,
+  /const windowsSolutionAggregateHangTimeout = "600s"/,
+);
+assert.match(
+  localRunner,
+  /windows\/OpenBurnBar\.sln[\s\S]*--blame-hang-timeout",[\s\S]*windowsSolutionAggregateHangTimeout[\s\S]*timeoutMs: 900000/,
 );
 assert.match(localRunner, /PYTHONUTF8: process\.env\.PYTHONUTF8 \?\? "1"/);
 assert.match(localRunner, /\.\.\.\(spec\.env \?\? \{\}\)/);
+const cleanSourceGuard = localRunner.indexOf("if (source.dirtyTree)");
+assert.ok(cleanSourceGuard > localRunner.indexOf("const source ="));
+assert.ok(
+  cleanSourceGuard < localRunner.indexOf("mkdirSync(logsDir"),
+  "the local certification runner must reject a dirty candidate before writing evidence or building native code",
+);
+assert.match(
+  localRunner,
+  /if \(source\.dirtyTree\)[\s\S]*exact-candidate certification requires a clean source tree[\s\S]*process\.exit\(1\)/,
+);
 assert.match(
   localRunner,
   /if \(failedResults\.length > 0\)[\s\S]*NO-GO evidence bundle was retained[\s\S]*process\.exit\(1\)/,
 );
 assert.doesNotMatch(
-  localNativeStager,
+  nativeLibraryStaging,
   /rmSync\(destination/,
   "native staging must not create a delete-before-rename gap",
 );
 assert.ok(
-  localNativeStager.indexOf("copyFileSync(source, temporary)") <
-    localNativeStager.indexOf("renameSync(temporary, destination)"),
+  nativeLibraryStaging.indexOf("copyFileSync(source, temporary)") <
+    nativeLibraryStaging.indexOf("renameSync(temporary, destination)"),
   "native staging must verify a temporary copy before atomically replacing the destination",
 );
 assert.match(rustCdylibStager, /rustup/);
@@ -1024,8 +1050,35 @@ assert.match(rustCdylibStager, /cargo[\s\S]*metadata[\s\S]*--locked/);
 assert.match(rustCdylibStager, /targetTriple/);
 assert.match(
   rustCdylibStager,
+  /--message-format=json-render-diagnostics/,
+);
+assert.match(rustCdylibStager, /cargoCdylibArtifactPathFromMessages/);
+assert.match(
+  rustCdylibStager,
   /stageNativeLibrary\(source, options\.destination\)/,
 );
+
+function gitIndexMode(relativePath) {
+  const entry = execFileSync(
+    "git",
+    ["-C", repoRoot, "ls-files", "--stage", "--", relativePath],
+    { encoding: "utf8" },
+  ).trim();
+  return entry.split(/\s+/u)[0] ?? "";
+}
+for (const executableScript of [
+  "scripts/windows-port/run-local-certification-checks.mjs",
+  "scripts/windows-port/stage-local-rust-cdylib.mjs",
+  "scripts/windows-port/test-physical-release-certification.mjs",
+  "scripts/windows-port/verify-local-domain-core-identity.mjs",
+  "scripts/windows-port/verify-trx-results.mjs",
+]) {
+  assert.equal(
+    gitIndexMode(executableScript),
+    "100755",
+    `${executableScript} must be committed as executable`,
+  );
+}
 
 const windowsHost = describeLocalCertificationHost({
   platform: "win32",

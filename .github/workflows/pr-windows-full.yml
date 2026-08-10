@@ -44,8 +44,8 @@ on:
       - "scripts/lib/domain-core-release-evidence.mjs"
       - "scripts/ci/verify-domain-core-observed-identity.mjs"
       - "scripts/windows-port/allowed-not-executed-full.json"
-      - "scripts/windows-port/stage-local-domain-core-native.mjs"
-      - "scripts/windows-port/stage-local-domain-core-native.test.mjs"
+      - "scripts/windows-port/native-library-staging.mjs"
+      - "scripts/windows-port/native-library-staging.test.mjs"
       - "scripts/windows-port/stage-local-rust-cdylib.mjs"
       - "scripts/windows-port/stage-local-rust-cdylib.test.mjs"
       - "scripts/windows-port/verify-local-domain-core-identity.mjs"
@@ -123,7 +123,7 @@ jobs:
           echo "${changed}"
 
           if echo "${changed}" | grep -Eq \
-            '^(windows/|crates/burnbar-remote/|crates/openburnbar-iroh/|crates/openburnbar-domain-core/|OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/|AgentLensTests/Fixtures/|scripts/lib/(atomic-regular-file|domain-core-release-evidence)\.mjs|scripts/ci/verify-domain-core-observed-identity\.mjs|scripts/windows-port/(allowed-not-executed-full\.json|stage-local-(domain-core-native|rust-cdylib)(\.test)?\.mjs|verify-(local-domain-core-identity|trx-results)(\.test)?\.mjs)|\.github/workflows/pr-windows-full\.yml)'; then
+            '^(windows/|crates/burnbar-remote/|crates/openburnbar-iroh/|crates/openburnbar-domain-core/|OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/|AgentLensTests/Fixtures/|scripts/lib/(atomic-regular-file|domain-core-release-evidence)\.mjs|scripts/ci/verify-domain-core-observed-identity\.mjs|scripts/windows-port/(allowed-not-executed-full\.json|(native-library-staging|stage-local-rust-cdylib)(\.test)?\.mjs|verify-(local-domain-core-identity|trx-results)(\.test)?\.mjs)|\.github/workflows/pr-windows-full\.yml)'; then
             echo "windows=true" >> "$GITHUB_OUTPUT"
             echo "Windows full-suite surface changed: running x64 + ARM64 full-suite legs."
           else
@@ -203,7 +203,7 @@ jobs:
       - name: Verify native candidate helpers
         run: |
           node --test `
-            scripts/windows-port/stage-local-domain-core-native.test.mjs `
+            scripts/windows-port/native-library-staging.test.mjs `
             scripts/windows-port/stage-local-rust-cdylib.test.mjs `
             scripts/windows-port/verify-local-domain-core-identity.test.mjs `
             scripts/windows-port/verify-trx-results.test.mjs
@@ -225,6 +225,8 @@ jobs:
           rustup run 1.96.0 cargo build --locked --manifest-path crates/openburnbar-iroh/Cargo.toml --target x86_64-pc-windows-msvc
 
       - name: Stage exact native libraries
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $true
@@ -366,7 +368,7 @@ jobs:
       - name: Verify native candidate helpers
         run: |
           node --test `
-            scripts/windows-port/stage-local-domain-core-native.test.mjs `
+            scripts/windows-port/native-library-staging.test.mjs `
             scripts/windows-port/stage-local-rust-cdylib.test.mjs `
             scripts/windows-port/verify-local-domain-core-identity.test.mjs `
             scripts/windows-port/verify-trx-results.test.mjs
@@ -385,6 +387,8 @@ jobs:
           rustup run 1.96.0 cargo build --locked --manifest-path crates/openburnbar-iroh/Cargo.toml --target aarch64-pc-windows-msvc
 
       - name: Stage exact native libraries
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $true

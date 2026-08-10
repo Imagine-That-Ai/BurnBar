@@ -3,11 +3,28 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import {
-  cargoCdylibPath,
-  cargoTargetDirectoryFromMetadata,
+  cargoBuildArguments,
+  cargoCdylibArtifactPathFromMessages,
+  cargoCdylibTargetFromMetadata,
   nativeLibraryFileName,
   runtimePlatformForTarget,
 } from "./stage-local-rust-cdylib.mjs";
+
+const packageId =
+  "path+file:///repo/crates/burnbar-remote#burnbar-remote-ffi@0.1.0";
+
+function artifactMessage(fileName, overrides = {}) {
+  return JSON.stringify({
+    reason: "compiler-artifact",
+    package_id: packageId,
+    target: {
+      name: "burnbar_remote",
+      crate_types: ["staticlib", "cdylib", "rlib"],
+    },
+    filenames: [fileName],
+    ...overrides,
+  });
+}
 
 test("maps Rust logical names to the platform cdylib file name", () => {
   assert.equal(
@@ -24,33 +41,104 @@ test("maps Rust logical names to the platform cdylib file name", () => {
   );
 });
 
-test("resolves an externally configured cargo target directory", () => {
-  const targetDirectory = "/Volumes/DevSSD/BuildCache/cargo-target";
-  assert.equal(
-    cargoCdylibPath({
-      targetDirectory,
-      logicalName: "burnbar_remote",
-      profile: "debug",
-      runtimePlatform: "darwin",
+test("builds the exact package with locked dependencies and explicit target/profile", () => {
+  assert.deepEqual(
+    cargoBuildArguments({
+      toolchain: "1.94.0",
+      manifestPath: "/repo/crates/burnbar-remote/Cargo.toml",
+      packageName: "burnbar-remote-ffi",
+      targetTriple: "aarch64-pc-windows-msvc",
+      profile: "release",
     }),
-    resolve(targetDirectory, "debug", "libburnbar_remote.dylib"),
+    [
+      "run",
+      "1.94.0",
+      "cargo",
+      "build",
+      "--locked",
+      "--manifest-path",
+      "/repo/crates/burnbar-remote/Cargo.toml",
+      "--package",
+      "burnbar-remote-ffi",
+      "--target",
+      "aarch64-pc-windows-msvc",
+      "--release",
+      "--message-format=json-render-diagnostics",
+    ],
   );
 });
 
-test("includes an explicit Windows target triple when cross or native targeting", () => {
+test("lets Cargo apply configured target settings when no target is explicit", () => {
+  const args = cargoBuildArguments({
+    toolchain: "1.96.0",
+    manifestPath: "/repo/crates/openburnbar-iroh/Cargo.toml",
+    packageName: "openburnbar-iroh",
+    profile: "debug",
+  });
+
+  assert.equal(args.includes("--target"), false);
+  assert.equal(args.includes("--release"), false);
   assert.equal(
-    cargoCdylibPath({
-      targetDirectory: "C:\\repo\\crates\\openburnbar-iroh\\target",
-      targetTriple: "aarch64-pc-windows-msvc",
-      logicalName: "openburnbar_iroh",
-      profile: "release",
+    args.at(-1),
+    "--message-format=json-render-diagnostics",
+  );
+});
+
+test("uses Cargo's reported artifact path instead of assuming a target subdirectory", () => {
+  const artifact = resolve(
+    "configured-cargo-target",
+    "custom-target-from-cargo-config",
+    "debug",
+    nativeLibraryFileName("burnbar_remote"),
+  );
+  const output = [
+    JSON.stringify({
+      reason: "build-script-executed",
+      package_id: packageId,
     }),
-    resolve(
-      "C:\\repo\\crates\\openburnbar-iroh\\target",
-      "aarch64-pc-windows-msvc",
-      "release",
-      "openburnbar_iroh.dll",
-    ),
+    artifactMessage(artifact),
+    JSON.stringify({ reason: "build-finished", success: true }),
+  ].join("\n");
+
+  assert.equal(
+    cargoCdylibArtifactPathFromMessages(output, {
+      packageId,
+      logicalName: "burnbar_remote",
+      expectedFileName: nativeLibraryFileName("burnbar_remote"),
+    }),
+    artifact,
+  );
+});
+
+test("rejects missing, ambiguous, and malformed Cargo artifact output", () => {
+  const expectedFileName = nativeLibraryFileName("burnbar_remote");
+  const options = {
+    packageId,
+    logicalName: "burnbar_remote",
+    expectedFileName,
+  };
+  assert.throws(
+    () =>
+      cargoCdylibArtifactPathFromMessages(
+        JSON.stringify({ reason: "build-finished", success: true }),
+        options,
+      ),
+    /exactly one .* artifact .* found 0/,
+  );
+
+  const first = resolve("first", expectedFileName);
+  const second = resolve("second", expectedFileName);
+  assert.throws(
+    () =>
+      cargoCdylibArtifactPathFromMessages(
+        [artifactMessage(first), artifactMessage(second)].join("\n"),
+        options,
+      ),
+    /exactly one .* artifact .* found 2/,
+  );
+  assert.throws(
+    () => cargoCdylibArtifactPathFromMessages("not-json", options),
+    /non-JSON line/,
   );
 });
 
@@ -80,11 +168,11 @@ test("rejects unsafe logical names and unknown profiles", () => {
   );
   assert.throws(
     () =>
-      cargoCdylibPath({
-        targetDirectory: "/tmp/cargo-target",
-        logicalName: "burnbar_remote",
+      cargoBuildArguments({
+        toolchain: "1.94.0",
+        manifestPath: "/repo/Cargo.toml",
+        packageName: "burnbar-remote-ffi",
         profile: "bench",
-        runtimePlatform: "linux",
       }),
     /profile must be debug or release/,
   );
@@ -92,9 +180,10 @@ test("rejects unsafe logical names and unknown profiles", () => {
 
 test("requires Cargo metadata to declare the exact cdylib target", () => {
   const metadata = {
-    target_directory: "/tmp/openburnbar-cargo-target",
     packages: [
       {
+        id: packageId,
+        name: "burnbar-remote-ffi",
         targets: [
           {
             name: "burnbar_remote",
@@ -105,19 +194,22 @@ test("requires Cargo metadata to declare the exact cdylib target", () => {
     ],
   };
 
-  assert.equal(
-    cargoTargetDirectoryFromMetadata(metadata, "burnbar_remote"),
-    resolve(metadata.target_directory),
+  assert.deepEqual(
+    cargoCdylibTargetFromMetadata(metadata, "burnbar_remote"),
+    {
+      packageId,
+      packageName: "burnbar-remote-ffi",
+      targetName: "burnbar_remote",
+    },
   );
   assert.throws(
-    () => cargoTargetDirectoryFromMetadata(metadata, "openburnbar_iroh"),
+    () => cargoCdylibTargetFromMetadata(metadata, "openburnbar_iroh"),
     /exactly one cdylib target named openburnbar_iroh; found 0/,
   );
   assert.throws(
     () =>
-      cargoTargetDirectoryFromMetadata(
+      cargoCdylibTargetFromMetadata(
         {
-          ...metadata,
           packages: [...metadata.packages, ...metadata.packages],
         },
         "burnbar_remote",

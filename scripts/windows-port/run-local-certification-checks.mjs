@@ -24,17 +24,6 @@ import { nativeLibraryFileName } from "./stage-local-rust-cdylib.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
-const defaultOutput = join(
-  repoRoot,
-  "docs/windows-port/evidence/physical-release-certification-2026-07-11",
-);
-const outputDir = resolve(process.argv[2] ?? defaultOutput);
-const logsDir = join(outputDir, "logs");
-const receiptsDir = join(outputDir, "receipts");
-const blockersDir = join(outputDir, "blockers");
-mkdirSync(logsDir, { recursive: true });
-mkdirSync(receiptsDir, { recursive: true });
-mkdirSync(blockersDir, { recursive: true });
 
 function sha256(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -62,7 +51,32 @@ const source = {
   commitSha: git(["rev-parse", "HEAD"]),
   dirtyTree: git(["status", "--porcelain"]).length > 0,
 };
+if (source.dirtyTree) {
+  console.error(
+    `FAIL: exact-candidate certification requires a clean source tree at ${source.commitSha}.`,
+  );
+  process.exit(1);
+}
+
+const defaultOutput = join(
+  repoRoot,
+  "docs/windows-port/evidence/physical-release-certification-2026-07-11",
+);
+const outputDir = resolve(process.argv[2] ?? defaultOutput);
+const logsDir = join(outputDir, "logs");
+const receiptsDir = join(outputDir, "receipts");
+const blockersDir = join(outputDir, "blockers");
+mkdirSync(logsDir, { recursive: true });
+mkdirSync(receiptsDir, { recursive: true });
+mkdirSync(blockersDir, { recursive: true });
+
 const runtimePlatform = platform();
+// The solution-wide run executes many projects concurrently. A real packaging
+// test that stays quiet for slightly over one minute under aggregate load can
+// trip VSTest's inactivity detector even though the same project passes in its
+// required individual run. Keep the aggregate bounded by the 15-minute process
+// timeout while allowing the same 10-minute cold-start window used on Windows.
+const windowsSolutionAggregateHangTimeout = "600s";
 const nativeStageDir = join(
   repoRoot,
   "crates/openburnbar-domain-core/target/debug",
@@ -139,7 +153,7 @@ const commands = [
     file: "node",
     args: [
       "--test",
-      "scripts/windows-port/stage-local-domain-core-native.test.mjs",
+      "scripts/windows-port/native-library-staging.test.mjs",
     ],
     timeoutMs: 120000,
   },
@@ -230,6 +244,7 @@ const commands = [
       domainCoreNativePath,
     ],
     timeoutMs: 120000,
+    env: { OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: source.commitSha },
   },
   {
     name: "burnbar-remote-native-build",
@@ -304,7 +319,7 @@ const commands = [
       "--nologo",
       "-p:EnableWindowsTargeting=true",
       "--blame-hang-timeout",
-      runtimePlatform === "win32" ? "600s" : "60s",
+      windowsSolutionAggregateHangTimeout,
     ],
     timeoutMs: 900000,
     env: nativeTestEnvironment,

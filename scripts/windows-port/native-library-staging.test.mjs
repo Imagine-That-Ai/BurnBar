@@ -11,9 +11,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { stageNativeLibrary } from "./stage-local-domain-core-native.mjs";
+import { stageNativeLibrary } from "./native-library-staging.mjs";
 
-const workspace = mkdtempSync(join(tmpdir(), "stage-local-domain-core-test-"));
+const workspace = mkdtempSync(join(tmpdir(), "native-library-staging-test-"));
 test.after(() => rmSync(workspace, { recursive: true, force: true }));
 
 test("stages exact native bytes into the requested location", () => {
@@ -79,7 +79,11 @@ test("rejects symlink sources when the host permits symlink creation", (t) => {
   }
 
   assert.throws(
-    () => stageNativeLibrary(symlinkSource, join(workspace, "symlink-destination")),
+    () =>
+      stageNativeLibrary(
+        symlinkSource,
+        join(workspace, "symlink-destination"),
+      ),
     /not a symlink/,
   );
 });
