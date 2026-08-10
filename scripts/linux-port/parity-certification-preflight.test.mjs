@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import test, { after } from 'node:test';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   PARITY_PREFLIGHT_FILENAME,
   PARITY_PREFLIGHT_ROLE,
@@ -25,6 +25,8 @@ const RUN_ID = '12345';
 const DIGEST = `sha256:${'b'.repeat(64)}`;
 const RELEASE_ONLY = new Set(['P-01', 'P-03', 'P-04', 'P-37', 'P-38']);
 const OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY = 'OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY';
+const PRIVATE_TMP_ROOT = fs.realpathSync('/private/tmp');
+const GIT_FIXTURE_DATE = '2026-08-10T00:00:00Z';
 
 function withCollectorConcurrency(value, callback) {
   const previous = process.env[OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY];
@@ -36,6 +38,249 @@ function withCollectorConcurrency(value, callback) {
     if (previous === undefined) delete process.env[OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY];
     else process.env[OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY] = previous;
   }
+}
+
+
+function withPrivateTmpRoot(callback) {
+  const previous = process.env.TMPDIR;
+  process.env.TMPDIR = `${PRIVATE_TMP_ROOT}${path.sep}`;
+  try {
+    return callback();
+  } finally {
+    if (previous === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = previous;
+  }
+}
+
+function makePrivateTempDir(prefix) {
+  return fs.mkdtempSync(path.join(PRIVATE_TMP_ROOT, prefix));
+}
+
+
+const SHARED_FIXTURE_BYTE_PATHS = [
+  'scripts/linux-port/product-validators/P-05.mjs',
+  'scripts/linux-port/ownership-tests/P-05.test.mjs',
+  'scripts/linux-port/product-validators/P-06.mjs',
+  'scripts/linux-port/ownership-tests/P-06.test.mjs'
+];
+
+let sharedOwnershipFixture;
+let sharedOwnershipFixturePromise;
+let sharedOwnershipFixtureRoot;
+
+after(async () => {
+  try {
+    await sharedOwnershipFixturePromise;
+  } catch {
+    // The test that awaited fixture creation owns the failure; the suite hook still cleans up.
+  }
+  if (sharedOwnershipFixtureRoot) {
+    fs.rmSync(sharedOwnershipFixtureRoot, { recursive: true, force: true });
+  }
+  sharedOwnershipFixture = undefined;
+  sharedOwnershipFixturePromise = undefined;
+  sharedOwnershipFixtureRoot = undefined;
+});
+
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) =>
+      `${JSON.stringify(key)}:${stableStringify(value[key])}`
+    ).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function rowsFingerprint(rows) {
+  return crypto.createHash('sha256').update(stableStringify(rows)).digest('hex');
+}
+
+function deepFreeze(value) {
+  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+  for (const child of Object.values(value)) deepFreeze(child);
+  return Object.freeze(value);
+}
+
+function immutableRows(rows) {
+  return deepFreeze(JSON.parse(JSON.stringify(rows)));
+}
+
+function cloneRows(rows) {
+  return JSON.parse(JSON.stringify(rows));
+}
+
+function rowKey(row) {
+  return `${row.requirementId}:${row.component}`;
+}
+
+function savedFixtureBytes(subject) {
+  return new Map(SHARED_FIXTURE_BYTE_PATHS.map((relativePath) => [
+    relativePath,
+    Buffer.from(fs.readFileSync(path.join(subject.root, relativePath)))
+  ]));
+}
+
+function assertSavedFixtureBytes(subject, expectedBytes) {
+  for (const [relativePath, bytes] of expectedBytes) {
+    assert.ok(bytes.equals(fs.readFileSync(path.join(subject.root, relativePath))), relativePath);
+  }
+}
+
+function assertCachedRows(label, rows, fingerprint) {
+  assert.equal(Object.isFrozen(rows), true, `${label} rows array is protected`);
+  assert.equal(rows.every((row) => Object.isFrozen(row)), true, `${label} rows are protected`);
+  assert.equal(rowsFingerprint(rows), fingerprint, `${label} fingerprint`);
+  assert.equal(rows.length, 120, `${label} row count`);
+  assert.equal(new Set(rows.map(rowKey)).size, 120, `${label} unique execution keys`);
+  assert.ok(rows.every((row) => row.status === 'passed'), JSON.stringify(
+    rows.filter((row) => row.status !== 'passed'), null, 2
+  ));
+  assert.ok(rows.every((row) => row.mutationDetected === true), label);
+}
+
+function assertSharedOwnershipFixture(fixture) {
+  assert.equal(git(fixture.subject.root, ['rev-parse', 'HEAD']), fixture.subject.head, 'shared fixture HEAD');
+  assertSavedFixtureBytes(fixture.subject, fixture.savedBytes);
+  assertCachedRows('1-worker', fixture.oneWorkerRows, fixture.oneWorkerFingerprint);
+  assertCachedRows('4-worker', fixture.fourWorkerRows, fixture.fourWorkerFingerprint);
+}
+
+function copySubjectSnapshot(sourceSubject, root) {
+  fs.cpSync(sourceSubject.root, root, {
+    recursive: true,
+    dereference: false,
+    preserveTimestamps: true,
+    mode: fs.constants.COPYFILE_FICLONE,
+    filter: (sourcePath) => {
+      const relative = path.relative(sourceSubject.root, sourcePath);
+      return relative === '' || relative.split(path.sep)[0] !== '.git';
+    }
+  });
+  git(root, ['init', '-q']);
+  git(root, ['config', 'user.name', 'OpenBurnBar Test']);
+  git(root, ['config', 'user.email', 'test@openburnbar.invalid']);
+  git(root, ['config', 'gc.auto', '0']);
+  git(root, ['add', '.']);
+  git(root, ['commit', '-qm', 'complete parity inventory']);
+  assert.equal(git(root, ['rev-parse', 'HEAD']), sourceSubject.head, 'private clone HEAD');
+}
+
+function cloneSubjectForCollector(subject, label) {
+  const cloneParent = makePrivateTempDir(`openburnbar-parity-preflight-${label}-collector-`);
+  const root = path.join(cloneParent, 'repo');
+  copySubjectSnapshot(subject, root);
+  return {
+    subject: {
+      ...subject,
+      root,
+      inputRoot: path.join(root, subject.inputRelative),
+      aggregatePath: path.join(root, path.relative(subject.root, subject.aggregatePath))
+    },
+    cleanup: () => fs.rmSync(cloneParent, { recursive: true, force: true })
+  };
+}
+
+function collectRowsInChild(subject, concurrency) {
+  return new Promise((resolve, reject) => {
+    const collectorModule = pathToFileURL(path.join(
+      SOURCE_ROOT,
+      'scripts/linux-port/lib/parity-certification-preflight.mjs'
+    )).href;
+    const child = spawn(process.execPath, [
+      '--input-type=module',
+      '-e',
+      `import { collectCertificationTestExecutions } from ${JSON.stringify(collectorModule)};
+`
+        + `const [repoRoot, targetHead] = process.argv.slice(1);
+`
+        + `const rows = collectCertificationTestExecutions(repoRoot, targetHead);
+`
+        + `process.stdout.write(JSON.stringify(rows));
+`,
+      subject.root,
+      subject.head
+    ], {
+      cwd: SOURCE_ROOT,
+      env: {
+        ...process.env,
+        TMPDIR: `${PRIVATE_TMP_ROOT}${path.sep}`,
+        [OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY]: concurrency
+      },
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    const stdout = [];
+    const stderr = [];
+    child.stdout.on('data', (chunk) => stdout.push(chunk));
+    child.stderr.on('data', (chunk) => stderr.push(chunk));
+    child.on('error', reject);
+    child.on('close', (code, signal) => {
+      if (code !== 0 || signal) {
+        reject(new Error(
+          `collector ${concurrency}-worker child failed: code=${code ?? 'null'} signal=${signal ?? 'null'} `
+          + Buffer.concat(stderr).toString('utf8')
+        ));
+        return;
+      }
+      try {
+        resolve(JSON.parse(Buffer.concat(stdout).toString('utf8')));
+      } catch (error) {
+        error.message = `collector ${concurrency}-worker child emitted invalid JSON: ${error.message}`;
+        reject(error);
+      }
+    });
+  });
+}
+
+async function buildSharedOwnershipFixture() {
+  const subject = withPrivateTmpRoot(() => createRepository());
+  sharedOwnershipFixtureRoot = subject.root;
+  const savedBytes = savedFixtureBytes(subject);
+  const oneWorkerCollector = cloneSubjectForCollector(subject, 'one-worker');
+  const fourWorkerCollector = cloneSubjectForCollector(subject, 'four-worker');
+  let oneWorkerRawRows;
+  let fourWorkerRawRows;
+  try {
+    [oneWorkerRawRows, fourWorkerRawRows] = await Promise.all([
+      collectRowsInChild(oneWorkerCollector.subject, '1'),
+      collectRowsInChild(fourWorkerCollector.subject, '4')
+    ]);
+  } finally {
+    oneWorkerCollector.cleanup();
+    fourWorkerCollector.cleanup();
+  }
+  const oneWorkerRows = immutableRows(oneWorkerRawRows);
+  const fourWorkerRows = immutableRows(fourWorkerRawRows);
+  sharedOwnershipFixture = {
+    subject,
+    savedBytes,
+    oneWorkerRows,
+    fourWorkerRows,
+    oneWorkerFingerprint: rowsFingerprint(oneWorkerRows),
+    fourWorkerFingerprint: rowsFingerprint(fourWorkerRows)
+  };
+  assertSharedOwnershipFixture(sharedOwnershipFixture);
+  return sharedOwnershipFixture;
+}
+
+async function getSharedOwnershipFixture() {
+  if (!sharedOwnershipFixturePromise) sharedOwnershipFixturePromise = buildSharedOwnershipFixture();
+  const fixture = await sharedOwnershipFixturePromise;
+  assertSharedOwnershipFixture(fixture);
+  return fixture;
+}
+
+function privateCloneSubject(t, fixture) {
+  const cloneParent = makePrivateTempDir('openburnbar-parity-preflight-clone-');
+  t.after(() => fs.rmSync(cloneParent, { recursive: true, force: true }));
+  const root = path.join(cloneParent, 'repo');
+  copySubjectSnapshot(fixture.subject, root);
+  return {
+    ...fixture.subject,
+    root,
+    inputRoot: path.join(root, fixture.subject.inputRelative),
+    aggregatePath: path.join(root, path.relative(fixture.subject.root, fixture.subject.aggregatePath))
+  };
 }
 
 function write(root, relativePath, bytes) {
@@ -79,7 +324,15 @@ function aggregateAttestationSubjects(releaseArtifacts, packages) {
 }
 
 function git(root, args) {
-  return execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+  return execFileSync('git', args, {
+    cwd: root,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      GIT_AUTHOR_DATE: GIT_FIXTURE_DATE,
+      GIT_COMMITTER_DATE: GIT_FIXTURE_DATE
+    }
+  }).trim();
 }
 
 function commandTemplate(requirementId, area) {
@@ -302,6 +555,7 @@ function createRepository({ complete = true } = {}) {
   git(root, ['init', '-q']);
   git(root, ['config', 'user.name', 'OpenBurnBar Test']);
   git(root, ['config', 'user.email', 'test@openburnbar.invalid']);
+  git(root, ['config', 'gc.auto', '0']);
   const requirements = requirementsManifest();
   writeJson(root, 'docs/linux-port/product-parity-requirements.json', requirements);
   writeJson(root, 'docs/linux-port/product-parity-evidence-policies.json', policies(requirements));
@@ -600,63 +854,68 @@ function validatorContext(subject, captureResult) {
 }
 
 test('ownership-ready fixture authenticates all 40 requirement lanes', async (t) => {
-  const subject = createRepository({ complete: false });
-  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
-  const captured = capture(subject, {
-    testExecutions: collectCertificationTestExecutions(subject.root, subject.head)
-  });
-  const p39 = captured.document.requirements.find((row) => row.requirementId === 'P-39');
-  const p11 = captured.document.requirements.find((row) => row.requirementId === 'P-11');
-  const p12 = captured.document.requirements.find((row) => row.requirementId === 'P-12');
-  const p13 = captured.document.requirements.find((row) => row.requirementId === 'P-13');
-  const p14 = captured.document.requirements.find((row) => row.requirementId === 'P-14');
-  const p17 = captured.document.requirements.find((row) => row.requirementId === 'P-17');
-  const p18 = captured.document.requirements.find((row) => row.requirementId === 'P-18');
-  const p19 = captured.document.requirements.find((row) => row.requirementId === 'P-19');
-  const p20 = captured.document.requirements.find((row) => row.requirementId === 'P-20');
-  const p21 = captured.document.requirements.find((row) => row.requirementId === 'P-21');
-  const p22 = captured.document.requirements.find((row) => row.requirementId === 'P-22');
-  const p23 = captured.document.requirements.find((row) => row.requirementId === 'P-23');
-  const p24 = captured.document.requirements.find((row) => row.requirementId === 'P-24');
-  const p25 = captured.document.requirements.find((row) => row.requirementId === 'P-25');
-  const p26 = captured.document.requirements.find((row) => row.requirementId === 'P-26');
-  const p27 = captured.document.requirements.find((row) => row.requirementId === 'P-27');
-  const p28 = captured.document.requirements.find((row) => row.requirementId === 'P-28');
-  const p29 = captured.document.requirements.find((row) => row.requirementId === 'P-29');
-  const p30 = captured.document.requirements.find((row) => row.requirementId === 'P-30');
-  const p32 = captured.document.requirements.find((row) => row.requirementId === 'P-32');
-  assert.equal(p39.ready, true, JSON.stringify(p39));
-  assert.equal(p11.ready, true, JSON.stringify(p11));
-  assert.equal(p12.ready, true, JSON.stringify(p12));
-  assert.equal(p13.ready, true, JSON.stringify(p13));
-  assert.equal(p14.ready, true, JSON.stringify(p14));
-  assert.equal(p17.ready, true, JSON.stringify(p17));
-  assert.equal(p18.ready, true, JSON.stringify(p18));
-  assert.equal(p19.ready, true, JSON.stringify(p19));
-  assert.equal(p20.ready, true, JSON.stringify(p20));
-  assert.equal(p21.ready, true, JSON.stringify(p21));
-  assert.equal(p22.ready, true, JSON.stringify(p22));
-  assert.equal(p23.ready, true, JSON.stringify(p23));
-  assert.equal(p24.ready, true, JSON.stringify(p24));
-  assert.equal(p25.ready, true, JSON.stringify(p25));
-  assert.equal(p26.ready, true, JSON.stringify(p26));
-  assert.equal(p27.ready, true, JSON.stringify(p27));
-  assert.equal(p28.ready, true, JSON.stringify(p28));
-  assert.equal(p29.ready, true, JSON.stringify(p29));
-  assert.equal(p30.ready, true, JSON.stringify(p30));
-  assert.equal(p32.ready, true, JSON.stringify(p32));
-  assert.equal(captured.document.status, 'passed');
-  assert.equal(captured.document.summary.validatorCount, 40);
-  assert.equal(captured.document.summary.captureCount, 40);
-  assert.equal(captured.document.summary.materializerCount, 40);
-  assert.equal(captured.document.summary.readyCount, 40, JSON.stringify(p32));
-  assert.deepEqual(
-    captured.document.requirements.filter((row) => !row.ready).map((row) => row.requirementId),
-    []
-  );
-  await assert.doesNotReject(
-    () => validateProductRequirement(validatorContext(subject, captured))
-  );
+  const fixture = await getSharedOwnershipFixture();
+  assertSharedOwnershipFixture(fixture);
+  try {
+    const subject = privateCloneSubject(t, fixture);
+    const captured = capture(subject, {
+      testExecutions: cloneRows(fixture.fourWorkerRows)
+    });
+    const p39 = captured.document.requirements.find((row) => row.requirementId === 'P-39');
+    const p11 = captured.document.requirements.find((row) => row.requirementId === 'P-11');
+    const p12 = captured.document.requirements.find((row) => row.requirementId === 'P-12');
+    const p13 = captured.document.requirements.find((row) => row.requirementId === 'P-13');
+    const p14 = captured.document.requirements.find((row) => row.requirementId === 'P-14');
+    const p17 = captured.document.requirements.find((row) => row.requirementId === 'P-17');
+    const p18 = captured.document.requirements.find((row) => row.requirementId === 'P-18');
+    const p19 = captured.document.requirements.find((row) => row.requirementId === 'P-19');
+    const p20 = captured.document.requirements.find((row) => row.requirementId === 'P-20');
+    const p21 = captured.document.requirements.find((row) => row.requirementId === 'P-21');
+    const p22 = captured.document.requirements.find((row) => row.requirementId === 'P-22');
+    const p23 = captured.document.requirements.find((row) => row.requirementId === 'P-23');
+    const p24 = captured.document.requirements.find((row) => row.requirementId === 'P-24');
+    const p25 = captured.document.requirements.find((row) => row.requirementId === 'P-25');
+    const p26 = captured.document.requirements.find((row) => row.requirementId === 'P-26');
+    const p27 = captured.document.requirements.find((row) => row.requirementId === 'P-27');
+    const p28 = captured.document.requirements.find((row) => row.requirementId === 'P-28');
+    const p29 = captured.document.requirements.find((row) => row.requirementId === 'P-29');
+    const p30 = captured.document.requirements.find((row) => row.requirementId === 'P-30');
+    const p32 = captured.document.requirements.find((row) => row.requirementId === 'P-32');
+    assert.equal(p39.ready, true, JSON.stringify(p39));
+    assert.equal(p11.ready, true, JSON.stringify(p11));
+    assert.equal(p12.ready, true, JSON.stringify(p12));
+    assert.equal(p13.ready, true, JSON.stringify(p13));
+    assert.equal(p14.ready, true, JSON.stringify(p14));
+    assert.equal(p17.ready, true, JSON.stringify(p17));
+    assert.equal(p18.ready, true, JSON.stringify(p18));
+    assert.equal(p19.ready, true, JSON.stringify(p19));
+    assert.equal(p20.ready, true, JSON.stringify(p20));
+    assert.equal(p21.ready, true, JSON.stringify(p21));
+    assert.equal(p22.ready, true, JSON.stringify(p22));
+    assert.equal(p23.ready, true, JSON.stringify(p23));
+    assert.equal(p24.ready, true, JSON.stringify(p24));
+    assert.equal(p25.ready, true, JSON.stringify(p25));
+    assert.equal(p26.ready, true, JSON.stringify(p26));
+    assert.equal(p27.ready, true, JSON.stringify(p27));
+    assert.equal(p28.ready, true, JSON.stringify(p28));
+    assert.equal(p29.ready, true, JSON.stringify(p29));
+    assert.equal(p30.ready, true, JSON.stringify(p30));
+    assert.equal(p32.ready, true, JSON.stringify(p32));
+    assert.equal(captured.document.status, 'passed');
+    assert.equal(captured.document.summary.validatorCount, 40);
+    assert.equal(captured.document.summary.captureCount, 40);
+    assert.equal(captured.document.summary.materializerCount, 40);
+    assert.equal(captured.document.summary.readyCount, 40, JSON.stringify(p32));
+    assert.deepEqual(
+      captured.document.requirements.filter((row) => !row.ready).map((row) => row.requirementId),
+      []
+    );
+    await assert.doesNotReject(
+      () => validateProductRequirement(validatorContext(subject, captured))
+    );
+  } finally {
+    assertSharedOwnershipFixture(fixture);
+  }
 });
 
 test('P-02 validator rejects an invocation without a passed release closure', async () => {
@@ -819,33 +1078,24 @@ test('bounded ownership collector rejects invalid concurrency before collection'
   }
 });
 
-test('bounded ownership collector is deterministic and isolates semantic mutations across concurrency', (t) => {
-  const subject = createRepository();
-  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
-  const fixturePaths = [
-    'scripts/linux-port/product-validators/P-05.mjs',
-    'scripts/linux-port/ownership-tests/P-05.test.mjs',
-    'scripts/linux-port/product-validators/P-06.mjs',
-    'scripts/linux-port/ownership-tests/P-06.test.mjs'
-  ];
-  const before = new Map(fixturePaths.map((relativePath) =>
-    [relativePath, Buffer.from(fs.readFileSync(path.join(subject.root, relativePath)))]
-  ));
-  const single = withCollectorConcurrency('1', () =>
-    collectCertificationTestExecutions(subject.root, subject.head)
-  );
-  const quad = withCollectorConcurrency('4', () =>
-    collectCertificationTestExecutions(subject.root, subject.head)
-  );
-  assert.deepEqual(quad, single);
-  assert.equal(single.length, 120);
-  assert.equal(new Set(single.map((row) => `${row.requirementId}:${row.component}`)).size, 120);
-  assert.ok(single.every((row) => row.status === 'passed'), JSON.stringify(
-    single.filter((row) => row.status !== 'passed'), null, 2
-  ));
-  assert.ok(single.every((row) => row.mutationDetected === true));
-  for (const [relativePath, bytes] of before) {
-    assert.ok(bytes.equals(fs.readFileSync(path.join(subject.root, relativePath))), relativePath);
+test('bounded ownership collector is deterministic and isolates semantic mutations across concurrency', async () => {
+  const fixture = await getSharedOwnershipFixture();
+  assertSharedOwnershipFixture(fixture);
+  try {
+    const single = fixture.oneWorkerRows;
+    const quad = fixture.fourWorkerRows;
+    assert.deepEqual(quad, single);
+    assert.equal(single.length, 120);
+    assert.equal(new Set(single.map((row) => `${row.requirementId}:${row.component}`)).size, 120);
+    assert.ok(single.every((row) => row.status === 'passed'), JSON.stringify(
+      single.filter((row) => row.status !== 'passed'), null, 2
+    ));
+    assert.ok(single.every((row) => row.mutationDetected === true));
+    for (const [relativePath, bytes] of fixture.savedBytes) {
+      assert.ok(bytes.equals(fs.readFileSync(path.join(fixture.subject.root, relativePath))), relativePath);
+    }
+  } finally {
+    assertSharedOwnershipFixture(fixture);
   }
 });
 
