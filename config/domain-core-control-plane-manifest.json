@@ -314,7 +314,7 @@
     "windows/Directory.Build.targets": ["830ea80e1a0f1123","572e0c1472ced5b7","9105623ed5c56aad","32c7766d4923c002"],
     "windows/app/OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj": ["161a894d2fb61a9f","67fe3a8a7dd85aa0","ff1949eadf531f39","3e6f67c8714fd5c4"],
     "windows/app/OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj": ["ed9d5e8fa3c9a3be","9070a6283450906a","14b5d4125de506f1","9cbc7a11bfcf24b4"],
-    "windows/storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj": ["6d0f53b972983f85","ddc68bc029b1ed1b","a87a680be221da59","a2140d11ae02983e"],
+    "windows/storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj": ["b41eca03509a3638","8d6463f98d50b28f","32c749973fbcad55","f288ddb3596c4324"],
     "windows/tests/quota/DomainCoreQuotaBridgeTests.cs": ["e9dbca353da98f39","7fa21fa7495dae7d","1ef4def5656da36d","d433c788e2a3955c"],
     "windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj": ["0c5669981909a795","8ac6197cf7b41a9d","d95622d7262fc1a9","3030f13f7fafe2e3"]
   }

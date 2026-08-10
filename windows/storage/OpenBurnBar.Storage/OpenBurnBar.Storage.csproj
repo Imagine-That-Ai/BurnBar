@@ -35,6 +35,17 @@
 
   <ItemGroup>
     <!--
+      The storage seam's own proof suite exercises the internal additive-upgrade
+      catalog (AdditiveUpgradeSteps / BillingKindBackfillSql) against a real
+      encrypted database. Those stay internal — they are migration mechanics, not
+      API — but the test that proves the SQL agrees with the public classifier has
+      to run the REAL SQL, not a copy of it.
+    -->
+    <InternalsVisibleTo Include="OpenBurnBar.Storage.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
       Microsoft.Data.Sqlite.Core (provider only, NO bundled native) +
       SQLitePCLRaw.bundle_e_sqlcipher (the open-source SQLCipher 4.x amalgamation
       per-RID). This exact pairing is what opened the Mac DB on the Windows dev
