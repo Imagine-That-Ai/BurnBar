@@ -2,6 +2,94 @@ import Foundation
 import os
 import OpenBurnBarCore
 
+/// Single source of truth for "which `AgentProvider` does this daemon
+/// credential-slot provider id belong to, for quota purposes".
+///
+/// This map used to exist twice — once for the per-account quota *fetch*
+/// (`QuotaRefreshActor`) and once for the `ProviderAccountDoc` *projection*
+/// (`ProviderQuotaService.persistDaemonCredentialSlotAccounts`) — and the two
+/// copies drifted: xAI was in the fetch list but not the projection, so xAI
+/// credential slots produced per-account quota snapshots that never became
+/// accounts. `connectedQuotaProviderIDs` then missed xAI, which in turn skewed
+/// popover visibility, setup-slot classification, the Connections list, and the
+/// removed-slot tombstone sweep. Keep this the only copy.
+enum QuotaCapableProviderMap {
+    /// Providers whose quota endpoint reports **organization-wide** usage, so a
+    /// per-credential-slot fetch would return the same numbers for every slot.
+    /// Fetching per account would triple-count one org in the cumulative merge
+    /// and render N identical cards, so these stay provider-level only.
+    ///
+    /// OpenAI: `/v1/organization/usage/completions` requires an org admin key
+    /// and is scoped to the whole organization, not the key.
+    static let organizationScopedProviders: Set<AgentProvider> = [.openAI]
+
+    static func provider(forDaemonProviderID providerID: String) -> AgentProvider? {
+        switch ProviderID.normalize(providerID) {
+        case "minimax":
+            return .minimax
+        case "zai", "z-ai":
+            return .zai
+        case "ollama":
+            return .ollama
+        case "openai":
+            return .openAI
+        case "anthropic", "claude", "claude-code":
+            return .claudeCode
+        case "opencode", "open-code":
+            return .openCode
+        case "deepseek", "deep-seek":
+            return .deepSeek
+        case "moonshot", "kimi":
+            return .kimi
+        case "xai", "x-ai", "x.ai", "grok":
+            return .xAI
+        default:
+            return nil
+        }
+    }
+
+    /// Whether per-account quota snapshots are meaningful for `provider`.
+    static func supportsPerAccountQuota(_ provider: AgentProvider) -> Bool {
+        !organizationScopedProviders.contains(provider)
+    }
+}
+
+/// Human-facing naming for a quota snapshot's account slot, shared by every
+/// surface that renders one (Quota workspace cards, the provider dashboard
+/// panel, the reset atlas). Centralised because each surface previously did
+/// its own `accountLabel ?? accountID ?? sourceId` chain, which surfaced the
+/// literal string `"default"` as an account name on provider-rollup cards.
+enum ProviderQuotaAccountDisplay {
+    /// The synthetic cross-account merge produced by `cumulativeSnapshot`.
+    static func isMerged(_ snapshot: ProviderQuotaSnapshot) -> Bool {
+        snapshot.sourceId.hasPrefix("cumulative:")
+    }
+
+    /// A provider-level rollup carrying no account attribution at all.
+    static func isRollup(_ snapshot: ProviderQuotaSnapshot) -> Bool {
+        guard nonEmpty(snapshot.accountID) == nil else { return false }
+        let sourceID = snapshot.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return sourceID.isEmpty || sourceID == "default"
+    }
+
+    static func label(for snapshot: ProviderQuotaSnapshot, provider: AgentProvider) -> String {
+        if let label = nonEmpty(snapshot.accountLabel) { return label }
+        if let accountID = nonEmpty(snapshot.accountID) { return accountID }
+        guard isRollup(snapshot) else { return snapshot.sourceId }
+        return QuotaCapableProviderMap.organizationScopedProviders.contains(provider)
+            ? "Organization · all keys"
+            : "Default login"
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
+}
+
 extension ProviderQuotaService {
     internal func upsertSnapshot(_ snapshot: ProviderQuotaSnapshot, for provider: AgentProvider? = nil) {  // pure-move: was private
         if Self.normalizedSnapshotIdentifier(snapshot.accountID) == nil {
@@ -126,26 +214,7 @@ extension ProviderQuotaService {
     }
 
     private static func quotaCapableProvider(forProviderID providerID: String) -> AgentProvider? {
-        switch ProviderID.normalize(providerID) {
-        case "minimax":
-            return .minimax
-        case "zai", "z-ai":
-            return .zai
-        case "ollama":
-            return .ollama
-        case "openai":
-            return .openAI
-        case "anthropic", "claude", "claude-code":
-            return .claudeCode
-        case "opencode", "open-code":
-            return .openCode
-        case "deepseek", "deep-seek":
-            return .deepSeek
-        case "moonshot", "kimi":
-            return .kimi
-        default:
-            return nil
-        }
+        QuotaCapableProviderMap.provider(forDaemonProviderID: providerID)
     }
 
     internal static func normalizedSnapshotIdentifier(_ value: String?) -> String? {  // pure-move: was private

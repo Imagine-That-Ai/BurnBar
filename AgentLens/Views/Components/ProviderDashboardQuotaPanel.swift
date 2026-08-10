@@ -11,17 +11,27 @@ struct ProviderDashboardQuotaPanel: View {
     let dataStore: DataStore
     @Environment(SettingsManager.self) private var settingsManager
 
-    @State private var selectedAccountID: String?
+    @State private var selectedSourceID: String?
+    @State private var profileIndex = QuotaWorkspaceProfileIndex()
 
     private var snapshot: ProviderQuotaSnapshot? {
         quotaService.snapshot(for: provider)
     }
 
+    /// The exact account set the Quota workspace renders, so a provider's
+    /// detail page and the Quota tab never disagree about which accounts
+    /// exist. Going through `displaySnapshots(for:cumulative:)` +
+    /// `filteredDisplaySnapshots` buys three things this panel used to miss:
+    /// the `cumulativeAcrossAccounts` toggle, the synthetic "Current <CLI>
+    /// login" account, and the default-config / current-CLI coalescing.
     private var accountSnapshots: [ProviderQuotaSnapshot] {
-        // The per-account list intentionally drops the provider-level rollup
-        // so the picker doesn't double-count accounts that already have a
-        // dedicated snapshot.
-        quotaService.snapshots(for: provider).filter { $0.accountID != nil }
+        QuotaWorkspaceViewModel.filteredDisplaySnapshots(
+            quotaService.displaySnapshots(
+                for: provider,
+                cumulative: settingsManager.cumulativeAcrossAccounts
+            ),
+            profileIndex: profileIndex
+        )
     }
 
     private var hasMultipleAccounts: Bool {
@@ -29,8 +39,8 @@ struct ProviderDashboardQuotaPanel: View {
     }
 
     private var activeSnapshot: ProviderQuotaSnapshot? {
-        if let selectedAccountID,
-           let match = accountSnapshots.first(where: { $0.accountID == selectedAccountID }) {
+        if let selectedSourceID,
+           let match = accountSnapshots.first(where: { $0.sourceID == selectedSourceID }) {
             return match
         }
         return accountSnapshots.first ?? snapshot
@@ -116,10 +126,14 @@ struct ProviderDashboardQuotaPanel: View {
                     )
                 )
                 await quotaService.refreshIfNeeded(dataStore: dataStore)
+                profileIndex = QuotaWorkspaceProfileIndex(
+                    profiles: (try? dataStore.switcherStore.fetchAllProfiles()) ?? [],
+                    homeDirectoryURL: quotaService.quotaHomeDirectoryURL
+                )
             }
-            .onChange(of: accountSnapshots.map(\.accountID)) { _, ids in
-                if let selectedAccountID, !ids.contains(selectedAccountID) {
-                    self.selectedAccountID = nil
+            .onChange(of: accountSnapshots.map(\.sourceID)) { _, ids in
+                if let selectedSourceID, !ids.contains(selectedSourceID) {
+                    self.selectedSourceID = nil
                 }
             }
         }
@@ -187,10 +201,10 @@ struct ProviderDashboardQuotaPanel: View {
     }
 
     private func accountChip(snap: ProviderQuotaSnapshot) -> some View {
-        let isSelected = (selectedAccountID ?? accountSnapshots.first?.accountID) == snap.accountID
-        let label = snap.accountLabel ?? snap.accountID ?? "Account"
+        let isSelected = (selectedSourceID ?? accountSnapshots.first?.sourceID) == snap.sourceID
+        let label = ProviderQuotaAccountDisplay.label(for: snap, provider: provider)
         return Button {
-            selectedAccountID = snap.accountID
+            selectedSourceID = snap.sourceID
         } label: {
             HStack(spacing: 6) {
                 Circle()
@@ -227,15 +241,17 @@ struct ProviderDashboardQuotaPanel: View {
 
     private func accountIdentityStrip(snapshot: ProviderQuotaSnapshot) -> some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
-            Image(systemName: "person.crop.circle")
+            Image(systemName: ProviderQuotaAccountDisplay.isMerged(snapshot) ? "square.stack.3d.up" : "person.crop.circle")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(DesignSystem.Colors.textMuted)
-            Text(snapshot.accountLabel ?? snapshot.accountID ?? "Account")
+            Text(ProviderQuotaAccountDisplay.label(for: snapshot, provider: provider))
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            if let scope = snapshot.accountStorageScope {
+            // The merged snapshot's `.cloudRefreshable` scope is an artifact of
+            // the synthetic envelope, not where any real credential lives.
+            if let scope = snapshot.accountStorageScope, !ProviderQuotaAccountDisplay.isMerged(snapshot) {
                 ProviderAccountStorageChip(scope: scope, compact: true)
             }
             Spacer()

@@ -482,6 +482,119 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(filtered.first?.displayableQuotaBuckets.first?.remainingPercent, 75)
     }
 
+    /// Account identity is keyed on `accountID`, not on the display label.
+    /// Two real logins that happen to share a name — easy to hit, since every
+    /// unnamed switcher profile falls back to "<CLI> OAuth profile" and nothing
+    /// stops two daemon slots from carrying the same user-typed label — must
+    /// both survive. Collapsing them silently hid one of the user's accounts.
+    func test_filteredDisplaySnapshotsKeepsDistinctAccountsThatShareALabel() {
+        let first = makeAccountSnapshot(
+            provider: .claudeCode,
+            accountID: "slot-work",
+            accountLabel: "Claude OAuth profile",
+            sourceID: "daemon-slot:anthropic:slot-work",
+            usedPercent: 20
+        )
+        let second = makeAccountSnapshot(
+            provider: .claudeCode,
+            accountID: "slot-personal",
+            accountLabel: "Claude OAuth profile",
+            sourceID: "daemon-slot:anthropic:slot-personal",
+            usedPercent: 80
+        )
+
+        let filtered = QuotaWorkspaceViewModel.filteredDisplaySnapshots(
+            [first, second],
+            profileIndex: QuotaWorkspaceProfileIndex()
+        )
+
+        XCTAssertEqual(filtered.map(\.accountID), ["slot-work", "slot-personal"])
+    }
+
+    /// The current-CLI bridge is scoped to the synthetic record: it drops the
+    /// pseudo-account, never a real one. Two synthetic-looking labels on real
+    /// accounts stay separate (covered above); a synthetic record with no
+    /// matching profile stays visible.
+    func test_filteredDisplaySnapshotsKeepsCurrentCLIWhenNoProfileMatchesItsLabel() {
+        let current = makeAccountSnapshot(
+            provider: .codex,
+            accountID: "current-codex",
+            accountLabel: "alberto@imagine-that.ai",
+            sourceID: "switcher-cli-current:codex",
+            usedPercent: 10
+        )
+        let otherProfile = makeAccountSnapshot(
+            provider: .codex,
+            accountID: "profile-personal",
+            accountLabel: "alberto@personal.example",
+            sourceID: "switcher-cli:codex:profile-personal",
+            usedPercent: 40
+        )
+
+        let filtered = QuotaWorkspaceViewModel.filteredDisplaySnapshots(
+            [current, otherProfile],
+            profileIndex: QuotaWorkspaceProfileIndex()
+        )
+
+        XCTAssertEqual(filtered.map(\.accountID), ["current-codex", "profile-personal"])
+    }
+
+    /// `makeEntry` used to fall back to `sourceId`, so a provider rollup card
+    /// was labelled with the literal string "default".
+    func test_makeEntry_labelsProviderRollupWithoutLeakingTheDefaultSourceID() {
+        let rollup = ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            fetchedAt: Date(timeIntervalSince1970: 1_750_000_000),
+            source: .officialAPI,
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "ok",
+            buckets: []
+        )
+        let entry = QuotaWorkspaceViewModel.makeEntry(
+            provider: .claudeCode,
+            snapshot: rollup,
+            isRefreshing: false
+        )
+        XCTAssertEqual(entry.accountLabel, "Default login")
+    }
+
+    private func makeAccountSnapshot(
+        provider: AgentProvider,
+        accountID: String,
+        accountLabel: String,
+        sourceID: String,
+        usedPercent: Double
+    ) -> ProviderQuotaSnapshot {
+        ProviderQuotaSnapshot(
+            provider: provider,
+            providerID: provider.providerID,
+            accountID: accountID,
+            accountLabel: accountLabel,
+            accountStorageScope: .localOnly,
+            fetchedAt: Date(timeIntervalSince1970: 1_750_000_000),
+            source: .officialAPI,
+            sourceId: sourceID,
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "ok",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "5h",
+                    label: "5-hour window",
+                    windowKind: .rollingHours,
+                    usedValue: usedPercent,
+                    limitValue: 100,
+                    remainingValue: 100 - usedPercent,
+                    usedPercent: usedPercent,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+    }
+
     // MARK: sort
 
     func test_sort_urgencyPutsHighestPressureFirst() {

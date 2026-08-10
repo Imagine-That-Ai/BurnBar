@@ -22,7 +22,8 @@ struct ChatEngineBackendStrip: View {
                 provider: provider,
                 style: .full,
                 displayName: backend.displayName,
-                service: quotaService
+                service: quotaService,
+                cumulative: settingsManager.cumulativeAcrossAccounts
               )
         else {
             return backend.displayName

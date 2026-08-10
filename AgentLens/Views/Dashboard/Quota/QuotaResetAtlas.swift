@@ -53,6 +53,14 @@ struct QuotaResetAtlas: View {
         dayBuckets.reduce(0) { $0 + $1.entries.count }
     }
 
+    /// Providers contributing more than one account to the atlas. Their cells
+    /// are otherwise identical — same logo, same colour — so the account has
+    /// to be on screen, not only in the hover tooltip.
+    private var multiAccountProviders: Set<AgentProvider> {
+        let counts = entries.reduce(into: [AgentProvider: Int]()) { $0[$1.provider, default: 0] += 1 }
+        return Set(counts.filter { $0.value > 1 }.keys)
+    }
+
     // MARK: Body
 
     var body: some View {
@@ -172,6 +180,7 @@ struct QuotaResetAtlas: View {
 
     private func resetCell(entry: SubscriptionEntry) -> some View {
         let theme = ProviderTheme.theme(for: entry.provider)
+        let showsAccount = multiAccountProviders.contains(entry.provider)
         return VStack(spacing: 3) {
             ZStack {
                 Circle()
@@ -197,12 +206,46 @@ struct QuotaResetAtlas: View {
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
+
+            if showsAccount {
+                Text(shortAccountLabel(for: entry))
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundStyle(theme.primaryColor.opacity(0.85))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 58)
+            }
         }
         .padding(.horizontal, 2)
         .help(tooltipText(for: entry))
-        .accessibilityLabel(
-            "\(entry.provider.displayName) resets \(entry.nextResetDate?.formatted(date: .abbreviated, time: .shortened) ?? "later")"
-        )
+        .accessibilityLabel(accessibilityLabel(for: entry, includesAccount: showsAccount))
+    }
+
+    /// Compact account discriminator for the cell. Prefers the local part of
+    /// an email (the shortest thing that still distinguishes two logins on the
+    /// same provider) and falls back to the first word of the label.
+    private func shortAccountLabel(for entry: SubscriptionEntry) -> String {
+        let label = entry.accountLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let short: Substring? = {
+            guard let atIndex = label.firstIndex(of: "@") else {
+                return label.split(separator: " ").first
+            }
+            let local = label[label.startIndex..<atIndex]
+            guard let separator = local.lastIndex(where: { $0 == " " || $0 == "•" || $0 == "·" }) else {
+                return local
+            }
+            return local[local.index(after: separator)...]
+        }()
+        guard let short, !short.isEmpty else { return label }
+        return String(short)
+    }
+
+    private func accessibilityLabel(for entry: SubscriptionEntry, includesAccount: Bool) -> String {
+        let when = entry.nextResetDate?.formatted(date: .abbreviated, time: .shortened) ?? "later"
+        guard includesAccount else {
+            return "\(entry.provider.displayName) resets \(when)"
+        }
+        return "\(entry.provider.displayName), \(entry.accountLabel), resets \(when)"
     }
 
     // MARK: Formatting helpers

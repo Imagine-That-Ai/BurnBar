@@ -256,6 +256,153 @@ extension ProviderQuotaServiceTests {
         XCTAssertEqual(merged.statusMessage?.contains("Stale"), true)
     }
 
+    // MARK: - Multi-account readiness: shared daemon provider map
+
+    /// The fetch path and the `ProviderAccountDoc` projection used to keep
+    /// separate copies of this map, and the projection's copy was missing xAI —
+    /// xAI credential slots produced per-account quota snapshots that never
+    /// became accounts. There is exactly one copy now; this pins its contents.
+    func test_quotaCapableProviderMap_coversEveryMultiAccountDaemonProvider() {
+        let expected: [String: AgentProvider] = [
+            "minimax": .minimax,
+            "zai": .zai,
+            "z-ai": .zai,
+            "ollama": .ollama,
+            "openai": .openAI,
+            "anthropic": .claudeCode,
+            "claude": .claudeCode,
+            "claude-code": .claudeCode,
+            "opencode": .openCode,
+            "deepseek": .deepSeek,
+            "moonshot": .kimi,
+            "kimi": .kimi,
+            "xai": .xAI,
+            "x-ai": .xAI,
+            "grok": .xAI
+        ]
+        for (providerID, provider) in expected {
+            XCTAssertEqual(
+                QuotaCapableProviderMap.provider(forDaemonProviderID: providerID),
+                provider,
+                "daemon providerID \(providerID) should map to \(provider)"
+            )
+        }
+        XCTAssertNil(QuotaCapableProviderMap.provider(forDaemonProviderID: "not-a-provider"))
+    }
+
+    /// OpenAI's usage endpoint is organization-scoped, so every credential slot
+    /// would report identical numbers. It must stay provider-level or the
+    /// cumulative merge multiplies one org's usage by its key count.
+    func test_quotaCapableProviderMap_marksOpenAIOrganizationScoped() {
+        XCTAssertFalse(QuotaCapableProviderMap.supportsPerAccountQuota(.openAI))
+        XCTAssertTrue(QuotaCapableProviderMap.supportsPerAccountQuota(.claudeCode))
+        XCTAssertTrue(QuotaCapableProviderMap.supportsPerAccountQuota(.xAI))
+    }
+
+    // MARK: - Multi-account readiness: account display naming
+
+    func test_accountDisplayLabel_prefersAccountLabelThenAccountID() {
+        let labelled = makeSnapshot(accountID: "a1", buckets: [])
+        XCTAssertEqual(
+            ProviderQuotaAccountDisplay.label(for: labelled, provider: .claudeCode),
+            "Account a1"
+        )
+
+        let idOnly = ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            accountID: "slot-2",
+            fetchedAt: now,
+            source: .officialAPI,
+            sourceId: "daemon-slot:anthropic:slot-2",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "ok",
+            buckets: []
+        )
+        XCTAssertEqual(
+            ProviderQuotaAccountDisplay.label(for: idOnly, provider: .claudeCode),
+            "slot-2"
+        )
+    }
+
+    /// A provider rollup carries `sourceId == "default"`, which every surface
+    /// used to render verbatim as the account name.
+    func test_accountDisplayLabel_neverSurfacesTheLiteralDefaultSourceID() {
+        let rollup = ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            fetchedAt: now,
+            source: .officialAPI,
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "ok",
+            buckets: []
+        )
+        XCTAssertEqual(rollup.sourceId, "default")
+        XCTAssertTrue(ProviderQuotaAccountDisplay.isRollup(rollup))
+        XCTAssertEqual(
+            ProviderQuotaAccountDisplay.label(for: rollup, provider: .claudeCode),
+            "Default login"
+        )
+        XCTAssertEqual(
+            ProviderQuotaAccountDisplay.label(for: rollup, provider: .openAI),
+            "Organization · all keys"
+        )
+    }
+
+    func test_accountDisplayLabel_recognisesTheSyntheticMergedSnapshot() throws {
+        let merged = try XCTUnwrap(
+            ProviderQuotaService.cumulativeSnapshot(
+                provider: .claudeCode,
+                from: [
+                    makeSnapshot(accountID: "a1", buckets: [makeBucket(key: "5h", windowKind: .rollingHours, used: 10, limit: 100)]),
+                    makeSnapshot(accountID: "a2", buckets: [makeBucket(key: "5h", windowKind: .rollingHours, used: 20, limit: 100)])
+                ],
+                now: now
+            )
+        )
+        XCTAssertTrue(ProviderQuotaAccountDisplay.isMerged(merged))
+        XCTAssertFalse(ProviderQuotaAccountDisplay.isRollup(merged))
+        XCTAssertEqual(
+            ProviderQuotaAccountDisplay.label(for: merged, provider: .claudeCode),
+            "All accounts (2)"
+        )
+    }
+
+    // MARK: - Multi-account readiness: per-account snapshot identity
+
+    /// `withAccountMetadata` used to copy the base snapshot's `id` through, so
+    /// every account of a provider carried `claude-code_default` and any
+    /// `ForEach` over them without an explicit key collapsed to one row.
+    func test_withAccountMetadata_givesEachAccountItsOwnIdentifiableID() {
+        let base = ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            fetchedAt: now,
+            source: .officialAPI,
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "ok",
+            buckets: []
+        )
+        let first = base.withAccountMetadata(
+            providerID: AgentProvider.claudeCode.providerID,
+            accountID: "work",
+            accountLabel: "Work",
+            accountStorageScope: .deviceKeychain,
+            sourceId: "daemon-slot:anthropic:work"
+        )
+        let second = base.withAccountMetadata(
+            providerID: AgentProvider.claudeCode.providerID,
+            accountID: "personal",
+            accountLabel: "Personal",
+            accountStorageScope: .deviceKeychain,
+            sourceId: "daemon-slot:anthropic:personal"
+        )
+
+        XCTAssertNotEqual(first.id, base.id)
+        XCTAssertNotEqual(first.id, second.id)
+        XCTAssertEqual(Set([first, second].map(\.id)).count, 2)
+    }
+
     // MARK: Cumulative-test fixtures
 
     /// Reference clock used by the cumulative tests above. Fixed so

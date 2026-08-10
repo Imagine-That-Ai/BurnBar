@@ -156,6 +156,7 @@ struct SubscriptionConstellationHero: View {
                         ForEach(providerChipEntries, id: \.id) { entry in
                             SubscriptionOrb(
                                 entry: entry,
+                                accountCount: accountCountsByProvider[entry.provider] ?? 1,
                                 isSelected: selectedProvider == entry.provider,
                                 isDimmed: isFiltered && selectedProvider != entry.provider,
                                 onTap: { onOrbTap(entry.provider) }
@@ -192,6 +193,15 @@ struct SubscriptionConstellationHero: View {
         }
     }
 
+    /// How many accounts each orb stands for. Without this the constellation
+    /// silently understates a multi-account footprint: one Claude orb reading
+    /// 12% looks like one plan in trouble rather than the worst of three.
+    private var accountCountsByProvider: [AgentProvider: Int] {
+        entries.reduce(into: [:]) { counts, entry in
+            counts[entry.provider, default: 0] += 1
+        }
+    }
+
     private var mercuryHairline: some View {
         LinearGradient(
             colors: [
@@ -211,6 +221,9 @@ struct SubscriptionConstellationHero: View {
 
 private struct SubscriptionOrb: View {
     let entry: SubscriptionEntry
+    /// Number of accounts this orb summarises. `entry` is the worst-pressured
+    /// one of them.
+    var accountCount: Int = 1
     var isSelected: Bool = false
     var isDimmed: Bool = false
     var onTap: () -> Void = {}
@@ -261,6 +274,17 @@ private struct SubscriptionOrb: View {
 
                     ProviderQuotaIdentityOrb(provider: entry.provider, isActive: entry.isRefreshing)
                         .scaleEffect(hover ? 1.08 : 1.0)
+
+                    if accountCount > 1 {
+                        Text("\(accountCount)")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .frame(width: 16, height: 16)
+                            .background(Circle().fill(DesignSystem.Colors.surfaceElevated))
+                            .overlay(Circle().stroke(ringColor.opacity(0.7), lineWidth: 1))
+                            .offset(x: 22, y: -20)
+                    }
                 }
                 .frame(width: 64, height: 64)
                 .offset(y: hover ? -4 : 0)
@@ -299,17 +323,29 @@ private struct SubscriptionOrb: View {
         .animation(DesignSystem.Animation.gentle, value: isDimmed)
         .help(tooltipText)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            entry.primaryDisplayableBucket == nil
-                ? "\(entry.provider.displayName), quota signal unavailable"
-                : "\(entry.provider.displayName), \(entry.remainingPercentText) remaining"
-        )
+        .accessibilityLabel(orbAccessibilityLabel)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityHint(isSelected ? "Tap to clear focus" : "Tap to focus on this provider")
     }
 
+    private var orbAccessibilityLabel: String {
+        var parts = [entry.provider.displayName]
+        if accountCount > 1 {
+            parts.append("\(accountCount) accounts, worst is \(entry.accountLabel)")
+        }
+        parts.append(
+            entry.primaryDisplayableBucket == nil
+                ? "quota signal unavailable"
+                : "\(entry.remainingPercentText) remaining"
+        )
+        return parts.joined(separator: ", ")
+    }
+
     private var tooltipText: String {
         var lines: [String] = ["\(entry.provider.displayName) — \(entry.accountLabel)"]
+        if accountCount > 1 {
+            lines.append("Worst of \(accountCount) accounts")
+        }
         if let bucket = entry.weeklyOrMonthlyBucket ?? entry.primaryDisplayableBucket {
             lines.append("\(bucket.label): \(bucket.remainingText) left")
         } else {
