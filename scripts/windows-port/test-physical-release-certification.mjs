@@ -480,6 +480,22 @@ const windowsReleaseWorkflow = readFileSync(
   join(root, "../../.github/workflows/openburnbar-release-windows.yml"),
   "utf8",
 );
+function workflowStepBodies(workflow, stepName) {
+  const marker = `      - name: ${stepName}\n`;
+  const bodies = [];
+  let cursor = 0;
+  while (true) {
+    const markerIndex = workflow.indexOf(marker, cursor);
+    if (markerIndex === -1) break;
+    const bodyStart = markerIndex + marker.length;
+    const nextStep = workflow.indexOf("\n      - name:", bodyStart);
+    bodies.push(
+      workflow.slice(bodyStart, nextStep === -1 ? workflow.length : nextStep),
+    );
+    cursor = bodyStart;
+  }
+  return bodies;
+}
 const windowsFullPushTrigger = windowsFullWorkflow.slice(
   windowsFullWorkflow.indexOf("  push:"),
   windowsFullWorkflow.indexOf("  pull_request:"),
@@ -534,21 +550,73 @@ assert.match(windowsFastWorkflow, /Smoke supplemental certification templates/);
 assert.match(windowsFastWorkflow, /Supplemental template OK/);
 assert.match(windowsFastWorkflow, /run-physical-release-certification\.ps1/);
 assert.match(windowsFastWorkflow, /Language\.Parser\]::ParseFile/);
-assert.match(
+const windowsFastNativeHelperSteps = workflowStepBodies(
   windowsFastWorkflow,
-  /node --test scripts\/windows-port\/stage-local-domain-core-native\.test\.mjs/,
+  "Verify native candidate helpers on Windows",
 );
-assert.match(
-  windowsFastWorkflow,
-  /node --test scripts\/windows-port\/stage-local-rust-cdylib\.test\.mjs/,
+assert.equal(windowsFastNativeHelperSteps.length, 1);
+assert.equal(
+  (windowsFastNativeHelperSteps[0].match(/\bnode --test\b/gu) ?? []).length,
+  1,
+  "the Windows helper tests must share one fail-closed node invocation",
 );
-assert.match(
-  windowsFastWorkflow,
-  /node --test scripts\/windows-port\/verify-local-domain-core-identity\.test\.mjs/,
+for (const helperTest of [
+  "stage-local-domain-core-native.test.mjs",
+  "stage-local-rust-cdylib.test.mjs",
+  "verify-local-domain-core-identity.test.mjs",
+]) {
+  assert.ok(
+    windowsFastNativeHelperSteps[0].includes(helperTest),
+    `${helperTest} must run in the fast Windows helper step`,
+  );
+}
+const windowsFullNativeHelperSteps = workflowStepBodies(
+  windowsFullWorkflow,
+  "Verify native candidate helpers",
 );
+assert.equal(windowsFullNativeHelperSteps.length, 2);
+for (const helperStep of windowsFullNativeHelperSteps) {
+  assert.equal(
+    (helperStep.match(/\bnode --test\b/gu) ?? []).length,
+    1,
+    "each full Windows helper step must use one fail-closed node invocation",
+  );
+  for (const helperTest of [
+    "stage-local-domain-core-native.test.mjs",
+    "stage-local-rust-cdylib.test.mjs",
+    "verify-local-domain-core-identity.test.mjs",
+    "verify-trx-results.test.mjs",
+  ]) {
+    assert.ok(
+      helperStep.includes(helperTest),
+      `${helperTest} must run in each full Windows helper step`,
+    );
+  }
+}
+for (const nativeStepName of [
+  "Build exact-candidate native libraries",
+  "Stage exact native libraries",
+]) {
+  const nativeSteps = workflowStepBodies(windowsFullWorkflow, nativeStepName);
+  assert.equal(nativeSteps.length, 2);
+  for (const nativeStep of nativeSteps) {
+    assert.match(nativeStep, /\$ErrorActionPreference = "Stop"/u);
+    assert.match(
+      nativeStep,
+      /\$PSNativeCommandUseErrorActionPreference = \$true/u,
+      `${nativeStepName} must stop after the first failed native command`,
+    );
+  }
+}
+const livePlaywrightSteps = workflowStepBodies(
+  windowsFullWorkflow,
+  "Live Windows Playwright bridge lifecycle",
+);
+assert.equal(livePlaywrightSteps.length, 1);
 assert.match(
-  windowsFastWorkflow,
-  /Verify native candidate helpers on Windows[\s\S]*stage-local-domain-core-native\.test\.mjs[\s\S]*stage-local-rust-cdylib\.test\.mjs[\s\S]*verify-local-domain-core-identity\.test\.mjs/,
+  livePlaywrightSteps[0],
+  /\$PSNativeCommandUseErrorActionPreference = \$true/u,
+  "live Playwright setup must stop after the first failed native command",
 );
 assert.match(
   windowsFastWorkflow,

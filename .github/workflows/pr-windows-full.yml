@@ -202,10 +202,11 @@ jobs:
 
       - name: Verify native candidate helpers
         run: |
-          node --test scripts/windows-port/stage-local-domain-core-native.test.mjs
-          node --test scripts/windows-port/stage-local-rust-cdylib.test.mjs
-          node --test scripts/windows-port/verify-local-domain-core-identity.test.mjs
-          node --test scripts/windows-port/verify-trx-results.test.mjs
+          node --test `
+            scripts/windows-port/stage-local-domain-core-native.test.mjs `
+            scripts/windows-port/stage-local-rust-cdylib.test.mjs `
+            scripts/windows-port/verify-local-domain-core-identity.test.mjs `
+            scripts/windows-port/verify-trx-results.test.mjs
 
       # Restore the full solution. This resolves all ProjectReferences + NuGet
       # packages (WindowsAppSDK 1.8, Win2D 1.3, CommunityToolkit, Microsoft.Data.Sqlite,
@@ -217,12 +218,16 @@ jobs:
         env:
           OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           rustup run 1.96.0 cargo build --locked --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi --target x86_64-pc-windows-msvc
           rustup run 1.94.0 cargo build --locked --manifest-path crates/burnbar-remote/Cargo.toml -p burnbar-remote-ffi --target x86_64-pc-windows-msvc
           rustup run 1.96.0 cargo build --locked --manifest-path crates/openburnbar-iroh/Cargo.toml --target x86_64-pc-windows-msvc
 
       - name: Stage exact native libraries
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           node scripts/windows-port/stage-local-rust-cdylib.mjs --manifest-path crates/openburnbar-domain-core/Cargo.toml --toolchain 1.96.0 --logical-name openburnbar_domain_ffi --target x86_64-pc-windows-msvc --destination crates/openburnbar-domain-core/target/debug/openburnbar_domain_ffi.dll
           node scripts/windows-port/stage-local-rust-cdylib.mjs --manifest-path crates/burnbar-remote/Cargo.toml --toolchain 1.94.0 --logical-name burnbar_remote --target x86_64-pc-windows-msvc --destination crates/openburnbar-domain-core/target/debug/burnbar_remote.dll
           node scripts/windows-port/stage-local-rust-cdylib.mjs --manifest-path crates/openburnbar-iroh/Cargo.toml --toolchain 1.96.0 --logical-name openburnbar_iroh --target x86_64-pc-windows-msvc --destination crates/openburnbar-domain-core/target/debug/openburnbar_iroh.dll
@@ -255,6 +260,7 @@ jobs:
       - name: Live Windows Playwright bridge lifecycle
         run: |
           $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           $browsersPath = Join-Path $PWD ".playwright-browsers"
           $nodeRoot = Join-Path $PWD ".playwright-node"
           $env:PLAYWRIGHT_BROWSERS_PATH = $browsersPath
@@ -359,10 +365,11 @@ jobs:
 
       - name: Verify native candidate helpers
         run: |
-          node --test scripts/windows-port/stage-local-domain-core-native.test.mjs
-          node --test scripts/windows-port/stage-local-rust-cdylib.test.mjs
-          node --test scripts/windows-port/verify-local-domain-core-identity.test.mjs
-          node --test scripts/windows-port/verify-trx-results.test.mjs
+          node --test `
+            scripts/windows-port/stage-local-domain-core-native.test.mjs `
+            scripts/windows-port/stage-local-rust-cdylib.test.mjs `
+            scripts/windows-port/verify-local-domain-core-identity.test.mjs `
+            scripts/windows-port/verify-trx-results.test.mjs
 
       - name: Restore (dotnet restore)
         run: dotnet restore windows/OpenBurnBar.sln
@@ -371,12 +378,16 @@ jobs:
         env:
           OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           rustup run 1.96.0 cargo build --locked --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi --target aarch64-pc-windows-msvc
           rustup run 1.94.0 cargo build --locked --manifest-path crates/burnbar-remote/Cargo.toml -p burnbar-remote-ffi --target aarch64-pc-windows-msvc
           rustup run 1.96.0 cargo build --locked --manifest-path crates/openburnbar-iroh/Cargo.toml --target aarch64-pc-windows-msvc
 
       - name: Stage exact native libraries
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           node scripts/windows-port/stage-local-rust-cdylib.mjs --manifest-path crates/openburnbar-domain-core/Cargo.toml --toolchain 1.96.0 --logical-name openburnbar_domain_ffi --target aarch64-pc-windows-msvc --destination crates/openburnbar-domain-core/target/debug/openburnbar_domain_ffi.dll
           node scripts/windows-port/stage-local-rust-cdylib.mjs --manifest-path crates/burnbar-remote/Cargo.toml --toolchain 1.94.0 --logical-name burnbar_remote --target aarch64-pc-windows-msvc --destination crates/openburnbar-domain-core/target/debug/burnbar_remote.dll
           node scripts/windows-port/stage-local-rust-cdylib.mjs --manifest-path crates/openburnbar-iroh/Cargo.toml --toolchain 1.96.0 --logical-name openburnbar_iroh --target aarch64-pc-windows-msvc --destination crates/openburnbar-domain-core/target/debug/openburnbar_iroh.dll

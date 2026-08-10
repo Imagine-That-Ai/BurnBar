@@ -25,14 +25,15 @@ test("maps Rust logical names to the platform cdylib file name", () => {
 });
 
 test("resolves an externally configured cargo target directory", () => {
+  const targetDirectory = "/Volumes/DevSSD/BuildCache/cargo-target";
   assert.equal(
     cargoCdylibPath({
-      targetDirectory: "/Volumes/DevSSD/BuildCache/cargo-target",
+      targetDirectory,
       logicalName: "burnbar_remote",
       profile: "debug",
       runtimePlatform: "darwin",
     }),
-    "/Volumes/DevSSD/BuildCache/cargo-target/debug/libburnbar_remote.dylib",
+    resolve(targetDirectory, "debug", "libburnbar_remote.dylib"),
   );
 });
 
@@ -106,7 +107,7 @@ test("requires Cargo metadata to declare the exact cdylib target", () => {
 
   assert.equal(
     cargoTargetDirectoryFromMetadata(metadata, "burnbar_remote"),
-    "/tmp/openburnbar-cargo-target",
+    resolve(metadata.target_directory),
   );
   assert.throws(
     () => cargoTargetDirectoryFromMetadata(metadata, "openburnbar_iroh"),

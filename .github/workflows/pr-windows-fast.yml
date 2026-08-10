@@ -250,9 +250,10 @@ jobs:
 
       - name: Verify native candidate helpers on Windows
         run: |
-          node --test scripts/windows-port/stage-local-domain-core-native.test.mjs
-          node --test scripts/windows-port/stage-local-rust-cdylib.test.mjs
-          node --test scripts/windows-port/verify-local-domain-core-identity.test.mjs
+          node --test `
+            scripts/windows-port/stage-local-domain-core-native.test.mjs `
+            scripts/windows-port/stage-local-rust-cdylib.test.mjs `
+            scripts/windows-port/verify-local-domain-core-identity.test.mjs
 
       - name: Restore Windows solution
         run: dotnet restore windows/OpenBurnBar.sln
