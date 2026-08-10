@@ -24,6 +24,19 @@ const ENVIRONMENT = SUPPORT_ENVIRONMENTS[0];
 const RUN_ID = '12345';
 const DIGEST = `sha256:${'b'.repeat(64)}`;
 const RELEASE_ONLY = new Set(['P-01', 'P-03', 'P-04', 'P-37', 'P-38']);
+const OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY = 'OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY';
+
+function withCollectorConcurrency(value, callback) {
+  const previous = process.env[OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY];
+  if (value === undefined) delete process.env[OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY];
+  else process.env[OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY] = value;
+  try {
+    return callback();
+  } finally {
+    if (previous === undefined) delete process.env[OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY];
+    else process.env[OPENBURNBAR_PARITY_COLLECTOR_CONCURRENCY] = previous;
+  }
+}
 
 function write(root, relativePath, bytes) {
   const absolute = path.join(root, relativePath);
@@ -790,6 +803,50 @@ test('executed semantic mutation ownership rejects a unique no-op validator', (t
     }),
     /ownership tests failed/u
   );
+});
+
+test('bounded ownership collector rejects invalid concurrency before collection', (t) => {
+  const subject = createRepository();
+  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+  for (const value of ['0', '9', '1.5', 'abc']) {
+    withCollectorConcurrency(value, () => {
+      assert.throws(
+        () => collectCertificationTestExecutions(subject.root, subject.head),
+        /must be an integer between 1 and 8/u,
+        value
+      );
+    });
+  }
+});
+
+test('bounded ownership collector is deterministic and isolates semantic mutations across concurrency', (t) => {
+  const subject = createRepository();
+  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+  const fixturePaths = [
+    'scripts/linux-port/product-validators/P-05.mjs',
+    'scripts/linux-port/ownership-tests/P-05.test.mjs',
+    'scripts/linux-port/product-validators/P-06.mjs',
+    'scripts/linux-port/ownership-tests/P-06.test.mjs'
+  ];
+  const before = new Map(fixturePaths.map((relativePath) =>
+    [relativePath, Buffer.from(fs.readFileSync(path.join(subject.root, relativePath)))]
+  ));
+  const single = withCollectorConcurrency('1', () =>
+    collectCertificationTestExecutions(subject.root, subject.head)
+  );
+  const quad = withCollectorConcurrency('4', () =>
+    collectCertificationTestExecutions(subject.root, subject.head)
+  );
+  assert.deepEqual(quad, single);
+  assert.equal(single.length, 120);
+  assert.equal(new Set(single.map((row) => `${row.requirementId}:${row.component}`)).size, 120);
+  assert.ok(single.every((row) => row.status === 'passed'), JSON.stringify(
+    single.filter((row) => row.status !== 'passed'), null, 2
+  ));
+  assert.ok(single.every((row) => row.mutationDetected === true));
+  for (const [relativePath, bytes] of before) {
+    assert.ok(bytes.equals(fs.readFileSync(path.join(subject.root, relativePath))), relativePath);
+  }
 });
 
 test('paired no-op ownership, duplicate tests, workflow comments, and untracked imports fail closed', async (t) => {
