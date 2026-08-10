@@ -593,7 +593,11 @@ private func resolveDaemonAccountCredentials(
               let provider = quotaCapableProvider(for: configuration.providerID) else {
             continue
         }
-        guard provider != .openAI else { continue }
+        // Organization-scoped providers report the same numbers for every
+        // credential slot, so a per-slot fetch would render N identical cards
+        // and multiply one org's usage in the cumulative merge. They stay
+        // provider-level; the workspace labels their rollup card accordingly.
+        guard QuotaCapableProviderMap.supportsPerAccountQuota(provider) else { continue }
         let normalizedProviderID = ProviderID(rawValue: configuration.providerID)
 
         for slot in configuration.credentialSlots where slot.isEnabled {
@@ -783,28 +787,7 @@ private func quotaSwitcherProfileLabel(
 }
 
 private func quotaCapableProvider(for providerID: String) -> AgentProvider? {
-    switch ProviderID.normalize(providerID) {
-    case "minimax":
-        return .minimax
-    case "zai", "z-ai":
-        return .zai
-    case "ollama":
-        return .ollama
-    case "openai":
-        return .openAI
-    case "anthropic", "claude", "claude-code":
-        return .claudeCode
-    case "opencode", "open-code":
-        return .openCode
-    case "deepseek", "deep-seek":
-        return .deepSeek
-    case "moonshot", "kimi":
-        return .kimi
-    case "xai", "x-ai", "x.ai", "grok":
-        return .xAI
-    default:
-        return nil
-    }
+    QuotaCapableProviderMap.provider(forDaemonProviderID: providerID)
 }
 
 private func quotaKeyIdentifiers(for provider: AgentProvider) -> [String] {

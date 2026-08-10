@@ -345,7 +345,11 @@ final class AgentPresenceModel {
                     executableResolved: executableResolved[backend],
                     gatewayReachable: Self.gatewayReachable(backend, controller: probe, settingsManager: settingsManager),
                     authGate: Self.authGate(backend, controller: probe, settingsManager: settingsManager),
-                    quotaRemainingFraction: Self.quotaFraction(backend, service: quotaService),
+                    quotaRemainingFraction: Self.quotaFraction(
+                        backend,
+                        service: quotaService,
+                        cumulative: settingsManager.cumulativeAcrossAccounts
+                    ),
                     streamError: driving.compactMap(\.streamError).first
                 ),
                 now: now
@@ -428,16 +432,23 @@ final class AgentPresenceModel {
     /// (`AgentProvider.quotaSignalProviders`). For the other six this returns
     /// `nil`, `.exhausted` is unreachable, and the meter self-hides rather than
     /// rendering an empty bar.
+    ///
+    /// `cumulative` is threaded through rather than defaulted so the Agent Deck
+    /// presence dot reads the same bucket the Quota tab and the chip do. With
+    /// the setting off those are per-account numbers; defaulting here would
+    /// have put a summed-across-accounts fraction behind a per-account UI.
     private static func quotaFraction(
         _ backend: ChatBackendID,
-        service: ProviderQuotaService
+        service: ProviderQuotaService,
+        cumulative: Bool
     ) -> Double? {
         guard let provider = backend.agentProvider else { return nil }
         return ProviderQuotaChip.resolve(
             provider: provider,
             style: .full,
             displayName: backend.displayName,
-            service: service
+            service: service,
+            cumulative: cumulative
         )?.remainingFraction
     }
 }
@@ -1010,7 +1021,8 @@ struct AgentSigil: View {
             provider: provider,
             style: .full,
             displayName: backend.displayName,
-            service: quotaService
+            service: quotaService,
+            cumulative: settingsManager.cumulativeAcrossAccounts
            ) {
             parts.append("\(quota.accessibilityLabel)")
         }

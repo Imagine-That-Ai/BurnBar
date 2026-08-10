@@ -193,6 +193,92 @@ final class ProviderQuotaChipTests: XCTestCase {
         }
     }
 
+    // MARK: - Cumulative-across-accounts setting
+
+    /// The chip used to unconditionally prefer the merged snapshot, so with
+    /// the (default-off) `cumulativeAcrossAccounts` toggle disabled it showed
+    /// summed-across-accounts percentages while the Quota tab and popover —
+    /// which both route through `primaryDisplaySnapshot(for:cumulative:)` —
+    /// showed per-account ones. Same provider, two different numbers on screen.
+    func test_resolve_withCumulativeOff_showsTheProviderSnapshotNotTheMerge() throws {
+        let service = Self.makeServiceWithTwoAccounts()
+
+        let perAccount = try XCTUnwrap(
+            ProviderQuotaChip.resolve(
+                provider: .claudeCode,
+                style: .full,
+                displayName: nil,
+                service: service,
+                cumulative: false
+            )
+        )
+        // Provider rollup bucket: 10% used → 90% remaining.
+        XCTAssertEqual(perAccount.text, "90%")
+    }
+
+    func test_resolve_withCumulativeOn_showsTheMergedSnapshot() throws {
+        let service = Self.makeServiceWithTwoAccounts()
+
+        let merged = try XCTUnwrap(
+            ProviderQuotaChip.resolve(
+                provider: .claudeCode,
+                style: .full,
+                displayName: nil,
+                service: service,
+                cumulative: true
+            )
+        )
+        // Accounts used 20/100 and 60/100 → 80/200 summed → 60% remaining.
+        XCTAssertEqual(merged.text, "60%")
+    }
+
+    /// Seeds a service with a provider rollup plus two account snapshots whose
+    /// merge lands on a percentage distinct from the rollup's, so the two
+    /// assertions above cannot both pass by accident.
+    private static func makeServiceWithTwoAccounts() -> ProviderQuotaService {
+        let service = ProviderQuotaService(refreshProviders: [])
+        service.snapshotsByProvider[.claudeCode] = makeSnapshot(provider: .claudeCode, usedPercent: 10)
+        for (accountID, used) in [("work", 20.0), ("personal", 60.0)] {
+            let snapshot = makeValueSnapshot(accountID: accountID, used: used, limit: 100)
+            service.snapshotsByAccountID[ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot)] = snapshot
+        }
+        return service
+    }
+
+    private static func makeValueSnapshot(
+        accountID: String,
+        used: Double,
+        limit: Double
+    ) -> ProviderQuotaSnapshot {
+        ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            providerID: AgentProvider.claudeCode.providerID,
+            accountID: accountID,
+            accountLabel: "Account \(accountID)",
+            accountStorageScope: .cloudRefreshable,
+            fetchedAt: Date(),
+            source: .officialAPI,
+            sourceId: "daemon-slot:anthropic:\(accountID)",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "test",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "5h",
+                    label: "5h window",
+                    windowKind: .rollingHours,
+                    usedValue: used,
+                    limitValue: limit,
+                    remainingValue: limit - used,
+                    usedPercent: used / limit * 100,
+                    resetsAt: Date().addingTimeInterval(60 * 60),
+                    unit: .tokens,
+                    isEstimated: false
+                )
+            ]
+        )
+    }
+
     // MARK: - Backend convenience init
 
     func test_backendInit_succeeds_forEveryChatBackendID() {

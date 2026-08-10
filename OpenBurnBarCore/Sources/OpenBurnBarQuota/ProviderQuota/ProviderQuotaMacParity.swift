@@ -49,8 +49,13 @@ public extension ProviderQuotaSnapshot {
         accountStorageScope: ProviderAccountStorageScope,
         sourceId: String
     ) -> ProviderQuotaSnapshot {
+        // Re-derive `id` from the account's own source. Copying the base
+        // snapshot's id through gave every account of a provider the same
+        // `Identifiable` id (`claude-code_default`), so any `ForEach` over
+        // account snapshots without an explicit key would collapse them to a
+        // single row. Matches the id the convenience initializer above builds.
         ProviderQuotaSnapshot(
-            id: id,
+            id: "\(providerID.rawValue)_\(sourceId)",
             provider: provider,
             providerID: providerID,
             accountID: accountID,

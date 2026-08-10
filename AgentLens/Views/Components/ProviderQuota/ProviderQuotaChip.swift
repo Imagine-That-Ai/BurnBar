@@ -27,9 +27,16 @@ struct ProviderQuotaChip: View {
     var displayName: String?
 
     @State private var quotaService = ProviderQuotaService.shared
+    @State private var settingsManager = SettingsManager.shared
 
     var body: some View {
-        if let resolved = Self.resolve(provider: provider, style: style, displayName: displayName, service: quotaService) {
+        if let resolved = Self.resolve(
+            provider: provider,
+            style: style,
+            displayName: displayName,
+            service: quotaService,
+            cumulative: settingsManager.cumulativeAcrossAccounts
+        ) {
             QuotaMicroBadge(text: resolved.text, tint: resolved.tint)
                 .help(resolved.tooltip)
                 .accessibilityLabel(resolved.accessibilityLabel)
@@ -67,14 +74,20 @@ extension ProviderQuotaChip {
     /// Decides whether to render and what to show. Hoisted so tests can
     /// drive the formatting and pressure thresholds without standing up a
     /// SwiftUI view hierarchy.
+    ///
+    /// `cumulative` must carry `SettingsManager.cumulativeAcrossAccounts`.
+    /// The chip used to unconditionally prefer the merged snapshot, so with
+    /// the (default-off) toggle disabled it showed summed-across-accounts
+    /// percentages while the Quota tab and popover showed per-account ones.
     @MainActor
     static func resolve(
         provider: AgentProvider,
         style: Style,
         displayName: String?,
-        service: ProviderQuotaService
+        service: ProviderQuotaService,
+        cumulative: Bool
     ) -> Resolution? {
-        let snapshot = service.cumulativeSnapshot(for: provider) ?? service.snapshot(for: provider)
+        let snapshot = service.primaryDisplaySnapshot(for: provider, cumulative: cumulative)
         return resolve(provider: provider, style: style, displayName: displayName, snapshot: snapshot)
     }
 
