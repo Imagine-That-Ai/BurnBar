@@ -57,6 +57,11 @@ extension ProviderQuotaChip {
         let tint: Color
         let tooltip: String
         let accessibilityLabel: String
+        /// `0…1` remaining. Additive: the chip itself only ever needed the
+        /// formatted text, but the Agent Deck's presence resolver needs the
+        /// number to decide `.exhausted` (and PR 2's roster meter needs it to
+        /// draw a bar) without re-deriving the bucket selection.
+        let remainingFraction: Double
     }
 
     /// Decides whether to render and what to show. Hoisted so tests can
@@ -91,7 +96,8 @@ extension ProviderQuotaChip {
             text: formatText(intPercent: intPct, style: style),
             tint: pressureTint(for: fraction),
             tooltip: "\(label) — \(snapshot.summaryText)",
-            accessibilityLabel: "\(label) quota \(intPct) percent remaining"
+            accessibilityLabel: "\(label) quota \(intPct) percent remaining",
+            remainingFraction: fraction
         )
     }
 
