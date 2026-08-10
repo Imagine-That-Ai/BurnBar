@@ -19,6 +19,8 @@
 // pipeline, never as a fallback to the synthetic merge SHA.
 
 import { appendFileSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const FULL_GIT_SHA1_PATTERN = /^[0-9a-f]{40}$/;
 
@@ -33,6 +35,30 @@ export function validateCandidateCommit(sha) {
     );
   }
   return sha;
+}
+
+/**
+ * Return whether an ES module is the command-line entrypoint.
+ *
+ * Comparing import.meta.url with `file://${process.argv[1]}` is not portable:
+ * Windows argv paths contain backslashes and a drive letter, so that string
+ * never equals a normalized file URL. Compare resolved filesystem paths
+ * instead so the CLI body runs on Windows, macOS, and Linux.
+ */
+export function isDirectInvocation(
+  modulePath,
+  argvPath,
+  resolvePath = resolve,
+) {
+  if (
+    typeof modulePath !== "string" ||
+    modulePath.length === 0 ||
+    typeof argvPath !== "string" ||
+    argvPath.length === 0
+  ) {
+    return false;
+  }
+  return resolvePath(modulePath) === resolvePath(argvPath);
 }
 
 /**
@@ -110,7 +136,7 @@ export function selectCanonicalCandidateCommit({ event, payload, fallbackSha }) 
 // environment, prints the canonical candidate commit to stdout, and appends
 // `candidate_commit=<sha>` to $GITHUB_OUTPUT when that env var is set.
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isDirectInvocation(fileURLToPath(import.meta.url), process.argv[1])) {
   const event = process.env.GITHUB_EVENT_NAME;
   const eventPath = process.env.GITHUB_EVENT_PATH;
   const fallbackSha = process.env.GITHUB_SHA;

@@ -441,6 +441,13 @@ actor BurnBarAIInboxService {
             ? await standingCommitments(now: now)
             : []
 
+        // Standing commitments: active Founder Plans and approved snippets the
+        // synthesis must build on. Populated from the plan ledger; empty when
+        // the lens is off or nothing is active.
+        let standingCommitments = config.founderLensEnabled
+            ? await standingCommitments(now: now)
+            : []
+
         let budget = await budgetState(config: config)
         if config.egressMode.allowsModelCalls, budget.isExhausted == false, pack.isEmpty == false {
             let analyst = BurnBarAIInboxAnalyst(executor: executor, router: router, logger: logger)
@@ -533,6 +540,21 @@ actor BurnBarAIInboxService {
             now: now
         )
         return PipelineResult(calls: calls, publish: publish, analystFailure: analystFailure)
+    }
+
+    // MARK: - Standing commitments
+
+    /// Active Founder Plans (and, later, approved memory snippets) rendered as
+    /// context lines for synthesis. Reads the daemon-owned plan ledger; returns
+    /// empty when the ledger has nothing active — the hook itself is always
+    /// safe to call.
+    func standingCommitments(now: Date) async -> [BurnBarFounderLens.StandingCommitment] {
+        do {
+            return try store.standingCommitments(limit: 8, now: now)
+        } catch {
+            logger.warning("ai_inbox_standing_commitments_failed", metadata: ["error": "\(error)"])
+            return []
+        }
     }
 
     // MARK: - Standing commitments

@@ -1,8 +1,14 @@
 version: 1
-updated: '2026-07-13'
+updated: '2026-08-09'
 finish_line: F2_True_1to1
 finish_line_doc: docs/windows-port/WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md
 schema_id: windows-parity-ledger-v1
+declared_row_count: 51
+declared_status_histogram:
+  Real: 51
+  Substituted: 0
+  DeferredApproved: 0
+  Blocked: 0
 macos_primary_routes:
 - chat
 - quota
@@ -886,11 +892,12 @@ f1_coverage_register:
   windows_status: Real
   note: IA-4 ProjectsPage
 finish_line_note: >-
-  100% parity under the named finish line is F2_True_1to1. The current 50-row
-  histogram is the scoped F1 Ship Peer source/product gate: 50 Real / 0
+  100% parity under the named finish line is F2_True_1to1. The current 51-row
+  histogram is the F1 plus F2 source/product gate: 51 Real / 0
   DeferredApproved / 0 Blocked / 0 Substituted. WPD-0009 governs promotion of
-  F2 workstreams to full parity; production composition and host evidence remain
-  explicit requirements. Operational residuals outside the ledger gate
+  F2 workstreams to full parity; all registered source workstreams are now Real,
+  while exact-candidate host and release evidence remain explicit requirements.
+  Operational residuals outside the ledger gate
   (Authenticode private key, branch-protection required-check flip, physical
   TPM claim on hardware) are host/admin steps, not silent product gaps.
 f2_workstream_register:

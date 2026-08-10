@@ -66,7 +66,7 @@
     "scripts/check-openburnbar-app-swiftpm-lock.sh": ["ed6637aa5cabb164","e80f440a97f418f5","a48017d45218be44","e132944ac47b72e3"],
     "scripts/ci/await-burnbar-ci-gate.mjs": ["704080b2f9849fe8","92387eac849144d7","486bd8676aa9cd40","289d5e1f0862137e"],
     "scripts/ci/build-corresponding-source-archive.sh": ["5230387c630b59bd","ff0f62c93074d3eb","87dfed46bdd81309","cd4812a7f9820cb2"],
-    "scripts/ci/canonical-candidate-commit.mjs": ["8a9db0bfd3a9f12f","d7fa2991f790596b","9cc518ba486a967d","a1d7bb0d92038b35"],
+    "scripts/ci/canonical-candidate-commit.mjs": ["2abed26f6794d179","47900f51fe2d452c","0b6abdb12eb457d5","49effcb1ab18d341"],
     "scripts/ci/check-callable-validation.mjs": ["2741d3121d279727","c1ef0318a20852f8","819d6ed3c89d362d","aa8fb448faa10b9f"],
     "scripts/ci/check-firestore-deploy-drift.mjs": ["99b1c7716fa4ec06","1cfbd423fd360e7e","f0e3832a4a369068","b6aa81c00b9a1bd9"],
     "scripts/ci/check-firestore-ttl-declared.sh": ["153504222c6e65e1","73518479636768b4","ffcfadb7821d76d9","08460062baa8c6dc"],

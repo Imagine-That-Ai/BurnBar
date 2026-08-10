@@ -281,9 +281,11 @@ be promoted or relabeled.
 
 At the time of this certification update, the remediation plan's F1
 source/product ledger reported 46 rows as Real, with zero DeferredApproved,
-Blocked, or Substituted rows. The current ledger is 50/50 Real. Both are scoped
-F1 Ship Peer results, not proof that the F2 True 1:1 workstreams or the public
-release gates are complete.
+Blocked, or Substituted rows. The July 11 snapshot reached 50/50 Real. As of
+2026-08-09, the machine-checked ledger is 51/51 Real across the registered F1
+and F2 source/product workstreams. These source results do not prove that the
+exact-candidate physical, staging, safety, update, or public release gates are
+complete.
 
 Current evidence materially supersedes the original source-only findings:
 
@@ -754,11 +756,13 @@ CloudSync (80/80), connector
 (99/99), presentation (778/778), General settings (166/166), storage (18/18),
 Computer Use (148 passed plus one explicit live Chromium platform skip),
 settings (186/186), configuration (58/58), distribution (101/101), bridge-policy,
-and provider-boundary tests. They are an implementation increment, not a claim
-that the F2 workstreams or release certification are all complete: the
-physical Computer Use/media safety and host evidence still remain. The ledger's 50/50 `Real`
-result is the scoped F1 source/product gate; WPD-0009 continues to define F2
-True 1:1 as the actual 100% parity endpoint.
+and provider-boundary tests. They were an implementation increment, not a claim
+that release certification was complete: physical Computer Use/media safety
+and host evidence still remained. That candidate's ledger was 50/50 `Real`.
+The current 2026-08-09 source/product ledger is 51/51 `Real`, including the
+registered F2 workstreams, while WPD-0009 continues to define F2 True 1:1 as
+the named endpoint and the exact-candidate release audit remains the authority
+for physical and operational completion.
 
 The exact implementation commit also passed [PR Windows Fast Gate
 29299426816](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29299426816)
