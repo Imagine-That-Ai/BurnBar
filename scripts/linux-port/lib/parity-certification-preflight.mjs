@@ -38,10 +38,17 @@ const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40,64}$/u;
 const COMMAND_TIMEOUT_MS = 30_000;
 const OWNERSHIP_TEST_TIMEOUT_MS = 120_000;
+const COLLECTOR_RUNNER_TIMEOUT_MS = 900_000;
+const COLLECTOR_RUNNER_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+const COLLECTOR_EXPECTED_EXECUTION_ROWS = 120;
 const COMMIT_SNAPSHOT_CACHE = new Map();
 const MODULE_DEPENDENCY_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../node_modules'
+);
+const COLLECTOR_RUNNER_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  'parity-certification-ownership-runner.mjs'
 );
 const ISOLATED_TARGET_PATHS = Object.freeze([
   '.github/workflows',
@@ -2154,27 +2161,70 @@ function executeOwnershipTest(repoRoot, targetHead, templateRoot, entry) {
   };
 }
 
-export function collectCertificationTestExecutions(repoRoot, targetHead) {
+export function createCertificationExecutionPlan(repoRoot, targetHead) {
   const repository = fs.realpathSync(repoRoot);
   if (!HEAD.test(targetHead ?? '')) throw new Error('test execution requires a canonical target HEAD');
   const registrySnapshot = commitSnapshot(repository, targetHead, REGISTRY_PATH, 'feature proof registry');
   const registry = parseJson(registrySnapshot, 'feature proof registry');
-  const duplicates = duplicateOwnershipTests(registry);
-  if (duplicates.length > 0) {
+  if (duplicateOwnershipTests(registry).length > 0) {
     throw new Error('certification ownership tests must be unique to one requirement component');
   }
   const templateRoot = isolatedTargetCheckout(repository, targetHead);
-  try {
-    return ownershipExecutions(registry).map((entry) =>
-      executeOwnershipTest(repository, targetHead, templateRoot, entry)
-    ).sort((left, right) =>
-      executionKey(left.requirementId, left.component).localeCompare(
-        executionKey(right.requirementId, right.component)
-      )
-    );
-  } finally {
-    fs.rmSync(templateRoot, { recursive: true, force: true });
+  return { repository, targetHead, templateRoot, entries: ownershipExecutions(registry) };
+}
+
+export function executeCertificationOwnershipTest(repository, targetHead, templateRoot, entry) {
+  return executeOwnershipTest(repository, targetHead, templateRoot, entry);
+}
+
+export function collectCertificationTestExecutions(repoRoot, targetHead) {
+  const repository = fs.realpathSync(repoRoot);
+  if (!HEAD.test(targetHead ?? '')) throw new Error('test execution requires a canonical target HEAD');
+  const spawned = spawnSync(process.execPath, [COLLECTOR_RUNNER_PATH, repository, targetHead], {
+    cwd: repository,
+    encoding: 'utf8',
+    maxBuffer: COLLECTOR_RUNNER_MAX_OUTPUT_BYTES,
+    timeout: COLLECTOR_RUNNER_TIMEOUT_MS,
+    killSignal: 'SIGKILL'
+  });
+  if (spawned.error) {
+    throw new Error(`ownership collector runner failed to spawn: ${spawned.error.code ?? spawned.error.message}`);
   }
+  if (spawned.signal) {
+    throw new Error(`ownership collector runner was killed by ${spawned.signal}`);
+  }
+  if (spawned.status !== 0) {
+    const detail = (spawned.stderr ?? '').replace(/\s+/gu, ' ').trim().slice(0, 768);
+    throw new Error(`ownership collector runner exited ${spawned.status}${detail ? `: ${detail}` : ''}`);
+  }
+  let rows;
+  try {
+    rows = JSON.parse(spawned.stdout);
+  } catch {
+    throw new Error('ownership collector runner emitted malformed JSON');
+  }
+  if (!Array.isArray(rows)) {
+    throw new Error('ownership collector runner output must be an array of test executions');
+  }
+  if (rows.length !== COLLECTOR_EXPECTED_EXECUTION_ROWS) {
+    throw new Error(`ownership collector runner returned ${rows.length} executions; expected ${COLLECTOR_EXPECTED_EXECUTION_ROWS}`);
+  }
+  const seen = new Set();
+  for (const row of rows) {
+    if (typeof row?.requirementId !== 'string' || typeof row?.component !== 'string') {
+      throw new Error('ownership collector runner returned an execution without its execution key');
+    }
+    const key = executionKey(row.requirementId, row.component);
+    if (seen.has(key)) {
+      throw new Error(`ownership collector runner returned duplicate execution ${row.requirementId}/${row.component}`);
+    }
+    seen.add(key);
+  }
+  return rows.sort((left, right) =>
+    executionKey(left.requirementId, left.component).localeCompare(
+      executionKey(right.requirementId, right.component)
+    )
+  );
 }
 
 function ownedSource(repoRoot, targetHead, relativePath, label) {
