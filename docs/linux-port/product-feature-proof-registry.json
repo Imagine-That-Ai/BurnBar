@@ -395,7 +395,7 @@
         "entrypoint": "captureParityCertificationPreflight",
         "workflowPath": ".github/workflows/linux-product-parity.yml",
         "testPath": "scripts/linux-port/parity-certification-preflight.test.mjs",
-        "testName": "P-02 capture emits a blocked candidate-bound diagnostic inventory"
+        "testName": "P-02 capture emits a passed candidate-bound diagnostic inventory"
       },
       "materializer": {
         "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
