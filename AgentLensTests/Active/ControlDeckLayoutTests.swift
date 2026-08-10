@@ -127,6 +127,14 @@ final class ControlDeckLayoutTests: XCTestCase {
         XCTAssertEqual(layout.configs.map(\.kind), before)
     }
 
+    func test_moveWithinTheCastBandReorders() {
+        var layout = ControlDeckLayout.default
+        // Model Router and The Wand are the CAST band. Reorder must work in a
+        // band that did not exist at all when the layout format shipped.
+        layout.move(.wand, toPositionOf: .modelRouter)
+        XCTAssertEqual(layout.visibleConfigs(in: .cast).map(\.kind).first, .wand)
+    }
+
     func test_moveOntoItselfIsANoOp() {
         var layout = ControlDeckLayout.default
         let before = layout.configs.map(\.kind)
@@ -151,5 +159,66 @@ final class ControlDeckLayoutTests: XCTestCase {
             ControlKind.visibleKinds.contains { $0.group == group }
         }
         XCTAssertEqual(groups, expected)
+    }
+
+    func test_theDefaultArrangementRendersEveryBandThatHasShipped() {
+        // CAST is the band the four asynchronous tiles created: before Model
+        // Router and The Wand landed it rendered nothing at all.
+        //
+        // REACH is still empty and that is deliberate, not an oversight — its
+        // tiles (Agent Control, Floo, Devices & Sync, Cloud) are the ones whose
+        // controls can grant trust or reach off-device, and they land with
+        // their own gates. `populatedGroups` skips it, so a user never sees an
+        // empty header. When the first REACH tile ships, this test fails and
+        // the expectation moves to `ControlGroup.allCases`.
+        XCTAssertEqual(
+            ControlDeckLayout.default.populatedGroups,
+            [.cast, .spend, .know, .watch, .house]
+        )
+    }
+
+    // MARK: The upgrade this format exists for
+
+    /// The exact shape of a user who arranged their deck on the seven-tile
+    /// build and then updated. Their arrangement must survive verbatim, and the
+    /// four new tiles must appear rather than requiring a reset.
+    func test_aLayoutSavedBeforeTheAsynchronousTilesLandedSurvivesTheUpgrade() {
+        let payload = """
+        [{"kind":"engineRoom","isVisible":true,"span":2},
+         {"kind":"pets","isVisible":false,"span":1},
+         {"kind":"textExpansion","isVisible":true,"span":1},
+         {"kind":"charts","isVisible":true,"span":2},
+         {"kind":"alerts","isVisible":true,"span":1},
+         {"kind":"appearance","isVisible":true,"span":1},
+         {"kind":"updates","isVisible":true,"span":1}]
+        """
+        let layout = ControlDeckLayout.decode(from: Data(payload.utf8))
+
+        // Their choices, untouched.
+        XCTAssertEqual(layout.configs.first { $0.kind == .pets }?.isVisible, false)
+        XCTAssertEqual(layout.configs.first { $0.kind == .textExpansion }?.span, 1)
+        XCTAssertEqual(layout.configs.first { $0.kind == .charts }?.span, 2)
+
+        // The four that landed since, each with its own defaults and none of
+        // them hidden — the owner named these, so an upgrade must surface them.
+        for kind in [ControlKind.aiInbox, .modelRouter, .wand, .memoryMCP] {
+            let config = layout.configs.first { $0.kind == kind }
+            XCTAssertNotNil(config, "\(kind.rawValue) is missing after the upgrade")
+            XCTAssertEqual(config?.isVisible, true, "\(kind.rawValue) must be visible")
+            XCTAssertEqual(config?.span, kind.defaultSpan, "\(kind.rawValue) span")
+        }
+
+        // And a band that did not exist in the stored payload now renders.
+        XCTAssertEqual(layout.visibleConfigs(in: .cast).map(\.kind), [.modelRouter, .wand])
+    }
+
+    func test_hidingAnAsynchronousTileRemovesItsBandWhenItEmpties() {
+        var layout = ControlDeckLayout.default
+        layout.setVisible(.modelRouter, false)
+        layout.setVisible(.wand, false)
+        XCTAssertFalse(layout.populatedGroups.contains(.cast))
+        // …and it comes back from the header's hidden-tile menu.
+        layout.setVisible(.wand, true)
+        XCTAssertTrue(layout.populatedGroups.contains(.cast))
     }
 }

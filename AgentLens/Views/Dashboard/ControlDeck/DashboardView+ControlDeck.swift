@@ -12,8 +12,10 @@ extension DashboardView {
     var controlDeckRouteView: some View {
         ControlDeckView(
             settingsManager: settingsManager,
+            operatingLayer: operatingLayer,
             dataStore: dataStore,
             daemonManager: operatingLayer.daemonManager,
+            accountManager: accountManager,
             model: .shared,
             // Today's window, not the dashboard's selected range: a spend
             // threshold is a *daily* threshold, so showing it against a
@@ -27,7 +29,12 @@ extension DashboardView {
                 withAnimation(DesignSystem.Animation.standard) {
                     navigate(to: route)
                 }
-            }
+            },
+            // The composer is already hosted on `DashboardView`; the tile only
+            // asks for it. Casting stays behind the composer's own
+            // commands / file-edits / approval switches, because a cast spends
+            // provider credits and can edit files.
+            onCastWand: { showMacWandComposer = true }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

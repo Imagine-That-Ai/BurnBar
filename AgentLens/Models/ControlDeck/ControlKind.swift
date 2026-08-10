@@ -77,7 +77,11 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
     // Declaration order is the default arrangement. Health first, because a
     // sick daemon is the cause of half the other tiles' degraded states.
     case engineRoom
+    case aiInbox
+    case modelRouter
+    case wand
     case textExpansion
+    case memoryMCP
     case charts
     case alerts
     case appearance
@@ -89,7 +93,11 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .engineRoom: return "Engine Room"
+        case .aiInbox: return "AI Inbox"
+        case .modelRouter: return "Model Router"
+        case .wand: return "The Wand"
         case .textExpansion: return "Text Expansion"
+        case .memoryMCP: return "Memory MCP"
         case .charts: return "Charts"
         case .alerts: return "Alerts & Digest"
         case .appearance: return "Appearance"
@@ -104,6 +112,14 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .engineRoom:
             return "The background daemon every other tile depends on."
+        case .aiInbox:
+            return "A background analyst that reads your work and says what needs you."
+        case .modelRouter:
+            return "One local endpoint that serves every OpenAI-compatible client."
+        case .wand:
+            return "Cast one prompt across parallel workers and keep the best."
+        case .memoryMCP:
+            return "The agents allowed to search your encrypted session memory."
         case .textExpansion:
             return "Short triggers that expand into the text you keep retyping."
         case .charts:
@@ -122,7 +138,11 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
     var systemImage: String {
         switch self {
         case .engineRoom: return "gearshape.2"
+        case .aiInbox: return "tray.full"
+        case .modelRouter: return "arrow.triangle.branch"
+        case .wand: return "wand.and.stars"
         case .textExpansion: return "text.append"
+        case .memoryMCP: return "point.3.connected.trianglepath.dotted"
         case .charts: return "chart.xyaxis.line"
         case .alerts: return "bell.badge"
         case .appearance: return "paintpalette"
@@ -134,8 +154,9 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
     var group: ControlGroup {
         switch self {
         case .engineRoom: return .watch
-        case .textExpansion: return .know
-        case .charts, .alerts: return .spend
+        case .modelRouter, .wand: return .cast
+        case .textExpansion, .memoryMCP: return .know
+        case .aiInbox, .charts, .alerts: return .spend
         case .appearance, .pets, .updates: return .house
         }
     }
@@ -144,7 +165,10 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
     /// wide at full width; span is clamped to the live column count.
     var defaultSpan: Int {
         switch self {
-        case .engineRoom, .textExpansion: return 2
+        // Two columns for the tiles whose live line is a sentence rather than a
+        // number — an endpoint URL, a spend-against-budget pair, a client
+        // roster. At one column they would truncate the fact they exist for.
+        case .engineRoom, .textExpansion, .aiInbox, .modelRouter, .memoryMCP: return 2
         default: return 1
         }
     }
@@ -157,6 +181,14 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .engineRoom:
             return ["daemon", "background", "health", "protocol", "restart", "repair", "launchagent"]
+        case .aiInbox:
+            return ["inbox", "analyst", "brief", "triage", "digest", "egress", "budget", "founder lens"]
+        case .modelRouter:
+            return ["proxy", "gateway", "router", "openai compatible", "cursor", "vs code", "endpoint", "port", "8317"]
+        case .wand:
+            return ["wand", "cast", "fan out", "parallel", "workers", "mission", "swarm"]
+        case .memoryMCP:
+            return ["mcp", "remote mcp", "memory", "claude code", "codex", "droid", "clients", "hosted"]
         case .textExpansion:
             return ["snippet", "trigger", "accessibility", "keyboard", "expand", "abbreviation"]
         case .charts:
@@ -178,7 +210,13 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
     var settingsItemID: String? {
         switch self {
         case .engineRoom: return "daemon.lifecycle.status"
+        case .aiInbox: return "aiInbox.overview"
+        case .modelRouter: return "modelProxy.overview"
+        // The Wand has no Settings pane — it is cast from its own composer and
+        // watched on the Missions lane, both dashboard surfaces.
+        case .wand: return nil
         case .textExpansion: return "textExpansion.snippets"
+        case .memoryMCP: return "cloud.overview"
         case .charts: return nil          // Charts is a dashboard route, not a Settings pane.
         case .alerts: return "alerts.dailySpend"
         case .appearance: return "general.appearance.skin"
@@ -187,10 +225,18 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Membership gate, when the feature is tier-locked. Every PR1 kind is
-    /// ungated; the property exists so the locked-tile state has a source the
-    /// day the first gated tile lands.
-    var gatedFeature: GatedFeatureID? { nil }
+    /// Membership gate, when the feature is tier-locked. The locked tile keeps
+    /// its value readable and veils only the control — a tier crest is an
+    /// invitation, not a wall.
+    var gatedFeature: GatedFeatureID? {
+        switch self {
+        // Hosted Remote MCP is the one deck feature the server, not this Mac,
+        // decides you may use. `CloudStoreSettingsView.swift:50` reads the same
+        // gate for the Settings card.
+        case .memoryMCP: return .hostedMCP
+        default: return nil
+        }
+    }
 
     /// Kinds this build is allowed to show at all. Build-gated tiles are
     /// **absent, not greyed** — an App Store build must not advertise a

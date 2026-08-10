@@ -82,7 +82,10 @@ struct DashboardView: View {
     var chatController: ChatSessionController
     @State var quotaService = ProviderQuotaService.shared
     @State var missionConsoleController: MissionConsoleWindowController?
-    @State private var showMacWandComposer = false
+    /// Internal, not private: the Control Deck's Wand tile presents this same
+    /// composer from `DashboardView+ControlDeck.swift`, so the app has one
+    /// cast surface with one set of approval switches rather than two.
+    @State var showMacWandComposer = false
     @State var pendingMemoryReviewCount: Int?
     /// Unread AI Inbox items, shown as a badge on the section switcher. Nil until
     /// the first read, so a profile whose daemon has never run shows no badge

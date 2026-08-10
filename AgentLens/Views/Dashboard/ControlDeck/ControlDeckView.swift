@@ -21,14 +21,17 @@ import SwiftUI
 
 struct ControlDeckView: View {
     @Bindable var settingsManager: SettingsManager
+    @Bindable var operatingLayer: OpenBurnBarOperatingLayer
     let dataStore: DataStore
     let daemonManager: OpenBurnBarDaemonManager
+    let accountManager: AccountManager
     let model: ControlDeckModel
     /// Today's spend, already summarised by the dashboard. The deck aggregates
     /// nothing of its own.
     let todaySpend: Double
     let onOpenSettings: (String?) -> Void
     let onNavigate: (DashboardMainRoute) -> Void
+    let onCastWand: () -> Void
 
     @State private var layout: ControlDeckLayout = .default
     /// The measured width of the content column — the page width clamped to
@@ -58,7 +61,11 @@ struct ControlDeckView: View {
             textExpansionEverywhere: settingsManager.textExpansion.macGlobalExpansionEnabled,
             chartsAIInsights: chartsAIInsights,
             spendAlertThreshold: settingsManager.costAlertThreshold,
-            petCompanionEnabled: petCompanionEnabled
+            petCompanionEnabled: petCompanionEnabled,
+            aiInboxEnabled: model.inboxConfig?.enabled ?? false,
+            modelRouterEnabled: settingsManager.gatewayEnabled,
+            wandCastsRunning: castsRunning,
+            memoryMCPConnectedCount: model.mcpReading?.activeCount
         )
         #if !DISTRIBUTION_MAS
         inputs.updatesAutomaticChecks = updatesAutomaticChecks
@@ -69,6 +76,24 @@ struct ControlDeckView: View {
     private var daemonIsHealthy: Bool {
         if case .healthy(let snapshot) = daemonManager.status { return !snapshot.versionMismatch }
         return false
+    }
+
+    private var castsRunning: Int {
+        operatingLayer.snapshot.controllerRuntime.missions
+            .filter { $0.state == .running || $0.state == .partial }
+            .count
+    }
+
+    /// Host, port, and credential for the one loopback probe the deck makes.
+    /// Assembled here, where the settings facade already lives, so
+    /// `ControlDeckModel` never holds a reference to `SettingsManager`.
+    private var routerGateway: ControlDeckModel.RouterGatewayEndpoint {
+        ControlDeckModel.RouterGatewayEndpoint(
+            enabled: settingsManager.gatewayEnabled,
+            host: settingsManager.gatewayHost,
+            port: settingsManager.gatewayPort,
+            authToken: settingsManager.gatewayAuthToken
+        )
     }
 
     var body: some View {
@@ -97,11 +122,17 @@ struct ControlDeckView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { restoreLayout() }
-        .task { model.start(dataStore: dataStore) }
+        .task { model.start(dataStore: dataStore, gateway: routerGateway) }
         // The snippet store posts this whenever a snippet is created, edited or
         // deleted, so the Text Expansion headline is never stale.
         .onReceive(NotificationCenter.default.publisher(for: .textExpansionSnippetsDidChange)) { _ in
             model.refreshSnippetCountsSoon()
+        }
+        // The shared background cadence posts this after each inbox pass, so
+        // the unread count tracks daemon-written rows without the deck owning a
+        // second timer.
+        .onReceive(NotificationCenter.default.publisher(for: DashboardView.inboxBadgeRefreshNotification)) { _ in
+            model.refreshInboxUnreadCountSoon()
         }
         // System Settings never notifies the app when the user grants or
         // revokes Accessibility, so the only honest moment to re-poll is when
@@ -220,11 +251,14 @@ struct ControlDeckView: View {
                 ControlTileView(
                     config: config,
                     settingsManager: settingsManager,
+                    operatingLayer: operatingLayer,
                     daemonManager: daemonManager,
+                    accountManager: accountManager,
                     model: model,
                     todaySpend: todaySpend,
                     onOpenSettings: onOpenSettings,
-                    onNavigate: onNavigate
+                    onNavigate: onNavigate,
+                    onCastWand: onCastWand
                 )
             }
         }

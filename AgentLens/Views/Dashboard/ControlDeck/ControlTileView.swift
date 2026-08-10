@@ -16,18 +16,36 @@ import SwiftUI
 struct ControlTileView: View {
     let config: ControlTileConfig
     @Bindable var settingsManager: SettingsManager
+    /// The live operating snapshot. The Wand reads its casts from the same
+    /// place `MissionsLaneView` does, so the two cannot disagree.
+    @Bindable var operatingLayer: OpenBurnBarOperatingLayer
     let daemonManager: OpenBurnBarDaemonManager
+    let accountManager: AccountManager
     let model: ControlDeckModel
     /// Today's spend, already computed by `DashboardView` from
     /// `dataStore.usageWindowSummary(for:)`. The deck does no aggregation.
     let todaySpend: Double
     let onOpenSettings: (String?) -> Void
     let onNavigate: (DashboardMainRoute) -> Void
+    /// Presents `MacWandComposerSheet`, which `DashboardView` already hosts. A
+    /// cast is click-through precisely because the composer owns the approval
+    /// switches that make it safe.
+    let onCastWand: () -> Void
 
     var body: some View {
         switch config.kind {
         case .engineRoom: EngineRoomTile(daemonManager: daemonManager, onOpenSettings: onOpenSettings)
+        case .aiInbox: AIInboxTile(model: model, onNavigate: onNavigate, onOpenSettings: onOpenSettings)
+        case .modelRouter:
+            ModelRouterTile(
+                settingsManager: settingsManager,
+                model: model,
+                daemonManager: daemonManager,
+                onOpenSettings: onOpenSettings
+            )
+        case .wand: TheWandTile(operatingLayer: operatingLayer, onCast: onCastWand, onNavigate: onNavigate)
         case .textExpansion: TextExpansionTile(settingsManager: settingsManager, model: model, onOpenSettings: onOpenSettings)
+        case .memoryMCP: MemoryMCPTile(model: model, accountManager: accountManager, onOpenSettings: onOpenSettings)
         case .charts: ChartsTile(model: model, onNavigate: onNavigate)
         case .alerts: AlertsTile(settingsManager: settingsManager, todaySpend: todaySpend, onOpenSettings: onOpenSettings)
         case .appearance: AppearanceTile(settingsManager: settingsManager, onOpenSettings: onOpenSettings)

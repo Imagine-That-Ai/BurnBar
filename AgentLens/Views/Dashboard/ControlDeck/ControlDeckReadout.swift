@@ -26,6 +26,19 @@ struct ControlDeckReadout: Equatable, Sendable {
         var spendAlertThreshold: Double?
         var petCompanionEnabled: Bool
         var updatesAutomaticChecks: Bool
+        /// The daemon's own `enabled` flag for the inbox loop, as the daemon
+        /// last reported it — never the app's optimistic copy.
+        var aiInboxEnabled: Bool
+        /// `GatewaySettings.gatewayEnabled`. "On" here means *configured to
+        /// serve*; whether it is answering right now is the tile's headline,
+        /// not this count, because the header must not depend on a probe.
+        var modelRouterEnabled: Bool
+        /// Casts in the air. The Wand has no preference to switch, so "on"
+        /// means "doing its job" — which for a fan-out engine is casting.
+        var wandCastsRunning: Int
+        /// Nil until the roster has actually been read; a tile that has never
+        /// checked is not the same as one that found nothing.
+        var memoryMCPConnectedCount: Int?
 
         init(
             daemonIsHealthy: Bool = false,
@@ -34,7 +47,11 @@ struct ControlDeckReadout: Equatable, Sendable {
             chartsAIInsights: Bool = false,
             spendAlertThreshold: Double? = nil,
             petCompanionEnabled: Bool = false,
-            updatesAutomaticChecks: Bool = false
+            updatesAutomaticChecks: Bool = false,
+            aiInboxEnabled: Bool = false,
+            modelRouterEnabled: Bool = false,
+            wandCastsRunning: Int = 0,
+            memoryMCPConnectedCount: Int? = nil
         ) {
             self.daemonIsHealthy = daemonIsHealthy
             self.textExpansionInApp = textExpansionInApp
@@ -43,6 +60,10 @@ struct ControlDeckReadout: Equatable, Sendable {
             self.spendAlertThreshold = spendAlertThreshold
             self.petCompanionEnabled = petCompanionEnabled
             self.updatesAutomaticChecks = updatesAutomaticChecks
+            self.aiInboxEnabled = aiInboxEnabled
+            self.modelRouterEnabled = modelRouterEnabled
+            self.wandCastsRunning = wandCastsRunning
+            self.memoryMCPConnectedCount = memoryMCPConnectedCount
         }
     }
 
@@ -69,6 +90,14 @@ struct ControlDeckReadout: Equatable, Sendable {
         switch kind {
         case .engineRoom:
             return inputs.daemonIsHealthy
+        case .aiInbox:
+            return inputs.aiInboxEnabled
+        case .modelRouter:
+            return inputs.modelRouterEnabled
+        case .wand:
+            return inputs.wandCastsRunning > 0
+        case .memoryMCP:
+            return (inputs.memoryMCPConnectedCount ?? 0) > 0
         case .textExpansion:
             return inputs.textExpansionInApp || inputs.textExpansionEverywhere
         case .charts:
