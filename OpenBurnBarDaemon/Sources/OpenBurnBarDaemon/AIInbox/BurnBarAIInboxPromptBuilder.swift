@@ -88,10 +88,19 @@ enum BurnBarAIInboxPromptBuilder {
         Most findings are 3. Reserve 1 for things actively costing money or losing work.
         """
 
+    /// The analyst system prompt, optionally extended with the Founder Lens
+    /// judgment section. Both variants are byte-stable across ticks, so
+    /// provider prompt caching still applies to whichever the config selects.
+    static func analystSystemPrompt(founderLens: Bool, pack: BurnBarFounderLens.Pack = .engOps) -> String {
+        guard founderLens else { return analystSystemPrompt }
+        return analystSystemPrompt + "\n\n" + BurnBarFounderLens.analystLensSection(pack: pack)
+    }
+
     static func analystUserPrompt(
         pack: BurnBarAIInboxEvidencePack,
         detectorFindings: [BurnBarAIInboxFinding],
-        now: Date
+        now: Date,
+        standingCommitments: [BurnBarFounderLens.StandingCommitment] = []
     ) -> String {
         var sections: [String] = []
 
@@ -101,6 +110,13 @@ enum BurnBarAIInboxPromptBuilder {
             Sessions in window: \(pack.conversations.count)\(pack.droppedConversationCount > 0 ? " (\(pack.droppedConversationCount) older sessions omitted for length)" : "")
             \(stalenessNote(pack))
             """)
+
+        // Standing commitments come early — the analyst should read the durable
+        // context before the fresh evidence, the same way a colleague would.
+        let commitmentsSection = BurnBarFounderLens.standingCommitmentsSection(standingCommitments)
+        if commitmentsSection.isEmpty == false {
+            sections.append(commitmentsSection)
+        }
 
         if detectorFindings.isEmpty == false {
             // Deterministic findings go FIRST: they are ground truth the model

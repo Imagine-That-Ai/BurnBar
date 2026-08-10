@@ -109,6 +109,15 @@ final class SettingsManifestCoverageTests: XCTestCase {
         XCTAssertEqual(item?.anchorID, SettingsAnchor.agentsQuotaDisplay)
     }
 
+    func test_aiInboxDeepLinkIDResolvesToManifestItem() {
+        let item = SettingsDeepLinkRouting.item(matching: SettingsDeepLinkRouting.aiInboxItemID)
+
+        XCTAssertEqual(item?.id, "aiInbox.enable")
+        XCTAssertEqual(item?.tab, .aiInbox)
+        XCTAssertEqual(item?.pageRoute, .aiInboxRoot)
+        XCTAssertEqual(item?.anchorID, SettingsAnchor.aiInboxEnable)
+    }
+
     @MainActor
     func test_deepLinkRoutingStoresOnlyValidManifestItems() {
         UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingItemKey)

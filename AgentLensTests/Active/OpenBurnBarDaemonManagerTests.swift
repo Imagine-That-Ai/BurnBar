@@ -1191,6 +1191,96 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertNil(snapshot.projects.first?.latestQuestionPrompt)
     }
 
+    func test_slug_collapsesPunctuationWithoutRepeatedHyphens() {
+        XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "  Apollo / Mission!!  "), "apollo-mission")
+        XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "---"), "---")
+        XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "   "), "")
+    }
+
+    func test_buildControllerActivitySnapshot_groupsTenThousandConversationsInLinearTime() {
+        let now = Date()
+        let sessionCount = 10_000
+        let projectCount = 100
+        let conversations: [ConversationRecord] = (0..<sessionCount).map { index in
+            let projectName = "Project \(index / (sessionCount / projectCount) + 1)"
+            return ConversationRecord(
+                id: "perf-conversation-\(index)",
+                provider: .zai,
+                sessionId: "perf-session-\(index)",
+                projectName: projectName,
+                startTime: now.addingTimeInterval(-Double(index + 1)),
+                endTime: now.addingTimeInterval(-Double(index)),
+                messageCount: 1,
+                userWordCount: 1,
+                assistantWordCount: 1,
+                keyFiles: [],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: "Perf \(index)",
+                lastAssistantMessage: "",
+                fullText: "Perf \(index)",
+                fileModifiedAt: now.addingTimeInterval(-Double(index))
+            )
+        }
+
+        // The previous nested filter×slug path was O(projects × conversations)
+        // (~1M slug calls) and hung the main actor. Linear grouping must finish
+        // well under a second even in Debug.
+        let started = CFAbsoluteTimeGetCurrent()
+        let snapshot = OpenBurnBarDaemonManager.buildControllerActivitySnapshot(
+            conversations: conversations,
+            recentUsages: []
+        )
+        let elapsed = CFAbsoluteTimeGetCurrent() - started
+
+        XCTAssertEqual(snapshot.projects.count, projectCount)
+        XCTAssertLessThan(elapsed, 1.0, "Expected O(n) snapshot build; took \(elapsed)s")
+        XCTAssertEqual(snapshot.projects.first?.displayName, "Project 1")
+    }
+
+    func test_buildControllerActivitySnapshot_mergesUsageAndConversationProjects() {
+        let now = Date()
+        let conversation = ConversationRecord(
+            id: "conv-alpha",
+            provider: .claudeCode,
+            sessionId: "session-alpha",
+            projectName: "Alpha",
+            startTime: now.addingTimeInterval(-120),
+            endTime: now.addingTimeInterval(-60),
+            messageCount: 2,
+            userWordCount: 2,
+            assistantWordCount: 2,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Alpha work",
+            lastAssistantMessage: "",
+            fullText: "Alpha",
+            fileModifiedAt: now
+        )
+        let usage = TokenUsage(
+            provider: .codex,
+            sessionId: "usage-beta",
+            projectName: "Beta",
+            model: "gpt-5",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 0.01,
+            startTime: now.addingTimeInterval(-30),
+            endTime: now
+        )
+
+        let snapshot = OpenBurnBarDaemonManager.buildControllerActivitySnapshot(
+            conversations: [conversation],
+            recentUsages: [usage],
+            generatedAt: now
+        )
+
+        XCTAssertEqual(Set(snapshot.projects.map(\.projectSlug)), Set(["alpha", "beta"]))
+        XCTAssertEqual(snapshot.activeProjectSlug, "beta")
+        XCTAssertEqual(snapshot.projects.first(where: { $0.projectSlug == "beta" })?.sessionCountLast7Days, 1)
+    }
+
     @MainActor
     func test_managerExportsProjectsBeyondLegacyActivityWindowForTenThousandSessionMigration() async throws {
         let harness = try makeRuntimePathsHarness(name: "activity-export-10k-migration")

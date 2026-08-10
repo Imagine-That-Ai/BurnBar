@@ -405,7 +405,12 @@ struct BurnBarAIInboxPublisher: Sendable {
                 executionSourceKind: .automation,
                 executionSourceConfidence: .exact,
                 confidence: .exact,
-                parentRequestID: tickID
+                parentRequestID: tickID,
+                // The inbox router only dials key-backed provider slots today,
+                // so every analyst/verifier/reply call is real API spend. A
+                // future subscription-bridged route must stamp .subscription
+                // here or the budget gate will over-count it.
+                billingKind: .api
             )
             do {
                 _ = try await usageRecorder.record(
@@ -463,17 +468,14 @@ struct BurnBarAIInboxPublisher: Sendable {
             summaryMarkdown: markdown,
             priority: .p4,
             confidence: 0.9,
-            evidenceIDs: pack.conversations.prefix(5).map(\.evidenceID),
+            evidenceIDs: BurnBarAIInboxBriefAuthor.evidenceIDs(pack: pack),
             fingerprint: BurnBarAIInboxFinding.fingerprint(
                 kind: .brief,
                 scope: "global",
                 // One brief per day, updated in place as the day unfolds.
                 subject: BurnBarAIInboxDetectors.dayBucket(now)
             ),
-            metrics: [
-                "sessions": String(pack.conversations.count),
-                "workspaces": String(pack.workspaces.count)
-            ],
+            metrics: BurnBarAIInboxBriefAuthor.metrics(pack: pack),
             needsVerification: false,
             deterministicVerification: nil,
             source: .analyst
@@ -481,15 +483,7 @@ struct BurnBarAIInboxPublisher: Sendable {
     }
 
     static func briefTitle(pack: BurnBarAIInboxEvidencePack, now: Date) -> String {
-        let projects = Set(pack.conversations.compactMap(\.projectName)).sorted()
-        let sessions = pack.conversations.count
-        if projects.count == 1, let project = projects.first {
-            return "\(sessions) session\(sessions == 1 ? "" : "s") in \(project)"
-        }
-        if projects.count > 1 {
-            return "\(sessions) session\(sessions == 1 ? "" : "s") across \(projects.count) projects"
-        }
-        return "Recent activity"
+        BurnBarAIInboxBriefAuthor.title(pack: pack, now: now)
     }
 
     /// Materializes citation ids into rich evidence rows the UI can render and
@@ -503,12 +497,23 @@ struct BurnBarAIInboxPublisher: Sendable {
 
         for id in finding.evidenceIDs {
             if let conversation = pack.conversations.first(where: { $0.evidenceID == id }) {
+                let label: String = {
+                    let title = conversation.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if title.isEmpty == false,
+                       title.contains("/") == false,
+                       title.hasPrefix("~") == false {
+                        return title
+                    }
+                    return BurnBarAIInboxBriefAuthor.shortLabel(conversation.projectName)
+                        ?? BurnBarAIInboxBriefAuthor.shortLabel(conversation.workspacePath)
+                        ?? BurnBarAIInboxDetectors.displayPath(title)
+                }()
                 rows.append(
                     BurnBarInboxEvidence(
                         id: id,
                         kind: .conversation,
-                        label: conversation.title,
-                        detail: "\(conversation.provider) · \(conversation.messageCount) messages",
+                        label: label,
+                        detail: BurnBarAIInboxBriefAuthor.conversationDetail(conversation),
                         url: "openburnbar://sessions/\(conversation.conversationID)",
                         occurredAt: conversation.endedAt
                     )

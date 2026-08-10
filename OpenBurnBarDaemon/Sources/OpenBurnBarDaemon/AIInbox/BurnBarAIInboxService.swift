@@ -147,7 +147,11 @@ actor BurnBarAIInboxService {
             verifierModel: config.verifierModel,
             githubEnabled: config.githubEnabled,
             notifyOnP1: config.notifyOnP1,
-            lookbackMinutes: config.lookbackMinutes
+            lookbackMinutes: config.lookbackMinutes,
+            founderLensEnabled: config.founderLensEnabled,
+            perReplyBudgetUSD: config.perReplyBudgetUSD,
+            maxThreadTurns: config.maxThreadTurns,
+            budgetCountsSubscriptionSpend: config.budgetCountsSubscriptionSpend
         )
         try? store.setState(
             BurnBarAIInboxSchema.StateKey.config,
@@ -173,6 +177,90 @@ actor BurnBarAIInboxService {
 
     func item(id: String) throws -> BurnBarInboxItemDetail? {
         try store.item(id: id)
+    }
+
+    // MARK: - Founder Lens: threads + replies
+
+    func thread(fingerprint: String) throws -> BurnBarInboxThread? {
+        try store.thread(fingerprint: fingerprint)
+    }
+
+    func reply(_ request: BurnBarInboxReplyRequest) async -> BurnBarInboxReplyResponse {
+        let config = configuration()
+        let budget = await budgetState(config: config)
+        // Bind the thread to its condition's most recent item so the reply can
+        // quote what the user is actually looking at.
+        let item = try? store.itemDetail(fingerprint: request.fingerprint)
+        let service = BurnBarAIInboxReplyService(
+            store: store,
+            executor: executor,
+            router: router,
+            usageRecorder: usageRecorder,
+            logger: logger
+        )
+        return await service.reply(
+            request: request,
+            config: config,
+            dailyBudget: budget,
+            item: item,
+            now: clock()
+        )
+    }
+
+    // MARK: - Founder Lens: plan ledger
+
+    func plansList(_ request: BurnBarInboxPlansListRequest) throws -> BurnBarInboxPlansListResponse {
+        BurnBarInboxPlansListResponse(plans: try store.plans(statuses: request.statuses, limit: request.limit))
+    }
+
+    func planGet(_ request: BurnBarInboxPlanGetRequest) throws -> BurnBarInboxPlanGetResponse {
+        BurnBarInboxPlanGetResponse(plan: try store.plan(id: request.id))
+    }
+
+    func planAccept(_ request: BurnBarInboxPlanAcceptRequest) throws -> BurnBarInboxPlanAcceptResponse {
+        // The pack decides which judgment voice owns the plan; reject unknowns
+        // rather than storing free text a later prompt would interpolate.
+        guard BurnBarFounderLens.Pack(rawValue: request.pack) != nil else {
+            throw BurnBarAIInboxStoreError.sqlite("Unknown judgment pack: \(request.pack)")
+        }
+        let (plan, step) = try store.acceptPlan(
+            candidate: request.candidate,
+            pack: request.pack,
+            now: clock()
+        )
+        logger.info(
+            "ai_inbox_plan_accepted",
+            metadata: ["plan_id": plan.id, "step_id": step.id]
+        )
+        return BurnBarInboxPlanAcceptResponse(plan: plan, step: step)
+    }
+
+    func planUpdateStep(_ request: BurnBarInboxPlanUpdateStepRequest) throws -> BurnBarInboxPlanUpdateStepResponse {
+        BurnBarInboxPlanUpdateStepResponse(
+            step: try store.updatePlanStep(
+                stepID: request.stepID,
+                status: request.status,
+                missionID: request.missionID,
+                followupID: request.followupID,
+                now: clock()
+            )
+        )
+    }
+
+    func planGrade(_ request: BurnBarInboxPlanGradeRequest) throws -> BurnBarInboxPlanGradeResponse {
+        let (step, average) = try store.gradePlanStep(
+            stepID: request.stepID,
+            grade: request.grade,
+            noteMarkdown: request.noteMarkdown,
+            now: clock()
+        )
+        return BurnBarInboxPlanGradeResponse(step: step, planGradeAverage: average)
+    }
+
+    func memoryExport(_ request: BurnBarInboxMemoryExportRequest) throws -> BurnBarInboxMemoryExportResponse {
+        BurnBarInboxMemoryExportResponse(
+            stored: try store.replaceMemoryExport(entries: request.entries, now: clock())
+        )
     }
 
     func recentRuns(limit: Int) async throws -> BurnBarInboxRunsResponse {
@@ -336,6 +424,13 @@ actor BurnBarAIInboxService {
         var modelProvenance = "local-rules"
         var suppressed: [String] = []
 
+        // Standing commitments: active Founder Plans and approved snippets the
+        // synthesis must build on. Populated from the plan ledger; empty when
+        // the lens is off or nothing is active.
+        let standingCommitments = config.founderLensEnabled
+            ? await standingCommitments(now: now)
+            : []
+
         let budget = await budgetState(config: config)
         if config.egressMode.allowsModelCalls, budget.isExhausted == false, pack.isEmpty == false {
             let analyst = BurnBarAIInboxAnalyst(executor: executor, router: router, logger: logger)
@@ -344,7 +439,8 @@ actor BurnBarAIInboxService {
                     pack: pack,
                     detectorFindings: findings,
                     config: config,
-                    now: now
+                    now: now,
+                    standingCommitments: standingCommitments
                 )
                 calls.append(contentsOf: analysis.calls)
                 briefMarkdown = analysis.briefMarkdown
@@ -381,6 +477,19 @@ actor BurnBarAIInboxService {
             }
         }
 
+        if config.founderLensEnabled {
+            // One primary next move per item, enforced in code (never by the
+            // model), and unverified claims lose theirs. The rule-based brief
+            // mentions standing commitments so the no-model path compounds too.
+            findings = findings.map(BurnBarFounderLens.NextMoveRouter.enforce(finding:))
+            modelProvenance += "+\(BurnBarFounderLens.provenanceStamp)"
+            if standingCommitments.isEmpty == false {
+                let lines = standingCommitments.prefix(3).map { "- \($0.summary)" }
+                briefMarkdown += (briefMarkdown.isEmpty ? "" : "\n\n")
+                    + "**Standing commitments:**\n" + lines.joined(separator: "\n")
+            }
+        }
+
         let publish = await publisher.publish(
             findings: findings,
             briefMarkdown: briefMarkdown,
@@ -393,6 +502,21 @@ actor BurnBarAIInboxService {
             now: now
         )
         return PipelineResult(calls: calls, publish: publish)
+    }
+
+    // MARK: - Standing commitments
+
+    /// Active Founder Plans (and, later, approved memory snippets) rendered as
+    /// context lines for synthesis. Reads the daemon-owned plan ledger; returns
+    /// empty when the ledger has nothing active — the hook itself is always
+    /// safe to call.
+    func standingCommitments(now: Date) async -> [BurnBarFounderLens.StandingCommitment] {
+        do {
+            return try store.standingCommitments(limit: 8, now: now)
+        } catch {
+            logger.warning("ai_inbox_standing_commitments_failed", metadata: ["error": "\(error)"])
+            return []
+        }
     }
 
     // MARK: - Budget
@@ -413,9 +537,17 @@ actor BurnBarAIInboxService {
 
     private func spendToday() async throws -> Double {
         let startOfDay = Calendar.current.startOfDay(for: clock())
+        let countsSubscription = configuration().budgetCountsSubscriptionSpend
         return try await usageRecorder.records()
             .map(\.event)
             .filter { $0.executionSourceID == BurnBarAIInboxUsage.executionSourceID && $0.recordedAt >= startOfDay }
+            .filter { event in
+                // The protective budget guards real dollars. Subscription-routed
+                // calls are plan-covered imputed value — they only count when the
+                // user opts in. `unknown` counts as spend: fail-protective.
+                if countsSubscription { return true }
+                return BurnBarBillingProvenance.effectiveKind(of: event) != .subscription
+            }
             .reduce(0) { $0 + $1.cost }
     }
 
@@ -542,54 +674,17 @@ actor BurnBarAIInboxService {
         )
     }
 
-    /// The zero-egress brief.
+    /// The zero-egress brief — short colleague prose from deterministic evidence.
     ///
-    /// This is the honest, arithmetic-only version of "what has been going on".
-    /// It is what the user gets by default, and it is deliberately good enough to
-    /// be worth reading on its own.
+    /// This is what the user gets by default (`egressMode` off, budget exhausted,
+    /// or model failure). It must be worth reading without an LLM: concentration,
+    /// thin-index honesty, workspace dirt, spend context, and pointers to alerts.
     static func ruleBasedBrief(
         pack: BurnBarAIInboxEvidencePack,
         findings: [BurnBarAIInboxFinding],
         now: Date
     ) -> String {
-        guard pack.conversations.isEmpty == false || findings.isEmpty == false else { return "" }
-
-        var lines: [String] = []
-        let projects = Dictionary(grouping: pack.conversations) { $0.projectName ?? "unattributed" }
-            .mapValues(\.count)
-            .sorted { $0.value > $1.value }
-
-        if pack.conversations.isEmpty == false {
-            let projectSummary = projects
-                .prefix(3)
-                .map { "**\($0.key)** (\($0.value) session\($0.value == 1 ? "" : "s"))" }
-                .joined(separator: ", ")
-            lines.append("\(pack.conversations.count) agent session\(pack.conversations.count == 1 ? "" : "s") since \(BurnBarAIInboxDetectors.relativeDescription(from: pack.windowStart, to: now)), mostly in \(projectSummary).")
-        }
-
-        let dirty = pack.workspaces.filter(\.isDirty)
-        if dirty.isEmpty == false {
-            lines.append("\(dirty.count) workspace\(dirty.count == 1 ? " has" : "s have") uncommitted changes.")
-        }
-
-        let totalSpend = pack.usage.reduce(0.0) { $0 + $1.costUSD }
-        if totalSpend > 0 {
-            lines.append("Spend in this window: \(BurnBarAIInboxDetectors.currency(totalSpend)).")
-        }
-
-        let alerts = findings.filter { $0.kind.isAlert }
-        if alerts.isEmpty == false {
-            lines.append("\(alerts.count) thing\(alerts.count == 1 ? "" : "s") worth a look below.")
-        }
-
-        // Say when the picture is stale rather than presenting it as current.
-        // A brief that quietly describes a 10-minute-old world is worse than one
-        // that admits it.
-        if pack.hasNotableIndexLag, let lag = pack.indexLagSeconds {
-            lines.append("(Sessions from the last \(Int(lag / 60)) minutes may not be included yet.)")
-        }
-
-        return lines.joined(separator: " ")
+        BurnBarAIInboxBriefAuthor.ruleBasedBrief(pack: pack, findings: findings, now: now)
     }
 
     private static func finishing(
@@ -611,6 +706,389 @@ actor BurnBarAIInboxService {
             itemsResolved: telemetry.itemsResolved,
             error: telemetry.error
         )
+    }
+}
+
+// MARK: - Zero-egress brief author
+
+/// Writes the default (no-model) brief and chooses citations worth clicking.
+///
+/// Arithmetic glue — "9 sessions mostly in X (9 sessions)" — is not a brief.
+/// This author turns the same pack into short colleague prose and refuses to
+/// materialize five identical empty Factory shells as "evidence".
+enum BurnBarAIInboxBriefAuthor {
+    static func ruleBasedBrief(
+        pack: BurnBarAIInboxEvidencePack,
+        findings: [BurnBarAIInboxFinding],
+        now: Date
+    ) -> String {
+        guard pack.conversations.isEmpty == false
+            || pack.workspaces.isEmpty == false
+            || pack.usage.isEmpty == false
+            || findings.isEmpty == false else {
+            return ""
+        }
+
+        var sentences: [String] = []
+        sentences.append(contentsOf: leadSentences(pack: pack, now: now))
+        if let signal = signalSentence(pack: pack) {
+            sentences.append(signal)
+        }
+        if let workspace = workspaceSentence(pack: pack) {
+            sentences.append(workspace)
+        }
+        if let github = githubSentence(pack: pack) {
+            sentences.append(github)
+        }
+        if let spend = spendSentence(pack: pack) {
+            sentences.append(spend)
+        }
+
+        let alerts = findings.filter(\.kind.isAlert)
+        if alerts.isEmpty == false {
+            let titles = alerts.prefix(2).map(\.title)
+            if alerts.count == 1, let only = titles.first {
+                sentences.append("One thing to check below: \(only).")
+            } else {
+                let listed = titles.joined(separator: "; ")
+                let more = alerts.count > titles.count
+                    ? " (+\(alerts.count - titles.count) more)"
+                    : ""
+                sentences.append("Worth a look below: \(listed)\(more).")
+            }
+        }
+
+        if pack.hasNotableIndexLag, let lag = pack.indexLagSeconds {
+            sentences.append(
+                "Sessions from the last \(max(1, Int(lag / 60))) minutes may not be included yet."
+            )
+        }
+
+        return sentences.joined(separator: " ")
+    }
+
+    static func title(pack: BurnBarAIInboxEvidencePack, now: Date) -> String {
+        let projects = rankedProjects(pack: pack)
+        let sessions = pack.conversations.count
+        let substantive = pack.conversations.filter { $0.messageCount > 0 }.count
+
+        if projects.count == 1, let project = projects.first {
+            if sessions == 0 {
+                return "Activity around \(project.name)"
+            }
+            if substantive == 0 {
+                return "\(project.name): \(sessions) session\(sessions == 1 ? "" : "s"), thin index"
+            }
+            if sessions == 1 {
+                return "Session in \(project.name)"
+            }
+            if project.share >= 0.8 {
+                return "\(project.name) focus — \(sessions) sessions"
+            }
+            return "\(sessions) sessions, mostly \(project.name)"
+        }
+
+        if projects.count > 1 {
+            let top = projects.prefix(2).map(\.name).joined(separator: " + ")
+            return "\(sessions) sessions across \(top)"
+        }
+
+        if sessions > 0 {
+            return substantive == 0
+                ? "\(sessions) sessions, thin index"
+                : "\(sessions) recent sessions"
+        }
+        if pack.workspaces.contains(where: \.isDirty) {
+            return "Uncommitted work waiting"
+        }
+        return "Recent activity"
+    }
+
+    static func evidenceIDs(pack: BurnBarAIInboxEvidencePack, limit: Int = 5) -> [String] {
+        var ids: [String] = []
+        var seenWorkspaces = Set<String>()
+        /// Empty Factory shells often share a project label but carry nil
+        /// `workspacePath` and unique conversation ids — dedupe on the short
+        /// project/path label or we re-list the same hollow row five times.
+        var seenEmptyGroups = Set<String>()
+
+        func consider(_ conversation: BurnBarAIInboxConversationExcerpt) {
+            guard ids.count < limit else { return }
+            let workspaceKey = conversation.workspacePath ?? conversation.conversationID
+            if conversation.messageCount == 0 {
+                let group = shortLabel(conversation.projectName)
+                    ?? shortLabel(conversation.workspacePath)
+                    ?? conversation.workspacePath
+                    ?? conversation.conversationID
+                guard seenEmptyGroups.insert(group).inserted else { return }
+                _ = seenWorkspaces.insert(workspaceKey)
+            } else {
+                _ = seenWorkspaces.insert(workspaceKey)
+            }
+            ids.append(conversation.evidenceID)
+        }
+
+        let substantive = pack.conversations
+            .filter { $0.messageCount > 0 }
+            .sorted { ($0.endedAt ?? .distantPast) > ($1.endedAt ?? .distantPast) }
+        for conversation in substantive {
+            consider(conversation)
+        }
+
+        for workspace in pack.workspaces where workspace.isDirty {
+            guard ids.count < limit else { break }
+            let id = "workspace:\(workspace.path)"
+            if ids.contains(id) == false {
+                ids.append(id)
+            }
+        }
+
+        for aggregate in pack.usage.sorted(by: { $0.costUSD > $1.costUSD }) where aggregate.costUSD > 0 {
+            guard ids.count < limit else { break }
+            let id = "usage:\(aggregate.projectName):\(aggregate.model)"
+            if ids.contains(id) == false {
+                ids.append(id)
+            }
+        }
+
+        if ids.count < limit {
+            let shells = pack.conversations
+                .filter { $0.messageCount == 0 }
+                .sorted { ($0.endedAt ?? .distantPast) > ($1.endedAt ?? .distantPast) }
+            for conversation in shells {
+                consider(conversation)
+            }
+        }
+
+        return ids
+    }
+
+    static func metrics(pack: BurnBarAIInboxEvidencePack) -> [String: String] {
+        var metrics: [String: String] = [:]
+        let sessions = pack.conversations.count
+        let substantive = pack.conversations.filter { $0.messageCount > 0 }.count
+        let projects = Set(
+            pack.conversations.compactMap {
+                shortLabel($0.projectName) ?? shortLabel($0.workspacePath)
+            }
+        )
+        let dirty = pack.workspaces.filter(\.isDirty).count
+        let spend = pack.usage.reduce(0.0) { $0 + $1.costUSD }
+
+        if sessions > 0 {
+            metrics["sessions"] = String(sessions)
+        }
+        if substantive > 0, substantive != sessions {
+            metrics["with_messages"] = String(substantive)
+        }
+        if projects.isEmpty == false {
+            metrics["projects"] = String(projects.count)
+        }
+        if dirty > 0 {
+            metrics["dirty_workspaces"] = String(dirty)
+        }
+        if spend > 0 {
+            metrics["spend_usd"] = String(format: "%.3f", spend)
+        }
+        return metrics
+    }
+
+    static func conversationDetail(_ conversation: BurnBarAIInboxConversationExcerpt) -> String {
+        let provider = conversation.provider.trimmingCharacters(in: .whitespacesAndNewlines)
+        if conversation.messageCount <= 0 {
+            let name = provider.isEmpty ? "session" : provider
+            return "\(name) · empty shell (not indexed yet)"
+        }
+        let providerBit = provider.isEmpty ? "session" : provider
+        return "\(providerBit) · \(conversation.messageCount) messages"
+    }
+
+    static func shortLabel(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return nil }
+        if trimmed == "unattributed" { return nil }
+        if trimmed.contains("/") || trimmed.hasPrefix("~") {
+            let component = BurnBarAIInboxDetectors.lastPathComponent(trimmed)
+            return component.isEmpty ? nil : component
+        }
+        return trimmed
+    }
+
+    // MARK: Private
+
+    private struct RankedProject {
+        let name: String
+        let count: Int
+        var share: Double
+    }
+
+    private static func rankedProjects(pack: BurnBarAIInboxEvidencePack) -> [RankedProject] {
+        let total = max(1, pack.conversations.count)
+        let grouped = Dictionary(grouping: pack.conversations) {
+            shortLabel($0.projectName) ?? shortLabel($0.workspacePath) ?? "unattributed"
+        }
+        return grouped
+            .map {
+                RankedProject(
+                    name: $0.key,
+                    count: $0.value.count,
+                    share: Double($0.value.count) / Double(total)
+                )
+            }
+            .sorted {
+                if $0.count != $1.count { return $0.count > $1.count }
+                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+    }
+
+    private static func leadSentences(
+        pack: BurnBarAIInboxEvidencePack,
+        now: Date
+    ) -> [String] {
+        let sessions = pack.conversations.count
+        guard sessions > 0 else {
+            if pack.workspaces.contains(where: \.isDirty) {
+                return ["No new agent sessions in this window, but workspace dirt is still sitting around."]
+            }
+            return []
+        }
+
+        let window = BurnBarAIInboxDetectors.relativeDescription(from: pack.windowStart, to: now)
+        let projects = rankedProjects(pack: pack)
+        let substantive = pack.conversations.filter { $0.messageCount > 0 }.count
+        let providers = Dictionary(grouping: pack.conversations, by: \.provider)
+            .mapValues(\.count)
+            .sorted { $0.value > $1.value }
+
+        let lead: String
+        if let top = projects.first, top.share >= 0.7 {
+            lead = "Most of the last stretch (\(window)) was spent in **\(top.name)** — \(sessions) agent session\(sessions == 1 ? "" : "s")."
+        } else if projects.count >= 2 {
+            let named = projects.prefix(3).map { "**\($0.name)** (\($0.count))" }.joined(separator: ", ")
+            lead = "\(sessions) agent session\(sessions == 1 ? "" : "s") since \(window), split across \(named)."
+        } else if let top = projects.first {
+            lead = "\(sessions) agent session\(sessions == 1 ? "" : "s") since \(window), centered on **\(top.name)**."
+        } else {
+            lead = "\(sessions) agent session\(sessions == 1 ? "" : "s") since \(window), without a clear project attribution."
+        }
+
+        var extras: [String] = [lead]
+        if substantive == 0 {
+            extras.append(
+                "The index only has empty shells so far (titles are workspace paths, 0 messages) — treat the count as activity, not a finished narrative."
+            )
+        } else if substantive < sessions {
+            extras.append(
+                "Only \(substantive) of those sessions have indexed messages; the rest are still empty shells."
+            )
+        }
+
+        if providers.count > 1, let primary = providers.first {
+            let others = providers.dropFirst().prefix(2).map(\.key).joined(separator: ", ")
+            extras.append(
+                "Harness mix: mostly \(primary.key)\(others.isEmpty ? "" : ", plus \(others)")."
+            )
+        }
+
+        return extras
+    }
+
+    private static func signalSentence(pack: BurnBarAIInboxEvidencePack) -> String? {
+        let substantive = pack.conversations
+            .filter { $0.messageCount > 0 }
+            .sorted { ($0.endedAt ?? .distantPast) > ($1.endedAt ?? .distantPast) }
+        guard let headline = substantive.first else { return nil }
+
+        let snippets = substantive.prefix(3).compactMap { conversation -> String? in
+            if let fromBody = firstUsefulLine(conversation.body) {
+                return fromBody
+            }
+            if conversation.keyFiles.isEmpty == false {
+                let files = conversation.keyFiles.prefix(2)
+                    .map { BurnBarAIInboxDetectors.lastPathComponent($0) }
+                    .joined(separator: ", ")
+                return "touched \(files)"
+            }
+            if conversation.keyCommands.isEmpty == false {
+                return "ran `\(conversation.keyCommands[0])`"
+            }
+            if conversation.title.isEmpty == false,
+               conversation.title.contains("/") == false,
+               conversation.title != conversation.projectName {
+                return conversation.title
+            }
+            return nil
+        }
+
+        guard snippets.isEmpty == false else {
+            let messages = substantive.reduce(0) { $0 + $1.messageCount }
+            let project = shortLabel(headline.projectName) ?? "the active project"
+            return "Indexed transcripts cover \(messages) messages in **\(project)**."
+        }
+
+        if snippets.count == 1 {
+            return "Latest signal: \(snippets[0])."
+        }
+        return "What the transcripts show: \(snippets[0]); also \(snippets[1])."
+    }
+
+    private static func workspaceSentence(pack: BurnBarAIInboxEvidencePack) -> String? {
+        let dirty = pack.workspaces.filter(\.isDirty)
+        guard dirty.isEmpty == false else { return nil }
+        let names = dirty.prefix(3).map { workspace -> String in
+            let label = shortLabel(workspace.path)
+                ?? BurnBarAIInboxDetectors.displayPath(workspace.path)
+            let files = workspace.dirtyFiles.count + workspace.untrackedCount
+            return "**\(label)** (\(files) files)"
+        }
+        if dirty.count == 1, let only = names.first {
+            return "\(only) still has uncommitted work."
+        }
+        let listed = names.joined(separator: ", ")
+        let more = dirty.count > names.count ? " and \(dirty.count - names.count) more" : ""
+        return "Uncommitted work is sitting in \(listed)\(more)."
+    }
+
+    private static func githubSentence(pack: BurnBarAIInboxEvidencePack) -> String? {
+        let openPRs = pack.repositories.reduce(0) { $0 + $1.openPullRequests.count }
+        let wasted = pack.repositories.reduce(0) { partial, repository in
+            partial + repository.recentRuns.filter(\.isWasted).count
+        }
+        if openPRs == 0, wasted == 0 { return nil }
+        var bits: [String] = []
+        if openPRs > 0 {
+            bits.append("\(openPRs) open PR\(openPRs == 1 ? "" : "s")")
+        }
+        if wasted > 0 {
+            bits.append("\(wasted) recent wasted CI run\(wasted == 1 ? "" : "s")")
+        }
+        return "GitHub still shows \(bits.joined(separator: " and "))."
+    }
+
+    private static func spendSentence(pack: BurnBarAIInboxEvidencePack) -> String? {
+        let total = pack.usage.reduce(0.0) { $0 + $1.costUSD }
+        guard total > 0 else { return nil }
+        let top = pack.usage.max(by: { $0.costUSD < $1.costUSD })
+        let amount = BurnBarAIInboxDetectors.currency(total)
+        if let top, top.costUSD > 0, top.costUSD / total >= 0.5 {
+            let project = shortLabel(top.projectName) ?? top.projectName
+            return "Spend in this window: \(amount), mostly \(top.model) on **\(project)**."
+        }
+        return "Spend in this window: \(amount)."
+    }
+
+    private static func firstUsefulLine(_ body: String) -> String? {
+        let line = body
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { candidate in
+                candidate.count >= 24
+                    && candidate.hasPrefix("#") == false
+                    && candidate.hasPrefix("```") == false
+            }
+        guard let line else { return nil }
+        return BurnBarAIInboxDetectors.truncate(line, 140)
     }
 }
 

@@ -910,7 +910,21 @@ struct DashboardView: View {
             MemoryReviewInboxHost(
                 store: store,
                 scope: memoryReviewScope,
-                afterStatusChange: { await refreshPendingMemoryReviewCount() }
+                afterStatusChange: {
+                    await refreshPendingMemoryReviewCount()
+                    // Any status change can revoke an already-exported inbox
+                    // memory. The export is a FULL-SET replacement, so pushing
+                    // after every change makes revocation propagate to the
+                    // daemon by omission — without this, a rejected fact keeps
+                    // entering model prompts until the next unrelated approval.
+                    if let store = runtimeContext?.chatMemoryStore {
+                        await InboxMemoryExportService(
+                            store: store,
+                            scope: memoryReviewScope,
+                            socketURL: OpenBurnBarDaemonRuntimePaths.live().socketURL
+                        ).pushApprovedSnippets()
+                    }
+                }
             )
             .id(ObjectIdentifier(store))
         } else {
@@ -972,9 +986,22 @@ struct DashboardView: View {
                     navigate(to: .sessionLogs)
                 }
             },
-            onOpenSettings: { presentSettings(itemID: "privacy") },
-            memoryApproval: runtimeContext?.chatMemoryStore.map {
-                InboxMemoryApprovalHandler(store: $0, scope: memoryReviewScope)
+            onOpenSettings: { presentSettings(itemID: SettingsDeepLinkRouting.aiInboxItemID) },
+            memoryApproval: runtimeContext?.chatMemoryStore.map { store in
+                InboxMemoryApprovalHandler(
+                    store: store,
+                    scope: memoryReviewScope,
+                    // After each approval, push the refreshed approved-snippet
+                    // set to the daemon so the next tick can cite the fact
+                    // (L21). Best-effort: approval never fails on daemon-down.
+                    exporter: { [memoryReviewScope] in
+                        await InboxMemoryExportService(
+                            store: store,
+                            scope: memoryReviewScope,
+                            socketURL: OpenBurnBarDaemonRuntimePaths.live().socketURL
+                        ).pushApprovedSnippets()
+                    }
+                )
             },
             openItemID: pendingInboxItemID
         )

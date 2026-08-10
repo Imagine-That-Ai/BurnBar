@@ -16,6 +16,10 @@ final class AIInboxSchemaParityTests: XCTestCase {
         "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+DataMigrationV58.swift"
     private static let appMigrationPath =
         "AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationV58.swift"
+    private static let dataFounderLensMigrationPath =
+        "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+DataMigrationV59.swift"
+    private static let appFounderLensMigrationPath =
+        "AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationV59.swift"
 
     /// Walks up from this file to the repository root so the test works from any
     /// working directory (`swift test`, Xcode, CI).
@@ -42,7 +46,11 @@ final class AIInboxSchemaParityTests: XCTestCase {
 
     /// Extracts the `aiInboxSchemaStatements` array literal.
     private static func statementsBlock(from source: String) -> String? {
-        guard let start = source.range(of: "static let aiInboxSchemaStatements: [String] = [") else {
+        statementsBlock(from: source, marker: "static let aiInboxSchemaStatements: [String] = [")
+    }
+
+    private static func statementsBlock(from source: String, marker: String) -> String? {
+        guard let start = source.range(of: marker) else {
             return nil
         }
         let remainder = source[start.upperBound...]
@@ -120,6 +128,64 @@ final class AIInboxSchemaParityTests: XCTestCase {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // MARK: - v59 Founder Lens parity
+
+    func test_founderLensMigrationTreesDeclareIdenticalDDL() throws {
+        guard let dataSource = try Self.source(at: Self.dataFounderLensMigrationPath),
+              let appSource = try Self.source(at: Self.appFounderLensMigrationPath) else {
+            throw XCTSkip("Repository sources are not reachable from this test environment.")
+        }
+        let marker = "static let founderLensSchemaStatements: [String] = ["
+        let dataBlock = try XCTUnwrap(
+            Self.statementsBlock(from: dataSource, marker: marker),
+            "Could not find the DDL block in \(Self.dataFounderLensMigrationPath)"
+        )
+        let appBlock = try XCTUnwrap(
+            Self.statementsBlock(from: appSource, marker: marker),
+            "Could not find the DDL block in \(Self.appFounderLensMigrationPath)"
+        )
+        XCTAssertEqual(
+            dataBlock,
+            appBlock,
+            """
+            The v59 Founder Lens DDL has drifted between the two migration trees. \
+            Both files must declare byte-identical statements — update them in the same commit.
+            """
+        )
+    }
+
+    func test_founderLensMigrationTreesRegisterTheSameIdentifier() throws {
+        guard let dataSource = try Self.source(at: Self.dataFounderLensMigrationPath),
+              let appSource = try Self.source(at: Self.appFounderLensMigrationPath) else {
+            throw XCTSkip("Repository sources are not reachable from this test environment.")
+        }
+        for source in [dataSource, appSource] {
+            XCTAssertTrue(
+                source.contains("migrator.registerMigration(\"v59_founder_lens\")"),
+                "Both trees must register the identical v59 migration identifier"
+            )
+        }
+    }
+
+    func test_daemonFounderLensDDLMatchesMigrationDDL() throws {
+        guard let dataSource = try Self.source(at: Self.dataFounderLensMigrationPath) else {
+            throw XCTSkip("Repository sources are not reachable from this test environment.")
+        }
+        for statement in BurnBarAIInboxSchema.founderLensStatements {
+            let normalized = Self.normalize(statement)
+            XCTAssertTrue(
+                Self.normalize(dataSource).contains(normalized),
+                """
+                The daemon creates a Founder Lens table/index the v59 migration does not:
+
+                \(statement)
+
+                Add it to both migration trees in the same commit.
+                """
+            )
+        }
+    }
+
     // MARK: - Live schema shape
 
     /// Guards the invariants the rest of the feature depends on, verified against
@@ -160,7 +226,14 @@ final class AIInboxSchemaParityTests: XCTestCase {
         )
         XCTAssertEqual(
             tables,
-            ["ai_inbox_items", "ai_inbox_runs", "ai_inbox_state", "ai_inbox_item_state"]
+            [
+                // v58
+                "ai_inbox_items", "ai_inbox_runs", "ai_inbox_state", "ai_inbox_item_state",
+                // v59 Founder Lens
+                "ai_inbox_threads", "ai_inbox_thread_messages",
+                "ai_inbox_plans", "ai_inbox_plan_steps", "ai_inbox_plan_events",
+                "ai_inbox_memory_export"
+            ]
         )
     }
 }

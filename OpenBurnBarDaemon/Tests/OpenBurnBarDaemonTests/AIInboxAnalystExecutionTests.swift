@@ -131,10 +131,14 @@ final class AIInboxAnalystExecutionTests: XCTestCase {
         XCTAssertEqual(call.provenance, "zai:glm-5-turbo")
 
         // The request that went over the wire carried the fixed system prompt
-        // and demanded JSON-only output.
+        // (with the Founder Lens section — on by default) and demanded
+        // JSON-only output.
         let lastRequest = await executor.lastPrompt()
         let request = try XCTUnwrap(lastRequest)
-        XCTAssertEqual(request.systemPrompt, BurnBarAIInboxPromptBuilder.analystSystemPrompt)
+        XCTAssertEqual(
+            request.systemPrompt,
+            BurnBarAIInboxPromptBuilder.analystSystemPrompt(founderLens: true)
+        )
         XCTAssertTrue(request.jsonOnly)
         XCTAssertTrue(request.userPrompt.contains("# Valid evidence ids"))
     }

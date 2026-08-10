@@ -1612,6 +1612,48 @@ public enum BurnBarUsageConfidence: String, Codable, Hashable, CaseIterable, Sen
     case unknown
 }
 
+/// Whether a usage event represents real per-token dollars leaving a wallet
+/// (`api`) or the imputed list-price value of work that actually ran inside a
+/// flat plan (`subscription`). `unknown` is the fail-honest default for rows
+/// recorded before this dimension existed; consumers must surface it as its
+/// own bucket rather than silently folding it into either side.
+public enum BurnBarBillingKind: String, Codable, Hashable, Sendable, CaseIterable {
+    case api
+    case subscription
+    case unknown
+}
+
+/// Fallback classifier for ledger rows that predate the stamped
+/// `billingKind` field. Deliberately conservative: the daemon's provider
+/// router only ever dials key-backed provider slots, so every provider it can
+/// name is API-billed; anything unrecognized stays `unknown` instead of
+/// guessing. Writers should stamp the kind at record time — this table exists
+/// only so history remains classifiable.
+public enum BurnBarBillingProvenance {
+    /// Provider ids the daemon reaches with a configured API key. Kept as an
+    /// explicit allowlist (not "everything") so a future subscription-bridged
+    /// route cannot be silently misbilled as API spend.
+    private static let apiKeyProviderIDs: Set<String> = [
+        "deepseek", "openai", "anthropic", "openrouter", "meta", "metadev",
+        "xai", "mistral", "gemini", "groq", "zai", "minimax", "moonshot",
+        "fireworks", "together", "local-rules"
+    ]
+
+    public static func classify(providerID: String) -> BurnBarBillingKind {
+        let normalized = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard normalized.isEmpty == false else { return .unknown }
+        // "local-rules" rows carry zero cost either way; classifying them as
+        // api keeps the budget arithmetic exact without a special case.
+        return apiKeyProviderIDs.contains(normalized) ? .api : .unknown
+    }
+
+    /// The effective kind for a ledger event: the stamped value when present,
+    /// the classifier's answer for legacy rows otherwise.
+    public static func effectiveKind(of event: BurnBarUsageEvent) -> BurnBarBillingKind {
+        event.billingKind ?? classify(providerID: event.providerID)
+    }
+}
+
 public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
     public let runID: BurnBarRunID?
     public let providerID: String
@@ -1644,6 +1686,12 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
     /// deduped). `nil` for ordinary single-route completions; additive and
     /// decode-optional so existing rows and call sites are unaffected.
     public let parentRequestID: String?
+    /// Billing provenance of this event: real API dollars vs subscription-plan
+    /// imputed value. Stamped by the writer that knows the route; `nil` on
+    /// rows recorded before the field existed (resolve via
+    /// `BurnBarBillingProvenance.effectiveKind(of:)`). Additive and
+    /// decode-optional like `parentRequestID`.
+    public let billingKind: BurnBarBillingKind?
 
     private enum CodingKeys: String, CodingKey {
         case runID
@@ -1664,6 +1712,7 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         case executionSourceConfidence
         case confidence
         case parentRequestID
+        case billingKind
     }
 
     public init(
@@ -1684,7 +1733,8 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         executionSourceKind: UsageExecutionSourceKind? = nil,
         executionSourceConfidence: BurnBarUsageConfidence? = nil,
         confidence: BurnBarUsageConfidence = .exact,
-        parentRequestID: String? = nil
+        parentRequestID: String? = nil,
+        billingKind: BurnBarBillingKind? = nil
     ) {
         self.runID = runID
         self.providerID = providerID
@@ -1704,6 +1754,7 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         self.executionSourceConfidence = executionSourceConfidence
         self.confidence = confidence
         self.parentRequestID = parentRequestID
+        self.billingKind = billingKind
     }
 
     public init(from decoder: Decoder) throws {
@@ -1726,6 +1777,7 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         executionSourceConfidence = try container.decodeIfPresent(BurnBarUsageConfidence.self, forKey: .executionSourceConfidence)
         confidence = try container.decodeIfPresent(BurnBarUsageConfidence.self, forKey: .confidence) ?? .exact
         parentRequestID = try container.decodeIfPresent(String.self, forKey: .parentRequestID)
+        billingKind = try container.decodeIfPresent(BurnBarBillingKind.self, forKey: .billingKind)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -1748,6 +1800,7 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         try container.encodeIfPresent(executionSourceConfidence, forKey: .executionSourceConfidence)
         try container.encode(confidence, forKey: .confidence)
         try container.encodeIfPresent(parentRequestID, forKey: .parentRequestID)
+        try container.encodeIfPresent(billingKind, forKey: .billingKind)
     }
 }
 

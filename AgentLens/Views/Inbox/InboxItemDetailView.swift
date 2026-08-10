@@ -19,6 +19,11 @@ struct InboxItemDetailView: View {
     /// tests without a memory store wired up.
     var memoryApproval: InboxMemoryApprovalHandler?
 
+    /// Founder Lens dialogue, keyed by condition fingerprint. Optional for the
+    /// same preview/test reason; when nil, the item stays a one-shot brief
+    /// exactly as before.
+    var threadFingerprint: String?
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
@@ -28,6 +33,17 @@ struct InboxItemDetailView: View {
                 if row.payload.evidence.isEmpty == false { evidenceSection }
                 if row.payload.memoryCandidates.isEmpty == false { memorySection }
                 if row.payload.actions.isEmpty == false { actionsSection }
+                if let threadFingerprint {
+                    InboxThreadHost(fingerprint: threadFingerprint)
+                    // The accepted ledger with its action controls (promote /
+                    // follow-up / remember / grade) — renders only when a plan
+                    // exists. Mission and follow-up creation need a project;
+                    // items without attribution get the rest of the loop.
+                    InboxPlansPanel(
+                        projectSlug: row.summary.projectID,
+                        memoryApproval: memoryApproval
+                    )
+                }
                 footerSection
             }
             .padding(DesignSystem.Spacing.xl)

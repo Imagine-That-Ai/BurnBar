@@ -125,8 +125,30 @@ public actor BurnBarDaemonServer {
     /// init would leave the inbox unavailable until the next daemon restart.
     private var aiInboxStorage: BurnBarAIInboxService?
     private var aiInboxBootstrapAttempted = false
+    /// Last bootstrap failure (cleared on success / forced retry). Surfaced in
+    /// inbox RPC errors so Settings does not claim the index path is missing
+    /// when the real problem is cipher/key/schema.
+    private var aiInboxBootstrapFailure: String?
     var aiInbox: BurnBarAIInboxService? {
         ensureAIInboxBootstrapped()
+    }
+
+    /// Human-readable reason the AI Inbox control plane is unavailable, or nil
+    /// when the service is ready. Used by RPC error payloads.
+    var aiInboxUnavailabilityReason: String? {
+        if aiInboxStorage != nil { return nil }
+        if let aiInboxBootstrapFailure {
+            return aiInboxBootstrapFailure
+        }
+        let path = configuration.indexDatabasePath?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if path.isEmpty {
+            return "The AI Inbox is not available. Configure OPENBURNBAR_INDEX_DATABASE_PATH and restart the daemon."
+        }
+        if FileManager.default.fileExists(atPath: path) == false {
+            return "The AI Inbox is waiting for the index database at \(path) to be created."
+        }
+        return "The AI Inbox is not available yet."
     }
     let ownsChatThreadService: Bool
     private let gatewayServer: BurnBarHTTPGatewayServer?
@@ -664,14 +686,18 @@ public actor BurnBarDaemonServer {
         }
     }
 
-    /// Opens the AI Inbox service exactly once after the configured database
-    /// path becomes a real file, mirroring the code-memory bootstrap. A failed
-    /// open is cached so a broken profile cannot cause a retry storm; a missing
-    /// file is NOT a failed attempt, because chat may create it later.
+    /// Opens the AI Inbox service after the configured database path becomes a
+    /// real file. A missing file is not a failed attempt (chat may create it).
+    /// Permanent open failures are sticky; transient lock/busy failures leave
+    /// the door open for the next RPC / Settings Retry.
     @discardableResult
-    func ensureAIInboxBootstrapped() -> BurnBarAIInboxService? {
+    func ensureAIInboxBootstrapped(forceRetry: Bool = false) -> BurnBarAIInboxService? {
         if let aiInboxStorage {
             return aiInboxStorage
+        }
+        if forceRetry {
+            aiInboxBootstrapAttempted = false
+            aiInboxBootstrapFailure = nil
         }
         guard aiInboxBootstrapAttempted == false else { return nil }
         guard let path = configuration.indexDatabasePath?
@@ -681,7 +707,6 @@ public actor BurnBarDaemonServer {
             return nil
         }
 
-        aiInboxBootstrapAttempted = true
         do {
             let service = try BurnBarAIInboxService(
                 databasePath: path,
@@ -689,15 +714,45 @@ public actor BurnBarDaemonServer {
                 configStore: configStore
             )
             aiInboxStorage = service
+            aiInboxBootstrapFailure = nil
+            aiInboxBootstrapAttempted = true
             logger.info("ai_inbox_bootstrap_succeeded", metadata: ["path": path])
+            // Late bootstrap (index database created after daemon startup, or
+            // a Settings → Retry) must still start the periodic loop — startup
+            // only starts it when bootstrap succeeded there and then. Without
+            // this, a fresh profile gets a service that answers RPCs but never
+            // ticks in the background until the daemon restarts.
+            if configuration.startsMissionControlBackgroundLoops, aiInboxStartedLoop == false {
+                Task { await service.start() }
+                aiInboxStartedLoop = true
+            }
             return service
         } catch {
+            let detail = error.localizedDescription
+            aiInboxBootstrapFailure = detail
+            let transient = Self.isTransientAIInboxBootstrapFailure(detail)
+            // Sticky only for permanent failures so a SQLITE_BUSY blip during
+            // app ingestion cannot disable the inbox until the next reboot.
+            aiInboxBootstrapAttempted = (transient == false)
             logger.warning(
                 "ai_inbox_bootstrap_failed",
-                metadata: ["path": path, "error": error.localizedDescription]
+                metadata: [
+                    "path": path,
+                    "error": detail,
+                    "transient": transient ? "true" : "false"
+                ]
             )
             return nil
         }
+    }
+
+    private static func isTransientAIInboxBootstrapFailure(_ detail: String) -> Bool {
+        let lowered = detail.lowercased()
+        return lowered.contains("busy")
+            || lowered.contains("locked")
+            || lowered.contains("database is locked")
+            || lowered.contains("sqlite_busy")
+            || lowered.contains("sqlite_locked")
     }
 
     /// Opens the project code-memory store exactly once after the configured
@@ -1494,7 +1549,10 @@ public actor BurnBarDaemonServer {
                     requestData: requestData
                 )
             case .inboxList, .inboxGet, .inboxRunsRecent,
-                 .inboxConfigGet, .inboxConfigUpdate, .inboxRunNow:
+                 .inboxConfigGet, .inboxConfigUpdate, .inboxRunNow,
+                 .inboxThreadGet, .inboxReply,
+                 .inboxPlansList, .inboxPlansGet, .inboxPlansAccept,
+                 .inboxPlansUpdateStep, .inboxPlansGrade, .inboxMemoryExport:
                 return try await handleInboxRPC(
                     method: method,
                     decoder: decoder,

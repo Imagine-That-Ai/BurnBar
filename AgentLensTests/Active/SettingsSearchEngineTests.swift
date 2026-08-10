@@ -186,6 +186,16 @@ final class SettingsSearchEngineTests: XCTestCase {
         XCTAssertTrue(kernelIDs.contains("general.appearance.backdropKernel"))
     }
 
+    func test_manifestFindsAIInbox() {
+        for term in ["ai inbox", "inbox", "background analyst", "smart inbox"] {
+            let ids = SettingsSearchEngine.search(term, in: SettingsManifest.all).map(\.id)
+            XCTAssertTrue(
+                ids.contains("aiInbox.overview") || ids.contains(SettingsDeepLinkRouting.aiInboxItemID),
+                "Search for '\(term)' must surface AI Inbox settings (got \(ids.prefix(5)))"
+            )
+        }
+    }
+
     func test_legacyRoutingVocabularyLandsOnAgents() {
         // Vocabulary the user has typed for years — must still route them to
         // the Agents page, not return an empty result.

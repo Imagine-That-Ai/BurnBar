@@ -239,7 +239,7 @@ final class InboxModel {
     /// archived, or one that has already resolved).
     func select(itemID: String, loadingIfNeeded: Bool = true) async {
         if rows.contains(where: { $0.id == itemID }) {
-            await select(itemID)
+            select(itemID)
             return
         }
         guard loadingIfNeeded else { return }
@@ -247,7 +247,7 @@ final class InboxModel {
         if let all = try? await loadRows(nil), all.contains(where: { $0.id == itemID }) {
             rows = all
             filter = .resolved
-            await select(itemID)
+            select(itemID)
         }
     }
 
@@ -257,10 +257,11 @@ final class InboxModel {
 
     // MARK: - Actions
 
-    func select(_ id: String) async {
+    /// Synchronous selection so the detail pane updates in the same click
+    /// event. Persistence (mark-read) is kicked off asynchronously and must
+    /// never gate the UI — a busy MainActor used to make clicks feel dead.
+    func select(_ id: String) {
         selectedID = id
-        // Selecting is reading. Do it optimistically so the row's unread dot
-        // clears the instant it is clicked.
         guard let index = rows.firstIndex(where: { $0.id == id }), rows[index].isUnread else { return }
         applyOptimistic(id: id) { row in
             ControlPlaneStore.AIInboxRow(
@@ -273,7 +274,8 @@ final class InboxModel {
                 feedback: row.feedback
             )
         }
-        await perform { try await self.markRead(id) }
+        let markRead = self.markRead
+        Task { await self.perform { try await markRead(id) } }
     }
 
     func toggleRead(_ id: String) async {

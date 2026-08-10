@@ -131,6 +131,56 @@ final class InboxMemoryApprovalHandlerTests: XCTestCase {
         XCTAssertEqual(InboxMemoryApprovalHandler.memoryKind(for: "something-new"), .fact)
     }
 
+    // MARK: - Plan steps (Founder Lens)
+
+    func testApprovePlanStepWritesApprovedFactWithPlanProvenanceAndCallsExporter() async throws {
+        var exporterCalls = 0
+        let counter = ExporterCounter()
+        handler = InboxMemoryApprovalHandler(
+            store: store,
+            scope: scope,
+            exporter: { await counter.increment() }
+        )
+        let now = Date()
+        let plan = BurnBarInboxPlan(
+            id: "plan_ci",
+            title: "Kill the CI waste loop",
+            horizon: .week,
+            pack: "engOps",
+            status: .active,
+            summaryMarkdown: "Stop rerunning red workflows.",
+            createdAt: now,
+            updatedAt: now
+        )
+        let step = BurnBarInboxPlanStep(
+            id: "step_1",
+            planID: plan.id,
+            ordinal: 1,
+            title: "Land the compile gate",
+            bodyMarkdown: "Trunk must compile before merges.",
+            status: .accepted,
+            createdAt: now,
+            updatedAt: now
+        )
+
+        let memoryID = try await handler.approvePlanStep(plan: plan, step: step)
+
+        let page = try await store.chatMemoryPage(MemoryPageRequest(scope: scope))
+        XCTAssertEqual(page.items.count, 1)
+        let listed = try XCTUnwrap(page.items.first)
+        XCTAssertEqual(listed.id, memoryID)
+        XCTAssertEqual(listed.reviewStatus, .approved, "quarantine-first, then approved")
+        let fetched = try await store.fetchChatMemoryAuthorityRecord(id: listed.id)
+        let memory = try XCTUnwrap(fetched)
+        XCTAssertEqual(
+            memory.citations.map(\.id),
+            ["ai-inbox:plan:plan_ci:step:step_1"],
+            "plan provenance is the citation"
+        )
+        exporterCalls = await counter.count
+        XCTAssertEqual(exporterCalls, 1, "approval pushes the export set to the daemon")
+    }
+
     // MARK: - Hashing
 
     func testHashIsStableSHA256Hex() {
@@ -142,4 +192,10 @@ final class InboxMemoryApprovalHandlerTests: XCTestCase {
         XCTAssertEqual(InboxMemoryApprovalHandler.hash("x"), InboxMemoryApprovalHandler.hash("x"))
         XCTAssertNotEqual(InboxMemoryApprovalHandler.hash("x"), InboxMemoryApprovalHandler.hash("y"))
     }
+}
+
+/// Actor-isolated counter so the @Sendable exporter closure can record calls.
+private actor ExporterCounter {
+    private(set) var count = 0
+    func increment() { count += 1 }
 }

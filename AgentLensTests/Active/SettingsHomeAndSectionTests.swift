@@ -42,6 +42,12 @@ final class SettingsHomeAndSectionTests: XCTestCase {
         XCTAssertTrue(SettingsTab.visibleTabs.contains(.modelProxy), "Model Proxy must be visible in the sidebar")
     }
 
+    func test_visibleTabsIncludesAIInbox() {
+        XCTAssertTrue(SettingsTab.visibleTabs.contains(.aiInbox), "AI Inbox must be a sidebar tab")
+        XCTAssertEqual(SettingsTab.aiInbox.section, .lookAndFeel)
+        XCTAssertEqual(SettingsTab.aiInbox.title, "AI Inbox")
+    }
+
     // MARK: - Legacy resolution
 
     func test_legacyGatewayResolvesToModelProxy() {
@@ -87,5 +93,13 @@ final class SettingsHomeAndSectionTests: XCTestCase {
 
     func test_modelProxyRootRouteExists() {
         XCTAssertNotNil(SettingsManifest.all.first { $0.pageRoute == .modelProxyRoot })
+    }
+
+    func test_aiInboxRootRouteExists() {
+        XCTAssertNotNil(SettingsManifest.all.first { $0.pageRoute == .aiInboxRoot })
+        XCTAssertEqual(
+            SettingsManifest.all.first { $0.id == SettingsDeepLinkRouting.aiInboxItemID }?.tab,
+            .aiInbox
+        )
     }
 }

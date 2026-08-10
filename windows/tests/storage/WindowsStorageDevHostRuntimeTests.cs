@@ -15,8 +15,8 @@ namespace OpenBurnBar.App.Storage.Tests;
 public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
 {
     private const string SampleEnv = "OPENBURNBAR_SAMPLE_MODE";
-    private const string ExpectedV58Endpoint = "v58_ai_inbox";
-    private const long ExpectedV58MigrationCount = 59;
+    private const string ExpectedV58Endpoint = "v59_founder_lens";
+    private const long ExpectedV58MigrationCount = 60;
 
     public void Dispose()
     {

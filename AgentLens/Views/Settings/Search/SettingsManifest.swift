@@ -324,6 +324,34 @@ enum SettingsManifest {
             keywords: ["recap", "summary", "session", "auto"]
         ),
 
+        // MARK: AI Inbox
+
+        SettingsItem(
+            id: "aiInbox.overview",
+            tab: .aiInbox,
+            pageRoute: .aiInboxRoot,
+            anchorID: SettingsAnchor.aiInboxOverview,
+            title: "AI Inbox",
+            subtitle: "Background analyst that flags unfinished agent work",
+            keywords: [
+                "ai inbox", "inbox", "smart inbox", "attention", "unfinished",
+                "analyst", "summaries", "agent inbox", "tray"
+            ],
+            helpText: "Turn on the background analyst that reads recent agent sessions and surfaces what needs attention."
+        ),
+        SettingsItem(
+            id: SettingsDeepLinkRouting.aiInboxItemID,
+            tab: .aiInbox,
+            pageRoute: .aiInboxRoot,
+            anchorID: SettingsAnchor.aiInboxEnable,
+            title: "Run the AI Inbox",
+            subtitle: "Enable or disable the background analyst",
+            keywords: [
+                "enable inbox", "run inbox", "turn on inbox", "ai inbox",
+                "inbox toggle", "background analyst"
+            ]
+        ),
+
         // MARK: Daemon → Lifecycle
 
         SettingsItem(
@@ -884,6 +912,8 @@ enum SettingsManifest {
         SettingsAnchor.refreshInterval,
         SettingsAnchor.indexingToggle,
         SettingsAnchor.summariesAuto,
+        SettingsAnchor.aiInboxOverview,
+        SettingsAnchor.aiInboxEnable,
         SettingsAnchor.updatesOverview,
         SettingsAnchor.updatesAutomaticChecks,
         SettingsAnchor.updatesReleaseNotes,

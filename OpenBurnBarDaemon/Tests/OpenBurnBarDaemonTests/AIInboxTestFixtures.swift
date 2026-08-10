@@ -209,6 +209,31 @@ enum AIInboxFixtures {
 
     // MARK: - Store writes
 
+    /// A full item detail with one grounded evidence row, for tests that need
+    /// citation validation against known ids.
+    static func itemDetail(fingerprint: String) -> BurnBarInboxItemDetail {
+        let now = Date()
+        return BurnBarInboxItemDetail(
+            summary: BurnBarInboxItemSummary(
+                id: "inb_fixture",
+                fingerprint: fingerprint,
+                kind: .ciWaste,
+                priority: .p2,
+                state: .new,
+                title: "fixture item",
+                firstSeenAt: now,
+                lastSeenAt: now
+            ),
+            summaryMarkdown: "fixture summary",
+            payload: BurnBarInboxItemPayload(
+                evidence: [
+                    BurnBarInboxEvidence(id: "conv:grounded", kind: .conversation, label: "grounded")
+                ]
+            ),
+            tickID: "tick_test"
+        )
+    }
+
     static func itemWrite(
         fingerprint: String,
         title: String,

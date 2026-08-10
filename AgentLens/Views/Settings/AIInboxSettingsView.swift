@@ -29,6 +29,10 @@ struct AIInboxSettingsView: View {
 
             if let unavailable = model.unavailableReason {
                 unavailableBanner(unavailable)
+            } else if model.isLoading {
+                ProgressView("Checking daemon…")
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 enableSection
                 if model.config.enabled {
@@ -77,22 +81,37 @@ struct AIInboxSettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .settingsAnchor(SettingsAnchor.aiInboxOverview)
     }
 
     private func unavailableBanner(_ reason: String) -> some View {
-        HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(DesignSystem.Colors.warning)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("The AI Inbox is not available yet")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text(reason)
-                    .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(DesignSystem.Colors.warning)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("The AI Inbox is not available yet")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(reason)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            Button {
+                Task { await model.load(forceTokenRefresh: true) }
+            } label: {
+                if model.isLoading {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Text("Retry")
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(model.isLoading)
         }
         .padding(DesignSystem.Spacing.sm)
         .background(
@@ -109,6 +128,7 @@ struct AIInboxSettingsView: View {
             subtitle: "Wakes every few minutes. When nothing has changed it does nothing and costs nothing.",
             isOn: model.binding(\.enabled) { config, value in config.with(enabled: value) }
         )
+        .settingsAnchor(SettingsAnchor.aiInboxEnable)
     }
 
     private var egressSection: some View {
@@ -189,6 +209,14 @@ struct AIInboxSettingsView: View {
                     .font(DesignSystem.Typography.monoTiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
+
+            SettingsToggle(
+                title: "Count subscription spend",
+                subtitle: "Off: the budget guards real API dollars only — calls covered by a flat plan (imputed value) run free. On: everything counts.",
+                isOn: model.binding(\.budgetCountsSubscriptionSpend) { config, value in
+                    config.with(budgetCountsSubscriptionSpend: value)
+                }
+            )
         }
     }
 
@@ -325,7 +353,13 @@ struct AIInboxSettingsView: View {
             if run.itemsNew > 0 { parts.append("\(run.itemsNew) new") }
             if run.itemsUpdated > 0 { parts.append("\(run.itemsUpdated) updated") }
             if run.itemsResolved > 0 { parts.append("\(run.itemsResolved) resolved") }
-            if run.llmCalls == 0 { parts.append("no model calls") }
+            if run.llmCalls == 0 {
+                parts.append(
+                    run.egressMode.allowsModelCalls
+                        ? "rule-based (model skipped — budget?)"
+                        : "rule-based (egress off)"
+                )
+            }
             return parts.isEmpty ? "analyzed, nothing to report" : parts.joined(separator: ", ")
         }
     }
@@ -340,6 +374,7 @@ final class AIInboxSettingsModel {
     private(set) var config = BurnBarInboxConfig()
     private(set) var runs: [BurnBarInboxRunTelemetry] = []
     private(set) var todaySpendUSD: Double?
+    private(set) var isLoading = false
     private(set) var isSaving = false
     private(set) var isRunningNow = false
     private(set) var unavailableReason: String?
@@ -347,10 +382,18 @@ final class AIInboxSettingsModel {
 
     private var saveTask: Task<Void, Never>?
 
-    func load() async {
+    func load(forceTokenRefresh: Bool = false) async {
+        isLoading = true
+        defer { isLoading = false }
         do {
+            if forceTokenRefresh {
+                OpenBurnBarDaemonSocketClient.cacheDaemonSocketAuthToken(nil)
+            }
             let socketURL = try Self.socketURL()
-            let loaded = try OpenBurnBarDaemonSocketClient.inboxConfiguration(at: socketURL)
+            // Blocking POSIX socket I/O — never on the main actor (beachball).
+            let loaded = try await Self.rpc {
+                try OpenBurnBarDaemonSocketClient.inboxConfiguration(at: socketURL)
+            }
             config = loaded
             unavailableReason = nil
             await loadTelemetry()
@@ -361,7 +404,10 @@ final class AIInboxSettingsModel {
 
     func loadTelemetry() async {
         guard let socketURL = try? Self.socketURL() else { return }
-        guard let response = try? OpenBurnBarDaemonSocketClient.inboxRuns(at: socketURL) else { return }
+        let response = try? await Self.rpc {
+            try OpenBurnBarDaemonSocketClient.inboxRuns(at: socketURL)
+        }
+        guard let response else { return }
         runs = response.runs
         todaySpendUSD = response.todaySpendUSD
     }
@@ -409,7 +455,9 @@ final class AIInboxSettingsModel {
             let socketURL = try Self.socketURL()
             // Render what the daemon stored, not what we sent: values are clamped
             // on write, so the two can legitimately differ.
-            config = try OpenBurnBarDaemonSocketClient.updateInboxConfiguration(next, at: socketURL)
+            config = try await Self.rpc {
+                try OpenBurnBarDaemonSocketClient.updateInboxConfiguration(next, at: socketURL)
+            }
             errorMessage = nil
         } catch {
             errorMessage = "Could not save: \(error.localizedDescription)"
@@ -421,7 +469,9 @@ final class AIInboxSettingsModel {
         defer { isRunningNow = false }
         do {
             let socketURL = try Self.socketURL()
-            let response = try OpenBurnBarDaemonSocketClient.runInboxNow(force: true, at: socketURL)
+            let response = try await Self.rpc {
+                try OpenBurnBarDaemonSocketClient.runInboxNow(force: true, at: socketURL)
+            }
             if response.accepted == false {
                 errorMessage = response.reason
             } else {
@@ -437,12 +487,51 @@ final class AIInboxSettingsModel {
         OpenBurnBarDaemonRuntimePaths.live().socketURL
     }
 
-    private static func friendlyUnavailable(_ error: Error) -> String {
+    /// Hop blocking Unix-socket I/O onto a cooperative pool thread. `daemonRPC`
+    /// is also nonisolated, but `Task.detached` makes the off-main guarantee
+    /// explicit for Settings (where a 30s socket timeout would beachball).
+    private static func rpc<T: Sendable>(_ work: @Sendable @escaping () throws -> T) async throws -> T {
+        try await Task.detached(priority: .userInitiated) {
+            try work()
+        }.value
+    }
+
+    static func friendlyUnavailable(_ error: Error) -> String {
         let description = error.localizedDescription
+        let lowered = description.lowercased()
         if description.contains("OPENBURNBAR_INDEX_DATABASE_PATH") {
             return "The OpenBurnBar daemon is running without an index database, so it cannot analyze anything yet."
         }
-        return "The OpenBurnBar daemon is not reachable right now. The inbox becomes available once it is running."
+        if lowered.contains("waiting for the index database") {
+            return "The index database has not been created yet. Keep OpenBurnBar open until the first scan finishes, then tap Retry."
+        }
+        if lowered.contains("sqlcipher")
+            || lowered.contains("cipher")
+            || lowered.contains("encryption key")
+            || lowered.contains("file is not a database")
+            || lowered.contains("file is encrypted") {
+            return "The daemon could not unlock the encrypted index database. Unlock this Mac, confirm OpenBurnBar can access the Keychain, then tap Retry. If you installed a local Debug build, rebuild/re-sign the daemon so it can read the same Keychain item as the app."
+        }
+        if lowered.contains("busy") || lowered.contains("locked") {
+            return "The index database is busy (another OpenBurnBar component is writing). Wait a moment and tap Retry."
+        }
+        if lowered.contains("unauthorized") || lowered.contains("auth token") {
+            return "The app could not authenticate to the daemon. Open Settings → Daemon and use Repair, then tap Retry."
+        }
+        if lowered.contains("timed out") || lowered.contains("timeout") {
+            return "The daemon did not answer in time. It may be overloaded — wait a moment and tap Retry."
+        }
+        if lowered.contains("connection refused") || lowered.contains("no such file") || lowered.contains("connect failed") {
+            return "The OpenBurnBar daemon is not running. Open Settings → Daemon and start or repair it, then tap Retry."
+        }
+        if lowered.contains("empty response") {
+            return "The daemon closed the connection without a reply (often a code-signature mismatch). Repair the daemon from Settings → Daemon, then tap Retry."
+        }
+        // Prefer the daemon's concrete bootstrap reason over a generic unreachable blurb.
+        if lowered.contains("ai inbox") || lowered.contains("sqlite") || lowered.contains("database") {
+            return description
+        }
+        return "The OpenBurnBar daemon is not reachable right now. Start or repair it from Settings → Daemon, then tap Retry."
     }
 }
 
@@ -458,7 +547,8 @@ extension BurnBarInboxConfig {
         tickSeconds: Int? = nil,
         dailyBudgetUSD: Double? = nil,
         githubEnabled: Bool? = nil,
-        notifyOnP1: Bool? = nil
+        notifyOnP1: Bool? = nil,
+        budgetCountsSubscriptionSpend: Bool? = nil
     ) -> BurnBarInboxConfig {
         BurnBarInboxConfig(
             enabled: enabled ?? self.enabled,
@@ -474,7 +564,34 @@ extension BurnBarInboxConfig {
             verifierModel: verifierModel,
             githubEnabled: githubEnabled ?? self.githubEnabled,
             notifyOnP1: notifyOnP1 ?? self.notifyOnP1,
-            lookbackMinutes: lookbackMinutes
+            lookbackMinutes: lookbackMinutes,
+            // Founder Lens fields must survive unrelated edits — omitting them
+            // here silently reset a disabled lens or a lowered reply budget to
+            // defaults on every settings change.
+            founderLensEnabled: founderLensEnabled,
+            perReplyBudgetUSD: perReplyBudgetUSD,
+            maxThreadTurns: maxThreadTurns,
+            budgetCountsSubscriptionSpend: budgetCountsSubscriptionSpend
+                ?? self.budgetCountsSubscriptionSpend
         )
+    }
+}
+
+/// Top-level Settings destination for AI Inbox (sidebar tab + search deep link).
+/// Kept as a thin shell so Indexing can also push the same route without nesting
+/// another ScrollView around the content view.
+struct AIInboxSettingsRootView: View {
+    var body: some View {
+        SettingsDeepLinkScrollContainer(route: .aiInboxRoot) { _ in
+            ScrollView {
+                GlassCard {
+                    AIInboxSettingsView()
+                }
+                .padding(DesignSystem.Spacing.lg)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(DesignSystem.Colors.background)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
