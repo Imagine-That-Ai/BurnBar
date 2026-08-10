@@ -97,6 +97,7 @@ struct InboxPressStyle: ButtonStyle {
 // MARK: - Section label
 
 struct InboxSectionLabel: View {
+    @Environment(\.backdropInk) private var ink
     let text: String
     var hint: String?
 
@@ -105,11 +106,11 @@ struct InboxSectionLabel: View {
             Text(text)
                 .font(DesignSystem.Typography.tiny)
                 .tracking(1.2)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(ink.subtle)
             if let hint {
                 Text(hint)
                     .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.75))
+                    .foregroundStyle(ink.subtle.opacity(0.75))
             }
             Spacer(minLength: 0)
         }
@@ -183,6 +184,7 @@ struct InboxMetricsSection: View {
 
 /// One number, as a card you can press.
 struct InboxMetricStat: View {
+    @Environment(\.backdropInk) private var ink
     let metric: InboxMetric
     let isSelected: Bool
     let onToggle: () -> Void
@@ -197,7 +199,7 @@ struct InboxMetricStat: View {
                     Text(metric.label.uppercased())
                         .font(DesignSystem.Typography.tiny)
                         .tracking(0.9)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(ink.subtle)
                         .lineLimit(1)
                     Spacer(minLength: 0)
                     Image(systemName: isSelected ? "chevron.up" : "chevron.down")
@@ -205,7 +207,7 @@ struct InboxMetricStat: View {
                         .foregroundStyle(
                             isSelected || isHovering
                                 ? DesignSystem.Colors.ember
-                                : DesignSystem.Colors.textMuted.opacity(0.5)
+                                : ink.subtle
                         )
                 }
 
@@ -221,7 +223,7 @@ struct InboxMetricStat: View {
                     .foregroundStyle(
                         isHovering || isSelected
                             ? DesignSystem.Colors.ember.opacity(0.9)
-                            : DesignSystem.Colors.textMuted.opacity(0.8)
+                            : ink.subtle.opacity(0.8)
                     )
                     .lineLimit(1)
             }
@@ -287,6 +289,7 @@ struct InboxMetricStat: View {
 
 /// The expanded truth behind one number.
 struct InboxMetricInspectorPanel: View {
+    @Environment(\.backdropInk) private var ink
     let metric: InboxMetric
     let navigator: InboxDrillNavigator
     let onClose: () -> Void
@@ -298,7 +301,7 @@ struct InboxMetricInspectorPanel: View {
                     Text(metric.label.uppercased())
                         .font(DesignSystem.Typography.tiny)
                         .tracking(1.1)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(ink.subtle)
                     Text(metric.value)
                         .font(DesignSystem.Typography.monoSmall)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
@@ -306,7 +309,7 @@ struct InboxMetricInspectorPanel: View {
                     Button(action: onClose) {
                         Image(systemName: "xmark")
                             .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .foregroundStyle(ink.subtle)
                             .padding(DesignSystem.Spacing.xs)
                             .contentShape(Rectangle())
                     }
@@ -328,7 +331,7 @@ struct InboxMetricInspectorPanel: View {
                             .foregroundStyle(DesignSystem.Colors.amber)
                         Text(coverage)
                             .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .foregroundStyle(ink.subtle)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -336,7 +339,7 @@ struct InboxMetricInspectorPanel: View {
                 if metric.rows.isEmpty {
                     Text("This number has no itemized sources in the payload — the count is above, and the sentence above it is the whole of what the analyst recorded.")
                         .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(ink.subtle)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     VStack(spacing: DesignSystem.Spacing.xxs) {
@@ -377,6 +380,7 @@ struct InboxMetricInspectorPanel: View {
 /// One line of a breakdown. Same interaction contract as an evidence row, at a
 /// tighter scale.
 struct InboxDrillRowView: View {
+    @Environment(\.backdropInk) private var ink
     let row: InboxDrillRow
     let navigator: InboxDrillNavigator
 
@@ -419,7 +423,7 @@ struct InboxDrillRowView: View {
                 if let detail = row.detail {
                     Text(detail)
                         .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(ink.subtle)
                         .lineLimit(1)
                 }
             }
@@ -442,8 +446,8 @@ struct InboxDrillRowView: View {
                 .font(.system(size: 8, weight: .semibold))
                 .foregroundStyle(
                     target.isReachable
-                        ? (isHovering ? DesignSystem.Colors.ember : DesignSystem.Colors.textMuted)
-                        : DesignSystem.Colors.textMuted.opacity(0.35)
+                        ? (isHovering ? DesignSystem.Colors.ember : ink.subtle)
+                        : ink.subtle.opacity(0.35)
                 )
         }
         .padding(.horizontal, DesignSystem.Spacing.sm)
@@ -466,7 +470,7 @@ struct InboxDrillRowView: View {
 
     private func shareBar(_ share: Double) -> some View {
         ZStack(alignment: .leading) {
-            Capsule().fill(DesignSystem.Colors.textMuted.opacity(0.15))
+            Capsule().fill(ink.subtle.opacity(0.15))
             GeometryReader { proxy in
                 Capsule()
                     .fill(DesignSystem.Colors.ember.opacity(0.65))
@@ -488,6 +492,7 @@ struct InboxDrillRowView: View {
 /// focus draws a ring; and a citation with nowhere to go states that in words
 /// rather than rendering a disabled button.
 struct InboxEvidenceRowView: View {
+    @Environment(\.backdropInk) private var ink
     let evidence: BurnBarInboxEvidence
     let navigator: InboxDrillNavigator
 
@@ -555,7 +560,7 @@ struct InboxEvidenceRowView: View {
                 .foregroundStyle(
                     target.isReachable && isHovering
                         ? DesignSystem.Colors.ember
-                        : DesignSystem.Colors.textMuted
+                        : ink.subtle
                 )
                 .frame(width: 16)
                 .padding(.top, 1)
@@ -572,13 +577,13 @@ struct InboxEvidenceRowView: View {
                     if let detail = evidence.detail {
                         Text(detail)
                             .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .foregroundStyle(ink.subtle)
                             .lineLimit(isExpanded ? nil : 1)
                     }
                     if let occurredAt = evidence.occurredAt {
                         Text("· \(InboxView.relativeFormatter.localizedString(for: occurredAt, relativeTo: Date()))")
                             .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.8))
+                            .foregroundStyle(ink.subtle.opacity(0.8))
                             .lineLimit(1)
                     }
                 }
@@ -605,7 +610,7 @@ struct InboxEvidenceRowView: View {
             } label: {
                 Image(systemName: isExpanded ? "chevron.up" : "ellipsis")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
                     .padding(.horizontal, DesignSystem.Spacing.xs)
                     .padding(.vertical, 2)
                     .background(
@@ -629,11 +634,11 @@ struct InboxEvidenceRowView: View {
             if target.isReachable {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(isHovering ? DesignSystem.Colors.ember : DesignSystem.Colors.textMuted)
+                    .foregroundStyle(isHovering ? DesignSystem.Colors.ember : ink.subtle)
             } else if isHovering {
                 Text("no link")
                     .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.7))
+                    .foregroundStyle(ink.subtle.opacity(0.7))
                     .fixedSize()
             }
         }
@@ -660,7 +665,7 @@ struct InboxEvidenceRowView: View {
             HStack(spacing: DesignSystem.Spacing.xs) {
                 Text(InboxEvidenceInspector.referenceID(for: evidence))
                     .font(DesignSystem.Typography.monoTiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
                     .textSelection(.enabled)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -668,7 +673,7 @@ struct InboxEvidenceRowView: View {
                 Button { copy(InboxEvidenceInspector.referenceID(for: evidence)) } label: {
                     Text(didCopy ? "Copied" : "Copy id")
                         .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(didCopy ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted)
+                        .foregroundStyle(didCopy ? DesignSystem.Colors.success : ink.subtle)
                 }
                 .buttonStyle(.plain)
 
@@ -678,7 +683,7 @@ struct InboxEvidenceRowView: View {
             if target.isReachable == false {
                 Text(InboxEvidenceInspector.inertReason(for: evidence))
                     .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -786,6 +791,7 @@ struct InboxActionsSection: View {
 }
 
 struct InboxActionButton: View {
+    @Environment(\.backdropInk) private var ink
     let action: BurnBarInboxAction
     let readiness: InboxActionReadiness
     let isPrimary: Bool
@@ -837,7 +843,7 @@ struct InboxActionButton: View {
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(
                     readiness.isEnabled
-                        ? DesignSystem.Colors.textMuted
+                        ? ink.subtle
                         : DesignSystem.Colors.warning.opacity(0.9)
                 )
                 .fixedSize(horizontal: false, vertical: true)
@@ -851,7 +857,7 @@ struct InboxActionButton: View {
     }
 
     private var foreground: Color {
-        if readiness.isEnabled == false { return DesignSystem.Colors.textMuted }
+        if readiness.isEnabled == false { return ink.subtle }
         return isPrimary ? .white : DesignSystem.Colors.textPrimary
     }
 
@@ -881,6 +887,7 @@ struct InboxActionButton: View {
 
 /// A suggested shell command. Deliberately not a "go" button.
 struct InboxCommandCard: View {
+    @Environment(\.backdropInk) private var ink
     let action: BurnBarInboxAction
     let readiness: InboxActionReadiness
 
@@ -898,12 +905,12 @@ struct InboxCommandCard: View {
                 Text("COPY ONLY")
                     .font(DesignSystem.Typography.tiny)
                     .tracking(0.9)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
                     .padding(.horizontal, DesignSystem.Spacing.sm)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(DesignSystem.Colors.surfaceElevated.opacity(0.9)))
             }
-            .foregroundStyle(DesignSystem.Colors.textMuted)
+            .foregroundStyle(ink.subtle)
 
             Text(action.value)
                 .font(DesignSystem.Typography.monoSmall)
@@ -959,7 +966,7 @@ struct InboxCommandCard: View {
 
                 Text(readiness.disabledReason ?? readiness.effect)
                     .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Spacer(minLength: 0)
@@ -991,6 +998,7 @@ struct InboxCommandCard: View {
 
 /// "seen 161 times", made examinable.
 struct InboxOccurrenceControl: View {
+    @Environment(\.backdropInk) private var ink
     let summary: InboxOccurrenceSummary
 
     @State private var isExpanded = false
@@ -1007,14 +1015,14 @@ struct InboxOccurrenceControl: View {
                         .foregroundStyle(
                             isHovering || isExpanded
                                 ? DesignSystem.Colors.ember
-                                : DesignSystem.Colors.textMuted
+                                : ink.subtle
                         )
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 7, weight: .semibold))
                         .foregroundStyle(
                             isHovering || isExpanded
                                 ? DesignSystem.Colors.ember
-                                : DesignSystem.Colors.textMuted.opacity(0.6)
+                                : ink.subtle.opacity(0.6)
                         )
                 }
                 .contentShape(Rectangle())
@@ -1038,7 +1046,7 @@ struct InboxOccurrenceControl: View {
                         }
                         Text(summary.explanation)
                             .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .foregroundStyle(ink.subtle)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -1054,7 +1062,7 @@ struct InboxOccurrenceControl: View {
             Text(label.uppercased())
                 .font(DesignSystem.Typography.tiny)
                 .tracking(0.9)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(ink.subtle)
                 .frame(width: 88, alignment: .leading)
             Text(value)
                 .font(DesignSystem.Typography.caption)

@@ -36,6 +36,7 @@ struct ControlDeckGrid<Tile: View>: View {
         LiquidGlassGroup(spacing: DesignSystem.Spacing.md) {
             VStack(spacing: DesignSystem.Spacing.md) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    let widths = renderedSpans(in: row)
                     HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
                         ForEach(row, id: \.self) { index in
                             if configs.indices.contains(index) {
@@ -43,13 +44,11 @@ struct ControlDeckGrid<Tile: View>: View {
                                 if contentWidth > 0 {
                                     // Explicit width: a span-2 tile really is
                                     // twice a span-1 tile plus the gutter it
-                                    // swallows, and a short row stays
-                                    // left-aligned instead of stretching its
-                                    // tiles to fill the band.
+                                    // swallows.
                                     card(config)
                                         .frame(
                                             width: CardRowPacker.width(
-                                                span: config.span,
+                                                span: widths[index] ?? config.span,
                                                 columns: columns,
                                                 contentWidth: contentWidth,
                                                 gutter: DesignSystem.Spacing.md
@@ -60,12 +59,34 @@ struct ControlDeckGrid<Tile: View>: View {
                                 }
                             }
                         }
-                        Spacer(minLength: 0)
                     }
                 }
             }
         }
         .animation(reduceMotion ? nil : DesignSystem.Animation.gentle, value: configs)
+    }
+
+    /// The span each tile in a row is actually drawn at.
+    ///
+    /// The packer deliberately never reorders — the user's arrangement is the
+    /// contract — so a band whose spans do not divide the column count leaves a
+    /// hole at the end of the row. Five of the six bands do exactly that at four
+    /// columns, which is why the deck read as a broken grid: ragged rows with
+    /// dead space punched out of the right-hand side.
+    ///
+    /// Rather than reshuffle (which would make drag-to-reorder lie), the last
+    /// tile in an underfull row absorbs the leftover columns. Order is
+    /// preserved, every row reaches the edge of the content column, and the
+    /// tile that grows is the one the eye already treats as the end of the row.
+    private func renderedSpans(in row: [Int]) -> [Int: Int] {
+        guard let last = row.last, configs.indices.contains(last) else { return [:] }
+        let used = row.reduce(0) { total, index in
+            guard configs.indices.contains(index) else { return total }
+            return total + min(columns, max(1, configs[index].span))
+        }
+        let slack = columns - used
+        guard slack > 0 else { return [:] }
+        return [last: min(columns, max(1, configs[last].span) + slack)]
     }
 
     @ViewBuilder

@@ -237,7 +237,7 @@ private struct TextExpansionTile: View {
                     label: expansion.inAppExpansionEnabled ? "In OpenBurnBar" : "OpenBurnBar off",
                     tint: expansion.inAppExpansionEnabled
                         ? DesignSystem.Colors.success
-                        : DesignSystem.Colors.textMuted.opacity(0.5),
+                        : ControlDeckInk.inactive,
                     help: "Expands triggers inside OpenBurnBar's own chat and composer."
                 )
 
@@ -367,7 +367,7 @@ private struct ChartsTile: View {
                     label: aiInsightsEnabled ? "Insights on" : "Insights off",
                     tint: aiInsightsEnabled
                         ? DesignSystem.Colors.success
-                        : DesignSystem.Colors.textMuted.opacity(0.5),
+                        : ControlDeckInk.inactive,
                     help: "Whether the gallery asks your connected LLM to read the aggregate numbers."
                 )
                 Spacer(minLength: 0)
@@ -397,6 +397,7 @@ private struct ChartsTile: View {
 // `SettingsEffectsObserver`, which fixes it once for *both* surfaces — putting
 // the reschedule call in this tile would leave Settings inert instead.
 private struct AlertsTile: View {
+    @Environment(\.backdropInk) private var ink
     @Bindable var settingsManager: SettingsManager
     let todaySpend: Double
     let onOpenSettings: (String?) -> Void
@@ -464,7 +465,7 @@ private struct AlertsTile: View {
                     label: digestLabel,
                     tint: settingsManager.dailyDigestEnabled
                         ? DesignSystem.Colors.warning
-                        : DesignSystem.Colors.textMuted.opacity(0.5),
+                        : ControlDeckInk.inactive,
                     help: settingsManager.dailyDigestEnabled
                         ? "The digest is scheduled at launch, so a time change here would not take effect until you relaunch. Change it in Settings."
                         : "The daily digest is off."
@@ -487,7 +488,7 @@ private struct AlertsTile: View {
             }
             Text(threshold.formatAsCost())
                 .font(DesignSystem.Typography.monoSmall)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .foregroundStyle(ink.secondary)
             stepButton("plus", help: "Raise the daily threshold by $5.") {
                 settingsManager.costAlertThreshold = threshold + 5
             }
@@ -501,7 +502,7 @@ private struct AlertsTile: View {
         Button(action: action) {
             Image(systemName: glyph)
                 .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .foregroundStyle(ink.secondary)
                 .frame(width: 16, height: 16)
                 .background(Circle().fill(ControlKind.alerts.accent.opacity(0.12)))
                 .contentShape(Circle())

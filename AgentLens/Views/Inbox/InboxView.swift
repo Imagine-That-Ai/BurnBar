@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import OpenBurnBarKernel
 
@@ -11,6 +12,12 @@ import OpenBurnBarKernel
 ///   • unread = 7pt ember dot + faint ember card wash (the Controller Inbox idiom)
 ///   • priority = `OpenBurnBarStatusBadge` capsule
 ///   • cards = `GlassCard`, sections = pinned `LazyVStack` headers
+///
+/// Management (pin, tag, category, order, save, delete, bulk) follows the mail
+/// client contract: **every gesture has a keyboard and VoiceOver equivalent.**
+/// Drag-and-drop and context menus are unreachable without a mouse, so the same
+/// verbs appear in the actions menu (with shortcuts) and in
+/// `.accessibilityActions` on each row — the `ControlDeckGrid` precedent.
 struct InboxView: View {
     @State private var model: InboxModel
     let onOpenSessionLog: (String) -> Void
@@ -22,6 +29,16 @@ struct InboxView: View {
     var openItemID: String?
 
     @Environment(\.dashboardLiveBackdropActive) private var liveBackdropActive
+    @Environment(\.backdropReadabilityProfile) private var backdropProfile
+
+    /// Non-nil while a bulk delete is waiting for confirmation.
+    @State private var pendingDelete: [String]?
+    @State private var isNamingCategory = false
+    @State private var categoryDraft = ""
+    /// The row a drag is currently hovering, for the reorder insertion hint.
+    @State private var dropTargetID: String?
+    /// The category chip a drag is currently hovering.
+    @State private var dropTargetCategory: String?
 
     init(
         model: InboxModel,
@@ -55,11 +72,24 @@ struct InboxView: View {
         .task {
             await model.load(force: true)
             await model.loadTelemetry()
+            // Garbage-collect arrangement records for items the inbox no longer
+            // has. Done on open rather than on the refresh cadence: it is a full
+            // listing and it does not need re-running every thirty seconds.
+            await model.pruneShelf()
             if let openItemID {
                 await model.select(itemID: openItemID)
             }
         }
         .accessibilityIdentifier(OBBAccessibilityID.inboxRoot)
+    }
+
+    /// Text roles resolved for whatever this pane is drawn over.
+    ///
+    /// Never `DesignSystem.Colors.textMuted`: it measures 3.77:1 against the
+    /// app's own `surface` and has never cleared 4.5:1 on any background this
+    /// app can draw. It is a hairline token that was being used for body copy.
+    private var ink: BackdropInk {
+        BackdropInk.resolve(liveBackdropActive: liveBackdropActive, profile: backdropProfile)
     }
 
     // MARK: - List pane
@@ -68,6 +98,19 @@ struct InboxView: View {
         VStack(spacing: 0) {
             header
             filterBar
+            managementBar
+
+            if model.selection.isEmpty == false {
+                selectionBar
+            }
+
+            if categoryRailIsVisible {
+                categoryRail
+            }
+
+            if let undo = model.deleteUndo {
+                undoBanner(undo)
+            }
 
             if let errorMessage = model.errorMessage {
                 errorBanner(errorMessage)
@@ -84,6 +127,33 @@ struct InboxView: View {
             }
         }
         .background(paneBackground)
+        .background(keyboardShortcuts)
+        .animation(DesignSystem.Animation.gentle, value: model.selection.isEmpty)
+        .animation(DesignSystem.Animation.gentle, value: model.deleteUndo)
+        .confirmationDialog(
+            "Delete \(pendingDelete?.count ?? 0) item\((pendingDelete?.count ?? 0) == 1 ? "" : "s")?",
+            isPresented: pendingDeleteBinding,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { confirmPendingDelete() }
+            Button("Cancel", role: .cancel) { pendingDelete = nil }
+        } message: {
+            Text("They disappear from every tab, including Archived. You can undo this for a few seconds afterwards.")
+        }
+        .alert("File into a new category", isPresented: $isNamingCategory) {
+            TextField("Category name", text: $categoryDraft)
+            Button("File") { applyCategoryDraft() }
+            Button("Cancel", role: .cancel) { categoryDraft = "" }
+        } message: {
+            Text("Categories are your own labels. Reuse one from the menu instead of respelling it.")
+        }
+    }
+
+    private var pendingDeleteBinding: Binding<Bool> {
+        Binding(
+            get: { pendingDelete != nil },
+            set: { presented in if presented == false { pendingDelete = nil } }
+        )
     }
 
     private var header: some View {
@@ -92,7 +162,7 @@ struct InboxView: View {
                 Text("INBOX")
                     .font(DesignSystem.Typography.tiny)
                     .tracking(1.4)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
 
                 Image(systemName: "sparkles")
                     .font(.system(size: 10, weight: .semibold))
@@ -106,7 +176,7 @@ struct InboxView: View {
                     } label: {
                         Text("Mark all read")
                             .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .foregroundStyle(ink.secondary)
                     }
                     .buttonStyle(.plain)
                     .help("Mark every open item as read")
@@ -116,7 +186,7 @@ struct InboxView: View {
             HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
                 Text(headlineText)
                     .font(DesignSystem.Typography.headline)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .foregroundStyle(ink.primary)
 
                 if model.attentionCount > 0 {
                     attentionPill
@@ -126,7 +196,7 @@ struct InboxView: View {
             if let subtitle = subtitleText {
                 Text(subtitle)
                     .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
             }
         }
         .padding(.horizontal, DesignSystem.Spacing.lg)
@@ -188,14 +258,18 @@ struct InboxView: View {
     }
 
     private var filterBar: some View {
-        HStack(spacing: DesignSystem.Spacing.xs) {
-            ForEach(InboxModel.Filter.allCases) { filter in
-                filterChip(filter)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                ForEach(InboxModel.Filter.allCases) { filter in
+                    filterChip(filter)
+                }
             }
-            Spacer(minLength: 0)
+            .padding(.horizontal, DesignSystem.Spacing.lg)
         }
-        .padding(.horizontal, DesignSystem.Spacing.lg)
-        .padding(.bottom, DesignSystem.Spacing.md)
+        // A `ScrollView` claims every axis it is offered; the chips must keep
+        // their intrinsic height or the bar swallows the list.
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.bottom, DesignSystem.Spacing.sm)
     }
 
     private func filterChip(_ filter: InboxModel.Filter) -> some View {
@@ -205,7 +279,7 @@ struct InboxView: View {
         } label: {
             Text(filter.title)
                 .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(isActive ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
+                .foregroundStyle(isActive ? ink.primary : ink.secondary)
                 .padding(.horizontal, DesignSystem.Spacing.sm)
                 .padding(.vertical, DesignSystem.Spacing.xs)
                 .background(
@@ -225,13 +299,382 @@ struct InboxView: View {
         .accessibilityIdentifier(OBBAccessibilityID.inboxFilterChip(filter.rawValue))
     }
 
+    // MARK: - Management bar
+
+    /// Sort mode plus the actions menu. Everything in the menu carries its
+    /// keyboard shortcut, so the menu doubles as the discoverability surface for
+    /// the shortcuts.
+    private var managementBar: some View {
+        HStack(spacing: DesignSystem.Spacing.xs) {
+            orderingMenu
+            Spacer(minLength: 0)
+            actionsMenu
+        }
+        .padding(.horizontal, DesignSystem.Spacing.lg)
+        .padding(.bottom, DesignSystem.Spacing.sm)
+    }
+
+    private var orderingMenu: some View {
+        Menu {
+            Picker("Order", selection: orderingBinding) {
+                ForEach(InboxModel.Ordering.allCases) { ordering in
+                    Label(ordering.title, systemImage: ordering.symbolName).tag(ordering)
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            HStack(spacing: DesignSystem.Spacing.xxs) {
+                Image(systemName: model.ordering.symbolName)
+                    .font(.system(size: 10, weight: .semibold))
+                Text(model.ordering.title)
+                    .font(DesignSystem.Typography.tiny)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+            }
+            .foregroundStyle(ink.secondary)
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .padding(.vertical, DesignSystem.Spacing.xs)
+            .background(
+                Capsule().stroke(DesignSystem.Colors.borderSubtle, lineWidth: 1)
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(model.ordering.explanation)
+        .accessibilityIdentifier(OBBAccessibilityID.inboxOrderingMenu)
+    }
+
+    private var orderingBinding: Binding<InboxModel.Ordering> {
+        Binding(
+            get: { model.ordering },
+            set: { newValue in
+                withAnimation(DesignSystem.Animation.gentle) { model.ordering = newValue }
+            }
+        )
+    }
+
+    /// Every management verb in one place.
+    ///
+    /// The shortcuts themselves are registered by `keyboardShortcuts` (hidden
+    /// always-present buttons) rather than declared on these items: a shortcut
+    /// declared *both* here and there would register the same key twice, and a
+    /// double-fired toggle is a silent no-op. So this menu names them instead —
+    /// which is also the only way the shortcuts are discoverable at all.
+    private var actionsMenu: some View {
+        Menu {
+            Section("Selection") {
+                Button("Select all in list") { model.selectAllVisible() }
+                Button("Deselect all") { model.clearSelection() }
+                    .disabled(model.selection.isEmpty)
+            }
+
+            Section(targetSummary) {
+                Button(pinTitle) { model.togglePin(model.actionTargets) }
+                Button(saveTitle) { model.toggleSaved(model.actionTargets) }
+                Menu("Tag") { tagMenuItems(for: model.actionTargets) }
+                Menu("File into") { categoryMenuItems(for: model.actionTargets) }
+            }
+
+            Section {
+                Button("Archive") { Task { await model.archive(ids: model.actionTargets) } }
+                Button("Delete", role: .destructive) { requestDelete() }
+                if model.deleteUndo != nil {
+                    Button("Undo delete") { Task { await model.undoDelete() } }
+                }
+            }
+
+            if model.ordering.allowsManualReorder {
+                Section("Manual order") {
+                    Button("Move up") { nudgeFocused(-1) }
+                    Button("Move down") { nudgeFocused(1) }
+                }
+            }
+
+            Section("Keyboard") {
+                ForEach(Self.shortcutHints(manualOrdering: model.ordering.allowsManualReorder), id: \.self) { hint in
+                    Text(hint)
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(ink.icon)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        // Never disabled: "Select all in list" lives in here, so a disabled
+        // menu would make selecting anything from the keyboard impossible.
+        .help("Manage the selected items")
+        .accessibilityLabel("Inbox actions")
+        .accessibilityIdentifier(OBBAccessibilityID.inboxActionsMenu)
+    }
+
+    private var targetSummary: String {
+        let count = model.actionTargets.count
+        switch count {
+        case 0: return "Nothing selected"
+        case 1: return "This item"
+        default: return "\(count) selected"
+        }
+    }
+
+    private var pinTitle: String {
+        let targets = model.actionTargets
+        let allPinned = targets.isEmpty == false && targets.allSatisfy { model.shelf.isPinned($0) }
+        return allPinned ? "Unpin" : "Pin to top"
+    }
+
+    private var saveTitle: String {
+        let targets = model.actionTargets
+        let allSaved = targets.isEmpty == false && targets.allSatisfy { model.shelf.isSaved($0) }
+        return allSaved ? "Remove from Saved" : "Save"
+    }
+
+    @ViewBuilder
+    private func tagMenuItems(for ids: [String]) -> some View {
+        Button("No tag") { model.setColorTag(nil, ids: ids) }
+        Divider()
+        ForEach(InboxColorTag.allCases) { tag in
+            Button {
+                model.setColorTag(tag, ids: ids)
+            } label: {
+                Label(tag.displayName, systemImage: tag.symbolName)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func categoryMenuItems(for ids: [String]) -> some View {
+        Button("No category") { model.setCategory(nil, ids: ids) }
+        Divider()
+        ForEach(Self.categoryChoices(presets: InboxCategoryPresets.all, inUse: model.categoriesInUse), id: \.self) { name in
+            Button(name) { model.setCategory(name, ids: ids) }
+        }
+        Divider()
+        Button("New category…") { beginNamingCategory() }
+    }
+
+    /// The shortcut table, kept beside the buttons that register it in
+    /// `keyboardShortcuts` so the two cannot drift apart unnoticed.
+    static func shortcutHints(manualOrdering: Bool) -> [String] {
+        var hints = [
+            "⇧⌘A  Select all in list",
+            "⇧⌘D  Deselect all",
+            "⇧⌘P  Pin / unpin",
+            "⇧⌘S  Save / unsave",
+            "⌃⌘A  Archive",
+            "⌘⌫  Delete",
+            "⌘Z  Undo delete"
+        ]
+        if manualOrdering {
+            hints.append("⌥↑ / ⌥↓  Move up / down")
+        }
+        return hints
+    }
+
+    /// The presets plus anything already in use, de-duplicated
+    /// case-insensitively so "Costs" and "costs" never both appear.
+    static func categoryChoices(presets: [String], inUse: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for name in presets + inUse {
+            let key = name.lowercased()
+            guard seen.contains(key) == false else { continue }
+            seen.insert(key)
+            result.append(name)
+        }
+        return result
+    }
+
+    // MARK: - Selection bar
+
+    private var selectionBar: some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            Text("\(model.selection.count) selected")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(ink.primary)
+
+            Spacer(minLength: 0)
+
+            bulkButton("Archive", systemImage: "archivebox") {
+                Task { await model.archive(ids: model.actionTargets) }
+            }
+            bulkButton("Delete", systemImage: "trash", tint: DesignSystem.Colors.error) {
+                requestDelete()
+            }
+            bulkButton("Done", systemImage: "xmark") { model.clearSelection() }
+        }
+        .padding(.horizontal, DesignSystem.Spacing.lg)
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .background(selectionBarBackground)
+        .accessibilityIdentifier(OBBAccessibilityID.inboxSelectionBar)
+    }
+
+    private func bulkButton(
+        _ title: String,
+        systemImage: String,
+        tint: Color? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: DesignSystem.Spacing.xxs) {
+                Image(systemName: systemImage).font(.system(size: 9, weight: .semibold))
+                Text(title).font(DesignSystem.Typography.tiny)
+            }
+            .foregroundStyle(tint ?? ink.secondary)
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .padding(.vertical, DesignSystem.Spacing.xs)
+            .background(
+                Capsule().stroke((tint ?? ink.hairline).opacity(0.55), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title) \(model.selection.count) selected items")
+    }
+
+    @ViewBuilder
+    private var selectionBarBackground: some View {
+        if liveBackdropActive {
+            ZStack {
+                Rectangle().fill(DesignSystem.Colors.surface.opacity(BackdropSubstrate.liveElevated))
+                Rectangle().fill(DesignSystem.Colors.ember.opacity(0.08))
+            }
+        } else {
+            DesignSystem.Colors.ember.opacity(0.08)
+        }
+    }
+
+    // MARK: - Category rail
+
+    /// "File into" targets. A chip is both a button (click to file the current
+    /// targets) and a drop destination (drag a row onto it), because moving an
+    /// item between categories is what "move" means in an inbox with no folders.
+    private var categoryRailIsVisible: Bool {
+        model.categoriesInUse.isEmpty == false
+    }
+
+    private var categoryRail: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Text("FILE INTO")
+                    .font(DesignSystem.Typography.tiny)
+                    .tracking(1.0)
+                    .foregroundStyle(ink.subtle)
+
+                ForEach(model.categoriesInUse, id: \.self) { category in
+                    categoryChip(category)
+                }
+            }
+            .padding(.horizontal, DesignSystem.Spacing.lg)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.bottom, DesignSystem.Spacing.sm)
+    }
+
+    private func categoryChip(_ category: String) -> some View {
+        let isTarget = dropTargetCategory == category
+        return Button {
+            model.setCategory(category, ids: model.actionTargets)
+        } label: {
+            HStack(spacing: DesignSystem.Spacing.xxs) {
+                Image(systemName: "folder").font(.system(size: 9, weight: .semibold))
+                Text(category).font(DesignSystem.Typography.tiny).lineLimit(1)
+            }
+            .foregroundStyle(isTarget ? ink.primary : ink.secondary)
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .padding(.vertical, DesignSystem.Spacing.xs)
+            .background(
+                Capsule()
+                    .fill(isTarget ? DesignSystem.Colors.whimsy.opacity(0.18) : Color.clear)
+                    .overlay(
+                        Capsule().stroke(
+                            isTarget ? DesignSystem.Colors.whimsy.opacity(0.7) : DesignSystem.Colors.borderSubtle,
+                            lineWidth: 1
+                        )
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .dropDestination(for: String.self) { items, _ in
+            dropTargetCategory = nil
+            let ids = knownRowIDs(in: items)
+            guard ids.isEmpty == false else { return false }
+            model.setCategory(category, ids: ids)
+            return true
+        } isTargeted: { targeted in
+            dropTargetCategory = targeted ? category : nil
+        }
+        .help("File the selection into \(category), or drag an item onto it")
+        .accessibilityLabel("File selection into \(category)")
+        .accessibilityIdentifier(OBBAccessibilityID.inboxCategoryChip(category))
+    }
+
+    /// A drop payload is arbitrary text until proven otherwise. Only ids that
+    /// name a row the inbox is actually showing are honoured.
+    private func knownRowIDs(in items: [String]) -> [String] {
+        let known = Set(model.rows.map(\.id))
+        return items.filter { known.contains($0) }
+    }
+
+    // MARK: - Undo banner
+
+    private func undoBanner(_ undo: InboxModel.DeleteUndo) -> some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: "trash")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(ink.icon)
+
+            Text(undo.message)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(ink.primary)
+
+            Spacer(minLength: 0)
+
+            Button("Undo") { Task { await model.undoDelete() } }
+                .buttonStyle(.plain)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.ember)
+
+            Button {
+                model.dismissUndo()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(ink.icon)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(.horizontal, DesignSystem.Spacing.lg)
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .background(undoBannerBackground)
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(OBBAccessibilityID.inboxUndoBanner)
+    }
+
+    @ViewBuilder
+    private var undoBannerBackground: some View {
+        if liveBackdropActive {
+            ZStack {
+                Rectangle().fill(DesignSystem.Colors.surface.opacity(BackdropSubstrate.liveElevated))
+                Rectangle().fill(DesignSystem.Colors.blaze.opacity(0.10))
+            }
+        } else {
+            DesignSystem.Colors.blaze.opacity(0.10)
+        }
+    }
+
     private func errorBanner(_ message: String) -> some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(DesignSystem.Colors.warning)
             Text(message)
                 .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .foregroundStyle(ink.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
@@ -240,22 +683,17 @@ struct InboxView: View {
         .background(DesignSystem.Colors.warning.opacity(0.08))
     }
 
+    // MARK: - List
+
     private var list: some View {
         ScrollView {
             LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                 ForEach(model.sections, id: \.section.id) { group in
                     Section {
                         ForEach(group.rows) { row in
-                            InboxRowView(
-                                row: row,
-                                isSelected: model.selectedID == row.id,
-                                onSelect: { model.select(row.id) },
-                                onArchive: { Task { await model.archive(row.id) } },
-                                onSnooze: { interval in Task { await model.snooze(row.id, for: interval) } },
-                                onToggleRead: { Task { await model.toggleRead(row.id) } }
-                            )
-                            .padding(.horizontal, DesignSystem.Spacing.md)
-                            .padding(.vertical, DesignSystem.Spacing.xs)
+                            rowView(row)
+                                .padding(.horizontal, DesignSystem.Spacing.md)
+                                .padding(.vertical, DesignSystem.Spacing.xs)
                         }
                     } header: {
                         sectionHeader(group.section, count: group.rows.count)
@@ -266,22 +704,106 @@ struct InboxView: View {
         }
     }
 
+    private func rowView(_ row: ControlPlaneStore.AIInboxRow) -> some View {
+        InboxRowView(
+            row: row,
+            entry: model.shelf.entry(row.id),
+            isOpen: model.selectedID == row.id,
+            isChecked: model.selection.contains(row.id),
+            hasSelection: model.selection.isEmpty == false,
+            allowsDrag: allowsDrag,
+            allowsReorder: model.ordering.allowsManualReorder,
+            isDropTarget: dropTargetID == row.id,
+            categoryChoices: Self.categoryChoices(
+                presets: InboxCategoryPresets.all,
+                inUse: model.categoriesInUse
+            ),
+            actions: rowActions(for: row.id),
+            ink: ink,
+            onDropTargeted: { targeted in dropTargetID = targeted ? row.id : nil }
+        )
+    }
+
+    /// Dragging is only wired up where it means something: manual ordering
+    /// (drop onto a row) or a category rail to drop onto. Elsewhere the row
+    /// stays a plain button, which keeps clicks crisp — `GlassCard(interactive:)`
+    /// already documents how easily a drag gesture steals a click here.
+    private var allowsDrag: Bool {
+        model.ordering.allowsManualReorder || categoryRailIsVisible
+    }
+
+    private func rowActions(for id: String) -> InboxRowActions {
+        InboxRowActions(
+            click: { intent in model.click(id, intent: intent) },
+            toggleRead: { Task { await model.toggleRead(id) } },
+            togglePin: { model.togglePin(targets(including: id)) },
+            toggleSaved: { model.toggleSaved(targets(including: id)) },
+            setTag: { tag in model.setColorTag(tag, ids: targets(including: id)) },
+            setCategory: { category in model.setCategory(category, ids: targets(including: id)) },
+            newCategory: { beginNamingCategory(anchoredTo: id) },
+            snooze: { interval in Task { await model.snooze(id, for: interval) } },
+            archive: { Task { await model.archive(ids: targets(including: id)) } },
+            delete: { requestDelete(ids: targets(including: id)) },
+            nudge: { offset in model.nudgeManual(id, offset: offset) },
+            dropRow: { draggedID in
+                dropTargetID = nil
+                guard knownRowIDs(in: [draggedID]).isEmpty == false else { return }
+                model.moveManual(draggedID, onto: id)
+            }
+        )
+    }
+
+    /// A row action applies to the whole selection when the row is part of it,
+    /// and to just that row otherwise — the mail-client rule.
+    private func targets(including id: String) -> [String] {
+        guard model.selection.contains(id) else { return [id] }
+        return model.actionTargets
+    }
+
     private func sectionHeader(_ section: InboxModel.Section, count: Int) -> some View {
         HStack(spacing: DesignSystem.Spacing.xs) {
+            if section == .pinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.amber)
+            }
+
             Text(section.title.uppercased())
                 .font(DesignSystem.Typography.tiny)
                 .tracking(1.1)
-                .foregroundStyle(
-                    section == .attention ? DesignSystem.Colors.amber : DesignSystem.Colors.textMuted
-                )
+                .foregroundStyle(section == .attention ? DesignSystem.Colors.amber : ink.subtle)
+
             Text("\(count)")
                 .font(DesignSystem.Typography.monoTiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(ink.subtle)
+
             Spacer(minLength: 0)
+
+            if section == .manual {
+                Text("drag to reorder")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(ink.subtle)
+            }
         }
         .padding(.horizontal, DesignSystem.Spacing.lg)
         .padding(.vertical, DesignSystem.Spacing.xs)
-        .background(.ultraThinMaterial)
+        .background(sectionHeaderBackground)
+        .accessibilityIdentifier(OBBAccessibilityID.inboxSectionHeader(section.rawValue))
+    }
+
+    @ViewBuilder
+    private var sectionHeaderBackground: some View {
+        if liveBackdropActive {
+            // Glass alone refracts, it does not darken — a pinned header over a
+            // live kernel needs the substrate slab under it or the eyebrow type
+            // dissolves into whatever the backdrop is painting.
+            ZStack {
+                Rectangle().fill(DesignSystem.Colors.surface.opacity(BackdropSubstrate.liveElevated))
+                Rectangle().fill(.ultraThinMaterial)
+            }
+        } else {
+            Rectangle().fill(.ultraThinMaterial)
+        }
     }
 
     private var loadingState: some View {
@@ -289,7 +811,7 @@ struct InboxView: View {
             ProgressView()
             Text("Reading your inbox…")
                 .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(ink.subtle)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -308,6 +830,7 @@ struct InboxView: View {
         switch model.filter {
         case .active: return model.hasEverRun ? "Nothing needs you" : "The inbox is not running yet"
         case .attention: return "Nothing urgent"
+        case .saved: return "Nothing saved yet"
         case .resolved: return "No resolved items yet"
         case .archived: return "Nothing archived"
         }
@@ -321,6 +844,8 @@ struct InboxView: View {
                 : "Turn on the AI Inbox in settings and OpenBurnBar will start summarizing what your agents have been doing, and flag work that looks unfinished."
         case .attention:
             return "No high-priority items right now. That is the good outcome."
+        case .saved:
+            return "Save an item — from its context menu, or ⌘⇧S — and it stays here no matter what the daemon does to it."
         case .resolved:
             return "When something the inbox flagged gets fixed, it moves here with a note about what resolved it."
         case .archived:
@@ -364,6 +889,96 @@ struct InboxView: View {
         }
     }
 
+    // MARK: - Keyboard
+
+    /// Zero-size buttons that exist purely to register window-level shortcuts,
+    /// the `MacAgentInsightsWorkspace.keyboardShortcuts` idiom. A shortcut
+    /// declared only inside a `Menu` body is not registered until the menu is
+    /// opened, which would make every one of these mouse-only.
+    private var keyboardShortcuts: some View {
+        VStack(spacing: 0) {
+            shortcutButton("a", modifiers: [.command, .shift]) { model.selectAllVisible() }
+            shortcutButton("d", modifiers: [.command, .shift]) { model.clearSelection() }
+            shortcutButton("p", modifiers: [.command, .shift]) { model.togglePin(model.actionTargets) }
+            shortcutButton("s", modifiers: [.command, .shift]) { model.toggleSaved(model.actionTargets) }
+            shortcutButton("a", modifiers: [.command, .control]) {
+                Task { await model.archive(ids: model.actionTargets) }
+            }
+            shortcutButton(.delete, modifiers: .command) { requestDelete() }
+            if model.deleteUndo != nil {
+                shortcutButton("z", modifiers: .command) { Task { await model.undoDelete() } }
+            }
+            if model.ordering.allowsManualReorder {
+                shortcutButton(.upArrow, modifiers: .option) { nudgeFocused(-1) }
+                shortcutButton(.downArrow, modifiers: .option) { nudgeFocused(1) }
+            }
+        }
+    }
+
+    private func shortcutButton(
+        _ key: KeyEquivalent,
+        modifiers: EventModifiers,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button("", action: action)
+            .keyboardShortcut(key, modifiers: modifiers)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+    }
+
+    private func nudgeFocused(_ offset: Int) {
+        model.nudgeManual(ids: model.actionTargets, offset: offset)
+    }
+
+    // MARK: - Actions
+
+    private func requestDelete() {
+        requestDelete(ids: model.actionTargets)
+    }
+
+    private func requestDelete(ids: [String]) {
+        guard ids.isEmpty == false else { return }
+        guard InboxModel.requiresDeleteConfirmation(count: ids.count) else {
+            Task { await model.delete(ids) }
+            return
+        }
+        pendingDelete = ids
+    }
+
+    private func confirmPendingDelete() {
+        let ids = pendingDelete ?? []
+        pendingDelete = nil
+        guard ids.isEmpty == false else { return }
+        Task { await model.delete(ids) }
+    }
+
+    private func beginNamingCategory(anchoredTo id: String? = nil) {
+        if let id, model.selection.contains(id) == false, model.selection.isEmpty {
+            model.click(id, intent: .replace)
+        }
+        categoryDraft = ""
+        isNamingCategory = true
+    }
+
+    private func applyCategoryDraft() {
+        let name = InboxShelfStore.normalizeCategory(categoryDraft)
+        categoryDraft = ""
+        guard let name else { return }
+        model.setCategory(name, ids: model.actionTargets)
+    }
+
+    /// Resolves a click's modifier keys into a selection intent.
+    ///
+    /// Read from `NSEvent` rather than layered `TapGesture().modifiers(_:)`
+    /// gestures: a modified tap fires the plain button action *as well*, so the
+    /// gesture approach needs a side-channel flag and races with it.
+    static func selectionIntent(for flags: NSEvent.ModifierFlags) -> InboxModel.SelectionIntent {
+        if flags.contains(.shift) { return .extend }
+        if flags.contains(.command) { return .toggle }
+        return .replace
+    }
+
     /// The list keeps a comfortable 380pt on a desk-width window, but yields to
     /// the reading pane as the window narrows — a fixed 380 left the detail pane
     /// unusably thin below ~900pt, which is exactly where the detail layout has
@@ -380,6 +995,27 @@ struct InboxView: View {
     }()
 }
 
+// MARK: - Ink
+
+// MARK: - Row callbacks
+
+/// The row's outbound edges, bundled so the row stays a value with one
+/// dependency rather than a fourteen-argument call site.
+struct InboxRowActions {
+    var click: (InboxModel.SelectionIntent) -> Void
+    var toggleRead: () -> Void
+    var togglePin: () -> Void
+    var toggleSaved: () -> Void
+    var setTag: (InboxColorTag?) -> Void
+    var setCategory: (String?) -> Void
+    var newCategory: () -> Void
+    var snooze: (TimeInterval) -> Void
+    var archive: () -> Void
+    var delete: () -> Void
+    var nudge: (Int) -> Void
+    var dropRow: (String) -> Void
+}
+
 // MARK: - Row
 
 /// One inbox item in the list.
@@ -387,37 +1023,88 @@ struct InboxView: View {
 /// Unread is expressed twice — a 7pt ember dot and a faint ember wash on the
 /// card — because the dot alone is easy to miss in a dense list, and the wash
 /// alone is too subtle to be a status. Neither relies on color alone: the title
-/// weight also changes.
+/// weight also changes. The same rule governs the management state added on top:
+/// a colour tag always shows its name, a pin always shows its glyph, and a
+/// checked row draws a checkmark rather than only a tinted border.
 struct InboxRowView: View {
     let row: ControlPlaneStore.AIInboxRow
-    let isSelected: Bool
-    let onSelect: () -> Void
-    let onArchive: () -> Void
-    let onSnooze: (TimeInterval) -> Void
-    let onToggleRead: () -> Void
+    let entry: InboxShelfEntry?
+    /// Open in the detail pane.
+    let isOpen: Bool
+    /// Part of a multi-selection.
+    let isChecked: Bool
+    /// Whether any multi-selection exists at all — the checkbox column only
+    /// appears once the user is actually selecting.
+    let hasSelection: Bool
+    let allowsDrag: Bool
+    let allowsReorder: Bool
+    let isDropTarget: Bool
+    let categoryChoices: [String]
+    let actions: InboxRowActions
+    let ink: BackdropInk
+    let onDropTargeted: (Bool) -> Void
 
     @State private var isHovering = false
 
+    private var pinned: Bool { entry?.pinned == true }
+    private var saved: Bool { entry?.isSaved == true }
+    private var colorTag: InboxColorTag? { entry?.colorTag }
+    private var category: String? { entry?.category }
+
     var body: some View {
+        card
+            .buttonStyle(InboxRowButtonStyle())
+            .onHover { isHovering = $0 }
+            .animation(DesignSystem.Animation.hover, value: isHovering)
+            .animation(DesignSystem.Animation.gentle, value: isOpen)
+            .animation(DesignSystem.Animation.gentle, value: isChecked)
+            .modifier(
+                InboxRowDragAndDrop(
+                    id: row.id,
+                    title: row.summary.title,
+                    allowsDrag: allowsDrag,
+                    allowsReorder: allowsReorder,
+                    onDrop: actions.dropRow,
+                    onTargeted: onDropTargeted
+                )
+            )
+            .contextMenu { contextMenu }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityActions { accessibilityActionList }
+            .accessibilityIdentifier(OBBAccessibilityID.inboxRow(row.id))
+    }
+
+    private var card: some View {
         // interactive: false — GlassCard(interactive: true) installs a
         // minimumDistance-0 DragGesture that steals the click from this
         // Button (same trap SessionLedgerEntryRow documents/guards).
-        Button(action: onSelect) {
+        Button {
+            actions.click(InboxView.selectionIntent(for: NSEvent.modifierFlags))
+        } label: {
             GlassCard(interactive: false) {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                    topLine
-                    titleLine
-                    if row.summaryMarkdown.isEmpty == false {
-                        Text(Self.plainPreview(row.summaryMarkdown))
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                    if hasSelection {
+                        checkbox
                     }
-                    bottomLine
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                        topLine
+                        titleLine
+                        if row.summaryMarkdown.isEmpty == false {
+                            Text(Self.plainPreview(row.summaryMarkdown))
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundStyle(ink.secondary)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if colorTag != nil || category != nil {
+                            tagLine
+                        }
+                        bottomLine
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .contentShape(Rectangle())
             .background(
@@ -426,27 +1113,17 @@ struct InboxRowView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
-                    .stroke(
-                        isSelected ? DesignSystem.Colors.ember.opacity(0.55) : Color.clear,
-                        lineWidth: 1.5
-                    )
+                    .stroke(borderColor, lineWidth: borderWidth)
             )
         }
-        .buttonStyle(InboxRowButtonStyle())
-        .onHover { isHovering = $0 }
-        .animation(DesignSystem.Animation.hover, value: isHovering)
-        .animation(DesignSystem.Animation.gentle, value: isSelected)
-        .contextMenu {
-            Button(row.readAt == nil ? "Mark as read" : "Mark as unread", action: onToggleRead)
-            Divider()
-            Button("Snooze for an hour") { onSnooze(3_600) }
-            Button("Snooze until tomorrow") { onSnooze(24 * 3_600) }
-            Divider()
-            Button("Archive", action: onArchive)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityIdentifier(OBBAccessibilityID.inboxRow(row.id))
+    }
+
+    private var checkbox: some View {
+        Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 13, weight: .regular))
+            .foregroundStyle(isChecked ? DesignSystem.Colors.ember : ink.hairline)
+            .padding(.top, 1)
+            .accessibilityHidden(true)
     }
 
     private var topLine: some View {
@@ -458,13 +1135,27 @@ struct InboxRowView: View {
                     .accessibilityHidden(true)
             }
 
+            if pinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.amber)
+                    .help("Pinned to the top")
+            }
+
+            if saved {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.amber)
+                    .help("Saved")
+            }
+
             Image(systemName: InboxPresentation.icon(for: row.summary.kind))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(InboxPresentation.tint(for: row.summary.kind))
 
             Text(InboxPresentation.kindLabel(row.summary.kind))
                 .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(ink.subtle)
 
             Spacer(minLength: 0)
 
@@ -481,10 +1172,43 @@ struct InboxRowView: View {
         Text(row.summary.title)
             .font(DesignSystem.Typography.body)
             .fontWeight(row.isUnread ? .semibold : .regular)
-            .foregroundStyle(DesignSystem.Colors.textPrimary)
+            .foregroundStyle(ink.primary)
             .lineLimit(2)
             .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Tag and category chips. Both always carry their **name**: the colour is
+    /// the fast index, never the message.
+    private var tagLine: some View {
+        HStack(spacing: DesignSystem.Spacing.xs) {
+            if let colorTag {
+                chip(
+                    text: colorTag.displayName,
+                    systemImage: colorTag.symbolName,
+                    tint: InboxPresentation.color(for: colorTag)
+                )
+            }
+            if let category {
+                chip(text: category, systemImage: "folder", tint: DesignSystem.Colors.whimsy)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func chip(text: String, systemImage: String, tint: Color) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: systemImage).font(.system(size: 8, weight: .semibold))
+            Text(text).font(DesignSystem.Typography.tiny).lineLimit(1)
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, DesignSystem.Spacing.xs)
+        .padding(.vertical, 1)
+        .background(
+            Capsule()
+                .fill(tint.opacity(0.14))
+                .overlay(Capsule().stroke(tint.opacity(0.45), lineWidth: 1))
+        )
     }
 
     private var bottomLine: some View {
@@ -492,19 +1216,19 @@ struct InboxRowView: View {
             if let project = row.summary.projectName, project.isEmpty == false {
                 Text(project)
                     .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
                     .lineLimit(1)
-                Text("·").foregroundStyle(DesignSystem.Colors.textMuted)
+                Text("·").foregroundStyle(ink.subtle)
             }
 
             Text(InboxView.relativeFormatter.localizedString(for: row.summary.lastSeenAt, relativeTo: Date()))
                 .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(ink.subtle)
 
             if row.summary.occurrenceCount > 1 {
                 Text("· seen \(InboxMetricInspector.groupedCount(Double(row.summary.occurrenceCount)))×")
                     .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
                     // The full story lives in the detail pane; the list still
                     // owes a hover answer rather than a bare number.
                     .help(InboxOccurrenceInspector.summarize(summary: row.summary).explanation)
@@ -527,20 +1251,108 @@ struct InboxRowView: View {
         }
     }
 
+    // MARK: Menus
+
+    @ViewBuilder
+    private var contextMenu: some View {
+        Button(row.readAt == nil ? "Mark as read" : "Mark as unread", action: actions.toggleRead)
+        Divider()
+        Button(pinned ? "Unpin" : "Pin to top", action: actions.togglePin)
+        Button(saved ? "Remove from Saved" : "Save", action: actions.toggleSaved)
+        Menu("Tag") {
+            Button("No tag") { actions.setTag(nil) }
+            Divider()
+            ForEach(InboxColorTag.allCases) { tag in
+                Button {
+                    actions.setTag(tag)
+                } label: {
+                    Label(tag.displayName, systemImage: tag.symbolName)
+                }
+            }
+        }
+        Menu("File into") {
+            Button("No category") { actions.setCategory(nil) }
+            Divider()
+            ForEach(categoryChoices, id: \.self) { name in
+                Button(name) { actions.setCategory(name) }
+            }
+            Divider()
+            Button("New category…", action: actions.newCategory)
+        }
+        if allowsReorder {
+            Divider()
+            Button("Move up") { actions.nudge(-1) }
+            Button("Move down") { actions.nudge(1) }
+        }
+        Divider()
+        Button("Snooze for an hour") { actions.snooze(3_600) }
+        Button("Snooze until tomorrow") { actions.snooze(24 * 3_600) }
+        Divider()
+        Button("Archive", action: actions.archive)
+        Button("Delete", role: .destructive, action: actions.delete)
+    }
+
+    /// The context menu, flattened. A submenu is not reachable from the
+    /// VoiceOver actions rotor, so tags and categories are listed outright.
+    @ViewBuilder
+    private var accessibilityActionList: some View {
+        // Multi-select is otherwise a command-click and a shift-click, neither
+        // of which exists without a mouse.
+        Button(isChecked ? "Remove from selection" : "Add to selection") { actions.click(.toggle) }
+        Button("Extend selection to here") { actions.click(.extend) }
+        Button(row.readAt == nil ? "Mark as read" : "Mark as unread", action: actions.toggleRead)
+        Button(pinned ? "Unpin" : "Pin to top", action: actions.togglePin)
+        Button(saved ? "Remove from Saved" : "Save", action: actions.toggleSaved)
+        Button("Clear tag") { actions.setTag(nil) }
+        ForEach(InboxColorTag.allCases) { tag in
+            Button("Tag: \(tag.displayName)") { actions.setTag(tag) }
+        }
+        Button("Clear category") { actions.setCategory(nil) }
+        ForEach(categoryChoices, id: \.self) { name in
+            Button("File into \(name)") { actions.setCategory(name) }
+        }
+        if allowsReorder {
+            Button("Move up") { actions.nudge(-1) }
+            Button("Move down") { actions.nudge(1) }
+        }
+        Button("Snooze for an hour") { actions.snooze(3_600) }
+        Button("Archive", action: actions.archive)
+        Button("Delete", action: actions.delete)
+    }
+
+    // MARK: Styling
+
     private var rowWash: Color {
-        if isSelected { return DesignSystem.Colors.ember.opacity(0.10) }
+        if isChecked { return DesignSystem.Colors.ember.opacity(0.14) }
+        if isOpen { return DesignSystem.Colors.ember.opacity(0.10) }
         if row.isUnread { return DesignSystem.Colors.ember.opacity(0.05) }
         return .clear
     }
 
+    private var borderColor: Color {
+        if isDropTarget { return DesignSystem.Colors.whimsy.opacity(0.85) }
+        if isChecked { return DesignSystem.Colors.ember.opacity(0.75) }
+        if isOpen { return DesignSystem.Colors.ember.opacity(0.55) }
+        return .clear
+    }
+
+    private var borderWidth: CGFloat {
+        isDropTarget ? 2 : 1.5
+    }
+
     private var accessibilityLabel: String {
         var parts: [String] = []
+        if isChecked { parts.append("Selected") }
         if row.isUnread { parts.append("Unread") }
+        if pinned { parts.append("Pinned") }
+        if saved { parts.append("Saved") }
         parts.append(InboxPresentation.kindLabel(row.summary.kind))
         if row.summary.priority <= .p2 {
             parts.append(InboxPresentation.priorityLabel(row.summary.priority))
         }
         parts.append(row.summary.title)
+        if let colorTag { parts.append("tagged \(colorTag.displayName)") }
+        if let category { parts.append("filed under \(category)") }
         return parts.joined(separator: ", ")
     }
 
@@ -552,6 +1364,53 @@ struct InboxRowView: View {
             .replacingOccurrences(of: "\n\n", with: " ")
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// Drag/drop attached conditionally.
+///
+/// Kept in a modifier so the row body has one shape regardless of mode: adding
+/// `.draggable` unconditionally would put a drag gesture on every row in every
+/// mode, and this surface has already been bitten once by a gesture stealing a
+/// click out of the row button.
+private struct InboxRowDragAndDrop: ViewModifier {
+    let id: String
+    let title: String
+    let allowsDrag: Bool
+    let allowsReorder: Bool
+    let onDrop: (String) -> Void
+    let onTargeted: (Bool) -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if allowsDrag {
+            draggable(content)
+        } else {
+            content
+        }
+    }
+
+    @ViewBuilder
+    private func draggable(_ content: Content) -> some View {
+        let dragged = content.draggable(id) {
+            Text(title)
+                .font(DesignSystem.Typography.tiny)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(DesignSystem.Colors.surface))
+        }
+        if allowsReorder {
+            dragged
+                .dropDestination(for: String.self) { items, _ in
+                    onTargeted(false)
+                    guard let dragged = items.first, dragged != id else { return false }
+                    onDrop(dragged)
+                    return true
+                } isTargeted: { onTargeted($0) }
+        } else {
+            dragged
+        }
     }
 }
 
@@ -674,6 +1533,20 @@ enum InboxPresentation {
         case .uncommittedWork: return DesignSystem.Colors.whimsy
         case .indexHealth, .system: return DesignSystem.Colors.textMuted
         case .brief: return DesignSystem.Colors.blaze
+        }
+    }
+
+    /// Colours for the shelf's colour tags, drawn from the design system rather
+    /// than invented. Each is paired with a name and a glyph at every call site
+    /// — see `InboxRowView.tagLine` — so the hue is never load-bearing.
+    static func color(for tag: InboxColorTag) -> Color {
+        switch tag {
+        case .urgent: return DesignSystem.Colors.error
+        case .followUp: return DesignSystem.Colors.ember
+        case .watching: return DesignSystem.Colors.amber
+        case .idea: return DesignSystem.Colors.whimsy
+        case .done: return DesignSystem.Colors.success
+        case .onIce: return DesignSystem.Colors.frost
         }
     }
 

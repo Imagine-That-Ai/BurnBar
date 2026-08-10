@@ -91,6 +91,14 @@ struct DashboardView: View {
     /// so a model held there would flash "—" each time you came back. Internal,
     /// not private — `DashboardView+ControlDeck.swift` hands it to the deck.
     @State var controlDeckModel = ControlDeckModel()
+    /// The inbox shelf (pins, tags, categories, manual order).
+    ///
+    /// Held here rather than as a global because the models below are rebuilt
+    /// on every body evaluation, and the shelf coalesces its writes on a timer:
+    /// a store discarded mid-debounce loses the write. `@State` gives it a
+    /// lifetime tied to this view instead of to the process.
+    @State private var inboxShelf = InboxShelfStore()
+
     @State var pendingMemoryReviewCount: Int?
     /// Unread AI Inbox items, shown as a badge on the section switcher. Nil until
     /// the first read, so a profile whose daemon has never run shows no badge
@@ -683,6 +691,19 @@ struct DashboardView: View {
         .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .environment(\.backdropReadabilityProfile, activeReadabilityProfile)
         .environment(\.dashboardLiveBackdropActive, dashboardLiveBackdropActive)
+        // Resolved once, here, so every route below draws with ink that clears
+        // 4.5:1 against whatever the kernel is currently painting. Routes that
+        // reached for `DesignSystem.Colors.text*` directly were readable on a
+        // static canvas and invisible the moment a backdrop was switched on —
+        // `textMuted` in particular cannot clear the bar on any canvas this app
+        // draws. See `Theme/BackdropLegibleSurface.swift`.
+        .environment(
+            \.backdropInk,
+            BackdropInk.resolve(
+                liveBackdropActive: dashboardLiveBackdropActive,
+                profile: activeReadabilityProfile
+            )
+        )
         .environment(settingsManager)
     }
 
@@ -1006,7 +1027,8 @@ struct DashboardView: View {
                     try await dataStore.setAIInboxItemFeedback(id: id, feedback: feedback)
                 },
                 markAllRead: { [dataStore] in try await dataStore.markAllAIInboxItemsRead() },
-                loadRuns: { [dataStore] in try await dataStore.fetchAIInboxRuns() }
+                loadRuns: { [dataStore] in try await dataStore.fetchAIInboxRuns() },
+                shelf: inboxShelf
             ),
             onOpenSessionLog: { conversationID in
                 // Resolve the citation into a real jump target so the click lands

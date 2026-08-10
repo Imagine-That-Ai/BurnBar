@@ -53,6 +53,25 @@ enum OBBAccessibilityID {
         "providers.row.\(normalized(providerID))"
     }
 
+    // Inbox management (pin / tag / category / order / select / delete)
+    static let inboxOrderingMenu = "inbox.orderingMenu"
+    static let inboxActionsMenu = "inbox.actionsMenu"
+    static let inboxSelectionBar = "inbox.selectionBar"
+    static let inboxUndoBanner = "inbox.undoBanner"
+
+    static func inboxCategoryChip(_ category: String) -> String {
+        "inbox.category.\(normalized(category))"
+    }
+
+    static func inboxSectionHeader(_ section: String) -> String {
+        "inbox.section.\(normalized(section))"
+    }
+
+    // Inbox reading register — the one-tap "say that differently" chips.
+    static func inboxRewriteChip(_ directive: String) -> String {
+        "inbox.rewrite.\(normalized(directive))"
+    }
+
     private static func normalized(_ raw: String) -> String {
         raw
             .trimmingCharacters(in: .whitespacesAndNewlines)

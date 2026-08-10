@@ -16,6 +16,7 @@ import OpenBurnBarKernel
 /// disposition bar anchors to the bottom so a short item reads as designed
 /// rather than truncated.
 struct InboxItemDetailView: View {
+    @Environment(\.backdropInk) private var ink
     let row: ControlPlaneStore.AIInboxRow
     let onOpenSessionLog: (String) -> Void
     let onArchive: () -> Void
@@ -180,7 +181,7 @@ struct InboxItemDetailView: View {
                 Text(InboxPresentation.kindLabel(row.summary.kind).uppercased())
                     .font(DesignSystem.Typography.tiny)
                     .tracking(1.1)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
                     // Inert by design — a label, not a control — but a label that
                     // answers for itself when you ask.
                     .help(InboxPresentation.kindExplanation(row.summary.kind))
@@ -213,20 +214,20 @@ struct InboxItemDetailView: View {
                 if let project = row.summary.projectName, project.isEmpty == false {
                     Text(project)
                         .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(ink.subtle)
                     Text("·")
                         .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(ink.subtle)
                 }
                 Text("first seen \(InboxView.relativeFormatter.localizedString(for: row.summary.firstSeenAt, relativeTo: Date()))")
                     .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
                     .help(InboxOccurrenceInspector.absoluteFormatter.string(from: row.summary.firstSeenAt))
 
                 if row.summary.occurrenceCount > 1 {
                     Text("·")
                         .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(ink.subtle)
                     InboxOccurrenceControl(summary: occurrence)
                 }
                 Spacer(minLength: 0)
@@ -312,7 +313,7 @@ struct InboxItemDetailView: View {
 
             Text("These are proposals. Nothing is saved to memory — or used in any prompt — until you approve it.")
                 .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(ink.subtle)
                 .fixedSize(horizontal: false, vertical: true)
 
             ForEach(row.payload.memoryCandidates) { candidate in
@@ -365,7 +366,7 @@ struct InboxItemDetailView: View {
             Text(label.uppercased())
                 .font(DesignSystem.Typography.tiny)
                 .tracking(0.8)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(ink.subtle)
                 .frame(width: 84, alignment: .leading)
             Text(value)
                 .font(DesignSystem.Typography.caption)
@@ -392,11 +393,11 @@ struct InboxItemDetailView: View {
             HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
                 Image(systemName: provenanceIcon)
                     .font(.system(size: 10))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
                     .padding(.top, 2)
                 Text(provenanceText)
                     .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }
@@ -407,7 +408,7 @@ struct InboxItemDetailView: View {
                 dispositionButton(
                     title: "Useful",
                     symbol: row.feedback == "useful" ? "hand.thumbsup.fill" : "hand.thumbsup",
-                    tint: row.feedback == "useful" ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted,
+                    tint: row.feedback == "useful" ? DesignSystem.Colors.success : ink.subtle,
                     help: "Teach the inbox that items like this are worth surfacing",
                     action: { onFeedback(row.feedback == "useful" ? nil : true) }
                 )
@@ -415,7 +416,7 @@ struct InboxItemDetailView: View {
                 dispositionButton(
                     title: "Not useful",
                     symbol: row.feedback == "not_useful" ? "hand.thumbsdown.fill" : "hand.thumbsdown",
-                    tint: row.feedback == "not_useful" ? DesignSystem.Colors.warning : DesignSystem.Colors.textMuted,
+                    tint: row.feedback == "not_useful" ? DesignSystem.Colors.warning : ink.subtle,
                     help: "Teach the inbox to rank items like this lower",
                     action: { onFeedback(row.feedback == "not_useful" ? nil : false) }
                 )
@@ -437,7 +438,7 @@ struct InboxItemDetailView: View {
                 dispositionButton(
                     title: "Archive",
                     symbol: "archivebox",
-                    tint: DesignSystem.Colors.textMuted,
+                    tint: ink.subtle,
                     help: "Move this item out of the active list. Archived items stay readable under the Archived filter — nothing is deleted.",
                     action: onArchive
                 )
@@ -514,6 +515,7 @@ struct InboxItemDetailView: View {
 
 /// Approves or dismisses one proposed memory.
 struct InboxMemoryCandidateCard: View {
+    @Environment(\.backdropInk) private var ink
     let candidate: BurnBarInboxMemoryCandidate
     let itemFingerprint: String
     let handler: InboxMemoryApprovalHandler?
@@ -546,7 +548,7 @@ struct InboxMemoryCandidateCard: View {
                     Text("\(Int((candidate.confidence * 100).rounded()))%")
                         .font(DesignSystem.Typography.monoTiny)
                 }
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(ink.subtle)
                 .help("How confident the analyst is that this fact is durable")
 
                 Text(candidate.text)
@@ -587,7 +589,7 @@ struct InboxMemoryCandidateCard: View {
                 Button { state = .dismissed } label: {
                     Text("Dismiss")
                         .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(ink.subtle)
                 }
                 .buttonStyle(InboxPressStyle())
                 .help("Drop this proposal. Nothing is written.")
@@ -597,7 +599,7 @@ struct InboxMemoryCandidateCard: View {
                 if handler == nil {
                     Text("Memory is unavailable")
                         .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(ink.subtle)
                 }
             }
         case .working:
@@ -609,7 +611,7 @@ struct InboxMemoryCandidateCard: View {
         case .dismissed:
             Label("Dismissed", systemImage: "xmark.circle")
                 .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(ink.subtle)
         }
     }
 

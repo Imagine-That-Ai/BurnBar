@@ -6,17 +6,39 @@ import SwiftUI
 //
 // The plate every deck tile wears, and the six states it can be in.
 //
-// The plate is the shipped `ChartCardView.swift:52-72` recipe, copied rather
-// than abstracted: on macOS 26 the accent wash is the *only* fill and it rides
-// on top of real glass, because a material fill underneath glass blocks
-// refraction and reads as frosted plastic. On macOS 14–15 the hand-tuned
-// material stack takes over.
+// The plate delegates to `BackdropLegiblePlate` (`Theme/BackdropLegibleSurface.swift`)
+// rather than owning a recipe. It used to own one — the `ChartCardView` recipe,
+// copied verbatim — and that recipe has no opaque substrate, so with a live
+// kernel backdrop switched on the animated mesh refracted straight through
+// every tile and the deck became unreadable. Glass refracts; it does not
+// darken. The shared plate puts a `surface` slab underneath.
 //
-// The Editorial branch is not optional. `AppSkin.editorial` paints crisp paper,
-// and `Color.adaptive(editorial:light:dark:)` resolves the editorial hex
-// regardless of aqua/darkAqua — so a hard-coded glass plate looks wrong there.
-// Shipping a new AgentLens surface without this branch is the single most
-// common way one lands broken.
+// The other half of the same defect was the ink: this file used
+// `DesignSystem.Colors.textMuted` for the eyebrow and the footer, and that
+// token measures 3.77:1 against the app's own `surface`. It cannot clear 4.5:1
+// on any background this app draws. Every text role here now comes from
+// `\.backdropInk`, which resolves to the sampled adaptive family whenever a
+// live backdrop is on. Both halves are pinned by `BackdropLegiblePlateTests`.
+
+// MARK: - Deck ink constants
+
+enum ControlDeckInk {
+    /// The "not on" tint for status dots and inactive glyphs.
+    ///
+    /// Was `DesignSystem.Colors.textMuted.opacity(0.5)`. That is `#6E7681` at
+    /// half alpha, which measures **1.89:1** against the app's own `surface` —
+    /// far under the 3:1 non-text floor, and simply not visible once a kernel
+    /// backdrop is animating behind it. An "off" dot still has to be *seen* to
+    /// communicate off.
+    ///
+    /// Full opacity, not a fraction. Every fractional alpha that keeps the dot
+    /// looking suitably quiet on the flat `surface` drops it back under 3:1 on a
+    /// tile plate over a live backdrop, because that plate is the brighter of
+    /// the two. `textSecondary` at full strength clears both (5.63:1 and
+    /// 3.28:1) and still reads as obviously dimmer than the `success` green
+    /// beside it, which is the whole job.
+    static let inactive = DesignSystem.Colors.textSecondary
+}
 
 // MARK: - Group accent
 
@@ -93,9 +115,9 @@ enum ControlTileState: Equatable {
     var dotColor: Color {
         switch self {
         case .on: return DesignSystem.Colors.success
-        case .off: return DesignSystem.Colors.textMuted.opacity(0.5)
+        case .off: return ControlDeckInk.inactive
         case .needsPermission, .degraded: return DesignSystem.Colors.warning
-        case .unavailable: return DesignSystem.Colors.textMuted.opacity(0.5)
+        case .unavailable: return ControlDeckInk.inactive
         case .locked: return DesignSystem.Colors.amber
         }
     }
@@ -104,13 +126,18 @@ enum ControlTileState: Equatable {
 // MARK: - Geometry
 
 enum ControlDeckMetrics {
-    /// Fixed collapsed content height → a 140pt plate once padded.
+    /// Fixed collapsed content height → a 132pt plate once padded.
     ///
     /// Not cosmetic. `ChartCardView` gets row alignment for free from
-    /// `.frame(height: 150)` on its chart body (`ChartCardView.swift:44`);
-    /// without an equivalent rule, paired tiles with variable content bottom
-    /// out ragged in every `HStack(alignment: .top)` row.
-    static let collapsedContentHeight: CGFloat = 108
+    /// `.frame(height: 150)` on its chart body; without an equivalent rule,
+    /// paired tiles with variable content bottom out ragged in every
+    /// `HStack(alignment: .top)` row.
+    ///
+    /// Reduced from 108 because the old shell spent most of that height on a
+    /// `Spacer` — a 15pt headline and a two-line footer inside a 140pt plate is
+    /// what made a deck of eleven live controls read as a wall of empty slabs.
+    /// The headline is now the hero and the footer is one line.
+    static let collapsedContentHeight: CGFloat = 96
     static let contentMaxWidth: CGFloat = 1_180
     static let glyphWell: CGFloat = 26
 
@@ -131,27 +158,42 @@ enum ControlDeckMetrics {
 
 // MARK: - Plate
 
-/// The tile plate: glass + accent wash on Aurora, crisp paper on Editorial.
+/// The tile plate. Wash and stroke are state-derived here; the substrate,
+/// glass, and Editorial branches all live in `BackdropLegiblePlate`.
 struct ControlTilePlate: ViewModifier {
     let accent: Color
     let state: ControlTileState
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dashboardLiveBackdropActive) private var liveBackdropActive
 
-    private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-    }
-
-    /// `.off` and `.unavailable` drop to the control-plate rung so a wall of
-    /// off tiles recedes without going grey and dead.
+    /// `.off` and `.unavailable` drop a rung so a wall of off tiles recedes
+    /// without going grey and dead.
+    ///
+    /// Over a live backdrop every rung is *lowered*, which is the opposite of
+    /// the instinct.
+    ///
+    /// A full-plate wash strong enough to name its band turns muddy the moment
+    /// it sits on a `surface` slab that is itself sitting on a saturated
+    /// kernel: three tinted layers stacked, and the result reads as dirt rather
+    /// than as colour. Rendered proof is in `ControlDeckSnapshotHarness` — the
+    /// attention plate in particular went brown.
+    ///
+    /// So the band is carried by the two places accent looks good at full
+    /// strength — the glyph well and the stroke — and the wash is left as a
+    /// hint rather than a cast.
     private var washOpacity: Double {
+        let dark = colorScheme == .dark
         switch state {
         case .off, .unavailable:
-            return colorScheme == .dark ? 0.05 : 0.03
+            if liveBackdropActive { return 0.035 }
+            return dark ? 0.05 : 0.03
         case .needsPermission, .degraded:
-            return colorScheme == .dark ? 0.10 : 0.06
+            if liveBackdropActive { return 0.09 }
+            return dark ? 0.10 : 0.06
         case .on, .locked:
-            return colorScheme == .dark ? 0.08 : 0.04
+            if liveBackdropActive { return 0.05 }
+            return dark ? 0.08 : 0.04
         }
     }
 
@@ -162,7 +204,7 @@ struct ControlTilePlate: ViewModifier {
     private var strokeColor: Color {
         state.usesAttentionPlate
             ? DesignSystem.Colors.warning.opacity(0.55)
-            : accent.opacity(0.22)
+            : accent.opacity(liveBackdropActive ? 0.34 : 0.22)
     }
 
     private var strokeWidth: CGFloat {
@@ -173,32 +215,17 @@ struct ControlTilePlate: ViewModifier {
         content
             .padding(DesignSystem.Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background { plate }
-            .overlay(shape.stroke(strokeColor, lineWidth: strokeWidth))
-            .clipShape(shape)
-    }
-
-    @ViewBuilder
-    private var plate: some View {
-        if AppSkin.current == .editorial {
-            // Editorial is paper, explicitly glass-free — the same branch
-            // `SidebarThemeGlass` takes at `Theme/ThemeGlassPalette.swift:106-148`.
-            shape
-                .fill(DesignSystem.Colors.surface)
-                .overlay(shape.fill(washColor.opacity(washOpacity)))
-        } else if #available(macOS 26, *) {
-            // The wash is the only fill and it rides on top of the glass.
-            // Nothing opaque underneath — see the type comment.
-            shape
-                .fill(washColor.opacity(washOpacity))
-                .liquidGlassEffect(.regular, in: shape)
-        } else {
-            ZStack {
-                shape.fill(.ultraThinMaterial)
-                shape.fill(DesignSystem.Colors.surface.opacity(colorScheme == .dark ? 0.45 : 0.55))
-                shape.fill(washColor.opacity(washOpacity))
-            }
-        }
+            .backdropLegiblePlate(
+                accent: washColor,
+                washOpacity: washOpacity,
+                strokeColor: strokeColor,
+                strokeWidth: strokeWidth,
+                cornerRadius: DesignSystem.Radius.lg,
+                // Tiles carry the smallest type on the page — a 10pt tracked
+                // eyebrow and a 10.5pt footer — so they take the elevated
+                // substrate rather than the shared floor.
+                substrate: BackdropSubstrate.liveElevated
+            )
     }
 }
 
@@ -211,8 +238,9 @@ extension View {
 // MARK: - Tile shell
 //
 // Every tile is: eyebrow row (glyph well · title · primary control), a live
-// headline, a status ladder, and the "why it matters" footer. The shell owns
-// the fixed height and the accessibility contract so no tile can forget them.
+// headline, a status ladder, and a one-line "why it matters" footer. The shell
+// owns the fixed height and the accessibility contract so no tile can forget
+// them.
 
 struct ControlTileShell<Control: View, Ladder: View>: View {
     let kind: ControlKind
@@ -224,36 +252,46 @@ struct ControlTileShell<Control: View, Ladder: View>: View {
     @ViewBuilder let control: () -> Control
     @ViewBuilder let ladder: () -> Ladder
 
+    @Environment(\.backdropInk) private var ink
+
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
             header
 
+            // The hero. Sized so the fact a tile exists to show is the first
+            // thing the eye lands on, and `.numericText()` so a live value
+            // rolls rather than snaps.
             Text(headline)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .font(.system(size: 17, weight: .bold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(
-                    isMuted ? DesignSystem.Colors.textMuted : DesignSystem.Colors.textPrimary
-                )
+                .foregroundStyle(isMuted ? ink.secondary : ink.primary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.82)
                 .truncationMode(.tail)
                 .contentTransition(.numericText())
+                .padding(.top, 1)
 
             ladder()
 
-            Spacer(minLength: 0)
+            Spacer(minLength: 2)
 
             Text(kind.whyItMatters)
-                .font(.system(size: 10, design: .rounded))
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-                .lineLimit(2)
+                .font(.system(size: 10.5, design: .rounded))
+                .foregroundStyle(ink.subtle)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
         .frame(height: ControlDeckMetrics.collapsedContentHeight, alignment: .topLeading)
         .controlTilePlate(accent: kind.accent, state: state)
+        // The footer is clipped to one line to keep the deck dense, so the full
+        // sentence has to remain reachable somewhere.
+        .help(kind.whyItMatters)
         // `contain`, not `ignore`: Charts cards ignore their children because
         // they are read-only, but deck tiles own controls and VoiceOver must be
         // able to reach and operate them.
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(kind.title). \(state.accessibilityDescription). \(accessibilityHeadline).")
+        .accessibilityHint(kind.whyItMatters)
         .accessibilityIdentifier(OBBAccessibilityID.controlDeckTile(kind.rawValue))
     }
 
@@ -267,7 +305,7 @@ struct ControlTileShell<Control: View, Ladder: View>: View {
     private var header: some View {
         HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
             RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                .fill(kind.accent.opacity(0.14))
+                .fill(kind.accent.opacity(0.18))
                 .frame(width: ControlDeckMetrics.glyphWell, height: ControlDeckMetrics.glyphWell)
                 .overlay {
                     Image(systemName: kind.systemImage)
@@ -279,7 +317,7 @@ struct ControlTileShell<Control: View, Ladder: View>: View {
             Text(kind.title.uppercased())
                 .font(.system(size: 10, weight: .bold, design: .rounded))
                 .tracking(1.1)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(ink.secondary)
                 .lineLimit(1)
 
             Spacer(minLength: DesignSystem.Spacing.sm)
@@ -295,8 +333,10 @@ struct ControlTileShell<Control: View, Ladder: View>: View {
 /// never conveyed by colour alone.
 struct ControlStatusChip: View {
     let label: String
-    var tint: Color = DesignSystem.Colors.textMuted.opacity(0.5)
+    var tint: Color = ControlDeckInk.inactive
     var help: String?
+
+    @Environment(\.backdropInk) private var ink
 
     var body: some View {
         HStack(spacing: 5) {
@@ -305,7 +345,7 @@ struct ControlStatusChip: View {
                 .frame(width: 5, height: 5)
             Text(label)
                 .font(.system(size: 10.5, weight: .semibold))
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .foregroundStyle(ink.secondary)
                 .lineLimit(1)
         }
         .help(help ?? label)
@@ -320,12 +360,14 @@ struct ControlMeterBar: View {
     let fraction: Double
     let accent: Color
 
+    @Environment(\.backdropInk) private var ink
+
     var body: some View {
         GeometryReader { proxy in
             let clamped = min(1, max(0, fraction))
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(DesignSystem.Colors.textMuted.opacity(0.18))
+                    .fill(ink.hairline)
                 Capsule()
                     .fill(clamped >= 1 ? DesignSystem.Colors.warning : accent)
                     .frame(width: max(2, proxy.size.width * clamped))

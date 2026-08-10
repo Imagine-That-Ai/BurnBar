@@ -179,22 +179,45 @@ public struct BurnBarInboxAction: Codable, Hashable, Sendable, Identifiable {
     public let title: String
     /// Interpreted per `kind`: a URL, a conversation id, a project id, a
     /// settings anchor, or a copyable (never auto-executed) shell command.
+    ///
+    /// **Always constructed in Swift from a real evidence record.** No model
+    /// output ever reaches this field — see `BurnBarAIInboxActionFactory`.
     public let value: String
     public let isPrimary: Bool
+    /// One short clause saying what pressing this accomplishes.
+    ///
+    /// This is the ONE part of an action a model may influence (through
+    /// `action_hints`), because it is pure prose with no capability attached:
+    /// it cannot navigate, execute, or address anything. Redacted and hard
+    /// capped before it is stored.
+    public let explanation: String?
 
-    public init(id: String, kind: Kind, title: String, value: String, isPrimary: Bool = false) {
+    public init(
+        id: String,
+        kind: Kind,
+        title: String,
+        value: String,
+        isPrimary: Bool = false,
+        explanation: String? = nil
+    ) {
         self.id = id
         self.kind = kind
         self.title = title
         self.value = value
         self.isPrimary = isPrimary
+        self.explanation = explanation
     }
 }
 
 /// The structured body of an item. Versioned so the daemon can evolve the shape
 /// without breaking an older app that reads the same database file.
 public struct BurnBarInboxItemPayload: Codable, Hashable, Sendable {
-    public static let currentVersion = 1
+    /// v2 adds `BurnBarInboxAction.explanation`. Additive and optional: a v1
+    /// payload decodes unchanged (the key is simply absent), and every reader —
+    /// including the Kotlin mirror, which decodes with `ignoreUnknownKeys` —
+    /// tolerates the new key. No database migration is involved; the payload is
+    /// a JSON column.
+    public static let currentVersion = 2
 
     public let version: Int
     public let evidence: [BurnBarInboxEvidence]
@@ -480,6 +503,39 @@ public struct BurnBarInboxRunsResponse: Codable, Hashable, Sendable {
     }
 }
 
+// MARK: - Reading register
+
+/// How much the inbox writes. Raw values are persisted in the config row, so
+/// cases are append-only.
+///
+/// This is a *length and depth* dial, orthogonal to `BurnBarInboxBriefRegister`
+/// (which is a vocabulary dial). Both select static prompt fragments — the
+/// analyst system prompt is byte-stable per combination so provider prompt
+/// caching keeps applying.
+public enum BurnBarInboxBriefDetail: String, Codable, Hashable, CaseIterable, Sendable {
+    /// Headline only. The smallest thing that still carries the decision.
+    case brief
+    /// The shipped default: a few sentences with the numbers that matter.
+    case standard
+    /// Adds mechanism and second-order consequences for the findings that earn it.
+    case deep
+
+    public static var `default`: Self { .standard }
+}
+
+/// Who the inbox writes *for*. Controls vocabulary and assumed background, not
+/// honesty or length.
+public enum BurnBarInboxBriefRegister: String, Codable, Hashable, CaseIterable, Sendable {
+    /// Short, jargon-free, everyday words. Terms of art get expanded inline.
+    case plainEnglish = "plain_english"
+    /// The shipped default: a sharp colleague who shares your context.
+    case professional
+    /// Assumes deep familiarity; names internals and mechanisms directly.
+    case expert
+
+    public static var `default`: Self { .professional }
+}
+
 /// User-controllable configuration. Persisted daemon-side (single writer) and
 /// mutated only through `daemon.inbox.config.update`, so the app never has to
 /// keep a shadow copy in sync.
@@ -524,6 +580,12 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
     /// counting plan-covered calls against it silently starves the inbox into
     /// the local-rules path. API-billed calls always count.
     public let budgetCountsSubscriptionSpend: Bool
+    /// How long the written items run. Defaults to `.standard`, which is
+    /// byte-for-byte the prompt that shipped before this dial existed.
+    public let briefDetail: BurnBarInboxBriefDetail
+    /// Whose vocabulary the items use. Defaults to `.professional`, likewise
+    /// byte-identical to the pre-existing prompt.
+    public let briefRegister: BurnBarInboxBriefRegister
 
     /// Shipped analyst/verifier pins.
     ///
@@ -557,7 +619,9 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
         founderLensEnabled: Bool = true,
         perReplyBudgetUSD: Double = 0.10,
         maxThreadTurns: Int = 40,
-        budgetCountsSubscriptionSpend: Bool = false
+        budgetCountsSubscriptionSpend: Bool = false,
+        briefDetail: BurnBarInboxBriefDetail = .default,
+        briefRegister: BurnBarInboxBriefRegister = .default
     ) {
         self.enabled = enabled
         self.egressMode = egressMode
@@ -580,6 +644,8 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
         self.perReplyBudgetUSD = min(max(0, perReplyBudgetUSD), 5)
         self.maxThreadTurns = min(max(2, maxThreadTurns), 200)
         self.budgetCountsSubscriptionSpend = budgetCountsSubscriptionSpend
+        self.briefDetail = briefDetail
+        self.briefRegister = briefRegister
     }
 
     /// Trims a provider/model pin and substitutes the shipped default when the
@@ -627,7 +693,14 @@ public struct BurnBarInboxConfig: Codable, Hashable, Sendable {
             budgetCountsSubscriptionSpend: try container.decodeIfPresent(
                 Bool.self,
                 forKey: .budgetCountsSubscriptionSpend
-            ) ?? fallback.budgetCountsSubscriptionSpend
+            ) ?? fallback.budgetCountsSubscriptionSpend,
+            // Defaulted rather than required: a config row written before the
+            // register dial existed must keep loading, and it must keep
+            // producing exactly the prose it produced yesterday.
+            briefDetail: try container.decodeIfPresent(BurnBarInboxBriefDetail.self, forKey: .briefDetail)
+                ?? fallback.briefDetail,
+            briefRegister: try container.decodeIfPresent(BurnBarInboxBriefRegister.self, forKey: .briefRegister)
+                ?? fallback.briefRegister
         )
     }
 }

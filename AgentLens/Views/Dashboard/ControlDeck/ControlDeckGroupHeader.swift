@@ -12,27 +12,32 @@ struct ControlDeckGroupHeader: View {
     let tileCount: Int
     let onCount: Int
 
+    @Environment(\.backdropInk) private var ink
+
     var body: some View {
         HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
+            // A band label sits directly on the backdrop with no plate under
+            // it, so it is the most exposed text on the page. It gets the
+            // brightest readable rung, not the quietest.
             Text(group.title.uppercased())
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .tracking(1.1)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .font(.system(size: 10.5, weight: .heavy, design: .rounded))
+                .tracking(1.2)
+                .foregroundStyle(ink.primary)
 
             Text(group.caption)
-                .font(.system(size: 10, design: .rounded))
-                .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.7))
+                .font(.system(size: 10.5, design: .rounded))
+                .foregroundStyle(ink.subtle)
                 .lineLimit(1)
 
             Rectangle()
-                .fill(DesignSystem.Colors.border.opacity(0.5))
+                .fill(ink.hairline)
                 .frame(height: 0.5)
                 .frame(maxWidth: .infinity)
 
             Text("\(onCount)/\(tileCount) on")
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .font(.system(size: 10, weight: .bold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(group.accent.opacity(0.85))
+                .foregroundStyle(ink.secondary)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(group.title). \(group.caption). \(onCount) of \(tileCount) on.")

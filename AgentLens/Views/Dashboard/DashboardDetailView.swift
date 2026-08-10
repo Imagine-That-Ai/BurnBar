@@ -1,6 +1,13 @@
 import SwiftUI
 
 struct DashboardDetailView: View {
+    /// The inbox shelf (pins, tags, categories, manual order).
+    ///
+    /// Held here rather than as a global because the models below are rebuilt
+    /// on every body evaluation, and the shelf coalesces its writes on a timer:
+    /// a store discarded mid-debounce loses the write. `@State` gives it a
+    /// lifetime tied to this view instead of to the process.
+    @State private var inboxShelf = InboxShelfStore()
     let mainRoute: DashboardMainRoute
     let context: DashboardContext
     let selectedTimeRange: TimeRange
@@ -137,7 +144,8 @@ struct DashboardDetailView: View {
                                 try await dataStore.setAIInboxItemFeedback(id: id, feedback: feedback)
                             },
                             markAllRead: { [dataStore] in try await dataStore.markAllAIInboxItemsRead() },
-                            loadRuns: { [dataStore] in try await dataStore.fetchAIInboxRuns() }
+                            loadRuns: { [dataStore] in try await dataStore.fetchAIInboxRuns() },
+                            shelf: inboxShelf
                         ),
                         onOpenSessionLog: { conversationID in
                             Task { @MainActor in

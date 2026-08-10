@@ -38,6 +38,15 @@ struct ControlDeckView: View {
     /// columns, so it has to be the *content* width and not the window width.
     @State private var contentWidth: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // The deck renders on top of the live WebGL kernel backdrop. Both of these
+    // are required to stay readable there, and the deck shipped without either:
+    // see `Theme/BackdropLegibleSurface.swift` for what each one buys.
+    @Environment(\.dashboardLiveBackdropActive) private var liveBackdropActive
+    @Environment(\.backdropReadabilityProfile) private var readabilityProfile
+
+    private var ink: BackdropInk {
+        BackdropInk.resolve(liveBackdropActive: liveBackdropActive, profile: readabilityProfile)
+    }
 
     // Live reads the header summary needs. Held here (rather than only inside
     // the tiles) so the summary re-renders the moment a tile's value changes.
@@ -120,6 +129,13 @@ struct ControlDeckView: View {
             .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Resolved once for the whole page rather than per view, so the deck can
+        // never end up half-adaptive — some tiles readable, some not.
+        .resolvingBackdropInk(liveBackdropActive: liveBackdropActive, profile: readabilityProfile)
+        // Every other dashboard route paints this. The deck did not, which left
+        // the scroll view showing raw backdrop and forced each plate to fight
+        // the kernel alone.
+        .dashboardPageBackground(liveBackdropActive: liveBackdropActive)
         .onAppear { restoreLayout() }
         .task { model.start(dataStore: dataStore, gateway: routerGateway) }
         // The snippet store posts this whenever a snippet is created, edited or
@@ -149,10 +165,10 @@ struct ControlDeckView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Control Deck")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .foregroundStyle(ink.primary)
                 Text(headerSubtitle)
                     .font(.system(size: 11.5, design: .rounded))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
             }
 
             Spacer()
@@ -198,7 +214,7 @@ struct ControlDeckView: View {
         } label: {
             Image(systemName: "slider.horizontal.3")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .foregroundStyle(ink.icon)
                 .frame(width: 30, height: 30)
                 .contentShape(Circle())
         }

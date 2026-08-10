@@ -17,6 +17,7 @@ import SwiftUI
 // `ControlLinkButton` below, which are non-glass by construction.
 
 struct ControlSwitch: View {
+    @Environment(\.backdropInk) private var ink
     let kind: ControlKind
     let label: String
     let glyph: String
@@ -43,10 +44,10 @@ struct ControlSwitch: View {
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .lineLimit(1)
                 Circle()
-                    .fill(isOn ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted.opacity(0.5))
+                    .fill(isOn ? DesignSystem.Colors.success : ControlDeckInk.inactive)
                     .frame(width: 5, height: 5)
             }
-            .foregroundStyle(isOn ? kind.accent : DesignSystem.Colors.textSecondary)
+            .foregroundStyle(isOn ? kind.accent : ink.secondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .contentShape(Capsule())
@@ -104,6 +105,7 @@ struct ControlPrimaryButton: View {
 /// flat accent capsule, because glass cannot sample glass and the tile already
 /// spends its one glass control on the `ControlSwitch`.
 struct ControlSegmentedPicker<Value: Hashable>: View {
+    @Environment(\.backdropInk) private var ink
     let accent: Color
     let options: [(value: Value, label: String)]
     let selection: Value
@@ -125,7 +127,7 @@ struct ControlSegmentedPicker<Value: Hashable>: View {
                         .font(.system(size: 9, weight: .bold, design: .rounded))
                         .tracking(0.4)
                         .foregroundStyle(
-                            selected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textMuted
+                            selected ? ink.primary : ink.subtle
                         )
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -150,6 +152,7 @@ struct ControlSegmentedPicker<Value: Hashable>: View {
 /// control. Flat, quiet, and always suffixed with the arrow, so a
 /// click-through never wears the costume of a switch.
 struct ControlLinkButton: View {
+    @Environment(\.backdropInk) private var ink
     let title: String
     let help: String
     let action: () -> Void
@@ -162,7 +165,7 @@ struct ControlLinkButton: View {
                 Image(systemName: "arrow.right")
                     .font(.system(size: 8, weight: .bold))
             }
-            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .foregroundStyle(ink.secondary)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

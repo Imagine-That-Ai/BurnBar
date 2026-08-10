@@ -57,6 +57,10 @@ struct BurnBarAIInboxPublisher: Sendable {
         modelProvenance: String,
         calls: [BurnBarAIInboxModelCall],
         newlySuppressedFingerprints: [String],
+        /// Validated hints from this tick's analyst response, so the brief's
+        /// buttons get the same treatment its findings do. Defaulted because the
+        /// rule-based (zero-egress) path has no analyst to hint.
+        briefActionHints: [BurnBarAIInboxActionHint] = [],
         now: Date
     ) async -> BurnBarAIInboxPublishResult {
         var suppressed = Set((try? store.state(
@@ -86,7 +90,9 @@ struct BurnBarAIInboxPublisher: Sendable {
         // Brief first, so it sorts as the day's narrative anchor.
         var toPublish: [BurnBarAIInboxFinding] = []
         if briefMarkdown.isEmpty == false {
-            toPublish.append(Self.briefFinding(markdown: briefMarkdown, pack: pack, now: now))
+            toPublish.append(
+                Self.briefFinding(markdown: briefMarkdown, pack: pack, hints: briefActionHints, now: now)
+            )
         }
         toPublish.append(contentsOf: findings)
 
@@ -470,15 +476,17 @@ struct BurnBarAIInboxPublisher: Sendable {
     static func briefFinding(
         markdown: String,
         pack: BurnBarAIInboxEvidencePack,
+        hints: [BurnBarAIInboxActionHint] = [],
         now: Date
     ) -> BurnBarAIInboxFinding {
-        BurnBarAIInboxFinding(
+        let evidenceIDs = BurnBarAIInboxBriefAuthor.evidenceIDs(pack: pack)
+        return BurnBarAIInboxFinding(
             kind: .brief,
             title: Self.briefTitle(pack: pack, now: now),
             summaryMarkdown: markdown,
             priority: .p4,
             confidence: 0.9,
-            evidenceIDs: BurnBarAIInboxBriefAuthor.evidenceIDs(pack: pack),
+            evidenceIDs: evidenceIDs,
             fingerprint: BurnBarAIInboxFinding.fingerprint(
                 kind: .brief,
                 scope: "global",
@@ -486,6 +494,11 @@ struct BurnBarAIInboxPublisher: Sendable {
                 subject: BurnBarAIInboxDetectors.dayBucket(now)
             ),
             metrics: BurnBarAIInboxBriefAuthor.metrics(pack: pack),
+            // The brief used to ship with no actions at all — the one item every
+            // user reads every day was the one item with nothing to press. Its
+            // citations resolve through the same factory every other finding
+            // uses, so its buttons are code-derived too.
+            actions: BurnBarAIInboxActionFactory.actions(for: evidenceIDs, pack: pack, hints: hints),
             needsVerification: false,
             deterministicVerification: nil,
             source: .analyst

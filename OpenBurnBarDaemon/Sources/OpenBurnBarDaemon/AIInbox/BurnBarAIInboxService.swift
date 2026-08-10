@@ -151,7 +151,12 @@ actor BurnBarAIInboxService {
             founderLensEnabled: config.founderLensEnabled,
             perReplyBudgetUSD: config.perReplyBudgetUSD,
             maxThreadTurns: config.maxThreadTurns,
-            budgetCountsSubscriptionSpend: config.budgetCountsSubscriptionSpend
+            budgetCountsSubscriptionSpend: config.budgetCountsSubscriptionSpend,
+            // Carried through explicitly: this initializer is the normalization
+            // gate, and a field omitted here silently resets to its default on
+            // every config update.
+            briefDetail: config.briefDetail,
+            briefRegister: config.briefRegister
         )
         try? store.setState(
             BurnBarAIInboxSchema.StateKey.config,
@@ -433,6 +438,9 @@ actor BurnBarAIInboxService {
         var modelProvenance = "local-rules"
         var suppressed: [String] = []
         var analystFailure: String?
+        // Surviving action hints from this tick. Empty on every path that never
+        // reached the analyst, which is exactly right: no model, no hints.
+        var actionHints: [BurnBarAIInboxActionHint] = []
 
         // Standing commitments: active Founder Plans and approved snippets the
         // synthesis must build on. Populated from the plan ledger; empty when
@@ -454,6 +462,7 @@ actor BurnBarAIInboxService {
                 )
                 calls.append(contentsOf: analysis.calls)
                 briefMarkdown = analysis.briefMarkdown
+                actionHints = analysis.actionHints
                 if let first = analysis.calls.first { modelProvenance = first.provenance }
 
                 let verifier = BurnBarAIInboxVerifier(
@@ -537,6 +546,7 @@ actor BurnBarAIInboxService {
             modelProvenance: modelProvenance,
             calls: calls,
             newlySuppressedFingerprints: suppressed,
+            briefActionHints: actionHints,
             now: now
         )
         return PipelineResult(calls: calls, publish: publish, analystFailure: analystFailure)

@@ -50,6 +50,7 @@ import SwiftUI
 // **Direct, and the only direct control here: copy.** Copying a loopback URL
 // grants nothing.
 struct ModelRouterTile: View {
+    @Environment(\.backdropInk) private var ink
     @Bindable var settingsManager: SettingsManager
     let model: ControlDeckModel
     let daemonManager: OpenBurnBarDaemonManager
@@ -107,7 +108,7 @@ struct ModelRouterTile: View {
             HStack(spacing: DesignSystem.Spacing.md) {
                 Text(facts.endpoint)
                     .font(DesignSystem.Typography.monoSmall)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .foregroundStyle(ink.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .help("Point Cursor, VS Code, or any OpenAI-compatible client at this base URL.")
@@ -265,7 +266,7 @@ struct TheWandTile: View {
                 ControlStatusChip(
                     label: facts.burnLabel,
                     tint: facts.burnLabel == "No cast spend"
-                        ? DesignSystem.Colors.textMuted.opacity(0.5)
+                        ? ControlDeckInk.inactive
                         : ControlKind.wand.accent,
                     help: "What every mission on the board has burned so far."
                 )
@@ -290,6 +291,7 @@ private struct ControlTierLadder: View {
     let ceiling: Int
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.backdropInk) private var ink
 
     private var rungs: [Int] { CloudTier.allCases.map { WandFanOut.maxParallel(for: $0) } }
 
@@ -301,7 +303,7 @@ private struct ControlTierLadder: View {
                     .font(.system(size: 9, weight: .bold, design: .rounded))
                     .tracking(0.4)
                     .foregroundStyle(
-                        reached ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textMuted
+                        reached ? ink.primary : ink.subtle
                     )
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -347,6 +349,7 @@ private struct ControlTierLadder: View {
 // callable (`ComputerUseSecurityCallableClient.callHighRiskOwnerAction`). It
 // stays in `MacRemoteMCPConnectedClientsSection` behind its own confirmation.
 struct MemoryMCPTile: View {
+    @Environment(\.backdropInk) private var ink
     let model: ControlDeckModel
     let accountManager: AccountManager
     let onOpenSettings: (String?) -> Void
@@ -391,7 +394,7 @@ struct MemoryMCPTile: View {
             HStack(spacing: DesignSystem.Spacing.md) {
                 Text(facts.endpoint)
                     .font(DesignSystem.Typography.monoSmall)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .foregroundStyle(ink.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .help("The hosted Remote MCP endpoint. Paste it into Codex, Claude Code, Droid, Kimi, or any MCP client.")
@@ -578,7 +581,7 @@ struct AIInboxTile: View {
                     label: facts.egressLabel,
                     tint: facts.egressLabel == "Cloud models"
                         ? DesignSystem.Colors.warning
-                        : DesignSystem.Colors.textMuted.opacity(0.5),
+                        : ControlDeckInk.inactive,
                     help: "What the analyst is allowed to send off this Mac. Changing it is a confirmed action and lives in Settings, where the dialog names exactly what leaves."
                 )
 
@@ -649,7 +652,7 @@ struct AIInboxTile: View {
         switch analyst {
         case .couldNotRun, .failed: return DesignSystem.Colors.warning
         case .healthy: return DesignSystem.Colors.success
-        case .ruleBasedByDesign, .idle, .neverRan: return DesignSystem.Colors.textMuted.opacity(0.5)
+        case .ruleBasedByDesign, .idle, .neverRan: return ControlDeckInk.inactive
         }
     }
 
