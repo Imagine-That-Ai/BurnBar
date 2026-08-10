@@ -430,8 +430,9 @@ final class AtomicIngestionTransaction {
                         executionSourceKind, executionSourceConfidence,
                         sourceDeviceId, sourceDeviceName, isRemote,
                         providerID, providerAccountID, providerAccountLabel, providerAccountSource,
-                        provenanceMethod, provenanceConfidence, estimatorVersion
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        provenanceMethod, provenanceConfidence, estimatorVersion,
+                        billingKind
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, '')) DO UPDATE SET
                         projectName = excluded.projectName,
                         inputTokens = excluded.inputTokens,
@@ -508,6 +509,12 @@ final class AtomicIngestionTransaction {
                             ELSE token_usage.provenanceConfidence
                         END,
                         estimatorVersion = excluded.estimatorVersion,
+                        -- Billing provenance is sticky: a classified kind
+                        -- survives an unknown-carrying correction.
+                        billingKind = CASE
+                            WHEN excluded.billingKind != 'unknown' THEN excluded.billingKind
+                            ELSE token_usage.billingKind
+                        END,
                         syncedAt = NULL
                     WHERE
                         CASE excluded.provenanceConfidence
@@ -555,7 +562,14 @@ final class AtomicIngestionTransaction {
                         usage.providerAccountSource?.rawValue,
                         usage.provenanceMethod.rawValue,
                         usage.provenanceConfidence.rawValue,
-                        usage.estimatorVersion
+                        usage.estimatorVersion,
+                        // Stamp at write time; derive for unclassified callers.
+                        (usage.billingKind == .unknown
+                            ? BurnBarBillingProvenance.classify(
+                                provider: usage.provider,
+                                usageSource: usage.usageSource
+                            )
+                            : usage.billingKind).rawValue
                     ])
             }
             // Sampled BEFORE the checkpoint upsert so the delta covers

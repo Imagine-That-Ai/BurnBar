@@ -1652,6 +1652,42 @@ public enum BurnBarBillingProvenance {
     public static func effectiveKind(of event: BurnBarUsageEvent) -> BurnBarBillingKind {
         event.billingKind ?? classify(providerID: event.providerID)
     }
+
+    /// Harnesses whose parsed sessions are overwhelmingly plan-billed. Kept in
+    /// exact lockstep with the v60 `billingKindBackfillSQL` CASE — the Swift
+    /// write path and the SQL backfill must never disagree about a row.
+    private static let subscriptionFirstProviders: Set<AgentProvider> = [
+        .claudeCode, .codex, .copilot, .cursor, .cursorAgent,
+        .factory, .junie, .windsurf, .warp
+    ]
+
+    /// Bring-your-own-key harnesses: parsed sessions bill against the user's
+    /// own API key. Mirror of the backfill's second CASE arm.
+    private static let apiKeyFirstProviders: Set<AgentProvider> = [
+        .aider, .hermes, .deepSeek, .openAI, .xAI
+    ]
+
+    /// Deterministic write-time classification for `token_usage` rows,
+    /// mirroring the v60 backfill exactly:
+    /// billing-API and daemon-gateway ingest are real dollars by construction;
+    /// plan-first harness logs are subscription; BYO-key harness logs are api;
+    /// everything else is `.unknown` — a wrong guess would corrupt the
+    /// money/imputed split forever, an unknown can be reclassified later.
+    public static func classify(
+        provider: AgentProvider,
+        usageSource: UsageSource
+    ) -> BurnBarBillingKind {
+        switch usageSource {
+        case .billingAPI, .daemon:
+            return .api
+        case .providerLog:
+            if subscriptionFirstProviders.contains(provider) { return .subscription }
+            if apiKeyFirstProviders.contains(provider) { return .api }
+            return .unknown
+        case .inAppChat, .cursorBridge, .unknown:
+            return .unknown
+        }
+    }
 }
 
 public struct BurnBarUsageEvent: Codable, Hashable, Sendable {

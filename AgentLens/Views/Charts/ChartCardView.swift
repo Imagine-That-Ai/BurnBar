@@ -28,8 +28,13 @@ struct ChartCardView: View {
     let onToggleSpan: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    /// Spend lens for the burn card: combined / split / overlay. Persisted so
+    /// the chosen way of seeing money survives relaunch.
+    @AppStorage("charts.spendLensMode") private var spendLensRaw = SpendLensMode.combined.rawValue
 
     private var kind: ChartKind { config.kind }
+
+    private var spendLens: SpendLensMode { SpendLensMode(rawValue: spendLensRaw) ?? .combined }
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
@@ -98,10 +103,16 @@ struct ChartCardView: View {
     private var headline: String {
         switch kind {
         case .burnOverTime:
-            let trend = snapshot.burnTrendPercent.map {
-                " · " + $0.formatted(.number.precision(.fractionLength(0)).sign(strategy: .always())) + "%"
-            } ?? ""
-            return snapshot.totalCost.formatAsCost() + trend
+            switch spendLens {
+            case .combined:
+                let trend = snapshot.burnTrendPercent.map {
+                    " · " + $0.formatted(.number.precision(.fractionLength(0)).sign(strategy: .always())) + "%"
+                } ?? ""
+                return snapshot.totalCost.formatAsCost() + trend
+            case .split, .overlay:
+                return "API " + snapshot.apiCost.formatAsCost()
+                    + " · Plan " + snapshot.subscriptionCost.formatAsCost()
+            }
         case .providerMix:
             guard let top = snapshot.providerShares.first, snapshot.totalCost > 0 else { return "—" }
             return "\(top.provider.displayName) \(Int((top.cost / snapshot.totalCost * 100).rounded()))%"
@@ -143,7 +154,13 @@ struct ChartCardView: View {
         } else {
             switch kind {
             case .burnOverTime:
-                ChartKitLine(values: snapshot.burnSeries.map(\.value), accent: kind.accent)
+                VStack(alignment: .trailing, spacing: 4) {
+                    SpendLensPicker(mode: Binding(
+                        get: { SpendLensMode(rawValue: spendLensRaw) ?? .combined },
+                        set: { spendLensRaw = $0.rawValue }
+                    ))
+                    SpendLensBurnBody(snapshot: snapshot, mode: spendLens)
+                }
             case .providerMix:
                 ChartKitDonut(
                     segments: snapshot.providerShares.map {

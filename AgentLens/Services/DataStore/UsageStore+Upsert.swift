@@ -15,8 +15,9 @@ extension UsageStore {
                     executionSourceKind, executionSourceConfidence,
                     sourceDeviceId, sourceDeviceName, isRemote,
                     providerID, providerAccountID, providerAccountLabel, providerAccountSource,
-                    provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID,
+                    billingKind
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, '')) DO UPDATE SET
                     projectName = excluded.projectName,
                     inputTokens = excluded.inputTokens,
@@ -129,6 +130,13 @@ extension UsageStore {
                     -- elderwand parentRequestID, a later non-daemon correction
                     -- (which carries NULL) must not erase it.
                     parentRequestID = COALESCE(excluded.parentRequestID, token_usage.parentRequestID),
+                    -- Billing provenance is sticky the same way: a classified
+                    -- kind survives an unknown-carrying correction, but a
+                    -- classified incoming row may correct a stale unknown.
+                    billingKind = CASE
+                        WHEN excluded.billingKind != 'unknown' THEN excluded.billingKind
+                        ELSE token_usage.billingKind
+                    END,
                     syncedAt = NULL
                 WHERE
                     CASE excluded.provenanceConfidence
@@ -171,6 +179,8 @@ extension UsageStore {
                         -- fusion parentRequestID a prior row lacked.
                         OR (excluded.parentRequestID IS NOT NULL
                             AND COALESCE(token_usage.parentRequestID, '') != excluded.parentRequestID)
+                        OR (excluded.billingKind != 'unknown'
+                            AND token_usage.billingKind != excluded.billingKind)
                     )
                 """,
         )
@@ -206,7 +216,14 @@ extension UsageStore {
                 usage.provenanceMethod.rawValue,
                 usage.provenanceConfidence.rawValue,
                 usage.estimatorVersion,
-                usage.parentRequestID
+                usage.parentRequestID,
+                // Stamp at write time; derive for callers that didn't classify.
+                (usage.billingKind == .unknown
+                    ? BurnBarBillingProvenance.classify(
+                        provider: usage.provider,
+                        usageSource: usage.usageSource
+                    )
+                    : usage.billingKind).rawValue
             ]
         )
     }
@@ -279,7 +296,9 @@ extension UsageStore {
             provenanceMethod: provenanceMethod,
             provenanceConfidence: provenanceConfidence,
             estimatorVersion: estimatorVersion,
-            parentRequestID: row["parentRequestID"] as? String
+            parentRequestID: row["parentRequestID"] as? String,
+            billingKind: (row["billingKind"] as? String)
+                .flatMap(BurnBarBillingKind.init(rawValue:)) ?? .unknown
         )
     }
 

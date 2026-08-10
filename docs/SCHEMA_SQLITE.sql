@@ -52,7 +52,8 @@ CREATE TABLE token_usage (
   projectPath     TEXT,                                   -- working directory at session time
   agentVersion    TEXT,                                   -- agent CLI version
   requestId       TEXT,                                   -- provider-assigned request ID (v38+)
-  traceId         TEXT                                    -- distributed trace ID (v41+)
+  traceId         TEXT,                                   -- distributed trace ID (v41+)
+  billingKind     TEXT    NOT NULL DEFAULT 'unknown'      -- "api" | "subscription" | "unknown" (v60+)
 );
 
 CREATE INDEX token_usage_sync_pending_idx ON token_usage(syncStatus) WHERE syncStatus = 'pending';
