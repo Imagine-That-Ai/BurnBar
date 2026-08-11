@@ -8,6 +8,8 @@ set -euo pipefail
 # against an artifact SwiftPM would not consume.
 repo_root="${OPENBURNBAR_IROH_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 xcframework="$repo_root/Vendor/OpenBurnBarIroh.xcframework"
+# shellcheck source=scripts/lib/apple-static-archive.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/apple-static-archive.sh"
 
 fail() {
   echo "ERROR: Mercury release preflight failed: $*" >&2
@@ -40,6 +42,11 @@ profile_marker="$xcframework/openburnbar-iroh-build-profile"
 profile="$(tr -d '[:space:]' < "$profile_marker")"
 if [[ "$profile" != "release" ]]; then
   fail "artifact was built with cargo profile '$profile'; release builds must link a release-profile archive"
+fi
+
+if ! openburnbar_verify_apple_static_archive_has_no_empty_members \
+  "$xcframework/macos-arm64/libopenburnbar_iroh.a"; then
+  fail "macOS archive contains symbol-empty members that produce linker warnings"
 fi
 
 echo "Mercury release preflight passed: $xcframework"

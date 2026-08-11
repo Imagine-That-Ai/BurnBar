@@ -231,11 +231,12 @@ def test_release_workflow_prepares_signal_ffi_before_xcode_release_build():
 
     prepare_start = body.index("- name: Prepare Signal FFI XCFramework for release app")
     lockfile_index = body.index("- name: Verify OpenBurnBar app SwiftPM lockfile")
-    resolve_index = body.index("- name: Resolve Xcode packages")
     app_build_index = body.index("- name: Build Release .app (unsigned)")
     prepare_step = body[prepare_start:lockfile_index]
+    app_build_end = body.index("- name: Embed daemon binary in app bundle", app_build_index)
+    app_build_step = body[app_build_index:app_build_end]
 
-    assert prepare_start < lockfile_index < resolve_index < app_build_index
+    assert prepare_start < lockfile_index < app_build_index
     assert "SIGNAL_FFI_BUILD_PROFILE: release" in prepare_step
     targets = re.search(r'SIGNAL_FFI_BUILD_TARGETS: "([^"]+)"', prepare_step)
     assert targets is not None
@@ -248,6 +249,8 @@ def test_release_workflow_prepares_signal_ffi_before_xcode_release_build():
     ]
     assert 'CARGO_BUILD_JOBS: "2"' in prepare_step
     assert "bash scripts/lib/prepare-signal-ffi-xcframework.sh" in prepare_step
+    assert "prepare-openburnbar-app-swiftpm.sh" in app_build_step
+    assert "openburnbar_prepare_libsignal_swift_compat" in app_build_step
 
 
 def test_release_workflow_guards_owner_approved_validation_bypass():
@@ -679,6 +682,38 @@ def test_local_source_builds_package_daemon_sqlcipher_runtime_before_signing():
     assert signed_section.index(rpath_command) < signed_section.index("scripts/sign-openburnbar-local.sh")
 
 
+def test_local_and_release_app_builds_share_lock_exact_swiftpm_lifecycle():
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    wrapper = (ROOT / "scripts/build-openburnbar-local-app.sh").read_text(
+        encoding="utf-8"
+    )
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    build_section = makefile.split("build: bootstrap preflight", 1)[1].split(
+        "build-signed: bootstrap preflight", 1
+    )[0]
+    signed_section = makefile.split("build-signed: bootstrap preflight", 1)[1].split(
+        "release-mas: preflight", 1
+    )[0]
+    release_app_section = workflow.split(
+        "- name: Build Release .app (unsigned)", 1
+    )[1].split("- name:", 1)[0]
+
+    for local_section in (build_section, signed_section):
+        assert "scripts/build-openburnbar-local-app.sh" in local_section
+        assert "xcodebuild -resolvePackageDependencies" not in local_section
+
+    for source in (wrapper, release_app_section):
+        assert "prepare-openburnbar-app-swiftpm.sh" in source
+        assert "-disableAutomaticPackageResolution" in source
+        assert "-onlyUsePackageVersionsFromResolvedFile" in source
+        assert "openburnbar_prepare_google_sign_in_macos_compat" in source
+        assert "openburnbar_prepare_libsignal_swift_compat" in source
+        assert "xcodebuild -resolvePackageDependencies" not in source
+
+    assert 'FIREBASE_SOURCE_FIRESTORE: "1"' in workflow
+
+
 def test_macos_release_does_not_require_unsupported_app_attest_entitlement():
     import plistlib
 
@@ -869,6 +904,128 @@ def test_signal_ffi_builder_clears_provenance_from_generated_rustc_wrapper():
     assert chmod in wrapper_function
     assert clear_provenance in wrapper_function
     assert wrapper_function.index(chmod) < wrapper_function.index(clear_provenance)
+
+
+def test_iroh_builder_preserves_generated_swiftlint_rationale():
+    builder = (ROOT / "scripts/build-iroh-xcframework.sh").read_text(
+        encoding="utf-8"
+    )
+    generated_source = (
+        ROOT
+        / "OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/openburnbar_iroh.swift"
+    ).read_text(encoding="utf-8")
+    rationale = (
+        "// swiftlint:disable all -- reason: generated UniFFI binding; "
+        "regenerate from Rust sources instead of hand-editing."
+    )
+
+    assert rationale in builder
+    assert (
+        "generated UniFFI Swift source retained an unjustified SwiftLint suppression"
+        in builder
+    )
+    assert rationale in generated_source
+    assert "\n// swiftlint:disable all\n" not in generated_source
+
+
+def test_iroh_builder_strips_fresh_staging_archives_instead_of_cargo_cache():
+    builder = (ROOT / "scripts/build-iroh-xcframework.sh").read_text(
+        encoding="utf-8"
+    )
+    archive_helper = (ROOT / "scripts/lib/apple-static-archive.sh").read_text(
+        encoding="utf-8"
+    )
+    build_target = builder.split("build_target() {", 1)[1].split(
+        "\n}\n\nmkdir -p", 1
+    )[0]
+    staging_helper = builder.split("stage_release_archive() {", 1)[1].split(
+        "\n}\n\n# Group iOS", 1
+    )[0]
+    transaction_cleanup = builder.split(
+        "cleanup_xcframework_transaction() {", 1
+    )[1].split("\n}\n\ncleanup_on_exit()", 1)[0]
+    transaction_install = builder.split("generated_needs_install=1", 1)[1].split(
+        "\nTRANSACTION_COMMITTED=1", 1
+    )[0]
+
+    assert "xcrun strip" not in build_target
+    assert "Cargo did not produce the expected Iroh archive" in build_target
+    assert 'cp "${source_archive}" "${destination_archive}"' in staging_helper
+    assert 'ZERO_AR_DATE=1 xcrun strip -S "${destination_archive}"' in staging_helper
+    assert (
+        'openburnbar_prune_symbol_empty_archive_members "${destination_archive}"'
+        in staging_helper
+    )
+    assert staging_helper.index(
+        'openburnbar_prune_symbol_empty_archive_members "${destination_archive}"'
+    ) < staging_helper.index(
+        'ZERO_AR_DATE=1 xcrun strip -S "${destination_archive}"'
+    )
+    assert 'if [[ -s "${strip_log}" ]]' in staging_helper
+    assert "Unable to classify Apple static archive members" in archive_helper
+    assert "has no symbols" in archive_helper
+    assert '-filelist "$object_list"' in archive_helper
+    assert (
+        "Refusing to normalize an archive with duplicate member names"
+        in archive_helper
+    )
+    assert 'PROCESS_TMPDIR="${IROH_BUILD_TMPDIR:-/tmp}"' in builder
+    assert 'export TMPDIR="${PROCESS_TMPDIR%/}/"' in builder
+    assert (
+        'CARGO_HOME_REQUESTED="${IROH_CARGO_HOME:-'
+        '${CARGO_HOME:-${HOME}/.cargo}}"'
+        in builder
+    )
+    assert "inherited Cargo home is unavailable" in builder
+    assert 'export CARGO_HOME="${CARGO_HOME_REQUESTED}"' in builder
+    assert (
+        'XCFRAMEWORK_STAGING="${ROOT_DIR}/build/'
+        'OpenBurnBarIroh.staging.$$.xcframework"'
+        in builder
+    )
+    assert 'XCFRAMEWORK_BACKUP="${ROOT_DIR}/build/OpenBurnBarIroh.xcframework.backup.$$"' in builder
+    assert 'GENERATED_STAGING="${ROOT_DIR}/build/OpenBurnBarIrohGenerated.staging.$$"' in builder
+    assert 'GENERATED_BACKUP="${ROOT_DIR}/build/OpenBurnBarIrohGenerated.backup.$$"' in builder
+    assert 'UNIFFI_OUT_DIR="${GENERATED_STAGING}"' in builder
+    assert 'diff -qr "${GENERATED_STAGING}" "${GENERATED_DIR}"' in builder
+    assert "-output \"${XCFRAMEWORK_STAGING}\"" in builder
+    assert (
+        'openburnbar_verify_apple_static_archive_has_no_empty_members \\\n'
+        '  "${XCFRAMEWORK_STAGING}/macos-arm64/libopenburnbar_iroh.a"'
+        in builder
+    )
+    assert 'rm -rf "${XCFRAMEWORK}"' not in transaction_install
+    assert 'rm -rf "${GENERATED_DIR}"' not in transaction_install
+    assert transaction_install.index(
+        'mv "${XCFRAMEWORK}" "${XCFRAMEWORK_BACKUP}"'
+    ) < transaction_install.index(
+        'mv "${XCFRAMEWORK_STAGING}" "${XCFRAMEWORK}"'
+    )
+    assert transaction_install.index(
+        'mv "${GENERATED_DIR}" "${GENERATED_BACKUP}"'
+    ) < transaction_install.index(
+        'mv "${GENERATED_STAGING}" "${GENERATED_DIR}"'
+    )
+    assert transaction_cleanup.index(
+        'rm -rf "${XCFRAMEWORK}"'
+    ) < transaction_cleanup.index(
+        'mv "${XCFRAMEWORK_BACKUP}" "${XCFRAMEWORK}"'
+    )
+    assert transaction_cleanup.index(
+        'rm -rf "${GENERATED_DIR}"'
+    ) < transaction_cleanup.index(
+        'mv "${GENERATED_BACKUP}" "${GENERATED_DIR}"'
+    )
+    assert (
+        'stage_release_archive \\\n'
+        '    "${CARGO_TARGET_ROOT}/${target}/${PROFILE_DIR}/libopenburnbar_iroh.a" \\\n'
+        '    "${out_dir}/libopenburnbar_iroh.a"'
+    ) in builder
+    assert (
+        '"${SIM_ARM64_DIR}/libopenburnbar_iroh.a" \\\n'
+        '    "${SIM_X86_64_DIR}/libopenburnbar_iroh.a"'
+        in builder
+    )
 
 
 def test_local_app_signing_uses_same_privileged_peer_policy_as_release():

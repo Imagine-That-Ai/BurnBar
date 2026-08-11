@@ -1564,14 +1564,6 @@ jobs:
           swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarDaemon
           swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarCLI
 
-      - name: Resolve Xcode packages
-        run: |
-          xcodebuild -resolvePackageDependencies \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -clonedSourcePackagesDirPath "$CACHE_DIR" \
-            -derivedDataPath "$DERIVED_DATA"
-
       - name: Build Release .app (unsigned)
         env:
           # Marks this as a notarized release build so the in-app updater's
@@ -1579,6 +1571,36 @@ jobs:
           OPENBURNBAR_BUILD_CHANNEL: release
         run: |
           set -euo pipefail
+
+          source scripts/lib/libsignal-swift-compat.sh
+          source scripts/lib/xcode-source-classification.sh
+          openburnbar_configure_xcode_process_tmpdir
+
+          cleanup_release_packages() {
+            local original_status=$?
+            trap - EXIT
+            local google_restore_status=0
+            local libsignal_restore_status=0
+            openburnbar_restore_google_sign_in_macos_compat || google_restore_status=$?
+            openburnbar_restore_libsignal_swift_compat || libsignal_restore_status=$?
+            local restore_status="$google_restore_status"
+            if ((restore_status == 0)); then
+              restore_status="$libsignal_restore_status"
+            fi
+            if ((original_status == 0 && restore_status != 0)); then
+              exit "$restore_status"
+            fi
+            exit "$original_status"
+          }
+          trap cleanup_release_packages EXIT
+
+          bash scripts/prepare-openburnbar-app-swiftpm.sh \
+            --project "$PROJECT" \
+            --scheme "$SCHEME" \
+            --cache-dir "$CACHE_DIR" \
+            --derived-data "$DERIVED_DATA"
+          openburnbar_prepare_google_sign_in_macos_compat "$CACHE_DIR"
+          openburnbar_prepare_libsignal_swift_compat "$GITHUB_WORKSPACE"
 
           xcodebuild_log="${RUNNER_TEMP:-/tmp}/openburnbar-release-app-xcodebuild.log"
           rm -f "$xcodebuild_log"
@@ -1590,6 +1612,8 @@ jobs:
             -destination "$DESTINATION" \
             -clonedSourcePackagesDirPath "$CACHE_DIR" \
             -derivedDataPath "$DERIVED_DATA" \
+            -disableAutomaticPackageResolution \
+            -onlyUsePackageVersionsFromResolvedFile \
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=YES \
             DOMAIN_CORE_BUILD_PROFILE="$DOMAIN_CORE_BUILD_PROFILE" \
@@ -1607,6 +1631,7 @@ jobs:
             DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE="$DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE" \
             DOMAIN_CORE_HERMES_MODE="$DOMAIN_CORE_HERMES_MODE" \
             DOMAIN_CORE_PRICING_MODE="$DOMAIN_CORE_PRICING_MODE" \
+            "${OPENBURNBAR_XCODE_SOURCE_CLASSIFICATION_ARGS[@]}" \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \

@@ -8,6 +8,7 @@ source scripts/lib/libsignal-swift-compat.sh
 # shellcheck source=scripts/lib/xcode-source-classification.sh
 source scripts/lib/xcode-source-classification.sh
 openburnbar_configure_xcode_process_tmpdir
+export FIREBASE_SOURCE_FIRESTORE=1
 
 bash scripts/ci/verify-apple-appcheck-release-env.sh
 bash scripts/ci/verify-iroh-release-artifact.sh
@@ -185,11 +186,11 @@ fi
 rm -rf "$release_dir"
 mkdir -p "$release_dir" "$package_cache"
 
-xcodebuild -resolvePackageDependencies \
-  -project "$project" \
-  -scheme "$scheme" \
-  -clonedSourcePackagesDirPath "$package_cache" \
-  -derivedDataPath "$release_dir/DerivedData"
+bash scripts/prepare-openburnbar-app-swiftpm.sh \
+  --project "$project" \
+  --scheme "$scheme" \
+  --cache-dir "$package_cache" \
+  --derived-data "$release_dir/DerivedData"
 openburnbar_prepare_google_sign_in_macos_compat "$package_cache"
 
 cat > "$export_options" <<EOF
@@ -225,6 +226,7 @@ xcodebuild archive \
   -clonedSourcePackagesDirPath "$package_cache" \
   -derivedDataPath "$release_dir/DerivedData" \
   -disableAutomaticPackageResolution \
+  -onlyUsePackageVersionsFromResolvedFile \
   -allowProvisioningUpdates \
   ARCHS=arm64 \
   ONLY_ACTIVE_ARCH=YES \
