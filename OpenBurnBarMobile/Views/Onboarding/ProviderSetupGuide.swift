@@ -578,7 +578,10 @@ extension ProviderSetupGuide {
                 supportsSelfHosted: false
             )
 
-        case .windsurf, .devin:
+        case .devin:
+            return devinGuide(for: provider)
+
+        case .windsurf:
             return ProviderSetupGuide(
                 provider: provider,
                 kinds: [.token, .bearer, .session],
@@ -708,6 +711,30 @@ extension ProviderSetupGuide {
             ],
             credentialPlaceholder: "Managed by your paired Mac",
             credentialFooterMarkdown: "Prime Agent auth stays on your Mac. OpenBurnBar only reads local session usage.",
+            supportsHosted: false,
+            supportsSelfHosted: false
+        )
+    }
+
+    /// Devin (Cognition). Kept separate from the legacy Windsurf branch: sharing that
+    /// case labelled the account "Windsurf", pointed at the Codeium dashboard and asked
+    /// for a Codeium session cookie — none of which configure Devin.
+    private static func devinGuide(for provider: AgentProvider) -> ProviderSetupGuide {
+        ProviderSetupGuide(
+            provider: provider,
+            kinds: [.token, .bearer],
+            defaultKind: .token,
+            labelSuggestion: "Devin",
+            dashboardURL: URL(string: "https://devin.ai"),
+            dashboardCTA: "Open Devin",
+            oneLineHint: "Devin API key from your Devin workspace settings.",
+            instructions: [
+                GuideStep(1, "Open your Devin workspace", detail: "Sign in with the account that owns the Devin subscription."),
+                GuideStep(2, "Create an API key", detail: "Workspace Settings → API keys → create a key scoped to this device."),
+                GuideStep(3, "Paste it below", detail: "OpenBurnBar stores it in the Keychain and uses it only to read Devin usage.")
+            ],
+            credentialPlaceholder: "Devin API key",
+            credentialFooterMarkdown: "Devin sessions are not read from disk yet — usage stays estimated until a Devin session parser ships.",
             supportsHosted: false,
             supportsSelfHosted: false
         )

@@ -5373,10 +5373,8 @@
       "visibility": "public",
       "logoKey": "DevinLogo",
       "capabilities": [
-        "routing",
         "accounting"
       ],
-      "formatFamily": "openai_compat",
       "visualSurfaces": [
         "cli",
         "desktop"

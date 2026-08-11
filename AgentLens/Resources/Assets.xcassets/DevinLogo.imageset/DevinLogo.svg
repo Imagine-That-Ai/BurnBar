@@ -1,14 +1,7 @@
 <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-<defs>
-<linearGradient id="primeGrad" x1="6" y1="6" x2="26" y2="26" gradientUnits="userSpaceOnUse">
-<stop offset="0%" stop-color="#7C5CFF"/>
-<stop offset="100%" stop-color="#582CFF"/>
-</linearGradient>
-</defs>
-<!-- Prime Intellect — interlocking prime chevrons, #582CFF family -->
-<path d="M8 10L16 4L24 10L16 16L8 10Z" fill="url(#primeGrad)"/>
-<path d="M8 17L16 11L24 17L16 23L8 17Z" fill="#582CFF" opacity="0.92"/>
-<path d="M8 22.5L16 16.5L24 22.5L16 28.5L8 22.5Z" fill="#582CFF" opacity="0.72"/>
-<circle cx="16" cy="15.5" r="2.2" fill="white"/>
-<circle cx="16" cy="15.5" r="0.9" fill="#582CFF" opacity="0.9"/>
+<!-- Devin — original BurnBar provider glyph (hex node + prompt caret), #0A84FF family.
+     Not a reproduction of Cognition's trademark; it is our neutral provider avatar. -->
+<path d="M16 3L27 9.5V22.5L16 29L5 22.5V9.5L16 3Z" stroke="#0A84FF" stroke-width="2.2" stroke-linejoin="round"/>
+<path d="M11.5 13.5L15 16L11.5 18.5" stroke="#0A84FF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M17.5 19H21" stroke="#0A84FF" stroke-width="2.2" stroke-linecap="round"/>
 </svg>

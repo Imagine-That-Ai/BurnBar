@@ -36,7 +36,7 @@
 | **Kilo Code** | `KiloCodeQuotaAdapter.swift` | `.exact` | Install detection | Visual environment detection only |
 | **Augment** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **Windsurf** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
-| **Devin** | _none_ / Local scans | `.exact` | `devin` CLI + `/Applications/Devin.app` (Devin Desktop — successor to Windsurf per `devin.ai/blog/windsurf-is-now-devin-desktop`) + `~/.config/Devin/sessions/*.jsonl` | Local CLI + Desktop (Both: `devin-cli` / `devin-desktop` toggle) — legacy `windsurf` rows migrate to `devin-desktop` |
+| **Devin** | _none_ / Local scans | `.unavailable` | `devin` CLI + `/Applications/Devin.app` (Devin Desktop — successor to Windsurf) + `~/.config/Devin/sessions/*.jsonl` | Local CLI + Desktop (Both: `devin-cli` / `devin-desktop` toggle). No Devin session parser is registered (`"ingestion": "unavailable"` in `contracts/provider-ingestion-catalog.json`), so usage stays unavailable and the catalog entry is accounting-only until a parser or API ingestion path ships |
 | **Goose** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **OpenClaw** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **OpenClaude** | `OpenClaudeQuotaAdapter` | `.unavailable` | Install detection / `openclaude` CLI | Spawned Claude Code fork; no usage API or programmatic quota source |

@@ -112,30 +112,31 @@ extension ProviderBrand {
             candidates.append(contentsOf: ["QwenLogo", "AlibabaLogo", "AlibabaProviderLogo"])
         case "zai", "z-ai", "z.ai", "glm":
             candidates.append(contentsOf: ["ZaiLogo", "ZaiProviderLogo"])
+        // Desktop twins share the CLI provider's artwork — same brand, different surface.
+        // This mirrors `BurnBarCatalogProvider.bundledLogoName(forProviderID:)`, which
+        // already maps every `*-desktop` id onto the base provider's asset.
         case "zcode", "zcode-desktop", "z-code", "z.ai-desktop", "zai-desktop":
-            candidates.append(contentsOf: ["ZCodeLogo", "ZCodeDesktopLogo", "ZaiLogo", "ZaiProviderLogo"])
-        case "minimax", "mini-max":
+            candidates.append(contentsOf: ["ZaiLogo", "ZaiProviderLogo"])
+        case "minimax", "mini-max", "minimax-desktop", "minimax desktop", "minimax-agent":
             candidates.append("MiniMaxLogo")
-        case "minimax-desktop", "minimax desktop", "minimax-agent":
-            candidates.append(contentsOf: ["MiniMaxDesktopLogo", "MiniMaxLogo"])
         case "mimo", "xiaomi", "xiaomimimo":
             candidates.append("MimoLogo")
         case "factory-desktop", "factory desktop":
-            candidates.append(contentsOf: ["FactoryDesktopLogo", "FactoryLogo"])
+            candidates.append("FactoryLogo")
         case "devin", "devin-desktop", "devin desktop", "devin-cli", "devin cli":
-            candidates.append(contentsOf: ["DevinLogo", "DevinDesktopLogo"])
+            candidates.append("DevinLogo")
         case "claude-desktop", "claude desktop":
-            candidates.append(contentsOf: ["ClaudeDesktopLogo", "ClaudeCodeLogo", "AnthropicLogo"])
+            candidates.append(contentsOf: ["ClaudeCodeLogo", "AnthropicLogo"])
         case "warp-desktop", "warp desktop", "warp-terminal":
-            candidates.append(contentsOf: ["WarpDesktopLogo", "WarpLogo"])
+            candidates.append("WarpLogo")
         case "ollama-desktop", "ollama desktop":
-            candidates.append(contentsOf: ["OllamaDesktopLogo", "OllamaLogo"])
+            candidates.append("OllamaLogo")
         case "codex-desktop", "codex desktop":
-            candidates.append(contentsOf: ["CodexDesktopLogo", "CodexLogo", "OpenAILogo"])
+            candidates.append(contentsOf: ["CodexLogo", "OpenAILogo"])
         case "cursor-desktop", "cursor desktop", "cursor-ide":
-            candidates.append(contentsOf: ["CursorDesktopLogo", "CursorLogo"])
+            candidates.append("CursorLogo")
         case "hermes-desktop", "hermes desktop", "hermes-dashboard":
-            candidates.append(contentsOf: ["HermesDesktopLogo", "HermesLogo"])
+            candidates.append("HermesLogo")
         case "prime", "prime-agent", "primeagent", "prime_agent", "prime agent":
             candidates.append("PrimeAgentLogo")
         case "cursor-agent", "cursoragent":
