@@ -43,7 +43,7 @@ jobs:
   advisory-single-source:
     name: advisory ignore single-source guard
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
       # Fails if the accepted-advisory set is hand-duplicated in this workflow

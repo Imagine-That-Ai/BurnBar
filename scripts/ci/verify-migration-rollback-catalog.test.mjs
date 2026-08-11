@@ -35,6 +35,7 @@ const appFiles = [
   "OpenBurnBarDatabase+MigrationV57.swift",
   "OpenBurnBarDatabase+MigrationV58.swift",
   "OpenBurnBarDatabase+MigrationV59.swift",
+  "OpenBurnBarDatabase+MigrationV60.swift",
 ];
 const sharedFiles = [
   "OpenBurnBarDatabase.swift",
@@ -47,6 +48,7 @@ const sharedFiles = [
   "OpenBurnBarDatabase+DataMigrationV57.swift",
   "OpenBurnBarDatabase+DataMigrationV58.swift",
   "OpenBurnBarDatabase+DataMigrationV59.swift",
+  "OpenBurnBarDatabase+DataMigrationV60.swift",
 ];
 
 function copyFiles(sourceDirectory, destinationDirectory, files) {
@@ -114,7 +116,12 @@ test("extracts only complete migration contracts", () => {
 });
 
 test("current migration surfaces, catalog, and generated documentation agree", () => {
-  assert.equal(verifyMigrationRollbackCatalog(repoRoot), 60);
+  // 61 as of v60_billing_kind. This literal is a deliberate tripwire, not a
+  // derived value: pinning it means adding a migration cannot quietly pass by
+  // agreeing with itself, and forces the author past every mirror. Bump it
+  // ONLY together with the migrator, the rollback catalog, the Windows
+  // endpoint/count, and the byte-compat vector.
+  assert.equal(verifyMigrationRollbackCatalog(repoRoot), 61);
 });
 
 test("registration reorder fails closed", (t) => {

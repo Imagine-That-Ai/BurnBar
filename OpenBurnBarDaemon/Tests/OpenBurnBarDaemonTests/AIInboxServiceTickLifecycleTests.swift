@@ -223,13 +223,128 @@ final class AIInboxServiceTickLifecycleTests: XCTestCase {
         let run = try XCTUnwrap(try assertionStore.recentRuns(limit: 10).first { $0.tickID == tickID })
         XCTAssertEqual(run.gateResult, .forced, "A provider outage degrades the tick, it does not fail it")
         XCTAssertEqual(run.llmCalls, 0)
-        XCTAssertNil(run.error)
+        // Degrading is fine. Degrading *silently* is not: a zero-call run must
+        // say why, or a broken model pin is indistinguishable from a quiet day.
+        let runError = try XCTUnwrap(run.error, "A skipped analyst must be recorded on the run")
+        XCTAssertTrue(runError.hasPrefix("analyst unavailable: "), runError)
 
         let briefItem = try XCTUnwrap(try assertionStore.openItems().first { $0.kind == .brief })
         // The Founder Lens (on by default) stamps its version even on the
         // rule-based path — the router and standing-commitments hook shaped
         // the output, and provenance says so.
         XCTAssertEqual(briefItem.modelProvenance, "local-rules+lens:v1")
+    }
+
+    func test_analystRouteFailureFilesASystemItemNamingTheRouteAndTheReason() async throws {
+        // Same outage as above, seen from the user's side: the inbox must file a
+        // readable "the analyst could not run" item rather than looking healthy.
+        let executor = FakeInboxProviderExecutor(responses: [])
+        let service = try makeService(executor: executor)
+        _ = await service.updateConfiguration(
+            BurnBarInboxConfig(
+                enabled: true,
+                egressMode: .cloud,
+                analystProviderID: "deepseek",
+                analystModel: "deepseek-chat",
+                githubEnabled: false
+            )
+        )
+        try seedConversation(
+            id: "conv-analyst-down",
+            messageCount: 5,
+            endedAt: Date().addingTimeInterval(-300)
+        )
+
+        _ = await service.runNow(force: true)
+
+        let notice = try XCTUnwrap(
+            try assertionStore.openItems().first { $0.kind == .system && $0.title == "Analyst could not run" },
+            "The degradation must be visible in the inbox, not only in the log"
+        )
+        XCTAssertEqual(notice.priority, .p2)
+
+        let detail = try XCTUnwrap(try assertionStore.item(id: notice.id))
+        XCTAssertTrue(
+            detail.summaryMarkdown.contains("deepseek:deepseek-chat"),
+            "The item names the pinned route so a bad pin is self-diagnosing: \(detail.summaryMarkdown)"
+        )
+        XCTAssertTrue(
+            detail.summaryMarkdown.contains("**Reason:**"),
+            detail.summaryMarkdown
+        )
+        XCTAssertEqual(notice.fingerprint, BurnBarAIInboxFinding.analystUnavailableFingerprint)
+    }
+
+    func test_retryingADifferentBadAnalystPinUpdatesOneNoticeInsteadOfStackingThem() async throws {
+        // Hunting for a working model must not leave one permanently-open
+        // "Analyst could not run" row per model tried.
+        let service = try makeService(executor: FakeInboxProviderExecutor(responses: []))
+        try seedConversation(
+            id: "conv-analyst-retry",
+            messageCount: 5,
+            endedAt: Date().addingTimeInterval(-300)
+        )
+
+        for model in ["deepseek-chat", "kimi-k2.6", "glm-5-turbo"] {
+            _ = await service.updateConfiguration(
+                BurnBarInboxConfig(
+                    enabled: true,
+                    egressMode: .cloud,
+                    analystProviderID: "deepseek",
+                    analystModel: model,
+                    githubEnabled: false
+                )
+            )
+            _ = await service.runNow(force: true)
+        }
+
+        let notices = try assertionStore.openItems()
+            .filter { $0.kind == .system && $0.title == "Analyst could not run" }
+        XCTAssertEqual(notices.count, 1, "Three failed pins, one condition, one row")
+
+        // The surviving row reports the pin that failed most recently.
+        let detail = try XCTUnwrap(try assertionStore.item(id: notices[0].id))
+        XCTAssertEqual(detail.payload.metrics["analyst_model"], "glm-5-turbo")
+    }
+
+    func test_theAnalystDownNoticeResolvesOnceTheAnalystRunsAgain() async throws {
+        try seedConversation(
+            id: "conv-analyst-recovers",
+            messageCount: 6,
+            endedAt: Date().addingTimeInterval(-300)
+        )
+
+        // Tick 1: no routable provider, so the notice is filed.
+        let brokenService = try makeService(executor: FakeInboxProviderExecutor(responses: []))
+        _ = await brokenService.updateConfiguration(
+            BurnBarInboxConfig(enabled: true, egressMode: .cloud, githubEnabled: false)
+        )
+        _ = await brokenService.runNow(force: true)
+        XCTAssertEqual(
+            try assertionStore.openItems().filter { $0.kind == .system && $0.title == "Analyst could not run" }.count,
+            1
+        )
+
+        // Tick 2: the analyst can route again. The stale alarm must clear itself.
+        let workingService = try makeService(
+            executor: FakeInboxProviderExecutor(responses: [Self.analystResponseJSON, Self.verifierConfirmJSON]),
+            configStore: try await makeConfiguredProviderConfigStore()
+        )
+        _ = await workingService.runNow(force: true)
+
+        XCTAssertTrue(
+            try assertionStore.openItems()
+                .filter { $0.kind == .system && $0.title == "Analyst could not run" }
+                .isEmpty,
+            "A recovered analyst must resolve its own outage notice"
+        )
+    }
+
+    func test_analystFailureReasonPrefersTheHumanSentenceOverTheEnumCase() {
+        let reason = BurnBarAIInboxService.analystFailureReason(
+            BurnBarProviderRouterError.missingCredential("deepseek")
+        )
+        XCTAssertEqual(reason, "Provider 'deepseek' is missing credentials.")
     }
 
     func test_exhaustedBudgetSkipsModelCallsAndFilesABudgetItem() async throws {
@@ -513,7 +628,7 @@ final class AIInboxServiceTickLifecycleTests: XCTestCase {
                 providerID: "deepseek",
                 isEnabled: true,
                 baseURL: "https://api.deepseek.example/v1",
-                preferredModelIDs: ["deepseek-v4-flash"]
+                preferredModelIDs: ["deepseek-chat"]
             )
         )
         _ = try await configStore.upsertProvider(
@@ -539,8 +654,8 @@ final class AIInboxServiceTickLifecycleTests: XCTestCase {
                     capabilities: [.routing],
                     models: [
                         BurnBarCatalogModel(
-                            id: "deepseek-v4-flash",
-                            displayName: "DeepSeek V4 Flash",
+                            id: "deepseek-chat",
+                            displayName: "DeepSeek Chat",
                             visibility: .public,
                             pricing: BurnBarModelPricing(
                                 inputPerMToken: 1,

@@ -39,6 +39,8 @@ struct AIInboxSettingsView: View {
                     Divider().background(DesignSystem.Colors.border)
                     egressSection
                     Divider().background(DesignSystem.Colors.border)
+                    readingStyleSection
+                    Divider().background(DesignSystem.Colors.border)
                     budgetSection
                     Divider().background(DesignSystem.Colors.border)
                     cadenceSection
@@ -165,6 +167,80 @@ struct AIInboxSettingsView: View {
         case .cloud:
             return "Redacted excerpts may be sent to the configured providers to write summaries and double-check findings. Secrets are stripped before anything is sent, and an excerpt that still trips the scanner is withheld entirely."
         }
+    }
+
+    /// How the briefs are *written* — not what they are about.
+    ///
+    /// The usual failure of an analyst brief is not that it is wrong, it is
+    /// that it is pitched at the wrong reader. A brief written for someone who
+    /// already knows the internals is noise at 1am; the reverse is
+    /// condescending. These two dials set the default; the "Plain English /
+    /// Shorter / Go deeper" chips on each item re-pitch a single item without
+    /// changing it.
+    ///
+    /// Each combination selects one of nine byte-stable prompt constants rather
+    /// than interpolating a sentence, which is what keeps provider prompt
+    /// caching (and its ~50x input discount) working across ticks.
+    private var readingStyleSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("How briefs are written")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+            Picker("", selection: model.binding(\.briefRegister) { config, value in
+                config.with(briefRegister: value)
+            }) {
+                Text("Plain English").tag(BurnBarInboxBriefRegister.plainEnglish)
+                Text("Colleague").tag(BurnBarInboxBriefRegister.professional)
+                Text("Expert").tag(BurnBarInboxBriefRegister.expert)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityLabel("Reading level")
+
+            Picker("", selection: model.binding(\.briefDetail) { config, value in
+                config.with(briefDetail: value)
+            }) {
+                Text("Brief").tag(BurnBarInboxBriefDetail.brief)
+                Text("Standard").tag(BurnBarInboxBriefDetail.standard)
+                Text("Deep").tag(BurnBarInboxBriefDetail.deep)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityLabel("How much detail")
+
+            Text(Self.readingStyleExplanation(
+                register: model.config.briefRegister,
+                detail: model.config.briefDetail
+            ))
+            .font(DesignSystem.Typography.tiny)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Says what will change in the writing, in the writing style being
+    /// described — so the sentence itself is a sample of the setting.
+    static func readingStyleExplanation(
+        register: BurnBarInboxBriefRegister,
+        detail: BurnBarInboxBriefDetail
+    ) -> String {
+        let voice: String
+        switch register {
+        case .plainEnglish:
+            voice = "Short, everyday words. No jargon, no acronyms without saying what they mean."
+        case .professional:
+            voice = "Written for a colleague on this project — normal engineering vocabulary, no explaining the basics."
+        case .expert:
+            voice = "Assumes you know the internals. Names mechanisms directly and skips the preamble."
+        }
+        let depth: String
+        switch detail {
+        case .brief: depth = "Kept to the headline and the one thing to do about it."
+        case .standard: depth = "A few sentences: what happened, why it matters, what follows."
+        case .deep: depth = "Includes the mechanism and the knock-on consequences. Costs more per tick."
+        }
+        return voice + " " + depth
     }
 
     private var budgetSection: some View {
@@ -541,6 +617,15 @@ extension BurnBarInboxConfig {
     /// `BurnBarInboxConfig` is immutable (every value is clamped in `init`), so
     /// the settings screen edits it by rebuilding. These wrappers keep the call
     /// sites readable and guarantee the clamps always run.
+    ///
+    /// Every field of `BurnBarInboxConfig` must appear below, whether or not it
+    /// is editable here — a field that is merely *omitted* is silently reset to
+    /// its default on the next unrelated toggle. That has now happened four
+    /// times (`budgetCountsSubscriptionSpend`, the three Founder Lens fields,
+    /// and the two reading-register fields), so it is no longer left to
+    /// vigilance: `BurnBarInboxConfigWithTests.testWithPreservesEveryUnrelatedField`
+    /// walks the struct reflectively and fails the moment a new field is added
+    /// without being threaded through here.
     func with(
         enabled: Bool? = nil,
         egressMode: BurnBarInboxEgressMode? = nil,
@@ -548,7 +633,9 @@ extension BurnBarInboxConfig {
         dailyBudgetUSD: Double? = nil,
         githubEnabled: Bool? = nil,
         notifyOnP1: Bool? = nil,
-        budgetCountsSubscriptionSpend: Bool? = nil
+        budgetCountsSubscriptionSpend: Bool? = nil,
+        briefDetail: BurnBarInboxBriefDetail? = nil,
+        briefRegister: BurnBarInboxBriefRegister? = nil
     ) -> BurnBarInboxConfig {
         BurnBarInboxConfig(
             enabled: enabled ?? self.enabled,
@@ -572,7 +659,9 @@ extension BurnBarInboxConfig {
             perReplyBudgetUSD: perReplyBudgetUSD,
             maxThreadTurns: maxThreadTurns,
             budgetCountsSubscriptionSpend: budgetCountsSubscriptionSpend
-                ?? self.budgetCountsSubscriptionSpend
+                ?? self.budgetCountsSubscriptionSpend,
+            briefDetail: briefDetail ?? self.briefDetail,
+            briefRegister: briefRegister ?? self.briefRegister
         )
     }
 }

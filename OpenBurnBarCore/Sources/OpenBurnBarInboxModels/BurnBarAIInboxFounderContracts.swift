@@ -97,10 +97,100 @@ public struct BurnBarInboxThreadGetResponse: Codable, Hashable, Sendable {
 public struct BurnBarInboxReplyRequest: Codable, Hashable, Sendable {
     public let fingerprint: String
     /// The user's message. Untrusted at prompt time like everything else.
+    ///
+    /// May also carry a `BurnBarInboxReplyDirective` token (see that type) when
+    /// the user pressed "explain this differently" instead of typing. The token
+    /// travels in this field on purpose: re-explaining an item is a reply turn,
+    /// not a new capability, so it needs no new RPC method, no contract-canon
+    /// entry, and no second budget/egress gate to keep in sync.
     public let bodyMarkdown: String
     public init(fingerprint: String, bodyMarkdown: String) {
         self.fingerprint = fingerprint
         self.bodyMarkdown = bodyMarkdown
+    }
+
+    /// Builds the request for a one-tap "explain this differently" turn.
+    public init(fingerprint: String, directive: BurnBarInboxReplyDirective, followUp: String = "") {
+        self.fingerprint = fingerprint
+        self.bodyMarkdown = directive.encodedBody(followUp: followUp)
+    }
+}
+
+/// A structured "say that differently" request the app can send as a reply body.
+///
+/// Why a token in the existing body rather than a new RPC: a reply already
+/// carries every gate this needs (feature switches, egress, per-reply budget,
+/// thread persistence, redaction). A new method would duplicate all of them,
+/// and the duplicate is where they drift apart.
+///
+/// The token is recognized ONLY at the very start of the body. Anything else —
+/// including the same text quoted inside a sentence — is an ordinary user turn,
+/// so untrusted item text can never smuggle a directive into the prompt.
+public enum BurnBarInboxReplyDirective: String, Codable, Hashable, CaseIterable, Sendable {
+    /// Re-explain in short, jargon-free, everyday words.
+    case plainEnglish = "plain_english"
+    /// Re-explain for a peer who shares the context.
+    case professional
+    /// Re-explain assuming deep familiarity with the internals.
+    case expert
+    /// Same register, less of it.
+    case shorter
+    /// Same register, more mechanism and consequence.
+    case deeper
+
+    /// Wire marker. Namespaced and punctuation-heavy so ordinary prose cannot
+    /// collide with it by accident.
+    public static let bodyPrefix = "@burnbar/rewrite:"
+
+    /// The register this directive asks for, when it names one.
+    public var register: BurnBarInboxBriefRegister? {
+        switch self {
+        case .plainEnglish: return .plainEnglish
+        case .professional: return .professional
+        case .expert: return .expert
+        case .shorter, .deeper: return nil
+        }
+    }
+
+    /// The depth this directive asks for, when it names one.
+    public var detail: BurnBarInboxBriefDetail? {
+        switch self {
+        case .shorter: return .brief
+        case .deeper: return .deep
+        case .plainEnglish, .professional, .expert: return nil
+        }
+    }
+
+    /// What the thread shows as the user's turn. A stored `@burnbar/rewrite:`
+    /// token would read as a leaked implementation detail; this reads as the
+    /// sentence the user would have typed.
+    public var userTurnMarkdown: String {
+        switch self {
+        case .plainEnglish: return "Explain this again in plain English — short, no jargon."
+        case .professional: return "Explain this again the way you would to a colleague on this project."
+        case .expert: return "Explain this again at expert depth — assume I know the internals."
+        case .shorter: return "Say that again, shorter."
+        case .deeper: return "Go deeper on this — mechanism and consequences."
+        }
+    }
+
+    /// Encodes the directive (plus optional free text) into a reply body.
+    public func encodedBody(followUp: String = "") -> String {
+        let trimmed = followUp.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = Self.bodyPrefix + rawValue
+        return trimmed.isEmpty ? token : token + " " + trimmed
+    }
+
+    /// Splits a reply body into its directive and whatever the user typed after
+    /// it. Returns nil for an ordinary reply, which is the common case.
+    public static func parse(body: String) -> (directive: BurnBarInboxReplyDirective, followUp: String)? {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix(bodyPrefix) else { return nil }
+        let remainder = trimmed.dropFirst(bodyPrefix.count)
+        let token = remainder.prefix { $0.isWhitespace == false }
+        guard let directive = BurnBarInboxReplyDirective(rawValue: String(token).lowercased()) else { return nil }
+        let followUp = String(remainder.dropFirst(token.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return (directive, followUp)
     }
 }
 

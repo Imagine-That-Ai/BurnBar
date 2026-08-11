@@ -14,6 +14,12 @@ enum DashboardMainRoute: Hashable {
     case inbox
     case chat
     case quota
+    /// The operator home: every shipped feature as a live tile, one click deep.
+    /// Deliberately **not** in `primarySections` — that array is positional and
+    /// drives ⌘1–⌘8, so inserting into it would renumber every existing user's
+    /// shortcuts. The deck is reachable from the deck strip, the section
+    /// switcher, the command palette, ⌘0, and Quick Access.
+    case controlDeck
     case provider(AgentProvider)
     case model(String)
 
@@ -45,6 +51,7 @@ enum DashboardMainRoute: Hashable {
         case .inbox: return "Inbox"
         case .chat: return "Chat"
         case .quota: return "Quota"
+        case .controlDeck: return "Control Deck"
         case .provider(let provider): return provider.displayName
         case .model(let modelName): return modelName
         }
@@ -64,6 +71,7 @@ enum DashboardMainRoute: Hashable {
         case .chat:
             return activeChatBackend == .hermes ? "sparkles" : "bubble.left.and.bubble.right"
         case .quota: return "gauge.with.dots.needle.67percent"
+        case .controlDeck: return "slider.horizontal.below.square.filled.and.square"
         case .provider: return "cpu"
         case .model: return "cube"
         }
@@ -78,6 +86,8 @@ enum DashboardMainRoute: Hashable {
         case .quota:
             return DesignSystem.Colors.amber
         case .charts:
+            return DesignSystem.Colors.ember
+        case .controlDeck:
             return DesignSystem.Colors.ember
         case .inbox:
             return DesignSystem.Colors.ember
@@ -102,6 +112,7 @@ enum DashboardMainRoute: Hashable {
         case .overview: return "All providers + models"
         case .insights: return "Editorial brief & anomalies"
         case .charts: return "Your usage, drawn honestly"
+        case .controlDeck: return "Every feature, live, one click deep"
         case .provider: return "Provider deep dive"
         case .model: return "Model deep dive"
         }

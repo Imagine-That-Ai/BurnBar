@@ -4,10 +4,19 @@ import OpenBurnBarKernel
 /// The reading surface for one inbox item.
 ///
 /// Layout follows the shape of the claim itself: **what happened** (title +
-/// brief), **why we believe it** (evidence), **what you can do** (actions), and
-/// only then the provenance footer. Evidence sits above actions on purpose — the
-/// user should be able to disbelieve an item before acting on it.
+/// brief), **why we believe it** (numbers, then evidence), and **what you can
+/// do** — with provenance and disposition anchored to the bottom of the pane.
+/// Evidence sits above actions on purpose: the user should be able to disbelieve
+/// an item before acting on it.
+///
+/// The pane is a two-column reading surface at desk widths — claim and evidence
+/// on the left, "what now" rail on the right — and collapses to one column when
+/// the window narrows. The whole column fills its container rather than hugging
+/// a fixed measure, while prose alone keeps a readable line length, and the
+/// disposition bar anchors to the bottom so a short item reads as designed
+/// rather than truncated.
 struct InboxItemDetailView: View {
+    @Environment(\.backdropInk) private var ink
     let row: ControlPlaneStore.AIInboxRow
     let onOpenSessionLog: (String) -> Void
     let onArchive: () -> Void
@@ -24,33 +33,140 @@ struct InboxItemDetailView: View {
     /// exactly as before.
     var threadFingerprint: String?
 
+    /// Optional because the detached detail window renders this view without a
+    /// dashboard router. Where it is nil, Charts drill-throughs downgrade to an
+    /// explained inert row rather than a button that silently does nothing.
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator: NavigationCoordinator?
+
+    // MARK: Layout constants
+
+    /// Below this the rail would squeeze both columns; the pane stacks instead.
+    private static let railBreakpoint: CGFloat = 880
+    private static let railWidth: CGFloat = 320
+    /// Prose gets a readable measure even when the pane is enormous. Everything
+    /// structural (stats, evidence, composer) fills the column.
+    private static let proseMeasure: CGFloat = 860
+    /// A ceiling only ultra-wide displays ever reach.
+    private static let columnCeiling: CGFloat = 1_560
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                headerSection
-                if row.summaryMarkdown.isEmpty == false { bodySection }
-                if row.payload.metrics.isEmpty == false { metricsSection }
-                if row.payload.evidence.isEmpty == false { evidenceSection }
-                if row.payload.memoryCandidates.isEmpty == false { memorySection }
-                if row.payload.actions.isEmpty == false { actionsSection }
-                if let threadFingerprint {
-                    InboxThreadHost(fingerprint: threadFingerprint)
-                    // The accepted ledger with its action controls (promote /
-                    // follow-up / remember / grade) — renders only when a plan
-                    // exists. Mission and follow-up creation need a project;
-                    // items without attribution get the rest of the loop.
-                    InboxPlansPanel(
-                        projectSlug: row.summary.projectID,
-                        memoryApproval: memoryApproval
-                    )
+        GeometryReader { proxy in
+            let inset = DesignSystem.Spacing.xl
+            let available = max(0, proxy.size.width - inset * 2)
+            let showsRail = available >= Self.railBreakpoint
+            let columnWidth = min(available, Self.columnCeiling)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    if showsRail {
+                        HStack(alignment: .top, spacing: DesignSystem.Spacing.xl) {
+                            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                                claimStack
+                                conversationStack
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            railColumn
+                                .frame(width: Self.railWidth, alignment: .leading)
+                        }
+                    } else {
+                        // Stacked, the rail's actions belong between the case and
+                        // the conversation — "what now" never reads as an
+                        // afterthought below the composer.
+                        claimStack
+                        railColumn
+                        conversationStack
+                    }
+
+                    // Absorbs the slack on a short item so the disposition bar
+                    // lands on the bottom edge instead of leaving a raw void.
+                    Spacer(minLength: DesignSystem.Spacing.xl)
+
+                    footerSection
                 }
-                footerSection
+                .padding(inset)
+                .frame(minHeight: proxy.size.height, alignment: .top)
+                .frame(width: columnWidth + inset * 2, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .center)
             }
-            .padding(DesignSystem.Spacing.xl)
-            .frame(maxWidth: 760, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier(OBBAccessibilityID.inboxDetail)
+    }
+
+    // MARK: - Columns
+
+    /// The claim and the case for it.
+    @ViewBuilder
+    private var claimStack: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+            headerSection
+            if row.summaryMarkdown.isEmpty == false { bodySection }
+            if metrics.isEmpty == false {
+                InboxMetricsSection(metrics: metrics, navigator: navigator)
+            }
+            if row.payload.evidence.isEmpty == false { evidenceSection }
+            if row.payload.memoryCandidates.isEmpty == false { memorySection }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The dialogue and the accepted-plan ledger.
+    @ViewBuilder
+    private var conversationStack: some View {
+        if let threadFingerprint {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                InboxThreadHost(fingerprint: threadFingerprint)
+                // The accepted ledger with its action controls (promote /
+                // follow-up / remember / grade) — renders only when a plan
+                // exists. Mission and follow-up creation need a project;
+                // items without attribution get the rest of the loop.
+                InboxPlansPanel(
+                    projectSlug: row.summary.projectID,
+                    memoryApproval: memoryApproval
+                )
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// What to do about it, and where it came from.
+    ///
+    /// Always carries the "this item" card, so the rail is never an empty
+    /// gutter on an item that happens to suggest no action.
+    @ViewBuilder
+    private var railColumn: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+            if row.payload.actions.isEmpty == false {
+                InboxActionsSection(
+                    actions: row.payload.actions,
+                    settingsAvailable: onOpenSettings != nil,
+                    onOpenSessionLog: onOpenSessionLog,
+                    onOpenSettings: onOpenSettings,
+                    navigator: navigator
+                )
+            }
+            factsCard
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Navigation
+
+    private var navigator: InboxDrillNavigator {
+        InboxDrillNavigator(
+            openSessionLog: onOpenSessionLog,
+            openWeb: { raw in
+                guard let url = URL(string: raw), url.scheme == "https" || url.scheme == "http" else { return }
+                NSWorkspace.shared.open(url)
+            },
+            reveal: { path in
+                let expanded = (path as NSString).expandingTildeInPath
+                guard expanded.isEmpty == false else { return }
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: expanded)])
+            },
+            openCharts: { navigationCoordinator?.setDashboardRoute(.charts) },
+            chartsAvailable: navigationCoordinator != nil
+        )
     }
 
     // MARK: - Header
@@ -65,15 +181,24 @@ struct InboxItemDetailView: View {
                 Text(InboxPresentation.kindLabel(row.summary.kind).uppercased())
                     .font(DesignSystem.Typography.tiny)
                     .tracking(1.1)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
+                    // Inert by design — a label, not a control — but a label that
+                    // answers for itself when you ask.
+                    .help(InboxPresentation.kindExplanation(row.summary.kind))
+                    .accessibilityLabel("Kind: \(InboxPresentation.kindLabel(row.summary.kind))")
+                    .accessibilityHint(InboxPresentation.kindExplanation(row.summary.kind))
 
                 OpenBurnBarStatusBadge(
                     title: InboxPresentation.priorityLabel(row.summary.priority),
                     color: InboxPresentation.priorityColor(row.summary.priority)
                 )
+                .help(InboxPresentation.priorityExplanation(row.summary.priority))
+                .accessibilityLabel("Priority: \(InboxPresentation.priorityLabel(row.summary.priority))")
+                .accessibilityHint(InboxPresentation.priorityExplanation(row.summary.priority))
 
                 if row.summary.state == .resolved {
                     OpenBurnBarStatusBadge(title: "Resolved", color: DesignSystem.Colors.success)
+                        .help("This condition cleared. The item is kept for the record.")
                 }
 
                 Spacer(minLength: 0)
@@ -82,20 +207,31 @@ struct InboxItemDetailView: View {
             Text(row.summary.title)
                 .font(DesignSystem.Typography.display)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: DesignSystem.Spacing.xs) {
+            HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.xs) {
                 if let project = row.summary.projectName, project.isEmpty == false {
                     Text(project)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(ink.subtle)
                     Text("·")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(ink.subtle)
                 }
                 Text("first seen \(InboxView.relativeFormatter.localizedString(for: row.summary.firstSeenAt, relativeTo: Date()))")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(ink.subtle)
+                    .help(InboxOccurrenceInspector.absoluteFormatter.string(from: row.summary.firstSeenAt))
+
                 if row.summary.occurrenceCount > 1 {
-                    Text("· seen \(row.summary.occurrenceCount) times")
+                    Text("·")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(ink.subtle)
+                    InboxOccurrenceControl(summary: occurrence)
                 }
+                Spacer(minLength: 0)
             }
-            .font(DesignSystem.Typography.caption)
-            .foregroundStyle(DesignSystem.Colors.textMuted)
 
             if let note = row.summary.resolutionNote, row.summary.state == .resolved {
                 HStack(spacing: DesignSystem.Spacing.sm) {
@@ -115,14 +251,20 @@ struct InboxItemDetailView: View {
         }
     }
 
+    private var occurrence: InboxOccurrenceSummary {
+        InboxOccurrenceInspector.summarize(summary: row.summary)
+    }
+
     // MARK: - Body
 
     private var bodySection: some View {
         Text(attributedBody)
             .font(DesignSystem.Typography.body)
             .foregroundStyle(DesignSystem.Colors.textPrimary)
+            .lineSpacing(3)
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: Self.proseMeasure, alignment: .leading)
     }
 
     /// Renders the markdown body. Falls back to plain text if the model produced
@@ -137,107 +279,25 @@ struct InboxItemDetailView: View {
 
     // MARK: - Metrics
 
-    private var metricsSection: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            sectionLabel("BY THE NUMBERS")
-            ElderWandFlowLayout(horizontalSpacing: DesignSystem.Spacing.sm, verticalSpacing: DesignSystem.Spacing.sm) {
-                ForEach(displayMetrics, id: \.key) { metric in
-                    HStack(spacing: DesignSystem.Spacing.xs) {
-                        Text(metric.label)
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                        Text(metric.value)
-                            .font(DesignSystem.Typography.monoSmall)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    }
-                    .padding(.horizontal, DesignSystem.Spacing.sm)
-                    .padding(.vertical, DesignSystem.Spacing.xs)
-                    .background(
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm)
-                            .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
-                    )
-                }
-            }
-        }
-    }
-
-    /// Humanizes raw metric keys (`waste_rate` → "Waste rate", `0.950` → "95%").
-    private var displayMetrics: [(key: String, label: String, value: String)] {
-        row.payload.metrics
-            // `calibration_note` is prose, not a number — it renders in the
-            // footer instead of as a stat chip.
-            .filter { $0.key != "calibration_note" }
-            .sorted { $0.key < $1.key }
-            .map { key, value in
-                let label = key
-                    .replacingOccurrences(of: "_", with: " ")
-                    .prefix(1).uppercased() + key.replacingOccurrences(of: "_", with: " ").dropFirst()
-                var display = value
-                if key.hasSuffix("_rate"), let number = Double(value) {
-                    display = "\(Int((number * 100).rounded()))%"
-                } else if key.hasSuffix("_usd"), let number = Double(value) {
-                    display = String(format: "$%.3f", number)
-                } else if key.hasSuffix("_minutes"), let number = Double(value) {
-                    display = "\(Int(number.rounded()))m"
-                }
-                return (key, String(label), display)
-            }
+    /// Humanized, formatted, and pre-resolved to their drill-through sources.
+    private var metrics: [InboxMetric] {
+        InboxMetricInspector.metrics(payload: row.payload, summary: row.summary)
     }
 
     // MARK: - Evidence
 
     private var evidenceSection: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            sectionLabel("EVIDENCE")
+            InboxSectionLabel(
+                text: "EVIDENCE",
+                hint: "hover to see where each one goes"
+            )
             VStack(spacing: DesignSystem.Spacing.xs) {
                 ForEach(row.payload.evidence) { evidence in
-                    evidenceRow(evidence)
+                    InboxEvidenceRowView(evidence: evidence, navigator: navigator)
                 }
             }
         }
-    }
-
-    private func evidenceRow(_ evidence: BurnBarInboxEvidence) -> some View {
-        Button {
-            open(evidence)
-        } label: {
-            HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
-                Image(systemName: InboxPresentation.evidenceIcon(for: evidence.kind))
-                    .font(.system(size: 11))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                    .frame(width: 16)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(evidence.label)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        .lineLimit(1)
-                    if let detail = evidence.detail {
-                        Text(detail)
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                            .lineLimit(1)
-                    }
-                }
-
-                Spacer(minLength: 0)
-
-                if evidence.url != nil {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
-            }
-            .padding(DesignSystem.Spacing.sm)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm)
-                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.45))
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(evidence.url == nil)
-        .accessibilityLabel("\(evidence.label). \(evidence.detail ?? "")")
     }
 
     // MARK: - Memory candidates
@@ -249,11 +309,11 @@ struct InboxItemDetailView: View {
     /// screening, provenance, and audit treatment. Nothing is ever auto-applied.
     private var memorySection: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            sectionLabel("WORTH REMEMBERING")
+            InboxSectionLabel(text: "WORTH REMEMBERING")
 
             Text("These are proposals. Nothing is saved to memory — or used in any prompt — until you approve it.")
                 .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(ink.subtle)
                 .fixedSize(horizontal: false, vertical: true)
 
             ForEach(row.payload.memoryCandidates) { candidate in
@@ -266,47 +326,62 @@ struct InboxItemDetailView: View {
         }
     }
 
-    // MARK: - Actions
+    // MARK: - Facts card
 
-    private var actionsSection: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            sectionLabel("NEXT")
-            ElderWandFlowLayout(horizontalSpacing: DesignSystem.Spacing.sm, verticalSpacing: DesignSystem.Spacing.sm) {
-                ForEach(row.payload.actions) { action in
-                    Button {
-                        perform(action)
-                    } label: {
-                        HStack(spacing: DesignSystem.Spacing.xs) {
-                            Image(systemName: InboxPresentation.actionIcon(for: action.kind))
-                                .font(.system(size: 11, weight: .medium))
-                            Text(action.title)
-                                .font(DesignSystem.Typography.caption)
-                        }
-                        .foregroundStyle(action.isPrimary ? .white : DesignSystem.Colors.textPrimary)
-                        .padding(.horizontal, DesignSystem.Spacing.md)
-                        .padding(.vertical, DesignSystem.Spacing.sm)
-                        .background(actionBackground(isPrimary: action.isPrimary))
-                    }
-                    .buttonStyle(.plain)
+    /// The rail's constant: what this item is, when it started, and who wrote
+    /// it. Everything here is metadata the header cannot carry without becoming
+    /// a wall of dim text.
+    private var factsCard: some View {
+        InboxGlassPanel(accent: InboxPresentation.tint(for: row.summary.kind)) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                InboxSectionLabel(text: "THIS ITEM")
+
+                factLine("Kind", InboxPresentation.kindLabel(row.summary.kind))
+                factLine("Priority", InboxPresentation.priorityLabel(row.summary.priority))
+                factLine("State", stateLabel)
+                if let project = row.summary.projectName, project.isEmpty == false {
+                    factLine("Project", project)
+                }
+                factLine("First seen", InboxOccurrenceInspector.absoluteFormatter.string(from: occurrence.firstSeen))
+                factLine("Last seen", InboxOccurrenceInspector.absoluteFormatter.string(from: occurrence.lastSeen))
+                factLine("Occurrences", InboxMetricInspector.groupedCount(Double(row.summary.occurrenceCount)))
+                if let cadence = occurrence.cadence {
+                    factLine("Cadence", cadence)
                 }
             }
         }
     }
 
-    @ViewBuilder
-    private func actionBackground(isPrimary: Bool) -> some View {
-        if isPrimary {
-            Capsule().fill(DesignSystem.Colors.primaryGradient)
-        } else {
-            Capsule()
-                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.7))
-                .overlay(Capsule().stroke(DesignSystem.Colors.borderSubtle, lineWidth: 1))
+    private var stateLabel: String {
+        switch row.summary.state {
+        case .new: return "New"
+        case .updated: return "Updated"
+        case .resolved: return "Resolved"
+        case .expired: return "Expired"
         }
+    }
+
+    private func factLine(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
+            Text(label.uppercased())
+                .font(DesignSystem.Typography.tiny)
+                .tracking(0.8)
+                .foregroundStyle(ink.subtle)
+                .frame(width: 84, alignment: .leading)
+            Text(value)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
     }
 
     // MARK: - Footer
 
-    /// Provenance and disposition.
+    /// Provenance and disposition, anchored to the bottom of the pane.
     ///
     /// The provenance line is a deliberate honesty feature: the user can always
     /// see whether an item came from arithmetic or from a model, and whether it
@@ -315,31 +390,36 @@ struct InboxItemDetailView: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             Divider().background(DesignSystem.Colors.borderSubtle)
 
-            HStack(spacing: DesignSystem.Spacing.sm) {
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
                 Image(systemName: provenanceIcon)
                     .font(.system(size: 10))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
+                    .padding(.top, 2)
                 Text(provenanceText)
                     .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Provenance. \(provenanceText)")
 
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                Button { onFeedback(row.feedback == "useful" ? nil : true) } label: {
-                    Label("Useful", systemImage: row.feedback == "useful" ? "hand.thumbsup.fill" : "hand.thumbsup")
-                        .font(DesignSystem.Typography.tiny)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(row.feedback == "useful" ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted)
+            HStack(spacing: DesignSystem.Spacing.md) {
+                dispositionButton(
+                    title: "Useful",
+                    symbol: row.feedback == "useful" ? "hand.thumbsup.fill" : "hand.thumbsup",
+                    tint: row.feedback == "useful" ? DesignSystem.Colors.success : ink.subtle,
+                    help: "Teach the inbox that items like this are worth surfacing",
+                    action: { onFeedback(row.feedback == "useful" ? nil : true) }
+                )
 
-                Button { onFeedback(row.feedback == "not_useful" ? nil : false) } label: {
-                    Label("Not useful", systemImage: row.feedback == "not_useful" ? "hand.thumbsdown.fill" : "hand.thumbsdown")
-                        .font(DesignSystem.Typography.tiny)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(row.feedback == "not_useful" ? DesignSystem.Colors.warning : DesignSystem.Colors.textMuted)
+                dispositionButton(
+                    title: "Not useful",
+                    symbol: row.feedback == "not_useful" ? "hand.thumbsdown.fill" : "hand.thumbsdown",
+                    tint: row.feedback == "not_useful" ? DesignSystem.Colors.warning : ink.subtle,
+                    help: "Teach the inbox to rank items like this lower",
+                    action: { onFeedback(row.feedback == "not_useful" ? nil : false) }
+                )
 
                 Spacer(minLength: 0)
 
@@ -353,15 +433,38 @@ struct InboxItemDetailView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+                .help("Hide this item until later. It comes back — nothing is deleted.")
 
-                Button(action: onArchive) {
-                    Label("Archive", systemImage: "archivebox")
-                        .font(DesignSystem.Typography.tiny)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                dispositionButton(
+                    title: "Archive",
+                    symbol: "archivebox",
+                    tint: ink.subtle,
+                    help: "Move this item out of the active list. Archived items stay readable under the Archived filter — nothing is deleted.",
+                    action: onArchive
+                )
             }
         }
+    }
+
+    private func dispositionButton(
+        title: String,
+        symbol: String,
+        tint: Color,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(tint)
+                .padding(.horizontal, DesignSystem.Spacing.sm)
+                .padding(.vertical, DesignSystem.Spacing.xxs)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(InboxPressStyle())
+        .help(help)
+        .accessibilityLabel(title)
+        .accessibilityHint(help)
     }
 
     private var provenanceIcon: String {
@@ -406,49 +509,13 @@ struct InboxItemDetailView: View {
             }
             .joined(separator: " and ")
     }
-
-    // MARK: - Helpers
-
-    private func sectionLabel(_ text: String) -> some View {
-        Text(text)
-            .font(DesignSystem.Typography.tiny)
-            .tracking(1.2)
-            .foregroundStyle(DesignSystem.Colors.textMuted)
-    }
-
-    private func open(_ evidence: BurnBarInboxEvidence) {
-        guard let urlString = evidence.url else { return }
-        if urlString.hasPrefix("openburnbar://sessions/") {
-            onOpenSessionLog(String(urlString.dropFirst("openburnbar://sessions/".count)))
-            return
-        }
-        guard let url = URL(string: urlString), url.scheme == "https" || url.scheme == "http" else { return }
-        NSWorkspace.shared.open(url)
-    }
-
-    private func perform(_ action: BurnBarInboxAction) {
-        switch action.kind {
-        case .openURL:
-            guard let url = URL(string: action.value), url.scheme == "https" || url.scheme == "http" else { return }
-            NSWorkspace.shared.open(url)
-        case .resumeConversation, .openSessionLog:
-            onOpenSessionLog(action.value)
-        case .openProject:
-            NSWorkspace.shared.open(URL(fileURLWithPath: action.value))
-        case .openSettings:
-            onOpenSettings?()
-        case .runCommand:
-            // Never executed automatically — copied for the user to run.
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(action.value, forType: .string)
-        }
-    }
 }
 
 // MARK: - Memory candidate card
 
 /// Approves or dismisses one proposed memory.
 struct InboxMemoryCandidateCard: View {
+    @Environment(\.backdropInk) private var ink
     let candidate: BurnBarInboxMemoryCandidate
     let itemFingerprint: String
     let handler: InboxMemoryApprovalHandler?
@@ -481,7 +548,8 @@ struct InboxMemoryCandidateCard: View {
                     Text("\(Int((candidate.confidence * 100).rounded()))%")
                         .font(DesignSystem.Typography.monoTiny)
                 }
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(ink.subtle)
+                .help("How confident the analyst is that this fact is durable")
 
                 Text(candidate.text)
                     .font(DesignSystem.Typography.caption)
@@ -514,22 +582,24 @@ struct InboxMemoryCandidateCard: View {
                         .padding(.vertical, DesignSystem.Spacing.xs)
                         .background(Capsule().fill(DesignSystem.Colors.primaryGradient))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(InboxPressStyle())
                 .disabled(handler == nil)
+                .help("Save this fact to memory, after the same PII screening the Memory review surface applies")
 
                 Button { state = .dismissed } label: {
                     Text("Dismiss")
                         .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(ink.subtle)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(InboxPressStyle())
+                .help("Drop this proposal. Nothing is written.")
 
                 Spacer(minLength: 0)
 
                 if handler == nil {
                     Text("Memory is unavailable")
                         .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(ink.subtle)
                 }
             }
         case .working:
@@ -541,7 +611,7 @@ struct InboxMemoryCandidateCard: View {
         case .dismissed:
             Label("Dismissed", systemImage: "xmark.circle")
                 .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(ink.subtle)
         }
     }
 

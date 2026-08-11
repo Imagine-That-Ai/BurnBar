@@ -56,7 +56,11 @@ struct PaneConversationView: View {
            !threadTitle.isEmpty {
             return threadTitle
         }
-        return controller.chatBackend.displayName
+        // Never fall back to the agent's name: the Sigil sitting beside this
+        // label already says who is answering, and a title that silently stops
+        // reading "Codex" the moment the thread earns a name was a decoy, not
+        // an identity (§1.1b).
+        return "Untitled chat"
     }
     private var accent: Color {
         leaf?.colorToken?.color ?? (controller.chatBackend == .hermes ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.whimsy)
@@ -216,9 +220,20 @@ struct PaneConversationView: View {
             .help("Rename pane")
             .draggable(PaneDragPayload(paneID: leafID))
 
-            ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
-            ChatEngineModelMenu(controller: controller)
-                .layoutPriority(1)
+            // One Sigil per pane: the agent's name, its model and its presence
+            // dot, in words, in every pane header — replacing the 11pt nameless
+            // strip + the 9pt model menu with a single control that says who is
+            // answering here.
+            AgentSigil(
+                controller: controller,
+                settingsManager: settingsManager,
+                workspace: workspace,
+                modelWidth: 108,
+                paneChipColor: leaf?.colorToken?.color,
+                paneTitle: paneTitle,
+                isCompact: true
+            )
+            .layoutPriority(1)
             Spacer(minLength: DesignSystem.Spacing.sm)
             Button {
                 workspace.setActive(leafID)
