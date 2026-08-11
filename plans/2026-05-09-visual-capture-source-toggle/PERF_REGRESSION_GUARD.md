@@ -3,29 +3,23 @@
 **Date:** 2026-05-09 (guard authored 2026-05-08 baselines)  
 **Branch audited:** `perf/hot-paths-latency-wins` (PR #2193 hot-paths latency wins) — **READ-ONLY**  
 **Plan:** `plans/2026-05-09-visual-capture-source-toggle/README.md` (§2 Subagent C/E)  
-**Artifacts:** `docs/perf-artifacts/2026-05-08-hot-paths/` (`powermetrics_idle.txt`, `startup_profile.txt`, `hnsw_allocation.txt`, `query_tracer.log` — captured live 2026-05-08; `query_tracer.log` was an untracked local capture, not git-tracked — values reproduced below)  
-**Status:** Baseline captured. No code changes. Ready for Subagent E re-run after C/D land.
+**Artifacts:** none attached. The `docs/perf-artifacts/2026-05-08-hot-paths/` set this guard originally cited has been **removed**: `startup.trace` and `dashboard_refresh.trace` were one-line text placeholders rather than Instruments captures, `query_tracer.log` was never committed, and `startup_profile.txt` reported profiler interval names (`startup_init`, `database_open`, `hermes_probe`, `first_paint`) that `StartupProfiler` does not emit. Nothing in that set could substantiate a latency number, so the numbers went with it.  
+**Status:** Budgets defined, **not measured**. Capture a real baseline before the flag is enabled.
 
 ---
 
-## 1) Baseline — 4 budgets that must hold after toggle lands
+## 1) The 4 budgets that must hold after the toggle lands
 
-PR #2193 moved every hot path from **FAIL → PASS** on the same hardware/dataset (MacBook Air M2 2023, macOS 15.4, 1,247 sessions / 4,832 conversations). The toggle MUST NOT move any back to FAIL.
+These are targets, not recorded results. Measure them on one machine and one dataset, before and after, and attach the raw captures to the PR that flips the flag.
 
-| # | Budget | Target (hard gate) | Measured **after** PR #2193 (baseline) | Before (main) | Evidence |
-|---|--------|---------------------|----------------------------------------|---------------|----------|
-| **1** | **Cold start → first paint** | **< 1.5 s** (stretch < 1.2 s) | **1.12 s PASS** | 2.34 s FAIL | `startup_profile.txt` via `scripts/profile-openburnbar-startup.sh` (build + `sample` + settled `ps`). Intervals: `startup_init 180ms` / `database_open 92ms` / `quota_refresh 18ms` / `hermes_probe 210ms` / `first_paint 1120ms`. |
-| **2** | **Idle with no window** (5 min, no window, same dataset) | **< 0.8 % CPU** and **< 140 MB RSS**, **≤ 7 wakeups/10 s avg, 0 timer wakeups** | **0.42 % CPU (user 0.18 / sys 0.24) PASS**, **118 MB RSS (112 MB footprint) PASS**, **7 wakeups/10 s avg (max 12) PASS** — only `BackgroundCadenceCoordinator 60 s sleep`, **no `Timer.scheduledTimer` with windows closed** | 1.38 % CPU / 42 wakeups/10 s / 208 MB RSS | `powermetrics_idle.txt` (`powermetrics --samplers cpu_power,tasks` 300.42 s). Under load (dashboard refresh + 10 concurrent searches): burst 18 % for 2 s then idle, RSS 285 MB. Also gated by `budgets/macos-idle-cpu.perf.json` behavioral tripwire: `KernelBackdropView → window.__setBackdropActive → cancelAnimationFrame` must pause rAF when occluded (`MacOSIdleOcclusionGateTests`, `scripts/ci/macos-idle-occlusion-gate.test.mjs`). |
-| **3** | **HNSW search allocation** (100k × 768 dim, ~300 MB index file) | **< 50 MB heap per search** | **40.3 MB PASS** (38.2 MB mapped + 2.1 MB transient visited+candidates) | 342 MB heap FAIL (`Data 312 MB + nodeMetas 48 MB` per query) | `hnsw_allocation.txt` (Instruments Allocations). Fix: `BurnBarHNSWReadableIndex.view(from:)` via `Data(contentsOf:options:[.mappedIfSafe])` + `Loaded.nodeMetas` cached once at load (`OpenBurnBarCore/Sources/OpenBurnBarVectorKit/BurnBarHNSWVectorIndex.swift:462` + `Loaded.nodeMetas`), `search()` reuses via `withUnsafeBytes`, **no `Data(contentsOf:)` on read path**. |
-| **4** | **SQLite trips** | **≤ 3 trips per hot path, no N+1, Dashboard 7 SELECTs constant** | **PASS — all hot paths ≤ 3, no N+1** | 5 trips + N+1 + 10 scans | `query_tracer.log` (`OpenBurnBarQueryTracer`): Dashboard `fetchDashboardUsageSnapshot` **7 SELECTs constant** (was `O(N)` on body pass) 42 ms; `SearchService.retrieveInGate rerankLimit=200` **3 trips** (FTS lexical + combined chunk+doc JOIN + batched conversation preload, was 5) 18/11 ms; `countOccurrencesInConversationFullText` **1 scan 118 ms** (was 10 `UNION ALL` 842 ms); `ConversationIndexer` 1k records **2 trips chunked 500** + `O(changed)` writes (was 1k N+1 SELECTs); `fetchConversations` batch 1 SELECT 9 ms. Assert via `assertMaxQueries(count:)`. |
+| # | Budget | Target (hard gate) | How to measure | Standing gate in CI |
+|---|--------|---------------------|----------------|---------------------|
+| **1** | **Cold start → first paint** | **< 1.5 s** (stretch < 1.2 s) | `scripts/profile-openburnbar-startup.sh` (build + `sample` + settled `ps`). Report the `StartupProfiler.interval` names the app actually emits — `datastore_open`, `settings_init`, `quota_refresh_schedule`, `first_dashboard_open`, … — not invented ones. | — |
+| **2** | **Idle with no window** (5 min, no window) | **< 0.8 % CPU**, **< 140 MB RSS**, **≤ 7 wakeups/10 s avg, 0 timer wakeups** | `powermetrics --samplers cpu_power,tasks` for 300 s with all windows closed. Only `BackgroundCadenceCoordinator`'s 60 s sleep should appear; any `Timer.scheduledTimer` with windows closed is a regression. | `budgets/macos-idle-cpu.perf.json` behavioral tripwire: `KernelBackdropView → window.__setBackdropActive → cancelAnimationFrame` must pause rAF when occluded (`MacOSIdleOcclusionGateTests`, `scripts/ci/macos-idle-occlusion-gate.test.mjs`). |
+| **3** | **HNSW search allocation** (100k × 768 dim, ~300 MB index file) | **< 50 MB heap per search** | Instruments Allocations over a fixture search. The read path must show **no `Data(contentsOf:)`**: `BurnBarHNSWReadableIndex.view(from:)` uses `Data(contentsOf:options:[.mappedIfSafe])` and `Loaded.nodeMetas` is parsed once at load (`OpenBurnBarCore/Sources/OpenBurnBarVectorKit/BurnBarHNSWVectorIndex.swift`), with `search()` reusing it via `withUnsafeBytes`. | — |
+| **4** | **SQLite trips** | **≤ 3 trips per hot path, no N+1, Dashboard 7 SELECTs constant** | `OpenBurnBarQueryTracer` around `fetchDashboardUsageSnapshot`, `SearchService.retrieveInGate` (`rerankLimit=200`), `countOccurrencesInConversationFullText`, `ConversationIndexer`, `fetchConversations`. | `assertMaxQueries(count:)` in the existing query-count tests. |
 
-**Additional baselines from `startup_profile.txt` to keep:**
-
-- Dashboard refresh **p50 0.62 s / p95 1.78 s** (was 1.84 s / 4.21 s) — budget < 2 s p50 / < 5 s p95
-- Hybrid search **p95 0.185 s** (was 0.420 s) — budget < 350 ms (`rerankLimit=200`)
-- RSS idle 118 MB vs 208 MB before; RSS under load 285 MB vs 472 MB before
-
-> **Repro hardware note:** All numbers are on **MacBook Air M2 2023, macOS 15.4**, single dataset (1,247 sessions, 4,832 conversations, 100k × 768 HNSW fixture). Re-run on a different Mac will shift absolute RSS/CPU — assert the **budgets**, not the exact deltas.
+> **Repro note:** absolute CPU/RSS shift with hardware and dataset size. Assert the **budgets**, and state the machine and dataset alongside any number you record.
 
 ---
 
@@ -45,7 +39,7 @@ Read-only audit of current `perf/hot-paths-latency-wins` HEAD (facaa4e189). No `
 | `AgentLens/Services/ComputerUse/Mac/MacScreenshotService.swift` | `captureMainDisplay(label:sessionId:entryIndexHint:)` → `CGDisplayCreateImage(CGMainDisplayID())` (line ~41) | Plan's Subagent C will add `capture(mode:)` enum. `.desktop` path (`CGDisplayCreateImage` / `CGWindowListCreateImage`) must be gated by `SystemPermissionMonitor` and by `visualSurface == .desktop` + `sharing == true`. `.cliPTY` must NOT call any `CGDisplay*` / `CGWindowList*`. Polling this API on a timer would instantly regress CPU/RSS. |
 | `AgentLens/Services/Media/MediaBudgetStatusStore.swift` | `MediaBudgetStatusStore.shared` / `effectiveStatus` (conservativeClosed hard-cap fallback) + `activeEnvelope.screenShareDailyMinutes` (`media_normal_screen_share_min_per_day = 120` in `SettingsManager.swift:267`) | When sharing desktop, minutes MUST be counted via this store's envelope (120 min normal, 30 min soft). When `.cliPTY`, no media minutes should be debited — PTY text path is not billable screen share. Watch for double-counting if toggle flips mid-session. |
 | `AgentLens/Services/SettingsManager.swift:267-268` | `"media_normal_screen_share_min_per_day": 120`, `"media_soft_screen_share_min_per_day": 30` | Do not change these caps without budget review. |
-| `OpenBurnBarCore/Sources/OpenBurnBarVectorKit/BurnBarHNSWVectorIndex.swift:462, 380` | `view(from:)` → `Data(contentsOf:url, options:[.mappedIfSafe])` + `Loaded.nodeMetas` cache; `search()` reuses `withUnsafeBytes` | Watch for any new capture code reintroducing `Data(contentsOf:)` **without** `.mappedIfSafe` (e.g., reading a screenshot PNG, reading text expansions, or future vector writes). The 40.3 MB budget depends on zero-copy mapped I/O. |
+| `OpenBurnBarCore/Sources/OpenBurnBarVectorKit/BurnBarHNSWVectorIndex.swift:462, 380` | `view(from:)` → `Data(contentsOf:url, options:[.mappedIfSafe])` + `Loaded.nodeMetas` cache; `search()` reuses `withUnsafeBytes` | Watch for any new capture code reintroducing `Data(contentsOf:)` **without** `.mappedIfSafe` (e.g., reading a screenshot PNG, reading text expansions, or future vector writes). The < 50 MB budget depends on zero-copy mapped I/O. |
 | `AgentLens/Services/DataStore/OpenBurnBarQueryTracer.swift` (and all `DataStore` slices) | `assertMaxQueries(count:)` / `resetLog()` | Any new preference read/write for `VisualCapturePreferences` must use `UserDefaults` (plan: no DB migration), not a new SQLite query, so the 7-SELECT dashboard constant is not disturbed. |
 
 **Concrete no-regression rule for Subagent C:**
@@ -100,19 +94,19 @@ Run on the same class of hardware as baseline if possible (M2/M3, macOS 14/15, s
 - [ ] Close all windows, unplug external displays, disable notification bursts, then:
 
   ```bash
-  # 5 min idle sample (matches baseline's 300.42 s; use sudo)
+  # 5 min idle sample (use sudo)
   sudo powermetrics --samplers cpu_power,tasks --n 300 > /tmp/powermetrics_after_toggle.txt
   # Quick RSS snapshot
   ps -p $(pgrep -x OpenBurnBar) -o pid,pcpu,pmem,rss,etime,comm
   ```
 
-  **Pass criteria:** `CPU < 0.8%`, `RSS < 140 MB`, `wakeups ≤ 12/10 s avg` (≈7), `BackgroundCadenceCoordinator 60 s sleep` only — no `Timer.scheduledTimer` with windows closed. Compare to `/tmp/powermetrics_after_toggle.txt` vs baseline at `docs/perf-artifacts/2026-05-08-hot-paths/powermetrics_idle.txt`.
+  **Pass criteria:** `CPU < 0.8%`, `RSS < 140 MB`, `wakeups ≤ 12/10 s avg` (≈7), `BackgroundCadenceCoordinator 60 s sleep` only — no `Timer.scheduledTimer` with windows closed. Capture the flag-off run first and compare the flag-on run against it.
 
 - [ ] Under load sanity: trigger dashboard refresh + 10 concurrent searches → CPU burst ~18 % for 2 s then idle, RSS < 320 MB (baseline 285 MB) — verifies HNSW mapped path still holds.
 
 ### D. HNSW allocation
 
-- [ ] Instruments → Allocations on `BurnBarHNSWReadableIndex.view(from:)` + `search()` with 100k×768 fixture → **no `Data(contentsOf:)` on read path**, `__DATA dirty 0`, mapped, **peak < 50 MB** (baseline 40.3 MB). Code-search: `rg -n 'Data\(contentsOf:' OpenBurnBarCore/Sources/OpenBurnBarVectorKit/` must only show `.mappedIfSafe` variants.
+- [ ] Instruments → Allocations on `BurnBarHNSWReadableIndex.view(from:)` + `search()` with 100k×768 fixture → **no `Data(contentsOf:)` on read path**, `__DATA dirty 0`, mapped, **peak < 50 MB**. Code-search: `rg -n 'Data\(contentsOf:' OpenBurnBarCore/Sources/OpenBurnBarVectorKit/` must only show `.mappedIfSafe` variants.
 
 ### E. Toggle-specific perf checks (new)
 
@@ -122,19 +116,17 @@ Run on the same class of hardware as baseline if possible (M2/M3, macOS 14/15, s
 
 ### F. Docs / artifact update
 
-- [ ] After all PASS, append new run to `docs/perf-artifacts/2026-05-08-hot-paths/` (or `docs/perf-artifacts/2026-05-09-visual-capture-source-toggle/`) with fresh `powermetrics_idle.txt`, `startup_profile.txt`, `hnsw_allocation.txt` — do not overwrite baseline without review.
+- [ ] After all PASS, commit the raw captures under `docs/perf-artifacts/<date>-visual-capture-source-toggle/` — real `powermetrics` output, a real `.trace` bundle, and the profiler's own interval names. A text file describing a capture is not a capture.
 - [ ] Run `bash scripts/ci/update-tech-debt-metrics.sh` if budgets touched (E owns `budgets/macos-idle-cpu.perf.json` gate).
 
 **If any budget regresses:** block the toggle PR, file a `Cross-agent receipt` on the PR with commit SHA + failing metric, and flip feature flag off via `node scripts/rollout.mjs --flag visualCaptureSourceToggleEnabled --stage off` — no code revert needed (UserDefaults-only, flag-gated).
 
 ---
 
-## 5) Evidence index (this guard is evidence-backed)
+## 5) What this guard is backed by
 
-- `docs/perf-artifacts/2026-05-08-hot-paths/powermetrics_idle.txt` — 0.42% CPU / 118 MB / 7 wakeups PASS
-- `docs/perf-artifacts/2026-05-08-hot-paths/startup_profile.txt` — 1.12 s cold start PASS
-- `docs/perf-artifacts/2026-05-08-hot-paths/hnsw_allocation.txt` — 40.3 MB mapped PASS
-- `docs/perf-artifacts/2026-05-08-hot-paths/query_tracer.log` — ≤3 trips / 7 SELECTs constant / 118 ms single scan PASS (local capture, values reproduced in §1)
+Code and CI gates that can be checked today. **No measured baseline is attached** — see the Artifacts note at the top.
+
 - `AgentLens/Services/Media/ScreenCapturePipeline.swift` — SCStream nil until `start()`, no CVDisplayLink/Timer
 - `AgentLens/Services/Performance/BackgroundCadenceCoordinator.swift` — 60 s sleep when disabled, `isEnabled` gate, no raw timers
 - `budgets/macos-idle-cpu.perf.json` — behavioral rAF occlusion gate (not raw CPU threshold)
