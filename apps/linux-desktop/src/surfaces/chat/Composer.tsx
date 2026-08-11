@@ -18,6 +18,7 @@ export {
 export type ChatComposerSendResult = void | boolean | Promise<void | boolean>;
 
 type ComposerProps = {
+  paneID?: string;
   backend: ChatBackendId;
   disabled: boolean;
   disabledReason: string;
@@ -33,6 +34,7 @@ type ComposerProps = {
 };
 
 export function Composer({
+  paneID,
   backend,
   disabled,
   disabledReason,
@@ -56,13 +58,15 @@ export function Composer({
 
   useEffect(() => {
     const onFocusRequest = (event: Event) => {
-      if (!isChatComposerFocusDetail((event as CustomEvent<unknown>).detail)) return;
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (!isChatComposerFocusDetail(detail)) return;
+      if (detail.paneID && detail.paneID !== paneID) return;
       if (disabled) return;
       composerRef.current?.focus({ preventScroll: true });
     };
     window.addEventListener(CHAT_COMPOSER_FOCUS_EVENT, onFocusRequest);
     return () => window.removeEventListener(CHAT_COMPOSER_FOCUS_EVENT, onFocusRequest);
-  }, [disabled]);
+  }, [disabled, paneID]);
 
   const handleAttachmentChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0];

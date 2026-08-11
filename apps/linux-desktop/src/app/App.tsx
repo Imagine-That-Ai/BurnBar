@@ -26,7 +26,11 @@ import {
   openPetCompanionWindow,
   PET_SUMMON_EVENT
 } from '../petCompanionWindow.js';
-import { CHAT_COMPOSER_FOCUS_EVENT } from '../surfaces/chat/chatComposerEvents.js';
+import {
+  CHAT_COMPOSER_FOCUS_EVENT,
+  chatPaneIDFromNotificationID
+} from '../surfaces/chat/chatComposerEvents.js';
+import { useChatWorkspaceStore } from '../state/chatWorkspaceStore.js';
 
 function isComputerUsePanicHotkey(event: KeyboardEvent): boolean {
   const isPeriod = event.key === '.' || event.code === 'Period';
@@ -201,15 +205,24 @@ export function App() {
       try {
         const action = decodeNativeNotificationActionEvent(payload);
         setRoute(action.route);
-        if (action.action === 'reply' && action.route === 'chat') {
+        const paneID = action.route === 'chat'
+          ? chatPaneIDFromNotificationID(action.notificationId)
+          : null;
+        if (paneID || (action.action === 'reply' && action.route === 'chat')) {
           // Let React mount the Chat route before asking its composer to
           // focus. The event contains only the validated notification ID;
           // no notification body or untrusted text crosses this boundary.
           window.setTimeout(() => {
             if (cancelled) return;
-            window.dispatchEvent(new CustomEvent(CHAT_COMPOSER_FOCUS_EVENT, {
-              detail: { notificationId: action.notificationId }
-            }));
+            if (paneID) useChatWorkspaceStore.getState().focusPane(paneID);
+            if (action.action === 'reply') {
+              window.dispatchEvent(new CustomEvent(CHAT_COMPOSER_FOCUS_EVENT, {
+                detail: {
+                  notificationId: action.notificationId,
+                  ...(paneID ? { paneID } : {})
+                }
+              }));
+            }
           }, 0);
         }
       } catch (error) {

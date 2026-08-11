@@ -1,5 +1,10 @@
 import type { ChatMessage } from '../../state/chatStore.js';
 import { GlassAlert, GlassAlertStack } from '../../components/GlassAlert.js';
+import { RichContent } from '../../richContent/RichContent.js';
+import {
+  openHermesAtom,
+  openRichContentExternalURL
+} from '../../richContent/richContentNavigation.js';
 import {
   citationAffordance,
   normalizeMemoryCitations,
@@ -184,7 +189,13 @@ function ThinkingBlock({ message }: { message: ChatMessage }) {
   return (
     <details className="chat-thinking">
       <summary>Reasoning</summary>
-      <div className="chat-thinking-body">{message.text}</div>
+      <RichContent
+        className="chat-thinking-body"
+        text={message.text}
+        label="Reasoning content"
+        onOpenAtom={openHermesAtom}
+        onOpenExternal={openRichContentExternalURL}
+      />
     </details>
   );
 }
@@ -359,7 +370,7 @@ export function MessageStream({
           if (m.role === 'system') {
             return (
               <div key={m.id} className="chat-system-message" role="note" aria-label="System message">
-                {m.text}
+                <RichContent text={m.text} preservePlainText expanded />
               </div>
             );
           }
@@ -368,7 +379,12 @@ export function MessageStream({
             return (
               <div key={m.id} className="chat-bubble-row chat-bubble-row--user">
                 <article className="chat-bubble chat-bubble--user" data-chat-message-id={m.id}>
-                  <p className="chat-bubble-text">{m.text}</p>
+                  <RichContent
+                    className="chat-bubble-text"
+                    text={m.text}
+                    preservePlainText
+                    label="Your message"
+                  />
                   <AttachmentSummary message={m} />
                 </article>
               </div>
@@ -387,7 +403,13 @@ export function MessageStream({
                 data-chat-message-id={m.id}
               >
                 {m.viaHermes ? <span className="chat-via-badge">via Hermes</span> : null}
-                <p className="chat-bubble-text">{m.text}</p>
+                <RichContent
+                  className="chat-bubble-text"
+                  text={m.text}
+                  label="Assistant message"
+                  onOpenAtom={openHermesAtom}
+                  onOpenExternal={openRichContentExternalURL}
+                />
                 <MemoryCitations citations={m.memoryCitations ?? []} onOpenCitation={onOpenCitation} />
               </article>
             </div>

@@ -2,7 +2,7 @@
 
 Date: 2026-08-11
 macOS gold standard: OpenBurnBar for macOS
-Audited implementation parent: `228215d47bf614e2cd62d60ee4f8ee52385d73e8`
+Audited implementation parent: `e8d51bd4be551e2399d7f64f6fdcd7b315a4e8c6`
 Exact source candidate: the local commit containing this report
 Branch: `codex/linux-macos-parity-completion-20260809`
 Publication state: local only; not pushed, merged, signed, or promoted
@@ -23,6 +23,16 @@ mission promotion, grading, telemetry, navigation, and Settings. The Linux
 renderer does not invent durable state. The shared Swift contracts, daemon
 SQLite store, RPC capability boundary, Rust/Tauri layer, strict TypeScript
 codec, React store, UI, and tests all use the same contract.
+
+The next daily-use gap is now source-closed as well. Linux chat and Inbox share
+a bounded rich-content renderer for headings, lists, quotes, code, tables,
+links, mentions, citations, and Hermes atoms without executing embedded HTML.
+Chat now supports persistent conversation tabs, nested horizontal and vertical
+splits, isolated controllers, per-pane backend/model/thinking state, keyboard
+navigation, pointer and keyboard divider resizing, zoom, close/reopen, pane
+move/swap, titles, colors, unseen completion state, and exact-pane native
+notification focus. The one compatibility controller remains primary and is
+re-homed safely when its pane closes.
 
 The Linux Inbox now also closes the three daemon-authority gaps that were
 deliberately disabled in the previous checkpoint:
@@ -56,6 +66,12 @@ The most important current distinction is:
 
 - **Source and proof infrastructure:** advanced; most rows are ready for
   installed execution.
+- **Estimated source implementation:** approximately **93%** of the scoped
+  macOS parity outcome, with pet presentation depth and VM-found defects the
+  clearest remaining source work.
+- **Estimated end-to-end readiness:** approximately **74%**. This includes
+  source/build confidence but discounts all unrun installed, environment,
+  external-authority, and final-certification evidence.
 - **Exact-candidate Linux proof:** not started for this candidate.
 - **Full release certification:** blocked until all 40 rows and all seven
   environment rows pass.
@@ -85,7 +101,10 @@ Stripe-only opener remains separate and unchanged.
 
 - Complete parity preflight: **46 passed, 0 failed**, 413.83 seconds.
 - Focused source packet: **29 passed, 0 failed**.
-- Linux frontend: **118 test files, 1,119 tests passed**.
+- Linux frontend: **123 test files, 1,167 tests passed**.
+- Focused chat controller/workspace/surface/composer packet:
+  **4 test files, 40 tests passed**.
+- Rich-content renderer packet: **2 test files, 20 tests passed**.
 - Focused Inbox/bridge/UI packet after native-link hardening:
   **4 test files, 109 tests passed**.
 - Focused exact-target route/store/surface packet:
@@ -93,6 +112,8 @@ Stripe-only opener remains separate and unchanged.
 - Linux TypeScript typecheck: passed.
 - Linux ESLint gate: passed with zero warnings.
 - Linux production Vite build and bundle verifier: passed.
+- Adaptive foreground/contrast audit: **192/192** sampled skin/kernel/timeline
+  states passed at **4.5:1 or better**, with no browser console errors.
 - Rust/Tauri suite: **166 tests passed**, including native Inbox URL rejection
   of HTTP, credentials, custom ports, localhost, IP literals, file URLs, and
   script URLs.
@@ -128,7 +149,7 @@ the feature passed in an installed Linux package.
 | P-11 | Usage ingestion | Canonical parser catalog, local ingestion, projections, recount, and provenance checks are broad | Real Linux corpus, remaining API/quota/cloud breadth, restart/recount, and same-input macOS comparison | High |
 | P-12 | Quota | Quota read state, account slots, failover policy, reset, and provenance exist | Live exhausted/cooling/ready switching, alerts, restart, and cloud-account behavior | Medium |
 | P-13 | Onboarding | Daemon-owned steps, provider setup, cloud-auth state machine, retry, privacy, and restart gates exist | Clean-profile installed flow, production OAuth, permission denial/retry, first data, and all environments | High |
-| P-14 | Chat | Durable threads, streaming, models, attachments, citations, approvals, export, resume, reconnect, and pop-out are broad | Linux still lacks the macOS tiled/tabbed multi-pane workspace and its richer Markdown, code, and atom rendering; installed provider breadth, binary/media behavior, unloaded history, restart re-upload, and recovery proof also remain | High |
+| P-14 | Chat | Durable threads, streaming, models, attachments, citations, approvals, export, resume, reconnect, pop-out, sanitized rich content, persistent tabs, nested splits, isolated pane controllers, keyboard/drag/resize/zoom, unseen completion, and exact-pane notification focus are implemented | Installed provider breadth, binary/media behavior, unloaded history, restart re-upload, persisted workspace restoration, accessibility, performance, and recovery proof remain | High |
 | P-15 | Account and billing | PKCE, membership state, portal routing, export, erasure handoff, and safe URLs exist | Production OAuth/App Check, membership, checkout/portal, recovery, erasure, and exact-candidate proof | High |
 | P-16 | Cloud and devices | Encrypted replica, sync, conflict handling, remote read, escrow, and trusted-device controls exist | Production callable execution, two-device approval/revoke, conflict/recovery, and signed installed proof | High |
 | P-17 | Activity and session logs | Search, detail, body, replay, resume, export, and source-resolution safety exist | Populated real history, complete-history proof, provider runtime, restart, and installed UI proof | High |
@@ -163,7 +184,8 @@ the feature passed in an installed Linux package.
 - P-07 still needs full real-device Browser/System Computer Use certification
   and thinner Agent Watch behavior compared with macOS.
 - P-08 still needs real paired-device media outcomes.
-- P-14 still needs installed provider and attachment breadth.
+- P-14 still needs installed provider, attachment, restored-workspace,
+  accessibility, and performance breadth.
 - P-30 still has a visible source-level polish gap around macOS-style offscreen
   3D thumbnails and persona/local-floor behavior.
 - P-40 still needs backend and cross-device proof for destructive cloud and
@@ -307,29 +329,32 @@ proof. Each item states the permanent fix and how QA should close it.
   QA must still exercise warm and cold native entry, restart restoration,
   notification/deep-link entry, keyboard focus, and missing/deleted recovery.
 
-### G-05 — Rich chat and Inbox content rendering
+### G-05 — Rich chat and Inbox content rendering — source closed; installed proof open
 
-- **Difference:** macOS has tiled/tabbed multi-pane chat workspaces plus richer
-  Markdown, code, citation, and atom presentation. Linux has durable chat,
-  pop-out, attachments, citations, and the new Inbox/Founder Lens flow, but
-  most message, plan, and Inbox bodies still render as plain paragraphs in a
-  single-pane workspace.
+- **Difference:** macOS has tiled/tabbed multi-pane chat workspaces and rich
+  technical content. Linux now implements the same outcomes with Linux-native
+  tabs, nested splits, drag/drop, keyboard resizing/navigation, pane options,
+  unseen completion state, and a shared bounded rich-content renderer.
 - **Why it matters:** long technical conversations and evidence-heavy Inbox
-  items are materially harder to scan, compare, copy, and act on. This is one
-  of the clearest remaining daily-use polish gaps.
-- **Recommended solution:** build a shared sanitized rich-content renderer for
-  chat and Inbox, then add a Linux-native tiled/tabbed pane model with durable
-  layout, keyboard movement, close/reopen, overflow, and pop-out behavior.
+  items can now be scanned, compared, copied, and acted on without flattening
+  their structure or forcing one active transcript.
+- **Recommended solution:** implemented shared sanitized content rendering for
+  chat and Inbox plus a persistent workspace model with exactly one primary
+  compatibility controller and isolated secondary controllers.
 - **Priority:** High.
-- **Implementation notes:** reuse canonical message/atom contracts; sanitize
-  links and HTML; use syntax highlighting without executing content; virtualize
-  large histories; persist pane identity and layout separately from thread
-  data; follow Linux window-manager conventions for pop-outs.
-- **QA verification:** render headings, lists, tables, code, long lines,
-  citations, malformed Markdown, hostile HTML, bidirectional text, huge
-  messages, and atoms; test keyboard pane navigation, drag/resize,
-  close/reopen, restart persistence, pop-out/rejoin, screen reader order,
-  reduced motion, and memory/scroll performance.
+- **Implementation notes:** the renderer never injects supplied HTML. Workspace
+  persistence is versioned, validates depth/count/IDs/metadata, repairs
+  malformed primary ownership, clamps split fractions, and keeps layout data
+  separate from daemon-owned messages. Same-thread concurrent sends fail
+  before append/gateway, stale async results are fenced by controller
+  generation, and closing a primary pane re-homes the compatibility controller.
+- **QA verification:** local rich-content coverage passes **20/20** and the
+  focused chat packet passes **40/40**, including controller isolation, split,
+  resize, zoom, tab close/reopen, exact-pane drop, atomic pane swap,
+  accessibility semantics, notification targeting, export, deep links, and
+  streaming regressions. Installed QA must still exercise restart persistence,
+  real providers, pop-out/rejoin, Orca order, reduced motion, 200% scaling,
+  large-history scrolling, and CPU/RSS behavior.
 
 ### G-06 — AI Inbox list hierarchy — source closed; visual proof open
 
@@ -429,6 +454,8 @@ Engineering tasks:
 - Finish the AI Inbox shared contracts, daemon presentation store/RPCs,
   Rust/Tauri bridge, strict codecs, renderer store, UI, Settings, navigation,
   and native safe-link opening.
+- Finish the shared rich-content renderer and the persistent Linux-native chat
+  tab/split workspace with isolated controllers and exact-pane notifications.
 - Keep memory/follow-up authority daemon-owned and visibly report pending,
   success, unavailable, and failure states.
 - Update the parity report with the exact source gaps and implementation order.
@@ -450,6 +477,8 @@ Acceptance criteria:
 - Founder Lens discussion, accepted plans, grading, and mission promotion work.
 - Unsupported actions never claim success.
 - Inbox URLs open only through the dedicated native validator.
+- Rich content is bounded and inert, workspace state repairs malformed
+  persistence, and pane operations preserve exactly one primary controller.
 - All relevant local checks pass and the worktree is clean after the local
   commit.
 
@@ -616,13 +645,13 @@ Acceptance criteria:
 
 | Order | Work | Why now | Exit condition |
 |---|---|---|---|
-| 1 | Seal and locally commit the exact-target Inbox action slice | Makes the latest daily-use source addition exact, reviewable, and candidate-bound | Full relevant local gates green; clean local commit; no push or merge |
+| 1 | Seal and locally commit the Inbox plus rich-chat/workspace source slice | Makes the latest daily-use source additions exact, reviewable, and candidate-bound | Full local gates green; clean local commit; no push or merge |
 | 2 | Start X31 VM and identify the exact environment | Converts source confidence into real installed evidence | VM identity and prerequisites recorded |
 | 3 | Build/install exact candidate and run smoke, including AI Inbox | Finds package/runtime blockers before expensive deep testing | Stable GUI/daemon/CLI/service, all primary routes, durable Inbox state, and native safe links |
 | 4 | Text expansion, pet, privacy, accessibility | These are Linux-native/high-risk and recently changed | P-29/P-30/P-31/P-40 installed receipts or named defects |
 | 5 | Core product workflows, including exact-target actions | Proves daily-use parity with real state | Installed row receipts, exact project/session/conversation selection, and fixed defects |
-| 6 | Rich chat/Inbox rendering and workspace panes | Closes the clearest remaining daily-use macOS UX gap | Sanitized rich content, durable tiled/tabbed panes, accessibility, and performance green |
-| 7 | Memory approval and follow-up authority | Completes the Founder Lens operating loop without bypassing trust boundaries | Candidate/plan memory and follow-up flows are daemon-authoritative, idempotent, and restart-safe |
+| 6 | Memory approval and follow-up authority | Completes the Founder Lens operating loop without bypassing trust boundaries | Candidate/plan memory and follow-up flows are daemon-authoritative, idempotent, and restart-safe |
+| 7 | Pet presentation depth and VM-found source defects | Closes the clearest known remaining source polish gap and any real installed regressions | Pet visual comparison green; every reproducible X31 defect fixed and retested |
 | 8 | Computer Use, media, cloud, billing, devices | Requires external authority and physical systems | Exact backend/device receipts |
 | 9 | Performance, reliability, update/rollback | Requires a stable candidate and previous release | Budgets, soak, fault, and lifecycle green |
 | 10 | Remaining six environments | Closes architecture/compositor portability | 7/7 environments ready |
@@ -695,6 +724,12 @@ Acceptance criteria:
 - [ ] Usage and quota.
 - [ ] Onboarding and provider credentials.
 - [ ] Chat, attachments, citations, approvals, export, resume, and pop-out.
+- [ ] Rich headings/lists/quotes/tables/code/links/mentions/atoms remain inert,
+  readable, copyable, and safe under malformed or hostile content.
+- [ ] Chat tabs, horizontal/vertical splits, drag/drop, keyboard resize,
+  keyboard pane/tab movement, zoom, close/reopen, move/swap, titles, colors,
+  unseen completion, exact-pane notifications, restart persistence, and
+  primary-controller re-homing.
 - [ ] Account, billing, cloud sync, trusted devices, export, and erasure.
 - [ ] Activity, memory, projects, missions, insights, and database.
 - [ ] Providers/models, Settings, updates, tray, notifications, and support.
@@ -737,9 +772,10 @@ Acceptance criteria:
 
 The Linux implementation is in the final source-gap, proof, and defect-fixing
 phase, not the early build phase. AI Inbox memory authority, follow-up creation,
-list hierarchy, and exact-target actions are source closed. Rich chat/workspace
-presentation and pet presentation depth remain the clearest source gaps. The
-exact candidate still needs a local commit and an installed X31 build. The VM
-may find real defects, and those defects must be fixed before any percentage or
-“full parity” claim is treated as release truth. Even a clean X31 result will
-be one-environment proof, not the final 40/40 and 7/7 certification.
+list hierarchy, exact-target actions, rich content, and the chat tab/split
+workspace are source closed. Pet presentation depth is the clearest known
+source gap. The exact candidate still needs a local commit and an installed
+X31 build. The VM may find real defects, and those defects must be fixed before
+any percentage or “full parity” claim is treated as release truth. Even a clean
+X31 result will be one-environment proof, not the final 40/40 and 7/7
+certification.

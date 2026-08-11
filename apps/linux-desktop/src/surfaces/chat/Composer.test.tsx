@@ -4,7 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { configureTextExpansionConsentStorage, writeTextExpansionConsent } from '../../textExpansionConsent.js';
 import { configureTextExpansionStorage, upsertSnippet } from '../../textExpansionStore.js';
 import { MAX_CHAT_ATTACHMENT_BYTES, Composer } from './Composer.js';
-import { CHAT_COMPOSER_FOCUS_EVENT, isChatComposerFocusDetail } from './chatComposerEvents.js';
+import {
+  CHAT_COMPOSER_FOCUS_EVENT,
+  chatPaneIDFromNotificationID,
+  isChatComposerFocusDetail
+} from './chatComposerEvents.js';
 
 function renderComposer(secureField = false) {
   return render(
@@ -43,6 +47,42 @@ describe('chat composer attachments', () => {
     expect(isChatComposerFocusDetail({ notificationId: '' })).toBe(false);
     expect(isChatComposerFocusDetail({ notificationId: 'notification/1' })).toBe(false);
     expect(isChatComposerFocusDetail({ notificationId: 'notification-1' })).toBe(true);
+    expect(isChatComposerFocusDetail({ notificationId: 'chat-pane-pane-1', paneID: 'pane-1' })).toBe(true);
+    expect(isChatComposerFocusDetail({ notificationId: 'chat-pane-pane-1', paneID: 'pane/1' })).toBe(false);
+    expect(chatPaneIDFromNotificationID('chat-pane-pane-1')).toBe('pane-1');
+    expect(chatPaneIDFromNotificationID('agent-reply-1')).toBeNull();
+  });
+
+  it('focuses only the composer targeted by a pane notification', () => {
+    render(
+      <>
+        <Composer
+          paneID="pane-1"
+          backend="hermes"
+          disabled={false}
+          disabledReason=""
+          streaming={false}
+          busy={false}
+          onSend={() => undefined}
+          onStop={() => undefined}
+        />
+        <Composer
+          paneID="pane-2"
+          backend="hermes"
+          disabled={false}
+          disabledReason=""
+          streaming={false}
+          busy={false}
+          onSend={() => undefined}
+          onStop={() => undefined}
+        />
+      </>
+    );
+    window.dispatchEvent(new CustomEvent(CHAT_COMPOSER_FOCUS_EVENT, {
+      detail: { notificationId: 'chat-pane-pane-2', paneID: 'pane-2' }
+    }));
+    const composers = screen.getAllByRole('textbox', { name: 'Message composer' });
+    expect(document.activeElement).toBe(composers[1]);
   });
 
   it('shows accepted file metadata, keeps send available, and removes it cleanly', () => {

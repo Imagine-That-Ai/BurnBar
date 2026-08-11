@@ -12,6 +12,7 @@ import type {
   SessionListResult
 } from '../../tauriBridge.js';
 import { useChatStore } from '../../state/chatStore.js';
+import { useChatWorkspaceStore } from '../../state/chatWorkspaceStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { availableRuntimeCapabilities } from '../../testing/bridgeStubs.js';
 import { chatRouteHash } from '../../routes.js';
@@ -208,6 +209,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   resetChatStore();
+  useChatWorkspaceStore.getState().resetForTests();
   useShellStore.setState({
     bridge: null,
     bridgeReady: true,
@@ -249,7 +251,7 @@ describe('ChatSurface', () => {
     await waitFor(() => {
       expect(screen.getByRole('log')).toBeTruthy();
     });
-    expect(screen.getByText(`Thread ${list.sessions[0].id}`)).toBeTruthy();
+    expect(screen.getAllByText(`Thread ${list.sessions[0].id}`).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(`Persisted message for ${list.sessions[0].id}`)).toBeTruthy();
   });
 
@@ -927,7 +929,9 @@ describe('ChatSurface', () => {
     });
 
     render(<ChatSurface />);
-    await waitFor(() => expect(screen.getByText('Exact unloaded thread')).toBeTruthy());
+    await waitFor(() => {
+      expect(screen.getAllByText('Exact unloaded thread').length).toBeGreaterThanOrEqual(1);
+    });
     expect(screen.getByText(`Body for ${target.id}`)).toBeTruthy();
     const callsBeforeRepeat = chatThreadGet.mock.calls.filter(([id]) => id === target.id).length;
 

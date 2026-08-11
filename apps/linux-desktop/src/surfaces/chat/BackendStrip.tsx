@@ -39,6 +39,8 @@ type BackendStripProps = {
   onBackendChange: (id: ChatBackendId) => void;
   onModelOptionChange: (id: string) => void;
   onThinkingLevelChange: (level: ChatThinkingSelection) => void;
+  compact?: boolean;
+  idPrefix?: string;
 };
 
 export function BackendStrip({
@@ -52,45 +54,74 @@ export function BackendStrip({
   gatewayHint: _gatewayHint,
   onBackendChange,
   onModelOptionChange,
-  onThinkingLevelChange
+  onThinkingLevelChange,
+  compact = false,
+  idPrefix = 'chat'
 }: BackendStripProps) {
   const options = chatModelOptions(config, backend, modelLabel);
   const thinkingLevels = chatThinkingLevels(options, modelOptionID, modelLabel);
+  const backendAvailability = chatBackendAvailability(config, backend, catalog);
+  const modelSelectID = `${idPrefix}-model-select`;
+  const thinkingSelectID = `${idPrefix}-thinking-select`;
+  const backendSelectID = `${idPrefix}-backend-select`;
   return (
-    <div className="chat-backend-strip" role="group" aria-label="Chat engine and model">
-      <div className="chat-backend-pills" role="toolbar" aria-label="Chat backends">
-        {CHAT_BACKENDS.map((entry) => {
-          const logo = BACKEND_LOGOS[entry.id];
-          const active = entry.id === backend;
-          const availability = chatBackendAvailability(config, entry.id, catalog);
-          const unavailable = availability.state !== 'available' && availability.state !== 'unknown';
-          return (
-            <button
-              key={entry.id}
-              type="button"
-              data-backend={entry.id}
-              className={active ? 'chat-backend-pill is-active' : 'chat-backend-pill'}
-              aria-pressed={active}
-              aria-label={entry.label}
-              title={unavailable ? `${entry.label}: ${availability.reason}` : entry.label}
-              disabled={unavailable}
-              onClick={() => onBackendChange(entry.id)}
-            >
-              {logo ? <img src={logo} alt="" width={16} height={16} /> : null}
-              <span className="chat-backend-pill-label">{entry.label}</span>
-            </button>
-          );
-        })}
-      </div>
-      {backend !== 'cli' && chatBackendAvailability(config, backend, catalog).state !== 'available' ? (
+    <div className={compact ? 'chat-backend-strip is-compact' : 'chat-backend-strip'} role="group" aria-label="Chat engine and model">
+      {compact ? (
+        <div className="chat-toolbar-model" aria-label="Backend selection">
+          <label className="chat-toolbar-model-label" htmlFor={backendSelectID}>Agent</label>
+          <select
+            id={backendSelectID}
+            className="chat-toolbar-model-button"
+            value={backend}
+            onChange={(event) => onBackendChange(event.target.value as ChatBackendId)}
+            aria-label="Chat backend"
+          >
+            {CHAT_BACKENDS.map((entry) => {
+              const availability = chatBackendAvailability(config, entry.id, catalog);
+              const unavailable = availability.state !== 'available' && availability.state !== 'unknown';
+              return (
+                <option key={entry.id} value={entry.id} disabled={unavailable}>
+                  {entry.label}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+      ) : (
+        <div className="chat-backend-pills" role="toolbar" aria-label="Chat backends">
+          {CHAT_BACKENDS.map((entry) => {
+            const logo = BACKEND_LOGOS[entry.id];
+            const active = entry.id === backend;
+            const availability = chatBackendAvailability(config, entry.id, catalog);
+            const unavailable = availability.state !== 'available' && availability.state !== 'unknown';
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                data-backend={entry.id}
+                className={active ? 'chat-backend-pill is-active' : 'chat-backend-pill'}
+                aria-pressed={active}
+                aria-label={entry.label}
+                title={unavailable ? `${entry.label}: ${availability.reason}` : entry.label}
+                disabled={unavailable}
+                onClick={() => onBackendChange(entry.id)}
+              >
+                {logo ? <img src={logo} alt="" width={16} height={16} /> : null}
+                <span className="chat-backend-pill-label">{entry.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {backend !== 'cli' && backendAvailability.state !== 'available' ? (
         <p className="chat-backend-availability" aria-live="polite">
-          {chatBackendAvailability(config, backend, catalog).reason}
+          {backendAvailability.reason}
         </p>
       ) : null}
       <div className="chat-toolbar-model" aria-label="Model selection">
-        <label className="chat-toolbar-model-label" htmlFor="chat-model-select">Model</label>
+        <label className="chat-toolbar-model-label" htmlFor={modelSelectID}>Model</label>
         <select
-          id="chat-model-select"
+          id={modelSelectID}
           className="chat-toolbar-model-button"
           value={options.some((option) => option.id === modelOptionID) ? modelOptionID : options[0]?.id ?? ''}
           onChange={(event) => onModelOptionChange(event.target.value)}
@@ -103,9 +134,9 @@ export function BackendStrip({
             </option>
           ))}
         </select>
-        <label className="chat-toolbar-model-label" htmlFor="chat-thinking-select">Thinking</label>
+        <label className="chat-toolbar-model-label" htmlFor={thinkingSelectID}>Thinking</label>
         <select
-          id="chat-thinking-select"
+          id={thinkingSelectID}
           className="chat-toolbar-model-button"
           value={thinkingLevel}
           onChange={(event) => onThinkingLevelChange(event.target.value as ChatThinkingSelection)}
@@ -120,24 +151,26 @@ export function BackendStrip({
           ))}
         </select>
       </div>
-      <div className="chat-toolbar-engine-extras" aria-label="Agent and CLI">
-        <button
-          type="button"
-          className="chat-toolbar-chip"
-          disabled
-          title="Agent desktop control (macOS parity)"
-        >
-          Agent
-        </button>
-        <button
-          type="button"
-          className="chat-toolbar-chip"
-          disabled={backend !== 'cli'}
-          title="CLI assistant consent flow"
-        >
-          CLI
-        </button>
-      </div>
+      {!compact ? (
+        <div className="chat-toolbar-engine-extras" aria-label="Agent and CLI">
+          <button
+            type="button"
+            className="chat-toolbar-chip"
+            disabled
+            title="Agent desktop control (macOS parity)"
+          >
+            Agent
+          </button>
+          <button
+            type="button"
+            className="chat-toolbar-chip"
+            disabled={backend !== 'cli'}
+            title="CLI assistant consent flow"
+          >
+            CLI
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

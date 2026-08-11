@@ -3,6 +3,7 @@ import type { ChatThreadSummary } from '../../tauriBridge.js';
 import { formatThreadActivity, threadMessageCount, threadPreview } from './chatTypes.js';
 
 const DEBOUNCE_MS = 300;
+export const CHAT_THREAD_DRAG_TYPE = 'application/x-openburnbar-chat-thread';
 
 type ThreadRailProps = {
   threads: ChatThreadSummary[];
@@ -14,6 +15,8 @@ type ThreadRailProps = {
   onSearch: (query: string) => void;
   onLoadMore: () => void;
   onNewChat: () => void;
+  openThreadIDs?: ReadonlySet<string>;
+  unseenThreadIDs?: ReadonlySet<string>;
 };
 
 export function ThreadRail({
@@ -25,7 +28,9 @@ export function ThreadRail({
   onSelect,
   onSearch,
   onLoadMore,
-  onNewChat
+  onNewChat,
+  openThreadIDs = new Set(),
+  unseenThreadIDs = new Set()
 }: ThreadRailProps) {
   const searchId = useId();
   const [local, setLocal] = useState(query);
@@ -86,7 +91,13 @@ export function ThreadRail({
                 <div className="chat-thread-row" aria-hidden="true" />
               </li>
             ))
-          : threads.map((t) => (
+          : threads.length === 0
+            ? (
+                <li className="chat-thread-empty">
+                  {query.trim() ? `No conversations match “${query.trim()}”.` : 'No conversations yet.'}
+                </li>
+              )
+            : threads.map((t) => (
               <li key={t.id}>
                 <button
                   type="button"
@@ -94,14 +105,32 @@ export function ThreadRail({
                   data-chat-thread-id={t.id}
                   onClick={() => onSelect(t.id)}
                   aria-current={selectedId === t.id ? 'true' : undefined}
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = 'copy';
+                    event.dataTransfer.setData(CHAT_THREAD_DRAG_TYPE, t.id);
+                    event.dataTransfer.setData('text/plain', t.id);
+                  }}
                 >
                   <span className="chat-thread-row-head">
                     <span className="chat-thread-row-title">{t.title}</span>
-                    {selectedId === t.id ? (
-                      <span className="chat-thread-row-check" aria-hidden="true">
-                        ✓
-                      </span>
-                    ) : null}
+                    <span className="chat-thread-row-indicators">
+                      {unseenThreadIDs.has(t.id) ? (
+                        <span className="chat-thread-row-unseen">
+                          <span className="sr-only">Unread completion</span>
+                        </span>
+                      ) : null}
+                      {openThreadIDs.has(t.id) && selectedId !== t.id ? (
+                        <span className="chat-thread-row-open">
+                          <span className="sr-only">Open in another pane</span>
+                        </span>
+                      ) : null}
+                      {selectedId === t.id ? (
+                        <span className="chat-thread-row-check" aria-hidden="true">
+                          ✓
+                        </span>
+                      ) : null}
+                    </span>
                   </span>
                   <span className="chat-thread-row-snippet">{threadPreview(t)}</span>
                   <span className="chat-thread-row-meta">
@@ -109,7 +138,7 @@ export function ThreadRail({
                   </span>
                 </button>
               </li>
-            ))}
+              ))}
       </ul>
       {hasMore ? (
         <div className="chat-rail-footer">

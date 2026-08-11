@@ -32,6 +32,7 @@ type ChatToolbarProps = {
   exportBusy: boolean;
   exportStatus: string | null;
   compact?: boolean;
+  showEnginePickers?: boolean;
 };
 
 export function ChatToolbar({
@@ -61,24 +62,32 @@ export function ChatToolbar({
   exportDisabled,
   exportBusy,
   exportStatus,
-  compact: _compact = false
+  compact: _compact = false,
+  showEnginePickers = true
 }: ChatToolbarProps) {
   return (
     <div className="chat-toolbar" role="toolbar" aria-label="Chat controls">
       <div className="chat-toolbar-primary">
-        <BackendStrip
-          backend={backend}
-          modelLabel={modelLabel}
-          modelOptionID={modelOptionID}
-          thinkingLevel={thinkingLevel}
-          config={config}
-          catalog={catalog}
-          thread={thread}
-          gatewayHint={gatewayHint}
-          onBackendChange={onBackendChange}
-          onModelOptionChange={onModelOptionChange}
-          onThinkingLevelChange={onThinkingLevelChange}
-        />
+        {showEnginePickers ? (
+          <BackendStrip
+            backend={backend}
+            modelLabel={modelLabel}
+            modelOptionID={modelOptionID}
+            thinkingLevel={thinkingLevel}
+            config={config}
+            catalog={catalog}
+            thread={thread}
+            gatewayHint={gatewayHint}
+            onBackendChange={onBackendChange}
+            onModelOptionChange={onModelOptionChange}
+            onThinkingLevelChange={onThinkingLevelChange}
+          />
+        ) : (
+          <div className="chat-toolbar-context" aria-live="polite">
+            <span>{thread?.title || 'New conversation'}</span>
+            <span>{backend} · {modelLabel}</span>
+          </div>
+        )}
       </div>
       <div className="chat-toolbar-actions">
         <div className="chat-export-control" role="group" aria-label="Chat export">

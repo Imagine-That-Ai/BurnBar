@@ -7,6 +7,11 @@ import {
 import { useInboxStore, type InboxFilter } from '../../state/inboxStore.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useShellStore } from '../../state/shellStore.js';
+import { RichContent } from '../../richContent/RichContent.js';
+import {
+  openHermesAtom,
+  openRichContentExternalURL
+} from '../../richContent/richContentNavigation.js';
 import type {
   AIInboxAction,
   AIInboxEvidence,
@@ -237,7 +242,7 @@ function MemoryCandidateCard({
   return (
     <article className="inbox-memory-candidate">
       <strong>{candidate.kind}</strong>
-      <p>{candidate.text}</p>
+      <RichContent text={candidate.text} preservePlainText expanded />
       <span>{Math.round(candidate.confidence * 100)}% confidence</span>
       <div className="inbox-actions">
         <button
@@ -282,7 +287,11 @@ function PlanCandidateCard({
     <div className="inbox-plan-candidate">
       <span className="inbox-section-label">Proposed plan step · {candidate.horizon}</span>
       <strong>{candidate.title}</strong>
-      <p>{candidate.bodyMarkdown}</p>
+      <RichContent
+        text={candidate.bodyMarkdown}
+        onOpenAtom={openHermesAtom}
+        onOpenExternal={openRichContentExternalURL}
+      />
       <button
         type="button"
         className="primary"
@@ -309,7 +318,11 @@ function ThreadMessage({ message }: { message: AIInboxThreadMessage }) {
         {message.modelProvenance ? <span>{message.modelProvenance}</span> : null}
         {message.costUSD > 0 ? <span>${message.costUSD.toFixed(3)}</span> : null}
       </header>
-      <p>{message.bodyMarkdown}</p>
+      <RichContent
+        text={message.bodyMarkdown}
+        onOpenAtom={openHermesAtom}
+        onOpenExternal={openRichContentExternalURL}
+      />
       {message.planCandidates.map((candidate) => (
         <PlanCandidateCard key={`${message.id}:${candidate.title}`} candidate={candidate} messageID={message.id} />
       ))}
@@ -382,7 +395,11 @@ function PlanStepRow({ plan, step }: { plan: AIInboxPlan; step: AIInboxPlanStep 
         <strong>{step.title}</strong>
         <span>{step.status.replaceAll('_', ' ')}</span>
       </div>
-      <p>{step.bodyMarkdown}</p>
+      <RichContent
+        text={step.bodyMarkdown}
+        onOpenAtom={openHermesAtom}
+        onOpenExternal={openRichContentExternalURL}
+      />
       <div className="inbox-plan-actions">
         {!step.missionID && (step.status === 'accepted' || step.status === 'in_progress') ? (
           <button type="button" className="ghost" disabled={busy} onClick={() => void promoteStep(plan, step.id)}>
@@ -456,7 +473,13 @@ function FounderPlans() {
                 ? <span>grade {Math.round(plan.gradeAverage)}</span>
                 : null}
             </header>
-            {plan.summaryMarkdown ? <p>{plan.summaryMarkdown}</p> : null}
+            {plan.summaryMarkdown ? (
+              <RichContent
+                text={plan.summaryMarkdown}
+                onOpenAtom={openHermesAtom}
+                onOpenExternal={openRichContentExternalURL}
+              />
+            ) : null}
             {plan.steps.map((step) => <PlanStepRow key={step.id} plan={plan} step={step} />)}
           </article>
         ))}
@@ -576,7 +599,14 @@ function InboxDetail({ row }: { row: AIInboxPresentationRow }) {
         </div>
       ) : null}
 
-      {detail.summaryMarkdown ? <p className="inbox-detail__body">{detail.summaryMarkdown}</p> : null}
+      {detail.summaryMarkdown ? (
+        <RichContent
+          className="inbox-detail__body"
+          text={detail.summaryMarkdown}
+          onOpenAtom={openHermesAtom}
+          onOpenExternal={openRichContentExternalURL}
+        />
+      ) : null}
 
       {metrics.length > 0 ? (
         <section className="inbox-detail-section">

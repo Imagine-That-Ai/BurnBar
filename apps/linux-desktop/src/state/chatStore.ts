@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create, type StoreApi, type UseBoundStore } from 'zustand';
 import {
   GatewayChatError,
   streamGatewayChatNative,
@@ -31,6 +31,11 @@ import {
   type ChatThinkingSelection
 } from '../surfaces/chat/chatOptions.js';
 import { useShellStore } from './shellStore.js';
+import {
+  acquireChatThreadSendLease,
+  releaseChatControllerLeases,
+  releaseChatThreadSendLease
+} from './chatRuntime.js';
 
 export const CHAT_THREAD_PAGE_SIZE = 40;
 /** Bound renderer-side history traversal even if a daemon reports an unbounded transcript. */
@@ -64,6 +69,8 @@ export type ChatStreamPhase = 'idle' | 'composing' | 'streaming' | 'done' | 'err
 export type ChatGatewayStatus = 'unknown' | 'reachable' | 'unreachable' | 'disabled';
 
 export type ChatState = {
+  controllerID: string;
+  disposed: boolean;
   threads: ChatThreadSummary[];
   nextCursor: string | null;
   selectedThreadId: string | null;
@@ -118,27 +125,47 @@ export type ChatState = {
   respondToToolApproval(messageID: string, decision: ChatApprovalDecision): Promise<void>;
   retryToolApproval(messageID: string): Promise<void>;
   stopStreaming(): void;
+  /** Permanently tears down an isolated pane controller and ignores late async work. */
+  dispose(): void;
 };
 
-function validStoredThreadID(raw: string | null): string | null {
+export type ChatControllerStore = UseBoundStore<StoreApi<ChatState>>;
+
+export type ChatControllerOptions = {
+  /** Primary keeps the legacy key; isolated pane controllers pass null. */
+  activeThreadStorageKey?: string | null;
+  controllerID?: string;
+  onDurableThreadMutation?: (
+    controller: ChatControllerStore,
+    payload: {
+      threads: ChatThreadSummary[];
+      config: ConfigSnapshot | null;
+      catalog: ProviderCatalog | null;
+    }
+  ) => void;
+};
+
+export function validStoredThreadID(raw: string | null): string | null {
   if (raw === null || raw.trim() !== raw || raw.length === 0) return null;
   if ([...raw].some((character) => character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f)) return null;
   if (new TextEncoder().encode(raw).length > CHAT_THREAD_ID_MAX_BYTES) return null;
   return raw;
 }
 
-function readActiveThreadID(): string | null {
+function readActiveThreadID(storageKey: string | null): string | null {
+  if (!storageKey) return null;
   try {
-    return validStoredThreadID(globalThis.localStorage?.getItem(CHAT_ACTIVE_THREAD_STORAGE_KEY) ?? null);
+    return validStoredThreadID(globalThis.localStorage?.getItem(storageKey) ?? null);
   } catch {
     return null;
   }
 }
 
-function persistActiveThreadID(threadID: string | null): void {
+function persistActiveThreadID(storageKey: string | null, threadID: string | null): void {
+  if (!storageKey) return;
   try {
-    if (threadID) globalThis.localStorage?.setItem(CHAT_ACTIVE_THREAD_STORAGE_KEY, threadID);
-    else globalThis.localStorage?.removeItem(CHAT_ACTIVE_THREAD_STORAGE_KEY);
+    if (threadID) globalThis.localStorage?.setItem(storageKey, threadID);
+    else globalThis.localStorage?.removeItem(storageKey);
   } catch {
     // Browser storage is only a resume hint; the daemon remains authoritative.
   }
@@ -434,12 +461,18 @@ function newUUID(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-async function refreshThreadSummaries(query: string): Promise<void> {
+async function refreshThreadSummaries(
+  query: string,
+  controller: ChatControllerStore,
+  onDurableThreadMutation?: ChatControllerOptions['onDurableThreadMutation']
+): Promise<void> {
   const { fixtureMode } = useShellStore.getState();
   if (fixtureMode) return;
   try {
     const { threads, config, catalog } = await fetchThreads(query);
-    useChatStore.setState({ threads, nextCursor: null, config, catalog });
+    if (controller.getState().disposed) return;
+    controller.setState({ threads, nextCursor: null, config, catalog });
+    onDurableThreadMutation?.(controller, { threads, config, catalog });
   } catch {
     // Summary refresh is ancillary; a persisted turn must still reach the gateway.
     console.error('linux_chat_thread_refresh_failed');
@@ -460,8 +493,6 @@ function summarizeToolArgs(args: string): string {
   }
   return trimmed.slice(0, 160);
 }
-
-const approvalRequestsInFlight = new Map<string, Promise<void>>();
 
 function approvalErrorMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
@@ -575,7 +606,22 @@ async function* fixtureChatStream(): AsyncGenerator<GatewayChatStreamEvent, void
   }
 }
 
-export const useChatStore = create<ChatState>()((set, get) => ({
+let controllerSequence = 0;
+
+export function createChatController(options: ChatControllerOptions = {}): ChatControllerStore {
+  controllerSequence = (controllerSequence + 1) % Number.MAX_SAFE_INTEGER;
+  const controllerID = options.controllerID?.trim() || `chat-controller-${controllerSequence}`;
+  const storageKey = options.activeThreadStorageKey === undefined
+    ? CHAT_ACTIVE_THREAD_STORAGE_KEY
+    : options.activeThreadStorageKey;
+  const approvalRequestsInFlight = new Map<string, Promise<void>>();
+  let loadGeneration = 0;
+  let selectionGeneration = 0;
+  let turnGeneration = 0;
+
+  const chatController = create<ChatState>()((set, get) => ({
+  controllerID,
+  disposed: false,
   threads: [],
   nextCursor: null,
   selectedThreadId: null,
@@ -605,9 +651,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   sharedFeaturesAvailable: true,
 
   async load() {
+    const generation = ++loadGeneration;
     const { query } = get();
     const { fixtureMode, bridge } = useShellStore.getState();
     if (!fixtureMode && !bridge) {
+      if (generation !== loadGeneration || get().disposed) return;
       set({
         threads: [],
         nextCursor: null,
@@ -628,13 +676,15 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       });
       return;
     }
+    if (get().disposed) return;
     set({ loading: true, error: null });
     try {
       const { threads, config, catalog } = await fetchThreads(query);
       const gateway = await resolveGatewayStatus(fixtureMode);
+      if (generation !== loadGeneration || get().disposed || get().query !== query) return;
       const prevSelected = get().selectedThreadId;
       const stillThere = prevSelected && threads.some((t) => t.id === prevSelected);
-      const remembered = readActiveThreadID();
+      const remembered = readActiveThreadID(storageKey);
       const rememberedStillThere = remembered && threads.some((t) => t.id === remembered);
       const selectedThreadId = stillThere
         ? prevSelected
@@ -642,10 +692,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           ? remembered
           : threads[0]?.id ?? null;
       if (!query.trim() && remembered && !rememberedStillThere && !stillThere) {
-        persistActiveThreadID(null);
+        persistActiveThreadID(storageKey, null);
       }
       const selected = threads.find((t) => t.id === selectedThreadId) ?? null;
       const selectedBackend = backendFromThread(selected, get().backend);
+      const conversationBusy = get().streaming || get().streamPhase === 'composing';
       set({
         threads,
         nextCursor: null,
@@ -654,20 +705,26 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         loading: false,
         error: null,
         visibleThreadCount: CHAT_THREAD_PAGE_SIZE,
-        selectedThreadId,
-        backend: selectedBackend,
         warnings: fixtureMode ? fixtureWarnings() : [],
         sharedFeaturesAvailable: fixtureMode ? false : true,
-        ...defaultSelectionForBackend(config, selectedBackend),
-        streaming: false,
-        streamPhase: 'idle',
-        streamError: null,
         gatewayStatus: gateway.status,
         gatewayBaseURL: gateway.baseURL,
-        activeAbortController: null
+        ...(conversationBusy
+          ? {}
+          : {
+              selectedThreadId,
+              backend: selectedBackend,
+              ...defaultSelectionForBackend(config, selectedBackend),
+              streaming: false,
+              streamPhase: 'idle' as const,
+              streamError: null,
+              activeAbortController: null
+            })
       });
-      await get().selectThread(selectedThreadId);
+      options.onDurableThreadMutation?.(chatController, { threads, config, catalog });
+      if (!conversationBusy) await get().selectThread(selectedThreadId);
     } catch (e) {
+      if (generation !== loadGeneration || get().disposed) return;
       set({
         threads: [],
         nextCursor: null,
@@ -691,11 +748,13 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   async search(query: string) {
+    if (get().disposed) return;
     set({ query, visibleThreadCount: CHAT_THREAD_PAGE_SIZE });
     await get().load();
   },
 
   async reconnectGateway() {
+    if (get().disposed) return;
     const { fixtureMode } = useShellStore.getState();
     const gateway = await resolveGatewayStatus(fixtureMode);
     set({
@@ -706,10 +765,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   async selectThread(id: string | null) {
-    if (get().streaming || get().streamPhase === 'composing') return;
+    if (get().disposed || get().streaming || get().streamPhase === 'composing') return;
+    const generation = ++selectionGeneration;
     const { fixtureMode, bridge } = useShellStore.getState();
     if (!id) {
-      persistActiveThreadID(null);
+      persistActiveThreadID(storageKey, null);
       set({
         selectedThreadId: null,
         messages: [],
@@ -754,8 +814,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           ? messagesForFixture(thread)
           : []
         : result?.messages.map(messageFromPersisted) ?? [];
-      if (get().selectedThreadId === id) {
-        persistActiveThreadID(id);
+      if (generation === selectionGeneration && !get().disposed && get().selectedThreadId === id) {
+        persistActiveThreadID(storageKey, id);
         set((state) => ({
           threads: resolvedThread ? mergeThreadSummary(state.threads, resolvedThread) : state.threads,
           messages,
@@ -767,7 +827,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         }));
       }
     } catch (error) {
-      if (get().selectedThreadId === id) {
+      if (generation === selectionGeneration && !get().disposed && get().selectedThreadId === id) {
         set({
           messages: [],
           messagesLoading: false,
@@ -783,7 +843,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   async resumeThread() {
-    const target = get().selectedThreadId ?? readActiveThreadID();
+    if (get().disposed) return false;
+    const target = get().selectedThreadId ?? readActiveThreadID(storageKey);
     if (!target) return false;
     const { fixtureMode, bridge } = useShellStore.getState();
 
@@ -793,9 +854,13 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     if (fixtureMode || !bridge) {
       await get().selectThread(target);
       const state = get();
-      return state.selectedThreadId === target && state.messagesLoading === false && state.streamPhase !== 'error';
+      return !state.disposed
+        && state.selectedThreadId === target
+        && state.messagesLoading === false
+        && state.streamPhase !== 'error';
     }
     if (get().streaming || get().streamPhase === 'composing') return false;
+    const generation = ++selectionGeneration;
 
     const current = get();
     const knownThread = current.threads.find((thread) => thread.id === target) ?? null;
@@ -820,8 +885,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       const result = await bridge.chatThreadGet(target, 500);
       validateChatPage(target, result);
       const resolvedBackend = backendFromThread(result.thread ?? null, selectedBackend);
-      if (get().selectedThreadId !== target) return false;
-      persistActiveThreadID(target);
+      if (generation !== selectionGeneration || get().disposed || get().selectedThreadId !== target) return false;
+      persistActiveThreadID(storageKey, target);
       set((state) => ({
         threads: result.thread ? mergeThreadSummary(state.threads, result.thread) : state.threads,
         messages: result.messages.map(messageFromPersisted),
@@ -833,7 +898,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       }));
       return true;
     } catch (error) {
-      if (get().selectedThreadId === target) {
+      if (generation === selectionGeneration && !get().disposed && get().selectedThreadId === target) {
         set({
           messagesLoading: false,
           loadingOlderMessages: false,
@@ -858,7 +923,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       !state.hasMoreMessages ||
       state.loadingOlderMessages ||
       state.streaming ||
-      state.streamPhase === 'composing'
+      state.streamPhase === 'composing' ||
+      state.disposed
     ) {
       return;
     }
@@ -927,7 +993,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       initial.streaming ||
       initial.streamPhase === 'composing' ||
       initial.loadingOlderMessages ||
-      initial.loadingAllMessages
+      initial.loadingAllMessages ||
+      initial.disposed
     ) {
       return false;
     }
@@ -963,6 +1030,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   async loadUntilMessage(messageID, threadID = get().selectedThreadId ?? undefined) {
+    if (get().disposed) return false;
     const target = messageID.trim();
     if (!target || !threadID) return false;
     if (get().selectedThreadId !== threadID) return false;
@@ -1001,17 +1069,18 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   loadMoreThreads() {
+    if (get().disposed) return;
     set((s) => ({ visibleThreadCount: s.visibleThreadCount + CHAT_THREAD_PAGE_SIZE }));
   },
 
   setBackend(id: ChatBackendId) {
-    if (get().streaming || get().streamPhase === 'composing') return;
+    if (get().disposed || get().streaming || get().streamPhase === 'composing') return;
     if (!canSelectChatBackend(get().config, id, get().catalog)) return;
     set({ backend: id, ...defaultSelectionForBackend(get().config, id) });
   },
 
   setModelOption(id: string) {
-    if (get().streaming || get().streamPhase === 'composing') return;
+    if (get().disposed || get().streaming || get().streamPhase === 'composing') return;
     const fallback = modelLabelForThread(null, get().backend);
     const options = chatModelOptions(get().config, get().backend, fallback);
     const selection = selectionForModelOption(options, id);
@@ -1024,7 +1093,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   setThinkingLevel(level: ChatThinkingSelection) {
-    if (get().streaming || get().streamPhase === 'composing') return;
+    if (get().disposed || get().streaming || get().streamPhase === 'composing') return;
     const fallback = modelLabelForThread(null, get().backend);
     const options = chatModelOptions(get().config, get().backend, fallback);
     const selection = selectionForThinkingLevel(
@@ -1042,7 +1111,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   startNewChat() {
-    if (get().streaming || get().streamPhase === 'composing') return;
+    if (get().disposed || get().streaming || get().streamPhase === 'composing') return;
+    selectionGeneration += 1;
     set({
       selectedThreadId: null,
       messages: [],
@@ -1056,14 +1126,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       streamError: null,
       ...defaultSelectionForBackend(get().config, get().backend)
     });
-    persistActiveThreadID(null);
+    persistActiveThreadID(storageKey, null);
   },
 
   async sendToThread(input) {
     const prompt = input.text.trim();
     const attachments = input.attachments ?? [];
     const current = get();
-    if (!prompt || current.streaming || current.streamPhase === 'composing') return;
+    if (!prompt || current.disposed || current.streaming || current.streamPhase === 'composing') return;
 
     const { fixtureMode, bridge } = useShellStore.getState();
     let threadID: string;
@@ -1084,12 +1154,21 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       });
       return;
     }
+    if (!acquireChatThreadSendLease(threadID, controllerID)) {
+      set({
+        streamPhase: 'error',
+        streamError: 'This conversation is generating in another pane.'
+      });
+      return;
+    }
+    const generation = ++turnGeneration;
     const backend = input.backend;
     let history = current.selectedThreadId === threadID ? current.messages : [];
 
     if (!fixtureMode) {
       if (!bridge) {
         set({ streamPhase: 'error', streamError: 'Linux native chat bridge is unavailable.' });
+        releaseChatThreadSendLease(threadID, controllerID);
         return;
       }
       if (current.selectedThreadId !== threadID) {
@@ -1102,6 +1181,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             streamPhase: 'error',
             streamError: error instanceof Error ? error.message : 'Unable to load the target thread.'
           });
+          releaseChatThreadSendLease(threadID, controllerID);
           return;
         }
       }
@@ -1117,6 +1197,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         streamPhase: 'error',
         streamError: 'Secure message identity generation is unavailable.'
       });
+      releaseChatThreadSendLease(threadID, controllerID);
       return;
     }
     const userTimestamp = new Date().toISOString();
@@ -1207,11 +1288,13 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           attachments: attachments.length > 0 ? attachments : undefined
         };
         await bridge!.chatMessageAppend(appendRequest);
-        await refreshThreadSummaries(get().query);
+        if (generation !== turnGeneration || get().disposed) throw new GatewayChatError('aborted', 'Chat controller closed.');
+        await refreshThreadSummaries(get().query, chatController, options.onDurableThreadMutation);
       }
       committedMessageIds.add(userID);
 
       const gateway = await resolveGatewayStatus(fixtureMode);
+      if (generation !== turnGeneration || get().disposed) throw new GatewayChatError('aborted', 'Chat controller closed.');
       set({ gatewayStatus: gateway.status, gatewayBaseURL: gateway.baseURL });
       if (!fixtureMode && gateway.status !== 'reachable') {
         throw new GatewayChatError(
@@ -1247,14 +1330,16 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         streamPhase: 'streaming'
       }));
       for await (const event of stream) {
-        if (controller.signal.aborted) {
+        if (generation !== turnGeneration || get().disposed || controller.signal.aborted) {
           throw new GatewayChatError('aborted', 'Chat stream aborted.');
         }
         if (event.type === 'delta' && !firstText) {
           firstText = true;
           endFirstToken();
         }
-        set((state) => ({ messages: applyChatStreamEvent(state.messages, assistantID, event) }));
+        set((state) => generation === turnGeneration && !state.disposed
+          ? { messages: applyChatStreamEvent(state.messages, assistantID, event) }
+          : {});
       }
 
       const finalAssistant = get().messages.find((message) => message.id === assistantID);
@@ -1276,9 +1361,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             message.id === assistantID ? { ...message, timestamp } : message
           )
         }));
-        await refreshThreadSummaries(get().query);
+        if (generation !== turnGeneration || get().disposed) throw new GatewayChatError('aborted', 'Chat controller closed.');
+        await refreshThreadSummaries(get().query, chatController, options.onDurableThreadMutation);
       }
-      set({ streaming: false, streamPhase: 'done', activeAbortController: null });
+      if (generation === turnGeneration && !get().disposed) {
+        set({ streaming: false, streamPhase: 'done', activeAbortController: null });
+      }
     } catch (error) {
       const aborted = error instanceof GatewayChatError && error.kind === 'aborted';
       const unimplemented = error instanceof GatewayChatError && error.kind === 'unimplemented';
@@ -1286,7 +1374,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       // durably acknowledge: a user append that rejected, or streamed
       // assistant text whose terminal append rejected. Leaving them in
       // `messages` would feed non-durable turns into the next send's history.
-      set((state) => ({
+      if (generation === turnGeneration && !get().disposed) set((state) => ({
         messages: state.messages.filter((message) => {
           if (message.id === userID) return committedMessageIds.has(userID);
           if (message.id === assistantID) {
@@ -1303,6 +1391,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             : 'Chat stream failed.',
         activeAbortController: null
       }));
+    } finally {
+      releaseChatThreadSendLease(threadID, controllerID);
     }
   },
 
@@ -1316,6 +1406,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   async respondToToolApproval(messageID, decision) {
+    if (get().disposed) return;
     const existing = approvalRequestsInFlight.get(messageID);
     if (existing) return existing;
 
@@ -1425,6 +1516,28 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     const controller = get().activeAbortController;
     if (!controller) return;
     controller.abort();
+    turnGeneration += 1;
     set({ streamPhase: 'aborted' });
+  },
+
+  dispose() {
+    if (get().disposed) return;
+    loadGeneration += 1;
+    selectionGeneration += 1;
+    turnGeneration += 1;
+    get().activeAbortController?.abort();
+    releaseChatControllerLeases(controllerID);
+    approvalRequestsInFlight.clear();
+    set({
+      disposed: true,
+      streaming: false,
+      streamPhase: 'aborted',
+      activeAbortController: null
+    });
   }
-}));
+  }));
+  return chatController;
+}
+
+/** Compatibility primary controller used by Chat, Pet, and Insights. */
+export const useChatStore = createChatController();

@@ -10,8 +10,10 @@ import { useShellStore } from './shellStore.js';
 import {
   applyChatStreamEvent,
   CHAT_ACTIVE_THREAD_STORAGE_KEY,
+  createChatController,
   useChatStore
 } from './chatStore.js';
+import { resetChatRuntimeForTests } from './chatRuntime.js';
 
 const NOW = '2026-07-10T12:00:00.000Z';
 
@@ -57,6 +59,7 @@ function bridgeWith(overrides: Partial<LinuxShellBridge>): LinuxShellBridge {
 }
 
 function reset() {
+  resetChatRuntimeForTests();
   useChatStore.setState({
     threads: [],
     nextCursor: null,
@@ -906,5 +909,239 @@ describe('exact-thread chat store', () => {
     await useChatStore.getState().sendMessage('Fixture only');
     expect(useChatStore.getState().selectedThreadId).toBe(selected);
     expect(useChatStore.getState().streamPhase).toBe('done');
+  });
+
+  it('keeps simultaneous streams for different threads isolated by controller', async () => {
+    const streams = new Map<string, {
+      onChunk: (chunk: string) => void;
+      resolve: () => void;
+    }>();
+    const bridge = bridgeWith({
+      gatewayChatStream: async (request, onChunk) => new Promise<void>((resolve) => {
+        const prompt = request.messages.at(-1)?.content ?? '';
+        streams.set(prompt, { onChunk, resolve });
+      })
+    });
+    useShellStore.setState({
+      bridge,
+      fixtureMode: false,
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+    });
+    const paneA = createChatController({ activeThreadStorageKey: null, controllerID: 'pane-A' });
+    const paneB = createChatController({ activeThreadStorageKey: null, controllerID: 'pane-B' });
+    paneA.setState({ threads: [thread('A'), thread('B')], selectedThreadId: 'A', backend: 'codex' });
+    paneB.setState({ threads: [thread('A'), thread('B')], selectedThreadId: 'B', backend: 'codex' });
+
+    const sendingA = paneA.getState().sendMessage('Prompt A');
+    const sendingB = paneB.getState().sendMessage('Prompt B');
+    await vi.waitFor(() => expect(streams.size).toBe(2));
+
+    streams.get('Prompt A')!.onChunk('data: {"choices":[{"delta":{"content":"Answer A"}}]}\n\n');
+    streams.get('Prompt B')!.onChunk('data: {"choices":[{"delta":{"content":"Answer B"}}]}\n\n');
+    await vi.waitFor(() => {
+      expect(paneA.getState().messages.some((message) => message.text === 'Answer A')).toBe(true);
+      expect(paneB.getState().messages.some((message) => message.text === 'Answer B')).toBe(true);
+    });
+    expect(JSON.stringify(paneA.getState().messages)).not.toContain('Answer B');
+    expect(JSON.stringify(paneB.getState().messages)).not.toContain('Answer A');
+
+    for (const stream of streams.values()) {
+      stream.onChunk('data: [DONE]\n\n');
+      stream.resolve();
+    }
+    await Promise.all([sendingA, sendingB]);
+
+    expect(paneA.getState().streamPhase).toBe('done');
+    expect(paneB.getState().streamPhase).toBe('done');
+    paneA.getState().dispose();
+    paneB.getState().dispose();
+  });
+
+  it('stops only the requested pane while another pane finishes', async () => {
+    const streams = new Map<string, {
+      onChunk: (chunk: string) => void;
+      resolve: () => void;
+    }>();
+    const cancel = vi.fn(async () => undefined);
+    useShellStore.setState({
+      bridge: bridgeWith({
+        gatewayChatCancel: cancel,
+        gatewayChatStream: async (request, onChunk) => new Promise<void>((resolve) => {
+          streams.set(request.messages.at(-1)?.content ?? '', { onChunk, resolve });
+        })
+      }),
+      fixtureMode: false,
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+    });
+    const paneA = createChatController({ activeThreadStorageKey: null, controllerID: 'stop-pane-A' });
+    const paneB = createChatController({ activeThreadStorageKey: null, controllerID: 'stop-pane-B' });
+    paneA.setState({ threads: [thread('A'), thread('B')], selectedThreadId: 'A', backend: 'codex' });
+    paneB.setState({ threads: [thread('A'), thread('B')], selectedThreadId: 'B', backend: 'codex' });
+
+    const sendingA = paneA.getState().sendMessage('Stop A');
+    const sendingB = paneB.getState().sendMessage('Finish B');
+    await vi.waitFor(() => expect(streams.size).toBe(2));
+
+    paneA.getState().stopStreaming();
+    streams.get('Stop A')!.resolve();
+    streams.get('Finish B')!.onChunk('data: {"choices":[{"delta":{"content":"B completed"}}]}\n\n');
+    streams.get('Finish B')!.onChunk('data: [DONE]\n\n');
+    streams.get('Finish B')!.resolve();
+    await Promise.all([sendingA, sendingB]);
+
+    expect(paneA.getState().streamPhase).toBe('aborted');
+    expect(paneB.getState().streamPhase).toBe('done');
+    expect(paneB.getState().messages.some((message) => message.text === 'B completed')).toBe(true);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    paneA.getState().dispose();
+    paneB.getState().dispose();
+  });
+
+  it('blocks a second pane from sending to the same thread before any durable append or gateway call', async () => {
+    let resolveGateway!: () => void;
+    const append = vi.fn(async (request: ChatMessageAppendRequest) => ({
+      message: persisted(request.messageID, request.threadID, request.role, request.content),
+      inserted: true
+    }));
+    const gateway = vi.fn(async () => new Promise<void>((resolve) => {
+      resolveGateway = resolve;
+    }));
+    useShellStore.setState({
+      bridge: bridgeWith({ chatMessageAppend: append, gatewayChatStream: gateway }),
+      fixtureMode: false,
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+    });
+    const paneA = createChatController({ activeThreadStorageKey: null, controllerID: 'lease-pane-A' });
+    const paneB = createChatController({ activeThreadStorageKey: null, controllerID: 'lease-pane-B' });
+    paneA.setState({ threads: [thread('A')], selectedThreadId: 'A', backend: 'codex' });
+    paneB.setState({ threads: [thread('A')], selectedThreadId: 'A', backend: 'codex' });
+
+    const sendingA = paneA.getState().sendMessage('First writer');
+    await vi.waitFor(() => expect(paneA.getState().streamPhase).toBe('streaming'));
+    await paneB.getState().sendMessage('Blocked writer');
+
+    expect(paneB.getState().streamPhase).toBe('error');
+    expect(paneB.getState().streamError).toBe('This conversation is generating in another pane.');
+    expect(append).toHaveBeenCalledTimes(1);
+    expect(gateway).toHaveBeenCalledTimes(1);
+
+    paneA.getState().stopStreaming();
+    resolveGateway();
+    await sendingA;
+    paneA.getState().dispose();
+    paneB.getState().dispose();
+  });
+
+  it('does not let an isolated pane mutate the legacy active-thread storage key', async () => {
+    window.localStorage.setItem(CHAT_ACTIVE_THREAD_STORAGE_KEY, 'legacy-thread');
+    useShellStore.setState({ bridge: bridgeWith({}), fixtureMode: false });
+    const pane = createChatController({ activeThreadStorageKey: null, controllerID: 'storage-isolated-pane' });
+    pane.setState({ threads: [thread('A'), thread('B')] });
+
+    await pane.getState().selectThread('B');
+    expect(pane.getState().selectedThreadId).toBe('B');
+    expect(window.localStorage.getItem(CHAT_ACTIVE_THREAD_STORAGE_KEY)).toBe('legacy-thread');
+
+    pane.getState().startNewChat();
+    expect(window.localStorage.getItem(CHAT_ACTIVE_THREAD_STORAGE_KEY)).toBe('legacy-thread');
+    pane.getState().dispose();
+  });
+
+  it('ignores an older search result that resolves after a newer query', async () => {
+    const pending = new Map<string, (value: { threads: ChatThreadSummary[] }) => void>();
+    useShellStore.setState({
+      bridge: bridgeWith({
+        chatThreadList: async (query) => new Promise((resolve) => {
+          pending.set(query ?? '', resolve);
+        })
+      }),
+      fixtureMode: false,
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+    });
+    const pane = createChatController({ activeThreadStorageKey: null, controllerID: 'search-pane' });
+
+    const older = pane.getState().search('older');
+    const newer = pane.getState().search('newer');
+    await vi.waitFor(() => expect(pending.size).toBe(2));
+    pending.get('newer')!({ threads: [thread('new-result')] });
+    await newer;
+    pending.get('older')!({ threads: [thread('old-result')] });
+    await older;
+
+    expect(pane.getState().query).toBe('newer');
+    expect(pane.getState().threads.map((candidate) => candidate.id)).toEqual(['new-result']);
+    expect(pane.getState().selectedThreadId).toBe('new-result');
+    pane.getState().dispose();
+  });
+
+  it('ignores a stale response when the same thread is selected twice', async () => {
+    const pending: Array<(value: {
+      thread: ChatThreadSummary;
+      messages: PersistedChatMessage[];
+      hasMoreBefore: boolean;
+    }) => void> = [];
+    useShellStore.setState({
+      bridge: bridgeWith({
+        chatThreadGet: async () => new Promise((resolve) => {
+          pending.push(resolve);
+        })
+      }),
+      fixtureMode: false
+    });
+    const pane = createChatController({ activeThreadStorageKey: null, controllerID: 'selection-pane' });
+    pane.setState({ threads: [thread('A')] });
+
+    const older = pane.getState().selectThread('A');
+    const newer = pane.getState().selectThread('A');
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    pending[1]!({
+      thread: thread('A'),
+      messages: [persisted('new-message', 'A', 'assistant', 'Newest response')],
+      hasMoreBefore: false
+    });
+    await newer;
+    pending[0]!({
+      thread: thread('A'),
+      messages: [persisted('old-message', 'A', 'assistant', 'Stale response')],
+      hasMoreBefore: false
+    });
+    await older;
+
+    expect(pane.getState().messages).toEqual([
+      expect.objectContaining({ id: 'new-message', text: 'Newest response' })
+    ]);
+    pane.getState().dispose();
+  });
+
+  it('aborts on dispose and ignores chunks delivered after the pane is closed', async () => {
+    let onChunk!: (chunk: string) => void;
+    let resolveGateway!: () => void;
+    const cancel = vi.fn(async () => undefined);
+    useShellStore.setState({
+      bridge: bridgeWith({
+        gatewayChatCancel: cancel,
+        gatewayChatStream: async (_request, callback) => new Promise<void>((resolve) => {
+          onChunk = callback;
+          resolveGateway = resolve;
+        })
+      }),
+      fixtureMode: false,
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+    });
+    const pane = createChatController({ activeThreadStorageKey: null, controllerID: 'disposed-pane' });
+    pane.setState({ threads: [thread('A')], selectedThreadId: 'A', backend: 'codex' });
+
+    const sending = pane.getState().sendMessage('Close this pane');
+    await vi.waitFor(() => expect(pane.getState().streamPhase).toBe('streaming'));
+    pane.getState().dispose();
+    onChunk('data: {"choices":[{"delta":{"content":"Late chunk"}}]}\n\n');
+    onChunk('data: [DONE]\n\n');
+    resolveGateway();
+    await sending;
+
+    expect(pane.getState().disposed).toBe(true);
+    expect(pane.getState().streamPhase).toBe('aborted');
+    expect(JSON.stringify(pane.getState().messages)).not.toContain('Late chunk');
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 });
