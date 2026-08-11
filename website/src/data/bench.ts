@@ -1567,6 +1567,10 @@ export function reportQualityCommentary(): ReportQualityCommentary | null {
   let topBest: QualityVerdictQuote | null = null;
   let topWorst: QualityVerdictQuote | null = null;
   let damningWorst: QualityVerdictQuote | null = null;
+  /* QualityVerdictQuote carries no per-dimension scores, so the incumbent's
+     correctness is tracked alongside it. Reading it back off the stored quote
+     compares a value with itself and the pick never advances. */
+  let damningCorrectness = Number.POSITIVE_INFINITY;
   for (const [task, cells] of byTask) {
     const { best, worst } = pickTaskSides(cells);
     const meta = EVIDENCE.tasks[task];
@@ -1614,13 +1618,12 @@ export function reportQualityCommentary(): ReportQualityCommentary | null {
     // Most damning worst: lowest correctness score, breaking ties by lower
     // quality_mean — the "no implementation / broken parser" verdicts.
     if (worst) {
-      const damning = damningWorst as QualityVerdictQuote | null;
-      const score = (q: QualityVerdictQuote): number => {
-        const side = worst;
-        return side ? side.correctness : 0;
-      };
-      if (!damning || worst.correctness < score(damning) ||
-          (worst.correctness === score(damning) && worst.qualityMean < damning.qualityMean)) {
+      const beatsIncumbent =
+        damningWorst == null ||
+        worst.correctness < damningCorrectness ||
+        (worst.correctness === damningCorrectness && worst.qualityMean < damningWorst.qualityMean);
+      if (beatsIncumbent) {
+        damningCorrectness = worst.correctness;
         damningWorst = {
           task,
           tier: "worst",
