@@ -45,4 +45,18 @@ public sealed record TokenUsageRecord
     public string ProvenanceConfidence { get; init; } = "exact";
     public string EstimatorVersion { get; init; } = "win-writeseam-1";
     public string? ParentRequestID { get; init; }
+
+    /// <summary>
+    /// Billing provenance (<c>api</c> / <c>subscription</c> / <c>unknown</c>) — v60.
+    /// <c>null</c> means "classify me at write time" and the seam derives it from
+    /// <see cref="Provider"/> + <see cref="UsageSource"/> via
+    /// <see cref="BillingProvenance.Classify"/>, mirroring the Mac
+    /// <c>UsageStore.upsertUsage</c> stamp. Set it explicitly only when the caller
+    /// already knows the kind from the ingest route.
+    /// </summary>
+    public string? BillingKind { get; init; }
+
+    /// <summary>The kind actually persisted: the stamped value, else the classifier's.</summary>
+    public string EffectiveBillingKind =>
+        BillingKind ?? BillingProvenance.Classify(Provider, UsageSource);
 }

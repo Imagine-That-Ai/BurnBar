@@ -27,9 +27,26 @@ struct ProviderQuotaChip: View {
     var displayName: String?
 
     @State private var quotaService = ProviderQuotaService.shared
+    /// Injected, not `SettingsManager.shared`: the shrink-only singleton ratchet
+    /// (`budgets/singleton-baseline.json`) counts every `.shared` reference, and
+    /// this chip does not need process-wide reach for one Bool.
+    ///
+    /// Optional on purpose. A non-optional `@Environment(SettingsManager.self)`
+    /// traps when the object was never injected, and this chip is rendered
+    /// standalone in `ProviderQuotaChipTests`. Absent environment falls back to
+    /// `false`, which is also the setting's own default, so the fallback shows
+    /// per-account numbers rather than silently summing across accounts — the
+    /// exact confusion this change exists to remove.
+    @Environment(SettingsManager.self) private var settingsManager: SettingsManager?
 
     var body: some View {
-        if let resolved = Self.resolve(provider: provider, style: style, displayName: displayName, service: quotaService) {
+        if let resolved = Self.resolve(
+            provider: provider,
+            style: style,
+            displayName: displayName,
+            service: quotaService,
+            cumulative: settingsManager?.cumulativeAcrossAccounts ?? false
+        ) {
             QuotaMicroBadge(text: resolved.text, tint: resolved.tint)
                 .help(resolved.tooltip)
                 .accessibilityLabel(resolved.accessibilityLabel)
@@ -57,19 +74,30 @@ extension ProviderQuotaChip {
         let tint: Color
         let tooltip: String
         let accessibilityLabel: String
+        /// `0…1` remaining. Additive: the chip itself only ever needed the
+        /// formatted text, but the Agent Deck's presence resolver needs the
+        /// number to decide `.exhausted` (and PR 2's roster meter needs it to
+        /// draw a bar) without re-deriving the bucket selection.
+        let remainingFraction: Double
     }
 
     /// Decides whether to render and what to show. Hoisted so tests can
     /// drive the formatting and pressure thresholds without standing up a
     /// SwiftUI view hierarchy.
+    ///
+    /// `cumulative` must carry `SettingsManager.cumulativeAcrossAccounts`.
+    /// The chip used to unconditionally prefer the merged snapshot, so with
+    /// the (default-off) toggle disabled it showed summed-across-accounts
+    /// percentages while the Quota tab and popover showed per-account ones.
     @MainActor
     static func resolve(
         provider: AgentProvider,
         style: Style,
         displayName: String?,
-        service: ProviderQuotaService
+        service: ProviderQuotaService,
+        cumulative: Bool
     ) -> Resolution? {
-        let snapshot = service.cumulativeSnapshot(for: provider) ?? service.snapshot(for: provider)
+        let snapshot = service.primaryDisplaySnapshot(for: provider, cumulative: cumulative)
         return resolve(provider: provider, style: style, displayName: displayName, snapshot: snapshot)
     }
 
@@ -91,7 +119,8 @@ extension ProviderQuotaChip {
             text: formatText(intPercent: intPct, style: style),
             tint: pressureTint(for: fraction),
             tooltip: "\(label) — \(snapshot.summaryText)",
-            accessibilityLabel: "\(label) quota \(intPct) percent remaining"
+            accessibilityLabel: "\(label) quota \(intPct) percent remaining",
+            remainingFraction: fraction
         )
     }
 

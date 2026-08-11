@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Spend provenance: real API dollars vs subscription value
+- **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored
+  across the macOS/Windows/Linux migrators with deterministic backfill): `api`
+  (per-token dollars leaving a wallet — deepseek, OpenRouter, gateway keys,
+  billing APIs), `subscription` (imputed list-price value of plan-covered
+  harness work — Claude Code on Max, Codex, Cursor, Copilot…), or an honest
+  `unknown` bucket that is never silently folded into either side.
+- **Spend Lens on the burn chart**: liquid-glass `All / Split / Overlay`
+  capsule. Split shows real dollars and plan value side by side; Overlay
+  breaks both out on one shared axis (ember = money, glacier = plan).
+  Persisted per user.
+- **The AI Inbox daily budget now guards real dollars only**: subscription-
+  routed model calls no longer consume `dailyBudgetUSD` (opt back in with the
+  new "Count subscription spend" setting). Budget/status copy stops saying
+  "no model calls" when it means "rule-based fallback".
+
 ### Added - AI Inbox Founder Lens: judgment packs, replies, and compounding plans
 - **Founder Lens judgment layer** (`BurnBarFounderLens`): engOps and
   productStrategy packs distilled from real founder/VC/engineering doctrine

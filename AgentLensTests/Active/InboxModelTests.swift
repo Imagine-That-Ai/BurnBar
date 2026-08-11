@@ -62,7 +62,14 @@ final class InboxModelTests: XCTestCase {
             snooze: { id, until in try await harness.record("snooze:\(id):\(until != nil)") },
             setFeedback: { id, feedback in try await harness.record("feedback:\(id):\(feedback ?? "nil")") },
             markAllRead: { try await harness.record("markAllRead") },
-            loadRuns: { await harness.runs }
+            loadRuns: { await harness.runs },
+            // A scratch shelf per model: these tests assert list behaviour, and
+            // a shelf reading the real `UserDefaults` would let one developer's
+            // pins reorder another machine's expectations.
+            shelf: InboxShelfStore(
+                defaults: UserDefaults(suiteName: "inbox.model.tests.\(UUID().uuidString)")!,
+                persistDebounce: 0
+            )
         )
     }
 

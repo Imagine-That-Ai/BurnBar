@@ -111,6 +111,7 @@ final class OpenBurnBarDatabase: Sendable {
         registerExecutionSourceAttributionMigration(on: &migrator)
         registerAIInboxMigration(on: &migrator)
         registerFounderLensMigration(on: &migrator)
+        registerBillingKindMigration(on: &migrator)
         return migrator
     }
 }

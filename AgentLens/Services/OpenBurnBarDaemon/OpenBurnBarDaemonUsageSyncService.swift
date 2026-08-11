@@ -320,7 +320,13 @@ final class OpenBurnBarDaemonUsageSyncService {
             // The Elder Wand fusion linkage. It rides the daemon event directly,
             // so imported rows carry it into the v49 `parentRequestID` column and
             // the period fusion/normal partition becomes a real SQL query.
-            parentRequestID: event.parentRequestID
+            parentRequestID: event.parentRequestID,
+            // Billing provenance rides the event too. Dropping it here would let
+            // the store's write-time fallback re-derive `.api` from
+            // `usageSource == .daemon`, silently turning a subscription-routed
+            // event into real wallet spend; `effectiveKind` honours the stamp and
+            // falls back to the legacy classifier only for unstamped rows.
+            billingKind: BurnBarBillingProvenance.effectiveKind(of: event)
         )
     }
 
@@ -358,7 +364,10 @@ final class OpenBurnBarDaemonUsageSyncService {
             // from the idempotency-key signature (`<parentRequestID>|panel|…`)
             // on raw ledger lines that predate the explicit field.
             parentRequestID: record.event.parentRequestID
-                ?? Self.fusionParentRequestID(fromIdempotencyKey: record.idempotencyKey)
+                ?? Self.fusionParentRequestID(fromIdempotencyKey: record.idempotencyKey),
+            // Same stamp-preserving rule as the live-event path above: a ledger
+            // line that says `.subscription` must not be imported as API dollars.
+            billingKind: BurnBarBillingProvenance.effectiveKind(of: record.event)
         )
     }
 

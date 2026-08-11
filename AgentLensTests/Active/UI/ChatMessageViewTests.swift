@@ -184,4 +184,60 @@ final class ChatMessageViewTests: XCTestCase {
         XCTAssertEqual(expanded.visibleText, content)
         XCTAssertEqual(expanded.hiddenCharacterCount, 0)
     }
+
+    func test_chatMessageViewEquatable_usesSemanticInputs_notClosureIdentity() {
+        let message = ViewTestFixtures.makeAssistantMessage(content: "Stable")
+        let first = ChatMessageView(
+            message: message,
+            isStreaming: false,
+            showViaBadge: true,
+            isHermes: true,
+            assistantModelKey: "hermes",
+            onJumpToLocal: { _ in }
+        )
+        let second = ChatMessageView(
+            message: message,
+            isStreaming: false,
+            showViaBadge: true,
+            isHermes: true,
+            assistantModelKey: "hermes",
+            onJumpToLocal: { _ in }
+        )
+
+        XCTAssertEqual(first, second)
+        XCTAssertNotEqual(first, ChatMessageView(
+            message: message,
+            isStreaming: true,
+            showViaBadge: true,
+            isHermes: true,
+            assistantModelKey: "hermes",
+            onJumpToLocal: { _ in }
+        ))
+        XCTAssertNotEqual(first, ChatMessageView(
+            message: message,
+            isStreaming: false,
+            showViaBadge: true,
+            isHermes: true,
+            assistantModelKey: "hermes"
+        ))
+    }
+
+    func test_hermesRichBubble_andStreamingBubble_buildStreamingBodies() throws {
+        let rich = HermesRichBubble(
+            text: String(repeating: "é", count: 120),
+            isStreaming: true
+        )
+        XCTAssertNoThrow(try rich.inspect())
+
+        let streaming = StreamingBubble(
+            text: "**streaming**",
+            isStreaming: true,
+            isError: false,
+            baseSize: 14,
+            lineHeight: 20
+        ) {
+            Text("streaming")
+        }
+        XCTAssertNoThrow(try streaming.inspect())
+    }
 }

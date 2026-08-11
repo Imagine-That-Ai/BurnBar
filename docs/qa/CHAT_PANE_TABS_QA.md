@@ -26,10 +26,32 @@ plain build path.
 | --- | --- | --- | --- | --- |
 | Single tab, single pane | Old Chat surface parity; toolbar pickers visible; `cmd+W` closes the window. | NOT RUN | | Requires interactive app launch. |
 | Pane splitting | `cmd+D` and `cmd+shift+D` create nested panes; active ring follows focus; dividers resize. | NOT RUN | | Requires interactive app launch. |
-| Tab controls | `cmd+T`, `cmd+shift+T`, `cmd+shift+[` / `cmd+shift+]`, and `cmd+1...9` work. | NOT RUN | | Requires interactive app launch. |
+| Tab controls | `cmd+T`, `cmd+shift+T`, `cmd+shift+[` / `cmd+shift+]` work. | NOT RUN | | Requires interactive app launch. |
+| Digit keys are unambiguous | `cmd+1...8` reaches the dashboard's primary sections and **nothing else** while `mainRoute == .chat`; no tab selection fires. | NOT RUN | | `cmd+1...9` tab selection was **removed** (see below). Requires interactive app launch. |
 | Drag and pane moves | Rail-to-pane bind, pane-header swap, move to new tab, move to existing tab. | NOT RUN | | Requires interactive app launch. |
 | Background completion | Hidden-pane completion dots appear; `cmd+shift+U` focuses and clears; notification tap focuses pane. | NOT RUN | | Requires interactive app launch and notification permission state. |
 | Relaunch persistence | Tabs, splits, fractions, titles, colors, zoom, active tab/pane, and bound threads restore. | NOT RUN | | Requires interactive app relaunch. |
+
+## Shortcut inventory update — 2026-08-09 (Agent Deck PR 1)
+
+`cmd+1...9` tab selection (`PaneWorkspaceView.swift`) has been **deleted**. It was
+ambiguous against `DashboardView.swift:691`, which binds `cmd+1...8` to the app's
+primary sections in the same responder chain, and the row above had been sitting
+at NOT RUN since 2026-07-01 — so no verified behaviour was lost, only a coin
+flip. Tabs keep `cmd+shift+[` / `cmd+shift+]` / `cmd+T` / `cmd+shift+T` /
+`cmd+W`. Agent selection (`cmd+opt+1...9`) and the agent roster (`cmd+shift+A`)
+are **not** registered by PR 1; they land with PR 2, and the Sigil prints no
+keycap hint until they do — so nothing on screen teaches a shortcut that does not
+fire.
+
+Known duplicate registrations found by `grep -rn 'keyboardShortcut' AgentLens/`
+and **not** fixed here (both live outside this PR's ownership boundary):
+
+| Binding | Registered at | Status |
+| --- | --- | --- |
+| `cmd+K` | `DashboardView.swift:705` **and** `BurnBarTopRail.swift:491` | Double-bound. Spec §9.1 assigns the `BurnBarTopRail` removal to PR 1; deferred — `AgentLens/Views/Dashboard/**` was owned by a concurrent agent during this change. |
+| `cmd+L` | `DashboardQuickSwitchView.swift:879` and `:907` | Double-bound. Flagged, out of scope. |
+| `cmd+N` | `DashboardChatWorkspaceView.swift:187`, `MissionsLaneView.swift:166`, `AccountSwitcherSettingsView+Rendering.swift:649` | Triple-bound. Flagged, out of scope. |
 
 ## Defects / follow-ups
 

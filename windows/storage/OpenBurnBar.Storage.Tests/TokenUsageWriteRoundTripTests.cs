@@ -18,15 +18,17 @@ namespace OpenBurnBar.Storage.Tests;
 /// </summary>
 public sealed class TokenUsageWriteRoundTripTests
 {
-    // Ground-truth invariants of the committed v58 fixture, observed by opening it
-    // and reproducing DatabaseByteCompatVector.computeSchemaHash byte-for-byte.
-    // Pinned as literals so corruption or an accidental migration is caught, not
-    // merely self-consistency.
-    private const string FixtureName = "openburnbar-db-compat-v59.sqlcipher";
+    // Ground-truth invariants of the committed byte-compat fixture, observed by
+    // opening it and reproducing DatabaseByteCompatVector.computeSchemaHash
+    // byte-for-byte. Pinned as literals so corruption or an accidental migration is
+    // caught, not merely self-consistency. All four move together whenever the
+    // fixture is regenerated — see openburnbar-db-compat-vector.json, which is the
+    // regeneration output these literals mirror.
+    private const string FixtureName = "openburnbar-db-compat-v60.sqlcipher";
     private const string ExpectedSchemaHash =
-        "90baa98a7e1dbe2c0afc39962ab80383b555e003193c470798fb1c0f9c3160c0";
-    private const string ExpectedMigrationEndpoint = "v59_founder_lens";
-    private const long ExpectedMigrationCount = 60;
+        "dc8363e8112ad9840f912ebb6633f777c475d7f11267b2d8caff380fa38b1a78";
+    private const string ExpectedMigrationEndpoint = "v60_billing_kind";
+    private const long ExpectedMigrationCount = 61;
     private const long ExpectedUserVersion = 0;
 
     private static string FixtureSource =>
@@ -261,6 +263,118 @@ public sealed class TokenUsageWriteRoundTripTests
             Cleanup(working);
         }
     }
+
+    [Fact]
+    public void WriteTokenUsage_StampsBillingProvenance_DerivedFromProviderAndUsageSource()
+    {
+        string working = CopyFixtureToWorkingFile();
+        try
+        {
+            // A caller that never sets BillingKind must still land a CLASSIFIED
+            // row: before the v60 write-seam fix the column was absent from the
+            // INSERT entirely, so every Windows-written row sat at the 'unknown'
+            // default forever and the api-vs-plan split was empty on Windows.
+            var planBilled = NewRecord("win-billing-plan", "Claude Code", "provider_log");
+            var keyBilled = NewRecord("win-billing-key", "OpenAI", "provider_log");
+            var gateway = NewRecord("win-billing-gateway", "Gemini", "daemon");
+            var opaque = NewRecord("win-billing-opaque", "Gemini", "provider_log");
+
+            using (var connection = SqlCipherConnection.Open(working, SqlCipherParameters.FixturePassphrase))
+            {
+                foreach (TokenUsageRecord record in new[] { planBilled, keyBilled, gateway, opaque })
+                {
+                    Assert.Equal(1, TokenUsageWriteSeam.WriteTokenUsage(connection, record));
+                }
+            }
+
+            using (var connection = SqlCipherConnection.Open(working, SqlCipherParameters.FixturePassphrase))
+            {
+                Assert.Equal(
+                    BillingProvenance.Subscription,
+                    TokenUsageWriteSeam.ReadTokenUsage(connection, planBilled.Id)!.BillingKind);
+                Assert.Equal(
+                    BillingProvenance.Api,
+                    TokenUsageWriteSeam.ReadTokenUsage(connection, keyBilled.Id)!.BillingKind);
+                Assert.Equal(
+                    BillingProvenance.Api,
+                    TokenUsageWriteSeam.ReadTokenUsage(connection, gateway.Id)!.BillingKind);
+                // Honest, not guessed: an unrecognized harness stays reclassifiable.
+                Assert.Equal(
+                    BillingProvenance.Unknown,
+                    TokenUsageWriteSeam.ReadTokenUsage(connection, opaque.Id)!.BillingKind);
+
+                // The added column must not have migrated or reshaped the file.
+                Assert.Equal(ExpectedSchemaHash, SqlCipherConnection.ComputeSchemaHash(connection));
+                Assert.Equal(ExpectedMigrationEndpoint, SqlCipherConnection.ReadMigrationEndpoint(connection));
+                Assert.Equal(ExpectedMigrationCount, SqlCipherConnection.ReadMigrationCount(connection));
+            }
+        }
+        finally
+        {
+            Cleanup(working);
+        }
+    }
+
+    [Fact]
+    public void WriteTokenUsage_ExplicitBillingKindWins_AndIsStickyAcrossAnUnknownCorrection()
+    {
+        string working = CopyFixtureToWorkingFile();
+        try
+        {
+            // An explicit stamp overrides what the classifier would have derived…
+            var stamped = NewRecord("win-billing-sticky", "Claude Code", "provider_log") with
+            {
+                BillingKind = BillingProvenance.Api,
+            };
+            using (var connection = SqlCipherConnection.Open(working, SqlCipherParameters.FixturePassphrase))
+            {
+                TokenUsageWriteSeam.WriteTokenUsage(connection, stamped);
+            }
+
+            // …and survives a later correction that carries no classification, the
+            // same stickiness UsageStore+Upsert.swift applies on macOS.
+            var correction = stamped with
+            {
+                Id = "win-billing-sticky-correction",
+                TotalTokens = 999,
+                UsageSource = "unknown",
+                BillingKind = null,
+            };
+            using (var connection = SqlCipherConnection.Open(working, SqlCipherParameters.FixturePassphrase))
+            {
+                Assert.Equal(BillingProvenance.Unknown, correction.EffectiveBillingKind);
+                TokenUsageWriteSeam.WriteTokenUsage(connection, correction);
+            }
+
+            using (var connection = SqlCipherConnection.Open(working, SqlCipherParameters.FixturePassphrase))
+            {
+                TokenUsageRecord? readBack = TokenUsageWriteSeam.ReadTokenUsage(connection, stamped.Id);
+                Assert.NotNull(readBack);
+                Assert.Equal(999, readBack!.TotalTokens); // the correction did land
+                Assert.Equal(BillingProvenance.Api, readBack.BillingKind); // …without erasing provenance
+            }
+        }
+        finally
+        {
+            Cleanup(working);
+        }
+    }
+
+    private static TokenUsageRecord NewRecord(string id, string provider, string usageSource) =>
+        new()
+        {
+            Id = id,
+            Provider = provider,
+            SessionId = "s-" + id,
+            ProjectName = "WinWriteSeam",
+            Model = "opus-4.8",
+            TotalTokens = 100,
+            Cost = 1.0,
+            StartTime = "2026-08-09 00:00:00.000",
+            EndTime = "2026-08-09 00:01:00.000",
+            CreatedAt = "2026-08-09 00:02:00.000",
+            UsageSource = usageSource,
+        };
 
     private static string? ReadPragma(SqliteConnection connection, string pragma)
     {
