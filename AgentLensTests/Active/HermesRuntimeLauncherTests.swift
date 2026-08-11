@@ -79,6 +79,43 @@ final class HermesRuntimeLauncherTests: XCTestCase {
         XCTAssertEqual(status.message, HermesRuntimeLauncher.authRejectedStatusMessage)
     }
 
+    // MARK: - Refresh coalescing
+
+    func test_refreshStatus_coalescesConcurrentRefreshesForTheSameGateway() async {
+        // The perf win this coalescing exists for: N concurrent callers asking
+        // the same question must cost exactly one gateway probe.
+        let fake = FakeHermesRuntime(gatewayAvailable: true)
+        let launcher = HermesRuntimeLauncher(dependencies: fake.dependencies)
+
+        async let first = launcher.refreshStatus()
+        async let second = launcher.refreshStatus()
+        async let third = launcher.refreshStatus()
+        let statuses = await [first, second, third]
+
+        let probes = await fake.gatewayProbes
+        XCTAssertEqual(probes.count, 1, "three identical concurrent refreshes must share one probe")
+        XCTAssertTrue(statuses.allSatisfy { $0.gatewayRunning })
+    }
+
+    func test_refreshStatus_doesNotServeOneCredentialsStatusToAnother() async {
+        // Regression: coalescing keyed only on "is a refresh running" handed a
+        // caller another caller's answer, so a probe of gateway B with token B
+        // could return the status of gateway A probed with token A.
+        let fake = FakeHermesRuntime(gatewayAvailable: true)
+        let launcher = HermesRuntimeLauncher(dependencies: fake.dependencies)
+        let gatewayA = URL(string: "http://127.0.0.1:8642")!
+        let gatewayB = URL(string: "http://127.0.0.1:9911")!
+
+        async let first = launcher.refreshStatus(baseURL: gatewayA, bearerToken: "token-a")
+        async let second = launcher.refreshStatus(baseURL: gatewayB, bearerToken: "token-b")
+        _ = await [first, second]
+
+        let probes = await fake.gatewayProbes
+        XCTAssertEqual(Set(probes).count, 2, "distinct gateway/credential pairs must each be probed")
+        XCTAssertTrue(probes.contains("\(gatewayA.absoluteString)|token-a"))
+        XCTAssertTrue(probes.contains("\(gatewayB.absoluteString)|token-b"))
+    }
+
     func test_managedStatus_authRejectedDoesNotReportOnlineGateway() async {
         let fake = FakeHermesRuntime(
             gatewayAvailable: false,
@@ -334,6 +371,10 @@ private actor FakeHermesRuntime {
     var commands: [[String]] = []
     var detachedCommands: [[String]] = []
     var didEnsureAPIServerEnabled = false
+    /// Every gateway probe the launcher actually issued, as "baseURL|token", in
+    /// order. Lets a test prove refresh coalescing from recorded work rather
+    /// than from timing.
+    var gatewayProbes: [String] = []
 
     private let executable: String?
     private var gatewayAvailable: Bool
@@ -369,9 +410,9 @@ private actor FakeHermesRuntime {
             launchDetached: { [weak self] _, arguments in
                 try await self?.launchDetached(arguments)
             },
-            probeGateway: { [weak self] _, _ in
+            probeGateway: { [weak self] baseURL, bearerToken in
                 guard let self else { return (false, false, nil) }
-                return await self.probeGateway()
+                return await self.probeGateway(baseURL: baseURL, bearerToken: bearerToken)
             },
             ensureAPIServerEnabled: { [weak self] in
                 await self?.ensureAPIServerEnabled()
@@ -422,8 +463,12 @@ private actor FakeHermesRuntime {
         }
     }
 
-    private func probeGateway() -> (available: Bool, authRejected: Bool, modelName: String?) {
-        (gatewayAvailable, gatewayAuthRejected, gatewayAvailable ? "hermes-agent" : nil)
+    private func probeGateway(
+        baseURL: URL,
+        bearerToken: String?
+    ) -> (available: Bool, authRejected: Bool, modelName: String?) {
+        gatewayProbes.append("\(baseURL.absoluteString)|\(bearerToken ?? "")")
+        return (gatewayAvailable, gatewayAuthRejected, gatewayAvailable ? "hermes-agent" : nil)
     }
 
     private func ensureAPIServerEnabled() {

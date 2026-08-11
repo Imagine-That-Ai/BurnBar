@@ -17,7 +17,7 @@ namespace OpenBurnBar.App.Settings;
 
 /// <summary>
 /// Coding-agent provider identity. Mirrors <c>OpenBurnBarCore.AgentProvider</c>
-/// (35 cases, declaration order preserved so <see cref="AgentProviderMetadata.AllCases"/>
+/// (36 cases, declaration order preserved so <see cref="AgentProviderMetadata.AllCases"/>
 /// equals the Swift <c>allCases</c>).
 /// </summary>
 public enum AgentProvider
@@ -50,6 +50,7 @@ public enum AgentProvider
     Omp,
     Ollama,
     Windsurf,
+    Devin,
     Warp,
     XAI,
     Mimo,
@@ -102,6 +103,7 @@ public static class AgentProviderMetadata
         AgentProvider.Omp => "OMP",
         AgentProvider.Ollama => "Ollama",
         AgentProvider.Windsurf => "Windsurf",
+        AgentProvider.Devin => "Devin",
         AgentProvider.Warp => "Warp",
         AgentProvider.XAI => "xAI",
         AgentProvider.Mimo => "MiMo",

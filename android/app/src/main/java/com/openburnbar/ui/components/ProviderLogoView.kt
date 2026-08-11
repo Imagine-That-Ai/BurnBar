@@ -65,6 +65,7 @@ object ProviderLogo {
         AgentProvider.OPEN_CLAW -> R.drawable.logo_openclaw
         AgentProvider.OLLAMA -> R.drawable.logo_ollama
         AgentProvider.WINDSURF -> R.drawable.logo_windsurf
+        AgentProvider.DEVIN -> R.drawable.logo_devin
         AgentProvider.WARP -> R.drawable.logo_warp
         AgentProvider.XAI -> R.drawable.logo_grok
         AgentProvider.ANTIGRAVITY -> R.drawable.logo_antigravity

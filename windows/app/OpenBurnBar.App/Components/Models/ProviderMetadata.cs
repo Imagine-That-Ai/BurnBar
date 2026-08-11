@@ -26,7 +26,7 @@ namespace OpenBurnBar.App.Components;
 /// Provider identity metadata (display name, bundled-logo asset base name, monochrome
 /// backdrop decision, and a Segoe fallback glyph) for the shared provider-logo control.
 /// Mirrors <c>OpenBurnBarCore.AgentProvider</c>; keyed by <see cref="Theme.AgentProviderBrand"/>
-/// so it shares the single 32-case enum with <see cref="Theme.ProviderBrand"/>.
+/// so it shares the single 36-case enum with <see cref="Theme.ProviderBrand"/>.
 /// </summary>
 public static class ProviderMetadata
 {
@@ -61,6 +61,7 @@ public static class ProviderMetadata
         Theme.AgentProviderBrand.Omp => "OMP",
         Theme.AgentProviderBrand.Ollama => "Ollama",
         Theme.AgentProviderBrand.Windsurf => "Windsurf",
+        Theme.AgentProviderBrand.Devin => "Devin",
         Theme.AgentProviderBrand.Warp => "Warp",
         Theme.AgentProviderBrand.XAI => "xAI",
         Theme.AgentProviderBrand.Mimo => "MiMo",
@@ -99,6 +100,7 @@ public static class ProviderMetadata
         Theme.AgentProviderBrand.Omp => "OMPLogo",
         Theme.AgentProviderBrand.Ollama => "OllamaLogo",
         Theme.AgentProviderBrand.Windsurf => "WindsurfLogo",
+        Theme.AgentProviderBrand.Devin => "DevinLogo",
         Theme.AgentProviderBrand.Warp => "WarpLogo",
         Theme.AgentProviderBrand.OpenCode => "OpenCodeLogo",
         Theme.AgentProviderBrand.XAI => "GrokLogo",
@@ -195,6 +197,7 @@ public static class ProviderMetadata
         Theme.AgentProviderBrand.Omp => GlyphCommandPrompt,
         Theme.AgentProviderBrand.Ollama => GlyphCloud,
         Theme.AgentProviderBrand.Windsurf => GlyphCode,
+        Theme.AgentProviderBrand.Devin => GlyphCode,
         Theme.AgentProviderBrand.Warp => GlyphCommandPrompt,
         Theme.AgentProviderBrand.OpenCode => GlyphCode,
         Theme.AgentProviderBrand.XAI => GlyphLightningBolt,

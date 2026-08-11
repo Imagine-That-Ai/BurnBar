@@ -42,6 +42,7 @@ public static class ProviderDisplay
         AgentProviderBrand.Omp => "OMP",
         AgentProviderBrand.Ollama => "Ollama",
         AgentProviderBrand.Windsurf => "Windsurf",
+        AgentProviderBrand.Devin => "Devin",
         AgentProviderBrand.Warp => "Warp",
         AgentProviderBrand.XAI => "xAI",
         AgentProviderBrand.Mimo => "MiMo",
