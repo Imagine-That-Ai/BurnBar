@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-09T18:37:05Z",
+  "generatedAt": "2026-08-09T23:52:49Z",
   "status": "owner_attested_soft_approval",
   "reviewStatus": "owner_attested_soft_approval",
   "repo": {
     "remote": "origin",
     "ownerRepo": "Imagine-That-Ai/BurnBar",
     "branch": "main",
-    "originMain": "15f5b552ab5b96dc9f40f18174ac717af4534f21",
-    "releaseTag": "v1.0.33"
+    "originMain": "8425376138f8c1e9f5501eb949f7f353a9e7ddbe",
+    "releaseTag": "v1.0.34"
   },
-  "purpose": "Owner-attested emergency release evidence for the v1.0.33 public release boundary. This cut unblocks OpenBurnBar Release after v1.0.32 Preflight passed but the Shared Rust native release candidate verify failed because Actions artifacts for activated candidate 99ba1f66 expired under org retention. The gate now hydrates attested committed promotion evidence. The release must be cut from protected main only.",
+  "purpose": "Owner-attested emergency release evidence for the v1.0.34 public release boundary. This cut unblocks OpenBurnBar Release after v1.0.33 Preflight passed and hydrated expired Actions artifacts, but Shared Rust verify failed because protected signer run validation expected a path@ref suffix the GitHub Actions API does not return. The release must be cut from protected main only.",
   "ownerAttestation": {
     "ownerName": "Alberto Nunez",
     "ownerGitHub": "Ajnunezg",
     "ownerRole": "release_owner",
-    "attestedAt": "2026-08-09T18:37:05Z",
+    "attestedAt": "2026-08-09T23:52:49Z",
     "counselName": "Heather Meeker",
     "approvalType": "soft_approval",
-    "emergencyReason": "Publish the v1.0.33 three-platform release train after v1.0.32 Release failed Shared Rust verify on expired Actions artifacts; immutable tags cannot be rewritten.",
-    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.33 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
-    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker's existing soft approval applies to this v1.0.33 release boundary and authorizes the emergency owner-approved public release lane.",
+    "emergencyReason": "Publish the v1.0.34 three-platform release train after v1.0.33 Release failed Shared Rust verify on a false protected-signer path mismatch; immutable tags cannot be rewritten.",
+    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.34 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
+    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker's existing soft approval applies to this v1.0.34 release boundary and authorizes the emergency owner-approved public release lane.",
     "followUpRequired": true
   },
   "scope": [
@@ -57,8 +57,8 @@
   ],
   "commandEvidence": [
     {
-      "command": "scripts/tag-release.sh --force 1.0.33",
-      "purpose": "Cut immutable v1.0.33 after domain-core Actions artifact expiry fallback lands on main"
+      "command": "scripts/tag-release.sh --force 1.0.34",
+      "purpose": "Cut immutable v1.0.34 after domain-core protected signer path API fix lands on main"
     }
   ],
   "notes": "Emergency approval is owner-attested soft approval, not a detached counsel signature. Keep the signed-counsel gate intact and replace this emergency packet with signed evidence when available."

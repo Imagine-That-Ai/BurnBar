@@ -61,6 +61,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (fenced, trust-signaled; deliberately no write tool).
 - Docs: `docs/AI_INBOX_FOUNDER_LENS.md`, `docs/AI_INBOX_FOUNDER_PLANS.md`.
 
+## [1.0.34] - 2026-08-09
+
+### Fixed - Domain-core protected signer path vs GitHub Actions API
+
+- Accept the bare workflow `path` returned by GitHub Actions run metadata
+  (`.github/workflows/domain-core-promotion-proof.yml`) when validating the
+  protected promotion signer run. The gate previously required a
+  `path@refs/heads/main` suffix that the live API does not emit, so `v1.0.33`
+  OpenBurnBar Release passed Preflight and hydrated expired Actions artifacts,
+  then failed Shared Rust verify on a false signer-path mismatch.
+
+- Bumped Google Play `versionCode` to `46` with `versionName` `1.0.34`, and Mac
+  `CURRENT_PROJECT_VERSION` to `76`.
+
 ## [1.0.33] - 2026-08-09
 
 ### Fixed - Domain-core release gate Actions artifact expiry
