@@ -81,19 +81,128 @@ enum BurnBarAIInboxPromptBuilder {
               "confidence": 0.0,
               "citation_conversation_ids": ["<conversation id>"]
             }
+          ],
+          "action_hints": [
+            {
+              "evidence_id": "must be from the valid ids list",
+              "verb": "short imperative button label <= 28 chars",
+              "why": "one short clause explaining what this accomplishes"
+            }
           ]
         }
 
         Priority: 1 = drop everything, 2 = today, 3 = worth knowing, 4 = background. \
         Most findings are 3. Reserve 1 for things actively costing money or losing work.
+
+        ## About action_hints
+        Optional, at most 4, usually 0 or 1. A hint says which citation deserves the button and \
+        what the button should be called — nothing else. You cannot supply a URL, a path, a \
+        command, an id to open, or an action type: every destination is built from the evidence \
+        record itself. A hint naming an id that is not in the valid list is discarded silently, \
+        as is one whose verb is empty. Write the verb as the move ("Unblock the release", \
+        "Read the failing run"), not as a description of the button.
         """
 
+    // MARK: - Reading register
+    //
+    // Two dials the user owns: how long the writing runs, and whose vocabulary
+    // it uses. Both are implemented as SELECTED static constants, never
+    // interpolation — the system prompt has to stay byte-identical from tick to
+    // tick for DeepSeek's cache-hit input pricing to apply, and a string built
+    // per tick would defeat that on every call.
+    //
+    // The shipped default (`.standard` + `.professional`) contributes the EMPTY
+    // string: it is exactly the voice the base prompt already specifies, so a
+    // user who never touches the dial gets the same bytes that shipped before
+    // it existed — and the same cache entry.
+
+    static let detailBriefFragment = """
+        Length: cut it to the bone. One or two sentences per finding, and a brief that fits in \
+        three. State the condition, the number that proves it, and the move. Drop background, \
+        drop mechanism, drop anything the user can see for themselves.
+        """
+
+    static let detailDeepFragment = """
+        Length: for findings that earn it, explain the mechanism — what is actually happening, \
+        why it produces this symptom, and what it costs if it continues. Two paragraphs maximum. \
+        Depth is for the load-bearing finding, not for all of them; a routine item stays short \
+        no matter this setting.
+        """
+
+    static let registerPlainEnglishFragment = """
+        Vocabulary: write it the way you would explain it to a smart friend who does not work on \
+        this codebase. Everyday words. Short sentences — one idea each. Say "the change never \
+        reached the main branch", not "the delta failed to land on trunk". When a technical term \
+        is genuinely the clearest word (a file name, a command, a PR number), use it and add a \
+        four-or-five-word gloss the first time. No abbreviations the reader has to expand: write \
+        "continuous integration (the automatic test runs)" the first time, then "CI". No stacked \
+        clauses, no semicolons, no "leverage", "utilize", "surface", "posture", or "signal" as a \
+        noun. If a sentence needs to be read twice, rewrite it. Lead every item with the plain \
+        answer to "what happened, and what should I do?" — everything else comes after that.
+        """
+
+    static let registerExpertFragment = """
+        Vocabulary: assume deep familiarity with this codebase and its tooling. Name internals, \
+        file paths, symbols, and mechanisms directly. Skip definitions and orientation entirely. \
+        Get to the non-obvious part — the second-order effect, the interaction between two \
+        subsystems, the thing a competent reader would not have inferred from the numbers.
+        """
+
+    /// The fragment for a detail level. `.standard` is the base prompt's own
+    /// behavior and therefore contributes nothing.
+    static func detailFragment(_ detail: BurnBarInboxBriefDetail) -> String {
+        switch detail {
+        case .brief: return detailBriefFragment
+        case .standard: return ""
+        case .deep: return detailDeepFragment
+        }
+    }
+
+    /// The fragment for a register. `.professional` is the base prompt's own
+    /// voice and therefore contributes nothing.
+    static func registerFragment(_ register: BurnBarInboxBriefRegister) -> String {
+        switch register {
+        case .plainEnglish: return registerPlainEnglishFragment
+        case .professional: return ""
+        case .expert: return registerExpertFragment
+        }
+    }
+
+    /// The appended section for one (detail, register) pair. Empty for the
+    /// shipped default; otherwise a distinct, byte-stable constant per pair.
+    static func readingRegisterSection(
+        detail: BurnBarInboxBriefDetail,
+        register: BurnBarInboxBriefRegister
+    ) -> String {
+        let fragments = [detailFragment(detail), registerFragment(register)].filter { $0.isEmpty == false }
+        guard fragments.isEmpty == false else { return "" }
+        return "## Reading register\nThese override the Voice section above where they conflict.\n\n"
+            + fragments.joined(separator: "\n\n")
+    }
+
     /// The analyst system prompt, optionally extended with the Founder Lens
-    /// judgment section. Both variants are byte-stable across ticks, so
-    /// provider prompt caching still applies to whichever the config selects.
-    static func analystSystemPrompt(founderLens: Bool, pack: BurnBarFounderLens.Pack = .engOps) -> String {
-        guard founderLens else { return analystSystemPrompt }
-        return analystSystemPrompt + "\n\n" + BurnBarFounderLens.analystLensSection(pack: pack)
+    /// judgment section and the user's reading register. Every variant is
+    /// byte-stable across ticks, so provider prompt caching still applies to
+    /// whichever combination the config selects.
+    ///
+    /// The register goes LAST on purpose: it is the user's own instruction about
+    /// how they want to be written to, so it gets the final word over both the
+    /// base voice section and the lens.
+    static func analystSystemPrompt(
+        founderLens: Bool,
+        pack: BurnBarFounderLens.Pack = .engOps,
+        detail: BurnBarInboxBriefDetail = .default,
+        register: BurnBarInboxBriefRegister = .default
+    ) -> String {
+        var prompt = analystSystemPrompt
+        if founderLens {
+            prompt += "\n\n" + BurnBarFounderLens.analystLensSection(pack: pack)
+        }
+        let registerSection = readingRegisterSection(detail: detail, register: register)
+        if registerSection.isEmpty == false {
+            prompt += "\n\n" + registerSection
+        }
+        return prompt
     }
 
     static func analystUserPrompt(

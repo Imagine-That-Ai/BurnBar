@@ -55,6 +55,33 @@ struct QuotaWorkspaceView: View {
         QuotaWorkspaceViewModel.aggregate(displayedEntries)
     }
 
+    private struct ProviderGroup: Identifiable {
+        let provider: AgentProvider
+        let entries: [SubscriptionEntry]
+        var id: String { provider.providerID.rawValue }
+    }
+
+    /// `displayedEntries` grouped by provider, preserving the order the active
+    /// sort produced (a provider takes the position of its first entry). One
+    /// card per *account* means a multi-account setup otherwise renders as a
+    /// wall of near-identical cards interleaved with every other provider.
+    private var providerGroups: [ProviderGroup] {
+        var order: [AgentProvider] = []
+        var grouped: [AgentProvider: [SubscriptionEntry]] = [:]
+        for entry in displayedEntries {
+            if grouped[entry.provider] == nil { order.append(entry.provider) }
+            grouped[entry.provider, default: []].append(entry)
+        }
+        return order.map { ProviderGroup(provider: $0, entries: grouped[$0] ?? []) }
+    }
+
+    /// Headers only earn their vertical space once some provider actually has
+    /// more than one account, and they'd only repeat the focus banner while a
+    /// single provider is pinned.
+    private var showsProviderGroupHeaders: Bool {
+        selectedProvider == nil && providerGroups.contains { $0.entries.count > 1 }
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: DesignSystem.Spacing.lg, pinnedViews: []) {
@@ -188,28 +215,19 @@ struct QuotaWorkspaceView: View {
             .padding(.horizontal, DesignSystem.Spacing.lg)
         } else {
             switch viewModeStorage {
-            case .cards:
-                LazyVGrid(
-                    columns: [
-                        GridItem(
-                            .adaptive(minimum: 360, maximum: 460),
-                            spacing: DesignSystem.Spacing.lg,
-                            alignment: .top
-                        )
-                    ],
-                    alignment: .leading,
-                    spacing: DesignSystem.Spacing.lg
-                ) {
-                    ForEach(displayedEntries) { entry in
-                        SubscriptionCard(
-                            entry: entry,
-                            onRefresh: {
-                                Task { await quotaService.refresh(provider: entry.provider, dataStore: dataStore) }
-                            }
-                        )
+            case .cards where showsProviderGroupHeaders:
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                    ForEach(providerGroups) { group in
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                            providerGroupHeader(group)
+                            cardGrid(group.entries)
+                        }
                     }
                 }
                 .padding(.horizontal, DesignSystem.Spacing.lg)
+            case .cards:
+                cardGrid(displayedEntries)
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
             case .list:
                 VStack(spacing: DesignSystem.Spacing.sm) {
                     ForEach(displayedEntries) { entry in
@@ -224,6 +242,61 @@ struct QuotaWorkspaceView: View {
                 .padding(.horizontal, DesignSystem.Spacing.lg)
             }
         }
+    }
+
+    private func cardGrid(_ entries: [SubscriptionEntry]) -> some View {
+        LazyVGrid(
+            columns: [
+                GridItem(
+                    .adaptive(minimum: 360, maximum: 460),
+                    spacing: DesignSystem.Spacing.lg,
+                    alignment: .top
+                )
+            ],
+            alignment: .leading,
+            spacing: DesignSystem.Spacing.lg
+        ) {
+            ForEach(entries) { entry in
+                SubscriptionCard(
+                    entry: entry,
+                    onRefresh: {
+                        Task { await quotaService.refresh(provider: entry.provider, dataStore: dataStore) }
+                    }
+                )
+            }
+        }
+    }
+
+    private func providerGroupHeader(_ group: ProviderGroup) -> some View {
+        let theme = ProviderTheme.theme(for: group.provider)
+        let count = group.entries.count
+        return HStack(spacing: DesignSystem.Spacing.xs) {
+            ProviderLogoView(provider: group.provider, size: 13, useFallbackColor: false)
+
+            Text(group.provider.displayName.uppercased())
+                .font(DesignSystem.Typography.monoTiny)
+                .tracking(1.0)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+            if count > 1 {
+                Text("\(count) accounts")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1.5)
+                    .background(Capsule().fill(theme.primaryColor.opacity(0.14)))
+                    .foregroundStyle(theme.primaryColor)
+            }
+
+            Rectangle()
+                .fill(DesignSystem.Colors.border.opacity(0.35))
+                .frame(height: 0.5)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            count == 1
+                ? group.provider.displayName
+                : "\(group.provider.displayName), \(count) accounts"
+        )
     }
 
     private func providerFocusBanner(_ provider: AgentProvider) -> some View {

@@ -8,6 +8,7 @@ import com.openburnbar.data.hermes.relay.HermesRelayException
 import com.openburnbar.data.hermes.relay.HermesRelayOperationName
 import java.io.IOException
 import java.util.UUID
+import kotlinx.coroutines.flow.update
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 
@@ -37,14 +38,17 @@ internal class HermesServiceConnectionActions(
                 endpointURL = endpoint,
                 status = HermesConnectionStatus.PENDING,
             )
-        service.connectionsInternal.value = service.connectionsInternal.value + connection
+        // Registry mutations use atomic CAS updates: runtime probes rewrite the
+        // registry from the service's IO scope, so plain read-modify-writes can
+        // lose updates (a stale probe write can resurrect a revoked connection).
+        service.connectionsInternal.update { it + connection }
         selectConnection(connection)
         return connection
     }
 
     fun revokeConnection(connection: HermesConnectionRecord) {
         if (connection.id == HermesConnectionRecord.localDefault.id) return
-        service.connectionsInternal.value = service.connectionsInternal.value.filterNot { it.id == connection.id }
+        service.connectionsInternal.update { current -> current.filterNot { it.id == connection.id } }
         if (service.selectedConnectionInternal.value.id == connection.id) {
             selectConnection(HermesConnectionRecord.localDefault)
         }
@@ -67,13 +71,15 @@ internal class HermesServiceConnectionActions(
                 service.relayCapabilityInternal.value = HermesRelayCapability.UNSUPPORTED
                 return
             }
-            val current = service.connectionsInternal.value.toMutableList()
-            for (descriptor in descriptors) {
-                val mapped = descriptor.toConnectionRecord()
-                val existingIdx = current.indexOfFirst { it.id == mapped.id }
-                if (existingIdx >= 0) current[existingIdx] = mapped else current.add(mapped)
+            service.connectionsInternal.update { existing ->
+                val current = existing.toMutableList()
+                for (descriptor in descriptors) {
+                    val mapped = descriptor.toConnectionRecord()
+                    val existingIdx = current.indexOfFirst { it.id == mapped.id }
+                    if (existingIdx >= 0) current[existingIdx] = mapped else current.add(mapped)
+                }
+                current
             }
-            service.connectionsInternal.value = current
             service.relayCapabilityInternal.value = HermesRelayCapability.READY
         } catch (e: IOException) {
             service.relayCapabilityInternal.value = HermesRelayCapability.UNSUPPORTED

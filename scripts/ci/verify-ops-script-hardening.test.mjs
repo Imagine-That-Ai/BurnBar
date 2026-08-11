@@ -115,6 +115,16 @@ assert.match(
   /Stop for explicit operator approval before pushing the tag\.[\s\S]*publishes a public GitHub Release[\s\S]*do not create or push the tag/u,
   "Windows operations must require explicit public GitHub release approval before a windows-v* tag is pushed",
 );
+for (const dryRun of ["true", "false"]) {
+  assert.match(
+    windowsOperationsRunbook,
+    new RegExp(
+      String.raw`gh workflow run deploy-staging\.yml --repo "\$REPO" --ref main \\\n\s+-f candidate_sha="\$CANDIDATE_SHA" \\\n\s+-f dry_run=${dryRun} -f deploy_functions=true`,
+      "u",
+    ),
+    `Windows staging dry_run=${dryRun} dispatch must bind the exact candidate SHA`,
+  );
+}
 const windowsVersionArgumentSets =
   windowsReleaseWorkflow.match(
     /-p:Version="\$VERSION" -p:AssemblyVersion="\$\{VERSION\}\.0" \\\n\s+-p:FileVersion="\$\{VERSION\}\.0" -p:InformationalVersion="\$VERSION"/g,
