@@ -27,7 +27,17 @@ struct ProviderQuotaChip: View {
     var displayName: String?
 
     @State private var quotaService = ProviderQuotaService.shared
-    @State private var settingsManager = SettingsManager.shared
+    /// Injected, not `SettingsManager.shared`: the shrink-only singleton ratchet
+    /// (`budgets/singleton-baseline.json`) counts every `.shared` reference, and
+    /// this chip does not need process-wide reach for one Bool.
+    ///
+    /// Optional on purpose. A non-optional `@Environment(SettingsManager.self)`
+    /// traps when the object was never injected, and this chip is rendered
+    /// standalone in `ProviderQuotaChipTests`. Absent environment falls back to
+    /// `false`, which is also the setting's own default, so the fallback shows
+    /// per-account numbers rather than silently summing across accounts — the
+    /// exact confusion this change exists to remove.
+    @Environment(SettingsManager.self) private var settingsManager: SettingsManager?
 
     var body: some View {
         if let resolved = Self.resolve(
@@ -35,7 +45,7 @@ struct ProviderQuotaChip: View {
             style: style,
             displayName: displayName,
             service: quotaService,
-            cumulative: settingsManager.cumulativeAcrossAccounts
+            cumulative: settingsManager?.cumulativeAcrossAccounts ?? false
         ) {
             QuotaMicroBadge(text: resolved.text, tint: resolved.tint)
                 .help(resolved.tooltip)
