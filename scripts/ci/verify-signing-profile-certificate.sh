@@ -23,7 +23,10 @@ fi
 
 signed_bundle="$(cd "$(dirname "$signed_bundle")" && pwd)/$(basename "$signed_bundle")"
 profile="$(cd "$(dirname "$profile")" && pwd)/$(basename "$profile")"
-work_dir="$(mktemp -d "${TMPDIR:-/tmp}/openburnbar-signing-profile.XXXXXX")"
+tmp_root="${TMPDIR:-/tmp}"
+if ! work_dir="$(mktemp -d "$tmp_root/openburnbar-signing-profile.XXXXXX" 2>/dev/null)"; then
+  work_dir="$(mktemp -d "/tmp/openburnbar-signing-profile.XXXXXX")"
+fi
 cleanup() {
   rm -rf "$work_dir"
 }

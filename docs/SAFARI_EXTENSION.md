@@ -205,6 +205,7 @@ Other focused checks:
 ```bash
 node --test scripts/ci/classify-ci-impact.test.mjs
 bash scripts/diff-coverage-ts-self-test.sh
+bash scripts/ci/verify-openburnbar-development-signing.test.sh
 bash scripts/ci/verify-openburnbar-safari-extension.test.sh
 ./scripts/test-openburnbar-app.sh \
   -only-testing:OpenBurnBarTests/SafariLearningTimelineViewModelTests \
@@ -221,6 +222,16 @@ OpenBurnBarSafariExtension.appex/Contents/Resources/manifest.json
 ```
 
 Do not hand-copy generated files into the native source directory.
+
+For an Apple Development local build, `make build-signed` now succeeds only
+when both the host app and Safari appex are signed by the same expected team,
+carry hardened runtime plus library validation, embed exact non-wildcard
+development profiles, and independently authorize
+`group.com.openburnbar.app` plus `TEAMID.com.openburnbar.app`. A wildcard appex
+profile is intentionally a build failure even if Xcode produced an otherwise
+signed bundle. When no Apple Development identity exists, the command retains
+its contributor-friendly ad-hoc fallback, but explicitly does not certify
+Safari App Group transport or provisioned Keychain behavior.
 
 ## Distribution invariants
 
