@@ -31,6 +31,15 @@ class ProviderLogoViewTest {
     }
 
     @Test
+    fun devinResolvesItsOwnLogoOnBothLookupSurfaces() {
+        // Devin must not fall through to Windsurf's asset — they are separate
+        // providers in the shared contract even though Devin Desktop supersedes
+        // the Windsurf branding.
+        assertEquals(R.drawable.logo_devin, ProviderLogo.drawableFor(AgentProvider.DEVIN))
+        assertEquals(R.drawable.logo_devin, AgentProvider.DEVIN.logoRes)
+    }
+
+    @Test
     fun primeAgentAndMuseResolveDedicatedLogoAssetsOnBothLookupSurfaces() {
         assertEquals(R.drawable.logo_prime_agent, ProviderLogo.drawableFor(AgentProvider.PRIME_AGENT))
         assertEquals(R.drawable.logo_prime_agent, AgentProvider.PRIME_AGENT.logoRes)
