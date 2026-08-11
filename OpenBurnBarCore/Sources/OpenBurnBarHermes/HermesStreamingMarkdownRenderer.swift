@@ -151,8 +151,13 @@ public final class HermesStreamingMarkdownRenderer {
         if consumedUTF8Count > 0 {
             guard consumedBytes.count == consumedUTF8Count,
                   let incoming = bytes.baseAddress else { return false }
-            let prefixMatches = consumedBytes.withUnsafeBytes { cached in
-                memcmp(cached.baseAddress!, incoming, consumedUTF8Count) == 0
+            // `baseAddress` is nil only for an empty buffer, which the
+            // `consumedBytes.count == consumedUTF8Count > 0` guard above already
+            // rules out — but binding it instead of forcing keeps the
+            // force-unwrap ratchet honest and costs nothing on this path.
+            let prefixMatches = consumedBytes.withUnsafeBytes { cached -> Bool in
+                guard let cachedBase = cached.baseAddress else { return false }
+                return memcmp(cachedBase, incoming, consumedUTF8Count) == 0
             }
             guard prefixMatches else { return false }
         }
