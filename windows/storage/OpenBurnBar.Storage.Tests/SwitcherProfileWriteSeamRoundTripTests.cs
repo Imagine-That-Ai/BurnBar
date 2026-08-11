@@ -25,14 +25,15 @@ namespace OpenBurnBar.Storage.Tests;
 /// </summary>
 public sealed class SwitcherProfileWriteSeamRoundTripTests
 {
-    private const string FixtureName = "openburnbar-db-compat-v58.sqlcipher";
+    private const string FixtureName = "openburnbar-db-compat-v60.sqlcipher";
 
-    // Ground-truth invariants of the committed v58 fixture (pinned in the sibling
-    // TokenUsageWriteRoundTripTests). A switcher write must not move any of these.
+    // Ground-truth invariants of the committed byte-compat fixture (pinned in the
+    // sibling TokenUsageWriteRoundTripTests, and regenerated together with it).
+    // A switcher write must not move any of these.
     private const string ExpectedSchemaHash =
-        "fb4b69e86d9f604826cd05634f979b0461c9945244fa57a5943f4f3244c156f2";
-    private const string ExpectedMigrationEndpoint = "v58_ai_inbox";
-    private const long ExpectedMigrationCount = 59;
+        "dc8363e8112ad9840f912ebb6633f777c475d7f11267b2d8caff380fa38b1a78";
+    private const string ExpectedMigrationEndpoint = "v60_billing_kind";
+    private const long ExpectedMigrationCount = 61;
     private const long ExpectedUserVersion = 0;
 
     private static string FixtureSource =>

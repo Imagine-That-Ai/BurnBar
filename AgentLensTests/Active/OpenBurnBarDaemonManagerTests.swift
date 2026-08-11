@@ -971,6 +971,94 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(usage.executionSourceConfidence, .derivedExact)
     }
 
+    /// A daemon event that explicitly says `.subscription` must reach the store
+    /// saying `.subscription`. Dropping the stamp here let the write-time
+    /// fallback re-derive `.api` from `usageSource == .daemon`, so plan-covered
+    /// work was billed as real wallet spend in Spend Lens.
+    func test_usageSync_runtimeSnapshotPreservesStampedBillingKind() throws {
+        let harness = try makeRuntimePathsHarness(name: "runtime-billing-kind")
+        defer { harness.cleanup() }
+
+        func event(sessionID: String, billingKind: BurnBarBillingKind?) -> BurnBarUsageEvent {
+            BurnBarUsageEvent(
+                providerID: "codex",
+                modelID: "gpt-5.6-codex",
+                inputTokens: 100,
+                outputTokens: 20,
+                cacheReadTokens: 10,
+                cost: 1,
+                recordedAt: Date(timeIntervalSince1970: 1_784_592_000),
+                sessionID: sessionID,
+                projectName: "OpenBurnBar",
+                billingKind: billingKind
+            )
+        }
+        let service = OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+
+        let snapshot = service.runtimeSnapshot(
+            from: BurnBarProviderConfigurationSnapshot(providers: []),
+            usageEvents: [
+                event(sessionID: "sub-route", billingKind: .subscription),
+                event(sessionID: "api-route", billingKind: .api),
+                event(sessionID: "legacy-route", billingKind: nil)
+            ]
+        )
+
+        let imported = Dictionary(
+            uniqueKeysWithValues: snapshot.importedUsages.map { ($0.sessionId, $0.billingKind) }
+        )
+        XCTAssertEqual(imported["sub-route"], .subscription)
+        XCTAssertEqual(imported["api-route"], .api)
+        // Unstamped legacy rows keep resolving through the provider classifier;
+        // "codex" is not an API-key daemon slot, so it stays honestly unknown
+        // and the store's `.daemon` fallback classifies it exactly as before.
+        XCTAssertEqual(imported["legacy-route"], .unknown)
+    }
+
+    /// Same guarantee on the on-disk ledger path (`refreshState`), which is the
+    /// conversion the app actually runs when the daemon socket is unavailable.
+    func test_usageSync_ledgerImportPreservesStampedBillingKind() async throws {
+        let harness = try makeRuntimePathsHarness(name: "ledger-billing-kind")
+        defer { harness.cleanup() }
+
+        let encoder = JSONEncoder()
+        func line(key: String, sessionID: String, billingKind: BurnBarBillingKind?) throws -> String {
+            try encodedUsageRecordLine(
+                idempotencyKey: key,
+                event: BurnBarUsageEvent(
+                    providerID: "codex",
+                    modelID: "gpt-5.6-codex",
+                    inputTokens: 80,
+                    outputTokens: 40,
+                    cacheReadTokens: 0,
+                    cost: 0.5,
+                    recordedAt: Date(timeIntervalSince1970: 1_784_592_100),
+                    sessionID: sessionID,
+                    projectName: "OpenBurnBar",
+                    billingKind: billingKind
+                ),
+                encoder: encoder
+            )
+        }
+        try [
+            line(key: "ledger-sub", sessionID: "ledger-sub-route", billingKind: .subscription),
+            line(key: "ledger-api", sessionID: "ledger-api-route", billingKind: .api),
+            line(key: "ledger-legacy", sessionID: "ledger-legacy-route", billingKind: nil)
+        ]
+        .joined(separator: "\n")
+        .appending("\n")
+        .write(to: harness.paths.usageLedgerURL, atomically: true, encoding: .utf8)
+
+        var inserted: [TokenUsage] = []
+        let service = OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        _ = service.refreshState(insertUsages: { inserted.append(contentsOf: $0) })
+
+        let imported = Dictionary(uniqueKeysWithValues: inserted.map { ($0.sessionId, $0.billingKind) })
+        XCTAssertEqual(imported["ledger-sub-route"], .subscription)
+        XCTAssertEqual(imported["ledger-api-route"], .api)
+        XCTAssertEqual(imported["ledger-legacy-route"], .unknown)
+    }
+
     func test_usageSync_importsHermesLedgerRowsAsHermesProvider() async throws {
         let harness = try makeRuntimePathsHarness(name: "hermes-import")
         defer { harness.cleanup() }
@@ -1189,6 +1277,96 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(snapshot.projects.first?.latestConversationID, "conversation-apollo")
         XCTAssertEqual(snapshot.projects.first?.sessionCountLast7Days, 1)
         XCTAssertNil(snapshot.projects.first?.latestQuestionPrompt)
+    }
+
+    func test_slug_collapsesPunctuationWithoutRepeatedHyphens() {
+        XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "  Apollo / Mission!!  "), "apollo-mission")
+        XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "---"), "---")
+        XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "   "), "")
+    }
+
+    func test_buildControllerActivitySnapshot_groupsTenThousandConversationsInLinearTime() {
+        let now = Date()
+        let sessionCount = 10_000
+        let projectCount = 100
+        let conversations: [ConversationRecord] = (0..<sessionCount).map { index in
+            let projectName = "Project \(index / (sessionCount / projectCount) + 1)"
+            return ConversationRecord(
+                id: "perf-conversation-\(index)",
+                provider: .zai,
+                sessionId: "perf-session-\(index)",
+                projectName: projectName,
+                startTime: now.addingTimeInterval(-Double(index + 1)),
+                endTime: now.addingTimeInterval(-Double(index)),
+                messageCount: 1,
+                userWordCount: 1,
+                assistantWordCount: 1,
+                keyFiles: [],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: "Perf \(index)",
+                lastAssistantMessage: "",
+                fullText: "Perf \(index)",
+                fileModifiedAt: now.addingTimeInterval(-Double(index))
+            )
+        }
+
+        // The previous nested filter×slug path was O(projects × conversations)
+        // (~1M slug calls) and hung the main actor. Linear grouping must finish
+        // well under a second even in Debug.
+        let started = CFAbsoluteTimeGetCurrent()
+        let snapshot = OpenBurnBarDaemonManager.buildControllerActivitySnapshot(
+            conversations: conversations,
+            recentUsages: []
+        )
+        let elapsed = CFAbsoluteTimeGetCurrent() - started
+
+        XCTAssertEqual(snapshot.projects.count, projectCount)
+        XCTAssertLessThan(elapsed, 1.0, "Expected O(n) snapshot build; took \(elapsed)s")
+        XCTAssertEqual(snapshot.projects.first?.displayName, "Project 1")
+    }
+
+    func test_buildControllerActivitySnapshot_mergesUsageAndConversationProjects() {
+        let now = Date()
+        let conversation = ConversationRecord(
+            id: "conv-alpha",
+            provider: .claudeCode,
+            sessionId: "session-alpha",
+            projectName: "Alpha",
+            startTime: now.addingTimeInterval(-120),
+            endTime: now.addingTimeInterval(-60),
+            messageCount: 2,
+            userWordCount: 2,
+            assistantWordCount: 2,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Alpha work",
+            lastAssistantMessage: "",
+            fullText: "Alpha",
+            fileModifiedAt: now
+        )
+        let usage = TokenUsage(
+            provider: .codex,
+            sessionId: "usage-beta",
+            projectName: "Beta",
+            model: "gpt-5",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 0.01,
+            startTime: now.addingTimeInterval(-30),
+            endTime: now
+        )
+
+        let snapshot = OpenBurnBarDaemonManager.buildControllerActivitySnapshot(
+            conversations: [conversation],
+            recentUsages: [usage],
+            generatedAt: now
+        )
+
+        XCTAssertEqual(Set(snapshot.projects.map(\.projectSlug)), Set(["alpha", "beta"]))
+        XCTAssertEqual(snapshot.activeProjectSlug, "beta")
+        XCTAssertEqual(snapshot.projects.first(where: { $0.projectSlug == "beta" })?.sessionCountLast7Days, 1)
     }
 
     @MainActor

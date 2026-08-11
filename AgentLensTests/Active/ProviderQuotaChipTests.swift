@@ -140,6 +140,59 @@ final class ProviderQuotaChipTests: XCTestCase {
         XCTAssertEqual(resolved?.text, "82")
     }
 
+    // MARK: - remainingFraction (Agent Deck presence input)
+
+    func test_resolve_exposesRemainingFraction_forPresenceResolution() {
+        let snapshot = Self.makeSnapshot(provider: .codex, usedPercent: 18)
+        let resolved = ProviderQuotaChip.resolve(
+            provider: .codex,
+            style: .full,
+            displayName: nil,
+            snapshot: snapshot
+        )
+        XCTAssertEqual(resolved?.remainingFraction ?? -1, 0.82, accuracy: 0.0001)
+    }
+
+    func test_resolve_remainingFraction_isZero_whenBucketIsSpent() {
+        // `AgentPresence.exhausted` is defined as this fraction hitting 0, so it
+        // has to be reachable rather than clamped away.
+        let snapshot = Self.makeSnapshot(provider: .codex, usedPercent: 100)
+        let resolved = ProviderQuotaChip.resolve(
+            provider: .codex,
+            style: .full,
+            displayName: nil,
+            snapshot: snapshot
+        )
+        XCTAssertEqual(resolved?.remainingFraction ?? -1, 0, accuracy: 0.0001)
+        XCTAssertEqual(
+            AgentPresenceResolver.resolve(
+                AgentPresenceFacts(quotaRemainingFraction: resolved?.remainingFraction)
+            ),
+            .exhausted
+        )
+    }
+
+    func test_resolve_remainingFraction_isNil_forTheSixAgentsWithoutAQuotaSignal() {
+        // Quota honesty: only 6 of the 12 chat agents have a quota signal at
+        // all. For the rest the meter must self-hide, not fabricate a number.
+        let withoutSignal: [ChatBackendID] = [.hermes, .openclaw, .openClaude, .piAgent, .forge, .junie]
+        for backend in withoutSignal {
+            guard let provider = backend.agentProvider else {
+                XCTFail("\(backend.rawValue) lost its agentProvider mapping")
+                continue
+            }
+            XCTAssertNil(
+                ProviderQuotaChip.resolve(
+                    provider: provider,
+                    style: .full,
+                    displayName: backend.displayName,
+                    snapshot: Self.makeSnapshot(provider: provider, usedPercent: 50)
+                ),
+                "\(backend.rawValue) has no quota signal — resolve() must stay nil so the meter self-hides"
+            )
+        }
+    }
+
     // MARK: - Backend convenience init
 
     func test_backendInit_succeeds_forEveryChatBackendID() {

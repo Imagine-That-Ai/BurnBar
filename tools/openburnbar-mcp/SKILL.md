@@ -34,6 +34,8 @@ SQLite tools, hosted encrypted cloud-search tools, and 2 ledger tools:
 | `burnbar_inbox_list` | List AI Inbox items (what the background analyst has surfaced) |
 | `burnbar_inbox_get` | Read one inbox item in full: evidence, proposed memories, next actions |
 | `burnbar_inbox_status` | AI Inbox tick telemetry and today's spend against the daily budget |
+| `burnbar_inbox_plans_list` | List Founder Plans (accepted commitments) with status and rolling grade |
+| `burnbar_inbox_plans_get` | Read one Founder Plan in full: steps, grades, mission/follow-up links |
 
 ## Setup
 

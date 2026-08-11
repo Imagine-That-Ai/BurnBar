@@ -96,15 +96,33 @@ struct CommandDeckPalette: View {
 
     // MARK: - Results
 
+    /// `primarySections` plus the Control Deck. The deck is not — and must not
+    /// be — a primary section (that array is positional and drives ⌘1–⌘8), so
+    /// it needs an explicit entry here or ⌘K could never reach it.
+    ///
+    /// The deck also matches on the search keywords of every control it hosts,
+    /// so typing "accessibility", "snippet", or "daemon" finds the page that
+    /// actually carries those controls.
+    private var searchableSections: [DashboardMainRoute] {
+        DashboardMainRoute.primarySections + [.controlDeck]
+    }
+
     private var filteredSections: [DashboardMainRoute] {
         let q = trimmedQuery.lowercased()
         guard !q.isEmpty else {
-            return DashboardMainRoute.primarySections
+            return searchableSections
         }
-        return DashboardMainRoute.primarySections.filter { route in
+        return searchableSections.filter { route in
             let title = route.title(activeChatBackend: activeChatBackend).lowercased()
             let subtitle = route.subtitle(activeChatBackend: activeChatBackend).lowercased()
-            return title.contains(q) || subtitle.contains(q) || matchesSubsequence(q, in: title)
+            if title.contains(q) || subtitle.contains(q) || matchesSubsequence(q, in: title) {
+                return true
+            }
+            guard route == .controlDeck else { return false }
+            return ControlKind.visibleKinds.contains { kind in
+                kind.title.lowercased().contains(q)
+                    || kind.searchKeywords.contains { $0.contains(q) }
+            }
         }
     }
 

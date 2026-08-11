@@ -9,7 +9,7 @@ import AppKit
 ///
 /// Layout:
 ///   ┌─ Toolbar ─────────────────────────────────────────────────────────┐
-///   │ Backend  Model   New chat  ⋯  Pop out  Restore window  Close      │
+///   │ ● ◆ Codex · gpt-5-codex ⌄ │ ghosts │ New chat ⋯ Pop out … Close   │
 ///   ├───────────────────────────────────────────────────────────────────┤
 ///   │ Thread rail (260pt) │  Pane workspace (cmux-style tiling)          │
 ///   │  + New chat         │   One full-size pane by default; ⌘D / ⌘⇧D    │
@@ -60,7 +60,9 @@ struct DashboardChatWorkspaceView: View {
                 controller: activeController,
                 settingsManager: settingsManager,
                 mode: mode,
-                showsEnginePickers: !(workspace?.isTiled ?? false),
+                // The old `showsEnginePickers: !isTiled` gate is gone: splitting
+                // a pane must never make the top of the window anonymous.
+                workspace: workspace,
                 onNewChat: { activeController.clearChat() },
                 onShowClearChatPrompt: { showClearChatPrompt = true },
                 onPopOut: onPopOut,

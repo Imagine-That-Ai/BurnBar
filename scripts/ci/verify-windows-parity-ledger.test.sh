@@ -89,9 +89,21 @@ EOF
 write_ledger() {
   local root="$1"
   local body="$2"
+  local row_count real_count substituted_count deferred_count blocked_count
+  row_count="$(grep -c '^  - id:' <<<"$body" || true)"
+  real_count="$(grep -c '^    status: Real$' <<<"$body" || true)"
+  substituted_count="$(grep -c '^    status: Substituted$' <<<"$body" || true)"
+  deferred_count="$(grep -c '^    status: DeferredApproved$' <<<"$body" || true)"
+  blocked_count="$(grep -c '^    status: Blocked$' <<<"$body" || true)"
   cat >"$root/docs/windows-port/WINDOWS_PARITY_LEDGER.yml" <<EOF
 version: 1
 schema_id: windows-parity-ledger-v1
+declared_row_count: $row_count
+declared_status_histogram:
+  Real: $real_count
+  Substituted: $substituted_count
+  DeferredApproved: $deferred_count
+  Blocked: $blocked_count
 macos_primary_routes:
   - chat
   - quota
@@ -165,7 +177,43 @@ run_case pass "windows-parity-ledger: PASS" \
   --repo-root "$(pwd)" \
   --ledger "$(pwd)/docs/windows-port/WINDOWS_PARITY_LEDGER.yml"
 
-# ── 2. Authored status is rejected ──────────────────────────────────────────
+# ── 2. A stale declared summary is rejected ─────────────────────────────────
+mk_repo "$tmproot/stale-summary"
+write_ledger "$tmproot/stale-summary" "$(all_routes_rows Blocked)"
+python3 - "$tmproot/stale-summary/docs/windows-port/WINDOWS_PARITY_LEDGER.yml" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+path.write_text(
+    text.replace("declared_row_count: 13", "declared_row_count: 12", 1),
+    encoding="utf-8",
+)
+PY
+run_case fail "declared_row_count is stale: declared 12, actual 13" \
+  --repo-root "$tmproot/stale-summary" \
+  --ledger "$tmproot/stale-summary/docs/windows-port/WINDOWS_PARITY_LEDGER.yml"
+
+# ── 2b. A stale declared status histogram is rejected ───────────────────────
+mk_repo "$tmproot/stale-histogram"
+write_ledger "$tmproot/stale-histogram" "$(all_routes_rows Blocked)"
+python3 - "$tmproot/stale-histogram/docs/windows-port/WINDOWS_PARITY_LEDGER.yml" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+path.write_text(
+    text.replace("  Blocked: 13", "  Blocked: 12", 1),
+    encoding="utf-8",
+)
+PY
+run_case fail "declared_status_histogram.Blocked is stale: declared 12, actual 13" \
+  --repo-root "$tmproot/stale-histogram" \
+  --ledger "$tmproot/stale-histogram/docs/windows-port/WINDOWS_PARITY_LEDGER.yml"
+
+# ── 3. Authored status is rejected ──────────────────────────────────────────
 mk_repo "$tmproot/authored"
 write_ledger "$tmproot/authored" "$(cat <<EOF
 $(all_routes_rows Blocked)

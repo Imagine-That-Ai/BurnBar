@@ -336,10 +336,19 @@ enum BurnBarAIInboxRedactor {
         }
         // Fail-closed backstop: if the shared corpus still finds something the
         // regexes did not rewrite, refuse to emit the text at all. Losing an
-        // excerpt is strictly better than leaking a credential.
+        // excerpt is strictly better than leaking a credential. The inline
+        // placeholder stays short and human — the brief must remain readable
+        // around it; a 100-character scanner explanation inside the one
+        // sentence carrying the insight is a presentation bug, not a security
+        // win. The specific finding labels matter for debugging, so they go to
+        // the log, never the prose.
         let labels = MemorySecretPIIGate.labels(in: output)
         if labels.isEmpty == false {
-            return "[REDACTED — this excerpt was withheld because a secret/PII scan flagged it: \(labels.prefix(3).joined(separator: ", "))]"
+            BurnBarDaemonLogger(category: "ai-inbox-evidence").notice(
+                "evidence_excerpt_withheld",
+                metadata: ["findings": labels.prefix(3).joined(separator: ", ")]
+            )
+            return "(excerpt withheld — contained a secret)"
         }
         return output
     }

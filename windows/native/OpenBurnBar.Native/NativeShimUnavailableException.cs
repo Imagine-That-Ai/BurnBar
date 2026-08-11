@@ -9,11 +9,12 @@ namespace OpenBurnBar.Native;
 /// letting a raw <see cref="System.DllNotFoundException"/> escape from deep
 /// inside a generated P/Invoke.
 ///
-/// Hosts without the cdylib are a supported, first-class state: the macOS dev
-/// host compiles and unit-tests the whole shim without any Rust build, and the
-/// Windows CI full-suite lane runs the shim's tests with the loopback subset
-/// skipped. Callers that can degrade (e.g. hide the remote-session surface)
-/// should branch on <c>IsAvailable</c> rather than catch this.
+/// Hosts without the cdylib are a supported, first-class state for optional
+/// development and degradable product surfaces. The Windows full-suite and
+/// physical release-certification harnesses build and require both Rust shims,
+/// so those proofs fail instead of treating absent loopbacks as success.
+/// Callers that can degrade (e.g. hide the remote-session surface) should
+/// branch on <c>IsAvailable</c> rather than catch this.
 /// </summary>
 public sealed class NativeShimUnavailableException : NotSupportedException
 {

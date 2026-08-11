@@ -1,44 +1,81 @@
 # Windows parity — Alberto's exact checklist
 
 **Date:** 2026-07-08
-**Context:** The agent lanes drove the Windows port from ~40% to ~55% honest parity
-(21 PRs, 2026-07-06 session) and hit the agent ceiling (~65%). Everything below is
-the complete set of items only Alberto can do. Each unblocks a named wave of
-agent-executable work; nothing here requires writing code.
+**Last refreshed:** 2026-08-10
+**Historical context:** The agent lanes drove the Windows port from ~40% to
+~55% honest parity during the 2026-07-06 session. The original prerequisite
+list is retained below; use the refreshed current-status section for the work
+that still needs Alberto.
 
-## Current status - 2026-07-18
+## Current status - 2026-08-10
 
 This checklist is retained as the original external-prerequisite runbook. Its
-July 8 blocking state has materially advanced:
+July 8 blocking state has materially advanced.
 
-- **B - complete:** Azure Artifact Signing identity validation and the public
-  trust certificate profile are active. The exact `windows-v1.0.37` x64 and
-  ARM64 release completed with Authenticode and RFC 3161 verification.
-- **C - account complete, lifecycle open:** the Imagine That AI LLC Store
-  developer account is verified and `BurnBar` is reserved as Store product
-  `9PKMSDP99CJ6`. The controlled private submission and Store/update lifecycle
-  protocol have not been promoted to PASS.
-- **D - configuration complete, live proof open:** the Windows OAuth client ID
-  and Firebase API key are configured as repository variables. End-to-end
-  OAuth, App Check, TPM, and CloudVault certification still requires deployed
-  `burnbar-staging` services.
-- **A - VM validation complete:** the exact `windows-v1.0.37` ARM64 MSIX
-  lifecycle, portable launch, and 25/25 UIA route/scenario rerun passed under
-  UTM. This does not count as physical ARM64 certification.
-- **Physical x64 completed, candidate failed:** the exact v1.0.37 Intel run
-  passed signature, lifecycle, soak, and evidence validation but returned
-  **NO-GO** because native backdrop surfaces covered the Providers/dashboard
-  content and compact/accessibility defects remained. PR #1854 contains the
-  source remediation; v1.0.37 must not be submitted or promoted.
+The simple current result is:
 
-The current operator actions are therefore narrower: wait for PR #1854 and a
-new signed candidate, rerun that successor on the physical Intel x64 laptop,
-finish the isolated staging protocols, and authorize a non-public Partner
-Center submission only after the replacement candidate passes local physical
-gates. Physical ARM64 remains an explicit beta limitation until qualifying
-hardware exists.
+- **Code parity is done:** commit
+  `8b07625eebe9db0bf0084e6a884becd6d8bcc72e` has 51/51 `Real` parity rows. That
+  is the commit the measurement was taken on, not a standing claim about `main`;
+  later commits land on top of it, so the gates are re-run at the new `main`
+  head before any candidate is tagged.
+- **Automated Windows proof is done:** the exact source passed 65/65 local
+  certification commands plus hosted x64, ARM64, engine, candidate-export,
+  distribution, MSIX, security, and shared-domain gates.
+- **Release certification is not done:** the exact source has not yet produced
+  a signed `windows-v1.0.39` candidate, and five blocking external receipt
+  groups are still open — physical x64 performance, accessibility/display,
+  staging cloud, paired media/Computer Use safety, and Store/update lifecycle.
+  Physical ARM64 is open too, but it does not block: it may ship as a clearly
+  stated beta limitation. The honest verdict is **NO-GO**.
 
-Ordering is by urgency (lead time), not effort.
+**Nothing public ships before certification.** Pushing the `windows-v1.0.39` tag
+signs the candidate *and* publishes a public GitHub Release in one run unless
+the publication job is held first, so the order below puts the public release
+last.
+
+What Alberto needs to approve or provide next, in order:
+
+1. **Hold the publication gate before the tag exists.** Settings → Environments
+   → `windows-release` → add a required reviewer. Verified 2026-08-10, that
+   environment has no protection rules at all, so one tag push would sign and
+   publish with no second approval. With a reviewer, signing and publication
+   each need their own approval.
+2. Type the exact phrase **`approve staging deployment`** when ready for the
+   reviewed four-function deployment to `burnbar-staging`. Nothing blocks this
+   step today: the project is billing-linked and `STAGING_ENABLED=true` is set
+   in the protected `staging` Environment, so the
+   `EXT-STAGING-BILLING-PROJECT-QUOTA` blocker recorded in the 2026-07-12
+   external-certification receipt is history, not a live prerequisite. See
+   [`docs/ops/STAGING.md`](../ops/STAGING.md).
+3. After staging passes, separately approve creation and push of protected tag
+   `windows-v1.0.39`, then approve the `build-sign` deployment only. That yields
+   the signed candidate as a private workflow artifact and publishes nothing. PR
+   approval does not authorize the tag.
+4. Make the physical Intel x64 Windows laptop and paired Mac/iPhone available
+   for performance, accessibility/display, media, Computer Use, panic, and
+   safety protocols against that private signed candidate.
+5. Explicitly authorize a private Partner Center flight after the signed
+   physical x64 candidate passes.
+6. Only once 4 and 5 have passed, approve the held publication deployment. That
+   approval is what publishes the public GitHub Release. The tag approval, the
+   `staging` Environment prompt, and the private-flight authorization are each a
+   different decision and none of them is this one.
+7. Provide physical ARM64 Windows hardware, or retain ARM64 as a clearly stated
+   beta limitation. This item does not block the release.
+
+If item 1 is skipped there is no private signing path, and the tag push is
+itself the public release. In that case the tag waits until items 4 and 5 have
+passed, and no candidate is ever tagged on the assumption that the release can
+be deleted afterwards.
+
+The older sections below explain how the original prerequisites were created.
+Use the current
+[`WINDOWS_PORT_OPERATIONS_RUNBOOK.md`](WINDOWS_PORT_OPERATIONS_RUNBOOK.md) for
+the live sequence and current candidate identity.
+
+The lettered sections below are ordered by urgency (lead time), not effort. The
+numbered list above is the release order and takes precedence.
 
 ---
 

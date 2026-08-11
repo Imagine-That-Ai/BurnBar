@@ -14,7 +14,7 @@
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
--- Schema hash: 58906606058a35584d49ced11396b0ca06799633c35cc50b0eacd32e74d59126
+-- Schema hash: 1c3a27b966abf5aaa2c136ee1db0aa8f3d55e01e811f2a34095c2383903e8bb4
 
 -- ── GRDB migrations tracking ──────────────────────────────────────────────────
 
@@ -52,7 +52,8 @@ CREATE TABLE token_usage (
   projectPath     TEXT,                                   -- working directory at session time
   agentVersion    TEXT,                                   -- agent CLI version
   requestId       TEXT,                                   -- provider-assigned request ID (v38+)
-  traceId         TEXT                                    -- distributed trace ID (v41+)
+  traceId         TEXT,                                   -- distributed trace ID (v41+)
+  billingKind     TEXT    NOT NULL DEFAULT 'unknown'      -- "api" | "subscription" | "unknown" (v60+)
 );
 
 CREATE INDEX token_usage_sync_pending_idx ON token_usage(syncStatus) WHERE syncStatus = 'pending';
@@ -62,6 +63,7 @@ CREATE INDEX token_usage_provider_id_time_idx ON token_usage(providerID, timesta
 CREATE INDEX token_usage_session_idx ON token_usage(sessionId);
 CREATE INDEX token_usage_execution_source_time_idx ON token_usage(executionSourceID, startTime);
 CREATE INDEX token_usage_timestamp_idx ON token_usage(timestamp DESC);
+CREATE INDEX token_usage_billing_kind_time_idx ON token_usage(billingKind, startTime);
 
 -- ── Chat Messages (v10+) ─────────────────────────────────────────────────────
 -- Stores local chat history for the Hermes and Local Index chat surfaces.
@@ -667,4 +669,104 @@ CREATE TABLE IF NOT EXISTS ai_inbox_item_state (
     snoozed_until TEXT,
     feedback TEXT,
     updated_at TEXT NOT NULL
+);
+
+-- ── Founder Lens (v59+) ──────────────────────────────────────────────────────
+-- Founder Lens tables (migration v59_founder_lens): fingerprint-keyed reply
+-- threads, the Founder Plan Ledger, and the app→daemon approved-memory export.
+-- The canonical DDL lives in
+-- AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationV59.swift and is
+-- kept byte-identical to the daemon's BurnBarAIInboxSchema.founderLensStatements
+-- (AIInboxSchemaParityTests enforces the parity; the daemon also creates these
+-- tables with IF NOT EXISTS on open).
+-- Write ownership: the daemon writes every table below; all mutations arrive
+-- through human-confirmed RPCs (daemon.inbox.reply, daemon.inbox.plans.*,
+-- daemon.inbox.memory.export). The app never writes these tables directly.
+-- Threads are keyed by item FINGERPRINT (condition identity), not item id, so
+-- a conversation survives item resolve/reopen churn.
+
+CREATE TABLE IF NOT EXISTS ai_inbox_threads (
+    fingerprint TEXT PRIMARY KEY,
+    item_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    turn_count INTEGER NOT NULL DEFAULT 0,
+    total_cost_usd REAL NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS ai_inbox_thread_messages (
+    id TEXT PRIMARY KEY,
+    fingerprint TEXT NOT NULL,
+    role TEXT NOT NULL,
+    body_md TEXT NOT NULL,
+    plan_candidates_json TEXT,
+    model_provenance TEXT,
+    cost_usd REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS ai_inbox_thread_messages_thread_idx
+    ON ai_inbox_thread_messages(fingerprint, created_at);
+
+CREATE TABLE IF NOT EXISTS ai_inbox_plans (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    horizon TEXT NOT NULL,
+    pack TEXT NOT NULL,
+    status TEXT NOT NULL,
+    summary_md TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    origin_fingerprint TEXT,
+    memory_id TEXT,
+    pensieve_vector_id TEXT,
+    grade_avg REAL,
+    metrics_json TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ai_inbox_plans_status_idx
+    ON ai_inbox_plans(status, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS ai_inbox_plan_steps (
+    id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    parent_step_id TEXT,
+    ordinal INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    body_md TEXT NOT NULL,
+    status TEXT NOT NULL,
+    next_move_md TEXT,
+    evidence_ids_json TEXT,
+    mission_id TEXT,
+    followup_id TEXT,
+    inbox_fingerprint TEXT,
+    grade INTEGER,
+    grade_note_md TEXT,
+    graded_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ai_inbox_plan_steps_plan_idx
+    ON ai_inbox_plan_steps(plan_id, ordinal);
+
+CREATE TABLE IF NOT EXISTS ai_inbox_plan_events (
+    id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    step_id TEXT,
+    event TEXT NOT NULL,
+    detail_json TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS ai_inbox_plan_events_plan_idx
+    ON ai_inbox_plan_events(plan_id, created_at);
+
+CREATE TABLE IF NOT EXISTS ai_inbox_memory_export (
+    memory_id TEXT PRIMARY KEY,
+    provenance TEXT NOT NULL,
+    snippet_md TEXT NOT NULL,
+    approved_at TEXT NOT NULL,
+    exported_at TEXT NOT NULL
 );

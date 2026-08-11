@@ -17,15 +17,16 @@ struct GeneralSettingsView: View {
     /// call sites compile unchanged.
     var runtimeContext: OpenBurnBarRuntimeContext?
 
-    private var setupGuide: OpenBurnBarSetupGuideSnapshot {
-        OpenBurnBarSetupGuideBuilder.build(
-            detection: settingsManager.detectAvailableProviders(),
-            indexingEnabled: settingsManager.conversationIndexingEnabled,
-            isSignedIn: sharedFeaturesAvailable,
-            conversationCloudEnabled: settingsManager.conversationCloudBackupEnabled,
-            iCloudMirrorEnabled: settingsManager.iCloudSessionMirrorEnabled
-        )
-    }
+    /// Cached so List body evaluation does not re-walk every provider path on
+    /// each SwiftUI render while navigating General.
+    @State private var setupGuide = OpenBurnBarSetupGuideBuilder.build(
+        detection: [:],
+        indexingEnabled: false,
+        isSignedIn: false,
+        conversationCloudEnabled: false,
+        iCloudMirrorEnabled: false
+    )
+    @State private var setupSummaryText = "…"
 
     var body: some View {
         List {
@@ -42,7 +43,7 @@ struct GeneralSettingsView: View {
                         iconTint: DesignSystem.Colors.whimsy,
                         title: "Operator Model & Setup",
                         subtitle: "Detected providers, onboarding wizard, signed-in cloud features",
-                        value: setupSummary
+                        value: setupSummaryText
                     )
                 }
             } header: {
@@ -151,14 +152,23 @@ struct GeneralSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(DesignSystem.Colors.background)
         .navigationTitle("General")
-        .onAppear {
+        .task {
             Analytics.shared.track(.screenViewed, ["surface": "settings"])
+            // Probe once per visit — never from the List body (that re-ran on
+            // every SwiftUI render and hitch-hung General while navigating).
+            let detection = settingsManager.detectAvailableProviders()
+            setupGuide = OpenBurnBarSetupGuideBuilder.build(
+                detection: detection,
+                indexingEnabled: settingsManager.conversationIndexingEnabled,
+                isSignedIn: sharedFeaturesAvailable,
+                conversationCloudEnabled: settingsManager.conversationCloudBackupEnabled,
+                iCloudMirrorEnabled: settingsManager.iCloudSessionMirrorEnabled
+            )
+            let detected = detection.values.filter { $0 }.count
+            setupSummaryText = detected == 0
+                ? "No agents detected"
+                : "\(detected) agent\(detected == 1 ? "" : "s") detected"
         }
-    }
-
-    private var setupSummary: String {
-        let detected = settingsManager.detectAvailableProviders().values.filter { $0 }.count
-        return detected == 0 ? "No agents detected" : "\(detected) agent\(detected == 1 ? "" : "s") detected"
     }
 
     private var appearanceSummary: String {

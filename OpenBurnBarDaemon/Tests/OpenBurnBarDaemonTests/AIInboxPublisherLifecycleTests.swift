@@ -474,7 +474,7 @@ final class AIInboxPublisherLifecycleTests: XCTestCase {
     func test_briefTitleNamesTheSingleProject() {
         let now = Date()
         let pack = AIInboxFixtures.pack(conversations: [AIInboxFixtures.conversation()], now: now)
-        XCTAssertEqual(BurnBarAIInboxPublisher.briefTitle(pack: pack, now: now), "1 session in BurnBar")
+        XCTAssertEqual(BurnBarAIInboxPublisher.briefTitle(pack: pack, now: now), "Session in BurnBar")
     }
 
     func test_briefTitleCountsProjectsWhenSeveralAreActive() {
@@ -486,7 +486,10 @@ final class AIInboxPublisherLifecycleTests: XCTestCase {
             ],
             now: now
         )
-        XCTAssertEqual(BurnBarAIInboxPublisher.briefTitle(pack: pack, now: now), "2 sessions across 2 projects")
+        XCTAssertEqual(
+            BurnBarAIInboxPublisher.briefTitle(pack: pack, now: now),
+            "2 sessions across AgentLens + BurnBar"
+        )
     }
 
     func test_briefTitleFallsBackWhenNothingIsAttributed() {
@@ -495,6 +498,62 @@ final class AIInboxPublisherLifecycleTests: XCTestCase {
             BurnBarAIInboxPublisher.briefTitle(pack: AIInboxFixtures.emptyPack(now: now), now: now),
             "Recent activity"
         )
+    }
+
+    func test_briefEvidencePrefersSubstanceAndDedupesEmptyShells() throws {
+        let now = Date()
+        let rich = AIInboxFixtures.conversation(id: "rich", messageCount: 18)
+        let shellA = BurnBarAIInboxConversationExcerpt(
+            evidenceID: "conv:shell-a:0",
+            conversationID: "shell-a",
+            provider: "Factory",
+            projectName: "DataJockey",
+            workspacePath: "/tmp/datajockey",
+            title: "~/DataJockey",
+            endedAt: now,
+            messageCount: 0,
+            body: "",
+            keyFiles: [],
+            keyCommands: [],
+            wasTruncated: false
+        )
+        let shellB = BurnBarAIInboxConversationExcerpt(
+            evidenceID: "conv:shell-b:0",
+            conversationID: "shell-b",
+            provider: "Factory",
+            projectName: "DataJockey",
+            workspacePath: "/tmp/datajockey",
+            title: "~/DataJockey",
+            endedAt: now.addingTimeInterval(-60),
+            messageCount: 0,
+            body: "",
+            keyFiles: [],
+            keyCommands: [],
+            wasTruncated: false
+        )
+        let pack = AIInboxFixtures.pack(
+            conversations: [rich, shellA, shellB],
+            workspaces: [AIInboxFixtures.workspace(dirty: 3)],
+            now: now
+        )
+        let finding = BurnBarAIInboxPublisher.briefFinding(
+            markdown: "test",
+            pack: pack,
+            now: now
+        )
+        XCTAssertTrue(finding.evidenceIDs.contains(rich.evidenceID))
+        XCTAssertEqual(
+            finding.evidenceIDs.filter { $0.hasPrefix("conv:shell") }.count,
+            1,
+            "Same-workspace empty shells collapse to one citation"
+        )
+        XCTAssertTrue(finding.evidenceIDs.contains(where: { $0.hasPrefix("workspace:") }))
+        XCTAssertNil(finding.metrics["workspaces"])
+        XCTAssertEqual(finding.metrics["sessions"], "3")
+
+        let rows = BurnBarAIInboxPublisher.evidence(for: finding, pack: pack)
+        let shellRow = try XCTUnwrap(rows.first(where: { $0.id.hasPrefix("conv:shell") }))
+        XCTAssertEqual(shellRow.detail?.contains("empty shell"), true)
     }
 
     // MARK: - Evidence materialization

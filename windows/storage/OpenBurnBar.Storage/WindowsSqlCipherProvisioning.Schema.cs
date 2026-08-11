@@ -64,13 +64,16 @@ public sealed partial class WindowsSqlCipherProvisioner
             provenanceMethod TEXT NOT NULL DEFAULT 'api',
             provenanceConfidence TEXT NOT NULL DEFAULT 'exact',
             estimatorVersion TEXT NOT NULL DEFAULT 'windows-provisioner-v1',
-            parentRequestID TEXT
+            parentRequestID TEXT,
+            billingKind TEXT NOT NULL DEFAULT 'unknown'
         )
         """,
         "CREATE UNIQUE INDEX IF NOT EXISTS token_usage_unique_session_model_idx ON token_usage(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, ''))",
         "CREATE INDEX IF NOT EXISTS token_usage_created_at_idx ON token_usage(createdAt DESC)",
         "CREATE INDEX IF NOT EXISTS token_usage_session_idx ON token_usage(sessionId)",
         "CREATE INDEX IF NOT EXISTS token_usage_execution_source_time_idx ON token_usage(executionSourceID, startTime)",
+        // v60_billing_kind — mirrors OpenBurnBarDatabase+DataMigrationV60.swift.
+        "CREATE INDEX IF NOT EXISTS token_usage_billing_kind_time_idx ON token_usage(billingKind, startTime)",
         """
         CREATE TABLE IF NOT EXISTS conversations (
             id TEXT NOT NULL PRIMARY KEY,
@@ -304,6 +307,103 @@ public sealed partial class WindowsSqlCipherProvisioner
             snoozed_until TEXT,
             feedback TEXT,
             updated_at TEXT NOT NULL
+        )
+        """,
+        // v59_founder_lens — mirrors OpenBurnBarDatabase+MigrationV59.swift.
+        """
+        CREATE TABLE IF NOT EXISTS ai_inbox_threads (
+            fingerprint TEXT PRIMARY KEY,
+            item_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            turn_count INTEGER NOT NULL DEFAULT 0,
+            total_cost_usd REAL NOT NULL DEFAULT 0
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ai_inbox_thread_messages (
+            id TEXT PRIMARY KEY,
+            fingerprint TEXT NOT NULL,
+            role TEXT NOT NULL,
+            body_md TEXT NOT NULL,
+            plan_candidates_json TEXT,
+            model_provenance TEXT,
+            cost_usd REAL NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ai_inbox_thread_messages_thread_idx
+            ON ai_inbox_thread_messages(fingerprint, created_at)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ai_inbox_plans (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            horizon TEXT NOT NULL,
+            pack TEXT NOT NULL,
+            status TEXT NOT NULL,
+            summary_md TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            origin_fingerprint TEXT,
+            memory_id TEXT,
+            pensieve_vector_id TEXT,
+            grade_avg REAL,
+            metrics_json TEXT
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ai_inbox_plans_status_idx
+            ON ai_inbox_plans(status, updated_at DESC)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ai_inbox_plan_steps (
+            id TEXT PRIMARY KEY,
+            plan_id TEXT NOT NULL,
+            parent_step_id TEXT,
+            ordinal INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            body_md TEXT NOT NULL,
+            status TEXT NOT NULL,
+            next_move_md TEXT,
+            evidence_ids_json TEXT,
+            mission_id TEXT,
+            followup_id TEXT,
+            inbox_fingerprint TEXT,
+            grade INTEGER,
+            grade_note_md TEXT,
+            graded_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ai_inbox_plan_steps_plan_idx
+            ON ai_inbox_plan_steps(plan_id, ordinal)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ai_inbox_plan_events (
+            id TEXT PRIMARY KEY,
+            plan_id TEXT NOT NULL,
+            step_id TEXT,
+            event TEXT NOT NULL,
+            detail_json TEXT,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ai_inbox_plan_events_plan_idx
+            ON ai_inbox_plan_events(plan_id, created_at)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ai_inbox_memory_export (
+            memory_id TEXT PRIMARY KEY,
+            provenance TEXT NOT NULL,
+            snippet_md TEXT NOT NULL,
+            approved_at TEXT NOT NULL,
+            exported_at TEXT NOT NULL
         )
         """,
     };

@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Spend provenance: real API dollars vs subscription value
+- **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored
+  across the macOS/Windows/Linux migrators with deterministic backfill): `api`
+  (per-token dollars leaving a wallet — deepseek, OpenRouter, gateway keys,
+  billing APIs), `subscription` (imputed list-price value of plan-covered
+  harness work — Claude Code on Max, Codex, Cursor, Copilot…), or an honest
+  `unknown` bucket that is never silently folded into either side.
+- **Spend Lens on the burn chart**: liquid-glass `All / Split / Overlay`
+  capsule. Split shows real dollars and plan value side by side; Overlay
+  breaks both out on one shared axis (ember = money, glacier = plan).
+  Persisted per user.
+- **The AI Inbox daily budget now guards real dollars only**: subscription-
+  routed model calls no longer consume `dailyBudgetUSD` (opt back in with the
+  new "Count subscription spend" setting). Budget/status copy stops saying
+  "no model calls" when it means "rule-based fallback".
+
+### Added - AI Inbox Founder Lens: judgment packs, replies, and compounding plans
+- **Founder Lens judgment layer** (`BurnBarFounderLens`): engOps and
+  productStrategy packs distilled from real founder/VC/engineering doctrine
+  (gstack, YC, a16z, Sequoia, Horowitz, 2026 agent-readiness practice) as
+  snapshot-tested code constants — the zero-egress rule-based path carries
+  the same judgment as the model path. Voice ban list enforced by tests;
+  `lens:vN` stamped into item provenance.
+- **NextMoveRouter** (Swift-only): every substantive item ends with exactly
+  one primary next move; refuted/unclear findings lose theirs. Models never
+  author actions.
+- **Reply threads** (`daemon.inbox.thread.get` / `daemon.inbox.reply`): keyed
+  by condition fingerprint so conversations survive item resolve/reopen
+  churn. Fail-closed gate order: feature switches → egress guard → daily
+  budget → NEW per-reply budget (`perReplyBudgetUSD`, default $0.10) → G8
+  `LLMSafeContent` fences on every untrusted surface. Refusals are stated
+  reasons, never silent drops; reply spend lands in the authoritative usage
+  ledger.
+- **Founder Plan Ledger** (migration `v59_founder_lens`): accepted
+  suggestions become durable plans/steps with lifecycle, append-only audit
+  events, and grades (terminal outcomes auto-seed; explicit grades
+  override). Accept/update/grade are human-confirmed config-capability RPCs;
+  the analyst/reply model can only propose.
+- **Execution spine reuse**: Promote to mission (`daemon.mission.create`,
+  `recommendation: review`) and follow-up creation bind `mission_id` /
+  `followup_id` back onto plan steps — no second mission system.
+- **Compounding memory**: Remember routes plan steps through the existing
+  quarantine→approve Chat Memory Authority with `ai-inbox:plan:*`
+  provenance; approved snippets are pushed to the daemon
+  (`daemon.inbox.memory.export`, full-set replacement so revocations
+  propagate by omission) and re-enter every analyst/reply prompt as fenced
+  "standing commitments". Pensieve `chat_memory` sync stays gated on
+  approved + provenance + Pro Max/Ultra.
+- **Mac UI**: Discuss section on item detail (thread, composer, refusal
+  explanations, Accept-into-plan cards with provenance badges).
+- **MCP**: read-only `burnbar_inbox_plans_list` / `burnbar_inbox_plans_get`
+  (fenced, trust-signaled; deliberately no write tool).
+- Docs: `docs/AI_INBOX_FOUNDER_LENS.md`, `docs/AI_INBOX_FOUNDER_PLANS.md`.
+
 ## [1.0.34] - 2026-08-09
 
 ### Fixed - Domain-core protected signer path vs GitHub Actions API

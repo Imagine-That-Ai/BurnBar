@@ -56,6 +56,24 @@ struct DashboardSectionSwitcher: View {
                     }
                 }
             }
+
+            // The Control Deck sits below the divider rather than inside the
+            // `primarySections` loop: that array is positional and drives
+            // ⌘1–⌘8, so it cannot grow. This is the browsable "what surfaces
+            // exist" menu, and leaving the deck out of it would hide the one
+            // page that lists every feature.
+            Divider()
+            Button {
+                onNavigate(.controlDeck)
+            } label: {
+                Label {
+                    Text(DashboardMainRoute.controlDeck.title())
+                } icon: {
+                    Image(systemName: currentRoute == .controlDeck
+                        ? "checkmark"
+                        : DashboardMainRoute.controlDeck.systemImage())
+                }
+            }
         } label: {
             labelView
         }
