@@ -808,11 +808,15 @@ def test_safari_appex_release_signing_is_explicit_profile_bound_and_nested_first
     dmg_smoke = (ROOT / "scripts/ci/smoke-openburnbar-release-dmg.sh").read_text(
         encoding="utf-8"
     )
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     project = (ROOT / "project.yml").read_text(encoding="utf-8")
 
     profile_secret = "OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64"
     sign_helper = "scripts/ci/sign-openburnbar-safari-extension.sh"
     verify_helper = "scripts/ci/verify-openburnbar-safari-extension.sh"
+    development_verify_helper = (
+        "scripts/ci/verify-openburnbar-development-signing.sh"
+    )
     host_entitlement_variable = "OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS"
 
     assert profile_secret in workflow
@@ -837,6 +841,12 @@ def test_safari_appex_release_signing_is_explicit_profile_bound_and_nested_first
     assert "bash scripts/ci/verify-openburnbar-safari-extension.test.sh" in (
         public_trust_workflow
     )
+    assert development_verify_helper in public_trust_workflow
+    assert "bash scripts/ci/verify-openburnbar-development-signing.test.sh" in (
+        public_trust_workflow
+    )
+    assert development_verify_helper in makefile
+    assert "OTHER_CODE_SIGN_FLAGS: --options runtime,library" in project
     assert "$script_dir/verify-openburnbar-safari-extension.sh" in dmg_smoke
     assert mas_release.count(verify_helper) >= 2
     assert "pkgutil --expand-full" in mas_release

@@ -272,6 +272,18 @@ Acceptance:
 
 ## Distribution proof
 
+### Apple Development local build
+
+- [ ] `make build-signed` reaches the explicit development signing verifier.
+- [ ] Host and appex embed separate exact, device-authorized development
+      profiles; no wildcard application identifier is accepted.
+- [ ] Both profiles authorize `group.com.openburnbar.app` and the shared
+      `TEAMID.com.openburnbar.app` Keychain authority.
+- [ ] Host and appex use the expected Apple Development team and certificate,
+      with hardened runtime and library validation.
+- [ ] The installed build is still exercised in real Safari; verifier success
+      is artifact proof, not behavioral certification.
+
 ### Developer ID direct download
 
 - [ ] Dedicated extension `MAC_APP_DIRECT` profile is embedded.

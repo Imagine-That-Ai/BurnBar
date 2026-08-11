@@ -5,7 +5,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 if [[ $# -lt 3 || $# -gt 4 ]]; then
-  echo "usage: $0 APP_PATH direct|mas EXPECTED_TEAM_ID [PROVISIONING_PROFILE]" >&2
+  echo "usage: $0 APP_PATH development|direct|mas EXPECTED_TEAM_ID [PROVISIONING_PROFILE]" >&2
   exit 64
 fi
 
@@ -21,9 +21,9 @@ embedded_profile="$appex_path/Contents/embedded.provisionprofile"
 profile_verifier="${OPENBURNBAR_SIGNING_PROFILE_CERTIFICATE_VERIFIER:-$repo_root/scripts/ci/verify-signing-profile-certificate.sh}"
 
 case "$distribution" in
-  direct | mas) ;;
+  development | direct | mas) ;;
   *)
-    echo "ERROR: Safari extension distribution must be 'direct' or 'mas'; found '$distribution'." >&2
+    echo "ERROR: Safari extension distribution must be 'development', 'direct', or 'mas'; found '$distribution'." >&2
     exit 64
     ;;
 esac
@@ -56,7 +56,10 @@ if [[ -n "$provided_profile" ]]; then
   fi
 fi
 
-work_dir="$(mktemp -d "${TMPDIR:-/tmp}/openburnbar-safari-extension-verify.XXXXXX")"
+tmp_root="${TMPDIR:-/tmp}"
+if ! work_dir="$(mktemp -d "$tmp_root/openburnbar-safari-extension-verify.XXXXXX" 2>/dev/null)"; then
+  work_dir="$(mktemp -d "/tmp/openburnbar-safari-extension-verify.XXXXXX")"
+fi
 cleanup() {
   rm -rf "$work_dir"
 }
@@ -92,6 +95,11 @@ verify_nested_code() {
   fi
   if [[ "$distribution" == "direct" ]] && ! grep -Fq "Authority=Developer ID Application" <<<"$nested_signature"; then
     echo "ERROR: Nested direct-download Safari code must use a Developer ID Application certificate: $nested_path" >&2
+    printf '%s\n' "$nested_signature" >&2
+    exit 1
+  fi
+  if [[ "$distribution" == "development" ]] && ! grep -Fq "Authority=Apple Development:" <<<"$nested_signature"; then
+    echo "ERROR: Nested development Safari code must use an Apple Development certificate: $nested_path" >&2
     printf '%s\n' "$nested_signature" >&2
     exit 1
   fi
@@ -138,6 +146,11 @@ if ! grep -Eq 'flags=.*runtime' <<<"$signature" || ! grep -Eq 'flags=.*library-v
 fi
 if [[ "$distribution" == "direct" ]] && ! grep -Fq "Authority=Developer ID Application" <<<"$signature"; then
   echo "ERROR: Direct-download Safari extension must be signed with a Developer ID Application certificate." >&2
+  printf '%s\n' "$signature" >&2
+  exit 1
+fi
+if [[ "$distribution" == "development" ]] && ! grep -Fq "Authority=Apple Development:" <<<"$signature"; then
+  echo "ERROR: Development Safari extension must be signed with an Apple Development certificate." >&2
   printf '%s\n' "$signature" >&2
   exit 1
 fi
@@ -222,7 +235,13 @@ require_member(
     expected_keychain_group,
     "signed Safari Keychain groups",
 )
-if signed.get("com.apple.security.get-task-allow") is True:
+if distribution == "development":
+    require_equal(
+        signed.get("com.apple.security.get-task-allow"),
+        True,
+        "signed development Safari get-task-allow entitlement",
+    )
+elif signed.get("com.apple.security.get-task-allow") is True:
     fail("release Safari extension must not enable get-task-allow.")
 
 team_identifiers = profile.get("TeamIdentifier")
@@ -264,10 +283,18 @@ if not isinstance(profile_keychain_groups, list) or not {
         "Safari profile Keychain groups must authorize "
         f"{expected_keychain_group!r}; found {profile_keychain_groups!r}."
     )
-if profile_entitlements.get("com.apple.security.get-task-allow") is True:
+if distribution != "development" and profile_entitlements.get(
+    "com.apple.security.get-task-allow"
+) is True:
     fail("Safari provisioning profile must not enable get-task-allow.")
 
 all_devices = profile.get("ProvisionsAllDevices") is True
+provisioned_devices = profile.get("ProvisionedDevices")
+if distribution == "development":
+    if all_devices:
+        fail("development Safari profile must not be an all-devices distribution profile.")
+    if not isinstance(provisioned_devices, list) or not provisioned_devices:
+        fail("development Safari profile must authorize at least one registered device.")
 if distribution == "direct" and not all_devices:
     fail("direct Safari profile must set ProvisionsAllDevices=true (MAC_APP_DIRECT).")
 if distribution == "mas" and all_devices:

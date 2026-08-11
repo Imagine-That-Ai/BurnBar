@@ -102,12 +102,15 @@ jobs:
           bash -n scripts/ci/verify-apple-appcheck-release-artifact.sh
           bash -n scripts/ci/verify-public-macos-download-trust.test.sh
           bash -n scripts/ci/sign-openburnbar-safari-extension.sh
+          bash -n scripts/ci/verify-openburnbar-development-signing.sh
+          bash -n scripts/ci/verify-openburnbar-development-signing.test.sh
           bash -n scripts/ci/verify-openburnbar-safari-extension.sh
           bash -n scripts/ci/verify-openburnbar-safari-extension.test.sh
           bash -n scripts/ci/verify-signing-profile-certificate.sh
           python3 -m py_compile scripts/ci/verify-openburnbar-safari-extension-layout.py
           bash scripts/ci/verify-apple-release-firebase-config.test.sh
           bash scripts/ci/verify-public-macos-download-trust.test.sh
+          bash scripts/ci/verify-openburnbar-development-signing.test.sh
           bash scripts/ci/verify-openburnbar-safari-extension.test.sh
           python3 scripts/ci/verify-signing-profile-certificate.test.py
 

@@ -593,6 +593,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarSafariExtension/Resources/OpenBurnBarSafariExtension.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES
         ENABLE_HARDENED_RUNTIME: YES
+        OTHER_CODE_SIGN_FLAGS: --options runtime,library
         GENERATE_INFOPLIST_FILE: NO
         SKIP_INSTALL: YES
         SWIFT_ENABLE_EXPLICIT_MODULES: NO
