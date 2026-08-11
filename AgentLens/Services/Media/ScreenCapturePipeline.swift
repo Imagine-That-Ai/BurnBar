@@ -67,29 +67,12 @@ final class ScreenCapturePipeline: NSObject {
 
     private let configuration: Configuration
     private let frameHandler: FrameHandler
-    /// Visual surface selected by `VisualCapturePreferences`. When `.cliPTY` the pipeline
-    /// stays idle (no shareable content, no stream, no display link / timer) to preserve
-    /// the PR #2193 idle budget (<0.8% CPU / <140MB). See PERF_REGRESSION_GUARD watchlist.
-    private let visualCaptureSource: VisualCaptureSource
     #if canImport(ScreenCaptureKit)
     private var stream: SCStream?
     #endif
 
-    init(
-        configuration: Configuration = Configuration(),
-        visualCaptureSource: VisualCaptureSource,
-        frameHandler: @escaping FrameHandler
-    ) {
-        self.configuration = configuration
-        self.visualCaptureSource = visualCaptureSource
-        self.frameHandler = frameHandler
-    }
-
-    /// Legacy two-arg initializer for callers that predate the surface toggle.
-    /// Defaults to `.desktopApp` to preserve existing screen-share behavior.
     init(configuration: Configuration = Configuration(), frameHandler: @escaping FrameHandler) {
         self.configuration = configuration
-        self.visualCaptureSource = .desktopApp
         self.frameHandler = frameHandler
     }
 
@@ -138,14 +121,7 @@ final class ScreenCapturePipeline: NSObject {
 
     func start() async throws {
         #if canImport(ScreenCaptureKit)
-        // PERF + SECURITY: when surface is .cliPTY keep pipeline idle — must NOT call
-        // shareable content fetch or create stream / stream config / display link.
-        // This preserves the idle budget (7 wakeups/10s, no timer) from PR #2193.
-        guard visualCaptureSource == .desktopApp else {
-            Self.log.info("screen_capture_skip_cliPTY surface=\(String(describing: self.visualCaptureSource)) sharing=not_desktop")
-            return
-        }
-        // P0 #1 — synchronous TCC gate before ANY CG/SC call (closes 5-30s poll window)
+        // Synchronous TCC gate before ANY CG/SC call (closes the 5-30s poll window)
         #if canImport(CoreGraphics)
         guard CGPreflightScreenCaptureAccess() else {
             Self.log.error("screen_capture_permission_missing synchronous_gate=true")

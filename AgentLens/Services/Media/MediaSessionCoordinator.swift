@@ -64,10 +64,6 @@ final class MediaSessionCoordinator: ObservableObject {
     private var activeStreamClass: MediaStreamClass = .screenVideo
     private var cursorProvider: (@MainActor @Sendable () -> MediaFrame.CursorMetadata?)?
     private var activeScreenCaptureConfiguration = ScreenCapturePipeline.Configuration()
-    /// Visual surface for this session. When `.cliPTY` the coordinator stays idle (no
-    /// ScreenCapturePipeline/SCStream) to keep idle budgets. Desktop share debits
-    /// `MediaBudgetStatusStore` via `capabilityGate` (120 min normal / 30 soft).
-    private var visualCaptureSource: VisualCaptureSource = .desktopApp
 
     init(
         capabilityGate: any MediaCapabilityGate,
@@ -77,9 +73,6 @@ final class MediaSessionCoordinator: ObservableObject {
             MercuryRuntimeHealthProbe.snapshot()
         },
         screenCaptureFactory: @escaping ScreenCaptureSessionFactory = { configuration, frameHandler in
-            // Factory is surface-agnostic; surface is injected at startScreenShare time via
-            // ScreenCapturePipeline(..., visualCaptureSource:). The default here stays
-            // `.desktopApp` for backward compat when caller doesn't pass surface.
             ScreenCapturePipeline(configuration: configuration, frameHandler: frameHandler)
         },
         videoEncoderFactory: @escaping VideoEncoderFactory = { configuration, onEncoded in
@@ -104,8 +97,7 @@ final class MediaSessionCoordinator: ObservableObject {
         cursorProvider: (@MainActor @Sendable () -> MediaFrame.CursorMetadata?)? = nil,
         localStreamingCapabilities: MercuryStreamingCapabilitySnapshot? = nil,
         remoteStreamingCapabilities: MercuryStreamingCapabilitySnapshot? = nil,
-        codecPolicy: MercuryCodecPolicy = .production,
-        visualCaptureSource: VisualCaptureSource = .desktopApp
+        codecPolicy: MercuryCodecPolicy = .production
     ) async throws {
         let sinkID = viewerID ?? peerDeviceID
         let streamClass = streamClassOverride ?? .screenVideo
@@ -115,20 +107,9 @@ final class MediaSessionCoordinator: ObservableObject {
             return
         }
         guard phase.isRestartable else { throw MediaSessionError.captureFailed }
-        self.visualCaptureSource = visualCaptureSource
-        // PERF guard: when surface is .cliPTY stay idle — must NOT touch SCShareableContent,
-        // SCStream, or debit MediaBudgetStatusStore. PTY path is text-only (256KB bounded).
-        if visualCaptureSource == .cliPTY {
-            // No screen capture pipeline, no budget check. Stay in idle but return success
-            // so caller can fall back to PTY text streaming without an error.
-            // We still need to set a minimal session so detach logic works, but without
-            // starting encoder/pipeline. For simplicity we early-return and keep phase idle;
-            // the caller (MercuryRouter) will handle PTY fallback outside this coordinator.
-            // Log and keep `screenCapture` nil to guarantee no SCStream is created.
-            // Note: MediaBudgetStatusStore minutes are NOT debited for PTY.
-            return
-        }
-        // Desktop path — gate on entitlement + daily cap (120 min normal / 30 soft)
+        // Every start path gates on entitlement + daily cap (120 min normal / 30 soft)
+        // before any capture work. There is deliberately no branch that returns success
+        // without debiting the budget — see `testStartScreenShareAlwaysConsultsTheCapabilityGate`.
         let check = await capabilityGate.check(
             feature: .screenShare,
             sessionDurationLimitSeconds: 60 * 60,
@@ -208,30 +189,25 @@ final class MediaSessionCoordinator: ObservableObject {
             }
             do {
                 try await pipeline.start()
-            } catch let error as ScreenCapturePipeline.Failure { // try?-ok(screen capture fallback)
+            } catch let error as ScreenCapturePipeline.Failure {
                 guard case .screenRecordingPermissionDenied = error else { throw error }
-                // P1 #4 — Desktop capture denied (TCC revoked or never granted). Fail closed to PTY:
-                // - Do NOT leave a half-started encoder/stream (tear down)
-                // - Emit Mac toast + phone pill via SystemPermissionMonitor (synchronous, not poll)
-                // - Audit entry with denyReason=screen_recording_denied_fallback_to_pty is emitted by
-                //   the Computer Use path (ComputerUseSessionCoordinator); here we just log and stay idle
-                //   so the caller can stream PTY text instead of pixels.
-                // - Deep link to System Settings is available via SystemPermissionKind.screenRecording.deepLink
+                // Desktop capture denied (TCC revoked or never granted). Fail closed:
+                // surface the permission prompt synchronously, tear the half-started
+                // encoder down, and rethrow so the router reports the failure instead of
+                // holding an "active" session that never delivers a frame.
                 await SystemPermissionMonitor.shared.emitRequesting(
                     kind: .screenRecording,
                     bundleId: nil,
                     originatingToolCallId: nil,
                     originatingToolName: nil,
-                    instructions: "Screen Recording denied — showing terminal. Enable in System Settings → Privacy & Security → Screen Recording.",
-                    failureCategory: "screen_recording_denied_fallback_to_pty"
+                    instructions: "Screen Recording is off. Enable it in System Settings → Privacy & Security → Screen Recording.",
+                    failureCategory: "screen_recording_denied"
                 )
-                // Tear down encoder we already started
                 self.videoEncoder?.stop()
                 self.videoEncoder = nil
                 self.streamSinks.removeAll()
                 self.sessionMetadata = nil
                 self.phase = .ended(reason: .error)
-                // Throw so MercuryRouter can surface a fallback UI (PTY) instead of silent empty frame
                 throw error
             }
             self.screenCapture = pipeline
@@ -254,8 +230,6 @@ final class MediaSessionCoordinator: ObservableObject {
 
     func switchScreenShareTarget(displayId: String?, windowID: CGWindowID?) async throws {
         guard phase == .active(feature: .screenShare) else { return }
-        // Perf guard: do not switch/create pipeline when surface is cliPTY
-        guard visualCaptureSource == .desktopApp else { return }
         var nextConfiguration = activeScreenCaptureConfiguration
         nextConfiguration.displayId = displayId
         nextConfiguration.windowID = windowID
