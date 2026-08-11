@@ -578,7 +578,7 @@ extension ProviderSetupGuide {
                 supportsSelfHosted: false
             )
 
-        case .windsurf:
+        case .windsurf, .devin:
             return ProviderSetupGuide(
                 provider: provider,
                 kinds: [.token, .bearer, .session],

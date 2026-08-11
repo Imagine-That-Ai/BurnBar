@@ -259,6 +259,7 @@ final class AgentHarnessImportJobListener {
         case "gemini", "geminicli": return .geminiCLI
         case "goose": return .goose
         case "windsurf": return .windsurf
+        case "devin": return .devin
         case "warp": return .warp
         case "kimi": return .kimi
         case "ollama": return .ollama

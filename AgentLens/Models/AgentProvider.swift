@@ -86,6 +86,7 @@ extension AgentProvider {
         case .omp: return "*.jsonl"
         case .ollama: return "server*.log"
         case .windsurf: return "state.vscdb"
+        case .devin: return "state.vscdb"
         case .warp: return "warp_network*.log"
         case .xAI: return "summary.json"
         case .mimo: return "mimo-no-local-logs"
@@ -105,7 +106,7 @@ extension AgentProvider {
             return .supported
         case .mimo:
             return .supported
-        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .warp, .ollama, .piAgent:
+        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .devin, .warp, .ollama, .piAgent:
             return .partial
         case .augment:
             return .unsupported
@@ -116,7 +117,7 @@ extension AgentProvider {
     /// provider's local artifacts.
     var dataConfidence: DataConfidence {
         switch self {
-        case .factory, .claudeCode, .codex, .openCode, .omp, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent, .xAI, .cursorAgent, .openClaude, .junie, .primeAgent, .muse:
+        case .factory, .claudeCode, .codex, .openCode, .omp, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent, .xAI, .cursorAgent, .openClaude, .junie, .primeAgent, .muse, .devin:
             return .exact
         // OpenAI exposes exact tokens-used per org via the usage API.
         case .openAI, .deepSeek, .openBurnBar:

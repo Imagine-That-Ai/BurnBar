@@ -334,6 +334,24 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
             return "MLXLogo"
         case "ollama", "ollama-local":
             return "OllamaLogo"
+        case "devin", "devin-desktop", "devin-cli":
+            return "DevinLogo"
+        case "factory-desktop":
+            return "FactoryLogo"
+        case "claude-desktop":
+            return "ClaudeCodeLogo"
+        case "warp-desktop":
+            return "WarpLogo"
+        case "ollama-desktop":
+            return "OllamaLogo"
+        case "zcode", "zcode-desktop":
+            return "ZaiLogo"
+        case "minimax-desktop":
+            return "MiniMaxLogo"
+        case "codex-desktop":
+            return "CodexLogo"
+        case "cursor-desktop":
+            return "CursorLogo"
         default:
             return nil
         }

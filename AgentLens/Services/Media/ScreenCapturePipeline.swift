@@ -67,12 +67,29 @@ final class ScreenCapturePipeline: NSObject {
 
     private let configuration: Configuration
     private let frameHandler: FrameHandler
+    /// Visual surface selected by `VisualCapturePreferences`. When `.cliPTY` the pipeline
+    /// stays idle (no shareable content, no stream, no display link / timer) to preserve
+    /// the PR #2193 idle budget (<0.8% CPU / <140MB). See PERF_REGRESSION_GUARD watchlist.
+    private let visualCaptureSource: VisualCaptureSource
     #if canImport(ScreenCaptureKit)
     private var stream: SCStream?
     #endif
 
+    init(
+        configuration: Configuration = Configuration(),
+        visualCaptureSource: VisualCaptureSource,
+        frameHandler: @escaping FrameHandler
+    ) {
+        self.configuration = configuration
+        self.visualCaptureSource = visualCaptureSource
+        self.frameHandler = frameHandler
+    }
+
+    /// Legacy two-arg initializer for callers that predate the surface toggle.
+    /// Defaults to `.desktopApp` to preserve existing screen-share behavior.
     init(configuration: Configuration = Configuration(), frameHandler: @escaping FrameHandler) {
         self.configuration = configuration
+        self.visualCaptureSource = .desktopApp
         self.frameHandler = frameHandler
     }
 
@@ -92,6 +109,11 @@ final class ScreenCapturePipeline: NSObject {
 
     static func availableWindows() async -> [WindowDescriptor] {
         #if canImport(ScreenCaptureKit)
+        // Perf guard: do not wake ScreenCaptureKit when Screen Recording is denied.
+        // Synchronous preflight avoids a heavy WindowServer round-trip when idle.
+        #if canImport(CoreGraphics)
+        if !CGPreflightScreenCaptureAccess() { return [] }
+        #endif
         do {
             let content = try await currentShareableContent(requestPermissionIfNeeded: false)
             return content.windows.compactMap { window in
@@ -116,6 +138,20 @@ final class ScreenCapturePipeline: NSObject {
 
     func start() async throws {
         #if canImport(ScreenCaptureKit)
+        // PERF + SECURITY: when surface is .cliPTY keep pipeline idle — must NOT call
+        // shareable content fetch or create stream / stream config / display link.
+        // This preserves the idle budget (7 wakeups/10s, no timer) from PR #2193.
+        guard visualCaptureSource == .desktopApp else {
+            Self.log.info("screen_capture_skip_cliPTY surface=\(String(describing: self.visualCaptureSource)) sharing=not_desktop")
+            return
+        }
+        // P0 #1 — synchronous TCC gate before ANY CG/SC call (closes 5-30s poll window)
+        #if canImport(CoreGraphics)
+        guard CGPreflightScreenCaptureAccess() else {
+            Self.log.error("screen_capture_permission_missing synchronous_gate=true")
+            throw Failure.screenRecordingPermissionDenied
+        }
+        #endif
         let content: SCShareableContent
         do {
             // Do not trigger the native Screen Recording prompt from automatic
@@ -253,9 +289,16 @@ final class ScreenCapturePipeline: NSObject {
         ownBundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> Bool {
         guard let bundleIdentifier, !bundleIdentifier.isEmpty else { return false }
+        // Own bundle + deny-list (P0 #2) — never capture loginwindow/SecurityAgent/keychain etc.
         var excludedBundleIdentifiers: Set<String> = [
             "com.openburnbar.app",
-            "com.openburnbar.AgentLens"
+            "com.openburnbar.AgentLens",
+            "com.apple.loginwindow",
+            "com.apple.SecurityAgent",
+            "com.apple.SecurityAgentHelper",
+            "com.apple.keychainaccess",
+            "com.apple.FileVaultRecoveryUtility",
+            "com.apple.systempreferences"
         ]
         if let ownBundleIdentifier, !ownBundleIdentifier.isEmpty {
             excludedBundleIdentifiers.insert(ownBundleIdentifier)
