@@ -79,7 +79,33 @@ if (!missing) {
    integer is 1 or more; give it full ink when it isn't. */
 const leadIsZero = intPart === "0" || intPart === "";
 
-const a11y = label ?? (missing ? empty : `${prefix}${intPart}${decPart ? "." + decPart : ""}${unitPart}`);
+const a11y =
+  label ?? (missing ? empty : `${prefix}${intPart}${decPart ? "." + decPart : ""}${unitPart}`);
+
+/* The glyph markup is assembled here as a string rather than as sibling
+   elements in the template, and it is deliberate.
+
+   Any newline between two adjacent expressions in the template emits a text
+   node, which renders as a real space: "98 .7 %" instead of "98.7%". Writing
+   them on one long line fixes it until the next `prettier --write`, which
+   reflows them and silently breaks every figure on the page again — that has
+   already happened once. A joined string cannot be reformatted into a bug.
+
+   Every part is a number this file formatted itself (toFixed / toLocaleString)
+   or a fixed unit token, so there is no interpolation of caller-controlled
+   text and nothing to escape. */
+const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+
+const glyphs = missing
+  ? ""
+  : [
+      prefix ? `<span class="ins-num__sign">${esc(prefix)}</span>` : "",
+      leadIsZero ? `<span class="ins-num__lead">${esc(intPart)}</span>` : esc(intPart),
+      decPart
+        ? `<span class="ins-num__dec${leadIsZero ? " ins-num__dec--lead" : ""}">.${esc(decPart)}</span>`
+        : "",
+      unitPart ? `<span class="ins-num__unit">${esc(unitPart)}</span>` : ""
+    ].join("");
 ---
 
 {
@@ -90,12 +116,9 @@ const a11y = label ?? (missing ? empty : `${prefix}${intPart}${decPart ? "." + d
   ) : (
     <span class:list={["ins-num", `ins-num--${size}`, cls]}>
       {/* Screen readers get the whole figure as one string; the split glyphs
-          are decoration for sighted reading.
-
-          NOTE: the spans below sit on one line on purpose. A newline between
-          two Astro expressions emits a text node, which renders as a real
-          space — "98 .7 %" instead of "98.7%". Keep them adjacent. */}
-      <span class="ins-sr">{a11y}</span><span aria-hidden="true">{prefix && <span class="ins-num__sign">{prefix}</span>}{leadIsZero ? <span class="ins-num__lead">{intPart}</span> : intPart}{decPart && <span class:list={["ins-num__dec", leadIsZero && "ins-num__dec--lead"]}>.{decPart}</span>}{unitPart && <span class="ins-num__unit">{unitPart}</span>}</span>
+          are decoration for sighted reading. */}
+      <span class="ins-sr">{a11y}</span>
+      <span aria-hidden="true" set:html={glyphs} />
     </span>
   )
 }
