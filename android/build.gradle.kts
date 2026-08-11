@@ -18,7 +18,7 @@ plugins {
     // Macrobenchmark + baseline-profile capture (:macrobenchmark, on-device only).
     // 1.5.0-alpha06 is the first line with AGP 9 new-DSL support.
     id("com.android.test") version "9.2.1" apply false
-    id("androidx.baselineprofile") version "1.5.0-alpha06" apply false
+    id("androidx.baselineprofile") version "1.5.0-beta01" apply false
 }
 
 // Supply-chain hardening (R-S5): activate Gradle dependency locking for every
