@@ -1,16 +1,94 @@
 # Independent Windows Parity Audit Against macOS
 
 **Date:** 2026-07-09
-**Last current-source refresh:** 2026-08-10
+**Last current-source refresh:** 2026-08-11
 **Reference product:** shipping macOS OpenBurnBar
-**Audit target:** exact merged `main` commit `8b07625eebe9db0bf0084e6a884becd6d8bcc72e`
-**Status:** F1 source/product parity is complete at 51/51 Real rows, and the exact merged source passes the current automated Windows x64 and ARM64 proof. Release certification remains **NO-GO** because this exact commit has not yet produced a signed release candidate or completed physical performance, manual accessibility/display, live staging, paired-device safety, private Store/update, and physical ARM64 evidence.
+**Source checkpoint:** exact merged `main` commit `8b07625eebe9db0bf0084e6a884becd6d8bcc72e`
+**Staging checkpoint:** exact candidate `0b8c208537bcf7786ff43370ffb28d0d4becb0f4`
+**Status:** F1 source/product parity is complete at 51/51 Real rows, the measured source passes the current automated Windows x64 and ARM64 proof, and the exact-candidate staging infrastructure deployment passed. Release certification remains **NO-GO**: the final release source has not yet been signed as `windows-v1.0.39`, and no exact artifact has completed physical x64 performance, manual accessibility/display, signed-in OAuth/App Check/physical TPM/CloudVault, paired-device safety, or private Store/update evidence. Physical ARM64 also remains uncertified, as an explicit non-blocking beta limitation.
 
 **Day-two operations:** use
 [`WINDOWS_PORT_OPERATIONS_RUNBOOK.md`](WINDOWS_PORT_OPERATIONS_RUNBOOK.md) for
 the current release sequence, cost model, maintenance cadence, evidence gates,
 rollback steps, and agent handoff format. This audit preserves the detailed
 historical evidence; the runbook owns repeatable operations.
+
+## Exact-candidate staging infrastructure checkpoint - 2026-08-11
+
+[Staging run 31439802683](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31439802683)
+completed successfully at `2026-08-11T02:13:37Z`. The dispatch head was trusted
+`main` commit `b5f927866ede91795fa2dadb1f1f915e42b98ab5`, which had landed the
+source-bound staging workflow through PR #2209. While the protected deployment
+waited for a runner, PR #2207 advanced `main` to the docs-only successor
+`43172c62e80e698ca76713d628b3aba534c70a18`; the trusted reusable workflow
+therefore resolved that newer `main` ref when it started, but its workflow bytes
+were unchanged from `b5f927866ede91795fa2dadb1f1f915e42b98ab5`.
+
+The deployed artifact remained bound to open, unmerged PR #2208 candidate
+`0b8c208537bcf7786ff43370ffb28d0d4becb0f4`. The run used `dry_run=false`,
+Functions on, Hosting off, and exactly these four selectors:
+
+- `issueWindowsAppCheckChallenge`
+- `mintWindowsAppCheckToken`
+- `getWindowsRuntimeSafetyConfig`
+- `submitDomainCoreShadowSamples`
+
+The original zero-step job `93622386842` was cancelled after receiving no
+runner. GitHub's replacement trusted deploy job `93656565440` then passed
+artifact-identity checks, deployed Firestore indexes/rules and Storage rules,
+verified post-deploy drift, confirmed all 12 declared TTL policies were
+`ACTIVE`, and updated exactly the four selected Node 22 Functions.
+
+Live readback found all four Functions `ACTIVE`, with no configured minimum
+instance count, and with both
+`OPENBURNBAR_SOURCE_COMMIT=0b8c208537bcf7786ff43370ffb28d0d4becb0f4`
+and
+`FUNCTION_VERSION=staging-0b8c208537bcf7786ff43370ffb28d0d4becb0f4`.
+Their revisions are:
+
+- `issuewindowsappcheckchallenge-00003-lix`
+- `mintwindowsappchecktoken-00003-tol`
+- `getwindowsruntimesafetyconfig-00003-mov`
+- `submitdomaincoreshadowsamples-00003-sax`
+
+An anonymous callable POST to each live URI returned HTTP `401`, preserving the
+fail-closed authentication boundary.
+
+Post-deploy fingerprints matched the saved pre-deploy boundaries:
+
+- seven non-target staging Functions:
+  `2cac40f5decf9e3be4b2090565c594c572576b53a520078b4b08a788f43d1616`;
+- 174 production Functions:
+  `38482806c5fd80cd31f3e6f1aecc1e2a43707ecd11c1dcc85ead5c6fd82d2937`;
+- 12 production TTL policies:
+  `81c60fc0946f3ffc421dcc49a0092e661fe2bcebf3a115096dd4c83f3021a1c0`;
+- staging marketing, staging console, production marketing, and production
+  console body hashes:
+  `a37a332869c6e177f2a3dd299e2dd8407be557623057de9dc355c1603a97379f`,
+  `dd7c22b3f25d3c331abc00a714b9672396f01a14648bd3ed99f45ceeb64a2642`,
+  `567cdbe5dbc3caa6c64e7de038770450e3c5ade6140f18f8533cc2bbb910894e`,
+  and `4ef30e0d661cc7a08294b83c663b074b14cdff0918e64147ee527ef02278d007`.
+
+The 92 production Firestore indexes were also unchanged. Their canonical saved
+hash remains
+`8bcfaac80d623481b061737aca15d3de1ef5c03430b63d8aa676deec01570873`;
+an observed
+`793a9e4a66211992218506c39962809b6e5250d6e9d0b227d424bb1740fa8ac0`
+alternate is the same JSON without its final newline, not index drift.
+Production Firestore Admin audit logs recorded no index create, delete, or
+update event during the staging window.
+
+The Azure TPM verifier also remained Running, enabled, HTTPS-only, on the
+F1/Free plan, with `/healthz` returning `200` and an unauthenticated `/verify`
+request returning `401`. PR #2208 remains open and unmerged; the pending
+production Firestore workflow has zero jobs. Production, Hosting, tags,
+releases, and Store state were not changed.
+
+This checkpoint closes the exact-candidate **staging deployment and
+infrastructure** proof. It does not make the release `GO`: the signed-in OAuth,
+App Check, physical TPM, CloudVault, offline/revocation/sign-out, and
+cross-device safety protocols still require the exact signed Windows artifact
+on physical hardware.
 
 ## Merged-main automated checkpoint - 2026-08-10
 
@@ -1041,11 +1119,12 @@ produced a protected, signed `windows-v1.0.39` release candidate.
 
 Accordingly, the accurate current claim is: **F1 source/product parity is
 ledger-green; applicable F2 source composition is complete; exact merged-main
-automated Windows proof is green; F2 True 1:1 is not release-certified because
-the exact source is not yet signed and its physical/manual/live/Store evidence
-is incomplete**. A public parity release remains gated on the explicitly named
-physical Windows, manual accessibility/display, live staging/cross-device,
-advanced safety, and public lifecycle evidence above.
+automated Windows proof is green; exact-candidate staging infrastructure proof
+is green; F2 True 1:1 is not release-certified because the exact release source
+is not yet signed and its physical/manual/signed-in/Store evidence is
+incomplete**. A public parity release remains gated on the explicitly named
+physical Windows, manual accessibility/display, signed-in staging and
+cross-device protocols, advanced safety, and public lifecycle evidence above.
 
 ## Independent physical-release certification addendum - 2026-07-11
 
