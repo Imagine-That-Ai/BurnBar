@@ -120,14 +120,14 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         try "#!/bin/sh\nexit 0\n".write(to: sourceBinaryURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sourceBinaryURL.path)
 
-        var launchctlCalls: [[String]] = []
+        let launchctlCalls = OpenBurnBarCore.Locked<[[String]]>([])
 
         let manager = OpenBurnBarDaemonManager(
             paths: harness.paths,
             dependencies: OpenBurnBarDaemonDependencies(
                 fileManager: .default,
                 runProcess: { _, arguments in
-                    launchctlCalls.append(arguments)
+                    launchctlCalls.withLock { $0.append(arguments) }
                     return ""
                 },
                 resolveDaemonBinary: { sourceBinaryURL },
@@ -177,10 +177,10 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         )
         XCTAssertTrue(FileManager.default.fileExists(atPath: harness.paths.launchAgentPlistURL.path))
         XCTAssertTrue(
-            launchctlCalls.contains(where: { $0.starts(with: ["bootstrap", "gui/\(getuid())"]) })
+            launchctlCalls.read().contains(where: { $0.starts(with: ["bootstrap", "gui/\(getuid())"]) })
         )
         XCTAssertTrue(
-            launchctlCalls.contains(where: { $0.starts(with: ["kickstart", "-k", "gui/\(getuid())/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"]) })
+            launchctlCalls.read().contains(where: { $0.starts(with: ["kickstart", "-k", "gui/\(getuid())/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"]) })
         )
 
         await manager.uninstall()
@@ -188,7 +188,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: harness.paths.launchAgentPlistURL.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: harness.paths.installedBinaryURL.path))
         XCTAssertTrue(
-            launchctlCalls.contains(where: { $0.starts(with: ["bootout", "gui/\(getuid())"]) })
+            launchctlCalls.read().contains(where: { $0.starts(with: ["bootout", "gui/\(getuid())"]) })
         )
     }
 
@@ -296,7 +296,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
             label: "Gmail",
             isEnabled: true
         )
-        var configSnapshot = BurnBarProviderConfigurationSnapshot(
+        let configSnapshot = OpenBurnBarCore.Locked(BurnBarProviderConfigurationSnapshot(
             providers: [
                 BurnBarProviderSettings(
                     providerID: "anthropic",
@@ -307,7 +307,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
                     credentialSlots: [icloudSlot, gmailSlot]
                 )
             ]
-        )
+        ))
 
         let manager = OpenBurnBarDaemonManager(
             paths: harness.paths,
@@ -323,9 +323,9 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
                         socketPath: harness.paths.socketURL.path
                     )
                 },
-                requestConfig: { _ in configSnapshot },
+                requestConfig: { _ in configSnapshot.read() },
                 updateConfig: { _, snapshot in
-                    configSnapshot = snapshot
+                    configSnapshot.write(snapshot)
                     return snapshot
                 },
                 requestRecentUsage: { _, _ in [] },
@@ -359,7 +359,10 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
             slotID: "gmail"
         )
 
-        XCTAssertEqual(configSnapshot.providerSettings(id: "anthropic")?.preferredCredentialSlotID, "gmail")
+        XCTAssertEqual(
+            configSnapshot.read().providerSettings(id: "anthropic")?.preferredCredentialSlotID,
+            "gmail"
+        )
         XCTAssertEqual(
             manager.providerConfigurations.first?.preferredCredentialSlotID,
             "gmail",
@@ -390,13 +393,13 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         try "#!/bin/sh\nexit 0\necho stale\n".write(to: harness.paths.installedBinaryURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: harness.paths.installedBinaryURL.path)
 
-        var launchctlCalls: [[String]] = []
+        let launchctlCalls = OpenBurnBarCore.Locked<[[String]]>([])
         let manager = OpenBurnBarDaemonManager(
             paths: harness.paths,
             dependencies: OpenBurnBarDaemonDependencies(
                 fileManager: .default,
                 runProcess: { _, arguments in
-                    launchctlCalls.append(arguments)
+                    launchctlCalls.withLock { $0.append(arguments) }
                     return ""
                 },
                 resolveDaemonBinary: { sourceBinaryURL },
@@ -451,7 +454,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
             )
         )
         XCTAssertTrue(
-            launchctlCalls.contains(where: { $0.starts(with: ["kickstart", "-k", "gui/\(getuid())/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"]) })
+            launchctlCalls.read().contains(where: { $0.starts(with: ["kickstart", "-k", "gui/\(getuid())/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"]) })
         )
     }
 
@@ -492,12 +495,12 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: harness.paths.launchAgentPlistURL.path))
 
-        var launchctlCalls: [[String]] = []
+        let launchctlCalls = OpenBurnBarCore.Locked<[[String]]>([])
         let manager = OpenBurnBarDaemonManager(
             paths: harness.paths,
             dependencies: daemonDependencies(
                 runProcess: { _, arguments in
-                    launchctlCalls.append(arguments)
+                    launchctlCalls.withLock { $0.append(arguments) }
                     return ""
                 },
                 resolveDaemonBinary: { sourceBinaryURL }
@@ -518,11 +521,11 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
             manager.lastError ?? "fresh binary plus recreated LaunchAgent should not need another refresh"
         )
         XCTAssertTrue(
-            launchctlCalls.contains(where: { $0.starts(with: ["bootstrap", "gui/\(getuid())"]) }),
+            launchctlCalls.read().contains(where: { $0.starts(with: ["bootstrap", "gui/\(getuid())"]) }),
             manager.lastError ?? "repair should bootstrap the recreated LaunchAgent"
         )
         XCTAssertTrue(
-            launchctlCalls.contains(where: { $0.starts(with: ["kickstart", "-k", "gui/\(getuid())/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"]) }),
+            launchctlCalls.read().contains(where: { $0.starts(with: ["kickstart", "-k", "gui/\(getuid())/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"]) }),
             manager.lastError ?? "repair should kickstart the recreated LaunchAgent"
         )
     }
@@ -563,12 +566,12 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: harness.paths.launchAgentPlistURL.path))
 
-        var launchctlCalls: [[String]] = []
+        let launchctlCalls = OpenBurnBarCore.Locked<[[String]]>([])
         let manager = OpenBurnBarDaemonManager(
             paths: harness.paths,
             dependencies: daemonDependencies(
                 runProcess: { _, arguments in
-                    launchctlCalls.append(arguments)
+                    launchctlCalls.withLock { $0.append(arguments) }
                     return ""
                 },
                 resolveDaemonBinary: { nil }
@@ -589,11 +592,11 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
             manager.lastError ?? "installed binary fallback plus recreated LaunchAgent should not need another refresh"
         )
         XCTAssertTrue(
-            launchctlCalls.contains(where: { $0.starts(with: ["bootstrap", "gui/\(getuid())"]) }),
+            launchctlCalls.read().contains(where: { $0.starts(with: ["bootstrap", "gui/\(getuid())"]) }),
             manager.lastError ?? "repair should bootstrap the recreated LaunchAgent"
         )
         XCTAssertTrue(
-            launchctlCalls.contains(where: { $0.starts(with: ["kickstart", "-k", "gui/\(getuid())/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"]) }),
+            launchctlCalls.read().contains(where: { $0.starts(with: ["kickstart", "-k", "gui/\(getuid())/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"]) }),
             manager.lastError ?? "repair should kickstart the recreated LaunchAgent"
         )
     }
@@ -1486,7 +1489,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
 
     private func daemonDependencies(
         runProcess: @escaping @Sendable (String, [String]) throws -> String = { _, _ in "" },
-        resolveDaemonBinary: @escaping () -> URL?,
+        resolveDaemonBinary: @escaping @Sendable () -> URL?,
         validateDaemonBinary: @escaping @Sendable (URL) throws -> Void = { _ in }
     ) -> OpenBurnBarDaemonDependencies {
         OpenBurnBarDaemonDependencies(

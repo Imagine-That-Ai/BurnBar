@@ -41,7 +41,7 @@ private func argumentValue(_ name: String, in args: [String] = CommandLine.argum
 }
 
 /// Legacy Unix socket front-end: authenticates console-user peers, forwards dispatch to the HID leaf over XPC.
-private final class VirtualHIDBridgeSocketAdapter {
+private final class VirtualHIDBridgeSocketAdapter: Sendable {
     private let socketPath: String
     private let socketFD: Int32
     private let peerAuthenticator: PrivilegedPeerAuthenticator

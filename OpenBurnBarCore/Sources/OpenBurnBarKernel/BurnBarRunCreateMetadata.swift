@@ -27,6 +27,17 @@ public enum BurnBarRunCreateMetadataKey: String, Sendable, CaseIterable, Hashabl
     case path
     case activeFilePath
     case activeSelectionText
+    case surface
+    case safariSessionId
+    case safariTabId
+    case safariURL
+    case safariPageContext
+    case safariScreenshot
+    case learningOptedIn
+    /// Bounded daemon-produced personalization. This value is already wrapped
+    /// as untrusted content and is supplemental to—not part of—the user
+    /// objective, planner intent, policy, or tool authority.
+    case safariLearnedContext
 }
 
 /// JSON object carried on `BurnBarRunCreateRequest` (same on-wire shape as

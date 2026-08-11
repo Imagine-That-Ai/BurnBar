@@ -14,6 +14,7 @@ final class InboxMemoryApprovalHandlerTests: XCTestCase {
     private var handler: InboxMemoryApprovalHandler!
 
     override func setUp() async throws {
+        try await super.setUp()
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
@@ -22,11 +23,11 @@ final class InboxMemoryApprovalHandlerTests: XCTestCase {
         handler = InboxMemoryApprovalHandler(store: store, scope: scope)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         handler = nil
         store = nil
         scope = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     private func makeCandidate(

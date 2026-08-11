@@ -50,7 +50,7 @@ enum BurnBarAIInboxTimestamp {
     ///
     /// Mirrors `BurnBarChatThreadService.grdbStorageTimestamp`, which solved this
     /// same problem for `chat_messages`.
-    nonisolated(unsafe) private static let grdbStorage: DateFormatter = {
+    private static let grdbStorage: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
         formatter.locale = Locale(identifier: "en_US_POSIX")

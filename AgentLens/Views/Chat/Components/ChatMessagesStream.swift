@@ -185,8 +185,7 @@ struct ChatMessagesStream: View {
                     memoryCitations: isLatestAssistant
                         ? controller.lastRecalledMemoryCitations
                         : [],
-                    onJumpToLocal: { [weak controller] messageID in
-                        guard let controller else { return }
+                    onJumpToLocal: { messageID in
                         Task { await controller.jumpToMemoryCitation(messageID: messageID) }
                     }
                 )

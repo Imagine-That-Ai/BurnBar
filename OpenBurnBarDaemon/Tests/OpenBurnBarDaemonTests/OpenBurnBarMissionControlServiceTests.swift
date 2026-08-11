@@ -3257,6 +3257,56 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertNotNil(refreshedProjects.projects.first?.latestDailyReviewAt)
     }
 
+    func testControllerActivityIngestionSkipsMalformedProjectWithoutBlockingValidProjectsOrReads() async throws {
+        let now = Date(timeIntervalSince1970: 1_710_305_000)
+        let harness = try makeHarness(
+            name: "activity-ingestion-mixed-validity",
+            activitySnapshot: BurnBarControllerActivitySnapshot(
+                generatedAt: now,
+                activeProjectSlug: "apollo",
+                projects: [
+                    BurnBarControllerActivityProject(
+                        projectSlug: "~",
+                        displayName: "~",
+                        summary: "A malformed shell-home project must not poison ingestion.",
+                        latestActivityAt: now,
+                        sessionCountLast7Days: 1,
+                        totalCostLast7Days: 0,
+                        totalTokensLast7Days: 10
+                    ),
+                    BurnBarControllerActivityProject(
+                        projectSlug: "apollo",
+                        displayName: "Apollo",
+                        summary: "A valid project must still be ingested.",
+                        latestActivityAt: now,
+                        sessionCountLast7Days: 2,
+                        totalCostLast7Days: 0.25,
+                        totalTokensLast7Days: 500
+                    )
+                ]
+            )
+        )
+
+        let projects = try await harness.service.controllerProjects(
+            BurnBarControllerProjectsListRequest(includePaused: true, limit: 20)
+        )
+        XCTAssertEqual(projects.projects.map(\.projectSlug), ["apollo"])
+
+        let summary = try await harness.service.controllerSummary(
+            BurnBarControllerSummaryRequest(projectSlug: "apollo")
+        )
+        XCTAssertEqual(summary.summary.activeProjectSlug, "apollo")
+        XCTAssertEqual(summary.summary.counts.projectCount, 1)
+
+        let questions = try await harness.service.questionsList(
+            BurnBarQuestionsListRequest(
+                projectSlug: "apollo",
+                statuses: BurnBarPendingQuestionStatus.allCases
+            )
+        )
+        XCTAssertTrue(questions.questions.isEmpty)
+    }
+
     func testVAL_GOV_009_ActivityIngestedQuestionDedupeHoldsAcrossSnapshotDigestChanges() async throws {
         let now = Date(timeIntervalSince1970: 1_710_310_000)
         let activityProject = BurnBarControllerActivityProject(
@@ -3531,7 +3581,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             name: "auto-takeover",
             reviewRunLauncher: { prompt, modelID, metadata in
                 await launcher.record(prompt: prompt, modelID: modelID, metadata: metadata)
-                let launchedRunID = (self.boolValue(metadata["autoTakeover"]) ?? false) ? takeoverRunID : sourceRunID
+                let launchedRunID = metadata["autoTakeover"] == .bool(true) ? takeoverRunID : sourceRunID
                 return BurnBarRunCreateResponse(runID: launchedRunID, phase: .planning)
             },
             runSnapshotLookup: { requestedRunID in
@@ -3717,7 +3767,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             name: "auto-takeover-no-recursion",
             reviewRunLauncher: { prompt, modelID, metadata in
                 await launcher.record(prompt: prompt, modelID: modelID, metadata: metadata)
-                let isAutoTakeover = self.boolValue(metadata["autoTakeover"]) ?? false
+                let isAutoTakeover = metadata["autoTakeover"] == .bool(true)
                 let launchedRunID = isAutoTakeover ? firstTakeoverRunID : sourceRunID
                 return BurnBarRunCreateResponse(runID: launchedRunID, phase: .planning)
             },
@@ -5766,18 +5816,18 @@ extension BurnBarMissionControlServiceTests {
         let sourceRunID = BurnBarRunID(rawValue: "source-run-cross-006")
         let takeoverRunID = BurnBarRunID(rawValue: "takeover-run-cross-006")
 
-        var runSnapshots: [BurnBarRunID: BurnBarRunStateSnapshot] = [:]
+        let runSnapshots = Locked<[BurnBarRunID: BurnBarRunStateSnapshot]>([:])
 
         let harness = try makeHarness(
             name: "val-cross-006-takeover",
             reviewRunLauncher: { prompt, modelID, metadata in
                 await launcher.record(prompt: prompt, modelID: modelID, metadata: metadata)
-                let isAutoTakeover = self.boolValue(metadata["autoTakeover"]) ?? false
+                let isAutoTakeover = metadata["autoTakeover"] == .bool(true)
                 let launchedRunID = isAutoTakeover ? takeoverRunID : sourceRunID
                 return BurnBarRunCreateResponse(runID: launchedRunID, phase: .planning)
             },
             runSnapshotLookup: { requestedRunID in
-                return runSnapshots[requestedRunID]
+                runSnapshots.read()[requestedRunID]
             }
         )
 
@@ -5817,27 +5867,31 @@ extension BurnBarMissionControlServiceTests {
         )
 
         // Set source run to failed to trigger takeover
-        runSnapshots[sourceRunID] = BurnBarRunStateSnapshot(
-            runID: sourceRunID,
-            clientID: BurnBarClientID(rawValue: "daemon"),
-            sessionID: BurnBarSessionID(rawValue: "session"),
-            phase: .failed,
-            modelID: "glm-4",
-            updatedAt: now
-        )
+        runSnapshots.withLock {
+            $0[sourceRunID] = BurnBarRunStateSnapshot(
+                runID: sourceRunID,
+                clientID: BurnBarClientID(rawValue: "daemon"),
+                sessionID: BurnBarSessionID(rawValue: "session"),
+                phase: .failed,
+                modelID: "glm-4",
+                updatedAt: now
+            )
+        }
 
         // Initial sync - dispatch creates packet, then sync sees failed run and triggers takeover
         try await harness.service.runTransportCycle(now: now.addingTimeInterval(10))
 
         // Set takeover run to launched
-        runSnapshots[takeoverRunID] = BurnBarRunStateSnapshot(
-            runID: takeoverRunID,
-            clientID: BurnBarClientID(rawValue: "daemon"),
-            sessionID: BurnBarSessionID(rawValue: "session"),
-            phase: .planning,
-            modelID: "glm-4",
-            updatedAt: now.addingTimeInterval(20)
-        )
+        runSnapshots.withLock {
+            $0[takeoverRunID] = BurnBarRunStateSnapshot(
+                runID: takeoverRunID,
+                clientID: BurnBarClientID(rawValue: "daemon"),
+                sessionID: BurnBarSessionID(rawValue: "session"),
+                phase: .planning,
+                modelID: "glm-4",
+                updatedAt: now.addingTimeInterval(20)
+            )
+        }
 
         // Sync again to pick up takeover launch
         try await harness.service.runTransportCycle(now: now.addingTimeInterval(30))
@@ -5877,18 +5931,18 @@ extension BurnBarMissionControlServiceTests {
         let sourceRunID = BurnBarRunID(rawValue: "source-run-lifecycle")
         let takeoverRunID = BurnBarRunID(rawValue: "takeover-run-lifecycle")
 
-        var runSnapshots: [BurnBarRunID: BurnBarRunStateSnapshot] = [:]
+        let runSnapshots = Locked<[BurnBarRunID: BurnBarRunStateSnapshot]>([:])
 
         let harness = try makeHarness(
             name: "val-cross-006-lifecycle",
             reviewRunLauncher: { prompt, modelID, metadata in
                 await launcher.record(prompt: prompt, modelID: modelID, metadata: metadata)
-                let isAutoTakeover = self.boolValue(metadata["autoTakeover"]) ?? false
+                let isAutoTakeover = metadata["autoTakeover"] == .bool(true)
                 let launchedRunID = isAutoTakeover ? takeoverRunID : sourceRunID
                 return BurnBarRunCreateResponse(runID: launchedRunID, phase: .planning)
             },
             runSnapshotLookup: { requestedRunID in
-                return runSnapshots[requestedRunID]
+                runSnapshots.read()[requestedRunID]
             }
         )
 
@@ -5927,24 +5981,28 @@ extension BurnBarMissionControlServiceTests {
         )
 
         // Set source run to failed to trigger takeover
-        runSnapshots[sourceRunID] = BurnBarRunStateSnapshot(
-            runID: sourceRunID,
-            clientID: BurnBarClientID(rawValue: "daemon"),
-            sessionID: BurnBarSessionID(rawValue: "session"),
-            phase: .failed,
-            modelID: "glm-4",
-            updatedAt: now
-        )
+        runSnapshots.withLock {
+            $0[sourceRunID] = BurnBarRunStateSnapshot(
+                runID: sourceRunID,
+                clientID: BurnBarClientID(rawValue: "daemon"),
+                sessionID: BurnBarSessionID(rawValue: "session"),
+                phase: .failed,
+                modelID: "glm-4",
+                updatedAt: now
+            )
+        }
 
         // Set takeover run to completed
-        runSnapshots[takeoverRunID] = BurnBarRunStateSnapshot(
-            runID: takeoverRunID,
-            clientID: BurnBarClientID(rawValue: "daemon"),
-            sessionID: BurnBarSessionID(rawValue: "session"),
-            phase: .completed,
-            modelID: "glm-4",
-            updatedAt: now.addingTimeInterval(60)
-        )
+        runSnapshots.withLock {
+            $0[takeoverRunID] = BurnBarRunStateSnapshot(
+                runID: takeoverRunID,
+                clientID: BurnBarClientID(rawValue: "daemon"),
+                sessionID: BurnBarSessionID(rawValue: "session"),
+                phase: .completed,
+                modelID: "glm-4",
+                updatedAt: now.addingTimeInterval(60)
+            )
+        }
 
         // Sync to trigger dispatch and takeover
         try await harness.service.runTransportCycle(now: now.addingTimeInterval(10))

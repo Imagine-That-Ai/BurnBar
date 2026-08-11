@@ -193,7 +193,10 @@ extension BurnBarRunService {
                     planOutline: run.planOutline,
                     loopState: run.loopState,
                     contextSnapshot: contextSnapshot,
-                    journalTail: journalTail
+                    journalTail: journalTail,
+                    supplementalLearnedContext: run.metadata.stringValue(
+                        forKey: .safariLearnedContext
+                    )
                 ),
                 route: run.route,
                 providerExecutor: providerExecutor
@@ -220,7 +223,12 @@ extension BurnBarRunService {
             switch decision.action {
             case .searchWorkspace, .readFile, .applyPatch, .runTerminal,
                  .browserClick, .browserFill, .browserGoto, .browserKey,
-                 .browserSelect, .browserScreenshot, .browserExtract:
+                 .browserSelect, .browserScreenshot, .browserExtract,
+                 .safariPageContext, .safariScreenshot, .safariFullPageScreenshot,
+                 .safariClick, .safariType, .safariPressKey, .safariScroll,
+                 .safariHover, .safariFocus, .safariSelectOption, .safariNavigate,
+                 .safariOpenTab, .safariCloseTab, .safariListTabs, .safariWaitFor,
+                 .safariRunJavaScript, .safariExtract, .safariAbort:
                 guard let tool = decision.requestedTool ?? BurnBarToolKind(rawValue: decision.action.rawValue),
                       let arguments = decision.arguments else {
                     throw BurnBarAgentLoopServiceError.invalidDecision("Tool action '\(decision.action.rawValue)' is missing tool arguments.")
@@ -388,7 +396,7 @@ extension BurnBarRunService {
                     outputTokens: providerResult.outputTokens,
                     cacheCreationTokens: providerResult.cacheCreationTokens,
                     cacheReadTokens: providerResult.cacheReadTokens,
-                    cost: try route.pricing.cost(
+                    cost: route.pricing.cost(
                         inputTokens: providerResult.inputTokens,
                         outputTokens: providerResult.outputTokens,
                         cacheCreationTokens: providerResult.cacheCreationTokens,
@@ -505,5 +513,6 @@ extension BurnBarRunService {
             usageEvent,
             idempotencyKey: "run:\(run.runID.rawValue):attempt:\(run.attempt)"
         )
+        await emitSafariLearningObservationsIfNeeded(for: run)
     }
 }

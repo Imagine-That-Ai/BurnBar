@@ -1,0 +1,6 @@
+// Xcode 27 transitive-package source classification.
+//
+// reason: Abseil's root-level SwiftPM target exposes compiler include
+// fragments and package metadata that are inputs on disk but are not
+// standalone compilation units.
+EXCLUDED_SOURCE_FILE_NAMES = *.inc *.lds *.podspec.gen.py

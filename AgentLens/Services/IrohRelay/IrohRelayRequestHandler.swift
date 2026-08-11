@@ -218,7 +218,9 @@ final class IrohRelayRequestHandler: Sendable {
                  .hostRegister,
                  .responseChunk,
                  .responseComplete,
-                 .responseError:
+                 .responseError,
+                 .signalSessionMessage,
+                 .controlSessionGrantChallenge:
                 continue
             case .mediaClassify,
                  .mediaBlobAdvertise,

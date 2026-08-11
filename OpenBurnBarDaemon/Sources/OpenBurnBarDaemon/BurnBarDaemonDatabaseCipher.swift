@@ -83,7 +83,7 @@ enum BurnBarDaemonDatabaseCipher {
             kSecAttrAccount as String: keychainKeyAccount,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
+            kSecUseAuthenticationContext as String: nonInteractiveKeychainAuthenticationContext()
         ]
         var result: AnyObject?
         let status = withKeychainUserInteractionDisabled {

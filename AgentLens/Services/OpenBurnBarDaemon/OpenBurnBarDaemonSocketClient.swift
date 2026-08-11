@@ -3,6 +3,8 @@ import OpenBurnBarComputerUseCore
 import Foundation
 
 enum OpenBurnBarDaemonSocketClient {
+    private struct EmptyRPCParams: Codable, Sendable {}
+
     private static let controllerRuntimeSecrets = KeychainStore(
         service: OpenBurnBarCore.OpenBurnBarIdentity.controllerRuntimeKeychainService,
         legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
@@ -303,6 +305,115 @@ enum OpenBurnBarDaemonSocketClient {
         try requestResult(
             BurnBarRPCRequestEnvelopeWithParams(
                 method: .runResume,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
+    // MARK: - Safari learning
+
+    /// Returns the daemon-authoritative learned profile projection. The
+    /// learning RPC contract deliberately requires an explicit empty object
+    /// rather than an omitted `params` field so every caller crosses the same
+    /// capability-classified envelope shape.
+    static func safariLearningTimeline(
+        at socketURL: URL
+    ) throws -> BurnBarSafariLearningTimelineResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .learningTimeline,
+                params: EmptyRPCParams()
+            ),
+            socketURL: socketURL
+        )
+    }
+
+    static func optInToSafariLearning(
+        _ request: BurnBarSafariLearningOptInRequest = BurnBarSafariLearningOptInRequest(),
+        at socketURL: URL
+    ) throws -> BurnBarSafariLearningStateResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .learningOptIn,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
+    static func updateSafariLearning(
+        _ request: BurnBarSafariLearningUpdateRequest,
+        at socketURL: URL
+    ) throws -> BurnBarSafariLearningProposalResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .learningUpdate,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
+    static func approveSafariLearning(
+        _ request: BurnBarSafariLearningMutationRequest,
+        at socketURL: URL
+    ) throws -> BurnBarSafariLearningProposalResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .learningApprove,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
+    static func rejectSafariLearning(
+        _ request: BurnBarSafariLearningMutationRequest,
+        at socketURL: URL
+    ) throws -> BurnBarSafariLearningProposalResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .learningReject,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
+    static func forgetSafariLearning(
+        _ request: BurnBarSafariLearningForgetRequest,
+        at socketURL: URL
+    ) throws -> BurnBarSafariLearningStateResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .learningForget,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
+    static func rollbackSafariLearning(
+        _ request: BurnBarSafariLearningRollbackRequest,
+        at socketURL: URL
+    ) throws -> BurnBarSafariLearningProposalResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .learningRollback,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
+    static func optOutOfSafariLearning(
+        _ request: BurnBarSafariLearningOptOutRequest,
+        at socketURL: URL
+    ) throws -> BurnBarSafariLearningStateResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .learningOptOut,
                 params: request
             ),
             socketURL: socketURL

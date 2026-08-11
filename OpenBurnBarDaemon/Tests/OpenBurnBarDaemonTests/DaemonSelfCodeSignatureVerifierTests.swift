@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarComputerUseCore
+import OpenBurnBarKernel
 import Security
 @testable import OpenBurnBarDaemon
 import XCTest
@@ -50,14 +51,14 @@ final class DaemonSelfCodeSignatureVerifierTests: XCTestCase {
     }
 
     func test_enforced_passesWhenValidatorAccepts() {
-        var validatedURL: URL?
+        let validatedURL = Locked<URL?>(nil)
         let verifier = DaemonSelfCodeSignatureVerifier(
             enforced: true,
             resolveExecutablePath: { "/usr/bin/true" },
-            validateStaticCode: { url in validatedURL = url }
+            validateStaticCode: { url in validatedURL.write(url) }
         )
         XCTAssertNoThrow(try verifier.verify())
-        XCTAssertEqual(validatedURL?.path, "/usr/bin/true")
+        XCTAssertEqual(validatedURL.read()?.path, "/usr/bin/true")
     }
 
     func test_defaultExecutablePath_resolvesARealExistingFile() throws {

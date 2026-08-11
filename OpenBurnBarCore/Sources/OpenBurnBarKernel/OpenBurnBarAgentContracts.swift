@@ -200,6 +200,24 @@ public enum BurnBarAgentLoopActionKind: String, Codable, CaseIterable, Hashable,
     case browserSelect = "browser_select"
     case browserScreenshot = "browser_screenshot"
     case browserExtract = "browser_extract"
+    case safariPageContext = "safari_page_context"
+    case safariScreenshot = "safari_screenshot"
+    case safariFullPageScreenshot = "safari_full_page_screenshot"
+    case safariClick = "safari_click"
+    case safariType = "safari_type"
+    case safariPressKey = "safari_press_key"
+    case safariScroll = "safari_scroll"
+    case safariHover = "safari_hover"
+    case safariFocus = "safari_focus"
+    case safariSelectOption = "safari_select_option"
+    case safariNavigate = "safari_navigate"
+    case safariOpenTab = "safari_open_tab"
+    case safariCloseTab = "safari_close_tab"
+    case safariListTabs = "safari_list_tabs"
+    case safariWaitFor = "safari_wait_for"
+    case safariRunJavaScript = "safari_run_javascript"
+    case safariExtract = "safari_extract"
+    case safariAbort = "safari_abort"
     case requestApproval = "request_approval"
     case fail
 }
@@ -214,6 +232,24 @@ public extension BurnBarAgentLoopActionKind {
         case .browserSelect: return .browserSelect
         case .browserScreenshot: return .browserScreenshot
         case .browserExtract: return .browserExtract
+        case .safariPageContext: return .safariPageContext
+        case .safariScreenshot: return .safariScreenshot
+        case .safariFullPageScreenshot: return .safariFullPageScreenshot
+        case .safariClick: return .safariClick
+        case .safariType: return .safariType
+        case .safariPressKey: return .safariPressKey
+        case .safariScroll: return .safariScroll
+        case .safariHover: return .safariHover
+        case .safariFocus: return .safariFocus
+        case .safariSelectOption: return .safariSelectOption
+        case .safariNavigate: return .safariNavigate
+        case .safariOpenTab: return .safariOpenTab
+        case .safariCloseTab: return .safariCloseTab
+        case .safariListTabs: return .safariListTabs
+        case .safariWaitFor: return .safariWaitFor
+        case .safariRunJavaScript: return .safariRunJavaScript
+        case .safariExtract: return .safariExtract
+        case .safariAbort: return .safariAbort
         default: return nil
         }
     }

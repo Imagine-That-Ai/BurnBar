@@ -644,7 +644,7 @@ final class SwitcherDashboardUITests: XCTestCase {
             createdAt: profile.createdAt,
             updatedAt: Date()
         )
-        try store.update(updatedProfile)
+        _ = try store.update(updatedProfile)
 
         // Verify profile still exists after update
         let afterUpdate = try store.fetchProfile(id: profile.id)
@@ -833,13 +833,13 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// "No profiles loaded. Open Settings to create profiles."
     func test_profileLoad_announcesCorrectCount() throws {
         // Create profiles
-        let p1 = try store.create(SwitcherProfileRecord(
+        _ = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
             browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "LoadTest1"),
             sortKey: 1
         ))
-        let p2 = try store.create(SwitcherProfileRecord(
+        _ = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .safari,
             browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "LoadTest2"),
@@ -1033,8 +1033,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         // Clear announcements from load
         capturedAnnouncements.removeAll()
 
-        // Now trigger switch
-        view.testTriggerSwitch()
+        // Now trigger a switch to the second profile.
+        view.testTriggerSwitchToProfile(profileID: p2.id)
 
         // Verify switch success announcement was made
         XCTAssertTrue(capturedAnnouncements.contains("Launch default updated"),
@@ -1465,7 +1465,7 @@ final class SwitcherDashboardUITests: XCTestCase {
 
         // Find button with "Retry loading profiles" accessibility label
         // The view's errorStateView has .accessibilityLabel("Retry loading profiles") on the Retry button
-        let buttons = try sut.findAll(ViewType.Button.self)
+        let buttons = sut.findAll(ViewType.Button.self)
         XCTAssertTrue(buttons.count >= 2, "Error state should have at least 2 buttons (Retry and Open Settings)")
 
         // Verify at least one button exists
@@ -1496,7 +1496,7 @@ final class SwitcherDashboardUITests: XCTestCase {
         let sut = try view.inspect()
 
         // Find all buttons - should have at least 2 (Retry + Open Settings)
-        let buttons = try sut.findAll(ViewType.Button.self)
+        let buttons = sut.findAll(ViewType.Button.self)
         XCTAssertTrue(buttons.count >= 2, "Error state should have at least 2 buttons (Retry and Open Settings)")
     }
 
@@ -1513,10 +1513,9 @@ final class SwitcherDashboardUITests: XCTestCase {
             refreshOnInit: false
         )
 
-        var settingsCallbackFired = false
         let view = DashboardQuickSwitchView(
             dataStore: dataStore,
-            onOpenSettings: { settingsCallbackFired = true },
+            onOpenSettings: {},
             testInjectedError: "Load failed",
             skipLoadData: true
         )
@@ -1525,7 +1524,7 @@ final class SwitcherDashboardUITests: XCTestCase {
         let sut = try view.inspect()
 
         // Find all buttons
-        let buttons = try sut.findAll(ViewType.Button.self)
+        let buttons = sut.findAll(ViewType.Button.self)
         XCTAssertTrue(buttons.count >= 2, "Error state should have at least 2 buttons")
 
         // The second button should be Open Settings
@@ -1620,7 +1619,7 @@ final class SwitcherDashboardUITests: XCTestCase {
         let sut = try view.inspect()
 
         // Verify error icon (Image with exclamationmark.triangle.fill)
-        let images = try sut.findAll(ViewType.Image.self)
+        let images = sut.findAll(ViewType.Image.self)
         XCTAssertTrue(images.count >= 1, "Error state should have an error icon")
 
         // Verify "Failed to Load Profiles" title
@@ -1632,7 +1631,7 @@ final class SwitcherDashboardUITests: XCTestCase {
         XCTAssertNotNil(message, "Error state should show the error message")
 
         // Verify at least 2 buttons (Retry and Open Settings)
-        let buttons = try sut.findAll(ViewType.Button.self)
+        let buttons = sut.findAll(ViewType.Button.self)
         XCTAssertTrue(buttons.count >= 2, "Error state should have at least 2 action buttons")
     }
 
@@ -1649,8 +1648,9 @@ final class SwitcherDashboardUITests: XCTestCase {
             refreshOnInit: false
         )
 
-        // Create a profile so reload succeeds
-        let profile = try store.create(SwitcherProfileRecord(
+        // Create a profile in the same database the view reloads.
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        _ = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
             browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "Test"),
@@ -1672,14 +1672,17 @@ final class SwitcherDashboardUITests: XCTestCase {
         XCTAssertNotNil(errorTitle, "Should start in error state")
 
         // Find the Retry button and tap it
-        let buttons = try sut.findAll(ViewType.Button.self)
+        let buttons = sut.findAll(ViewType.Button.self)
         XCTAssertTrue(buttons.count >= 2, "Should have at least 2 buttons")
 
         // Tap the first button (Retry)
         try buttons.first?.tap()
 
-        // Note: After tapping Retry, loadData() is called which should succeed
-        // and transition away from error state. We verify the button is tappable.
+        XCTAssertEqual(
+            try localStore.fetchAllProfiles().count,
+            1,
+            "Retry must preserve access to the profile source used by the view"
+        )
     }
 
     /// Regression test: Verify open settings button triggers callback.
@@ -1710,7 +1713,7 @@ final class SwitcherDashboardUITests: XCTestCase {
         // 1. Header settings button
         // 2. Error state Retry button
         // 3. Error state Open Settings button
-        let buttons = try sut.findAll(ViewType.Button.self)
+        let buttons = sut.findAll(ViewType.Button.self)
         XCTAssertTrue(buttons.count >= 3, "Should have at least 3 buttons (header + 2 error state buttons)")
 
         // The Open Settings button in error state is the 3rd button (index 2)
@@ -1786,7 +1789,7 @@ private final class ProdSwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter
     }
 
     func updateProfile(_ profile: SwitcherProfileRecord) {
-        try? store.update(profile)
+        _ = try? store.update(profile)
     }
 }
 
@@ -1875,10 +1878,10 @@ final class SwitcherDashboardDataSourceTests: XCTestCase {
         )
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         dbQueue = nil
         dataStore = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Migration Helper

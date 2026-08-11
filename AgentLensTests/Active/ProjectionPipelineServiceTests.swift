@@ -439,6 +439,9 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         // The sweep will both detect the stale gap (enqueue reproject) and process it within
         // the same sweep, so we verify via completed job delta and hash update.
         let repairReport = try await service.runSweep(maxJobs: 20)
+        XCTAssertEqual(repairReport.completedJobs, 1, "The repair sweep should complete the single stale reproject.")
+        XCTAssertEqual(repairReport.retriedJobs, 0)
+        XCTAssertEqual(repairReport.canceledJobs, 0)
 
         // Verify that exactly one new job was completed (the gap repair reproject)
         let completedAfter = try await store.fetchProjectionJobs(statuses: [.completed], limit: 200).count
@@ -533,6 +536,10 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         // Run another sweep; gap repair should produce zero new jobs
         let noGapReport = try await service.runSweep(maxJobs: 20)
+        XCTAssertEqual(noGapReport.leasedJobs, 0, "A current index should leave the projection queue idle.")
+        XCTAssertEqual(noGapReport.completedJobs, 0)
+        XCTAssertEqual(noGapReport.retriedJobs, 0)
+        XCTAssertEqual(noGapReport.canceledJobs, 0)
 
         // No queued gap-repair jobs should exist (priority 3 reproject = gap repair)
         let queuedJobs = try await store.fetchProjectionJobs(statuses: [.queued], limit: 50)
@@ -685,19 +692,21 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             if report.leasedJobs == 0 { break }
         }
 
-        // With stable chunk identity, chunk IDs remain stable when content is unchanged.
-        // No delete+insert churn occurs for rekeyed chunks.
+        // Chunk IDs are source-version scoped and may intentionally rekey when
+        // metadata changes. Content identity and embedding reuse are the stable
+        // invariants when the underlying text is unchanged.
         let finalChunks = try await store.fetchSearchChunks(documentID: document.id)
         let finalContentHashes = Set(finalChunks.compactMap(\.contentHash))
         XCTAssertEqual(
             initialContentHashes, finalContentHashes,
             "Content hashes should be identical when text doesn't change."
         )
-
-        // ID drift is reconciled: chunk IDs may change (new chunks inserted, old chunks deleted).
-        // Content hashes remain identical because text is unchanged.
-        let initialChunkIDs = Set(initialChunks.map(\.id))
         let finalChunkIDs = Set(finalChunks.map(\.id))
+        XCTAssertEqual(
+            finalChunks.count,
+            initialChunks.count,
+            "Metadata-only changes must preserve the chunk topology."
+        )
 
         // All chunks should have embeddings (reused from old chunks via contentHash)
         let finalEmbeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
@@ -711,8 +720,8 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         let initialEmbeddingsByID = Dictionary(uniqueKeysWithValues: initialEmbeddings.map { ($0.chunkID, $0.vectorBlob) })
         let finalEmbeddingsByID = Dictionary(uniqueKeysWithValues: finalEmbeddings.map { ($0.chunkID, $0.vectorBlob) })
 
-        // Verify embeddings are reused correctly by content hash.
-        // With stable chunk IDs, this is straightforward since IDs don't change.
+        // Verify embeddings are reused correctly by content hash even when
+        // source-version-scoped chunk IDs rekey.
         let initialByHash = Dictionary(grouping: initialChunks, by: \.contentHash)
         for finalChunk in finalChunks {
             guard let hash = finalChunk.contentHash else { continue }
@@ -1133,6 +1142,9 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         // Run sweep — gap repair should only enqueue reproject for conv2
         let deltaReport = try await service.runSweep(maxJobs: 20)
+        XCTAssertEqual(deltaReport.completedJobs, 1, "The delta sweep should complete only conv2's reproject.")
+        XCTAssertEqual(deltaReport.retriedJobs, 0)
+        XCTAssertEqual(deltaReport.canceledJobs, 0)
 
         // Count rebuild jobs across ALL statuses — should be only the initial backfill (1)
         let allJobs = try await store.fetchProjectionJobs(statuses: [.completed, .queued, .running, .failed], limit: 500)
@@ -2049,6 +2061,7 @@ extension ProjectionPipelineServiceTests {
         // Verify purge jobs were enqueued and completed for the missing conversations
         let completedAfter = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
         let newCompleted = completedAfter - completedBefore
+        XCTAssertEqual(newCompleted, 2, "Gap repair should complete exactly the two orphan purges.")
 
         // Should have 2 purge completions (conv2 and conv3)
         let purgeCompleted = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).filter {
@@ -2584,10 +2597,10 @@ extension ProjectionPipelineServiceTests {
 
         let initialChunks = try await store.fetchSearchChunks(documentID: document.id)
         XCTAssertGreaterThan(initialChunks.count, 2, "Should have multiple chunks to test write amplification.")
-        let initialChunkIDs = Set(initialChunks.map(\.id))
 
         // Update conversation metadata (messageCount) without changing fullText.
-        // This changes sourceVersionID → all chunk IDs change → but content hashes are identical.
+        // The document version changes. Chunk IDs are source-version scoped,
+        // while content hashes and embedding vectors remain reusable.
         let updatedConv = ConversationRecord(
             id: conversation.id,
             provider: conversation.provider,
@@ -2621,11 +2634,13 @@ extension ProjectionPipelineServiceTests {
             if report.leasedJobs == 0 { break }
         }
 
-        // ID drift reconciliation: chunk IDs may change when sourceVersionID changes.
-        // Hash-set equality does not trigger no-op when chunk IDs differ.
         let finalChunks = try await store.fetchSearchChunks(documentID: document.id)
         let finalChunkIDs = Set(finalChunks.map(\.id))
-        // IDs may differ after ID drift reconciliation, but content hashes remain identical.
+        XCTAssertEqual(
+            finalChunks.count,
+            initialChunks.count,
+            "Metadata-only reprojection must preserve the chunk topology."
+        )
 
         let initialHashes = Set(initialChunks.compactMap(\.contentHash))
         let finalHashes = Set(finalChunks.compactMap(\.contentHash))
@@ -3387,8 +3402,6 @@ extension ProjectionPipelineServiceTests {
             try await store.upsertConversation(updatedConv)
         }
 
-        let completedBefore = try await store.fetchProjectionJobs(statuses: [.completed], limit: 10000).count
-
         // Run gap repair — must paginate through all 1050 documents
         for _ in 0..<20 {
             let report = try await service.runSweep(maxJobs: 200)
@@ -3488,6 +3501,12 @@ extension ProjectionPipelineServiceTests {
             let report = try await service.runSweep(maxJobs: 100)
             if report.leasedJobs == 0 { break }
         }
+        let completedAfter = try await store.fetchProjectionJobs(statuses: [.completed], limit: 1000).count
+        XCTAssertEqual(
+            completedAfter - completedBefore,
+            staleIDs.count,
+            "Only the stale boundary conversations should add completed jobs."
+        )
 
         // Count only gap repair reproject completions (priority 3)
         let gapRepairReprojects = try await store.fetchProjectionJobs(statuses: [.completed], limit: 1000).filter {
@@ -3954,6 +3973,11 @@ extension ProjectionPipelineServiceTests {
             purgeQueued.count, deletedCount,
             "All \(deletedCount) deleted artifacts should be enqueued for purge. Found: \(purgeQueued.count)"
         )
+        XCTAssertEqual(
+            reprojectQueued.count + purgeQueued.count,
+            totalArtifacts,
+            "Every active or deleted artifact must produce exactly one rebuild job."
+        )
 
         // Verify no duplicate enqueues
         let reprojectIDs = reprojectQueued.compactMap { $0.sourceID }
@@ -4082,6 +4106,11 @@ extension ProjectionPipelineServiceTests {
         XCTAssertEqual(
             purgeQueued.count, deletedCount,
             "All \(deletedCount) deleted artifacts with non-divisible page size. Found: \(purgeQueued.count)"
+        )
+        XCTAssertEqual(
+            reprojectQueued.count + purgeQueued.count,
+            totalArtifacts,
+            "The partial final page must still account for every artifact exactly once."
         )
 
         // No duplicates

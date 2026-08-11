@@ -5,11 +5,14 @@ import XCTest
 final class ClaudeStatuslineWatcherTests: XCTestCase {
     private var tempDirectories: [URL] = []
 
-    override func tearDownWithError() throws {
-        for directory in tempDirectories {
-            try? FileManager.default.removeItem(at: directory)
+    override func tearDown() async throws {
+        await MainActor.run {
+            for directory in tempDirectories {
+                try? FileManager.default.removeItem(at: directory)
+            }
+            tempDirectories.removeAll()
         }
-        tempDirectories.removeAll()
+        try await super.tearDown()
     }
 
     /// Sanity check that the happy-path event delivery still works after

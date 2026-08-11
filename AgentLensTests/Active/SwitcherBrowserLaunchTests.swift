@@ -596,8 +596,8 @@ final class SwitcherBrowserLaunchServiceTests: XCTestCase {
     private var service: SwitcherBrowserLaunchService!
     private var store: InMemorySwitcherProfileStoreAdapter!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         store = InMemorySwitcherProfileStoreAdapter()
         service = SwitcherBrowserLaunchService(profileStore: store)
     }

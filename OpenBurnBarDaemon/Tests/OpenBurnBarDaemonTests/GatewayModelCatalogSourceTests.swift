@@ -16,9 +16,8 @@ final class GatewayModelCatalogSourceTests: XCTestCase {
     /// A droid runner that COUNTS invocations (the shared RecordingFactoryDroidRunner
     /// only retains the last call), so we can assert cache hits vs fan-outs.
     private final class CountingDroidRunner: FactoryDroidProcessRunning, @unchecked Sendable {
-        private let lock = NSLock()
-        private var _count = 0
-        var count: Int { lock.lock(); defer { lock.unlock() }; return _count }
+        private let invocationCount = Locked(0)
+        var count: Int { invocationCount.read() }
         private let result: FactoryDroidProcessResult
 
         init() {
@@ -34,7 +33,7 @@ final class GatewayModelCatalogSourceTests: XCTestCase {
         }
 
         func runDroid(arguments: [String], environment: [String: String], timeout: TimeInterval) async throws -> FactoryDroidProcessResult {
-            lock.lock(); _count += 1; lock.unlock()
+            invocationCount.withLock { $0 += 1 }
             return result
         }
     }

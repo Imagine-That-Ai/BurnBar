@@ -3050,7 +3050,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         )
     }
 
-    private static let migrationIdentifiersThroughV35 = [
+    nonisolated private static let migrationIdentifiersThroughV35 = [
         "v1_initial",
         "v2_sync",
         "v3_conversations",

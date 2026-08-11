@@ -782,7 +782,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 updatedAt: base.addingTimeInterval(25)
             )
         )
-        try await store.upsertSharedArtifactPermission(
+        _ = try await store.upsertSharedArtifactPermission(
             SharedArtifactPermissionRecord(
                 sourceArtifactID: sharedArtifact.id,
                 workspaceID: "workspace-a",

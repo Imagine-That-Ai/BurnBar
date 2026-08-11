@@ -23,33 +23,38 @@ final class AIInboxSyncServiceTests: XCTestCase {
     private var statePath: String { "users/\(Self.uid)/ai_inbox_item_state" }
 
     override func setUp() async throws {
-        let queue = try DatabaseQueue()
-        dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        accountManager = FakeAccountManager.makeSignedIn(uid: Self.uid)
-        settingsManager = SettingsManager(defaults: UserDefaults(suiteName: "settings-\(UUID().uuidString)")!)
-        fakeGateway = CloudSyncFirestoreFakeGateway()
-        defaultsSuiteName = "aiinbox-\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: defaultsSuiteName)!
-        context = CloudSyncContext(
-            dataStore: dataStore,
-            accountManager: accountManager,
-            settingsManager: settingsManager,
-            firestoreGateway: fakeGateway
-        )
+        try await super.setUp()
+        try await MainActor.run {
+            let queue = try DatabaseQueue()
+            dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+            accountManager = FakeAccountManager.makeSignedIn(uid: Self.uid)
+            settingsManager = SettingsManager(defaults: UserDefaults(suiteName: "settings-\(UUID().uuidString)")!)
+            fakeGateway = CloudSyncFirestoreFakeGateway()
+            defaultsSuiteName = "aiinbox-\(UUID().uuidString)"
+            defaults = UserDefaults(suiteName: defaultsSuiteName)!
+            context = CloudSyncContext(
+                dataStore: dataStore,
+                accountManager: accountManager,
+                settingsManager: settingsManager,
+                firestoreGateway: fakeGateway
+            )
+        }
     }
 
-    override func tearDown() {
-        if let defaultsSuiteName {
-            UserDefaults.standard.removePersistentDomain(forName: defaultsSuiteName)
+    override func tearDown() async throws {
+        await MainActor.run {
+            if let defaultsSuiteName {
+                UserDefaults.standard.removePersistentDomain(forName: defaultsSuiteName)
+            }
+            dataStore = nil
+            accountManager = nil
+            settingsManager = nil
+            fakeGateway = nil
+            context = nil
+            defaults = nil
+            defaultsSuiteName = nil
         }
-        dataStore = nil
-        accountManager = nil
-        settingsManager = nil
-        fakeGateway = nil
-        context = nil
-        defaults = nil
-        defaultsSuiteName = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Watermark

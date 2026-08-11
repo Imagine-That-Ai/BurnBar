@@ -218,10 +218,12 @@ struct BurnBarAIInboxPublisher: Sendable {
     /// compound every five minutes until the kind was buried.
     private func absorbFeedback(into calibration: inout BurnBarAIInboxCalibration, now: Date) {
         guard let states = try? store.itemUserStates(), states.isEmpty == false else { return }
-        var consumed = Set(((try? store.state(
-            BurnBarAIInboxSchema.StateKey.consumedFeedback,
-            as: [String].self
-        )) ?? []) ?? [])
+        var consumed = Set(
+            (try? store.state(
+                BurnBarAIInboxSchema.StateKey.consumedFeedback,
+                as: [String].self
+            )) ?? []
+        )
 
         var didChange = false
         for (itemID, state) in states {
@@ -421,19 +423,19 @@ struct BurnBarAIInboxPublisher: Sendable {
     // MARK: - Notifications
 
     private static func shouldNotify(fingerprint: String, store: BurnBarAIInboxStore, now: Date) -> Bool {
-        let stamps = ((try? store.state(
+        let stamps = (try? store.state(
             BurnBarAIInboxSchema.StateKey.notificationStamps,
             as: [String: Date].self
-        )) ?? [:]) ?? [:]
+        )) ?? [:]
         guard let last = stamps[fingerprint] else { return true }
         return now.timeIntervalSince(last) >= notificationCooldown
     }
 
     private static func recordNotification(fingerprint: String, store: BurnBarAIInboxStore, now: Date) {
-        var stamps = ((try? store.state(
+        var stamps = (try? store.state(
             BurnBarAIInboxSchema.StateKey.notificationStamps,
             as: [String: Date].self
-        )) ?? [:]) ?? [:]
+        )) ?? [:]
         stamps[fingerprint] = now
         // Prune anything older than a day; the cooldown is an hour.
         stamps = stamps.filter { now.timeIntervalSince($0.value) < 24 * 60 * 60 }

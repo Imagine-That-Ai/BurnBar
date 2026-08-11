@@ -15,11 +15,13 @@ final class SettingsActionRegistryTests: XCTestCase {
     private var router: SettingsRouter!
     private var registry: SettingsActionRegistry!
 
-    override func setUp() {
-        super.setUp()
-        settings = SettingsManager()
-        router = SettingsRouter()
-        registry = SettingsActionRegistry(settingsManager: settings, router: router)
+    override func setUp() async throws {
+        try await super.setUp()
+        await MainActor.run {
+            settings = SettingsManager()
+            router = SettingsRouter()
+            registry = SettingsActionRegistry(settingsManager: settings, router: router)
+        }
     }
 
     // MARK: - Catalog coverage

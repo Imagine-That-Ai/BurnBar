@@ -166,9 +166,11 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
         XCTAssertNotNil(published, "start() must publish a pairing record")
 
         client.stop()
+        let uid = uid
+        let connectionID = connectionID
 
         try await waitUntil(timeout: 3) {
-            let record = try await directory.fetch(uid: self.uid, connectionId: self.connectionID)
+            let record = try await directory.fetch(uid: uid, connectionId: connectionID)
             return record == nil
         }
         let revokeAttempts = await directory.revokeAttemptCount
@@ -189,10 +191,10 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
         // brings the host back up and re-publishes under a new node id.
         let failing = StubIrohRelayTransport(nodeId: "node-first", acceptBehavior: .shutdownImmediately)
         let parking = StubIrohRelayTransport(nodeId: "node-second", acceptBehavior: .park)
-        var transports: [StubIrohRelayTransport] = [failing, parking]
+        let transports = Locked([failing, parking])
         let client = makeClient(
             directory: directory,
-            transportFactory: { _ in transports.removeFirst() }
+            transportFactory: { _ in transports.withLock { $0.removeFirst() } }
         )
 
         let started = await client.start(uid: uid, connectionID: connectionID)
@@ -200,8 +202,10 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
 
         // The accept-loop termination revokes (one fault + a successful retry),
         // then the recovery start() re-publishes under the second node id.
+        let uid = uid
+        let connectionID = connectionID
         try await waitUntil(timeout: 4) {
-            let record = try await directory.fetch(uid: self.uid, connectionId: self.connectionID)
+            let record = try await directory.fetch(uid: uid, connectionId: connectionID)
             return record?.nodeId == "node-second"
         }
         let revokeAttempts = await directory.revokeAttemptCount
@@ -227,17 +231,19 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
             acceptBehavior: .connectionLostRepeatedly
         )
         let parking = StubIrohRelayTransport(nodeId: "node-recovered", acceptBehavior: .park)
-        var transports: [StubIrohRelayTransport] = [failing, parking]
+        let transports = Locked([failing, parking])
         let client = makeClient(
             directory: directory,
-            transportFactory: { _ in transports.removeFirst() }
+            transportFactory: { _ in transports.withLock { $0.removeFirst() } }
         )
 
         let started = await client.start(uid: uid, connectionID: connectionID)
         XCTAssertTrue(started)
 
+        let uid = uid
+        let connectionID = connectionID
         try await waitUntil(timeout: 4) {
-            let record = try await directory.fetch(uid: self.uid, connectionId: self.connectionID)
+            let record = try await directory.fetch(uid: uid, connectionId: connectionID)
             return record?.nodeId == "node-recovered"
         }
         XCTAssertGreaterThanOrEqual(
@@ -268,10 +274,10 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
         // republish under "node-rebuilt", so it staying queued (and the
         // directory keeping "node-healthy") proves suppression.
         let decoy = StubIrohRelayTransport(nodeId: "node-rebuilt", acceptBehavior: .park)
-        var transports: [StubIrohRelayTransport] = [transport, decoy]
+        let transports = Locked([transport, decoy])
         let client = makeClient(
             directory: directory,
-            transportFactory: { _ in transports.removeFirst() }
+            transportFactory: { _ in transports.withLock { $0.removeFirst() } }
         )
 
         let started = await client.start(uid: uid, connectionID: connectionID)
@@ -288,7 +294,7 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
             "A peer-manufactured accept-failure burst must not revoke or rotate the published NodeId"
         )
         XCTAssertEqual(
-            transports.count,
+            transports.read().count,
             1,
             "The original transport must stay current; a rebuild would have consumed the decoy replacement"
         )
@@ -314,12 +320,12 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
             acceptBehavior: .failuresThenAcceptThenFailures(before: 2, after: 2)
         )
         let decoy = StubIrohRelayTransport(nodeId: "node-rebuilt", acceptBehavior: .park)
-        var transports: [StubIrohRelayTransport] = [transport, decoy]
+        let transports = Locked([transport, decoy])
         let clock = MutableTestClock()
         let client = makeClient(
             directory: directory,
             now: { clock.now },
-            transportFactory: { _ in transports.removeFirst() }
+            transportFactory: { _ in transports.withLock { $0.removeFirst() } }
         )
 
         let started = await client.start(uid: uid, connectionID: connectionID)
@@ -339,7 +345,7 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
             "Failures from before a completed accept must not combine with later ones to rotate the NodeId"
         )
         XCTAssertEqual(
-            transports.count,
+            transports.read().count,
             1,
             "A rebuild would have consumed the decoy replacement transport"
         )
@@ -384,10 +390,10 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
         inboundPeerPolicyLoader: @escaping @Sendable (String, String) async -> IrohInboundPeerPolicyLoadResult = { _, _ in
             .authoritative(IrohInboundPeerPolicy(allowedPeerNodeIds: []))
         },
-        now: @escaping @Sendable () -> Date = Date.init,
+        now: @escaping @Sendable () -> Date = { Date() },
         missRefreshMinimumPolicyAge: TimeInterval = 0.5,
         missRefreshBudgetInterval: TimeInterval = 15,
-        transportFactory: (@MainActor (HermesIrohRelayHostClient) -> any IrohRelayTransport)? = nil
+        transportFactory: (@MainActor @Sendable (HermesIrohRelayHostClient) -> any IrohRelayTransport)? = nil
     ) -> HermesIrohRelayHostClient {
         let suiteName = "hermes.iroh.host.matters.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -856,7 +862,7 @@ private actor NoopIrohTransportAuditLogger: IrohTransportAuditLogging {
 private func waitUntil(
     timeout: TimeInterval = 2,
     pollInterval: UInt64 = 50_000_000,
-    condition: () async throws -> Bool
+    condition: @Sendable () async throws -> Bool
 ) async throws {
     let deadline = Date().addingTimeInterval(timeout)
     while Date() < deadline {

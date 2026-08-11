@@ -14,8 +14,8 @@ final class ChatPanelComponentTests: XCTestCase {
     func test_searchResultsList_rendersEmptyWhenNoResults() throws {
         let view = ChatSearchResultsList(results: [], onSelect: { _ in })
         let sut = try view.inspect()
-        let buttons = try? sut.findAll(ViewType.Button.self)
-        XCTAssertTrue(buttons?.isEmpty ?? true, "Should not render buttons when no results")
+        let buttons = sut.findAll(ViewType.Button.self)
+        XCTAssertTrue(buttons.isEmpty, "Should not render buttons when no results")
     }
 
     func test_searchResultsList_rendersResults() throws {
@@ -27,7 +27,7 @@ final class ChatPanelComponentTests: XCTestCase {
         )
         let view = ChatSearchResultsList(results: [result], onSelect: { _ in })
         let sut = try view.inspect()
-        let buttons = try sut.findAll(ViewType.Button.self)
+        let buttons = sut.findAll(ViewType.Button.self)
         XCTAssertEqual(buttons.count, 1, "Should render one button per result")
     }
 
@@ -36,8 +36,8 @@ final class ChatPanelComponentTests: XCTestCase {
     func test_conversationJumpSection_rendersEmptyWhenNoTargets() throws {
         let view = ChatConversationJumpSection(targets: [], onJump: { _ in })
         let sut = try view.inspect()
-        let buttons = try? sut.findAll(ViewType.Button.self)
-        XCTAssertTrue(buttons?.isEmpty ?? true, "Should not render buttons when no targets")
+        let buttons = sut.findAll(ViewType.Button.self)
+        XCTAssertTrue(buttons.isEmpty, "Should not render buttons when no targets")
     }
 
     func test_conversationJumpSection_rendersTargets() throws {
@@ -51,7 +51,7 @@ final class ChatPanelComponentTests: XCTestCase {
         )
         let view = ChatConversationJumpSection(targets: [target], onJump: { _ in })
         let sut = try view.inspect()
-        let buttons = try sut.findAll(ViewType.Button.self)
+        let buttons = sut.findAll(ViewType.Button.self)
         XCTAssertEqual(buttons.count, 1, "Should render one button per target")
     }
 

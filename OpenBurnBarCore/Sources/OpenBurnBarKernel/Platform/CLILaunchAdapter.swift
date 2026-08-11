@@ -155,6 +155,15 @@ public enum CLILaunchAdapter {
             return URL(fileURLWithPath: cachedPath)
         }
 
+        if let path = firstExplicitlyTrustedExecutable(
+            for: cliType,
+            homeDirectory: homeDirectory,
+            fileManager: fileManager
+        ) {
+            executableResolutionCache.withLock { $0[cacheKey] = path }
+            return URL(fileURLWithPath: path)
+        }
+
         if let path = firstExecutable(
             named: cliType.executableName,
             in: fastExecutableSearchDirectories(
@@ -167,19 +176,23 @@ public enum CLILaunchAdapter {
             return URL(fileURLWithPath: path)
         }
 
-        if let shellPath = resolveExecutableFromLoginShell(
-            named: cliType.executableName,
-            environment: environment,
-            fileManager: fileManager
-        ), isTrustedResolvedExecutable(
-            shellPath,
-            for: cliType,
-            environment: environment,
-            homeDirectory: homeDirectory,
-            fileManager: fileManager
-        ) {
-            executableResolutionCache.withLock { $0[cacheKey] = shellPath }
-            return URL(fileURLWithPath: shellPath)
+        for executableName in cliType.executableNames {
+            if let shellPath = resolveExecutableFromLoginShell(
+                named: executableName,
+                environment: environment,
+                fileManager: fileManager
+            ), isTrustedResolvedExecutable(
+                shellPath,
+                named: executableName,
+                for: cliType,
+                requireExplicitPath: executableName != cliType.executableName,
+                environment: environment,
+                homeDirectory: homeDirectory,
+                fileManager: fileManager
+            ) {
+                executableResolutionCache.withLock { $0[cacheKey] = shellPath }
+                return URL(fileURLWithPath: shellPath)
+            }
         }
 
         if let path = firstExecutable(
@@ -206,6 +219,13 @@ public enum CLILaunchAdapter {
 
         let fileManager = FileManager.default
         let homeDirectory = homeDirectoryProvider()
+        if let path = firstExplicitlyTrustedExecutable(
+            for: cliType,
+            homeDirectory: homeDirectory,
+            fileManager: fileManager
+        ) {
+            return URL(fileURLWithPath: path)
+        }
         guard let path = firstExecutable(
             named: cliType.executableName,
             in: fastExecutableSearchDirectories(
@@ -225,6 +245,30 @@ public enum CLILaunchAdapter {
                 homeDirectory: homeDirectory ?? homeDirectoryProvider()
             )
         ).joined(separator: ":")
+    }
+
+    static func firstExplicitlyTrustedExecutable(
+        for cliType: SwitcherCLIProfileType,
+        trustedPaths: [String]? = nil,
+        homeDirectory: String,
+        fileManager: FileManager = .default
+    ) -> String? {
+        let acceptedNames = Set(cliType.executableNames)
+        for rawPath in trustedPaths ?? cliType.trustedExecutablePaths {
+            let candidateURL = URL(
+                fileURLWithPath: expandPath(
+                    rawPath,
+                    homeDirectory: homeDirectory
+                )
+            ).standardizedFileURL
+            guard acceptedNames.contains(candidateURL.lastPathComponent) else {
+                continue
+            }
+            if fileManager.isExecutableFile(atPath: candidateURL.path) {
+                return candidateURL.path
+            }
+        }
+        return nil
     }
 
     private static func fastExecutableSearchDirectories(
@@ -348,6 +392,7 @@ public enum CLILaunchAdapter {
             "\(homeDirectory)/.gemini/antigravity-cli",
             "\(homeDirectory)/.cursor-agent/bin",
             "\(homeDirectory)/.gemini/bin",
+            "\(homeDirectory)/.kimi-code/bin",
             "\(homeDirectory)/.kimi/bin",
             "\(homeDirectory)/.pi/bin",
             "\(homeDirectory)/.junie/bin",
@@ -414,7 +459,9 @@ public enum CLILaunchAdapter {
 
     private static func isTrustedResolvedExecutable(
         _ path: String,
+        named executableName: String,
         for cliType: SwitcherCLIProfileType,
+        requireExplicitPath: Bool,
         environment: [String: String],
         homeDirectory: String,
         fileManager: FileManager = .default
@@ -424,11 +471,18 @@ public enum CLILaunchAdapter {
         }
 
         let standardizedPath = URL(fileURLWithPath: path).standardizedFileURL.path
+        guard URL(fileURLWithPath: standardizedPath).lastPathComponent
+            == executableName else {
+            return false
+        }
         let trustedPaths = cliType.trustedExecutablePaths.map {
             URL(fileURLWithPath: expandPath($0, homeDirectory: homeDirectory)).standardizedFileURL.path
         }
         if trustedPaths.contains(standardizedPath) {
             return true
+        }
+        guard requireExplicitPath == false else {
+            return false
         }
 
         let parentDirectory = URL(fileURLWithPath: standardizedPath)

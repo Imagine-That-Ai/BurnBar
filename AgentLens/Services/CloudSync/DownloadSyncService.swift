@@ -146,13 +146,21 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
             result["dailyPoints"] = sorted
         }
         // Inject id fields into nested arrays
-        for (key, srcKey) in [("providerSummaries", "provider"), ("modelSummaries", nil), ("deviceSummaries", "deviceId")] {
+        for (key, sourceKey): (String, String?) in [
+            ("providerSummaries", "provider"),
+            ("modelSummaries", nil),
+            ("deviceSummaries", "deviceId")
+        ] {
             if let arr = result[key] as? NSArray {
                 let mapped = NSMutableArray()
                 for item in arr {
                     guard let dict = item as? NSMutableDictionary else { continue }
                     if dict["id"] == nil {
-                        if key == "modelSummaries" { dict["id"] = "\(dict["provider"] ?? ""):\(dict["model"] ?? "")" } else if key == "accountSummaries" { dict["id"] = dict["accountID"] ?? "\(dict["providerID"] ?? dict["provider"] ?? "provider"):unattributed" } else { dict["id"] = dict[srcKey] }
+                        if key == "modelSummaries" {
+                            dict["id"] = "\(dict["provider"] ?? ""):\(dict["model"] ?? "")"
+                        } else if let sourceKey, let sourceID = dict[sourceKey] {
+                            dict["id"] = sourceID
+                        }
                     }
                     mapped.add(dict)
                 }

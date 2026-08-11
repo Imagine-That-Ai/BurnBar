@@ -47,13 +47,13 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         logCapture = RuntimeLogCapture()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         dbQueue = nil
         store = nil
         logCapture = nil
         capturedLogMessages.removeAll()
         logEmitter = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     private final class CapturedLogMessages: @unchecked Sendable {
@@ -328,7 +328,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
     /// Uses the logging variant of store methods to capture actual production log output.
     func test_startupProfileFetch_capturesRuntimeLogs_noSecrets() throws {
         // Create profile using logging variant
-        let profile = try store.createWithLogging(SwitcherProfileRecord(
+        _ = try store.createWithLogging(SwitcherProfileRecord(
             targetKind: .cli,
             cliType: .codex,
             cliMetadata: SwitcherCLIProfileMetadata(
@@ -511,7 +511,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
             sortKey: 1
         ))
 
-        let browserProfile = try store.createWithLogging(SwitcherProfileRecord(
+        _ = try store.createWithLogging(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .safari,
             browserMetadata: SwitcherBrowserProfileMetadata(

@@ -430,7 +430,7 @@ public struct FactoryDroidProviderExecutor: BurnBarProviderExecuting, Sendable {
     }
 
     static func isStandardModel(_ modelID: String) -> Bool {
-        !droidCoreModelIDs.contains(modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+        !FactorySessionClassifier.isDroidCoreModelID(modelID)
     }
 
     public static func isStrictStandardUsageExhaustion(error: Error, route: BurnBarProviderRoute) -> Bool {
@@ -458,15 +458,6 @@ public struct FactoryDroidProviderExecutor: BurnBarProviderExecuting, Sendable {
             || lower.contains("droid core fallback is disabled")
     }
 
-    private static let droidCoreModelIDs: Set<String> = [
-        "glm-5.1",
-        "kimi-k2.6",
-        "kimi-k2.5",
-        "deepseek-v4-pro",
-        "minimax-m2.7",
-        "minimax-m2.5"
-    ]
-
     static func droidReasoningEffort(for modelID: String, variant: BurnBarModelVariant?) -> String? {
         guard let level = variant?.thinkingLevel else { return nil }
         let normalized = modelID.lowercased()
@@ -482,7 +473,7 @@ public struct FactoryDroidProviderExecutor: BurnBarProviderExecuting, Sendable {
         if normalized.contains("deepseek-v4-pro") {
             return level == .max ? "max" : "high"
         }
-        if droidCoreModelIDs.contains(normalized) {
+        if FactorySessionClassifier.isDroidCoreModelID(normalized) {
             return "high"
         }
         return level.rawValue

@@ -111,7 +111,7 @@ final class MercuryCallHUDStateTests: XCTestCase {
         )
 
         let sut = try view.inspect()
-        let buttons = try sut.findAll(ViewType.Button.self)
+        let buttons = sut.findAll(ViewType.Button.self)
         XCTAssertEqual(buttons.count, 3)
 
         try buttons[1].tap()

@@ -11,16 +11,16 @@ final class PaneWorkspaceModelTests: XCTestCase {
 
     private let layoutKey = PaneWorkspaceModel.udPaneLayout
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         PaneWorkspaceModel.resetSharedForTesting()
         UserDefaults.standard.removeObject(forKey: layoutKey)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         UserDefaults.standard.removeObject(forKey: layoutKey)
         PaneWorkspaceModel.resetSharedForTesting()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Helpers

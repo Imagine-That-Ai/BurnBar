@@ -729,7 +729,7 @@ public struct ProviderQuotaSnapshot: Codable, Identifiable, Hashable, Sendable {
 }
 
 public extension ProviderQuotaSnapshot {
-    public var quotaProvider: AgentProvider? {
+    var quotaProvider: AgentProvider? {
         AgentProvider.fromProviderID(providerID)
             ?? AgentProvider.fromPersistedToken(provider)
             ?? AgentProvider(rawValue: provider)

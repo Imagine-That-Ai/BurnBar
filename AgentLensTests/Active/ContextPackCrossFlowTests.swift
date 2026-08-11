@@ -151,10 +151,10 @@ final class ContextPackCrossFlowTests: XCTestCase {
         }
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         dbQueue = nil
         dataStore = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Helper Methods
@@ -294,6 +294,11 @@ final class ContextPackCrossFlowTests: XCTestCase {
         let unanchoredSameProjectIds = unanchoredIds.filter { id in
             candidates.first { $0.id == id }?.projectName == "AnchorProject"
         }
+        XCTAssertEqual(
+            Set(anchoredSameProjectIds),
+            Set(unanchoredSameProjectIds),
+            "Anchoring should change ranking, not which same-project sessions are retained"
+        )
 
         // In anchored mode, same-project sessions should be first
         XCTAssertEqual(anchoredSameProjectIds.first, "s1",
@@ -853,7 +858,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
         let providers: [AgentProvider] = [.claudeCode, .factory]
         let projects = ["ProjectA", "ProjectB"]
 
-        for (i, provider) in providers.enumerated() {
+        for provider in providers {
             for project in projects {
                 let sessionId = "\(provider.rawValue)-\(project)-session"
                 let stableId = ConversationRecord.stableId(provider: provider, sessionId: sessionId)

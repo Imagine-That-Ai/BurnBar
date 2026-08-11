@@ -612,7 +612,7 @@ final class PhoneControlReceiverTests: XCTestCase {
             controlDispatcher: coordinator.controlDispatcher
         )
 
-        try await handler.serve(stream: stream, uid: "uid-stream", connectionID: "conn-stream")
+        _ = try await handler.serve(stream: stream, uid: "uid-stream", connectionID: "conn-stream")
 
         let sentFrames = await stream.sentFrames()
         let fetchCount = await provider.fetchCount
@@ -764,7 +764,7 @@ final class PhoneControlReceiverTests: XCTestCase {
             )
         )
 
-        var replyReceived: HermesRealtimeRelayFrame?
+        let replyReceived = OpenBurnBarCore.Locked<HermesRealtimeRelayFrame?>(nil)
         let receiver = AgentContextTargetReceiver(
             sessionId: ComputerUseSessionID(rawValue: "test-session"),
             validator: validator,
@@ -774,15 +774,15 @@ final class PhoneControlReceiverTests: XCTestCase {
             },
             authorizedPeerNodeProvider: { peerNodeId },
             replyFrameSink: { frame in
-                replyReceived = frame
+                replyReceived.write(frame)
             },
             auditLoggerProvider: { nil }
         )
         await receiver.ingest(frame)
 
-        XCTAssertNotNil(replyReceived)
-        XCTAssertEqual(replyReceived?.type, .controlDenied)
-        XCTAssertEqual(replyReceived?.control?.denied?.reason, .agentUnavailable)
+        XCTAssertNotNil(replyReceived.read())
+        XCTAssertEqual(replyReceived.read()?.type, .controlDenied)
+        XCTAssertEqual(replyReceived.read()?.control?.denied?.reason, .agentUnavailable)
     }
 
     @MainActor
@@ -829,7 +829,7 @@ final class PhoneControlReceiverTests: XCTestCase {
             )
         )
 
-        var replyReceived: HermesRealtimeRelayFrame?
+        let replyReceived = OpenBurnBarCore.Locked<HermesRealtimeRelayFrame?>(nil)
         let receiver = AgentContextTargetReceiver(
             sessionId: ComputerUseSessionID(rawValue: "test-session"),
             validator: validator,
@@ -839,15 +839,15 @@ final class PhoneControlReceiverTests: XCTestCase {
             },
             authorizedPeerNodeProvider: { peerNodeId },
             replyFrameSink: { frame in
-                replyReceived = frame
+                replyReceived.write(frame)
             },
             auditLoggerProvider: { nil }
         )
         await receiver.ingest(frame)
 
-        XCTAssertEqual(replyReceived?.type, .controlDenied)
-        XCTAssertEqual(replyReceived?.control?.denied?.reason, .scope)
-        XCTAssertEqual(replyReceived?.control?.denied?.detail, "session_mismatch")
+        XCTAssertEqual(replyReceived.read()?.type, .controlDenied)
+        XCTAssertEqual(replyReceived.read()?.control?.denied?.reason, .scope)
+        XCTAssertEqual(replyReceived.read()?.control?.denied?.detail, "session_mismatch")
     }
 
     @MainActor
@@ -894,7 +894,7 @@ final class PhoneControlReceiverTests: XCTestCase {
             )
         )
 
-        var replyReceived: HermesRealtimeRelayFrame?
+        let replyReceived = OpenBurnBarCore.Locked<HermesRealtimeRelayFrame?>(nil)
         let receiver = AgentContextTargetReceiver(
             sessionId: ComputerUseSessionID(rawValue: "test-session"),
             validator: validator,
@@ -904,15 +904,15 @@ final class PhoneControlReceiverTests: XCTestCase {
             },
             authorizedPeerNodeProvider: { peerNodeId },
             replyFrameSink: { frame in
-                replyReceived = frame
+                replyReceived.write(frame)
             },
             auditLoggerProvider: { nil }
         )
         await receiver.ingest(frame)
 
-        XCTAssertEqual(replyReceived?.type, .controlDenied)
-        XCTAssertEqual(replyReceived?.control?.denied?.reason, .agentUnavailable)
-        XCTAssertEqual(replyReceived?.control?.denied?.detail, "no_active_agent_thread")
+        XCTAssertEqual(replyReceived.read()?.type, .controlDenied)
+        XCTAssertEqual(replyReceived.read()?.control?.denied?.reason, .agentUnavailable)
+        XCTAssertEqual(replyReceived.read()?.control?.denied?.detail, "no_active_agent_thread")
     }
 
     @MainActor
@@ -959,7 +959,7 @@ final class PhoneControlReceiverTests: XCTestCase {
             )
         )
 
-        var replyReceived: HermesRealtimeRelayFrame?
+        let replyReceived = OpenBurnBarCore.Locked<HermesRealtimeRelayFrame?>(nil)
         let receiver = AgentContextTargetReceiver(
             sessionId: ComputerUseSessionID(rawValue: "test-session"),
             validator: validator,
@@ -969,15 +969,15 @@ final class PhoneControlReceiverTests: XCTestCase {
             },
             authorizedPeerNodeProvider: { nil },
             replyFrameSink: { frame in
-                replyReceived = frame
+                replyReceived.write(frame)
             },
             auditLoggerProvider: { nil }
         )
         await receiver.ingest(frame)
 
-        XCTAssertEqual(replyReceived?.type, .controlDenied)
-        XCTAssertEqual(replyReceived?.control?.denied?.reason, .scope)
-        XCTAssertEqual(replyReceived?.control?.denied?.detail, "no_active_control_viewer")
+        XCTAssertEqual(replyReceived.read()?.type, .controlDenied)
+        XCTAssertEqual(replyReceived.read()?.control?.denied?.reason, .scope)
+        XCTAssertEqual(replyReceived.read()?.control?.denied?.detail, "no_active_control_viewer")
     }
 
     @MainActor
@@ -1025,7 +1025,7 @@ final class PhoneControlReceiverTests: XCTestCase {
             )
         )
 
-        var replyReceived: HermesRealtimeRelayFrame?
+        let replyReceived = OpenBurnBarCore.Locked<HermesRealtimeRelayFrame?>(nil)
         let receiver = AgentContextTargetReceiver(
             sessionId: ComputerUseSessionID(rawValue: "test-session"),
             validator: validator,
@@ -1035,15 +1035,15 @@ final class PhoneControlReceiverTests: XCTestCase {
             },
             authorizedPeerNodeProvider: { activePeerNodeId },
             replyFrameSink: { frame in
-                replyReceived = frame
+                replyReceived.write(frame)
             },
             auditLoggerProvider: { nil }
         )
         await receiver.ingest(frame)
 
-        XCTAssertEqual(replyReceived?.type, .controlDenied)
-        XCTAssertEqual(replyReceived?.control?.denied?.reason, .scope)
-        XCTAssertEqual(replyReceived?.control?.denied?.detail, "control_owned_by_other_viewer")
+        XCTAssertEqual(replyReceived.read()?.type, .controlDenied)
+        XCTAssertEqual(replyReceived.read()?.control?.denied?.reason, .scope)
+        XCTAssertEqual(replyReceived.read()?.control?.denied?.detail, "control_owned_by_other_viewer")
     }
 
     @MainActor

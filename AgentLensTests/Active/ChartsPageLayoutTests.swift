@@ -1,6 +1,7 @@
 import XCTest
 @testable import OpenBurnBar
 
+@MainActor
 final class ChartsPageLayoutTests: XCTestCase {
 
     // MARK: Defaults

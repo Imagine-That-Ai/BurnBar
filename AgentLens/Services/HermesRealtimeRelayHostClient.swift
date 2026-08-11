@@ -152,7 +152,8 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
                         connectionId: connectionID,
                         requestId: frame.requestId
                     ))))
-                case .hostReady, .pong, .hostRegister, .responseChunk, .responseComplete, .responseError:
+                case .hostReady, .pong, .hostRegister, .responseChunk, .responseComplete, .responseError,
+                     .signalSessionMessage:
                     break
                 case .mediaClassify, .mediaBlobAdvertise, .mediaBlobAck,
                      .mediaMirrorRequest, .mediaMirrorAck, .mediaMirrorStop, .mediaMirrorDisplaySelect, .mediaPresenceHeartbeat,
@@ -161,6 +162,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
                      .mediaStreamFrame,
                      .controlClassify, .controlActionLogEntry, .controlInputIntent,
                      .controlApprovalRequest, .controlApprovalResponse,
+                     .controlSessionGrantChallenge,
                      .controlAgentGrantRequest, .controlAgentGrantReceipt,
                      .controlClipboardRequest, .controlClipboardResponse,
                      .controlAgentContextTarget,

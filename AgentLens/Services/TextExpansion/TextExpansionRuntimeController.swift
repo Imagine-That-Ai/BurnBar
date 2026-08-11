@@ -562,7 +562,7 @@ private enum TextExpansionFocusedTextInserter {
               CFGetTypeID(focusedRef) == AXUIElementGetTypeID() else {
             return nil
         }
-        return unsafeBitCast(focusedRef, to: AXUIElement.self)
+        return unsafeDowncast(focusedRef, to: AXUIElement.self)
     }
 
     private static func isTextSurface(_ element: AXUIElement) -> Bool {
@@ -586,7 +586,7 @@ private enum TextExpansionFocusedTextInserter {
         ) == .success, let rangeRef, CFGetTypeID(rangeRef) == AXValueGetTypeID() else {
             return nil
         }
-        let axValue = unsafeBitCast(rangeRef, to: AXValue.self)
+        let axValue = unsafeDowncast(rangeRef, to: AXValue.self)
         var range = CFRange(location: 0, length: 0)
         guard AXValueGetValue(axValue, .cfRange, &range) else { return nil }
         return range.location + range.length

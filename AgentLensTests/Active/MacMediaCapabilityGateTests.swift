@@ -1121,12 +1121,12 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         )
 
         let copyQuery = try XCTUnwrap(events.first?.query)
-        XCTAssertEqual(copyQuery[kSecUseAuthenticationUI as String] as? String, kSecUseAuthenticationUIFail as String)
-        let context = try XCTUnwrap(copyQuery[kSecUseAuthenticationContext as String] as? LAContext)
-        XCTAssertTrue(context.interactionNotAllowed)
+        let copyContext = try XCTUnwrap(copyQuery[kSecUseAuthenticationContext as String] as? LAContext)
+        XCTAssertTrue(copyContext.interactionNotAllowed)
 
         let addQuery = try XCTUnwrap(events.last?.query)
-        XCTAssertEqual(addQuery[kSecUseAuthenticationUI as String] as? String, kSecUseAuthenticationUIFail as String)
+        let addContext = try XCTUnwrap(addQuery[kSecUseAuthenticationContext as String] as? LAContext)
+        XCTAssertTrue(addContext.interactionNotAllowed)
     }
 
     /// A corrupt / unreadable certification report must be treated as no-report

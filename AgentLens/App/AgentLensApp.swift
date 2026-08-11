@@ -501,6 +501,12 @@ struct OpenBurnBarApp: App {
                     }
                     .keyboardShortcut(",", modifiers: .command)
                 }
+                CommandMenu("Learning") {
+                    Button("What BurnBar Learned About You…") {
+                        AppCommandRouter.shared.openSafariLearning?()
+                    }
+                    .keyboardShortcut("l", modifiers: [.command, .shift])
+                }
                 #if DEBUG
                 CommandMenu("Debug") {
                     Button(

@@ -10,6 +10,102 @@ struct BurnBarBrowserExecutionOutcome {
 
 extension BurnBarRunService {
 
+    func isRunManagedComputerUse(_ tool: BurnBarToolKind) -> Bool {
+        tool.isBrowserComputerUse || tool.isSafariComputerUse
+    }
+
+    func makeComputerUseRequirement(
+        for run: BurnBarManagedRun,
+        invocation: BurnBarToolInvocation,
+        generation: UInt64? = nil
+    ) -> BurnBarComputerUseRunRequirement {
+        BurnBarComputerUseRunRequirement(
+            runID: run.runID,
+            clientID: run.snapshot.clientID,
+            sessionID: run.snapshot.sessionID,
+            invocation: invocation,
+            generation: generation ?? run.computerUseGeneration
+        )
+    }
+
+    func validateComputerUseBinding(
+        _ requirement: BurnBarComputerUseRunRequirement,
+        matches invocation: BurnBarToolInvocation,
+        for run: BurnBarManagedRun,
+        message: String
+    ) throws {
+        guard requirement.runID == run.runID,
+              requirement.clientID == run.snapshot.clientID,
+              requirement.sessionID == run.snapshot.sessionID,
+              requirement.invocation == invocation,
+              requirement.generation == run.computerUseGeneration else {
+            throw BurnBarRunServiceError.invalidToolResult(run.runID, message)
+        }
+    }
+
+    func computerUseRequirementForRevocation(
+        _ run: BurnBarManagedRun,
+        generation: UInt64
+    ) -> BurnBarComputerUseRunRequirement? {
+        let invocation: BurnBarToolInvocation?
+        if let pending = run.pendingComputerUseInvocation {
+            invocation = pending
+        } else if let lastToolCall = run.lastToolCall,
+                  isRunManagedComputerUse(lastToolCall.tool) {
+            invocation = BurnBarToolInvocation(
+                callID: lastToolCall.callID,
+                runID: lastToolCall.runID,
+                tool: lastToolCall.tool,
+                arguments: lastToolCall.arguments,
+                requestedBy: lastToolCall.requestedBy,
+                requestedAt: lastToolCall.requestedAt
+            )
+        } else {
+            invocation = nil
+        }
+        guard let invocation,
+              invocation.runID == run.runID,
+              invocation.requestedBy == run.snapshot.clientID else {
+            return nil
+        }
+        return makeComputerUseRequirement(
+            for: run,
+            invocation: invocation,
+            generation: generation
+        )
+    }
+
+    func computerUseBindingPermits(
+        _ requirement: BurnBarComputerUseRunRequirement
+    ) async -> Bool {
+        if requirement.invocation.tool.isSafariComputerUse {
+            guard let safariComputerUseRunBindingChecker else {
+                // Safari can never fall through to the legacy Playwright path.
+                // Without the dedicated binding authority, retain the requirement
+                // and fail closed until the daemon composition root supplies it.
+                return false
+            }
+            return await safariComputerUseRunBindingChecker(requirement)
+        }
+        if let computerUseRunBindingChecker {
+            return await computerUseRunBindingChecker(
+                requirement.runID,
+                requirement.generation
+            )
+        }
+        return true
+    }
+
+    func revokeComputerUseBinding(
+        _ requirement: BurnBarComputerUseRunRequirement
+    ) async {
+        if requirement.invocation.tool.isSafariComputerUse {
+            await safariComputerUseRunRevoker?(requirement)
+        } else {
+            await computerUseRunRevoker?(requirement.runID, requirement.generation)
+        }
+    }
+
     func dispatchCompanionToolCall(
         for run: inout BurnBarManagedRun,
         toolKind: BurnBarToolKind,
@@ -43,19 +139,24 @@ extension BurnBarRunService {
             requestedAt: Date()
         )
         // The Computer Use coordinator owns approval, scope, panic, and audit
-        // when the production Linux composition root installs this dispatcher.
-        // Retain the legacy run-level approval only for callers that deliberately
-        // construct a run service without that safety authority.
-        if computerUseBrowserDispatcher == nil,
+        // when the relevant production composition root installs its dispatcher.
+        // Safari always waits for its dedicated binding and never falls back to
+        // either the Linux browser dispatcher or the legacy Playwright service.
+        if invocation.tool.isSafariComputerUse == false,
+           computerUseBrowserDispatcher == nil,
            try await requestMandatoryToolApprovalIfNeeded(for: &run, invocation: invocation) {
             return
         }
-        if let computerUseRunBindingChecker,
-           await computerUseRunBindingChecker(run.runID, run.computerUseGeneration) == false {
+        let requirement = makeComputerUseRequirement(for: run, invocation: invocation)
+        if await computerUseBindingPermits(requirement) == false {
             try await waitForComputerUseSession(invocation, run: &run)
             return
         }
-        try await executeBrowserToolInvocation(invocation, for: &run)
+        try await executeBrowserToolInvocation(
+            invocation,
+            for: &run,
+            bindingRequirement: requirement
+        )
     }
 
     func waitForComputerUseSession(
@@ -113,8 +214,18 @@ extension BurnBarRunService {
     func executeBrowserToolInvocation(
         _ invocation: BurnBarToolInvocation,
         for run: inout BurnBarManagedRun,
-        alreadyClaimed: Bool = false
+        alreadyClaimed: Bool = false,
+        bindingRequirement suppliedRequirement: BurnBarComputerUseRunRequirement? = nil
     ) async throws {
+        let bindingRequirement = suppliedRequirement
+            ?? makeComputerUseRequirement(for: run, invocation: invocation)
+        try validateComputerUseBinding(
+            bindingRequirement,
+            matches: invocation,
+            for: run,
+            message: "Computer Use invocation no longer matches its exact run binding."
+        )
+
         let pendingSnapshot: BurnBarToolCallSnapshot
         if alreadyClaimed {
             guard run.snapshot.phase == .executingTool,
@@ -170,7 +281,7 @@ extension BurnBarRunService {
                         )
                     )
                     try? await writeCheckpoint(for: run)
-                    await computerUseRunRevoker?(run.runID, claimedGeneration)
+                    await revokeComputerUseBinding(bindingRequirement)
                 } else if let current = runs[run.runID] {
                     run = current
                 }
@@ -189,7 +300,17 @@ extension BurnBarRunService {
             run = claimed
         }
 
-        let outcome = await executeBrowserAction(invocation)
+        try validateComputerUseBinding(
+            bindingRequirement,
+            matches: invocation,
+            for: run,
+            message: "Computer Use invocation lost its exact run binding before dispatch."
+        )
+
+        let outcome = await executeBrowserAction(
+            invocation,
+            bindingRequirement: bindingRequirement
+        )
         let completedAt = Date()
         let completedSnapshot = BurnBarToolCallSnapshot(
             callID: invocation.callID,
@@ -234,86 +355,49 @@ extension BurnBarRunService {
     }
 
     func executeBrowserAction(
-        _ invocation: BurnBarToolInvocation
+        _ invocation: BurnBarToolInvocation,
+        bindingRequirement: BurnBarComputerUseRunRequirement? = nil
     ) async -> BurnBarBrowserExecutionOutcome {
         do {
+            if invocation.tool.isSafariComputerUse {
+                guard let bindingRequirement,
+                      bindingRequirement.runID == invocation.runID,
+                      bindingRequirement.clientID == invocation.requestedBy,
+                      bindingRequirement.invocation == invocation else {
+                    return BurnBarBrowserExecutionOutcome(
+                        succeeded: false,
+                        output: nil,
+                        error: BurnBarToolExecutionError(
+                            code: .unknown,
+                            message: "Safari Computer Use requires an exact run, call, client, session, and generation binding."
+                        )
+                    )
+                }
+                guard let safariComputerUseRunDispatcher else {
+                    return BurnBarBrowserExecutionOutcome(
+                        succeeded: false,
+                        output: nil,
+                        error: BurnBarToolExecutionError(
+                            code: .unknown,
+                            message: "Safari Computer Use is unavailable because its dedicated dispatcher is not installed."
+                        )
+                    )
+                }
+                let dispatchResult = try await safariComputerUseRunDispatcher(bindingRequirement)
+                return computerUseOutcome(
+                    from: dispatchResult,
+                    invocation: invocation,
+                    surfaceName: "Safari"
+                )
+            }
+
             if let computerUseBrowserDispatcher {
                 let dispatchResult = try await computerUseBrowserDispatcher(invocation)
-                let response = dispatchResult.response
-                guard response.sessionId == dispatchResult.expectedSessionID.rawValue,
-                      response.callID == invocation.callID else {
-                    return BurnBarBrowserExecutionOutcome(
-                        succeeded: false,
-                        output: nil,
-                        error: BurnBarToolExecutionError(
-                            code: .unknown,
-                            message: "Computer Use returned a response for a different session or tool call."
-                        )
-                    )
-                }
-                switch response.status {
-                case .executed:
-                    guard let result = response.result else {
-                        return BurnBarBrowserExecutionOutcome(
-                            succeeded: false,
-                            output: nil,
-                            error: BurnBarToolExecutionError(
-                                code: .unknown,
-                                message: "Computer Use reported an executed browser action without a tool result."
-                            )
-                        )
-                    }
-                    guard result.callID == invocation.callID,
-                          result.runID == invocation.runID else {
-                        return BurnBarBrowserExecutionOutcome(
-                            succeeded: false,
-                            output: nil,
-                            error: BurnBarToolExecutionError(
-                                code: .unknown,
-                                message: "Computer Use returned a browser result for a different run or tool call."
-                            )
-                        )
-                    }
-                    return BurnBarBrowserExecutionOutcome(
-                        succeeded: result.succeeded,
-                        output: result.output,
-                        error: result.succeeded ? nil : BurnBarToolExecutionError(
-                            code: .unknown,
-                            message: result.errorMessage ?? "Computer Use browser action failed."
-                        )
-                    )
-                case .denied:
-                    let code: BurnBarToolExecutionErrorCode = response.denyReason
-                        == ComputerUseDenyReason.userRejected.rawValue
-                        ? .operatorDenied
-                        : .computerUseDenied
-                    return BurnBarBrowserExecutionOutcome(
-                        succeeded: false,
-                        output: nil,
-                        error: BurnBarToolExecutionError(
-                            code: code,
-                            message: response.denyReason ?? "Computer Use browser action was denied."
-                        )
-                    )
-                case .awaitingApproval:
-                    return BurnBarBrowserExecutionOutcome(
-                        succeeded: false,
-                        output: nil,
-                        error: BurnBarToolExecutionError(
-                            code: .unknown,
-                            message: "Computer Use returned before its approval was resolved."
-                        )
-                    )
-                case .error:
-                    return BurnBarBrowserExecutionOutcome(
-                        succeeded: false,
-                        output: nil,
-                        error: BurnBarToolExecutionError(
-                            code: .unknown,
-                            message: response.denyReason ?? "Computer Use browser action failed."
-                        )
-                    )
-                }
+                return computerUseOutcome(
+                    from: dispatchResult,
+                    invocation: invocation,
+                    surfaceName: "browser"
+                )
             }
 
             let response = try await browserToolService.performAction(
@@ -334,6 +418,89 @@ extension BurnBarRunService {
                 error: BurnBarToolExecutionError(
                     code: .unknown,
                     message: error.localizedDescription
+                )
+            )
+        }
+    }
+
+    private func computerUseOutcome(
+        from dispatchResult: BurnBarComputerUseBrowserDispatchResult,
+        invocation: BurnBarToolInvocation,
+        surfaceName: String
+    ) -> BurnBarBrowserExecutionOutcome {
+        let response = dispatchResult.response
+        guard dispatchResult.expectedSessionID.rawValue.isEmpty == false,
+              response.sessionId == dispatchResult.expectedSessionID.rawValue,
+              response.callID == invocation.callID else {
+            return BurnBarBrowserExecutionOutcome(
+                succeeded: false,
+                output: nil,
+                error: BurnBarToolExecutionError(
+                    code: .unknown,
+                    message: "Computer Use returned a response for a different session or tool call."
+                )
+            )
+        }
+        switch response.status {
+        case .executed:
+            guard let result = response.result else {
+                return BurnBarBrowserExecutionOutcome(
+                    succeeded: false,
+                    output: nil,
+                    error: BurnBarToolExecutionError(
+                        code: .unknown,
+                        message: "Computer Use reported an executed \(surfaceName) action without a tool result."
+                    )
+                )
+            }
+            guard result.callID == invocation.callID,
+                  result.runID == invocation.runID else {
+                return BurnBarBrowserExecutionOutcome(
+                    succeeded: false,
+                    output: nil,
+                    error: BurnBarToolExecutionError(
+                        code: .unknown,
+                        message: "Computer Use returned a \(surfaceName) result for a different run or tool call."
+                    )
+                )
+            }
+            return BurnBarBrowserExecutionOutcome(
+                succeeded: result.succeeded,
+                output: result.output,
+                error: result.succeeded ? nil : BurnBarToolExecutionError(
+                    code: .unknown,
+                    message: result.errorMessage ?? "Computer Use \(surfaceName) action failed."
+                )
+            )
+        case .denied:
+            let code: BurnBarToolExecutionErrorCode = response.denyReason
+                == ComputerUseDenyReason.userRejected.rawValue
+                ? .operatorDenied
+                : .computerUseDenied
+            return BurnBarBrowserExecutionOutcome(
+                succeeded: false,
+                output: nil,
+                error: BurnBarToolExecutionError(
+                    code: code,
+                    message: response.denyReason ?? "Computer Use \(surfaceName) action was denied."
+                )
+            )
+        case .awaitingApproval:
+            return BurnBarBrowserExecutionOutcome(
+                succeeded: false,
+                output: nil,
+                error: BurnBarToolExecutionError(
+                    code: .unknown,
+                    message: "Computer Use returned before its approval was resolved."
+                )
+            )
+        case .error:
+            return BurnBarBrowserExecutionOutcome(
+                succeeded: false,
+                output: nil,
+                error: BurnBarToolExecutionError(
+                    code: .unknown,
+                    message: response.denyReason ?? "Computer Use \(surfaceName) action failed."
                 )
             )
         }
@@ -487,6 +654,11 @@ extension BurnBarRunService {
         case .applyPatch, .runTerminal,
              .browserClick, .browserFill, .browserGoto, .browserKey,
              .browserSelect, .browserScreenshot, .browserExtract,
+             .safariPageContext, .safariScreenshot, .safariFullPageScreenshot,
+             .safariClick, .safariType, .safariPressKey, .safariScroll,
+             .safariHover, .safariFocus, .safariSelectOption, .safariNavigate,
+             .safariOpenTab, .safariCloseTab, .safariListTabs, .safariWaitFor,
+             .safariRunJavaScript, .safariExtract, .safariAbort,
              .macInputClick, .macInputType, .macInputKey,
              .macInputShortcut, .macInputDragDrop, .macInputScroll,
              .macInputPointerMove, .macInspectAccessibility:

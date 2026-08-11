@@ -49,6 +49,7 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
     /// peer on credential-bearing input sockets.
     public static let daemonRPCPeerBundleIdentifiers: [String] = [
         "com.openburnbar.app",
+        "com.openburnbar.app.safari-extension",
         "com.openburnbar.daemon",
         "com.openburnbar.cli"
     ]

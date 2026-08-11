@@ -18,7 +18,7 @@ private typealias ProviderQuotaWindowKind = OpenBurnBar.ProviderQuotaWindowKind
 final class ProviderQuotaServiceTests: XCTestCase {
     private var tempDirectories: [URL] = []
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         for directory in tempDirectories {
             try? FileManager.default.removeItem(at: directory)
         }
@@ -27,6 +27,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         CLILaunchAdapter.executableResolver = nil
         OpenBurnBarDaemonManager.shared.providerConfigurations = []
         TelemetryService.shared.setForwarder(nil)
+        try await super.tearDown()
     }
 
     func test_supportedProviders_onlyIncludesRealQuotaSignalProviders() {
@@ -156,17 +157,17 @@ final class ProviderQuotaServiceTests: XCTestCase {
             appSupportRoot: appSupport,
             refreshProviders: [.codex]
         )
-        var publishedProviders: [String] = []
-        var publishedBucketCounts: [Int] = []
+        let publishedProviders = OpenBurnBarCore.Locked<[String]>([])
+        let publishedBucketCounts = OpenBurnBarCore.Locked<[Int]>([])
         service.onSnapshotsPersistedForCloudSync = { snapshots in
-            publishedProviders = snapshots.map(\.provider)
-            publishedBucketCounts = snapshots.map { $0.displayableQuotaBuckets.count }
+            publishedProviders.write(snapshots.map(\.provider))
+            publishedBucketCounts.write(snapshots.map { $0.displayableQuotaBuckets.count })
         }
 
         await service.refresh(provider: .codex, dataStore: dataStore)
 
-        XCTAssertEqual(publishedProviders, [AgentProvider.codex.rawValue])
-        XCTAssertEqual(publishedBucketCounts, [2])
+        XCTAssertEqual(publishedProviders.read(), [AgentProvider.codex.rawValue])
+        XCTAssertEqual(publishedBucketCounts.read(), [2])
     }
 
     func test_snapshotsForCloudSync_excludesUsageOnlyAndActivitySnapshots() throws {
@@ -526,7 +527,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let session = makeStubSession { request in
             XCTAssertEqual(request.url?.absoluteString, "https://chatgpt.com/backend-api/wham/usage")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer codex-stale-token")
-            return try self.httpResponse(
+            return try Self.httpResponse(
                 url: request.url!,
                 statusCode: 200,
                 body: """
@@ -595,18 +596,21 @@ final class ProviderQuotaServiceTests: XCTestCase {
         }
         defer { CLILaunchAdapter.executableResolver = nil }
 
-        var requestCount = 0
+        let requestCount = OpenBurnBarCore.Locked(0)
         let session = makeStubSession { request in
-            requestCount += 1
+            let currentRequestCount = requestCount.withLock { count in
+                count += 1
+                return count
+            }
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer codex-stale-token")
-            if requestCount == 1 {
-                return try self.httpResponse(
+            if currentRequestCount == 1 {
+                return try Self.httpResponse(
                     url: request.url!,
                     statusCode: 401,
                     body: "{}"
                 )
             }
-            return try self.httpResponse(
+            return try Self.httpResponse(
                 url: request.url!,
                 statusCode: 200,
                 body: """
@@ -637,7 +641,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         await service.refresh(provider: .codex, dataStore: try makeDataStore())
 
-        XCTAssertEqual(requestCount, 2)
+        XCTAssertEqual(requestCount.read(), 2)
         let observedPath = (try? String(contentsOf: observedPathURL, encoding: .utf8))
             ?? CLILaunchAdapter.trustedExecutableEnvironmentPath(homeDirectory: home.path)
         XCTAssertFalse(
@@ -1010,7 +1014,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let session = makeStubSession { request in
             let url = try XCTUnwrap(request.url)
             XCTAssertEqual(url.absoluteString, "https://api.anthropic.com/api/oauth/usage")
-            return try self.httpResponse(
+            return try Self.httpResponse(
                 url: url,
                 statusCode: 200,
                 body: """
@@ -1187,7 +1191,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
             XCTAssertTrue((request.value(forHTTPHeaderField: "User-Agent") ?? "").hasPrefix("claude-code/"))
-            return try self.httpResponse(
+            return try Self.httpResponse(
                 url: url,
                 statusCode: 200,
                 body: """
@@ -1268,7 +1272,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                 let body = String(data: rawBody, encoding: .utf8) ?? ""
                 XCTAssertTrue(body.contains("grant_type=refresh_token"), "body=\(body)")
                 XCTAssertTrue(body.contains("refresh_token=refresh-token"), "body=\(body)")
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url,
                     statusCode: 200,
                     body: """
@@ -1286,7 +1290,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             observedUsageAuths.withLock { $0.append(authorization) }
 
             if authorization == "Bearer sk-ant-oat-stale" {
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url,
                     statusCode: 401,
                     body: #"{"type":"error","error":{"type":"authentication_error","message":"Invalid authentication credentials"}}"#
@@ -1294,7 +1298,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             }
 
             XCTAssertEqual(authorization, "Bearer sk-ant-oat-refreshed")
-            return try self.httpResponse(
+            return try Self.httpResponse(
                 url: url,
                 statusCode: 200,
                 body: """
@@ -1563,7 +1567,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             default:
                 usedPercent = 99
             }
-            return try self.httpResponse(
+            return try Self.httpResponse(
                 url: url,
                 statusCode: 200,
                 body: """
@@ -1867,7 +1871,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
               }
             }
             """
-            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            return try Self.httpResponse(url: request.url!, statusCode: 200, body: body)
         }
 
         let service = makeService(
@@ -1985,7 +1989,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
               }
             }
             """
-            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            return try Self.httpResponse(url: request.url!, statusCode: 200, body: body)
         }
         let service = makeService(
             home: home,
@@ -2255,7 +2259,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                 let body = String(data: rawBody, encoding: .utf8) ?? ""
                 XCTAssertTrue(body.contains("grant_type=refresh_token"), "body=\(body)")
                 XCTAssertTrue(body.contains("refresh_token=sk-ant-ort-good"), "body=\(body)")
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url,
                     statusCode: 200,
                     body: """
@@ -2276,7 +2280,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                     "Bearer sk-ant-oat-NEW",
                     "Usage endpoint must use the refreshed access token."
                 )
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url,
                     statusCode: 200,
                     body: """
@@ -2372,7 +2376,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             XCTAssertTrue((request.value(forHTTPHeaderField: "Cookie") ?? "").contains("session=factory-session"))
 
             if url.path.hasSuffix("/api/app/auth/me") {
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url,
                     statusCode: 200,
                     body: """
@@ -2393,7 +2397,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
             if url.path.hasSuffix("/api/organization/subscription/usage") {
                 XCTAssertEqual(request.httpMethod, "GET")
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url,
                     statusCode: 200,
                     body: """
@@ -2417,7 +2421,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             }
 
             XCTFail("Unexpected Factory URL \(url.absoluteString)")
-            return try self.httpResponse(url: url, statusCode: 404, body: #"{"error":"not found"}"#)
+            return try Self.httpResponse(url: url, statusCode: 404, body: #"{"error":"not found"}"#)
         }
 
         let service = makeService(
@@ -3008,7 +3012,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let session = makeStubSession { request in
             let url = try XCTUnwrap(request.url)
             if url.path.hasSuffix("/api/app/auth/me") {
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url, statusCode: 200,
                     body: #"""
                     {
@@ -3027,7 +3031,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                 )
             }
             if url.path.hasSuffix("/api/organization/subscription/usage") {
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url, statusCode: 200,
                     body: #"""
                     {
@@ -3058,7 +3062,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                 )
             }
             XCTFail("Unexpected URL \(url.absoluteString)")
-            return try self.httpResponse(url: url, statusCode: 404, body: #"{"error":"not found"}"#)
+            return try Self.httpResponse(url: url, statusCode: 404, body: #"{"error":"not found"}"#)
         }
 
         let service = makeService(
@@ -3106,13 +3110,13 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let session = makeStubSession { request in
             let url = try XCTUnwrap(request.url)
             if url.path.hasSuffix("/api/app/auth/me") {
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url, statusCode: 200,
                     body: #"{"organization":{"subscription":{"factoryTier":"pro"}}}"#
                 )
             }
             if url.path.hasSuffix("/api/organization/subscription/usage") {
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url, statusCode: 200,
                     body: #"""
                     {
@@ -3125,7 +3129,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                     """#
                 )
             }
-            return try self.httpResponse(url: url, statusCode: 404, body: "{}")
+            return try Self.httpResponse(url: url, statusCode: 404, body: "{}")
         }
 
         let service = makeService(
@@ -3156,7 +3160,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let session = makeStubSession { request in
             let url = try XCTUnwrap(request.url)
             if url.path.hasSuffix("/api/app/auth/me") {
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url, statusCode: 200,
                     body: #"""
                     {
@@ -3174,7 +3178,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                 )
             }
             if url.path.hasSuffix("/api/organization/subscription/usage") {
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url, statusCode: 200,
                     body: #"""
                     {
@@ -3186,7 +3190,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                     """#
                 )
             }
-            return try self.httpResponse(url: url, statusCode: 404, body: "{}")
+            return try Self.httpResponse(url: url, statusCode: 404, body: "{}")
         }
 
         let service = makeService(
@@ -3697,7 +3701,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
               ]
             }
             """
-            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            return try Self.httpResponse(url: request.url!, statusCode: 200, body: body)
         }
 
         let service = makeService(
@@ -3737,7 +3741,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
               ]
             }
             """
-            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            return try Self.httpResponse(url: request.url!, statusCode: 200, body: body)
         }
 
         let service = makeService(
@@ -3829,7 +3833,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
               ]
             }
             """
-            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            return try Self.httpResponse(url: request.url!, statusCode: 200, body: body)
         }
 
         let service = makeService(
@@ -3925,7 +3929,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
               ]
             }
             """
-            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            return try Self.httpResponse(url: request.url!, statusCode: 200, body: body)
         }
 
         let service = makeService(
@@ -4093,7 +4097,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                 observedAuthorizations.withLock {
                     $0.append(request.value(forHTTPHeaderField: "Authorization") ?? "")
                 }
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url,
                     statusCode: 200,
                     body: """
@@ -4229,6 +4233,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             .write(to: appPaths.claudeOAuthUsageCacheURL)
 
         let observedAuthorizations = OpenBurnBarCore.Locked<[String]>([])
+        let reset = formatter.string(from: Date().addingTimeInterval(3 * 60 * 60))
         let session = makeStubSession { request in
             let url = try XCTUnwrap(request.url)
             XCTAssertEqual(url.absoluteString, "https://api.anthropic.com/api/oauth/usage")
@@ -4244,8 +4249,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                 XCTFail("Unexpected authorization: \(authorization)")
                 used = 100
             }
-            let reset = formatter.string(from: Date().addingTimeInterval(3 * 60 * 60))
-            return try self.httpResponse(
+            return try Self.httpResponse(
                 url: url,
                 statusCode: 200,
                 body: """
@@ -4322,7 +4326,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let session = makeStubSession { request in
             XCTFail("OpenAI is usage-only and should not be refreshed as quota: \(request)")
-            return try self.httpResponse(url: request.url!, statusCode: 500, body: "{}")
+            return try Self.httpResponse(url: request.url!, statusCode: 500, body: "{}")
         }
 
         let service = makeService(
@@ -4420,7 +4424,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
               ]
             }
             """
-            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            return try Self.httpResponse(url: request.url!, statusCode: 200, body: body)
         }
         let service = makeService(
             home: home,
@@ -4480,7 +4484,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         )
         let session = makeStubSession { request in
             XCTFail("Fresh persisted quota should not require a network refresh: \(request)")
-            return try self.httpResponse(url: request.url!, statusCode: 500, body: "{}")
+            return try Self.httpResponse(url: request.url!, statusCode: 500, body: "{}")
         }
         let service = makeService(
             home: home,
@@ -4742,7 +4746,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let keyStore = try makeKeyStore(provider: "minimax", value: "sk-api-test")
         let session = makeStubSession { request in
             XCTFail("MiniMax standard API keys should not trigger network calls: \(request)")
-            return try self.httpResponse(url: request.url!, statusCode: 500, body: "{}")
+            return try Self.httpResponse(url: request.url!, statusCode: 500, body: "{}")
         }
 
         let service = makeService(
@@ -4788,7 +4792,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
               }
             }
             """
-            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            return try Self.httpResponse(url: request.url!, statusCode: 200, body: body)
         }
 
         let service = makeService(
@@ -4834,7 +4838,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
               ]
             }
             """
-            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            return try Self.httpResponse(url: request.url!, statusCode: 200, body: body)
         }
 
         let service = makeService(
@@ -4887,7 +4891,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
               ]
             }
             """
-            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            return try Self.httpResponse(url: request.url!, statusCode: 200, body: body)
         }
 
         let service = makeService(
@@ -4916,7 +4920,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer zai-key")
 
             if path.hasSuffix("/api/monitor/usage/model-usage") {
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url,
                     statusCode: 200,
                     body: #"{"data":[{"model":"glm-5","usage":2}]}"#
@@ -4924,7 +4928,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             }
 
             if path.hasSuffix("/api/monitor/usage/tool-usage") {
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url,
                     statusCode: 200,
                     body: #"{"data":[{"name":"mcp","usage":12}]}"#
@@ -4932,7 +4936,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             }
 
             if path.hasSuffix("/api/monitor/usage/quota/limit") {
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url,
                     statusCode: 200,
                     body: """
@@ -4956,7 +4960,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             }
 
             XCTFail("Unexpected URL \(url.absoluteString)")
-            return try self.httpResponse(url: url, statusCode: 404, body: #"{"error":"not found"}"#)
+            return try Self.httpResponse(url: url, statusCode: 404, body: #"{"error":"not found"}"#)
         }
 
         let service = makeService(
@@ -4984,7 +4988,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer zai-key")
 
             if path.hasSuffix("/api/monitor/usage/quota/limit") {
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url,
                     statusCode: 200,
                     body: """
@@ -5001,7 +5005,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                 )
             }
 
-            return try self.httpResponse(url: url, statusCode: 500, body: #"{"error":"no telemetry"}"#)
+            return try Self.httpResponse(url: url, statusCode: 500, body: #"{"error":"no telemetry"}"#)
         }
 
         let service = makeService(
@@ -5026,7 +5030,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let keyStore = try makeKeyStore(provider: "zai", value: "bad-key")
         let session = makeStubSession { request in
             let url = try XCTUnwrap(request.url)
-            return try self.httpResponse(
+            return try Self.httpResponse(
                 url: url,
                 statusCode: 200,
                 body: #"{"code":401,"msg":"invalid token"}"#
@@ -5059,7 +5063,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             case "/api/usage-summary":
                 let billingCycleEnd = ISO8601DateFormatter()
                     .string(from: Date().addingTimeInterval(30 * 24 * 60 * 60))
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url,
                     statusCode: 200,
                     body: """
@@ -5080,14 +5084,14 @@ final class ProviderQuotaServiceTests: XCTestCase {
                     """
                 )
             case "/api/auth/me":
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url,
                     statusCode: 200,
                     body: #"{"id":"user_123"}"#
                 )
             case "/api/usage":
                 XCTAssertEqual(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first?.value, "user_123")
-                return try self.httpResponse(
+                return try Self.httpResponse(
                     url: url,
                     statusCode: 200,
                     body: """
@@ -5101,7 +5105,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                 )
             default:
                 XCTFail("Unexpected URL \(url.absoluteString)")
-                return try self.httpResponse(url: url, statusCode: 404, body: #"{"error":"not found"}"#)
+                return try Self.httpResponse(url: url, statusCode: 404, body: #"{"error":"not found"}"#)
             }
         }
 
@@ -5129,7 +5133,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let keyStore = try makeKeyStore(provider: "cursor_cookie", value: "bad-cookie")
         let session = makeStubSession { request in
             let url = try XCTUnwrap(request.url)
-            return try self.httpResponse(
+            return try Self.httpResponse(
                 url: url,
                 statusCode: 401,
                 body: #"{"error":"unauthorized"}"#
@@ -5204,8 +5208,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
         ),
         session: URLSession = .shared,
         environment: [String: String] = [:],
-        miniMaxModeProvider: @escaping () -> MiniMaxQuotaMode = { .payAsYouGo },
-        factoryPlanProvider: @escaping () -> FactoryQuotaPlanTier = { .unknown },
+        miniMaxModeProvider: @escaping @Sendable () -> MiniMaxQuotaMode = { .payAsYouGo },
+        factoryPlanProvider: @escaping @Sendable () -> FactoryQuotaPlanTier = { .unknown },
         claudeCredentialsReader: any ClaudeCredentialsReading = NoClaudeCredentialsReader(),
         refreshProviders: [AgentProvider] = ProviderQuotaService.supportedProviders
     ) -> ProviderQuotaService {
@@ -5328,7 +5332,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     }
 
     private func makeStubSession(
-        handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
+        handler: @escaping @Sendable (URLRequest) throws -> (HTTPURLResponse, Data)
     ) -> URLSession {
         StubURLProtocol.requestHandler = handler
         let configuration = URLSessionConfiguration.ephemeral
@@ -5336,7 +5340,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         return URLSession(configuration: configuration)
     }
 
-    private func httpResponse(url: URL, statusCode: Int, body: String) throws -> (HTTPURLResponse, Data) {
+    private nonisolated static func httpResponse(url: URL, statusCode: Int, body: String) throws -> (HTTPURLResponse, Data) {
         let response = try XCTUnwrap(
             HTTPURLResponse(
                 url: url,
@@ -5470,18 +5474,18 @@ private final class TelemetryCapture: @unchecked Sendable {
 }
 
 private final class TestKeychainBackend: KeychainStoreBackend {
-    private var storage: [String: [String: Data]] = [:]
+    private let storage = OpenBurnBarCore.Locked<[String: [String: Data]]>([:])
 
     func set(_ value: Data, service: String, account: String) throws {
-        storage[service, default: [:]][account] = value
+        storage.withLock { $0[service, default: [:]][account] = value }
     }
 
     func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
-        storage[service]?[account]
+        storage.withLock { $0[service]?[account] }
     }
 
     func delete(service: String, account: String) throws {
-        storage[service]?[account] = nil
+        storage.withLock { $0[service]?[account] = nil }
     }
 }
 
@@ -5554,10 +5558,10 @@ extension ProviderQuotaServiceTests {
 
         let session = makeStubSession { request in
             if request.url?.absoluteString.contains("/api/usage-summary") ?? false {
-                return try self.httpResponse(url: request.url!, statusCode: 200, body: goldenResponse)
+                return try Self.httpResponse(url: request.url!, statusCode: 200, body: goldenResponse)
             }
             if request.url?.absoluteString.contains("/api/auth/me") ?? false {
-                return try self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
+                return try Self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
             }
             throw URLError(.badURL)
         }
@@ -5681,10 +5685,10 @@ extension ProviderQuotaServiceTests {
                 let body = """
                 {"models": [{"name": "llama3:cloud"}, {"name": "codellama"}]}
                 """
-                return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+                return try Self.httpResponse(url: request.url!, statusCode: 200, body: body)
             }
             if urlString.contains("api/ps") {
-                return try self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
+                return try Self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
             }
             throw URLError(.badURL)
         }
@@ -5737,10 +5741,10 @@ extension ProviderQuotaServiceTests {
                 let body = """
                 {"models": [{"name": "llama3:cloud"}]}
                 """
-                return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+                return try Self.httpResponse(url: request.url!, statusCode: 200, body: body)
             }
             if urlString.contains("api/ps") {
-                return try self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
+                return try Self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
             }
             if urlString.contains("ollama.com/settings") {
                 observedSettingsURLs.withLock { $0.append(urlString) }
@@ -5752,7 +5756,7 @@ extension ProviderQuotaServiceTests {
                 <h3>5-hour usage</h3><div>17.5% used</div>
                 <h3>Weekly usage</h3><div>42% used</div>
                 """
-                return try self.httpResponse(url: request.url!, statusCode: 200, body: html)
+                return try Self.httpResponse(url: request.url!, statusCode: 200, body: html)
             }
             throw URLError(.badURL)
         }
@@ -5797,14 +5801,14 @@ extension ProviderQuotaServiceTests {
                 let body = """
                 {"models": [{"name": "llama3"}]}
                 """
-                return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+                return try Self.httpResponse(url: request.url!, statusCode: 200, body: body)
             }
             if urlString.contains("api/ps") {
-                return try self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
+                return try Self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
             }
             if urlString.contains("ollama.com/settings") {
                 observedSettingsHits.withLock { $0 += 1 }
-                return try self.httpResponse(url: request.url!, statusCode: 401, body: "")
+                return try Self.httpResponse(url: request.url!, statusCode: 401, body: "")
             }
             throw URLError(.badURL)
         }
@@ -5886,7 +5890,7 @@ extension ProviderQuotaServiceTests {
               ]
             }
             """
-            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            return try Self.httpResponse(url: request.url!, statusCode: 200, body: body)
         }
 
         let service = makeService(
@@ -5924,10 +5928,10 @@ extension ProviderQuotaServiceTests {
                 let body = """
                 {"models": [{"name": "llama3"}, {"name": "mistral:cloud"}]}
                 """
-                return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+                return try Self.httpResponse(url: request.url!, statusCode: 200, body: body)
             }
             if urlString.contains("api/ps") {
-                return try self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
+                return try Self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
             }
             throw URLError(.badURL)
         }

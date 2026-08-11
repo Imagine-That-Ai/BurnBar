@@ -27,6 +27,25 @@ public enum BurnBarToolKind: String, Codable, CaseIterable, Hashable, Sendable {
     case browserSelect = "browser_select"
     case browserScreenshot = "browser_screenshot"
     case browserExtract = "browser_extract"
+    // Safari Web Extension — user's real logged-in Safari session.
+    case safariPageContext = "safari_page_context"
+    case safariScreenshot = "safari_screenshot"
+    case safariFullPageScreenshot = "safari_full_page_screenshot"
+    case safariClick = "safari_click"
+    case safariType = "safari_type"
+    case safariPressKey = "safari_press_key"
+    case safariScroll = "safari_scroll"
+    case safariHover = "safari_hover"
+    case safariFocus = "safari_focus"
+    case safariSelectOption = "safari_select_option"
+    case safariNavigate = "safari_navigate"
+    case safariOpenTab = "safari_open_tab"
+    case safariCloseTab = "safari_close_tab"
+    case safariListTabs = "safari_list_tabs"
+    case safariWaitFor = "safari_wait_for"
+    case safariRunJavaScript = "safari_run_javascript"
+    case safariExtract = "safari_extract"
+    case safariAbort = "safari_abort"
     // Computer Use — Mac System (Path C).
     case macInputClick = "mac_input_click"
     case macInputType = "mac_input_type"
@@ -46,6 +65,11 @@ public extension BurnBarToolKind {
     static let computerUseToolKinds: Set<BurnBarToolKind> = [
         .browserClick, .browserFill, .browserGoto, .browserKey,
         .browserSelect, .browserScreenshot, .browserExtract,
+        .safariPageContext, .safariScreenshot, .safariFullPageScreenshot,
+        .safariClick, .safariType, .safariPressKey, .safariScroll,
+        .safariHover, .safariFocus, .safariSelectOption, .safariNavigate,
+        .safariOpenTab, .safariCloseTab, .safariListTabs, .safariWaitFor,
+        .safariRunJavaScript, .safariExtract, .safariAbort,
         .macInputClick, .macInputType, .macInputKey,
         .macInputShortcut, .macInputDragDrop, .macInputScroll,
         .macInputPointerMove, .macInspectAccessibility
@@ -55,7 +79,27 @@ public extension BurnBarToolKind {
     var isBrowserComputerUse: Bool {
         switch self {
         case .browserClick, .browserFill, .browserGoto, .browserKey,
-             .browserSelect, .browserScreenshot, .browserExtract:
+             .browserSelect, .browserScreenshot, .browserExtract,
+             .safariPageContext, .safariScreenshot, .safariFullPageScreenshot,
+             .safariClick, .safariType, .safariPressKey, .safariScroll,
+             .safariHover, .safariFocus, .safariSelectOption, .safariNavigate,
+             .safariOpenTab, .safariCloseTab, .safariListTabs, .safariWaitFor,
+             .safariRunJavaScript, .safariExtract, .safariAbort:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this kind targets the user's real Safari session through the
+    /// embedded WebExtension rather than an isolated Playwright profile.
+    var isSafariComputerUse: Bool {
+        switch self {
+        case .safariPageContext, .safariScreenshot, .safariFullPageScreenshot,
+             .safariClick, .safariType, .safariPressKey, .safariScroll,
+             .safariHover, .safariFocus, .safariSelectOption, .safariNavigate,
+             .safariOpenTab, .safariCloseTab, .safariListTabs, .safariWaitFor,
+             .safariRunJavaScript, .safariExtract, .safariAbort:
             return true
         default:
             return false

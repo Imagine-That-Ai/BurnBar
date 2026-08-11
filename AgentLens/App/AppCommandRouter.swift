@@ -19,6 +19,7 @@ final class AppCommandRouter {
     var openConversationSearch: (() -> Void)?
     var openChatPanel: (() -> Void)?
     var openSettings: (() -> Void)?
+    var openSafariLearning: (() -> Void)?
     var makeMenuBarPopoverContent: ((_ onDismiss: @escaping () -> Void) -> AnyView)? {
         didSet {
             // Reprime menu-bar popover content when the real factory lands and
@@ -45,6 +46,9 @@ final class AppCommandRouter {
             return true
         case "search", "chat":
             openConversationSearch?()
+            return true
+        case "learning":
+            openSafariLearning?()
             return true
         case "link-cli":
             return handleLinkCli()

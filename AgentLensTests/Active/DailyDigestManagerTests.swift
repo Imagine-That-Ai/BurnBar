@@ -8,16 +8,20 @@ final class DailyDigestManagerTests: XCTestCase {
     private var mockNotificationCenter: MockUNUserNotificationCenter!
     private var manager: DailyDigestManager!
 
-    override func setUp() {
-        super.setUp()
-        mockNotificationCenter = MockUNUserNotificationCenter()
-        manager = DailyDigestManager(notificationCenter: mockNotificationCenter)
+    override func setUp() async throws {
+        try await super.setUp()
+        await MainActor.run {
+            mockNotificationCenter = MockUNUserNotificationCenter()
+            manager = DailyDigestManager(notificationCenter: mockNotificationCenter)
+        }
     }
 
-    override func tearDown() {
-        manager = nil
-        mockNotificationCenter = nil
-        super.tearDown()
+    override func tearDown() async throws {
+        await MainActor.run {
+            manager = nil
+            mockNotificationCenter = nil
+        }
+        try await super.tearDown()
     }
 
     // MARK: - Request Authorization Tests

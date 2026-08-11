@@ -102,7 +102,7 @@ final class ChatSessionControllerPaneModeTests: XCTestCase {
             let primary = try makePrimary()
             primary.activeThreadID = "primary-thread-\(UUID().uuidString)"
             let expected = primary.activeThreadID
-            try preservingDefault(ChatSessionController.threadStorageKey(for: primary.chatBackend)) {
+            preservingDefault(ChatSessionController.threadStorageKey(for: primary.chatBackend)) {
                 primary.persistActiveThreadSlot()
                 XCTAssertEqual(UserDefaults.standard.string(forKey: ChatSessionController.udActiveThreadID), expected,
                                "the app-wide controller must still persist its active thread")

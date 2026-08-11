@@ -96,9 +96,9 @@ final class AWTRIXClientTests: XCTestCase {
     }
 
     func testProbeRejectsUnsafeTargetBeforeOpeningRequest() async {
-        var requestCount = 0
+        let requestCount = OpenBurnBarCore.Locked(0)
         AWTRIXStubURLProtocol.handler = { request in
-            requestCount += 1
+            requestCount.withLock { $0 += 1 }
             return (
                 HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
                 #"{"version":"0.96","app":"Time","ram":123456,"bat":88}"#.data(using: .utf8)!
@@ -109,7 +109,7 @@ final class AWTRIXClientTests: XCTestCase {
 
         XCTAssertEqual(result.status, .error)
         XCTAssertEqual(result.message, AWTRIXClient.ClientError.invalidBaseURL.localizedDescription)
-        XCTAssertEqual(requestCount, 0)
+        XCTAssertEqual(requestCount.read(), 0)
     }
 
     func testProbeDoesNotTreatGenericStatsJSONAsAWTRIX() async {
@@ -201,14 +201,16 @@ final class AWTRIXClientTests: XCTestCase {
     }
 
     func testPushCustomAppPostsRenderedPagesToNamedAWTRIXApp() async throws {
-        var seenRequests: [(url: String, body: Data)] = []
+        let seenRequests = OpenBurnBarCore.Locked<[(url: String, body: Data)]>([])
         AWTRIXStubURLProtocol.handler = { request in
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
-            seenRequests.append((
-                request.url?.absoluteString ?? "",
-                request.httpBody ?? request.bodyStreamData() ?? Data()
-            ))
+            seenRequests.withLock {
+                $0.append((
+                    request.url?.absoluteString ?? "",
+                    request.httpBody ?? request.bodyStreamData() ?? Data()
+                ))
+            }
             return (
                 HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
                 Data()
@@ -228,10 +230,11 @@ final class AWTRIXClientTests: XCTestCase {
             config: .enabledTestClock
         )
 
-        XCTAssertEqual(seenRequests.count, 1)
-        XCTAssertEqual(seenRequests.last?.url, "http://192.168.68.92/api/custom?name=openburnbar0")
+        let capturedRequests = seenRequests.read()
+        XCTAssertEqual(capturedRequests.count, 1)
+        XCTAssertEqual(capturedRequests.last?.url, "http://192.168.68.92/api/custom?name=openburnbar0")
 
-        let body = try XCTUnwrap(seenRequests.last?.body)
+        let body = try XCTUnwrap(capturedRequests.last?.body)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         XCTAssertEqual(json["text"] as? String, "Claude 5H 80% 80/100")
         XCTAssertEqual(json["progress"] as? Int, 80)
@@ -239,9 +242,9 @@ final class AWTRIXClientTests: XCTestCase {
     }
 
     func testPushCustomAppUsesSingleSafeAWTRIXSlotWhenGivenMultipleFrames() async throws {
-        var seenURLs: [String] = []
+        let seenURLs = OpenBurnBarCore.Locked<[String]>([])
         AWTRIXStubURLProtocol.handler = { request in
-            seenURLs.append(request.url?.absoluteString ?? "")
+            seenURLs.withLock { $0.append(request.url?.absoluteString ?? "") }
             let body = request.httpBody ?? request.bodyStreamData() ?? Data()
             let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
             XCTAssertEqual(json["save"] as? Bool, false)
@@ -260,19 +263,21 @@ final class AWTRIXClientTests: XCTestCase {
             config: .enabledTestClock
         )
 
-        XCTAssertEqual(seenURLs, [
+        XCTAssertEqual(seenURLs.read(), [
             "http://192.168.68.92/api/custom?name=openburnbar0"
         ])
     }
 
     func testPushSentinelAppsKeepsHardwareButtonTargetsAlive() async throws {
-        var seenRequests: [(url: String, body: Data)] = []
+        let seenRequests = OpenBurnBarCore.Locked<[(url: String, body: Data)]>([])
         AWTRIXStubURLProtocol.handler = { request in
             XCTAssertEqual(request.httpMethod, "POST")
-            seenRequests.append((
-                request.url?.absoluteString ?? "",
-                request.httpBody ?? request.bodyStreamData() ?? Data()
-            ))
+            seenRequests.withLock {
+                $0.append((
+                    request.url?.absoluteString ?? "",
+                    request.httpBody ?? request.bodyStreamData() ?? Data()
+                ))
+            }
             return (
                 HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
                 Data()
@@ -281,12 +286,13 @@ final class AWTRIXClientTests: XCTestCase {
 
         try await AWTRIXClient(session: session).pushSentinelApps(config: .enabledTestClock)
 
-        XCTAssertEqual(seenRequests.map(\.url), [
+        let capturedRequests = seenRequests.read()
+        XCTAssertEqual(capturedRequests.map(\.url), [
             "http://192.168.68.92/api/custom?name=openburnbar_btn_right",
             "http://192.168.68.92/api/custom?name=openburnbar_btn_select",
             "http://192.168.68.92/api/custom?name=openburnbar_btn_left"
         ])
-        for request in seenRequests {
+        for request in capturedRequests {
             let json = try XCTUnwrap(JSONSerialization.jsonObject(with: request.body) as? [String: Any])
             XCTAssertEqual(json["duration"] as? Int, 1)
             XCTAssertGreaterThanOrEqual(try XCTUnwrap(json["lifetime"] as? Int), 900)
@@ -729,7 +735,7 @@ private extension PixelClockConfig {
     )
 }
 
-private final class AWTRIXStubURLProtocol: URLProtocol, @unchecked Sendable {
+private final class AWTRIXStubURLProtocol: URLProtocol {
     static let handlerLock = OpenBurnBarCore.Locked<(@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?>(nil)
 
     static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))? {

@@ -30,6 +30,9 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     case membership
     /// Connector-plane + browser tooling actions.
     case tooling
+    /// Embedded Safari WebExtension bridge. Kept separate from generic tooling
+    /// and Computer Use so the appex can receive an exact, attenuated profile.
+    case safari
     /// Computer-use / HID-adjacent agency (session start, invoke, approvals,
     /// panic-halt, audit export). The highest-risk group.
     case computerUse = "computer_use"
@@ -106,6 +109,16 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
         case .connectorPlaneGet, .connectorConfigUpdate, .connectorAction,
              .browserToolingGet, .browserToolingUpdate, .browserAction:
             return .tooling
+        case .safariBootstrap, .safariUISnapshot, .safariHandoff,
+             .safariApprovalRespond, .safariTrustUpdate,
+             .safariSessionAttach, .safariSessionDetach, .safariSessionStatus,
+             .safariCommandPoll, .safariCommandComplete,
+             .safariPageContext, .safariScreenshot, .safariFullPageScreenshot,
+             .safariClick, .safariType, .safariPressKey, .safariScroll,
+             .safariHover, .safariFocus, .safariSelectOption, .safariNavigate,
+             .safariOpenTab, .safariCloseTab, .safariListTabs, .safariWaitFor,
+             .safariRunJavaScript, .safariExtract, .safariAbort:
+            return .safari
         case .computerUseCapabilityStateUpdate,
              .computerUseSessionGrantReadiness, .computerUseSessionGrantAcquire,
              .computerUseSessionGrantStatus,
@@ -142,9 +155,13 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             return .run
         case .searchQuery:
             return .search
-        case .memoryRemember, .memoryReviewStatus, .memoryForget:
+        case .memoryRemember, .memoryReviewStatus, .memoryForget,
+             .learningPropose, .learningOptIn, .learningUpdate, .learningApprove,
+             .learningReject, .learningForget, .learningRollback,
+             .learningOptOut:
             return .memoryWrite
-        case .memoryRecall, .memoryAuditTrail, .memoryAnalytics:
+        case .memoryRecall, .memoryAuditTrail, .memoryAnalytics,
+             .learningRecall, .learningList, .learningTimeline:
             return .memoryRead
         case .codeIndexProject, .codeWatchProject:
             return .codeWrite
@@ -206,6 +223,59 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
     public static let runClient = BurnBarPeerCapabilityProfile(
         capabilities: [.lifecycle, .client, .run, .tooling, .observability, .chat, .membership, .search, .missionControl, .memoryRead, .codeRead]
     )
+
+    /// Exact authority for the embedded Safari appex. The extension may attach
+    /// its own bridge session, create/watch/cancel runs, resolve approvals,
+    /// operate its Safari command lane, and manage the opt-in learning timeline.
+    /// It cannot mutate provider credentials, invoke arbitrary Computer Use
+    /// actions, write workspace files, or inherit the host app's `.full` profile.
+    public static let safariExtension = methodScoped([
+        .health,
+        .catalog,
+        .membershipStatus,
+        .clientAttach,
+        .clientDetach,
+        .runCreate,
+        .safariBootstrap,
+        .safariUISnapshot,
+        .safariHandoff,
+        .safariApprovalRespond,
+        .safariTrustUpdate,
+        .safariSessionAttach,
+        .safariSessionDetach,
+        .safariSessionStatus,
+        .safariCommandPoll,
+        .safariCommandComplete,
+        .safariPageContext,
+        .safariScreenshot,
+        .safariFullPageScreenshot,
+        .safariClick,
+        .safariType,
+        .safariPressKey,
+        .safariScroll,
+        .safariHover,
+        .safariFocus,
+        .safariSelectOption,
+        .safariNavigate,
+        .safariOpenTab,
+        .safariCloseTab,
+        .safariListTabs,
+        .safariWaitFor,
+        .safariRunJavaScript,
+        .safariExtract,
+        .safariAbort,
+        .learningPropose,
+        .learningRecall,
+        .learningList,
+        .learningOptIn,
+        .learningUpdate,
+        .learningApprove,
+        .learningReject,
+        .learningForget,
+        .learningRollback,
+        .learningTimeline,
+        .learningOptOut
+    ])
 
     /// Signed CLI support posture. Keep this as an exact method allowlist, not
     /// coarse capability groups: the CLI needs the run lifecycle and approval

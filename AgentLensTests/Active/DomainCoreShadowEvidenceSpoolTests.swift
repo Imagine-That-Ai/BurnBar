@@ -1224,7 +1224,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
     func testRecorderWithoutInjectedSubmitterRetainsReadyBatchThenDrains() async throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let candidate = try XCTUnwrap(signedCandidate())
+        _ = try XCTUnwrap(signedCandidate())
         let now = Date()
         // Seed a ready file before the recorder is constructed so the init flush
         // immediately attempts the default Firebase submitter over a real batch.

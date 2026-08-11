@@ -350,9 +350,10 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
 
         let plugin = try Self.plugin(panel: ["panel"], judge: "judge")
-        let task = Task {
+        let bodyData = Self.fusionBody(panel: ["panel"], judge: "judge")
+        let task = Task.detached {
             await orchestrator.run(
-                bodyData: Self.fusionBody(panel: ["panel"], judge: "judge"),
+                bodyData: bodyData,
                 plugin: plugin,
                 originatingModel: "origin",
                 wantsStream: false

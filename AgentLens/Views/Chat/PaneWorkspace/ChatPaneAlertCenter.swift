@@ -59,7 +59,11 @@ final class ChatPaneAlertCenter {
             content: content,
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
         )
-        center.add(request) { _ in }
+        do {
+            try await center.add(request)
+        } catch {
+            return
+        }
     }
 
     func withdraw(paneID: UUID) {

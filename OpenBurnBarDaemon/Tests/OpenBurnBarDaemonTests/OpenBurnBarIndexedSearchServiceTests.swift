@@ -95,6 +95,8 @@ final class BurnBarIndexedSearchServiceTests: XCTestCase {
 }
 
 private final class IndexedSearchHarness: @unchecked Sendable {
+    private static let databaseKey = "indexed-search-test-" + String(repeating: "a", count: 32)
+
     let tempDir: URL
     let service: BurnBarIndexedSearchService
 
@@ -106,7 +108,8 @@ private final class IndexedSearchHarness: @unchecked Sendable {
         try Self.createDatabase(at: dbURL)
         service = try BurnBarIndexedSearchService(
             databasePath: dbURL.path,
-            logger: BurnBarDaemonLogger(category: "indexed-search-test")
+            logger: BurnBarDaemonLogger(category: "indexed-search-test"),
+            databaseKeyOverride: Self.databaseKey
         )
     }
 
@@ -120,6 +123,10 @@ private final class IndexedSearchHarness: @unchecked Sendable {
             throw NSError(domain: "IndexedSearchHarness", code: 1)
         }
         defer { sqlite3_close(db) }
+        try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(
+            to: db,
+            key: databaseKey
+        )
 
         try exec(db, """
         CREATE TABLE search_documents (

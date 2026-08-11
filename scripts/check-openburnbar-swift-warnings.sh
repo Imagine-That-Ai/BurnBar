@@ -3,9 +3,39 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=scripts/lib/libsignal-swift-compat.sh
+source "$repo_root/scripts/lib/libsignal-swift-compat.sh"
+# shellcheck source=scripts/lib/xcode-source-classification.sh
+source "$repo_root/scripts/lib/xcode-source-classification.sh"
+openburnbar_configure_xcode_process_tmpdir
+
+cleanup() {
+  local original_status="${1:-0}"
+  local google_restore_status=0
+  local libsignal_restore_status=0
+  openburnbar_restore_google_sign_in_macos_compat || google_restore_status=$?
+  openburnbar_restore_libsignal_swift_compat || libsignal_restore_status=$?
+  local restore_status="$google_restore_status"
+  if ((restore_status == 0)); then
+    restore_status="$libsignal_restore_status"
+  fi
+  if ((original_status == 0 && restore_status != 0)); then
+    return "$restore_status"
+  fi
+  return "$original_status"
+}
+cleanup_on_exit() {
+  local original_status=$?
+  trap - EXIT
+  cleanup "$original_status"
+  exit $?
+}
+trap cleanup_on_exit EXIT
+
 derived_data="${OPENBURNBAR_WARNING_DERIVED_DATA:-/tmp/openburnbar-warning-check-dd}"
 log_file="${OPENBURNBAR_WARNING_LOG:-/tmp/openburnbar-warning-check.log}"
 normalized_file="${OPENBURNBAR_WARNING_NORMALIZED_LOG:-/tmp/openburnbar-warning-check.normalized.log}"
+cache_dir="${OPENBURNBAR_WARNING_PACKAGE_CACHE:-$repo_root/.spm-cache}"
 
 schemes=(
   OpenBurnBar
@@ -17,6 +47,14 @@ schemes=(
 )
 
 : >"$log_file"
+mkdir -p "$cache_dir"
+xcodebuild -resolvePackageDependencies \
+  -project "$repo_root/OpenBurnBar.xcodeproj" \
+  -scheme OpenBurnBar \
+  -clonedSourcePackagesDirPath "$cache_dir" \
+  -derivedDataPath "$derived_data"
+openburnbar_prepare_google_sign_in_macos_compat "$cache_dir"
+openburnbar_prepare_libsignal_swift_compat "$repo_root"
 
 for scheme in "${schemes[@]}"; do
   case "$scheme" in
@@ -34,7 +72,10 @@ for scheme in "${schemes[@]}"; do
     -scheme "$scheme" \
     -configuration Debug \
     -destination "$destination" \
+    -clonedSourcePackagesDirPath "$cache_dir" \
     -derivedDataPath "$derived_data" \
+    -disableAutomaticPackageResolution \
+    "${OPENBURNBAR_XCODE_SOURCE_CLASSIFICATION_ARGS[@]}" \
     -quiet 2>&1 | tee -a "$log_file"
 done
 

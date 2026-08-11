@@ -3,6 +3,11 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
+# shellcheck source=scripts/lib/libsignal-swift-compat.sh
+source scripts/lib/libsignal-swift-compat.sh
+# shellcheck source=scripts/lib/xcode-source-classification.sh
+source scripts/lib/xcode-source-classification.sh
+openburnbar_configure_xcode_process_tmpdir
 
 bash scripts/ci/verify-apple-appcheck-release-env.sh
 bash scripts/ci/verify-iroh-release-artifact.sh
@@ -15,17 +20,39 @@ project="${OPENBURNBAR_PROJECT:-OpenBurnBar.xcodeproj}"
 upload="${OPENBURNBAR_UPLOAD_MAC_APP_STORE:-0}"
 auth_key_file=""
 auth_args=()
+expected_app_group="group.com.openburnbar.app"
+expected_source_keychain_group='$(AppIdentifierPrefix)com.openburnbar.app'
+expected_signed_keychain_group="${team_id}.com.openburnbar.app"
 
 if [[ "$upload" == "1" ]]; then
   bash scripts/require-agpl-store-legal-review.sh
 fi
 
 cleanup() {
+  local original_status="${1:-0}"
+  local google_restore_status=0
+  local libsignal_restore_status=0
   if [[ -n "$auth_key_file" && -f "$auth_key_file" ]]; then
     rm -f "$auth_key_file"
   fi
+  openburnbar_restore_google_sign_in_macos_compat || google_restore_status=$?
+  openburnbar_restore_libsignal_swift_compat || libsignal_restore_status=$?
+  local restore_status="$google_restore_status"
+  if ((restore_status == 0)); then
+    restore_status="$libsignal_restore_status"
+  fi
+  if ((original_status == 0 && restore_status != 0)); then
+    return "$restore_status"
+  fi
+  return "$original_status"
 }
-trap cleanup EXIT
+cleanup_on_exit() {
+  local original_status=$?
+  trap - EXIT
+  cleanup "$original_status"
+  exit $?
+}
+trap cleanup_on_exit EXIT
 
 read_project_version() {
   python3 - <<'PY'
@@ -54,6 +81,7 @@ archive_path="$release_dir/OpenBurnBar.xcarchive"
 export_path="$release_dir/export"
 export_options="$release_dir/ExportOptions.plist"
 log_path="$release_dir/archive.log"
+package_cache="${OPENBURNBAR_MAC_APP_STORE_PACKAGE_CACHE:-$repo_root/.spm-cache}"
 
 require_entitlement_bool() {
   local file="$1"
@@ -133,18 +161,36 @@ if [[ ! -f "$entitlements" ]]; then
 fi
 require_entitlement_bool "$entitlements" "com.apple.security.app-sandbox" "true"
 require_entitlement_value "$entitlements" "com.apple.developer.applesignin" "Default"
+require_entitlement_value \
+  "$entitlements" \
+  "com.apple.security.application-groups" \
+  "$expected_app_group"
+require_entitlement_value \
+  "$entitlements" \
+  "keychain-access-groups" \
+  "$expected_source_keychain_group"
 if /usr/libexec/PlistBuddy -c "Print :com.apple.security.network.server" "$entitlements" >/dev/null 2>&1; then
   echo "MAS entitlements must not include com.apple.security.network.server unless the app exposes reviewer-visible server functionality." >&2
   exit 1
 fi
 prepare_app_store_connect_auth
 
+bash scripts/test-openburnbar-safari-extension.sh
+openburnbar_prepare_libsignal_swift_compat "$repo_root"
+
 if command -v xcodegen >/dev/null 2>&1; then
   xcodegen generate --spec project.yml
 fi
 
 rm -rf "$release_dir"
-mkdir -p "$release_dir"
+mkdir -p "$release_dir" "$package_cache"
+
+xcodebuild -resolvePackageDependencies \
+  -project "$project" \
+  -scheme "$scheme" \
+  -clonedSourcePackagesDirPath "$package_cache" \
+  -derivedDataPath "$release_dir/DerivedData"
+openburnbar_prepare_google_sign_in_macos_compat "$package_cache"
 
 cat > "$export_options" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -176,15 +222,18 @@ xcodebuild archive \
   -configuration "$configuration" \
   -destination "generic/platform=macOS" \
   -archivePath "$archive_path" \
+  -clonedSourcePackagesDirPath "$package_cache" \
   -derivedDataPath "$release_dir/DerivedData" \
+  -disableAutomaticPackageResolution \
   -allowProvisioningUpdates \
   ARCHS=arm64 \
   ONLY_ACTIVE_ARCH=YES \
   DEVELOPMENT_TEAM="$team_id" \
   CODE_SIGN_STYLE=Automatic \
-  CODE_SIGN_ENTITLEMENTS="$entitlements" \
+  OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS="$entitlements" \
   GCC_PREPROCESSOR_DEFINITIONS='$(inherited) DISTRIBUTION_MAS=1' \
   OTHER_SWIFT_FLAGS='$(inherited) -D DISTRIBUTION_MAS' \
+  "${OPENBURNBAR_XCODE_SOURCE_CLASSIFICATION_ARGS[@]}" \
   2>&1 | tee "$log_path" | tail -120
 
 app_path="$archive_path/Products/Applications/OpenBurnBar.app"
@@ -211,11 +260,23 @@ actual_entitlements="$release_dir/archive-entitlements.plist"
 codesign -d --entitlements :- "$app_path" > "$actual_entitlements" 2>/dev/null
 require_entitlement_bool "$actual_entitlements" "com.apple.security.app-sandbox" "true"
 require_entitlement_value "$actual_entitlements" "com.apple.developer.applesignin" "Default"
+require_entitlement_value \
+  "$actual_entitlements" \
+  "com.apple.security.application-groups" \
+  "$expected_app_group"
+require_entitlement_value \
+  "$actual_entitlements" \
+  "keychain-access-groups" \
+  "$expected_signed_keychain_group"
 if /usr/libexec/PlistBuddy -c "Print :com.apple.security.network.server" "$actual_entitlements" >/dev/null 2>&1; then
   echo "Exported MAS app still has com.apple.security.network.server entitlement." >&2
   exit 1
 fi
 codesign --verify --strict --verbose=2 "$app_path"
+bash scripts/ci/verify-openburnbar-safari-extension.sh \
+  "$app_path" \
+  mas \
+  "$team_id"
 
 bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$archive_path"
 
@@ -233,6 +294,45 @@ if [[ -z "$export_artifact" ]]; then
   find "$export_path" -maxdepth 2 -type f -print >&2
   exit 1
 fi
+
+export_inspection="$release_dir/export-inspection"
+rm -rf "$export_inspection"
+case "$export_artifact" in
+  *.pkg)
+    pkgutil --expand-full "$export_artifact" "$export_inspection"
+    ;;
+  *.ipa)
+    mkdir -p "$export_inspection"
+    ditto -x -k "$export_artifact" "$export_inspection"
+    ;;
+  *)
+    echo "ERROR: Unsupported Mac App Store export artifact: $export_artifact" >&2
+    exit 1
+    ;;
+esac
+exported_app_path="$(
+  find "$export_inspection" -type d -name "OpenBurnBar.app" -print -quit
+)"
+if [[ -z "$exported_app_path" ]]; then
+  echo "ERROR: Exported Mac App Store package does not contain OpenBurnBar.app for nested Safari appex verification." >&2
+  exit 1
+fi
+exported_entitlements="$release_dir/exported-entitlements.plist"
+codesign --verify --strict --verbose=2 "$exported_app_path"
+codesign -d --entitlements :- "$exported_app_path" > "$exported_entitlements" 2>/dev/null
+require_entitlement_bool "$exported_entitlements" "com.apple.security.app-sandbox" "true"
+require_entitlement_value \
+  "$exported_entitlements" \
+  "com.apple.security.application-groups" \
+  "$expected_app_group"
+require_entitlement_value \
+  "$exported_entitlements" \
+  "keychain-access-groups" \
+  "$expected_signed_keychain_group"
+bash scripts/ci/verify-openburnbar-safari-extension.sh \
+  "$exported_app_path" \
+  mas \
+  "$team_id"
 
 bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$archive_path" "$export_path" "$export_artifact"
 

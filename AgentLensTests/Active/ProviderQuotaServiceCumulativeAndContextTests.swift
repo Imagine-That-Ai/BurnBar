@@ -481,17 +481,17 @@ extension ProviderQuotaServiceTests {
 }
 
 private final class ProviderQuotaSplitKeychainBackend: KeychainStoreBackend {
-    private var storage: [String: [String: Data]] = [:]
+    private let storage = Locked<[String: [String: Data]]>([:])
 
     func set(_ value: Data, service: String, account: String) throws {
-        storage[service, default: [:]][account] = value
+        storage.withLock { $0[service, default: [:]][account] = value }
     }
 
     func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
-        storage[service]?[account]
+        storage.withLock { $0[service]?[account] }
     }
 
     func delete(service: String, account: String) throws {
-        storage[service]?[account] = nil
+        storage.withLock { $0[service]?[account] = nil }
     }
 }

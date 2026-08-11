@@ -74,12 +74,12 @@ final class DashboardChatOverlayTests: XCTestCase {
         // either way.
         let (openView, _) = try makeOverlay(isOpen: true, isChatRoute: true)
         let openInspect = try openView.inspect()
-        let openButtons = try? openInspect.findAll(ViewType.Button.self)
-        XCTAssertTrue(openButtons?.isEmpty ?? true, "Open + chat route should hide ChatPanel")
+        let openButtons = openInspect.findAll(ViewType.Button.self)
+        XCTAssertTrue(openButtons.isEmpty, "Open + chat route should hide ChatPanel")
 
         let (closedView, _) = try makeOverlay(isOpen: false, isChatRoute: true)
         let closedInspect = try closedView.inspect()
-        let closedButtons = try? closedInspect.findAll(ViewType.Button.self)
-        XCTAssertTrue(closedButtons?.isEmpty ?? true, "Closed + chat route should hide FAB")
+        let closedButtons = closedInspect.findAll(ViewType.Button.self)
+        XCTAssertTrue(closedButtons.isEmpty, "Closed + chat route should hide FAB")
     }
 }

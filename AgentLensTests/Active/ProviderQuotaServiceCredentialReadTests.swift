@@ -1,6 +1,7 @@
 import Foundation
 import Security
 import XCTest
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 /// Proves the credential read used by
@@ -74,25 +75,43 @@ final class ProviderQuotaServiceCredentialReadTests: XCTestCase {
 /// Fault-injecting `KeychainStoreBackend` seam: `data(for:)` throws the configured
 /// error so we can drive the real-fault path; absence is the empty `storage`.
 private final class ProviderQuotaRuntimeTestKeychainBackend: KeychainStoreBackend {
-    var storage: [String: [String: Data]] = [:]
-    var readErrors: [String: Error] = [:]
-    var deleteErrors: [String: Error] = [:]
+    private struct State: Sendable {
+        var storage: [String: [String: Data]] = [:]
+        var readErrors: [String: KeychainStoreError] = [:]
+        var deleteErrors: [String: KeychainStoreError] = [:]
+    }
+
+    private let state = OpenBurnBarCore.Locked(State())
+
+    var readErrors: [String: KeychainStoreError] {
+        get { state.read().readErrors }
+        set { state.withLock { $0.readErrors = newValue } }
+    }
+
+    var deleteErrors: [String: KeychainStoreError] {
+        get { state.read().deleteErrors }
+        set { state.withLock { $0.deleteErrors = newValue } }
+    }
 
     func set(_ value: Data, service: String, account: String) throws {
-        storage[service, default: [:]][account] = value
+        state.withLock { $0.storage[service, default: [:]][account] = value }
     }
 
     func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
-        if let error = readErrors[service] {
-            throw error
+        try state.withLock { state in
+            if let error = state.readErrors[service] {
+                throw error
+            }
+            return state.storage[service]?[account]
         }
-        return storage[service]?[account]
     }
 
     func delete(service: String, account: String) throws {
-        if let error = deleteErrors[service] {
-            throw error
+        try state.withLock { state in
+            if let error = state.deleteErrors[service] {
+                throw error
+            }
+            state.storage[service]?[account] = nil
         }
-        storage[service]?[account] = nil
     }
 }

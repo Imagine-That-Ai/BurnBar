@@ -388,12 +388,12 @@ struct BurnBarAIInboxAnalyst: Sendable {
         route: BurnBarProviderRoute,
         result: BurnBarProviderExecutionResult
     ) -> BurnBarAIInboxModelCall {
-        let cost = (try? route.pricing.cost(
+        let cost = route.pricing.cost(
             inputTokens: result.inputTokens,
             outputTokens: result.outputTokens,
             cacheCreationTokens: result.cacheCreationTokens,
             cacheReadTokens: result.cacheReadTokens
-        )) ?? 0
+        )
         return BurnBarAIInboxModelCall(
             providerID: route.providerID,
             modelID: route.resolvedModelID,

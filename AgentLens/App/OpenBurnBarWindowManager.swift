@@ -21,8 +21,17 @@ final class WindowManager: ObservableObject {
         static let screenInset: CGFloat = 80
     }
 
+    private enum SafariLearningWindowMetrics {
+        static let preferredWidth: CGFloat = 980
+        static let preferredHeight: CGFloat = 760
+        static let minimumContentWidth: CGFloat = 720
+        static let minimumContentHeight: CGFloat = 520
+    }
+
     private var dashboardWindow: NSWindow?
     private var settingsWindow: NSWindow?
+    private var safariLearningWindow: NSWindow?
+    private var safariLearningModel: SafariLearningTimelineViewModel?
     private var onboardingWindow: NSWindow?
     private var hermesSetupWindow: NSWindow?
     private var switcherOnboardingWindow: NSWindow?
@@ -160,6 +169,90 @@ final class WindowManager: ObservableObject {
         window.isReleasedWhenClosed = false
 
         settingsWindow = window
+    }
+
+    @discardableResult
+    func openSafariLearning(socketURL: URL) -> NSWindow {
+        openSafariLearning(
+            client: DaemonSafariLearningTimelineClient(socketURL: socketURL)
+        )
+    }
+
+    /// Injectable overload keeps the AppKit lifecycle independently testable
+    /// from the daemon socket while production still enters through the exact
+    /// socket URL owned by `OpenBurnBarDaemonManager`.
+    @discardableResult
+    func openSafariLearning(
+        client: any SafariLearningTimelineClient
+    ) -> NSWindow {
+        if !OpenBurnBarRuntime.isRunningTests {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
+
+        if let window = safariLearningWindow,
+           let model = safariLearningModel {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            window.makeKeyAndOrderFront(nil)
+            Task { await model.refresh() }
+            return window
+        }
+
+        let model = SafariLearningTimelineViewModel(client: client)
+        let contentView = SafariLearningTimelineView(model: model)
+            .frame(
+                minWidth: SafariLearningWindowMetrics.minimumContentWidth,
+                minHeight: SafariLearningWindowMetrics.minimumContentHeight
+            )
+
+        let window = NSWindow(
+            contentRect: NSRect(
+                x: 0,
+                y: 0,
+                width: SafariLearningWindowMetrics.preferredWidth,
+                height: SafariLearningWindowMetrics.preferredHeight
+            ),
+            styleMask: [
+                .titled,
+                .closable,
+                .miniaturizable,
+                .resizable,
+                .fullSizeContentView
+            ],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "What BurnBar Learned About You"
+        window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = NSColor(DesignSystem.Colors.background)
+        window.contentMinSize = NSSize(
+            width: SafariLearningWindowMetrics.minimumContentWidth,
+            height: SafariLearningWindowMetrics.minimumContentHeight
+        )
+        window.contentView = NSHostingView(rootView: contentView)
+        window.center()
+        window.setFrameAutosaveName("openburnbar.safari-learning")
+        if OpenBurnBarRuntime.isRunningTests {
+            window.orderFront(nil)
+        } else {
+            window.makeKeyAndOrderFront(nil)
+        }
+        window.isReleasedWhenClosed = false
+
+        safariLearningWindow = window
+        safariLearningModel = model
+        return window
+    }
+
+    /// Test-only lifecycle accessors; production opens through the router.
+    func _currentSafariLearningWindow() -> NSWindow? {
+        safariLearningWindow
+    }
+
+    func _currentSafariLearningModel() -> SafariLearningTimelineViewModel? {
+        safariLearningModel
     }
 
     func openOnboardingWizard(

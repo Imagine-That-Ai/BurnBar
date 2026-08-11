@@ -1,3 +1,4 @@
+import OpenBurnBarKernel
 import SwiftUI
 
 // MARK: - Cooking Loader

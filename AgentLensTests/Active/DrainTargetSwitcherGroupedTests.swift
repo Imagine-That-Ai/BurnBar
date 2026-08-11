@@ -6,6 +6,7 @@ import OpenBurnBarCore
 /// per-provider sections in popover, dashboard, and settings. Browser profiles
 /// must be excluded; CLI profiles must be bucketed by provider and sorted
 /// deterministically so the UI stays stable across reloads.
+@MainActor
 final class DrainTargetSwitcherGroupedTests: XCTestCase {
 
     private func cli(_ id: String, _ type: SwitcherCLIProfileType, sortKey: Int, label: String? = nil) -> SwitcherProfileRecord {

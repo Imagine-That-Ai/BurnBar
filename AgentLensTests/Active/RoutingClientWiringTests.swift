@@ -1,4 +1,5 @@
 import XCTest
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 /// End-to-end coverage for `RoutingClientWiring` — the service that drops
@@ -1769,8 +1770,15 @@ final class RoutingClientWiringTests: XCTestCase {
     }
 }
 
-private final class RoutingProbeURLProtocol: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var handler: (@Sendable (URLRequest) throws -> Data)?
+private final class RoutingProbeURLProtocol: URLProtocol {
+    private static let handlerBox = Locked<
+        (@Sendable (URLRequest) throws -> Data)?
+    >(nil)
+
+    static var handler: (@Sendable (URLRequest) throws -> Data)? {
+        get { handlerBox.read() }
+        set { handlerBox.write(newValue) }
+    }
 
     static func reset() {
         handler = nil
