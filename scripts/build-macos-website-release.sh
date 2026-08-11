@@ -9,6 +9,7 @@ source scripts/lib/libsignal-swift-compat.sh
 # shellcheck source=scripts/lib/xcode-source-classification.sh
 source scripts/lib/xcode-source-classification.sh
 openburnbar_configure_xcode_process_tmpdir
+export FIREBASE_SOURCE_FIRESTORE=1
 
 cleanup() {
   local original_status="${1:-0}"
@@ -161,11 +162,11 @@ if [[ "${OPENBURNBAR_SKIP_XCODE_BUILD:-0}" != "1" ]]; then
 fi
 mkdir -p "$release_dir" "$package_cache"
 
-xcodebuild -resolvePackageDependencies \
-  -project "$project" \
-  -scheme "$scheme" \
-  -clonedSourcePackagesDirPath "$package_cache" \
-  -derivedDataPath "$derived_data"
+bash scripts/prepare-openburnbar-app-swiftpm.sh \
+  --project "$project" \
+  --scheme "$scheme" \
+  --cache-dir "$package_cache" \
+  --derived-data "$derived_data"
 openburnbar_prepare_google_sign_in_macos_compat "$package_cache"
 
 privileged_input_profile_plist="$release_dir/privileged-input-profile.plist"
@@ -199,6 +200,7 @@ if [[ "${OPENBURNBAR_SKIP_XCODE_BUILD:-0}" != "1" ]]; then
     -clonedSourcePackagesDirPath "$package_cache" \
     -derivedDataPath "$derived_data" \
     -disableAutomaticPackageResolution \
+    -onlyUsePackageVersionsFromResolvedFile \
     ARCHS=arm64 \
     ONLY_ACTIVE_ARCH=YES \
     CODE_SIGN_IDENTITY="-" \

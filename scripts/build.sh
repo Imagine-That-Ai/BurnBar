@@ -7,6 +7,7 @@ source "$ROOT_DIR/scripts/lib/libsignal-swift-compat.sh"
 # shellcheck source=scripts/lib/xcode-source-classification.sh
 source "$ROOT_DIR/scripts/lib/xcode-source-classification.sh"
 openburnbar_configure_xcode_process_tmpdir
+export FIREBASE_SOURCE_FIRESTORE=1
 
 cleanup() {
   local original_status="${1:-0}"
@@ -129,18 +130,19 @@ common_args=(
   -clonedSourcePackagesDirPath "$CACHE_DIR"
   -derivedDataPath "$DERIVED_DATA_DIR"
   -disableAutomaticPackageResolution
+  -onlyUsePackageVersionsFromResolvedFile
   "${OPENBURNBAR_XCODE_SOURCE_CLASSIFICATION_ARGS[@]}"
 )
 
-echo "Resolving packages with cache: $CACHE_DIR"
-xcodebuild -resolvePackageDependencies \
-  -project "$PROJECT_PATH" \
-  -scheme "$SCHEME" \
-  -clonedSourcePackagesDirPath "$CACHE_DIR" \
-  -derivedDataPath "$DERIVED_DATA_DIR"
+echo "Ensuring locked packages are available in cache: $CACHE_DIR"
+bash "$ROOT_DIR/scripts/prepare-openburnbar-app-swiftpm.sh" \
+  --project "$PROJECT_PATH" \
+  --scheme "$SCHEME" \
+  --cache-dir "$CACHE_DIR" \
+  --derived-data "$DERIVED_DATA_DIR"
 
 if [[ "$MODE" == "resolve" ]]; then
-  echo "Package resolution complete."
+  echo "Locked package cache is ready."
   exit 0
 fi
 

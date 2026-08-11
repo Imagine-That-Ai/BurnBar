@@ -152,6 +152,7 @@ test("canonical Xcode entry points repair transitive package inventories without
   for (const script of [
     "scripts/test-openburnbar-app.sh",
     "scripts/build.sh",
+    "scripts/build-openburnbar-local-app.sh",
     "scripts/ci/headless-app-build.sh",
     "scripts/check-openburnbar-swift-warnings.sh",
     "scripts/dev-mac.sh",
@@ -171,8 +172,8 @@ test("canonical Xcode entry points repair transitive package inventories without
     );
     assert.match(
       source,
-      /xcodebuild -resolvePackageDependencies/u,
-      `${script} must resolve the locked package graph before patching its checkout`,
+      /prepare-openburnbar-app-swiftpm\.sh/u,
+      `${script} must verify or guardedly prepare the locked package cache before patching its checkout`,
     );
     assert.match(
       source,
@@ -188,6 +189,11 @@ test("canonical Xcode entry points repair transitive package inventories without
       source,
       /-disableAutomaticPackageResolution/u,
       `${script} must keep Xcode from replacing the prepared checkout mid-build`,
+    );
+    assert.match(
+      source,
+      /-onlyUsePackageVersionsFromResolvedFile/u,
+      `${script} must bind Xcode to the exact checked-in Package.resolved graph`,
     );
     assert.match(
       source,

@@ -8,6 +8,7 @@ source "$repo_root/scripts/lib/libsignal-swift-compat.sh"
 # shellcheck source=scripts/lib/xcode-source-classification.sh
 source "$repo_root/scripts/lib/xcode-source-classification.sh"
 openburnbar_configure_xcode_process_tmpdir
+export FIREBASE_SOURCE_FIRESTORE=1
 
 cleanup() {
   local original_status="${1:-0}"
@@ -48,11 +49,11 @@ schemes=(
 
 : >"$log_file"
 mkdir -p "$cache_dir"
-xcodebuild -resolvePackageDependencies \
-  -project "$repo_root/OpenBurnBar.xcodeproj" \
-  -scheme OpenBurnBar \
-  -clonedSourcePackagesDirPath "$cache_dir" \
-  -derivedDataPath "$derived_data"
+bash "$repo_root/scripts/prepare-openburnbar-app-swiftpm.sh" \
+  --project "$repo_root/OpenBurnBar.xcodeproj" \
+  --scheme OpenBurnBar \
+  --cache-dir "$cache_dir" \
+  --derived-data "$derived_data"
 openburnbar_prepare_google_sign_in_macos_compat "$cache_dir"
 openburnbar_prepare_libsignal_swift_compat "$repo_root"
 
@@ -75,6 +76,7 @@ for scheme in "${schemes[@]}"; do
     -clonedSourcePackagesDirPath "$cache_dir" \
     -derivedDataPath "$derived_data" \
     -disableAutomaticPackageResolution \
+    -onlyUsePackageVersionsFromResolvedFile \
     "${OPENBURNBAR_XCODE_SOURCE_CLASSIFICATION_ARGS[@]}" \
     -quiet 2>&1 | tee -a "$log_file"
 done

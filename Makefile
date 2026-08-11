@@ -67,29 +67,17 @@ bootstrap: ## Fresh-clone setup: init submodules, preflight Rust/protoc, build t
 
 build: bootstrap preflight
 	@mkdir -p "$(CACHE_DIR)" "$(DERIVED_DATA)"
-	@echo "==> Resolving packages…"
-	xcodebuild -resolvePackageDependencies \
-		-project $(PROJECT) \
-		-scheme $(SCHEME) \
-		-clonedSourcePackagesDirPath $(CACHE_DIR) \
-		-derivedDataPath $(DERIVED_DATA) \
-		-quiet
 	@echo "==> Building daemon…"
 	swift build --package-path $(DAEMON_PACKAGE) -c release
 	@echo "==> Building $(SCHEME) ($(CONFIG))…"
-	xcodebuild \
-		-project $(PROJECT) \
-		-scheme $(SCHEME) \
-		-configuration $(CONFIG) \
-		-destination "$(DESTINATION)" \
-		-clonedSourcePackagesDirPath $(CACHE_DIR) \
-		-derivedDataPath $(DERIVED_DATA) \
-		ARCHS=arm64 \
-		ONLY_ACTIVE_ARCH=YES \
-		CODE_SIGN_IDENTITY="-" \
-		CODE_SIGNING_REQUIRED=NO \
-		CODE_SIGNING_ALLOWED=NO \
-		build
+	bash scripts/build-openburnbar-local-app.sh \
+		--unsigned \
+		--project "$(PROJECT)" \
+		--scheme "$(SCHEME)" \
+		--configuration "$(CONFIG)" \
+		--destination "$(DESTINATION)" \
+		--cache-dir "$(CACHE_DIR)" \
+		--derived-data "$(DERIVED_DATA)"
 	@echo "==> Embedding daemon helper…"
 	mkdir -p "$(APP_BUNDLE)/Contents/Helpers"
 	cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_BIN)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
@@ -122,55 +110,18 @@ build: bootstrap preflight
 build-signed: bootstrap preflight
 	@bash scripts/ci/verify-iroh-release-artifact.sh
 	@mkdir -p "$(CACHE_DIR)" "$(DERIVED_DATA)"
-	@echo "==> Resolving packages…"
-	xcodebuild -resolvePackageDependencies \
-		-project $(PROJECT) \
-		-scheme $(SCHEME) \
-		-clonedSourcePackagesDirPath $(CACHE_DIR) \
-		-derivedDataPath $(DERIVED_DATA) \
-		-quiet
 	@echo "==> Building daemon…"
 	swift build --package-path $(DAEMON_PACKAGE) -c release
 	@echo "==> Building signed $(SCHEME) ($(CONFIG))…"
-	@TEAM="$(OPENBURNBAR_DEVELOPMENT_TEAM)"; \
-	if [ -z "$$TEAM" ]; then \
-		IDENTITY="$$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' | head -n 1 || true)"; \
-		if [ -n "$$IDENTITY" ]; then \
-			TEAM="$$(security find-certificate -c "$$IDENTITY" -p 2>/dev/null | openssl x509 -noout -subject 2>/dev/null | sed -n 's/.*OU=\([A-Z0-9]\{10\}\).*/\1/p' | head -n 1 || true)"; \
-		fi; \
-	fi; \
-	if [ -n "$$TEAM" ]; then \
-		echo "    Using development team $$TEAM (set OPENBURNBAR_DEVELOPMENT_TEAM to override)."; \
-		xcodebuild \
-			-project $(PROJECT) \
-			-scheme $(SCHEME) \
-			-configuration $(CONFIG) \
-			-destination "$(DESTINATION)" \
-			-clonedSourcePackagesDirPath $(CACHE_DIR) \
-			-derivedDataPath $(DERIVED_DATA) \
-			ARCHS=arm64 \
-			ONLY_ACTIVE_ARCH=YES \
-			DEVELOPMENT_TEAM=$$TEAM \
-			CODE_SIGN_STYLE=Automatic \
-			-allowProvisioningUpdates \
-			build; \
-	else \
-		echo "    No OPENBURNBAR_DEVELOPMENT_TEAM set and no Apple Development identity found —"; \
-		echo "    building unsigned; the bundle will be ad-hoc signed for local use."; \
-		xcodebuild \
-			-project $(PROJECT) \
-			-scheme $(SCHEME) \
-			-configuration $(CONFIG) \
-			-destination "$(DESTINATION)" \
-			-clonedSourcePackagesDirPath $(CACHE_DIR) \
-			-derivedDataPath $(DERIVED_DATA) \
-			ARCHS=arm64 \
-			ONLY_ACTIVE_ARCH=YES \
-			CODE_SIGN_IDENTITY="-" \
-			CODE_SIGNING_REQUIRED=NO \
-			CODE_SIGNING_ALLOWED=NO \
-			build; \
-	fi
+	bash scripts/build-openburnbar-local-app.sh \
+		--signed \
+		--development-team "$(OPENBURNBAR_DEVELOPMENT_TEAM)" \
+		--project "$(PROJECT)" \
+		--scheme "$(SCHEME)" \
+		--configuration "$(CONFIG)" \
+		--destination "$(DESTINATION)" \
+		--cache-dir "$(CACHE_DIR)" \
+		--derived-data "$(DERIVED_DATA)"
 	@echo "==> Embedding daemon helper…"
 	mkdir -p "$(APP_BUNDLE)/Contents/Helpers"
 	cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_BIN)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"

@@ -587,21 +587,25 @@ package_resolve_receipt="$diagnostics_dir/OpenBurnBarTests-package-resolution-co
 rm -f "$package_resolve_log" "$package_resolve_receipt"
 
 set +e
-run_supervised_xcodebuild \
-    "$package_resolve_log" \
-    "$package_resolve_receipt" \
-    "$package_resolve_timeout_seconds" \
-    xcodebuild -resolvePackageDependencies \
-        -project "$repo_root/OpenBurnBar.xcodeproj" \
-        -scheme "OpenBurnBar" \
-        -clonedSourcePackagesDirPath "$cache_dir" \
-        -derivedDataPath "$derived_data_dir" \
-        "${OPENBURNBAR_XCODE_SOURCE_CLASSIFICATION_ARGS[@]}"
-package_resolve_status=$?
+OPENBURNBAR_SWIFTPM_RESOLVE_TIMEOUT_SECONDS="$package_resolve_timeout_seconds" \
+    bash "$repo_root/scripts/prepare-openburnbar-app-swiftpm.sh" \
+        --project "$repo_root/OpenBurnBar.xcodeproj" \
+        --scheme "OpenBurnBar" \
+        --cache-dir "$cache_dir" \
+        --derived-data "$derived_data_dir" \
+        2>&1 | tee "$package_resolve_log"
+package_resolve_status=${PIPESTATUS[0]}
 set -e
+
+resolution_evidence_dir="$derived_data_dir/.openburnbar-swiftpm-resolution"
+for candidate_receipt in "$resolution_evidence_dir"/*-containment.json; do
+    if [[ -s "$candidate_receipt" ]]; then
+        cp "$candidate_receipt" "$package_resolve_receipt"
+    fi
+done
 if ((package_resolve_status != 0)); then
-    echo "error: Xcode package resolution failed with status $package_resolve_status." >&2
-    echo "Package-resolution log: $package_resolve_log" >&2
+    echo "error: locked Xcode package preparation failed with status $package_resolve_status." >&2
+    echo "Package-preparation log: $package_resolve_log" >&2
     if [[ -s "$package_resolve_receipt" ]]; then
         echo "Containment receipt: $package_resolve_receipt" >&2
     fi
@@ -637,6 +641,7 @@ populate_xcodebuild_args() {
         CODE_SIGNING_ALLOWED=NO
         CODE_SIGNING_REQUIRED=NO
         -disableAutomaticPackageResolution
+        -onlyUsePackageVersionsFromResolvedFile
         "${OPENBURNBAR_XCODE_SOURCE_CLASSIFICATION_ARGS[@]}"
     )
     if [[ -n "$xcodebuild_jobs" ]]; then

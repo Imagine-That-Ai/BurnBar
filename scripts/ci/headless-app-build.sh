@@ -71,6 +71,7 @@ source "$repo_root/scripts/lib/libsignal-swift-compat.sh"
 # shellcheck source=scripts/lib/xcode-source-classification.sh
 source "$repo_root/scripts/lib/xcode-source-classification.sh"
 openburnbar_configure_xcode_process_tmpdir
+export FIREBASE_SOURCE_FIRESTORE=1
 
 cleanup() {
   local original_status="${1:-0}"
@@ -156,6 +157,7 @@ xcodebuild_common_args=(
   CODE_SIGNING_ALLOWED=NO
   CODE_SIGNING_REQUIRED=NO
   -disableAutomaticPackageResolution
+  -onlyUsePackageVersionsFromResolvedFile
   "${OPENBURNBAR_XCODE_SOURCE_CLASSIFICATION_ARGS[@]}"
 )
 
@@ -196,6 +198,12 @@ if [[ $local_reuse -eq 1 ]]; then
   fi
 
   prepare_signal_ffi
+  bash "$repo_root/scripts/prepare-openburnbar-app-swiftpm.sh" \
+    --project "$project" \
+    --scheme "$scheme" \
+    --cache-dir "$primary_cache" \
+    --derived-data "$derived_data" \
+    --check-only
   openburnbar_prepare_google_sign_in_macos_compat "$primary_cache"
 
   # Reuse the already-resolved cache and forbid a fresh resolve (the TCC hit).
@@ -212,12 +220,12 @@ else
 
   prepare_signal_ffi
 
-  log "Resolving packages in-tree (cache at $cache_dir)"
-  xcodebuild -resolvePackageDependencies \
-    -project "$project" \
-    -scheme "$scheme" \
-    -clonedSourcePackagesDirPath "$cache_dir" \
-    -derivedDataPath "$derived_data"
+  log "Ensuring locked packages are available in-tree (cache at $cache_dir)"
+  bash "$repo_root/scripts/prepare-openburnbar-app-swiftpm.sh" \
+    --project "$project" \
+    --scheme "$scheme" \
+    --cache-dir "$cache_dir" \
+    --derived-data "$derived_data"
   openburnbar_prepare_google_sign_in_macos_compat "$cache_dir"
 
   log "Building in-tree (locked package graph, cache at $cache_dir)"
