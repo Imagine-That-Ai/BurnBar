@@ -1,9 +1,13 @@
 name: Website CI
 
 concurrency:
-  group: website-ci-${{ github.event_name }}-${{ github.ref }}
-  # Only pull_request runs are safe to cancel: merge_group runs are the
-  # merge-queue's own proof and push runs are the post-merge record.
+  group: website-ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.ref) || format('run-{0}', github.run_id) }}
+  # Only pull_request runs share a group and get cancelled. merge_group runs are
+  # the merge-queue's own proof and `push` runs are the per-commit post-merge
+  # record, so both get a unique per-run group that can never collide: a shared
+  # group evicts a *pending* run even with cancel-in-progress false, because
+  # GitHub keeps at most one queued run per group. Same pattern and reasoning as
+  # `.github/workflows/security-pr.yml`.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
