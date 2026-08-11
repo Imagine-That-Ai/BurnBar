@@ -36,6 +36,52 @@ const KIND_LABELS: Record<string, string> = {
   system: 'System'
 };
 
+type InboxListSection = {
+  id: 'attention' | 'today' | 'earlier' | 'closed';
+  label: string;
+  rows: AIInboxPresentationRow[];
+};
+
+export function inboxListSections(
+  rows: AIInboxPresentationRow[],
+  filter: InboxFilter = 'active',
+  now = Date.now()
+): InboxListSection[] {
+  if (filter === 'resolved' || filter === 'archived') {
+    return rows.length > 0 ? [{ id: 'closed', label: 'Closed', rows }] : [];
+  }
+  const current = new Date(now);
+  const today = new Date(
+    current.getFullYear(),
+    current.getMonth(),
+    current.getDate()
+  ).getTime();
+  const attention: AIInboxPresentationRow[] = [];
+  const todayRows: AIInboxPresentationRow[] = [];
+  const earlier: AIInboxPresentationRow[] = [];
+
+  for (const row of rows) {
+    const summary = row.item.summary;
+    if (summary.priority <= 2) {
+      attention.push(row);
+      continue;
+    }
+    const lastSeenAt = Date.parse(summary.lastSeenAt);
+    if (Number.isFinite(lastSeenAt) && lastSeenAt >= today) {
+      todayRows.push(row);
+    } else {
+      earlier.push(row);
+    }
+  }
+
+  const sections: InboxListSection[] = [
+    { id: 'attention', label: 'Needs attention', rows: attention },
+    { id: 'today', label: 'Today', rows: todayRows },
+    { id: 'earlier', label: 'Earlier', rows: earlier }
+  ];
+  return sections.filter((section) => section.rows.length > 0);
+}
+
 function relativeTime(value: string): string {
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) return 'unknown time';
@@ -588,6 +634,17 @@ export function InboxSurface() {
     && row.item.summary.priority <= 2
     && row.presentation.archivedAt === undefined
   ).length;
+  const sections = inboxListSections(rows, filter);
+  const renderRow = (row: AIInboxPresentationRow) => (
+    <InboxListRow
+      key={row.item.summary.id}
+      item={row.item.summary}
+      selected={selectedID === row.item.summary.id}
+      unread={row.presentation.readAt === undefined
+        && (row.item.summary.state === 'new' || row.item.summary.state === 'updated')}
+      onSelect={() => void select(row.item.summary.id)}
+    />
+  );
 
   return (
     <section className="inbox-surface" aria-labelledby="inbox-heading" data-testid="inbox-root">
@@ -650,15 +707,20 @@ export function InboxSurface() {
               ) : null}
             </div>
           ) : null}
-          {rows.map((row) => (
-            <InboxListRow
-              key={row.item.summary.id}
-              item={row.item.summary}
-              selected={selectedID === row.item.summary.id}
-              unread={row.presentation.readAt === undefined
-                && (row.item.summary.state === 'new' || row.item.summary.state === 'updated')}
-              onSelect={() => void select(row.item.summary.id)}
-            />
+          {sections.map((section) => (
+            <section
+              key={section.id}
+              className={`inbox-list-section inbox-list-section--${section.id}`}
+              aria-labelledby={`inbox-list-section-${section.id}`}
+            >
+              <div className="inbox-list-section__heading">
+                <h3 id={`inbox-list-section-${section.id}`}>{section.label}</h3>
+                <span aria-label={`${section.rows.length} ${section.label.toLowerCase()} item${section.rows.length === 1 ? '' : 's'}`}>
+                  {section.rows.length}
+                </span>
+              </div>
+              {section.rows.map(renderRow)}
+            </section>
           ))}
         </div>
       </aside>
