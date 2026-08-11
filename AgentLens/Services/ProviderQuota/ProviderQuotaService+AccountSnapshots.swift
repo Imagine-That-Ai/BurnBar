@@ -211,6 +211,24 @@ extension ProviderQuotaService {
         }
     }
 
+    /// A row this device projected from a daemon slot that no longer exists.
+    ///
+    /// `sourceDeviceID` is the guard that keeps the sweep local: the projection
+    /// never sets it, while cloud sync stamps every imported account with the
+    /// device it came from (and re-ids colliding ones as `…__remote_<device>`,
+    /// so they can never appear in `activeAccountIDs`). Without the check, a
+    /// sweep would tombstone another Mac's credential slots as if they had been
+    /// removed here — and the alias scope above widens exactly which id buckets
+    /// this loop walks.
+    private static func isSweepableDaemonSlotAccount(
+        _ account: ProviderAccountDoc,
+        activeAccountIDs: Set<String>
+    ) -> Bool {
+        account.storageScope == .deviceKeychain
+            && account.sourceDeviceID == nil
+            && !activeAccountIDs.contains(account.id)
+    }
+
     private func markRemovedDaemonCredentialSlotAccountsDeleted(
         dataStore: DataStore,
         scopedProviderIDs: Set<ProviderID>,
@@ -220,7 +238,7 @@ extension ProviderQuotaService {
         let now = Date()
         for providerID in scopedProviderIDs {
             let existingAccounts = try await dataStore.fetchProviderAccounts(providerID: providerID)
-            for account in existingAccounts where account.storageScope == .deviceKeychain && !activeAccountIDs.contains(account.id) {
+            for account in existingAccounts where Self.isSweepableDaemonSlotAccount(account, activeAccountIDs: activeAccountIDs) {
                 try await dataStore.upsertProviderAccount(
                     ProviderAccountDoc(
                         id: account.id,

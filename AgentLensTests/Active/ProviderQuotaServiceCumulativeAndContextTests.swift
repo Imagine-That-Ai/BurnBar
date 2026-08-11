@@ -465,6 +465,38 @@ extension ProviderQuotaServiceTests {
         XCTAssertEqual(legacy.map(\.status), [.deleted])
     }
 
+    /// The sweep answers "which slots did *this* device stop having?", so it
+    /// must not touch another Mac's slots that arrived through cloud sync —
+    /// they can never appear in the active set, and widening the sweep to the
+    /// alias id buckets widens exactly which rows it walks past.
+    func test_persistDaemonSlotAccounts_leavesAnotherDevicesSlotsAlone() async throws {
+        OpenBurnBarDaemonManager.shared.providerConfigurations = [
+            Self.makeSlotConfiguration(providerID: "anthropic", slotID: "gmail")
+        ]
+        let dataStore = try makeDataStore()
+        try await dataStore.upsertProviderAccount(
+            ProviderAccountDoc(
+                id: "claude-code-work__remote_studio",
+                providerID: AgentProvider.claudeCode.providerID,
+                label: "Work (Studio)",
+                identityHint: "Daemon credential slot",
+                status: .connected,
+                credentialKind: .bearer,
+                storageScope: .deviceKeychain,
+                redactedLabel: "Stored in Mac Keychain",
+                sourceDeviceID: "studio",
+                schemaVersion: 1,
+                createdAt: now,
+                updatedAt: now
+            )
+        )
+
+        await ProviderQuotaService(refreshProviders: []).persistDaemonCredentialSlotAccounts(dataStore: dataStore)
+
+        let remote = try await dataStore.fetchProviderAccount(id: "claude-code-work__remote_studio")
+        XCTAssertEqual(remote?.status, .connected)
+    }
+
     /// The alias set is what lets the sweep retire records written under the
     /// old identity instead of leaving them beside their canonical replacement.
     func test_daemonProviderIDs_coverTheCanonicalIDAndEveryAlias() {
