@@ -5230,9 +5230,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         )
     }
 
-    // Not private: the multi-account readiness tests live in a sibling
-    // extension of this class (ProviderQuotaServiceCumulativeAndContextTests).
-    func makeDataStore() throws -> DataStore {
+    private func makeDataStore() throws -> DataStore {
         let queue = try DatabaseQueue()
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }

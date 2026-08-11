@@ -780,7 +780,7 @@ extension ProviderQuotaServiceTests {
         try writeContextWindowOnlyFixture(home: home, appPaths: appPaths)
 
         let service = makeSplitService(home: home, appSupportRoot: appSupport)
-        await service.refresh(provider: .claudeCode, dataStore: try makeSplitDataStore())
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
         XCTAssertEqual(snapshot.provider, AgentProvider.claudeCode.rawValue)
@@ -797,7 +797,7 @@ extension ProviderQuotaServiceTests {
         try writeContextWindowOnlyFixture(home: home, appPaths: appPaths, stale: true)
 
         let service = makeSplitService(home: home, appSupportRoot: appSupport)
-        await service.refresh(provider: .claudeCode, dataStore: try makeSplitDataStore())
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
@@ -818,7 +818,7 @@ extension ProviderQuotaServiceTests {
         )
 
         let service = makeSplitService(home: home, appSupportRoot: appSupport)
-        await service.refresh(provider: .claudeCode, dataStore: try makeSplitDataStore())
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
         XCTAssertEqual(snapshot.confidence, .exact)
@@ -837,7 +837,7 @@ extension ProviderQuotaServiceTests {
         return directory
     }
 
-    private func makeSplitDataStore() throws -> DataStore {
+    private func makeDataStore() throws -> DataStore {
         let queue = try DatabaseQueue()
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }
