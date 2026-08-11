@@ -120,8 +120,18 @@ extension HermesRuntimeLauncher: ManagedAgentRuntimeAdapter {
 @MainActor
 final class HermesRuntimeLauncher {
     private let dependencies: HermesRuntimeLauncherDependencies
-    /// Perf: coalesce concurrent refreshes behind a single Task.
-    private var inFlightRefreshTask: Task<HermesRuntimeStatus, Never>?
+
+    /// Identity of a status probe. Callers targeting a different gateway, or
+    /// presenting a different bearer token, are asking a different question and
+    /// must never be served each other's answer.
+    private struct RefreshKey: Hashable {
+        let baseURL: URL
+        let bearerToken: String?
+    }
+
+    /// Perf: coalesce concurrent refreshes for the same gateway identity behind
+    /// a single Task.
+    @ObservationIgnored private var inFlightRefreshTasks: [RefreshKey: Task<HermesRuntimeStatus, Never>] = [:]
 
     var status = HermesRuntimeStatus()
     var isBusy = false
@@ -135,15 +145,16 @@ final class HermesRuntimeLauncher {
         baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
         bearerToken: String? = nil
     ) async -> HermesRuntimeStatus {
-        if let existing = inFlightRefreshTask {
+        let key = RefreshKey(baseURL: baseURL, bearerToken: bearerToken)
+        if let existing = inFlightRefreshTasks[key] {
             return await existing.value
         }
-        let task = Task { [self] () -> HermesRuntimeStatus in
+        let task = Task { @MainActor [self] () -> HermesRuntimeStatus in
             await self.refreshStatusImpl(baseURL: baseURL, bearerToken: bearerToken)
         }
-        inFlightRefreshTask = task
+        inFlightRefreshTasks[key] = task
         let result = await task.value
-        inFlightRefreshTask = nil
+        inFlightRefreshTasks[key] = nil
         return result
     }
 
