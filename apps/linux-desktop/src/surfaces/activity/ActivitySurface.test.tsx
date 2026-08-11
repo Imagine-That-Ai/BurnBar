@@ -12,6 +12,7 @@ import type {
 import { ACTIVITY_PAGE_SIZE, useActivityStore } from '../../state/activityStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { availableRuntimeCapabilities } from '../../testing/bridgeStubs.js';
+import { activityConversationRouteHash } from '../../routes.js';
 import { ActivitySurface } from './ActivitySurface.js';
 import { formatCostUsd, formatTokens } from './sessionFormat.js';
 
@@ -21,7 +22,11 @@ function resetActivity(): void {
     loading: false,
     error: null,
     query: '',
-    visibleCount: ACTIVITY_PAGE_SIZE
+    visibleCount: ACTIVITY_PAGE_SIZE,
+    target: null,
+    targetSession: null,
+    targetLoading: false,
+    targetError: null
   });
 }
 
@@ -31,7 +36,10 @@ function resetShell(): void {
     bridge: null,
     bridgeReady: true,
     health: null,
-    healthError: null
+    healthError: null,
+    route: 'activity',
+    routeHash: '#/activity',
+    routeRevision: 0
   });
 }
 
@@ -395,6 +403,39 @@ describe('ActivitySurface', () => {
     fireEvent.click(screen.getByRole('button', { name: /load more/i }));
     rows = screen.getAllByRole('listitem');
     expect(rows.length).toBe(55);
+  });
+
+  it('opens, expands, and repeats an exact conversation outside the current activity page', async () => {
+    const targetID = 'Codex:outside-current-page';
+    const current = fixtureSessionList().sessions[0]!;
+    const exact = {
+      ...fixtureSessionList().sessions[1]!,
+      id: 'search-hit',
+      title: 'Exact deep-linked conversation',
+      sourceID: targetID,
+      sourceIDVerified: true
+    };
+    const sessionSearch = vi.fn(async () => ({ sessions: [exact], nextCursor: null }));
+    useShellStore.setState({
+      bridge: mockBridge({
+        sessionList: async () => ({ sessions: [current], nextCursor: null }),
+        sessionSearch
+      }),
+      routeHash: activityConversationRouteHash(targetID),
+      routeRevision: 1
+    });
+
+    render(<ActivitySurface />);
+    expect(await screen.findByRole('heading', { name: 'Selected session' })).toBeTruthy();
+    expect(screen.getByText('Exact deep-linked conversation')).toBeTruthy();
+    expect(await screen.findByRole('region', { name: /details for exact deep-linked conversation/i })).toBeTruthy();
+    const callsBeforeRepeat = sessionSearch.mock.calls.length;
+
+    act(() => useShellStore.getState().navigateDestination({
+      route: 'activity',
+      hash: activityConversationRouteHash(targetID)
+    }, { measure: false }));
+    await vi.waitFor(() => expect(sessionSearch).toHaveBeenCalledTimes(callsBeforeRepeat + 1));
   });
 
   it('toggles session disclosure with keyboard-operable button', async () => {

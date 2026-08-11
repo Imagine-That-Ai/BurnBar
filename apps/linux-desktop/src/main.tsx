@@ -63,8 +63,7 @@ async function boot(): Promise<void> {
       } else if (petCompanion) {
         useShellStore.getState().setRoute('pet', { measure: false });
       } else if (requestedNativeDestination) {
-        location.hash = requestedNativeDestination.hash;
-        useShellStore.getState().syncRouteFromHash({ measure: false });
+        useShellStore.getState().navigateDestination(requestedNativeDestination, { measure: false });
       } else if (shouldRouteToOnboarding(authoritative)) {
         useShellStore.getState().setRoute('onboarding', { measure: false });
       } else if (hadDeepLink) {

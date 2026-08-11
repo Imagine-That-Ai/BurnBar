@@ -304,6 +304,26 @@ describe('exact-thread chat store', () => {
     ]);
   });
 
+  it('merges an exact thread fetched outside the current list into the visible rail', async () => {
+    const outside = { ...thread('outside'), title: 'Outside current filter' };
+    const get = vi.fn(async () => ({
+      thread: outside,
+      messages: [persisted('outside-message', outside.id, 'assistant', 'Exact body')],
+      hasMoreBefore: false
+    }));
+    useShellStore.setState({ bridge: bridgeWith({ chatThreadGet: get }), fixtureMode: false });
+    useChatStore.setState({ threads: [thread('listed')], query: 'listed' });
+
+    await useChatStore.getState().selectThread(outside.id);
+
+    expect(useChatStore.getState().threads.map((candidate) => candidate.id)).toEqual([
+      outside.id,
+      'listed'
+    ]);
+    expect(useChatStore.getState().selectedThreadId).toBe(outside.id);
+    expect(useChatStore.getState().historyError).toBeNull();
+  });
+
   it('keeps the last good transcript visible when a live resume fails, then replaces it on retry', async () => {
     const get = vi
       .fn()

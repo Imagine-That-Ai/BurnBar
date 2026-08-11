@@ -82,6 +82,7 @@ export function App() {
   const [kernelId, setKernelId] = useState<KernelId>(() => readPersistedKernelId());
   const route = useShellStore((s) => s.route);
   const setRoute = useShellStore((s) => s.setRoute);
+  const navigateDestination = useShellStore((s) => s.navigateDestination);
   const skin = useShellStore((s) => s.skin);
   const dashboardLayout = useDashboardLayoutStore((s) => s.layout);
   const syncRouteFromHash = useShellStore((s) => s.syncRouteFromHash);
@@ -131,8 +132,7 @@ export function App() {
           if (cancelled) return;
           const destination = shellDestinationFromNative(event.payload);
           if (!destination) return;
-          location.hash = destination.hash;
-          syncRouteFromHash();
+          navigateDestination(destination);
         });
         if (cancelled) {
           stop();
@@ -148,8 +148,7 @@ export function App() {
           if (pendingRoute === null) break;
           const destination = shellDestinationFromNative(pendingRoute);
           if (!destination) continue;
-          location.hash = destination.hash;
-          syncRouteFromHash();
+          navigateDestination(destination);
         }
       })
       .catch(() => {
@@ -160,7 +159,7 @@ export function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [bridge, syncRouteFromHash]);
+  }, [bridge, navigateDestination]);
 
   // The Linux native shell registers this event only for a successful X11
   // global binding. Validate its fixed payload before routing or opening the

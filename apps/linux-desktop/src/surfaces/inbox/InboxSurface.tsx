@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
-import { inboxSelectionFromHash } from '../../routes.js';
+import {
+  activityConversationRouteHash,
+  inboxSelectionFromHash,
+  projectWorkspaceRouteHash
+} from '../../routes.js';
 import { useInboxStore, type InboxFilter } from '../../state/inboxStore.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useShellStore } from '../../state/shellStore.js';
@@ -182,11 +186,17 @@ async function performItemAction(action: AIInboxAction): Promise<void> {
     return;
   }
   if (action.kind === 'open_project') {
-    useShellStore.getState().setRoute('projects');
+    useShellStore.getState().navigateDestination({
+      route: 'projects',
+      hash: projectWorkspaceRouteHash(action.value)
+    });
     return;
   }
   if (action.kind === 'open_session_log' || action.kind === 'resume_conversation') {
-    useShellStore.getState().setRoute('activity');
+    useShellStore.getState().navigateDestination({
+      route: 'activity',
+      hash: activityConversationRouteHash(action.value)
+    });
     return;
   }
   if (action.kind === 'run_command') {
@@ -196,8 +206,9 @@ async function performItemAction(action: AIInboxAction): Promise<void> {
 
 function actionButtonLabel(action: AIInboxAction): string {
   if (action.kind === 'run_command') return `Copy: ${action.title}`;
-  if (action.kind === 'open_project') return 'Open Projects';
-  if (action.kind === 'open_session_log' || action.kind === 'resume_conversation') return 'Open Activity';
+  if (action.kind === 'open_project') return 'Open project';
+  if (action.kind === 'open_session_log') return 'Open session';
+  if (action.kind === 'resume_conversation') return 'Resume conversation';
   return action.title;
 }
 
@@ -653,6 +664,9 @@ export function InboxSurface() {
   const select = useInboxStore((state) => state.select);
   const markAllRead = useInboxStore((state) => state.markAllRead);
   const setRoute = useShellStore((state) => state.setRoute);
+  const routeHash = useShellStore((state) => state.routeHash);
+  const routeRevision = useShellStore((state) => state.routeRevision);
+  const bridgeReady = useShellStore((state) => state.bridgeReady);
 
   useLaneLoad(load);
   useEffect(() => {
@@ -660,9 +674,9 @@ export function InboxSurface() {
     void loadPlans();
   }, [loadPlans, loadTelemetry]);
   useEffect(() => {
-    const routeSelection = inboxSelectionFromHash(location.hash);
+    const routeSelection = inboxSelectionFromHash(routeHash);
     if (routeSelection) void select(routeSelection.itemID);
-  }, [select]);
+  }, [bridgeReady, routeHash, routeRevision, select]);
 
   const selected = selectedID ? rows.find((row) => row.item.summary.id === selectedID) : undefined;
   const latestRun = runs[0];

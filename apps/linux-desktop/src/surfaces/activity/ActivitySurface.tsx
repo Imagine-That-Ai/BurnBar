@@ -2,8 +2,12 @@ import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'r
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
-import { useActivityStore } from '../../state/activityStore.js';
+import {
+  sessionMatchesActivityTarget,
+  useActivityStore
+} from '../../state/activityStore.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
+import { activitySelectionFromHash } from '../../routes.js';
 import type { SessionEntry } from '../../tauriBridge.js';
 import { SearchBox } from './SearchBox.js';
 import { SessionRow, type ActivityMetricMode } from './SessionRow.js';
@@ -53,13 +57,22 @@ async function readActivityHistoryFile(file: File): Promise<string> {
 export function ActivitySurface() {
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const bridge = useShellStore((s) => s.bridge);
+  const routeHash = useShellStore((s) => s.routeHash);
+  const routeRevision = useShellStore((s) => s.routeRevision);
+  const bridgeReady = useShellStore((s) => s.bridgeReady);
   const status = useDaemonStatusCopy();
   const sessions = useActivityStore((s) => s.sessions);
   const loading = useActivityStore((s) => s.loading);
   const error = useActivityStore((s) => s.error);
   const query = useActivityStore((s) => s.query);
   const visibleCount = useActivityStore((s) => s.visibleCount);
+  const target = useActivityStore((s) => s.target);
+  const targetSession = useActivityStore((s) => s.targetSession);
+  const targetLoading = useActivityStore((s) => s.targetLoading);
+  const targetError = useActivityStore((s) => s.targetError);
   const load = useActivityStore((s) => s.load);
+  const openTarget = useActivityStore((s) => s.openTarget);
+  const clearTarget = useActivityStore((s) => s.clearTarget);
   const loadMore = useActivityStore((s) => s.loadMore);
 
   const [metricMode, setMetricMode] = useState<ActivityMetricMode>('cost');
@@ -78,6 +91,12 @@ export function ActivitySurface() {
   const provenance = fixtureMode ? 'fixture transcript' : 'live daemon session index';
 
   useLaneLoad(load);
+
+  useEffect(() => {
+    const selection = activitySelectionFromHash(routeHash);
+    if (selection) void openTarget(selection);
+    else clearTarget();
+  }, [bridgeReady, clearTarget, openTarget, routeHash, routeRevision]);
 
   // Keep a query-scoped snapshot visible while a refresh is in flight or has
   // failed. A failed search must not display rows from the previous query.
@@ -98,6 +117,11 @@ export function ActivitySurface() {
 
   const visible = displayedSessions.slice(0, visibleCount);
   const dayGroups = groupSessionsByDay(visible);
+  const targetIsVisible = Boolean(
+    target
+      && targetSession
+      && visible.some((session) => sessionMatchesActivityTarget(session, target))
+  );
   const hasMore = displayedSessions.length > visibleCount;
   const exportDisabled = displayedSessions.length === 0;
   // Keep the action available in fixture/older shells so the UI can surface a
@@ -307,6 +331,8 @@ export function ActivitySurface() {
         <ActivitySkeleton />
       </>
     );
+  } else if (displayedSessions.length === 0 && targetSession) {
+    body = <SearchBox />;
   } else if (displayedSessions.length === 0 && query.trim()) {
     body = (
       <>
@@ -418,7 +444,16 @@ export function ActivitySurface() {
               </header>
               <ul className="activity-list">
                 {group.sessions.map((s) => (
-                  <SessionRow key={s.id} session={s} metricMode={metricMode} />
+                  <SessionRow
+                    key={s.id}
+                    session={s}
+                    metricMode={metricMode}
+                    focusRevision={
+                      target && targetSession && sessionMatchesActivityTarget(s, target)
+                        ? routeRevision
+                        : undefined
+                    }
+                  />
                 ))}
               </ul>
             </section>
@@ -441,6 +476,34 @@ export function ActivitySurface() {
       <p className="sr-only" aria-live="polite">
         {loading ? 'Loading sessions' : `${displayedSessions.length} session${displayedSessions.length === 1 ? '' : 's'} shown`}
       </p>
+      {targetLoading ? (
+        <p className="activity-export-status" role="status" aria-live="polite">
+          Opening the exact activity target…
+        </p>
+      ) : null}
+      {targetError ? (
+        <Banner tone="degraded" role="alert">
+          {targetError}
+        </Banner>
+      ) : null}
+      {target && targetSession && !targetIsVisible ? (
+        <section
+          className="activity-day-group activity-target-group"
+          aria-labelledby="activity-target-heading"
+        >
+          <header className="activity-day-header">
+            <h2 id="activity-target-heading" className="activity-day-title">Selected session</h2>
+            <span className="activity-day-count muted">Exact daemon match</span>
+          </header>
+          <ul className="activity-list">
+            <SessionRow
+              session={targetSession}
+              metricMode={metricMode}
+              focusRevision={routeRevision}
+            />
+          </ul>
+        </section>
+      ) : null}
       {body}
       {historyImportPanel}
     </div>

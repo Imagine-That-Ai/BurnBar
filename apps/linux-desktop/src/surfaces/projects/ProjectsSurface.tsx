@@ -1,7 +1,11 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
+import {
+  projectRouteHash,
+  projectSelectionFromHash
+} from '../../routes.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
 import type {
@@ -26,6 +30,23 @@ type ProjectCardStats = {
   totalCostUsd: number;
   tokenCount: number;
 };
+
+const PROJECT_WORKSPACE_METADATA_KEYS = [
+  'workspacePath',
+  'workspace_path',
+  'projectRoot',
+  'project_root',
+  'workingDirectory',
+  'working_directory'
+] as const;
+
+function authoritativeWorkspacePath(record: ProjectRecord | undefined): string | null {
+  for (const key of PROJECT_WORKSPACE_METADATA_KEYS) {
+    const value = record?.metadata[key];
+    if (typeof value === 'string' && value.startsWith('/') && value === value.trim()) return value;
+  }
+  return null;
+}
 
 function metadataNumber(record: ProjectRecord | undefined, ...keys: string[]): number | undefined {
   for (const key of keys) {
@@ -290,7 +311,7 @@ function ProjectDetail({
             Back to projects
           </button>
           <p className="eyebrow">Registered project</p>
-          <h2 id="project-detail-title">{record.displayName}</h2>
+          <h2 id="project-detail-title" tabIndex={-1}>{record.displayName}</h2>
           <p className="mono project-detail-slug">{record.projectSlug}</p>
         </div>
         <button type="button" className="primary" onClick={onEdit} disabled={!canEdit || lifecycleBusy}>
@@ -425,6 +446,10 @@ function ProjectListCard({
 export function ProjectsSurface() {
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const bridge = useShellStore((s) => s.bridge);
+  const routeHash = useShellStore((s) => s.routeHash);
+  const routeRevision = useShellStore((s) => s.routeRevision);
+  const navigateDestination = useShellStore((s) => s.navigateDestination);
+  const setRoute = useShellStore((s) => s.setRoute);
   const status = useDaemonStatusCopy();
   const projects = useSystemStore((s) => s.projects);
   const loading = useSystemStore((s) => s.loading);
@@ -442,6 +467,7 @@ export function ProjectsSurface() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const historyRequestRef = useRef(0);
+  const routedRequestRef = useRef<string | null>(null);
 
   useLaneLoad(loadProjects);
 
@@ -453,7 +479,7 @@ export function ProjectsSurface() {
     [projects, selectedSlug]
   );
 
-  const openProject = async (entry: ProjectEntry) => {
+  const openProject = useCallback(async (entry: ProjectEntry) => {
     const slug = entry.projectSlug ?? entry.id;
     const requestID = historyRequestRef.current + 1;
     historyRequestRef.current = requestID;
@@ -467,7 +493,7 @@ export function ProjectsSurface() {
       setHistoryError('Project history is unavailable from this packaged daemon.');
     }
     if (entry.record && !bridge?.projectGet) {
-      setDetail(entry.record);
+      if (historyRequestRef.current === requestID) setDetail(entry.record);
       if (bridge?.projectHistory) {
         setHistoryLoading(true);
         try {
@@ -491,6 +517,7 @@ export function ProjectsSurface() {
     setDetailLoading(true);
     try {
       const result = await bridge.projectGet(slug);
+      if (historyRequestRef.current !== requestID) return;
       setDetail(result);
       if (!result) setDetailError('The daemon did not return this project. Refresh and try again.');
       if (result && bridge.projectHistory) {
@@ -507,12 +534,80 @@ export function ProjectsSurface() {
         }
       }
     } catch (cause) {
+      if (historyRequestRef.current !== requestID) return;
       setDetail(null);
       setDetailError(cause instanceof Error ? cause.message : 'Project detail request failed');
     } finally {
-      setDetailLoading(false);
+      if (historyRequestRef.current === requestID) setDetailLoading(false);
     }
-  };
+  }, [bridge]);
+
+  useEffect(() => {
+    const selection = projectSelectionFromHash(routeHash);
+    if (!selection) {
+      if (routedRequestRef.current !== null) {
+        routedRequestRef.current = null;
+        historyRequestRef.current += 1;
+        setSelectedSlug(null);
+        setDetail(null);
+        setDetailError(null);
+        setDetailLoading(false);
+        setEditing(false);
+      }
+      return;
+    }
+
+    const requestKey = `${routeRevision}:${routeHash}`;
+    if (routedRequestRef.current === requestKey) return;
+
+    if (selection.kind === 'workspace') {
+      if (projects === null) return;
+      const matches = projects.filter(
+        (entry) => authoritativeWorkspacePath(entry.record) === selection.workspacePath
+      );
+      routedRequestRef.current = requestKey;
+      if (matches.length !== 1) {
+        historyRequestRef.current += 1;
+        setSelectedSlug(selection.workspacePath);
+        setDetail(null);
+        setDetailLoading(false);
+        setEditing(false);
+        setDetailError(
+          matches.length > 1
+            ? 'More than one registered project claims this exact workspace path. Resolve the controller registry conflict and retry.'
+            : 'This exact workspace is no longer registered with a canonical controller project.'
+        );
+        return;
+      }
+      void openProject(matches[0]!);
+      return;
+    }
+
+    if (projects === null && !bridge?.projectGet) return;
+    routedRequestRef.current = requestKey;
+    const exact = projects?.find(
+      (entry) => entry.id === selection.projectID || entry.projectSlug === selection.projectID
+    );
+    void openProject(
+      exact ?? {
+        id: selection.projectID,
+        name: selection.projectID,
+        path: '',
+        scope: 'controller',
+        projectSlug: selection.projectID
+      }
+    );
+  }, [bridge, openProject, projects, routeHash, routeRevision]);
+
+  useEffect(() => {
+    if (!detail || !projectSelectionFromHash(routeHash)) return;
+    const frame = window.requestAnimationFrame(() => {
+      const heading = document.getElementById('project-detail-title');
+      heading?.scrollIntoView?.({ block: 'nearest' });
+      heading?.focus?.({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [detail, routeHash, routeRevision]);
 
   const deleteProject = async () => {
     if (!bridge?.projectDelete || !detail) return;
@@ -615,7 +710,7 @@ export function ProjectsSurface() {
         <Banner tone="degraded" role="alert">
           {detailError}
           <div className="actions">
-            <button type="button" className="ghost" onClick={() => setSelectedSlug(null)}>
+            <button type="button" className="ghost" onClick={() => setRoute('projects')}>
               Back to projects
             </button>
           </div>
@@ -640,7 +735,7 @@ export function ProjectsSurface() {
       return (
         <ProjectDetail
           record={detail}
-          onBack={() => setSelectedSlug(null)}
+          onBack={() => setRoute('projects')}
           onEdit={() => {
             if (canManage) setEditing(true);
           }}
@@ -684,7 +779,14 @@ export function ProjectsSurface() {
       ) : (
         <div className="project-list-grid">
           {list.map((project) => (
-            <ProjectListCard key={project.id} project={project} onOpen={() => void openProject(project)} />
+            <ProjectListCard
+              key={project.id}
+              project={project}
+              onOpen={() => navigateDestination({
+                route: 'projects',
+                hash: projectRouteHash(project.projectSlug ?? project.id)
+              })}
+            />
           ))}
         </div>
       )}

@@ -38,6 +38,14 @@ the normal secret gate, quarantine, approval, approved-only export, and
 reject/forget removal path. Retries reuse deterministic authority records and
 do not replace unrelated approved memories.
 
+The Inbox action loop now also preserves the exact target represented by each
+action. Project actions select the one controller project whose authoritative
+workspace metadata exactly matches the action path. Session and resume actions
+select only a verified canonical conversation identity. Durable chat-thread
+routes fetch and merge an exact thread even when it is outside the loaded rail.
+All route inputs are typed, reload-safe, length-bounded, and reject duplicate
+or unknown parameters, control characters, and path traversal.
+
 The strict release result is still **0/40 product rows and 0/7 environments**.
 That does not mean the implementation is empty. It means this exact candidate
 has not yet been installed and exercised in the required Linux environments,
@@ -77,9 +85,11 @@ Stripe-only opener remains separate and unchanged.
 
 - Complete parity preflight: **46 passed, 0 failed**, 413.83 seconds.
 - Focused source packet: **29 passed, 0 failed**.
-- Linux frontend: **118 test files, 1,100 tests passed**.
+- Linux frontend: **118 test files, 1,119 tests passed**.
 - Focused Inbox/bridge/UI packet after native-link hardening:
   **4 test files, 109 tests passed**.
+- Focused exact-target route/store/surface packet:
+  **10 test files, 113 tests passed**.
 - Linux TypeScript typecheck: passed.
 - Linux ESLint gate: passed with zero warnings.
 - Linux production Vite build and bundle verifier: passed.
@@ -113,7 +123,7 @@ the feature passed in an installed Linux package.
 | P-06 | Gateway credential boundary | Native gateway owns credentials and keeps them out of the renderer | Installed adversarial, reconnect, streaming, log, and diagnostics proof | Critical |
 | P-07 | Computer Use | Browser authority, approval, panic, replay, audit, system portal input, and mobile approval source are broad | Production auth/App Check, physical-device approval, installed browser/system actions, Agent Watch breadth, panic, tamper, and restart proof | Critical |
 | P-08 | Mercury media | Calls, files, capture, playback, consent, capability probing, and proof ownership are broad | Real paired-device file/call/share, codec fallback, portal consent, teardown, and compositor proof | Critical |
-| P-09 | Navigation and shell | All primary routes now include AI Inbox; bounded Inbox item deep links load exact items even outside the current filter | Project, session, and conversation Inbox actions still open generic destination routes because those routes do not accept bounded target IDs; current-candidate secondary-window, focus, multi-monitor, and restore proof is also open | High |
+| P-09 | Navigation and shell | All primary routes include AI Inbox; bounded Inbox, project, workspace, session, conversation, and chat-thread routes load and focus exact authoritative targets, including targets outside the current list/filter | Current-candidate installed cold/warm routing, secondary-window, focus, multi-monitor, not-found recovery, and restore proof is open | High |
 | P-10 | Dashboard layouts | Six layouts and their state handling exist | Installed visual matrix with real data, compact/wide sizes, themes, and restart persistence | Medium |
 | P-11 | Usage ingestion | Canonical parser catalog, local ingestion, projections, recount, and provenance checks are broad | Real Linux corpus, remaining API/quota/cloud breadth, restart/recount, and same-input macOS comparison | High |
 | P-12 | Quota | Quota read state, account slots, failover policy, reset, and provenance exist | Live exhausted/cooling/ready switching, alerts, restart, and cloud-account behavior | Medium |
@@ -270,26 +280,32 @@ proof. Each item states the permanent fix and how QA should close it.
   date, notification, and plan binding; double-click/retry; restart; cancel;
   simulate create-success/bind-failure and verify recovery without duplicates.
 
-### G-04 — Exact-target Inbox actions
+### G-04 — Exact-target Inbox actions — source closed
 
 - **Difference:** macOS opens the exact session log, conversation, or project
-  represented by an Inbox action. Linux currently opens the generic Activity
-  or Projects route because those destination route contracts do not accept a
-  bounded target ID/path.
+  represented by an Inbox action. The current Linux source now does the same
+  through typed, reload-safe exact-target route contracts.
 - **Why it matters:** the user can lose the context that made the Inbox item
   actionable, especially in a large project or activity history.
-- **Recommended solution:** add typed, bounded route-selection contracts for
-  project, session, conversation, and chat-thread targets. Destination stores
-  must validate the target, load it if outside the current page/filter, select
-  it, and show a recoverable not-found state.
+- **Recommended solution:** implemented typed, bounded route-selection
+  contracts for project, workspace, session, conversation, and chat-thread
+  targets. Destination stores validate the target, load it outside the current
+  page/filter when the daemon can prove identity, select it, and show a
+  recoverable not-found or ambiguity state.
 - **Priority:** High.
-- **Implementation notes:** follow the existing Inbox and provider deep-link
-  parser pattern; cap lengths, reject traversal/control characters, preserve
-  cold-start queues, and do not expose raw filesystem opening to the renderer.
-- **QA verification:** warm and cold open each target; open a target outside
-  the current filter; test missing, deleted, malformed, oversized, and hostile
-  IDs; verify browser notification/deep-link entry; restart and focus the exact
-  selected destination.
+- **Implementation notes:** route parsing accepts exactly one allowed target
+  parameter, rejects duplicates, unknown keys, empty/trimmed/control/replacement
+  characters, oversized values, and workspace traversal. Workspace selection
+  uses only explicit authoritative controller metadata; it never opens a path
+  from the renderer or infers identity from a basename/title. Conversation
+  selection requires `sourceIDVerified === true`; repeated same-target
+  navigation increments a route revision so focus and selection retrigger.
+- **QA verification:** the focused route/store/surface packet passes
+  **113/113** and covers warm/cold route parsing, repeated navigation,
+  outside-page exact loading, ambiguity, missing/incomplete history, hostile
+  input, authoritative workspace matching, and exact chat-thread merge. Installed
+  QA must still exercise warm and cold native entry, restart restoration,
+  notification/deep-link entry, keyboard focus, and missing/deleted recovery.
 
 ### G-05 — Rich chat and Inbox content rendering
 
@@ -315,18 +331,18 @@ proof. Each item states the permanent fix and how QA should close it.
   close/reopen, restart persistence, pop-out/rejoin, screen reader order,
   reduced motion, and memory/scroll performance.
 
-### G-06 — AI Inbox list hierarchy and visual comparison
+### G-06 — AI Inbox list hierarchy — source closed; visual proof open
 
 - **Difference:** macOS groups active items into attention/today/earlier
-  sections and has platform-native SwiftUI hierarchy. Linux currently uses a
-  polished but flat ranked list with the same filters and detail shape.
+  sections and has platform-native SwiftUI hierarchy. Linux now groups active
+  rows into Attention, Today, and Earlier, and resolved/archived rows into
+  Closed, while preserving daemon order and filter semantics.
 - **Why it matters:** sectioning improves scan speed when the Inbox becomes
-  large. The flat list is functional but has not yet been visually compared
-  against the gold standard with real populated data.
-- **Recommended solution:** add deterministic recency/attention sections to the
-  Linux list while preserving server filters and Linux-native focus behavior;
-  tune density, selection, empty/error states, and responsive collapse from
-  installed screenshots.
+  large. The source hierarchy is now present, but it has not yet been visually
+  compared against the gold standard with real populated installed data.
+- **Recommended solution:** the deterministic recency/attention sectioning is
+  implemented. Tune density, selection, empty/error states, and responsive
+  collapse only from installed macOS/Linux screenshot comparison.
 - **Priority:** Medium.
 - **Implementation notes:** section only client-visible rows; do not duplicate
   server ranking or derive durable status. Preserve semantic headings and
@@ -600,11 +616,11 @@ Acceptance criteria:
 
 | Order | Work | Why now | Exit condition |
 |---|---|---|---|
-| 1 | Seal and locally commit the AI Inbox parity slice | Makes the largest remaining daily-use source addition exact, reviewable, and candidate-bound | Full relevant local gates green; clean local commit; no push or merge |
+| 1 | Seal and locally commit the exact-target Inbox action slice | Makes the latest daily-use source addition exact, reviewable, and candidate-bound | Full relevant local gates green; clean local commit; no push or merge |
 | 2 | Start X31 VM and identify the exact environment | Converts source confidence into real installed evidence | VM identity and prerequisites recorded |
 | 3 | Build/install exact candidate and run smoke, including AI Inbox | Finds package/runtime blockers before expensive deep testing | Stable GUI/daemon/CLI/service, all primary routes, durable Inbox state, and native safe links |
 | 4 | Text expansion, pet, privacy, accessibility | These are Linux-native/high-risk and recently changed | P-29/P-30/P-31/P-40 installed receipts or named defects |
-| 5 | Core product workflows and exact-target routing | Proves daily-use parity with real state and closes generic Inbox destinations | Installed row receipts, exact project/session/conversation selection, and fixed defects |
+| 5 | Core product workflows, including exact-target actions | Proves daily-use parity with real state | Installed row receipts, exact project/session/conversation selection, and fixed defects |
 | 6 | Rich chat/Inbox rendering and workspace panes | Closes the clearest remaining daily-use macOS UX gap | Sanitized rich content, durable tiled/tabbed panes, accessibility, and performance green |
 | 7 | Memory approval and follow-up authority | Completes the Founder Lens operating loop without bypassing trust boundaries | Candidate/plan memory and follow-up flows are daemon-authoritative, idempotent, and restart-safe |
 | 8 | Computer Use, media, cloud, billing, devices | Requires external authority and physical systems | Exact backend/device receipts |
@@ -719,9 +735,11 @@ Acceptance criteria:
 
 ## Current conclusion
 
-The Linux implementation is in the final proof-and-defect-fixing phase, not the
-early build phase. The AI Inbox source gap is now largely closed, but the exact
-candidate still needs a local commit and an installed X31 build. The VM may
-find real defects, and those defects must be fixed before any percentage or
+The Linux implementation is in the final source-gap, proof, and defect-fixing
+phase, not the early build phase. AI Inbox memory authority, follow-up creation,
+list hierarchy, and exact-target actions are source closed. Rich chat/workspace
+presentation and pet presentation depth remain the clearest source gaps. The
+exact candidate still needs a local commit and an installed X31 build. The VM
+may find real defects, and those defects must be fixed before any percentage or
 “full parity” claim is treated as release truth. Even a clean X31 result will
 be one-environment proof, not the final 40/40 and 7/7 certification.

@@ -355,6 +355,15 @@ function chatPageIdentityError(threadID: string): Error {
   return new Error(`Chat history response does not match thread ${threadID}.`);
 }
 
+function mergeThreadSummary(
+  threads: ChatThreadSummary[],
+  thread: ChatThreadSummary
+): ChatThreadSummary[] {
+  const existingIndex = threads.findIndex((candidate) => candidate.id === thread.id);
+  if (existingIndex < 0) return [thread, ...threads];
+  return threads.map((candidate, index) => index === existingIndex ? thread : candidate);
+}
+
 /** Validate the daemon boundary again at the store so test doubles or older
  * packaged bridges cannot merge another thread into the active transcript. */
 function validateChatPage(
@@ -747,14 +756,15 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         : result?.messages.map(messageFromPersisted) ?? [];
       if (get().selectedThreadId === id) {
         persistActiveThreadID(id);
-        set({
+        set((state) => ({
+          threads: resolvedThread ? mergeThreadSummary(state.threads, resolvedThread) : state.threads,
           messages,
           messagesLoading: false,
           hasMoreMessages: result?.hasMoreBefore ?? false,
           historyError: null,
           backend: resolvedBackend,
-          ...defaultSelectionForBackend(get().config, resolvedBackend)
-        });
+          ...defaultSelectionForBackend(state.config, resolvedBackend)
+        }));
       }
     } catch (error) {
       if (get().selectedThreadId === id) {
@@ -812,14 +822,15 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       const resolvedBackend = backendFromThread(result.thread ?? null, selectedBackend);
       if (get().selectedThreadId !== target) return false;
       persistActiveThreadID(target);
-      set({
+      set((state) => ({
+        threads: result.thread ? mergeThreadSummary(state.threads, result.thread) : state.threads,
         messages: result.messages.map(messageFromPersisted),
         messagesLoading: false,
         hasMoreMessages: result.hasMoreBefore,
         historyError: null,
         backend: resolvedBackend,
-        ...defaultSelectionForBackend(get().config, resolvedBackend)
-      });
+        ...defaultSelectionForBackend(state.config, resolvedBackend)
+      }));
       return true;
     } catch (error) {
       if (get().selectedThreadId === target) {

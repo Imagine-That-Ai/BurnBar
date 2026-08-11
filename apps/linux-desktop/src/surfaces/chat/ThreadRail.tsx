@@ -91,6 +91,7 @@ export function ThreadRail({
                 <button
                   type="button"
                   className={selectedId === t.id ? 'chat-thread-row is-selected' : 'chat-thread-row'}
+                  data-chat-thread-id={t.id}
                   onClick={() => onSelect(t.id)}
                   aria-current={selectedId === t.id ? 'true' : undefined}
                 >

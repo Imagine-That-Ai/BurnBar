@@ -4,6 +4,7 @@ import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useChatStore } from '../../state/chatStore.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
+import { chatSelectionFromHash } from '../../routes.js';
 import {
   canOpenChatCitation,
   normalizeMemoryCitations,
@@ -30,6 +31,9 @@ export function ChatSurface() {
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const bridge = useShellStore((s) => s.bridge);
   const setRoute = useShellStore((s) => s.setRoute);
+  const routeHash = useShellStore((s) => s.routeHash);
+  const routeRevision = useShellStore((s) => s.routeRevision);
+  const bridgeReady = useShellStore((s) => s.bridgeReady);
   const status = useDaemonStatusCopy();
 
   const threads = useChatStore((s) => s.threads);
@@ -84,6 +88,32 @@ export function ChatSurface() {
   const popoutWindow = isChatPopoutWindow();
 
   useLaneLoad(load);
+
+  useEffect(() => {
+    const selection = chatSelectionFromHash(routeHash);
+    if (!selection) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled || useChatStore.getState().loading) return;
+      void selectThread(selection.threadID);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bridgeReady, loading, routeHash, routeRevision, selectThread]);
+
+  useEffect(() => {
+    const selection = chatSelectionFromHash(routeHash);
+    if (!selection || selectedThreadId !== selection.threadID || messagesLoading) return;
+    const frame = window.requestAnimationFrame(() => {
+      const row = Array.from(document.querySelectorAll<HTMLElement>('[data-chat-thread-id]')).find(
+        (candidate) => candidate.dataset.chatThreadId === selection.threadID
+      );
+      row?.scrollIntoView?.({ block: 'nearest' });
+      row?.focus?.({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [messagesLoading, routeHash, routeRevision, selectedThreadId, threads]);
 
   useEffect(() => {
     if (streamPhase === 'done') {

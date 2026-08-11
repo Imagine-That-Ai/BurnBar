@@ -4,6 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useInboxStore } from '../../state/inboxStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import type { AIInboxPresentationRow } from '../../tauriBridge.js';
+import type { AIInboxAction } from '../../tauriBridge.js';
+import {
+  activityConversationRouteHash,
+  projectWorkspaceRouteHash
+} from '../../routes.js';
 import { inboxListSections, InboxSurface } from './InboxSurface.js';
 
 function presentationRow({
@@ -51,7 +56,9 @@ function resetStores(): void {
     bridge: null,
     bridgeReady: true,
     fixtureMode: true,
-    route: 'inbox'
+    route: 'inbox',
+    routeHash: '#/inbox',
+    routeRevision: 0
   });
   useInboxStore.setState({
     rows: [],
@@ -71,6 +78,23 @@ function resetStores(): void {
     busy: {}
   });
   location.hash = '#/inbox';
+}
+
+function replaceFixtureActions(actions: AIInboxAction[]): void {
+  useInboxStore.setState((state) => ({
+    rows: state.rows.map((row, index) => index === 0
+      ? {
+          ...row,
+          item: {
+            ...row.item,
+            payload: {
+              ...row.item.payload,
+              actions
+            }
+          }
+        }
+      : row)
+  }));
 }
 
 describe('InboxSurface', () => {
@@ -155,6 +179,62 @@ describe('InboxSurface', () => {
     expect((await screen.findByRole('alert')).textContent).toContain(
       'The installed Linux shell cannot safely open Inbox links.'
     );
+  });
+
+  it('routes Inbox actions to exact targets with macOS-equivalent labels', async () => {
+    render(<InboxSurface />);
+    await screen.findByRole('heading', { name: 'PR #2172 is waiting on one approval' });
+    replaceFixtureActions([
+      {
+        id: 'project',
+        kind: 'open_project',
+        title: 'Project action',
+        value: '/home/alberto/BurnBar',
+        isPrimary: true
+      },
+      {
+        id: 'session',
+        kind: 'open_session_log',
+        title: 'Session action',
+        value: 'Codex:session-1',
+        isPrimary: false
+      },
+      {
+        id: 'resume',
+        kind: 'resume_conversation',
+        title: 'Resume action',
+        value: 'Claude Code:conversation-2',
+        isPrimary: false
+      }
+    ]);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open project' }));
+    expect(useShellStore.getState().routeHash).toBe(projectWorkspaceRouteHash('/home/alberto/BurnBar'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open session' }));
+    expect(useShellStore.getState().routeHash).toBe(activityConversationRouteHash('Codex:session-1'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resume conversation' }));
+    expect(useShellStore.getState().routeHash).toBe(
+      activityConversationRouteHash('Claude Code:conversation-2')
+    );
+  });
+
+  it('reports an invalid daemon action target instead of navigating generically', async () => {
+    render(<InboxSurface />);
+    await screen.findByRole('heading', { name: 'PR #2172 is waiting on one approval' });
+    replaceFixtureActions([{
+      id: 'invalid-project',
+      kind: 'open_project',
+      title: 'Invalid project',
+      value: '../relative/project',
+      isPrimary: true
+    }]);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open project' }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/absolute, normalized linux path/i);
+    expect(useShellStore.getState().route).toBe('inbox');
   });
 
   it('groups active rows into attention, today, and earlier without changing row order', () => {

@@ -6,7 +6,7 @@ import { useShellStore } from './shellStore.js';
 describe('shell route synchronization', () => {
   beforeEach(() => {
     window.history.replaceState(null, '', '/');
-    useShellStore.setState({ route: 'overview' });
+    useShellStore.setState({ route: 'overview', routeHash: '#/overview', routeRevision: 0 });
     clearPerfSamples();
   });
 
@@ -35,5 +35,32 @@ describe('shell route synchronization', () => {
 
     expect(useShellStore.getState().route).toBe('overview');
     expect(listPerfSamples()).toEqual([]);
+  });
+
+  it('publishes query-only and repeated exact-target navigation', () => {
+    useShellStore.getState().navigateDestination({
+      route: 'activity',
+      hash: '#/activity?conversation=Codex%3Aone'
+    }, { measure: false });
+    const firstRevision = useShellStore.getState().routeRevision;
+
+    useShellStore.getState().navigateDestination({
+      route: 'activity',
+      hash: '#/activity?conversation=Codex%3Aone'
+    }, { measure: false });
+
+    expect(useShellStore.getState()).toMatchObject({
+      route: 'activity',
+      routeHash: '#/activity?conversation=Codex%3Aone',
+      routeRevision: firstRevision + 1
+    });
+
+    window.history.replaceState(null, '', '/#/activity?conversation=Codex%3Atwo');
+    useShellStore.getState().syncRouteFromHash({ measure: false });
+    expect(useShellStore.getState()).toMatchObject({
+      route: 'activity',
+      routeHash: '#/activity?conversation=Codex%3Atwo',
+      routeRevision: firstRevision + 2
+    });
   });
 });

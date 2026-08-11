@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../../state/shellStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
+import { projectRouteHash, projectWorkspaceRouteHash } from '../../routes.js';
 import type { LinuxShellBridge, ProjectHistoryEvent, ProjectRecord } from '../../tauriBridge.js';
 import { ProjectsSurface } from './ProjectsSurface.js';
 
@@ -32,7 +33,14 @@ const project: ProjectRecord = {
 };
 
 function resetStores(): void {
-  useShellStore.setState({ bridge: null, fixtureMode: false });
+  window.history.replaceState(null, '', '/#/projects');
+  useShellStore.setState({
+    bridge: null,
+    fixtureMode: false,
+    route: 'projects',
+    routeHash: '#/projects',
+    routeRevision: 0
+  });
   useSystemStore.setState({
     config: null,
     db: null,
@@ -263,5 +271,85 @@ describe('ProjectsSurface', () => {
     fireEvent.click(screen.getByRole('button', { name: /reassign references/i }));
     await vi.waitFor(() => expect(projectReassign).toHaveBeenCalledWith('apollo', 'orion'));
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Reassign all durable references'));
+  });
+
+  it('opens an exact project deep link and re-runs the same target on repeated navigation', async () => {
+    const projectGet = vi.fn().mockResolvedValue(project);
+    vi.spyOn(useSystemStore.getState(), 'loadProjects').mockImplementation(async () => {});
+    useShellStore.setState({
+      bridge: { projectGet } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+    useSystemStore.setState({ projects: [], loading: false, error: null });
+    render(<ProjectsSurface />);
+
+    const destination = { route: 'projects' as const, hash: projectRouteHash('apollo') };
+    act(() => useShellStore.getState().navigateDestination(destination, { measure: false }));
+    await vi.waitFor(() => expect(projectGet).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('heading', { name: 'Apollo' })).toBeTruthy();
+
+    act(() => useShellStore.getState().navigateDestination(destination, { measure: false }));
+    await vi.waitFor(() => expect(projectGet).toHaveBeenCalledTimes(2));
+  });
+
+  it('resolves a workspace deep link only from exact authoritative metadata', async () => {
+    const workspaceProject: ProjectRecord = {
+      ...project,
+      metadata: { ...project.metadata, workspacePath: '/home/alberto/Apollo' }
+    };
+    const projectGet = vi.fn().mockResolvedValue(workspaceProject);
+    vi.spyOn(useSystemStore.getState(), 'loadProjects').mockImplementation(async () => {});
+    useShellStore.setState({
+      bridge: { projectGet } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false,
+      routeHash: projectWorkspaceRouteHash('/home/alberto/Apollo'),
+      routeRevision: 1
+    });
+    useSystemStore.setState({
+      projects: [{
+        id: workspaceProject.id,
+        name: workspaceProject.displayName,
+        path: '',
+        scope: 'controller',
+        projectSlug: workspaceProject.projectSlug,
+        record: workspaceProject
+      }],
+      loading: false,
+      error: null
+    });
+
+    render(<ProjectsSurface />);
+    await vi.waitFor(() => expect(projectGet).toHaveBeenCalledWith('apollo'));
+    expect(await screen.findByRole('heading', { name: 'Apollo' })).toBeTruthy();
+  });
+
+  it('fails closed when a workspace path has no exact registered project', async () => {
+    const projectGet = vi.fn();
+    vi.spyOn(useSystemStore.getState(), 'loadProjects').mockImplementation(async () => {});
+    useShellStore.setState({
+      bridge: { projectGet } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false,
+      routeHash: projectWorkspaceRouteHash('/home/alberto/Unknown'),
+      routeRevision: 1
+    });
+    useSystemStore.setState({
+      projects: [{
+        id: project.id,
+        name: project.displayName,
+        path: '',
+        scope: 'controller',
+        projectSlug: project.projectSlug,
+        record: { ...project, metadata: { workspacePath: '/home/alberto/Apollo' } }
+      }],
+      loading: false,
+      error: null
+    });
+
+    render(<ProjectsSurface />);
+    expect((await screen.findByRole('alert')).textContent).toMatch(/no longer registered/i);
+    expect(projectGet).not.toHaveBeenCalled();
   });
 });

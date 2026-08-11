@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fixtureSessionList } from '../../daemonFixture.js';
 import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
 import type {
@@ -14,6 +14,7 @@ import type {
 import { useChatStore } from '../../state/chatStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { availableRuntimeCapabilities } from '../../testing/bridgeStubs.js';
+import { chatRouteHash } from '../../routes.js';
 import { ChatSurface } from './ChatSurface.js';
 
 function mockBridge(handlers: {
@@ -193,11 +194,29 @@ const resetChatStore = () => {
   });
 };
 
+beforeEach(() => {
+  window.history.replaceState(null, '', '/#/chat');
+  localStorage.removeItem('openburnbar.chat.active-thread.v1');
+  useShellStore.setState({
+    route: 'chat',
+    routeHash: '#/chat',
+    routeRevision: 0
+  });
+});
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   resetChatStore();
-  useShellStore.setState({ bridge: null, bridgeReady: true, fixtureMode: false, health: null });
+  useShellStore.setState({
+    bridge: null,
+    bridgeReady: true,
+    fixtureMode: false,
+    health: null,
+    route: 'chat',
+    routeHash: '#/chat',
+    routeRevision: 0
+  });
 });
 
 describe('ChatSurface', () => {
@@ -230,7 +249,8 @@ describe('ChatSurface', () => {
     await waitFor(() => {
       expect(screen.getByRole('log')).toBeTruthy();
     });
-    expect(screen.getAllByText(list.sessions[0].title).length).toBeGreaterThan(0);
+    expect(screen.getByText(`Thread ${list.sessions[0].id}`)).toBeTruthy();
+    expect(screen.getByText(`Persisted message for ${list.sessions[0].id}`)).toBeTruthy();
   });
 
   it('exports the loaded transcript as Markdown through the toolbar', async () => {
@@ -864,6 +884,59 @@ describe('ChatSurface', () => {
     fireEvent.click(screen.getByRole('button', { name: /Send message/i }));
     await waitFor(() => {
       expect(screen.getByText(/Gateway chat is not available in this Linux daemon build yet/i)).toBeTruthy();
+    });
+  });
+
+  it('opens an exact unloaded thread and repeats the daemon read for the same deep link', async () => {
+    const listed = {
+      id: 'listed-thread',
+      title: 'Listed thread',
+      preview: 'Visible in the first page',
+      messageCount: 1,
+      createdAt: '2026-07-10T12:00:00Z',
+      updatedAt: '2026-07-10T12:00:00Z'
+    };
+    const target = {
+      id: 'outside-filter',
+      title: 'Exact unloaded thread',
+      preview: 'Loaded directly by id',
+      messageCount: 1,
+      createdAt: '2026-07-11T12:00:00Z',
+      updatedAt: '2026-07-11T12:00:00Z'
+    };
+    const chatThreadGet = vi.fn(async (threadID: string) => ({
+      thread: threadID === target.id ? target : listed,
+      messages: [{
+        id: `${threadID}-message`,
+        threadID,
+        role: 'assistant' as const,
+        content: `Body for ${threadID}`,
+        timestamp: '2026-07-11T12:00:00Z'
+      }],
+      hasMoreBefore: false
+    }));
+    useShellStore.setState({
+      bridge: mockBridge({
+        chatThreadList: async () => ({ threads: [listed] }),
+        chatThreadGet
+      }),
+      fixtureMode: false,
+      bridgeReady: true,
+      routeHash: chatRouteHash(target.id),
+      routeRevision: 1
+    });
+
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByText('Exact unloaded thread')).toBeTruthy());
+    expect(screen.getByText(`Body for ${target.id}`)).toBeTruthy();
+    const callsBeforeRepeat = chatThreadGet.mock.calls.filter(([id]) => id === target.id).length;
+
+    act(() => useShellStore.getState().navigateDestination({
+      route: 'chat',
+      hash: chatRouteHash(target.id)
+    }, { measure: false }));
+    await waitFor(() => {
+      expect(chatThreadGet.mock.calls.filter(([id]) => id === target.id).length).toBe(callsBeforeRepeat + 1);
     });
   });
 });

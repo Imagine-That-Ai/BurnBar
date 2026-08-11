@@ -8,7 +8,7 @@ import {
 } from '../daemonFixture.js';
 import { buildDaemonStatusCopy, type DaemonStatusCopy } from '../daemonStatusCopy.js';
 import { markAfterPaint, markStart } from '../perfMarks.js';
-import { routeFromHash, type ShellRoute } from '../routes.js';
+import { routeFromHash, type ShellDestination, type ShellRoute } from '../routes.js';
 import { displayLinuxSocketPath } from '../shellPaths.js';
 import {
   loadShellBridge,
@@ -38,6 +38,8 @@ function readPersistedSkin(): ShellSkin {
 
 export type ShellState = {
   route: ShellRoute;
+  routeHash: string;
+  routeRevision: number;
   health: DaemonHealth | null;
   healthError: string | null;
   healthBusy: boolean;
@@ -54,6 +56,7 @@ export type ShellState = {
   capabilityError: string | null;
   fixtureMode: boolean;
   setRoute(route: ShellRoute, options?: RouteUpdateOptions): void;
+  navigateDestination(destination: ShellDestination, options?: RouteUpdateOptions): void;
   syncRouteFromHash(options?: RouteUpdateOptions): void;
   refreshHealth(): Promise<void>;
   toggleSkin(): void;
@@ -69,6 +72,11 @@ export const useShellStore = create<ShellState>()((set, get) => ({
     new URLSearchParams(location.search).get('window') === 'chat-popout'
       ? 'chat'
       : routeFromHash(typeof location === 'undefined' ? '' : location.hash),
+  routeHash:
+    typeof location === 'undefined' || !location.hash
+      ? '#/overview'
+      : location.hash,
+  routeRevision: 0,
   health: null,
   healthError: null,
   healthBusy: false,
@@ -86,22 +94,35 @@ export const useShellStore = create<ShellState>()((set, get) => ({
   fixtureMode: false,
 
   setRoute(route, options) {
+    get().navigateDestination({ route, hash: `#/${route}` }, options);
+  },
+
+  navigateDestination(destination, options) {
     if (options?.measure !== false) {
-      markAfterPaint('route.navigation', `packaged-ui-route-after-paint:${route}`);
+      markAfterPaint('route.navigation', `packaged-ui-route-after-paint:${destination.route}`);
     }
-    location.hash = `#/${route}`;
-    set({ route });
+    if (location.hash !== destination.hash) location.hash = destination.hash;
+    set((state) => ({
+      route: destination.route,
+      routeHash: destination.hash,
+      routeRevision: state.routeRevision + 1
+    }));
   },
 
   syncRouteFromHash(options) {
     const route = routeFromHash(location.hash);
+    const routeHash = location.hash || `#/${route}`;
     // setRoute updates the store before the browser dispatches hashchange.
     // Ignore that echo so one user navigation produces one honest perf mark.
-    if (route === get().route) return;
+    if (route === get().route && routeHash === get().routeHash) return;
     if (options?.measure !== false) {
       markAfterPaint('route.navigation', `packaged-ui-hash-route-after-paint:${route}`);
     }
-    set({ route });
+    set((state) => ({
+      route,
+      routeHash,
+      routeRevision: state.routeRevision + 1
+    }));
   },
 
   async refreshHealth() {

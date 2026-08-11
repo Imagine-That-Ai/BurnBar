@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { SessionEntry } from '../../tauriBridge.js';
 import { PROVIDER_GLYPHS } from '../../providerGlyphs.js';
 import { formatAbsoluteTime, formatCostUsd, formatRelativeTime, formatTokens } from './sessionFormat.js';
@@ -9,17 +9,35 @@ export type ActivityMetricMode = 'cost' | 'tokens';
 
 export function SessionRow({
   session,
-  metricMode
+  metricMode,
+  focusRevision
 }: {
   session: SessionEntry;
   metricMode: ActivityMetricMode;
+  focusRevision?: number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const detailId = useId();
   const glyph = PROVIDER_GLYPHS.find((g) => g.id === session.provider);
+  const rowRef = useRef<HTMLLIElement>(null);
+
+  useEffect(() => {
+    if (focusRevision === undefined) return;
+    setExpanded(true);
+    const frame = window.requestAnimationFrame(() => {
+      rowRef.current?.scrollIntoView?.({ block: 'center' });
+      rowRef.current?.focus?.({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusRevision]);
 
   return (
-    <li className="activity-row">
+    <li
+      ref={rowRef}
+      className="activity-row"
+      tabIndex={focusRevision === undefined ? undefined : -1}
+      aria-current={focusRevision === undefined ? undefined : 'true'}
+    >
       <div className="activity-row-main">
         <ProviderLogoView
           id={session.provider}
